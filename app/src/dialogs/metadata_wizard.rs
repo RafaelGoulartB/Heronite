@@ -157,6 +157,10 @@ impl MetadataWizard {
         Self { hub, games, skip_existing: true, keep_manual: true, download_images: false, _sub: sub }
     }
 
+    pub fn start_now(&mut self, cx: &mut Context<Self>) {
+        self.start(cx);
+    }
+
     fn start(&mut self, cx: &mut Context<Self>) {
         let args = BulkArgs {
             games: self.games.clone(),

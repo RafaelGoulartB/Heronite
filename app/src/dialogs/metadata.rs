@@ -120,8 +120,9 @@ impl MetadataDialog {
         })
         .detach();
         let igdb_id = game.metadata.as_ref().and_then(|m| m.igdb_id).map(|n| n.get() as i64);
+        let auto_fetch = std::env::var("HERONITE_DEBUG_FETCH").is_ok();
         let runner = if game.runner == "zoom" { "sideload".to_string() } else { game.runner.clone() };
-        Self {
+        let mut this = Self {
             ctx,
             service,
             images,
@@ -137,7 +138,11 @@ impl MetadataDialog {
             igdb_id,
             busy: None,
             error: String::new(),
+        };
+        if auto_fetch {
+            this.run_preview(None, cx);
         }
+        this
     }
 
     fn args(&self) -> MetadataApplyArgs {

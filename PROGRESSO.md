@@ -16,6 +16,12 @@ Diário de trabalho para retomar a migração. Plano geral em `PLANO.md`.
 | Plataforma | Linux primeiro; caminhos via `dirs`, código Linux-only atrás de `cfg(target_os = "linux")` |
 | Janelas de teste | Abrir **só no workspace 2** do Hyprland: `/tmp/heronite-bench/ws2.sh <cmd>` → `hyprctl eval 'hl.exec_cmd(cmd, {workspace="2 silent"})'` |
 
+## Tarefas em segundo plano
+
+- 90 s após abrir: varredura automática de ROMs e backup agendado da config (igual ao Heronite).
+  `HERONITE_DISABLE_IDLE_JOBS=1` desliga (use em testes contra dados reais).
+- Após cada sessão: chave de save state e backup Ludusavi (se habilitado).
+
 ## Convivência com o Heronite
 
 - O electron-store do Heronite mantém os dados em memória e regrava o arquivo inteiro quando
@@ -108,8 +114,11 @@ docs/reference/       screenshots do Heronite para paridade visual
 - [x] Recarrega quando o Heronite grava (poll de mtime a cada 2 s)
 - [x] Importa o estado de UI do localStorage do Heronite na 1ª execução
 - [x] Overview com HTML da Steam (parser próprio), Esc limpa seleção, scrollbars finas
-- [ ] Screenshots no painel de foco (backend: agente `crates/media`)
-- [ ] Diálogos: configurações, gerenciar status, metadados, arte, Playnite, ROMs
+- [x] Screenshots: faixa no foco, galeria (páginas de 50), visualizador (zoom/pan/fit/lixeira),
+      aba de configurações, sessão de captura ligada ao lançamento (captura real não testada)
+- [x] Diálogos: configurações (Aparência, Screenshots, Emulators, Backup, Save backup), gerenciar
+      status, Playnite (importar/mesclar/exportar), Scan ROMs, escolher disco, save state
+- [ ] Diálogos de metadados/arte/detalhes/launch + aba Metadata (agente em andamento)
 - [ ] Busca dentro do flyout de facetas; arrastar scrollbar
 
 ### Diferenças visuais conhecidas (aceitas)
@@ -122,8 +131,8 @@ docs/reference/       screenshots do Heronite para paridade visual
       não testadas ao vivo).
 - [x] `crates/emulation` — catálogo/detecção, scanners, import de ROMs, disc-id, save states,
       Ludusavi, backup agendado, idle jobs.
-- [ ] `crates/metadata` (agente em andamento)
-- [ ] `crates/playnite` (agente em andamento)
+- [x] `crates/metadata` — IGDB/Steam/Lutris, merge, bulk, arte, heroes, busca de imagens, HLTB
+- [x] `crates/playnite` — LiteDB, importar/mesclar/exportar (conferido contra o original em Node)
 
 ### UI em andamento (agentes, ver `docs/UI-CONVENTIONS.md`)
 - Screenshots: faixa no foco, galeria, visualizador, aba de configurações, captura.

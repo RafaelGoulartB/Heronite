@@ -84,7 +84,16 @@ impl CollectionView {
             h.dismissed = false;
             cx.notify();
         });
+        // Debug: HERONITE_DEBUG_WIZARD_LIMIT=n runs the job on the first n games.
+        let limit = std::env::var("HERONITE_DEBUG_WIZARD_LIMIT").ok().and_then(|v| v.parse::<usize>().ok());
+        let games = match limit {
+            Some(n) => games.into_iter().take(n).collect(),
+            None => games,
+        };
         let view = cx.new(|cx| MetadataWizard::new(ctx, games, cx));
+        if limit.is_some() {
+            view.update(cx, |w, cx| w.start_now(cx));
+        }
         self.open_dialog(view, cx);
     }
 
