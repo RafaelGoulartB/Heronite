@@ -1,5 +1,4 @@
-//! Settings tab: Appearance (page background, covers).
-//! Reference: `docs/reference/dialogs/settings-appearance.png`.
+//! Settings → Appearance: page background (live preview) and covers.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,11 +9,11 @@ use gpui_kit::*;
 use heronite_data::settings::{self, CoverAspect, EffectiveSettings, PartialBackground};
 use heronite_images::{ImageRef, Opts};
 
-use super::SettingsDialog;
+use super::SettingsPage;
 use crate::collection::stage::{scrim_layers, Scrim};
-use crate::dialogs::DialogCtx;
+use crate::pages::PageCtx;
 use crate::theme;
-use crate::ui::controls::{button, caption, card, help_text, row, toggle_row, ButtonKind};
+use crate::ui::controls::{button, caption, card, row, toggle_row, ButtonKind};
 use crate::ui::fields::{meta_text, select_field};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -50,11 +49,11 @@ const ASPECTS: [(CoverAspect, &str); 6] = [
 
 impl State {
     pub fn new(
-        ctx: &DialogCtx,
+        ctx: &PageCtx,
         s: &EffectiveSettings,
         preview_chain: Vec<ImageRef>,
         window: &mut Window,
-        cx: &mut Context<SettingsDialog>,
+        cx: &mut Context<SettingsPage>,
     ) -> Self {
         let b = &s.background;
         let mut sliders = Vec::new();
@@ -65,7 +64,7 @@ impl State {
             (Field::Scrim, 150., b.scrim.get()),
         ] {
             let state = cx.new(|_| SliderState::new().min(0.).max(max).step(1.).default_value(value as f32));
-            cx.subscribe_in(&state, window, move |d: &mut SettingsDialog, _, ev: &SliderEvent, _, cx| {
+            cx.subscribe_in(&state, window, move |d: &mut SettingsPage, _, ev: &SliderEvent, _, cx| {
                 let (value, release) = match ev {
                     SliderEvent::Change(v) => (v, false),
                     SliderEvent::Release(v) => (v, true),
@@ -107,8 +106,17 @@ impl State {
     }
 }
 
+impl State {
+    /// A different game is focused: the preview is rebuilt on the next render.
+    pub fn set_chain(&mut self, chain: Vec<ImageRef>) {
+        self.preview_chain = chain;
+        self.preview = None;
+        self.preview_task = None;
+    }
+}
+
 /// Recomputes the blurred preview off the UI thread (debounced 60ms).
-fn schedule_preview(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) {
+fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     let a = &d.appearance;
     if a.preview_chain.is_empty() {
         return;
@@ -133,7 +141,7 @@ fn schedule_preview(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) {
     }));
 }
 
-fn save_background(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) {
+fn save_background(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     let a = &d.appearance;
     let patch = PartialBackground {
         enabled: Some(a.enabled),
@@ -152,7 +160,7 @@ fn slider_row(label: String, state: &Entity<SliderState>) -> AnyElement {
     row(label, None, div().w(px(260.)).child(slider)).into_any_element()
 }
 
-pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<SettingsDialog>) -> AnyElement {
+pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     if d.appearance.preview.is_none() && d.appearance.preview_task.is_none() {
         schedule_preview(d, cx);
     }
@@ -259,9 +267,6 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
     div()
         .flex()
         .flex_col()
-        .child(help_text(
-            "The artwork of the selected game fills the Collection page. Adjust the glass layer over it so text stays readable on bright artwork.",
-        ))
         .child(caption("Page background"))
         .child(preview)
         .child(div().h(px(10.)))

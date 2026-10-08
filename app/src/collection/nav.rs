@@ -231,8 +231,9 @@ impl CollectionView {
         let ctx = self.page_ctx();
         if page == Page::Settings {
             // Coming back: lists and flags may have changed in the Collection.
+            self.offer_settings_data(cx);
             if let Some(v) = self.pages.settings.clone().and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok()) {
-                v.update(cx, |p, cx| p.refresh(cx));
+                v.update(cx, |p, cx| p.refresh(window, cx));
             }
         }
         let slot_empty = match page {

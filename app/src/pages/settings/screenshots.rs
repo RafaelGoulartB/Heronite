@@ -1,5 +1,4 @@
-//! Settings tab: Screenshots (folder, in-game capture shortcut, preview cache).
-//! Reference: `docs/reference/dialogs/settings-screenshots.png`.
+//! Settings → Screenshots: folder, in-game capture shortcut, preview cache.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -7,11 +6,11 @@ use gpui_kit::*;
 use heronite_data::settings::{self, EffectiveSettings, DEFAULT_CAPTURE_ACCELERATOR};
 use heronite_media::{CacheInfo, ThumbnailCache};
 
-use super::SettingsDialog;
+use super::SettingsPage;
 use crate::collection::screenshots_global;
-use crate::dialogs::DialogCtx;
+use crate::pages::PageCtx;
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, card_box, help_text, row, toggle_row, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, card_box, row, toggle_row, ButtonKind};
 use crate::ui::fields::{choose_path, input_box, labeled, meta_text, new_input, on_commit, path_field};
 
 pub struct State {
@@ -25,15 +24,15 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(ctx: &DialogCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsDialog>) -> Self {
+    pub fn new(ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
         let folder = new_input(window, cx, &s.screenshots.folder, "");
-        on_commit(&folder, window, cx, |d: &mut SettingsDialog, value, _, cx| {
+        on_commit(&folder, window, cx, |d: &mut SettingsPage, value, _, cx| {
             if value != d.settings.screenshots.folder {
                 save(d, Some(value), None, None, None, cx);
             }
         });
         let limit = new_input(window, cx, &format_number(s.screenshots.cache_limit_mb.get()), "");
-        on_commit(&limit, window, cx, |d: &mut SettingsDialog, value, _, cx| {
+        on_commit(&limit, window, cx, |d: &mut SettingsPage, value, _, cx| {
             if let Ok(mb) = value.parse::<f64>() {
                 save(d, None, Some(mb), None, None, cx);
             }
@@ -41,9 +40,12 @@ impl State {
         let cache = screenshots_global(cx)
             .map(|g| g.cache)
             .unwrap_or_else(|| ThumbnailCache::new(ctx.heroic.screenshot_thumbnails_dir(), s.screenshots.cache_limit_mb.get()));
-        let this = Self { folder, limit, hotkey: cx.focus_handle(), cache, info: None, busy: false, message: None };
-        refresh_info(&this.cache, cx);
-        this
+        Self { folder, limit, hotkey: cx.focus_handle(), cache, info: None, busy: false, message: None }
+    }
+
+    /// Section shown: reads the cache size (off the UI thread).
+    pub fn shown(&self, cx: &mut Context<SettingsPage>) {
+        refresh_info(&self.cache, cx);
     }
 }
 
@@ -64,8 +66,21 @@ fn format_cache_size(bytes: u64) -> String {
 }
 
 /// Reads the cache size off the UI thread.
-fn refresh_info(cache: &ThumbnailCache, cx: &mut Context<SettingsDialog>) {
+fn refresh_info(cache: &ThumbnailCache, cx: &mut Context<SettingsPage>) {
     let cache = cache.clone();
+    // Screenshots: the hidden window does not repaint late results.
+    if std::env::var_os("HERONITE_DEBUG_SYNC").is_some() {
+        let info = cache.info();
+        cx.spawn(async move |this, cx| {
+            this.update(cx, |d, cx| {
+                d.screenshots.info = Some(info);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        return;
+    }
     cx.spawn(async move |this, cx| {
         let info = cx.background_spawn(async move { cache.info() }).await;
         this.update(cx, |d, cx| {
@@ -79,12 +94,12 @@ fn refresh_info(cache: &ThumbnailCache, cx: &mut Context<SettingsDialog>) {
 
 /// `persistScreenshots`: writes the settings with some fields replaced.
 fn save(
-    d: &mut SettingsDialog,
+    d: &mut SettingsPage,
     folder: Option<String>,
     limit: Option<f64>,
     enabled: Option<bool>,
     accelerator: Option<String>,
-    cx: &mut Context<SettingsDialog>,
+    cx: &mut Context<SettingsPage>,
 ) {
     let cur = d.settings.screenshots.clone();
     let limit = limit.unwrap_or(cur.cache_limit_mb.get());
@@ -148,7 +163,7 @@ fn accelerator_from_key(ev: &KeyDownEvent) -> Option<String> {
     Some(parts.join("+"))
 }
 
-pub fn render(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<SettingsDialog>) -> AnyElement {
+pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let s = d.settings.screenshots.clone();
     let st = &d.screenshots;
     let has_folder = !s.folder.is_empty();
@@ -177,13 +192,13 @@ pub fn render(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<Sett
         &st.folder,
         has_folder,
         false,
-        cx.listener(move |d: &mut SettingsDialog, _: &ClickEvent, window, cx| {
+        cx.listener(move |d: &mut SettingsPage, _: &ClickEvent, window, cx| {
             // "Clear" empties the folder, "Browse" opens the chooser.
             if has_folder {
                 d.screenshots.folder.update(cx, |s, cx| s.set_value("", window, cx));
                 save(d, Some(String::new()), None, None, None, cx);
             } else {
-                choose_path(window, cx, true, "Choose", |d: &mut SettingsDialog, path, window, cx| {
+                choose_path(window, cx, true, "Choose", |d: &mut SettingsPage, path, window, cx| {
                     d.screenshots.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
                     save(d, Some(path), None, None, None, cx);
                 });
@@ -262,10 +277,10 @@ pub fn render(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<Sett
     let mut col = div()
         .flex()
         .flex_col()
-        .child(help_text(
-            "Folder with a subfolder per game (Xbox Game Bar Captures, NVIDIA, etc.). Collection matches those names to the selected game even when they are not identical.",
-        ))
         .child(caption("Screenshots folder"))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
+            "Folder with a subfolder per game (Xbox Game Bar Captures, NVIDIA, etc.). Collection matches those names to the selected game even when they are not identical.",
+        )))
         .child(folder)
         .child(caption("In-game capture"))
         .child(capture)

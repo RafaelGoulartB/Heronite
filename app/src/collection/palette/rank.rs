@@ -318,13 +318,28 @@ mod tests {
     fn empty_query_filters() {
         let e = corpus();
         let pages = search(&e, "", Filter::Pages);
-        assert_eq!(pages.count(), 6 + 7);
+        assert_eq!(pages.count(), 6 + crate::pages::settings::Section::ALL.len());
         let actions = search(&e, "", Filter::Actions);
         assert_eq!(actions.count(), 6);
         let games = search(&e, "", Filter::Games);
         assert_eq!(games.groups[0].caption, "Recent");
         assert_eq!(games.groups[1].caption, "Games");
         assert_eq!(games.count(), 5);
+    }
+
+    #[test]
+    fn settings_sections_are_found_by_their_keywords() {
+        let e = corpus();
+        for (q, section) in [
+            ("blur", "Settings \u{203a} Appearance"),
+            ("igdb", "Settings \u{203a} Metadata"),
+            ("ludusavi", "Settings \u{203a} Backups"),
+            ("screenshots", "Settings \u{203a} Screenshots"),
+        ] {
+            let r = search(&e, q, Filter::All);
+            let t = titles(&e, &r);
+            assert!(t.contains(&section.to_string()), "{q}: {t:?}");
+        }
     }
 
     #[test]

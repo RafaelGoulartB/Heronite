@@ -239,7 +239,16 @@ pub fn tag_pill(text: impl Into<SharedString>) -> Div {
 
 /// Caption with an action on the right ("Completed" + "Clear list").
 pub fn caption_with(text: impl Into<SharedString>, action: impl IntoElement) -> Div {
-    div().flex().items_end().justify_between().child(crate::ui::controls::caption(text)).child(div().mb(px(2.)).child(action))
+    // Same gap above as a plain caption, a small one before the card, text and button centred.
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(12.))
+        .mt(px(14.))
+        .mb(px(6.))
+        .child(div().mx(px(6.)).text_size(px(12.)).text_color(theme::text_muted()).child(text.into()))
+        .child(action)
 }
 
 /// Empty / info row inside a card.

@@ -318,11 +318,7 @@ impl CollectionView {
                     .min_w(px(32.))
                     .children(self.bulk_chip(cx))
                     .child(refresh)
-                    .child(playnite)
-                    .child(
-                        tool_button("hdr-settings", Icon::Settings, false)
-                            .on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))),
-                    ),
+                    .child(playnite),
             )
     }
 
@@ -461,4 +457,26 @@ impl CollectionView {
 /// Compact glass switch of the menu rows (the row itself handles the click).
 fn toggle(id: &'static str, on: bool) -> Stateful<Div> {
     crate::ui::controls::mini_checkbox(id, on, false).mt(px(0.))
+}
+
+impl CollectionView {
+    /// Opens the Settings page on `section` (what the header gear used to
+    /// do with the old Collection settings dialog).
+    pub(super) fn open_settings_section(
+        &mut self,
+        section: crate::pages::settings::Section,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        crate::pages::settings::request_section(section, cx);
+        self.navigate(crate::pages::Page::Settings, window, cx);
+    }
+
+    /// Hands the Settings page what it needs from the Collection (the
+    /// settings already loaded and the focused game's stage artwork).
+    pub(super) fn offer_settings_data(&self, cx: &mut Context<Self>) {
+        let Some(lib) = self.lib.as_ref() else { return };
+        let chain = self.selected.as_ref().and_then(|k| self.stage_chains.get(k).cloned()).unwrap_or_default();
+        crate::pages::settings::offer(lib.settings.clone(), chain, cx);
+    }
 }

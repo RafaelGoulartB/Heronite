@@ -981,3 +981,37 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
 - **Não verificado**: janela estreita (o tamanho da janela do shot.sh é fixo; as colunas largas usam `max_w` e `flex_wrap`), cliques,
   confirmação de parar download e de remover versão Wine (sem gancho que abra), epic_install/modify com dados reais (legendary sem
   login na fixture só mostra o erro), `pick_rom` e `epic_import` só compilados.
+
+## Settings unificado (agente settings-merge)
+
+- O diálogo "Collection settings" (`dialogs/settings/**`) foi removido e o botão de engrenagem do cabeçalho também: há UM só lugar de
+  configuração, a página ☰ Settings (Ctrl ,). A navegação da esquerda agora tem legendas: **App** (General, Appearance, Advanced),
+  **Games** (Game defaults, Downloads, Library), **Collection** (Metadata, Screenshots, Backups), **Help** (Logs, About).
+  `Section::GROUPS` descreve os grupos; `Section::ALL` segue a mesma ordem.
+- As abas do diálogo viraram seções da página, movidas com `git mv` para `pages/settings/{appearance,metadata,screenshots,saves,backup}.rs`
+  (estado e gravação adaptados a `SettingsPage`; mesmos arquivos, chaves e formato — `settings.json` via `heronite_data::settings::*` e
+  `set_ludusavi_settings`). Backups = dois cartões de uma seção (Ludusavi saves + cópia agendada da configuração do Heroic). O texto de
+  apoio de cada aba subiu para o `blurb` da seção. `SettingsPage::saved` guarda o `EffectiveSettings` devolvido e emite
+  `PageEvent::LibraryChanged` (a Coleção recarrega, como no antigo `DialogEvent::Changed`); erros aparecem sob o corpo da seção.
+- **Aba Emulators**: só resumia emuladores/pastas de ROM e abria o gerenciador, ou seja, duplicava a página ☰ Emulators e não tinha
+  nenhuma preferência própria; foi removida sem criar seção em Settings e sem mover nada para `pages/emulators.rs`.
+- Ganchos mínimos fora da pasta de settings: `collection/nav.rs` (2 linhas em `ensure_page`: `offer_settings_data` + `refresh(window, cx)`),
+  `collection/palette/rank.rs` (teste que contava 7 seções agora usa `Section::ALL.len()`, mais um teste de keywords).
+  A Coleção entrega à página o `EffectiveSettings` já carregado e a cadeia de arte do jogo em foco (preview ao vivo do Appearance) pelo
+  global `pages::settings::offer` — a página não lê arquivo ao ser criada (só se a biblioteca ainda não carregou). A detecção do Ludusavi
+  (`ludusavi --version`) e a leitura do cache de screenshots passaram a rodar só ao abrir a seção (antes rodavam ao abrir o diálogo).
+- Paleta Ctrl K: as 11 seções com ajuda e palavras-chave próprias (`Section::keywords`: "blur", "igdb", "ludusavi", "screenshots"...).
+- Debug: `HERONITE_DEBUG_PAGE=settings:<general|appearance|advanced|defaults|downloads|library|metadata|screenshots|backups|logs|about>`;
+  `HERONITE_DEBUG_DIALOG=settings[:<seção>]` agora navega para a página (preview do Appearance com arte real). `HERONITE_DEBUG_SETTINGS_TAB`
+  foi removido.
+- **Verificado**: capturas com `scripts/shot.sh` (fixture `/tmp/heronite-fixture-settingsmerge`, Ludusavi com binário falso, captura e chaves
+  IGDB zeradas) de Appearance, Metadata, Screenshots, Backups, e da Coleção sem a engrenagem; `cargo test -p heronite`: 110 ok.
+- **Não verificado**: cliques/gravações em tempo real (sem como clicar; o código de gravação é o mesmo das abas), janela estreita, o
+  wizard "Download metadata…" aberto a partir da página (só compilado; o diálogo é hospedado pela Coleção como antes).
+- Resíduo: `DialogEvent::Open`, `DialogRequest::{ScanRoms,EmulatorManager}` ficaram sem construtor (só a aba Emulators os criava);
+  gera aviso de dead code em `dialogs/mod.rs`, sem efeito funcional.
+- **Library** (pedido extra): as legendas com botão (`pages::caption_with`, agora centrada, com o mesmo espaço acima de uma legenda comum e
+  um respiro antes do cartão) não encostam mais no cartão. Listas Hidden games e Favourites: 5 linhas, botão "Expand"; expandida pagina de
+  10 em 10 com "21–30 of 34 · Page 3 of 4", setas e "Collapse" (`Pager` em `pages/settings/library.rs`, estado só na página; o índice é
+  limitado ao recarregar após Unhide/Remove). Debug: `HERONITE_DEBUG_LIBRARY_PAGER=<hidden|fav>:<página>`. Verificado em fixture com 34
+  ocultos e 8 favoritos (capturas das páginas 1 e 3); teste unitário do `Pager`.

@@ -37,7 +37,6 @@ pub mod remove_game;
 pub mod rom_folder;
 pub mod playnite_merge;
 pub mod scan_roms;
-pub mod settings;
 
 use std::sync::Arc;
 

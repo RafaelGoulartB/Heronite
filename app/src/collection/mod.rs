@@ -376,13 +376,6 @@ impl CollectionView {
         cx.notify();
     }
 
-    pub(super) fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(ctx) = self.dialog_ctx() else { return };
-        let chain = self.selected.as_ref().and_then(|k| self.stage_chains.get(k).cloned()).unwrap_or_default();
-        let view = cx.new(|cx| crate::dialogs::settings::SettingsDialog::new(ctx, chain, window, cx));
-        self.open_dialog(view, cx);
-    }
-
     pub(super) fn open_manage_statuses(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ctx) = self.dialog_ctx() else { return };
         let view = cx.new(|cx| crate::dialogs::manage_statuses::ManageStatusesDialog::new(ctx, window, cx));
@@ -841,15 +834,13 @@ impl Render for CollectionView {
         self.images.drop_evicted(window);
         if let Some(which) = self.pending_debug_dialog.take() {
             match which.as_str() {
-                "settings" => self.open_settings(window, cx),
+                // The Collection settings dialog is gone: these open the Settings page.
+                w if w == "settings" || w.starts_with("settings:") => {
+                    let section = w.strip_prefix("settings:").and_then(crate::pages::settings::Section::parse);
+                    self.open_settings_section(section.unwrap_or(crate::pages::settings::Section::Appearance), window, cx);
+                }
                 "statuses" => self.open_manage_statuses(window, cx),
                 "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
-                "settings:screenshots" => {
-                    self.open_settings(window, cx);
-                    if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<crate::dialogs::settings::SettingsDialog>().ok()) {
-                        d.update(cx, |d, _| d.tab = crate::dialogs::settings::Tab::Screenshots);
-                    }
-                }
                 // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves
                 // (the global ones moved to the Settings page: HERONITE_DEBUG_PAGE=settings:...).
                 w @ ("gamesettings:wine" | "gamesettings:other" | "gamesettings:advanced" | "gamesettings:gamescope" | "gamesettings:saves") => {
@@ -864,7 +855,7 @@ impl Render for CollectionView {
                     self.open_game_settings_tab(tab, window, cx);
                 }
                 "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage"
-                | "settings:metadata" | "wizard" => self.open_metadata_debug(which.as_str(), window, cx),
+                | "wizard" => self.open_metadata_debug(which.as_str(), window, cx),
                 "viewlog" => {
                     if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
                         self.open_game_log(&key, cx);

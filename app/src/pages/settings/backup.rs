@@ -1,4 +1,4 @@
-//! Settings tab: Backup (scheduled copy of the Heroic config folder).
+//! Settings → Backups, second card: scheduled copy of the Heroic config folder.
 
 use chrono::{DateTime, Local, Utc};
 use gpui_kit::component::input::InputState;
@@ -7,10 +7,10 @@ use gpui_kit::*;
 use heronite_data::settings::{self, EffectiveSettings};
 use heronite_emulation::backup::run_collection_backup;
 
-use super::SettingsDialog;
-use crate::dialogs::DialogCtx;
+use super::SettingsPage;
+use crate::pages::PageCtx;
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card_box, help_text, ButtonKind};
+use crate::ui::controls::{action_button, caption, card_box, ButtonKind};
 use crate::ui::fields::{choose_path, meta_text, new_input, on_commit, path_field, select_field};
 
 const INTERVALS: [(&str, &str); 3] = [("daily", "Once a day"), ("weekly", "Once a week"), ("monthly", "Once a month")];
@@ -26,13 +26,13 @@ pub struct State {
 
 impl State {
     pub fn new(
-        _ctx: &DialogCtx,
+        _ctx: &PageCtx,
         s: &EffectiveSettings,
         window: &mut Window,
-        cx: &mut Context<SettingsDialog>,
+        cx: &mut Context<SettingsPage>,
     ) -> Self {
         let folder = new_input(window, cx, &s.backup.folder, "");
-        on_commit(&folder, window, cx, |d: &mut SettingsDialog, value, _, cx| {
+        on_commit(&folder, window, cx, |d: &mut SettingsPage, value, _, cx| {
             if value != d.settings.backup.folder {
                 persist(d, Some(value), None, cx);
             }
@@ -51,14 +51,14 @@ pub fn format_time(iso: &str) -> String {
 }
 
 /// Writes folder / interval (whichever changed) through `heronite_data`.
-fn persist(d: &mut SettingsDialog, folder: Option<String>, interval: Option<String>, cx: &mut Context<SettingsDialog>) {
+fn persist(d: &mut SettingsPage, folder: Option<String>, interval: Option<String>, cx: &mut Context<SettingsPage>) {
     let folder = folder.unwrap_or_else(|| d.settings.backup.folder.clone());
     let interval = interval.unwrap_or_else(|| d.backup.interval.clone());
     let res = settings::save_backup(&d.ctx.heroic, &folder, &interval);
     d.saved(res, cx);
 }
 
-fn backup_now(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<SettingsDialog>) {
+fn backup_now(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
     let folder = d.backup.folder.read(cx).value().trim().to_string();
     if folder != d.settings.backup.folder {
         persist(d, Some(folder), None, cx);
@@ -89,7 +89,7 @@ fn backup_now(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<Sett
     .detach();
 }
 
-pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<SettingsDialog>) -> AnyElement {
+pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let b = &d.backup;
     let folder_value = b.folder.read(cx).value().trim().to_string();
     let interval_label = INTERVALS.iter().find(|(v, _)| *v == b.interval).map(|(_, l)| *l).unwrap_or("Once a week");
@@ -120,7 +120,7 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
                 d.backup.folder.update(cx, |s, cx| s.set_value("", window, cx));
                 persist(d, Some(String::new()), None, cx);
             } else {
-                choose_path(window, cx, true, "Backup folder", |d: &mut SettingsDialog, p, window, cx| {
+                choose_path(window, cx, true, "Backup folder", |d: &mut SettingsPage, p, window, cx| {
                     d.backup.folder.update(cx, |s, cx| s.set_value(p.clone(), window, cx));
                     persist(d, Some(p), None, cx);
                 });
@@ -135,11 +135,11 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
         b.interval_open,
         options,
         cx,
-        |d: &mut SettingsDialog, _, cx| {
+        |d: &mut SettingsPage, _, cx| {
             d.backup.interval_open = !d.backup.interval_open;
             cx.notify();
         },
-        |d: &mut SettingsDialog, i, _, cx| {
+        |d: &mut SettingsPage, i, _, cx| {
             d.backup.interval_open = false;
             d.backup.interval = INTERVALS[i].0.to_string();
             persist(d, None, Some(INTERVALS[i].0.to_string()), cx);
@@ -163,10 +163,10 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
     div()
         .flex()
         .flex_col()
-        .child(help_text(
+        .child(caption("Heroic config backup"))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
             "Copies Heroic config (Collection, playtime, statuses, Local games, logins) into the folder below. Installed games are not included. Cache and Wine tools are skipped. A dated folder is created when Heroic Local opens, if the schedule is due.",
-        ))
-        .child(caption("Scheduled backup"))
+        )))
         .child(setup)
         .child(action)
         .children((!message.is_empty()).then(|| div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::success()).child(message)))

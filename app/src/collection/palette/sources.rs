@@ -88,10 +88,14 @@ impl Entry {
 fn section_help(s: Section) -> &'static str {
     match s {
         Section::General => "Folders, tray, Wine and Proton lookup",
-        Section::GameDefaults => "Values new games start with",
-        Section::Library => "Hidden games, favourites, recent games",
-        Section::Downloads => "Epic downloads and updates",
+        Section::Appearance => "Page background, blur, covers",
         Section::Advanced => "Folders, cache, copy settings",
+        Section::GameDefaults => "Values new games start with",
+        Section::Downloads => "Epic downloads and updates",
+        Section::Library => "Hidden games, favourites, recent games",
+        Section::Metadata => "IGDB keys, covers, field sources",
+        Section::Screenshots => "Folder, capture shortcut, preview cache",
+        Section::Backups => "Ludusavi saves and Heroic config backup",
         Section::Logs => "Logs of this app and your games",
         Section::About => "Version, data folders, system",
     }
@@ -115,7 +119,7 @@ pub fn static_entries() -> Vec<Entry> {
             section_help(s),
             Page::Settings.icon(),
             None,
-            "preferences options config",
+            &format!("preferences options config {}", s.keywords()),
         );
         e.secondary = true;
         v.push(e);

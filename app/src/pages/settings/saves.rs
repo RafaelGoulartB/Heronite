@@ -1,4 +1,4 @@
-//! Settings tab: Save backup (Ludusavi after-play backups).
+//! Settings → Backups, first card: Ludusavi after-play save backups.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -9,8 +9,8 @@ use heronite_emulation::settings_ext::{set_ludusavi_settings, LudusaviSettingsPa
 use heronite_launch::SystemProbe;
 
 use super::backup::format_time;
-use super::SettingsDialog;
-use crate::dialogs::DialogCtx;
+use super::SettingsPage;
+use crate::pages::PageCtx;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{caption, card, card_box, help_text, toggle_row};
@@ -23,6 +23,7 @@ const COMPRESSIONS: [(&str, &str); 4] = [("none", "None"), ("deflate", "Deflate"
 pub struct State {
     /// `None` while detecting, `Some(None)` when Ludusavi was not found.
     detected: Option<Option<LudusaviDetected>>,
+    detecting: bool,
     binary: Entity<InputState>,
     folder: Entity<InputState>,
     details_open: Option<bool>,
@@ -32,37 +33,44 @@ pub struct State {
 
 impl State {
     pub fn new(
-        ctx: &DialogCtx,
+        _ctx: &PageCtx,
         s: &EffectiveSettings,
         window: &mut Window,
-        cx: &mut Context<SettingsDialog>,
+        cx: &mut Context<SettingsPage>,
     ) -> Self {
         let binary = new_input(window, cx, &s.ludusavi.binary_path, "");
         let folder = new_input(window, cx, &s.ludusavi.backup_path, "");
-        on_commit(&binary, window, cx, |d: &mut SettingsDialog, v, window, cx| {
+        on_commit(&binary, window, cx, |d: &mut SettingsPage, v, window, cx| {
             if v != d.settings.ludusavi.binary_path {
                 save(d, LudusaviSettingsPatch { binary_path: Some(v), ..Default::default() }, cx);
                 detect(d, window, cx);
             }
         });
-        on_commit(&folder, window, cx, |d: &mut SettingsDialog, v, _, cx| {
+        on_commit(&folder, window, cx, |d: &mut SettingsPage, v, _, cx| {
             if v != d.settings.ludusavi.backup_path {
                 save(d, LudusaviSettingsPatch { backup_path: Some(v), ..Default::default() }, cx);
             }
         });
-        let this = Self { detected: None, binary, folder, details_open: None, format_open: false, compression_open: false };
-        detect_with(ctx.lib.settings.ludusavi.binary_path.clone(), window, cx);
-        this
+        Self { detected: None, detecting: false, binary, folder, details_open: None, format_open: false, compression_open: false }
+    }
+
+    /// Section shown: looks for Ludusavi once (it runs `ludusavi --version`,
+    /// so never at page creation).
+    pub fn shown(page: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
+        if page.saves.detected.is_none() && !page.saves.detecting {
+            detect(page, window, cx);
+        }
     }
 }
 
-fn detect(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<SettingsDialog>) {
+fn detect(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
     d.saves.detected = None;
+    d.saves.detecting = true;
     detect_with(d.settings.ludusavi.binary_path.clone(), window, cx);
 }
 
 /// Runs `ludusavi --version` / `config path` off the UI thread.
-fn detect_with(preferred: String, window: &mut Window, cx: &mut Context<SettingsDialog>) {
+fn detect_with(preferred: String, window: &mut Window, cx: &mut Context<SettingsPage>) {
     cx.spawn_in(window, async move |this, cx| {
         let found = cx
             .background_spawn(async move {
@@ -76,6 +84,7 @@ fn detect_with(preferred: String, window: &mut Window, cx: &mut Context<Settings
                 d.saves.folder.update(cx, |s, cx| s.set_placeholder(folder, window, cx));
             }
             d.saves.detected = Some(found);
+            d.saves.detecting = false;
             cx.notify();
         })
         .ok();
@@ -83,12 +92,12 @@ fn detect_with(preferred: String, window: &mut Window, cx: &mut Context<Settings
     .detach();
 }
 
-fn save(d: &mut SettingsDialog, patch: LudusaviSettingsPatch, cx: &mut Context<SettingsDialog>) {
+fn save(d: &mut SettingsPage, patch: LudusaviSettingsPatch, cx: &mut Context<SettingsPage>) {
     let res = set_ludusavi_settings(&d.ctx.heroic, &patch);
     d.saved(res, cx);
 }
 
-pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<SettingsDialog>) -> AnyElement {
+pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let l = d.settings.ludusavi.clone();
     let detected = d.saves.detected.clone();
     let config_known = detected.as_ref().and_then(|x| x.as_ref()).map(|x| x.config_path.is_some()).unwrap_or(false);
@@ -139,7 +148,7 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
                 save(d, LudusaviSettingsPatch { binary_path: Some(String::new()), ..Default::default() }, cx);
                 detect(d, window, cx);
             } else {
-                choose_path(window, cx, false, "Ludusavi binary", |d: &mut SettingsDialog, p, window, cx| {
+                choose_path(window, cx, false, "Ludusavi binary", |d: &mut SettingsPage, p, window, cx| {
                     d.saves.binary.update(cx, |s, cx| s.set_value(p.clone(), window, cx));
                     save(d, LudusaviSettingsPatch { binary_path: Some(p), ..Default::default() }, cx);
                     detect(d, window, cx);
@@ -158,7 +167,7 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
                 d.saves.folder.update(cx, |s, cx| s.set_value("", window, cx));
                 save(d, LudusaviSettingsPatch { backup_path: Some(String::new()), ..Default::default() }, cx);
             } else {
-                choose_path(window, cx, true, "Save backup folder", |d: &mut SettingsDialog, p, window, cx| {
+                choose_path(window, cx, true, "Save backup folder", |d: &mut SettingsPage, p, window, cx| {
                     d.saves.folder.update(cx, |s, cx| s.set_value(p.clone(), window, cx));
                     save(d, LudusaviSettingsPatch { backup_path: Some(p), ..Default::default() }, cx);
                 });
@@ -176,12 +185,12 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
         d.saves.format_open,
         FORMATS.iter().map(|(k, lbl)| ((*lbl).into(), *k == l.format)).collect(),
         cx,
-        |d: &mut SettingsDialog, _, cx| {
+        |d: &mut SettingsPage, _, cx| {
             d.saves.format_open = !d.saves.format_open;
             d.saves.compression_open = false;
             cx.notify();
         },
-        |d: &mut SettingsDialog, i, _, cx| {
+        |d: &mut SettingsPage, i, _, cx| {
             d.saves.format_open = false;
             save(d, LudusaviSettingsPatch { format: Some(FORMATS[i].0.into()), ..Default::default() }, cx);
         },
@@ -194,12 +203,12 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
         d.saves.compression_open,
         COMPRESSIONS.iter().map(|(k, lbl)| ((*lbl).into(), *k == l.compression)).collect(),
         cx,
-        |d: &mut SettingsDialog, _, cx| {
+        |d: &mut SettingsPage, _, cx| {
             d.saves.compression_open = !d.saves.compression_open;
             d.saves.format_open = false;
             cx.notify();
         },
-        |d: &mut SettingsDialog, i, _, cx| {
+        |d: &mut SettingsPage, i, _, cx| {
             d.saves.compression_open = false;
             save(d, LudusaviSettingsPatch { compression: Some(COMPRESSIONS[i].0.into()), ..Default::default() }, cx);
         },
@@ -261,10 +270,10 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
     div()
         .flex()
         .flex_col()
-        .child(help_text(
+        .child(caption("Save backups (Ludusavi)"))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
             "When enabled, Heroic Local backs up the game save with Ludusavi after you close a game. Right-click a Collection card to back up that game now.",
-        ))
-        .child(caption("Save backups"))
+        )))
         .child(enable)
         .child(div().mt(px(10.)).child(callout))
         .child(summary)

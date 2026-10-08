@@ -46,9 +46,18 @@ pages, settings) follows the **Glass design system** below
   `DialogCtx` (paths + `Arc<Library>`). Open it from `CollectionView` with
   `self.open_dialog(cx.new(|cx| V::new(ctx, window, cx)), cx)`.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
-- Settings tabs: `app/src/dialogs/settings/<tab>.rs` with `State::new` and
-  `render(&mut SettingsDialog, …)`. Save with `heronite_data::settings::*`
-  and call `d.saved(result, cx)`.
+- Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings.rs`, Ctrl ,). The old
+  Collection settings dialog and the header gear are gone. The left nav is grouped under captions
+  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library),
+  Collection (Metadata, Screenshots, Backups), Help (Logs, About). A section = title + lead (`Section::blurb`) +
+  captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
+  (`appearance`, `metadata`, `screenshots`, `saves` + `backup` for Backups) with `State::new(&PageCtx, &EffectiveSettings, …)`
+  and `render(&mut SettingsPage, …)`; save with `heronite_data::settings::*` and call `d.saved(result, cx)`
+  (updates the page copy of `settings.json` and emits `PageEvent::LibraryChanged`). Work that spawns a process or
+  reads folders (Ludusavi detection, screenshot cache size) starts in `SettingsPage::on_section_shown`, never at page
+  creation. Open a section from code with `CollectionView::open_settings_section` (or `pages::settings::request_section`
+  + navigate); add new sections to `Section` (label, icon, blurb, palette `keywords`, `parse`). Emulators and ROM
+  folders are NOT a Settings section: they live on the ☰ Emulators page.
 
 ## Glass design system (menus, dialogs, pages, settings)
 
@@ -151,7 +160,7 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 - Debug hooks (env, via `SHOT_ENV="..."`): `HERONITE_DEBUG_SELECT=<runner_appName>`,
   `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=install|sort|status|facets`,
   `HERONITE_DEBUG_DIALOG=settings|statuses` (extend the match in
-  `CollectionView::render` for new dialogs, e.g. `settings:screenshots` to open a tab).
+  `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section).
 - Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).
 - Anything that WRITES data must be exercised only against a copy:
   `HERONITE_HEROIC_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`

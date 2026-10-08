@@ -12,10 +12,10 @@ use serde_json::json;
 
 use super::SettingsPage;
 use crate::icons::Icon;
-use crate::pages::{PageCtx, PageEvent};
+use crate::pages::{caption_with, icon_action, PageCtx, PageEvent};
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, row, toggle_row, ButtonKind};
-use crate::ui::fields::select_field;
+use crate::ui::fields::{meta_text, select_field};
 use crate::ui::icon;
 
 pub type Entries = Vec<(String, String)>;
@@ -50,8 +50,51 @@ pub fn read_snapshot(heroic: &HeroicPaths, app: &AppPaths, home: &str) -> Snapsh
     }
 }
 
+/// Collapsed lists show this many rows.
+const COLLAPSED_ROWS: usize = 5;
+/// Rows per page once a list is expanded.
+const PAGE_ROWS: usize = 10;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ListKind {
+    Hidden,
+    Favourites,
+}
+
+/// Expand / paginate state of one long list (not persisted).
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Pager {
+    expanded: bool,
+    page: usize,
+}
+
+impl Pager {
+    fn pages(total: usize) -> usize {
+        total.div_ceil(PAGE_ROWS).max(1)
+    }
+
+    /// Keeps `page` valid after the list shrank (unhide, clear).
+    fn clamp(&mut self, total: usize) {
+        self.page = self.page.min(Self::pages(total) - 1);
+        if total <= COLLAPSED_ROWS {
+            self.expanded = false;
+        }
+    }
+
+    /// Rows to draw out of `total`.
+    fn range(&self, total: usize) -> std::ops::Range<usize> {
+        if !self.expanded {
+            return 0..total.min(COLLAPSED_ROWS);
+        }
+        let start = (self.page.min(Self::pages(total) - 1)) * PAGE_ROWS;
+        start.min(total)..(start + PAGE_ROWS).min(total)
+    }
+}
+
 pub struct State {
     pub snap: Snapshot,
+    hidden_pg: Pager,
+    fav_pg: Pager,
     open_select: bool,
     busy: bool,
     notice: Option<(SharedString, bool)>,
@@ -69,7 +112,15 @@ impl State {
         } else {
             Snapshot { max_recent: DEFAULT_MAX_RECENT, ..Default::default() }
         };
-        Self { snap, open_select: false, busy: false, notice: None }
+        // Debug: `HERONITE_DEBUG_LIBRARY_PAGER=<hidden|fav>:<page index>` opens that list expanded.
+        let (mut hidden_pg, mut fav_pg) = (Pager::default(), Pager::default());
+        if let Ok(v) = std::env::var("HERONITE_DEBUG_LIBRARY_PAGER") {
+            if let Some((which, page)) = v.split_once(':') {
+                let pg = Pager { expanded: true, page: page.parse().unwrap_or(0) };
+                if which == "hidden" { hidden_pg = pg } else { fav_pg = pg }
+            }
+        }
+        Self { snap, hidden_pg, fav_pg, open_select: false, busy: false, notice: None }
     }
 
     /// Re-reads the lists off the UI thread.
@@ -79,6 +130,8 @@ impl State {
             let snap = cx.background_spawn(async move { read_snapshot(&heroic, &app, &home()) }).await;
             this.update(cx, |this, cx| {
                 this.library.snap = snap;
+                this.library.hidden_pg.clamp(this.library.snap.hidden.len());
+                this.library.fav_pg.clamp(this.library.snap.favourites.len());
                 cx.notify();
             })
             .ok();
@@ -179,14 +232,66 @@ impl SettingsPage {
         .into_any_element()
     }
 
-    /// Caption of a list card with an action button on the right.
-    fn list_caption(title: String, action: impl IntoElement) -> Div {
-        div()
+    fn pager_mut(&mut self, kind: ListKind) -> &mut Pager {
+        match kind {
+            ListKind::Hidden => &mut self.library.hidden_pg,
+            ListKind::Favourites => &mut self.library.fav_pg,
+        }
+    }
+
+    /// Below a list longer than 5 rows: "Expand", or once expanded
+    /// "Collapse" + "11-20 of 27" with previous / next buttons.
+    fn pager_row(&self, kind: ListKind, total: usize, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if total <= COLLAPSED_ROWS {
+            return None;
+        }
+        let pager = match kind {
+            ListKind::Hidden => self.library.hidden_pg,
+            ListKind::Favourites => self.library.fav_pg,
+        };
+        let tag = if kind == ListKind::Hidden { "hidden" } else { "fav" };
+        let toggle = |label: &'static str, expand: bool, cx: &mut Context<Self>| {
+            action_button(
+                SharedString::from(format!("lib-{tag}-toggle")),
+                ButtonKind::Glass,
+                label,
+                true,
+                cx.listener(move |this, _, _, cx| {
+                    let pg = this.pager_mut(kind);
+                    pg.expanded = expand;
+                    pg.page = 0;
+                    cx.notify();
+                }),
+            )
+        };
+        let row = div().flex().items_center().justify_between().gap(px(12.)).mt(px(8.));
+        if !pager.expanded {
+            return Some(row.child(toggle("Expand", true, cx)).child(meta_text(format!("Showing {COLLAPSED_ROWS} of {total}"))).into_any_element());
+        }
+        let range = pager.range(total);
+        let pages = Pager::pages(total);
+        let page = pager.page.min(pages - 1);
+        let step = |id: &str, ic: Icon, enabled: bool, delta: isize, cx: &mut Context<Self>| {
+            let b = icon_action(SharedString::from(format!("lib-{tag}-{id}")), ic, enabled);
+            if enabled {
+                b.on_click(cx.listener(move |this, _, _, cx| {
+                    let pg = this.pager_mut(kind);
+                    pg.page = (page as isize + delta).max(0) as usize;
+                    cx.notify();
+                }))
+                .into_any_element()
+            } else {
+                b.into_any_element()
+            }
+        };
+        let nav = div()
             .flex()
-            .items_end()
-            .justify_between()
-            .child(caption(title))
-            .child(div().flex_none().pt(px(8.)).child(action))
+            .items_center()
+            .gap(px(10.))
+            .child(step("prev", Icon::ChevronLeft, page > 0, -1, cx))
+            .child(meta_text(format!("{}\u{2013}{} of {total} \u{b7} Page {} of {pages}", range.start + 1, range.end, page + 1)))
+            .child(step("next", Icon::ChevronRight, page + 1 < pages, 1, cx));
+        Some(row.child(toggle("Collapse", false, cx)).child(nav).into_any_element())
     }
 
     pub(super) fn library_section(&mut self, cx: &mut Context<Self>) -> Div {
@@ -207,8 +312,11 @@ impl SettingsPage {
         .into_any_element()]);
 
         // -- Hidden games --------------------------------------------------------
+        self.library.hidden_pg.clamp(snap.hidden.len());
+        self.library.fav_pg.clamp(snap.favourites.len());
         let mut rows: Vec<AnyElement> = Vec::new();
-        for (i, (app, title)) in snap.hidden.iter().enumerate() {
+        let range = self.library.hidden_pg.range(snap.hidden.len());
+        for (i, (app, title)) in snap.hidden.iter().enumerate().skip(range.start).take(range.len()) {
             let app_name = app.clone();
             rows.push(self.entry_row(format!("lib-unhide-{i}"), title, app, "Unhide", cx, move |this, cx| {
                 this.library_unhide(app_name.clone(), cx)
@@ -217,7 +325,7 @@ impl SettingsPage {
         if rows.is_empty() {
             rows.push(empty_row("No hidden games. Use \"Hide\" in a game's context menu."));
         }
-        let hidden_head = Self::list_caption(
+        let hidden_head = caption_with(
             format!("Hidden games ({})", snap.hidden.len()),
             action_button(
                 "lib-unhide-all",
@@ -228,10 +336,12 @@ impl SettingsPage {
             ),
         );
         let hidden = card(rows);
+        let hidden_pager = self.pager_row(ListKind::Hidden, snap.hidden.len(), cx);
 
         // -- Favourites ----------------------------------------------------------
         let mut rows: Vec<AnyElement> = Vec::new();
-        for (i, (app, title)) in snap.favourites.iter().enumerate() {
+        let range = self.library.fav_pg.range(snap.favourites.len());
+        for (i, (app, title)) in snap.favourites.iter().enumerate().skip(range.start).take(range.len()) {
             let app_name = app.clone();
             rows.push(self.entry_row(format!("lib-fav-{i}"), title, app, "Remove", cx, move |this, cx| {
                 let app = app_name.clone();
@@ -247,7 +357,7 @@ impl SettingsPage {
         if rows.is_empty() {
             rows.push(empty_row("No favourites. Use \"Add to favourites\" in a game's context menu."));
         }
-        let favs_head = Self::list_caption(
+        let favs_head = caption_with(
             format!("Favourites ({})", snap.favourites.len()),
             action_button(
                 "lib-fav-clear",
@@ -258,6 +368,7 @@ impl SettingsPage {
             ),
         );
         let favs = card(rows);
+        let favs_pager = self.pager_row(ListKind::Favourites, snap.favourites.len(), cx);
 
         // -- Recent --------------------------------------------------------------
         let options: Vec<(SharedString, bool)> =
@@ -301,8 +412,10 @@ impl SettingsPage {
             .child(show)
             .child(hidden_head)
             .child(hidden)
+            .children(hidden_pager)
             .child(favs_head)
             .child(favs)
+            .children(favs_pager)
             .child(caption("Recent games"))
             .child(recent);
         if let Some((text, error)) = self.library.notice.clone() {
@@ -335,7 +448,24 @@ pub(super) fn notice_line(text: SharedString, error: bool) -> Div {
 
 #[cfg(test)]
 mod tests {
-    use super::{read_snapshot, game_config, json, AppPaths, HeroicPaths, UiState};
+    use super::{read_snapshot, game_config, json, AppPaths, HeroicPaths, Pager, UiState};
+
+    #[test]
+    fn pager_shows_five_then_ten_per_page_and_stays_valid() {
+        let mut p = Pager::default();
+        assert_eq!(p.range(27), 0..5);
+        assert_eq!(p.range(3), 0..3);
+        p.expanded = true;
+        assert_eq!((Pager::pages(27), p.range(27)), (3, 0..10));
+        p.page = 2;
+        assert_eq!(p.range(27), 20..27);
+        // Unhiding games shrinks the list: the page index is clamped.
+        p.clamp(20);
+        assert_eq!((p.page, p.range(20)), (1, 10..20));
+        p.clamp(4);
+        assert_eq!((p.page, p.expanded, p.range(4)), (0, false, 0..4));
+        assert_eq!(Pager::pages(0), 1);
+    }
 
     #[test]
     fn snapshot_reads_lists_flag_and_max_recent() {

@@ -148,12 +148,6 @@ impl CollectionView {
                 view.update(cx, |v, cx| v.debug_open_web(window, cx));
                 self.open_dialog(view, cx);
             }
-            "settings:metadata" => {
-                self.open_settings(window, cx);
-                if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<crate::dialogs::settings::SettingsDialog>().ok()) {
-                    d.update(cx, |d, _| d.tab = crate::dialogs::settings::Tab::Metadata);
-                }
-            }
             "wizard" => self.open_wizard(window, cx),
             _ => {}
         }

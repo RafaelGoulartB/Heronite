@@ -1,6 +1,5 @@
-//! Settings tab: Metadata (IGDB credentials, background fill, image copy,
-//! per-field source priority, bulk download).
-//! Reference: `docs/reference/dialogs/settings-metadata.png`.
+//! Settings → Metadata: IGDB credentials, background fill, image copy,
+//! per-field source priority, bulk download.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -8,13 +7,13 @@ use gpui_kit::*;
 use heronite_data::settings::{self, default_field_priority, EffectiveSettings, METADATA_FIELDS};
 use heronite_data::models::MetadataSettings;
 
-use super::SettingsDialog;
+use super::SettingsPage;
 use crate::dialogs::metadata::field_label as metadata_field_label;
 use crate::dialogs::metadata_wizard::hub;
-use crate::dialogs::DialogCtx;
+use crate::pages::PageCtx;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, card_box, help_text, toggle_row, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, card_box, toggle_row, ButtonKind};
 use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit, select_field};
 use crate::ui::icon;
 
@@ -37,9 +36,9 @@ const SOURCES: [(&str, &str); 6] = [
 ];
 
 impl State {
-    pub fn new(_ctx: &DialogCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsDialog>) -> Self {
+    pub fn new(_ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
         let client_id = new_input(window, cx, &s.metadata.igdb_client_id, "");
-        on_commit(&client_id, window, cx, |d: &mut SettingsDialog, value, _, cx| {
+        on_commit(&client_id, window, cx, |d: &mut SettingsPage, value, _, cx| {
             if value != d.settings.metadata.igdb_client_id {
                 persist(d, cx, |m| m.igdb_client_id = value);
             }
@@ -49,7 +48,7 @@ impl State {
             st.set_value(s.metadata.igdb_client_secret.clone(), window, cx);
             st
         });
-        on_commit(&secret, window, cx, |d: &mut SettingsDialog, value, _, cx| {
+        on_commit(&secret, window, cx, |d: &mut SettingsPage, value, _, cx| {
             if value != d.settings.metadata.igdb_client_secret {
                 persist(d, cx, |m| m.igdb_client_secret = value);
             }
@@ -59,7 +58,7 @@ impl State {
 }
 
 /// `persistMetadata`: replaces the metadata section with the edited copy.
-fn persist(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>, edit: impl FnOnce(&mut MetadataSettings)) {
+fn persist(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, edit: impl FnOnce(&mut MetadataSettings)) {
     let mut m = d.settings.metadata.clone();
     edit(&mut m);
     d.metadata.ok_message = None;
@@ -67,7 +66,7 @@ fn persist(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>, edit: impl 
     d.saved(res, cx);
 }
 
-fn preferred_source(d: &SettingsDialog, field: &str) -> String {
+fn preferred_source(d: &SettingsPage, field: &str) -> String {
     let default = default_field_priority(field);
     match d.settings.metadata.field_priority.get(field) {
         Some(cur) if *cur != default => cur.first().cloned().unwrap_or_else(|| "auto".into()),
@@ -75,7 +74,7 @@ fn preferred_source(d: &SettingsDialog, field: &str) -> String {
     }
 }
 
-fn test_igdb(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) {
+fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     if d.metadata.testing {
         return;
     }
@@ -108,7 +107,7 @@ fn test_igdb(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) {
     cx.notify();
 }
 
-pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<SettingsDialog>) -> AnyElement {
+pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let m = &d.settings.metadata;
     let (auto_fill, download) = (m.auto_fill_missing, m.download_images);
     let testing = d.metadata.testing;
@@ -142,10 +141,8 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
     let mut col = div()
         .flex()
         .flex_col()
-        .child(help_text(
-            "Collection uses IGDB first, then Steam, store pages, Lutris, and Playnite files. Create a Twitch app to get IGDB keys: https://dev.twitch.tv/console",
-        ))
         .child(caption("Twitch / IGDB API"))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text("Create a Twitch app to get IGDB keys: https://dev.twitch.tv/console")))
         .child(creds)
         .child(actions)
         .child(caption("Images & fields"))
@@ -188,11 +185,11 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
                 is_open,
                 options,
                 cx,
-                move |d: &mut SettingsDialog, _, cx| {
+                move |d: &mut SettingsPage, _, cx| {
                     d.metadata.open_select = if d.metadata.open_select == Some(field) { None } else { Some(field) };
                     cx.notify();
                 },
-                move |d: &mut SettingsDialog, i, _, cx| {
+                move |d: &mut SettingsPage, i, _, cx| {
                     let value = SOURCES[i].0;
                     d.metadata.open_select = None;
                     let default = default_field_priority(field);

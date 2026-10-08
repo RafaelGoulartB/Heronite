@@ -18,7 +18,6 @@ use super::CollectionView;
 use crate::dialogs::launch_state::{LaunchStateDialog, StateRow, ThumbRaw};
 use crate::dialogs::pick_rom::PickRomDialog;
 use crate::dialogs::scan_roms::{ScanInitial, ScanRomsDialog};
-use crate::dialogs::settings::{SettingsDialog, Tab};
 use crate::dialogs::DialogRequest;
 
 /// How long after start the Collection scans the saved ROM folders.
@@ -297,19 +296,6 @@ impl CollectionView {
     /// `HERONITE_DEBUG_DIALOG` values for the emulation dialogs. Returns
     /// whether `which` was one of them.
     pub(super) fn open_emu_debug_dialog(&mut self, which: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let tab = match which {
-            "settings:emulators" => Some(Tab::Emulators),
-            "settings:backup" => Some(Tab::Backup),
-            "settings:saves" => Some(Tab::Saves),
-            _ => None,
-        };
-        if let Some(tab) = tab {
-            self.open_settings(window, cx);
-            if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<SettingsDialog>().ok()) {
-                d.update(cx, |d, _| d.tab = tab);
-            }
-            return true;
-        }
         if which == "refresh" {
             // Same as pressing the header refresh button.
             self.refresh_all(cx);
