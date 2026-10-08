@@ -3195,11 +3195,15 @@ name = "heronite-wine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dirs 6.0.0",
  "heronite-data",
  "log",
+ "parking_lot",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]
