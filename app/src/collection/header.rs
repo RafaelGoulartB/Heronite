@@ -298,10 +298,6 @@ impl CollectionView {
                     .child(refresh)
                     .child(playnite)
                     .child(
-                        tool_button("hdr-emulated", Icon::SportsEsports, false)
-                            .on_click(cx.listener(|this, _, window, cx| this.open_scan_roms(Default::default(), window, cx))),
-                    )
-                    .child(
                         tool_button("hdr-settings", Icon::Settings, false)
                             .on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))),
                     ),
