@@ -1,29 +1,29 @@
 //! Epic Games Store through the `legendary` CLI (port of Heroic's
-//! `backend/storeManagers/legendary/**` and the download queue).
+//! `backend/storeManagers/legendary/**` and the download queue). Everything
+//! here is blocking: call it from worker threads.
 //!
-//! STUB: the public items below are the contract other code builds against;
-//! the implementation is in progress.
+//! * [`cmd`]: running legendary (binary lookup, env, streaming, cancel).
+//! * [`user`]: login / logout and the account kept in `store/config.json`.
+//! * [`library`]: `legendary list`, `store_cache/legendary_library.json`,
+//!   update detection.
+//! * [`info`]: `legendary info`, selective downloads, API overrides.
+//! * [`ops`]: install / update / repair / uninstall / move / import.
+//! * [`queue`], [`manager`]: the download queue (`store/download-manager.json`).
+//! * [`progress`]: legendary's download progress lines.
+//! * [`saves`]: cloud saves.
+//!
+//! legendary's own files (`legendaryConfig/legendary/**`) are only ever
+//! written by legendary.
 
-pub mod saves {
-    use heronite_data::HeroicPaths;
-
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub enum SyncMode {
-        /// Upload and download as needed (`legendary sync-saves`).
-        Both,
-        ForceDownload,
-        ForceUpload,
-    }
-
-    /// Runs `legendary sync-saves` for `app_name` with `saves_path`; returns
-    /// legendary's output summary. Blocking: call off the UI thread.
-    pub fn sync(_heroic: &HeroicPaths, _app_name: &str, _saves_path: &str, _mode: SyncMode) -> anyhow::Result<String> {
-        anyhow::bail!("not implemented yet")
-    }
-
-    /// Default save location legendary computes for the game in its Wine
-    /// prefix (Heroic's "Cloud saves" tab auto-detection), if any.
-    pub fn detect_path(_heroic: &HeroicPaths, _app_name: &str) -> anyhow::Result<Option<String>> {
-        Ok(None)
-    }
-}
+pub mod cache_store;
+pub mod cmd;
+pub mod disk;
+pub mod info;
+pub mod library;
+pub mod manager;
+pub mod ops;
+pub mod progress;
+pub mod queue;
+pub mod saves;
+pub mod user;
+pub mod util;

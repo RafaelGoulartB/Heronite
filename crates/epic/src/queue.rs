@@ -1,0 +1,209 @@
+//! `store/download-manager.json` in Heroic's `DMQueueElement` format, so the
+//! queue and the history are shared with Heronite.
+
+use anyhow::Result;
+use heronite_data::json_store;
+use heronite_data::HeroicPaths;
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+
+/// `InstallParams` (+ `InstallArgs`). Unknown keys survive a round trip.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallParams {
+    #[serde(default)]
+    pub app_name: String,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub install_dlcs: Vec<String>,
+    #[serde(default)]
+    pub sdl_list: Vec<String>,
+    #[serde(default)]
+    pub install_language: String,
+    #[serde(default)]
+    pub runner: String,
+    #[serde(default)]
+    pub platform_to_install: String,
+    /// The game's `GameInfo` at the time it was queued.
+    #[serde(default)]
+    pub game_info: Value,
+    /// Download size as text (`25.87 GiB`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<String>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+impl InstallParams {
+    /// Title from the stored `GameInfo` (falls back to the app name).
+    pub fn title(&self) -> String {
+        self.game_info.get("title").and_then(Value::as_str).filter(|t| !t.is_empty()).unwrap_or(&self.app_name).to_string()
+    }
+
+    /// Cover shown in the lists.
+    pub fn cover(&self) -> Option<String> {
+        ["art_cover", "art_square"]
+            .iter()
+            .find_map(|k| self.game_info.get(*k).and_then(Value::as_str))
+            .filter(|s| !s.is_empty() && *s != "fallback")
+            .map(str::to_string)
+    }
+
+    pub fn folder_name(&self) -> Option<String> {
+        self.game_info.get("folder_name").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ElementKind {
+    Install,
+    Update,
+}
+
+/// `DMStatus`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DmStatus {
+    Done,
+    Error,
+    Abort,
+    Paused,
+}
+
+/// `DMQueueElement`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DmElement {
+    pub params: InstallParams,
+    #[serde(rename = "type")]
+    pub kind: ElementKind,
+    #[serde(rename = "addToQueueTime", default)]
+    pub add_to_queue_time: u64,
+    #[serde(rename = "endTime", default)]
+    pub end_time: u64,
+    #[serde(rename = "startTime", default)]
+    pub start_time: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<DmStatus>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+impl DmElement {
+    pub fn new(kind: ElementKind, params: InstallParams) -> Self {
+        Self {
+            params,
+            kind,
+            add_to_queue_time: now_ms(),
+            end_time: 0,
+            start_time: 0,
+            status: None,
+            extra: Map::new(),
+        }
+    }
+
+    pub fn same_game(&self, app_name: &str, runner: &str) -> bool {
+        self.params.app_name == app_name && (runner.is_empty() || self.params.runner == runner)
+    }
+}
+
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// The whole file.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DmFile {
+    #[serde(default)]
+    pub finished: Vec<DmElement>,
+    #[serde(default)]
+    pub queue: Vec<DmElement>,
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+pub fn path(heroic: &HeroicPaths) -> std::path::PathBuf {
+    heroic.root.join("store").join("download-manager.json")
+}
+
+pub fn load(heroic: &HeroicPaths) -> DmFile {
+    match json_store::read::<DmFile>(&path(heroic)) {
+        Ok(f) => f,
+        Err(err) => {
+            log::warn!("reading download manager: {err:#}");
+            DmFile::default()
+        }
+    }
+}
+
+/// Replaces the queue and the history, keeping every other key of the file.
+pub fn save(heroic: &HeroicPaths, queue: &[DmElement], finished: &[DmElement]) -> Result<()> {
+    json_store::update::<DmFile, _>(&path(heroic), |f| {
+        f.queue = queue.to_vec();
+        f.finished = finished.to_vec();
+        Ok(())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// Shape of an entry Heronite wrote.
+    fn heronite_entry() -> Value {
+        json!({
+            "params": {
+                "appName": "Calluna", "path": "/data/Games/Heroic/Control", "installDlcs": [], "sdlList": [],
+                "installLanguage": "", "runner": "legendary", "platformToInstall": "Windows",
+                "gameInfo": {"app_name": "Calluna", "title": "Control", "art_cover": "https://x/c.jpg", "folder_name": "Control"},
+                "size": "25.87 GiB", "somethingNew": 1
+            },
+            "type": "install", "addToQueueTime": 1790051478808u64, "endTime": 1790052058257u64,
+            "startTime": 1790051478816u64, "status": "done"
+        })
+    }
+
+    #[test]
+    fn heronite_entries_round_trip_unchanged() {
+        let e: DmElement = serde_json::from_value(heronite_entry()).unwrap();
+        assert_eq!(e.kind, ElementKind::Install);
+        assert_eq!(e.status, Some(DmStatus::Done));
+        assert_eq!(e.params.title(), "Control");
+        assert_eq!(e.params.cover().as_deref(), Some("https://x/c.jpg"));
+        assert_eq!(e.params.folder_name().as_deref(), Some("Control"));
+        let back = serde_json::to_value(&e).unwrap();
+        assert_eq!(back, heronite_entry());
+    }
+
+    #[test]
+    fn file_keeps_unknown_keys_and_uses_tabs() {
+        let dir = tempfile::tempdir().unwrap();
+        let heroic = HeroicPaths::at(dir.path());
+        std::fs::create_dir_all(dir.path().join("store")).unwrap();
+        std::fs::write(path(&heroic), json!({"finished": [heronite_entry()], "queue": [], "future": {"a": 1}}).to_string()).unwrap();
+        let f = load(&heroic);
+        assert_eq!(f.finished.len(), 1);
+        let mut queued = f.finished[0].clone();
+        queued.status = None;
+        queued.params.app_name = "Other".into();
+        save(&heroic, &[queued], &f.finished).unwrap();
+        let raw = std::fs::read_to_string(path(&heroic)).unwrap();
+        assert!(raw.starts_with("{\n\t\"finished\": ["), "{raw}");
+        let doc: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(doc["future"]["a"], 1);
+        assert_eq!(doc["queue"][0]["params"]["appName"], "Other");
+        assert!(doc["queue"][0].get("status").is_none());
+    }
+
+    #[test]
+    fn missing_or_odd_files_are_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let heroic = HeroicPaths::at(dir.path());
+        assert!(load(&heroic).queue.is_empty());
+        std::fs::create_dir_all(dir.path().join("store")).unwrap();
+        std::fs::write(path(&heroic), "{}").unwrap();
+        assert!(load(&heroic).finished.is_empty());
+    }
+}

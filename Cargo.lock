@@ -3092,12 +3092,17 @@ name = "heronite-epic"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "heronite-data",
  "heronite-launch",
+ "libc",
  "log",
+ "parking_lot",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]
