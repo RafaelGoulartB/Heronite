@@ -43,7 +43,10 @@ fn env_logger_init() {
     struct L(log::LevelFilter);
     impl log::Log for L {
         fn enabled(&self, m: &log::Metadata) -> bool {
-            m.level() <= self.0
+            // Our crates at the chosen level, third-party crates at warn
+            // (zbus/wgpu/naga are very chatty at info/debug).
+            let ours = m.target().starts_with("heronite");
+            m.level() <= if ours { self.0 } else { self.0.min(log::LevelFilter::Warn) }
         }
         fn log(&self, r: &log::Record) {
             if self.enabled(r.metadata()) {
