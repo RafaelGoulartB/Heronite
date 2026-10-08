@@ -117,7 +117,7 @@ pub fn glass_fullscreen() -> Div {
         .absolute()
         .inset_0()
         .children(art)
-        .child(div().absolute().inset_0().bg(if has_art { theme::black_a(0.45) } else { theme::black_a(0.8) }))
+        .child(div().absolute().inset_0().bg(if has_art { theme::black_a(0.55) } else { theme::black_a(0.8) }))
 }
 
 /// Veil darkening the Collection behind modals and drawers.

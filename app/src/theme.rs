@@ -118,9 +118,11 @@ pub fn rgba_hsla(r: u8, g: u8, b: u8, a: f32) -> Hsla {
     rgb_a(r, g, b, a).into()
 }
 
-/// Glass surface laid over the blurred art: `rgba(22,27,36,.62)`.
+/// Glass surface laid over the blurred art: `rgba(22,27,36,.84)`. With
+/// [`glass_art_dim`] about 8% of the art shows through: a tint of the game's
+/// colours without bright art hurting legibility (the mockup's .62 did).
 pub fn glass_fill() -> Hsla {
-    rgba_hsla(22, 27, 36, 0.62)
+    rgba_hsla(22, 27, 36, 0.84)
 }
 /// Same surface when there is no art to blur behind it: `rgba(22,27,36,.94)`.
 pub fn glass_fill_solid() -> Hsla {
@@ -129,7 +131,7 @@ pub fn glass_fill_solid() -> Hsla {
 /// Darkening of the blurred art under the glass fill (stands in for the
 /// Collection's scrims that sit between the art and a real backdrop blur).
 pub fn glass_art_dim() -> Hsla {
-    black_a(0.42)
+    black_a(0.5)
 }
 pub fn glass_border() -> Hsla {
     white_a(0.11)
