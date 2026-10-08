@@ -22,6 +22,7 @@ impl HeroicSettingsPanel {
             .child(self.path_row("altLegendaryBin", Some("Choose an Alternative Legendary Binary"), false, "Select Legendary Binary", true, cx))
             .child(self.max_workers_field(cx))
             .child(self.toggle_row("minimize", "minimizeOnLaunch", false, "Minimize after game launch", None, false, cx))
+            .child(self.system_rows(cx))
             .child(heading("Wine and Proton"))
             .child(self.toggle_row(
                 "valve-proton",
@@ -42,6 +43,29 @@ impl HeroicSettingsPanel {
                 cx,
             ));
         col.child(self.custom_wine_paths(cx))
+    }
+
+    /// Tray, protocol-launch and shortcut settings (`system/`).
+    fn system_rows(&self, cx: &mut Context<Self>) -> Div {
+        let no_tray = self.flag("noTrayIcon", false);
+        let exit_to_tray = self.flag("exitToTray", false);
+        column()
+            .child(self.toggle_row("no-tray", "noTrayIcon", false, "Hide System Tray Icon (requires restart)", None, false, cx))
+            .child(self.toggle_row("exit-to-tray", "exitToTray", false, "Exit to System Tray", None, no_tray, cx))
+            .child(self.toggle_row("start-in-tray", "startInTray", false, "Start Minimized", None, !exit_to_tray || no_tray, cx))
+            .child(self.toggle_row("dark-tray", "darkTrayIcon", false, "Use Dark Tray Icon (needs restart)", None, no_tray, cx))
+            .child(self.toggle_row(
+                "hide-on-protocol",
+                "hideWindowOnProtocolLaunch",
+                false,
+                "Hide Heronite window when launching games from heronite-rs:// links",
+                Some("Keeps the window hidden when a game is launched from an external shortcut, like the 'Add to Steam' feature."),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row("shortcuts-desktop", "addDesktopShortcuts", false, "Add desktop shortcuts automatically", None, false, cx))
+            .child(self.toggle_row("shortcuts-menu", "addStartMenuShortcuts", false, "Add games to start menu automatically", None, false, cx))
+            .child(self.toggle_row("shortcuts-steam", "addSteamShortcuts", false, "Add games to Steam automatically", None, false, cx))
     }
 
     fn max_workers_field(&self, cx: &mut Context<Self>) -> Div {

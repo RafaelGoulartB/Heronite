@@ -298,6 +298,14 @@ impl Downloads {
                         self.progress.remove(&element.params.app_name);
                         self.emit(cx, DownloadsEvent::LibraryChanged);
                         self.reload_local(cx);
+                        if element.kind == ElementKind::Install {
+                            // Desktop / menu / Steam shortcuts from the General settings.
+                            crate::system::shortcuts::spawn_on_game_added(cx, &self.heroic, "legendary", &element.params.app_name, |this, o, cx| {
+                                if let Some(m) = o.summary() {
+                                    this.toast(cx, m.text, m.error);
+                                }
+                            });
+                        }
                     }
                     Some(DmStatus::Error) => {
                         let why = error.unwrap_or_default();

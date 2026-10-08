@@ -57,3 +57,130 @@ impl CollectionView {
         self.show_toast(text, error, cx);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Context menu: shortcuts / Steam
+// ---------------------------------------------------------------------------
+
+use std::collections::HashMap;
+use std::time::Instant;
+
+use heronite_data::CollectionGame;
+
+use super::context_menu::item;
+use crate::icons::Icon;
+use crate::system::shortcuts as sc;
+use crate::ui::icon;
+
+/// What the menu shows for a game: filled in the background when the menu is
+/// first drawn for it (the checks read files, never on the UI thread).
+struct Probe {
+    shortcuts: bool,
+    steam: bool,
+    at: Instant,
+    pending: bool,
+}
+
+#[derive(Default)]
+struct MenuProbes(HashMap<String, Probe>);
+impl Global for MenuProbes {}
+
+impl CollectionView {
+    /// "Add/Remove shortcuts" and "Add to / Remove from Steam" for installed
+    /// games (Heroic's context menu). One block, called from `context_menu.rs`.
+    pub(super) fn system_context_items(&mut self, mut menu: Div, game: &CollectionGame, cx: &mut Context<Self>) -> Div {
+        if !game.installed || matches!(game.launch_kind.as_deref(), Some("steam-uri")) || game.game.install.is_dlc == Some(true) {
+            return menu;
+        }
+        let (has_shortcuts, in_steam) = self.probe_shortcuts(game, cx);
+        let (runner, app) = (game.runner.clone(), game.app_name.clone());
+        let key = game.key.clone();
+
+        let (r, a, k) = (runner.clone(), app.clone(), key.clone());
+        menu = menu.child(
+            item("cm-shortcuts")
+                .child(icon(Icon::OpenInNew, px(20.), rgb(0xcaf3fd)))
+                .child(if has_shortcuts { "Remove shortcuts" } else { "Add shortcuts" })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.context_menu = None;
+                    let (r, a, k) = (r.clone(), a.clone(), k.clone());
+                    this.system_op(k, cx, move |heroic| {
+                        if has_shortcuts {
+                            sc::remove_shortcuts(heroic, &r, &a)
+                        } else {
+                            sc::add_shortcuts(heroic, &r, &a)
+                        }
+                    });
+                })),
+        );
+
+        let (r, a, k) = (runner, app, key);
+        menu.child(
+            item("cm-steam")
+                .child(icon(Icon::SportsEsports, px(20.), rgb(0xcaf3fd)))
+                .child(if in_steam { "Remove from Steam" } else { "Add to Steam" })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.context_menu = None;
+                    let (r, a, k) = (r.clone(), a.clone(), k.clone());
+                    this.system_op(k, cx, move |heroic| {
+                        if in_steam {
+                            sc::remove_from_steam(heroic, &r, &a)
+                        } else {
+                            sc::add_to_steam(heroic, &r, &a)
+                        }
+                    });
+                })),
+        )
+    }
+
+    /// Cached `(shortcuts exist, added to Steam)`; starts a refresh when the
+    /// entry is missing or older than a few seconds.
+    fn probe_shortcuts(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> (bool, bool) {
+        let key = game.key.clone();
+        let current = cx
+            .default_global::<MenuProbes>()
+            .0
+            .get(&key)
+            .map(|p| (p.shortcuts, p.steam, p.pending, p.at.elapsed() > Duration::from_secs(5)));
+        let (shortcuts, steam, pending, stale) = current.unwrap_or((false, false, false, true));
+        if stale && !pending {
+            cx.default_global::<MenuProbes>().0.insert(key.clone(), Probe { shortcuts, steam, at: Instant::now(), pending: true });
+            let heroic = self.heroic.clone();
+            let (runner, app) = (game.runner.clone(), game.app_name.clone());
+            cx.spawn(async move |this, cx| {
+                let probed = cx
+                    .background_spawn(async move {
+                        (sc::shortcuts_exist(&heroic, &runner, &app), sc::is_added_to_steam(&heroic, &runner, &app))
+                    })
+                    .await;
+                this.update(cx, |_, cx| {
+                    cx.default_global::<MenuProbes>().0.insert(
+                        key,
+                        Probe { shortcuts: probed.0, steam: probed.1, at: Instant::now(), pending: false },
+                    );
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+        }
+        (shortcuts, steam)
+    }
+
+    /// Runs a shortcuts operation in the background, shows its result as a
+    /// toast and forgets the cached menu state.
+    fn system_op(&mut self, key: String, cx: &mut Context<Self>, op: impl FnOnce(&heronite_data::HeroicPaths) -> sc::Outcome + Send + 'static) {
+        let heroic = self.heroic.clone();
+        cx.spawn(async move |this, cx| {
+            let outcome = cx.background_spawn(async move { op(&heroic) }).await;
+            this.update(cx, |this, cx| {
+                cx.default_global::<MenuProbes>().0.remove(&key);
+                if let Some(m) = outcome.summary() {
+                    this.show_toast(m.text, m.error, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+}

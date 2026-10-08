@@ -256,6 +256,7 @@ impl CollectionView {
                         anchored()
                             .position(position)
                             .snap_to_window_with_margin(px(8.))
+        menu = self.system_context_items(menu, &game, cx);
                             .child(div().occlude().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(menu)),
                     ),
             )

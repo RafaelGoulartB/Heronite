@@ -94,6 +94,10 @@ pub fn steam_path(heroic: &HeroicPaths) -> PathBuf {
     if let Some(dir) = std::env::var_os("HERONITE_STEAM_DIR") {
         return PathBuf::from(dir);
     }
+    configured_steam_path(heroic)
+}
+
+fn configured_steam_path(heroic: &HeroicPaths) -> PathBuf {
     let g = load_global(heroic, &home());
     steam::clean_steam_path(g.get("defaultSteamPath").and_then(Value::as_str).unwrap_or(""))
 }
@@ -371,10 +375,11 @@ pub fn on_game_added(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outc
     if !settings.any() {
         return out;
     }
+    // DLC and add-ons are not in the library: nothing to do, nothing to report.
     let (lib, game) = match find_game(heroic, runner, app_name) {
         Ok(v) => v,
         Err(e) => {
-            out.err(e);
+            log::info!("no shortcuts: {e}");
             return out;
         }
     };
@@ -389,6 +394,26 @@ pub fn on_game_added(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outc
         write_desktop(heroic, &lib, &game, settings.desktop, settings.menu, &mut out);
     }
     out
+}
+
+/// [`on_game_added`] on a background thread; `done` runs on the UI thread
+/// with the outcome (usually: show `outcome.summary()` as a toast).
+pub fn spawn_on_game_added<T: 'static>(
+    cx: &mut gpui_kit::Context<T>,
+    heroic: &HeroicPaths,
+    runner: &str,
+    app_name: &str,
+    done: impl FnOnce(&mut T, Outcome, &mut gpui_kit::Context<T>) + 'static,
+) {
+    let (heroic, runner, app_name) = (heroic.clone(), runner.to_string(), app_name.to_string());
+    use gpui_kit::AppContext as _;
+    cx.spawn(async move |this, cx| {
+        let outcome = cx.background_spawn(async move { on_game_added(&heroic, &runner, &app_name) }).await;
+        if !outcome.messages.is_empty() {
+            this.update(cx, |this, cx| done(this, outcome, cx)).ok();
+        }
+    })
+    .detach();
 }
 
 #[cfg(test)]
@@ -437,6 +462,73 @@ mod tests {
             "{\n  \"defaultSettings\": {\n    \"defaultSteamPath\": \"/home/u/.steam/steam'\"\n  },\n  \"version\": \"v0\"\n}",
         )
         .unwrap();
-        assert_eq!(steam_path(&heroic), PathBuf::from("/home/u/.steam/steam"));
+        assert_eq!(configured_steam_path(&heroic), PathBuf::from("/home/u/.steam/steam"));
+    }
+
+    /// End to end against a fixture library (`HERONITE_FIXTURE_SYSTEM=/tmp/heronite-fixture-system`,
+    /// a copy of the data files) with every root in a tempdir: desktop files,
+    /// icon, Steam shortcut + grid artwork, and their removal. Skipped without the fixture.
+    #[test]
+    fn end_to_end_on_a_fixture_library() {
+        let Some(fixture) = std::env::var_os("HERONITE_FIXTURE_SYSTEM").map(PathBuf::from) else {
+            eprintln!("HERONITE_FIXTURE_SYSTEM not set; skipping");
+            return;
+        };
+        let work = tempfile::tempdir().unwrap();
+        // The fixture is copied so the icon / settings writes stay in the tempdir.
+        let heroic_dir = work.path().join("heroic");
+        fn copy(from: &Path, to: &Path) {
+            fs::create_dir_all(to).unwrap();
+            for e in fs::read_dir(from).unwrap().flatten() {
+                let (src, dst) = (e.path(), to.join(e.file_name()));
+                if src.is_dir() {
+                    copy(&src, &dst);
+                } else {
+                    fs::copy(&src, &dst).unwrap();
+                }
+            }
+        }
+        copy(&fixture, &heroic_dir);
+        let heroic = HeroicPaths::at(&heroic_dir);
+        let steam = work.path().join("Steam");
+        fs::create_dir_all(steam.join("userdata/4242/config")).unwrap();
+        std::env::set_var("HERONITE_DESKTOP_DIR", work.path().join("Desktop"));
+        std::env::set_var("HERONITE_APPLICATIONS_DIR", work.path().join("apps"));
+        std::env::set_var("HERONITE_STEAM_DIR", &steam);
+        std::env::set_var("XDG_CACHE_HOME", work.path().join("cache"));
+
+        let lib = Library::load(&heroic).unwrap();
+        let game = lib.games.iter().find(|g| g.installed && g.runner == "sideload").expect("an installed game").clone();
+        let (runner, app) = (game.runner.clone(), game.app_name.clone());
+
+        let out = add_shortcuts(&heroic, &runner, &app);
+        assert_eq!(out.messages.len(), 1, "{out:?}");
+        assert!(!out.messages[0].error, "{out:?}");
+        assert!(shortcuts_exist(&heroic, &runner, &app));
+        let file = work.path().join("apps").join(format!("{}.desktop", desktop::sanitize_filename(&game.title)));
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(text.contains(&format!("--launch {runner} ")), "{text}");
+        assert!(work.path().join("Desktop").join(file.file_name().unwrap()).exists());
+
+        let out = add_to_steam(&heroic, &runner, &app);
+        assert!(out.messages.iter().all(|m| !m.error), "{out:?}");
+        assert!(is_added_to_steam(&heroic, &runner, &app));
+        let vdf = fs::read(steam.join("userdata/4242/config/shortcuts.vdf")).unwrap();
+        let vdf = String::from_utf8_lossy(&vdf);
+        assert!(vdf.contains(&format!("heronite-rs://launch?appName={app}&runner={runner}")));
+
+        let out = remove_from_steam(&heroic, &runner, &app);
+        assert!(out.messages.iter().all(|m| !m.error), "{out:?}");
+        assert!(!is_added_to_steam(&heroic, &runner, &app));
+        let out = remove_shortcuts(&heroic, &runner, &app);
+        assert!(!out.messages[0].error);
+        assert!(!shortcuts_exist(&heroic, &runner, &app));
+
+        // The automatic path: settings on -> files appear.
+        heronite_data::game_config::set_global_setting(&heroic, "/home/u", "addStartMenuShortcuts", serde_json::json!(true)).unwrap();
+        let out = on_game_added(&heroic, &runner, &app);
+        assert!(out.messages.iter().all(|m| !m.error), "{out:?}");
+        assert!(file.exists());
+        assert!(!work.path().join("Desktop").join(file.file_name().unwrap()).exists());
     }
 }

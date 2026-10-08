@@ -553,7 +553,7 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{candidate_keys, LaunchRequest};
 
     #[test]
     fn candidate_keys_follow_runner_order() {
