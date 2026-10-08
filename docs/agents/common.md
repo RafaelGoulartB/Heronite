@@ -30,6 +30,10 @@ Engineering rules:
 - Tests: add unit tests for parsing/format code. Existing suite: `HERONITE_FIXTURE=/tmp/heronite-fixture cargo test -p <crate>`.
 
 SAFETY (strict — the user's real data and Heronite are live on this machine):
+- Two past incidents: an agent launched a real PS2 game, another ran the real /usr/bin/ludusavi. Before ANY app run
+  against a fixture, neutralise side effects in the fixture itself: set local_library/settings.json ludusavi.enabled
+  false (or binaryPath to a fake script) and screenshots capture off, and always use HERONITE_DEBUG_FAKE_LAUNCH=1 /
+  HERONITE_DEBUG_FAKE_SESSION for anything that would start a game. Never assume a copied fixture is safe.
 - Never write to the real ~/.config/heroic from tests or manual runs. Use a fixture copy and point the app at it with
   HERONITE_HEROIC_DIR=/tmp/heronite-fixture-<yourname> (copy JSON files from /tmp/heronite-fixture or ~/.config/heroic).
 - Never launch games, emulators, Steam, real winecfg/winetricks against real prefixes, Ludusavi, or real backups.
