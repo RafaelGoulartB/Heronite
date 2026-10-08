@@ -9,7 +9,7 @@
    the main window if configured — then stay in the tray while the game runs and exit when it ends if no window was
    ever shown (check Heroic's behaviour and mirror it sensibly). Also support `--no-gui`-like semantics if Heroic has.
    IMPORTANT: the user has their own heronite-rs instance running right now. Single-instance must be disabled when
-   HERONITE_NO_SINGLE_INSTANCE=1, and you must set that (and HERONITE_NO_TRAY=1) in scripts/shot.sh's default env so
+   HERONITE_NO_SINGLE_INSTANCE=1, (already set, with HERONITE_NO_TRAY=1, in scripts/shot.sh default env) so
    screenshot runs of all agents never forward to / interfere with the user's instance. Use a fixture data dir for
    every manual test (HERONITE_HEROIC_DIR=/tmp/heronite-fixture-system → different socket name).
    Never actually launch a game: test the CLI parsing/forwarding with a debug hook (e.g. HERONITE_DEBUG_FAKE_LAUNCH=1
