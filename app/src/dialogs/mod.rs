@@ -38,6 +38,8 @@ pub mod scan_roms;
 
 use std::sync::Arc;
 
+use gpui_kit::component::input::InputState;
+use gpui_kit::*;
 use heronite_data::{AppPaths, HeroicPaths, Library};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,4 +57,9 @@ pub struct DialogCtx {
     pub heroic: HeroicPaths,
     pub app: AppPaths,
     pub lib: Arc<Library>,
+}
+
+/// The text of an input, trimmed.
+fn text_of(input: &Entity<InputState>, cx: &App) -> String {
+    input.read(cx).value().trim().to_string()
 }

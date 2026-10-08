@@ -16,7 +16,7 @@ use heronite_emulation::catalog::emulator_definition;
 use heronite_emulation::{list_rom_scanners, DetectedEmulator, RomScanner, SystemEnv};
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
-use super::DialogEvent;
+use super::{text_of, DialogEvent};
 use crate::theme;
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::new_input;
@@ -66,10 +66,6 @@ pub struct EmulatorEditDialog {
 }
 
 impl EventEmitter<DialogEvent> for EmulatorEditDialog {}
-
-pub(super) fn text_of(input: &Entity<InputState>, cx: &App) -> String {
-    input.read(cx).value().trim().to_string()
-}
 
 impl EmulatorEditDialog {
     /// Adds a new emulator (`existing` = `None`) or edits one.

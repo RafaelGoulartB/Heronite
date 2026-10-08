@@ -17,7 +17,7 @@ use heronite_epic::util::{file_size, remove_special_characters};
 use heronite_wine::WineInstallation;
 use serde_json::Value;
 
-use super::DialogEvent;
+use super::{text_of, DialogEvent};
 use crate::services::{self, downloads::InstallRequest};
 use crate::ui::fields::{new_input, on_commit};
 
@@ -58,10 +58,6 @@ pub struct EpicInstallDialog {
 }
 
 impl EventEmitter<DialogEvent> for EpicInstallDialog {}
-
-pub(super) fn text_of(input: &Entity<InputState>, cx: &App) -> String {
-    input.read(cx).value().trim().to_string()
-}
 
 impl EpicInstallDialog {
     pub fn new(

@@ -10,7 +10,7 @@ use gpui_kit::*;
 use heronite_emulation::{get_emulation_state, EmulationState, RomScanPreview, SystemEnv};
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
-use super::{DialogCtx, DialogEvent};
+use super::{text_of, DialogCtx, DialogEvent};
 use crate::theme;
 use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
@@ -50,10 +50,6 @@ pub struct ScanRomsDialog {
 }
 
 impl EventEmitter<DialogEvent> for ScanRomsDialog {}
-
-pub(super) fn text_of(input: &Entity<InputState>, cx: &App) -> String {
-    input.read(cx).value().trim().to_string()
-}
 
 impl ScanRomsDialog {
     pub fn new(ctx: DialogCtx, initial: ScanInitial, window: &mut Window, cx: &mut Context<Self>) -> Self {

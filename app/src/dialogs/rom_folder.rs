@@ -10,6 +10,7 @@ use heronite_emulation::{run_rom_scanners, upsert_rom_scanner, RomScanner, Upser
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use super::scan_roms::profile_label;
+use super::text_of;
 use super::DialogEvent;
 use crate::theme;
 use crate::ui::controls::{action_button, button, checkbox, ButtonKind};
@@ -53,10 +54,6 @@ fn default_name(e: &UserEmulator, p: Option<&UserEmulatorProfile>) -> String {
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(" \u{b7} ")
-}
-
-fn text_of(input: &Entity<InputState>, cx: &App) -> String {
-    input.read(cx).value().trim().to_string()
 }
 
 impl RomFolderDialog {

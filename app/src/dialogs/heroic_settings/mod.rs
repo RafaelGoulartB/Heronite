@@ -228,8 +228,6 @@ impl HeroicSettingsPanel {
         }
     }
 
-    // -- values ---------------------------------------------------------------
-
     pub(super) fn is_game(&self) -> bool {
         matches!(self.target, Target::Game(_))
     }
@@ -302,8 +300,6 @@ impl HeroicSettingsPanel {
         let input = self.input(id);
         input.update(cx, |s, cx| s.set_value(text.to_string(), window, cx));
     }
-
-    // -- saving ---------------------------------------------------------------
 
     pub(super) fn set(&mut self, key: &str, value: Value, cx: &mut Context<Self>) {
         if self.settings.get(key) == Some(&value) {
@@ -397,8 +393,6 @@ impl HeroicSettingsPanel {
             Bind::Scratch => {}
         }
     }
-
-    // -- background work --------------------------------------------------------
 
     fn load_wine_list(&mut self, cx: &mut Context<Self>) {
         // Debug captures only keep the first frames: load in place there.
