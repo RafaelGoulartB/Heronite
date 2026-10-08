@@ -106,6 +106,14 @@ panels (`dialogs/heroic_settings`) build their cards with `parts::rows()` (`.chi
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →
 Game defaults can host them too.
 
+**Pages** (`pages/mod.rs`, ☰ pages other than Settings): `sheet(id, title, lead, actions, max_w, close, column)`
+= glass sheet inset 12px under the slim header (title Rubik 26 + lead, optional header actions, round close =
+`page_close(cx)` which navigates back to the Collection, scrolling body with a column limited to `max_w`). Fill the column
+with `caption` + `card`/`card_box` + `row`. List helpers: `list_item(leading, content, trailing)` (card row with cover/icon),
+`icon_action(id, icon, enabled)` (round 32px list button), `status_pill(text, colour)` / `tag_pill(text)`,
+`caption_with(text, action)` (caption + action on the right), `empty_row(text)`. Progress bars: `services::widgets::progress_bar`.
+Confirmations inside a page are inline rows of a card (text + ghost "Cancel" + danger button), not modals.
+
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
 `text_muted`, `text_dim`, `accent_tint`, ...).

@@ -956,3 +956,28 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
   Novo hook de debug: `HERONITE_DEBUG_SETTINGS_TAB=appearance|screenshots|metadata|emulators|backup|saves`
   (com `HERONITE_DEBUG_DIALOG=settings`).
 - Verificado com `scripts/shot.sh` em fixture própria (ludusavi e captura neutralizados); sem mudança na Coleção.
+
+## Glass: páginas ☰ e demais diálogos (agente glass-pages)
+
+- **Páginas** (`pages/{downloads,wine_manager,epic,emulators}.rs`): cada uma é uma folha de vidro (`pages::sheet`, novo em `pages/mod.rs`:
+  título Rubik 26 + texto de apoio, ações no cabeçalho, botão de fechar redondo `page_close` que volta à Coleção, corpo rolável com
+  coluna centrada) com legendas + cartões de linhas. Helpers novos em `pages/mod.rs`: `list_item`, `icon_action`, `status_pill`,
+  `tag_pill`, `caption_with`, `empty_row`. Downloads: item em andamento com barra de progresso arredondada, fila e histórico como linhas
+  de cartão com capa, ações em botões redondos; confirmação de parar inline (ghost / glass / danger). Wine Manager: busca, abas
+  segmentadas, toggle "Install Proton into Steam" em cartão, lista como cartão (versão + pílula Installed/Update available, data,
+  tamanho/progresso com barra fina, ações). Epic: conta, biblioteca, importar e EOS Overlay em cartões; login por janela ou código.
+  Emulators: um cartão por emulador (nome, pílulas Native/Ready, plataformas, botões Edit/Duplicate/Remove) com as pastas de ROM como
+  linhas (Scan now / Review… / Edit / Remove). Nenhum comportamento, dado ou gancho de debug mudou.
+- **Diálogos** (`add_game/**`, `emulator_*`, `epic_*`, `log_viewer`, `ludusavi_backup`, `manage_statuses`, `pick_rom`, `playnite_*`,
+  `playtime`, `quit_confirm`, `remove_game`, `rom_folder`, `scan_roms`): já usavam `dialog()`, então herdaram o modal de vidro; esta
+  passada trocou botões por pílulas semânticas (Cancel = ghost, confirmar = primário, destrutivo = danger, nada de "Yes/No" em
+  maiúsculas), listas e toggles em cartões (`card`, `toggle_row`), linhas com raio 10, textos/cores dos tokens do tema (fim de
+  `rgb(0xcaf3fd)` e `navbar_*`), pílulas de status, e o log viewer ganhou abas segmentadas Latest/Previous run, cartão de lista e
+  cabeçalhos de grupo sem maiúsculas.
+- **Verificado** (fixtures `/tmp/heronite-fixture-glasspages[-in]`, ludusavi/capturas desligados, `HERONITE_DEBUG_PAGE`, `_DIALOG`,
+  `_EMU_PAGE`, `_EPIC_PAGE`, `_WINE`, `HERONITE_DEBUG_FAKE_DOWNLOAD`): as 4 páginas (Epic logada e deslogada), statuses, playtime, remove,
+  ludusavi, steam-missing, scan ROMs, playnite import/merge, epic install/uninstall/modify/message, emulador add/edit/detect/folder/remove,
+  add-game (windows, wine aberto, select aberto, browser, remover), log viewer dentro de Settings → Logs. `cargo test -p heronite`: 110 ok.
+- **Não verificado**: janela estreita (o tamanho da janela do shot.sh é fixo; as colunas largas usam `max_w` e `flex_wrap`), cliques,
+  confirmação de parar download e de remover versão Wine (sem gancho que abra), epic_install/modify com dados reais (legendary sem
+  login na fixture só mostra o erro), `pick_rom` e `epic_import` só compilados.

@@ -34,11 +34,11 @@ fn minutes(v: Option<heronite_data::JsNum>) -> String {
 fn section(title: &str, items: &[PlayniteMergePreviewItem], line: impl Fn(&PlayniteMergePreviewItem) -> String) -> Div {
     let mut s = div().flex().flex_col().child(section_title(title.to_string()));
     if items.is_empty() {
-        return s.child(paragraph_secondary("None"));
+        return s.child(paragraph_secondary("None").mx(px(6.)));
     }
     s = s.child(bullet_list(items.iter().take(VISIBLE).map(line).collect()));
     if items.len() > VISIBLE {
-        s = s.child(paragraph_secondary(format!("+{}", items.len() - VISIBLE)));
+        s = s.child(paragraph_secondary(format!("+{}", items.len() - VISIBLE)).mx(px(6.)).mt(px(6.)));
     }
     s
 }

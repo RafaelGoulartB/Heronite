@@ -385,9 +385,8 @@ impl LogViewer {
                         .pt(px(if i == 0 { 2. } else { 10. }))
                         .pb(px(2.))
                         .text_size(px(12.))
-                        .font_weight(theme::W_BOLD)
-                        .text_color(theme::white_a(0.55))
-                        .child(header.to_uppercase()),
+                        .text_color(theme::text_muted())
+                        .child(header),
                 );
             }
             let active = self.selected == Some(i);
@@ -399,10 +398,10 @@ impl LogViewer {
                     .flex_col()
                     .px(px(8.))
                     .py(px(5.))
-                    .rounded(px(4.))
+                    .rounded(px(theme::R_ITEM))
                     .cursor_pointer()
-                    .when(active, |d| d.bg(theme::white_a(0.1)))
-                    .hover(|d| d.bg(theme::white_a(0.08)))
+                    .when(active, |d| d.bg(theme::accent_tint()))
+                    .when(!active, |d| d.hover(|d| d.bg(theme::menu_item_hover())))
                     .on_click(cx.listener(move |this, _, _, cx| this.select(i, cx)))
                     .child(
                         div()
@@ -410,7 +409,7 @@ impl LogViewer {
                             .overflow_hidden()
                             .text_ellipsis()
                             .whitespace_nowrap()
-                            .text_color(if active { theme::accent() } else { crate::theme::text_primary() })
+                            .text_color(if active { white() } else { crate::theme::text_primary().into() })
                             .child(name),
                     )
                     .child(
@@ -419,8 +418,8 @@ impl LogViewer {
                             .overflow_hidden()
                             .text_ellipsis()
                             .whitespace_nowrap()
-                            .text_color(theme::white_a(0.55))
-                            .child(format!("{detail} - {}", human_size(e.size))),
+                            .text_color(theme::text_dim())
+                            .child(format!("{detail} \u{b7} {}", human_size(e.size))),
                     ),
             );
         }
@@ -430,10 +429,10 @@ impl LogViewer {
             .flex_none()
             .h(px(height))
             .overflow_y_scroll()
-            .rounded(px(4.))
-            .bg(theme::white_a(0.04))
+            .rounded(px(theme::R_CARD))
+            .bg(theme::card_fill())
             .border_1()
-            .border_color(theme::white_a(0.08))
+            .border_color(theme::card_border())
             .child(col)
     }
 
@@ -460,21 +459,15 @@ impl LogViewer {
                 .child(if name.is_empty() { "Logs".to_string() } else { name }),
         );
         if has_previous {
-            bar = bar
-                .child(action_button(
-                    "log-latest",
-                    if showing_previous { ButtonKind::Glass } else { ButtonKind::Primary },
-                    "Latest",
-                    true,
-                    cx.listener(|this, _, _, cx| this.set_previous(false, cx)),
-                ))
-                .child(action_button(
-                    "log-previous",
-                    if showing_previous { ButtonKind::Primary } else { ButtonKind::Glass },
-                    "Previous run",
-                    true,
-                    cx.listener(|this, _, _, cx| this.set_previous(true, cx)),
-                ));
+            let this = cx.entity();
+            bar = bar.child(crate::ui::controls::tabs(
+                "log-run",
+                &[(false, "Latest"), (true, "Previous run")],
+                showing_previous,
+                move |previous, _, cx| {
+                    this.update(cx, |this, cx| this.set_previous(previous, cx));
+                },
+            ));
         }
         let has_path = path.is_some();
         let (p1, p2) = (path.clone(), path.clone());
@@ -517,13 +510,13 @@ impl LogViewer {
             info.push_str(&p.display().to_string());
         }
         if !c.lines.is_empty() || c.total > 0 {
-            info.push_str(&format!("  -  {}", human_size(c.total)));
+            info.push_str(&format!("  \u{b7}  {}", human_size(c.total)));
             if c.skipped > 0 {
                 info.push_str(&format!(", showing the last {}", human_size(c.total - c.skipped)));
             }
             if let Some(t) = entry.as_ref().and_then(|e| e.modified) {
                 if !showing_previous {
-                    info.push_str(&format!("  -  {}", when(t)));
+                    info.push_str(&format!("  \u{b7}  {}", when(t)));
                 }
             }
         }
@@ -587,10 +580,10 @@ impl LogViewer {
             .relative()
             .flex_1()
             .min_h_0()
-            .rounded(px(4.))
-            .bg(rgb(0x14161b))
+            .rounded(px(theme::R_INPUT))
+            .bg(theme::input_fill())
             .border_1()
-            .border_color(theme::white_a(0.08))
+            .border_color(theme::input_border())
             .overflow_hidden()
             .child(body)
             .children(scrollbar);
@@ -612,7 +605,7 @@ impl LogViewer {
             .flex_col()
             .gap(px(8.))
             .child(bar)
-            .child(div().text_size(px(12.)).text_color(theme::white_a(0.55)).overflow_hidden().text_ellipsis().whitespace_nowrap().child(info))
+            .child(div().text_size(px(12.)).text_color(theme::text_dim()).overflow_hidden().text_ellipsis().whitespace_nowrap().child(info))
             .child(viewer)
             .child(footer)
     }

@@ -63,13 +63,14 @@ impl Render for PickRomDialog {
                     .flex()
                     .items_start()
                     .gap(px(12.))
-                    .px(px(12.))
-                    .py(px(8.))
-                    .rounded(px(4.))
+                    .px(px(14.))
+                    .py(px(10.))
+                    .rounded(px(theme::R_TILE))
                     .border_1()
-                    .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
+                    .border_color(if on { theme::accent_tint_border() } else { theme::card_border() })
+                    .bg(if on { theme::accent_tint() } else { theme::card_fill() })
                     .cursor_pointer()
-                    .hover(|s| s.bg(theme::white_a(0.04)))
+                    .hover(|s| s.bg(if on { theme::accent_tint() } else { theme::white_a(0.08) }))
                     .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                         this.selected = Some(p1.clone());
                         if ev.click_count() >= 2 {
@@ -83,8 +84,8 @@ impl Render for PickRomDialog {
                             .flex()
                             .flex_col()
                             .min_w_0()
-                            .child(div().font_weight(theme::W_BOLD).text_size(px(16.)).child(label))
-                            .child(div().text_size(px(13.33)).text_color(white()).child(path.clone())),
+                            .child(div().font_weight(theme::W_BOLD).text_size(px(14.)).text_color(theme::text_primary()).child(label))
+                            .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(path.clone())),
                     ),
             );
         }

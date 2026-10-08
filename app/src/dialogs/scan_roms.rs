@@ -554,11 +554,11 @@ impl Render for ScanRomsDialog {
                         .gap(px(12.))
                         .items_start()
                         .px(px(8.))
-                        .py(px(6.))
-                        .rounded(px(4.))
+                        .py(px(8.))
+                        .rounded(px(theme::R_ITEM))
                         .when(imported, |d| d.opacity(0.6))
                         .when(!imported, |d| {
-                            d.cursor_pointer().hover(|s| s.bg(theme::white_a(0.06))).on_click(cx.listener(
+                            d.cursor_pointer().hover(|s| s.bg(theme::menu_item_hover())).on_click(cx.listener(
                                 move |this, _, _, cx| {
                                     if let Some(g) = this.preview.as_mut().and_then(|p| p.games.get_mut(i)) {
                                         g.import = !g.import;
@@ -573,8 +573,8 @@ impl Render for ScanRomsDialog {
                                 .flex()
                                 .flex_col()
                                 .min_w_0()
-                                .child(div().font_weight(theme::W_BOLD).text_size(px(16.)).child(g.title.clone()))
-                                .child(div().text_size(px(13.33)).text_color(white()).child(sub)),
+                                .child(div().font_weight(theme::W_BOLD).text_size(px(14.)).text_color(theme::text_primary()).child(g.title.clone()))
+                                .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(sub)),
                         ),
                 );
             }
@@ -587,7 +587,7 @@ impl Render for ScanRomsDialog {
                         .flex()
                         .justify_between()
                         .items_center()
-                        .child(div().font_weight(theme::W_BOLD).child(format!("{} game(s) found", p.games.len())))
+                        .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(format!("{} game(s) found", p.games.len())))
                         .child(
                             div()
                                 .flex()
@@ -606,7 +606,7 @@ impl Render for ScanRomsDialog {
                                 ))),
                         ),
                 )
-                .child(list)
+                .child(crate::ui::controls::card_box().py(px(6.)).child(list))
         });
 
         let body = div()

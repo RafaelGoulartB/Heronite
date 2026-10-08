@@ -175,7 +175,7 @@ impl Render for DetectEmulatorsDialog {
         let busy = self.scanning || self.folder_scanning.is_some() || self.adding;
         let selected = self.selected_count();
 
-        let mut list = div().id("detect-list").flex().flex_col().gap(px(4.)).max_h(px(400.)).overflow_y_scroll();
+        let mut list = div().id("detect-list").flex().flex_col().gap(px(2.)).max_h(px(400.)).overflow_y_scroll();
         for (i, r) in self.rows.iter().enumerate() {
             let added = r.item.already_added;
             let loc = if r.item.launch_kind == "flatpak" {
@@ -190,11 +190,11 @@ impl Render for DetectEmulatorsDialog {
                     .gap(px(12.))
                     .items_start()
                     .px(px(8.))
-                    .py(px(6.))
-                    .rounded(px(4.))
+                    .py(px(8.))
+                    .rounded(px(theme::R_ITEM))
                     .when(added, |d| d.opacity(0.6))
                     .when(!added, |d| {
-                        d.cursor_pointer().hover(|s| s.bg(theme::white_a(0.06))).on_click(cx.listener(move |this, _, _, cx| {
+                        d.cursor_pointer().hover(|s| s.bg(theme::menu_item_hover())).on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(r) = this.rows.get_mut(i) {
                                 r.selected = !r.selected;
                             }
@@ -210,17 +210,13 @@ impl Render for DetectEmulatorsDialog {
                             .child(
                                 div()
                                     .flex()
-                                    .items_baseline()
+                                    .items_center()
                                     .gap(px(8.))
-                                    .child(div().font_weight(theme::W_BOLD).text_size(px(16.)).child(r.item.name.clone()))
-                                    .child(div().text_size(px(13.33)).text_color(theme::accent()).child(if added {
-                                        "Already added".to_string()
-                                    } else {
-                                        r.item.source.clone()
-                                    })),
+                                    .child(div().font_weight(theme::W_BOLD).text_size(px(14.)).text_color(theme::text_primary()).child(r.item.name.clone()))
+                                    .child(crate::pages::tag_pill(if added { "Already added".to_string() } else { r.item.source.clone() })),
                             )
-                            .child(div().text_size(px(13.33)).text_color(white()).truncate().child(loc))
-                            .child(div().text_size(px(13.33)).text_color(theme::white_a(0.7)).child(profiles_summary(&r.item))),
+                            .child(div().text_size(px(12.)).text_color(theme::text_muted()).truncate().child(loc))
+                            .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(profiles_summary(&r.item))),
                     ),
             );
         }
@@ -272,7 +268,7 @@ impl Render for DetectEmulatorsDialog {
                     }))),
             )
             .child(meta_text(status))
-            .children((!self.rows.is_empty()).then_some(list))
+            .children((!self.rows.is_empty()).then(|| crate::ui::controls::card_box().py(px(6.)).child(list)))
             .children((!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())));
 
         let footer = div()

@@ -670,11 +670,12 @@ impl AddGameDialog {
             .relative()
             .w(px(w))
             .h(px(h))
-            .rounded(px(6.))
+            .rounded(px(theme::R_INPUT))
             .overflow_hidden()
             .cursor_pointer()
+            .bg(theme::input_fill())
             .border_1()
-            .border_color(theme::white_a(0.14))
+            .border_color(theme::input_border())
             .hover(|s| s.border_color(theme::accent()))
             .on_click(cx.listener(move |this, _, window, cx| this.open_picker(slot, window, cx)))
             .child(picture(src).size_full())
@@ -688,9 +689,9 @@ impl AddGameDialog {
                         .items_center()
                         .justify_center()
                         .gap(px(6.))
-                        .text_size(px(13.33))
-                        .text_color(theme::white_a(0.6))
-                        .child(icon(Icon::FaSearch, px(18.), theme::white_a(0.6)))
+                        .text_size(px(13.))
+                        .text_color(theme::text_muted())
+                        .child(icon(Icon::FaSearch, px(18.), theme::text_muted()))
                         .child(if slot == Slot::Square { "Cover" } else { "Background" }),
                 )
             })
@@ -742,7 +743,7 @@ impl AddGameDialog {
             .items_center()
             .gap(px(8.))
             .cursor_pointer()
-            .text_size(px(16.))
+            .text_size(px(14.))
             .text_color(crate::theme::text_primary())
             .on_click(cx.listener(|this, _, _, cx| {
                 this.show_wine = !this.show_wine;
@@ -750,7 +751,7 @@ impl AddGameDialog {
             }))
             .child(icon(if open { Icon::FaChevronUp } else { Icon::FaChevronDown }, px(12.), crate::theme::text_primary()))
             .child("Show Wine settings");
-        let mut col = div().flex().flex_col().gap(px(12.)).child(header);
+        let mut col = crate::ui::controls::card_box().gap(px(12.)).py(px(12.)).child(header);
         if !open {
             return col;
         }
@@ -859,7 +860,7 @@ impl AddGameDialog {
                     .gap(px(2.))
                     .child(
                         div()
-                            .text_size(px(16.))
+                            .text_size(px(14.))
                             .font_weight(theme::W_BOLD)
                             .text_color(crate::theme::text_primary())
                             .child(if title.trim().is_empty() { "Title".to_string() } else { title.clone() }),
@@ -925,10 +926,12 @@ impl AddGameDialog {
             right = right
                 .child(labeled("BrowserURL", input_box(&self.url, false)))
                 .child(labeled("Custom User Agent", input_box(&self.user_agent, false)))
-                .child(checkbox("ag-fullscreen", self.fullscreen, "Launch Fullscreen (F11 to exit)").on_click(cx.listener(|this, _, _, cx| {
-                    this.fullscreen = !this.fullscreen;
-                    cx.notify();
-                })));
+                .child(crate::ui::controls::card([checkbox("ag-fullscreen", self.fullscreen, "Launch Fullscreen (F11 to exit)")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.fullscreen = !this.fullscreen;
+                        cx.notify();
+                    }))
+                    .into_any_element()]));
         } else {
             let exe = text_of(&self.exe, cx);
             let has = !exe.is_empty();
@@ -964,7 +967,7 @@ impl AddGameDialog {
 
     fn remove_confirmation(&self, cx: &mut Context<Self>) -> Div {
         let title = text_of(&self.title, cx);
-        let mut col = div().flex().flex_col().gap(px(16.)).child(div().text_size(px(16.)).line_height(px(22.)).text_color(crate::theme::text_primary()).child(format!(
+        let mut col = div().flex().flex_col().gap(px(16.)).child(div().text_size(px(14.)).line_height(px(20.)).text_color(crate::theme::text_primary()).child(format!(
             "Remove {} from your library? The game's files are not deleted. Its playtime, status, notes, images and Collection data are removed, and so are its shortcuts.",
             if title.trim().is_empty() { "this game" } else { title.trim() }
         )));
