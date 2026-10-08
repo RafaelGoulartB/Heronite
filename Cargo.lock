@@ -3419,7 +3419,6 @@ dependencies = [
  "heronite-launch",
  "heronite-media",
  "heronite-metadata",
- "heronite-playnite",
  "heronite-shortcuts",
  "heronite-wine",
  "image",
@@ -3573,22 +3572,6 @@ dependencies = [
  "tempfile",
  "ureq",
  "url",
-]
-
-[[package]]
-name = "heronite-playnite"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "heronite-data",
- "heronite-launch",
- "indexmap",
- "log",
- "regex",
- "serde",
- "serde_json",
- "tempfile",
 ]
 
 [[package]]

@@ -15,7 +15,6 @@ mod list;
 mod metadata_ui;
 mod nav;
 mod palette;
-mod playnite_menu;
 mod screenshot_viewer;
 mod screenshots;
 mod system_glue;
@@ -100,7 +99,6 @@ pub struct CollectionView {
     pending_debug_dialog: Option<String>,
     dialog_sub: Option<Subscription>,
     emu: emulation::EmuState,
-    playnite: playnite_menu::PlayniteState,
     epic: epic::EpicState,
     extras: extras::Extras,
     focus_scroll: ScrollHandle,
@@ -222,7 +220,6 @@ impl CollectionView {
             pending_debug_dialog: None,
             dialog_sub: None,
             emu: Default::default(),
-            playnite: Default::default(),
             epic: Default::default(),
             extras: Default::default(),
             focus_scroll: ScrollHandle::new(),
@@ -401,7 +398,6 @@ impl CollectionView {
                 "install" => Some(Menu::Install),
                 "sort" => Some(Menu::Sort),
                 "status" => Some(Menu::Status),
-                "playnite" => Some(Menu::Playnite),
                 "nav" => Some(Menu::Nav),
                 "facets" => {
                     self.facet_flyout = Some(FacetKind::Developer);
@@ -861,8 +857,6 @@ impl Render for CollectionView {
                         self.open_game_log(&key, cx);
                     }
                 }
-                "playnite:import" => self.open_playnite_import(window, cx),
-                "playnite:merge" => self.open_playnite_merge(window, cx),
                 w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => self.open_extras_debug(which.as_str(), window, cx),
                 w if w.starts_with("add-game") || w.starts_with("edit-game") => {
                     self.add_game_debug_dialog(w, window, cx);

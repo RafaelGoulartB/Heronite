@@ -1015,3 +1015,11 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
   10 em 10 com "21–30 of 34 · Page 3 of 4", setas e "Collapse" (`Pager` em `pages/settings/library.rs`, estado só na página; o índice é
   limitado ao recarregar após Unhide/Remove). Debug: `HERONITE_DEBUG_LIBRARY_PAGER=<hidden|fav>:<página>`. Verificado em fixture com 34
   ocultos e 8 favoritos (capturas das páginas 1 e 3); teste unitário do `Pager`.
+
+## Remoção do Playnite (2026-10-08)
+
+O import/merge/export do Playnite saiu do app: botão ⇄ do topo da Collection, diálogos `playnite_import`/`playnite_merge`,
+`collection/playnite_menu.rs` e o crate `crates/playnite`. Nenhum dado foi alterado: os jogos importados
+(`sideload_playnite_*`), as sessões com `source: "playnite"`, os metadados vindos do Playnite e os campos `playniteId`
+continuam nos arquivos e são lidos pelo código genérico. A fonte "Playnite" deixou de ser oferecida nos seletores de
+metadados (nada a alimentava no app em Rust), mas continua nas prioridades salvas, que o Heronite lê.

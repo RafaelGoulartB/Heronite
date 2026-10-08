@@ -26,13 +26,14 @@ pub struct State {
     open_select: Option<&'static str>,
 }
 
-const SOURCES: [(&str, &str); 6] = [
+// "playnite" stays in the saved priorities (Heronite reads them) but is not
+// offered: the Playnite import was removed and nothing feeds that source.
+const SOURCES: [(&str, &str); 5] = [
     ("auto", "Auto (IGDB first)"),
     ("igdb", "IGDB"),
     ("steam", "Steam"),
     ("store", "Store"),
     ("lutris", "Lutris"),
-    ("playnite", "Playnite"),
 ];
 
 impl State {

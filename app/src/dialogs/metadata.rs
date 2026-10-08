@@ -1,5 +1,5 @@
 //! `CollectionMetadataDialog`: fetch metadata candidates (IGDB, Steam, store,
-//! Lutris, Playnite), pick a source per field and apply.
+//! Lutris), pick a source per field and apply.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,12 +20,11 @@ use crate::ui::controls::{action_button, button, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{input_box, new_input, select_field};
 
-pub const FETCH_SOURCES: [(&str, &str); 6] = [
+pub const FETCH_SOURCES: [(&str, &str); 5] = [
     ("auto", "Auto (IGDB first)"),
     ("igdb", "IGDB"),
     ("steam", "Steam"),
     ("store", "Store"),
-    ("playnite", "Playnite"),
     ("lutris", "Lutris"),
 ];
 
@@ -328,7 +327,7 @@ impl Render for MetadataDialog {
             .flex_col()
             .gap(px(16.))
             .child(help_text(
-                "IGDB is tried first, then Steam, the store page, Lutris, and Playnite files. Use this for games that are not on Steam.",
+                "IGDB is tried first, then Steam, the store page and Lutris. Use this for games that are not on Steam.",
             ))
             .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(self.title.clone()));
         if self.preview.as_ref().is_some_and(|p| !p.igdb_configured) {

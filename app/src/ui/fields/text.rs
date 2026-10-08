@@ -5,19 +5,9 @@ use gpui_kit::*;
 
 use crate::theme;
 
-/// Primary text colour of dialogs (`#e8edf4`).
-pub fn text_default() -> Rgba {
-    theme::text_primary()
-}
-
 /// Dialog paragraph: 14px.
 pub fn paragraph(text: impl Into<SharedString>) -> Div {
     div().text_size(px(14.)).line_height(px(20.)).text_color(theme::text_primary()).child(text.into())
-}
-
-/// Secondary paragraph (muted, 13px), as the settings tabs use.
-pub fn paragraph_secondary(text: impl Into<SharedString>) -> Div {
-    div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(text.into())
 }
 
 /// Small meta line (12px, dim).

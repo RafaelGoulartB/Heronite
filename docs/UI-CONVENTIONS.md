@@ -32,7 +32,7 @@ pages, settings) follows the **Glass design system** below
     (blur/Enter commit, for debounced or deferred saves);
   - `labeled(label, control)` for any control under a label (an input next
     to a button, a select...), `field_label`, `paragraph`,
-    `paragraph_secondary`, `meta_text`, `panel`;
+    `meta_text`, `panel`;
   - `select_field(id, label, value, disabled, open, options, cx, on_toggle,
     on_pick)`: label + 40px select + its open menu (the caller keeps the
     `open` flag and the picked value);

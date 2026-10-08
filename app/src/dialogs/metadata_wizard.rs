@@ -197,7 +197,7 @@ impl Render for MetadataWizard {
         };
 
         let mut body = div().flex().flex_col().gap(px(12.)).child(help_text(
-            "Fetches IGDB first, then Steam, store, Lutris, and Playnite data. You can hide this window; the download keeps going. Open it again from the icon in the Collection header.",
+            "Fetches IGDB first, then Steam, store and Lutris data. You can hide this window; the download keeps going. Open it again from the icon in the Collection header.",
         ));
         if !running && !done {
             body = body

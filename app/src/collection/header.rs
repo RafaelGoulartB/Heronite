@@ -21,7 +21,6 @@ pub enum Menu {
     Facets,
     Sort,
     Status,
-    Playnite,
     Nav,
 }
 
@@ -248,14 +247,6 @@ impl CollectionView {
             facets
         };
 
-        let playnite = self.hover_dropdown(
-            Menu::Playnite,
-            Icon::SyncAlt,
-            Align::Right,
-            |this, cx| this.playnite_menu_body(cx),
-            cx,
-        );
-
         let refreshing = self.refreshing;
         let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::white_a(0.58));
         let refresh = div()
@@ -317,8 +308,7 @@ impl CollectionView {
                     .justify_end()
                     .min_w(px(32.))
                     .children(self.bulk_chip(cx))
-                    .child(refresh)
-                    .child(playnite),
+                    .child(refresh),
             )
     }
 
