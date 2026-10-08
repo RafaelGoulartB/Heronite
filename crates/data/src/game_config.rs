@@ -469,6 +469,10 @@ mod tests {
         };
         let mut checked = 0;
         for entry in fs::read_dir(root.join("GamesConfig")).into_iter().flatten().flatten() {
+            // Heroic also keeps `<app>-lastPlay.log` files there.
+            if entry.path().extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
             let text = fs::read_to_string(entry.path()).unwrap();
             let value: Value = serde_json::from_str(&text).unwrap();
             let again = String::from_utf8(json_store::to_bytes_indented(&value, INDENT_2).unwrap()).unwrap();
