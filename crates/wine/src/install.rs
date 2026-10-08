@@ -158,44 +158,46 @@ pub fn install_into(
     }
     fs::rename(&part_file, &tar_file).with_context(|| format!("renaming {}", part_file.display()))?;
 
-    // Backup of the old folder when updating.
-    let backup = PathBuf::from(format!("{}_backup", install_sub_dir.display()));
-    let mut backed_up = false;
-    if overwrite && install_sub_dir.exists() {
-        let _ = fs::remove_dir_all(&backup);
-        fs::rename(&install_sub_dir, &backup)
-            .map_err(|e| InstallError::Failed(format!("Could not back up {}: {e}", install_sub_dir.display())))?;
-        backed_up = true;
-    }
-    let restore = |remove_new: bool| {
-        if remove_new {
-            let _ = fs::remove_dir_all(&install_sub_dir);
-        }
-        if backed_up {
-            let _ = fs::rename(&backup, &install_sub_dir);
-        }
-    };
-
-    if let Err(e) = fs::create_dir(&install_sub_dir) {
+    // Extract next to the final folder under a hidden name and rename when
+    // done, so a crash or cancel never leaves a half-extracted install (and an
+    // update keeps the old build until the new one is complete).
+    let parent = install_sub_dir.parent().unwrap_or(install_dir);
+    let tmp_dir = parent.join(format!(".{}.extracting", info.version));
+    let _ = fs::remove_dir_all(&tmp_dir);
+    if let Err(e) = fs::create_dir_all(&tmp_dir) {
         let _ = fs::remove_file(&tar_file);
-        restore(false);
-        return Err(InstallError::Failed(format!(
-            "Failed to make folder {} with:\n {e}",
-            install_sub_dir.display()
-        )));
+        return Err(InstallError::Failed(format!("Failed to make folder {} with:\n {e}", tmp_dir.display())));
     }
 
     on_progress(Progress::Unzipping);
-    let extracted = extract_tar(&tar_file, &install_sub_dir, 1, cancel);
+    let extracted = extract_tar(&tar_file, &tmp_dir, 1, cancel);
     let _ = fs::remove_file(&tar_file);
     if let Err(e) = extracted {
-        restore(true);
+        let _ = fs::remove_dir_all(&tmp_dir);
         return Err(match e {
             InstallError::Aborted => InstallError::Aborted,
-            InstallError::Failed(m) => InstallError::Failed(format!(
-                "Unzip of {file_name} failed with:\n {m}"
-            )),
+            InstallError::Failed(m) => InstallError::Failed(format!("Unzip of {file_name} failed with:\n {m}")),
         });
+    }
+
+    // Swap in (old build moved to `_backup` first when updating).
+    let backup = PathBuf::from(format!("{}_backup", install_sub_dir.display()));
+    let mut backed_up = false;
+    if install_sub_dir.exists() {
+        // `overwrite` (update) or an empty/stale leftover folder.
+        let _ = fs::remove_dir_all(&backup);
+        if let Err(e) = fs::rename(&install_sub_dir, &backup) {
+            let _ = fs::remove_dir_all(&tmp_dir);
+            return Err(InstallError::Failed(format!("Could not back up {}: {e}", install_sub_dir.display())));
+        }
+        backed_up = true;
+    }
+    if let Err(e) = fs::rename(&tmp_dir, &install_sub_dir) {
+        let _ = fs::remove_dir_all(&tmp_dir);
+        if backed_up {
+            let _ = fs::rename(&backup, &install_sub_dir);
+        }
+        return Err(InstallError::Failed(format!("Could not move the build into {}: {e}", install_sub_dir.display())));
     }
     if backed_up {
         let _ = fs::remove_dir_all(&backup);
@@ -447,6 +449,9 @@ mod tests {
         let base = serve(vec![("/a.tar.gz".into(), data.clone()), ("/a.tar.gz.sha512sum".into(), sum.into_bytes())], 0);
         let info = info_for(&base, "a.tar.gz", &data);
         let dest = tmp.path().join("tools/proton");
+        // leftover of a crashed extraction is cleaned up
+        fs::create_dir_all(dest.join(".GE-Proton-test.extracting")).unwrap();
+        fs::write(dest.join(".GE-Proton-test.extracting/junk"), "x").unwrap();
         let mut seen_unzip = false;
         let mut last_pct = 0.0;
         let done = install_into(&info, &dest, false, &AtomicBool::new(false), &mut |p| match p {

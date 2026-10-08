@@ -5,8 +5,9 @@
 //! Collection keeps alive, so downloads continue while another page is shown.
 //!
 //! Debug: `HERONITE_WINE_OFFLINE=1` disables every network request;
-//! `HERONITE_DEBUG_WINE=progress,confirm,ge` fakes an install in progress, an
-//! open removal confirmation and the GE-Proton tab for screenshots.
+//! `HERONITE_DEBUG_WINE=progress,confirm,ge,install=<version>` fakes an install in progress, an
+//! open removal confirmation, the GE-Proton tab, or a real install of `<version>`
+//! (use a fixture dir!) for screenshots.
 
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -111,7 +112,8 @@ impl WineManagerPage {
             offline: std::env::var_os("HERONITE_WINE_OFFLINE").is_some(),
             fake: HashMap::new(),
         };
-        this.init(debug_has("progress"), debug_has("confirm"), cx);
+        let auto_install = debug.split(',').find_map(|t| t.strip_prefix("install=")).map(str::to_owned);
+        this.init(debug_has("progress"), debug_has("confirm"), auto_install, cx);
 
         // Poll the manager (progress, finished jobs). Fast while busy.
         cx.spawn(async move |this, cx| loop {
@@ -130,7 +132,7 @@ impl WineManagerPage {
     }
 
     /// Reads the cache off the UI thread and decides whether to refresh.
-    fn init(&mut self, fake_progress: bool, fake_confirm: bool, cx: &mut Context<Self>) {
+    fn init(&mut self, fake_progress: bool, fake_confirm: bool, auto_install: Option<String>, cx: &mut Context<Self>) {
         let heroic = self.ctx.heroic.clone();
         let stamp = stamp_path(&self.ctx);
         cx.spawn(async move |this, cx| {
@@ -148,6 +150,11 @@ impl WineManagerPage {
                 this.download_to_steam = cfg.download_proton_to_steam;
                 if fake_progress {
                     this.install_fakes(fake_confirm);
+                }
+                if let Some(v) = &auto_install {
+                    if let Some(r) = this.releases.iter().find(|r| &r.version == v) {
+                        this.manager.start_install(r.clone());
+                    }
                 }
                 // Heroic fetches when it has nothing cached; we also refresh
                 // when the last fetch is stale. Never when offline.
@@ -201,6 +208,11 @@ impl WineManagerPage {
             return;
         }
         self.last_rev = rev;
+        if log::log_enabled!(log::Level::Trace) {
+            if let Some(r) = self.releases.iter().find_map(|r| self.manager.job(&r.version).map(|j| (r.version.clone(), j))) {
+                log::trace!("wine manager poll: {} {:?}", r.0, r.1.phase);
+            }
+        }
         let mut reload = false;
         for ev in self.manager.take_events() {
             match ev {

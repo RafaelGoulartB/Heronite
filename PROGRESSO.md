@@ -182,3 +182,45 @@ menu ☰ (canto superior esquerdo), sem sidebar.
   (`crates/images`), lançamento (`crates/launch`).
 - 2026-10-07: workspace criado; GPUI validado; linha de base medida; camada de dados compatível com
   testes de ida e volta nos arquivos reais.
+
+## Wine Manager (agente "wine")
+
+Port do Wine Manager do Heroic (`backend/wine/manager/**`, `utils/compatibility_layers.ts`,
+`screens/WineManager`). Código em `crates/wine` (backend, sem UI) e `app/src/pages/wine_manager.rs`.
+
+- **Detecção** (`heronite_wine::list_installations(&HeroicPaths)`): mesma ordem do `getLinuxWineSet`:
+  `tools/proton`, `compatibilitytools.d` das bibliotecas Steam (`libraryfolders.vdf` do
+  `defaultSteamPath`, mais `/usr/share/steam`), `steamapps/common` se `showValveProton`, depois
+  `tools/wine/*/bin/wine`, runners do Lutris, `wine` do PATH (`wine --version`) e
+  `customWinePaths`. Pastas ocultas e `UMU-Latest*` são ignoradas. Só lê, nunca grava.
+- **Repositórios**: os dois que o Heroic oferece no Linux (Proton-CachyOS e GE-Proton), com os
+  mesmos filtros de asset (x86_64, `.sha512sum`) e a entrada sintética `<tipo>-latest`.
+  `repos.rs` também sabe interpretar Proton (Valve) e Wine-Lutris, mas a UI não os mostra.
+- **Cache** `store/wine-downloader-info.json` (formato idêntico: tabs, `wine-releases`, campos
+  desconhecidos preservados). `store::merge_releases` é o port do `updateWineVersionInfos`
+  (mantém `installDir`/`isInstalled`/`disksize`, marca `hasUpdate` quando o checksum do `-latest`
+  muda, renomeia `Proton-GE-latest`, ordena por data). Atualização só sob demanda (botão), quando
+  o cache está vazio ou o último fetch tem mais de 24 h (carimbo em `~/.config/heronite-rs/wine-releases-fetched`).
+  Sem fetch quando `HERONITE_WINE_OFFLINE=1`. Limite do GitHub sem token: 60 req/h (1 req por aba por refresh).
+- **Instalação** (`install.rs`): baixa em streaming para `<arquivo>.part` calculando sha512, confere
+  com o `.sha512sum`, extrai com o `tar` do sistema (`--strip-components=1`; gz/xz/zst) numa pasta
+  oculta `.<versão>.extracting` e só então renomeia (queda ou cancelamento nunca deixa instalação
+  pela metade; atualização mantém a versão antiga até a nova estar completa). Destino: `tools/proton`,
+  `tools/wine` ou, com `downloadProtonToSteam` e `steam.sh` válido, `<steam>/compatibilitytools.d`.
+  Remoção só apaga pastas dentro de `tools/{wine,proton,game-porting-toolkit}` ou de um `compatibilitytools.d`.
+  O botão "Install Proton into Steam" grava `downloadProtonToSteam` em `config.json` (2 espaços) e na cópia `store/config.json`.
+- **Jobs** (`manager::WineManager`): threads `std`, estado compartilhado (progresso, cancelar, eventos);
+  vive na entidade da página, que o `CollectionView` mantém viva, então o download continua ao trocar de página.
+- **Página**: abas por repositório, busca, atualizar, lista (versão, data, tamanho/progresso com
+  velocidade e ETA, ações Install/Cancel/Update/abrir pasta/remover com confirmação), notas de versão
+  via `xdg-open` ao clicar no nome, erros e resultados como toast.
+- **Verificação**: 21 testes unitários (parsing com fixtures reais, merge, formato do cache, install
+  com servidor HTTP local incluindo checksum errado/cancelamento/atualização com rollback, remoção
+  segura, detecção em tempdir) + `tests/real_machine.rs` (detecção na máquina real: acha
+  `GE-Proton-latest` e `Proton-CachyOS Latest`) + `tests/real_network.rs` (`--ignored`, só contra
+  `/tmp/heronite-fixture*`): fetch real do GitHub, download+checksum+extração `.tar.xz` reais de
+  `cachyos-10.0-20250702-slr` (≈290 MB, 9 s) e remoção; fixture apagada depois.
+- **Depuração**: `HERONITE_DEBUG_PAGE=wine`, `HERONITE_DEBUG_WINE=progress,confirm,ge,install=<versão>`.
+- **Limitações**: cada refresh pode usar até 2 das 60 requisições/h; extração mostra "Unzipping"
+  sem percentual (como o Heroic); sem retomar download interrompido; `customWinePaths` é editado na
+  tela de configurações, não aqui; só Linux (macOS/GPTK/Crossover fora do escopo).

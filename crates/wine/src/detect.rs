@@ -46,6 +46,9 @@ pub fn list_installations_with(heroic: &HeroicPaths, cfg: &WineConfig, env: &Det
     wine_dirs.push(env.home.join(".local/share/lutris/runners/wine"));
     for dir in wine_dirs {
         for version in sorted_children(&dir) {
+            if version.starts_with('.') {
+                continue;
+            }
             let bin = dir.join(&version).join("bin").join("wine");
             if !bin.exists() {
                 continue;
@@ -68,8 +71,8 @@ pub fn list_installations_with(heroic: &HeroicPaths, cfg: &WineConfig, env: &Det
     let mut proton = Vec::new();
     for dir in &proton_dirs {
         for version in sorted_children(dir) {
-            // Only relevant to Lutris.
-            if version.starts_with("UMU-Latest") {
+            // Only relevant to Lutris; hidden folders are our half-extracted installs.
+            if version.starts_with("UMU-Latest") || version.starts_with('.') {
                 continue;
             }
             let bin = dir.join(&version).join("proton");
