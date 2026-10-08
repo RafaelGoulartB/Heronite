@@ -1,0 +1,12 @@
+[package]
+name = "heronite"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "heronite-rs"
+path = "src/main.rs"
+
+[dependencies]
+gpui-kit.workspace = true
+anyhow.workspace = true
