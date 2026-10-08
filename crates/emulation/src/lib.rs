@@ -15,9 +15,11 @@
 pub mod backup;
 pub mod catalog;
 pub mod detect;
+pub mod discover;
 pub mod disc_id;
 pub mod import;
 pub mod jobs;
+pub mod manager;
 pub mod ludusavi;
 pub mod names;
 pub mod pathutil;
@@ -31,7 +33,9 @@ pub mod types;
 
 pub use catalog::{emulator_definitions, EmulatorDefinition, EmulatorDefinitionProfile};
 pub use detect::{add_detected_emulators, detect_emulators, DetectEnv, SystemEnv};
-pub use import::{import_scanned_roms, run_auto_rom_scanners, set_emulator_launch_rom};
+pub use import::{
+    import_scanned_roms, run_auto_rom_scanners, run_rom_scanners, set_emulator_launch_rom, AutoScanReport,
+};
 pub use save_states::{
     list_emulator_save_states, remember_save_state_key, set_pending_launch_state, LaunchStateArgs,
     PendingLaunchStates,

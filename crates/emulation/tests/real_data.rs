@@ -302,3 +302,29 @@ fn real_save_state_dirs_per_engine() {
         }
     }
 }
+
+/// Read-only: the real machine's emulator discovery finds the AppImages in the
+/// folders of the configured emulator and in a user-chosen folder. Nothing is
+/// executed.
+#[test]
+fn discovery_finds_real_appimages() {
+    let Some(fx) = fixture() else { return };
+    let paths = HeroicPaths::at(&fx);
+    let existing = store::list_user_emulators(&paths).unwrap();
+    let Some(cfg) = existing.iter().find(|e| e.executable.starts_with("/data/Games/Emulation/")) else {
+        eprintln!("no configured emulator under /data/Games/Emulation; skipping");
+        return;
+    };
+    let root = "/data/Games/Emulation";
+    if !Path::new(root).is_dir() {
+        return;
+    }
+    let found = heronite_emulation::discover::discover_in_folder(&heronite_emulation::SystemEnv, root, &existing);
+    for d in &found {
+        eprintln!("{:<12} {} added={}", d.name, d.executable, d.already_added);
+    }
+    assert!(found.iter().any(|d| d.executable == cfg.executable && d.already_added));
+    assert!(found.iter().any(|d| d.name == "DuckStation" && !d.already_added));
+    // No game folder was entered.
+    assert!(found.iter().all(|d| !d.executable.contains("/games/")));
+}

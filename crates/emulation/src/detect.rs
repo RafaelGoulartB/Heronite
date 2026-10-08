@@ -149,6 +149,7 @@ pub fn existing_profiles(
             name: p.name.clone(),
             platform_name: p.platform_name.clone(),
             core_path,
+            ..Default::default()
         });
     }
     out
@@ -203,6 +204,7 @@ fn detect_one(
         flatpak_id,
         profiles,
         already_added,
+        source: if launch_kind == "flatpak" { "Flatpak".into() } else { "PATH".into() },
     })
 }
 
@@ -262,12 +264,18 @@ pub fn apply_detected(
                     id: p.id.clone(),
                     definition_profile_id: Some(p.id.clone()),
                     name: p.name.clone(),
-                    platform_id: cat.map(|c| c.platform_id.clone()),
+                    platform_id: p.platform_id.clone().or_else(|| cat.map(|c| c.platform_id.clone())),
                     platform_name: Some(p.platform_name.clone()),
-                    arguments: cat
-                        .map(|c| c.arguments.clone())
+                    arguments: p
+                        .arguments
+                        .clone()
+                        .or_else(|| cat.map(|c| c.arguments.clone()))
                         .unwrap_or_else(|| "{ImagePath}".into()),
-                    extensions: cat.map(|c| c.extensions.clone()).unwrap_or_default(),
+                    extensions: p
+                        .extensions
+                        .clone()
+                        .or_else(|| cat.map(|c| c.extensions.clone()))
+                        .unwrap_or_default(),
                     core_path: p.core_path.clone(),
                     folder_indicator: cat.and_then(|c| c.folder_indicator.clone()),
                     playlist_extensions: cat.and_then(|c| c.playlist_extensions.clone()),

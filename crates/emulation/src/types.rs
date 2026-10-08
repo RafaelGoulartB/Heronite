@@ -159,7 +159,7 @@ pub struct RomScanImportResult {
 // Detection
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DetectedEmulatorProfile {
     pub id: String,
@@ -167,6 +167,14 @@ pub struct DetectedEmulatorProfile {
     pub platform_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub core_path: Option<String>,
+    /// Overrides for profiles the catalog does not know (discovered forks
+    /// such as yuzu); `None` falls back to the catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -181,6 +189,9 @@ pub struct DetectedEmulator {
     pub flatpak_id: Option<String>,
     pub profiles: Vec<DetectedEmulatorProfile>,
     pub already_added: bool,
+    /// Where it was found: `PATH`, `Flatpak` or a folder label.
+    #[serde(default)]
+    pub source: String,
 }
 
 /// `EmulationState`.

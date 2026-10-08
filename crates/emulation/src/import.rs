@@ -274,52 +274,89 @@ pub fn import_scanned_roms(
     Ok(result)
 }
 
+/// Outcome of scanning ROM folders in the background.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AutoScanReport {
+    /// Folders that were scanned.
+    pub scanned: usize,
+    /// Newly imported games.
+    pub imported: usize,
+    /// One message per folder that could not be scanned (missing folder,
+    /// unknown emulator, ...). The other folders are still scanned.
+    pub errors: Vec<String>,
+}
+
+/// Scans one saved folder and imports the games not imported yet.
+pub fn scan_saved_folder(paths: &HeroicPaths, scanner: &crate::types::RomScanner) -> Result<(usize, Vec<String>)> {
+    let preview = preview_rom_scan(
+        paths,
+        &RomScanArgs {
+            emulator_id: scanner.emulator_id.clone(),
+            profile_id: scanner.profile_id.clone(),
+            directory: scanner.directory.clone(),
+            scan_subfolders: Some(scanner.scan_subfolders),
+            merge_related_files: Some(scanner.merge_related_files),
+        },
+    )?;
+    let mut errors = preview.errors.clone();
+    let newcomers: Vec<RomScanItem> = preview
+        .games
+        .into_iter()
+        .filter(|g| !g.already_imported)
+        .map(|mut g| {
+            g.import = true;
+            g
+        })
+        .collect();
+    if newcomers.is_empty() {
+        return Ok((0, errors));
+    }
+    let result = import_scanned_roms(
+        paths,
+        &RomScanImportArgs {
+            emulator_id: scanner.emulator_id.clone(),
+            profile_id: scanner.profile_id.clone(),
+            directory: scanner.directory.clone(),
+            scanner_id: Some(scanner.id.clone()),
+            scan_subfolders: Some(scanner.scan_subfolders),
+            merge_related_files: Some(scanner.merge_related_files),
+            auto_scan_on_refresh: Some(scanner.auto_scan_on_refresh),
+            games: newcomers,
+        },
+    )?;
+    errors.extend(result.errors);
+    Ok((result.imported, errors))
+}
+
+/// `runAutoRomScanners` with a report: every scanner with `autoScanOnRefresh`
+/// (or, with `only`, exactly that scanner whatever its flag) imports the games
+/// not imported yet. A folder that fails does not stop the others.
+pub fn run_rom_scanners(paths: &HeroicPaths, only: Option<&str>) -> Result<AutoScanReport> {
+    let mut report = AutoScanReport::default();
+    for scanner in store::list_rom_scanners(paths)? {
+        match only {
+            Some(id) if scanner.id != id => continue,
+            None if !scanner.auto_scan_on_refresh => continue,
+            _ => {}
+        }
+        report.scanned += 1;
+        match scan_saved_folder(paths, &scanner) {
+            Ok((n, errors)) => {
+                report.imported += n;
+                report
+                    .errors
+                    .extend(errors.into_iter().map(|e| format!("{}: {e}", scanner.name)));
+            }
+            Err(e) => report.errors.push(format!("{}: {e:#}", scanner.name)),
+        }
+    }
+    Ok(report)
+}
+
 /// `runAutoRomScanners`: for every scanner with `autoScanOnRefresh`, imports
 /// the games not imported yet. Returns the number of newly imported games.
 pub fn run_auto_rom_scanners(paths: &HeroicPaths) -> Result<usize> {
-    let mut imported = 0;
-    for scanner in store::list_rom_scanners(paths)? {
-        if !scanner.auto_scan_on_refresh {
-            continue;
-        }
-        let preview = preview_rom_scan(
-            paths,
-            &RomScanArgs {
-                emulator_id: scanner.emulator_id.clone(),
-                profile_id: scanner.profile_id.clone(),
-                directory: scanner.directory.clone(),
-                scan_subfolders: Some(scanner.scan_subfolders),
-                merge_related_files: Some(scanner.merge_related_files),
-            },
-        )?;
-        let newcomers: Vec<RomScanItem> = preview
-            .games
-            .into_iter()
-            .filter(|g| !g.already_imported)
-            .map(|mut g| {
-                g.import = true;
-                g
-            })
-            .collect();
-        if newcomers.is_empty() {
-            continue;
-        }
-        let result = import_scanned_roms(
-            paths,
-            &RomScanImportArgs {
-                emulator_id: scanner.emulator_id.clone(),
-                profile_id: scanner.profile_id.clone(),
-                directory: scanner.directory.clone(),
-                scanner_id: Some(scanner.id.clone()),
-                scan_subfolders: Some(scanner.scan_subfolders),
-                merge_related_files: Some(scanner.merge_related_files),
-                auto_scan_on_refresh: Some(scanner.auto_scan_on_refresh),
-                games: newcomers,
-            },
-        )?;
-        imported += result.imported;
-    }
-    Ok(imported)
+    Ok(run_rom_scanners(paths, None)?.imported)
 }
 
 /// `setEmulatorLaunchRom`: remembers which ROM (disc) to launch.
@@ -508,6 +545,49 @@ mod tests {
         .unwrap();
         write(roms.path().join("Delta.iso"), "x").unwrap();
         assert_eq!(run_auto_rom_scanners(&paths).unwrap(), 0);
+    }
+
+    #[test]
+    fn rom_scanners_report_errors_and_continue() {
+        let (_h, paths, roms, e, p) = setup();
+        let dir = roms.path().to_str().unwrap();
+        // A broken folder first: it must not stop the good one.
+        store::upsert_rom_scanner(
+            &paths,
+            UpsertRomScannerArgs {
+                name: Some("Gone".into()),
+                emulator_id: e.clone(),
+                profile_id: p.clone(),
+                directory: "/no/such/folder".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let good = store::upsert_rom_scanner(
+            &paths,
+            UpsertRomScannerArgs { emulator_id: e.clone(), profile_id: p.clone(), directory: dir.into(), ..Default::default() },
+        )
+        .unwrap();
+        let off = store::upsert_rom_scanner(
+            &paths,
+            UpsertRomScannerArgs {
+                emulator_id: e,
+                profile_id: p,
+                directory: "/off".into(),
+                auto_scan_on_refresh: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let r = run_rom_scanners(&paths, None).unwrap();
+        assert_eq!((r.scanned, r.imported), (2, 2));
+        assert_eq!(r.errors, ["Gone: Folder does not exist: /no/such/folder"]);
+        // A single folder is scanned whatever its auto-scan flag.
+        write(roms.path().join("Gamma.iso"), "x").unwrap();
+        let r = run_rom_scanners(&paths, Some(&good.id)).unwrap();
+        assert_eq!((r.scanned, r.imported, r.errors.len()), (1, 1, 0));
+        let r = run_rom_scanners(&paths, Some(&off.id)).unwrap();
+        assert_eq!((r.scanned, r.imported, r.errors.len()), (1, 0, 1));
     }
 
     #[test]

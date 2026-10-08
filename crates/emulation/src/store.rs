@@ -170,6 +170,68 @@ pub fn remove_user_emulator(paths: &HeroicPaths, id: &str) -> Result<Vec<UserEmu
     Ok(remaining)
 }
 
+/// Adds `emulator` as a new entry (never merges with an existing one, so
+/// several emulators of the same kind can coexist). A missing or colliding id
+/// is replaced by a fresh one; an empty profile list gets the defaults of its
+/// definition.
+pub fn insert_user_emulator(paths: &HeroicPaths, emulator: UserEmulator) -> Result<UserEmulator> {
+    json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
+        let mut next = emulator;
+        if next.id.is_empty() || f.emulators.iter().any(|e| e.id == next.id) {
+            next.id = new_id();
+        }
+        next.name = next.name.trim().to_owned();
+        next.executable = next.executable.trim().to_owned();
+        if next.name.is_empty() {
+            next.name = emulator_definition_name(&next.definition_id);
+        }
+        if next.profiles.is_empty() {
+            next.profiles = default_profiles(&next.definition_id, None);
+        }
+        f.emulators.push(next.clone());
+        Ok(next)
+    })
+}
+
+/// Replaces the emulator with the same id (fields this app does not model
+/// live in `extra` and are kept as given). Errors when it does not exist.
+pub fn replace_user_emulator(paths: &HeroicPaths, emulator: UserEmulator) -> Result<UserEmulator> {
+    json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
+        let Some(i) = f.emulators.iter().position(|e| e.id == emulator.id) else {
+            anyhow::bail!("Emulator not found.");
+        };
+        let mut next = emulator;
+        next.name = next.name.trim().to_owned();
+        next.executable = next.executable.trim().to_owned();
+        if next.name.is_empty() {
+            next.name = emulator_definition_name(&next.definition_id);
+        }
+        if next.profiles.is_empty() {
+            next.profiles = default_profiles(&next.definition_id, None);
+        }
+        f.emulators[i] = next.clone();
+        Ok(next)
+    })
+}
+
+/// Copies an emulator ("<name> copy", new id, no Playnite link, ROM folders
+/// are not copied).
+pub fn duplicate_user_emulator(paths: &HeroicPaths, id: &str) -> Result<UserEmulator> {
+    let Some(mut copy) = get_user_emulator(paths, id)? else {
+        anyhow::bail!("Emulator not found.");
+    };
+    copy.id = String::new();
+    copy.playnite_id = None;
+    copy.name = format!("{} copy", copy.name);
+    insert_user_emulator(paths, copy)
+}
+
+fn emulator_definition_name(definition_id: &str) -> String {
+    crate::catalog::emulator_definition(definition_id)
+        .map(|d| d.name.clone())
+        .unwrap_or_else(|| definition_id.to_owned())
+}
+
 /// What `resolveProfileTemplate` yields (everything scanning and launching
 /// need), falling back to the catalog for empty fields.
 #[derive(Debug, Clone, PartialEq)]
@@ -417,6 +479,43 @@ mod tests {
         remove_user_emulator(&paths, &e.id).unwrap();
         assert!(list_rom_scanners(&paths).unwrap().is_empty());
         assert!(list_user_emulators(&paths).unwrap().is_empty());
+    }
+
+    #[test]
+    fn insert_replace_duplicate_keep_several_of_a_kind() {
+        let (_d, paths) = temp();
+        let base = UserEmulator {
+            definition_id: "pcsx2".into(),
+            name: " PCSX2 ".into(),
+            executable: "/x/pcsx2".into(),
+            launch_kind: "native".into(),
+            ..Default::default()
+        };
+        // Same definition and executable twice: two entries, unlike upsert.
+        let a = insert_user_emulator(&paths, base.clone()).unwrap();
+        let b = insert_user_emulator(&paths, UserEmulator { id: a.id.clone(), ..base }).unwrap();
+        assert_ne!(a.id, b.id);
+        assert_eq!(a.name, "PCSX2");
+        assert_eq!(a.profiles.len(), 1);
+        assert_eq!(a.profiles[0].definition_profile_id.as_deref(), Some("ps2"));
+        assert_eq!(list_user_emulators(&paths).unwrap().len(), 2);
+        // Replace keeps position and unknown fields.
+        let mut edited = list_user_emulators(&paths).unwrap().remove(0);
+        edited.extra.insert("future".into(), serde_json::json!(1));
+        edited.executable = "/y/pcsx2".into();
+        let saved = replace_user_emulator(&paths, edited).unwrap();
+        assert_eq!(saved.id, a.id);
+        let list = list_user_emulators(&paths).unwrap();
+        assert_eq!((list[0].executable.as_str(), list[1].executable.as_str()), ("/y/pcsx2", "/x/pcsx2"));
+        assert_eq!(list[0].extra.get("future"), Some(&serde_json::json!(1)));
+        assert!(replace_user_emulator(&paths, UserEmulator { id: "nope".into(), ..Default::default() }).is_err());
+        // Duplicate.
+        let copy = duplicate_user_emulator(&paths, &a.id).unwrap();
+        assert_eq!(copy.name, "PCSX2 copy");
+        assert_ne!(copy.id, a.id);
+        assert_eq!(copy.executable, "/y/pcsx2");
+        assert_eq!(list_user_emulators(&paths).unwrap().len(), 3);
+        assert!(duplicate_user_emulator(&paths, "nope").is_err());
     }
 
     #[test]
