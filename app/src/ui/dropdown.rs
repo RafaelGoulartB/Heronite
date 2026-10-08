@@ -54,17 +54,41 @@ pub enum Align {
     Right,
 }
 
-/// Wraps `button` and, when `open`, the `menu` anchored below it.
+/// Hover callback of a dropdown: `(part, hovered)`. Parts: 1 = button,
+/// 2 = menu panel; callers may use further bits for nested flyouts. The menu
+/// rendered in a deferred layer is outside the button's hitbox, so each part
+/// reports its own hover and the owner closes only when none is hovered.
+pub type HoverFn = std::rc::Rc<dyn Fn(u8, bool, &mut Window, &mut App)>;
+
+pub const PART_BUTTON: u8 = 1;
+pub const PART_PANEL: u8 = 2;
+pub const PART_FLYOUT: u8 = 4;
+
+/// Wraps `button` and, when open, the `menu` anchored below it.
 pub fn dropdown(
     id: impl Into<ElementId>,
     button: impl IntoElement,
     menu: Option<AnyElement>,
     align: Align,
-    on_hover: impl Fn(&bool, &mut Window, &mut App) + 'static,
+    on_hover: HoverFn,
 ) -> Stateful<Div> {
-    let mut container = div().id(id).relative().flex_none().on_hover(on_hover).child(button);
+    let id: ElementId = id.into();
+    let h1 = on_hover.clone();
+    let mut container = div()
+        .id(id.clone())
+        .relative()
+        .flex_none()
+        .on_hover(move |h, w, cx| h1(PART_BUTTON, *h, w, cx))
+        .child(button);
     if let Some(menu) = menu {
-        let positioned = div().absolute().top(px(32.)).pt(px(4.)).occlude();
+        let h2 = on_hover.clone();
+        let positioned = div()
+            .id(ElementId::Name(format!("{id}-panel").into()))
+            .absolute()
+            .top(px(32.))
+            .pt(px(4.))
+            .occlude()
+            .on_hover(move |h, w, cx| h2(PART_PANEL, *h, w, cx));
         let positioned = match align {
             Align::Left => positioned.left_0(),
             Align::Right => positioned.right_0(),

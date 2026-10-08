@@ -75,6 +75,8 @@ pub struct CollectionView {
     search_input: Entity<InputState>,
     open_menu: Option<Menu>,
     menu_close: Option<Task<()>>,
+    /// Hovered parts of the open header menu (`ui::dropdown::PART_*`).
+    menu_parts: u8,
     facet_flyout: Option<FacetKind>,
     refreshing: bool,
     runtime: Arc<GameRuntime>,
@@ -181,6 +183,7 @@ impl CollectionView {
             search_input,
             open_menu: None,
             menu_close: None,
+            menu_parts: 0,
             facet_flyout: None,
             refreshing: false,
             runtime: Arc::new(runtime),

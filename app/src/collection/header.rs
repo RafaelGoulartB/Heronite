@@ -63,19 +63,27 @@ impl CollectionView {
         state
     }
 
-    fn menu_hover(&mut self, menu: Menu, hovered: bool, cx: &mut Context<Self>) {
+    /// `part`: which piece of the dropdown changed hover (see
+    /// `ui::dropdown::PART_*`). Closes 180ms after the last part is left.
+    pub(super) fn menu_hover(&mut self, menu: Menu, part: u8, hovered: bool, cx: &mut Context<Self>) {
         if hovered {
-            self.menu_close = None;
             if self.open_menu != Some(menu) {
                 self.open_menu = Some(menu);
+                self.menu_parts = 0;
                 self.facet_flyout = None;
-                cx.notify();
             }
+            self.menu_parts |= part;
+            self.menu_close = None;
+            cx.notify();
         } else if self.open_menu == Some(menu) {
+            self.menu_parts &= !part;
+            if self.menu_parts != 0 {
+                return;
+            }
             self.menu_close = Some(cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(CLOSE_DELAY).await;
                 this.update(cx, |this, cx| {
-                    if this.open_menu == Some(menu) {
+                    if this.open_menu == Some(menu) && this.menu_parts == 0 {
                         this.open_menu = None;
                         this.facet_flyout = None;
                         cx.notify();
@@ -106,7 +114,12 @@ impl CollectionView {
             )),
             content,
             align,
-            cx.listener(move |this, hovered: &bool, _, cx| this.menu_hover(menu, *hovered, cx)),
+            {
+                let weak = cx.entity().downgrade();
+                std::rc::Rc::new(move |part, hovered, _: &mut Window, cx: &mut App| {
+                    weak.update(cx, |this, cx| this.menu_hover(menu, part, hovered, cx)).ok();
+                })
+            },
         )
     }
 
@@ -386,7 +399,19 @@ impl CollectionView {
                     );
                 }
                 fly = fly.child(list);
-                wrap = wrap.child(div().absolute().top_0().right(relative(1.)).mr(px(-2.)).occlude().child(fly));
+                wrap = wrap.child(
+                    div()
+                        .id(SharedString::from(format!("facet-fly-{}", kind.as_str())))
+                        .absolute()
+                        .top_0()
+                        .right(relative(1.))
+                        .mr(px(-2.))
+                        .occlude()
+                        .on_hover(cx.listener(|this, h: &bool, _, cx| {
+                            this.menu_hover(Menu::Facets, crate::ui::dropdown::PART_FLYOUT, *h, cx)
+                        }))
+                        .child(fly),
+                );
             }
             p = p.child(wrap);
         }
