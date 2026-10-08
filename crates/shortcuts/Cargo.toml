@@ -1,0 +1,15 @@
+[package]
+name = "heronite-shortcuts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Desktop / application-menu shortcuts and Steam non-Steam shortcuts (shortcuts.vdf) compatible with Heroic"
+
+[dependencies]
+anyhow = "1"
+log = "0.4"
+dirs = "6"
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
