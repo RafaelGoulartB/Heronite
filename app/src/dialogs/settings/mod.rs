@@ -6,6 +6,7 @@
 pub mod appearance;
 pub mod backup;
 pub mod emulators;
+pub mod heroic;
 pub mod metadata;
 pub mod saves;
 pub mod screenshots;
@@ -14,6 +15,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::settings::EffectiveSettings;
 
+use super::heroic_settings::debug_dialog_height;
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
 use crate::ui::controls::{button, tabs, ButtonKind};
@@ -27,6 +29,9 @@ pub enum Tab {
     Emulators,
     Backup,
     Saves,
+    /// Heroic's global settings (`heroic_settings`).
+    General,
+    GameDefaults,
 }
 
 pub struct SettingsDialog {
@@ -40,6 +45,7 @@ pub struct SettingsDialog {
     pub emulators: emulators::State,
     pub backup: backup::State,
     pub saves: saves::State,
+    pub heroic: heroic::State,
 }
 
 impl EventEmitter<DialogEvent> for SettingsDialog {}
@@ -59,7 +65,19 @@ impl SettingsDialog {
         let emulators = emulators::State::new(&ctx, &settings, window, cx);
         let backup = backup::State::new(&ctx, &settings, window, cx);
         let saves = saves::State::new(&ctx, &settings, window, cx);
-        Self { ctx, tab: Tab::Appearance, settings, error: None, appearance, screenshots, metadata, emulators, backup, saves }
+        Self {
+            ctx,
+            tab: Tab::Appearance,
+            settings,
+            error: None,
+            appearance,
+            screenshots,
+            metadata,
+            emulators,
+            backup,
+            saves,
+            heroic: Default::default(),
+        }
     }
 
     /// Records the result of a settings write and tells the Collection.
@@ -87,6 +105,8 @@ impl Render for SettingsDialog {
                 (Tab::Emulators, "Emulators"),
                 (Tab::Backup, "Backup"),
                 (Tab::Saves, "Save backup"),
+                (Tab::General, "General"),
+                (Tab::GameDefaults, "Defaults"),
             ],
             self.tab,
             {
@@ -108,6 +128,8 @@ impl Render for SettingsDialog {
             Tab::Emulators => emulators::render(self, window, cx),
             Tab::Backup => backup::render(self, window, cx),
             Tab::Saves => saves::render(self, window, cx),
+            Tab::General => heroic::render_general(self, window, cx),
+            Tab::GameDefaults => heroic::render_defaults(self, window, cx),
         };
         let body = div()
             .flex()
@@ -126,7 +148,7 @@ impl Render for SettingsDialog {
                 id: "collection-settings".into(),
                 title: "Collection settings".into(),
                 width: 840f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
-                height: Some(620f32.min(vh * 0.7)),
+                height: Some(debug_dialog_height().unwrap_or(620f32.min(vh * 0.7))),
             },
             body.into_any_element(),
             Some(footer),

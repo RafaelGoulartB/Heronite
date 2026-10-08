@@ -786,6 +786,25 @@ impl Render for CollectionView {
                         d.update(cx, |d, _| d.tab = crate::dialogs::settings::Tab::Screenshots);
                     }
                 }
+                // Heroic settings tabs: gamesettings:wine|other|advanced|gamescope|saves,
+                // settings:general, settings:defaults[:wine|other|advanced|gamescope].
+                w @ ("gamesettings:wine" | "gamesettings:other" | "gamesettings:advanced" | "gamesettings:gamescope" | "gamesettings:saves") => {
+                    use crate::dialogs::game_settings::Tab;
+                    let tab = match w {
+                        "gamesettings:wine" => Tab::Wine,
+                        "gamesettings:other" => Tab::Other,
+                        "gamesettings:advanced" => Tab::Advanced,
+                        "gamesettings:saves" => Tab::Saves,
+                        _ => Tab::Gamescope,
+                    };
+                    self.open_game_settings_tab(tab, window, cx);
+                }
+                w if w == "settings:general" || w.starts_with("settings:defaults") => {
+                    self.open_settings(window, cx);
+                    if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<crate::dialogs::settings::SettingsDialog>().ok()) {
+                        d.update(cx, |d, _| crate::dialogs::settings::heroic::debug_open(d, w));
+                    }
+                }
                 "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage"
                 | "settings:metadata" | "wizard" => self.open_metadata_debug(which.as_str(), window, cx),
                 "playnite:import" => self.open_playnite_import(window, cx),

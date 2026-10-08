@@ -224,6 +224,8 @@ struct RawGame {
     is_linux_native: Option<bool>,
     description: Option<String>,
     extra: Option<Value>,
+    /// Kept in `GameInfo::rest` (the game settings show the Cloud saves tab).
+    cloud_save_enabled: Option<bool>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -259,7 +261,10 @@ impl From<RawGame> for GameInfo {
             is_linux_native: g.is_linux_native,
             description: g.description,
             extra: g.extra,
-            rest: Default::default(),
+            rest: g
+                .cloud_save_enabled
+                .map(|b| [("cloud_save_enabled".to_string(), Value::Bool(b))].into_iter().collect())
+                .unwrap_or_default(),
         }
     }
 }

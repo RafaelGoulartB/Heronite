@@ -183,6 +183,21 @@ impl CollectionView {
             );
         }
 
+        if game.installed {
+            let k = key.clone();
+            menu = menu.child(
+                item("cm-settings")
+                    .child(icon(Icon::Tune, px(20.), rgb(0xcaf3fd)))
+                    .child("Settings")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        let (Some(ctx), Some(g)) = (this.dialog_ctx(), this.lib.as_ref().and_then(|l| l.get(&k)).cloned()) else { return };
+                        let tab = crate::dialogs::game_settings::Tab::heroic_start(&g);
+                        let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
+                        this.open_dialog(view, cx);
+                    })),
+            );
+        }
+
         let k = key.clone();
         menu = menu.child(
             item("cm-metadata")
