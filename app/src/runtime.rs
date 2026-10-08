@@ -169,6 +169,12 @@ impl GameRuntime {
         self.launcher.force_clear(app_name)
     }
 
+    /// Saves the playtime of every running game now (the app is quitting).
+    /// Blocking file I/O: off the UI thread. Returns how many were running.
+    pub fn checkpoint_all(&self) -> usize {
+        self.launcher.checkpoint_all()
+    }
+
     /// Install action for a game that is not installed.
     pub fn install(&self, game: &CollectionGame) -> Result<(), String> {
         if let Some(id) = game.steam_app_id.as_deref() {

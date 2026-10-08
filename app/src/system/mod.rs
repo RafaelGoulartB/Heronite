@@ -7,7 +7,8 @@ pub mod notify;
 #[allow(dead_code)]
 pub mod shortcuts;
 pub mod settings;
+pub mod signals;
 pub mod single_instance;
 pub mod tray;
 
-pub use hub::{attach_runtime, candidate_keys, exit_code, has_window, init, post_game_idle};
+pub use hub::{attach_runtime, candidate_keys, exit_code, has_window, init, keep_in_tray, post_game_idle, quit_anyway};

@@ -62,6 +62,13 @@ impl CollectionView {
         cx.notify();
     }
 
+    /// The question before quitting while games run (window X without a tray
+    /// to stay in, tray "Quit").
+    pub fn system_quit_confirm(&mut self, games: Vec<String>, post_game: bool, tray: bool, cx: &mut Context<Self>) {
+        let view = cx.new(|_| crate::dialogs::quit_confirm::QuitConfirmDialog::new(games, post_game, tray));
+        self.open_dialog(view, cx);
+    }
+
     /// A toast for a message from the desktop integration.
     pub fn system_toast(&mut self, text: String, error: bool, cx: &mut Context<Self>) {
         self.show_toast(text, error, cx);

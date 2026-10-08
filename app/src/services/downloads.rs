@@ -346,6 +346,18 @@ impl Downloads {
         self.snapshot.state == DmState::Running
     }
 
+    /// The app is quitting: pauses the queue the way the Pause button does
+    /// (the element stays queued and resumes at the next start). Does not
+    /// block; see [`queue_idle`](Self::queue_idle).
+    pub fn pause_for_shutdown(&mut self) {
+        self.manager.pause_for_shutdown();
+    }
+
+    /// The queue's worker is gone (nothing of it is running any more).
+    pub fn queue_idle(&self) -> bool {
+        self.manager.is_idle()
+    }
+
     fn emit(&self, cx: &mut Context<Self>, ev: DownloadsEvent) {
         cx.emit(ev);
     }

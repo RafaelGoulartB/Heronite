@@ -3,6 +3,14 @@
 //! requests from the command line / protocol URLs / other instances / the
 //! tray, and when the process quits.
 //!
+//! Quitting has two parts. A *request* (window closed without a tray to stay
+//! in, tray "Quit") asks first when games are running or post-game work is in
+//! flight ([`request_quit`]). The *graceful quit* ([`graceful_quit`], also run
+//! by the signals and by the confirmation's "Quit anyway") saves the running
+//! games' playtime, pauses the Epic queue in order, releases the
+//! single-instance socket and the tray, and only then ends the loop. Games are
+//! independent processes: quitting never stops them.
+//!
 //! State lives in a global [`Hub`] (`Rc<RefCell<..>>`): borrow it only for
 //! short scopes and never while calling into GPUI (opening a window builds
 //! the Collection, which calls back into [`attach_runtime`]).
@@ -53,6 +61,8 @@ struct State {
     exit_when_idle: bool,
     /// The next window close is ours (tray / minimize on launch): stay alive.
     hiding: bool,
+    /// The graceful quit began: no new windows, requests or quits.
+    quitting: bool,
     fake_launch: bool,
     settings: SysSettings,
     settings_stamp: Option<SystemTime>,
@@ -110,7 +120,13 @@ fn env_flag(name: &str) -> bool {
 
 /// Sets everything up and opens the first window (unless the invocation or
 /// the settings ask for none).
-pub fn init(cx: &mut App, cli: Cli, started: Instant, messages: Option<UnboundedReceiver<Message>>) {
+pub fn init(
+    cx: &mut App,
+    cli: Cli,
+    started: Instant,
+    messages: Option<UnboundedReceiver<Message>>,
+    signals: Option<UnboundedReceiver<i32>>,
+) {
     let heroic = HeroicPaths::detect();
     let settings = SysSettings::load(&heroic);
     let (runtime, events) = GameRuntime::new(heroic.clone());
@@ -140,6 +156,7 @@ pub fn init(cx: &mut App, cli: Cli, started: Instant, messages: Option<Unbounded
         tray,
         exit_when_idle: cli.launch.is_some() && !want_window && !start_in_tray,
         hiding: false,
+        quitting: false,
         fake_launch: env_flag("HERONITE_DEBUG_FAKE_LAUNCH"),
         settings,
         settings_stamp: heronite_data::game_config::global_config_path(&heroic).metadata().and_then(|m| m.modified()).ok(),
@@ -169,6 +186,19 @@ pub fn init(cx: &mut App, cli: Cli, started: Instant, messages: Option<Unbounded
         cx.spawn(async move |cx| {
             while let Some(msg) = rx.next().await {
                 cx.update(|cx| on_message(cx, msg));
+            }
+        })
+        .detach();
+    }
+
+    // SIGTERM / SIGINT / SIGHUP: quit without asking.
+    if let Some(mut rx) = signals {
+        cx.spawn(async move |cx| {
+            while let Some(signal) = rx.next().await {
+                cx.update(|cx| {
+                    log::info!("quitting because of signal {signal}");
+                    graceful_quit(cx);
+                });
             }
         })
         .detach();
@@ -227,7 +257,31 @@ fn debug_hooks(cx: &mut App, tray_tx: UnboundedSender<TrayCmd>) {
     if let Some(ms) = after("HERONITE_DEBUG_QUIT_AFTER_MS") {
         cx.spawn(async move |cx| {
             cx.background_executor().timer(Duration::from_millis(ms)).await;
-            cx.update(|cx| quit(cx));
+            cx.update(|cx| graceful_quit(cx));
+        })
+        .detach();
+    }
+    // As the tray's Quit (asks first when a game runs).
+    if let Some(ms) = after("HERONITE_DEBUG_REQUEST_QUIT_AFTER_MS") {
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(Duration::from_millis(ms)).await;
+            cx.update(|cx| request_quit(cx));
+        })
+        .detach();
+    }
+    // As the user pressing the window's close button.
+    if let Some(ms) = after("HERONITE_DEBUG_USER_CLOSE_AFTER_MS") {
+        cx.spawn(async move |cx| {
+            cx.background_executor().timer(Duration::from_millis(ms)).await;
+            cx.update(|cx| {
+                log::info!("[debug] the user closes the window");
+                if allow_user_close(cx) {
+                    let handle = hub(cx).0.borrow().window.as_ref().map(|w| w.handle);
+                    if let Some(handle) = handle {
+                        let _ = handle.update(cx, |_, window, _| window.remove_window());
+                    }
+                }
+            });
         })
         .detach();
     }
@@ -323,6 +377,9 @@ fn open_main_window(cx: &mut App, started: Instant) -> Option<MainWindow> {
     };
     match gpui_kit::open_window(options, cx, |window, cx| {
         window.set_window_title("Heronite");
+        // The close button / compositor "close": ask first when quitting
+        // would leave games or post-game work behind.
+        window.on_window_should_close(cx, |_, cx| allow_user_close(cx));
         cx.new(|cx| CollectionView::new(started, window, cx))
     }) {
         Ok((handle, view)) => {
@@ -394,6 +451,9 @@ fn on_window_closed(cx: &mut App, id: WindowId) {
         if let Some(t) = &s.tray {
             t.set_window_open(false);
         }
+        if s.quitting {
+            return;
+        }
         s.tray.is_some() && (hiding || settings.exit_to_tray)
     };
     if keep {
@@ -402,16 +462,155 @@ fn on_window_closed(cx: &mut App, id: WindowId) {
         maybe_exit_idle(cx);
     } else {
         log::info!("window closed, quitting");
-        quit(cx);
+        // The close button already asked; this covers a window that went away
+        // by other means while games run.
+        request_quit(cx);
     }
 }
 
-pub fn quit(cx: &mut App) {
+/// Games the launcher is tracking (titles, sorted) and whether post-game work
+/// (backups, cloud saves) is still running: what a quit would leave behind.
+fn pending_work(cx: &App) -> (Vec<String>, bool) {
     let hub = hub(cx);
-    if let Some(t) = hub.0.borrow_mut().tray.take() {
+    let (running, runtime) = {
+        let s = hub.0.borrow();
+        (s.running.keys().cloned().collect::<Vec<_>>(), s.runtime.clone())
+    };
+    let mut titles: Vec<String> =
+        running.into_iter().map(|app| runtime.session_info(&app).map(|i| i.title).filter(|t| !t.is_empty()).unwrap_or(app)).collect();
+    titles.sort();
+    (titles, crate::services::session::busy())
+}
+
+/// Opens the quit confirmation in the existing main window.
+fn ask_quit_confirm(cx: &mut App, titles: Vec<String>, busy: bool) -> bool {
+    let hub = hub(cx);
+    let (view, tray) = {
+        let s = hub.0.borrow();
+        (s.window.as_ref().map(|w| w.view.clone()), s.tray.is_some())
+    };
+    let Some(view) = view else { return false };
+    view.update(cx, |v, cx| v.system_quit_confirm(titles, busy, tray, cx)).is_ok()
+}
+
+/// The close button was pressed (called by the platform before the window
+/// goes away). Returns whether it may close. The window stays when it was
+/// meant to quit the app while games run: the confirmation opens in it.
+fn allow_user_close(cx: &mut App) -> bool {
+    let hub = hub(cx);
+    let stays_alive = {
+        let mut s = hub.0.borrow_mut();
+        if s.quitting {
+            return true;
+        }
+        let settings = s.settings();
+        s.tray.is_some() && (s.hiding || settings.exit_to_tray)
+    };
+    if stays_alive {
+        return true;
+    }
+    let (titles, busy) = pending_work(cx);
+    if titles.is_empty() && !busy {
+        return true;
+    }
+    log::info!("close requested while {} game(s) run (post-game work: {busy}): asking", titles.len());
+    // Never `show_window` from here: the window is being updated right now.
+    ask_quit_confirm(cx, titles, busy);
+    false
+}
+
+/// A user's quit (tray menu, a window closed by other means). Asks first when
+/// games run or post-game work is in flight; otherwise quits.
+pub fn request_quit(cx: &mut App) {
+    if hub(cx).0.borrow().quitting {
+        return;
+    }
+    let (titles, busy) = pending_work(cx);
+    if titles.is_empty() && !busy {
+        return graceful_quit(cx);
+    }
+    log::info!("quit requested while {} game(s) run (post-game work: {busy}): asking", titles.len());
+    // The window may be hidden (tray): bring it up for the question.
+    let asked = show_window(cx).is_some() && ask_quit_confirm(cx, titles, busy);
+    if !asked {
+        log::warn!("could not show the quit confirmation: quitting");
+        graceful_quit(cx);
+    }
+}
+
+/// The confirmation's "Quit anyway".
+pub fn quit_anyway(cx: &mut App) {
+    graceful_quit(cx);
+}
+
+/// The confirmation's "Keep running in tray": the window goes, the app and
+/// the games stay.
+pub fn keep_in_tray(cx: &mut App) {
+    // The click that asked is being handled inside the window: close it after.
+    cx.defer(|cx| {
+        if !close_window_keep_alive(cx) {
+            log::warn!("could not hide the window to the tray");
+        }
+    });
+}
+
+/// How long the Epic queue gets to stop its process after the pause request.
+const EPIC_STOP_WAIT: Duration = Duration::from_secs(5);
+/// A quit that has not finished by then is forced (a stuck step).
+const QUIT_WATCHDOG: Duration = Duration::from_secs(15);
+
+/// Ends the app in order, without asking, and never blocks the UI thread:
+/// stop accepting second invocations, save the running games' playtime, pause
+/// the Epic queue (its element stays queued and resumes at the next start),
+/// shut the tray, then end the loop. Games keep running. A second call is a
+/// no-op; a signal while this runs ends the process at once.
+pub fn graceful_quit(cx: &mut App) {
+    let hub = hub(cx);
+    let (runtime, tray) = {
+        let mut s = hub.0.borrow_mut();
+        if s.quitting {
+            return;
+        }
+        s.quitting = true;
+        (s.runtime.clone(), s.tray.take())
+    };
+    log::info!("quitting");
+    super::signals::quit_started();
+    // A second process from now on finds no socket instead of a dying listener.
+    super::single_instance::close_active();
+    if let Some(t) = tray {
         t.shutdown();
     }
-    cx.quit();
+    let downloads = crate::services::try_downloads(cx);
+    if let Some(d) = &downloads {
+        // Only asks (legendary gets SIGTERM); waited for below.
+        d.update(cx, |d, _| d.pause_for_shutdown());
+    }
+    // If a step hangs, the process still ends.
+    let _ = std::thread::Builder::new().name("quit-watchdog".into()).spawn(|| {
+        std::thread::sleep(QUIT_WATCHDOG);
+        log::error!("the quit did not finish in {QUIT_WATCHDOG:?}: exiting");
+        std::process::exit(0);
+    });
+    cx.spawn(async move |cx| {
+        let saved = cx.background_spawn(async move { runtime.checkpoint_all() }).await;
+        if saved > 0 {
+            log::info!("saved the playtime of {saved} running game(s)");
+        }
+        if let Some(d) = downloads {
+            let deadline = Instant::now() + EPIC_STOP_WAIT;
+            while !cx.update(|cx| d.read(cx).queue_idle()) {
+                if Instant::now() >= deadline {
+                    log::warn!("the Epic queue did not stop in {EPIC_STOP_WAIT:?}; legendary is stopped when the app exits");
+                    break;
+                }
+                cx.background_executor().timer(Duration::from_millis(50)).await;
+            }
+        }
+        log::info!("goodbye");
+        cx.update(|cx| cx.quit());
+    })
+    .detach();
 }
 
 /// Whether the main window exists (otherwise results go to desktop
@@ -433,7 +632,7 @@ fn maybe_exit_idle(cx: &mut App) {
     };
     if idle {
         log::info!("game ended and no window was shown: exiting");
-        quit(cx);
+        graceful_quit(cx);
     }
 }
 
@@ -528,13 +727,17 @@ fn on_tray_cmd(cx: &mut App, cmd: TrayCmd) {
                 show_window(cx);
             }
         }
-        TrayCmd::Quit => quit(cx),
+        TrayCmd::Quit => request_quit(cx),
         TrayCmd::Launch(app_name) => launch(cx, LaunchRequest { app_name, ..Default::default() }, true, false),
     }
 }
 
 /// A second invocation reached this instance.
 fn on_message(cx: &mut App, msg: Message) {
+    if hub(cx).0.borrow().quitting {
+        log::info!("request from another invocation ignored: quitting");
+        return;
+    }
     log::info!("request from another invocation: {msg:?}");
     let hide_setting = hub(cx).0.borrow_mut().settings().hide_window_on_protocol_launch;
     let cli = Cli { launch: msg.launch.clone(), no_gui: msg.no_gui, ..Default::default() };

@@ -3,13 +3,20 @@
 //! so an instance on a fixture folder never talks to the user's.
 //!
 //! A second process connects, sends one line of JSON ([`Message`]) and exits
-//! when the first answers `ok`. If nobody answers (no socket, or a stale file
-//! from a crash) the process becomes the instance and binds the socket.
+//! when the first answers `ok` (only sent once the request was really handed
+//! to the running instance). If nobody listens (no socket, or a stale file
+//! from a crash) the process becomes the instance and binds the socket. If
+//! somebody listens but does not answer in time, or answers an error, it is
+//! [`Forward::Unresponsive`]: the caller must NOT start a second instance.
+//! At quit the first instance calls [`close_active`] before anything slow, so
+//! a late second process finds no socket instead of a dying listener.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -87,10 +94,31 @@ pub enum Forward {
     Delivered,
     /// Nobody is listening (a stale socket file was removed).
     NoInstance,
+    /// Somebody is listening but did not take the message: no answer in time,
+    /// the connection broke, or it answered an error. The reason is for the
+    /// user.
+    Unresponsive(String),
+}
+
+/// How long a second invocation waits for the running instance.
+#[derive(Debug, Clone, Copy)]
+pub struct Timeouts {
+    pub write: Duration,
+    pub answer: Duration,
+}
+
+impl Default for Timeouts {
+    fn default() -> Self {
+        Self { write: Duration::from_secs(3), answer: Duration::from_secs(5) }
+    }
 }
 
 /// Sends `msg` to the instance listening on `socket`.
 pub fn forward(socket: &Path, msg: &Message) -> std::io::Result<Forward> {
+    forward_with(socket, msg, Timeouts::default())
+}
+
+pub fn forward_with(socket: &Path, msg: &Message, timeouts: Timeouts) -> std::io::Result<Forward> {
     let mut stream = match UnixStream::connect(socket) {
         Ok(s) => s,
         Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => return Ok(Forward::NoInstance),
@@ -101,29 +129,67 @@ pub fn forward(socket: &Path, msg: &Message) -> std::io::Result<Forward> {
         }
         Err(e) => return Err(e),
     };
-    stream.set_write_timeout(Some(Duration::from_secs(3)))?;
-    stream.set_read_timeout(Some(Duration::from_secs(5)))?;
-    stream.write_all(msg.to_line().as_bytes())?;
-    stream.write_all(b"\n")?;
+    // From here on somebody is there: failures are `Unresponsive`, never a
+    // reason to start a second instance.
+    let unresponsive = |what: &str, e: std::io::Error| {
+        let reason = match e.kind() {
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut => format!("{what}: no answer in time"),
+            _ => format!("{what}: {e}"),
+        };
+        Ok(Forward::Unresponsive(reason))
+    };
+    if let Err(e) = stream.set_write_timeout(Some(timeouts.write)).and_then(|_| stream.set_read_timeout(Some(timeouts.answer))) {
+        return unresponsive("configuring the connection", e);
+    }
+    if let Err(e) = stream.write_all(msg.to_line().as_bytes()).and_then(|_| stream.write_all(b"\n")) {
+        return unresponsive("sending the request", e);
+    }
     let mut ack = String::new();
-    BufReader::new(&stream).read_line(&mut ack)?;
-    if ack.trim() == "ok" {
-        Ok(Forward::Delivered)
-    } else {
-        Err(std::io::Error::new(std::io::ErrorKind::InvalidData, format!("unexpected answer {ack:?}")))
+    match BufReader::new(&stream).read_line(&mut ack) {
+        Err(e) => unresponsive("waiting for the answer", e),
+        Ok(0) => Ok(Forward::Unresponsive("the running instance closed the connection without answering".into())),
+        Ok(_) if ack.trim() == "ok" => Ok(Forward::Delivered),
+        Ok(_) => Ok(Forward::Unresponsive(format!("unexpected answer {:?}", ack.trim()))),
     }
 }
 
-/// The listening side. Dropping it removes the socket file.
+/// The listening side. Dropping it removes the socket file (unless
+/// [`close_active`] already did).
 pub struct Server {
     path: PathBuf,
+    closed: Arc<AtomicBool>,
+}
+
+/// The socket this process listens on, for [`close_active`].
+static ACTIVE: Mutex<Option<(PathBuf, Arc<AtomicBool>)>> = Mutex::new(None);
+
+/// Stops accepting requests and removes the socket file now (the quit has
+/// started: a second invocation must find no socket, not a dying listener).
+/// Safe to call without a server and more than once.
+pub fn close_active() {
+    let active = ACTIVE.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if let Some((path, closed)) = active {
+        close_socket(&path, &closed);
+    }
+}
+
+fn close_socket(path: &Path, closed: &AtomicBool) {
+    if !closed.swap(true, Ordering::SeqCst) {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 impl Server {
+    /// Same as [`close_active`] for this server.
+    pub fn close(&self) {
+        close_socket(&self.path, &self.closed);
+    }
+
     /// Binds `socket` and calls `on_message` (from a worker thread) for every
-    /// message received. Fails with `AddrInUse` when another live instance
-    /// owns the socket.
-    pub fn bind(socket: &Path, on_message: impl Fn(Message) + Send + 'static) -> std::io::Result<Server> {
+    /// message received; it returns whether the message was delivered, which
+    /// decides the answer (`ok` or `err`). Fails with `AddrInUse` when
+    /// another live instance owns the socket.
+    pub fn bind(socket: &Path, on_message: impl Fn(Message) -> bool + Send + 'static) -> std::io::Result<Server> {
         let listener = match UnixListener::bind(socket) {
             Ok(l) => l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
@@ -139,6 +205,8 @@ impl Server {
             Err(e) => return Err(e),
         };
         let _ = std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600));
+        let closed = Arc::new(AtomicBool::new(false));
+        let flag = closed.clone();
         std::thread::Builder::new().name("single-instance".into()).spawn(move || {
             for stream in listener.incoming() {
                 let Ok(stream) = stream else { continue };
@@ -147,24 +215,33 @@ impl Server {
                 if BufReader::new(&stream).read_line(&mut line).is_err() {
                     continue;
                 }
-                let answer = match Message::from_line(line.trim()) {
-                    Some(msg) => {
-                        on_message(msg);
-                        "ok\n"
+                let answer = if flag.load(Ordering::SeqCst) {
+                    "closing\n"
+                } else {
+                    match Message::from_line(line.trim()) {
+                        Some(msg) => {
+                            if on_message(msg) {
+                                "ok\n"
+                            } else {
+                                "err\n"
+                            }
+                        }
+                        None => "bad\n",
                     }
-                    None => "bad\n",
                 };
                 let mut stream = stream;
                 let _ = stream.write_all(answer.as_bytes());
             }
         })?;
-        Ok(Server { path: socket.to_path_buf() })
+        *ACTIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some((socket.to_path_buf(), closed.clone()));
+        Ok(Server { path: socket.to_path_buf(), closed })
     }
 }
 
 impl Drop for Server {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        // After `close_active` the path may belong to a newer instance.
+        self.close();
     }
 }
 
@@ -218,9 +295,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("s.sock");
         let (tx, rx) = mpsc::channel();
-        let server = Server::bind(&sock, move |m| tx.send(m).unwrap()).unwrap();
+        let server = Server::bind(&sock, move |m| tx.send(m).is_ok()).unwrap();
         // A second server on the same socket is refused while the first lives.
-        let err = Server::bind(&sock, |_| {}).err().expect("in use");
+        let err = Server::bind(&sock, |_| true).err().expect("in use");
         assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
 
         assert_eq!(forward(&sock, &msg()).unwrap(), Forward::Delivered);
@@ -244,8 +321,97 @@ mod tests {
 
         drop(UnixListener::bind(&sock).unwrap());
         let (tx, rx) = mpsc::channel();
-        let _server = Server::bind(&sock, move |m| tx.send(m).unwrap()).unwrap();
+        let _server = Server::bind(&sock, move |m| tx.send(m).is_ok()).unwrap();
         assert_eq!(forward(&sock, &msg()).unwrap(), Forward::Delivered);
         assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), msg());
+    }
+
+    fn quick() -> Timeouts {
+        Timeouts { write: Duration::from_millis(500), answer: Duration::from_millis(300) }
+    }
+
+    #[test]
+    fn a_listener_that_never_answers_is_unresponsive_not_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let t = std::time::Instant::now();
+        let got = forward_with(&sock, &msg(), quick()).unwrap();
+        assert!(matches!(&got, Forward::Unresponsive(r) if r.contains("no answer in time")), "{got:?}");
+        assert!(t.elapsed() < Duration::from_secs(3));
+        // The socket is the live instance's: it must not be removed.
+        assert!(sock.exists());
+        drop(listener);
+    }
+
+    #[test]
+    fn a_listener_that_hangs_up_or_answers_an_error_is_unresponsive() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        // Closes the connection without a word.
+        let hangup = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            drop(stream);
+            listener
+        });
+        let got = forward_with(&sock, &msg(), quick()).unwrap();
+        assert!(matches!(got, Forward::Unresponsive(_)), "{got:?}");
+        let listener = hangup.join().unwrap();
+
+        // Answers something that is not `ok`.
+        let angry = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            BufReader::new(&stream).read_line(&mut line).unwrap();
+            stream.write_all(b"nope\n").unwrap();
+        });
+        let got = forward_with(&sock, &msg(), quick()).unwrap();
+        assert!(matches!(&got, Forward::Unresponsive(r) if r.contains("nope")), "{got:?}");
+        angry.join().unwrap();
+    }
+
+    #[test]
+    fn ok_is_only_answered_when_the_message_was_delivered() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        // The receiving side is gone (the app is shutting down).
+        let _server = Server::bind(&sock, |_| false).unwrap();
+        let got = forward_with(&sock, &msg(), quick()).unwrap();
+        assert!(matches!(&got, Forward::Unresponsive(r) if r.contains("err")), "{got:?}");
+    }
+
+    #[test]
+    fn a_closed_server_has_no_socket_and_never_removes_a_newer_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        let (tx, rx) = mpsc::channel();
+        let server = Server::bind(&sock, move |m| tx.send(m).is_ok()).unwrap();
+        server.close();
+        assert!(!sock.exists());
+        assert_eq!(forward_with(&sock, &msg(), quick()).unwrap(), Forward::NoInstance);
+        assert!(rx.try_recv().is_err());
+        // A newer instance took the path: dropping the old server leaves it alone.
+        let newer = UnixListener::bind(&sock).unwrap();
+        drop(server);
+        assert!(sock.exists());
+        drop(newer);
+    }
+
+    #[test]
+    fn a_request_that_races_the_close_is_told_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("s.sock");
+        let (tx, rx) = mpsc::channel();
+        let server = Server::bind(&sock, move |m| tx.send(m).is_ok()).unwrap();
+        // Connected before the close, handled after it.
+        let mut stream = UnixStream::connect(&sock).unwrap();
+        server.close();
+        stream.write_all(msg().to_line().as_bytes()).unwrap();
+        stream.write_all(b"\n").unwrap();
+        let mut ack = String::new();
+        BufReader::new(&stream).read_line(&mut ack).unwrap();
+        assert_eq!(ack.trim(), "closing");
+        assert!(rx.try_recv().is_err(), "nothing was delivered");
     }
 }

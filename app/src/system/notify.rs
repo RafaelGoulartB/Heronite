@@ -22,3 +22,23 @@ pub fn send(title: impl Into<String>, body: impl Into<String>) {
         log::warn!("could not start the notification thread: {e}");
     }
 }
+
+/// Like [`send`], but waits (at most `wait`) for the notification to be
+/// handed to the desktop: for a process that exits right after.
+pub fn send_and_wait(title: impl Into<String>, body: impl Into<String>, wait: std::time::Duration) {
+    let (title, body) = (title.into(), body.into());
+    log::info!("[notify] {title}: {body}");
+    if std::env::var("HERONITE_DEBUG_NO_NOTIFY").is_ok_and(|v| !v.is_empty() && v != "0") {
+        return;
+    }
+    let (done, finished) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new().name("notify".into()).spawn(move || {
+        if let Err(e) = notify_rust::Notification::new().appname("Heronite").summary(&title).body(&body).show() {
+            log::warn!("desktop notification failed: {e}");
+        }
+        let _ = done.send(());
+    });
+    if spawned.is_ok() {
+        let _ = finished.recv_timeout(wait);
+    }
+}

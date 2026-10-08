@@ -32,6 +32,7 @@ pub mod screenshot_art;
 pub mod web_image;
 pub mod playnite_import;
 pub mod playtime;
+pub mod quit_confirm;
 pub mod remove_game;
 pub mod rom_folder;
 pub mod playnite_merge;

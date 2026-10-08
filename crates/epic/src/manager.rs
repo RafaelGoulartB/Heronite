@@ -379,7 +379,25 @@ impl DownloadManager {
         self.emit(Event::Changed);
     }
 
-    /// Stops the running process (app exit); the queue stays as it is.
+    /// The app is quitting: pauses the queue the way the user's pause does
+    /// (the element stays first in the queue, legendary keeps its resume
+    /// data) so the next start picks it up again. Does not block: poll
+    /// [`is_idle`](Self::is_idle) to know when the worker is gone. The paused
+    /// state itself is not persisted, only the queue.
+    pub fn pause_for_shutdown(&self) {
+        self.pause();
+    }
+
+    /// No worker thread and no element running: nothing is writing to the
+    /// install folders because of the queue.
+    pub fn is_idle(&self) -> bool {
+        let g = self.shared.inner.lock();
+        !g.worker && g.current.is_none()
+    }
+
+    /// Stops the running process and records it as aborted (it moves to
+    /// `finished`, which defeats the resume: NOT for quitting the app, use
+    /// [`pause_for_shutdown`](Self::pause_for_shutdown)).
     pub fn shutdown(&self) {
         let g = self.shared.inner.lock();
         if let Some(c) = g.current.as_ref() {
@@ -589,5 +607,43 @@ mod tests {
         assert_eq!(job.started.load(Ordering::SeqCst), 0);
         m.start();
         wait_until(&m, "done", |s| s.finished.len() == 1);
+    }
+
+    #[test]
+    fn pausing_for_shutdown_keeps_the_running_element_queued_on_disk() {
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, dir) = manager(job.clone());
+        m.add(el("a"));
+        m.add(el("b"));
+        wait_until(&m, "a running", |s| s.state == DmState::Running && job.started.load(Ordering::SeqCst) == 1);
+        assert!(!m.is_idle());
+        m.pause_for_shutdown();
+        for _ in 0..400 {
+            if m.is_idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(m.is_idle(), "the worker went away");
+        // What the next start loads: nothing finished, both elements still queued, a first.
+        let file = queue::load(&HeroicPaths::at(dir.path()));
+        assert!(file.finished.is_empty());
+        let names: Vec<_> = file.queue.iter().map(|e| e.params.app_name.as_str()).collect();
+        assert_eq!(names, ["a", "b"]);
+        // And it resumes: a new manager on the same folder runs them.
+        let job2 = FakeJob::new(&[], &[]);
+        let m2 = DownloadManager::new(HeroicPaths::at(dir.path()), job2.clone(), |_| {});
+        m2.start();
+        wait_until(&m2, "both done", |s| s.finished.len() == 2);
+        assert_eq!(*job2.runs.lock(), ["a", "b"]);
+    }
+
+    #[test]
+    fn an_idle_manager_is_idle_and_pausing_it_for_shutdown_is_harmless() {
+        let job = FakeJob::new(&[], &[]);
+        let (m, _rx, _dir) = manager(job);
+        assert!(m.is_idle());
+        m.pause_for_shutdown();
+        assert!(m.is_idle());
     }
 }

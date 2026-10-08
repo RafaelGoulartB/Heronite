@@ -34,8 +34,18 @@ fn main() {
     // first and exits (Heroic's `requestSingleInstanceLock`).
     let (server, messages) = match single_instance(&cli) {
         SingleInstance::Forwarded => return,
+        SingleInstance::Unresponsive(reason) => {
+            // Starting a second, unlocked instance on the same data would
+            // double-run the Epic queue, the tray and every game record.
+            let text = format!("Heronite is already running but is not responding ({reason})");
+            eprintln!("heronite-rs: {text}");
+            system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(3));
+            std::process::exit(1);
+        }
         SingleInstance::Primary { server, messages } => (server, messages),
     };
+    // SIGTERM / SIGINT / SIGHUP are a quit (see `system::signals`).
+    let signals = system::signals::spawn();
 
     gpui_kit::application()
         .with_assets(assets::Assets)
@@ -45,7 +55,7 @@ fn main() {
             gpui_kit::init(cx);
             assets::load_fonts(cx);
             theme::apply_component_theme(cx);
-            system::init(cx, cli, started, messages);
+            system::init(cx, cli, started, messages, signals);
         });
 
     // Removes the socket of the single-instance server.
@@ -59,6 +69,8 @@ fn main() {
 enum SingleInstance {
     /// Another instance took the request: nothing left to do.
     Forwarded,
+    /// A running instance holds the socket but did not take the request.
+    Unresponsive(String),
     Primary {
         server: Option<system::single_instance::Server>,
         messages: Option<futures::channel::mpsc::UnboundedReceiver<system::single_instance::Message>>,
@@ -82,15 +94,19 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
                 return SingleInstance::Forwarded;
             }
             Ok(Forward::NoInstance) => {}
+            Ok(Forward::Unresponsive(reason)) => {
+                log::error!("the running instance did not take the request: {reason}");
+                return SingleInstance::Unresponsive(reason);
+            }
             Err(err) => {
                 log::warn!("could not reach the running instance: {err}");
                 return primary(None, None);
             }
         }
         let (tx, rx) = futures::channel::mpsc::unbounded();
-        match Server::bind(&socket, move |m| {
-            let _ = tx.unbounded_send(m);
-        }) {
+        // `ok` goes back to the other process only if the request was queued
+        // for the instance (the receiver is gone while it shuts down).
+        match Server::bind(&socket, move |m| tx.unbounded_send(m).is_ok()) {
             Ok(server) => return primary(Some(server), Some(rx)),
             // Another instance won the race: forward to it on the next round.
             Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => continue,
