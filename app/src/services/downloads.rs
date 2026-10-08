@@ -4,8 +4,9 @@
 //! cloud saves). Pages, dialogs and the Collection observe it.
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use futures::channel::mpsc::{unbounded, UnboundedSender};
 use futures::StreamExt;
@@ -152,7 +153,37 @@ pub struct Downloads {
     /// Last problem of login / refresh, for the Epic page.
     pub last_error: Option<String>,
     eos: EosStatus,
-    eos_games: HashMap<String, EosGame>,
+    eos_games: HashMap<String, EosEntry>,
+}
+
+/// The cached overlay state of one game and what it was read from.
+struct EosEntry {
+    state: EosGame,
+    /// `None` when the state was set here (toggle, debug) and not read yet.
+    stamp: Option<EosStamp>,
+    /// `user.reg` of the prefix the state was read for.
+    registry: Option<PathBuf>,
+    loading: bool,
+}
+
+impl EosEntry {
+    fn set(state: EosGame) -> Self {
+        Self { state, stamp: None, registry: None, loading: false }
+    }
+}
+
+/// Modification times of the files the per-game state depends on: the game
+/// settings and the global defaults (which prefix) and the prefix registry
+/// (written by legendary, Heroic, the first-launch setup or Wine itself).
+/// When one changes, the next look at the menu reads the state again.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EosStamp([Option<SystemTime>; 3]);
+
+impl EosStamp {
+    fn read(heroic: &HeroicPaths, app_name: &str, registry: Option<&Path>) -> Self {
+        let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+        Self([mtime(&heroic.game_config(app_name)), mtime(&heroic.config()), registry.and_then(mtime)])
+    }
 }
 
 impl EventEmitter<DownloadsEvent> for Downloads {}
@@ -1013,35 +1044,52 @@ impl Downloads {
 
     /// Whether the overlay is on for `app_name`'s prefix (once loaded).
     pub fn eos_game(&self, app_name: &str) -> Option<EosGame> {
-        self.eos_games.get(app_name).copied()
+        self.eos_games.get(app_name).map(|e| e.state)
     }
 
-    /// Looks the state of a game up in the background, once (the context menu
-    /// calls this on every frame it is open).
+    /// Looks the state of a game up in the background. The context menu calls
+    /// this on every frame it is open: the state is only read again when one
+    /// of the files it depends on has changed since ([`EosStamp`]), and the
+    /// old state stays on screen meanwhile.
     pub fn eos_load_game(&mut self, app_name: &str, cx: &mut Context<Self>) {
-        if self.eos_games.contains_key(app_name) {
-            return;
+        if let Some(e) = self.eos_games.get_mut(app_name) {
+            if e.loading || e.stamp.as_ref() == Some(&EosStamp::read(&self.heroic, app_name, e.registry.as_deref())) {
+                return;
+            }
+            e.loading = true;
+        } else {
+            self.eos_games.insert(app_name.to_string(), EosEntry { loading: true, ..EosEntry::set(EosGame::Loading) });
         }
-        self.eos_games.insert(app_name.to_string(), EosGame::Loading);
         let (heroic, app) = (self.heroic.clone(), app_name.to_string());
         cx.spawn(async move |this, cx| {
-            let state = cx
+            let (state, registry, stamp) = cx
                 .background_spawn({
                     let app = app.clone();
                     async move {
-                        match eos_overlay::prefix_folder(&heroic, &app) {
+                        let folder = eos_overlay::prefix_folder(&heroic, &app);
+                        let registry = match &folder {
+                            PrefixFolder::Valid(prefix) => Some(Path::new(prefix).join("user.reg")),
+                            _ => None,
+                        };
+                        // Before asking legendary: a change while it runs is seen next time.
+                        let stamp = EosStamp::read(&heroic, &app, registry.as_deref());
+                        let state = match folder {
                             PrefixFolder::NotApplicable => EosGame::Unavailable,
                             PrefixFolder::Invalid => EosGame::Disabled,
                             PrefixFolder::Valid(prefix) => {
                                 let enabled = Legendary::locate(&heroic).map(|lg| eos_overlay::is_enabled(&lg, Some(&prefix))).unwrap_or(false);
                                 if enabled { EosGame::Enabled } else { EosGame::Disabled }
                             }
-                        }
+                        };
+                        (state, registry, stamp)
                     }
                 })
                 .await;
             this.update(cx, |this, cx| {
-                this.eos_games.insert(app, state);
+                // Cleared meanwhile (overlay removed): start over next time.
+                if this.eos_games.get(&app).is_some_and(|e| e.loading) {
+                    this.eos_games.insert(app, EosEntry { state, stamp: Some(stamp), registry, loading: false });
+                }
                 cx.notify();
             })
             .ok();
@@ -1061,6 +1109,8 @@ impl Downloads {
     /// Enabling needs the overlay: when it is missing the Collection asks
     /// whether to install it first ([`DownloadsEvent::EosNotInstalled`]).
     fn eos_enable_game(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        // It may have been installed by Heronite since the page last looked.
+        self.eos.installed = eos_overlay::status(&self.heroic).installed;
         if !self.eos.installed {
             self.emit(cx, DownloadsEvent::EosNotInstalled { app_name: app_name.to_string() });
             return;
@@ -1107,7 +1157,7 @@ impl Downloads {
             },
             move |this, r, _| {
                 if r.ok {
-                    this.eos_games.insert(app, if enable { EosGame::Enabled } else { EosGame::Disabled });
+                    this.eos_games.insert(app, EosEntry::set(if enable { EosGame::Enabled } else { EosGame::Disabled }));
                 }
             },
         );
@@ -1210,12 +1260,11 @@ impl Downloads {
             Some("eos-install") => self.eos_install(cx),
             Some("eos-remove") => self.eos_remove(cx),
             Some("eos-enable") => {
-                self.eos.installed = eos_overlay::status(&self.heroic).installed;
-                self.eos_games.insert(app.clone(), EosGame::Disabled);
+                self.eos_games.insert(app.clone(), EosEntry::set(EosGame::Disabled));
                 self.eos_toggle_game(&app, cx)
             }
             Some("eos-disable") => {
-                self.eos_games.insert(app.clone(), EosGame::Enabled);
+                self.eos_games.insert(app.clone(), EosEntry::set(EosGame::Enabled));
                 self.eos_toggle_game(&app, cx)
             }
             _ => log::warn!("unknown HERONITE_DEBUG_EPIC_OP {op}"),
@@ -1390,5 +1439,31 @@ impl Job for FakeJob {
             std::thread::sleep(Duration::from_millis(1000));
         }
         JobResult { status: DmStatus::Abort, error: None }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EosStamp, HeroicPaths};
+    use std::time::{Duration, SystemTime};
+
+    #[test]
+    fn eos_stamp_changes_with_settings_and_prefix_registry() {
+        let dir = tempfile::tempdir().unwrap();
+        let heroic = HeroicPaths::at(dir.path());
+        let reg = dir.path().join("pfx/user.reg");
+        std::fs::create_dir_all(reg.parent().unwrap()).unwrap();
+        std::fs::write(&reg, "WINE REGISTRY Version 2\n").unwrap();
+        let before = EosStamp::read(&heroic, "Game", Some(&reg));
+        assert_eq!(before, EosStamp::read(&heroic, "Game", Some(&reg)));
+
+        let later = SystemTime::now() + Duration::from_secs(5);
+        std::fs::File::options().write(true).open(&reg).unwrap().set_modified(later).unwrap();
+        let touched = EosStamp::read(&heroic, "Game", Some(&reg));
+        assert_ne!(before, touched);
+
+        std::fs::create_dir_all(heroic.games_config_dir()).unwrap();
+        std::fs::write(heroic.game_config("Game"), "{}").unwrap();
+        assert_ne!(touched, EosStamp::read(&heroic, "Game", Some(&reg)));
     }
 }
