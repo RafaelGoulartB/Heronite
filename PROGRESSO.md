@@ -409,3 +409,37 @@ Exemplo (no `add_game`, depois de gravar o jogo sideload):
 `let heroic = self.heroic.clone(); cx.background_spawn(async move { crate::system::shortcuts::on_game_added(&heroic, "sideload", &app_name) })` e mostrar `outcome.summary()` como toast.
 Também existem `add_shortcuts`, `remove_shortcuts`, `shortcuts_exist`, `add_to_steam`, `remove_from_steam`, `is_added_to_steam` (mesma assinatura `(heroic, runner, app_name)`).
 Raízes redirecionáveis: `HERONITE_DESKTOP_DIR`, `HERONITE_APPLICATIONS_DIR`, `HERONITE_STEAM_DIR`.
+
+## Sobras da Collection (agente "collection")
+
+Brief em `docs/agents/collection-extras.md`. Código novo: `app/src/collection/{extras,achievements,sessions}.rs`,
+`app/src/dialogs/{playtime,remove_game,ludusavi_backup}.rs`, `crates/data/src/{playtime,sessions,details_url}.rs`,
+`crates/metadata/src/{remove,achievements}.rs`, `scrollbar_draggable` em `app/src/ui/mod.rs`.
+
+- **Editar playtime** (menu de contexto, só se o jogo não está rodando): grava `totalPlayed` em `store/timestamp.json` como o
+  `setPlaytimeMinutes` (firstPlayed/lastPlayed preservados, `""` se não havia entrada). Heronite só tem isso no menu.
+- **Remover da Collection** (só runner `sideload`, confirmação com o texto do Heronite): apaga a entrada em
+  `sideload_apps/library.json`, meta/sessões/metadata/arte/playtime e recentes/favoritos/ocultos (`remove.ts`). Os atalhos
+  (`.desktop` e Steam não-Steam) saem pelas funções do agente "system" (`system::shortcuts`) antes da remoção.
+- **Backup save (Ludusavi)** por jogo (menu de contexto): diálogo que roda `backup_for_game(Manual)` numa thread e mostra
+  os mesmos resultados do Heronite (ocupado / sem match / erro / salvo + "Show in folder"). Testes só com runner falso.
+- **Histórico de sessões** no painel de foco (coluna lateral, últimas 12, `HH:MM · Heroic/Playnite`). No Heronite isso fica
+  na página do jogo; aqui fica no painel. Lê as sessões já carregadas com a biblioteca.
+- **Conquistas**: no Heroic só existem para GOG (`gog/games.ts`); cache em `store_cache/gog_achievements.json` (lido na
+  hora) ou API `gameplay.gog.com` com o token de `gog_store/auth.json`, numa thread. O token **não é renovado** (só o gogdl
+  faz isso; não mexemos no `auth.json`): token vencido = sem conquistas novas. Outros runners: painel oculto, igual ao Heronite.
+- **Botão "abrir detalhes"** (e item "Details" do menu): abre no navegador `store_url` (Epic/GOG), senão a página da Steam
+  do jogo, senão o primeiro site dos metadados; sem nada, toast "No store page is known for this game.".
+- **Busca no flyout de facetas** ("Filter list", substring sem diferenciar maiúsculas; reinicia ao trocar de faceta) e
+  **scrollbar arrastável** (lista e painel de foco: arrastar o polegar, clicar na trilha salta). 
+- **Steam não encontrada**: instalar/jogar um jogo Steam sem cliente abre o diálogo "Steam not found"; também adicionei
+  "Uninstall" (confirma e abre `steam://uninstall`) para jogos Steam instalados, como o Heronite.
+- Hooks: `HERONITE_DEBUG_DIALOG=playtime|remove|ludusavi|ludusavi:done|busy|error|steam-missing` (jogo de
+  `HERONITE_DEBUG_SELECT`), `HERONITE_DEBUG_SCROLL=list:<0..1>|focus:<0..1>`.
+- Verificado: testes unitários (data, metadata incl. servidor HTTP falso, app) e capturas do foco (sessões, conquistas),
+  menu de contexto, flyout de facetas e dos diálogos, com cópia de fixture e Ludusavi falso. **Não verificado**: arrastar a
+  scrollbar e digitar na busca das facetas (sem cliques; com o workspace oculto o Hyprland para de mandar frames, então
+  estados posteriores ao primeiro quadro não aparecem), ícones das conquistas na captura, GOG real (sem login), Ludusavi real.
+- Aviso para o agente "system": `app/src/system/hub.rs` tem um `#[test]` que falha ao compilar o binário de testes do
+  app (`recursion limit reached while expanding #[test]`: o glob `use super::*` traz o macro `test` do gpui). Importar os
+  itens explicitamente no módulo de testes resolve.
