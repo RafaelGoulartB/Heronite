@@ -1,7 +1,8 @@
 //! Bridge between `heronite-launch` and the UI: builds plans, starts/stops
 //! games and forwards launcher events to the UI thread.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use heronite_data::{CollectionGame, HeroicPaths};
@@ -24,9 +25,28 @@ impl CloudSync for EpicCloudSaves {
     }
 }
 
+/// What the post-game work needs to know about a running session. Filled in
+/// when the game is launched and read when it ends, so that work does not
+/// depend on any window (see `services::session`).
+#[derive(Clone, Debug)]
+pub struct SessionInfo {
+    pub app_name: String,
+    pub runner: String,
+    pub title: String,
+    pub steam_app_id: Option<String>,
+    /// Names the screenshot matcher also tries (store title, install folder).
+    pub aliases: Vec<String>,
+    pub is_emulator: bool,
+    /// ROM the emulator runs (emulated games).
+    pub rom: Option<String>,
+    /// The game's selected ROM in the overlay meta (fallback for `rom`).
+    pub selected_rom: Option<String>,
+}
+
 pub struct GameRuntime {
     launcher: Launcher,
     paths: HeroicPaths,
+    sessions: Mutex<HashMap<String, SessionInfo>>,
 }
 
 impl GameRuntime {
@@ -53,11 +73,21 @@ impl GameRuntime {
         });
         launcher.set_epic_setup(Arc::new(crate::services::downloads::EpicLaunchSetup(paths.clone())));
         spawn_tools_update(paths.clone());
-        (Self { launcher, paths }, frx)
+        (Self { launcher, paths, sessions: Mutex::new(HashMap::new()) }, frx)
     }
 
     pub fn is_running(&self, app_name: &str) -> bool {
         self.launcher.is_running(app_name)
+    }
+
+    /// The running (or just started) session of a game.
+    pub fn session_info(&self, app_name: &str) -> Option<SessionInfo> {
+        self.sessions.lock().ok()?.get(app_name).cloned()
+    }
+
+    /// Takes the session out when it ended.
+    pub fn take_session(&self, app_name: &str) -> Option<SessionInfo> {
+        self.sessions.lock().ok()?.remove(app_name)
     }
 
     /// Builds the plan (reads GamesConfig etc.) and starts the game.
@@ -100,14 +130,24 @@ impl GameRuntime {
             _ => None,
         };
         log::info!("launching {} ({}): {plan:?}", game.title, game.app_name);
-        self.launcher
-            .launch(LaunchRequest {
-                app_name: game.app_name.clone(),
-                runner: game.runner.clone(),
-                title: game.title.clone(),
-                plan,
-            })
-            .map_err(|e| e.to_string())?;
+        // Registered before the launch so the events find it; an "already
+        // running" refusal must not disturb the session that is there.
+        let previous = self.sessions.lock().ok().and_then(|mut s| s.insert(game.app_name.clone(), session_info(game, played_rom.clone())));
+        let launched = self.launcher.launch(LaunchRequest {
+            app_name: game.app_name.clone(),
+            runner: game.runner.clone(),
+            title: game.title.clone(),
+            plan,
+        });
+        if let Err(e) = launched {
+            if let Ok(mut s) = self.sessions.lock() {
+                match previous {
+                    Some(p) => s.insert(game.app_name.clone(), p),
+                    None => s.remove(&game.app_name),
+                };
+            }
+            return Err(e.to_string());
+        }
         Ok(played_rom)
     }
 
@@ -128,6 +168,19 @@ impl GameRuntime {
             "legendary" => "Epic games are installed from the install dialog.".into(),
             _ => "This game has no install action.".into(),
         })
+    }
+}
+
+fn session_info(game: &CollectionGame, rom: Option<String>) -> SessionInfo {
+    SessionInfo {
+        app_name: game.app_name.clone(),
+        runner: game.runner.clone(),
+        title: game.title.clone(),
+        steam_app_id: game.steam_app_id.clone(),
+        aliases: heronite_media::GameQuery::from_game(game).aliases,
+        is_emulator: game.launch_kind.as_deref() == Some("emulator"),
+        rom,
+        selected_rom: game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()),
     }
 }
 

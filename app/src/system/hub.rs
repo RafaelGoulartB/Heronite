@@ -47,9 +47,6 @@ struct State {
     subscriber: Option<UnboundedSender<LaunchEvent>>,
     /// Games started by this process (pid once known).
     running: HashMap<String, Option<u32>>,
-    /// `Exited` / `Error` events nobody was listening to (window closed to the
-    /// tray); the next Collection gets them so its post-game work still runs.
-    late: Vec<LaunchEvent>,
     tray: Option<TrayHandle>,
     /// Quit when the last game ends and no window was shown (started only to
     /// launch a game without UI).
@@ -99,9 +96,6 @@ pub fn attach_runtime(heroic: &HeroicPaths, cx: &mut App) -> (Arc<GameRuntime>, 
             let _ = tx.unbounded_send(LaunchEvent::Running { app_name: app_name.clone(), pid: *pid });
         }
     }
-    for ev in s.late.drain(..) {
-        let _ = tx.unbounded_send(ev);
-    }
     s.subscriber = Some(tx);
     (s.runtime.clone(), rx)
 }
@@ -121,6 +115,8 @@ pub fn init(cx: &mut App, cli: Cli, started: Instant, messages: Option<Unbounded
     let settings = SysSettings::load(&heroic);
     let (runtime, events) = GameRuntime::new(heroic.clone());
     let runtime = Arc::new(runtime);
+    // Post-game work (backup, capture session) runs here, with or without a window.
+    crate::services::session::init(cx, heroic.clone(), runtime.clone());
 
     let (tray_tx, tray_rx) = unbounded();
     let tray = (!settings.no_tray_icon && !env_flag("HERONITE_NO_TRAY"))
@@ -141,7 +137,6 @@ pub fn init(cx: &mut App, cli: Cli, started: Instant, messages: Option<Unbounded
         window: None,
         subscriber: None,
         running: HashMap::new(),
-        late: Vec::new(),
         tray,
         exit_when_idle: cli.launch.is_some() && !want_window && !start_in_tray,
         hiding: false,
@@ -180,6 +175,12 @@ pub fn init(cx: &mut App, cli: Cli, started: Instant, messages: Option<Unbounded
     }
 
     cx.on_window_closed(|cx, id| on_window_closed(cx, id)).detach();
+
+    // The Epic service (download queue, startup update check, auto-updates)
+    // belongs to the app, not to the window. A one-shot launch has no use for it.
+    if !hub(cx).0.borrow().exit_when_idle {
+        crate::services::downloads(cx);
+    }
 
     if want_window || unreachable {
         show_window(cx);
@@ -360,11 +361,22 @@ pub fn quit(cx: &mut App) {
     cx.quit();
 }
 
+/// Whether the main window exists (otherwise results go to desktop
+/// notifications).
+pub fn has_window(cx: &App) -> bool {
+    cx.try_global::<Hub>().is_some_and(|h| h.0.borrow().window.is_some())
+}
+
+/// The post-game work of a session finished: a headless launch can exit now.
+pub fn post_game_idle(cx: &mut App) {
+    maybe_exit_idle(cx);
+}
+
 fn maybe_exit_idle(cx: &mut App) {
     let hub = hub(cx);
     let idle = {
         let s = hub.0.borrow();
-        s.exit_when_idle && s.window.is_none() && s.running.is_empty()
+        s.exit_when_idle && s.window.is_none() && s.running.is_empty() && !crate::services::session::busy()
     };
     if idle {
         log::info!("game ended and no window was shown: exiting");
@@ -404,23 +416,48 @@ fn on_event(cx: &mut App, ev: LaunchEvent) {
         let ended = matches!(ev, LaunchEvent::Exited { .. } | LaunchEvent::Error { .. });
         if !delivered {
             s.subscriber = None;
-            if ended {
-                if let LaunchEvent::Error { message, .. } = &ev {
-                    log::error!("{message}");
-                }
-                if s.late.len() < 64 {
-                    s.late.push(ev.clone());
-                }
+            if let LaunchEvent::Error { message, .. } = &ev {
+                log::error!("{message}");
             }
         }
         (matches!(ev, LaunchEvent::Launching { .. }), ended, s.settings())
     };
+    // Window-independent consumers: post-game work and the Epic service.
+    if let Some(session) = crate::services::session::get(cx) {
+        session.update(cx, |s, cx| s.on_launch_event(&ev, cx));
+    }
+    tell_downloads(cx, &ev);
+    if !has_window(cx) {
+        notify_without_window(&ev);
+    }
     if launching && settings.minimize_on_launch {
         // Heroic's `minimizeOnLaunch`: needs the tray to come back from.
         close_window_keep_alive(cx);
     }
     if ended {
         maybe_exit_idle(cx);
+    }
+}
+
+/// The Epic service must not update a game while it is played (it queues the
+/// update once the game exits).
+fn tell_downloads(cx: &mut App, ev: &LaunchEvent) {
+    let Some(downloads) = crate::services::try_downloads(cx) else { return };
+    let (app_name, running) = match ev {
+        LaunchEvent::Launching { app_name } | LaunchEvent::Running { app_name, .. } => (app_name, true),
+        LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => (app_name, false),
+        LaunchEvent::Status { .. } => return,
+    };
+    downloads.update(cx, |d, cx| d.game_running(app_name, running, cx));
+}
+
+/// With the window closed to the tray nobody sees toasts: problems of a
+/// launch (it failed, cloud saves could not be synced) become notifications.
+fn notify_without_window(ev: &LaunchEvent) {
+    match ev {
+        LaunchEvent::Error { message, .. } => super::notify::send("Heronite", message.clone()),
+        LaunchEvent::Status { message, warning: true, .. } => super::notify::send("Heronite", message.clone()),
+        _ => {}
     }
 }
 

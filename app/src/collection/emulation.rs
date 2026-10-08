@@ -1,22 +1,18 @@
 //! Emulation hooks of the Collection: the "Add emulated games" dialog, the
-//! pre-launch flow of emulated games (pick a disc, pick a save state), what
-//! happens after a session (save-state key, Ludusavi backup) and the idle jobs
-//! (ROM auto-scan, scheduled config backup).
+//! pre-launch flow of emulated games (pick a disc, pick a save state) and the
+//! idle jobs (ROM auto-scan, scheduled config backup). What happens after a
+//! session (save-state key, Ludusavi backup) is `services::session`.
 
-use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::CollectionGame;
-use heronite_emulation::ludusavi::{notification, AfterPlay, LudusaviEnv, SystemRunner};
 use heronite_emulation::{run_rom_scanners, AutoScanReport};
 use heronite_emulation::{
-    list_emulator_save_states, remember_save_state_key, set_emulator_launch_rom, set_pending_launch_state, HostEnv,
-    PendingLaunchStates,
+    list_emulator_save_states, set_emulator_launch_rom, set_pending_launch_state, HostEnv, PendingLaunchStates,
 };
-use heronite_launch::SystemProbe;
 
 use super::CollectionView;
 use crate::dialogs::launch_state::{LaunchStateDialog, StateRow, ThumbRaw};
@@ -32,8 +28,6 @@ const STARTUP_SCAN_DELAY: Duration = Duration::from_secs(4);
 pub struct EmuState {
     /// A dialog asked the Collection to open another one.
     pub requested: Option<DialogRequest>,
-    /// ROM of each running emulated session (`app_name` -> rom).
-    sessions: HashMap<String, Option<String>>,
 }
 
 /// Result of listing a game's save states in the background.
@@ -216,69 +210,10 @@ impl CollectionView {
 
     fn launch_emulated(&mut self, key: &str, rom: Option<String>, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
-        match self.runtime.play_emulated(&game, rom) {
-            Ok(played) => {
-                self.emu.sessions.insert(game.app_name.clone(), played);
-            }
-            Err(err) => self.show_toast(err, true, cx),
+        // The ROM played is kept by the runtime for the post-game work.
+        if let Err(err) = self.runtime.play_emulated(&game, rom) {
+            self.show_toast(err, true, cx);
         }
-    }
-
-    /// After a session: learn the save-state key and run the Ludusavi backup
-    /// (when enabled), both off the UI thread.
-    pub(super) fn emu_session_ended(&mut self, app_name: &str, elapsed: Duration, cx: &mut Context<Self>) {
-        let rom = self.emu.sessions.remove(app_name);
-        let Some(lib) = self.lib.clone() else { return };
-        let Some(game) = lib.games.iter().find(|g| g.app_name == app_name).cloned() else { return };
-        let is_emulator = game.launch_kind.as_deref() == Some("emulator");
-        let ludusavi = lib.settings.ludusavi.enabled;
-        if !is_emulator && !ludusavi {
-            return;
-        }
-        let rom = rom.flatten().or_else(|| game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()));
-        let paths = self.heroic.clone();
-        cx.spawn(async move |this, cx| {
-            let outcome = cx
-                .background_spawn(async move {
-                    if is_emulator {
-                        let started = SystemTime::now().checked_sub(elapsed).unwrap_or_else(SystemTime::now);
-                        if let Err(e) = remember_save_state_key(&paths, &HostEnv::system(), &game.app_name, rom.as_deref(), started) {
-                            log::warn!("remembering save state key: {e:#}");
-                        }
-                    }
-                    if !ludusavi {
-                        return None;
-                    }
-                    let runner = SystemRunner::default();
-                    let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &SystemProbe };
-                    let result = heronite_emulation::ludusavi::backup_after_play(
-                        &env,
-                        &AfterPlay {
-                            app_name: game.app_name.clone(),
-                            title: game.title.clone(),
-                            runner: game.runner.clone(),
-                            elapsed_seconds: elapsed.as_secs(),
-                        },
-                    )?;
-                    if let Some((title, body)) = notification(&result, &game.title) {
-                        // Best-effort desktop notification.
-                        let _ = std::process::Command::new("notify-send")
-                            .args(["--app-name=Heronite", &title, &body])
-                            .stdin(std::process::Stdio::null())
-                            .stdout(std::process::Stdio::null())
-                            .stderr(std::process::Stdio::null())
-                            .spawn()
-                            .and_then(|mut c| c.wait());
-                        return Some((body, false));
-                    }
-                    result.error.map(|e| (format!("Ludusavi backup failed: {e}"), true))
-                })
-                .await;
-            if let Some((text, error)) = outcome {
-                this.update(cx, |this, cx| this.show_toast(text, error, cx)).ok();
-            }
-        })
-        .detach();
     }
 
     /// The refresh button: scans the saved ROM folders (`autoScanOnRefresh`

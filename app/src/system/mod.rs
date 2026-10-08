@@ -3,10 +3,11 @@
 
 pub mod cli;
 mod hub;
+pub mod notify;
 #[allow(dead_code)]
 pub mod shortcuts;
 pub mod settings;
 pub mod single_instance;
 pub mod tray;
 
-pub use hub::{attach_runtime, candidate_keys, exit_code, init};
+pub use hub::{attach_runtime, candidate_keys, exit_code, has_window, init, post_game_idle};

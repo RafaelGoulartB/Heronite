@@ -3427,6 +3427,7 @@ dependencies = [
  "ksni",
  "libc",
  "log",
+ "notify-rust",
  "rust-embed",
  "serde_json",
  "smallvec",

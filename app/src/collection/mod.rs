@@ -184,6 +184,11 @@ impl CollectionView {
         })
         .detach();
 
+        // Results of the post-game work (toasts, saved captures).
+        if let Some(session) = crate::services::session::get(cx) {
+            cx.subscribe(&session, |this, _, ev: &crate::services::session::SessionEvent, cx| this.on_session_event(ev, cx)).detach();
+        }
+
         let search_input = Self::new_search_input(window, cx);
         let this = Self {
             started,
@@ -438,7 +443,6 @@ impl CollectionView {
     }
 
     fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
-        self.shots_launch_event(&ev, cx);
         match ev {
             LaunchEvent::Launching { app_name } => {
                 self.playing.insert(app_name, false);
@@ -450,7 +454,8 @@ impl CollectionView {
             LaunchEvent::Exited { app_name, elapsed, .. } => {
                 log::info!("{app_name} exited after {elapsed:?}");
                 self.playing.remove(&app_name);
-                self.emu_session_ended(&app_name, elapsed, cx);
+                // Post-game work (backup, capture) is `services::session`'s;
+                // here the library just shows what changed.
                 // Playtime, last played and recent games changed on disk.
                 self.reload(cx);
             }

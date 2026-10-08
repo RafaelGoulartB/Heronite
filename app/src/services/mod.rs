@@ -2,6 +2,7 @@
 //! GPUI entities kept in a global, created on first use.
 
 pub mod downloads;
+pub mod session;
 pub mod widgets;
 
 use gpui_kit::*;
@@ -22,4 +23,9 @@ pub fn downloads(cx: &mut App) -> Entity<Downloads> {
     let entity = cx.new(|cx| Downloads::new(heroic, cx));
     cx.set_global(DownloadsGlobal(entity.clone()));
     entity
+}
+
+/// The Epic service if something already created it.
+pub fn try_downloads(cx: &App) -> Option<Entity<Downloads>> {
+    cx.try_global::<DownloadsGlobal>().map(|g| g.0.clone())
 }

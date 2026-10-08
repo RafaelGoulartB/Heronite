@@ -52,6 +52,16 @@ impl CollectionView {
         self.primary_action(&key, cx);
     }
 
+    /// What the window-independent post-game service reports.
+    pub(super) fn on_session_event(&mut self, ev: &crate::services::session::SessionEvent, cx: &mut Context<Self>) {
+        use crate::services::session::SessionEvent;
+        match ev {
+            SessionEvent::Toast { text, error } => self.show_toast(text.clone(), *error, cx),
+            SessionEvent::Capture(c) => self.shots_on_msg(super::screenshots::Msg::Capture(c.clone()), cx),
+        }
+        cx.notify();
+    }
+
     /// A toast for a message from the desktop integration.
     pub fn system_toast(&mut self, text: String, error: bool, cx: &mut Context<Self>) {
         self.show_toast(text, error, cx);

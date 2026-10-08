@@ -13,6 +13,7 @@ use gpui_kit::*;
 use heronite_data::game_config;
 use heronite_data::json_store;
 use heronite_data::HeroicPaths;
+use heronite_epic::autoupdate;
 use heronite_epic::cmd::{Cancel, Legendary};
 use heronite_epic::eos_overlay::{self, PrefixFolder};
 use heronite_epic::manager::{DmState, DownloadManager, Event as DmEvent, Job, JobResult, Snapshot};
@@ -23,6 +24,11 @@ use heronite_epic::user::UserInfo;
 use heronite_epic::util::file_size;
 use heronite_epic::{info, library, saves, user};
 use serde_json::Value;
+
+/// How often the background check for game updates repeats while the app
+/// lives (Heroic only checks at startup and on refresh; a tray-resident app
+/// would otherwise never notice an update).
+const PERIODIC_CHECK: Duration = Duration::from_secs(3 * 3600);
 
 /// A one-off operation running for a game.
 #[derive(Clone)]
@@ -125,6 +131,12 @@ pub struct Downloads {
     pub refreshing: bool,
     /// Queue the updates found by the refresh in progress (`autoUpdateGames`).
     auto_update_after_refresh: bool,
+    /// The refresh in progress is a background check: no success toast.
+    quiet_refresh: bool,
+    /// Games being played (the hub tells us): they are updated after they exit.
+    playing: HashSet<String>,
+    /// Auto-updates waiting for their game to exit.
+    deferred: HashSet<String>,
     pub logging_in: bool,
     /// Last problem of login / refresh, for the Epic page.
     pub last_error: Option<String>,
@@ -184,6 +196,9 @@ impl Downloads {
             stats: Stats::default(),
             refreshing: false,
             auto_update_after_refresh: false,
+            quiet_refresh: false,
+            playing: HashSet::new(),
+            deferred: HashSet::new(),
             logging_in: false,
             last_error: None,
             eos: EosStatus::default(),
@@ -201,7 +216,7 @@ impl Downloads {
             this.debug_queue_install(&app, cx);
         } else if std::env::var_os("HERONITE_DISABLE_IDLE_JOBS").is_none() {
             // Heroic starts the queue 5 s after launch; the update check
-            // (network) a little later, if the setting is on.
+            // (network) a little later, then periodically while the app lives.
             let manager = this.manager.clone();
             let heroic = heroic.clone();
             cx.spawn(async move |this, cx| {
@@ -215,16 +230,20 @@ impl Downloads {
                     manager.start();
                 }
                 cx.background_executor().timer(Duration::from_secs(15)).await;
-                let check = game_config::load_global(&heroic, &ops::home())
-                    .get("checkForUpdatesOnStartup")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                if check {
-                    this.update(cx, |this, cx| {
-                        this.refresh_library(cx);
-                        this.auto_update_after_refresh = true;
-                    })
-                    .ok();
+                let mut first = true;
+                loop {
+                    let h = heroic.clone();
+                    let (on_startup, auto) = cx.background_spawn(async move { update_settings(&h) }).await;
+                    // The startup check is what `checkForUpdatesOnStartup` asks
+                    // for (Heroic checks game updates then regardless); the
+                    // periodic ones only matter for unattended auto-updates.
+                    if (first && (on_startup || auto)) || (!first && auto) {
+                        if this.update(cx, |this, cx| this.check_for_updates(true, cx)).is_err() {
+                            break;
+                        }
+                    }
+                    first = false;
+                    cx.background_executor().timer(PERIODIC_CHECK).await;
                 }
             })
             .detach();
@@ -340,6 +359,9 @@ impl Downloads {
                 match element.status {
                     Some(DmStatus::Done) => {
                         self.toast(cx, format!("{title}: {} finished", verb.to_lowercase()), false);
+                        if !crate::system::has_window(cx) {
+                            crate::system::notify::send(title.clone(), format!("{verb} Finished"));
+                        }
                         self.progress.remove(&element.params.app_name);
                         self.emit(cx, DownloadsEvent::LibraryChanged);
                         self.reload_local(cx);
@@ -356,6 +378,9 @@ impl Downloads {
                         let why = error.unwrap_or_default();
                         let first = why.lines().next().unwrap_or("").to_string();
                         self.toast(cx, format!("{title}: {} failed{}", verb.to_lowercase(), if first.is_empty() { String::new() } else { format!(" ({first})") }), true);
+                        if !crate::system::has_window(cx) {
+                            crate::system::notify::send(title.clone(), format!("{verb} Failed"));
+                        }
                     }
                     _ => {}
                 }
@@ -674,6 +699,7 @@ impl Downloads {
         self.last_error = None;
         cx.notify();
         let heroic = self.heroic.clone();
+        let quiet = std::mem::take(&mut self.quiet_refresh);
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
@@ -696,12 +722,16 @@ impl Downloads {
                             None => {
                                 let n = this.updates.len();
                                 let msg = if n > 0 { format!("Epic library refreshed - {n} update(s) available") } else { "Epic library refreshed".to_string() };
-                                this.toast(cx, msg, false);
+                                if quiet {
+                                    log::info!("epic: {msg}");
+                                } else {
+                                    this.toast(cx, msg, false);
+                                }
                             }
                         }
                         this.emit(cx, DownloadsEvent::LibraryChanged);
                         if std::mem::take(&mut this.auto_update_after_refresh) {
-                            this.queue_auto_updates(cx);
+                            this.queue_auto_updates(None, cx);
                         }
                     }
                     Err(err) => {
@@ -729,23 +759,108 @@ impl Downloads {
         }
     }
 
-    /// `autoUpdateGames`: queues the updates found, except for games that
-    /// ignore updates (`ignoreGameUpdates` in their settings).
-    fn queue_auto_updates(&mut self, cx: &mut Context<Self>) {
-        let home = ops::home();
-        let enabled = game_config::load_global(&self.heroic, &home).get("autoUpdateGames").and_then(Value::as_bool).unwrap_or(false);
-        if !enabled {
+    /// The background update check (startup and periodic): skipped offline,
+    /// otherwise refreshes the library and, with `autoUpdateGames`, queues the
+    /// updates found (see [`autoupdate`]).
+    pub fn check_for_updates(&mut self, auto: bool, cx: &mut Context<Self>) {
+        if self.refreshing || !self.account.logged_in {
             return;
         }
-        let apps: Vec<String> = self.updates.iter().cloned().collect();
-        for app in apps {
-            let ignored = game_config::load_game(&self.heroic, &app, &home).get("ignoreGameUpdates").and_then(Value::as_bool).unwrap_or(false);
-            if ignored || self.queued(&app).is_some() {
-                continue;
+        cx.spawn(async move |this, cx| {
+            let online = cx.background_spawn(async { heronite_launch::net::Net::is_online(&heronite_launch::net::SystemNet) }).await;
+            if !online {
+                log::info!("epic: offline, not checking for game updates");
+                return;
             }
-            if let Some(info) = library_entry(&self.heroic, &app) {
-                self.queue_update(info, cx);
-            }
+            this.update(cx, |this, cx| {
+                this.quiet_refresh = true;
+                this.auto_update_after_refresh = auto;
+                this.refresh_library(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The hub tells which games are being played: such a game is not
+    /// updated; its update is queued once it exits.
+    pub fn game_running(&mut self, app_name: &str, running: bool, cx: &mut Context<Self>) {
+        if running {
+            self.playing.insert(app_name.to_string());
+            return;
+        }
+        if self.playing.remove(app_name) && self.deferred.remove(app_name) {
+            log::info!("epic: {app_name} exited, queueing its update");
+            self.queue_auto_updates(Some(app_name.to_string()), cx);
+        }
+    }
+
+    /// `autoUpdateGames`: queues the updates found, except for games that
+    /// ignore updates (`ignoreGameUpdates` in their settings) and games being
+    /// played (those wait for their exit); not at all while Heronite runs,
+    /// offline or on a metered connection. `only`: just that game.
+    fn queue_auto_updates(&mut self, only: Option<String>, cx: &mut Context<Self>) {
+        let heroic = self.heroic.clone();
+        let apps: Vec<String> = self.updates.iter().filter(|a| only.as_ref().is_none_or(|o| o == *a)).cloned().collect();
+        if apps.is_empty() {
+            return;
+        }
+        let queued: HashSet<String> = self.snapshot.queue.iter().map(|e| e.params.app_name.clone()).collect();
+        let playing = self.playing.clone();
+        cx.spawn(async move |this, cx| {
+            let (plan, entries) = cx
+                .background_spawn(async move {
+                    let home = ops::home();
+                    let enabled = game_config::load_global(&heroic, &home).get("autoUpdateGames").and_then(Value::as_bool).unwrap_or(false);
+                    let candidates: Vec<autoupdate::Candidate> = apps
+                        .iter()
+                        .map(|app| autoupdate::Candidate {
+                            app_name: app.clone(),
+                            ignored: game_config::load_game(&heroic, app, &home).get("ignoreGameUpdates").and_then(Value::as_bool).unwrap_or(false),
+                            queued: queued.contains(app),
+                            playing: playing.contains(app),
+                        })
+                        .collect();
+                    let gates = if enabled {
+                        autoupdate::Gates {
+                            enabled,
+                            heronite_running: heronite_running(),
+                            offline: !heronite_launch::net::Net::is_online(&heronite_launch::net::SystemNet),
+                            metered: autoupdate::connection_metered(),
+                        }
+                    } else {
+                        autoupdate::Gates::default()
+                    };
+                    let plan = autoupdate::plan(&gates, &candidates);
+                    let entries: Vec<Value> = plan.queue.iter().filter_map(|app| library_entry(&heroic, app)).collect();
+                    (plan, entries)
+                })
+                .await;
+            this.update(cx, |this, cx| this.apply_auto_plan(plan, entries, cx)).ok();
+        })
+        .detach();
+    }
+
+    fn apply_auto_plan(&mut self, plan: autoupdate::Plan, entries: Vec<Value>, cx: &mut Context<Self>) {
+        match plan.blocked {
+            Some(autoupdate::Block::Disabled) | None => {}
+            Some(why) => log::info!("epic: not auto-updating: {}", why.describe()),
+        }
+        for app in &plan.ignored {
+            log::info!("epic: skipping the auto-update of {app} (updates ignored)");
+        }
+        for app in plan.deferred {
+            log::info!("epic: {app} is being played: its update waits for the exit");
+            self.deferred.insert(app);
+        }
+        let mut titles = Vec::new();
+        for info in entries {
+            titles.push(info.get("title").and_then(Value::as_str).unwrap_or("a game").to_string());
+            log::info!("epic: auto-updating {}", titles.last().map(String::as_str).unwrap_or_default());
+            self.queue_update(info, cx);
+        }
+        if !titles.is_empty() && !crate::system::has_window(cx) {
+            crate::system::notify::send("Heronite", format!("Updating {} in the background", titles.join(", ")));
         }
     }
 
@@ -1150,13 +1265,15 @@ impl Downloads {
     }
 }
 
-/// Whether Heronite/Heroic (Electron, process name `heroic`) is running.
 fn heronite_running() -> bool {
-    let Ok(dir) = std::fs::read_dir("/proc") else { return false };
-    dir.flatten().any(|e| {
-        e.file_name().to_str().is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
-            && std::fs::read_to_string(e.path().join("comm")).is_ok_and(|c| c.trim() == "heroic")
-    })
+    autoupdate::heronite_running()
+}
+
+/// `(checkForUpdatesOnStartup, autoUpdateGames)` from the global config.
+fn update_settings(heroic: &HeroicPaths) -> (bool, bool) {
+    let global = game_config::load_global(heroic, &ops::home());
+    let flag = |key: &str, default: bool| global.get(key).and_then(Value::as_bool).unwrap_or(default);
+    (flag("checkForUpdatesOnStartup", true), flag("autoUpdateGames", false))
 }
 
 /// The library file's `GameInfo` of one game.

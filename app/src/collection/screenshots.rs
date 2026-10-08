@@ -14,8 +14,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::models::ScreenshotsSettings;
 use heronite_images::Decoded;
-use heronite_launch::LaunchEvent;
-use heronite_media::capture::{ActiveGame, CaptureConfig, CaptureEvent, CaptureService, ServiceOptions};
+use heronite_media::capture::{CaptureEvent, CaptureService};
 use heronite_media::{list_screenshots, GameQuery, Screenshot, ThumbnailCache};
 
 use super::{focus, CollectionView};
@@ -106,10 +105,6 @@ pub struct Shots {
     pub full_pending: Option<(PathBuf, (u32, u32))>,
     pub full_failed: Option<PathBuf>,
     pub boost: bool,
-    // capture
-    capture: Option<CaptureService>,
-    capture_cfg: Option<CaptureConfig>,
-    sessions: HashMap<String, String>,
     /// `HERONITE_DEBUG_DIALOG=gallery|viewer|viewer-zoom|viewer-fit|confirm`.
     pub debug: Option<String>,
     pub debug_delete: bool,
@@ -147,9 +142,6 @@ impl Default for Shots {
             full_pending: None,
             full_failed: None,
             boost: false,
-            capture: None,
-            capture_cfg: None,
-            sessions: HashMap::new(),
             debug: None,
             debug_delete: false,
         }
@@ -322,7 +314,7 @@ impl CollectionView {
             self.shots.folder = settings.folder.clone();
             self.refresh_shots(cx);
         }
-        self.shots_apply_capture_config(&settings);
+        self.shots_apply_capture_config(&settings, cx);
         if std::mem::take(&mut self.shots.debug_delete) {
             self.shots_delete(cx);
         }
@@ -383,7 +375,7 @@ impl CollectionView {
         .detach();
     }
 
-    fn shots_on_msg(&mut self, msg: Msg, cx: &mut Context<Self>) {
+    pub(super) fn shots_on_msg(&mut self, msg: Msg, cx: &mut Context<Self>) {
         match msg {
             Msg::Thumb(path, res) => self.shots.on_thumb(path, res),
             Msg::Full { req, path, res } => {
@@ -445,68 +437,12 @@ impl CollectionView {
 
     // --- capture service ---------------------------------------------------
 
-    fn shots_apply_capture_config(&mut self, s: &ScreenshotsSettings) {
-        let cfg = CaptureConfig::from_settings(s);
-        if self.shots.capture_cfg.as_ref() == Some(&cfg) {
-            return;
-        }
-        self.shots.capture_cfg = Some(cfg.clone());
-        if let Some(svc) = &self.shots.capture {
-            svc.set_config(cfg);
-        }
-    }
-
-    fn shots_capture_service(&mut self, cx: &mut Context<Self>) -> Option<CaptureService> {
-        if let Some(svc) = &self.shots.capture {
-            return Some(svc.clone());
-        }
-        let tx = self.shots.tx.clone()?;
-        let (std_tx, std_rx) = std::sync::mpsc::channel();
-        let _ = std::thread::Builder::new().name("capture-events".into()).spawn(move || {
-            for ev in std_rx {
-                if tx.unbounded_send(Msg::Capture(ev)).is_err() {
-                    break;
-                }
-            }
-        });
-        let svc = CaptureService::new(
-            std_tx,
-            ServiceOptions { portal_app_id: Some("com.heronite.launcher".into()), ..Default::default() },
-        );
-        if let Some(cfg) = self.shots.capture_cfg.clone() {
-            svc.set_config(cfg);
-        }
-        self.shots.capture = Some(svc.clone());
-        if let Some(g) = cx.try_global::<MediaGlobal>().map(|g| g.cache.clone()) {
-            cx.set_global(MediaGlobal { cache: g, capture: Some(svc.clone()) });
-        }
-        Some(svc)
-    }
-
-    /// Starts/stops the capture session of a game (`LaunchEvent`s).
-    pub(super) fn shots_launch_event(&mut self, ev: &LaunchEvent, cx: &mut Context<Self>) {
-        match ev {
-            LaunchEvent::Launching { app_name } => {
-                let Some(lib) = self.lib.clone() else { return };
-                let Some(game) = lib.games.iter().find(|g| &g.app_name == app_name) else { return };
-                let Some(svc) = self.shots_capture_service(cx) else { return };
-                let q = GameQuery::from_game(game);
-                self.shots.sessions.insert(app_name.clone(), game.runner.clone());
-                svc.begin_session(ActiveGame {
-                    app_name: game.app_name.clone(),
-                    runner: game.runner.clone(),
-                    title: game.title.clone(),
-                    aliases: q.aliases,
-                    steam_app_id: game.steam_app_id.clone(),
-                    started_at: std::time::SystemTime::now(),
-                });
-            }
-            LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
-                if let (Some(svc), Some(runner)) = (self.shots.capture.clone(), self.shots.sessions.remove(app_name)) {
-                    svc.end_session(&runner, app_name);
-                }
-            }
-            _ => {}
+    /// The capture service itself lives in `services::session` (it must work
+    /// with the window closed); the open Collection keeps it up to date with
+    /// the settings.
+    fn shots_apply_capture_config(&mut self, s: &ScreenshotsSettings, cx: &mut Context<Self>) {
+        if let Some(session) = crate::services::session::get(cx) {
+            session.update(cx, |session, _| session.apply_capture_config(s));
         }
     }
 
@@ -785,5 +721,7 @@ pub fn icon_button(id: impl Into<ElementId>, ic: Icon, d: f32, alpha: f32, hover
 
 /// The shared cache / capture service, once the Collection started them.
 pub fn screenshots_global(cx: &App) -> Option<MediaGlobal> {
-    cx.try_global::<MediaGlobal>().cloned()
+    let mut media = cx.try_global::<MediaGlobal>().cloned()?;
+    media.capture = crate::services::session::capture_of(cx);
+    Some(media)
 }
