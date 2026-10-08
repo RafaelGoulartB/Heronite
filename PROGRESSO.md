@@ -532,3 +532,58 @@ Heroic grava, e podem ser editados/removidos depois.
   Installer First" e a pré-visualização das imagens (o workspace oculto não entrega os quadros tardios; os logs mostram o
   carregamento ok), uso real com Wine/Proton. Sem macOS. O picker do SteamGridDB (grids/heroes da API) não foi portado:
   a busca web ocupa o lugar dele.
+
+## Gerenciador de emuladores (agente "emulators")
+
+Brief em `docs/agents/emulators.md`. Página nova ☰ → **Emulators** (`HERONITE_DEBUG_PAGE=emulators`), o único lugar para
+gerenciar emuladores e pastas de ROM. Os arquivos continuam os do Heronite (`local_library/emulators.json` e
+`rom-scanners.json`, mesmo formato; campos desconhecidos preservados).
+
+- **Código**: `app/src/pages/emulators.rs` (página), diálogos `app/src/dialogs/{emulator_edit,emulator_detect,rom_folder,
+  emulator_confirm}.rs`, backend `crates/emulation/src/{discover,manager}.rs` + adições em `store.rs`, `detect.rs`, `import.rs`.
+- **Lista**: um cartão por emulador (nome, tipo native/flatpak/wine, saúde — executável existe / é executável / Flatpak
+  instalado —, jogos que o usam, plataformas dos perfis) com Editar, Duplicar, Remover e as pastas de ROM dele.
+- **Vários emuladores**: "Add emulator" (catálogo ou Custom) sempre cria uma entrada nova (`insert_user_emulator`, sem o dedup
+  do `upsert`), então dá para ter vários do mesmo tipo/executável. Catálogo: escolhe a definição, o nome, os perfis e o
+  executável (achado pela detecção, ou seletor de arquivo) vêm preenchidos. Perfis: nome, plataforma, argumentos (placeholders
+  `{ImagePath} {ImageName} {ImageNameNoExt} {ImageDir} {EmulatorDir} {CorePath} {Name} {InstallDir}`), extensões, core do
+  RetroArch, pasta de trabalho; adicionar/remover perfil ("Add catalog profiles" repõe os do catálogo). Não deixa remover o
+  último perfil nem um perfil usado por uma pasta de ROM.
+- **Remover emulador** = `removeUserEmulator` do Heronite: tira o emulador e as pastas de ROM dele; os jogos ficam na
+  Collection (lançam com o executável gravado neles). A confirmação diz quantos jogos/pastas. Heronite **não** remove jogos
+  cuja ROM sumiu, então aqui também não.
+- **Detecção** (`discover.rs`): PATH + Flatpak (como antes) + AppImages/binários por nome (pcsx2*, duckstation*, ppsspp*,
+  rpcs3*, dolphin-emu/Dolphin*.AppImage, cemu, ryujinx, xemu, melonds, mgba, flycast, mame, scummvm, vita3k, shadps4,
+  azahar/citra, retroarch; forks do yuzu — yuzu/suyu/sudachi/eden/citron — viram "custom" com perfil Switch) em
+  `~/Applications ~/Apps ~/AppImages ~/.local/bin ~/.local/opt ~/bin ~/Games ~/Emulation ~/Downloads /opt /usr/local/bin` e nas
+  pastas (e pastas irmãs) dos emuladores já configurados. "Scan a folder for emulators…" busca recursivamente (profundidade 6,
+  60 mil entradas, 6 s, pula `games/roms/saves/bios/...` e pastas com >3000 itens). Casa por nome + bit de execução (ou
+  `.AppImage`/`.exe`); **nunca executa nada**. Resultados com checkbox; já configurados (mesmo executável, mesmo com outra
+  definição, como o "custom" do PCSX2 atual) aparecem marcados "Already added".
+- **Pastas de ROM** (várias por emulador): diretório, perfil, subpastas, juntar discos, escanear no refresh; "Scan now"
+  (importa direto, com resumo na página), "Review…" (abre o diálogo de preview/import existente já preenchido), Editar, Remover,
+  "Add ROM folder" e "Scan all folders now" (inclui as com auto-scan desligado). Salvar com auto-scan ligado já escaneia.
+  Pasta que não existe aparece em vermelho e o scan dela não derruba as outras (`run_rom_scanners` devolve um relatório).
+- **Refresh automático**: o botão de refresh do header (`hdr-refresh`) agora roda `run_rom_scanners` fora da thread de UI
+  (spinner já existente), recarrega a biblioteca e mostra "Added N new game(s)"; também roda ~4 s depois de abrir a Collection
+  (respeita `HERONITE_DISABLE_IDLE_JOBS`); o job ocioso de 90 s continua (backup agendado). Igual ao Heronite
+  (`handleRefreshAll` + `scheduleIdleMaintenance`).
+- **Settings → Emulators**: virou um resumo + botão "Open emulator manager" (`DialogRequest::EmulatorManager`).
+- **"Add emulated games"**: o select de perfil mostra o nome do perfil quando a plataforma é "Other" (`profile_label`).
+- **Ganchos em arquivos compartilhados**: `pages/mod.rs` (`Page::Emulators`, `PageEvent::ScanRoms`), `collection/nav.rs` (página +
+  uma linha para `ScanRoms`), `collection/header.rs` (refresh → `refresh_all`), `collection/emulation.rs` (`refresh_all`, scan
+  de início, `DialogRequest::EmulatorManager`, debug `refresh`), `dialogs/mod.rs` (módulos + `DialogRequest::EmulatorManager`).
+- **Debug**: `HERONITE_DEBUG_EMU_PAGE=add[:<def>]|edit[:<id>]|edit-profile[:<id>]|detect|folder|folder-edit|remove|remove-folder|
+  notice` e ações que gravam (só com fixture!): `add-save:<def>,<exe>[,<nome>]`, `edit-save:<exe>`, `dup`, `scan-all`,
+  `remove-yes`, `remove-folder-yes`, `folder-save:<dir>`; `HERONITE_DEBUG_DIALOG=refresh`; `HERONITE_DEBUG_SYNC=1` faz os
+  diálogos carregarem dados na hora (a janela oculta não repinta resultados tardios).
+- **Verificado**: 25 testes novos no backend (nomes → catálogo, caminhada limitada, marcação de já configurados, perfis por
+  core, insert/replace/duplicate, relatório de scan com pasta quebrada, saúde, contagem de jogos) + 6 no app; teste read-only
+  contra o `/data/Games/Emulation` real (acha DuckStation, RPCS3, shadPS4 ×2 e reconhece o PCSX2 configurado, sem entrar em
+  `games/`); capturas (workspace 7) da página (1 e 4 emuladores, saúde, pasta inexistente), diálogos add/edit/perfil/RetroArch/
+  Flatpak/detect/ROM folder/confirmações/aviso, aba Settings e menu ☰; fluxos reais contra cópias da fixture: add (catálogo e
+  custom), duplicar, editar, pasta de ROM com scan imediato (+4 jogos), "scan all", remover pasta e emulador, e o refresh do
+  header (+4 jogos, biblioteca 207 → 211).
+- **Não verificado / limites**: cliques reais e o seletor de arquivo nativo (sem mouse); toast "Added N new game(s)" na captura
+  (frame tardio); `flatpak info` real (Flatpak não instalado aqui); emuladores `.exe` com Wine; macOS/Windows. Nenhum emulador
+  ou jogo foi executado. O diálogo "Add emulated games" ainda tem "Detect on this PC"/"Custom…" próprios (só PATH/Flatpak).

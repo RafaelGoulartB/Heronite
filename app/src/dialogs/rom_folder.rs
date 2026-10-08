@@ -99,6 +99,12 @@ impl RomFolderDialog {
         }
     }
 
+    /// Debug helper: types the folder and saves.
+    pub fn debug_fill_and_save(&mut self, directory: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.directory.update(cx, |s, cx| s.set_value(directory.to_string(), window, cx));
+        self.save(cx);
+    }
+
     fn emulator(&self) -> Option<&UserEmulator> {
         self.emulators.iter().find(|e| e.id == self.emulator_id)
     }

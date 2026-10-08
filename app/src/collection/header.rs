@@ -246,7 +246,7 @@ impl CollectionView {
             .rounded(px(4.))
             .cursor_pointer()
             .hover(|s| s.bg(theme::white_a(0.08)))
-            .on_click(cx.listener(|this, _, _, cx| this.reload(cx)))
+            .on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx)))
             .child(if refreshing {
                 refresh_icon
                     .with_animation(

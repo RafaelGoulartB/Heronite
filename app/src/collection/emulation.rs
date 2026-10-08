@@ -11,6 +11,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::CollectionGame;
 use heronite_emulation::ludusavi::{notification, AfterPlay, LudusaviEnv, SystemRunner};
+use heronite_emulation::{run_rom_scanners, AutoScanReport};
 use heronite_emulation::{
     list_emulator_save_states, remember_save_state_key, set_emulator_launch_rom, set_pending_launch_state, HostEnv,
     PendingLaunchStates,
@@ -23,6 +24,9 @@ use crate::dialogs::pick_rom::PickRomDialog;
 use crate::dialogs::scan_roms::{ScanInitial, ScanRomsDialog};
 use crate::dialogs::settings::{SettingsDialog, Tab};
 use crate::dialogs::DialogRequest;
+
+/// How long after start the Collection scans the saved ROM folders.
+const STARTUP_SCAN_DELAY: Duration = Duration::from_secs(4);
 
 #[derive(Default)]
 pub struct EmuState {
@@ -62,6 +66,7 @@ impl CollectionView {
         if let Some(req) = self.emu.requested.take() {
             match req {
                 DialogRequest::ScanRoms(init) => self.open_scan_roms(init, window, cx),
+                DialogRequest::EmulatorManager => self.navigate(crate::pages::Page::Emulators, window, cx),
             }
         }
     }
@@ -276,12 +281,64 @@ impl CollectionView {
         .detach();
     }
 
-    /// ROM auto-scan and the scheduled config backup, 90 s after start.
-    /// `HERONITE_DISABLE_IDLE_JOBS=1` turns it off (tests against real data).
+    /// The refresh button: scans the saved ROM folders (`autoScanOnRefresh`
+    /// ones) off the UI thread, then reloads the library; the spinner runs
+    /// for both. Like Heronite's `handleRefreshAll`: new games are added, none
+    /// are ever removed.
+    pub(super) fn refresh_all(&mut self, cx: &mut Context<Self>) {
+        if self.refreshing {
+            return;
+        }
+        self.refreshing = true;
+        let paths = self.heroic.clone();
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { run_rom_scanners(&paths, None) }).await;
+            this.update(cx, |this, cx| {
+                // `reload` skips when a reload is in flight.
+                this.refreshing = false;
+                this.after_rom_scan(res, false, cx);
+                this.reload(cx);
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// Toast for the games a ROM scan added. `reload` = reload the library
+    /// when something was added (the refresh button reloads anyway).
+    fn after_rom_scan(&mut self, res: anyhow::Result<AutoScanReport>, reload: bool, cx: &mut Context<Self>) {
+        match res {
+            Ok(report) => {
+                for e in &report.errors {
+                    log::warn!("ROM scan: {e}");
+                }
+                if report.imported > 0 {
+                    self.show_toast(format!("Added {} new game(s)", report.imported), false, cx);
+                    if reload {
+                        self.reload(cx);
+                    }
+                }
+            }
+            Err(e) => log::warn!("ROM scan failed: {e:#}"),
+        }
+    }
+
+    /// ROM auto-scan and the scheduled config backup, 90 s after start (the
+    /// idle jobs), plus a ROM scan a few seconds after the Collection opens so
+    /// new games show up without pressing refresh.
+    /// `HERONITE_DISABLE_IDLE_JOBS=1` turns both off (tests against real data).
     pub(super) fn start_idle_jobs(&self, cx: &mut Context<Self>) {
         if std::env::var_os("HERONITE_DISABLE_IDLE_JOBS").is_some() {
             return;
         }
+        let paths = self.heroic.clone();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(STARTUP_SCAN_DELAY).await;
+            let res = cx.background_spawn(async move { run_rom_scanners(&paths, None) }).await;
+            this.update(cx, |this, cx| this.after_rom_scan(res, true, cx)).ok();
+        })
+        .detach();
         let (tx, rx) = futures::channel::oneshot::channel();
         heronite_emulation::jobs::spawn_idle_jobs(self.heroic.clone(), heronite_emulation::jobs::IDLE_DELAY, move |report| {
             let _ = tx.send(report);
@@ -316,6 +373,11 @@ impl CollectionView {
             if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<SettingsDialog>().ok()) {
                 d.update(cx, |d, _| d.tab = tab);
             }
+            return true;
+        }
+        if which == "refresh" {
+            // Same as pressing the header refresh button.
+            self.refresh_all(cx);
             return true;
         }
         if which == "scanroms" {

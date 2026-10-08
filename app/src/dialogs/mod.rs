@@ -56,6 +56,8 @@ pub enum DialogEvent {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DialogRequest {
     ScanRoms(scan_roms::ScanInitial),
+    /// Go to the Emulators page.
+    EmulatorManager,
 }
 
 /// What every dialog may need.

@@ -163,6 +163,25 @@ impl EmulatorEditDialog {
         self.select_definition(id, cx);
     }
 
+    /// Debug helper: fills the form as a user would and saves.
+    pub fn debug_fill_and_save(&mut self, definition: &str, executable: &str, name: Option<&str>, cx: &mut Context<Self>) {
+        if self.create {
+            self.select_definition(definition, cx);
+        }
+        let input = self.executable.clone();
+        self.set_later(&input, executable);
+        if let Some(n) = name {
+            let input = self.name.clone();
+            self.set_later(&input, n);
+        }
+        // Inputs only take values on render; save from the next frame.
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(300)).await;
+            this.update(cx, |this, cx| this.save(cx)).ok();
+        })
+        .detach();
+    }
+
     fn set_later(&mut self, input: &Entity<InputState>, value: impl Into<String>) {
         self.pending.push((input.clone(), value.into()));
     }

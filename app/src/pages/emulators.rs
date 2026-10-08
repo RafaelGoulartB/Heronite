@@ -365,6 +365,52 @@ impl EmulatorsPage {
                     }
                 }
             }
+            "add-save" => {
+                // `add-save:<definition>,<executable>[,<name>]`
+                let arg = arg.unwrap_or_default();
+                let mut it = arg.splitn(3, ',');
+                let (def, exe, name) = (it.next().unwrap_or("custom").to_string(), it.next().unwrap_or("").to_string(), it.next().map(str::to_string));
+                self.open_add_emulator(window, cx);
+                if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<EmulatorEditDialog>().ok()) {
+                    d.update(cx, |d, cx| d.debug_fill_and_save(&def, &exe, name.as_deref(), cx));
+                }
+            }
+            "edit-save" => {
+                // `edit-save:<executable>`: edits the first emulator.
+                if let Some(id) = first {
+                    self.open_edit_emulator(&id, window, cx);
+                    if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<EmulatorEditDialog>().ok()) {
+                        let exe = arg.unwrap_or_default();
+                        d.update(cx, |d, cx| d.debug_fill_and_save("", &exe, Some("Renamed emulator"), cx));
+                    }
+                }
+            }
+            "dup" => {
+                if let Some(id) = first {
+                    self.duplicate(&id, cx);
+                }
+            }
+            "scan-all" => self.scan_all(cx),
+            "remove-yes" | "remove-folder-yes" => {
+                if kind == "remove-yes" {
+                    if let Some(id) = arg.or(first) {
+                        self.confirm_remove_emulator(&id, window, cx);
+                    }
+                } else if let Some(s) = self.summaries.iter().flat_map(|s| s.scanners.last().cloned()).next() {
+                    self.confirm_remove_folder(&s, window, cx);
+                }
+                if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<EmulatorConfirmDialog>().ok()) {
+                    d.update(cx, |d, cx| d.debug_yes(cx));
+                }
+            }
+            "folder-save" => {
+                // `folder-save:<directory>`
+                self.open_folder_dialog(first, None, window, cx);
+                if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<RomFolderDialog>().ok()) {
+                    let dir = arg.unwrap_or_default();
+                    d.update(cx, |d, cx| d.debug_fill_and_save(&dir, window, cx));
+                }
+            }
             "detect" => self.open_detect(window, cx),
             "folder" => self.open_folder_dialog(first, None, window, cx),
             "folder-edit" => {
@@ -655,6 +701,14 @@ impl Render for EmulatorsPage {
             .child(button("emus-detect", ButtonKind::Outline, "Detect emulators\u{2026}").on_click(cx.listener(
                 |this, _, window, cx| this.open_detect(window, cx),
             )))
+            .child(button("emus-scan-folder", ButtonKind::Outline, "Scan a folder for emulators\u{2026}").on_click(
+                cx.listener(|this, _, window, cx| {
+                    this.open_detect(window, cx);
+                    if let Some(d) = this.dialog.clone().and_then(|v| v.downcast::<DetectEmulatorsDialog>().ok()) {
+                        d.update(cx, |d, cx| d.pick_folder(window, cx));
+                    }
+                }),
+            ))
             .child(button("emus-add-folder", ButtonKind::Outline, "Add ROM folder").on_click(cx.listener(|this, _, window, cx| {
                 this.open_folder_dialog(None, None, window, cx)
             })))

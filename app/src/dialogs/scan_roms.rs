@@ -91,6 +91,15 @@ impl ScanRomsDialog {
             custom_ext: new_input(window, cx, "iso,cue,chd,zip", ""),
             custom_args: new_input(window, cx, "{ImagePath}", ""),
         };
+        let mut this = this;
+        // Screenshots: the hidden window does not repaint late results.
+        if std::env::var_os("HERONITE_DEBUG_SYNC").is_some() {
+            if let Ok(state) = get_emulation_state(&this.ctx.heroic, &SystemEnv, false) {
+                this.state = state;
+                this.apply_initial(cx);
+            }
+            return this;
+        }
         this.reload(true, true, cx);
         this
     }
@@ -347,7 +356,7 @@ pub(crate) fn profile_label(p: &UserEmulatorProfile) -> String {
     let platform = p.platform_name.as_deref().map(str::trim).unwrap_or("");
     let name = p.name.trim();
     if name.is_empty() {
-        return if platform.is_empty() { "Profile".into() } else { platform.into() };
+        return if platform.is_empty() || platform.eq_ignore_ascii_case("other") { "Profile".into() } else { platform.into() };
     }
     if platform.is_empty() || platform.eq_ignore_ascii_case("other") || platform.eq_ignore_ascii_case(name) {
         name.into()

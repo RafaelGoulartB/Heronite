@@ -72,6 +72,11 @@ impl EmulatorConfirmDialog {
         }
     }
 
+    /// Debug helper: answers "Yes".
+    pub fn debug_yes(&mut self, cx: &mut Context<Self>) {
+        self.confirm(cx);
+    }
+
     fn confirm(&mut self, cx: &mut Context<Self>) {
         if self.working {
             return;

@@ -92,6 +92,11 @@ impl DetectEmulatorsDialog {
         this
     }
 
+    /// Opens the folder chooser; the folder picked is searched for emulators.
+    pub fn pick_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        choose_path(window, cx, true, "Folder with emulators", |this: &mut Self, p, _, cx| this.scan_folder(p, cx));
+    }
+
     fn scan_folder(&mut self, folder: String, cx: &mut Context<Self>) {
         self.folder_scanning = Some(folder.clone());
         self.error.clear();
@@ -170,7 +175,7 @@ impl Render for DetectEmulatorsDialog {
         let busy = self.scanning || self.folder_scanning.is_some() || self.adding;
         let selected = self.selected_count();
 
-        let mut list = div().id("detect-list").flex().flex_col().gap(px(4.)).max_h(px(340.)).overflow_y_scroll();
+        let mut list = div().id("detect-list").flex().flex_col().gap(px(4.)).max_h(px(400.)).overflow_y_scroll();
         for (i, r) in self.rows.iter().enumerate() {
             let added = r.item.already_added;
             let loc = if r.item.launch_kind == "flatpak" {
@@ -251,11 +256,7 @@ impl Render for DetectEmulatorsDialog {
                         ButtonKind::Default,
                         if self.folder_scanning.is_some() { "Searching\u{2026}" } else { "Scan a folder\u{2026}" },
                         !busy,
-                        cx.listener(|_, _, window, cx| {
-                            choose_path(window, cx, true, "Folder with emulators", |this: &mut Self, p, _, cx| {
-                                this.scan_folder(p, cx)
-                            });
-                        }),
+                        cx.listener(|this, _, window, cx| this.pick_folder(window, cx)),
                     ))
                     .child(button("detect-all", ButtonKind::Outline, "Select all").on_click(cx.listener(|this, _, _, cx| {
                         for r in this.rows.iter_mut().filter(|r| !r.item.already_added) {
