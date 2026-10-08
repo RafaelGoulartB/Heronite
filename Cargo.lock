@@ -3422,7 +3422,6 @@ dependencies = [
  "heronite-shortcuts",
  "heronite-wine",
  "image",
- "indexmap",
  "ksni",
  "libc",
  "log",
