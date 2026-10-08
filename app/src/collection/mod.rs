@@ -542,7 +542,7 @@ impl CollectionView {
             ListItem::Header { group } => {
                 let g = &self.groups[group];
                 let gid = g.id.clone();
-                list::group_header(g, false)
+                let header = list::group_header(g, false)
                     .id(SharedString::from(format!("group-{gid}")))
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -553,8 +553,8 @@ impl CollectionView {
                         }
                         this.rebuild_items();
                         cx.notify();
-                    }))
-                    .into_any_element()
+                    }));
+                div().pl(px(13.6)).pr(px(16.)).child(header).into_any_element()
             }
             ListItem::Row { group, start } => {
                 let cards: Vec<Arc<CardVm>> = {
@@ -564,6 +564,8 @@ impl CollectionView {
                 let last_row = start + cards.len() == self.groups[group].cards.len();
                 let mut row = div()
                     .flex()
+                    .pl(px(13.6))
+                    .pr(px(16.))
                     .gap(px(theme::CARD_GAP_X))
                     .pt(px(if start == 0 { 7.2 } else { 0. }))
                     .pb(px(if last_row { 5.6 + 13.6 } else { theme::CARD_GAP_Y }));
@@ -746,10 +748,10 @@ impl Render for CollectionView {
             None => stage::stage(None, SharedString::default(), self.scrim),
         };
 
+        // The list's padding lives inside each row: GPUI clips list content to
+        // the list bounds, and the selection ring sits 2px outside the cover.
         let list_el = div()
             .size_full()
-            .pl(px(13.6))
-            .pr(px(16.))
             .child(list(self.list_state.clone(), cx.processor(Self::render_item)).size_full());
 
         let list_scrollbar = crate::ui::scrollbar(
