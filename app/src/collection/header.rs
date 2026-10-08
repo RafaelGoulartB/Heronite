@@ -21,6 +21,7 @@ pub enum Menu {
     Facets,
     Sort,
     Status,
+    Playnite,
 }
 
 const CLOSE_DELAY: Duration = Duration::from_millis(180);
@@ -211,6 +212,14 @@ impl CollectionView {
             facets
         };
 
+        let playnite = self.hover_dropdown(
+            Menu::Playnite,
+            Icon::SyncAlt,
+            Align::Right,
+            |this, cx| this.playnite_menu_body(cx),
+            cx,
+        );
+
         let refreshing = self.refreshing;
         let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::white_a(0.58));
         let refresh = div()
@@ -271,9 +280,13 @@ impl CollectionView {
                     .items_center()
                     .justify_end()
                     .min_w(px(32.))
+                    .children(self.bulk_chip(cx))
                     .child(refresh)
-                    .child(tool_button("hdr-playnite", Icon::SyncAlt, false))
-                    .child(tool_button("hdr-emulated", Icon::SportsEsports, false))
+                    .child(playnite)
+                    .child(
+                        tool_button("hdr-emulated", Icon::SportsEsports, false)
+                            .on_click(cx.listener(|this, _, window, cx| this.open_scan_roms(Default::default(), window, cx))),
+                    )
                     .child(
                         tool_button("hdr-settings", Icon::Settings, false)
                             .on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))),

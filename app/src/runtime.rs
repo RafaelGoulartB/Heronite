@@ -42,11 +42,33 @@ impl GameRuntime {
 
     /// Builds the plan (reads GamesConfig etc.) and starts the game.
     pub fn play(&self, game: &CollectionGame) -> Result<(), String> {
+        self.play_emulated(game, None).map(|_| ())
+    }
+
+    /// Like [`play`](Self::play); for emulated games `rom` names the ROM to run
+    /// and a save state chosen in the launch dialog (pending, one-shot) adds its
+    /// arguments. Returns the ROM the plan runs.
+    pub fn play_emulated(&self, game: &CollectionGame, rom: Option<String>) -> Result<Option<String>, String> {
         let ctx = PlanContext::load(&self.paths);
-        let plan = build_plan(&ctx, &SystemProbe, &game.game, game.meta.as_deref(), &LaunchOptions::default());
+        let mut opts = LaunchOptions::default();
+        if game.launch_kind.as_deref() == Some("emulator") {
+            let wanted = rom.clone().or_else(|| game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()));
+            if let Some(state) =
+                heronite_emulation::PendingLaunchStates::global().take(&game.app_name, wanted.as_deref())
+            {
+                opts.state_args = state.args;
+                opts.state_replaces_image = state.replaces_image;
+            }
+            opts.extra_args = rom.into_iter().collect();
+        }
+        let plan = build_plan(&ctx, &SystemProbe, &game.game, game.meta.as_deref(), &opts);
         if let LaunchPlan::Unavailable(reason) = &plan {
             return Err(reason.clone());
         }
+        let played_rom = match &plan {
+            LaunchPlan::Emulator { rom, .. } => rom.clone(),
+            _ => None,
+        };
         log::info!("launching {} ({}): {plan:?}", game.title, game.app_name);
         self.launcher
             .launch(LaunchRequest {
@@ -55,7 +77,8 @@ impl GameRuntime {
                 title: game.title.clone(),
                 plan,
             })
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        Ok(played_rom)
     }
 
     pub fn stop(&self, app_name: &str) -> bool {

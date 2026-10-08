@@ -15,6 +15,13 @@ rust-embed = "8"
 heronite-data = { path = "../crates/data" }
 heronite-images = { path = "../crates/images" }
 heronite-launch = { path = "../crates/launch" }
+heronite-metadata = { path = "../crates/metadata" }
+indexmap = "2"
+serde_json.workspace = true
+heronite-media = { path = "../crates/media" }
+heronite-playnite = { path = "../crates/playnite" }
+heronite-emulation = { path = "../crates/emulation" }
 image = { version = "0.25", default-features = false }
 smallvec = "1"
 futures = "0.3"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }

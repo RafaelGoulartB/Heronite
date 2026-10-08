@@ -3,6 +3,7 @@
 pub mod controls;
 pub mod dialog;
 pub mod dropdown;
+pub mod fields;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;

@@ -3031,14 +3031,21 @@ name = "heronite"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "futures",
  "gpui-kit",
  "heronite-data",
+ "heronite-emulation",
  "heronite-images",
  "heronite-launch",
+ "heronite-media",
+ "heronite-metadata",
+ "heronite-playnite",
  "image",
+ "indexmap",
  "log",
  "rust-embed",
+ "serde_json",
  "smallvec",
 ]
 

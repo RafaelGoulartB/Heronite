@@ -49,6 +49,8 @@ pub fn checkbox(id: impl Into<ElementId>, checked: bool, label: impl Into<Shared
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonKind {
+    /// Plain `.button` (`--primary`, nord-dark #b48ead).
+    Default,
     /// `.button.is-primary` (`--brand-primary`).
     Primary,
     /// `.button.is-secondary`.
@@ -78,6 +80,7 @@ pub fn button(id: impl Into<ElementId>, kind: ButtonKind, label: impl Into<Share
         .font_weight(theme::W_500)
         .child(label.to_uppercase());
     match kind {
+        ButtonKind::Default => base.bg(rgb(0xb48ead)).text_color(rgb(0x161616)).hover(|s| s.bg(rgb(0xc9a4c3))),
         ButtonKind::Primary => base.bg(rgb(0x1de8f5)).text_color(rgb(0x161616)).hover(|s| s.bg(rgb(0x7fffff))),
         ButtonKind::Secondary => base.bg(rgb(0xa5dceb)).text_color(rgb(0x161616)).hover(|s| s.bg(theme::accent_overlay())),
         ButtonKind::Tertiary => base.bg(rgb(0x51595a)).text_color(rgb(0xffffff)).hover(|s| s.bg(theme::background())),
@@ -185,4 +188,33 @@ pub fn select_box(id: impl Into<ElementId>, value: impl Into<SharedString>) -> S
                 .border_color(theme::white_a(0.6))
                 .child(icon(Icon::ExpandMore, px(18.), rgb(0xa5edfd))),
         )
+}
+
+/// A [`button`] that only reacts when `enabled`. Disabled buttons use Heroic's
+/// `.button:disabled` look (no background, `--text-secondary`).
+pub fn action_button(
+    id: impl Into<ElementId>,
+    kind: ButtonKind,
+    label: impl Into<SharedString>,
+    enabled: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    if enabled {
+        return button(id, kind, label).on_click(on_click);
+    }
+    let label: SharedString = label.into();
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .justify_center()
+        .px(px(10.))
+        .py(px(8.))
+        .rounded(px(4.))
+        .cursor_not_allowed()
+        .text_size(px(13.33))
+        .font_weight(theme::W_500)
+        .text_color(white())
+        .opacity(0.7)
+        .child(label.to_uppercase())
 }

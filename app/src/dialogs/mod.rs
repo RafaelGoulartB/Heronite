@@ -10,7 +10,19 @@
 //! - Emit `DialogEvent::Changed` after writing data the Collection shows
 //!   (it reloads the library), `DialogEvent::Close` to close.
 
+pub mod launch_state;
+pub mod pick_rom;
+pub mod art_images;
+pub mod form;
+pub mod game_settings;
 pub mod manage_statuses;
+pub mod metadata;
+pub mod metadata_wizard;
+pub mod screenshot_art;
+pub mod web_image;
+pub mod playnite_import;
+pub mod playnite_merge;
+pub mod scan_roms;
 pub mod settings;
 
 use std::sync::Arc;
@@ -24,6 +36,14 @@ pub enum DialogEvent {
     Changed,
     /// Like `Changed`, then close.
     ChangedAndClose,
+    /// Close this dialog and open another one (handled by the Collection).
+    Open(DialogRequest),
+}
+
+/// Dialogs a dialog may ask the Collection to open next.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DialogRequest {
+    ScanRoms(scan_roms::ScanInitial),
 }
 
 /// What every dialog may need.

@@ -3,10 +3,16 @@
 mod card;
 mod context_menu;
 mod data;
+mod emulation;
 mod focus;
 mod html;
 mod header;
 mod list;
+mod metadata_ui;
+mod playnite_menu;
+mod screenshot_viewer;
+mod screenshots;
+pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
 
@@ -81,7 +87,10 @@ pub struct CollectionView {
     /// `HERONITE_DEBUG_DIALOG` (opened on the first render with a window).
     pending_debug_dialog: Option<String>,
     dialog_sub: Option<Subscription>,
+    emu: emulation::EmuState,
+    playnite: playnite_menu::PlayniteState,
     focus_scroll: ScrollHandle,
+    shots: screenshots::Shots,
     toast_task: Option<Task<()>>,
     images: ImageStore,
     cover_chains: HashMap<SharedString, Vec<ImageRef>>,
@@ -183,7 +192,10 @@ impl CollectionView {
             dialog: None,
             pending_debug_dialog: None,
             dialog_sub: None,
+            emu: Default::default(),
+            playnite: Default::default(),
             focus_scroll: ScrollHandle::new(),
+            shots: Default::default(),
             images,
             cover_chains: HashMap::new(),
             stage_chains: HashMap::new(),
@@ -205,6 +217,8 @@ impl CollectionView {
         };
         window.focus(&this.focus_handle, cx);
         this.spawn_load(cx);
+        this.start_idle_jobs(cx);
+        this.init_metadata(window, cx);
         // Heronite may write the same files: reload when they change.
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
@@ -309,6 +323,11 @@ impl CollectionView {
                     this.dialog_sub = None;
                     this.reload(cx);
                 }
+                DialogEvent::Open(req) => {
+                    this.dialog = None;
+                    this.dialog_sub = None;
+                    this.emu.requested = Some(req.clone());
+                }
             }
             cx.notify();
         }));
@@ -348,6 +367,7 @@ impl CollectionView {
                 "install" => Some(Menu::Install),
                 "sort" => Some(Menu::Sort),
                 "status" => Some(Menu::Status),
+                "playnite" => Some(Menu::Playnite),
                 "facets" => {
                     self.facet_flyout = Some(FacetKind::Developer);
                     Some(Menu::Facets)
@@ -389,6 +409,7 @@ impl CollectionView {
     }
 
     fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
+        self.shots_launch_event(&ev, cx);
         match ev {
             LaunchEvent::Launching { app_name } => {
                 self.playing.insert(app_name, false);
@@ -400,6 +421,7 @@ impl CollectionView {
             LaunchEvent::Exited { app_name, elapsed, .. } => {
                 log::info!("{app_name} exited after {elapsed:?}");
                 self.playing.remove(&app_name);
+                self.emu_session_ended(&app_name, elapsed, cx);
                 // Playtime, last played and recent games changed on disk.
                 self.reload(cx);
             }
@@ -420,6 +442,9 @@ impl CollectionView {
             if !self.runtime.stop(&game.app_name) {
                 self.runtime.force_clear(&game.app_name);
             }
+            return;
+        }
+        if game.installed && self.start_emulated(&game, cx) {
             return;
         }
         let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
@@ -688,9 +713,24 @@ impl Render for CollectionView {
             match which.as_str() {
                 "settings" => self.open_settings(window, cx),
                 "statuses" => self.open_manage_statuses(window, cx),
-                _ => {}
+                "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
+                "settings:screenshots" => {
+                    self.open_settings(window, cx);
+                    if let Some(d) = self.dialog.clone().and_then(|v| v.downcast::<crate::dialogs::settings::SettingsDialog>().ok()) {
+                        d.update(cx, |d, _| d.tab = crate::dialogs::settings::Tab::Screenshots);
+                    }
+                }
+                "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage"
+                | "settings:metadata" | "wizard" => self.open_metadata_debug(which.as_str(), window, cx),
+                "playnite:import" => self.open_playnite_import(window, cx),
+                "playnite:merge" => self.open_playnite_merge(window, cx),
+                other => {
+                    self.open_emu_debug_dialog(other, window, cx);
+                }
             }
         }
+        self.drive_emulation(window, cx);
+        self.sync_shots(window, cx);
         let viewport = window.viewport_size();
         let vw = f32::from(viewport.width);
         let scale = window.scale_factor();
@@ -765,7 +805,9 @@ impl Render for CollectionView {
                     }
                 }
                 let (w1, w2, w3, w4) = (weak.clone(), weak.clone(), weak.clone(), weak.clone());
+                let (w5, w6) = (weak.clone(), weak.clone());
                 let focus_key = vm.key.clone();
+                let screenshots = self.screenshots_section(cx);
                 focus::focus_panel(
                     focus::FocusProps {
                         vm,
@@ -775,6 +817,7 @@ impl Render for CollectionView {
                         viewport_w: vw,
                         panel_w: vw - list_w,
                         active_facets,
+                        screenshots,
                     },
                     focus::FocusActions {
                         on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
@@ -795,6 +838,12 @@ impl Render for CollectionView {
                         }),
                         on_favourite: Box::new(move |_, cx| {
                             w4.update(cx, |this, cx| this.toggle_favourite(cx)).ok();
+                        }),
+                        on_metadata: Box::new(move |window, cx| {
+                            w5.update(cx, |this, cx| this.open_metadata(window, cx)).ok();
+                        }),
+                        on_game_settings: Box::new(move |window, cx| {
+                            w6.update(cx, |this, cx| this.open_game_settings(window, cx)).ok();
                         }),
                         on_facet: Rc::new(move |f, v, _, cx| {
                             w1.update(cx, |this, cx| {
@@ -852,6 +901,10 @@ impl Render for CollectionView {
             .id("collection")
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
+                if this.shots_key(ev, cx) {
+                    cx.notify();
+                    return;
+                }
                 if ev.keystroke.key == "escape" {
                     if this.dialog.is_some() {
                         this.dialog = None;
@@ -911,6 +964,8 @@ impl Render for CollectionView {
             .children(toast)
             .children(self.render_context_menu(window, cx))
             .children(self.dialog.clone())
+            .children(self.render_gallery(window, cx))
+            .children(self.render_viewer(window, cx))
     }
 }
 

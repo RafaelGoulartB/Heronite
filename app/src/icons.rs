@@ -4,6 +4,7 @@
 #[allow(dead_code)]
 pub enum Icon {
     AccessTime,
+    Backspace,
     Cancel,
     Check,
     ChevronLeft,
@@ -20,6 +21,7 @@ pub enum Icon {
     FavoriteBorder,
     FilterList,
     Flag,
+    Folder,
     FolderOpen,
     Fullscreen,
     FullscreenExit,
@@ -31,6 +33,7 @@ pub enum Icon {
     PlayArrow,
     PlaylistRemove,
     Refresh,
+    Replay,
     Save,
     Settings,
     SortByAlpha,
@@ -62,6 +65,7 @@ impl Icon {
         use Icon::*;
         match self {
             AccessTime => "icons/access-time.svg",
+            Backspace => "icons/backspace.svg",
             Cancel => "icons/cancel.svg",
             Check => "icons/check.svg",
             ChevronLeft => "icons/chevron-left.svg",
@@ -78,6 +82,7 @@ impl Icon {
             FavoriteBorder => "icons/favorite-border.svg",
             FilterList => "icons/filter-list.svg",
             Flag => "icons/flag.svg",
+            Folder => "icons/folder.svg",
             FolderOpen => "icons/folder-open.svg",
             Fullscreen => "icons/fullscreen.svg",
             FullscreenExit => "icons/fullscreen-exit.svg",
@@ -88,6 +93,7 @@ impl Icon {
             OpenInNew => "icons/open-in-new.svg",
             PlayArrow => "icons/play-arrow.svg",
             PlaylistRemove => "icons/playlist-remove.svg",
+            Replay => "icons/replay.svg",
             Refresh => "icons/refresh.svg",
             Save => "icons/save.svg",
             Settings => "icons/settings.svg",

@@ -101,6 +101,8 @@ pub struct FocusProps {
     pub panel_w: f32,
     pub active_facets: Vec<(&'static str, SharedString)>,
     pub scroll: ScrollHandle,
+    /// "Screenshots" section (first block of the main column).
+    pub screenshots: Option<AnyElement>,
 }
 
 pub struct FocusActions {
@@ -108,11 +110,13 @@ pub struct FocusActions {
     pub on_close: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_play: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_favourite: Box<dyn Fn(&mut Window, &mut App)>,
+    pub on_metadata: Box<dyn Fn(&mut Window, &mut App)>,
+    pub on_game_settings: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_facet: Rc<dyn Fn(&'static str, SharedString, &mut Window, &mut App)>,
     pub on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
 }
 
-fn h3(text: impl Into<SharedString>) -> Div {
+pub fn h3(text: impl Into<SharedString>) -> Div {
     div()
         .mb(px(8.8))
         .font_family(theme::FONT_HEADING)
@@ -123,7 +127,7 @@ fn h3(text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
-fn panel(facts: bool) -> Div {
+pub fn panel(facts: bool) -> Div {
     let d = div().flex().flex_col().border_1();
     if facts {
         d.pt(px(10.4))
@@ -142,7 +146,7 @@ fn panel(facts: bool) -> Div {
 }
 
 pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
-    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll } = props;
+    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, screenshots } = props;
     let scrollbar = crate::ui::scrollbar(scroll.offset().y, scroll.max_offset().y, scroll.bounds().size.height);
     let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
     let title_size = (viewport_w * 0.022).clamp(24.8, 32.);
@@ -194,6 +198,9 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
         );
 
     let mut main = div().flex().flex_col().gap(px(24.)).min_w_0();
+    if let Some(s) = screenshots {
+        main = main.child(s);
+    }
     main = main.child(
         div()
             .flex()
@@ -245,6 +252,7 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     let on_scroll = actions.on_scroll;
     let on_play = actions.on_play;
     let on_fav = actions.on_favourite;
+    let (on_meta, on_gsettings) = (actions.on_metadata, actions.on_game_settings);
     let play_label = if vm.playing {
         "Stop"
     } else if vm.installed {
@@ -315,8 +323,8 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
                     )
                     .on_click(move |_, w, cx| on_fav(w, cx)),
                 )
-                .child(round_button("focus-meta", Icon::TravelExplore, 42., 0.72))
-                .child(round_button("focus-settings", Icon::Settings, 42., 0.72))
+                .child(round_button("focus-meta", Icon::TravelExplore, 42., 0.72).on_click(move |_, w, cx| on_meta(w, cx)))
+                .child(round_button("focus-settings", Icon::Settings, 42., 0.72).on_click(move |_, w, cx| on_gsettings(w, cx)))
                 .child(
                     div()
                         .id("focus-play")

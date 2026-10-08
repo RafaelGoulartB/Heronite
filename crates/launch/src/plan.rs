@@ -183,6 +183,12 @@ pub struct LaunchOptions {
     pub skip_version_check: bool,
     /// legendary `--override-exe` for an alternative executable.
     pub alt_exe: Option<String>,
+    /// Emulators: arguments that boot into a save state, put before the rest
+    /// of argv.
+    pub state_args: Vec<String>,
+    /// Emulators: the state boots the game by itself, so the ROM argument is
+    /// dropped from argv.
+    pub state_replaces_image: bool,
 }
 
 /// Builds the plan for a game, reading its `GamesConfig` from disk.
@@ -475,6 +481,13 @@ fn emulator_plan(
         if !argv.contains(rom) && !argv_template.contains("{Image") {
             argv.push(rom.clone());
         }
+    }
+
+    if !opts.state_args.is_empty() || opts.state_replaces_image {
+        if opts.state_replaces_image {
+            argv.retain(|a| Some(a) != rom_path.as_ref());
+        }
+        argv.splice(0..0, opts.state_args.iter().cloned());
     }
 
     let use_wine = emulator.map(|e| e.launch_kind == "wine").unwrap_or(false)
@@ -1032,6 +1045,46 @@ mod tests {
         assert_eq!(process.command.cwd.as_deref(), Some("/emu"));
         assert!(process.command.env.is_empty());
         assert_eq!(process.stop.kill_patterns, ["pcsx2.AppImage"]);
+    }
+
+    #[test]
+    fn save_state_args_go_first_and_can_replace_the_image() {
+        let emu = UserEmulator {
+            id: "e1".into(),
+            definition_id: "custom".into(),
+            executable: "/emu/x".into(),
+            launch_kind: "native".into(),
+            profiles: vec![profile("custom", "-batch {ImagePath}")],
+            ..Default::default()
+        };
+        let probe = FakeProbe::new("/h").with_path("/emu/x").with_path("/roms/a.iso");
+        let m = emu_meta(&["/roms/a.iso"]);
+        let game = sideload("g", "/emu/x", "linux");
+        let args_for = |opts: LaunchOptions| {
+            let LaunchPlan::Emulator { process, .. } = build_plan_with_settings(
+                &emu_ctx(emu.clone()),
+                &probe,
+                &game,
+                Some(&m),
+                &settings(json!({})),
+                &opts,
+            ) else {
+                panic!()
+            };
+            process.command.args
+        };
+        let with_state = args_for(LaunchOptions {
+            state_args: vec!["-statefile".into(), "/s/1.state".into()],
+            ..Default::default()
+        });
+        assert_eq!(with_state, ["-statefile", "/s/1.state", "-batch", "/roms/a.iso"]);
+        let replaced = args_for(LaunchOptions {
+            state_args: vec!["--load".into(), "/s/1.state".into()],
+            state_replaces_image: true,
+            ..Default::default()
+        });
+        assert_eq!(replaced, ["--load", "/s/1.state", "-batch"]);
+        assert_eq!(args_for(Default::default()), ["-batch", "/roms/a.iso"]);
     }
 
     #[test]

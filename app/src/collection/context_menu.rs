@@ -185,6 +185,14 @@ impl CollectionView {
 
         let k = key.clone();
         menu = menu.child(
+            item("cm-metadata")
+                .child(icon(Icon::TravelExplore, px(20.), rgb(0xcaf3fd)))
+                .child("Collection metadata")
+                .on_click(cx.listener(move |this, _, window, cx| this.open_metadata_for(&k, window, cx))),
+        );
+
+        let k = key.clone();
+        menu = menu.child(
             item("cm-hide")
                 .child(icon(Icon::VisibilityOff, px(20.), rgb(0xcaf3fd)))
                 .child("Hide")
