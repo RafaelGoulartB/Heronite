@@ -7,7 +7,8 @@ use std::time::Instant;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::hltb::WikiCache;
-use heronite_data::{art, ArtContext, HeroicPaths, Library};
+use heronite_data::ui_state::UiState;
+use heronite_data::{art, AppPaths, ArtContext, HeroicPaths, Library};
 use heronite_images::ImageRef;
 
 use super::{stage, CollectionView};
@@ -37,6 +38,18 @@ fn load_all(heroic: &HeroicPaths, include_hidden: bool) -> anyhow::Result<Loaded
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
     Ok(Loaded { lib, wiki, covers, stages })
+}
+
+/// The saved UI state; the first run starts where Heronite left off.
+pub(super) fn load_ui_state(heroic: &HeroicPaths, app_paths: &AppPaths) -> UiState {
+    if app_paths.ui_state().exists() {
+        return UiState::load(app_paths);
+    }
+    let ui = heronite_data::heronite_ui_import::import(heroic).unwrap_or_default();
+    if let Err(err) = ui.save(app_paths) {
+        log::warn!("saving imported ui state: {err:#}");
+    }
+    ui
 }
 
 impl CollectionView {

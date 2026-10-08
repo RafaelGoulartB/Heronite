@@ -20,6 +20,7 @@ mod load;
 mod metadata_ui;
 mod nav;
 mod palette;
+mod pumps;
 mod render_focus;
 mod screenshot_viewer;
 mod screenshots;
@@ -33,7 +34,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use futures::StreamExt;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -123,50 +123,14 @@ impl CollectionView {
         });
         let heroic = HeroicPaths::detect();
         let app_paths = AppPaths::for_heroic(&heroic);
-        let ui = if app_paths.ui_state().exists() {
-            UiState::load(&app_paths)
-        } else {
-            // First run: start where Heronite left off.
-            let ui = heronite_data::heronite_ui_import::import(&heroic).unwrap_or_default();
-            if let Err(err) = ui.save(&app_paths) {
-                log::warn!("saving imported ui state: {err:#}");
-            }
-            ui
-        };
+        let ui = load::load_ui_state(&heroic, &app_paths);
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
-        let (images, mut rx) = ImageStore::new(heroic.images_cache_dir(), &app_paths);
-        cx.spawn(async move |this, cx| {
-            while let Some(first) = rx.next().await {
-                // Batch whatever else already arrived into one notify.
-                let mut batch = vec![first];
-                while let Ok(more) = rx.try_recv() {
-                    batch.push(more);
-                }
-                let alive = this
-                    .update(cx, |this, cx| {
-                        for item in batch {
-                            this.images.on_loaded(item);
-                        }
-                        cx.notify();
-                    })
-                    .is_ok();
-                if !alive {
-                    break;
-                }
-            }
-        })
-        .detach();
+        let (images, image_rx) = ImageStore::new(heroic.images_cache_dir(), &app_paths);
+        Self::spawn_image_pump(image_rx, cx);
 
-        let (runtime, mut events) = crate::system::attach_runtime(&heroic, cx);
-        cx.spawn(async move |this, cx| {
-            while let Some(ev) = events.next().await {
-                if this.update(cx, |this, cx| this.on_launch_event(ev, cx)).is_err() {
-                    break;
-                }
-            }
-        })
-        .detach();
+        let (runtime, events) = crate::system::attach_runtime(&heroic, cx);
+        Self::spawn_launch_events(events, cx);
 
         // Results of the post-game work (toasts, saved captures).
         if let Some(session) = crate::services::session::get(cx) {
@@ -174,7 +138,7 @@ impl CollectionView {
         }
 
         let search_input = Self::new_search_input(window, cx);
-        let this = Self {
+        let mut this = Self {
             started,
             first_frame_logged: false,
             heroic,
@@ -227,27 +191,13 @@ impl CollectionView {
             palette: palette::Host::new(window, cx),
         };
         window.focus(&this.focus_handle, cx);
-        let mut this = this;
         if let Some(page) = crate::env::value("HERONITE_DEBUG_PAGE").and_then(|p| crate::pages::Page::from_debug(&p)) {
             this.navigate(page, window, cx);
         }
         this.spawn_load(cx);
         this.start_idle_jobs(cx);
         this.init_metadata(window, cx);
-        // Heronite may write the same files: reload when they change.
-        cx.spawn(async move |this, cx| loop {
-            cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
-            let Ok(changed) = this.update(cx, |this, _| {
-                !this.refreshing && this.lib.as_ref().is_some_and(|l| l.changed_on_disk())
-            }) else {
-                break;
-            };
-            if changed
-                && this.update(cx, |this, cx| this.reload(cx)).is_err() {
-                    break;
-                }
-        })
-        .detach();
+        this.spawn_disk_watch(cx);
         this
     }
 }
