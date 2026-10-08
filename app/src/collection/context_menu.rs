@@ -4,6 +4,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::status::{set_game_status, SetStatusExtras};
+use heronite_data::{CollectionGame, Library};
 
 use super::CollectionView;
 use crate::icons::Icon;
@@ -74,13 +75,29 @@ impl CollectionView {
         let lib = self.lib.clone()?;
         let game = lib.get(&state.key)?.clone();
         let key = state.key.clone();
+        let (position, status_open) = (state.position, state.status_open);
         let playing = self.playing.contains_key(&game.app_name);
         let viewport = window.viewport_size();
-        let flyout_left = f32::from(viewport.width - state.position.x) < 280. + 240.;
+        let flyout_left = f32::from(viewport.width - position.x) < 280. + 240.;
 
         let mut menu = paper().min_w(px(240.));
+        menu = menu.child(Self::status_row(&lib, &game, &key, status_open, flyout_left, cx));
+        menu = Self::game_items(menu, &game, &key, playing, cx);
+        menu = self.extras_context_items(menu, &game, cx);
+        menu = self.epic_context_items(menu, &game, cx);
+        menu = self.system_context_items(menu, &game, cx);
+        Some(Self::menu_backdrop(menu, position, cx))
+    }
 
-        // Status ▸
+    /// "Status" row with its flyout of statuses.
+    fn status_row(
+        lib: &Library,
+        game: &CollectionGame,
+        key: &SharedString,
+        status_open: bool,
+        flyout_left: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let current = game.status_id.clone();
         let mut status_row = div().relative().child(
             item("cm-status")
@@ -97,7 +114,7 @@ impl CollectionView {
                     }
                 })),
         );
-        if state.status_open {
+        if status_open {
             let mut fly = paper().py(px(6.)).min_w(px(220.)).max_h(px(420.));
             for st in lib.statuses.iter() {
                 let id = st.id.clone();
@@ -120,8 +137,11 @@ impl CollectionView {
             let fly = if flyout_left { fly.right(relative(1.)).mr(px(-2.)) } else { fly.left(relative(1.)).ml(px(-2.)) };
             status_row = status_row.child(fly);
         }
-        menu = menu.child(status_row);
+        status_row
+    }
 
+    /// Play / favourite / folder / settings / metadata / hide / log items.
+    fn game_items(mut menu: Div, game: &CollectionGame, key: &SharedString, playing: bool, cx: &mut Context<Self>) -> Div {
         let k = key.clone();
         let (label, ic) = if playing {
             ("Stop", Icon::Stop)
@@ -258,29 +278,27 @@ impl CollectionView {
                 .child("View log")
                 .on_click(cx.listener(move |this, _, _, cx| this.open_game_log(&k, cx))),
         );
+        menu
+    }
 
-        let position = state.position;
-        menu = self.extras_context_items(menu, &game, cx);
-        menu = self.epic_context_items(menu, &game, cx);
-        menu = self.system_context_items(menu, &game, cx);
-        Some(
-            deferred(
-                div()
-                    .id("cm-backdrop")
-                    .absolute()
-                    .inset_0()
-                    .occlude()
-                    .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close_context_menu(cx)))
-                    .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| this.close_context_menu(cx)))
-                    .child(
-                        anchored()
-                            .position(position)
-                            .snap_to_window_with_margin(px(8.))
-                            .child(div().occlude().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(menu)),
-                    ),
-            )
-            .with_priority(20)
-            .into_any_element(),
+    /// Full-window click catcher that closes the menu, with `menu` anchored at `position`.
+    fn menu_backdrop(menu: Div, position: Point<Pixels>, cx: &mut Context<Self>) -> AnyElement {
+        deferred(
+            div()
+                .id("cm-backdrop")
+                .absolute()
+                .inset_0()
+                .occlude()
+                .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close_context_menu(cx)))
+                .on_mouse_down(MouseButton::Right, cx.listener(|this, _, _, cx| this.close_context_menu(cx)))
+                .child(
+                    anchored()
+                        .position(position)
+                        .snap_to_window_with_margin(px(8.))
+                        .child(div().occlude().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(menu)),
+                ),
         )
+        .with_priority(20)
+        .into_any_element()
     }
 }
