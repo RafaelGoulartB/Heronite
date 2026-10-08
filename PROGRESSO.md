@@ -127,10 +127,10 @@ docs/reference/       screenshots do Heronite para paridade visual
 - [x] Diálogos de metadados (busca IGDB/Lutris, escolha por campo), assistente em lote com chip de
       progresso, configurações do jogo (Imagens/Detalhes/Launch), busca de imagens na web,
       escolher screenshot como arte, aba Metadata, auto-preenchimento ocioso
-- [ ] Busca dentro do flyout de facetas; arrastar scrollbar
+- [x] Busca dentro do flyout de facetas; arrastar scrollbar
 - [ ] Testar ao vivo (cliques reais): jogar/parar, salvar diálogos, captura por atalho, Ludusavi
 - [ ] Verificação visual final com o workspace 2 visível (ver limitação acima)
-- [ ] Conquistas no painel de foco; botão "abrir página de detalhes"
+- [x] Conquistas no painel de foco (GOG); botão "abrir página de detalhes"
 - [ ] Build Windows (código portável; falta toolchain: máquina Windows ou `cargo-xwin`)
 - [ ] Unificar `ui/fields.rs` e `dialogs/form.rs` (helpers de input duplicados)
 
@@ -151,6 +151,8 @@ menu ☰ (canto superior esquerdo), sem sidebar.
 - [ ] Testar ao vivo (cliques): login Epic, instalar/pausar/cancelar, Wine Manager, abas novas.
 - [ ] Faltam: `legendarySetup` (redistribuíveis/EOS overlay), `known_fixes` installFixes, EA/Ubisoft,
       seletor de plataforma, atalhos de desktop.
+- [x] Fase 3b (2026-10-08): itens restantes da Collection, Add game (sideload), `--launch`/`heroic://`/`heronite-rs://`,
+      instância única, atalhos (desktop/menu/Steam), bandeja. Janelas de teste agora no **workspace 7**.
 - Release após a fase 3: 537 testes passando, PSS ~100–106 MB (malloc_trim após a carga), binário 47 MB
       + `heronite-epic-login` 1 MB.
 
