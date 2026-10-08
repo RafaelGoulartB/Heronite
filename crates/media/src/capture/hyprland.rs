@@ -89,8 +89,6 @@ pub fn register(binding: &HyprlandBinding, accelerator: &str, pid: u32) -> Resul
     Ok(())
 }
 
-// --- monitors ---------------------------------------------------------------
-
 #[derive(Deserialize)]
 struct RawMonitor {
     name: String,

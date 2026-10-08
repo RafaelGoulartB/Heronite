@@ -147,8 +147,6 @@ impl CaptureService {
         }
     }
 
-    // --- registration -------------------------------------------------------
-
     fn unregister(&self) {
         let (hypr, portal) = {
             let mut st = self.inner.state.lock().unwrap();
@@ -270,8 +268,6 @@ impl CaptureService {
             svc.capture_now();
         });
     }
-
-    // --- capture ------------------------------------------------------------
 
     /// Captures the display under the pointer into the active game's folder.
     /// Blocking; also what the shortcut triggers.
