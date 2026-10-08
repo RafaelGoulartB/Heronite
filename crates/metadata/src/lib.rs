@@ -11,6 +11,7 @@
 //!
 //! Everything is blocking (`ureq`); call from worker threads.
 
+pub mod achievements;
 pub mod art;
 pub mod covers;
 pub mod edit;
