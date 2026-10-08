@@ -99,7 +99,6 @@ impl SettingsPage {
         let heroic = self.ctx.heroic.clone();
         let logs = logs_dir(&heroic);
 
-        // Folders.
         let (cfg, app_cfg) = (heroic.root.clone(), self.ctx.app.config.clone());
         let logs_btn = match logs.clone() {
             Some(dir) => action_button(
@@ -132,7 +131,6 @@ impl SettingsPage {
             .into_any_element(),
         ]);
 
-        // Clear cache.
         let size_line = match self.advanced.size {
             Some(r) if r.files > 0 => format!("{} file(s), {} would be removed.", r.files, maintenance::human_size(r.bytes)),
             Some(_) => "Nothing to clear.".into(),
@@ -172,7 +170,6 @@ impl SettingsPage {
             .into_any_element(),
         ]);
 
-        // Copy settings.
         let copied = self.advanced.copied;
         let copy = card([row(
             "Copy all settings",

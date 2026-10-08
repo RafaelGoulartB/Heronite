@@ -27,7 +27,7 @@ pub struct State {
 }
 
 // "playnite" stays in the saved priorities (Heronite reads them) but is not
-// offered: the Playnite import was removed and nothing feeds that source.
+// offered: nothing feeds that source here.
 const SOURCES: [(&str, &str); 5] = [
     ("auto", "Auto (IGDB first)"),
     ("igdb", "IGDB"),

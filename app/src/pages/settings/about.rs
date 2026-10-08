@@ -42,7 +42,7 @@ impl State {
             (system, legendary_version(&heroic), installs.len(), proton)
         };
         // Debug captures only keep the first frames: gather in place there.
-        if std::env::var_os("HERONITE_DEBUG_PAGE").is_some() {
+        if crate::env::value("HERONITE_DEBUG_PAGE").is_some() {
             self.apply(work());
             return;
         }

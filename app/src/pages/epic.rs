@@ -57,25 +57,26 @@ impl EpicPage {
         let code = new_input(window, cx, "", "Authorization code or the page's JSON");
         // Installed version and the latest one (Heroic asks when the settings open).
         svc.update(cx, |s, cx| s.eos_reload(true, cx));
+        let debug = crate::env::value("HERONITE_DEBUG_EPIC_PAGE");
         let mut this = Self {
             ctx,
             svc,
             code,
             confirm_logout: false,
-            confirm_eos_remove: std::env::var("HERONITE_DEBUG_EPIC_PAGE").as_deref() == Ok("eos-remove"),
+            confirm_eos_remove: debug.as_deref() == Some("eos-remove"),
             window_open: false,
             notice: None,
             dialog: None,
             dialog_sub: None,
         };
-        // Screenshots: `HERONITE_DEBUG_EPIC_PAGE=import|logout`.
-        match std::env::var("HERONITE_DEBUG_EPIC_PAGE").as_deref() {
-            Ok("import") => {
+        // Screenshots: `HERONITE_DEBUG_EPIC_PAGE=import|logout|eos-remove`.
+        match debug.as_deref() {
+            Some("import") => {
                 let heroic = this.ctx.heroic.clone();
                 let picker = cx.new(|cx| EpicImportPicker::new(heroic, window, cx));
                 this.open_dialog(picker, window, cx);
             }
-            Ok("logout") => this.confirm_logout = true,
+            Some("logout") => this.confirm_logout = true,
             _ => {}
         }
         this

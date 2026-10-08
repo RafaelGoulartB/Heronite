@@ -69,7 +69,7 @@ fn format_cache_size(bytes: u64) -> String {
 fn refresh_info(cache: &ThumbnailCache, cx: &mut Context<SettingsPage>) {
     let cache = cache.clone();
     // Screenshots: the hidden window does not repaint late results.
-    if std::env::var_os("HERONITE_DEBUG_SYNC").is_some() {
+    if crate::env::flag("HERONITE_DEBUG_SYNC") {
         let info = cache.info();
         cx.spawn(async move |this, cx| {
             this.update(cx, |d, cx| {

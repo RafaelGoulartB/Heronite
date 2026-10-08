@@ -68,7 +68,6 @@ impl Render for DownloadsPage {
 
         let mut column = div().flex().flex_col().w_full();
 
-        // Running element.
         if let Some(cur) = snap.queue.first() {
             let title = cur.params.title();
             let cover = self.covers.get(cur.params.cover().as_deref(), 60., 80., scale);
@@ -143,7 +142,6 @@ impl Render for DownloadsPage {
             self.confirm_stop = false;
         }
 
-        // Waiting elements.
         let waiting: Vec<DmElement> = snap.queue.iter().skip(1).cloned().collect();
         column = column.child(caption(if waiting.is_empty() { "Queued".to_string() } else { format!("Queued \u{b7} {}", waiting.len()) }));
         let last = waiting.len().saturating_sub(1);
@@ -185,7 +183,6 @@ impl Render for DownloadsPage {
         }
         column = column.child(card(rows));
 
-        // History.
         let mut finished: Vec<DmElement> = snap.finished.clone();
         finished.sort_by_key(|e| std::cmp::Reverse(e.end_time));
         if !finished.is_empty() {

@@ -5,7 +5,7 @@
 //!
 //! Conventions: same as dialogs (`docs/UI-CONVENTIONS.md`) — no I/O on the
 //! UI thread, shared files only through the backend crates. Lay the content
-//! out with [`page_body`] so pages share width and padding.
+//! out with [`sheet`] so pages share the chrome, width and padding.
 
 pub mod downloads;
 pub mod emulators;
@@ -59,7 +59,7 @@ impl Page {
         }
     }
 
-    /// `HERONITE_DEBUG_PAGE` values.
+    /// Parses a `HERONITE_DEBUG_PAGE` value.
     pub fn from_debug(s: &str) -> Option<Page> {
         match s {
             "collection" => Some(Page::Collection),
@@ -74,7 +74,7 @@ impl Page {
     }
 }
 
-/// What every page may need.
+/// Paths every page needs.
 #[derive(Clone)]
 pub struct PageCtx {
     pub heroic: HeroicPaths,
@@ -95,20 +95,16 @@ pub enum PageEvent {
     ShowHidden(bool),
 }
 
-// ---------------------------------------------------------------------------
-// Glass sheet chrome (Downloads, Wine Manager, Epic Games, Emulators)
-// ---------------------------------------------------------------------------
-
 /// Round close button of a [`sheet`]: goes back to the Collection.
 pub fn page_close<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) -> Stateful<Div> {
     close_button("page-close").on_click(cx.listener(|_, _, _, cx| cx.emit(PageEvent::Navigate(Page::Collection))))
 }
 
-/// Glass sheet floating over the (dimmed) Collection, like the Settings sheet
-/// of `o1-1.jpg`: title (Rubik 26) + lead on the left, `actions` and the round
-/// close button on the right, then a scrolling body. `column` is the content
-/// column (a `Div` whose children are captions and cards); it is centred and
-/// limited to `max_w`. Pages render this as their whole view.
+/// Glass sheet floating over the (dimmed) Collection: title (Rubik 26) + lead
+/// on the left, `actions` and the round close button on the right, then a
+/// scrolling body. `column` is the content column (a `Div` whose children are
+/// captions and cards), limited to `max_w`. Pages render this as their whole
+/// view (Downloads, Wine Manager, Epic Games, Emulators).
 pub fn sheet(
     id: impl Into<ElementId>,
     title: impl Into<SharedString>,
@@ -222,7 +218,6 @@ pub fn tag_pill(text: impl Into<SharedString>) -> Div {
 
 /// Caption with an action on the right ("Completed" + "Clear list").
 pub fn caption_with(text: impl Into<SharedString>, action: impl IntoElement) -> Div {
-    // Same gap above as a plain caption, a small one before the card, text and button centred.
     div()
         .flex()
         .items_center()

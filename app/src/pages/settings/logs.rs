@@ -29,9 +29,9 @@ impl State {
 
 /// Where the viewer starts: `HERONITE_DEBUG_LOG` or the newest log.
 fn start() -> Start {
-    match std::env::var("HERONITE_DEBUG_LOG").ok().as_deref() {
+    match crate::env::value("HERONITE_DEBUG_LOG").as_deref() {
         Some("launcher") => Start::Launcher,
-        Some(app) if !app.is_empty() => Start::Game(app.to_string()),
+        Some(app) => Start::Game(app.to_string()),
         _ => Start::First,
     }
 }
