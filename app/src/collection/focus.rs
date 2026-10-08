@@ -18,7 +18,8 @@ pub fn main_column_width(panel_w: f32) -> f32 {
     if narrow {
         panel_w - 2. * 19.2
     } else {
-        let inner_w = panel_w - 72.;
+        // `.collectionFocus__header/__body { width: min(1480px, 100%); margin-inline: auto }`
+        let inner_w = (panel_w - 72.).min(1480.);
         let side_w = (inner_w - 38.4).clamp(352., 480.).min(inner_w * 0.5).max(352.);
         (inner_w - side_w - 38.4).min(1480.)
     }
@@ -82,7 +83,7 @@ fn render_html(blocks: &[super::html::Block], images: &dyn Fn(&str) -> Option<Im
                     .h(px(h))
                     .rounded(px(6.))
                     .overflow_hidden()
-                    .children(images(url).map(|src| img(src).size_full().object_fit(ObjectFit::Cover)))
+                    .children(images(url).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover)))
                     .into_any_element()
             }
         });
@@ -194,7 +195,7 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
                     spread_radius: px(0.),
                     inset: false,
                 }])
-                .children(cover_for(&vm.cover_key).map(|src| img(src).size_full().object_fit(ObjectFit::Cover))),
+                .children(cover_for(&vm.cover_key).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))),
         );
 
     let mut main = div().flex().flex_col().gap(px(24.)).min_w_0();
@@ -238,7 +239,8 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     } else {
         // minmax(0,1.2fr) minmax(22rem,30rem): the side column reaches its
         // max (480) before the flexible column takes the rest.
-        let inner_w = panel_w - 72.;
+        // `.collectionFocus__header/__body { width: min(1480px, 100%); margin-inline: auto }`
+        let inner_w = (panel_w - 72.).min(1480.);
         let side_w = (inner_w - 38.4).clamp(352., 480.).min(inner_w * 0.5).max(352.);
         div()
             .flex()
@@ -301,7 +303,7 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
                 .pt(px(if narrow { 32. } else { 38.4 }))
                 .px(px(if narrow { 19.2 } else { 36. }))
                 .pb(px(16.))
-                .child(div().flex().flex_col().max_w(px(1480.)).child(header).child(body)),
+                .child(div().flex().flex_col().w_full().max_w(px(1480.)).mx_auto().child(header).child(body)),
                 ),
         )
         .child(
@@ -552,7 +554,7 @@ fn related_panel(
                             }])
                             .children(
                                 cover_for(&game.cover_key)
-                                    .map(|src| img(src).size_full().object_fit(ObjectFit::Cover)),
+                                    .map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover)),
                             ),
                     )
                     .child(

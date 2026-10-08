@@ -761,7 +761,7 @@ fn thumb_tile(id: SharedString, src: Option<ImageSource>, hover_zoom: bool) -> S
         if hover_zoom {
             holder = holder.group_hover(group, |s| s.top(relative(-0.02)).left(relative(-0.02)).w(relative(1.04)).h(relative(1.04)));
         }
-        tile = tile.child(holder.child(img(src).size_full().object_fit(ObjectFit::Cover)));
+        tile = tile.child(holder.child(img(src).size_full().rounded(px(8.)).object_fit(ObjectFit::Cover)));
     }
     tile
 }

@@ -60,7 +60,8 @@ pub fn card(
     let grey = s.grey_uninstalled && !vm.installed && !s.hovered;
     let cover_img = match s.cover {
         Some(src) => {
-            let el = img(src).size_full().object_fit(ObjectFit::Cover).grayscale(grey);
+            // GPUI does not clip images to a parent's rounded corners: round the image itself.
+            let el = img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover).grayscale(grey);
             if theme::animations() {
                 el.with_animation(
                     ElementId::Name(format!("cover-in-{}", vm.key).into()),
