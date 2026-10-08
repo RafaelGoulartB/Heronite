@@ -89,6 +89,8 @@ pub struct Downloads {
     account: Account,
     stats: Stats,
     pub refreshing: bool,
+    /// Queue the updates found by the refresh in progress (`autoUpdateGames`).
+    auto_update_after_refresh: bool,
     pub logging_in: bool,
     /// Last problem of login / refresh, for the Epic page.
     pub last_error: Option<String>,
@@ -139,12 +141,16 @@ impl Downloads {
             account: Account::default(),
             stats: Stats::default(),
             refreshing: false,
+            auto_update_after_refresh: false,
             logging_in: false,
             last_error: None,
         };
         this.reload_local(cx);
         if let Some(app) = fake {
             this.seed_fake(&app);
+        } else if let Some(app) = std::env::var("HERONITE_DEBUG_QUEUE_INSTALL").ok().filter(|s| !s.is_empty()) {
+            // Integration check with a fake legendary (HERONITE_LEGENDARY_BIN): queues a real install.
+            this.debug_queue_install(&app, cx);
         } else if std::env::var_os("HERONITE_DISABLE_IDLE_JOBS").is_none() {
             // Heroic starts the queue 5 s after launch; the update check
             // (network) a little later, if the setting is on.
@@ -159,7 +165,11 @@ impl Downloads {
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
                 if check {
-                    this.update(cx, |this, cx| this.refresh_library(cx)).ok();
+                    this.update(cx, |this, cx| {
+                        this.refresh_library(cx);
+                        this.auto_update_after_refresh = true;
+                    })
+                    .ok();
                 }
             })
             .detach();
@@ -214,6 +224,10 @@ impl Downloads {
 
     pub fn is_paused(&self) -> bool {
         self.snapshot.state == DmState::Paused
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.snapshot.state == DmState::Running
     }
 
     /// Items waiting plus the running one.
@@ -316,7 +330,12 @@ impl Downloads {
                     };
                     manager.add(DmElement::new(ElementKind::Install, base.clone()));
                     for dlc in &req.dlcs {
-                        manager.add(DmElement::new(ElementKind::Install, InstallParams { app_name: dlc.clone(), install_dlcs: Vec::new(), ..base.clone() }));
+                        // The queue lists the DLC under its own title and cover.
+                        let game_info = library_entry(&heroic, dlc).unwrap_or_else(|| base.game_info.clone());
+                        manager.add(DmElement::new(
+                            ElementKind::Install,
+                            InstallParams { app_name: dlc.clone(), install_dlcs: Vec::new(), game_info, size: None, ..base.clone() },
+                        ));
                     }
                     anyhow::Ok(())
                 })
@@ -602,6 +621,9 @@ impl Downloads {
                             }
                         }
                         this.emit(cx, DownloadsEvent::LibraryChanged);
+                        if std::mem::take(&mut this.auto_update_after_refresh) {
+                            this.queue_auto_updates(cx);
+                        }
                     }
                     Err(err) => {
                         this.last_error = Some(format!("{err:#}"));
@@ -613,6 +635,26 @@ impl Downloads {
             .ok();
         })
         .detach();
+    }
+
+    /// `autoUpdateGames`: queues the updates found, except for games that
+    /// ignore updates (`ignoreGameUpdates` in their settings).
+    fn queue_auto_updates(&mut self, cx: &mut Context<Self>) {
+        let home = ops::home();
+        let enabled = game_config::load_global(&self.heroic, &home).get("autoUpdateGames").and_then(Value::as_bool).unwrap_or(false);
+        if !enabled {
+            return;
+        }
+        let apps: Vec<String> = self.updates.iter().cloned().collect();
+        for app in apps {
+            let ignored = game_config::load_game(&self.heroic, &app, &home).get("ignoreGameUpdates").and_then(Value::as_bool).unwrap_or(false);
+            if ignored || self.queued(&app).is_some() {
+                continue;
+            }
+            if let Some(info) = library_entry(&self.heroic, &app) {
+                self.queue_update(info, cx);
+            }
+        }
     }
 
     // --- account ---------------------------------------------------------
@@ -689,6 +731,31 @@ impl Downloads {
 
     // --- debugging -------------------------------------------------------
 
+    /// `HERONITE_DEBUG_QUEUE_INSTALL=<appName>`: queues an install of that game
+    /// into `$HERONITE_DEBUG_INSTALL_DIR` the way the install dialog would.
+    fn debug_queue_install(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        let Some(game_info) = library_entry(&self.heroic, app_name) else {
+            log::warn!("debug install: {app_name} is not in the Epic library");
+            return;
+        };
+        let path = std::env::var("HERONITE_DEBUG_INSTALL_DIR").unwrap_or_else(|_| "/tmp/heronite-fake-games".into());
+        let dlcs = std::env::var("HERONITE_DEBUG_INSTALL_DLCS").ok().map(|d| d.split(',').filter(|s| !s.is_empty()).map(str::to_string).collect()).unwrap_or_default();
+        self.queue_install(
+            InstallRequest {
+                game_info,
+                path,
+                platform: "Windows".into(),
+                sdl_tags: Vec::new(),
+                dlcs,
+                language: String::new(),
+                size: Some("1 GiB".into()),
+                wine_prefix: None,
+                wine_version: None,
+            },
+            cx,
+        );
+    }
+
     /// `HERONITE_DEBUG_FAKE_DOWNLOAD=<appName>`: a queue with a fake running
     /// install (no legendary), one waiting and one finished, for screenshots.
     fn seed_fake(&mut self, app_name: &str) {
@@ -724,6 +791,16 @@ impl Downloads {
             manager.add(mk(g, ElementKind::Update, size));
         }
     }
+}
+
+/// The library file's `GameInfo` of one game.
+fn library_entry(heroic: &HeroicPaths, app_name: &str) -> Option<Value> {
+    let doc = json_store::read_value(&heroic.legendary_library()).ok()?;
+    doc.get("library")?
+        .as_array()?
+        .iter()
+        .find(|g| g.get("app_name").and_then(Value::as_str) == Some(app_name))
+        .cloned()
 }
 
 /// Owned (without DLC) and installed counts from the library file.

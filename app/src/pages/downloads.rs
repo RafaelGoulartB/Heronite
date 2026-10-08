@@ -105,7 +105,8 @@ impl Render for DownloadsPage {
         let svc = self.svc.read(cx);
         let snap: Snapshot = svc.snapshot().clone();
         let progress = snap.current.as_ref().and_then(|(app, _)| svc.progress_of(app).cloned());
-        let paused = snap.state == DmState::Paused;
+        let running = snap.state == DmState::Running;
+        let paused = !running;
 
         let mut column = page_column().gap(px(14.));
 
@@ -114,7 +115,11 @@ impl Render for DownloadsPage {
             let title = cur.params.title();
             let cover = self.covers.get(cur.params.cover().as_deref(), 60., 80., scale);
             let percent = progress.as_ref().map(|p| p.percent as f32);
-            let status = if paused { "Paused" } else { "Downloading" };
+            let status = match snap.state {
+                DmState::Running => "Downloading",
+                DmState::Paused => "Paused",
+                DmState::Idle => "Waiting",
+            };
             let mut info = div()
                 .flex_1()
                 .min_w_0()
@@ -133,7 +138,8 @@ impl Render for DownloadsPage {
                 .child(progress_bar(percent, 8., if paused { theme::accent() } else { theme::success() }))
                 .child(div().text_size(px(12.5)).text_color(theme::white_a(0.82)).child(match &progress {
                     Some(p) => progress_text(p),
-                    None if paused => "Paused - resume to continue where it stopped".to_string(),
+                    None if snap.state == DmState::Paused => "Paused - resume to continue where it stopped".to_string(),
+                    None if paused => "Press play to start the queue".to_string(),
                     None => "Starting...".to_string(),
                 }));
             if self.confirm_stop {
@@ -173,7 +179,7 @@ impl Render for DownloadsPage {
                             .child(
                                 small_button("dm-pause", if paused { Icon::PlayArrow } else { Icon::Pause }, true).on_click(cx.listener(
                                     move |this, _, _, cx| {
-                                        this.svc.update(cx, |s, _| if s.is_paused() { s.resume() } else { s.pause() });
+                                        this.svc.update(cx, |s, _| if s.is_running() { s.pause() } else { s.resume() });
                                         cx.notify();
                                     },
                                 )),

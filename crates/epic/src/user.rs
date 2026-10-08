@@ -55,11 +55,16 @@ pub fn sync_user_info(heroic: &HeroicPaths) -> Result<Option<UserInfo>> {
         return Ok(None);
     }
     let Some(info) = read_user_info(heroic) else { return Ok(None) };
-    json_store::update_value(&heroic.config(), |doc| {
-        let obj = doc.as_object_mut().expect("object");
-        obj.insert("userInfo".into(), serde_json::to_value(&info)?);
-        Ok(())
-    })?;
+    let value = serde_json::to_value(&info)?;
+    // Do not touch the file (and its mtime) when Heronite already has it right.
+    let stored = json_store::read_value(&heroic.config()).ok().and_then(|d| d.get("userInfo").cloned());
+    if stored.as_ref() != Some(&value) {
+        json_store::update_value(&heroic.config(), |doc| {
+            let obj = doc.as_object_mut().expect("object");
+            obj.insert("userInfo".into(), value);
+            Ok(())
+        })?;
+    }
     Ok(Some(info))
 }
 

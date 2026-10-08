@@ -250,6 +250,8 @@ impl CollectionView {
         let progress = s.progress_of(&app).cloned();
         let update = installed && s.has_update(&app);
         let kind = s.queued(&app).map(|(_, e)| e.kind);
+        let running = s.is_running();
+        let first = s.queued(&app).is_some_and(|(i, _)| i == 0);
         if active.is_some() || queue.is_some() {
             let (label, percent) = match (&active, queue) {
                 (Some(b), _) => (
@@ -291,14 +293,27 @@ impl CollectionView {
                         .child(div().text_size(px(13.33)).text_color(white()).child(label))
                         .child(progress_bar(percent, 5., theme::accent())),
                 );
-            if queue.is_some() && active.is_none() {
-                let paused = queue == Some(QueueState::Paused);
+            if queue.is_some() && active.is_none() && !first {
+                // Waiting behind other downloads: it can only be taken out of the queue.
+                let remove_app = app.clone();
+                row = row
+                    .child(round_btn("epic-focus-remove", Icon::Close).on_click(cx.listener(move |this, _, _, cx| {
+                        let svc = this.epic_service(cx);
+                        let a = remove_app.clone();
+                        svc.update(cx, |s, _| s.remove_from_queue(&a));
+                    })))
+                    .child(round_btn("epic-focus-open", Icon::Downloading).on_click(cx.listener(|this, _, _, cx| {
+                        this.epic.pending = Some(Request::OpenDownloads);
+                        cx.notify();
+                    })));
+            } else if queue.is_some() && active.is_none() {
+                let paused = !running;
                 row = row
                     .child(
                         round_btn("epic-focus-pause", if paused { Icon::PlayArrow } else { Icon::Pause }).on_click(cx.listener(
                             move |this, _, _, cx| {
                                 let svc = this.epic_service(cx);
-                                svc.update(cx, |s, _| if s.is_paused() { s.resume() } else { s.pause() });
+                                svc.update(cx, |s, _| if s.is_running() { s.pause() } else { s.resume() });
                             },
                         )),
                     )

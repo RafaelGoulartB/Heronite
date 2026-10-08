@@ -264,3 +264,67 @@ no diálogo "Collection settings". Tudo grava na hora que muda ("Settings are sa
   não há seletor de "Launch options" nem Msync/macOS/CrossOver além do campo de bottle; "Sync" de saves usa os 3
   modos de `heronite_epic::saves::SyncMode` (Both / ForceDownload / ForceUpload); winecfg/winetricks/run-exe
   nunca foram executados de verdade (só testes de construção do comando); cliques reais não testados (sem mouse).
+
+## Epic Games (agente "epic")
+
+Port da loja Epic do Heroic, tudo via `legendary` como o Heroic faz, nos mesmos arquivos de `~/.config/heroic`:
+login, biblioteca na Collection, instalar/atualizar/verificar/mover/desinstalar/importar, fila de downloads e
+saves na nuvem. O `legendaryConfig/**` só é gravado pelo próprio legendary.
+
+- **Backend** (`crates/epic`, 63 testes + `tests/real_legendary.rs` opt-in): `cmd` (acha o binário como o
+  Heronite, `LEGENDARY_CONFIG_PATH`, saída por linha com `\n`/`\r`, cancelar = SIGTERM e depois SIGKILL no grupo;
+  o filho recebe SIGTERM se o app morrer); `user` (`auth --code/--delete`, `userInfo` em `store/config.json`,
+  aceita código puro, JSON da página ou URL); `library` (`list --third-party` e **reconstrução do
+  `store_cache/legendary_library.json`** a partir de `metadata/*.json` + `installed.json`; as 99 entradas reais saem
+  idênticas byte a byte às do Heronite, inclusive a ordem das chaves; detecção de update comparando `assets.json` com
+  `installed.json`); `info` (`legendary info --json` com cache de 6 h em `legendary_install_info.json`, SDL e overrides
+  da API do legendary, cache de 7 dias); `ops` (install/update com os mesmos argumentos do Heroic, retry com
+  `--max-shared-memory 5000`, verify/repair com progresso, uninstall, move via rsync/mv + `legendary move --skip-move`,
+  import, remoção do prefixo com as mesmas travas, config Wine no GamesConfig); `queue` + `manager` (fila em
+  `store/download-manager.json` no formato `DMQueueElement`, um download por vez numa thread, pausar/retomar/cancelar
+  — cancelar remove os DLCs enfileirados junto e opcionalmente apaga os arquivos baixados —, reordenar, histórico);
+  `progress` (regexes do Heroic: ETA, Downloaded, Download, Disk; percentual como o Heroic com retomada); `saves`
+  (`sync`/`sync_flag`/`detect_path`; `detect_path` devolve o `save_path` que o legendary já guardou, senão roda
+  `sync-saves --skip-upload --skip-download --accept-path` com o ambiente Wine do jogo); `disk` (espaço livre, gravável).
+- **Login embutido** (`crates/epic-login`, binário `heronite-epic-login`, wry + GTK/WebKit, fora do binário principal):
+  abre `epicgames.com/id/login?responseType=code` com o user-agent do Heroic (sessão anônima), pega o código do redirect
+  `https://localhost/...?code=` ou do JSON de `/id/api/redirect` e o imprime. O app o procura ao lado do executável.
+  `--smoke` carrega uma página local (nunca abre rede); verificado: abre no workspace 2. Alternativa sempre disponível
+  na página Epic: abrir `legendary.gl/epiclogin` no navegador e colar o código ou o JSON.
+- **Serviço** (`app/src/services/downloads.rs`): entidade global `Downloads` (fila, conta, "update disponível",
+  operações avulsas com progresso e cancelar, atualização da biblioteca). Como o Heroic: fila inicia 5 s depois de abrir,
+  verificação de updates (rede) 15 s depois se `checkForUpdatesOnStartup`, `autoUpdateGames`/`ignoreGameUpdates`
+  respeitados; tudo isso desligado por `HERONITE_DISABLE_IDLE_JOBS=1`.
+- **Páginas**: **Downloads** (download atual com barra, velocidade, ETA, pausar/retomar, parar mantendo ou apagando
+  arquivos; fila com subir/descer/remover; histórico com limpar) e **Epic Games** (login, conta, estatísticas,
+  atualizar biblioteca, importar jogo, sair).
+- **Diálogos** (`app/src/dialogs/epic_*.rs`): instalar (caminho com espaço livre, tamanhos, DLCs — todos marcados como
+  no Heroic —, SDL, configuração Wine no Linux, botão "Import Game"), importar (escolher o jogo, depois a pasta),
+  confirmações (desinstalar com "remove prefix"/"erase settings", mover, verify, "Game Needs Update") e saída de texto.
+- **Collection** (`app/src/collection/epic.rs`): botão Install abre o diálogo, jogo na fila abre Downloads, jogo com
+  update pergunta antes de jogar; card com faixa de progresso ("Installing 37%", "Queued", "Verifying 12%") e selo
+  UPDATE; rodapé do foco com progresso + pausar/parar e botão Update; menu de contexto com Update, Verify and repair,
+  Move install, Cloud saves sync, Uninstall e Import game. Toda operação recarrega a biblioteca.
+- **Pontos de ligação em arquivos compartilhados**: `app/src/main.rs` (`mod services;`), `app/src/dialogs/mod.rs`
+  (`pub mod epic_*`), `app/src/collection/mod.rs` (campo `epic`, `epic_primary` em `primary_action`, `drive_epic`,
+  `epic_card`/`epic_focus` ao montar card/foco, braço do `HERONITE_DEBUG_DIALOG`), `card.rs` (campo `epic` + overlay),
+  `focus.rs` (campo `epic` + conteúdo do rodapé), `context_menu.rs` (uma chamada), `runtime.rs` (mensagem do ramo
+  legendary), `scripts/install.sh` (compila e instala o `heronite-epic-login` ao lado do app).
+- **Depuração**: `HERONITE_DEBUG_PAGE=downloads|epic`; `HERONITE_DEBUG_DIALOG=epic-install|epic-import|epic-uninstall|
+  epic-move|epic-verify|epic-update:<appName>` e `epic-message`; `HERONITE_DEBUG_FAKE_DOWNLOAD=<appName>` (fila falsa com
+  progresso sem baixar nada); `HERONITE_DEBUG_FAKE_UPDATE=<appName>`; `HERONITE_DEBUG_QUEUE_INSTALL=<appName>`
+  (+ `HERONITE_DEBUG_INSTALL_DIR`, `HERONITE_DEBUG_INSTALL_DLCS`) enfileira uma instalação de verdade, para usar com um
+  legendary falso em `HERONITE_LEGENDARY_BIN`. Com `HERONITE_DEBUG_DIALOG` o diálogo de instalar usa o cache de
+  `legendary info` na hora (as capturas só mostram os primeiros quadros).
+- **Verificação**: testes unitários com um `legendary` falso (script) para argumentos, progresso, retry de memória,
+  cancelar/pausar/retomar, fila persistida, mover/importar/prefixo; `real_legendary.rs` contra a conta real (só
+  `list`/`info`/API, com `legendaryConfig` da fixture como link para o real): 99 jogos reconstruídos, tamanhos de
+  download, SDL; teste ponta a ponta no app com legendary falso (fila -> progresso -> `installed.json` -> biblioteca
+  reconstruída -> Collection recarregada -> histórico `done`); capturas de todas as telas e diálogos.
+- **Limitações**: instalar/atualizar/verificar/mover/desinstalar/importar/sync de saves **nunca rodaram com o
+  legendary real** (só contra o falso); cliques reais não testados (sem mouse; o login embutido nunca foi usado com
+  credenciais); jogos gerenciados por terceiros (EA/Ubisoft) dão erro "not supported yet" (o Heroic só grava
+  `third-party-installed.json` no Linux, dentro do `legendaryConfig`); sem seletor de plataforma (só Windows no Linux),
+  sem branches/builds (GOG), sem atalhos de desktop/Steam, sem notificações do sistema, sem checagem de "Epic offline";
+  `detect_path` não descarta o `save_path` já guardado (o Heroic edita o `installed.json`); "Play anyway" no aviso de
+  update pode ser recusado pelo legendary (o plano de lançamento ainda não passa `--skip-version-check`).

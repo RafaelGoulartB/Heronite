@@ -34,6 +34,7 @@ pub enum DmState {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum Event {
     /// State, queue or history changed.
     Changed,

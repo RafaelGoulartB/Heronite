@@ -14,11 +14,13 @@ ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/256x256/apps"
 ICON_SRC="$ROOT/../assets/heroic-local.png"
 
 cd "$ROOT"
-cargo build --release -p heronite
+cargo build --release -p heronite -p heronite-epic-login
 
 mkdir -p "$PREFIX" "$BIN_DIR" "$APP_DIR"
 install -m 755 target/release/heronite-rs "$PREFIX/heronite-rs.new"
 mv -f "$PREFIX/heronite-rs.new" "$PREFIX/heronite-rs"
+# Epic login window (WebKit), a separate binary the app starts when needed.
+install -m 755 target/release/heronite-epic-login "$PREFIX/heronite-epic-login"
 ln -sf "$PREFIX/heronite-rs" "$BIN_DIR/heronite-rs"
 
 ICON_NAME=com.heronite.rs
