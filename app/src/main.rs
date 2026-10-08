@@ -18,27 +18,89 @@ fn main() {
     let started = Instant::now();
     env_logger_init();
 
-    gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
-        gpui_kit::init(cx);
-        assets::load_fonts(cx);
-        theme::apply_component_theme(cx);
+    let cli = system::cli::parse(std::env::args().skip(1));
+    if cli.help {
+        print!("{}", system::cli::HELP);
+        return;
+    }
+    for err in &cli.errors {
+        eprintln!("heronite-rs: {err}");
+    }
+    if !cli.errors.is_empty() && cli.launch.is_none() {
+        std::process::exit(2);
+    }
 
-        let bounds = Bounds::centered(None, size(px(1600.), px(1000.)), cx);
-        let options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: None,
-            app_id: Some("com.heronite.rs".into()),
-            window_background: WindowBackgroundAppearance::Opaque,
-            window_min_size: Some(size(px(640.), px(480.))),
-            ..Default::default()
-        };
-        gpui_kit::open_window(options, cx, |window, cx| {
-            window.set_window_title("Heronite");
-            cx.new(|cx| collection::CollectionView::new(started, window, cx))
-        })
-        .expect("failed to open window");
-        cx.activate(true);
-    });
+    // One instance per data folder: a second start hands its request to the
+    // first and exits (Heroic's `requestSingleInstanceLock`).
+    let (server, messages) = match single_instance(&cli) {
+        SingleInstance::Forwarded => return,
+        SingleInstance::Primary { server, messages } => (server, messages),
+    };
+
+    gpui_kit::application()
+        .with_assets(assets::Assets)
+        // The windows come and go (closed to the tray); `system` decides when to quit.
+        .with_quit_mode(QuitMode::Explicit)
+        .run(move |cx| {
+            gpui_kit::init(cx);
+            assets::load_fonts(cx);
+            theme::apply_component_theme(cx);
+            system::init(cx, cli, started, messages);
+        });
+
+    // Removes the socket of the single-instance server.
+    drop(server);
+    let code = system::exit_code();
+    if code != 0 {
+        std::process::exit(code);
+    }
+}
+
+enum SingleInstance {
+    /// Another instance took the request: nothing left to do.
+    Forwarded,
+    Primary {
+        server: Option<system::single_instance::Server>,
+        messages: Option<futures::channel::mpsc::UnboundedReceiver<system::single_instance::Message>>,
+    },
+}
+
+/// `HERONITE_NO_SINGLE_INSTANCE=1` skips all of this (screenshot runs and
+/// tests never talk to the user's running instance).
+fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
+    use system::single_instance::{forward, socket_path, Forward, Message, Server};
+    let primary = |server, messages| SingleInstance::Primary { server, messages };
+    if std::env::var("HERONITE_NO_SINGLE_INSTANCE").is_ok_and(|v| !v.is_empty() && v != "0") {
+        return primary(None, None);
+    }
+    let socket = socket_path(&heronite_data::HeroicPaths::detect().root);
+    let msg = Message { launch: cli.launch.clone(), no_gui: cli.no_gui };
+    for _ in 0..2 {
+        match forward(&socket, &msg) {
+            Ok(Forward::Delivered) => {
+                log::info!("handed the request to the running instance");
+                return SingleInstance::Forwarded;
+            }
+            Ok(Forward::NoInstance) => {}
+            Err(err) => {
+                log::warn!("could not reach the running instance: {err}");
+                return primary(None, None);
+            }
+        }
+        let (tx, rx) = futures::channel::mpsc::unbounded();
+        match Server::bind(&socket, move |m| {
+            let _ = tx.unbounded_send(m);
+        }) {
+            Ok(server) => return primary(Some(server), Some(rx)),
+            // Another instance won the race: forward to it on the next round.
+            Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => continue,
+            Err(err) => {
+                log::warn!("single instance disabled ({}): {err}", socket.display());
+                return primary(None, None);
+            }
+        }
+    }
+    primary(None, None)
 }
 
 /// Startup parses several MB of JSON on worker threads; glibc keeps the

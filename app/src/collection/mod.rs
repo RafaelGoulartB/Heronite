@@ -17,6 +17,7 @@ mod playnite_menu;
 mod screenshot_viewer;
 mod screenshots;
 mod sessions;
+mod system_glue;
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
@@ -172,7 +173,7 @@ impl CollectionView {
         })
         .detach();
 
-        let (runtime, mut events) = GameRuntime::new(heroic.clone());
+        let (runtime, mut events) = crate::system::attach_runtime(&heroic, cx);
         cx.spawn(async move |this, cx| {
             while let Some(ev) = events.next().await {
                 if this.update(cx, |this, cx| this.on_launch_event(ev, cx)).is_err() {
@@ -199,7 +200,7 @@ impl CollectionView {
             wheel: WheelScroll::default(),
             facet_flyout: None,
             refreshing: false,
-            runtime: Arc::new(runtime),
+            runtime,
             playing: HashMap::new(),
             toast: None,
             toast_task: None,
