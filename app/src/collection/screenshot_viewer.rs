@@ -235,8 +235,6 @@ impl CollectionView {
         true
     }
 
-    // --- rendering ---------------------------------------------------------
-
     pub(super) fn render_viewer(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let i = self.shots.view?;
         let item = self.shots.items.get(i)?.clone();
@@ -244,10 +242,89 @@ impl CollectionView {
         let vp = window.viewport_size();
         let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
         let scale = window.scale_factor();
-        let (fit, zoom, pan) = (self.shots.fit, self.shots.zoom, self.shots.pan);
+        let (fit, zoom) = (self.shots.fit, self.shots.zoom);
         let controls = !fit || self.shots.controls_visible;
 
-        let image = self.shots.full.as_ref().filter(|f| f.path == item.path).map(|f| {
+        let image = self.viewer_image(&item.path, vw, vh, scale, cx);
+        let tools = self.viewer_tools(i, cx);
+
+        let mut caption = format!("{}/{}", i + 1, n);
+        if zoom > MIN_ZOOM {
+            caption.push_str(&format!(" · {}%", (zoom * 100.).round()));
+        }
+
+        let mut overlay = div()
+            .id("shot-viewer")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .overflow_hidden()
+            .bg(theme::black_a(0.86))
+            .font_family(theme::FONT_BODY)
+            .on_mouse_move(cx.listener(|this, ev: &MouseMoveEvent, _, cx| {
+                this.shots_reveal_controls(cx);
+                if let (Some(d), Some(MouseButton::Left)) = (this.shots.drag, ev.pressed_button) {
+                    this.shots.pan = (
+                        d.pan.0 + f32::from(ev.position.x - d.mouse.x),
+                        d.pan.1 + f32::from(ev.position.y - d.mouse.y),
+                    );
+                    cx.notify();
+                }
+            }))
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this, _, _, _| {
+                    this.shots.drag = None;
+                }),
+            )
+            .on_scroll_wheel(cx.listener(|this, ev: &ScrollWheelEvent, window, cx| this.shots_wheel(ev, window, cx)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    cx.stop_propagation();
+                    if this.shots.fit && !this.shots.controls_visible {
+                        this.shots_reveal_controls(cx);
+                    } else {
+                        this.shots_close_view();
+                    }
+                    cx.notify();
+                }),
+            )
+            .children(image);
+        if controls {
+            overlay = overlay.child(tools);
+            if n > 1 {
+                overlay = overlay
+                    .child(Self::viewer_nav("shot-prev", Icon::ChevronLeft, true, -1, cx))
+                    .child(Self::viewer_nav("shot-next", Icon::ChevronRight, false, 1, cx));
+            }
+            overlay = overlay.child(
+                div()
+                    .absolute()
+                    .bottom(px(17.6))
+                    .left_0()
+                    .right_0()
+                    .flex()
+                    .justify_center()
+                    .text_size(px(13.6))
+                    .text_color(theme::white_a(0.78))
+                    .child(caption),
+            );
+        }
+        if let Some(err) = self.shots.error.clone() {
+            overlay = overlay.child(Self::viewer_error(err));
+        }
+        if let Some(ci) = self.shots.confirm {
+            let name = self.shots.items.get(ci).map(|s| s.name.clone()).unwrap_or_default();
+            overlay = overlay.child(Self::delete_confirm(&name, cx));
+        }
+        Some(deferred(overlay).with_priority(60).into_any_element())
+    }
+
+    /// The full-resolution image at its zoom and pan, once decoded.
+    fn viewer_image(&self, path: &std::path::Path, vw: f32, vh: f32, scale: f32, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let (fit, zoom, pan) = (self.shots.fit, self.shots.zoom, self.shots.pan);
+        self.shots.full.as_ref().filter(|f| f.path.as_path() == path).map(|f| {
             let (nw, nh) = (f.src.0 as f32 / scale, f.src.1 as f32 / scale);
             let (bw, bh) = if fit { (vw, vh) } else { ((0.92 * vw).min(1400.), 0.82 * vh) };
             let mut s = (bw / nw).min(bh / nh);
@@ -288,9 +365,13 @@ impl CollectionView {
                     }),
                 )
                 .child(img(ImageSource::Render(f.img.clone())).size_full().object_fit(ObjectFit::Fill))
-        });
+        })
+    }
 
-        let tools = div()
+    /// Delete, fit and close buttons (top right).
+    fn viewer_tools(&self, i: usize, cx: &mut Context<Self>) -> Div {
+        let fit = self.shots.fit;
+        div()
             .absolute()
             .top(px(17.6))
             .right(px(19.2))
@@ -340,148 +421,82 @@ impl CollectionView {
                     this.shots_close_view();
                     cx.notify();
                 },
-            )));
+            )))
+    }
 
-        let nav = |id: &'static str, ic: Icon, left: bool, delta: isize| {
-            let b = icon_button(id, ic, 46., 0.72, 0.92)
-                .absolute()
-                .top(relative(0.5))
-                .mt(px(-23.))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.shots_step(delta);
-                    cx.notify();
-                }));
-            if left { b.left(px(19.2)) } else { b.right(px(19.2)) }
-        };
+    /// Previous / next arrow, vertically centred.
+    fn viewer_nav(id: &'static str, ic: Icon, left: bool, delta: isize, cx: &mut Context<Self>) -> Stateful<Div> {
+        let b = icon_button(id, ic, 46., 0.72, 0.92)
+            .absolute()
+            .top(relative(0.5))
+            .mt(px(-23.))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.shots_step(delta);
+                cx.notify();
+            }));
+        if left { b.left(px(19.2)) } else { b.right(px(19.2)) }
+    }
 
-        let mut caption = format!("{}/{}", i + 1, n);
-        if zoom > MIN_ZOOM {
-            caption.push_str(&format!(" · {}%", (zoom * 100.).round()));
-        }
+    fn viewer_error(err: SharedString) -> Div {
+        div().absolute().top(px(24.)).left_0().right_0().flex().justify_center().child(
+            div()
+                .px(px(14.))
+                .py(px(8.))
+                .rounded(px(8.))
+                .bg(theme::rgb_a(18, 22, 28, 0.94))
+                .border_1()
+                .border_color(theme::danger())
+                .text_size(px(13.33))
+                .text_color(theme::white_a(0.92))
+                .child(err),
+        )
+    }
 
-        let mut overlay = div()
-            .id("shot-viewer")
+    /// "Move to the trash?" confirmation over the viewer.
+    fn delete_confirm(name: &str, cx: &mut Context<Self>) -> Div {
+        div()
             .absolute()
             .inset_0()
-            .occlude()
-            .overflow_hidden()
-            .bg(theme::black_a(0.86))
-            .font_family(theme::FONT_BODY)
-            .on_mouse_move(cx.listener(|this, ev: &MouseMoveEvent, _, cx| {
-                this.shots_reveal_controls(cx);
-                if let (Some(d), Some(MouseButton::Left)) = (this.shots.drag, ev.pressed_button) {
-                    this.shots.pan = (
-                        d.pan.0 + f32::from(ev.position.x - d.mouse.x),
-                        d.pan.1 + f32::from(ev.position.y - d.mouse.y),
-                    );
-                    cx.notify();
-                }
-            }))
-            .on_mouse_up(
-                MouseButton::Left,
-                cx.listener(|this, _, _, _| {
-                    this.shots.drag = None;
-                }),
-            )
-            .on_scroll_wheel(cx.listener(|this, ev: &ScrollWheelEvent, window, cx| this.shots_wheel(ev, window, cx)))
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    cx.stop_propagation();
-                    if this.shots.fit && !this.shots.controls_visible {
-                        this.shots_reveal_controls(cx);
-                    } else {
-                        this.shots_close_view();
-                    }
-                    cx.notify();
-                }),
-            )
-            .children(image);
-        if controls {
-            overlay = overlay.child(tools);
-            if n > 1 {
-                overlay = overlay
-                    .child(nav("shot-prev", Icon::ChevronLeft, true, -1))
-                    .child(nav("shot-next", Icon::ChevronRight, false, 1));
-            }
-            overlay = overlay.child(
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(theme::black_a(0.35))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .child(
                 div()
-                    .absolute()
-                    .bottom(px(17.6))
-                    .left_0()
-                    .right_0()
+                    .id("shot-confirm")
+                    .occlude()
                     .flex()
-                    .justify_center()
-                    .text_size(px(13.6))
-                    .text_color(theme::white_a(0.78))
-                    .child(caption),
-            );
-        }
-        if let Some(err) = self.shots.error.clone() {
-            overlay = overlay.child(
-                div().absolute().top(px(24.)).left_0().right_0().flex().justify_center().child(
-                    div()
-                        .px(px(14.))
-                        .py(px(8.))
-                        .rounded(px(8.))
-                        .bg(theme::rgb_a(18, 22, 28, 0.94))
-                        .border_1()
-                        .border_color(theme::danger())
-                        .text_size(px(13.33))
-                        .text_color(theme::white_a(0.92))
-                        .child(err),
-                ),
-            );
-        }
-        if let Some(ci) = self.shots.confirm {
-            let name = self.shots.items.get(ci).map(|s| s.name.clone()).unwrap_or_default();
-            overlay = overlay.child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(theme::black_a(0.35))
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .flex_col()
+                    .gap(px(20.))
+                    .w(px(420.))
+                    .p(px(24.))
+                    .rounded(px(10.))
+                    .bg(theme::background())
+                    .text_color(rgb(0xcaf3fd))
+                    .text_size(px(16.))
+                    .child(format!("Move “{name}” to the trash?"))
                     .child(
                         div()
-                            .id("shot-confirm")
-                            .occlude()
                             .flex()
-                            .flex_col()
-                            .gap(px(20.))
-                            .w(px(420.))
-                            .p(px(24.))
-                            .rounded(px(10.))
-                            .bg(theme::background())
-                            .text_color(rgb(0xcaf3fd))
-                            .text_size(px(16.))
-                            .child(format!("Move “{name}” to the trash?"))
+                            .justify_end()
+                            .gap(px(12.))
                             .child(
-                                div()
-                                    .flex()
-                                    .justify_end()
-                                    .gap(px(12.))
-                                    .child(
-                                        button("shot-confirm-cancel", ButtonKind::Glass, "Cancel").on_click(
-                                            cx.listener(|this, _, _, cx| {
-                                                this.shots.confirm = None;
-                                                cx.notify();
-                                            }),
-                                        ),
-                                    )
-                                    .child(
-                                        button("shot-confirm-ok", ButtonKind::Primary, "Move to trash").on_click(
-                                            cx.listener(|this, _, _, cx| {
-                                                this.shots_delete(cx);
-                                            }),
-                                        ),
-                                    ),
+                                button("shot-confirm-cancel", ButtonKind::Glass, "Cancel").on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.shots.confirm = None;
+                                        cx.notify();
+                                    }),
+                                ),
+                            )
+                            .child(
+                                button("shot-confirm-ok", ButtonKind::Primary, "Move to trash").on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        this.shots_delete(cx);
+                                    }),
+                                ),
                             ),
                     ),
-            );
-        }
-        Some(deferred(overlay).with_priority(60).into_any_element())
+            )
     }
 }
