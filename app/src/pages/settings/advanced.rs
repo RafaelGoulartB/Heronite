@@ -40,9 +40,9 @@ impl State {
     }
 }
 
-/// Heroic's log folder (`app.getPath('logs')`), when it exists.
+/// Heroic's log folder (`~/.local/state/Heroic/logs`), when it exists.
 pub fn logs_dir(heroic: &HeroicPaths) -> Option<PathBuf> {
-    let dir = heroic.root.join("logs");
+    let dir = heronite_launch::log_writer::LogPaths::for_heroic(heroic).base;
     dir.is_dir().then_some(dir)
 }
 
@@ -140,7 +140,7 @@ impl SettingsPage {
             .child(meta_text(if logs.is_some() {
                 "The config folder is shared with Heroic and Heronite."
             } else {
-                "The config folder is shared with Heroic and Heronite. There is no logs folder yet (this app logs to the terminal)."
+                "The config folder is shared with Heroic and Heronite. There is no logs folder yet: it appears when a game is launched."
             }));
 
         // Clear cache.

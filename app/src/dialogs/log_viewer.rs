@@ -666,7 +666,9 @@ impl Render for LogViewerDialog {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Not `super::*`: the gpui prelude has its own `test` attribute.
+    use super::{line_color, read_content};
+    use crate::theme;
 
     #[test]
     fn lines_get_a_colour_by_level() {

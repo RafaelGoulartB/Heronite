@@ -80,8 +80,9 @@ pub fn format_system_info(s: &sysinfo::SystemInfo) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use sysinfo::{Gpu, SystemInfo};
+    // Not `super::*`: the gpui prelude has its own `test` attribute.
+    use super::format_system_info;
+    use crate::pages::settings::sysinfo::{Gpu, SystemInfo};
 
     #[test]
     fn system_info_reads_like_heroics() {

@@ -683,3 +683,51 @@ Metadata, Emulators, Backup, Save backup). As abas General e Defaults saíram do
   não chegam na janela do workspace oculto; a etiqueta aparece); "Open … folder" (xdg-open) não foi disparado. `autoUpdateGames` e
   `disableLogs` só gravam a chave compartilhada (o Heronite honra; este app ainda não atualiza sozinho nem grava log em arquivo);
   `checkForUpdatesOnStartup`, tema/idioma, Discord RPC, modo console e features experimentais ficaram de fora (não se aplicam aqui).
+
+## Logs de jogo e do launcher + visualizador (agente "logs")
+
+Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**`) e o visualizador (`LogSettings`).
+
+- **Onde ficam** (igual ao Heroic 2.22 / Heronite, então os dois apps enxergam os mesmos arquivos): `$XDG_STATE_HOME/Heroic/logs`
+  (`~/.local/state/Heroic/logs`; macOS/Windows como o `getBaseLogPath`). Log de jogo: `games/<appName>_<runner>/launch.log` (+ `.log.old`
+  do lançamento anterior). O `GamesConfig/<app>-lastPlay.log` é de versões antigas do Heroic: o app deixou de escrever nele, mas o
+  visualizador ainda lista os que existem ("Older Heroic log"). `HERONITE_LOG_DIR=<dir>` troca a base; com `HERONITE_HEROIC_DIR`
+  (fixture/testes) os logs vão para `<dir>/logs` e `<dir>/logs/launcher`, nunca para as pastas reais.
+- **Log do jogo** (`crates/launch/src/log_writer.rs`, `GameLog` = `LogWriter` do Heroic): o primeiro write arquiva o arquivo anterior em
+  `.old`; linhas `(hh:mm:ss) [INFO]:    msg`; termina com `============= End of log =============`. Cabeçalho como o
+  `prepareLaunch`: `Launching "Título" (runner)`, `Native?`, `Installed in:`, `System Info:` (CPU/RAM/GPUs/SO; o app injeta o texto com
+  `Launcher::set_system_info`), `Game Settings:` (JSON filtrado, chaves de API/token ocultas) + `Stored at:`, notas do plano, avisos do
+  preparo (DXVK, prefixo...), `Launching <título>: ENV=... programa args` (variáveis com TOKEN/SECRET/PASSWORD ocultas) e `Game Output:`.
+  Depois vem a saída (stdout+stderr do jogo/legendary/umu/wine) bruta, e `Game process exited with code N`. Erros de spawn/preparo viram
+  `[ERROR]` e o log é fechado em todos os caminhos (parar antes de iniciar, falha, Steam).
+- **`disableLogs` / `verboseLogs`**: `disableLogs` (config.json global) ou `verboseLogs` desligado do jogo (padrão ligado, como no Heroic)
+  desligam o log; sem `verboseLogs` o Heroic escreve (forçado) "IMPORTANT: Logs are disabled" + "Enable verbose logs in Game's
+  settings > Advanced tab…", e fechar o log escreve o End of log nesse caso. Com `disableLogs` não se escreve nada (nem rotaciona).
+- **Sem bloquear nem crescer sem limite**: o pump da saída lê o pipe em blocos de 16 KB e grava direto no arquivo (memória constante);
+  o pipe é sempre drenado, mesmo com o log desligado; um log de jogo para em 512 MB (aviso no arquivo, o resto é descartado).
+  `Spawner::spawn_logged` é o novo ponto (o `spawn(cmd, path)` antigo continua); `FakeSpawner` o ignora.
+- **Log do launcher** (`LauncherLogger`, `app/src/main.rs::env_logger_init`): o `log` crate continua no stderr e também vai para
+  `~/.config/heronite-rs/logs/heronite-rs-AAAA-MM-DD.log` (um arquivo por dia, mantém os 7 mais recentes, passa de 32 MB vira `.old`,
+  várias instâncias anexam no mesmo). Linha de início com versão/pid, "System Information" numa thread (fora do caminho de
+  inicialização), panics também entram. Respeita `disableLogs` (só o aviso forçado). Escolhi esse caminho em vez do `heroic.log`
+  porque o `heroic.log` é reescrito/arquivado pelo Heronite ao iniciar.
+- **Visualizador** (`app/src/dialogs/log_viewer.rs`, painel reutilizável): lista à esquerda (This app por dia, Heroic/Heronite,
+  runners, jogos com seus títulos — launch/install/…, mais recentes primeiro), conteúdo à direita em fonte mono (escolhe uma família
+  instalada: o GPUI não resolve `monospace`), linhas coloridas por nível, quebra de linha, scroll virtualizado (`list`) com barra
+  arrastável. Lê só o fim do arquivo (512 KB; "Load earlier" ×4 até 32 MB; acima disso, "Open file"), remove ANSI e progresso com `\r`.
+  Botões: Latest / Previous run (`.old`), Refresh, Copy, Open folder, Open file (xdg-open).
+- **Onde abrir**: ☰ → Settings → **Logs** (`HERONITE_DEBUG_PAGE=settings:logs`, `HERONITE_DEBUG_LOG=launcher|<appName>`,
+  `HERONITE_DEBUG_LOG_EARLIER=<n>` aperta "Load earlier" n vezes) e item **View log** no menu de contexto do jogo
+  (`LogViewerDialog`; `HERONITE_DEBUG_DIALOG=viewlog` + `HERONITE_DEBUG_SELECT=<runner_app>`). O botão "Open logs folder" de
+  Settings → Advanced agora abre a pasta de logs real.
+- **Ganchos em arquivos compartilhados**: `pages/settings.rs` (seção Logs, largura maior só nela), `pages/settings/advanced.rs` (pasta de
+  logs), `collection/context_menu.rs` (um bloco "View log" + `open_game_log`), `collection/mod.rs` (uma linha no debug `viewlog`),
+  `dialogs/mod.rs`, `runtime.rs` do app (`set_system_info`), `crates/launch/src/{runtime,lib}.rs`.
+- **Verificado**: testes (launch: formato das linhas, caminhos, rotação `.old`, desligado/forçado, limite, leitura do fim em arquivo
+  grande, listagem, launcher log com poda; `tests/game_log.rs` com processos `sh -c` reais: cabeçalho na ordem do Heroic, saída
+  completa de ~6 MB, segundo lançamento move o primeiro para `.old`, sem verbose só o aviso, disableLogs não cria nada, erro de
+  spawn); capturas (shot.sh, workspace 7, fixture) da página Logs, de um log de 76 MB (fim exibido, "Load earlier"), do diálogo
+  "View log" e do item no menu de contexto.
+- **Não verificado / limites**: cliques reais (sem mouse; a preservação da posição ao "Load earlier" foi só exercitada pelo hook de
+  debug, onde o layout ainda não aconteceu); nenhum jogo real foi lançado; logs de instalação/atualização/reparo (`install.log` etc.) e
+  `runners/*.log` do legendary ainda não são escritos por este app (o visualizador os mostra se o Heronite os criou); sem upload de log.
