@@ -187,7 +187,9 @@ impl CollectionView {
                             })),
                     )
                     .child(menu_separator())
-                    .child(menu_item("status-manage", false).child("Manage statuses…"))
+                    .child(menu_item("status-manage", false).child("Manage statuses…").on_click(cx.listener(
+                        |this, _, window, cx| this.open_manage_statuses(window, cx),
+                    )))
                     .into_any_element()
             },
             cx,
@@ -272,7 +274,10 @@ impl CollectionView {
                     .child(refresh)
                     .child(tool_button("hdr-playnite", Icon::SyncAlt, false))
                     .child(tool_button("hdr-emulated", Icon::SportsEsports, false))
-                    .child(tool_button("hdr-settings", Icon::Settings, false)),
+                    .child(
+                        tool_button("hdr-settings", Icon::Settings, false)
+                            .on_click(cx.listener(|this, _, window, cx| this.open_settings(window, cx))),
+                    ),
             )
     }
 

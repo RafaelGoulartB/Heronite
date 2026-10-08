@@ -7,7 +7,7 @@ mod focus;
 mod html;
 mod header;
 mod list;
-mod stage;
+pub mod stage;
 mod vm;
 
 use std::collections::HashMap;
@@ -77,6 +77,10 @@ pub struct CollectionView {
     toast: Option<(SharedString, bool)>,
     context_menu: Option<context_menu::ContextMenuState>,
     focus_handle: FocusHandle,
+    dialog: Option<AnyView>,
+    /// `HERONITE_DEBUG_DIALOG` (opened on the first render with a window).
+    pending_debug_dialog: Option<String>,
+    dialog_sub: Option<Subscription>,
     focus_scroll: ScrollHandle,
     toast_task: Option<Task<()>>,
     images: ImageStore,
@@ -176,6 +180,9 @@ impl CollectionView {
             toast_task: None,
             context_menu: None,
             focus_handle: cx.focus_handle(),
+            dialog: None,
+            pending_debug_dialog: None,
+            dialog_sub: None,
             focus_scroll: ScrollHandle::new(),
             images,
             cover_chains: HashMap::new(),
@@ -274,6 +281,54 @@ impl CollectionView {
         }
     }
 
+    fn dialog_ctx(&self) -> Option<crate::dialogs::DialogCtx> {
+        Some(crate::dialogs::DialogCtx {
+            heroic: self.heroic.clone(),
+            app: self.app_paths.clone(),
+            lib: self.lib.clone()?,
+        })
+    }
+
+    /// Hosts `view` as the open dialog and reacts to its events.
+    pub(super) fn open_dialog<V>(&mut self, view: Entity<V>, cx: &mut Context<Self>)
+    where
+        V: Render + EventEmitter<crate::dialogs::DialogEvent>,
+    {
+        use crate::dialogs::DialogEvent;
+        self.open_menu = None;
+        self.context_menu = None;
+        self.dialog_sub = Some(cx.subscribe(&view, |this, _, ev: &DialogEvent, cx| {
+            match ev {
+                DialogEvent::Close => {
+                    this.dialog = None;
+                    this.dialog_sub = None;
+                }
+                DialogEvent::Changed => this.reload(cx),
+                DialogEvent::ChangedAndClose => {
+                    this.dialog = None;
+                    this.dialog_sub = None;
+                    this.reload(cx);
+                }
+            }
+            cx.notify();
+        }));
+        self.dialog = Some(view.into());
+        cx.notify();
+    }
+
+    pub(super) fn open_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ctx) = self.dialog_ctx() else { return };
+        let chain = self.selected.as_ref().and_then(|k| self.stage_chains.get(k).cloned()).unwrap_or_default();
+        let view = cx.new(|cx| crate::dialogs::settings::SettingsDialog::new(ctx, chain, window, cx));
+        self.open_dialog(view, cx);
+    }
+
+    pub(super) fn open_manage_statuses(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ctx) = self.dialog_ctx() else { return };
+        let view = cx.new(|cx| crate::dialogs::manage_statuses::ManageStatusesDialog::new(ctx, window, cx));
+        self.open_dialog(view, cx);
+    }
+
     /// Screenshot helpers: `HERONITE_DEBUG_MENU=<card key>` opens its context
     /// menu (with the status flyout), `HERONITE_DEBUG_DROPDOWN=install|sort|
     /// status|facets` opens a header menu.
@@ -284,6 +339,9 @@ impl CollectionView {
                 position: point(px(200.), px(160.)),
                 status_open: true,
             });
+        }
+        if let Ok(which) = std::env::var("HERONITE_DEBUG_DIALOG") {
+            self.pending_debug_dialog = Some(which);
         }
         if let Ok(menu) = std::env::var("HERONITE_DEBUG_DROPDOWN") {
             self.open_menu = match menu.as_str() {
@@ -626,6 +684,13 @@ impl Render for CollectionView {
             log::info!("first render after {:?}", self.started.elapsed());
         }
         self.images.drop_evicted(window);
+        if let Some(which) = self.pending_debug_dialog.take() {
+            match which.as_str() {
+                "settings" => self.open_settings(window, cx),
+                "statuses" => self.open_manage_statuses(window, cx),
+                _ => {}
+            }
+        }
         let viewport = window.viewport_size();
         let vw = f32::from(viewport.width);
         let scale = window.scale_factor();
@@ -788,7 +853,10 @@ impl Render for CollectionView {
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
                 if ev.keystroke.key == "escape" {
-                    if this.context_menu.is_some() {
+                    if this.dialog.is_some() {
+                        this.dialog = None;
+                        this.dialog_sub = None;
+                    } else if this.context_menu.is_some() {
                         this.context_menu = None;
                     } else if this.open_menu.is_some() {
                         this.open_menu = None;
@@ -842,6 +910,7 @@ impl Render for CollectionView {
             )
             .children(toast)
             .children(self.render_context_menu(window, cx))
+            .children(self.dialog.clone())
     }
 }
 

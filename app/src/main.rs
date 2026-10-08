@@ -1,5 +1,6 @@
 mod assets;
 mod collection;
+mod dialogs;
 mod icons;
 mod images;
 mod runtime;
@@ -17,6 +18,7 @@ fn main() {
     gpui_kit::application().with_assets(assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
         assets::load_fonts(cx);
+        theme::apply_component_theme(cx);
 
         let bounds = Bounds::centered(None, size(px(1600.), px(1000.)), cx);
         let options = WindowOptions {
