@@ -1,0 +1,125 @@
+//! Application lifecycle: the main window (created on demand and dropped when
+//! it is closed to the tray), the game runtime shared by every window, launch
+//! requests from the command line / protocol URLs / other instances / the
+//! tray, and when the process quits.
+//!
+//! Quitting has two parts. A *request* (window closed without a tray to stay
+//! in, tray "Quit") asks first when games are running or post-game work is in
+//! flight ([`request_quit`]). The *graceful quit* ([`graceful_quit`], also run
+//! by the signals and by the confirmation's "Quit anyway") saves the running
+//! games' playtime, pauses the Epic queue in order, releases the
+//! single-instance socket and the tray, and only then ends the loop. Games are
+//! independent processes: quitting never stops them.
+//!
+//! State lives in a global [`Hub`] (`Rc<RefCell<..>>`): borrow it only for
+//! short scopes and never while calling into GPUI (opening a window builds
+//! the Collection, which calls back into [`attach_runtime`]).
+//!
+//! Split by responsibility: `start` (setup), `window` (main window), `quit`
+//! (quit requests and the graceful quit), `events` (launch events, tray and
+//! second-instance messages), `launch` (launch requests) and `debug`
+//! (`HERONITE_DEBUG_*` hooks).
+
+mod debug;
+mod events;
+mod launch;
+mod quit;
+mod start;
+mod window;
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+use gpui_kit::*;
+use heronite_data::HeroicPaths;
+use heronite_launch::LaunchEvent;
+
+use super::settings::SysSettings;
+use super::tray::TrayHandle;
+use crate::collection::CollectionView;
+use crate::runtime::GameRuntime;
+
+pub use launch::candidate_keys;
+pub use quit::{keep_in_tray, post_game_idle, quit_anyway, request_quit};
+pub use start::init;
+pub use window::has_window;
+
+/// Process exit code (non-zero when a launch from outside failed).
+static EXIT_CODE: AtomicI32 = AtomicI32::new(0);
+
+pub fn exit_code() -> i32 {
+    EXIT_CODE.load(Ordering::Relaxed)
+}
+
+struct MainWindow {
+    handle: AnyWindowHandle,
+    view: WeakEntity<CollectionView>,
+}
+
+struct State {
+    heroic: HeroicPaths,
+    runtime: Arc<GameRuntime>,
+    window: Option<MainWindow>,
+    /// The open Collection's channel for launch events.
+    subscriber: Option<UnboundedSender<LaunchEvent>>,
+    /// Games started by this process (pid once known).
+    running: HashMap<String, Option<u32>>,
+    tray: Option<TrayHandle>,
+    /// Quit when the last game ends and no window was shown (started only to
+    /// launch a game without UI).
+    exit_when_idle: bool,
+    /// The next window close is ours (tray / minimize on launch): stay alive.
+    hiding: bool,
+    /// The graceful quit began: no new windows, requests or quits.
+    quitting: bool,
+    fake_launch: bool,
+    settings: SysSettings,
+    settings_stamp: Option<SystemTime>,
+}
+
+impl State {
+    /// Settings, re-read only when the file changed (a `stat` per call).
+    fn settings(&mut self) -> SysSettings {
+        let stamp = heronite_data::game_config::global_config_path(&self.heroic)
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok();
+        if stamp != self.settings_stamp {
+            self.settings = SysSettings::load(&self.heroic);
+            self.settings_stamp = stamp;
+        }
+        self.settings
+    }
+}
+
+#[derive(Clone)]
+pub struct Hub(Rc<RefCell<State>>);
+impl Global for Hub {}
+
+fn hub(cx: &App) -> Hub {
+    cx.global::<Hub>().clone()
+}
+
+/// Called by `CollectionView::new`: the shared runtime plus a fresh stream of
+/// launch events (games already running are announced first).
+pub fn attach_runtime(heroic: &HeroicPaths, cx: &mut App) -> (Arc<GameRuntime>, UnboundedReceiver<LaunchEvent>) {
+    let Some(hub) = cx.try_global::<Hub>().cloned() else {
+        let (runtime, rx) = GameRuntime::new(heroic.clone());
+        return (Arc::new(runtime), rx);
+    };
+    let (tx, rx) = unbounded();
+    let mut s = hub.0.borrow_mut();
+    for (app_name, pid) in &s.running {
+        let _ = tx.unbounded_send(LaunchEvent::Launching { app_name: app_name.clone() });
+        if let Some(pid) = pid {
+            let _ = tx.unbounded_send(LaunchEvent::Running { app_name: app_name.clone(), pid: *pid });
+        }
+    }
+    s.subscriber = Some(tx);
+    (s.runtime.clone(), rx)
+}
