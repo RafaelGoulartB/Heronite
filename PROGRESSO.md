@@ -224,3 +224,43 @@ Port do Wine Manager do Heroic (`backend/wine/manager/**`, `utils/compatibility_
 - **Limitações**: cada refresh pode usar até 2 das 60 requisições/h; extração mostra "Unzipping"
   sem percentual (como o Heroic); sem retomar download interrompido; `customWinePaths` é editado na
   tela de configurações, não aqui; só Linux (macOS/GPTK/Crossover fora do escopo).
+
+## Configurações do jogo e globais (agente "settings")
+
+Port de `Settings/**` do Heroic: abas **Wine / Other / Advanced / Cloud saves / Gamescope** no diálogo
+"Game settings" de cada jogo instalado (título `<jogo> (Settings)`) e abas **General** e **Defaults**
+no diálogo "Collection settings". Tudo grava na hora que muda ("Settings are saved automatically").
+
+- **Dados** (`crates/data/src/game_config.rs`, + `json_store::{write_indented, update_value_indented, INDENT_2}`):
+  `GamesConfig/<app>.json` (`{"<app>": {...}, "version": "v0", "explicit": true}`) e `config.json`
+  (`defaultSettings`), ambos com `JSON.stringify(.., null, 2)`. Só a chave alterada é gravada (leitura-
+  modificação-gravação do documento cru: demais chaves e ordem intactas, bytes idênticos). Jogo sem arquivo
+  recebe o conjunto completo de padrões que o Heroic gravaria; mudança global também é espelhada em
+  `store/config.json` → `settings` quando essa cópia existe. Os 94 `GamesConfig` reais regravam byte a byte iguais.
+- **Ferramentas** (`crates/launch/src/wine_tools.rs`): comandos de winecfg / winetricks (GUI) / "Run EXE on
+  Prefix" (port de `callTool`, `runWineCommand`, `Winetricks.runWithArgs`; umu, Proton direto com o `wine` de dentro do
+  Proton e `pfx`, ou Wine). Só constrói o comando (testado com `FakeProbe`); o botão da UI roda numa thread.
+- **UI** (`app/src/dialogs/heroic_settings/`): um `HeroicSettingsPanel` reutilizável (alvo: jogo ou padrões
+  globais). `logic.rs` (regras puras testadas: quais abas cada jogo tem, nomes de Wine, validações),
+  `parts.rs` (linhas), um arquivo por aba. Wine só para jogos que rodam via Wine/Proton (Epic/GOG/sideload
+  Windows), Cloud saves só para legendary com `cloud_save_enabled`; jogos Steam/emulador/não instalados
+  não têm abas do Heroic. Escritas em segundo plano, em ordem; campos de texto gravam com debounce de 600 ms
+  e ao perder o foco. Aba Legacy dobrada no fim de Advanced.
+- **Pontos de ligação em arquivos compartilhados**: `app/src/dialogs/mod.rs` (+`pub mod heroic_settings`),
+  `app/src/collection/context_menu.rs` (item "Settings"), `app/src/collection/mod.rs` (braços do
+  `HERONITE_DEBUG_DIALOG`), `crates/data/src/library.rs` (o leitor enxuto agora mantém `cloud_save_enabled`
+  em `GameInfo::rest`), `crates/data/src/lib.rs` e `crates/launch/src/lib.rs` (uma linha `pub mod` cada).
+- **Depuração**: `HERONITE_DEBUG_DIALOG=gamesettings:wine|other|advanced|gamescope|saves`,
+  `settings:general`, `settings:defaults[:other|advanced|gamescope]`; `HERONITE_DEBUG_SELECT=<runner_app>`;
+  `HERONITE_DEBUG_SETTINGS_SET='chave=valor,gamescope.campo=valor'` (grava como se o usuário tivesse mexido;
+  vírgula como separador porque o `shot.sh` passa por shell); `HERONITE_DEBUG_GAMESCOPE=1` (finge gamescope
+  instalado); `HERONITE_DEBUG_DIALOG_H=<px>` (diálogo mais alto). Com `HERONITE_DEBUG_DIALOG` a lista de Wine
+  carrega na hora (as capturas só mostram os primeiros quadros).
+- **Verificação**: 7 testes em `game_config` (formato, bytes idênticos, mirror, arquivo novo), 11 em
+  `wine_tools`, 7 em `logic`; capturas de cada aba (Calluna = Proton/legendary, Bloodborne = nativo,
+  MGSV = sideload Wine) e escrita real contra cópia em `/tmp/heronite-fixture-settings*`.
+- **Limitações**: os toggles DXVK/VKD3D/DXVK-NVAPI só gravam a configuração (não instalam/removem DLLs no prefixo
+  na hora, como o Heroic faz); BattlEye/EAC só avisam quando o runtime não está instalado (sem download);
+  não há seletor de "Launch options" nem Msync/macOS/CrossOver além do campo de bottle; "Sync" de saves usa os 3
+  modos de `heronite_epic::saves::SyncMode` (Both / ForceDownload / ForceUpload); winecfg/winetricks/run-exe
+  nunca foram executados de verdade (só testes de construção do comando); cliques reais não testados (sem mouse).

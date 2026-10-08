@@ -125,7 +125,7 @@ impl HeroicSettingsPanel {
             if self.flag("enableFSR", false) {
                 let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
                 col = col.child(
-                    div().w(px(160.)).child(self.select_row(
+                    div().w(px(240.)).child(self.select_row(
                         "fsr-sharpness",
                         Some("FSR Sharpness Strength"),
                         sharp.to_string(),

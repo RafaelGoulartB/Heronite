@@ -49,10 +49,8 @@ pub enum RunKind {
 pub struct GameFacts {
     pub app_name: String,
     pub runner: String,
-    pub title: String,
     pub run_kind: RunKind,
     pub cloud_saves: bool,
-    pub install_path: Option<String>,
 }
 
 impl GameFacts {
@@ -84,10 +82,8 @@ impl GameFacts {
         Self {
             app_name: game.app_name.clone(),
             runner: game.runner.clone(),
-            title: game.title.clone(),
             run_kind,
             cloud_saves: g.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false),
-            install_path: g.install.install_path.clone(),
         }
     }
 

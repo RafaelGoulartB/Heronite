@@ -192,6 +192,20 @@ impl HeroicSettingsPanel {
         };
         this.load_wine_list(cx);
         this.maybe_detect_saves(window, cx);
+        // Debug: HERONITE_DEBUG_SETTINGS_SET='key=<json or text>,gamescope.field=<value>' saves values as if
+        // the user had changed them (exercises the write path without clicks).
+        if let Ok(spec) = std::env::var("HERONITE_DEBUG_SETTINGS_SET") {
+            for pair in spec.split(',') {
+                if let Some((k, v)) = pair.split_once('=') {
+                    // JSON when it parses, else a plain string (no quotes through the shell).
+                    let value = serde_json::from_str::<Value>(v).unwrap_or_else(|_| Value::String(v.to_string()));
+                    match k.trim().strip_prefix("gamescope.") {
+                        Some(field) => this.set_gamescope(field, value, cx),
+                        None => this.set(k.trim(), value, cx),
+                    }
+                }
+            }
+        }
         this
     }
 
@@ -205,10 +219,6 @@ impl HeroicSettingsPanel {
             self.maybe_detect_saves(window, cx);
             cx.notify();
         }
-    }
-
-    pub fn section(&self) -> Section {
-        self.section
     }
 
     // -- values ---------------------------------------------------------------
@@ -392,11 +402,6 @@ impl HeroicSettingsPanel {
             .ok();
         })
         .detach();
-    }
-
-    pub(super) fn set_notice(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
-        self.notice = Some(Notice { text: text.into(), error });
-        cx.notify();
     }
 }
 
