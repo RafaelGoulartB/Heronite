@@ -40,6 +40,17 @@ fn main() {
     });
 }
 
+/// Startup parses several MB of JSON on worker threads; glibc keeps the
+/// freed pages in per-thread arenas. Give them back once loading settled.
+pub fn trim_heap_later() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        // SAFETY: malloc_trim only releases free memory.
+        unsafe { libc::malloc_trim(0) };
+    });
+}
+
 fn env_logger_init() {
     // Minimal stderr logger; RUST_LOG=debug for more.
     struct L(log::LevelFilter);

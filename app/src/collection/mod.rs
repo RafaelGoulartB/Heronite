@@ -311,6 +311,7 @@ impl CollectionView {
         if first {
             log::info!("library on screen after {:?}", self.started.elapsed());
             self.apply_debug_env();
+            crate::trim_heap_later();
         }
     }
 
