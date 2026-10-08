@@ -88,7 +88,7 @@ impl ImagePicker {
             request: 0,
         };
         // Captures of the empty state: no network.
-        if std::env::var_os("HERONITE_DEBUG_NO_SEARCH").is_none() {
+        if !crate::env::flag("HERONITE_DEBUG_NO_SEARCH") {
             this.search(cx);
         }
         this
