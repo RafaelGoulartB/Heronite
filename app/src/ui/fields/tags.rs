@@ -188,9 +188,9 @@ impl TagField {
 impl Render for TagField {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let mut boxed = input_surface()
-            .min_h(px(40.))
+            .min_h(px(theme::INPUT_H))
             .w_full()
-            .px(px(8.))
+            .px(px(10.))
             .py(px(4.))
             .flex()
             .flex_wrap()
@@ -207,9 +207,9 @@ impl Render for TagField {
                         .pl(px(10.))
                         .pr(px(4.))
                         .rounded_full()
-                        .bg(theme::white_a(0.08))
+                        .bg(theme::accent_tint())
                         .text_size(px(13.))
-                        .text_color(white())
+                        .text_color(theme::accent())
                         .child(v.clone())
                         .child(
                             div()
@@ -267,7 +267,7 @@ impl Render for TagField {
                             .w_full()
                             .pt(px(4.))
                             .occlude()
-                            .child(menu_panel(120.).bg(theme::navbar_background()).child(list)),
+                            .child(menu_panel(120.).child(list)),
                     )
                     .with_priority(40),
                 );

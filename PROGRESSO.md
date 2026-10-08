@@ -893,3 +893,33 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
   `palette_key`); executar cada ação ao vivo (Quit/Play/abrir pasta não foram acionados por segurança); estilo ainda local
   (`palette/style.rs`) — trocar por `glass_panel`/`kbd` da fundação quando ela commitar; entrada no menu ☰ (`nav.rs` é da fundação):
   chamar `this.open_palette(window, cx)` no clique.
+
+## Fundação do design "Vidro" (glass) + menu ☰ — agente "glass foundation"
+
+- **Código**: `app/src/theme.rs` (tokens glass: preenchimentos, bordas, raios `R_*`, textos, toggle/botão/tabs/input), `app/src/ui/glass.rs`
+  (novo: `glass_panel`, `glass_menu_surface`, `glass_fullscreen`, `veil`, `set_backdrop`), `ui/controls.rs` (toggle/`toggle_row`/`checkbox`/
+  `mini_checkbox`, botões pílula `ButtonKind::{Glass,Primary,Ghost,Danger}` + legados mapeados, `tabs` segmentadas, `card`/`row`/`caption`,
+  `kicker`, `kbd`, `close_button`, `nav_pill`, `dialog_title`), `ui/dialog.rs` (`dialog` glass + novo `drawer`), `ui/dropdown.rs` (menus glass),
+  `ui/fields/*` (inputs 40px raio 12 com anel de foco, `path_field` "Clear/Browse", select com lista rolável), `collection/nav.rs` (menu ☰ em
+  grade de tiles com meta ao vivo, Settings `Ctrl ,` e Command palette `Ctrl K`), `collection/context_menu.rs` (menu de contexto glass),
+  `collection/header.rs` (só os toggles dos menus), `docs/UI-CONVENTIONS.md` (seção "Glass design system").
+- **Blur**: `CollectionView::glass_image` (collection/mod.rs) pede `Variant::Glass` (já existia no crate de imagens; blur 30px, saturação 1.5,
+  ~1/5 da janela, cache no `ImageStore`) e publica o resultado por frame em `ui::glass::set_backdrop` (thread-local). Os painéis pintam a
+  imagem alinhada à janela e recortada nos cantos arredondados (`Window::paint_image` aceita sub-retângulo + raios), sob um escurecimento
+  (`glass_art_dim`) e o preenchimento translúcido; sem arte, preenchimento quase opaco. Memória (debug, fixture, 3 rodadas, `/tmp/memcmp2.sh`):
+  antes Pss_Anon 61/62/65 MB, depois 62/62/66 MB (~+1 MB); Pss total 159-163 MB antes, 160-164 MB depois.
+- **Ganchos em arquivos compartilhados**: `collection/mod.rs` (campo `shown_glass`, método `glass_image`, duas linhas no render:
+  `set_backdrop` e `sync_nav_meta`); `collection/epic.rs` (`menu_row` agora delega a `context_menu::item`); `collection/extras.rs` e
+  `collection/system_glue.rs` (cor/tamanho do ícone dos itens do menu de contexto, uma linha cada).
+- **Meta do menu ☰**: contagem de jogos (`lib`), Downloads (`services::try_downloads`: "N active · P%" / "Paused" / "N queued" / "Idle"),
+  Epic (`account().logged_in`), Wine padrão e nº de emuladores lidos em segundo plano por `sync_nav_meta` (ao iniciar e ao abrir o menu, no
+  máximo a cada 5 s), nada de I/O no render.
+- **Verificado** (fixture `/tmp/heronite-fixture-glass`, ludusavi/capturas desligados, `HERONITE_DISABLE_IDLE_JOBS=1`): menu ☰, menu de
+  contexto com flyout de status, dropdown Status, diálogo Manage statuses, diálogos Game settings (Images/Wine/Other) e Add game, página
+  Settings (General) e Wine Manager, com `animations` ligadas e desligadas; a tela principal da Collection ficou idêntica pixel a pixel à do
+  binário anterior (mesma janela 3428x1402); 110 testes passam.
+- **Não verificado / limitações**: select aberto e `TagField` (sem gancho de debug), `drawer` (sem chamador ainda), anel de foco dos inputs
+  (só compilado; não há como clicar), animação do knob em movimento (só vi estados finais). Páginas e diálogos mantêm layout antigo
+  (restyle por tela é trabalho dos próximos agentes); o blur é da arte, não do que há de fato atrás (cards, scrim), por isso o
+  escurecimento fixo. Para capturar com `scripts/shot.sh` numa workspace escondida a janela só redesenha depois de uma primeira
+  captura (acorda o compositor): usei uma cópia do script com duas capturas, e a fixture precisa de `images-cache` copiado.

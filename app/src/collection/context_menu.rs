@@ -1,5 +1,5 @@
-//! Right-click menu of a card (`CollectionContextMenu`): MUI menu on
-//! `--navbar-background`, radius 10, accent text, status flyout.
+//! Right-click menu of a card (`CollectionContextMenu`): glass menu (radius
+//! 14, items radius 10) with the status flyout.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -22,29 +22,18 @@ pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
         .flex()
         .items_center()
         .gap(px(12.))
-        .px(px(16.))
+        .px(px(12.))
         .py(px(6.))
-        .min_h(px(36.))
-        .text_size(px(16.))
-        .text_color(theme::accent())
+        .min_h(px(34.))
+        .rounded(px(theme::R_ITEM))
+        .text_size(px(14.))
+        .text_color(theme::text_primary())
         .cursor_pointer()
-        .hover(|s| s.bg(theme::navbar_active_background()))
+        .hover(|s| s.bg(theme::menu_item_hover()).text_color(white()))
 }
 
 fn paper() -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .py(px(8.))
-        .rounded(px(10.))
-        .bg(theme::navbar_background())
-        .shadow(vec![BoxShadow {
-            color: theme::black_a(0.45),
-            offset: point(px(0.), px(8.)),
-            blur_radius: px(24.),
-            spread_radius: px(0.),
-            inset: false,
-        }])
+    crate::ui::glass::glass_menu_surface(theme::R_MENU).flex().flex_col().gap(px(2.)).p(px(6.))
 }
 
 impl CollectionView {
@@ -95,10 +84,10 @@ impl CollectionView {
         let current = game.status_id.clone();
         let mut status_row = div().relative().child(
             item("cm-status")
-                .child(icon(Icon::Flag, px(20.), rgb(0xcaf3fd)))
+                .child(icon(Icon::Flag, px(18.), theme::text_muted()))
                 .child("Status")
                 .child(div().flex_1())
-                .child(icon(Icon::ChevronRight, px(20.), rgb(0xcaf3fd)))
+                .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()))
                 .on_hover(cx.listener(|this, h: &bool, _, cx| {
                     if *h {
                         if let Some(m) = this.context_menu.as_mut() {
@@ -151,7 +140,7 @@ impl CollectionView {
                         cx.notify();
                     }
                 }))
-                .child(icon(ic, px(20.), rgb(0xcaf3fd)))
+                .child(icon(ic, px(18.), theme::text_muted()))
                 .child(label)
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.primary_action(&k, cx);
@@ -162,7 +151,7 @@ impl CollectionView {
         let k = key.clone();
         menu = menu.child(
             item("cm-fav")
-                .child(icon(if game.favourite { Icon::Favorite } else { Icon::FavoriteBorder }, px(20.), rgb(0xcaf3fd)))
+                .child(icon(if game.favourite { Icon::Favorite } else { Icon::FavoriteBorder }, px(18.), theme::text_muted()))
                 .child(if game.favourite { "Remove from favourites" } else { "Add to favourites" })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
@@ -178,7 +167,7 @@ impl CollectionView {
         if let Some(path) = game.details.install_path.clone() {
             menu = menu.child(
                 item("cm-folder")
-                    .child(icon(Icon::FolderOpen, px(20.), rgb(0xcaf3fd)))
+                    .child(icon(Icon::FolderOpen, px(18.), theme::text_muted()))
                     .child("Open install folder")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         let dir = std::path::Path::new(&path);
@@ -195,7 +184,7 @@ impl CollectionView {
             let k = key.clone();
             menu = menu.child(
                 item("cm-settings")
-                    .child(icon(Icon::Tune, px(20.), rgb(0xcaf3fd)))
+                    .child(icon(Icon::Tune, px(18.), theme::text_muted()))
                     .child("Settings")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         let (Some(ctx), Some(g)) = (this.dialog_ctx(), this.lib.as_ref().and_then(|l| l.get(&k)).cloned()) else { return };
@@ -211,7 +200,7 @@ impl CollectionView {
             let k = key.clone();
             menu = menu.child(
                 item("cm-edit-game")
-                    .child(icon(Icon::Edit, px(20.), rgb(0xcaf3fd)))
+                    .child(icon(Icon::Edit, px(18.), theme::text_muted()))
                     .child("Edit game")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.open_edit_game(&k, window, cx);
@@ -222,7 +211,7 @@ impl CollectionView {
         let k = key.clone();
         menu = menu.child(
             item("cm-metadata")
-                .child(icon(Icon::TravelExplore, px(20.), rgb(0xcaf3fd)))
+                .child(icon(Icon::TravelExplore, px(18.), theme::text_muted()))
                 .child("Collection metadata")
                 .on_click(cx.listener(move |this, _, window, cx| this.open_metadata_for(&k, window, cx))),
         );
@@ -230,7 +219,7 @@ impl CollectionView {
         let k = key.clone();
         menu = menu.child(
             item("cm-hide")
-                .child(icon(if game.hidden { Icon::Visibility } else { Icon::VisibilityOff }, px(20.), rgb(0xcaf3fd)))
+                .child(icon(if game.hidden { Icon::Visibility } else { Icon::VisibilityOff }, px(18.), theme::text_muted()))
                 .child(if game.hidden { "Unhide" } else { "Hide" })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
@@ -247,7 +236,7 @@ impl CollectionView {
             let k = key.clone();
             menu = menu.child(
                 item("cm-recent")
-                    .child(icon(Icon::History, px(20.), rgb(0xcaf3fd)))
+                    .child(icon(Icon::History, px(18.), theme::text_muted()))
                     .child("Remove from recent")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
@@ -265,7 +254,7 @@ impl CollectionView {
         let k = key.clone();
         menu = menu.child(
             item("cm-log")
-                .child(icon(Icon::Description, px(20.), rgb(0xcaf3fd)))
+                .child(icon(Icon::Description, px(18.), theme::text_muted()))
                 .child("View log")
                 .on_click(cx.listener(move |this, _, _, cx| this.open_game_log(&k, cx))),
         );

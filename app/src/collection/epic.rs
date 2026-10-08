@@ -112,20 +112,7 @@ pub fn card_overlay(e: &CardEpic) -> Div {
 }
 
 fn menu_row(id: impl Into<ElementId>, ic: Icon, label: &str) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .gap(px(12.))
-        .px(px(16.))
-        .py(px(6.))
-        .min_h(px(36.))
-        .text_size(px(16.))
-        .text_color(theme::accent())
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::navbar_active_background()))
-        .child(icon(ic, px(20.), rgb(0xcaf3fd)))
-        .child(label.to_string())
+    super::context_menu::item(id).child(icon(ic, px(18.), theme::text_muted())).child(label.to_string())
 }
 
 fn round_btn(id: impl Into<ElementId>, ic: Icon) -> Stateful<Div> {

@@ -5,27 +5,44 @@ use gpui_kit::component::input::{Input, InputEvent, InputState, Textarea, Textar
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::text::{field_label, labeled, text_default};
+use super::text::{field_label, labeled};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-/// The `--input-background` surface shared by inputs, textareas, selects and
-/// the tag field: radius 4, `0 4px 4px` shadow, `Rubik` 16px white text.
+/// The glass input surface shared by inputs, textareas, selects and the tag
+/// field: height by the caller, radius 12, dark fill, 1px border, 14px text.
 pub(super) fn input_surface() -> Div {
     div()
-        .rounded(px(4.))
-        .bg(theme::navbar_background())
-        .shadow(vec![BoxShadow {
-            color: theme::black_a(0.25),
-            offset: point(px(0.), px(4.)),
-            blur_radius: px(4.),
-            spread_radius: px(0.),
-            inset: false,
-        }])
-        .font_family(theme::FONT_HEADING)
-        .text_size(px(16.))
-        .text_color(white())
+        .rounded(px(theme::R_INPUT))
+        .bg(theme::input_fill())
+        .border_1()
+        .border_color(theme::input_border())
+        .font_family(theme::FONT_BODY)
+        .text_size(px(14.))
+        .text_color(theme::text_primary())
+}
+
+/// Accent ring (60%) painted over an input surface while `input` has focus.
+fn focus_ring<T: 'static + Focusable>(input: &Entity<T>) -> Canvas<()> {
+    let input = input.clone();
+    canvas(
+        |_, _, _| (),
+        move |bounds, _, window, cx| {
+            if input.focus_handle(cx).is_focused(window) {
+                window.paint_quad(quad(
+                    bounds,
+                    Corners::all(px(theme::R_INPUT)),
+                    transparent_black(),
+                    Edges::all(px(1.)),
+                    theme::input_border_focus(),
+                    BorderStyle::Solid,
+                ));
+            }
+        },
+    )
+    .absolute()
+    .inset_0()
 }
 
 /// A new single-line input holding `value`.
@@ -66,48 +83,47 @@ pub fn on_commit<V: 'static>(
     .detach();
 }
 
-/// 40px input on `--input-background` (text indent 22px in Heroic).
+/// 40px glass input.
 pub fn input_box(input: &Entity<InputState>, disabled: bool) -> Div {
+    field_row(input, disabled, None, None)
+}
+
+/// Input row: optional leading element, the text input, optional trailing one.
+fn field_row(input: &Entity<InputState>, disabled: bool, leading: Option<AnyElement>, trailing: Option<AnyElement>) -> Div {
     input_surface()
         .relative()
         .flex()
         .items_center()
+        .gap(px(10.))
         .w_full()
-        .h(px(40.))
-        .px(px(10.))
-        .when(disabled, |d| d.opacity(0.7))
+        .h(px(theme::INPUT_H))
+        .px(px(14.))
+        .when(disabled, |d| d.opacity(0.5))
+        .children(leading)
         .child(div().flex_1().min_w_0().child(Input::new(input).appearance(false).disabled(disabled)))
+        .children(trailing)
+        .child(focus_ring(input))
 }
 
-/// Multi-line input of `rows` rows. Long prose reads better in the body
-/// font than in the `Rubik` of the single-line inputs.
+/// Multi-line input of `rows` rows (body font).
 pub fn textarea_box(state: &Entity<TextareaState>, rows: usize) -> Div {
     input_surface()
-        .font_family(theme::FONT_BODY)
+        .relative()
         .w_full()
-        .h(px(rows as f32 * 22. + 20.))
-        .px(px(10.))
-        .py(px(8.))
+        .h(px(rows as f32 * 20. + 22.))
+        .px(px(12.))
+        .py(px(10.))
         .child(Textarea::new(state).appearance(false).h_full())
+        .child(focus_ring(state))
 }
 
-/// Search bar of the artwork pickers: magnifier + borderless input on a dark
-/// translucent pill. Grows to fill the row (`flex_1`).
+/// Search bar of the artwork pickers: magnifier + borderless input on the
+/// glass input surface. Grows to fill the row (`flex_1`).
 pub fn search_box(input: &Entity<InputState>) -> Div {
-    div()
-        .flex()
+    field_row(input, false, Some(icon(Icon::FaSearch, px(14.), theme::text_muted()).into_any_element()), None)
         .flex_1()
+        .w_auto()
         .min_w(px(192.))
-        .items_center()
-        .gap(px(8.))
-        .px(px(11.))
-        .py(px(5.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(theme::white_a(0.12))
-        .bg(theme::black_a(0.28))
-        .child(icon(Icon::FaSearch, px(13.), theme::white_a(0.6)))
-        .child(div().flex_1().min_w_0().child(Input::new(input).appearance(false)))
 }
 
 /// Labelled text input.
@@ -115,8 +131,9 @@ pub fn text_field(label: &str, input: &Entity<InputState>) -> Div {
     labeled(label.to_string(), input_box(input, false))
 }
 
-/// `PathSelectionBox`: an input with a Backspace (clear) / Folder (browse)
-/// icon at the right. `on_icon` receives the click.
+/// `PathSelectionBox`: a folder icon, the input and a text action at the
+/// right (accent): "Clear" when there is a value, "Browse" otherwise.
+/// `on_icon` receives the click.
 pub fn path_field(
     id: impl Into<ElementId>,
     label: Option<&str>,
@@ -125,23 +142,20 @@ pub fn path_field(
     disabled: bool,
     on_icon: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Div {
-    let btn = div()
+    let action = div()
         .id(id)
-        .absolute()
-        .right(px(16.))
-        .top(px(8.))
-        .px(px(8.))
-        .py(px(4.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .when(!disabled, |d| d.cursor_pointer().on_click(on_icon))
-        .child(icon(if has_value { Icon::Backspace } else { Icon::Folder }, px(22.), text_default()));
+        .flex_none()
+        .px(px(4.))
+        .text_size(px(13.))
+        .text_color(if disabled { theme::text_dim() } else { theme::accent() })
+        .when(!disabled, |d| d.cursor_pointer().hover(|s| s.text_color(theme::accent_overlay())).on_click(on_icon))
+        .child(if has_value { "Clear" } else { "Browse" })
+        .into_any_element();
     div()
         .flex()
         .flex_col()
         .children(label.map(|l| field_label(l.to_string())))
-        .child(input_box(input, disabled).pr(px(50.)).child(btn))
+        .child(field_row(input, disabled, Some(icon(Icon::Folder, px(16.), theme::text_muted()).into_any_element()), Some(action)))
 }
 
 /// Opens the platform file chooser and reports the choice.

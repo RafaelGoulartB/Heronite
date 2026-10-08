@@ -155,7 +155,7 @@ impl CollectionView {
                     let active = this.ui.install_filter == f;
                     p = p.child(
                         menu_item(SharedString::from(format!("install-{i}")), active)
-                            .child(icon(install_icon(f), px(14.4), if active { theme::accent() } else { rgb(0xcaf3fd) }))
+                            .child(icon(install_icon(f), px(14.4), if active { theme::accent() } else { theme::text_muted() }))
                             .child(label)
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.ui.install_filter = f;
@@ -171,7 +171,7 @@ impl CollectionView {
                         menu_item("install-show-hidden", false)
                             .justify_between()
                             .child("Show hidden games")
-                            .child(toggle(show_hidden))
+                            .child(toggle("install-show-hidden-sw", show_hidden))
                             .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(!this.ui.show_hidden, cx))),
                     )
                     .into_any_element()
@@ -215,7 +215,7 @@ impl CollectionView {
                         menu_item("status-group", false)
                             .justify_between()
                             .child("Group by status")
-                            .child(toggle(on))
+                            .child(toggle("status-group-sw", on))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.ui.group_by_status = !this.ui.group_by_status;
                                 this.save_ui();
@@ -458,15 +458,7 @@ impl CollectionView {
     }
 }
 
-/// Heroic's ToggleSwitch, compact.
-fn toggle(on: bool) -> Div {
-    div()
-        .w(px(30.))
-        .h(px(16.))
-        .rounded_full()
-        .p(px(2.))
-        .bg(if on { theme::accent().into() } else { theme::white_a(0.2) })
-        .flex()
-        .when(on, |d| d.justify_end())
-        .child(div().size(px(12.)).rounded_full().bg(rgb(0x191c22)))
+/// Compact glass switch of the menu rows (the row itself handles the click).
+fn toggle(id: &'static str, on: bool) -> Stateful<Div> {
+    crate::ui::controls::mini_checkbox(id, on, false).mt(px(0.))
 }

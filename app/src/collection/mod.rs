@@ -111,6 +111,9 @@ pub struct CollectionView {
     stage_chains: HashMap<SharedString, Vec<ImageRef>>,
     /// Last stage texture shown, kept while the next one loads.
     shown_stage: Option<(SharedString, Arc<RenderImage>)>,
+    /// Last glass backdrop (blurred art behind menus and dialogs), kept while
+    /// the next one loads.
+    shown_glass: Option<(SharedString, Arc<RenderImage>)>,
     groups: Vec<GroupVm>,
     items: Vec<ListItem>,
     columns: usize,
@@ -228,6 +231,7 @@ impl CollectionView {
             cover_chains: HashMap::new(),
             stage_chains: HashMap::new(),
             shown_stage: None,
+            shown_glass: None,
             groups: Vec::new(),
             items: Vec::new(),
             columns: 3,
@@ -794,6 +798,39 @@ impl CollectionView {
     }
 }
 
+impl CollectionView {
+    /// Blurred art that glass surfaces (menus, dialogs, pages) paint behind
+    /// their translucent fill: the selected game's art at a strong blur and a
+    /// tiny resolution (`Variant::Glass`, ~1/5 of the window), cached like the
+    /// stage. `None` (no art, stage disabled) makes them fall back to a solid fill.
+    fn glass_image(&mut self, window: &Window) -> Option<Arc<RenderImage>> {
+        use crate::ui::glass::{glass_target, GLASS_BLUR_PX, GLASS_SATURATION};
+        if !self.stage_enabled {
+            return None;
+        }
+        let key = self.selected.clone()?;
+        let scale = window.scale_factor();
+        let size = window.viewport_size();
+        let (tw, th) = glass_target(f32::from(size.width), f32::from(size.height), scale);
+        let id: SharedString = format!("g:{key}:{tw}x{th}").into();
+        let chains = &self.stage_chains;
+        let ready = self.images.get_or_request(
+            &id,
+            || chains.get(&key).cloned().unwrap_or_default(),
+            tw,
+            th,
+            Variant::Glass { blur_px: GLASS_BLUR_PX * scale, saturation: GLASS_SATURATION },
+            500,
+        );
+        if let Some(img) = ready {
+            self.shown_glass = Some((key, img));
+        } else if self.stage_chains.get(&key).is_none_or(|c| c.is_empty()) {
+            self.shown_glass = None;
+        }
+        self.shown_glass.as_ref().map(|(_, img)| img.clone())
+    }
+}
+
 impl Render for CollectionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timer = RenderTimer(Instant::now());
@@ -851,6 +888,8 @@ impl Render for CollectionView {
         self.sync_extras(window, cx);
         self.sync_shots(window, cx);
         self.drive_palette(window, cx);
+        crate::ui::glass::set_backdrop(self.glass_image(window));
+        self.sync_nav_meta(cx);
         let viewport = window.viewport_size();
         let vw = f32::from(viewport.width);
         let scale = window.scale_factor();

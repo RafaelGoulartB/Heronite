@@ -1,7 +1,8 @@
-//! Heroic / MUI form controls used by Collection dialogs. Values come from
-//! Heroic's CSS (`_buttons.scss`, `ToggleSwitch`, `SelectField`,
-//! `TextInputField`) and MUI defaults (Tabs, Slider) as rendered in Heronite;
-//! see `docs/reference/dialogs/*.png`.
+//! Glass form controls and typography (docs/agents/glass-common.md): toggle
+//! switches, pill buttons, segmented tabs, cards of rows, captions, kicker,
+//! kbd chips, close button and navigation pills. The legacy names
+//! (`checkbox`, `mini_checkbox`, `button`, `tabs`, `section_title`...) keep
+//! their signatures and render the glass look.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -10,170 +11,337 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-/// MUI default primary (Tabs indicator, Slider, focused outlines).
+/// MUI default primary (focused outlines of the gpui-component widgets).
 pub fn mui_primary() -> Rgba {
     rgb(0x1976d2)
 }
 
-/// Heroic `ToggleSwitch`: 20px checkbox, 3px accent border, radius 4,
-/// checked = accent fill with ✓; label bold + accent when checked.
-pub fn checkbox(id: impl Into<ElementId>, checked: bool, label: impl Into<SharedString>) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .cursor_pointer()
-        .child(
-            div()
-                .ml(px(13.))
-                .size(px(20.))
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(4.))
-                .border(px(3.))
-                .border_color(theme::accent())
-                .when(checked, |d| d.bg(theme::accent()))
-                .when(checked, |d| d.child(icon(Icon::Check, px(16.), theme::background()))),
-        )
-        .child(
-            div()
-                .text_size(px(16.))
-                .text_color(if checked { theme::accent() } else { rgb(0xcaf3fd) })
-                .when(checked, |d| d.font_weight(theme::W_BOLD))
-                .child(label.into()),
-        )
+// ---------------------------------------------------------------------------
+// Toggle switch
+// ---------------------------------------------------------------------------
+
+/// Critically damped spring: the knob settles in about 150ms.
+const TOGGLE_SPRING: SpringConfig = SpringConfig::new(900., 60., 1.);
+
+fn knob_shadow() -> Vec<BoxShadow> {
+    vec![BoxShadow {
+        color: theme::black_a(0.4),
+        offset: point(px(0.), px(1.)),
+        blur_radius: px(3.),
+        spread_radius: px(0.),
+        inset: false,
+    }]
 }
 
-/// Compact checkbox (18px, 2px accent border) of the ROM / emulator pickers:
-/// the caller adds the click handler and the label next to it.
-pub fn mini_checkbox(id: impl Into<ElementId>, checked: bool, disabled: bool) -> Stateful<Div> {
+/// Accent fill (fading in) and white knob (sliding) of a switch `w` wide
+/// with a `knob` circle inset by `inset`.
+fn switch_fx(key: String, on: bool, w: f32, knob: f32, inset: f32) -> AnyElement {
+    let travel = w - knob - 2. * inset;
+    let build = move |fx: Div, t: f32| {
+        let t = t.clamp(0., 1.);
+        fx.child(div().absolute().inset_0().rounded_full().bg(theme::accent()).opacity(t)).child(
+            div()
+                .absolute()
+                .top(px(inset))
+                .left(px(inset + travel * t))
+                .size(px(knob))
+                .rounded_full()
+                .bg(white())
+                .shadow(knob_shadow()),
+        )
+    };
+    let fx = div().absolute().inset_0();
+    if theme::animations() {
+        fx.with_spring(
+            SharedString::from(format!("{key}-fx")),
+            SpringAnimation::new(TOGGLE_SPRING).to(on).with_epsilon(0.002),
+            move |d, phase| build(d, phase.0),
+        )
+        .into_any_element()
+    } else {
+        build(fx, if on { 1. } else { 0. }).into_any_element()
+    }
+}
+
+fn switch_box(id: impl Into<ElementId>, on: bool, disabled: bool, w: f32, h: f32, knob: f32, inset: f32) -> Stateful<Div> {
+    let id: ElementId = id.into();
+    let key = format!("{id}");
     div()
         .id(id)
-        .size(px(18.))
+        .relative()
         .flex_none()
-        .mt(px(2.))
+        .w(px(w))
+        .h(px(h))
+        .rounded_full()
+        .bg(theme::toggle_off())
+        .when(disabled, |d| d.opacity(0.4).cursor_not_allowed())
+        .when(!disabled, |d| d.cursor_pointer())
+        .child(switch_fx(key, on, w, knob, inset))
+}
+
+/// Toggle switch (40x24 pill, 18px knob): off `rgba(255,255,255,.16)`, on =
+/// accent. The caller adds `.on_click(..)`. Disabled is drawn at 40% opacity.
+pub fn toggle(id: impl Into<ElementId>, on: bool, disabled: bool) -> Stateful<Div> {
+    switch_box(id, on, disabled, theme::TOGGLE_W, theme::TOGGLE_H, theme::TOGGLE_KNOB, 3.)
+}
+
+/// Compact switch (30x18) for dense lists (ROM / emulator pickers): the caller
+/// adds the click handler and the label next to it.
+pub fn mini_checkbox(id: impl Into<ElementId>, checked: bool, disabled: bool) -> Stateful<Div> {
+    switch_box(id, checked, disabled, 30., 18., 12., 3.).mt(px(2.))
+}
+
+/// A settings row (see [`row`]) whose control is a toggle; the whole row is
+/// clickable (the caller adds `.on_click(..)`).
+pub fn toggle_row(id: impl Into<ElementId>, label: impl Into<SharedString>, description: Option<&str>, on: bool) -> Stateful<Div> {
+    let id: ElementId = id.into();
+    let sw = toggle(SharedString::from(format!("{id}-sw")), on, false);
+    row(label, description, sw).id(id).cursor_pointer()
+}
+
+/// Legacy checkbox: a toggle row with a bit less padding.
+pub fn checkbox(id: impl Into<ElementId>, checked: bool, label: impl Into<SharedString>) -> Stateful<Div> {
+    toggle_row(id, label, None, checked).py(px(7.))
+}
+
+// ---------------------------------------------------------------------------
+// Cards, rows, captions, titles
+// ---------------------------------------------------------------------------
+
+/// Label (14px) with an optional description (12px) on the left, `control`
+/// on the right. Padding 11px 0; put rows inside a [`card`].
+pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: impl IntoElement) -> Div {
+    div()
         .flex()
         .items_center()
-        .justify_center()
-        .rounded(px(4.))
-        .border(px(2.))
-        .border_color(theme::accent())
-        .when(checked, |d| d.bg(theme::accent()).child(icon(Icon::Check, px(14.), theme::background())))
-        .when(disabled, |d| d.opacity(0.5))
-        .when(!disabled, |d| d.cursor_pointer())
+        .justify_between()
+        .gap(px(16.))
+        .py(px(11.))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .gap(px(1.))
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(label.into()))
+                .children(description.map(|d| {
+                    div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(SharedString::from(d.to_string()))
+                })),
+        )
+        .child(div().flex_none().child(control))
 }
+
+/// The styled container of a [`card`] without rows (fill, border, radius 16,
+/// padding 4px 16px) for custom content.
+pub fn card_box() -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .px(px(16.))
+        .py(px(4.))
+        .rounded(px(theme::R_CARD))
+        .bg(theme::card_fill())
+        .border_1()
+        .border_color(theme::card_border())
+}
+
+/// Group of rows with 1px separators between them.
+pub fn card(rows: impl IntoIterator<Item = AnyElement>) -> Div {
+    let mut c = card_box();
+    for (i, r) in rows.into_iter().enumerate() {
+        if i > 0 {
+            c = c.child(div().h(px(1.)).w_full().bg(theme::row_separator()));
+        }
+        c = c.child(r);
+    }
+    c
+}
+
+/// Section caption above a card: 12px muted, sentence case.
+pub fn caption(text: impl Into<SharedString>) -> Div {
+    div().mt(px(14.)).mx(px(6.)).mb(px(6.)).text_size(px(12.)).text_color(theme::text_muted()).child(text.into())
+}
+
+/// Section heading inside dialogs: same look as [`caption`].
+pub fn section_title(text: impl Into<SharedString>) -> Div {
+    caption(text)
+}
+
+/// Page / sheet title: Rubik 600, 26px.
+pub fn page_heading(text: impl Into<SharedString>) -> Div {
+    div()
+        .font_family(theme::FONT_HEADING)
+        .text_size(px(26.))
+        .line_height(px(32.))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::text_primary())
+        .child(text.into())
+}
+
+/// Drawer / dialog title: Rubik 600, 22px.
+pub fn dialog_title(text: impl Into<SharedString>) -> Div {
+    div()
+        .font_family(theme::FONT_HEADING)
+        .text_size(px(22.))
+        .line_height(px(27.))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::text_primary())
+        .child(text.into())
+}
+
+/// Lead text under a title: 13px muted.
+pub fn help_text(text: impl Into<SharedString>) -> Div {
+    div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(text.into())
+}
+
+/// Small accent label above a title, the only uppercase text (11px).
+pub fn kicker(text: impl Into<SharedString>) -> Div {
+    let text: SharedString = text.into();
+    div().text_size(px(11.)).text_color(theme::accent()).child(SharedString::from(text.to_uppercase()))
+}
+
+/// Keyboard hint chip (`Ctrl K`): 11px mono, radius 5.
+pub fn kbd(text: impl Into<SharedString>) -> Div {
+    div()
+        .flex_none()
+        .px(px(6.))
+        .py(px(1.))
+        .rounded(px(5.))
+        .bg(theme::white_a(0.08))
+        .border_1()
+        .border_color(theme::white_a(0.12))
+        .font_family(theme::FONT_MONO)
+        .text_size(px(11.))
+        .text_color(theme::text_muted())
+        .child(text.into())
+}
+
+/// Round 32px close button (X icon); the caller adds `.on_click(..)`.
+pub fn close_button(id: impl Into<ElementId>) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(32.))
+        .rounded_full()
+        .bg(theme::white_a(0.08))
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::white_a(0.14)))
+        .child(icon(Icon::Close, px(16.), theme::text_primary()))
+}
+
+/// Side navigation item (settings sections): pill, icon + label; the active
+/// one gets the accent tint. The caller adds `.on_click(..)`.
+pub fn nav_pill(id: impl Into<ElementId>, ic: Icon, label: impl Into<SharedString>, active: bool) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .px(px(12.))
+        .py(px(9.))
+        .mb(px(2.))
+        .rounded_full()
+        .text_size(px(14.))
+        .cursor_pointer()
+        .text_color(if active { white() } else { theme::nav_text().into() })
+        .when(active, |d| d.bg(theme::accent_tint()))
+        .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+        .child(icon(ic, px(16.), if active { theme::accent() } else { theme::nav_text() }))
+        .child(label.into())
+}
+
+// ---------------------------------------------------------------------------
+// Buttons
+// ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonKind {
-    /// Plain `.button` (`--primary`, nord-dark #b48ead).
+    /// Secondary: translucent pill. (Legacy name: was Heroic's plain `.button`.)
     Default,
-    /// `.button.is-primary` (`--brand-primary`).
+    /// Primary: accent fill, dark text. (Legacy `.button.is-primary`.)
     Primary,
-    /// `.button.is-secondary`.
+    /// Primary as well. (Legacy `.button.is-secondary`, the accent button.)
     Secondary,
-    /// `.button.is-tertiary`.
+    /// Secondary. (Legacy `.button.is-tertiary`.)
     Tertiary,
-    /// Outlined text button used in Collection dialogs (CHANGE / SEARCH WEB).
+    /// Secondary. (Legacy outlined button: CHANGE / SEARCH WEB.)
     Outline,
-    /// Plain text button (RESET).
+    /// Ghost: no fill, muted text. (Legacy plain text button.)
     Text,
+    /// Secondary, the name new code should use.
+    Glass,
+    /// Ghost, the name new code should use.
+    Ghost,
+    /// Destructive actions: red tint.
+    Danger,
 }
 
-/// Heroic `.button`: uppercase, 16px/500, padding .75em, radius 4.
-pub fn button(id: impl Into<ElementId>, kind: ButtonKind, label: impl Into<SharedString>) -> Stateful<Div> {
-    let label: SharedString = label.into();
-    let base = div()
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Look {
+    Soft,
+    Accent,
+    Ghost,
+    Danger,
+}
+
+fn look(kind: ButtonKind) -> Look {
+    match kind {
+        ButtonKind::Default | ButtonKind::Tertiary | ButtonKind::Outline | ButtonKind::Glass => Look::Soft,
+        ButtonKind::Primary | ButtonKind::Secondary => Look::Accent,
+        ButtonKind::Text | ButtonKind::Ghost => Look::Ghost,
+        ButtonKind::Danger => Look::Danger,
+    }
+}
+
+fn button_base(id: impl Into<ElementId>, kind: ButtonKind, label: SharedString, small: bool, enabled: bool) -> Stateful<Div> {
+    let look = look(kind);
+    let b = div()
         .id(id)
         .flex()
         .items_center()
         .justify_center()
         .gap(px(6.))
-        .px(px(10.))
-        .py(px(7.))
-        .rounded(px(4.))
-        .cursor_pointer()
-        .text_size(px(13.33))
-        .font_weight(theme::W_500)
-        .child(label.to_uppercase());
-    match kind {
-        ButtonKind::Default => base.bg(rgb(0xb48ead)).text_color(rgb(0x161616)).hover(|s| s.bg(rgb(0xc9a4c3))),
-        ButtonKind::Primary => base.bg(rgb(0x1de8f5)).text_color(rgb(0x161616)).hover(|s| s.bg(rgb(0x7fffff))),
-        ButtonKind::Secondary => base.bg(rgb(0xa5dceb)).text_color(rgb(0x161616)).hover(|s| s.bg(theme::accent_overlay())),
-        ButtonKind::Tertiary => base.bg(rgb(0x51595a)).text_color(rgb(0xffffff)).hover(|s| s.bg(theme::background())),
-        ButtonKind::Outline => base
-            .border_1()
-            .border_color(theme::white_a(0.7))
-            .text_color(rgb(0xcaf3fd))
-            .hover(|s| s.bg(theme::white_a(0.08))),
-        ButtonKind::Text => base.text_color(rgb(0xcaf3fd)).hover(|s| s.bg(theme::white_a(0.08))),
+        .h(px(if small { theme::BUTTON_H_SM } else { theme::BUTTON_H }))
+        .px(px(if small { 12. } else { 16. }))
+        .rounded_full()
+        .whitespace_nowrap()
+        .text_size(px(13.))
+        .child(label);
+    let b = match look {
+        Look::Soft => b.bg(theme::button_fill()).border_1().border_color(theme::button_border()).text_color(theme::button_text()),
+        Look::Accent => b.bg(theme::accent()).text_color(theme::on_accent()).font_weight(theme::W_BOLD),
+        Look::Ghost => b.text_color(theme::text_muted()),
+        Look::Danger => b.bg(theme::danger_fill()).text_color(theme::danger_text()),
+    };
+    if !enabled {
+        return b.opacity(0.45).cursor_not_allowed();
+    }
+    let b = b.cursor_pointer();
+    match look {
+        Look::Soft => b.hover(|s| s.bg(theme::button_fill_hover())),
+        Look::Accent => b.hover(|s| s.bg(theme::accent_overlay())),
+        Look::Ghost => b.hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary())),
+        Look::Danger => b.hover(|s| s.bg(theme::danger_fill_hover())),
     }
 }
 
-/// MUI `Tabs` with scroll buttons: 14px/500 uppercase labels, active tab in
-/// MUI primary with a 2px indicator; bottom border `rgba(255,255,255,.08)`.
-pub fn tabs<T: Copy + PartialEq + 'static>(
-    id: &str,
-    items: &[(T, &'static str)],
-    active: T,
-    on_select: impl Fn(T, &mut Window, &mut App) + 'static,
-) -> Div {
-    let on_select = std::rc::Rc::new(on_select);
-    let mut row = div().flex().items_end().gap(px(4.)).px(px(16.));
-    for (i, (value, label)) in items.iter().enumerate() {
-        let is_active = *value == active;
-        let v = *value;
-        let cb = on_select.clone();
-        row = row.child(
-            div()
-                .id(SharedString::from(format!("{id}-tab-{i}")))
-                .flex()
-                .flex_col()
-                .items_center()
-                .cursor_pointer()
-                .on_click(move |_, w, cx| cb(v, w, cx))
-                .child(
-                    div()
-                        .px(px(12.))
-                        .py(px(10.))
-                        .text_size(px(14.))
-                        .font_weight(theme::W_500)
-                        .text_color(if is_active { rgb(0x90caf9).into() } else { theme::white_a(0.7) })
-                        .child(label.to_uppercase()),
-                )
-                .child(div().h(px(2.)).w_full().when(is_active, |d| d.bg(mui_primary()))),
-        );
-    }
-    div()
-        .flex()
-        .items_center()
-        .mx(px(-16.))
-        .border_b_1()
-        .border_color(theme::white_a(0.08))
-        .child(div().px(px(8.)).child(icon(Icon::ChevronLeft, px(18.), theme::white_a(0.5))))
-        .child(row.flex_1())
-        .child(div().px(px(8.)).child(icon(Icon::ChevronRight, px(18.), theme::white_a(0.5))))
+/// Pill button (36px, 13px, sentence case). See [`ButtonKind`] for the look.
+pub fn button(id: impl Into<ElementId>, kind: ButtonKind, label: impl Into<SharedString>) -> Stateful<Div> {
+    button_base(id, kind, label.into(), false, true)
 }
 
-/// Section heading inside dialogs (`h4`, 16px/600).
-pub fn section_title(text: impl Into<SharedString>) -> Div {
-    div().text_size(px(16.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(text.into())
+/// Small pill button (30px).
+pub fn button_sm(id: impl Into<ElementId>, kind: ButtonKind, label: impl Into<SharedString>) -> Stateful<Div> {
+    button_base(id, kind, label.into(), true, true)
 }
 
-/// Page heading (`h2`-ish: 18px `Rubik` bold) of the Epic / Emulators pages.
-pub fn page_heading(text: impl Into<SharedString>) -> Div {
-    div().font_family(theme::FONT_HEADING).text_size(px(18.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(text.into())
-}
-
-/// Secondary paragraph text (`--text-secondary` is #fff on nord-dark, 13.33px).
-pub fn help_text(text: impl Into<SharedString>) -> Div {
-    div().text_size(px(13.33)).text_color(white()).child(text.into())
-}
-
-/// A [`button`] that only reacts when `enabled`. Disabled buttons use Heroic's
-/// `.button:disabled` look (no background, `--text-secondary`).
+/// A [`button`] that only reacts when `enabled`; disabled ones are drawn at
+/// 45% opacity.
 pub fn action_button(
     id: impl Into<ElementId>,
     kind: ButtonKind,
@@ -181,22 +349,57 @@ pub fn action_button(
     enabled: bool,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
+    let b = button_base(id, kind, label.into(), false, enabled);
     if enabled {
-        return button(id, kind, label).on_click(on_click);
+        b.on_click(on_click)
+    } else {
+        b
     }
-    let label: SharedString = label.into();
-    div()
-        .id(id)
+}
+
+// ---------------------------------------------------------------------------
+// Segmented tabs
+// ---------------------------------------------------------------------------
+
+/// Segmented pill tabs: a dark pill track with the active item lifted
+/// (`rgba(255,255,255,.14)`, white text). Scrolls horizontally when too wide.
+pub fn tabs<T: Copy + PartialEq + 'static>(
+    id: &str,
+    items: &[(T, &'static str)],
+    active: T,
+    on_select: impl Fn(T, &mut Window, &mut App) + 'static,
+) -> Div {
+    let on_select = std::rc::Rc::new(on_select);
+    let mut track = div()
+        .id(SharedString::from(format!("{id}-seg")))
         .flex()
         .items_center()
-        .justify_center()
-        .px(px(10.))
-        .py(px(8.))
-        .rounded(px(4.))
-        .cursor_not_allowed()
-        .text_size(px(13.33))
-        .font_weight(theme::W_500)
-        .text_color(white())
-        .opacity(0.7)
-        .child(label.to_uppercase())
+        .gap(px(2.))
+        .p(px(4.))
+        .max_w_full()
+        .rounded_full()
+        .bg(theme::seg_track())
+        .overflow_x_scroll();
+    for (i, (value, label)) in items.iter().enumerate() {
+        let is_active = *value == active;
+        let v = *value;
+        let cb = on_select.clone();
+        track = track.child(
+            div()
+                .id(SharedString::from(format!("{id}-tab-{i}")))
+                .flex_none()
+                .px(px(12.))
+                .py(px(6.))
+                .rounded_full()
+                .text_size(px(13.))
+                .whitespace_nowrap()
+                .cursor_pointer()
+                .text_color(if is_active { white() } else { theme::seg_text().into() })
+                .when(is_active, |d| d.bg(theme::seg_active()))
+                .when(!is_active, |d| d.hover(|s| s.text_color(white())))
+                .on_click(move |_, w, cx| cb(v, w, cx))
+                .child(*label),
+        );
+    }
+    div().flex().min_w_0().child(track)
 }

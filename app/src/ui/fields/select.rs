@@ -9,6 +9,7 @@ use super::input::input_surface;
 use super::text::field_label;
 use crate::icons::Icon;
 use crate::ui::dropdown::{menu_item, menu_panel};
+use crate::theme;
 use crate::ui::icon;
 
 /// `SelectField`: label, 40px select and, when `open`, its menu of `options`
@@ -30,27 +31,15 @@ pub fn select_field<V: 'static>(
         .relative()
         .flex()
         .items_center()
-        .h(px(40.))
+        .h(px(theme::INPUT_H))
         .w_full()
-        .pl(px(22.))
-        .pr(px(44.))
-        .when(disabled, |d| d.opacity(0.7).cursor_not_allowed())
+        .pl(px(14.))
+        .pr(px(40.))
+        .when(open && !disabled, |d| d.border_color(theme::input_border_focus()))
+        .when(disabled, |d| d.opacity(0.5).cursor_not_allowed())
         .when(!disabled, |d| d.cursor_pointer().on_click(cx.listener(move |this, _, w, cx| on_toggle(this, w, cx))))
         .child(div().min_w_0().truncate().child(value.into()))
-        .child(
-            div()
-                .absolute()
-                .right(px(0.))
-                .top(px(10.))
-                .bottom(px(10.))
-                .w(px(40.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .border_l_1()
-                .border_color(rgb(0xcccccc))
-                .child(icon(Icon::ExpandMore, px(18.), white())),
-        );
+        .child(div().absolute().right(px(14.)).top_0().bottom_0().flex().items_center().child(icon(Icon::ExpandMore, px(18.), theme::text_muted())));
     let mut wrap = div()
         .relative()
         .flex()
@@ -59,17 +48,23 @@ pub fn select_field<V: 'static>(
         .child(select);
     if open && !disabled {
         let on_pick = Rc::new(on_pick);
-        let mut menu = menu_panel(100.).w_full().max_h(px(280.)).overflow_hidden();
+        let mut list = div()
+            .id(SharedString::from(format!("{id}-list")))
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .max_h(px(280.))
+            .overflow_y_scroll();
         for (i, (text, selected)) in options.into_iter().enumerate() {
             let on_pick = on_pick.clone();
-            menu = menu.child(
+            list = list.child(
                 menu_item(SharedString::from(format!("{id}-opt-{i}")), selected)
-                    .text_size(px(16.))
                     .child(div().min_w_0().truncate().child(text))
                     .on_click(cx.listener(move |this, _, w, cx| on_pick(this, i, w, cx))),
             );
         }
-        let top = if label.is_some() { 19.2 + 44. } else { 44. };
+        let menu = menu_panel(100.).w_full().child(list);
+        let top = if label.is_some() { 22. + 44. } else { 44. };
         wrap = wrap.child(deferred(div().absolute().top(px(top)).left_0().right_0().occlude().child(menu)).with_priority(40));
     }
     wrap

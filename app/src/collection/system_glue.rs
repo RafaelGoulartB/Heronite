@@ -116,7 +116,7 @@ impl CollectionView {
         let (r, a, k) = (runner.clone(), app.clone(), key.clone());
         menu = menu.child(
             item("cm-shortcuts")
-                .child(icon(Icon::OpenInNew, px(20.), rgb(0xcaf3fd)))
+                .child(icon(Icon::OpenInNew, px(18.), crate::theme::text_muted()))
                 .child(if has_shortcuts { "Remove shortcuts" } else { "Add shortcuts" })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.context_menu = None;
@@ -134,7 +134,7 @@ impl CollectionView {
         let (r, a, k) = (runner, app, key);
         menu.child(
             item("cm-steam")
-                .child(icon(Icon::SportsEsports, px(20.), rgb(0xcaf3fd)))
+                .child(icon(Icon::SportsEsports, px(18.), crate::theme::text_muted()))
                 .child(if in_steam { "Remove from Steam" } else { "Add to Steam" })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.context_menu = None;

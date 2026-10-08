@@ -239,7 +239,7 @@ impl CollectionView {
         let key = game.key.clone();
         let tracking = self.playing.contains_key(&game.app_name);
         let row = |id: &'static str, ic: Icon, label: &'static str| {
-            item(id).child(icon(ic, px(20.), rgb(0xcaf3fd))).child(label)
+            item(id).child(icon(ic, px(18.), crate::theme::text_muted())).child(label)
         };
 
         if details_url(game).is_some() {

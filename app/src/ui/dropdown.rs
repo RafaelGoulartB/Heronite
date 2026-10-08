@@ -5,29 +5,22 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use crate::theme;
+use crate::ui::glass;
 
-/// Menu panel (`.dropdown.expanded`): `--background`, radius .5em, padding
-/// .35rem, `4px 5px 5px 7px rgba(0,0,0,.2)` shadow.
+/// Glass menu panel (radius 14, padding 6): the popover of every dropdown,
+/// context menu and select list. Paints the blurred art behind a translucent
+/// fill (see `ui::glass`).
 pub fn menu_panel(min_w: f32) -> Div {
-    div()
+    glass::glass_menu_surface(theme::R_MENU)
         .flex()
         .flex_col()
-        .gap(px(4.8))
+        .gap(px(2.))
         .min_w(px(min_w))
-        .p(px(5.6))
-        .rounded(px(8.))
-        .bg(theme::background())
-        .shadow(vec![BoxShadow {
-            color: theme::black_a(0.2),
-            offset: point(px(4.), px(5.)),
-            blur_radius: px(5.),
-            spread_radius: px(7.),
-            inset: false,
-        }])
+        .p(px(6.))
 }
 
-/// One menu row: `--text-sm` (13.33px), padding .5em/.75em, radius .25em,
-/// hover `rgba(255,255,255,.12)` + white, active item in `--accent`.
+/// One menu row: 14px, padding 7/10, radius 10, hover `rgba(255,255,255,.07)`;
+/// the active item gets the accent tint.
 pub fn menu_item(id: impl Into<ElementId>, active: bool) -> Stateful<Div> {
     div()
         .id(id)
@@ -35,17 +28,18 @@ pub fn menu_item(id: impl Into<ElementId>, active: bool) -> Stateful<Div> {
         .items_center()
         .gap(px(10.))
         .w_full()
-        .py(px(6.67))
+        .py(px(7.))
         .px(px(10.))
-        .rounded(px(3.33))
-        .text_size(px(13.33))
+        .rounded(px(theme::R_ITEM))
+        .text_size(px(14.))
         .cursor_pointer()
-        .text_color(if active { theme::accent() } else { rgb(0xcaf3fd) })
-        .hover(|s| s.bg(theme::white_a(0.12)).text_color(white()))
+        .text_color(if active { white() } else { theme::text_primary().into() })
+        .when(active, |d| d.bg(theme::accent_tint()))
+        .hover(|s| s.bg(if active { theme::accent_tint() } else { theme::menu_item_hover() }).text_color(white()))
 }
 
 pub fn menu_separator() -> Div {
-    div().h(px(1.)).my(px(2.)).bg(theme::white_a(0.1))
+    div().h(px(1.)).my(px(4.)).mx(px(4.)).bg(theme::white_a(0.08))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

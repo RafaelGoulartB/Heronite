@@ -1,9 +1,12 @@
 # UI conventions (app/)
 
-The Rust app must look like Heronite's Collection. Every screen/dialog has a
-reference capture in `docs/reference/` (main screen) and
-`docs/reference/dialogs/` (dialogs, menus, gallery). The TypeScript/CSS
-sources are in `../HeroicGamesLauncher/src/frontend/screens/LocalLibrary/**`.
+The Collection screen (list, cards, header bar, focus panel, stage) must look
+like Heronite's Collection: reference captures in `docs/reference/`, sources in
+`../HeroicGamesLauncher/src/frontend/screens/LocalLibrary/**`. Everything that
+floats over or replaces it (menus, dropdowns, context menus, dialogs, drawers,
+pages, settings) follows the **Glass design system** below
+(`docs/design/propostas-v1-telas/o1-*.jpg` are the visual target; never edit
+`docs/design/`).
 
 ## Stack
 - GPUI through `gpui-kit = 0.7.1` (`use gpui_kit::*; use gpui_kit::prelude::*;`).
@@ -14,13 +17,13 @@ sources are in `../HeroicGamesLauncher/src/frontend/screens/LocalLibrary/**`.
 
 ## Layout of the code
 - `app/src/theme.rs` — tokens (nord-dark colours, fonts, status colours,
-  `W_BOLD` = CSS 600/700, `W_500` = CSS 500). Never hard-code a new colour
-  twice; add it here.
+  `W_BOLD` = CSS 600/700, `W_500` = CSS 500, and the glass tokens: fills,
+  borders, radii `R_*`, text colours, toggle / button / segmented / input
+  values). Never hard-code a new colour twice; add it here.
 - `app/src/ui/` — building blocks: `icon`, `tool_button`, `round_button`,
-  `chip`, `scrollbar`, `dropdown::{dropdown, menu_panel, menu_item}`,
-  `dialog::dialog` (Heroic Dialog chrome), `controls::{checkbox,
-  mini_checkbox, button, action_button, tabs, section_title, page_heading,
-  help_text, mui_primary}`.
+  `chip`, `scrollbar`, `dropdown::{dropdown, menu_panel, menu_item,
+  menu_separator}`, `dialog::{dialog, drawer}`, `glass::*`,
+  `controls::*` (see "Glass design system").
 - `app/src/ui/fields/` — the ONE set of form helpers; import from
   `crate::ui::fields` only (never write a local label/input/select look):
   - inputs: `new_input` / `new_textarea` (state), `input_box(&input, disabled)`,
@@ -34,8 +37,9 @@ sources are in `../HeroicGamesLauncher/src/frontend/screens/LocalLibrary/**`.
     on_pick)`: label + 40px select + its open menu (the caller keeps the
     `open` flag and the picked value);
   - `TagField` (entity: chips + autocomplete, emits `TagEvent::Changed`).
-  Inputs/selects/tags share `input_surface` (`--input-background`, shadow,
-  `Rubik` 16px); the textarea uses the body font for long text.
+  Inputs/selects/tags share `input_surface` (glass input: 40px, radius 12,
+  `rgba(0,0,0,.25)` fill, 1px border, 14px body font; accent ring at 60% while
+  focused).
 - `app/src/collection/` — the main screen (`mod.rs` = `CollectionView`).
 - `app/src/dialogs/<name>.rs` — one dialog per file. A dialog is an
   `Entity<V>` where `V: Render + EventEmitter<DialogEvent>`; build it with
@@ -45,6 +49,68 @@ sources are in `../HeroicGamesLauncher/src/frontend/screens/LocalLibrary/**`.
 - Settings tabs: `app/src/dialogs/settings/<tab>.rs` with `State::new` and
   `render(&mut SettingsDialog, …)`. Save with `heronite_data::settings::*`
   and call `d.saved(result, cx)`.
+
+## Glass design system (menus, dialogs, pages, settings)
+
+Spec: `docs/agents/glass-common.md`. Everything below keeps its old name/signature
+where one existed, so a caller picks the new look automatically.
+
+**Backdrop.** GPUI has no backdrop-filter. `CollectionView::glass_image`
+(collection/mod.rs) asks the image pipeline for `Variant::Glass` of the selected
+game's art (blur 30px, saturate 1.5, ~1/5 of the window, cached in the
+`ImageStore` like the stage; costs ~+1 MB PSS) and publishes it every frame with
+`ui::glass::set_backdrop`. Glass surfaces paint it aligned to the window and
+clipped to their rounded bounds (`Window::paint_image` with a sub-rect), under a
+dark dim (`theme::glass_art_dim`) and the translucent fill
+(`rgba(22,27,36,.62)`). No art (stage disabled, no game selected) or still
+loading: nearly opaque fill (`.94`). Never blur per frame; never request another
+blur: reuse this one.
+
+**Surfaces** (`ui::glass`): `glass_panel(radius)` (big shadow; popovers 20, sheets
+26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14),
+`glass_fullscreen()` (blurred art for big sheets), `veil()` (dark backdrop behind
+modals). Children added after the constructor paint above the layers. Children
+are not clipped to the rounded corners: give edge-to-edge children their own radius.
+
+**Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
+14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
+Collection's context menu (`collection/context_menu.rs::item`/`paper`) uses the
+same look; other context-menu rows must call `context_menu::item`.
+
+**Dialogs** (`ui::dialog`): `dialog(DialogProps, body, footer, on_close)` = glass
+modal (radius 26, title Rubik 22, round close button, Collection darkened by
+`rgba(0,0,0,.55)`); `drawer(DrawerProps { id, width }, header, body, footer,
+on_close)` = right-hand sheet inset 10px, radius 24, with fixed header/footer
+slots (build the header with `kicker`, `dialog_title`, `close_button`).
+
+**Controls** (`ui::controls`):
+- `toggle(id, on, disabled)` 40x24 switch (spring-animated knob unless
+  `HERONITE_NO_ANIMATIONS`), `toggle_row(id, label, desc, on)`, legacy
+  `checkbox(id, checked, label)` (= toggle row) and `mini_checkbox` (30x18 switch).
+  The caller adds `.on_click`.
+- `button(id, kind, label)` / `button_sm` / `action_button(.., enabled, on_click)`:
+  pill buttons, sentence case. `ButtonKind::{Glass, Default, Tertiary, Outline}` =
+  secondary, `{Primary, Secondary}` = accent fill, `{Ghost, Text}` = ghost,
+  `Danger`. New code: `Glass` / `Primary` / `Ghost` / `Danger`. Disabled = 45%.
+- `tabs(id, items, active, on_select)` = segmented pills (scrolls horizontally).
+- `card(rows)` / `card_box()` + `row(label, desc, control)` (11px padding,
+  separators between rows), `caption(text)` (=`section_title`), `page_heading`
+  (Rubik 26), `dialog_title` (Rubik 22), `help_text` (lead), `kicker` (the only
+  uppercase text), `kbd("Ctrl K")`, `close_button(id)`, `nav_pill(id, icon, label, active)`.
+- Fields (`ui::fields`): `path_field` shows a folder icon and "Clear"/"Browse" in accent;
+  `select_field`'s list is a scrollable glass menu; labels are 12px muted.
+
+**Do not** use uppercase labels, outlined buttons, underlined tabs, square
+checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
+`text_muted`, `text_dim`, `accent_tint`, ...).
+
+**Verifying**: captures with the app on a hidden workspace only show what was
+drawn before the compositor stopped sending frames, so late images (art, covers)
+are missing. Take a first capture to wake the window, wait a second, then take
+the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
+`HERONITE_DEBUG_DROPDOWN=nav|install|sort|status|facets`, `HERONITE_DEBUG_MENU=<key>`,
+`HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
+`~/.config/heroic/images-cache` into the fixture or no art appears at all.
 
 ## Rules
 - No I/O on the UI thread except tiny reads; use `cx.background_spawn` and

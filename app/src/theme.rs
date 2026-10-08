@@ -5,6 +5,8 @@ use gpui_kit::{hsla, px, rgb, rgba, Hsla, Pixels, Rgba};
 
 pub const FONT_BODY: &str = "Cabin";
 pub const FONT_HEADING: &str = "Rubik";
+/// Keyboard hint chips.
+pub const FONT_MONO: &str = "Noto Sans Mono";
 
 /// `rgba(255,255,255,a)`
 pub fn white_a(a: f32) -> Hsla {
@@ -104,3 +106,123 @@ pub fn animations() -> bool {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("HERONITE_NO_ANIMATIONS").is_none_or(|v| v.is_empty() || v == "0"))
 }
+
+// ---------------------------------------------------------------------------
+// Glass design system (docs/agents/glass-common.md, "OPTION 1 — Vidro").
+// Everything the menus, dialogs, pages and settings share lives here; never
+// hard-code one of these values at a call site.
+// ---------------------------------------------------------------------------
+
+/// `rgba(r,g,b,a)` as `Hsla` (what `white_a` returns), for the glass tokens.
+pub fn rgba_hsla(r: u8, g: u8, b: u8, a: f32) -> Hsla {
+    rgb_a(r, g, b, a).into()
+}
+
+/// Glass surface laid over the blurred art: `rgba(22,27,36,.62)`.
+pub fn glass_fill() -> Hsla {
+    rgba_hsla(22, 27, 36, 0.62)
+}
+/// Same surface when there is no art to blur behind it: `rgba(22,27,36,.94)`.
+pub fn glass_fill_solid() -> Hsla {
+    rgba_hsla(22, 27, 36, 0.94)
+}
+/// Darkening of the blurred art under the glass fill (stands in for the
+/// Collection's scrims that sit between the art and a real backdrop blur).
+pub fn glass_art_dim() -> Hsla {
+    black_a(0.42)
+}
+pub fn glass_border() -> Hsla {
+    white_a(0.11)
+}
+/// 1px highlight along the top edge of a glass surface (inset shadow in CSS).
+pub fn glass_highlight() -> Hsla {
+    white_a(0.08)
+}
+/// `0 30px 80px rgba(0,0,0,.45)`.
+pub fn glass_shadow() -> Vec<gpui_kit::BoxShadow> {
+    vec![gpui_kit::BoxShadow {
+        color: black_a(0.45),
+        offset: gpui_kit::point(px(0.), px(30.)),
+        blur_radius: px(80.),
+        spread_radius: px(0.),
+        inset: false,
+    }]
+}
+/// Smaller shadow of the compact menus (context menu, dropdown, select list).
+pub fn glass_shadow_sm() -> Vec<gpui_kit::BoxShadow> {
+    vec![gpui_kit::BoxShadow {
+        color: black_a(0.42),
+        offset: gpui_kit::point(px(0.), px(14.)),
+        blur_radius: px(36.),
+        spread_radius: px(0.),
+        inset: false,
+    }]
+}
+
+// Radii (px).
+pub const R_POPOVER: f32 = 20.;
+pub const R_MENU: f32 = 14.;
+pub const R_SHEET: f32 = 26.;
+pub const R_DRAWER: f32 = 24.;
+pub const R_CARD: f32 = 16.;
+pub const R_TILE: f32 = 14.;
+pub const R_INPUT: f32 = 12.;
+pub const R_ITEM: f32 = 10.;
+
+/// Backdrop veil behind modals and drawers (the Collection stays visible).
+pub fn glass_backdrop_veil() -> Hsla {
+    black_a(0.55)
+}
+
+// Text.
+pub fn text_primary() -> Rgba { rgb(0xe8edf4) }
+/// Captions, leads, labels above fields (`#9aa6b6`).
+pub fn text_muted() -> Rgba { rgb(0x9aa6b6) }
+/// Row descriptions (`#8c97a8`).
+pub fn text_dim() -> Rgba { rgb(0x8c97a8) }
+pub fn text_placeholder() -> Rgba { rgb(0x6f7a8a) }
+/// Text drawn on an accent fill.
+pub fn on_accent() -> Rgba { rgb(0x0c1a20) }
+
+// Card (a group of rows) and its rows.
+pub fn card_fill() -> Hsla { white_a(0.05) }
+pub fn card_border() -> Hsla { white_a(0.07) }
+pub fn row_separator() -> Hsla { white_a(0.06) }
+
+// Toggle switch: 40x24 pill, 18px knob inset 3px.
+pub const TOGGLE_W: f32 = 40.;
+pub const TOGGLE_H: f32 = 24.;
+pub const TOGGLE_KNOB: f32 = 18.;
+pub fn toggle_off() -> Hsla { white_a(0.16) }
+
+// Buttons (pill, 36px high; 30px small).
+pub const BUTTON_H: f32 = 36.;
+pub const BUTTON_H_SM: f32 = 30.;
+pub fn button_fill() -> Hsla { white_a(0.09) }
+pub fn button_fill_hover() -> Hsla { white_a(0.14) }
+pub fn button_border() -> Hsla { white_a(0.10) }
+pub fn button_text() -> Rgba { rgb(0xeef2f7) }
+pub fn danger_fill() -> Hsla { rgba_hsla(191, 97, 106, 0.20) }
+pub fn danger_fill_hover() -> Hsla { rgba_hsla(191, 97, 106, 0.30) }
+pub fn danger_text() -> Rgba { rgb(0xf2a5ad) }
+
+// Segmented tabs.
+pub fn seg_track() -> Hsla { black_a(0.28) }
+pub fn seg_active() -> Hsla { white_a(0.14) }
+pub fn seg_text() -> Rgba { rgb(0xb5bfcc) }
+
+// Inputs / selects.
+pub const INPUT_H: f32 = 40.;
+pub fn input_fill() -> Hsla { black_a(0.25) }
+pub fn input_border() -> Hsla { white_a(0.08) }
+/// Border of a focused input: the accent at 60%.
+pub fn input_border_focus() -> Hsla {
+    let a = accent();
+    Rgba { a: 0.6, ..a }.into()
+}
+
+// Side navigation pills and the accent tint of active items.
+pub fn nav_text() -> Rgba { rgb(0xc3cbd8) }
+pub fn accent_tint() -> Hsla { rgba_hsla(165, 220, 235, 0.16) }
+pub fn accent_tint_border() -> Hsla { rgba_hsla(165, 220, 235, 0.40) }
+pub fn menu_item_hover() -> Hsla { white_a(0.07) }
