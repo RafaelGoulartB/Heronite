@@ -326,7 +326,7 @@ impl CollectionView {
                 }));
             let mut wrap = div().relative().child(row);
             if open {
-                let mut fly = menu_panel(240.).max_w(px(320.)).max_h(px(420.)).gap(px(1.9));
+                let mut fly = menu_panel(240.).w(px(280.)).max_h(px(420.)).gap(px(1.9));
                 fly = fly.child(
                     menu_item(SharedString::from(format!("facet-all-{}", kind.as_str())), selected.is_none())
                         .child("All")
@@ -353,13 +353,14 @@ impl CollectionView {
                             .child(
                                 div()
                                     .flex()
+                                    .flex_1()
                                     .items_center()
                                     .gap(px(5.6))
                                     .min_w_0()
                                     .when(is_sel, |d| d.child(icon(Icon::Check, px(14.4), theme::accent())))
-                                    .child(o.value.clone()),
+                                    .child(div().min_w_0().truncate().child(o.value.clone())),
                             )
-                            .child(div().text_size(px(12.)).opacity(0.55).child(o.count.to_string()))
+                            .child(div().flex_none().text_size(px(12.)).opacity(0.55).child(o.count.to_string()))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.toggle_facet(kind.as_str(), &value);
                                 cx.notify();

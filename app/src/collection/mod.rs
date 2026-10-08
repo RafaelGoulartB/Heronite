@@ -1,6 +1,7 @@
 //! The Collection screen: stage background, header, grouped list, focus panel.
 
 mod card;
+mod context_menu;
 mod data;
 mod focus;
 mod header;
@@ -23,6 +24,8 @@ use heronite_data::{art, AppPaths, ArtContext, FacetKind, HeroicPaths, Library};
 use heronite_images::{ImageRef, Variant};
 
 use crate::images::{to_chain, ImageStore};
+use crate::runtime::GameRuntime;
+use heronite_launch::LaunchEvent;
 use crate::theme;
 use header::Menu;
 use vm::{CardVm, FocusVm, GroupVm, ListItem};
@@ -67,6 +70,12 @@ pub struct CollectionView {
     menu_close: Option<Task<()>>,
     facet_flyout: Option<FacetKind>,
     refreshing: bool,
+    runtime: Arc<GameRuntime>,
+    /// app_name -> started tracking (Launching/Running).
+    playing: HashMap<String, bool>,
+    toast: Option<(SharedString, bool)>,
+    context_menu: Option<context_menu::ContextMenuState>,
+    toast_task: Option<Task<()>>,
     images: ImageStore,
     cover_chains: HashMap<SharedString, Vec<ImageRef>>,
     stage_chains: HashMap<SharedString, Vec<ImageRef>>,
@@ -133,6 +142,16 @@ impl CollectionView {
         })
         .detach();
 
+        let (runtime, mut events) = GameRuntime::new(heroic.clone());
+        cx.spawn(async move |this, cx| {
+            while let Some(ev) = events.next().await {
+                if this.update(cx, |this, cx| this.on_launch_event(ev, cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+
         let search_input = Self::new_search_input(window, cx);
         let this = Self {
             started,
@@ -148,6 +167,11 @@ impl CollectionView {
             menu_close: None,
             facet_flyout: None,
             refreshing: false,
+            runtime: Arc::new(runtime),
+            playing: HashMap::new(),
+            toast: None,
+            toast_task: None,
+            context_menu: None,
             images,
             cover_chains: HashMap::new(),
             stage_chains: HashMap::new(),
@@ -168,6 +192,21 @@ impl CollectionView {
             cover_aspect: 1.5,
         };
         this.spawn_load(cx);
+        // Heronite may write the same files: reload when they change.
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+            let Ok(changed) = this.update(cx, |this, _| {
+                !this.refreshing && this.lib.as_ref().is_some_and(|l| l.changed_on_disk())
+            }) else {
+                break;
+            };
+            if changed {
+                if this.update(cx, |this, cx| this.reload(cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         this
     }
 
@@ -225,13 +264,113 @@ impl CollectionView {
         }
         if first {
             log::info!("library on screen after {:?}", self.started.elapsed());
+            self.apply_debug_env();
+        }
+    }
+
+    /// Screenshot helpers: `HERONITE_DEBUG_MENU=<card key>` opens its context
+    /// menu (with the status flyout), `HERONITE_DEBUG_DROPDOWN=install|sort|
+    /// status|facets` opens a header menu.
+    fn apply_debug_env(&mut self) {
+        if let Ok(key) = std::env::var("HERONITE_DEBUG_MENU") {
+            self.context_menu = Some(context_menu::ContextMenuState {
+                key: key.into(),
+                position: point(px(200.), px(160.)),
+                status_open: true,
+            });
+        }
+        if let Ok(menu) = std::env::var("HERONITE_DEBUG_DROPDOWN") {
+            self.open_menu = match menu.as_str() {
+                "install" => Some(Menu::Install),
+                "sort" => Some(Menu::Sort),
+                "status" => Some(Menu::Status),
+                "facets" => {
+                    self.facet_flyout = Some(FacetKind::Developer);
+                    Some(Menu::Facets)
+                }
+                _ => None,
+            };
         }
     }
 
     fn refresh_groups(&mut self) {
         let Some(lib) = self.lib.clone() else { return };
-        let groups = data::build_groups(&lib, &self.ui, &self.search, &|_| false);
+        let playing = &self.playing;
+        let groups = data::build_groups(&lib, &self.ui, &self.search, &|key| {
+            lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name))
+        });
         self.set_groups(groups);
+        self.refresh_focus();
+    }
+
+    fn refresh_focus(&mut self) {
+        let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
+        if let Some(game) = lib.get(&key) {
+            let playing = self.playing.contains_key(&game.app_name);
+            self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
+        }
+    }
+
+    fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
+        self.toast = Some((text.into(), error));
+        self.toast_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
+            this.update(cx, |this, cx| {
+                this.toast = None;
+                cx.notify();
+            })
+            .ok();
+        }));
+        cx.notify();
+    }
+
+    fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
+        match ev {
+            LaunchEvent::Launching { app_name } => {
+                self.playing.insert(app_name, false);
+            }
+            LaunchEvent::Running { app_name, pid } => {
+                log::info!("{app_name} running as pid {pid}");
+                self.playing.insert(app_name, true);
+            }
+            LaunchEvent::Exited { app_name, elapsed, .. } => {
+                log::info!("{app_name} exited after {elapsed:?}");
+                self.playing.remove(&app_name);
+                // Playtime, last played and recent games changed on disk.
+                self.reload(cx);
+            }
+            LaunchEvent::Error { app_name, message } => {
+                self.playing.remove(&app_name);
+                self.show_toast(message, true, cx);
+            }
+        }
+        self.refresh_groups();
+        cx.notify();
+    }
+
+    /// Card play button / focus primary button.
+    fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(lib) = self.lib.clone() else { return };
+        let Some(game) = lib.get(key).cloned() else { return };
+        if self.playing.contains_key(&game.app_name) {
+            if !self.runtime.stop(&game.app_name) {
+                self.runtime.force_clear(&game.app_name);
+            }
+            return;
+        }
+        let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
+        if let Err(err) = result {
+            self.show_toast(err, true, cx);
+        }
+    }
+
+    fn toggle_favourite(&mut self, cx: &mut Context<Self>) {
+        let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
+        let Some(game) = lib.get(&key) else { return };
+        if let Err(err) = heronite_data::config_games::toggle_favourite(&self.heroic, &game.app_name, &game.title) {
+            self.show_toast(format!("Could not update favourites: {err:#}"), true, cx);
+        }
+        self.reload(cx);
     }
 
     fn save_ui(&self) {
@@ -353,8 +492,8 @@ impl CollectionView {
         let key = c.key.clone();
         let cover_h = self.cover_h();
         let cover = self.cover(&c.cover_key, theme::CARD_W, cover_h, scale, 100);
-        let (k1, k2, k3) = (key.clone(), key.clone(), key.clone());
-        card::card(
+        let (k1, k2, k3, k4) = (key.clone(), key.clone(), key.clone(), key.clone());
+        let el = card::card(
             card::CardState {
                 vm: &c,
                 cover,
@@ -377,16 +516,27 @@ impl CollectionView {
                 }
                 cx.notify();
             }),
-            cx.listener(move |_this, _, _, _cx| {
-                log::info!("play {k3}");
+            cx.listener(move |this, _, _, cx| {
+                this.primary_action(&k3, cx);
+                cx.notify();
             }),
-        )
+        );
+        div()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, ev: &MouseDownEvent, _, cx| {
+                    this.open_context_menu(k4.clone(), ev.position, cx);
+                }),
+            )
+            .child(el)
+            .into_any_element()
     }
 
     fn select(&mut self, key: SharedString, persist: bool) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = lib.get(&key) else { return };
-        self.focus = Some(data::focus_vm(&lib, &self.wiki, game, false));
+        let playing = self.playing.contains_key(&game.app_name);
+        self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
         self.selected = Some(key.clone());
         if persist {
             self.ui.focused_game = Some(key.to_string());
@@ -518,7 +668,8 @@ impl Render for CollectionView {
                         }
                     }
                 }
-                let (w1, w2) = (weak.clone(), weak.clone());
+                let (w1, w2, w3, w4) = (weak.clone(), weak.clone(), weak.clone(), weak.clone());
+                let focus_key = vm.key.clone();
                 focus::focus_panel(
                     focus::FocusProps {
                         vm,
@@ -536,8 +687,16 @@ impl Render for CollectionView {
                             })
                             .into_fn(),
                         ),
-                        on_play: Box::new(|_, _| log::info!("play")),
-                        on_favourite: Box::new(|_, _| log::info!("favourite")),
+                        on_play: Box::new(move |_, cx| {
+                            w3.update(cx, |this, cx| {
+                                this.primary_action(&focus_key, cx);
+                                cx.notify();
+                            })
+                            .ok();
+                        }),
+                        on_favourite: Box::new(move |_, cx| {
+                            w4.update(cx, |this, cx| this.toggle_favourite(cx)).ok();
+                        }),
                         on_facet: Rc::new(move |f, v, _, cx| {
                             w1.update(cx, |this, cx| {
                                 this.toggle_facet(f, &v);
@@ -566,6 +725,29 @@ impl Render for CollectionView {
                 .child("No game selected")
                 .into_any_element(),
         };
+
+        let toast = self.toast.clone().map(|(text, error)| {
+            div()
+                .absolute()
+                .bottom(px(84.))
+                .left_0()
+                .right_0()
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .max_w(px(560.))
+                        .px(px(16.))
+                        .py(px(10.))
+                        .rounded(px(10.))
+                        .bg(theme::rgb_a(18, 22, 28, 0.94))
+                        .border_1()
+                        .border_color(if error { theme::danger().into() } else { theme::white_a(0.12) })
+                        .text_size(px(13.33))
+                        .text_color(theme::white_a(0.92))
+                        .child(text),
+                )
+        });
 
         div()
             .id("collection")
@@ -605,6 +787,8 @@ impl Render for CollectionView {
                             .child(div().flex_1().min_w_0().h_full().child(focus_panel)),
                     ),
             )
+            .children(toast)
+            .children(self.render_context_menu(window, cx))
     }
 }
 

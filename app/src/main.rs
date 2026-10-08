@@ -2,6 +2,7 @@ mod assets;
 mod collection;
 mod icons;
 mod images;
+mod runtime;
 mod theme;
 mod ui;
 
