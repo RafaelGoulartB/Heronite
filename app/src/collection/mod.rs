@@ -4,6 +4,7 @@ mod card;
 mod context_menu;
 mod data;
 mod focus;
+mod html;
 mod header;
 mod list;
 mod stage;

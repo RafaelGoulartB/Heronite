@@ -5,19 +5,22 @@
 set -euo pipefail
 OUT=${1:-/tmp/heronite-rs.png}; WAIT=${2:-3}
 BIN=${3:-$(cd "$(dirname "$0")/.." && pwd)/target/debug/heronite-rs}
-pkill -x heronite-rs 2>/dev/null || true
+# Close a previous instance (by its window's pid, never by name).
+OLD=$(hyprctl clients -j | python3 -I -c "
+import json,sys
+print(' '.join(str(c['pid']) for c in json.load(sys.stdin) if c['class']=='com.heronite.rs'))")
+[ -n "$OLD" ] && kill $OLD 2>/dev/null && sleep 0.5 || true
 LOG=/tmp/heronite-rs.log
 hyprctl eval "hl.exec_cmd(\"env ${SHOT_ENV:-} $BIN > $LOG 2>&1\", { workspace = \"2 silent\" })" >/dev/null
 for _ in $(seq 1 100); do
-  ID=$(hyprctl clients -j | python3 -I -c "
+  read -r ID P < <(hyprctl clients -j | python3 -I -c "
 import json,sys
 for c in json.load(sys.stdin):
-  if c['class']=='com.heronite.rs': print(c['stableId']); break")
-  [ -n "$ID" ] && break; sleep 0.05
+  if c['class']=='com.heronite.rs': print(c['stableId'], c['pid']); break") || true
+  [ -n "${ID:-}" ] && break; sleep 0.05
 done
 sleep "$WAIT"
 grim -T "$ID" "$OUT"
-P=$(pgrep -x heronite-rs)
 echo "PSS: $(awk '/^Pss:/{print int($2/1024)}' /proc/$P/smaps_rollup) MB"
 grep -E "first render|ERROR|WARN|panick" $LOG | head -5 || true
-pkill -x heronite-rs || true
+kill "$P" 2>/dev/null || true

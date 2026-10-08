@@ -53,6 +53,17 @@ Diário de trabalho para retomar a migração. Plano geral em `PLANO.md`.
 - Gradientes multi-stop do scrim viram faixas de gradientes de 2 stops (`stage.rs`).
 - Tema real do usuário: `nord-dark` (não midnightMirage).
 
+## Medições do app Rust (release, 2026-10-07, mesma biblioteca de 207 jogos)
+
+| Métrica | Heronite (Electron) | heronite-rs (release) |
+|---|---|---|
+| Memória (PSS) após abrir | 606–678 MB (8–9 processos) | **96 MB** (1 processo) |
+| Até a Collection aparecer | janela 0,64–0,87 s; estável 0,9–6,7 s | **0,24–0,26 s** (biblioteca carregada em ~6 ms) |
+| Tamanho | 409 MB instalado | 38 MB (binário único, fontes/ícones embutidos) |
+
+Medido com `scripts/shot.sh` (PSS via `/proc/<pid>/smaps_rollup` após 4 s; tempo pelo log
+`library on screen after`). Ainda sem otimizações finas (driver NVIDIA responde por ~55 MB).
+
 ## Primeiras medições GPUI
 
 - Hello world em **debug**: 179 MB PSS. Composição: driver NVIDIA ~55 MB, camada de validação
