@@ -24,6 +24,9 @@ for _ in $(seq 1 200); do
 done
 [ -z "$ID" ] && { echo "window did not appear"; cat "$LOG"; exit 1; }
 sleep "$WAIT"
+# On a hidden workspace the window only repaints after a first capture wakes
+# the compositor: capture once to warm up, then the real one.
+grim -T "$ID" /dev/null 2>/dev/null || grim -T "$ID" "$OUT"; sleep 1
 grim -T "$ID" "$OUT"
 echo "PSS: $(awk '/^Pss:/{print int($2/1024)}' /proc/$P/smaps_rollup) MB"
 grep -E "first render|on screen|ERROR heronite|panick" "$LOG" | head -5 || true
