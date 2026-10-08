@@ -49,8 +49,18 @@ pub fn read<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
 
 /// Serializes like electron-store: tab indent, no trailing newline.
 pub fn to_electron_store_bytes(value: &impl Serialize) -> Result<Vec<u8>> {
+    to_bytes_indented(value, b"\t")
+}
+
+/// Indent of the files Heroic writes with `JSON.stringify(x, null, 2)`
+/// (`GamesConfig/*.json`, the global `config.json`).
+pub const INDENT_2: &[u8] = b"  ";
+
+/// Like [`to_electron_store_bytes`] with another indent string (no trailing
+/// newline).
+pub fn to_bytes_indented(value: &impl Serialize, indent: &[u8]) -> Result<Vec<u8>> {
     let mut out = Vec::with_capacity(4096);
-    let fmt = serde_json::ser::PrettyFormatter::with_indent(b"\t");
+    let fmt = serde_json::ser::PrettyFormatter::with_indent(indent);
     let mut ser = serde_json::Serializer::with_formatter(&mut out, fmt);
     value.serialize(&mut ser)?;
     Ok(out)
@@ -58,7 +68,12 @@ pub fn to_electron_store_bytes(value: &impl Serialize) -> Result<Vec<u8>> {
 
 /// Atomically replaces `path` with `value`.
 pub fn write(path: &Path, value: &impl Serialize) -> Result<()> {
-    let bytes = to_electron_store_bytes(value)?;
+    write_indented(path, value, b"\t")
+}
+
+/// [`write`] with another indent string.
+pub fn write_indented(path: &Path, value: &impl Serialize, indent: &[u8]) -> Result<()> {
+    let bytes = to_bytes_indented(value, indent)?;
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
@@ -91,6 +106,15 @@ fn path_lock(path: &Path) -> Arc<Mutex<()>> {
 /// on-disk value (an empty object when the file is missing). Serialized per
 /// path inside this process.
 pub fn update_value<R>(path: &Path, f: impl FnOnce(&mut Value) -> Result<R>) -> Result<R> {
+    update_value_indented(path, b"\t", f)
+}
+
+/// [`update_value`] writing with another indent string (e.g. [`INDENT_2`]).
+pub fn update_value_indented<R>(
+    path: &Path,
+    indent: &[u8],
+    f: impl FnOnce(&mut Value) -> Result<R>,
+) -> Result<R> {
     let lock = path_lock(path);
     let _guard = lock.lock();
     let mut value = read_value(path)?;
@@ -98,7 +122,7 @@ pub fn update_value<R>(path: &Path, f: impl FnOnce(&mut Value) -> Result<R>) -> 
         value = Value::Object(Default::default());
     }
     let result = f(&mut value)?;
-    write(path, &value)?;
+    write_indented(path, &value, indent)?;
     Ok(result)
 }
 
