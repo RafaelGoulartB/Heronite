@@ -1006,7 +1006,7 @@ impl Render for CollectionView {
                 let focus_key = vm.key.clone();
                 let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
                 let screenshots = self.screenshots_section(cx);
-                let (w7, focus_extras) = (weak.clone(), self.focus_extras(&focus_key, scale));
+                let focus_extras = self.focus_extras(&focus_key, scale);
                 focus::focus_panel(
                     focus::FocusProps {
                         vm,
@@ -1030,12 +1030,6 @@ impl Render for CollectionView {
                             })
                             .into_fn(),
                         ),
-                        on_open_details: Box::new({
-                            let key = focus_key.clone();
-                            move |_, cx| {
-                                w7.update(cx, |this, cx| this.open_details(&key, cx)).ok();
-                            }
-                        }),
                         on_play: Box::new(move |_, cx| {
                             w3.update(cx, |this, cx| {
                                 this.primary_action(&focus_key, cx);

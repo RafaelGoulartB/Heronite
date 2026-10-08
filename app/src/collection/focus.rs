@@ -122,8 +122,6 @@ pub struct FocusExtras {
 pub struct FocusActions {
     pub on_scroll: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_close: Box<dyn Fn(&mut Window, &mut App)>,
-    /// The "open details page" button (top right).
-    pub on_open_details: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_play: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_favourite: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_metadata: Box<dyn Fn(&mut Window, &mut App)>,
@@ -286,7 +284,6 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     };
 
     let on_close = actions.on_close;
-    let on_open = actions.on_open_details;
     let on_scroll_wheel = on_scroll.clone();
     let on_play = actions.on_play;
     let on_fav = actions.on_favourite;
@@ -320,7 +317,6 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
                 .right(px(17.6))
                 .flex()
                 .gap(px(8.))
-                .child(round_button("focus-open", Icon::OpenInNew, 36., 0.42).on_click(move |_, w, cx| on_open(w, cx)))
                 .child(round_button("focus-close", Icon::Close, 36., 0.42).on_click(move |_, w, cx| on_close(w, cx))),
         )
         .child(
