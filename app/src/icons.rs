@@ -1,6 +1,7 @@
 //! Icon paths inside the embedded assets.
 
 #[derive(Clone, Copy, Debug)]
+// The set mirrors the bundled SVGs; some are not used by any screen yet.
 #[allow(dead_code)]
 pub enum Icon {
     Add,

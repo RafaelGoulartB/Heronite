@@ -93,8 +93,6 @@ impl Session {
         }
     }
 
-    // --- screenshot capture ----------------------------------------------
-
     /// The Collection applies changed settings while it is open.
     pub fn apply_capture_config(&mut self, settings: &heronite_data::models::ScreenshotsSettings) {
         let cfg = CaptureConfig::from_settings(settings);
@@ -179,8 +177,6 @@ impl Session {
             self.capture_games.remove(app_name);
         }
     }
-
-    // --- after the game --------------------------------------------------
 
     /// The save-state key of emulated games and the Ludusavi backup, off the
     /// UI thread. Shows the result as a toast (Collection open) and a
@@ -364,7 +360,6 @@ mod tests {
         assert!(n.error && !n.desktop);
         assert!(n.text.contains("not found"), "{}", n.text);
     }
-
 
     #[test]
     fn saved_backup_is_a_desktop_notice() {

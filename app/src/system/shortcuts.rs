@@ -91,7 +91,7 @@ fn home() -> String {
 
 /// Steam install folder: `HERONITE_STEAM_DIR`, else `defaultSteamPath`.
 pub fn steam_path(heroic: &HeroicPaths) -> PathBuf {
-    if let Some(dir) = std::env::var_os("HERONITE_STEAM_DIR") {
+    if let Some(dir) = crate::env::value("HERONITE_STEAM_DIR") {
         return PathBuf::from(dir);
     }
     configured_steam_path(heroic)
@@ -128,10 +128,6 @@ fn is_dlc(game: &CollectionGame) -> bool {
 fn game_id(game: &CollectionGame) -> GameId {
     GameId { runner: game.runner.clone(), app_name: game.app_name.clone(), title: game.title.clone() }
 }
-
-// ---------------------------------------------------------------------------
-// Artwork
-// ---------------------------------------------------------------------------
 
 fn image_opts(heroic: &HeroicPaths) -> heronite_images::Opts {
     heronite_images::Opts::new(heroic.images_cache_dir(), Some(AppPaths::detect().thumbs_dir()))
@@ -211,10 +207,6 @@ fn steam_art(heroic: &HeroicPaths, lib: &Library, game: &CollectionGame) -> ArtF
         logo: None,
     }
 }
-
-// ---------------------------------------------------------------------------
-// Operations
-// ---------------------------------------------------------------------------
 
 /// Desktop / application-menu shortcut files (`addShortcuts` without Steam).
 /// `desktop`/`menu` pick the targets.
@@ -470,7 +462,7 @@ mod tests {
     /// icon, Steam shortcut + grid artwork, and their removal. Skipped without the fixture.
     #[test]
     fn end_to_end_on_a_fixture_library() {
-        let Some(fixture) = std::env::var_os("HERONITE_FIXTURE_SYSTEM").map(PathBuf::from) else {
+        let Some(fixture) = crate::env::value("HERONITE_FIXTURE_SYSTEM").map(PathBuf::from) else {
             eprintln!("HERONITE_FIXTURE_SYSTEM not set; skipping");
             return;
         };

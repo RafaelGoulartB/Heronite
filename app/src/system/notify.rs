@@ -10,7 +10,7 @@
 pub fn send(title: impl Into<String>, body: impl Into<String>) {
     let (title, body) = (title.into(), body.into());
     log::info!("[notify] {title}: {body}");
-    if std::env::var("HERONITE_DEBUG_NO_NOTIFY").is_ok_and(|v| !v.is_empty() && v != "0") {
+    if crate::env::flag("HERONITE_DEBUG_NO_NOTIFY") {
         return;
     }
     let spawned = std::thread::Builder::new().name("notify".into()).spawn(move || {
@@ -28,7 +28,7 @@ pub fn send(title: impl Into<String>, body: impl Into<String>) {
 pub fn send_and_wait(title: impl Into<String>, body: impl Into<String>, wait: std::time::Duration) {
     let (title, body) = (title.into(), body.into());
     log::info!("[notify] {title}: {body}");
-    if std::env::var("HERONITE_DEBUG_NO_NOTIFY").is_ok_and(|v| !v.is_empty() && v != "0") {
+    if crate::env::flag("HERONITE_DEBUG_NO_NOTIFY") {
         return;
     }
     let (done, finished) = std::sync::mpsc::channel();

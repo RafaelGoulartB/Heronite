@@ -138,7 +138,7 @@ impl ImageStore {
         }
     }
 
-    /// Forget everything (e.g. after the library changed on disk).
+    /// Forgets the failed loads so they are tried again (e.g. after the library changed on disk).
     pub fn clear_failed(&mut self) {
         self.failed.clear();
     }

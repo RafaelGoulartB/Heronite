@@ -229,7 +229,7 @@ pub fn toggle_tool_blocking(
 /// `HERONITE_DISABLE_IDLE_JOBS` (tests against real data) or
 /// `HERONITE_DISABLE_TOOLS_UPDATE` (only this).
 fn spawn_tools_update(paths: HeroicPaths) {
-    if std::env::var_os("HERONITE_DISABLE_IDLE_JOBS").is_some() || std::env::var_os("HERONITE_DISABLE_TOOLS_UPDATE").is_some() {
+    if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") || crate::env::flag("HERONITE_DISABLE_TOOLS_UPDATE") {
         return;
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {

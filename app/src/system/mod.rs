@@ -4,7 +4,6 @@
 pub mod cli;
 mod hub;
 pub mod notify;
-#[allow(dead_code)]
 pub mod shortcuts;
 pub mod settings;
 pub mod signals;

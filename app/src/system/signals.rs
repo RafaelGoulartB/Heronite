@@ -49,7 +49,7 @@ pub fn decide(signal: i32, quit_under_way: bool, already_signalled: bool) -> Act
 
 /// Starts the signal thread. The receiver gets the signal numbers that ask
 /// for a graceful quit. `None` if the signals cannot be registered (the app
-/// then behaves as before).
+/// then runs without them).
 pub fn spawn() -> Option<UnboundedReceiver<i32>> {
     let mut signals = match Signals::new([SIGTERM, SIGINT, SIGHUP]) {
         Ok(s) => s,
