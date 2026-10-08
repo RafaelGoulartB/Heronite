@@ -61,6 +61,9 @@ pub struct CollectionGame {
     pub last_played: Option<String>,
     pub favourite: bool,
     pub recent: bool,
+    /// In Heroic's hidden list (`games.hidden`). Only present in a
+    /// [`Library`] loaded with `include_hidden`.
+    pub hidden: bool,
     /// `meta.launchKind`: `steam-uri`, `executable`, `emulator`, `unavailable`.
     pub launch_kind: Option<String>,
     /// `meta.steamAppId` (art, screenshots, Steam details).
@@ -92,6 +95,7 @@ pub(crate) struct BuildInputs<'a> {
     pub sessions: Option<Arc<Vec<LocalGameSession>>>,
     pub favourite: bool,
     pub recent: bool,
+    pub hidden: bool,
     pub statuses: &'a [CompletionStatus],
 }
 
@@ -121,7 +125,7 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
 
 impl CollectionGame {
     pub(crate) fn build(input: BuildInputs<'_>) -> Self {
-        let BuildInputs { game, overrides, meta, metadata, art, timestamp, sessions, favourite, recent, statuses } =
+        let BuildInputs { game, overrides, meta, metadata, art, timestamp, sessions, favourite, recent, hidden, statuses } =
             input;
         let title = metadata
             .as_deref()
@@ -154,6 +158,7 @@ impl CollectionGame {
             last_played: timestamp.and_then(|t| non_empty(&t.last_played)),
             favourite,
             recent,
+            hidden,
             launch_kind,
             steam_app_id,
             steam_launch_id,
@@ -373,8 +378,15 @@ fn arcs<T>(map: indexmap::IndexMap<String, T>) -> HashMap<String, Arc<T>> {
 }
 
 impl Library {
-    /// Reads every store and builds the Collection list.
+    /// Reads every store and builds the Collection list (hidden games left out).
     pub fn load(paths: &HeroicPaths) -> Result<Library> {
+        Self::load_with(paths, false)
+    }
+
+    /// Like [`Library::load`]; with `include_hidden` the games hidden in
+    /// Heroic stay in the list, flagged [`CollectionGame::hidden`] ("Show
+    /// hidden games").
+    pub fn load_with(paths: &HeroicPaths, include_hidden: bool) -> Result<Library> {
         let files = stamp_files(paths);
         let stamp = take_stamp(&files);
 
@@ -456,7 +468,8 @@ impl Library {
         let mut seen: HashSet<String> = HashSet::new();
         let mut games: Vec<Arc<CollectionGame>> = Vec::new();
         for game in all {
-            if game.install.is_dlc == Some(true) || hidden.contains(game.app_name.as_str()) {
+            let is_hidden = hidden.contains(game.app_name.as_str());
+            if game.install.is_dlc == Some(true) || (is_hidden && !include_hidden) {
                 continue;
             }
             let key = format!("{}_{}", game.runner, game.app_name);
@@ -474,6 +487,7 @@ impl Library {
                 sessions: sessions.get(&app).cloned(),
                 favourite: favourites.contains(app.as_str()),
                 recent: recent.contains(app.as_str()),
+                hidden: is_hidden,
                 statuses: &statuses,
                 game,
             })));
@@ -533,6 +547,7 @@ pub(crate) mod tests_support {
             sessions: None,
             favourite: false,
             recent: false,
+            hidden: false,
             statuses: &statuses,
         }))
     }
@@ -594,6 +609,7 @@ pub(crate) mod tests_support {
             sessions: None,
             favourite: false,
             recent: false,
+            hidden: false,
             statuses: &statuses,
         }))
     }
@@ -677,6 +693,11 @@ mod tests {
         assert_eq!(lib.games[2].source_label, "GOG");
         assert!(lib.get("gog_g").is_some());
         assert!(lib.get("sideload_h").is_none());
+        assert!(lib.games.iter().all(|g| !g.hidden));
+        // "Show hidden games": the hidden one is back, in its place, flagged.
+        let with_hidden = Library::load_with(&paths, true).unwrap();
+        let keys: Vec<_> = with_hidden.games.iter().map(|g| (g.key.as_str(), g.hidden)).collect();
+        assert_eq!(keys, [("sideload_a", false), ("sideload_h", true), ("legendary_a", false), ("gog_g", false)]);
         assert!(!lib.changed_on_disk());
         w(paths.config(), r#"{"games":{"hidden":[]}}"#);
         assert!(lib.changed_on_disk());

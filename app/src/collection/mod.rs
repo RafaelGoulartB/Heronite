@@ -52,9 +52,9 @@ struct Loaded {
     stages: HashMap<SharedString, Vec<ImageRef>>,
 }
 
-fn load_all(heroic: &HeroicPaths) -> anyhow::Result<Loaded> {
+fn load_all(heroic: &HeroicPaths, include_hidden: bool) -> anyhow::Result<Loaded> {
     let t = Instant::now();
-    let lib = Library::load(heroic)?;
+    let lib = Library::load_with(heroic, include_hidden)?;
     let wiki = WikiCache::load(heroic);
     let shots = (!lib.settings.screenshots.folder.is_empty())
         .then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
@@ -265,8 +265,9 @@ impl CollectionView {
 
     fn spawn_load(&self, cx: &mut Context<Self>) {
         let heroic = self.heroic.clone();
+        let include_hidden = self.ui.show_hidden;
         cx.spawn(async move |this, cx| {
-            let loaded = cx.background_spawn(async move { load_all(&heroic) }).await;
+            let loaded = cx.background_spawn(async move { load_all(&heroic, include_hidden) }).await;
             this.update(cx, |this, cx| {
                 this.refreshing = false;
                 match loaded {

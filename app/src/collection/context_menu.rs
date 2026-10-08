@@ -222,8 +222,8 @@ impl CollectionView {
         let k = key.clone();
         menu = menu.child(
             item("cm-hide")
-                .child(icon(Icon::VisibilityOff, px(20.), rgb(0xcaf3fd)))
-                .child("Hide")
+                .child(icon(if game.hidden { Icon::Visibility } else { Icon::VisibilityOff }, px(20.), rgb(0xcaf3fd)))
+                .child(if game.hidden { "Unhide" } else { "Hide" })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
                         if let Err(err) = heronite_data::config_games::toggle_hidden(&this.heroic, &g.app_name, &g.title) {

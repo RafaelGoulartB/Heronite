@@ -25,6 +25,7 @@ pub fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
         playtime: collection::playtime_label(g.playtime_minutes).into(),
         installed: g.installed,
         playing,
+        hidden: g.hidden,
         cover_key: g.key.clone().into(),
     })
 }

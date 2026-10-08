@@ -124,6 +124,19 @@ impl CollectionView {
         )
     }
 
+    /// "Show hidden games": persists the flag and reloads the library with or
+    /// without the games hidden in Heroic.
+    pub(super) fn set_show_hidden(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.ui.show_hidden == on {
+            return;
+        }
+        self.ui.show_hidden = on;
+        self.save_ui();
+        self.refreshing = true;
+        self.spawn_load(cx);
+        cx.notify();
+    }
+
     pub(super) fn render_header(&mut self, cx: &mut Context<Self>) -> Div {
         let install = self.hover_dropdown(
             Menu::Install,
@@ -152,7 +165,16 @@ impl CollectionView {
                             })),
                     );
                 }
-                p.into_any_element()
+                let show_hidden = this.ui.show_hidden;
+                p.child(menu_separator())
+                    .child(
+                        menu_item("install-show-hidden", false)
+                            .justify_between()
+                            .child("Show hidden games")
+                            .child(toggle(show_hidden))
+                            .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(!this.ui.show_hidden, cx))),
+                    )
+                    .into_any_element()
             },
             cx,
         );

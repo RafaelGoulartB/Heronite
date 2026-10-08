@@ -59,7 +59,7 @@ pub fn card(
         }
     };
 
-    let grey = s.grey_uninstalled && !vm.installed && !s.hovered;
+    let grey = (s.grey_uninstalled && !vm.installed || vm.hidden) && !s.hovered;
     let cover_img = match s.cover {
         Some(src) => {
             // GPUI does not clip images to a parent's rounded corners: round the image itself.
@@ -139,8 +139,16 @@ pub fn card(
                 .rounded(px(6.))
                 .shadow(vec![shadow])
                 .bg(theme::rgb_a(255, 255, 255, 0.03))
-                .child(div().size_full().rounded(px(6.)).overflow_hidden().child(cover_img))
+                .child(
+                    div()
+                        .size_full()
+                        .rounded(px(6.))
+                        .overflow_hidden()
+                        .when(vm.hidden && !s.hovered, |d| d.opacity(0.62))
+                        .child(cover_img),
+                )
                 .children(s.epic.as_ref().map(super::epic::card_overlay))
+                .children(vm.hidden.then(hidden_badge))
                 .children(ring.map(|color| {
                     div()
                         .absolute()
@@ -158,6 +166,26 @@ pub fn card(
         )
         .child(playtime_label(vm))
         .into_any_element()
+}
+
+/// "Hidden" tag on the top-left of a hidden game shown by "Show hidden games".
+fn hidden_badge() -> Div {
+    div()
+        .absolute()
+        .top(px(6.))
+        .left(px(6.))
+        .flex()
+        .items_center()
+        .gap(px(3.))
+        .px(px(6.))
+        .py(px(2.))
+        .rounded(px(4.))
+        .bg(theme::black_a(0.62))
+        .text_size(px(10.5))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::white_a(0.9))
+        .child(icon(Icon::VisibilityOff, px(11.), theme::white_a(0.9)))
+        .child("Hidden")
 }
 
 fn playtime_label(vm: &CardVm) -> Div {

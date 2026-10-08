@@ -15,6 +15,7 @@ pub mod focus;
 pub mod heronite_ui_import;
 pub mod hltb;
 pub mod library;
+pub mod maintenance;
 pub mod playtime;
 pub mod sessions;
 pub mod settings;

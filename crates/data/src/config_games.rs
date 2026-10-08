@@ -102,6 +102,35 @@ pub fn toggle_hidden(paths: &HeroicPaths, app_name: &str, title: &str) -> Result
     }
 }
 
+/// The `{ appName, title }` entries of `games.<key>` (`favourites`, `hidden`
+/// or `recent`) as stored, in order. Missing file or key: empty.
+pub fn list_entries(paths: &HeroicPaths, key: &str) -> Vec<(String, String)> {
+    let doc = json_store::read_value(&paths.config()).unwrap_or(Value::Null);
+    doc.get("games")
+        .and_then(|g| g.get(key))
+        .and_then(Value::as_array)
+        .map(|l| {
+            l.iter()
+                .filter_map(|v| {
+                    let app = v.get("appName")?.as_str()?.to_owned();
+                    let title = v.get("title").and_then(Value::as_str).unwrap_or_default().to_owned();
+                    Some((app, title))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Empties `games.<key>`; returns how many entries were dropped.
+pub fn clear_list(paths: &HeroicPaths, key: &str) -> Result<usize> {
+    json_store::update_value(&paths.config(), |doc| {
+        let list = list_mut(doc, key);
+        let n = list.len();
+        list.clear();
+        Ok(n)
+    })
+}
+
 /// "Remove from recent".
 pub fn remove_recent(paths: &HeroicPaths, app_name: &str) -> Result<()> {
     json_store::update_value(&paths.config(), |doc| {
@@ -160,5 +189,17 @@ mod tests {
         assert!(toggle_favourite(&paths, "a", "A").unwrap());
         let v = json_store::read_value(&paths.config()).unwrap();
         assert_eq!(v["games"]["favourites"][0]["appName"], "a");
+    }
+
+    #[test]
+    fn list_and_clear() {
+        let (_d, paths) = setup(
+            "{\n\t\"games\": {\n\t\t\"hidden\": [{\"appName\": \"h\", \"title\": \"H\"}, {\"appName\": \"i\"}],\n\t\t\"recent\": [{\"appName\": \"r\", \"title\": \"R\"}]\n\t}\n}",
+        );
+        assert_eq!(list_entries(&paths, "hidden"), [("h".to_string(), "H".to_string()), ("i".to_string(), String::new())]);
+        assert!(list_entries(&paths, "favourites").is_empty());
+        assert_eq!(clear_list(&paths, "hidden").unwrap(), 2);
+        assert!(list_entries(&paths, "hidden").is_empty());
+        assert_eq!(list_entries(&paths, "recent").len(), 1);
     }
 }

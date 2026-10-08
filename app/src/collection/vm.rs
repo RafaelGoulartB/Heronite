@@ -12,6 +12,8 @@ pub struct CardVm {
     pub playtime: SharedString,
     pub installed: bool,
     pub playing: bool,
+    /// Hidden in Heroic and shown because "Show hidden games" is on.
+    pub hidden: bool,
     /// Index into the images the view keeps (cover chain id).
     pub cover_key: SharedString,
 }

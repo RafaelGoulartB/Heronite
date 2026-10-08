@@ -28,6 +28,10 @@ pub struct UiState {
     /// "Group by status" toggle. Heronite does not persist it (always on at
     /// start); this app does.
     pub group_by_status: bool,
+    /// "Show hidden games" (Heroic keeps it in the renderer's localStorage
+    /// `show_hidden`, so it cannot be shared): hidden games stay in the
+    /// Collection, flagged.
+    pub show_hidden: bool,
 }
 
 impl Default for UiState {
@@ -40,6 +44,7 @@ impl Default for UiState {
             collapsed_groups: BTreeSet::new(),
             focused_game: None,
             group_by_status: true,
+            show_hidden: false,
         }
     }
 }
@@ -76,6 +81,7 @@ impl UiState {
             .filter(|s| !s.is_empty())
             .map(str::to_owned);
         state.group_by_status = value.get("groupByStatus").and_then(Value::as_bool).unwrap_or(true);
+        state.show_hidden = value.get("showHidden").and_then(Value::as_bool).unwrap_or(false);
         state
     }
 
@@ -95,6 +101,7 @@ impl UiState {
             "collapsedGroups": self.collapsed_groups,
             "focusedGame": self.focused_game,
             "groupByStatus": self.group_by_status,
+            "showHidden": self.show_hidden,
         })
     }
 
@@ -106,9 +113,20 @@ impl UiState {
         }
     }
 
-    /// Writes the state atomically (creating the folder if needed).
+    /// Writes the state atomically (creating the folder if needed). Keys of
+    /// the file this struct does not model are kept.
     pub fn save(&self, paths: &AppPaths) -> Result<()> {
-        json_store::write(&paths.ui_state(), &self.to_value())
+        let Value::Object(known) = self.to_value() else { unreachable!("to_value builds an object") };
+        json_store::update_value(&paths.ui_state(), |doc| {
+            if !doc.is_object() {
+                *doc = Value::Object(Default::default());
+            }
+            let obj = doc.as_object_mut().expect("object");
+            for (k, v) in known {
+                obj.insert(k, v);
+            }
+            Ok(())
+        })
     }
 
     /// `toggleGroup`; returns whether the group is now collapsed.
@@ -162,6 +180,7 @@ mod tests {
             sidebar_hidden: true,
             focused_game: Some("sideload_steam_400".into()),
             group_by_status: false,
+            show_hidden: true,
             ..Default::default()
         };
         state.toggle_facet(FacetKind::Genre, "RPG");
@@ -176,7 +195,24 @@ mod tests {
         let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
         assert_eq!(on_disk["sort"], "lastPlayed");
         assert_eq!(on_disk["installFilter"], "installed");
+        assert_eq!(on_disk["showHidden"], true);
         state.clear_facets();
         assert!(!state.facet_filters.is_active());
+    }
+
+    #[test]
+    fn save_keeps_unknown_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        std::fs::create_dir_all(&paths.config).unwrap();
+        std::fs::write(paths.ui_state(), "{\n\t\"futureKey\": [1, 2],\n\t\"sort\": \"title\"\n}").unwrap();
+        let mut state = UiState::load(&paths);
+        assert!(!state.show_hidden);
+        state.show_hidden = true;
+        state.save(&paths).unwrap();
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert_eq!(on_disk["futureKey"], json!([1, 2]));
+        assert_eq!(on_disk["showHidden"], true);
+        assert!(UiState::load(&paths).show_hidden);
     }
 }
