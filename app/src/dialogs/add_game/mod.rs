@@ -32,7 +32,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, button, checkbox, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
-use crate::ui::fields::{choose_path, field_label, input_box, meta_text, new_input, panel, path_field, select_field};
+use crate::ui::fields::{choose_path, field_label, input_box, labeled, meta_text, new_input, panel, path_field, select_field};
 use crate::ui::icon;
 use logic::*;
 use picker::{ImagePicker, PickerEvent, Slot};
@@ -923,8 +923,8 @@ impl AddGameDialog {
 
         if self.platform == SideloadPlatform::Browser {
             right = right
-                .child(div().flex().flex_col().child(field_label("BrowserURL")).child(input_box(&self.url, false)))
-                .child(div().flex().flex_col().child(field_label("Custom User Agent")).child(input_box(&self.user_agent, false)))
+                .child(labeled("BrowserURL", input_box(&self.url, false)))
+                .child(labeled("Custom User Agent", input_box(&self.user_agent, false)))
                 .child(checkbox("ag-fullscreen", self.fullscreen, "Launch Fullscreen (F11 to exit)").on_click(cx.listener(|this, _, _, cx| {
                     this.fullscreen = !this.fullscreen;
                     cx.notify();

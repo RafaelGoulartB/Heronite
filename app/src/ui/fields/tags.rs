@@ -1,104 +1,18 @@
-//! Form widgets for the metadata / game-settings dialogs: Heroic's
-//! `TextInputField`, textarea, `SelectField` menu and the Collection tag
-//! field (`CollectionTagField`, a MUI Autocomplete with chips).
+//! Collection tag field (`CollectionTagField`, a MUI Autocomplete with chips)
+//! and the helpers that normalise tag values.
 
-use std::rc::Rc;
-
-use gpui_kit::component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use super::input::{input_surface, new_input};
+use super::text::labeled;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::dropdown::{menu_item, menu_panel};
 use crate::ui::icon;
 
-/// `--input-background` look shared by inputs, textareas and tag fields.
-fn input_surface() -> Div {
-    div().rounded(px(4.)).bg(theme::navbar_background()).shadow(vec![BoxShadow {
-        color: theme::black_a(0.25),
-        offset: point(px(0.), px(4.)),
-        blur_radius: px(4.),
-        spread_radius: px(0.),
-        inset: false,
-    }])
-}
-
-pub fn text_state(window: &mut Window, cx: &mut App, value: &str, placeholder: &str, masked: bool) -> Entity<InputState> {
-    let (value, placeholder) = (value.to_string(), placeholder.to_string());
-    cx.new(|cx| {
-        let mut s = InputState::new(window, cx).masked(masked);
-        s.set_placeholder(placeholder, window, cx);
-        s.set_value(value, window, cx);
-        s
-    })
-}
-
-pub fn textarea_state(window: &mut Window, cx: &mut App, value: &str, rows: usize) -> Entity<TextareaState> {
-    let value = value.to_string();
-    cx.new(|cx| {
-        let mut s = TextareaState::new(window, cx).rows(rows);
-        s.set_value(value, window, cx);
-        s
-    })
-}
-
-/// Label above a control (`label` = `--text-default`).
-pub fn labeled(label: impl Into<SharedString>, control: impl IntoElement) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(5.6))
-        .child(div().text_size(px(16.)).text_color(rgb(0xcaf3fd)).child(label.into()))
-        .child(control)
-}
-
-/// 40px single-line field.
-pub fn input_box(state: &Entity<InputState>) -> Div {
-    input_surface().h(px(40.)).w_full().px(px(12.)).flex().items_center().text_size(px(16.)).text_color(white()).child(
-        div().w_full().child(Input::new(state).appearance(false)),
-    )
-}
-
-pub fn textarea_box(state: &Entity<TextareaState>, rows: usize) -> Div {
-    input_surface()
-        .w_full()
-        .h(px(rows as f32 * 22. + 20.))
-        .px(px(12.))
-        .py(px(8.))
-        .text_size(px(16.))
-        .text_color(white())
-        .child(Textarea::new(state).appearance(false).h_full())
-}
-
-/// Dropdown menu of a select: `items` are `(value, label)`.
-pub fn select_menu<F>(id: &str, items: &[(String, String)], current: &str, on_pick: F) -> Div
-where
-    F: Fn(String, &mut Window, &mut App) + 'static,
-{
-    let on_pick = Rc::new(on_pick);
-    let mut menu = menu_panel(240.).bg(theme::navbar_background());
-    for (i, (value, label)) in items.iter().enumerate() {
-        let (v, cb) = (value.clone(), on_pick.clone());
-        menu = menu.child(
-            menu_item(SharedString::from(format!("{id}-{i}")), value == current)
-                .child(label.clone())
-                .on_click(move |_, w, cx| cb(v.clone(), w, cx)),
-        );
-    }
-    menu
-}
-
-/// Wraps `select` (a `select_box`) and, when `open`, anchors `menu` below it.
-pub fn select_with_menu(select: impl IntoElement, menu: Option<Div>) -> Div {
-    let mut wrap = div().relative().w_full().child(select);
-    if let Some(menu) = menu {
-        wrap = wrap.child(deferred(div().absolute().top(px(44.)).left_0().occlude().child(menu)).with_priority(40));
-    }
-    wrap
-}
-
-pub fn normalize_tag(value: &str) -> String {
+fn normalize_tag(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -106,7 +20,7 @@ fn tag_key(value: &str) -> String {
     heronite_data::text::facet_key(value)
 }
 
-pub fn unique_tags<I: IntoIterator<Item = String>>(values: I) -> Vec<String> {
+fn unique_tags<I: IntoIterator<Item = String>>(values: I) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for raw in values {
@@ -137,7 +51,6 @@ pub struct TagField {
     options: Vec<String>,
     input: Entity<InputState>,
     focused: bool,
-    /// Single mode: the value was just set from a suggestion.
     _subs: Vec<Subscription>,
 }
 
@@ -155,7 +68,7 @@ impl TagField {
     ) -> Self {
         let values = unique_tags(value);
         let initial = if multiple { String::new() } else { values.first().cloned().unwrap_or_default() };
-        let input = text_state(window, cx, &initial, "Select or type to add", false);
+        let input = new_input(window, cx, &initial, "Select or type to add");
         let sub = cx.subscribe_in(&input, window, move |this, input, ev: &InputEvent, window, cx| match ev {
             InputEvent::Focus => {
                 this.focused = true;
@@ -207,15 +120,6 @@ impl TagField {
     /// Single-value fields.
     pub fn value(&self) -> String {
         self.values.first().cloned().unwrap_or_default()
-    }
-
-    pub fn set_values(&mut self, values: Vec<String>, window: &mut Window, cx: &mut Context<Self>) {
-        self.values = unique_tags(values);
-        if !self.multiple {
-            let text = self.values.first().cloned().unwrap_or_default();
-            self.input.update(cx, |s, cx| s.set_value(text, window, cx));
-        }
-        cx.notify();
     }
 
     fn add_all(&mut self, items: Vec<String>, window: &mut Window, cx: &mut Context<Self>) {
@@ -291,9 +195,7 @@ impl Render for TagField {
             .flex()
             .flex_wrap()
             .items_center()
-            .gap(px(4.))
-            .text_size(px(16.))
-            .text_color(white());
+            .gap(px(4.));
         if self.multiple {
             for (i, v) in self.values.iter().enumerate() {
                 boxed = boxed.child(
@@ -372,5 +274,26 @@ impl Render for TagField {
             }
         }
         labeled(self.label.clone(), wrap)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_tag, split_typed, unique_tags};
+
+    #[test]
+    fn tags_are_trimmed_and_collapsed() {
+        assert_eq!(normalize_tag("  Open   world "), "Open world");
+    }
+
+    #[test]
+    fn unique_tags_drop_empty_and_duplicates_keeping_the_first_spelling() {
+        let out = unique_tags(["Action", " action ", "", "Open  world", "RPG"].map(String::from));
+        assert_eq!(out, vec!["Action", "Open world", "RPG"]);
+    }
+
+    #[test]
+    fn typed_text_splits_on_commas_semicolons_and_newlines() {
+        assert_eq!(split_typed("a, b;c\nA"), vec!["a", "b", "c"]);
     }
 }

@@ -13,12 +13,12 @@ use heronite_data::collection::Game;
 use heronite_metadata::{MetadataApplyArgs, MetadataPreview, MetadataSearchHit, MetadataService};
 
 use super::art_images::{chain_for_url, picture, DialogImages};
-use super::form::{input_box, labeled, select_menu, select_with_menu, text_state};
 use super::metadata_wizard::hub;
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, button, select_box, ButtonKind};
+use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
+use crate::ui::fields::{input_box, new_input, select_field};
 
 pub const FETCH_SOURCES: [(&str, &str); 6] = [
     ("auto", "Auto (IGDB first)"),
@@ -112,7 +112,7 @@ impl MetadataDialog {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
-        let search = text_state(window, cx, &game.title, "Search IGDB title", false);
+        let search = new_input(window, cx, &game.title, "Search IGDB title");
         cx.subscribe_in(&search, window, |this, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
                 this.run_search(cx);
@@ -338,31 +338,34 @@ impl Render for MetadataDialog {
         }
 
         // Source + Fetch
-        let items: Vec<(String, String)> = FETCH_SOURCES.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
-        let menu = self.source_open.then(|| {
-            let entity = cx.entity().downgrade();
-            select_menu("md-source", &items, &self.source, move |v, _, cx| {
-                entity
-                    .update(cx, |this, cx| {
-                        this.source = v;
-                        this.source_open = false;
-                        cx.notify();
-                    })
-                    .ok();
-            })
-        });
-        let select = select_box("md-source-box", source_label(&self.source)).on_click(cx.listener(|this, _, _, cx| {
-            if this.busy.is_none() {
-                this.source_open = !this.source_open;
+        let sources: Vec<(SharedString, bool)> =
+            FETCH_SOURCES.iter().map(|(id, label)| ((*label).into(), *id == self.source)).collect();
+        let select = select_field(
+            "md-source",
+            Some("Source"),
+            source_label(&self.source),
+            false,
+            self.source_open,
+            sources,
+            cx,
+            |this, _, cx| {
+                if this.busy.is_none() {
+                    this.source_open = !this.source_open;
+                    cx.notify();
+                }
+            },
+            |this, i, _, cx| {
+                this.source = FETCH_SOURCES[i].0.to_string();
+                this.source_open = false;
                 cx.notify();
-            }
-        }));
+            },
+        );
         body = body.child(
             div()
                 .flex()
                 .items_end()
                 .gap(px(8.))
-                .child(div().w(px(200.)).child(labeled("Source", select_with_menu(select, menu))))
+                .child(div().w(px(200.)).child(select))
                 .child(action_button(
                     "md-fetch",
                     ButtonKind::Primary,
@@ -378,7 +381,7 @@ impl Render for MetadataDialog {
                 .flex()
                 .items_center()
                 .gap(px(8.))
-                .child(div().flex_1().child(input_box(&self.search)))
+                .child(div().flex_1().child(input_box(&self.search, false)))
                 .child(action_button(
                     "md-search",
                     ButtonKind::Outline,

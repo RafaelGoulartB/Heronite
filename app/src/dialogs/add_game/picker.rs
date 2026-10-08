@@ -7,14 +7,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_images::ImageRef;
 use heronite_metadata::{MetadataService, WebImage};
 
 use crate::dialogs::art_images::{picture, DialogImages};
-use crate::dialogs::form::text_state;
+use crate::ui::fields::{new_input, search_box};
 use crate::dialogs::metadata_wizard::hub;
 use crate::dialogs::DialogCtx;
 use crate::icons::Icon;
@@ -68,7 +68,7 @@ impl ImagePicker {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
-        let query = text_state(window, cx, &default_query(title, slot), "", false);
+        let query = new_input(window, cx, &default_query(title, slot), "");
         cx.subscribe_in(&query, window, |this, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
                 this.search(cx);
@@ -151,22 +151,7 @@ impl Render for ImagePicker {
                 !self.loading,
                 cx.listener(|this, _, _, cx| this.search(cx)),
             ))
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_w(px(192.))
-                    .items_center()
-                    .gap(px(8.))
-                    .px(px(11.))
-                    .py(px(5.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(theme::white_a(0.12))
-                    .bg(theme::black_a(0.28))
-                    .child(icon(Icon::FaSearch, px(13.), theme::white_a(0.6)))
-                    .child(div().flex_1().min_w_0().child(Input::new(&self.query).appearance(false))),
-            );
+            .child(search_box(&self.query));
 
         let mut grid = div()
             .id("ag-pick-grid")

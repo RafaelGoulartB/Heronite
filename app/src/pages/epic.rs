@@ -17,7 +17,7 @@ use crate::icons::Icon;
 use crate::services::widgets::{fmt_percent, progress_bar};
 use crate::services::{self, Downloads};
 use crate::theme;
-use crate::ui::controls::{action_button, button, ButtonKind};
+use crate::ui::controls::{action_button, button, page_heading, ButtonKind};
 use crate::ui::fields::{meta_text, new_input, panel, paragraph};
 use crate::ui::icon;
 
@@ -248,10 +248,6 @@ fn eos_main_text(installed: bool, working: bool) -> &'static str {
     }
 }
 
-fn heading(text: &str) -> Div {
-    div().font_family(theme::FONT_HEADING).text_size(px(18.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(text.to_string())
-}
-
 impl Render for EpicPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (account, stats, updates, refreshing, logging_in, last_error) = {
@@ -320,7 +316,7 @@ impl Render for EpicPage {
                         }))),
                 );
             }
-            column = column.child(heading("Epic Games")).child(card);
+            column = column.child(page_heading("Epic Games")).child(card);
         } else {
             let mut card = panel().gap(px(14.)).p(px(18.)).child(paragraph(
                 "Log in to your Epic Games account to see your library and install your games. Your login is handled by legendary, the same way Heroic does it.",
@@ -332,7 +328,7 @@ impl Render for EpicPage {
                 !self.window_open && !logging_in,
                 cx.listener(|this, _, _, cx| this.start_window_login(cx)),
             )));
-            column = column.child(heading("Epic Games")).child(card);
+            column = column.child(page_heading("Epic Games")).child(card);
 
             let can_submit = !logging_in && !self.code.read(cx).value().trim().is_empty();
             let browser = panel()
@@ -363,7 +359,7 @@ impl Render for EpicPage {
                 )));
             column = column.child(browser);
         }
-        column = column.child(heading("EOS Overlay")).child(self.eos_panel(cx));
+        column = column.child(page_heading("EOS Overlay")).child(self.eos_panel(cx));
         if let Some((text, error)) = self.notice.clone() {
             column = column.child(div().text_size(px(14.)).text_color(if error { theme::danger().into() } else { white() }).child(text));
         }

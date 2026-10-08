@@ -25,7 +25,7 @@ use crate::dialogs::scan_roms::{profile_label, ScanInitial};
 use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, button, ButtonKind};
+use crate::ui::controls::{action_button, button, page_heading, ButtonKind};
 use crate::ui::fields::{meta_text, panel, paragraph};
 use crate::ui::icon;
 
@@ -440,15 +440,6 @@ impl EmulatorsPage {
     }
 }
 
-fn heading(text: &str) -> Div {
-    div()
-        .font_family(theme::FONT_HEADING)
-        .text_size(px(18.))
-        .font_weight(theme::W_BOLD)
-        .text_color(rgb(0xcaf3fd))
-        .child(text.to_string())
-}
-
 fn chip(text: impl Into<SharedString>) -> Div {
     div()
         .px(px(8.))
@@ -728,7 +719,7 @@ impl Render for EmulatorsPage {
                     .flex()
                     .items_baseline()
                     .gap(px(12.))
-                    .child(heading("Emulators"))
+                    .child(page_heading("Emulators"))
                     .child(meta_text(if self.loaded {
                         format!("{} \u{b7} {}", plural(self.summaries.len(), "emulator", "emulators"), plural(folders, "ROM folder", "ROM folders"))
                     } else {

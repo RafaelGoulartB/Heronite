@@ -23,7 +23,6 @@ pub mod log_viewer;
 pub mod ludusavi_backup;
 pub mod pick_rom;
 pub mod art_images;
-pub mod form;
 pub mod game_settings;
 pub mod heroic_settings;
 pub mod manage_statuses;

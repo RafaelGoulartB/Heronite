@@ -14,8 +14,8 @@ use super::SettingsDialog;
 use crate::collection::stage::{scrim_layers, Scrim};
 use crate::dialogs::DialogCtx;
 use crate::theme;
-use crate::ui::controls::{button, checkbox, help_text, section_title, select_box, ButtonKind};
-use crate::ui::dropdown::{menu_item, menu_panel};
+use crate::ui::controls::{button, checkbox, help_text, section_title, ButtonKind};
+use crate::ui::fields::select_field;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Field {
@@ -207,28 +207,27 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
 
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
     let aspect_label = ASPECTS.iter().find(|(a, _)| *a == aspect).map(|(_, l)| *l).unwrap_or("Steam (2:3)");
-    let mut aspect_select = div().relative().child(select_box("cover-aspect", aspect_label).on_click(cx.listener(
-        |d, _, _, cx| {
+    let aspect_options: Vec<(SharedString, bool)> = ASPECTS.iter().map(|(a, l)| ((*l).into(), *a == aspect)).collect();
+    let aspect_select = select_field(
+        "cover-aspect",
+        None,
+        aspect_label,
+        false,
+        a.aspect_open,
+        aspect_options,
+        cx,
+        |d, _, cx| {
             d.appearance.aspect_open = !d.appearance.aspect_open;
             cx.notify();
         },
-    )));
-    if a.aspect_open {
-        let mut menu = menu_panel(240.);
-        for (i, (value, label)) in ASPECTS.iter().enumerate() {
-            let value = *value;
-            menu = menu.child(menu_item(SharedString::from(format!("aspect-{i}")), value == aspect).child(*label).on_click(
-                cx.listener(move |d, _, _, cx| {
-                    d.appearance.aspect_open = false;
-                    let mut patch = d.settings.metadata.clone();
-                    patch.cover_aspect = value.as_str().to_string();
-                    let res = settings::save_metadata(&d.ctx.heroic, &patch);
-                    d.saved(res, cx);
-                }),
-            ));
-        }
-        aspect_select = aspect_select.child(deferred(div().absolute().top(px(44.)).left_0().occlude().child(menu)).with_priority(40));
-    }
+        |d, i, _, cx| {
+            d.appearance.aspect_open = false;
+            let mut patch = d.settings.metadata.clone();
+            patch.cover_aspect = ASPECTS[i].0.as_str().to_string();
+            let res = settings::save_metadata(&d.ctx.heroic, &patch);
+            d.saved(res, cx);
+        },
+    );
 
     let grey = d.settings.grey_uninstalled_games;
     div()

@@ -47,6 +47,25 @@ pub fn checkbox(id: impl Into<ElementId>, checked: bool, label: impl Into<Shared
         )
 }
 
+/// Compact checkbox (18px, 2px accent border) of the ROM / emulator pickers:
+/// the caller adds the click handler and the label next to it.
+pub fn mini_checkbox(id: impl Into<ElementId>, checked: bool, disabled: bool) -> Stateful<Div> {
+    div()
+        .id(id)
+        .size(px(18.))
+        .flex_none()
+        .mt(px(2.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(4.))
+        .border(px(2.))
+        .border_color(theme::accent())
+        .when(checked, |d| d.bg(theme::accent()).child(icon(Icon::Check, px(14.), theme::background())))
+        .when(disabled, |d| d.opacity(0.5))
+        .when(!disabled, |d| d.cursor_pointer())
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonKind {
     /// Plain `.button` (`--primary`, nord-dark #b48ead).
@@ -143,51 +162,14 @@ pub fn section_title(text: impl Into<SharedString>) -> Div {
     div().text_size(px(16.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(text.into())
 }
 
+/// Page heading (`h2`-ish: 18px `Rubik` bold) of the Epic / Emulators pages.
+pub fn page_heading(text: impl Into<SharedString>) -> Div {
+    div().font_family(theme::FONT_HEADING).text_size(px(18.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(text.into())
+}
+
 /// Secondary paragraph text (`--text-secondary` is #fff on nord-dark, 13.33px).
 pub fn help_text(text: impl Into<SharedString>) -> Div {
     div().text_size(px(13.33)).text_color(white()).child(text.into())
-}
-
-/// Read-only select look (`.selectFieldWrapper`): 40px, `--input-background`,
-/// radius 4, shadow, chevron at right. Clicking it opens a menu the caller
-/// renders (see `ui::dropdown::menu_panel`).
-pub fn select_box(id: impl Into<ElementId>, value: impl Into<SharedString>) -> Stateful<Div> {
-    div()
-        .id(id)
-        .relative()
-        .flex()
-        .items_center()
-        .h(px(40.))
-        .w_full()
-        .pl(px(12.))
-        .pr(px(44.))
-        .rounded(px(4.))
-        .bg(theme::navbar_background())
-        .shadow(vec![BoxShadow {
-            color: theme::black_a(0.25),
-            offset: point(px(0.), px(4.)),
-            blur_radius: px(4.),
-            spread_radius: px(0.),
-            inset: false,
-        }])
-        .cursor_pointer()
-        .text_size(px(16.))
-        .text_color(rgb(0xa5edfd))
-        .child(value.into())
-        .child(
-            div()
-                .absolute()
-                .right(px(0.))
-                .top(px(8.))
-                .bottom(px(8.))
-                .w(px(40.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .border_l_1()
-                .border_color(theme::white_a(0.6))
-                .child(icon(Icon::ExpandMore, px(18.), rgb(0xa5edfd))),
-        )
 }
 
 /// A [`button`] that only reacts when `enabled`. Disabled buttons use Heroic's

@@ -9,7 +9,7 @@ use heronite_data::HeroicPaths;
 use heronite_emulation::discover::{add_discovered, discover_emulators, discover_in_folder};
 use heronite_emulation::{list_user_emulators, DetectedEmulator, SystemEnv};
 
-use super::scan_roms::mini_checkbox;
+use crate::ui::controls::mini_checkbox;
 use super::DialogEvent;
 use crate::theme;
 use crate::ui::controls::{action_button, button, ButtonKind};

@@ -5,7 +5,7 @@ use gpui_kit::*;
 
 use super::HeroicSettingsPanel;
 use crate::theme;
-use crate::ui::controls::{action_button, checkbox, ButtonKind};
+use crate::ui::controls::{action_button, checkbox, section_title, ButtonKind};
 use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_field};
 
 /// Info callout (`.defaults-hint`).
@@ -32,7 +32,7 @@ pub fn danger_text(text: &str) -> Div {
 }
 
 pub fn heading(text: &str) -> Div {
-    div().pt(px(8.)).text_size(px(16.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(text.to_string())
+    section_title(text.to_string()).pt(px(8.))
 }
 
 pub fn column() -> Div {

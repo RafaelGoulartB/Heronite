@@ -13,7 +13,7 @@ use heronite_images::ImageRef;
 use heronite_metadata::{ArtKind, MetadataService, WebImage};
 
 use super::art_images::{picture, DialogImages};
-use super::form::text_state;
+use crate::ui::fields::{new_input, search_box};
 use super::metadata_wizard::hub;
 use super::DialogCtx;
 use crate::icons::Icon;
@@ -64,7 +64,7 @@ impl WebImageDialog {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
-        let query = text_state(window, cx, &default_query(&title, kind), "", false);
+        let query = new_input(window, cx, &default_query(&title, kind), "");
         cx.subscribe_in(&query, window, |this, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
                 this.search(cx);
@@ -179,22 +179,7 @@ impl Render for WebImageDialog {
                 !self.loading && !self.saving,
                 cx.listener(|this, _, _, cx| this.search(cx)),
             ))
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_w(px(192.))
-                    .items_center()
-                    .gap(px(8.))
-                    .px(px(11.))
-                    .py(px(5.))
-                    .rounded(px(8.))
-                    .border_1()
-                    .border_color(theme::white_a(0.12))
-                    .bg(theme::black_a(0.28))
-                    .child(icon(Icon::FaSearch, px(13.), theme::white_a(0.6)))
-                    .child(div().flex_1().min_w_0().child(gpui_kit::component::input::Input::new(&self.query).appearance(false))),
-            )
+            .child(search_box(&self.query))
             .child(checkbox("wi-transparent", self.transparent, "Transparent").on_click(cx.listener(|this, _, _, cx| {
                 if !this.loading && !this.saving {
                     this.transparent = !this.transparent;

@@ -15,7 +15,7 @@ use crate::dialogs::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, checkbox, section_title, ButtonKind};
-use crate::ui::fields::{field_label, input_box, meta_text, new_input, on_commit, paragraph_secondary, select_field};
+use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit, paragraph_secondary, select_field};
 use crate::ui::icon;
 
 pub struct State {
@@ -121,8 +121,8 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
             "Collection uses IGDB first, then Steam, store pages, Lutris, and Playnite files. Create a Twitch app to get IGDB keys: https://dev.twitch.tv/console",
         ))
         .child(section_title("Twitch / IGDB API"))
-        .child(div().flex().flex_col().child(field_label("Twitch / IGDB Client ID")).child(input_box(&d.metadata.client_id, false)))
-        .child(div().flex().flex_col().child(field_label("Twitch / IGDB Client Secret")).child(input_box(&d.metadata.secret, false)))
+        .child(labeled("Twitch / IGDB Client ID", input_box(&d.metadata.client_id, false)))
+        .child(labeled("Twitch / IGDB Client Secret", input_box(&d.metadata.secret, false)))
         .child(
             div()
                 .flex()

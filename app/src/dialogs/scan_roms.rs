@@ -11,15 +11,13 @@ use heronite_emulation::{
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use super::{DialogCtx, DialogEvent};
-use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, button, checkbox, ButtonKind};
+use crate::ui::controls::{action_button, button, checkbox, mini_checkbox, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{
     choose_path, meta_text, new_input, on_commit, panel, paragraph, path_field, select_field,
     text_field,
 };
-use crate::ui::icon;
 
 /// Where the dialog starts (from a saved scanner / the emulator manager).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -363,23 +361,6 @@ pub(crate) fn profile_label(p: &UserEmulatorProfile) -> String {
     } else {
         format!("{name} \u{b7} {platform}")
     }
-}
-
-pub(crate) fn mini_checkbox(id: impl Into<ElementId>, checked: bool, disabled: bool) -> Stateful<Div> {
-    div()
-        .id(id)
-        .size(px(18.))
-        .flex_none()
-        .mt(px(2.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(4.))
-        .border(px(2.))
-        .border_color(theme::accent())
-        .when(checked, |d| d.bg(theme::accent()).child(icon(Icon::Check, px(14.), theme::background())))
-        .when(disabled, |d| d.opacity(0.5))
-        .when(!disabled, |d| d.cursor_pointer())
 }
 
 impl Render for ScanRomsDialog {

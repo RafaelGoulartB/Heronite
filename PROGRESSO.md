@@ -779,3 +779,22 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
 - **Não verificado / limitações**: conexão medida real (só o parser; NetworkManager do usuário não é medido); notificação vista na
   tela (só confirmado que o daemon aceitou); chave de save state de emulador no caminho sem janela (código movido sem mudança, sem
   teste novo); o `heroic://` com argumentos continua ignorado.
+
+## Refactor: helpers de formulário unificados (agente "refactor")
+- `app/src/ui/fields.rs` e `app/src/dialogs/form.rs` viraram **um só módulo**, `app/src/ui/fields/` (`text.rs`, `input.rs`,
+  `select.rs`, `tags.rs`; todos reexportados por `crate::ui::fields`). Apagados: `dialogs/form.rs`, `controls::select_box`,
+  `select_menu`/`select_with_menu`/`text_state`/`textarea_state`. API única: `new_input`/`new_textarea`, `input_box(&i, disabled)`,
+  `textarea_box`, `labeled`, `text_field`, `path_field`, `search_box` (era duplicado em web_image e add_game/picker),
+  `select_field` (os 3 selects de metadata/game_settings/appearance migraram para ele), `TagField`.
+- Pequenas duplicatas fundidas em `ui/controls.rs`: `mini_checkbox` (estava em scan_roms e importado por emulator_detect),
+  `page_heading` (epic e emulators tinham a mesma `heading`), `section_title` (downloads e heroic_settings/parts tinham cópias).
+- Mudanças visuais intencionais (look único = o de `fields.rs`): nos diálogos de game settings/metadata os inputs passam a usar a
+  fonte Rubik e padding 10 (antes 12), o label fica colado ao campo (sem gap de 5.6px) e os selects usam o `select_field` (texto
+  branco, menu de largura do campo, itens 16px) em vez do `select_box` ciano. O textarea mantém a fonte do corpo.
+- Teste: `HERONITE_DEBUG_SELECT_OPEN=1` abre o menu "Run as" da aba Launch no game settings (só captura).
+- **Verificado**: `cargo build` e `cargo test -p heronite` (71 ok, 3 novos de tags); ~55 capturas antes/depois (shot.sh, ws 7, fixture
+  copiada com Ludusavi/captura desligados) de game settings (todas as abas), metadata, web image, add/edit game, settings (todas as
+  abas), página Settings (todas as seções), Wine, Epic, emuladores, scan ROMs, Playnite, Epic install/import/modify: idênticas
+  pixel a pixel exceto as mudanças acima e ruído de carregamento assíncrono (capas, rede, tamanho da janela).
+- **Não verificado**: menu aberto do select de Appearance (fica abaixo da dobra do diálogo) e do select Source do diálogo de metadata
+  (mesmo código do `select_field`, verificado aberto em Add game e Run as).

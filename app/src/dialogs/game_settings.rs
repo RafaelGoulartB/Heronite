@@ -17,14 +17,14 @@ use heronite_metadata::{ArtKind, DetailsPatch, DetailsResult, MetadataService};
 
 use super::art_images::{chain_for_url, picture, DialogImages};
 use super::heroic_settings::{debug_dialog_height, GameFacts, HeroicSettingsPanel, Section, Target};
-use super::form::{input_box, labeled, select_menu, select_with_menu, text_state, textarea_box, textarea_state, TagEvent, TagField};
 use super::metadata_wizard::hub;
 use super::screenshot_art::ScreenshotArtDialog;
 use super::web_image::{ArtEvent, WebImageDialog};
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, button, select_box, tabs, ButtonKind};
+use crate::ui::controls::{action_button, button, tabs, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
+use crate::ui::fields::{input_box, labeled, new_input, new_textarea, select_field, textarea_box, TagEvent, TagField};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
@@ -239,12 +239,12 @@ impl GameSettingsDialog {
             })
             .collect();
         let details = Details {
-            name: text_state(window, cx, &initial.title, "", false),
-            description: textarea_state(window, cx, &initial.description, 6),
-            release: text_state(window, cx, &initial.release_date, "", false),
-            score: text_state(window, cx, &initial.score, "", false),
-            websites: text_state(window, cx, &initial.websites, "", false),
-            notes: textarea_state(window, cx, &initial.notes, 4),
+            name: new_input(window, cx, &initial.title, ""),
+            description: new_textarea(window, cx, &initial.description, 6),
+            release: new_input(window, cx, &initial.release_date, ""),
+            score: new_input(window, cx, &initial.score, ""),
+            websites: new_input(window, cx, &initial.websites, ""),
+            notes: new_textarea(window, cx, &initial.notes, 4),
             tags,
         };
         for input in [&details.name, &details.release, &details.score, &details.websites] {
@@ -268,7 +268,7 @@ impl GameSettingsDialog {
         let launch = show_launch.then(|| {
             let exe = game.game.install.executable.clone().unwrap_or_default();
             let run_as = game.meta.as_deref().and_then(|m| m.run_as.clone()).unwrap_or_else(|| "auto".into());
-            let input = text_state(window, cx, &exe, "", false);
+            let input = new_input(window, cx, &exe, "");
             cx.subscribe_in(&input, window, |this, input, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
                     let text = input.read(cx).value().to_string();
@@ -283,7 +283,7 @@ impl GameSettingsDialog {
             let mut state = LaunchState {
                 executable: input,
                 run_as: run_as.clone(),
-                run_as_open: false,
+                run_as_open: std::env::var_os("HERONITE_DEBUG_SELECT_OPEN").is_some(),
                 initial_exe: exe.clone(),
                 initial_run_as: run_as,
                 exists: false,
@@ -677,19 +677,19 @@ impl GameSettingsDialog {
                 "These fields stay in Collection. Fetching metadata later will not overwrite values you edit here, unless you choose to overwrite.",
             ))
             .child(div().text_size(px(13.33)).text_color(white()).child("Pick existing tags or type a new one and press Enter to create it."))
-            .child(labeled("Name", input_box(&d.name)))
+            .child(labeled("Name", input_box(&d.name, false)))
             .child(labeled("Description", textarea_box(&d.description, 6)))
             .child(
                 div()
                     .flex()
                     .gap(px(12.))
-                    .child(div().flex_1().child(labeled("Release date", input_box(&d.release))))
-                    .child(div().flex_1().child(labeled("Score", input_box(&d.score)))),
+                    .child(div().flex_1().child(labeled("Release date", input_box(&d.release, false))))
+                    .child(div().flex_1().child(labeled("Score", input_box(&d.score, false)))),
             );
         for tag in &d.tags {
             col = col.child(tag.clone());
         }
-        col.child(labeled("Websites", input_box(&d.websites))).child(labeled("Notes", textarea_box(&d.notes, 4)))
+        col.child(labeled("Websites", input_box(&d.websites, false))).child(labeled("Notes", textarea_box(&d.notes, 4)))
     }
 
     fn launch_tab(&mut self, cx: &mut Context<Self>) -> Div {
@@ -703,35 +703,34 @@ impl GameSettingsDialog {
             ExecutableKind::Unknown => "Unknown file type",
         };
         let effective = if l.effective == Platform::Linux { "Runs natively on Linux" } else { "Runs through Wine/Proton" };
-        let items: Vec<(String, String)> = vec![
-            ("auto".into(), "Automatic (from the file)".into()),
-            ("linux".into(), "Linux native".into()),
-            ("windows".into(), "Windows (Wine/Proton)".into()),
-        ];
-        let current_label = items.iter().find(|(v, _)| *v == l.run_as).map(|(_, t)| t.clone()).unwrap_or_default();
-        let menu = l.run_as_open.then(|| {
-            let entity = cx.entity().downgrade();
-            select_menu("gs-runas", &items, &l.run_as, move |v, _, cx| {
-                entity
-                    .update(cx, |this, cx| {
-                        let exe = this.launch.as_ref().map(|l| l.executable.read(cx).value().to_string()).unwrap_or_default();
-                        if let Some(l) = this.launch.as_mut() {
-                            l.run_as = v;
-                            l.run_as_open = false;
-                            l.saved = false;
-                        }
-                        this.refresh_launch(&exe);
-                        cx.notify();
-                    })
-                    .ok();
-            })
-        });
-        let select = select_box("gs-runas-box", current_label).on_click(cx.listener(|this, _, _, cx| {
-            if let Some(l) = this.launch.as_mut() {
-                l.run_as_open = !l.run_as_open;
-            }
-            cx.notify();
-        }));
+        let run_as = [("auto", "Automatic (from the file)"), ("linux", "Linux native"), ("windows", "Windows (Wine/Proton)")];
+        let current_label = run_as.iter().find(|(v, _)| *v == l.run_as).map(|(_, t)| *t).unwrap_or_default();
+        let options: Vec<(SharedString, bool)> = run_as.iter().map(|(v, t)| ((*t).into(), *v == l.run_as)).collect();
+        let select = select_field(
+            "gs-runas",
+            Some("Run as"),
+            current_label,
+            false,
+            l.run_as_open,
+            options,
+            cx,
+            |this, _, cx| {
+                if let Some(l) = this.launch.as_mut() {
+                    l.run_as_open = !l.run_as_open;
+                }
+                cx.notify();
+            },
+            move |this, i, _, cx| {
+                let exe = this.launch.as_ref().map(|l| l.executable.read(cx).value().to_string()).unwrap_or_default();
+                if let Some(l) = this.launch.as_mut() {
+                    l.run_as = run_as[i].0.to_string();
+                    l.run_as_open = false;
+                    l.saved = false;
+                }
+                this.refresh_launch(&exe);
+                cx.notify();
+            },
+        );
         let saved = l.saved && !dirty;
         let mut status = div().text_size(px(16.)).line_height(px(24.)).text_color(white()).child(
             div()
@@ -759,11 +758,11 @@ impl GameSettingsDialog {
                 div()
                     .flex()
                     .gap(px(8.))
-                    .child(div().flex_1().child(input_box(&l.executable)))
+                    .child(div().flex_1().child(input_box(&l.executable, false)))
                     .child(action_button("gs-browse", ButtonKind::Outline, "Browse", !busy, cx.listener(|this, _, _, cx| this.browse_executable(cx)))),
             ))
             .child(status)
-            .child(labeled("Run as", select_with_menu(select, menu)))
+            .child(select)
             .child(
                 div()
                     .flex()

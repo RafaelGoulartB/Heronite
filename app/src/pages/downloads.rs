@@ -13,7 +13,7 @@ use crate::icons::Icon;
 use crate::services::widgets::{cover_box, fmt_mib, fmt_percent, progress_bar, Covers};
 use crate::services::{self, Downloads};
 use crate::theme;
-use crate::ui::controls::{button, ButtonKind};
+use crate::ui::controls::{button, section_title, ButtonKind};
 use crate::ui::icon;
 
 pub struct DownloadsPage {
@@ -33,15 +33,6 @@ impl DownloadsPage {
         let covers = Covers::new(&ctx.heroic, &ctx.app, cx, |this: &mut Self| &mut this.covers);
         Self { ctx, svc, covers, confirm_stop: false }
     }
-}
-
-fn section_title(text: &str) -> Div {
-    div()
-        .font_family(theme::FONT_HEADING)
-        .text_size(px(16.))
-        .font_weight(theme::W_BOLD)
-        .text_color(rgb(0xcaf3fd))
-        .child(text.to_string())
 }
 
 fn card() -> Div {
@@ -161,7 +152,7 @@ impl Render for DownloadsPage {
                         }))),
                 );
             }
-            column = column.child(section_title("Downloading")).child(
+            column = column.child(section_title("Downloading").font_family(theme::FONT_HEADING)).child(
                 card()
                     .child(cover_box(cover, 60., 80.))
                     .child(info)
@@ -189,7 +180,7 @@ impl Render for DownloadsPage {
         }
 
         // Waiting elements.
-        column = column.child(section_title("Queued"));
+        column = column.child(section_title("Queued").font_family(theme::FONT_HEADING));
         let waiting: Vec<DmElement> = snap.queue.iter().skip(1).cloned().collect();
         if waiting.is_empty() {
             column = column.child(div().text_size(px(14.)).text_color(theme::white_a(0.6)).child("Nothing to download"));
@@ -245,7 +236,7 @@ impl Render for DownloadsPage {
                     .items_center()
                     .justify_between()
                     .mt(px(8.))
-                    .child(section_title("Completed"))
+                    .child(section_title("Completed").font_family(theme::FONT_HEADING))
                     .child(button("dm-clear", ButtonKind::Text, "Clear list").on_click(cx.listener(|this, _, _, cx| {
                         this.svc.update(cx, |s, _| s.clear_finished());
                     }))),

@@ -12,7 +12,7 @@ use crate::collection::screenshots_global;
 use crate::dialogs::DialogCtx;
 use crate::theme;
 use crate::ui::controls::{action_button, checkbox, section_title, ButtonKind};
-use crate::ui::fields::{choose_path, field_label, input_box, meta_text, new_input, on_commit, path_field};
+use crate::ui::fields::{choose_path, input_box, labeled, meta_text, new_input, on_commit, path_field};
 
 pub struct State {
     folder: Entity<InputState>,
@@ -207,7 +207,7 @@ pub fn render(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<Sett
                 }),
             ),
         )
-        .child(div().flex().flex_col().child(field_label("Screenshot shortcut")).child(hotkey))
+        .child(labeled("Screenshot shortcut", hotkey))
         .child(meta_text(
             "Click the shortcut field and press the desired key combination. Captures are saved in the matched game folder and appear automatically in Collection.",
         ));
@@ -229,7 +229,7 @@ pub fn render(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<Sett
         .child(meta_text(
             "Thumbnails generated so the screenshot gallery opens instantly. They are recreated on demand after clearing.",
         ))
-        .child(div().flex().flex_col().child(field_label("Preview cache limit (MB)")).child(input_box(&st.limit, st.busy)))
+        .child(labeled("Preview cache limit (MB)", input_box(&st.limit, st.busy)))
         .child(div().flex().child(action_button(
             "shot-clear-cache",
             ButtonKind::Outline,

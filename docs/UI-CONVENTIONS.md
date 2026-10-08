@@ -18,8 +18,24 @@ sources are in `../HeroicGamesLauncher/src/frontend/screens/LocalLibrary/**`.
   twice; add it here.
 - `app/src/ui/` — building blocks: `icon`, `tool_button`, `round_button`,
   `chip`, `scrollbar`, `dropdown::{dropdown, menu_panel, menu_item}`,
-  `dialog::dialog` (Heroic Dialog chrome), `controls::{checkbox, button,
-  tabs, select_box, section_title, help_text, mui_primary}`.
+  `dialog::dialog` (Heroic Dialog chrome), `controls::{checkbox,
+  mini_checkbox, button, action_button, tabs, section_title, page_heading,
+  help_text, mui_primary}`.
+- `app/src/ui/fields/` — the ONE set of form helpers; import from
+  `crate::ui::fields` only (never write a local label/input/select look):
+  - inputs: `new_input` / `new_textarea` (state), `input_box(&input, disabled)`,
+    `textarea_box`, `text_field(label, &input)`, `path_field` (clear/browse
+    icon) + `choose_path` (file chooser), `search_box`, `on_commit`
+    (blur/Enter commit, for debounced or deferred saves);
+  - `labeled(label, control)` for any control under a label (an input next
+    to a button, a select...), `field_label`, `paragraph`,
+    `paragraph_secondary`, `meta_text`, `panel`;
+  - `select_field(id, label, value, disabled, open, options, cx, on_toggle,
+    on_pick)`: label + 40px select + its open menu (the caller keeps the
+    `open` flag and the picked value);
+  - `TagField` (entity: chips + autocomplete, emits `TagEvent::Changed`).
+  Inputs/selects/tags share `input_surface` (`--input-background`, shadow,
+  `Rubik` 16px); the textarea uses the body font for long text.
 - `app/src/collection/` — the main screen (`mod.rs` = `CollectionView`).
 - `app/src/dialogs/<name>.rs` — one dialog per file. A dialog is an
   `Entity<V>` where `V: Render + EventEmitter<DialogEvent>`; build it with
