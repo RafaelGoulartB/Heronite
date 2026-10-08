@@ -100,6 +100,12 @@ slots (build the header with `kicker`, `dialog_title`, `close_button`).
 - Fields (`ui::fields`): `path_field` shows a folder icon and "Clear"/"Browse" in accent;
   `select_field`'s list is a scrollable glass menu; labels are 12px muted.
 
+**Game settings drawer** (`dialogs/game_settings.rs`): the first `drawer` caller. Tabs are
+segmented pills in the header slot; each tab is a stack of `caption` + `card`. The Heroic
+panels (`dialogs/heroic_settings`) build their cards with `parts::rows()` (`.child(toggle_row)`,
+`.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →
+Game defaults can host them too.
+
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
 `text_muted`, `text_dim`, `accent_tint`, ...).

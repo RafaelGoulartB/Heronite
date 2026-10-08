@@ -14,7 +14,7 @@ use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, BulkState, MetadataSer
 
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, button, checkbox, help_text, ButtonKind};
+use crate::ui::controls::{action_button, button, card, checkbox, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 
 pub enum HubEvent {
@@ -196,33 +196,33 @@ impl Render for MetadataWizard {
             format!("{} games in Collection will be checked.", self.games.len())
         };
 
-        let mut body = div().flex().flex_col().gap(px(12.)).child(
-            div().text_size(px(16.)).text_color(rgb(0xcaf3fd)).child(
-                "Fetches IGDB first, then Steam, store, Lutris, and Playnite data. You can hide this window; the download keeps going. Open it again from the icon in the Collection header.",
-            ),
-        );
+        let mut body = div().flex().flex_col().gap(px(12.)).child(help_text(
+            "Fetches IGDB first, then Steam, store, Lutris, and Playnite data. You can hide this window; the download keeps going. Open it again from the icon in the Collection header.",
+        ));
         if !running && !done {
             body = body
-                .child(checkbox("wiz-skip", self.skip_existing, "Skip games that already have metadata").on_click(
-                    cx.listener(|this, _, _, cx| {
-                        this.skip_existing = !this.skip_existing;
-                        cx.notify();
-                    }),
-                ))
-                .child(checkbox("wiz-manual", self.keep_manual, "Keep fields edited by hand").on_click(cx.listener(
-                    |this, _, _, cx| {
-                        this.keep_manual = !this.keep_manual;
-                        cx.notify();
-                    },
-                )))
+                .child(card([
+                    checkbox("wiz-skip", self.skip_existing, "Skip games that already have metadata")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.skip_existing = !this.skip_existing;
+                            cx.notify();
+                        }))
+                        .into_any_element(),
+                    checkbox("wiz-manual", self.keep_manual, "Keep fields edited by hand")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.keep_manual = !this.keep_manual;
+                            cx.notify();
+                        }))
+                        .into_any_element(),
+                    checkbox("wiz-images", self.download_images, "Copy covers locally (uses more disk)")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.download_images = !this.download_images;
+                            cx.notify();
+                        }))
+                        .into_any_element(),
+                ]))
                 .child(help_text(
                     "Name, notes, and any field you changed in Game settings stay as they are. Other empty or downloaded fields can still update from IGDB.",
-                ))
-                .child(checkbox("wiz-images", self.download_images, "Copy covers locally (uses more disk)").on_click(
-                    cx.listener(|this, _, _, cx| {
-                        this.download_images = !this.download_images;
-                        cx.notify();
-                    }),
                 ));
         }
         body = body
@@ -231,7 +231,7 @@ impl Render for MetadataWizard {
                     div().h_full().w(relative(p.percent.min(100) as f32 / 100.)).bg(theme::accent()),
                 ),
             )
-            .child(div().text_size(px(16.)).text_color(rgb(0xcaf3fd)).child(status));
+            .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(status));
         if running {
             if let Some(title) = p.current_title.clone() {
                 body = body.child(help_text(if p.state == BulkState::Cancelling {
@@ -247,8 +247,8 @@ impl Render for MetadataWizard {
                     .id("wiz-errors")
                     .max_h(px(160.))
                     .overflow_y_scroll()
-                    .text_size(px(13.33))
-                    .text_color(theme::danger())
+                    .text_size(px(13.))
+                    .text_color(theme::danger_text())
                     .child(p.errors.join("\n")),
             );
         }
@@ -266,7 +266,7 @@ impl Render for MetadataWizard {
             footer = footer.child(
                 button(
                     "wiz-stop",
-                    ButtonKind::Outline,
+                    ButtonKind::Glass,
                     if p.state == BulkState::Cancelling { "Stopping after this game\u{2026}" } else { "Stop" },
                 )
                 .on_click(cx.listener(|this, _, _, cx| this.hub.update(cx, |h, cx| h.cancel(cx)))),
@@ -275,7 +275,7 @@ impl Render for MetadataWizard {
         footer = footer.child(
             button(
                 "wiz-close",
-                if running { ButtonKind::Primary } else { ButtonKind::Outline },
+                if running { ButtonKind::Primary } else { ButtonKind::Glass },
                 if running { "Hide" } else { "Close" },
             )
             .on_click(cx.listener(|this, _, _, cx| this.hide(cx))),

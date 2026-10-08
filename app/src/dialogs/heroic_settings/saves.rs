@@ -5,10 +5,9 @@ use gpui_kit::*;
 use heronite_epic::saves::{self, SyncMode};
 use serde_json::Value;
 
-use super::parts::{column, hint, help};
+use super::parts::{column, heading, help, hint, rows};
 use super::{HeroicSettingsPanel, Notice, Section};
 use crate::theme;
-use crate::ui::fields::panel;
 
 pub const MODES: [(&str, SyncMode); 3] = [
     ("Sync (download and upload)", SyncMode::Both),
@@ -94,12 +93,12 @@ impl HeroicSettingsPanel {
             "Cloud Saves feature is in Beta, please backup your saves before syncing (in case something goes wrong)",
         ));
         if self.saves.detecting {
-            return col.child(help("Trying to detect the correct save folder\u{2026}"));
+            return col.child(help("Trying to detect the correct save folder\u{2026}").px(px(6.)));
         }
         let retry = div()
             .id("saves-retry")
             .cursor_pointer()
-            .text_size(px(13.33))
+            .text_size(px(12.))
             .text_color(theme::accent())
             .child(if has_path {
                 "Please check twice if the path is correct (click to retry)"
@@ -107,7 +106,15 @@ impl HeroicSettingsPanel {
                 "Save folder not found, please select it manually (click to retry)"
             })
             .on_click(cx.listener(|this, _, window, cx| this.detect_saves(window, cx)));
-        col = col.child(self.path_row("savesPath", Some("Saves folder"), true, "Choose the saves directory", true, cx)).child(retry);
+        let folder = rows().field_help(
+            self.path_row("savesPath", Some("Saves folder"), true, "Choose the saves directory", true, cx),
+            vec![
+                div().child(retry),
+                help("Heroic tries to guess the right save folder and this will work on the majority of cases. In case the folder is wrong, use the box above to change it."),
+                help("In case you change the prefix folder for Wine or Proton, check the path again since Proton uses a different prefix (/pfx) and username (steamuser): clear the path and click retry."),
+            ],
+        );
+        col = col.child(heading("Location")).child(folder.card());
 
         let mode = self.saves.mode;
         let select = self.select_row(
@@ -123,19 +130,48 @@ impl HeroicSettingsPanel {
             },
         );
         let syncing = self.saves.syncing;
-        col = col.child(
-            div()
-                .flex()
-                .items_end()
-                .gap(px(12.))
-                .child(div().flex_1().child(select))
-                .child(self.outline_button("saves-sync", if syncing { "Syncing" } else { "Sync" }, has_path && !syncing, cx, |this, _, cx| {
-                    this.sync_saves(cx)
-                })),
+        let sync = div()
+            .flex()
+            .items_end()
+            .gap(px(12.))
+            .child(div().flex_1().child(select))
+            .child(self.outline_button("saves-sync", if syncing { "Syncing" } else { "Sync" }, has_path && !syncing, cx, |this, _, cx| {
+                this.sync_saves(cx)
+            }));
+        let mut sync_rows = rows().field_help(
+            sync,
+            vec![help("Manual Sync: Sync downloads and uploads what changed. Force Download and Force Upload ignore the version that is locally or on the cloud.")],
         );
-        col = col.child(self.toggle_row("autosync", "autoSyncSaves", false, "Autosync Saves", None, !has_path, cx));
+        if let Some(lines) = self.saves.output.clone() {
+            let mut out = div()
+                .flex()
+                .flex_col()
+                .max_h(px(180.))
+                .overflow_hidden()
+                .my(px(10.))
+                .p(px(10.))
+                .rounded(px(theme::R_INPUT))
+                .bg(theme::input_fill())
+                .border_1()
+                .border_color(theme::input_border());
+            for l in lines.into_iter().take(60) {
+                out = out.child(div().font_family(theme::FONT_MONO).text_size(px(11.5)).text_color(theme::text_muted()).child(l));
+            }
+            sync_rows = sync_rows.child(out);
+        }
+        col = col.child(heading("Sync")).child(sync_rows.card());
+
+        let mut auto = rows().child(self.toggle_row(
+            "autosync",
+            "autoSyncSaves",
+            false,
+            "Autosync Saves",
+            Some("Autosync Saves will sync the saves every time you start a game and after finishing playing."),
+            !has_path,
+            cx,
+        ));
         if has_path {
-            col = col.child(self.toggle_row(
+            auto = auto.child(self.toggle_row(
                 "quick-saves",
                 "enableQuickSavesMenu",
                 false,
@@ -145,16 +181,6 @@ impl HeroicSettingsPanel {
                 cx,
             ));
         }
-        if let Some(lines) = self.saves.output.clone() {
-            let mut out = panel().max_h(px(180.)).overflow_hidden();
-            for l in lines.into_iter().take(60) {
-                out = out.child(div().text_size(px(12.5)).text_color(white()).child(l));
-            }
-            col = col.child(out);
-        }
-        col.child(help("Heroic tries to guess the right save folder and this will work on the majority of cases. In case the folder is wrong, use the box above to change it."))
-            .child(help("In case you change the prefix folder for Wine or Proton, check the path again since Proton uses a different prefix (/pfx) and username (steamuser): clear the path and click retry."))
-            .child(help("Manual Sync: Sync downloads and uploads what changed. Force Download and Force Upload ignore the version that is locally or on the cloud."))
-            .child(help("Autosync Saves will sync the saves every time you start a game and after finishing playing."))
+        col.child(heading("Automatic")).child(auto.card())
     }
 }

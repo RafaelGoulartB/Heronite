@@ -141,7 +141,7 @@ fn thumb_box(content: impl IntoElement) -> Div {
         .w(px(96.))
         .h(px(72.))
         .flex_none()
-        .rounded(px(4.))
+        .rounded(px(10.))
         .overflow_hidden()
         .bg(theme::black_a(0.35))
         .flex()
@@ -162,7 +162,7 @@ impl Render for LaunchStateDialog {
                 .gap(px(12.))
                 .px(px(12.))
                 .py(px(8.))
-                .rounded(px(4.))
+                .rounded(px(theme::R_TILE))
                 .border_1()
                 .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
                 .when(on, |d| d.bg(theme::white_a(0.04)))
@@ -193,8 +193,8 @@ impl Render for LaunchStateDialog {
                             .flex()
                             .flex_col()
                             .min_w_0()
-                            .child(div().font_weight(theme::W_BOLD).text_size(px(16.)).child(row.label.clone()))
-                            .child(div().text_size(px(13.33)).text_color(white()).child(row.when.clone())),
+                            .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(row.label.clone()))
+                            .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(row.when.clone())),
                     ),
             );
         }
@@ -215,11 +215,11 @@ impl Render for LaunchStateDialog {
                         .flex()
                         .flex_col()
                         .min_w_0()
-                        .child(div().font_weight(theme::W_BOLD).text_size(px(16.)).child("Start from the beginning"))
+                        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child("Start from the beginning"))
                         .child(
                             div()
-                                .text_size(px(13.33))
-                                .text_color(white())
+                                .text_size(px(12.))
+                                .text_color(theme::text_dim())
                                 .child("Boot the game normally. In-game saves on memory cards are kept."),
                         ),
                 ),
@@ -237,7 +237,7 @@ impl Render for LaunchStateDialog {
         let footer = div()
             .flex()
             .gap(px(16.))
-            .child(button("state-cancel", ButtonKind::Outline, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .child(button("state-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(
                 button("state-play", ButtonKind::Default, if fresh_on { "Start" } else { "Continue" })
                     .on_click(cx.listener(|this, _, _, cx| this.play(cx))),

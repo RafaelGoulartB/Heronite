@@ -13,7 +13,7 @@ use heronite_launch::{PlanContext, SystemProbe};
 use serde_json::{json, Value};
 
 use super::logic::{self, RunKind};
-use super::parts::{column, danger_text, heading, help};
+use super::parts::{column, danger_text, heading, help, rows};
 use super::{HeroicSettingsPanel, Notice, Target};
 use crate::ui::fields::choose_path;
 
@@ -25,125 +25,132 @@ impl HeroicSettingsPanel {
     pub(super) fn wine_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let wine = self.wine_version();
         let crossover = wine.kind == "crossover";
-        let mut col = column().child(self.wine_version_field(cx));
+        let mut col = column();
         if crossover {
-            col = col.child(self.text_row("crossoverBottle", Some("CrossOver Bottle"), None));
-        } else {
-            col = col
-                .child(self.path_row("winePrefix", Some("WinePrefix folder"), true, "Select WinePrefix Folder", false, cx))
-                .child(help(
+            let top = rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some("CrossOver Bottle"), None));
+            return col.child(top.card());
+        }
+        let top = rows()
+            .field(self.wine_version_field(cx))
+            .field_help(
+                self.path_row("winePrefix", Some("Prefix"), true, "Select WinePrefix Folder", false, cx),
+                vec![help(
                     "Wine uses what is called a WINEPREFIX to encapsulate Windows applications. This prefix contains the Wine configuration files and a reproduction of the file hierarchy of C: (the main disk on a Windows OS). In this reproduction of the C: drive, your game save files and dependencies installed via winetricks are stored.",
-                ));
-            let dxvk = logic::offers_dxvk(&wine);
-            let dxvk_on = self.flag("autoInstallDxvk", false);
-            // Heroic dims the switches ("Please wait...") while a tool is being installed.
-            let tools_busy = self.tool_toggle.is_some();
-            if dxvk {
-                col = col.child(self.toggle_row(
-                    "auto-dxvk",
-                    "autoInstallDxvk",
-                    false,
-                    "Auto Install/Update DXVK on Prefix",
-                    Some("DXVK is a Vulkan-based translational layer for DirectX 9, 10 and 11 games. Enabling may improve compatibility. Might cause issues especially for older DirectX games."),
-                    self.flag("autoInstallDxvkNvapi", false) || self.flag("autoInstallVkd3d", false) || tools_busy,
-                    cx,
-                ));
-            }
-            col = col.child(self.toggle_row(
-                "auto-dxvk-nvapi",
-                "autoInstallDxvkNvapi",
+                )],
+            );
+        col = col.child(top.card());
+
+        let dxvk = logic::offers_dxvk(&wine);
+        let dxvk_on = self.flag("autoInstallDxvk", false);
+        // Heroic dims the switches ("Please wait...") while a tool is being installed.
+        let tools_busy = self.tool_toggle.is_some();
+        let mut graphics = rows();
+        if dxvk {
+            graphics = graphics.child(self.toggle_row(
+                "auto-dxvk",
+                "autoInstallDxvk",
                 false,
-                "Auto Install/Update DXVK-NVAPI on Prefix",
-                Some("DXVK-NVAPI is an implementation of NVAPI built on top of DXVK and the linux native NVAPI, it allows for the usage of DLSS on Nvidia GPUs."),
+                "Auto Install/Update DXVK on Prefix",
+                Some("DXVK is a Vulkan-based translational layer for DirectX 9, 10 and 11 games. Enabling may improve compatibility. Might cause issues especially for older DirectX games."),
+                self.flag("autoInstallDxvkNvapi", false) || self.flag("autoInstallVkd3d", false) || tools_busy,
+                cx,
+            ));
+        }
+        if wine.kind != "proton" {
+            graphics = graphics.child(self.toggle_row(
+                "auto-vkd3d",
+                "autoInstallVkd3d",
+                false,
+                "Auto Install/Update VKD3D on Prefix",
+                Some("VKD3D is a Vulkan-based translational layer for DirectX 12 games. Enabling may improve compatibility significantly. Has no effect on older DirectX games, it requires DXVK."),
                 !dxvk_on || tools_busy,
                 cx,
             ));
-            if wine.kind != "proton" {
-                col = col.child(self.toggle_row(
-                    "auto-vkd3d",
-                    "autoInstallVkd3d",
-                    false,
-                    "Auto Install/Update VKD3D on Prefix",
-                    Some("VKD3D is a Vulkan-based translational layer for DirectX 12 games. Enabling may improve compatibility significantly. Has no effect on older DirectX games, it requires DXVK."),
-                    !dxvk_on || tools_busy,
-                    cx,
-                ));
-            }
-            col = col
-                .child(self.toggle_row(
-                    "esync",
-                    "enableEsync",
-                    false,
-                    "Enable Esync",
-                    Some("Esync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance."),
-                    false,
-                    cx,
-                ))
-                .child(self.toggle_row(
-                    "fsync",
-                    "enableFsync",
-                    false,
-                    "Enable Fsync",
-                    Some("Fsync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance on supported Linux kernels."),
-                    false,
-                    cx,
-                ))
-                .child(self.toggle_row(
-                    "wayland",
-                    "enableWineWayland",
-                    false,
-                    "Enable Wine-Wayland (Experimental) (Wine version needs to support it)",
-                    Some("The Wine-Wayland experimental driver allows games to run natively under the Wayland display protocol. Enabling might break some games."),
-                    false,
-                    cx,
-                ));
-            if self.flag("enableWineWayland", false) {
-                col = col.child(self.toggle_row(
-                    "hdr",
-                    "enableHDR",
-                    false,
-                    "Enable HDR",
-                    Some("HDR enhances colors by providing brighter highlights and deeper contrasts. For HDR to work, both the display and the game must support it."),
-                    false,
-                    cx,
-                ));
-            }
-            col = col
-                .child(self.toggle_row(
-                    "wow64",
-                    "enableWoW64",
-                    false,
-                    "Enable WoW64 (Experimental)",
-                    Some("The Wine WoW64 mode allows 32-bit Windows games to be run on 64-bit Wine. Enabling may improve performance, but could also break older 32-bit games."),
-                    false,
-                    cx,
-                ))
-                .child(self.toggle_row(
-                    "fsr",
-                    "enableFSR",
-                    false,
-                    "Enable FSR Hack (Wine version needs to support it)",
-                    Some("AMD's FSR helps boost framerate by upscaling lower resolutions in Fullscreen Mode. Image quality increases from 5 to 1 at the cost of a slight performance hit. Enabling may improve performance."),
-                    false,
-                    cx,
-                ));
-            if self.flag("enableFSR", false) {
-                let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
-                col = col.child(
-                    div().w(px(240.)).child(self.select_row(
-                        "fsr-sharpness",
-                        Some("FSR Sharpness Strength"),
-                        sharp.to_string(),
-                        (1..=5).map(|n| (SharedString::from(n.to_string()), n == sharp)).collect(),
-                        false,
-                        cx,
-                        |this, i, _, cx| this.set("maxSharpness", json!(i as i64 + 1), cx),
-                    )),
-                );
-            }
-            if self.is_game() {
-                col = col.child(self.tools_row(cx));
-            }
+        }
+        graphics = graphics.child(self.toggle_row(
+            "auto-dxvk-nvapi",
+            "autoInstallDxvkNvapi",
+            false,
+            "Auto Install/Update DXVK-NVAPI on Prefix",
+            Some("DXVK-NVAPI is an implementation of NVAPI built on top of DXVK and the linux native NVAPI, it allows for the usage of DLSS on Nvidia GPUs."),
+            !dxvk_on || tools_busy,
+            cx,
+        ));
+        col = col.child(heading("Graphics")).child(graphics.card());
+
+        let mut sync = rows()
+            .child(self.toggle_row(
+                "esync",
+                "enableEsync",
+                false,
+                "Enable Esync",
+                Some("Esync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance."),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "fsync",
+                "enableFsync",
+                false,
+                "Enable Fsync",
+                Some("Fsync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance on supported Linux kernels."),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "wayland",
+                "enableWineWayland",
+                false,
+                "Enable Wine-Wayland (Experimental) (Wine version needs to support it)",
+                Some("The Wine-Wayland experimental driver allows games to run natively under the Wayland display protocol. Enabling might break some games."),
+                false,
+                cx,
+            ));
+        if self.flag("enableWineWayland", false) {
+            sync = sync.child(self.toggle_row(
+                "hdr",
+                "enableHDR",
+                false,
+                "Enable HDR",
+                Some("HDR enhances colors by providing brighter highlights and deeper contrasts. For HDR to work, both the display and the game must support it."),
+                false,
+                cx,
+            ));
+        }
+        sync = sync
+            .child(self.toggle_row(
+                "wow64",
+                "enableWoW64",
+                false,
+                "Enable WoW64 (Experimental)",
+                Some("The Wine WoW64 mode allows 32-bit Windows games to be run on 64-bit Wine. Enabling may improve performance, but could also break older 32-bit games."),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "fsr",
+                "enableFSR",
+                false,
+                "Enable FSR Hack (Wine version needs to support it)",
+                Some("AMD's FSR helps boost framerate by upscaling lower resolutions in Fullscreen Mode. Image quality increases from 5 to 1 at the cost of a slight performance hit. Enabling may improve performance."),
+                false,
+                cx,
+            ));
+        if self.flag("enableFSR", false) {
+            let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
+            sync = sync.field(self.select_row(
+                "fsr-sharpness",
+                Some("FSR Sharpness Strength"),
+                sharp.to_string(),
+                (1..=5).map(|n| (SharedString::from(n.to_string()), n == sharp)).collect(),
+                false,
+                cx,
+                |this, i, _, cx| this.set("maxSharpness", json!(i as i64 + 1), cx),
+            ));
+        }
+        col = col.child(heading("Sync and compatibility")).child(sync.card());
+        if self.is_game() {
+            col = col.child(self.tools_row(cx));
         }
         col
     }
@@ -161,7 +168,7 @@ impl HeroicSettingsPanel {
         };
         let items: Vec<(SharedString, bool)> =
             options.iter().enumerate().map(|(i, w)| (SharedString::from(logic::display_wine_name(&w.name)), i == selected)).collect();
-        let field = self.select_row("wine-version", Some("Wine Version"), shown, items, loading && list.is_empty(), cx, move |this, i, _, cx| {
+        let field = self.select_row("wine-version", Some("Wine / Proton version"), shown, items, loading && list.is_empty(), cx, move |this, i, _, cx| {
             let list = this.wine_list.clone().unwrap_or_default();
             let options = logic::wine_options(&list, &this.wine_version());
             if let Some(w) = options.get(i) {
@@ -193,7 +200,7 @@ impl HeroicSettingsPanel {
             .flex()
             .flex_col()
             .gap(px(8.))
-            .child(heading("Tools"))
+            .pt(px(10.))
             .child(
                 div()
                     .flex()
@@ -205,13 +212,13 @@ impl HeroicSettingsPanel {
                     .child(self.outline_button("tool-winetricks", &label("winetricks", "Winetricks"), idle, cx, |this, _, cx| {
                         this.run_tool("winetricks", WineTool::Winetricks, cx)
                     }))
-                    .child(self.outline_button("tool-runexe", &label("runexe", "Run EXE on Prefix"), idle, cx, |_, window, cx| {
+                    .child(self.outline_button("tool-runexe", &label("runexe", "Run .exe in prefix"), idle, cx, |_, window, cx| {
                         choose_path(window, cx, false, "Select EXE to Run", |this: &mut Self, path, _, cx| {
                             this.run_tool("runexe", WineTool::RunExe(path), cx)
                         });
                     })),
             )
-            .child(help("Tools run with this game's Wine version and prefix."))
+            .child(help("Tools run with this game's Wine version and prefix.").px(px(6.)))
     }
 
     /// Starts a Wine tool for this game: builds the command off the UI thread

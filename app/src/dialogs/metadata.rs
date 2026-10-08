@@ -16,7 +16,7 @@ use super::art_images::{chain_for_url, picture, DialogImages};
 use super::metadata_wizard::hub;
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, button, ButtonKind};
+use crate::ui::controls::{action_button, button, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{input_box, new_input, select_field};
 
@@ -283,7 +283,7 @@ impl MetadataDialog {
             .gap(px(7.))
             .items_start()
             .p(px(8.8))
-            .rounded(px(8.))
+            .rounded(px(12.))
             .border_1()
             .border_color(if selected { theme::accent().into() } else { theme::white_a(0.1) })
             .bg(theme::black_a(0.2))
@@ -312,7 +312,7 @@ impl MetadataDialog {
                     .flex_1()
                     .min_w_0()
                     .gap(px(4.))
-                    .child(div().text_size(px(12.)).font_weight(theme::W_BOLD).text_color(white()).child(label))
+                    .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(label))
                     .child(detail),
             )
     }
@@ -327,12 +327,12 @@ impl Render for MetadataDialog {
             .flex()
             .flex_col()
             .gap(px(16.))
-            .child(div().text_size(px(16.)).text_color(white()).child(
+            .child(help_text(
                 "IGDB is tried first, then Steam, the store page, Lutris, and Playnite files. Use this for games that are not on Steam.",
             ))
-            .child(div().text_size(px(16.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(self.title.clone()));
+            .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(self.title.clone()));
         if self.preview.as_ref().is_some_and(|p| !p.igdb_configured) {
-            body = body.child(div().text_size(px(16.)).text_color(rgb(0xe6b450)).child(
+            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::accent_tint()).text_size(px(13.)).text_color(theme::text_primary()).child(
                 "IGDB is not configured. Add a Twitch Client ID and Secret in Collection settings for the richest data.",
             ));
         }
@@ -384,7 +384,7 @@ impl Render for MetadataDialog {
                 .child(div().flex_1().child(input_box(&self.search, false)))
                 .child(action_button(
                     "md-search",
-                    ButtonKind::Outline,
+                    ButtonKind::Glass,
                     if self.busy == Some(Busy::Search) { "Searching\u{2026}" } else { "Find on IGDB" },
                     !busy,
                     cx.listener(|this, _, _, cx| this.run_search(cx)),
@@ -408,8 +408,8 @@ impl Render for MetadataDialog {
                         .border_1()
                         .border_color(if selected { theme::accent().into() } else { theme::white_a(0.12) })
                         .bg(if selected { theme::rgb_a(165, 220, 235, 0.22).into() } else { theme::white_a(0.04) })
-                        .text_size(px(16.))
-                        .text_color(white())
+                        .text_size(px(13.))
+                        .text_color(theme::text_primary())
                         .cursor_pointer()
                         .on_click(cx.listener(move |this, _, _, cx| {
                             if let Some(id) = id {
@@ -461,14 +461,14 @@ impl Render for MetadataDialog {
                         .flex()
                         .flex_col()
                         .gap(px(7.))
-                        .child(div().text_size(px(16.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(field_label(field)))
+                        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(field_label(field)))
                         .child(row),
                 );
             }
             body = body.child(compare);
         }
         if !self.error.is_empty() {
-            body = body.child(div().text_size(px(16.)).text_color(theme::danger()).child(self.error.clone()));
+            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::danger_fill()).text_size(px(13.)).text_color(theme::danger_text()).child(self.error.clone()));
         }
 
         let footer = div()
@@ -481,7 +481,7 @@ impl Render for MetadataDialog {
                 !busy && self.preview.is_some(),
                 cx.listener(|this, _, _, cx| this.apply(cx)),
             ))
-            .child(button("md-close", ButtonKind::Outline, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
+            .child(button("md-close", ButtonKind::Glass, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
         let entity = cx.entity().downgrade();
         let (vw, vh) = (f32::from(window.viewport_size().width), f32::from(window.viewport_size().height));
         dialog(

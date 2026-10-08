@@ -5,7 +5,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::Value;
 
-use super::parts::{column, heading, help};
+use super::parts::{column, heading, help, rows, Rows};
 use super::{HeroicSettingsPanel, Section, Target};
 use heronite_data::HeroicPaths;
 use crate::icons::Icon;
@@ -51,11 +51,16 @@ impl HeroicSettingsPanel {
 
     /// Epic downloads and game updates.
     fn downloads_view(&mut self, cx: &mut Context<Self>) -> Div {
-        column()
-            .child(self.max_workers_field(cx))
-            .child(help("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))
-            .child(self.path_row("altLegendaryBin", Some("Choose an Alternative Legendary Binary"), false, "Select Legendary Binary", true, cx))
-            .child(help("Leave it empty to use the built-in Legendary binary."))
+        let fields = rows()
+            .field_help(
+                self.max_workers_field(cx),
+                vec![help("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core.")],
+            )
+            .field_help(
+                self.path_row("altLegendaryBin", Some("Choose an Alternative Legendary Binary"), false, "Select Legendary Binary", true, cx),
+                vec![help("Leave it empty to use the built-in Legendary binary.")],
+            );
+        let toggles = rows()
             .child(self.toggle_row(
                 "download-no-https",
                 "downloadNoHttps",
@@ -73,18 +78,19 @@ impl HeroicSettingsPanel {
                 Some("Saved in the shared Heroic settings and honoured by Heronite. This app lists updates in the Epic page and the Downloads page, but does not install them on its own."),
                 false,
                 cx,
-            ))
+            ));
+        column().child(heading("Downloads")).child(fields.card()).child(heading("Updates")).child(toggles.card())
     }
 
     /// Logging and advanced switches (folders and cache live in the page).
     fn advanced_view(&mut self, cx: &mut Context<Self>) -> Div {
-        column()
+        let r = rows()
             .child(self.toggle_row(
                 "disable-logs",
                 "disableLogs",
                 false,
                 "Disable Logs",
-                Some("Toggle this checkbox ON to disable most of the writes to log files (critical information is always logged). Make sure to turn OFF this setting before reporting any issue. Saved in the shared Heroic settings (Heronite); this app only logs to the terminal."),
+                Some("Toggle this switch ON to disable most of the writes to log files (critical information is always logged). Make sure to turn OFF this setting before reporting any issue. Saved in the shared Heroic settings (Heronite); this app only logs to the terminal."),
                 false,
                 cx,
             ))
@@ -96,18 +102,20 @@ impl HeroicSettingsPanel {
                 Some("Shared setting honoured by Heronite."),
                 false,
                 cx,
-            ))
+            ));
+        column().child(heading("Logging and presence")).child(r.card())
     }
 
     fn general_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let col = column()
-            .child(self.path_row("defaultInstallPath", Some("Default Installation Path"), true, "Choose the default installation folder", false, cx))
-            .child(self.path_row("defaultWinePrefixDir", Some("Set Folder for new Wine Prefixes"), true, "Select a Folder for new Wine Prefixes", false, cx))
-            .child(self.path_row("defaultSteamPath", Some("Default Steam path"), true, "Steam path.", false, cx))
-            .child(help("This path lets Heroic determine what version of Proton Steam uses, for adding non-Steam games to Steam."))
-            .child(self.toggle_row("minimize", "minimizeOnLaunch", false, "Minimize after game launch", None, false, cx))
-            .child(self.system_rows(cx))
-            .child(heading("Wine and Proton"))
+        let folders = rows()
+            .field(self.path_row("defaultInstallPath", Some("Default Installation Path"), true, "Choose the default installation folder", false, cx))
+            .field(self.path_row("defaultWinePrefixDir", Some("Set Folder for new Wine Prefixes"), true, "Select a Folder for new Wine Prefixes", false, cx))
+            .field_help(
+                self.path_row("defaultSteamPath", Some("Default Steam path"), true, "Steam path.", false, cx),
+                vec![help("This path lets Heroic determine what version of Proton Steam uses, for adding non-Steam games to Steam.")],
+            );
+        let launch = rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, "Minimize after game launch", None, false, cx));
+        let wine = rows()
             .child(self.toggle_row(
                 "valve-proton",
                 "showValveProton",
@@ -126,14 +134,24 @@ impl HeroicSettingsPanel {
                 false,
                 cx,
             ));
-        col.child(self.custom_wine_paths(cx))
+        column()
+            .child(heading("Folders"))
+            .child(folders.card())
+            .child(heading("Launching"))
+            .child(launch.card())
+            .child(heading("System"))
+            .child(self.system_rows(cx).card())
+            .child(heading("Wine and Proton"))
+            .child(wine.card())
+            .child(heading("Custom Wine/Proton Paths"))
+            .child(self.custom_wine_paths(cx))
     }
 
     /// Tray, protocol-launch and shortcut settings (`system/`).
-    fn system_rows(&self, cx: &mut Context<Self>) -> Div {
+    fn system_rows(&self, cx: &mut Context<Self>) -> Rows {
         let no_tray = self.flag("noTrayIcon", false);
         let exit_to_tray = self.flag("exitToTray", false);
-        column()
+        rows()
             .child(self.toggle_row("no-tray", "noTrayIcon", false, "Hide System Tray Icon (requires restart)", None, false, cx))
             .child(self.toggle_row("exit-to-tray", "exitToTray", false, "Exit to System Tray", None, no_tray, cx))
             .child(self.toggle_row("start-in-tray", "startInTray", false, "Start Minimized", None, !exit_to_tray || no_tray, cx))
@@ -158,7 +176,7 @@ impl HeroicSettingsPanel {
         let mut items: Vec<(SharedString, bool)> = vec![("Max".into(), current == 0)];
         items.extend((1..=cores).map(|n| (SharedString::from(n.to_string()), n == current)));
         let shown = if current == 0 { "Max".to_string() } else { current.to_string() };
-        div().w(px(360.)).child(self.select_row(
+        div().child(self.select_row(
             "max-workers",
             Some("Maximum Number of Workers when downloading"),
             shown,
@@ -170,31 +188,26 @@ impl HeroicSettingsPanel {
     }
 
     fn custom_wine_paths(&mut self, cx: &mut Context<Self>) -> Div {
-        let paths: Vec<String> = self
-            .settings
-            .get("customWinePaths")
-            .and_then(Value::as_array)
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
-            .unwrap_or_default();
-        let mut list = div().flex().flex_col().gap(px(4.));
+        let paths: Vec<String> = self.custom_paths();
+        let mut card_rows = rows();
         for (i, p) in paths.iter().enumerate() {
-            list = list.child(
+            card_rows = card_rows.child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.))
-                    .px(px(10.))
-                    .py(px(4.))
-                    .rounded(px(4.))
-                    .bg(theme::white_a(0.04))
-                    .child(div().flex_1().min_w_0().truncate().text_size(px(14.)).text_color(white()).child(p.clone()))
+                    .gap(px(10.))
+                    .py(px(8.))
+                    .child(div().flex_1().min_w_0().truncate().text_size(px(13.)).text_color(theme::text_primary()).child(p.clone()))
                     .child(
                         div()
                             .id(SharedString::from(format!("wine-path-del-{i}")))
-                            .p(px(4.))
-                            .rounded(px(4.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .size(px(28.))
+                            .rounded_full()
                             .cursor_pointer()
-                            .hover(|s| s.bg(theme::white_a(0.12)))
+                            .hover(|s| s.bg(theme::white_a(0.10)))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 let mut now = this.custom_paths();
                                 if i < now.len() {
@@ -202,7 +215,7 @@ impl HeroicSettingsPanel {
                                     this.set("customWinePaths", serde_json::json!(now), cx);
                                 }
                             }))
-                            .child(icon(Icon::DeleteOutline, px(18.), rgb(0xcaf3fd))),
+                            .child(icon(Icon::DeleteOutline, px(16.), theme::text_muted())),
                     ),
             );
         }
@@ -215,13 +228,8 @@ impl HeroicSettingsPanel {
                 }
             });
         });
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .child(heading("Custom Wine/Proton Paths"))
-            .child(list)
-            .child(div().flex().child(add))
+        card_rows = card_rows.child(div().flex().py(px(10.)).child(add));
+        card_rows.card()
     }
 
     fn custom_paths(&self) -> Vec<String> {

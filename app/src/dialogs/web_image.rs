@@ -18,7 +18,7 @@ use super::metadata_wizard::hub;
 use super::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, button, checkbox, ButtonKind};
+use crate::ui::controls::{action_button, button, checkbox, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::icon;
 
@@ -174,7 +174,7 @@ impl Render for WebImageDialog {
             .gap(px(8.))
             .child(action_button(
                 "wi-search",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 "Search",
                 !self.loading && !self.saving,
                 cx.listener(|this, _, _, cx| this.search(cx)),
@@ -204,10 +204,10 @@ impl Render for WebImageDialog {
                     .items_center()
                     .justify_center()
                     .gap(px(9.6))
-                    .text_size(px(16.))
-                    .text_color(white())
+                    .text_size(px(14.))
+                    .text_color(theme::text_muted())
                     .child(
-                        icon(Icon::FaSpinner, px(16.), white()).with_animation(
+                        icon(Icon::FaSpinner, px(16.), theme::text_muted()).with_animation(
                             "wi-spin",
                             Animation::new(Duration::from_secs(1)).repeat(),
                             |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
@@ -231,7 +231,7 @@ impl Render for WebImageDialog {
                         .items_center()
                         .gap(px(4.8))
                         .p(px(6.4))
-                        .rounded(px(8.))
+                        .rounded(px(12.))
                         .border_2()
                         .border_color(if selected { theme::accent().into() } else { gpui_kit::transparent_black() })
                         .bg(if selected { theme::white_a(0.06) } else { theme::black_a(0.28) })
@@ -245,7 +245,7 @@ impl Render for WebImageDialog {
                             cx.notify();
                         }))
                         .child(picture(src).w(px(tw)).h(px(th)))
-                        .children(size.map(|s| div().text_size(px(13.33)).text_color(white()).child(s))),
+                        .children(size.map(|s| div().text_size(px(12.)).text_color(theme::text_dim()).child(s))),
                 );
             }
         }
@@ -254,7 +254,7 @@ impl Render for WebImageDialog {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(div().text_size(px(16.)).text_color(white()).child(format!(
+            .child(help_text(format!(
                 "Pick an image from the web. Collection saves it like a file you selected yourself. {kind_label}"
             )))
             .child(toolbar)
@@ -262,7 +262,7 @@ impl Render for WebImageDialog {
         if !self.loading && self.visible < self.results.len() {
             body = body.child(
                 div().flex().justify_center().child(
-                    button("wi-more", ButtonKind::Outline, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                    button("wi-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
                         this.visible += PAGE_SIZE;
                         cx.notify();
                     })),
@@ -270,7 +270,7 @@ impl Render for WebImageDialog {
             );
         }
         if !self.error.is_empty() {
-            body = body.child(div().text_size(px(16.)).text_color(theme::danger()).child(self.error.clone()));
+            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::danger_fill()).text_size(px(13.)).text_color(theme::danger_text()).child(self.error.clone()));
         }
 
         let footer = div()
@@ -278,7 +278,7 @@ impl Render for WebImageDialog {
             .gap(px(16.))
             .child(action_button(
                 "wi-cancel",
-                ButtonKind::Outline,
+                ButtonKind::Ghost,
                 "Cancel",
                 !self.saving,
                 cx.listener(|_, _, _, cx| cx.emit(ArtEvent::Close)),

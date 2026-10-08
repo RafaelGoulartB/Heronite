@@ -5,42 +5,87 @@ use gpui_kit::*;
 
 use super::HeroicSettingsPanel;
 use crate::theme;
-use crate::ui::controls::{action_button, checkbox, section_title, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, toggle_row, ButtonKind};
 use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_field};
 
-/// Info callout (`.defaults-hint`).
+/// Info callout (`.defaults-hint`): a quiet glass box.
 pub fn hint(text: &str) -> Div {
     div()
-        .p(px(12.))
-        .rounded(px(4.))
-        .bg(theme::white_a(0.04))
+        .px(px(14.))
+        .py(px(10.))
+        .rounded(px(theme::R_INPUT))
+        .bg(theme::accent_tint())
         .border_1()
         .border_color(theme::white_a(0.08))
-        .text_size(px(14.))
-        .line_height(px(20.))
-        .text_color(white())
+        .text_size(px(13.))
+        .line_height(px(18.))
+        .text_color(theme::text_primary())
         .child(text.to_string())
 }
 
 /// Small muted explanation (Heroic's `InfoIcon` tooltip / `InfoBox`).
 pub fn help(text: &str) -> Div {
-    div().text_size(px(12.5)).line_height(px(17.)).text_color(theme::white_a(0.62)).child(text.to_string())
+    div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(text.to_string())
 }
 
 pub fn danger_text(text: &str) -> Div {
-    div().text_size(px(13.33)).text_color(theme::danger()).child(text.to_string())
+    div().text_size(px(13.)).text_color(theme::danger_text()).child(text.to_string())
 }
 
+/// Caption above a card (sentence case, muted).
 pub fn heading(text: &str) -> Div {
-    section_title(text.to_string()).pt(px(8.))
+    caption(text.to_string())
 }
 
+/// Vertical stack of captions and cards.
 pub fn column() -> Div {
-    div().flex().flex_col().gap(px(14.))
+    div().flex().flex_col().gap(px(6.))
+}
+
+/// The rows of one card: toggle rows, field blocks, custom rows.
+#[derive(Default)]
+pub struct Rows(Vec<AnyElement>);
+
+pub fn rows() -> Rows {
+    Rows::default()
+}
+
+impl Rows {
+    pub fn child(mut self, el: impl IntoElement) -> Self {
+        self.0.push(el.into_any_element());
+        self
+    }
+
+    /// A form field (select, input, path...) with its explanation under it.
+    pub fn field(self, el: impl IntoElement) -> Self {
+        self.child(div().py(px(12.)).child(el))
+    }
+
+    /// A form field followed by one or more help lines.
+    pub fn field_help(self, el: impl IntoElement, notes: Vec<Div>) -> Self {
+        let mut col = div().flex().flex_col().gap(px(5.)).py(px(12.)).child(el);
+        for n in notes {
+            col = col.child(n);
+        }
+        self.child(col)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// The card holding the rows (nothing when there are none).
+    pub fn card(self) -> Div {
+        if self.0.is_empty() {
+            return div();
+        }
+        card(self.0)
+    }
 }
 
 impl HeroicSettingsPanel {
-    /// `ToggleSwitch` + help text. `disabled` shows it dimmed and inert.
+    /// A settings row: label, explanation and a switch. `disabled` shows it
+    /// dimmed and inert.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn toggle_row(
         &self,
@@ -51,19 +96,15 @@ impl HeroicSettingsPanel {
         help_text: Option<&str>,
         disabled: bool,
         cx: &mut Context<Self>,
-    ) -> Div {
+    ) -> AnyElement {
         let on = self.flag(key, default);
-        let mut cb = checkbox(id, on, label.to_string());
-        if !disabled {
-            cb = cb.on_click(cx.listener(move |this, _, _, cx| this.toggle(key, default, cx)));
+        let mut row = toggle_row(id, label.to_string(), help_text, on);
+        if disabled {
+            row = row.opacity(0.4).cursor_not_allowed();
+        } else {
+            row = row.on_click(cx.listener(move |this, _, _, cx| this.toggle(key, default, cx)));
         }
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(2.))
-            .when(disabled, |d| d.opacity(0.5))
-            .child(cb)
-            .children(help_text.map(|t| help(t).pl(px(41.))))
+        row.into_any_element()
     }
 
     /// Labelled text input bound to input `id`.
@@ -73,7 +114,7 @@ impl HeroicSettingsPanel {
             .flex_col()
             .children(label.map(|l| field_label(l.to_string())))
             .child(input_box(&self.input(id), false))
-            .children(help_text.map(|t| help(t).pt(px(4.))))
+            .children(help_text.map(|t| help(t).pt(px(5.))))
     }
 
     /// `PathSelectionBox`: input + folder/clear icon. `deletable`: the icon
@@ -149,6 +190,6 @@ impl HeroicSettingsPanel {
         cx: &mut Context<Self>,
         on_click: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
     ) -> Stateful<Div> {
-        action_button(id, ButtonKind::Outline, label.to_string(), enabled, cx.listener(move |this, _, window, cx| on_click(this, window, cx)))
+        action_button(id, ButtonKind::Glass, label.to_string(), enabled, cx.listener(move |this, _, window, cx| on_click(this, window, cx)))
     }
 }

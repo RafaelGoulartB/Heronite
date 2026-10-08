@@ -441,24 +441,31 @@ impl Render for HeroicSettingsPanel {
             .flex()
             .flex_wrap()
             .gap_x(px(24.))
-            .pt(px(8.))
-            .text_size(px(13.33))
-            .text_color(theme::white_a(0.7))
+            .px(px(6.))
+            .pt(px(10.))
+            .text_size(px(12.))
+            .text_color(theme::text_dim())
             .child("Settings are saved automatically");
         if let Some(f) = self.facts() {
             footer = footer.child(format!("AppName: {}", f.app_name));
         }
         let notice = self.notice.clone().map(|n| {
             div()
-                .text_size(px(14.))
-                .line_height(px(20.))
-                .text_color(if n.error { theme::danger() } else { theme::success() })
+                .px(px(14.))
+                .py(px(10.))
+                .rounded(px(theme::R_INPUT))
+                .bg(if n.error { theme::danger_fill() } else { theme::card_fill() })
+                .border_1()
+                .border_color(theme::card_border())
+                .text_size(px(13.))
+                .line_height(px(18.))
+                .text_color(if n.error { theme::danger_text() } else { theme::success() })
                 .child(n.text)
         });
         div()
             .flex()
             .flex_col()
-            .gap(px(16.))
+            .gap(px(8.))
             .when(!self.is_game() && self.section != Section::General, |d| {
                 d.child(parts::hint(
                     "Changes in this section only apply as default values when installing games. If you want to change the settings of an already installed game, use the Settings button in the game page.",

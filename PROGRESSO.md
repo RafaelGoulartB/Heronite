@@ -923,3 +923,36 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
   (restyle por tela é trabalho dos próximos agentes); o blur é da arte, não do que há de fato atrás (cards, scrim), por isso o
   escurecimento fixo. Para capturar com `scripts/shot.sh` numa workspace escondida a janela só redesenha depois de uma primeira
   captura (acorda o compositor): usei uma cópia do script com duas capturas, e a fixture precisa de `images-cache` copiado.
+
+## Glass "game": drawer de configurações do jogo — agente "glass-game"
+
+- **Código**: `app/src/dialogs/game_settings.rs` agora usa o `drawer` (primeiro chamador): cabeçalho com capa 52×70 (raio 10), kicker
+  "Game settings", título, linha "loja · Installed · tamanho", botão de fechar redondo e abas segmentadas; corpo rolável com cards
+  legendados; rodapé "Use defaults" (ghost, só na aba Images: apaga as imagens personalizadas de uma vez, `reset_all_images`) e "Done"
+  (primário; na aba Details aparece "Save" antes). Abas Images (capa/fundo em cards com pílulas Change / Search web / Screenshot / Reset),
+  Details (cards General / Tags / Links and notes) e Launch (cards Program / How to run it).
+- **heroic_settings/** (continua independente do contêiner, usado também por Settings → Game defaults): `parts.rs` ganhou `Rows` (`rows()`,
+  `.child`, `.field`, `.field_help`, `.card()`), `toggle_row` agora devolve uma linha de card (label + descrição + switch), `hint`/`help`/
+  `heading` no estilo glass; todas as abas (`wine`, `other`, `advanced`, `gamescope`, `saves`, `general`) foram reescritas em cards
+  legendados, sem mudar chaves nem escritas. Tabelas de wrappers/env e caminhos Wine personalizados viram linhas de card com ícones redondos.
+- **Diálogos aninhados** (`web_image`, `screenshot_art`, `metadata`, `metadata_wizard`, `launch_state`): botões pílula (Cancel = ghost),
+  texto de apoio em `help_text`, erros em caixa `danger_fill`, tiles com raio 12, switches do wizard dentro de um card.
+- **Verificado** (fixture `/tmp/heronite-fixture-glassgame`, ludusavi/capturas desligados, `HERONITE_DEBUG_DIALOG=gamesettings[:details|:launch|
+  :wine|:other|:advanced|:gamescope|:saves]`, jogo Epic e jogo Playnite/Windows): todas as abas, `webimage`, `metadata`, `wizard`. 
+- **Não verificado**: cliques (Use defaults, Reset, tools Wine), `launch_state` e `screenshot_art` só compilados (sem gancho de debug que os
+  abra com dados), janela estreita (a janela do shot.sh tem tamanho fixo; o drawer usa `min(580, 96% da largura)`).
+
+## Glass: Configurações globais e da Coleção (agente glass-settings)
+
+- `app/src/pages/settings.rs`: a página ☰ → Settings agora é uma folha de vidro (`glass_panel`, raio 26) sobre a arte
+  desfocada: coluna esquerda de 230px com título (engrenagem + "Settings") e pílulas (`nav_pill`), conteúdo à direita com
+  título 26px + texto de apoio e botão de fechar redondo (volta à Coleção via `PageEvent::Navigate(Collection)`).
+  `request_section` / `PendingSection` e os hooks `HERONITE_DEBUG_PAGE=settings:<secção>` continuam iguais.
+- `pages/settings/{library,advanced,about}.rs`: legendas + cartões de linhas (toggle, botões pílula, listas de jogos
+  ocultos/favoritos como linhas de cartão). General/Downloads/Advanced/Game defaults/Logs só embrulham os painéis de
+  `heroic_settings` e o `LogViewer` (não editados).
+- `dialogs/settings/*` (diálogo da engrenagem do cabeçalho): modal de vidro mais largo, abas segmentadas, cada aba em
+  cartões (sliders com a cor de destaque, campos de caminho/ select de vidro, toggles), rodapé "Done" primário.
+  Novo hook de debug: `HERONITE_DEBUG_SETTINGS_TAB=appearance|screenshots|metadata|emulators|backup|saves`
+  (com `HERONITE_DEBUG_DIALOG=settings`).
+- Verificado com `scripts/shot.sh` em fixture própria (ludusavi e captura neutralizados); sem mudança na Coleção.

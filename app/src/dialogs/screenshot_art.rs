@@ -17,7 +17,7 @@ use super::web_image::ArtEvent;
 use super::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, button, ButtonKind};
+use crate::ui::controls::{action_button, button, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::icon;
 
@@ -159,9 +159,9 @@ impl Render for ScreenshotArtDialog {
                     .items_center()
                     .justify_center()
                     .gap(px(9.6))
-                    .text_size(px(16.))
-                    .text_color(white())
-                    .child(icon(Icon::FaSpinner, px(16.), white()).with_animation(
+                    .text_size(px(14.))
+                    .text_color(theme::text_muted())
+                    .child(icon(Icon::FaSpinner, px(16.), theme::text_muted()).with_animation(
                         "sa-spin",
                         Animation::new(Duration::from_secs(1)).repeat(),
                         |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
@@ -175,8 +175,8 @@ impl Render for ScreenshotArtDialog {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(16.))
-                    .text_color(white())
+                    .text_size(px(14.))
+                    .text_color(theme::text_muted())
                     .child(if self.folder_configured {
                         "No screenshots found for this game."
                     } else {
@@ -196,7 +196,7 @@ impl Render for ScreenshotArtDialog {
                         .w(px(212.))
                         .h(px(119.25 + 4.))
                         .overflow_hidden()
-                        .rounded(px(8.))
+                        .rounded(px(12.))
                         .border_2()
                         .border_color(if selected { theme::accent().into() } else { gpui_kit::transparent_black() })
                         .hover(|s| s.border_color(theme::accent()))
@@ -218,7 +218,7 @@ impl Render for ScreenshotArtDialog {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(div().text_size(px(16.)).text_color(white()).child(format!(
+            .child(help_text(format!(
                 "Pick a screenshot of this game to use as the {}.",
                 if self.kind == ArtKind::Hero { "background" } else { "cover" }
             )))
@@ -226,7 +226,7 @@ impl Render for ScreenshotArtDialog {
         if !self.loading && self.visible < self.items.len() {
             body = body.child(
                 div().flex().justify_center().child(
-                    button("sa-more", ButtonKind::Outline, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                    button("sa-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
                         this.visible += PAGE_SIZE;
                         this.load_thumbs(cx);
                         cx.notify();
@@ -235,12 +235,12 @@ impl Render for ScreenshotArtDialog {
             );
         }
         if !self.error.is_empty() {
-            body = body.child(div().text_size(px(16.)).text_color(theme::danger()).child(self.error.clone()));
+            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::danger_fill()).text_size(px(13.)).text_color(theme::danger_text()).child(self.error.clone()));
         }
         let footer = div()
             .flex()
             .gap(px(16.))
-            .child(action_button("sa-cancel", ButtonKind::Outline, "Cancel", !self.saving, cx.listener(|_, _, _, cx| cx.emit(ArtEvent::Close))))
+            .child(action_button("sa-cancel", ButtonKind::Ghost, "Cancel", !self.saving, cx.listener(|_, _, _, cx| cx.emit(ArtEvent::Close))))
             .child(action_button(
                 "sa-select",
                 ButtonKind::Primary,

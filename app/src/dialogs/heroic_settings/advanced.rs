@@ -5,12 +5,12 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use super::logic::{self, launcher_args_error, pairs, pairs_to_value};
-use super::parts::{column, danger_text, heading, help};
+use super::parts::{column, danger_text, heading, help, rows};
 use super::HeroicSettingsPanel;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, ButtonKind};
-use crate::ui::fields::{field_label, input_box};
+use crate::ui::fields::input_box;
 use crate::ui::icon;
 
 /// Static description of a two-column table setting.
@@ -23,7 +23,6 @@ struct PairTable {
     k2: &'static str,
     in1: &'static str,
     in2: &'static str,
-    head: (&'static str, &'static str),
     env: bool,
 }
 
@@ -35,7 +34,6 @@ const ENV: PairTable = PairTable {
     k2: "value",
     in1: "env.key",
     in2: "env.value",
-    head: ("Name", "Value"),
     env: true,
 };
 const WRAPPERS: PairTable = PairTable {
@@ -46,7 +44,6 @@ const WRAPPERS: PairTable = PairTable {
     k2: "args",
     in1: "wrap.exe",
     in2: "wrap.args",
-    head: ("Wrapper", "Arguments"),
     env: false,
 };
 
@@ -56,45 +53,50 @@ impl HeroicSettingsPanel {
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
         let game = self.is_game();
         let mut col = column();
+        let mut general = rows();
         if game && !sideload {
-            col = col.child(self.toggle_row("ignore-updates", "ignoreGameUpdates", false, "Ignore game updates", None, false, cx));
+            general = general.child(self.toggle_row("ignore-updates", "ignoreGameUpdates", false, "Ignore game updates", None, false, cx));
         }
         if game && legendary {
-            col = col.child(self.toggle_row("offline", "offlineMode", false, "Run Game Offline", None, false, cx));
+            general = general.child(self.toggle_row("offline", "offlineMode", false, "Run Game Offline", None, false, cx));
         }
-        col = col.child(self.toggle_row("verbose", "verboseLogs", true, "Enable verbose logs", None, false, cx));
+        general = general.child(self.toggle_row("verbose", "verboseLogs", true, "Enable verbose logs", None, false, cx));
         if game && !sideload {
-            col = col.child(self.path_row("targetExe", Some("Select an alternative EXE to run"), false, "Select EXE", true, cx));
+            general = general.field(self.path_row("targetExe", Some("Select an alternative EXE to run"), false, "Select EXE", true, cx));
         }
+        if !sideload {
+            general = general.field_help(
+                self.text_row("language", Some("Prefered Language (Language Code)"), None),
+                vec![help("Leave blank to use Heroic's language. Not all games support this configuration, some have in-game language setting. Valid language codes are game-dependant.")],
+            );
+        }
+        col = col.child(heading("General")).child(general.card());
+
+        let mut launch = rows();
         if game {
             let args = self.input_text("launcherArgs", cx);
             let err = launcher_args_error(&args);
-            col = col
-                .child(self.text_row("launcherArgs", Some("Game Arguments (appended to game launch command)"), None))
-                .children((!err.is_empty()).then(|| danger_text(err)))
-                .child(help("Use the Game Arguments to be called after the launch command, for instance: -nolauncher to skip the launcher in some games, etc."));
+            let mut notes = Vec::new();
+            if !err.is_empty() {
+                notes.push(danger_text(err));
+            }
+            notes.push(help("Use the Game Arguments to be called after the launch command, for instance: -nolauncher to skip the launcher in some games, etc."));
+            launch = launch.field_help(self.text_row("launcherArgs", Some("Game Arguments (appended to game launch command)"), None), notes);
         }
-        col = col
-            .child(div().flex().flex_col().gap(px(10.)).child(field_label("Scripts:"))
-                .child(self.path_row("beforeScript", Some("Select a script to run before the game is launched"), false, "Select script ...", true, cx))
-                .child(self.path_row("afterScript", Some("Select a script to run after the game exits"), false, "Select script ...", true, cx)))
-            .child(self.pair_table(WRAPPERS, cx))
-            .child(self.pair_table(ENV, cx));
-        if !sideload {
-            col = col.child(self.text_row(
-                "language",
-                Some("Prefered Language (Language Code)"),
-                Some("Leave blank to use Heroic's language. Not all games support this configuration, some have in-game language setting. Valid language codes are game-dependant."),
-            ));
-        }
+        launch = launch
+            .field(self.path_row("beforeScript", Some("Select a script to run before the game is launched"), false, "Select script ...", true, cx))
+            .field(self.path_row("afterScript", Some("Select a script to run after the game exits"), false, "Select script ...", true, cx));
+        col = col.child(heading("Launch")).child(launch.card());
+        col = col.child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
+
         // Legacy options (a tab of its own in Heroic).
         let wine = self.wine_version();
         let show_dxvk_fps = !self.native() && !wine.bin.contains("toolkit") && !wine.name.ends_with("-DXMT");
         let show_umu = game && !self.native() && wine.kind == "proton";
         if show_dxvk_fps || show_umu {
-            col = col.child(heading("Legacy")).child(help("Warning: The settings on this tab are mostly deprecated and might not work at all."));
+            let mut legacy = rows();
             if show_dxvk_fps {
-                col = col.child(self.toggle_row(
+                legacy = legacy.child(self.toggle_row(
                     "dxvk-fps",
                     "enableDXVKFpsLimit",
                     false,
@@ -104,95 +106,80 @@ impl HeroicSettingsPanel {
                     cx,
                 ));
                 if self.flag("enableDXVKFpsLimit", false) {
-                    col = col.child(self.text_row("dxvkFps", None, None));
+                    legacy = legacy.field(self.text_row("dxvkFps", None, None));
                 }
             }
             if show_umu {
-                col = col.child(self.toggle_row("disable-umu", "disableUMU", false, "Disable umu", None, false, cx));
+                legacy = legacy.child(self.toggle_row("disable-umu", "disableUMU", false, "Disable umu", None, false, cx));
             }
+            col = col
+                .child(heading("Legacy"))
+                .child(help("Warning: The settings on this tab are mostly deprecated and might not work at all.").px(px(6.)))
+                .child(legacy.card());
         }
         col
     }
 
     fn pair_table(&mut self, t: PairTable, cx: &mut Context<Self>) -> Div {
-        let rows = pairs(self.settings.get(t.setting), t.k1, t.k2);
+        let rows_data = pairs(self.settings.get(t.setting), t.k1, t.k2);
         let editing = self.input_text(t.in1, cx).trim().to_string();
-        let exists = rows.iter().any(|(a, _)| *a == editing);
-        let mut list = div().flex().flex_col().gap(px(4.));
-        for (i, (a, b)) in rows.iter().enumerate() {
+        let exists = rows_data.iter().any(|(a, _)| *a == editing);
+        let icon_button = |id: String, ic: Icon| {
+            div()
+                .id(SharedString::from(id))
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(28.))
+                .rounded_full()
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::white_a(0.10)))
+                .child(icon(ic, px(16.), theme::text_muted()))
+        };
+        let mut card_rows = rows();
+        for (i, (a, b)) in rows_data.iter().enumerate() {
             let (ea, eb) = (a.clone(), b.clone());
-            list = list.child(
+            card_rows = card_rows.child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.))
-                    .px(px(10.))
-                    .py(px(4.))
-                    .rounded(px(4.))
-                    .bg(theme::white_a(0.04))
-                    .child(div().w(px(260.)).flex_none().truncate().font_weight(theme::W_BOLD).text_size(px(14.)).text_color(rgb(0xcaf3fd)).child(a.clone()))
-                    .child(div().flex_1().min_w_0().truncate().text_size(px(14.)).text_color(white()).child(b.clone()))
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("{}-edit-{i}", t.id)))
-                            .p(px(4.))
-                            .rounded(px(4.))
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme::white_a(0.12)))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.set_input(t.in1, &ea, window, cx);
-                                this.set_input(t.in2, &eb, window, cx);
-                                cx.notify();
-                            }))
-                            .child(icon(Icon::Edit, px(18.), rgb(0xcaf3fd))),
-                    )
-                    .child(
-                        div()
-                            .id(SharedString::from(format!("{}-del-{i}", t.id)))
-                            .p(px(4.))
-                            .rounded(px(4.))
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme::white_a(0.12)))
-                            .on_click(cx.listener(move |this, _, _, cx| this.pair_remove(t, i, cx)))
-                            .child(icon(Icon::DeleteOutline, px(18.), rgb(0xcaf3fd))),
-                    ),
+                    .gap(px(10.))
+                    .py(px(8.))
+                    .child(div().w(px(220.)).flex_none().truncate().text_size(px(14.)).text_color(theme::text_primary()).child(a.clone()))
+                    .child(div().flex_1().min_w_0().truncate().text_size(px(13.)).text_color(theme::text_muted()).child(b.clone()))
+                    .child(icon_button(format!("{}-edit-{i}", t.id), Icon::Edit).on_click(cx.listener(move |this, _, window, cx| {
+                        this.set_input(t.in1, &ea, window, cx);
+                        this.set_input(t.in2, &eb, window, cx);
+                        cx.notify();
+                    })))
+                    .child(icon_button(format!("{}-del-{i}", t.id), Icon::DeleteOutline).on_click(cx.listener(move |this, _, _, cx| this.pair_remove(t, i, cx)))),
             );
         }
         let add = div()
             .flex()
-            .items_end()
+            .items_center()
             .gap(px(8.))
+            .py(px(12.))
             .child(div().flex_1().child(input_box(&self.input(t.in1), false)))
             .child(div().flex_1().child(input_box(&self.input(t.in2), false)))
             .child(action_button(
                 SharedString::from(format!("{}-add", t.id)),
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 if exists { "Update" } else { "Add" },
                 true,
                 cx.listener(move |this, _, window, cx| this.pair_add(t, window, cx)),
             ));
-        let mut col = div().flex().flex_col().gap(px(8.)).child(field_label(t.title));
-        if !rows.is_empty() {
-            col = col.child(
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .px(px(10.))
-                    .text_size(px(12.))
-                    .text_color(theme::white_a(0.6))
-                    .child(div().w(px(260.)).flex_none().child(t.head.0))
-                    .child(div().flex_1().child(t.head.1)),
-            );
-        }
-        col = col.child(list).child(add);
+        card_rows = card_rows.child(add);
+        let mut col = column().child(heading(t.title.trim_end_matches(':'))).child(card_rows.card());
         if t.env && !self.env_error.is_empty() {
-            col = col.child(danger_text(&self.env_error));
+            col = col.child(danger_text(&self.env_error).px(px(6.)));
         }
-        if t.env {
-            col.child(help("Set environment variables to append to the command. Do NOT include the \"=\" sign, e.g: for a setting like \"MY_FLAG=123\", set MY_FLAG in NAME and 123 in VALUE."))
+        let note = if t.env {
+            "Set environment variables to append to the command. Do NOT include the \"=\" sign, e.g: for a setting like \"MY_FLAG=123\", set MY_FLAG in NAME and 123 in VALUE."
         } else {
-            col.child(help("Warning: Make sure to quote args with spaces! E.g.: \"path/with spaces/\". Arguments example: --arg; --extra-file=\"file-path/ with/spaces\""))
-        }
+            "Warning: Make sure to quote args with spaces! E.g.: \"path/with spaces/\". Arguments example: --arg; --extra-file=\"file-path/ with/spaces\""
+        };
+        col.child(help(note).px(px(6.)))
     }
 
     fn pair_remove(&mut self, t: PairTable, index: usize, cx: &mut Context<Self>) {

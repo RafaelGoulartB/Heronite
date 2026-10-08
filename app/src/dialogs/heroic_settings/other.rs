@@ -5,7 +5,7 @@ use gpui_kit::*;
 use serde_json::Value;
 
 use super::logic;
-use super::parts::{column, help};
+use super::parts::{column, heading, help, rows};
 use super::HeroicSettingsPanel;
 
 impl HeroicSettingsPanel {
@@ -13,10 +13,11 @@ impl HeroicSettingsPanel {
         let native = self.native();
         let wine = self.wine_version();
         let mut col = column();
+        let mut overlays = rows();
         if !native {
-            col = col.child(self.toggle_row("show-fps", "showFps", false, "Show FPS (DX9, 10 and 11)", None, false, cx));
+            overlays = overlays.child(self.toggle_row("show-fps", "showFps", false, "Show FPS (DX9, 10 and 11)", None, false, cx));
         }
-        col = col
+        overlays = overlays
             .child(self.toggle_row(
                 "mangohud",
                 "showMangohud",
@@ -36,7 +37,7 @@ impl HeroicSettingsPanel {
                 cx,
             ));
         if !native && logic::offers_system_libs(&wine) {
-            col = col.child(self.toggle_row(
+            overlays = overlays.child(self.toggle_row(
                 "system-libs",
                 "preferSystemLibs",
                 false,
@@ -46,11 +47,8 @@ impl HeroicSettingsPanel {
                 cx,
             ));
         }
-        if native {
-            col = col.child(self.steam_runtime_field(cx));
-        }
         if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
-            col = col.child(self.toggle_row(
+            overlays = overlays.child(self.toggle_row(
                 "nvidia-prime",
                 "nvidiaPrime",
                 false,
@@ -60,15 +58,23 @@ impl HeroicSettingsPanel {
                 cx,
             ));
         }
+        col = col.child(heading("Overlays and performance")).child(overlays.card());
+        if native {
+            col = col.child(heading("Runtime")).child(rows().field_help(
+                self.steam_runtime_field(cx),
+                vec![help("Custom libraries provided by Steam to help run Linux and Windows (Proton) games. Enabling might improve compatibility.")],
+            ).card());
+        }
         if !native {
-            col = col.child(self.toggle_row("battleye", "battlEyeRuntime", false, "BattlEye AntiCheat Runtime", None, false, cx));
-            if self.flag("battlEyeRuntime", false) && !self.runtimes.0 {
-                col = col.child(help("The BattlEye runtime is not installed yet. Heroic downloads it when you enable it there.").pl(px(41.)));
-            }
-            col = col.child(self.toggle_row("eac", "eacRuntime", false, "EasyAntiCheat Runtime", None, false, cx));
-            if self.flag("eacRuntime", false) && !self.runtimes.1 {
-                col = col.child(help("The EAC runtime is not installed yet. Heroic downloads it when you enable it there.").pl(px(41.)));
-            }
+            let note = |on: bool, installed: bool, name: &'static str| {
+                (on && !installed).then(|| format!("The {name} runtime is not installed yet. Heroic downloads it when you enable it there."))
+            };
+            let be = note(self.flag("battlEyeRuntime", false), self.runtimes.0, "BattlEye");
+            let eac = note(self.flag("eacRuntime", false), self.runtimes.1, "EAC");
+            let anti = rows()
+                .child(self.toggle_row("battleye", "battlEyeRuntime", false, "BattlEye AntiCheat Runtime", be.as_deref(), false, cx))
+                .child(self.toggle_row("eac", "eacRuntime", false, "EasyAntiCheat Runtime", eac.as_deref(), false, cx));
+            col = col.child(heading("Anti-cheat")).child(anti.card());
         }
         col
     }
@@ -81,9 +87,9 @@ impl HeroicSettingsPanel {
         let mut items: Vec<(SharedString, bool)> = vec![("None".into(), current == "none")];
         items.extend(logic::STEAM_RUNTIMES.iter().map(|(id, name)| (SharedString::from(*name), *id == current)));
         let shown = logic::STEAM_RUNTIMES.iter().find(|(id, _)| *id == current).map(|(_, n)| (*n).to_string()).unwrap_or_else(|| "None".into());
-        column().gap(px(4.)).child(self.select_row("steam-runtime", Some("Use Steam Runtime"), shown, items, false, cx, |this, i, _, cx| {
+        self.select_row("steam-runtime", Some("Use Steam Runtime"), shown, items, false, cx, |this, i, _, cx| {
             let v = if i == 0 { Value::Bool(false) } else { Value::String(logic::STEAM_RUNTIMES[i - 1].0.into()) };
             this.set("steamRuntime", v, cx);
-        })).child(help("Custom libraries provided by Steam to help run Linux and Windows (Proton) games. Enabling might improve compatibility."))
+        })
     }
 }

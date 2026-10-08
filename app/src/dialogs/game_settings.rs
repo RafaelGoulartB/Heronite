@@ -16,14 +16,14 @@ use heronite_launch::SystemProbe;
 use heronite_metadata::{ArtKind, DetailsPatch, DetailsResult, MetadataService};
 
 use super::art_images::{chain_for_url, picture, DialogImages};
-use super::heroic_settings::{debug_dialog_height, GameFacts, HeroicSettingsPanel, Section, Target};
+use super::heroic_settings::{GameFacts, HeroicSettingsPanel, Section, Target};
 use super::metadata_wizard::hub;
 use super::screenshot_art::ScreenshotArtDialog;
 use super::web_image::{ArtEvent, WebImageDialog};
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, button, tabs, ButtonKind};
-use crate::ui::dialog::{dialog, DialogProps};
+use crate::ui::controls::{action_button, button, card, close_button, dialog_title, help_text, kicker, row, section_title, tabs, ButtonKind};
+use crate::ui::dialog::{drawer, DrawerProps};
 use crate::ui::fields::{input_box, labeled, new_input, new_textarea, select_field, textarea_box, TagEvent, TagField};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -453,6 +453,32 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
+    /// "Use defaults": drops every custom image of the game.
+    fn reset_all_images(&mut self, cx: &mut Context<Self>) {
+        let kinds: Vec<ArtKind> = [(ArtKind::Cover, self.art.cover_url.is_some()), (ArtKind::Hero, self.art.hero_url.is_some())]
+            .into_iter()
+            .filter_map(|(k, custom)| custom.then_some(k))
+            .collect();
+        let Some(&first) = kinds.first() else { return };
+        self.busy = Some(Busy::Art(first));
+        self.error.clear();
+        let (service, runner, app) = (self.service.clone(), self.runner(), self.game.app_name.clone());
+        cx.spawn(async move |this, cx| {
+            let res = cx
+                .background_spawn(async move {
+                    let mut last = None;
+                    for kind in kinds {
+                        last = Some(service.reset_art(&runner, &app, kind)?);
+                    }
+                    last.ok_or_else(|| anyhow::anyhow!("nothing to reset"))
+                })
+                .await;
+            this.update(cx, |this, cx| this.art_result(res, cx)).ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
     fn open_web(&mut self, kind: ArtKind, window: &mut Window, cx: &mut Context<Self>) {
         let (ctx, game, title) = (self.ctx.clone(), self.game.clone(), self.title.clone());
         let view = cx.new(|cx| WebImageDialog::new(ctx, game, title, kind, window, cx));
@@ -587,20 +613,29 @@ impl GameSettingsDialog {
 
     // -- render parts ------------------------------------------------------
 
-    fn art_slot(&mut self, kind: ArtKind, cx: &mut Context<Self>) -> Div {
+    /// Custom image first, then what the game shows without one.
+    fn art_chain(&self, kind: ArtKind) -> (Vec<ImageRef>, Option<String>) {
         let is_cover = kind == ArtKind::Cover;
         let custom_url = if is_cover { self.art.cover_url.clone() } else { self.art.hero_url.clone() };
         let shots = self.ctx.lib.settings.screenshots_folder().map(|p| p.to_path_buf());
         let mut chain = custom_url.as_deref().map(|u| chain_for_url(&self.ctx.heroic, shots.as_deref(), u)).unwrap_or_default();
         chain.extend(if is_cover { self.default_cover.clone() } else { self.default_hero.clone() });
+        (chain, custom_url)
+    }
+
+    fn art_slot(&mut self, kind: ArtKind, cx: &mut Context<Self>) -> Div {
+        let is_cover = kind == ArtKind::Cover;
+        let (chain, custom_url) = self.art_chain(kind);
+        // Requested at the size the Collection uses; shown scaled into the card.
         let (w, h) = if is_cover { (132., 198.) } else { (840., 271.) };
+        let (show_w, show_h) = if is_cover { (92., 138.) } else { (HERO_W, HERO_W * 271. / 840.) };
         let key = chain.first().map(|r| format!("{r:?}")).unwrap_or_default();
         let src = if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("gs:{key}"), chain, w, h)) };
         let preview = picture(src)
-            .w(px(w))
-            .h(px(h))
+            .w(px(show_w))
+            .h(px(show_h))
             .flex_none()
-            .rounded(px(8.))
+            .rounded(px(if is_cover { 10. } else { 12. }))
             .border_1()
             .border_color(theme::white_a(0.08))
             .into_any_element();
@@ -610,14 +645,14 @@ impl GameSettingsDialog {
         let busy_this = self.busy == Some(Busy::Art(kind));
         let mut actions = div().flex().flex_wrap().gap(px(8.)).child(action_button(
             SharedString::from(format!("gs-{tag}-change")),
-            ButtonKind::Outline,
+            ButtonKind::Glass,
             if busy_this { "Saving\u{2026}" } else { "Change" },
             !busy,
             cx.listener(move |this, _, _, cx| this.pick_image(kind, cx)),
         ));
         actions = actions.child(action_button(
             SharedString::from(format!("gs-{tag}-web")),
-            ButtonKind::Outline,
+            ButtonKind::Glass,
             "Search web",
             !busy,
             cx.listener(move |this, _, window, cx| this.open_web(kind, window, cx)),
@@ -625,7 +660,7 @@ impl GameSettingsDialog {
         if !is_cover {
             actions = actions.child(action_button(
                 "gs-hero-shot",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 "Screenshot",
                 !busy,
                 cx.listener(move |this, _, _, cx| this.open_screenshot(kind, cx)),
@@ -633,7 +668,7 @@ impl GameSettingsDialog {
         }
         actions = actions.child(action_button(
             SharedString::from(format!("gs-{tag}-reset")),
-            ButtonKind::Outline,
+            ButtonKind::Ghost,
             "Reset",
             !busy && custom_url.is_some(),
             cx.listener(move |this, _, _, cx| this.reset_image(kind, cx)),
@@ -641,14 +676,24 @@ impl GameSettingsDialog {
         let copy = div()
             .flex()
             .flex_col()
+            .flex_1()
+            .min_w_0()
             .gap(px(3.))
-            .child(div().font_family(theme::FONT_HEADING).text_size(px(22.)).text_color(rgb(0xcaf3fd)).child(if is_cover { "Cover" } else { "Background" }))
-            .child(div().mb(px(8.)).text_size(px(13.33)).text_color(white()).child(if custom_url.is_some() { "Custom image" } else { "Default" }))
+            .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(if custom_url.is_some() {
+                "Custom image"
+            } else {
+                "Default image"
+            }))
+            .child(div().mb(px(10.)).text_size(px(12.)).text_color(theme::text_dim()).child(if is_cover {
+                "Shown on the game card"
+            } else {
+                "Shown behind the game in Collection"
+            }))
             .child(actions);
         if is_cover {
-            div().flex().items_center().justify_between().gap(px(16.)).child(copy).child(preview)
+            div().flex().items_center().gap(px(16.)).py(px(14.)).child(preview).child(copy)
         } else {
-            div().flex().flex_col().gap(px(16.)).pt(px(16.)).border_t_1().border_color(theme::white_a(0.08)).child(copy).child(preview)
+            div().flex().flex_col().gap(px(14.)).py(px(14.)).child(preview).child(copy)
         }
     }
 
@@ -658,38 +703,46 @@ impl GameSettingsDialog {
         div()
             .flex()
             .flex_col()
-            .gap(px(16.))
-            .child(div().text_size(px(16.)).text_color(white()).child(
-                "These images are used in Collection. Steam art stays cached; a custom file replaces it until you reset.",
-            ))
-            .child(div().text_size(px(16.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child(self.title.clone()))
-            .child(cover)
-            .child(hero)
+            .gap(px(6.))
+            .child(help_text("These images are used in Collection. Steam art stays cached; a custom file replaces it until you reset.").px(px(6.)))
+            .child(section_title("Cover"))
+            .child(card([cover.into_any_element()]))
+            .child(section_title("Background"))
+            .child(card([hero.into_any_element()]))
     }
 
     fn details_tab(&mut self) -> Div {
         let d = &self.details;
-        let mut col = div()
-            .flex()
-            .flex_col()
-            .gap(px(12.))
-            .child(div().text_size(px(16.)).text_color(white()).child(
-                "These fields stay in Collection. Fetching metadata later will not overwrite values you edit here, unless you choose to overwrite.",
-            ))
-            .child(div().text_size(px(13.33)).text_color(white()).child("Pick existing tags or type a new one and press Enter to create it."))
-            .child(labeled("Name", input_box(&d.name, false)))
-            .child(labeled("Description", textarea_box(&d.description, 6)))
-            .child(
+        let general = card([
+            block(labeled("Name", input_box(&d.name, false))),
+            block(labeled("Description", textarea_box(&d.description, 6))),
+            block(
                 div()
                     .flex()
                     .gap(px(12.))
                     .child(div().flex_1().child(labeled("Release date", input_box(&d.release, false))))
                     .child(div().flex_1().child(labeled("Score", input_box(&d.score, false)))),
-            );
-        for tag in &d.tags {
-            col = col.child(tag.clone());
-        }
-        col.child(labeled("Websites", input_box(&d.websites, false))).child(labeled("Notes", textarea_box(&d.notes, 4)))
+            ),
+        ]);
+        let tags = card(d.tags.iter().map(|t| block(t.clone())));
+        let more = card([block(labeled("Websites", input_box(&d.websites, false))), block(labeled("Notes", textarea_box(&d.notes, 4)))]);
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(
+                help_text(
+                    "These fields stay in Collection. Fetching metadata later will not overwrite values you edit here, unless you choose to overwrite.",
+                )
+                .px(px(6.)),
+            )
+            .child(section_title("General"))
+            .child(general)
+            .child(section_title("Tags"))
+            .child(help_text("Pick existing tags or type a new one and press Enter to create it.").px(px(6.)))
+            .child(tags)
+            .child(section_title("Links and notes"))
+            .child(more)
     }
 
     fn launch_tab(&mut self, cx: &mut Context<Self>) -> Div {
@@ -732,42 +785,49 @@ impl GameSettingsDialog {
             },
         );
         let saved = l.saved && !dirty;
-        let mut status = div().text_size(px(16.)).line_height(px(24.)).text_color(white()).child(
+        let detected_value = div()
+            .flex()
+            .flex_wrap()
+            .justify_end()
+            .text_size(px(13.))
+            .text_color(theme::text_muted())
+            .child(detected)
+            .when(!l.exists, |d| d.child(div().text_color(theme::danger_text()).child(" (file not found)")));
+        let exe_row = block(labeled(
+            "Executable",
             div()
                 .flex()
-                .flex_wrap()
-                .child(div().font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child("Detected:"))
-                .child(div().child(format!(" {detected}")))
-                .when(!l.exists, |d| d.child(div().text_color(theme::danger()).child(" (file not found)"))),
-        );
-        status = status.child(
-            div()
-                .flex()
-                .child(div().font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child("Current:"))
-                .child(div().child(format!(" {effective}"))),
-        );
+                .items_center()
+                .gap(px(8.))
+                .child(div().flex_1().min_w_0().child(input_box(&l.executable, false)))
+                .child(action_button("gs-browse", ButtonKind::Glass, "Browse", !busy, cx.listener(|this, _, _, cx| this.browse_executable(cx)))),
+        ));
+        let file = card([
+            exe_row,
+            row("Detected", None, detected_value).into_any_element(),
+            row("Current", None, div().text_size(px(13.)).text_color(theme::text_muted()).child(effective)).into_any_element(),
+        ]);
+        let how = card([block(select)]);
         div()
             .flex()
             .flex_col()
-            .gap(px(16.))
-            .child(div().text_size(px(16.)).line_height(px(24.)).text_color(white()).child(
-                "Linux programs (ELF binaries, shell scripts, AppImages) run directly; Windows programs run through Wine/Proton. Automatic decides from the file.",
-            ))
-            .child(labeled(
-                "Executable",
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(div().flex_1().child(input_box(&l.executable, false)))
-                    .child(action_button("gs-browse", ButtonKind::Outline, "Browse", !busy, cx.listener(|this, _, _, cx| this.browse_executable(cx)))),
-            ))
-            .child(status)
-            .child(select)
+            .gap(px(6.))
+            .child(
+                help_text(
+                    "Linux programs (ELF binaries, shell scripts, AppImages) run directly; Windows programs run through Wine/Proton. Automatic decides from the file.",
+                )
+                .px(px(6.)),
+            )
+            .child(section_title("Program"))
+            .child(file)
+            .child(section_title("How to run it"))
+            .child(how)
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.))
+                    .gap(px(12.))
+                    .pt(px(10.))
                     .child(action_button(
                         "gs-launch-save",
                         ButtonKind::Primary,
@@ -775,10 +835,50 @@ impl GameSettingsDialog {
                         !busy && dirty && !exe_empty,
                         cx.listener(|this, _, _, cx| this.save_launch(cx)),
                     ))
-                    .when(saved, |d| d.child(div().text_size(px(16.)).text_color(theme::success()).child("Saved"))),
+                    .when(saved, |d| d.child(div().text_size(px(13.)).text_color(theme::success()).child("Saved"))),
             )
     }
+
+    /// Cover, kicker, title and the "store, installed, size" line.
+    fn drawer_header(&mut self, on_close: impl Fn(&mut Window, &mut App) + 'static, cx: &mut Context<Self>) -> Div {
+        let (chain, _) = self.art_chain(ArtKind::Cover);
+        let key = chain.first().map(|r| format!("{r:?}")).unwrap_or_default();
+        let src = if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("gs-head:{key}"), chain, 104., 140.)) };
+        let cover = picture(src).w(px(52.)).h(px(70.)).flex_none().rounded(px(10.)).border_1().border_color(theme::white_a(0.10));
+        let mut meta = vec![self.game.source_label.to_string()];
+        meta.push(if self.game.installed { "Installed".into() } else { "Not installed".into() });
+        if let Some(size) = self.game.game.install.install_size.as_deref().filter(|s| !s.is_empty() && self.game.installed) {
+            meta.push(size.to_string());
+        }
+        div()
+            .flex()
+            .items_center()
+            .gap(px(14.))
+            .px(px(20.))
+            .pt(px(20.))
+            .child(cover)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(1.))
+                    .child(kicker("Game settings"))
+                    .child(dialog_title(self.title.clone()).truncate())
+                    .child(div().text_size(px(13.)).text_color(theme::text_muted()).truncate().child(meta.join(" \u{b7} "))),
+            )
+            .child(div().self_start().child(close_button("gs-close-x").on_click(move |_, w, cx| on_close(w, cx))))
+    }
 }
+
+/// A card row holding a form control (padding 12).
+fn block(el: impl IntoElement) -> AnyElement {
+    div().py(px(12.)).child(el).into_any_element()
+}
+
+/// Width of the background preview inside the drawer card.
+const HERO_W: f32 = 500.;
 
 /// Port of `setLocalLaunchOptions`: overlay meta (`runAs`, executable) and the
 /// sideload entry (platform, executable, folder).
@@ -868,15 +968,40 @@ impl Render for GameSettingsDialog {
                 None => div(),
             },
         };
-        let mut body = div().flex().flex_col().gap(px(16.)).child(tab_bar).child(content);
+        let mut body = div().flex().flex_col().gap(px(10.)).child(content);
         if !self.error.is_empty() {
-            body = body.child(div().text_size(px(16.)).text_color(theme::danger()).child(self.error.clone()));
+            body = body.child(
+                div()
+                    .px(px(14.))
+                    .py(px(10.))
+                    .rounded(px(theme::R_INPUT))
+                    .bg(theme::danger_fill())
+                    .text_size(px(13.))
+                    .text_color(theme::danger_text())
+                    .child(self.error.clone()),
+            );
         }
 
         let dirty = self.read_form(cx) != self.initial;
-        let mut footer = div().flex().gap(px(16.));
+        // "Use defaults" only where a reset exists: the custom images.
+        let can_reset = self.tab == Tab::Images
+            && self.busy.is_none()
+            && (self.art.cover_url.is_some() || self.art.hero_url.is_some());
+        let left = div().child(if self.tab == Tab::Images {
+            action_button(
+                "gs-defaults",
+                ButtonKind::Ghost,
+                "Use defaults",
+                can_reset,
+                cx.listener(|this, _, _, cx| this.reset_all_images(cx)),
+            )
+            .into_any_element()
+        } else {
+            div().into_any_element()
+        });
+        let mut right = div().flex().items_center().gap(px(8.));
         if self.tab == Tab::Details {
-            footer = footer.child(action_button(
+            right = right.child(action_button(
                 "gs-save",
                 ButtonKind::Primary,
                 if self.busy == Some(Busy::Details) { "Saving\u{2026}" } else { "Save" },
@@ -884,19 +1009,30 @@ impl Render for GameSettingsDialog {
                 cx.listener(|this, _, _, cx| this.save_details(cx)),
             ));
         }
-        footer = footer.child(
-            button("gs-close", if self.tab == Tab::Details { ButtonKind::Outline } else { ButtonKind::Primary }, "Close")
+        right = right.child(
+            button("gs-close", if self.tab == Tab::Details { ButtonKind::Glass } else { ButtonKind::Primary }, "Done")
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
         );
+        let footer = div().flex().w_full().items_center().justify_between().child(left).child(right);
+
         let entity = cx.entity().downgrade();
-        let (vw, vh) = (f32::from(window.viewport_size().width), f32::from(window.viewport_size().height));
-        let main = dialog(
-            DialogProps {
-                id: "collection-game-settings".into(),
-                title: format!("{} (Settings)", self.title).into(),
-                width: 840f32.min(vw * 0.9) + 64.,
-                height: Some(debug_dialog_height().unwrap_or(620f32.min(vh * 0.7))),
-            },
+        let header_close = {
+            let entity = entity.clone();
+            move |_: &mut Window, cx: &mut App| {
+                entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
+            }
+        };
+        let header = div()
+            .flex()
+            .flex_col()
+            .gap(px(14.))
+            .pb(px(10.))
+            .child(self.drawer_header(header_close, cx))
+            .child(div().px(px(20.)).child(tab_bar));
+        let vw = f32::from(window.viewport_size().width);
+        let main = drawer(
+            DrawerProps { id: "collection-game-settings".into(), width: DRAWER_W.min(vw * 0.96) },
+            header.into_any_element(),
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
@@ -911,3 +1047,6 @@ impl Render for GameSettingsDialog {
         div().absolute().inset_0().child(main).children(nested)
     }
 }
+
+/// Drawer width (px).
+const DRAWER_W: f32 = 580.;
