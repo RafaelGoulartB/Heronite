@@ -1,29 +1,35 @@
 //! The Collection screen: stage background, header, grouped list, focus panel.
 
-mod add_game;
 mod achievements;
+mod actions;
+mod add_game;
+mod backdrop;
 mod card;
 mod context_menu;
 mod data;
+mod debug;
 mod emulation;
 mod epic;
 mod extras;
 mod focus;
-mod html;
 mod header;
+mod html;
 mod list;
+mod list_view;
+mod load;
 mod metadata_ui;
 mod nav;
 mod palette;
+mod render_focus;
 mod screenshot_viewer;
 mod screenshots;
+mod scroll;
 mod system_glue;
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
 
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -33,41 +39,15 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::hltb::WikiCache;
 use heronite_data::ui_state::UiState;
-use heronite_data::{art, AppPaths, ArtContext, FacetKind, HeroicPaths, Library};
-use heronite_images::{ImageRef, Variant};
+use heronite_data::{AppPaths, FacetKind, HeroicPaths, Library};
+use heronite_images::ImageRef;
 
-use crate::images::{to_chain, ImageStore};
+use crate::images::ImageStore;
 use crate::runtime::GameRuntime;
-use heronite_launch::LaunchEvent;
 use crate::theme;
 use header::Menu;
-use vm::{CardVm, FocusVm, GroupVm, ListItem};
-
-/// Everything loaded from disk off the UI thread.
-struct Loaded {
-    lib: Library,
-    wiki: WikiCache,
-    covers: HashMap<SharedString, Vec<ImageRef>>,
-    stages: HashMap<SharedString, Vec<ImageRef>>,
-}
-
-fn load_all(heroic: &HeroicPaths, include_hidden: bool) -> anyhow::Result<Loaded> {
-    let t = Instant::now();
-    let lib = Library::load_with(heroic, include_hidden)?;
-    let wiki = WikiCache::load(heroic);
-    let shots = (!lib.settings.screenshots.folder.is_empty())
-        .then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
-    let ctx = ArtContext::new(heroic, shots.as_deref());
-    let mut covers = HashMap::new();
-    let mut stages = HashMap::new();
-    for g in &lib.games {
-        let key: SharedString = g.key.clone().into();
-        covers.insert(key.clone(), to_chain(&art::card_cover(&ctx, g)));
-        stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
-    }
-    log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, covers, stages })
-}
+use scroll::WheelScroll;
+use vm::{FocusVm, GroupVm, ListItem};
 
 pub struct CollectionView {
     started: Instant,
@@ -248,7 +228,7 @@ impl CollectionView {
         };
         window.focus(&this.focus_handle, cx);
         let mut this = this;
-        if let Some(page) = std::env::var("HERONITE_DEBUG_PAGE").ok().and_then(|p| crate::pages::Page::from_debug(&p)) {
+        if let Some(page) = crate::env::value("HERONITE_DEBUG_PAGE").and_then(|p| crate::pages::Page::from_debug(&p)) {
             this.navigate(page, window, cx);
         }
         this.spawn_load(cx);
@@ -270,792 +250,11 @@ impl CollectionView {
         .detach();
         this
     }
-
-    fn spawn_load(&self, cx: &mut Context<Self>) {
-        let heroic = self.heroic.clone();
-        let include_hidden = self.ui.show_hidden;
-        cx.spawn(async move |this, cx| {
-            let loaded = cx.background_spawn(async move { load_all(&heroic, include_hidden) }).await;
-            this.update(cx, |this, cx| {
-                this.refreshing = false;
-                match loaded {
-                    Ok(l) => this.apply_loaded(l),
-                    Err(err) => log::error!("loading library: {err:#}"),
-                }
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    pub(super) fn reload(&mut self, cx: &mut Context<Self>) {
-        if self.refreshing {
-            return;
-        }
-        self.refreshing = true;
-        self.images.clear_failed();
-        self.spawn_load(cx);
-        cx.notify();
-    }
-
-    fn apply_loaded(&mut self, l: Loaded) {
-        let first = self.lib.is_none();
-        let s = &l.lib.settings;
-        let bg = &s.background;
-        self.scrim = stage::Scrim { dim: bg.dimming.get() as f32 / 100., scrim: bg.scrim.get() as f32 / 100. };
-        self.blur_px = bg.blur.get() as f32;
-        self.saturation = bg.saturation.get() as f32 / 100.;
-        self.stage_enabled = bg.enabled;
-        self.grey_uninstalled = s.grey_uninstalled_games && !s.all_tiles_in_color;
-        self.cover_chains = l.covers;
-        self.stage_chains = l.stages;
-        self.wiki = Arc::new(l.wiki);
-        self.lib = Some(Arc::new(l.lib));
-        self.refresh_groups();
-        let focused = if first {
-            std::env::var("HERONITE_DEBUG_SELECT").ok().or_else(|| self.ui.focused_game.clone())
-        } else {
-            self.selected.as_ref().map(|s| s.to_string())
-        };
-        if let Some(key) = focused {
-            self.select(key.into(), false);
-            if first {
-                self.reveal_selected();
-            }
-        }
-        if first {
-            log::info!("library on screen after {:?}", self.started.elapsed());
-            self.apply_debug_env();
-            crate::trim_heap_later();
-        }
-    }
-
-    fn dialog_ctx(&self) -> Option<crate::dialogs::DialogCtx> {
-        Some(crate::dialogs::DialogCtx {
-            heroic: self.heroic.clone(),
-            app: self.app_paths.clone(),
-            lib: self.lib.clone()?,
-        })
-    }
-
-    /// Hosts `view` as the open dialog and reacts to its events.
-    pub(super) fn open_dialog<V>(&mut self, view: Entity<V>, cx: &mut Context<Self>)
-    where
-        V: Render + EventEmitter<crate::dialogs::DialogEvent>,
-    {
-        use crate::dialogs::DialogEvent;
-        self.open_menu = None;
-        self.context_menu = None;
-        self.dialog_sub = Some(cx.subscribe(&view, |this, _, ev: &DialogEvent, cx| {
-            match ev {
-                DialogEvent::Close => {
-                    this.dialog = None;
-                    this.dialog_sub = None;
-                }
-                DialogEvent::Changed => this.reload(cx),
-                DialogEvent::ChangedAndClose => {
-                    this.dialog = None;
-                    this.dialog_sub = None;
-                    this.reload(cx);
-                }
-            }
-            cx.notify();
-        }));
-        self.dialog = Some(view.into());
-        cx.notify();
-    }
-
-    pub(super) fn open_manage_statuses(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(ctx) = self.dialog_ctx() else { return };
-        let view = cx.new(|cx| crate::dialogs::manage_statuses::ManageStatusesDialog::new(ctx, window, cx));
-        self.open_dialog(view, cx);
-    }
-
-    /// Screenshot helpers: `HERONITE_DEBUG_MENU=<card key>` opens its context
-    /// menu (with the status flyout), `HERONITE_DEBUG_DROPDOWN=install|sort|
-    /// status|facets` opens a header menu.
-    fn apply_debug_env(&mut self) {
-        if let Ok(key) = std::env::var("HERONITE_DEBUG_MENU") {
-            self.context_menu = Some(context_menu::ContextMenuState {
-                key: key.into(),
-                position: point(px(200.), px(160.)),
-                status_open: true,
-            });
-        }
-        if let Ok(which) = std::env::var("HERONITE_DEBUG_DIALOG") {
-            self.pending_debug_dialog = Some(which);
-        }
-        if let Ok(menu) = std::env::var("HERONITE_DEBUG_DROPDOWN") {
-            self.open_menu = match menu.as_str() {
-                "install" => Some(Menu::Install),
-                "sort" => Some(Menu::Sort),
-                "status" => Some(Menu::Status),
-                "nav" => Some(Menu::Nav),
-                "facets" => {
-                    self.facet_flyout = Some(FacetKind::Developer);
-                    Some(Menu::Facets)
-                }
-                _ => None,
-            };
-        }
-    }
-
-    fn refresh_groups(&mut self) {
-        let Some(lib) = self.lib.clone() else { return };
-        let playing = &self.playing;
-        let groups = data::build_groups(&lib, &self.ui, &self.search, &|key| {
-            lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name))
-        });
-        self.set_groups(groups);
-        self.refresh_focus();
-    }
-
-    fn refresh_focus(&mut self) {
-        let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
-        if let Some(game) = lib.get(&key) {
-            let playing = self.playing.contains_key(&game.app_name);
-            self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
-        }
-    }
-
-    fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
-        self.toast = Some((text.into(), error));
-        self.toast_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
-            this.update(cx, |this, cx| {
-                this.toast = None;
-                cx.notify();
-            })
-            .ok();
-        }));
-        cx.notify();
-    }
-
-    fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
-        match ev {
-            LaunchEvent::Launching { app_name } => {
-                self.playing.insert(app_name, false);
-            }
-            LaunchEvent::Running { app_name, pid } => {
-                log::info!("{app_name} running as pid {pid}");
-                self.playing.insert(app_name, true);
-            }
-            LaunchEvent::Exited { app_name, elapsed, .. } => {
-                log::info!("{app_name} exited after {elapsed:?}");
-                self.playing.remove(&app_name);
-                // Post-game work (backup, capture) is `services::session`'s;
-                // here the library just shows what changed.
-                // Playtime, last played and recent games changed on disk.
-                self.reload(cx);
-            }
-            LaunchEvent::Error { app_name, message } => {
-                self.playing.remove(&app_name);
-                self.show_toast(message, true, cx);
-            }
-            // Preparing the launch (prefix, DXVK, cloud saves...): progress and non-fatal problems.
-            LaunchEvent::Status { message, warning, .. } => self.show_toast(message, warning, cx),
-        }
-        self.refresh_groups();
-        cx.notify();
-    }
-
-    /// Card play button / focus primary button.
-    fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
-        let Some(lib) = self.lib.clone() else { return };
-        let Some(game) = lib.get(key).cloned() else { return };
-        if self.playing.contains_key(&game.app_name) {
-            if !self.runtime.stop(&game.app_name) {
-                self.runtime.force_clear(&game.app_name);
-            }
-            return;
-        }
-        if self.epic_primary(&game, cx) {
-            return;
-        }
-        if game.installed && self.start_emulated(&game, cx) {
-            return;
-        }
-        let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
-        if let Err(err) = result {
-            self.report_launch_error(err, cx);
-        }
-    }
-
-    fn toggle_favourite(&mut self, cx: &mut Context<Self>) {
-        let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
-        let Some(game) = lib.get(&key) else { return };
-        if let Err(err) = heronite_data::config_games::toggle_favourite(&self.heroic, &game.app_name, &game.title) {
-            self.show_toast(format!("Could not update favourites: {err:#}"), true, cx);
-        }
-        self.reload(cx);
-    }
-
-    fn save_ui(&self) {
-        if let Err(err) = self.ui.save(&self.app_paths) {
-            log::warn!("saving ui state: {err:#}");
-        }
-    }
-
-    fn toggle_facet(&mut self, kind: &str, value: &str) {
-        if let Some(kind) = FacetKind::parse(kind) {
-            self.ui.toggle_facet(kind, value);
-            self.save_ui();
-            self.refresh_groups();
-        }
-    }
-
-    fn set_groups(&mut self, groups: Vec<GroupVm>) {
-        self.groups = groups;
-        self.rebuild_items();
-    }
-
-    fn rebuild_items(&mut self) {
-        self.items = vm::build_items(&self.groups, self.columns);
-        self.list_state.reset(self.items.len());
-    }
-
-    /// Scrolls the list so the selected card's row is visible
-    /// (`scrollIntoView({ block: 'nearest' })`).
-    fn reveal_selected(&mut self) {
-        let Some(sel) = self.selected.clone() else { return };
-        let ix = self.items.iter().position(|it| match *it {
-            ListItem::Row { group, start } => {
-                let g = &self.groups[group];
-                g.cards[start..(start + self.columns).min(g.cards.len())].iter().any(|c| c.key == sel)
-            }
-            _ => false,
-        });
-        if let Some(ix) = ix {
-            let viewport = self.list_state.viewport_bounds();
-            if viewport.size.height > px(0.) && self.list_state.bounds_for_item(ix).is_some() {
-                self.list_state.scroll_to_reveal_item(ix);
-            } else {
-                // Not laid out yet: put the row (and its group header when it
-                // is the group's first row) at the top.
-                let top = if ix > 0 && matches!(self.items[ix - 1], ListItem::Header { .. }) { ix - 1 } else { ix };
-                self.list_state.scroll_to(ListOffset { item_ix: top, offset_in_item: px(0.) });
-            }
-        }
-    }
-
-    /// Mouse wheel over the list. Wheel notches (line deltas) scroll
-    /// ~100px like Chromium, animated over ~120ms; touchpads (pixel deltas)
-    /// are applied as they come.
-    fn on_wheel(&mut self, delta: ScrollDelta, window: &mut Window, cx: &mut Context<Self>) {
-        match delta {
-            ScrollDelta::Pixels(p) => {
-                self.list_state.scroll_by(-p.y);
-                cx.notify();
-            }
-            ScrollDelta::Lines(l) => {
-                self.wheel.pending += -l.y * WHEEL_PX_PER_LINE;
-                if !self.wheel.ticking {
-                    self.wheel.ticking = true;
-                    self.wheel.last = Some(Instant::now());
-                    cx.on_next_frame(window, |this, window, cx| this.tick_wheel(window, cx));
-                }
-            }
-        }
-    }
-
-    fn tick_wheel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let now = Instant::now();
-        let dt = self.wheel.last.map_or(0.016, |l| now.duration_since(l).as_secs_f32()).clamp(0.001, 0.05);
-        self.wheel.last = Some(now);
-        // Exponential ease-out (time constant 40ms): ~95% done in 120ms.
-        let k = 1. - (-dt / 0.04).exp();
-        let mut step = self.wheel.pending * k;
-        if self.wheel.pending.abs() < 1. {
-            step = self.wheel.pending;
-        }
-        self.wheel.pending -= step;
-        // Stop at the edges instead of accumulating pending distance.
-        let before = self.list_state.scroll_px_offset_for_scrollbar().y;
-        self.list_state.scroll_by(px(step));
-        let max = self.list_state.max_offset_for_scrollbar().y;
-        if (step < 0. && f32::from(before) >= 0.) || (step > 0. && f32::from(-before) >= f32::from(max)) {
-            self.wheel.pending = 0.;
-        }
-        cx.notify();
-        if self.wheel.pending != 0. {
-            cx.on_next_frame(window, |this, window, cx| this.tick_wheel(window, cx));
-        } else {
-            self.wheel.ticking = false;
-        }
-    }
-
-    fn list_column_width(viewport_w: f32) -> (f32, usize) {
-        if viewport_w <= 780. {
-            (theme::LIST_COL_W_SM, 1)
-        } else if viewport_w <= 1100. {
-            (theme::LIST_COL_W_MD, 2)
-        } else {
-            (theme::LIST_COL_W, 3)
-        }
-    }
-
-    fn cover_h(&self) -> f32 {
-        theme::CARD_W * self.cover_aspect
-    }
-
-    /// Cover texture for `key` at `w`×`h` logical px (requested on demand).
-    fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
-        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
-        let id: SharedString = format!("c:{key}:{pw}x{ph}").into();
-        let chains = &self.cover_chains;
-        self.images
-            .get_or_request(&id, || chains.get(key).cloned().unwrap_or_default(), pw, ph, Variant::Cover, priority)
-            .map(ImageSource::Render)
-    }
-
-    fn render_item(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let Some(item) = self.items.get(ix).copied() else {
-            return div().into_any_element();
-        };
-        match item {
-            ListItem::Header { group } => {
-                let g = &self.groups[group];
-                let gid = g.id.clone();
-                let header = list::group_header(g, false)
-                    .id(SharedString::from(format!("group-{gid}")))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.ui.toggle_group(&gid);
-                        this.save_ui();
-                        if let Some(g) = this.groups.iter_mut().find(|g| g.id == gid) {
-                            g.collapsed = !g.collapsed;
-                        }
-                        this.rebuild_items();
-                        cx.notify();
-                    }));
-                div().pl(px(13.6)).pr(px(16.)).child(header).into_any_element()
-            }
-            ListItem::Row { group, start } => {
-                let cards: Vec<Arc<CardVm>> = {
-                    let g = &self.groups[group];
-                    g.cards[start..(start + self.columns).min(g.cards.len())].to_vec()
-                };
-                let last_row = start + cards.len() == self.groups[group].cards.len();
-                let mut row = div()
-                    .flex()
-                    .pl(px(13.6))
-                    .pr(px(16.))
-                    .gap(px(theme::CARD_GAP_X))
-                    .pt(px(if start == 0 { 7.2 } else { 0. }))
-                    .pb(px(if last_row { 5.6 + 13.6 } else { theme::CARD_GAP_Y }));
-                let scale = window.scale_factor();
-                for c in cards {
-                    row = row.child(self.render_card(c, scale, cx));
-                }
-                row.into_any_element()
-            }
-            ListItem::End => div().h(px(32.)).into_any_element(),
-        }
-    }
-
-    fn render_card(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
-        let key = c.key.clone();
-        let cover_h = self.cover_h();
-        let cover = self.cover(&c.cover_key, theme::CARD_W, cover_h, scale, 100);
-        let (k1, k2, k3, k4) = (key.clone(), key.clone(), key.clone(), key.clone());
-        let el = card::card(
-            card::CardState {
-                vm: &c,
-                cover,
-                cover_h,
-                selected: self.selected.as_ref() == Some(&key),
-                hovered: self.hovered.as_ref() == Some(&key),
-                leaving: self.leaving.as_ref() == Some(&key),
-                grey_uninstalled: self.grey_uninstalled,
-                epic: self.epic_card(&key, cx),
-            },
-            cx.listener(move |this, _, _, cx| {
-                this.select(k1.clone(), true);
-                cx.notify();
-            }),
-            cx.listener(move |this, hovered: &bool, _, cx| {
-                if *hovered {
-                    this.hovered = Some(k2.clone());
-                } else if this.hovered.as_ref() == Some(&k2) {
-                    this.hovered = None;
-                    this.leaving = Some(k2.clone());
-                }
-                cx.notify();
-            }),
-            cx.listener(move |this, _, _, cx| {
-                this.primary_action(&k3, cx);
-                cx.notify();
-            }),
-        );
-        div()
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(move |this, ev: &MouseDownEvent, _, cx| {
-                    this.open_context_menu(k4.clone(), ev.position, cx);
-                }),
-            )
-            .child(el)
-            .into_any_element()
-    }
-
-    fn select(&mut self, key: SharedString, persist: bool) {
-        let Some(lib) = self.lib.clone() else { return };
-        let Some(game) = lib.get(&key) else { return };
-        let playing = self.playing.contains_key(&game.app_name);
-        self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
-        if self.selected.as_ref() != Some(&key) {
-            self.focus_scroll.set_offset(point(px(0.), px(0.)));
-        }
-        self.selected = Some(key.clone());
-        if persist {
-            self.ui.focused_game = Some(key.to_string());
-            self.save_ui();
-        }
-    }
-
-    /// Group whose header should be pinned at the top of the list, and how
-    /// far it is pushed up by the next group's header.
-    fn sticky(&self) -> Option<(usize, f32)> {
-        let top = self.list_state.logical_scroll_top();
-        let item = self.items.get(top.item_ix)?;
-        let group = match *item {
-            ListItem::Header { group } => {
-                if top.offset_in_item <= px(0.) {
-                    return None; // header itself is at the top, not stuck
-                }
-                group
-            }
-            ListItem::Row { group, .. } => group,
-            ListItem::End => return None,
-        };
-        if !self.groups[group].show_header {
-            return None;
-        }
-        let next_header = self.items[top.item_ix + 1..]
-            .iter()
-            .position(|it| matches!(it, ListItem::Header { .. }))
-            .map(|p| top.item_ix + 1 + p);
-        let mut shift = 0.;
-        if let Some(nh) = next_header {
-            let vp = self.list_state.viewport_bounds();
-            if let Some(b) = self.list_state.bounds_for_item(nh) {
-                let dist = f32::from(b.origin.y - vp.origin.y);
-                if dist < list::GROUP_HEADER_H {
-                    shift = dist - list::GROUP_HEADER_H;
-                }
-            }
-        }
-        Some((group, shift))
-    }
-
-    /// Current stage texture: the selected game's, or the previous one while
-    /// it loads.
-    fn stage_image(&mut self, window: &Window) -> Option<(SharedString, ImageSource)> {
-        if !self.stage_enabled {
-            // Off: the big blurred texture is not kept around.
-            if self.shown_stage.take().is_some() {
-                self.images.forget_prefix("s:");
-            }
-            return None;
-        }
-        let key = self.selected.clone()?;
-        let scale = window.scale_factor();
-        let size = window.viewport_size();
-        let (pw, ph) = ((f32::from(size.width) * scale) as u32, (f32::from(size.height) * scale) as u32);
-        let blur = self.blur_px * scale;
-        let sat = self.saturation;
-        let id: SharedString = format!("s:{key}:{pw}x{ph}:{blur}:{sat}").into();
-        let chains = &self.stage_chains;
-        let ready = self.images.get_or_request(
-            &id,
-            || chains.get(&key).cloned().unwrap_or_default(),
-            pw,
-            ph,
-            Variant::Stage { blur_px: blur, saturation: sat },
-            1000,
-        );
-        if let Some(img) = ready {
-            self.shown_stage = Some((key, img));
-        } else if self.stage_chains.get(&key).is_none_or(|c| c.is_empty()) {
-            self.shown_stage = None;
-        }
-        self.shown_stage.as_ref().map(|(k, img)| (k.clone(), ImageSource::Render(img.clone())))
-    }
 }
 
 impl CollectionView {
-    /// Blurred art that glass surfaces (menus, dialogs, pages) paint behind
-    /// their translucent fill: the selected game's art at a strong blur and a
-    /// tiny resolution (`Variant::Glass`, ~1/5 of the window), cached like the
-    /// stage. Independent of the Collection background: it exists whenever the
-    /// Interface is Transparent (and not fully opaque). `None` (no art, Solid
-    /// interface) makes the surfaces fall back to a solid fill, and nothing is
-    /// generated or kept.
-    fn glass_image(&mut self, window: &Window) -> Option<Arc<RenderImage>> {
-        use crate::ui::glass::{glass_target, GLASS_SATURATION};
-        if !crate::theme::glass_shows_art() {
-            if self.shown_glass.take().is_some() {
-                self.images.forget_prefix("g:");
-            }
-            return None;
-        }
-        let key = self.selected.clone()?;
-        let scale = window.scale_factor();
-        let size = window.viewport_size();
-        let (tw, th) = glass_target(f32::from(size.width), f32::from(size.height), scale);
-        let blur = crate::theme::glass_blur_px();
-        let id: SharedString = format!("g:{key}:{tw}x{th}:{blur}").into();
-        let chains = &self.stage_chains;
-        let ready = self.images.get_or_request(
-            &id,
-            || chains.get(&key).cloned().unwrap_or_default(),
-            tw,
-            th,
-            Variant::Glass { blur_px: blur * scale, saturation: GLASS_SATURATION },
-            500,
-        );
-        if let Some(img) = ready {
-            self.shown_glass = Some((key, img));
-        } else if self.stage_chains.get(&key).is_none_or(|c| c.is_empty()) {
-            self.shown_glass = None;
-        }
-        self.shown_glass.as_ref().map(|(_, img)| img.clone())
-    }
-}
-
-impl Render for CollectionView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let _timer = RenderTimer(Instant::now());
-        if !self.first_frame_logged {
-            self.first_frame_logged = true;
-            log::info!("first render after {:?}", self.started.elapsed());
-        }
-        self.images.drop_evicted(window);
-        if let Some(which) = self.pending_debug_dialog.take() {
-            match which.as_str() {
-                // The Collection settings dialog is gone: these open the Settings page.
-                w if w == "settings" || w.starts_with("settings:") => {
-                    let section = w.strip_prefix("settings:").and_then(crate::pages::settings::Section::parse);
-                    self.open_settings_section(section.unwrap_or(crate::pages::settings::Section::Appearance), window, cx);
-                }
-                "statuses" => self.open_manage_statuses(window, cx),
-                "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
-                // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves
-                // (the global ones moved to the Settings page: HERONITE_DEBUG_PAGE=settings:...).
-                w @ ("gamesettings:wine" | "gamesettings:other" | "gamesettings:advanced" | "gamesettings:gamescope" | "gamesettings:saves") => {
-                    use crate::dialogs::game_settings::Tab;
-                    let tab = match w {
-                        "gamesettings:wine" => Tab::Wine,
-                        "gamesettings:other" => Tab::Other,
-                        "gamesettings:advanced" => Tab::Advanced,
-                        "gamesettings:saves" => Tab::Saves,
-                        _ => Tab::Gamescope,
-                    };
-                    self.open_game_settings_tab(tab, window, cx);
-                }
-                "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage"
-                | "wizard" => self.open_metadata_debug(which.as_str(), window, cx),
-                "viewlog" => {
-                    if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
-                        self.open_game_log(&key, cx);
-                    }
-                }
-                w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => self.open_extras_debug(which.as_str(), window, cx),
-                w if w.starts_with("add-game") || w.starts_with("edit-game") => {
-                    self.add_game_debug_dialog(w, window, cx);
-                }
-                other => {
-                    if !self.epic_debug_dialog(other, window, cx) {
-                        self.open_emu_debug_dialog(other, window, cx);
-                    }
-                }
-            }
-        }
-        self.drive_epic(window, cx);
-        self.sync_extras(window, cx);
-        self.sync_shots(window, cx);
-        self.drive_palette(window, cx);
-        crate::ui::glass::set_backdrop(self.glass_image(window));
-        self.sync_nav_meta(cx);
-        let viewport = window.viewport_size();
-        let vw = f32::from(viewport.width);
-        let scale = window.scale_factor();
-        let (list_w, columns) = Self::list_column_width(vw);
-        if columns != self.columns {
-            self.columns = columns;
-            self.rebuild_items();
-        }
-
-        let header = self.render_header(cx);
-        let page_el = self.render_page(cx);
-        let on_page = page_el.is_some();
-        let stage_el = match self.stage_image(window) {
-            Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),
-            None => stage::stage(None, SharedString::default(), self.scrim, 1.),
-        };
-
-        // The list's padding lives inside each row: GPUI clips list content to
-        // the list bounds, and the selection ring sits 2px outside the cover.
-        let list_el = div()
-            .size_full()
-            .child(list(self.list_state.clone(), cx.processor(Self::render_item)).size_full());
-
-        // Captures wheel events over the list (before the list's own handler)
-        // to scroll farther and smoothly. Uses its own hitbox so dialogs and
-        // menus drawn on top keep their scrolling.
-        let weak_wheel = cx.entity().downgrade();
-        let wheel_layer = canvas(
-            |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
-            move |_, hitbox, window, _| {
-                window.on_mouse_event(move |ev: &ScrollWheelEvent, phase, window, cx| {
-                    if phase == DispatchPhase::Capture && hitbox.is_hovered(window) {
-                        cx.stop_propagation();
-                        let delta = ev.delta;
-                        weak_wheel.update(cx, |this, cx| this.on_wheel(delta, window, cx)).ok();
-                    }
-                });
-            },
-        )
-        .absolute()
-        .inset_0();
-        let list_scrollbar = crate::ui::scrollbar_draggable(
-            "list-scrollbar",
-            self.list_state.scroll_px_offset_for_scrollbar().y,
-            self.list_state.max_offset_for_scrollbar().y,
-            self.list_state.viewport_bounds().size.height,
-            {
-                let (state, weak) = (self.list_state.clone(), cx.entity().downgrade());
-                move |distance, _, cx| {
-                    state.set_offset_from_scrollbar(point(px(0.), px(-distance)));
-                    weak.update(cx, |_, cx| cx.notify()).ok();
-                }
-            },
-            Some(Rc::new({
-                let state = self.list_state.clone();
-                move |started| {
-                    if started {
-                        state.scrollbar_drag_started();
-                    } else {
-                        state.scrollbar_drag_ended();
-                    }
-                }
-            })),
-        );
-        let sticky = self.sticky().map(|(g, shift)| {
-            div()
-                .absolute()
-                .top(px(shift))
-                .left(px(13.6))
-                .right(px(16.))
-                .child(list::group_header(&self.groups[g], true))
-        });
-
-        let weak = cx.entity().downgrade();
-        let active_facets: Vec<(&'static str, SharedString)> = heronite_data::collection::FACET_KINDS
-            .iter()
-            .filter_map(|k| self.ui.facet_filters.get(*k).map(|v| (k.as_str(), SharedString::from(v.to_string()))))
-            .collect();
-        let focus_panel = match self.focus.clone() {
-            Some(vm) => {
-                // Resolve every cover the panel shows up front.
-                let mut covers: HashMap<SharedString, ImageSource> = HashMap::new();
-                let narrow = vw - list_w <= 1100. - theme::LIST_COL_W_MD;
-                let fw = if narrow { 72. } else { 86. };
-                if let Some(src) = self.cover(&vm.cover_key, fw, fw * 1.5, scale, 200) {
-                    covers.insert(vm.cover_key.clone(), src);
-                }
-                for g in &vm.related {
-                    for c in &g.games {
-                        if let Some(src) = self.cover(&c.cover_key, 78., 117., scale, 50) {
-                            covers.insert(c.cover_key.clone(), src);
-                        }
-                    }
-                }
-                let mut html_images: HashMap<String, ImageSource> = HashMap::new();
-                if let Some(blocks) = vm.overview_html.clone() {
-                    let column = focus::main_column_width(vw - list_w);
-                    for b in blocks.iter() {
-                        if let html::Block::Image { url, width, height } = b {
-                            let (w, h) = focus::html_image_size(*width, *height, column);
-                            let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
-                            let id: SharedString = format!("h:{url}:{pw}x{ph}").into();
-                            let chain = vec![ImageRef::Url(url.clone())];
-                            if let Some(img) =
-                                self.images.get_or_request(&id, || chain, pw, ph, Variant::Cover, 20)
-                            {
-                                html_images.insert(url.clone(), ImageSource::Render(img));
-                            }
-                        }
-                    }
-                }
-                let (w1, w2, w3, w4) = (weak.clone(), weak.clone(), weak.clone(), weak.clone());
-                let (w5, w6) = (weak.clone(), weak.clone());
-                let focus_key = vm.key.clone();
-                let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
-                let screenshots = self.screenshots_section(cx);
-                let focus_extras = self.focus_extras(&focus_key, scale);
-                focus::focus_panel(
-                    focus::FocusProps {
-                        vm,
-                        cover_for: Rc::new(move |k| covers.get(k).cloned()),
-                        html_images: Rc::new(move |u| html_images.get(u).cloned()),
-                        scroll: self.focus_scroll.clone(),
-                        viewport_w: vw,
-                        panel_w: vw - list_w,
-                        active_facets,
-                        screenshots,
-                        epic: epic_focus,
-                        extras: focus_extras,
-                    },
-                    focus::FocusActions {
-                        on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
-                        on_play: Box::new(move |_, cx| {
-                            w3.update(cx, |this, cx| {
-                                this.primary_action(&focus_key, cx);
-                                cx.notify();
-                            })
-                            .ok();
-                        }),
-                        on_favourite: Box::new(move |_, cx| {
-                            w4.update(cx, |this, cx| this.toggle_favourite(cx)).ok();
-                        }),
-                        on_metadata: Box::new(move |window, cx| {
-                            w5.update(cx, |this, cx| this.open_metadata(window, cx)).ok();
-                        }),
-                        on_game_settings: Box::new(move |window, cx| {
-                            w6.update(cx, |this, cx| this.open_game_settings(window, cx)).ok();
-                        }),
-                        on_facet: Rc::new(move |f, v, _, cx| {
-                            w1.update(cx, |this, cx| {
-                                this.toggle_facet(f, &v);
-                                cx.notify();
-                            })
-                            .ok();
-                        }),
-                        on_select: Rc::new(move |k, _, cx| {
-                            w2.update(cx, |this, cx| {
-                                this.select(k, true);
-                                this.reveal_selected();
-                                cx.notify();
-                            })
-                            .ok();
-                        }),
-                    },
-                )
-            }
-            None => div()
-                .size_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_size(px(15.2))
-                .text_color(theme::white_a(0.52))
-                .child("No game selected")
-                .into_any_element(),
-        };
-
-        let toast = self.toast.clone().map(|(text, error)| {
+    fn render_toast(&self) -> Option<Div> {
+        self.toast.clone().map(|(text, error)| {
             div()
                 .absolute()
                 .bottom(px(84.))
@@ -1076,32 +275,70 @@ impl Render for CollectionView {
                         .text_color(theme::white_a(0.92))
                         .child(text),
                 )
-        });
+        })
+    }
+
+    fn on_key_down(&mut self, ev: &KeyDownEvent, cx: &mut Context<Self>) {
+        if self.shots_key(ev, cx) {
+            cx.notify();
+            return;
+        }
+        if ev.keystroke.key == "escape" {
+            if self.dialog.is_some() {
+                self.dialog = None;
+                self.dialog_sub = None;
+            } else if self.context_menu.is_some() {
+                self.context_menu = None;
+            } else if self.open_menu.is_some() {
+                self.open_menu = None;
+            } else {
+                // Heronite clears the selected game on Esc.
+                self.focus = None;
+                self.selected = None;
+            }
+            cx.notify();
+        }
+    }
+}
+
+impl Render for CollectionView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timer = RenderTimer(Instant::now());
+        if !self.first_frame_logged {
+            self.first_frame_logged = true;
+            log::info!("first render after {:?}", self.started.elapsed());
+        }
+        self.images.drop_evicted(window);
+        self.open_pending_debug_dialog(window, cx);
+        self.drive_epic(window, cx);
+        self.sync_extras(window, cx);
+        self.sync_shots(window, cx);
+        self.drive_palette(window, cx);
+        crate::ui::glass::set_backdrop(self.glass_image(window));
+        self.sync_nav_meta(cx);
+        let vw = f32::from(window.viewport_size().width);
+        let scale = window.scale_factor();
+        let (list_w, columns) = Self::list_column_width(vw);
+        if columns != self.columns {
+            self.columns = columns;
+            self.rebuild_items();
+        }
+
+        let header = self.render_header(cx);
+        let page_el = self.render_page(cx);
+        let on_page = page_el.is_some();
+        let stage_el = match self.stage_image(window) {
+            Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),
+            None => stage::stage(None, SharedString::default(), self.scrim, 1.),
+        };
+        let list_column = self.render_list_column(list_w, cx);
+        let focus_panel = self.render_focus_panel(vw, list_w, scale, cx);
+        let toast = self.render_toast();
 
         div()
             .id("collection")
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
-                if this.shots_key(ev, cx) {
-                    cx.notify();
-                    return;
-                }
-                if ev.keystroke.key == "escape" {
-                    if this.dialog.is_some() {
-                        this.dialog = None;
-                        this.dialog_sub = None;
-                    } else if this.context_menu.is_some() {
-                        this.context_menu = None;
-                    } else if this.open_menu.is_some() {
-                        this.open_menu = None;
-                    } else {
-                        // Heronite clears the selected game on Esc.
-                        this.focus = None;
-                        this.selected = None;
-                    }
-                    cx.notify();
-                }
-            }))
+            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| this.on_key_down(ev, cx)))
             // Capture phase: runs before children, so a clicked input (search,
             // dialog fields) takes focus right after; clicks elsewhere blur it.
             .capture_any_mouse_down(cx.listener(|this, _, window, cx| {
@@ -1115,37 +352,18 @@ impl Render for CollectionView {
             .text_color(white())
             .child(stage_el)
             .children(page_el)
-            .when(!on_page, |root| root.child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .flex()
-                    .flex_col()
-                    .child(header)
-                    .child(
+            .when(!on_page, |root| {
+                root.child(
+                    div().absolute().inset_0().flex().flex_col().child(header).child(
                         div()
                             .flex()
                             .flex_1()
                             .min_h_0()
-                            .child(
-                                div()
-                                    .relative()
-                                    .w(px(list_w))
-                                    .h_full()
-                                    .flex_none()
-                                    .bg(linear_gradient(
-                                        90.,
-                                        linear_color_stop(theme::rgb_a(7, 9, 12, 0.28), 0.),
-                                        linear_color_stop(theme::rgb_a(7, 9, 12, 0.1), 0.72),
-                                    ))
-                                    .child(list_el)
-                                    .child(wheel_layer)
-                                    .children(sticky)
-                                    .children(list_scrollbar),
-                            )
+                            .child(list_column)
                             .child(div().flex_1().min_w_0().h_full().child(focus_panel)),
                     ),
-            ))
+                )
+            })
             .children(toast)
             .children(self.render_context_menu(window, cx))
             .children(self.dialog.clone())
@@ -1155,32 +373,11 @@ impl Render for CollectionView {
     }
 }
 
-/// Pixels per wheel "line": Wayland sends 3 lines per notch, Chromium
-/// scrolls ~100px per notch.
-const WHEEL_PX_PER_LINE: f32 = 100. / 3.;
-
-#[derive(Default)]
-struct WheelScroll {
-    pending: f32,
-    ticking: bool,
-    last: Option<Instant>,
-}
-
 /// Logs how long `CollectionView::render` took (RUST_LOG=debug).
 struct RenderTimer(Instant);
 
 impl Drop for RenderTimer {
     fn drop(&mut self) {
         log::debug!("render {:?}", self.0.elapsed());
-    }
-}
-
-trait IntoFn {
-    fn into_fn(self) -> Box<dyn Fn(&mut Window, &mut App)>;
-}
-
-impl<F: Fn(&(), &mut Window, &mut App) + 'static> IntoFn for F {
-    fn into_fn(self) -> Box<dyn Fn(&mut Window, &mut App)> {
-        Box::new(move |w, cx| self(&(), w, cx))
     }
 }
