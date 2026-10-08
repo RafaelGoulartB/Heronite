@@ -6,10 +6,10 @@
 //! launching an app that is already tracked is refused.
 
 use std::collections::{BTreeSet, HashMap};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -25,7 +25,7 @@ use crate::log_writer::{self, GameLog, GameLogType, HeaderInfo, LogPaths};
 use crate::prepare::{CloudSync, Flow, Notice, Prep};
 use crate::probe::{Probe, SystemProbe};
 use crate::procs::{signal_tree, Procs, Sig, SystemProcs};
-use crate::record::{self, PlayRecord, RecordOutcome, MIN_SESSION_SECONDS};
+use crate::record::{self, Checkpointer, PlayRecord, RecordOutcome, MIN_SESSION_SECONDS};
 use crate::steam::{desktop_protocol_env, SteamLocator};
 
 // ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ pub struct ExitInfo {
 pub trait ProcessHandle: Send {
     fn pid(&self) -> u32;
     /// `None` while running. `Some` once the process has exited *and* every
-    /// holder of its output pipe is gone (what Node's `close` event means).
+    /// process of its group is gone (what Node's `close` event means).
     fn poll(&mut self) -> io::Result<Option<ExitInfo>>;
     /// SIGTERM to the process tree.
     fn terminate(&mut self);
@@ -78,7 +78,7 @@ pub trait Spawner: Send + Sync {
 // ---------------------------------------------------------------------------
 
 /// Spawns real processes. Every game gets its own process group so the whole
-/// tree can be stopped, and a pipe pumped into the log file.
+/// tree can be stopped, and writes its output straight to the log file.
 #[derive(Clone)]
 pub struct SystemSpawner {
     procs: Arc<dyn Procs>,
@@ -102,8 +102,19 @@ struct SystemHandle {
     child: Option<std::process::Child>,
     pid: u32,
     exit: Option<ExitInfo>,
-    pump_done: Arc<AtomicBool>,
     procs: Arc<dyn Procs>,
+}
+
+/// Whether any process of group `pgid` is left (the group leader's pid).
+/// A group lives as long as one member does, so this is "the process and
+/// everything it started (that stayed in its group) is gone".
+fn group_alive(pgid: u32) -> bool {
+    if pgid <= 1 {
+        return false;
+    }
+    // SAFETY: signal 0 only checks that the group exists.
+    let r = unsafe { libc::kill(-(pgid as libc::pid_t), 0) };
+    r == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
 impl SystemHandle {
@@ -146,8 +157,11 @@ impl ProcessHandle for SystemHandle {
                 });
             }
         }
+        // Like Node's `close` event (which waits for the output pipe to
+        // close): a launcher script that backgrounds the real game keeps the
+        // session open until the whole process group is gone.
         match self.exit {
-            Some(info) if self.pump_done.load(Ordering::SeqCst) => Ok(Some(info)),
+            Some(info) if !group_alive(self.pid) => Ok(Some(info)),
             _ => Ok(None),
         }
     }
@@ -173,63 +187,46 @@ enum Sink {
 }
 
 impl SystemSpawner {
+    /// The child's stdout and stderr are the file itself (no pipe, no pump
+    /// thread): the game keeps working, and keeps logging, if the launcher
+    /// exits before it does.
     fn spawn_with(&self, cmd: &Command, sink: Sink) -> io::Result<Box<dyn ProcessHandle>> {
+        use std::process::Stdio;
         let mut c = std::process::Command::new(&cmd.program);
         c.args(&cmd.args)
             .envs(&cmd.env)
-            .stdin(std::process::Stdio::null());
+            .stdin(Stdio::null());
         if let Some(dir) = cmd.cwd.as_deref().filter(|d| !d.is_empty()) {
             c.current_dir(dir);
         }
         c.process_group(0);
-        let (mut reader, writer) = std::io::pipe()?;
-        c.stdout(writer.try_clone()?).stderr(writer);
-        let child = c.spawn()?;
-        // Drop our copies of the write end, or the pipe never reaches EOF.
-        drop(c);
-
-        let pump_done = Arc::new(AtomicBool::new(false));
-        let done = pump_done.clone();
-        let header = format!("Launching: {}\n\nGame Log:\n", cmd.display());
-        std::thread::spawn(move || {
-            let mut file = match &sink {
-                Sink::File(p) => {
-                    if let Some(dir) = p.parent() {
-                        let _ = std::fs::create_dir_all(dir);
-                    }
-                    std::fs::File::create(p).ok()
+        let (out, err) = match &sink {
+            Sink::None => (Stdio::null(), Stdio::null()),
+            Sink::File(p) => {
+                if let Some(dir) = p.parent() {
+                    let _ = std::fs::create_dir_all(dir);
                 }
-                _ => None,
-            };
-            if let Some(f) = file.as_mut() {
-                let _ = f.write_all(header.as_bytes());
-            }
-            // Fixed-size chunks straight to the file: memory stays flat no
-            // matter how much the game prints, and the pipe is always drained.
-            let mut buf = [0u8; 16 * 1024];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => match &sink {
-                        Sink::File(_) => {
-                            if let Some(f) = file.as_mut() {
-                                let _ = f.write_all(&buf[..n]);
-                            }
+                match std::fs::File::create(p) {
+                    Ok(mut f) => {
+                        let _ = f.write_all(format!("Launching: {}\n\nGame Log:\n", cmd.display()).as_bytes());
+                        // stdout and stderr share one open file description.
+                        match f.try_clone() {
+                            Ok(f2) => (Stdio::from(f), Stdio::from(f2)),
+                            Err(_) => (Stdio::from(f), Stdio::null()),
                         }
-                        Sink::Log(log) => log.raw(&buf[..n]),
-                        Sink::None => {}
-                    },
+                    }
+                    Err(_) => (Stdio::null(), Stdio::null()),
                 }
             }
-            done.store(true, Ordering::SeqCst);
-        });
-
+            Sink::Log(log) => (log.child_stdio(), log.child_stdio()),
+        };
+        c.stdout(out).stderr(err);
+        let child = c.spawn()?;
         let pid = child.id();
         Ok(Box::new(SystemHandle {
             child: Some(child),
             pid,
             exit: None,
-            pump_done,
             procs: self.procs.clone(),
         }))
     }
@@ -373,7 +370,23 @@ struct Control {
     pid: AtomicU32,
     stop: StopSpec,
     steam_pids: Arc<Mutex<BTreeSet<u32>>>,
+    title: String,
+    started_at: chrono::DateTime<Utc>,
+    t0: Instant,
+    /// The game is running (the session has playtime to checkpoint).
+    playing: AtomicBool,
+    ledger: Mutex<Ledger>,
 }
+
+/// What was persisted of the session so far.
+struct Ledger {
+    cp: Checkpointer,
+    /// The final write was made; later checkpoints are no-ops.
+    finished: bool,
+}
+
+/// How often a running game's playtime is saved.
+pub const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(120);
 
 /// What the pre-launch preparation talks to (replaceable for tests and the
 /// app: the Epic crate provides the cloud saves).
@@ -406,11 +419,35 @@ struct Shared {
     procs: Arc<dyn Procs>,
     steam: SteamLocator,
     cfg: LauncherConfig,
+    /// Milliseconds between playtime checkpoints.
+    checkpoint_ms: AtomicU64,
     tx: Mutex<Sender<LaunchEvent>>,
     sessions: Mutex<HashMap<String, Arc<Control>>>,
 }
 
 impl Shared {
+    /// Saves the playtime of a running session so far (see
+    /// [`record::Checkpointer`]). Cheap no-op for games that are not running,
+    /// whose recording is off, or that already finished.
+    fn checkpoint(&self, control: &Control, app_name: &str) {
+        if !self.cfg.record || !control.record.load(Ordering::SeqCst) || !control.playing.load(Ordering::SeqCst) {
+            return;
+        }
+        let mut ledger = control.ledger.lock().unwrap();
+        if ledger.finished {
+            return;
+        }
+        let rec = PlayRecord {
+            app_name: app_name.to_string(),
+            title: control.title.clone(),
+            started_at: control.started_at,
+            ended_at: control.started_at + chrono::Duration::milliseconds(control.t0.elapsed().as_millis() as i64),
+        };
+        if let Err(e) = ledger.cp.write(&self.paths, &rec, self.cfg.min_session_seconds) {
+            log::warn!("saving the playtime of {app_name}: {e:#}");
+        }
+    }
+
     fn send(&self, ev: LaunchEvent) {
         let _ = self.tx.lock().unwrap().send(ev);
     }
@@ -441,6 +478,7 @@ impl Launcher {
                 procs,
                 steam,
                 cfg,
+                checkpoint_ms: AtomicU64::new(CHECKPOINT_INTERVAL.as_millis() as u64),
                 tx: Mutex::new(events),
                 sessions: Mutex::new(HashMap::new()),
             }),
@@ -461,6 +499,23 @@ impl Launcher {
     /// (prerequisites, EOS overlay).
     pub fn set_epic_setup(&self, epic: Arc<dyn EpicSetup>) {
         *self.shared.epic.lock().unwrap() = Some(epic);
+    }
+
+    /// Changes how often running games' playtime is saved (tests).
+    pub fn set_checkpoint_interval(&self, every: Duration) {
+        self.shared.checkpoint_ms.store(every.as_millis().max(1) as u64, Ordering::SeqCst);
+    }
+
+    /// Saves the playtime of every running game right now (before the app
+    /// quits). Blocking file I/O: call it off the UI thread. Returns how
+    /// many games were running.
+    pub fn checkpoint_all(&self) -> usize {
+        let running: Vec<(String, Arc<Control>)> = self.shared.sessions.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let n = running.iter().filter(|(_, c)| c.playing.load(Ordering::SeqCst)).count();
+        for (app_name, control) in &running {
+            self.shared.checkpoint(control, app_name);
+        }
+        n
     }
 
     /// Real processes, default timings.
@@ -519,6 +574,11 @@ impl Launcher {
             pid: AtomicU32::new(0),
             stop,
             steam_pids: Arc::new(Mutex::new(BTreeSet::new())),
+            title: req.title.clone(),
+            started_at: Utc::now(),
+            t0: Instant::now(),
+            playing: AtomicBool::new(false),
+            ledger: Mutex::new(Ledger { cp: Checkpointer::default(), finished: false }),
         });
         {
             let mut sessions = self.shared.sessions.lock().unwrap();
@@ -618,6 +678,10 @@ fn finish(
     // Free the slot first so listeners can relaunch right away.
     shared.sessions.lock().unwrap().remove(&req.app_name);
     let mut outcome = None;
+    // The last write goes through the session's ledger: it replaces what the
+    // checkpoints stored instead of adding to it.
+    let mut ledger = control.ledger.lock().unwrap();
+    ledger.finished = true;
     if shared.cfg.record && control.record.load(Ordering::SeqCst) {
         let rec = PlayRecord {
             app_name: req.app_name.clone(),
@@ -625,7 +689,7 @@ fn finish(
             started_at,
             ended_at: started_at + chrono::Duration::milliseconds(elapsed.as_millis() as i64),
         };
-        match record::record_play(&shared.paths, &rec, shared.cfg.min_session_seconds) {
+        match ledger.cp.write(&shared.paths, &rec, shared.cfg.min_session_seconds) {
             Ok(o) => outcome = Some(o),
             Err(e) => {
                 log::error!("recording session of {}: {e:#}", req.app_name);
@@ -636,6 +700,7 @@ fn finish(
             }
         }
     }
+    drop(ledger);
     shared.send(LaunchEvent::Exited {
         app_name: req.app_name.clone(),
         elapsed,
@@ -655,9 +720,42 @@ fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, message: String) {
     });
 }
 
+/// Marks the session's ledger finished however the session thread ends (also
+/// on a panic), which stops its checkpointer.
+struct SessionEnd(Arc<Control>);
+
+impl Drop for SessionEnd {
+    fn drop(&mut self) {
+        self.0.ledger.lock().unwrap_or_else(|e| e.into_inner()).finished = true;
+    }
+}
+
+/// Saves the playtime of the running game every checkpoint interval, so a
+/// crash, a kill or a power cut loses at most that much.
+fn spawn_checkpointer(shared: Arc<Shared>, app_name: String, control: Arc<Control>) {
+    let _ = std::thread::Builder::new().name(format!("checkpoint-{app_name}")).spawn(move || {
+        let mut last = Instant::now();
+        loop {
+            std::thread::sleep(Duration::from_millis(250));
+            if control.ledger.lock().map(|l| l.finished).unwrap_or(true) {
+                return;
+            }
+            if !control.playing.load(Ordering::SeqCst) {
+                last = Instant::now();
+                continue;
+            }
+            if last.elapsed() >= Duration::from_millis(shared.checkpoint_ms.load(Ordering::SeqCst)) {
+                shared.checkpoint(&control, &app_name);
+                last = Instant::now();
+            }
+        }
+    });
+}
+
 fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<Control>) {
-    let started_at = Utc::now();
-    let t0 = Instant::now();
+    let (started_at, t0) = (control.started_at, control.t0);
+    let _end = SessionEnd(control.clone());
+    spawn_checkpointer(shared.clone(), req.app_name.clone(), control.clone());
     let log = open_game_log(&shared, &req);
     match &req.plan {
         LaunchPlan::SteamUri { app_id, uri } => {
@@ -749,6 +847,7 @@ fn run_steam(
             control.pid.store(pid, Ordering::SeqCst);
             // Only now do we know the game is really running.
             let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
+            control.playing.store(true, Ordering::SeqCst);
             shared.send(LaunchEvent::Running {
                 app_name: req.app_name.clone(),
                 pid,
@@ -903,6 +1002,7 @@ fn run_process(
     };
     control.pid.store(handle.pid(), Ordering::SeqCst);
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
+    control.playing.store(true, Ordering::SeqCst);
     shared.send(LaunchEvent::Running {
         app_name: req.app_name.clone(),
         pid: handle.pid(),

@@ -154,3 +154,34 @@ fn a_launch_that_cannot_start_logs_the_error() {
     assert!(log.contains("[ERROR]:") && log.contains("could not start /definitely/not/here"), "{log}");
     assert!(log.contains("End of log"));
 }
+
+#[test]
+fn the_game_writes_straight_to_the_log_file_without_a_pipe() {
+    let r = rig(VERBOSE);
+    // Each stream of the game is the log file itself: nothing of the launcher
+    // is in between, so the game keeps logging if the launcher goes away.
+    run(&r, "direct", sh("readlink /proc/$$/fd/1; readlink /proc/$$/fd/2; echo after-$((1+1))"));
+    let log = fs::read_to_string(log_path(&r, "direct")).unwrap();
+    let path = log_path(&r, "direct");
+    let target = fs::canonicalize(&path).unwrap();
+    assert_eq!(log.matches(target.to_str().unwrap()).count(), 2, "{log}");
+    assert!(!log.contains("pipe:["), "{log}");
+    assert!(log.contains("after-2\n") && log.trim_end().ends_with("End of log ============="), "{log}");
+}
+
+#[test]
+fn launcher_and_game_lines_interleave_in_order() {
+    let r = rig(VERBOSE);
+    run(&r, "order", sh("echo one-$((1+0)); sleep 0.1; echo two-$((1+1))"));
+    let log = fs::read_to_string(log_path(&r, "order")).unwrap();
+    let pos = |needle: &str| log.find(needle).unwrap_or_else(|| panic!("{needle:?} missing in\n{log}"));
+    assert!(pos("Game Output:") < pos("one-1\n") && pos("one-1\n") < pos("two-2\n"));
+    assert!(pos("two-2\n") < pos("exited with code 0") && pos("exited with code 0") < pos("End of log"));
+}
+
+#[test]
+fn with_logs_disabled_the_game_output_goes_nowhere() {
+    let r = rig(r#"{"defaultSettings":{"disableLogs":true,"verboseLogs":true},"version":"v0"}"#);
+    run(&r, "g", sh("readlink /proc/$$/fd/1 >&2; echo hi"));
+    assert!(!log_path(&r, "g").exists());
+}

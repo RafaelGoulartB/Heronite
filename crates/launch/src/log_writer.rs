@@ -12,9 +12,11 @@
 //!   the launch log off: only "forced" lines (the "Logs are disabled"
 //!   warning) are written then.
 //!
-//! The writer never blocks the game: its output is pumped from a pipe in
-//! fixed-size chunks straight to the file (no buffering of the whole log),
-//! and a size cap keeps a runaway game from filling the disk.
+//! The game writes its stdout / stderr straight into the log file (the launcher
+//! hands it an `O_APPEND` descriptor, see [`GameLog::child_stdio`]), so there
+//! is no pipe for the launcher to pump and the game does not depend on the
+//! launcher staying alive. The launcher appends its own lines (header before
+//! the spawn, "exited" and "End of log" after) to the same file.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -27,7 +29,8 @@ use serde_json::{Map, Value};
 /// Last line of a finished log.
 pub const END_OF_LOG: &str = "============= End of log =============";
 
-/// A game log stops growing at this size (the rest of the output is dropped).
+/// The launcher's own lines stop at this size. (The game's output goes
+/// straight into the file and is not limited.)
 pub const MAX_LOG_BYTES: u64 = 512 * 1024 * 1024;
 
 /// `LogLevel` of Heroic, widest name `WARNING` (+ 3 columns).
@@ -280,7 +283,40 @@ impl GameLog {
         self.write(text.as_bytes(), force);
     }
 
+    /// Where a game's stdout / stderr should go: a descriptor of the log file
+    /// itself (shared `O_APPEND` description, so launcher and game lines
+    /// interleave without overwriting each other). `Stdio::null()` when the
+    /// log is disabled, closed or unwritable. Creates the file (archiving the
+    /// previous one) if nothing was written yet.
+    pub fn child_stdio(&self) -> std::process::Stdio {
+        use std::process::Stdio;
+        if self.path.as_os_str().is_empty() || self.disabled {
+            return Stdio::null();
+        }
+        let mut st = self.state.lock().unwrap();
+        if st.closed || st.failed {
+            return Stdio::null();
+        }
+        if st.file.is_none() && !st.started {
+            st.started = true;
+            match self.open_new() {
+                Ok(f) => st.file = Some(f),
+                Err(e) => {
+                    st.failed = true;
+                    log::warn!("cannot write the log {}: {e}", self.path.display());
+                    return Stdio::null();
+                }
+            }
+        }
+        match st.file.as_ref().map(File::try_clone) {
+            Some(Ok(f)) => Stdio::from(f),
+            _ => Stdio::null(),
+        }
+    }
+
     /// Raw output of the game (stdout / stderr chunks), stored as it comes.
+    /// (Only for output that reaches the launcher; games write to the file
+    /// directly, see [`GameLog::child_stdio`].)
     pub fn raw(&self, bytes: &[u8]) {
         if !bytes.is_empty() {
             self.write(bytes, false);

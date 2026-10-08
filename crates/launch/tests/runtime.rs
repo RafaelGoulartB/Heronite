@@ -712,3 +712,82 @@ fn stopping_while_preparing_ends_the_launch_without_a_session() {
     assert!(record.is_none());
     assert_eq!(r.spawner.spawned().len(), 1, "the game never started");
 }
+
+// ---------------------------------------------------------------------------
+// Playtime checkpoints
+// ---------------------------------------------------------------------------
+
+fn sessions_of(paths: &HeroicPaths, app: &str) -> Vec<heronite_data::models::LocalGameSession> {
+    let doc: SessionsFile = json_store::read(&paths.sessions()).unwrap();
+    doc.sessions.get(app).cloned().unwrap_or_default()
+}
+
+#[test]
+fn a_running_game_is_checkpointed_and_the_end_replaces_the_checkpoints() {
+    let r = rig();
+    r.launcher.set_checkpoint_interval(Duration::from_millis(300));
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    // The crash case: the game "runs"; its progress is on disk already.
+    wait_until("a checkpoint", || !sessions_of(&r.paths, "g").is_empty());
+    let first = sessions_of(&r.paths, "g");
+    assert_eq!(first.len(), 1);
+    wait_until("a later checkpoint", || sessions_of(&r.paths, "g")[0].ended_at != first[0].ended_at);
+    let ts: serde_json::Value = serde_json::from_str(&fs::read_to_string(r.paths.timestamps()).unwrap()).unwrap();
+    assert!(ts["g"]["lastPlayed"].is_string() && ts["g"]["firstPlayed"].is_string());
+
+    r.spawner.finish(0, 0);
+    let LaunchEvent::Exited { record, .. } = next(&r.rx) else { panic!() };
+    assert!(record.is_some());
+    let after = sessions_of(&r.paths, "g");
+    assert_eq!(after.len(), 1, "one row, updated in place: {after:?}");
+    assert_eq!(after[0].started_at, first[0].started_at);
+    // No checkpoint lands after the end.
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(sessions_of(&r.paths, "g")[0].ended_at, after[0].ended_at);
+}
+
+#[test]
+fn checkpoint_all_saves_every_running_game_now() {
+    let r = rig();
+    // Default interval: only the explicit call can have written anything.
+    assert_eq!(r.launcher.checkpoint_all(), 0);
+    r.launcher.launch(request("a", LaunchPlan::Native(process_plan("/games/a.sh", &[])))).unwrap();
+    r.launcher.launch(request("b", LaunchPlan::Native(process_plan("/games/b.sh", &[])))).unwrap();
+    let mut running = 0;
+    while running < 2 {
+        if matches!(next(&r.rx), LaunchEvent::Running { .. }) {
+            running += 1;
+        }
+    }
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!r.paths.sessions().exists());
+    assert_eq!(r.launcher.checkpoint_all(), 2);
+    assert_eq!(sessions_of(&r.paths, "a").len(), 1);
+    assert_eq!(sessions_of(&r.paths, "b").len(), 1);
+    // Calling it again moves the same rows.
+    assert_eq!(r.launcher.checkpoint_all(), 2);
+    assert_eq!(sessions_of(&r.paths, "a").len(), 1);
+    r.spawner.finish(0, 0);
+    r.spawner.finish(1, 0);
+    let mut exited = 0;
+    while exited < 2 {
+        if matches!(next(&r.rx), LaunchEvent::Exited { .. }) {
+            exited += 1;
+        }
+    }
+    assert_eq!(sessions_of(&r.paths, "a").len(), 1);
+}
+
+#[test]
+fn a_game_that_is_still_preparing_has_nothing_to_checkpoint() {
+    let r = rig();
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.pre_commands = vec![Command { program: "/w/wine".into(), ..Default::default() }];
+    r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
+    wait_until("the prefix command", || !r.spawner.spawned().is_empty());
+    assert_eq!(r.launcher.checkpoint_all(), 0);
+    assert!(!r.paths.timestamps().exists());
+    r.launcher.stop("g");
+}
