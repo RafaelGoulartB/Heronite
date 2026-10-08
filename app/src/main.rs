@@ -115,18 +115,33 @@ pub fn trim_heap_later() {
 }
 
 fn env_logger_init() {
-    // Minimal stderr logger; RUST_LOG=debug for more.
-    struct L(log::LevelFilter);
+    // Records go to stderr and, unless `disableLogs` is on, to
+    // `heronite-rs-<date>.log` (see `heronite_launch::log_writer`).
+    struct L {
+        level: log::LevelFilter,
+        file: Option<heronite_launch::log_writer::LauncherLogger>,
+    }
     impl log::Log for L {
         fn enabled(&self, m: &log::Metadata) -> bool {
             // Our crates at the chosen level, third-party crates at warn
             // (zbus/wgpu/naga are very chatty at info/debug).
             let ours = m.target().starts_with("heronite");
-            m.level() <= if ours { self.0 } else { self.0.min(log::LevelFilter::Warn) }
+            m.level() <= if ours { self.level } else { self.level.min(log::LevelFilter::Warn) }
         }
         fn log(&self, r: &log::Record) {
-            if self.enabled(r.metadata()) {
-                eprintln!("[{} {}] {}", r.level(), r.target(), r.args());
+            if !self.enabled(r.metadata()) {
+                return;
+            }
+            eprintln!("[{} {}] {}", r.level(), r.target(), r.args());
+            if let Some(file) = &self.file {
+                use heronite_launch::log_writer::Level;
+                let level = match r.level() {
+                    log::Level::Error => Level::Error,
+                    log::Level::Warn => Level::Warning,
+                    log::Level::Info => Level::Info,
+                    log::Level::Debug | log::Level::Trace => Level::Debug,
+                };
+                file.record(level, r.target(), &r.args().to_string());
             }
         }
         fn flush(&self) {}
@@ -136,5 +151,26 @@ fn env_logger_init() {
         Ok("trace") => log::LevelFilter::Trace,
         _ => log::LevelFilter::Info,
     };
-    let _ = log::set_boxed_logger(Box::new(L(level))).map(|_| log::set_max_level(level));
+    let heroic = heronite_data::HeroicPaths::detect();
+    let disabled = heronite_launch::settings::GlobalSettings::load(&heroic)
+        .defaults
+        .get("disableLogs")
+        .is_some_and(|v| v.as_bool().unwrap_or(false));
+    let file = heronite_launch::log_writer::LauncherLogger::open(heronite_launch::log_writer::LogPaths::for_heroic(&heroic), disabled);
+    if !disabled {
+        file.note(&format!("============= Heronite (Rust) {} started (pid {}) =============", env!("CARGO_PKG_VERSION"), std::process::id()));
+    }
+    let _ = log::set_boxed_logger(Box::new(L { level, file: Some(file) })).map(|_| log::set_max_level(level));
+    if !disabled {
+        // The system information of Heroic's log, gathered off the startup path.
+        let _ = std::thread::Builder::new().name("log-sysinfo".into()).spawn(|| {
+            log::info!(target: "heronite_app", "System Information:\n{}", pages::settings::logs::system_info_text());
+        });
+    }
+    // Panics end up in the log file too.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!(target: "heronite_app", "panic: {info}");
+        default_hook(info);
+    }));
 }

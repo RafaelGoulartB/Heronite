@@ -53,6 +53,14 @@ impl CollectionView {
         cx.notify();
     }
 
+    /// Opens the log viewer on the logs of the game under `key`.
+    pub(super) fn open_game_log(&mut self, key: &str, cx: &mut Context<Self>) {
+        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
+        let (app, title) = (game.app_name.clone(), game.title.clone());
+        let view = cx.new(|cx| crate::dialogs::log_viewer::LogViewerDialog::new(ctx, app, title, cx));
+        self.open_dialog(view, cx);
+    }
+
     fn close_context_menu(&mut self, cx: &mut Context<Self>) {
         self.context_menu = None;
         cx.notify();
@@ -252,6 +260,15 @@ impl CollectionView {
                     })),
             );
         }
+
+        // View log: the launch / install logs of this game.
+        let k = key.clone();
+        menu = menu.child(
+            item("cm-log")
+                .child(icon(Icon::Description, px(20.), rgb(0xcaf3fd)))
+                .child("View log")
+                .on_click(cx.listener(move |this, _, _, cx| this.open_game_log(&k, cx))),
+        );
 
         let position = state.position;
         menu = self.extras_context_items(menu, &game, cx);

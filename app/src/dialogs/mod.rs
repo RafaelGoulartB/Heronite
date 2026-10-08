@@ -19,6 +19,7 @@ pub mod epic_import;
 pub mod epic_install;
 pub mod epic_modify;
 pub mod launch_state;
+pub mod log_viewer;
 pub mod ludusavi_backup;
 pub mod pick_rom;
 pub mod art_images;

@@ -824,6 +824,11 @@ impl Render for CollectionView {
                 }
                 "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage"
                 | "settings:metadata" | "wizard" => self.open_metadata_debug(which.as_str(), window, cx),
+                "viewlog" => {
+                    if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
+                        self.open_game_log(&key, cx);
+                    }
+                }
                 "playnite:import" => self.open_playnite_import(window, cx),
                 "playnite:merge" => self.open_playnite_merge(window, cx),
                 w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => self.open_extras_debug(which.as_str(), window, cx),

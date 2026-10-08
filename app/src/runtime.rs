@@ -72,6 +72,8 @@ impl GameRuntime {
             cloud: Some(Arc::new(EpicCloudSaves(paths.clone()))),
         });
         launcher.set_epic_setup(Arc::new(crate::services::downloads::EpicLaunchSetup(paths.clone())));
+        // Header of every launch log (Heroic's `formatSystemInfo`).
+        launcher.set_system_info(Arc::new(crate::pages::settings::logs::system_info_text));
         spawn_tools_update(paths.clone());
         (Self { launcher, paths, sessions: Mutex::new(HashMap::new()) }, frx)
     }

@@ -15,6 +15,7 @@
 mod about;
 mod advanced;
 mod library;
+pub mod logs;
 pub mod sysinfo;
 
 use gpui_kit::prelude::*;
@@ -35,12 +36,13 @@ pub enum Section {
     Library,
     Downloads,
     Advanced,
+    Logs,
     About,
 }
 
 impl Section {
-    pub const ALL: [Section; 6] =
-        [Section::General, Section::GameDefaults, Section::Library, Section::Downloads, Section::Advanced, Section::About];
+    pub const ALL: [Section; 7] =
+        [Section::General, Section::GameDefaults, Section::Library, Section::Downloads, Section::Advanced, Section::Logs, Section::About];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -49,6 +51,7 @@ impl Section {
             Section::Library => "Library",
             Section::Downloads => "Downloads",
             Section::Advanced => "Advanced",
+            Section::Logs => "Logs",
             Section::About => "About",
         }
     }
@@ -60,6 +63,7 @@ impl Section {
             Section::Library => Icon::VisibilityOff,
             Section::Downloads => Icon::Download,
             Section::Advanced => Icon::Build,
+            Section::Logs => Icon::Description,
             Section::About => Icon::Memory,
         }
     }
@@ -72,6 +76,7 @@ impl Section {
             Section::Library => "What the Collection shows: hidden games, favourites and recent games.",
             Section::Downloads => "Epic downloads and updates.",
             Section::Advanced => "Logs, folders and cache.",
+            Section::Logs => "The logs of this app, Heroic and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs).",
             Section::About => "This app, its data folders and the system it runs on.",
         }
     }
@@ -92,6 +97,7 @@ impl Section {
             "library" => Some(Section::Library),
             "downloads" => Some(Section::Downloads),
             "advanced" => Some(Section::Advanced),
+            "logs" => Some(Section::Logs),
             "about" => Some(Section::About),
             _ => None,
         }
@@ -107,6 +113,7 @@ pub struct SettingsPage {
     pub(super) library: library::State,
     pub(super) advanced: advanced::State,
     pub(super) about: about::State,
+    pub(super) logs: logs::State,
 }
 
 impl EventEmitter<PageEvent> for SettingsPage {}
@@ -127,6 +134,7 @@ impl SettingsPage {
             library: library::State::new(&ctx),
             advanced: advanced::State::default(),
             about: about::State::default(),
+            logs: logs::State::default(),
             ctx,
             section,
             global: None,
@@ -166,6 +174,7 @@ impl SettingsPage {
     /// from the Collection (context menu, header).
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         self.library.reload(&self.ctx, cx);
+        self.logs.refresh(cx);
         self.on_section_shown(cx);
         cx.notify();
     }
@@ -268,6 +277,7 @@ impl Render for SettingsPage {
             }
             Section::GameDefaults => self.defaults_view(window, cx),
             Section::Library => self.library_section(cx).into_any_element(),
+            Section::Logs => self.logs_section(cx),
             Section::About => self.about_section(cx).into_any_element(),
         };
         let title = div()
@@ -283,7 +293,9 @@ impl Render for SettingsPage {
                     .child(section.label()),
             )
             .child(div().text_size(px(13.33)).text_color(theme::white_a(0.7)).child(section.blurb()));
-        let column = page_column().max_w(px(780.)).mx(px(0.)).ml(px(8.)).gap(px(20.)).child(title).child(body);
+        // The log viewer wants the width; the forms read better narrow.
+        let max_w = if section == Section::Logs { px(1400.) } else { px(780.) };
+        let column = page_column().max_w(max_w).mx(px(0.)).ml(px(8.)).gap(px(20.)).child(title).child(body);
         div().size_full().flex().child(self.nav(cx)).child(div().flex_1().min_w_0().h_full().child(page_body("page-settings").child(column)))
     }
 }
