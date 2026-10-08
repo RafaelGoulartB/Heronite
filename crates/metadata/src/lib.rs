@@ -21,6 +21,7 @@ pub mod images;
 pub mod lutris;
 pub mod merge;
 pub mod providers;
+pub mod remove;
 pub mod service;
 pub mod steam;
 pub mod store;
