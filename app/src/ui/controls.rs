@@ -149,11 +149,6 @@ pub fn caption(text: impl Into<SharedString>) -> Div {
     div().mt(px(14.)).mx(px(6.)).mb(px(6.)).text_size(px(12.)).text_color(theme::text_muted()).child(text.into())
 }
 
-/// Section heading inside dialogs (same look as [`caption`]).
-pub fn section_title(text: impl Into<SharedString>) -> Div {
-    caption(text)
-}
-
 /// Page / sheet title: Rubik 600, 26px.
 pub fn page_heading(text: impl Into<SharedString>) -> Div {
     div()

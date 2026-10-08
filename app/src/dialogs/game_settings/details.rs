@@ -8,7 +8,7 @@ use heronite_data::models::{CollectionGameMetadata, LocalGameMeta};
 use heronite_metadata::{DetailsPatch, DetailsResult};
 
 use super::{block, Busy, GameSettingsDialog};
-use crate::ui::controls::{card, help_text, section_title};
+use crate::ui::controls::{card, help_text, caption};
 use crate::ui::fields::{input_box, labeled, new_input, new_textarea, textarea_box, TagEvent, TagField};
 use crate::dialogs::{DialogCtx, DialogEvent};
 
@@ -253,12 +253,12 @@ impl GameSettingsDialog {
                 )
                 .px(px(6.)),
             )
-            .child(section_title("General"))
+            .child(caption("General"))
             .child(general)
-            .child(section_title("Tags"))
+            .child(caption("Tags"))
             .child(help_text("Pick existing tags or type a new one and press Enter to create it.").px(px(6.)))
             .child(tags)
-            .child(section_title("Links and notes"))
+            .child(caption("Links and notes"))
             .child(more)
     }
 }

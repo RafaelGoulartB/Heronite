@@ -14,7 +14,7 @@ use crate::dialogs::screenshot_art::ScreenshotArtDialog;
 use crate::dialogs::web_image::{ArtEvent, WebImageDialog};
 use crate::dialogs::{DialogCtx, DialogEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, card, help_text, section_title, ButtonKind};
+use crate::ui::controls::{action_button, card, help_text, caption, ButtonKind};
 
 /// Width of the background preview inside the drawer card.
 const HERO_W: f32 = 500.;
@@ -225,9 +225,9 @@ impl GameSettingsDialog {
             .flex_col()
             .gap(px(6.))
             .child(help_text("These images are used in Collection. Steam art stays cached; a custom file replaces it until you reset.").px(px(6.)))
-            .child(section_title("Cover"))
+            .child(caption("Cover"))
             .child(card([cover.into_any_element()]))
-            .child(section_title("Background"))
+            .child(caption("Background"))
             .child(card([hero.into_any_element()]))
     }
 }

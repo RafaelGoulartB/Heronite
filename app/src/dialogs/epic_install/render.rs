@@ -191,7 +191,7 @@ impl Render for EpicInstallDialog {
             body = body.children(self.space_line(cx));
 
             if !self.sdl.is_empty() || !self.dlcs.is_empty() {
-                body = body.child(crate::ui::controls::section_title("Components to install"));
+                body = body.child(crate::ui::controls::caption("Components to install"));
             }
             if !self.sdl.is_empty() {
                 let mut rows: Vec<AnyElement> = Vec::new();

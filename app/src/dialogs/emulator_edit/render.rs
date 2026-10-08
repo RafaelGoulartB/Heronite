@@ -10,7 +10,7 @@ use super::{text_of, EmulatorEditDialog, Menu, KINDS, WORKING_DIRS};
 use crate::dialogs::scan_roms::profile_label;
 use crate::dialogs::DialogEvent;
 use crate::theme;
-use crate::ui::controls::{action_button, button, section_title, ButtonKind};
+use crate::ui::controls::{action_button, button, caption, ButtonKind};
 use crate::ui::fields::{choose_path, meta_text, panel, path_field, select_field, text_field};
 
 impl EmulatorEditDialog {
@@ -136,7 +136,7 @@ impl EmulatorEditDialog {
     }
 
     pub(super) fn render_profiles(&mut self, mut body: Div, cx: &mut Context<Self>) -> Div {
-        body = body.child(section_title("Profiles")).child(meta_text(
+        body = body.child(caption("Profiles")).child(meta_text(
             "One per platform. Arguments may use {ImagePath} (the ROM), {ImageName}, {ImageNameNoExt}, {ImageDir}, {EmulatorDir}, {CorePath}, {Name} and {InstallDir}.",
         ));
         for i in 0..self.profiles.len() {

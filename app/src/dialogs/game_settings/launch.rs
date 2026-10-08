@@ -14,7 +14,7 @@ use heronite_launch::SystemProbe;
 use super::{block, Busy, GameSettingsDialog};
 use crate::dialogs::DialogEvent;
 use crate::theme;
-use crate::ui::controls::{action_button, card, help_text, row, section_title, ButtonKind};
+use crate::ui::controls::{action_button, card, help_text, row, caption, ButtonKind};
 use crate::ui::fields::{input_box, labeled, new_input, select_field};
 
 pub(super) struct LaunchState {
@@ -211,9 +211,9 @@ impl GameSettingsDialog {
                 )
                 .px(px(6.)),
             )
-            .child(section_title("Program"))
+            .child(caption("Program"))
             .child(file)
-            .child(section_title("How to run it"))
+            .child(caption("How to run it"))
             .child(how)
             .child(
                 div()
