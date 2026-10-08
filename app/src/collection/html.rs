@@ -3,7 +3,7 @@
 //! into blocks the focus panel renders.
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Span {
+pub(super) struct Span {
     pub text: String,
     pub bold: bool,
     pub italic: bool,

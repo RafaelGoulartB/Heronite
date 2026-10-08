@@ -6,7 +6,7 @@ use std::sync::Arc;
 use gpui_kit::{Rgba, SharedString};
 
 #[derive(Clone)]
-pub struct CardVm {
+pub(super) struct CardVm {
     pub key: SharedString,
     pub title: SharedString,
     pub playtime: SharedString,
@@ -19,7 +19,7 @@ pub struct CardVm {
 }
 
 #[derive(Clone)]
-pub struct GroupVm {
+pub(super) struct GroupVm {
     pub id: SharedString,
     pub name: SharedString,
     pub color: Rgba,
@@ -31,14 +31,14 @@ pub struct GroupVm {
 
 /// Rows of the virtual list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ListItem {
+pub(super) enum ListItem {
     Header { group: usize },
     Row { group: usize, start: usize },
     /// Bottom padding of the list (2rem).
     End,
 }
 
-pub fn build_items(groups: &[GroupVm], columns: usize) -> Vec<ListItem> {
+pub(super) fn build_items(groups: &[GroupVm], columns: usize) -> Vec<ListItem> {
     let mut items = Vec::new();
     for (gi, g) in groups.iter().enumerate() {
         if g.show_header {
@@ -58,7 +58,7 @@ pub fn build_items(groups: &[GroupVm], columns: usize) -> Vec<ListItem> {
 }
 
 #[derive(Clone)]
-pub enum DetailValue {
+pub(super) enum DetailValue {
     Text(SharedString),
     Status { name: SharedString, color: Rgba },
     /// Chips; `facet` makes them clickable filters (`"developer"`, ...).
@@ -67,7 +67,7 @@ pub enum DetailValue {
 }
 
 #[derive(Clone)]
-pub struct DetailRow {
+pub(super) struct DetailRow {
     pub label: SharedString,
     pub value: DetailValue,
     /// Border-top separator (`.is-split`).
@@ -75,7 +75,7 @@ pub struct DetailRow {
 }
 
 #[derive(Clone, Default)]
-pub struct HltbVm {
+pub(super) struct HltbVm {
     pub main: Option<f32>,
     pub extra: Option<f32>,
     pub complete: Option<f32>,
@@ -83,13 +83,13 @@ pub struct HltbVm {
 }
 
 #[derive(Clone)]
-pub struct RelatedGroupVm {
+pub(super) struct RelatedGroupVm {
     pub title: SharedString,
     pub games: Vec<Arc<CardVm>>,
 }
 
 #[derive(Clone)]
-pub struct FocusVm {
+pub(super) struct FocusVm {
     pub key: SharedString,
     pub title: SharedString,
     pub meta_line: SharedString,

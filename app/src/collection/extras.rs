@@ -31,11 +31,11 @@ use crate::ui::icon;
 
 /// Message of the error dialog Heronite shows when Steam is missing
 /// (`collection.steam.clientMissing*`).
-pub const STEAM_MISSING_TITLE: &str = "Steam not found";
-pub const STEAM_MISSING_TEXT: &str = "Steam was not found. Install or launch the Steam client, then try again.";
+const STEAM_MISSING_TITLE: &str = "Steam not found";
+const STEAM_MISSING_TEXT: &str = "Steam was not found. Install or launch the Steam client, then try again.";
 
 /// Text of the Steam uninstall confirmation (`collection.steam.uninstallHelp`).
-pub fn steam_uninstall_message(title: &str) -> String {
+fn steam_uninstall_message(title: &str) -> String {
     format!(
         "This opens Steam to uninstall \"{title}\". The game stays in Collection; Heronite marks it uninstalled after Steam finishes and you refresh."
     )
@@ -48,7 +48,7 @@ pub(super) fn facet_option_matches(value: &str, query: &str) -> bool {
 }
 
 /// Whether a launch/install error means that there is no Steam client.
-pub fn is_steam_missing(error: &str) -> bool {
+fn is_steam_missing(error: &str) -> bool {
     error.contains("Steam client was not found")
 }
 
@@ -59,7 +59,7 @@ struct FacetSearch {
 }
 
 #[derive(Default)]
-pub struct Extras {
+pub(super) struct Extras {
     facet_search: Option<FacetSearch>,
     /// Game whose achievements are loaded (or loading).
     ach_key: Option<SharedString>,
@@ -218,8 +218,6 @@ impl CollectionView {
         .detach();
     }
 
-    // ---- launch errors -------------------------------------------------
-
     /// A launch/install failed: a missing Steam client gets Heronite's
     /// "Steam not found" message, everything else a toast.
     pub(super) fn report_launch_error(&mut self, error: String, cx: &mut Context<Self>) {
@@ -230,8 +228,6 @@ impl CollectionView {
             self.show_toast(error, true, cx);
         }
     }
-
-    // ---- context menu --------------------------------------------------
 
     /// Details, Edit playtime, Backup save (Ludusavi) and Remove from
     /// Collection (the order of `CollectionCard`'s menu).
@@ -333,8 +329,6 @@ impl CollectionView {
         self.open_dialog(view, cx);
     }
 
-    // ---- details page --------------------------------------------------
-
     /// The focus panel's "open details" button / the "Details" menu item:
     /// the game's store page in the browser.
     pub(super) fn open_details(&mut self, key: &str, cx: &mut Context<Self>) {
@@ -355,8 +349,6 @@ impl CollectionView {
             None => self.show_toast("No store page is known for this game.", false, cx),
         }
     }
-
-    // ---- focus panel ---------------------------------------------------
 
     /// Achievements (above Details).
     pub(super) fn focus_extras(&mut self, key: &str, scale: f32) -> focus::FocusExtras {
@@ -386,8 +378,6 @@ impl CollectionView {
         }
         extras
     }
-
-    // ---- facet flyout search ------------------------------------------
 
     /// What is typed in the open flyout's search (`kind` must be the open one).
     pub(super) fn facet_query(&self, kind: FacetKind, cx: &App) -> String {

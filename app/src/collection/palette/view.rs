@@ -16,7 +16,7 @@ use crate::ui::glass::glass_panel;
 use crate::ui::icon;
 
 #[derive(Clone, Debug)]
-pub enum PaletteEvent {
+pub(super) enum PaletteEvent {
     Run(Act),
     Close,
 }
@@ -29,7 +29,7 @@ const LIST_MAX_H: f32 = 9. * ROW_H + CAPTION_H;
 const PANEL_W: f32 = 620.;
 const TOP: f32 = 90.;
 
-pub struct PaletteView {
+pub(super) struct PaletteView {
     entries: Rc<Vec<Entry>>,
     input: Entity<InputState>,
     query: String,
@@ -130,7 +130,7 @@ impl PaletteView {
     }
 
     /// Moves the selection by `delta` rows, wrapping around.
-    pub fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
+    pub(super) fn move_selection(&mut self, delta: isize, cx: &mut Context<Self>) {
         let n = self.results.count() as isize;
         if n == 0 {
             return;
@@ -140,7 +140,7 @@ impl PaletteView {
         cx.notify();
     }
 
-    pub fn cycle_filter(&mut self, back: bool, cx: &mut Context<Self>) {
+    pub(super) fn cycle_filter(&mut self, back: bool, cx: &mut Context<Self>) {
         self.filter = if back { self.filter.prev() } else { self.filter.next() };
         self.recompute(cx);
     }

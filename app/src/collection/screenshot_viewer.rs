@@ -66,8 +66,6 @@ impl CollectionView {
         });
     }
 
-    // --- state changes -----------------------------------------------------
-
     fn shots_step(&mut self, delta: isize) {
         let n = self.shots.items.len() as isize;
         let Some(i) = self.shots.view else { return };

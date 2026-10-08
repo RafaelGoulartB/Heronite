@@ -467,8 +467,7 @@ fn toggle(id: &'static str, on: bool) -> Stateful<Div> {
 }
 
 impl CollectionView {
-    /// Opens the Settings page on `section` (what the header gear used to
-    /// do with the old Collection settings dialog).
+    /// Opens the Settings page on `section`.
     pub(super) fn open_settings_section(
         &mut self,
         section: crate::pages::settings::Section,

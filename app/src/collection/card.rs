@@ -11,7 +11,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-pub struct CardState<'a> {
+pub(super) struct CardState<'a> {
     pub vm: &'a CardVm,
     pub cover: Option<ImageSource>,
     pub cover_h: f32,

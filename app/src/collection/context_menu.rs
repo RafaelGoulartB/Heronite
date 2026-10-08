@@ -11,7 +11,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-pub struct ContextMenuState {
+pub(super) struct ContextMenuState {
     pub key: SharedString,
     pub position: Point<Pixels>,
     pub status_open: bool,
@@ -270,7 +270,6 @@ impl CollectionView {
             );
         }
 
-        // View log: the launch / install logs of this game.
         let k = key.clone();
         menu = menu.child(
             item("cm-log")

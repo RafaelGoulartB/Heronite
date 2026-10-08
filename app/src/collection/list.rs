@@ -7,7 +7,7 @@ use super::vm::GroupVm;
 use crate::theme;
 
 /// `.collection__groupToggle`: 13px/600, .78 white, 7px dot, count pill.
-pub fn group_header(g: &GroupVm, stuck: bool) -> Div {
+pub(super) fn group_header(g: &GroupVm, stuck: bool) -> Div {
     div()
         .relative()
         .flex()
@@ -55,4 +55,4 @@ pub fn group_header(g: &GroupVm, stuck: bool) -> Div {
 }
 
 /// Height of one group header row (padding + line).
-pub const GROUP_HEADER_H: f32 = 6.4 * 2. + 15.6;
+pub(super) const GROUP_HEADER_H: f32 = 6.4 * 2. + 15.6;

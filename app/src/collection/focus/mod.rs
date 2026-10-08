@@ -17,10 +17,10 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{icon, round_button};
 
-pub type CoverFor = Rc<dyn Fn(&str) -> Option<ImageSource>>;
+pub(super) type CoverFor = Rc<dyn Fn(&str) -> Option<ImageSource>>;
 
 /// Main-column width in logical px (for sizing description images).
-pub fn main_column_width(panel_w: f32) -> f32 {
+pub(super) fn main_column_width(panel_w: f32) -> f32 {
     let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
     if narrow {
         panel_w - 2. * 19.2
@@ -32,7 +32,7 @@ pub fn main_column_width(panel_w: f32) -> f32 {
     }
 }
 
-pub struct FocusProps {
+pub(super) struct FocusProps {
     pub vm: FocusVm,
     pub cover_for: CoverFor,
     /// Description images by URL.
@@ -53,12 +53,12 @@ pub struct FocusProps {
 
 /// Extra panels of the side column (see `extras.rs`).
 #[derive(Default)]
-pub struct FocusExtras {
+pub(super) struct FocusExtras {
     /// Above "Details" (`collectionFocus__panel` of achievements).
     pub top: Option<AnyElement>,
 }
 
-pub struct FocusActions {
+pub(super) struct FocusActions {
     pub on_scroll: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_play: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_favourite: Box<dyn Fn(&mut Window, &mut App)>,
@@ -68,7 +68,7 @@ pub struct FocusActions {
     pub on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
 }
 
-pub fn h3(text: impl Into<SharedString>) -> Div {
+pub(super) fn h3(text: impl Into<SharedString>) -> Div {
     div()
         .mb(px(8.8))
         .font_family(theme::FONT_HEADING)
@@ -97,7 +97,7 @@ pub fn panel(facts: bool) -> Div {
     }
 }
 
-pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
+pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, screenshots, epic, extras } = props;
     let on_scroll: Rc<dyn Fn(&mut Window, &mut App)> = Rc::from(actions.on_scroll);
     let (epic_el, hide_play) = match epic {

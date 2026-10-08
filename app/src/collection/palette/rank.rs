@@ -6,7 +6,7 @@ use super::sources::{game_verbs, Act, Entry, Kind};
 
 /// Tab cycles through these.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Filter {
+pub(super) enum Filter {
     All,
     Pages,
     Actions,
@@ -49,7 +49,7 @@ impl Filter {
 /// An entry of the list handed to [`search`], or one of the verb entries made
 /// for the query.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ItemRef {
+pub(super) enum ItemRef {
     Entry(usize),
     Verb(usize),
 }
@@ -61,7 +61,7 @@ pub struct Group {
 }
 
 #[derive(Default, Debug)]
-pub struct Results {
+pub(super) struct Results {
     pub groups: Vec<Group>,
     /// "Play X", "X settings", "Open X folder" made for this query.
     pub verbs: Vec<Entry>,

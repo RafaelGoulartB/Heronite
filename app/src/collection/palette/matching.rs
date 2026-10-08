@@ -6,15 +6,15 @@
 //! exact > prefix > word start > substring > fuzzy (letters in order).
 
 /// Whole text equals the token.
-pub const TIER_EXACT: i32 = 1000;
+const TIER_EXACT: i32 = 1000;
 /// Text starts with the token.
-pub const TIER_PREFIX: i32 = 900;
+const TIER_PREFIX: i32 = 900;
 /// A word of the text starts with the token.
-pub const TIER_WORD: i32 = 800;
+pub(super) const TIER_WORD: i32 = 800;
 /// The token appears inside a word.
-pub const TIER_SUBSTR: i32 = 600;
+const TIER_SUBSTR: i32 = 600;
 /// The token's letters appear in order (e.g. "wnmg" -> "wine manager").
-pub const TIER_FUZZY: i32 = 100;
+const TIER_FUZZY: i32 = 100;
 
 /// Lower-cases `c` and strips the diacritic of the common Latin letters.
 fn fold_char(c: char) -> char {
@@ -48,7 +48,7 @@ fn fold_char(c: char) -> char {
 
 /// Appends the folded form of `s` to `out`. Multi-letter ligatures expand
 /// (`ß` -> `ss`, `æ` -> `ae`, `œ` -> `oe`).
-pub fn fold_into(s: &str, out: &mut String) {
+fn fold_into(s: &str, out: &mut String) {
     for c in s.chars() {
         match c {
             'ß' => out.push_str("ss"),
@@ -60,7 +60,7 @@ pub fn fold_into(s: &str, out: &mut String) {
 }
 
 /// Folded copy of `s`.
-pub fn fold(s: &str) -> String {
+pub(super) fn fold(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     fold_into(s, &mut out);
     out
@@ -72,7 +72,7 @@ fn is_word_start(text: &str, at: usize) -> bool {
 
 /// How well one folded `token` matches one folded `text`, `None` when it does
 /// not. Shorter texts and earlier matches rank first inside a tier.
-pub fn score_token(token: &str, text: &str) -> Option<i32> {
+fn score_token(token: &str, text: &str) -> Option<i32> {
     if token.is_empty() || text.is_empty() {
         return None;
     }
@@ -144,7 +144,7 @@ pub fn tokens(folded: &str) -> Vec<&str> {
 }
 
 /// Searchable fields of an entry, all folded.
-pub struct Haystack<'a> {
+pub(super) struct Haystack<'a> {
     pub title: &'a str,
     /// Other names (a game's store title).
     pub alt: &'a str,
@@ -155,7 +155,7 @@ pub struct Haystack<'a> {
 /// Score of an entry for all `tokens` (each must match somewhere): the
 /// average of the best score of every token. The title counts fully, other
 /// names slightly less, keywords much less.
-pub fn score_entry(tokens: &[&str], h: &Haystack) -> Option<i32> {
+pub(super) fn score_entry(tokens: &[&str], h: &Haystack) -> Option<i32> {
     if tokens.is_empty() {
         return None;
     }

@@ -31,7 +31,7 @@ use crate::pages::Page;
 
 /// Palette state of the Collection.
 #[derive(Default)]
-pub struct Host {
+pub(super) struct Host {
     view: Option<Entity<PaletteView>>,
     sub: Option<Subscription>,
     /// Keeps the keystroke interceptor alive.
@@ -59,7 +59,7 @@ impl Host {
 impl CollectionView {
     /// Opens the palette (the ☰ menu offers it too). Does nothing while a
     /// dialog is open.
-    pub fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.open_palette_with("", window, cx);
     }
 

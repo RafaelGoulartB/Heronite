@@ -94,9 +94,8 @@ impl CollectionView {
             LaunchEvent::Exited { app_name, elapsed, .. } => {
                 log::info!("{app_name} exited after {elapsed:?}");
                 self.playing.remove(&app_name);
-                // Post-game work (backup, capture) is `services::session`'s;
-                // here the library just shows what changed.
-                // Playtime, last played and recent games changed on disk.
+                // Post-game work is `services::session`'s; the library only
+                // reloads what changed on disk (playtime, last played, recent).
                 self.reload(cx);
             }
             LaunchEvent::Error { app_name, message } => {

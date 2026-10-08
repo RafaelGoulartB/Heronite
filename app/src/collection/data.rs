@@ -13,12 +13,12 @@ use heronite_data::{CollectionGame, Library, ViewQuery};
 use super::vm::*;
 use crate::theme;
 
-pub fn parse_hex(hex: &str) -> Rgba {
+fn parse_hex(hex: &str) -> Rgba {
     let h = hex.trim_start_matches('#');
     u32::from_str_radix(h, 16).map(rgb).unwrap_or(rgb(0xe5e7eb))
 }
 
-pub fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
+fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
     Arc::new(CardVm {
         key: g.key.clone().into(),
         title: g.title.clone().into(),
@@ -30,7 +30,7 @@ pub fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
     })
 }
 
-pub fn build_groups(
+pub(super) fn build_groups(
     lib: &Library,
     ui: &UiState,
     search: &str,
@@ -66,7 +66,7 @@ pub fn build_groups(
         .collect()
 }
 
-pub fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, playing: bool) -> FocusVm {
+pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, playing: bool) -> FocusVm {
     let fd = focus_data(lib, g, wiki);
     let d = &fd.details;
     let mut rows = Vec::new();

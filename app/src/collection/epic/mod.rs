@@ -39,14 +39,14 @@ pub enum Request {
 }
 
 #[derive(Default)]
-pub struct EpicState {
+pub(super) struct EpicState {
     service: Option<Entity<Downloads>>,
     subs: Vec<Subscription>,
     pending: Option<Request>,
 }
 
 /// What a card shows on top of its cover.
-pub struct CardEpic {
+pub(super) struct CardEpic {
     /// `Installing 37%`, `Queued`, `Verifying 12%`; empty when only the
     /// update hint is shown.
     pub label: SharedString,
@@ -55,7 +55,7 @@ pub struct CardEpic {
 }
 
 /// Extra footer content of the focus panel.
-pub struct FocusEpic {
+pub(super) struct FocusEpic {
     pub element: AnyElement,
     /// The Play/Install button is replaced by `element`.
     pub replaces_play: bool,
@@ -66,7 +66,7 @@ fn app_of(key: &str) -> Option<&str> {
 }
 
 /// Card overlay: bottom strip with label + bar, "Update" pill at the top.
-pub fn card_overlay(e: &CardEpic) -> Div {
+pub(super) fn card_overlay(e: &CardEpic) -> Div {
     let mut layer = div().absolute().inset_0().rounded(px(6.)).overflow_hidden();
     if !e.label.is_empty() {
         layer = layer.child(

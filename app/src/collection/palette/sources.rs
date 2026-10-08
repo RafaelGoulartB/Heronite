@@ -18,7 +18,7 @@ pub enum Kind {
 
 /// What choosing an entry does (the Collection runs it, see `palette/mod.rs`).
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Act {
+pub(super) enum Act {
     Go(Page),
     /// Settings, opened on this section.
     Section(Section),
@@ -36,7 +36,7 @@ pub enum Act {
 
 /// What a game entry can do besides being selected.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct GameBits {
+pub(super) struct GameBits {
     pub key: String,
     pub installed: bool,
     pub has_folder: bool,
@@ -45,7 +45,7 @@ pub struct GameBits {
 }
 
 #[derive(Clone, Debug)]
-pub struct Entry {
+pub(super) struct Entry {
     pub kind: Kind,
     pub act: Act,
     pub title: SharedString,
@@ -63,7 +63,7 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn haystack(&self) -> Haystack<'_> {
+    pub(super) fn haystack(&self) -> Haystack<'_> {
         Haystack { title: &self.f_title, alt: &self.f_alt, keywords: &self.f_keywords }
     }
 
@@ -102,7 +102,7 @@ fn section_help(s: Section) -> &'static str {
 }
 
 /// Pages and actions (no games): the same list on every open.
-pub fn static_entries() -> Vec<Entry> {
+pub(super) fn static_entries() -> Vec<Entry> {
     let mut v = Vec::new();
     let page = |p: Page, sub: &str, shortcut: &'static str, kw: &str| Entry::new(Kind::Page, Act::Go(p), p.title(), sub, p.icon(), Some(shortcut), kw);
     v.push(page(Page::Collection, "Your games", "Ctrl 1", "library home games list"));
@@ -135,7 +135,7 @@ pub fn static_entries() -> Vec<Entry> {
 }
 
 /// Library facts the palette needs of one game.
-pub struct GameRow<'a> {
+pub(super) struct GameRow<'a> {
     pub key: &'a str,
     pub title: &'a str,
     /// The store's own title when it differs (alternative name).
@@ -147,7 +147,7 @@ pub struct GameRow<'a> {
     pub last_played: Option<&'a str>,
 }
 
-pub fn game_entry(g: &GameRow) -> Entry {
+pub(super) fn game_entry(g: &GameRow) -> Entry {
     let mut e = Entry::new(
         Kind::Game,
         Act::SelectGame(g.key.to_string()),
@@ -171,7 +171,7 @@ pub fn game_entry(g: &GameRow) -> Entry {
 
 /// The verbs offered for a game: "Play X", "X settings", "Open X folder".
 /// Only the ones that make sense for its state.
-pub fn game_verbs(title: &str, bits: &GameBits) -> Vec<Entry> {
+pub(super) fn game_verbs(title: &str, bits: &GameBits) -> Vec<Entry> {
     let mut v = Vec::new();
     let mk = |act: Act, text: String, sub: &str, icon: Icon| {
         let mut e = Entry::new(Kind::Game, act, &text, sub, icon, None, "");

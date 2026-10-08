@@ -84,8 +84,6 @@ impl CollectionView {
         cx.notify();
     }
 
-    // --- gallery -----------------------------------------------------------
-
     pub(in crate::collection) fn shots_close_gallery(&mut self) {
         self.shots.gallery = false;
         self.shots.gallery_count = GALLERY_PAGE;

@@ -1,7 +1,7 @@
 //! Screenshots of the focused game: shared state and the thumbnail texture
 //! cache (here), background listing and workers (`background`), and the
 //! focus-panel strip and gallery modal (`gallery`). The fullscreen viewer
-//! lives in `screenshot_viewer.rs`.
+//! lives in `screenshot_viewer.rs`. Port of `CollectionScreenshots.tsx`.
 
 mod background;
 mod gallery;
@@ -19,8 +19,8 @@ use heronite_images::Decoded;
 use heronite_media::capture::{CaptureEvent, CaptureService};
 use heronite_media::{Screenshot, ThumbnailCache};
 
-pub const PREVIEW_SLOTS: usize = 4;
-pub const GALLERY_PAGE: usize = 50;
+pub(super) const PREVIEW_SLOTS: usize = 4;
+pub(super) const GALLERY_PAGE: usize = 50;
 const TEXTURE_CAP: usize = 160;
 const ROW_H: f32 = 128.;
 const GRID_GAP: f32 = 12.;
@@ -33,7 +33,7 @@ pub struct MediaGlobal {
 }
 impl Global for MediaGlobal {}
 
-pub enum Msg {
+pub(super) enum Msg {
     Thumb(PathBuf, Result<Decoded, String>),
     Full { req: u64, path: PathBuf, res: Result<((u32, u32), Decoded), String> },
     Capture(CaptureEvent),
@@ -52,7 +52,7 @@ struct Textures {
     failed: HashSet<PathBuf>,
 }
 
-pub struct Full {
+pub(super) struct Full {
     pub path: PathBuf,
     /// Source size in pixels.
     pub src: (u32, u32),
@@ -62,12 +62,12 @@ pub struct Full {
 }
 
 #[derive(Clone, Copy)]
-pub struct Drag {
+pub(super) struct Drag {
     pub mouse: Point<Pixels>,
     pub pan: (f32, f32),
 }
 
-pub struct Shots {
+pub(super) struct Shots {
     // what is listed
     pub game: Option<SharedString>,
     pub folder: String,
@@ -145,7 +145,7 @@ impl Default for Shots {
 }
 
 impl Shots {
-    pub fn tx_clone(&self) -> Option<UnboundedSender<Msg>> {
+    pub(super) fn tx_clone(&self) -> Option<UnboundedSender<Msg>> {
         self.tx.clone()
     }
 
@@ -182,7 +182,7 @@ impl Shots {
         }
     }
 
-    pub fn discard_full(&mut self) {
+    pub(super) fn discard_full(&mut self) {
         if let Some(f) = self.full.take() {
             self.evicted.push(f.img);
         }
@@ -193,7 +193,7 @@ impl Shots {
         self.full_req.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn reset_transform(&mut self) {
+    pub(super) fn reset_transform(&mut self) {
         self.zoom = 1.;
         self.pan = (0., 0.);
         self.drag = None;
@@ -222,7 +222,7 @@ impl Shots {
         self.epoch += 1;
     }
 
-    pub fn set_items(&mut self, items: Vec<Screenshot>) {
+    pub(super) fn set_items(&mut self, items: Vec<Screenshot>) {
         self.items = items;
         if self.items.is_empty() {
             self.gallery = false;
@@ -284,7 +284,7 @@ pub fn texture(d: Decoded) -> Arc<RenderImage> {
 
 /// Decodes the full image at (at most) `target` physical px, keeping aspect.
 /// Returns the source size too.
-pub fn load_full(path: &Path, bx: (u32, u32)) -> Result<((u32, u32), Decoded), String> {
+pub(super) fn load_full(path: &Path, bx: (u32, u32)) -> Result<((u32, u32), Decoded), String> {
     let (sw, sh) = image::image_dimensions(path).map_err(|e| e.to_string())?;
     let s = (bx.0 as f64 / sw as f64).min(bx.1 as f64 / sh as f64).min(1.);
     let (tw, th) = (((sw as f64 * s).round() as u32).max(1), ((sh as f64 * s).round() as u32).max(1));

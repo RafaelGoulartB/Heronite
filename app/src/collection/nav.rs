@@ -27,7 +27,7 @@ pub struct Pages {
 /// Live one-line facts the ☰ menu tiles show. Read off the UI thread
 /// (`sync_nav_meta`) when the app starts and whenever the menu opens.
 #[derive(Default)]
-pub struct NavMeta {
+struct NavMeta {
     wine: Option<String>,
     emulators: Option<usize>,
     loading: bool,

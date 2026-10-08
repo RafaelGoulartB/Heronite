@@ -2,14 +2,20 @@
 //! asked for from outside (command line, protocol URL, tray, another
 //! instance) through the same flow as the play button.
 
-use std::time::Duration;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::CollectionGame;
 
+use super::context_menu::item;
 use super::CollectionView;
-use crate::system::cli::LaunchRequest;
+use crate::icons::Icon;
 use crate::system::candidate_keys;
+use crate::system::cli::LaunchRequest;
+use crate::system::shortcuts as sc;
+use crate::ui::icon;
 
 impl CollectionView {
     /// Selects the game and presses its primary button (play, or the install
@@ -74,20 +80,6 @@ impl CollectionView {
         self.show_toast(text, error, cx);
     }
 }
-
-// ---------------------------------------------------------------------------
-// Context menu: shortcuts / Steam
-// ---------------------------------------------------------------------------
-
-use std::collections::HashMap;
-use std::time::Instant;
-
-use heronite_data::CollectionGame;
-
-use super::context_menu::item;
-use crate::icons::Icon;
-use crate::system::shortcuts as sc;
-use crate::ui::icon;
 
 /// What the menu shows for a game: filled in the background when the menu is
 /// first drawn for it (the checks read files, never on the UI thread).
