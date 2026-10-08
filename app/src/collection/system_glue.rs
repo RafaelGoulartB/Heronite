@@ -44,7 +44,7 @@ impl CollectionView {
             self.show_toast(format!("{} is already running", game.title), false, cx);
             return;
         }
-        if std::env::var_os("HERONITE_DEBUG_FAKE_LAUNCH").is_some_and(|v| !v.is_empty() && v != "0") {
+        if crate::env::flag("HERONITE_DEBUG_FAKE_LAUNCH") {
             log::info!("[fake-launch] window {} ({}/{}) installed={}", game.title, game.runner, game.app_name, game.installed);
             return;
         }

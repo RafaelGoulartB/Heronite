@@ -32,7 +32,7 @@ impl CollectionView {
         .detach();
         // The header chip follows the job's progress.
         cx.observe(&hub_entity, |_, _, cx| cx.notify()).detach();
-        let secs = std::env::var("HERONITE_METADATA_IDLE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(90u64);
+        let secs = crate::env::parse("HERONITE_METADATA_IDLE_SECS").unwrap_or(90u64);
         hub_entity.update(cx, |h, cx| h.schedule_idle(Duration::from_secs(secs), cx));
     }
 
@@ -85,7 +85,7 @@ impl CollectionView {
             cx.notify();
         });
         // Debug: HERONITE_DEBUG_WIZARD_LIMIT=n runs the job on the first n games.
-        let limit = std::env::var("HERONITE_DEBUG_WIZARD_LIMIT").ok().and_then(|v| v.parse::<usize>().ok());
+        let limit = crate::env::parse::<usize>("HERONITE_DEBUG_WIZARD_LIMIT");
         let games = match limit {
             Some(n) => games.into_iter().take(n).collect(),
             None => games,

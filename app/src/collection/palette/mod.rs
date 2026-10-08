@@ -263,7 +263,7 @@ impl CollectionView {
             return;
         }
         self.palette.debug_done = true;
-        let Ok(spec) = std::env::var("HERONITE_DEBUG_PALETTE") else { return };
+        let Some(spec) = crate::env::value("HERONITE_DEBUG_PALETTE") else { return };
         let (query, filter) = spec.split_once('@').unwrap_or((spec.as_str(), ""));
         let query = if query == "-" { "" } else { query };
         if let Some(view) = self.open_palette_with(query, window, cx) {
@@ -277,7 +277,7 @@ impl CollectionView {
                 view.update(cx, |p, cx| p.cycle_filter(false, cx));
             }
             // `HERONITE_DEBUG_PALETTE_KEYS=down,down,tab`: keys fed to the palette.
-            if let Ok(keys) = std::env::var("HERONITE_DEBUG_PALETTE_KEYS") {
+            if let Some(keys) = crate::env::value("HERONITE_DEBUG_PALETTE_KEYS") {
                 for k in keys.split(',').filter(|k| !k.is_empty()) {
                     if let Ok(ks) = Keystroke::parse(k) {
                         self.palette_key(&ks, window, cx);

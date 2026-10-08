@@ -245,7 +245,7 @@ impl CollectionView {
     /// new games show up without pressing refresh.
     /// `HERONITE_DISABLE_IDLE_JOBS=1` turns both off (tests against real data).
     pub(super) fn start_idle_jobs(&self, cx: &mut Context<Self>) {
-        if std::env::var_os("HERONITE_DISABLE_IDLE_JOBS").is_some() {
+        if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             return;
         }
         let paths = self.heroic.clone();
@@ -287,7 +287,7 @@ impl CollectionView {
             self.open_scan_roms(ScanInitial::default(), window, cx);
             return true;
         }
-        let fake = std::env::var_os("HERONITE_DEBUG_FAKE_STATES").is_some();
+        let fake = crate::env::flag("HERONITE_DEBUG_FAKE_STATES");
         if let Some(key) = which.strip_prefix("pickrom:") {
             let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return true };
             let mut roms: Vec<(String, String)> = game

@@ -118,7 +118,7 @@ impl CollectionView {
         if self.extras.debug_scroll_done {
             return;
         }
-        let Some(spec) = std::env::var("HERONITE_DEBUG_SCROLL").ok() else {
+        let Some(spec) = crate::env::value("HERONITE_DEBUG_SCROLL") else {
             self.extras.debug_scroll_done = true;
             return;
         };
