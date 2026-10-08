@@ -41,6 +41,12 @@ Diário de trabalho para retomar a migração. Plano geral em `PLANO.md`.
 
 ## Como testar visualmente (sem atrapalhar os outros workspaces)
 
+> **Limitação descoberta:** com o workspace 2 **oculto**, o Hyprland deixa de enviar frames para a
+> janela logo após ela abrir. A captura `grim -T` então mostra só os primeiros quadros (capas e
+> fundo que chegam depois não aparecem). As capturas só são fiéis com o workspace 2 visível.
+> Alternativa a combinar com o usuário: monitor virtual (`hyprctl output create headless`) posicionado
+> longe dos monitores reais. `HERONITE_NO_ANIMATIONS=1` (usado pelo `shot.sh`) evita fades presos.
+
 - `scripts/shot.sh /tmp/x.png [espera_s] [binário]` abre o `heronite-rs` no workspace 2 em modo
   silencioso, captura a janela com `grim -T <stableId>` (funciona mesmo fora da tela), imprime o
   PSS e fecha. `SHOT_ENV="HERONITE_DEBUG_SELECT=<key>"` pré-seleciona um jogo.
@@ -118,8 +124,15 @@ docs/reference/       screenshots do Heronite para paridade visual
       aba de configurações, sessão de captura ligada ao lançamento (captura real não testada)
 - [x] Diálogos: configurações (Aparência, Screenshots, Emulators, Backup, Save backup), gerenciar
       status, Playnite (importar/mesclar/exportar), Scan ROMs, escolher disco, save state
-- [ ] Diálogos de metadados/arte/detalhes/launch + aba Metadata (agente em andamento)
+- [x] Diálogos de metadados (busca IGDB/Lutris, escolha por campo), assistente em lote com chip de
+      progresso, configurações do jogo (Imagens/Detalhes/Launch), busca de imagens na web,
+      escolher screenshot como arte, aba Metadata, auto-preenchimento ocioso
 - [ ] Busca dentro do flyout de facetas; arrastar scrollbar
+- [ ] Testar ao vivo (cliques reais): jogar/parar, salvar diálogos, captura por atalho, Ludusavi
+- [ ] Verificação visual final com o workspace 2 visível (ver limitação acima)
+- [ ] Conquistas no painel de foco; botão "abrir página de detalhes"
+- [ ] Build Windows (código portável; falta toolchain: máquina Windows ou `cargo-xwin`)
+- [ ] Unificar `ui/fields.rs` e `dialogs/form.rs` (helpers de input duplicados)
 
 ### Diferenças visuais conhecidas (aceitas)
 - Cabeçalho de grupo fixo: sem blur real atrás (gradiente mais escuro no lugar).
@@ -148,6 +161,9 @@ docs/reference/       screenshots do Heronite para paridade visual
 
 ## Log
 
+- 2026-10-07 (noite): todos os módulos portados (dados, imagens, lançamento, screenshots,
+  metadados, Playnite, emulação/backups) e respectivas telas. 381 testes passando. Release:
+  PSS 95–96 MB, Collection na tela em ~0,25–0,28 s, binário 45 MB.
 - 2026-10-07 (tarde): UI da Collection montada com dados de demonstração; layout bate com a
   referência quase ao pixel. Agentes em paralelo: lógica de dados (`crates/data`), imagens
   (`crates/images`), lançamento (`crates/launch`).
