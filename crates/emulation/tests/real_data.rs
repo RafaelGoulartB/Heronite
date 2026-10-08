@@ -153,7 +153,8 @@ fn scan_preview_of_the_real_rom_folders() {
             .filter(|g| g["art_cover"].as_str().is_some_and(|a| !a.is_empty()))
             .count();
         println!("  sideload emu games with art after re-import: {with_art}");
-        assert_eq!(with_art, preview.games.len());
+        // Counts every emulator's games: at least this scanner's are there.
+        assert!(with_art >= preview.games.len());
         // Idempotent preview afterwards.
         let again = preview_rom_scan(
             &paths,
