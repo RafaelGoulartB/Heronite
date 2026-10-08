@@ -224,6 +224,10 @@ fn real_machine_detection_and_ludusavi() {
         println!("  {} -> {} ({}) profiles={}", d.definition_id, d.executable, d.launch_kind, d.profiles.len());
     }
 
+    // Runs the installed `ludusavi --version` / `config path`: opt-in only.
+    if std::env::var_os("HERONITE_TEST_REAL_LUDUSAVI").is_none() {
+        return;
+    }
     use heronite_emulation::ludusavi::{detect_ludusavi, SystemRunner};
     let det = detect_ludusavi(&SystemRunner::default(), &heronite_launch::SystemProbe, None);
     println!("ludusavi: {det:#?}");
