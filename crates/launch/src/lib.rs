@@ -16,6 +16,8 @@ pub mod install_state;
 pub mod known_fixes;
 pub mod legendary;
 pub mod library;
+pub mod log_reader;
+pub mod log_writer;
 pub mod net;
 pub mod native;
 pub mod plan;

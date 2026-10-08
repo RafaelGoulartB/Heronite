@@ -460,12 +460,14 @@ fn real_process_exit_code_log_and_playtime() {
     };
     assert_eq!(exit.unwrap().code, Some(3));
     assert!(record.is_some());
-    let log = fs::read_to_string(paths.games_config_dir().join("g-lastPlay.log")).unwrap();
+    // Heroic's layout: <logs>/games/<app>_<runner>/launch.log.
+    let log = fs::read_to_string(paths.root.join("logs/games/g_sideload/launch.log")).unwrap();
     assert!(
         log.contains("hello from the game") && log.contains("oops"),
         "{log}"
     );
-    assert!(log.starts_with("Launching: sh -c"));
+    assert!(log.contains("Launching \"g title\" (sideload)"), "{log}");
+    assert!(log.contains("Game Output:") && log.contains("exited with code 3"), "{log}");
 }
 
 #[test]

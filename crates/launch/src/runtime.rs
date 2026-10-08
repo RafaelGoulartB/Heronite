@@ -21,6 +21,7 @@ use crate::net::{Net, SystemNet};
 use crate::plan::{Command, LaunchPlan, ProcessPlan, StopSpec};
 use crate::playtime_watch::{wait_for_steam_session, SteamWaitConfig, SteamWaitOutcome};
 use crate::first_launch::EpicSetup;
+use crate::log_writer::{self, GameLog, GameLogType, HeaderInfo, LogPaths};
 use crate::prepare::{CloudSync, Flow, Notice, Prep};
 use crate::probe::{Probe, SystemProbe};
 use crate::procs::{signal_tree, Procs, Sig, SystemProcs};
@@ -52,6 +53,11 @@ pub trait ProcessHandle: Send {
 pub trait Spawner: Send + Sync {
     /// Starts `cmd`; its stdout/stderr go to `log_path` when given.
     fn spawn(&self, cmd: &Command, log_path: Option<&Path>) -> io::Result<Box<dyn ProcessHandle>>;
+    /// Starts `cmd`; its stdout/stderr are appended to `log` (the game's
+    /// Heroic-style log) as they arrive.
+    fn spawn_logged(&self, cmd: &Command, _log: Option<Arc<GameLog>>) -> io::Result<Box<dyn ProcessHandle>> {
+        self.spawn(cmd, None)
+    }
     /// Opens a URI with the desktop handler (`xdg-open`), without waiting.
     fn open_uri(&self, uri: &str) -> io::Result<()>;
     /// `pkill -f <pattern>`.
@@ -157,8 +163,17 @@ impl ProcessHandle for SystemHandle {
     }
 }
 
-impl Spawner for SystemSpawner {
-    fn spawn(&self, cmd: &Command, log_path: Option<&Path>) -> io::Result<Box<dyn ProcessHandle>> {
+/// Where the output of a spawned process goes.
+enum Sink {
+    None,
+    /// A plain file, created fresh with a "Launching:" header.
+    File(PathBuf),
+    /// The game's log.
+    Log(Arc<GameLog>),
+}
+
+impl SystemSpawner {
+    fn spawn_with(&self, cmd: &Command, sink: Sink) -> io::Result<Box<dyn ProcessHandle>> {
         let mut c = std::process::Command::new(&cmd.program);
         c.args(&cmd.args)
             .envs(&cmd.env)
@@ -176,26 +191,34 @@ impl Spawner for SystemSpawner {
         let pump_done = Arc::new(AtomicBool::new(false));
         let done = pump_done.clone();
         let header = format!("Launching: {}\n\nGame Log:\n", cmd.display());
-        let log: Option<PathBuf> = log_path.map(Path::to_path_buf);
         std::thread::spawn(move || {
-            let mut file = log.as_deref().and_then(|p| {
-                if let Some(dir) = p.parent() {
-                    let _ = std::fs::create_dir_all(dir);
+            let mut file = match &sink {
+                Sink::File(p) => {
+                    if let Some(dir) = p.parent() {
+                        let _ = std::fs::create_dir_all(dir);
+                    }
+                    std::fs::File::create(p).ok()
                 }
-                std::fs::File::create(p).ok()
-            });
+                _ => None,
+            };
             if let Some(f) = file.as_mut() {
                 let _ = f.write_all(header.as_bytes());
             }
+            // Fixed-size chunks straight to the file: memory stays flat no
+            // matter how much the game prints, and the pipe is always drained.
             let mut buf = [0u8; 16 * 1024];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
-                    Ok(n) => {
-                        if let Some(f) = file.as_mut() {
-                            let _ = f.write_all(&buf[..n]);
+                    Ok(n) => match &sink {
+                        Sink::File(_) => {
+                            if let Some(f) = file.as_mut() {
+                                let _ = f.write_all(&buf[..n]);
+                            }
                         }
-                    }
+                        Sink::Log(log) => log.raw(&buf[..n]),
+                        Sink::None => {}
+                    },
                 }
             }
             done.store(true, Ordering::SeqCst);
@@ -209,6 +232,16 @@ impl Spawner for SystemSpawner {
             pump_done,
             procs: self.procs.clone(),
         }))
+    }
+}
+
+impl Spawner for SystemSpawner {
+    fn spawn(&self, cmd: &Command, log_path: Option<&Path>) -> io::Result<Box<dyn ProcessHandle>> {
+        self.spawn_with(cmd, log_path.map_or(Sink::None, |p| Sink::File(p.to_path_buf())))
+    }
+
+    fn spawn_logged(&self, cmd: &Command, log: Option<Arc<GameLog>>) -> io::Result<Box<dyn ProcessHandle>> {
+        self.spawn_with(cmd, log.map_or(Sink::None, Sink::Log))
     }
 
     fn open_uri(&self, uri: &str) -> io::Result<()> {
@@ -361,7 +394,11 @@ impl Default for PrepServices {
     }
 }
 
+/// `formatSystemInfo` for the log header (the app provides it).
+pub type SystemInfoFn = Arc<dyn Fn() -> String + Send + Sync>;
+
 struct Shared {
+    system_info: Mutex<Option<SystemInfoFn>>,
     services: Mutex<PrepServices>,
     epic: Mutex<Option<Arc<dyn EpicSetup>>>,
     paths: HeroicPaths,
@@ -396,6 +433,7 @@ impl Launcher {
     ) -> Self {
         Self {
             shared: Arc::new(Shared {
+                system_info: Mutex::new(None),
                 services: Mutex::new(PrepServices::default()),
                 epic: Mutex::new(None),
                 paths,
@@ -412,6 +450,11 @@ impl Launcher {
     /// Replaces what launch preparation uses (network, machine, cloud saves).
     pub fn set_prep_services(&self, services: PrepServices) {
         *self.shared.services.lock().unwrap() = services;
+    }
+
+    /// Text for the "System Info" part of every launch log.
+    pub fn set_system_info(&self, f: SystemInfoFn) {
+        *self.shared.system_info.lock().unwrap() = Some(f);
     }
 
     /// What the first launch of an Epic game in a prefix asks legendary
@@ -564,12 +607,14 @@ impl Launcher {
 
 fn finish(
     shared: &Shared,
+    log: &GameLog,
     req: &LaunchRequest,
     control: &Control,
     started_at: chrono::DateTime<Utc>,
     elapsed: Duration,
     exit: Option<ExitInfo>,
 ) {
+    log.close();
     // Free the slot first so listeners can relaunch right away.
     shared.sessions.lock().unwrap().remove(&req.app_name);
     let mut outcome = None;
@@ -599,7 +644,9 @@ fn finish(
     });
 }
 
-fn fail(shared: &Shared, req: &LaunchRequest, message: String) {
+fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, message: String) {
+    log.error(&format!("Launch aborted: {message}"));
+    log.close();
     shared.sessions.lock().unwrap().remove(&req.app_name);
     log::error!("{}: {message}", req.app_name);
     shared.send(LaunchEvent::Error {
@@ -611,20 +658,71 @@ fn fail(shared: &Shared, req: &LaunchRequest, message: String) {
 fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<Control>) {
     let started_at = Utc::now();
     let t0 = Instant::now();
+    let log = open_game_log(&shared, &req);
     match &req.plan {
         LaunchPlan::SteamUri { app_id, uri } => {
-            run_steam(&shared, &req, &control, app_id, uri, started_at, t0)
+            run_steam(&shared, &log, &req, &control, app_id, uri, started_at, t0)
         }
-        LaunchPlan::Unavailable(r) => fail(&shared, &req, r.clone()),
+        LaunchPlan::Unavailable(r) => fail(&shared, &log, &req, r.clone()),
         other => {
             let process = other.process().expect("process plan").clone();
-            run_process(&shared, &req, &control, &process, started_at, t0);
+            run_process(&shared, &log, &req, &control, &process, started_at, t0);
         }
+    }
+    // Every path above closed it already; this covers a panic-free early return.
+    log.close();
+}
+
+/// Creates the game's launch log and writes what Heroic's `prepareLaunch`
+/// writes first: title, native or not, install folder, system info and the
+/// settings in use. Honours `disableLogs` and `verboseLogs`.
+fn open_game_log(shared: &Shared, req: &LaunchRequest) -> Arc<GameLog> {
+    let (disabled_globally, verbose, merged) = log_writer::launch_log_switches(&shared.paths, &req.app_name);
+    let path = LogPaths::for_heroic(&shared.paths).game(&req.app_name, &req.runner, GameLogType::Launch);
+    let log = GameLog::new(path, disabled_globally || !verbose);
+    if !verbose {
+        log_writer::write_disabled_notice(&log);
+    }
+    if log.is_disabled() {
+        return log;
+    }
+    let process = req.plan.process();
+    let native = matches!(req.plan, LaunchPlan::Native(_) | LaunchPlan::Emulator { .. } | LaunchPlan::SteamUri { .. });
+    let system_info = shared.system_info.lock().unwrap().clone().map(|f| f());
+    let settings_path = shared.paths.game_config(&req.app_name);
+    let mut notes = process.map(|p| p.notes.clone()).unwrap_or_default();
+    if let LaunchPlan::SteamUri { uri, .. } = &req.plan {
+        notes.push(format!("Steam game, opened through {uri}"));
+    }
+    let installed_in = process.and_then(|p| p.command.cwd.clone());
+    log_writer::write_launch_header(
+        &log,
+        &HeaderInfo {
+            title: &req.title,
+            runner: &req.runner,
+            app_name: &req.app_name,
+            native,
+            installed_in: installed_in.as_deref(),
+            system_info: system_info.as_deref(),
+            settings: &merged,
+            settings_path: &settings_path,
+            notes: &notes,
+        },
+    );
+    log
+}
+
+fn describe_exit(info: ExitInfo) -> String {
+    match (info.code, info.signal) {
+        (Some(c), _) => format!("Game process exited with code {c}"),
+        (None, Some(s)) => format!("Game process was terminated by signal {s}"),
+        _ => "Game process ended".to_string(),
     }
 }
 
 fn run_steam(
     shared: &Shared,
+    log: &GameLog,
     req: &LaunchRequest,
     control: &Control,
     app_id: &str,
@@ -632,8 +730,9 @@ fn run_steam(
     started_at: chrono::DateTime<Utc>,
     t0: Instant,
 ) {
+    log.info(&format!("Opening {uri}"));
     if let Err(e) = shared.spawner.open_uri(uri) {
-        return fail(shared, req, format!("could not open {uri}: {e}"));
+        return fail(shared, log, req, format!("could not open {uri}: {e}"));
     }
     let locator = shared.steam.clone();
     let mut announced: Option<u32> = None;
@@ -646,6 +745,7 @@ fn run_steam(
         &control.steam_pids,
         &mut |pid| {
             announced = Some(pid);
+            log.info(&format!("Steam started the game (pid {pid})"));
             control.pid.store(pid, Ordering::SeqCst);
             // Only now do we know the game is really running.
             let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
@@ -658,6 +758,7 @@ fn run_steam(
     match outcome {
         SteamWaitOutcome::NotStarted => fail(
             shared,
+            log,
             req,
             format!(
                 "Steam did not start {} within {}s",
@@ -666,15 +767,19 @@ fn run_steam(
             ),
         ),
         SteamWaitOutcome::Finished | SteamWaitOutcome::Aborted => {
-            finish(shared, req, control, started_at, t0.elapsed(), None)
+            log.info("Steam game finished");
+            finish(shared, log, req, control, started_at, t0.elapsed(), None)
         }
     }
 }
 
 /// Runs a command to completion (prefix creation, wineserver --wait).
 /// Returns false if tracking was aborted meanwhile.
-fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command) -> bool {
-    let mut handle = match shared.spawner.spawn(cmd, None) {
+fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command, log: Option<&Arc<GameLog>>) -> bool {
+    if let Some(log) = log {
+        log.info(&format!("Running: {}", log_writer::command_line_for_log(cmd)));
+    }
+    let mut handle = match shared.spawner.spawn_logged(cmd, log.cloned()) {
         Ok(h) => h,
         Err(e) => {
             log::warn!("{}: {e}", cmd.display());
@@ -707,6 +812,7 @@ fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command) -> bool 
 
 fn run_process(
     shared: &Shared,
+    log: &Arc<GameLog>,
     req: &LaunchRequest,
     control: &Control,
     plan: &ProcessPlan,
@@ -720,6 +826,11 @@ fn run_process(
     }
     let services = shared.services.lock().unwrap().clone();
     let status = |n: Notice| {
+        if n.warning {
+            log.warning(&n.message);
+        } else {
+            log.info(&n.message);
+        }
         shared.send(LaunchEvent::Status {
             app_name: req.app_name.clone(),
             message: n.message,
@@ -739,15 +850,15 @@ fn run_process(
     // Cloud saves down, umu runtime.
     match prep.before_prefix(&req.app_name, &plan.prep) {
         Flow::Go => {}
-        Flow::Cancelled => return finish_aborted(shared, req, t0),
-        Flow::Fail(message) => return fail(shared, req, message),
+        Flow::Cancelled => return finish_aborted(shared, log, req, t0),
+        Flow::Fail(message) => return fail(shared, log, req, message),
     }
     if !plan.pre_commands.is_empty() {
         status(Notice::info("Preparing prefix..."));
     }
     for cmd in &plan.pre_commands {
-        if control.kill.load(Ordering::SeqCst) || !run_to_completion(shared, control, cmd) {
-            return finish_aborted(shared, req, t0);
+        if control.kill.load(Ordering::SeqCst) || !run_to_completion(shared, control, cmd, Some(log)) {
+            return finish_aborted(shared, log, req, t0);
         }
     }
     // Redistributables, EOS overlay and known fixes the first time the game
@@ -755,33 +866,36 @@ fn run_process(
     let epic = shared.epic.lock().unwrap().clone();
     match prep.first_launch(&plan.prep, epic.as_deref()) {
         Flow::Go => {}
-        Flow::Cancelled => return finish_aborted(shared, req, t0),
-        Flow::Fail(message) => return fail(shared, req, message),
+        Flow::Cancelled => return finish_aborted(shared, log, req, t0),
+        Flow::Fail(message) => return fail(shared, log, req, message),
     }
     // DXVK / VKD3D into the prefix, anti-cheat runtimes.
     match prep.after_prefix(&plan.prep) {
         Flow::Go => {}
-        Flow::Cancelled => return finish_aborted(shared, req, t0),
-        Flow::Fail(message) => return fail(shared, req, message),
+        Flow::Cancelled => return finish_aborted(shared, log, req, t0),
+        Flow::Fail(message) => return fail(shared, log, req, message),
     }
     if cancelled() {
         // Stopped while preparing: the game must not start afterwards.
-        return finish_aborted(shared, req, t0);
+        return finish_aborted(shared, log, req, t0);
     }
     if let Some(path) = &plan.make_executable {
         if let Err(e) = shared.spawner.make_executable(path) {
             log::warn!("chmod {path}: {e}");
         }
     }
-    let log_path = shared
-        .paths
-        .games_config_dir()
-        .join(format!("{}-lastPlay.log", req.app_name));
-    let mut handle = match shared.spawner.spawn(&plan.command, Some(&log_path)) {
+    log.info(&format!(
+        "Launching {}: {}\n",
+        req.title,
+        log_writer::command_line_for_log(&plan.command)
+    ));
+    log.info("Game Output:");
+    let mut handle = match shared.spawner.spawn_logged(&plan.command, Some(log.clone())) {
         Ok(h) => h,
         Err(e) => {
             return fail(
                 shared,
+                log,
                 req,
                 format!("could not start {}: {e}", plan.command.program),
             )
@@ -832,9 +946,14 @@ fn run_process(
         std::thread::sleep(shared.cfg.poll_interval);
     }
 
+    match exit {
+        Some(info) => log.info(&describe_exit(info)),
+        None if aborted => log.info("Stopped tracking the game"),
+        None => {}
+    }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(cmd) = &plan.wait_after_exit {
-            run_to_completion(shared, control, cmd);
+            run_to_completion(shared, control, cmd, Some(log));
         }
     }
     // The session ends here; saving to the cloud is not playtime.
@@ -842,10 +961,12 @@ fn run_process(
     if !aborted {
         prep.after_exit(&req.app_name, &plan.prep);
     }
-    finish(shared, req, control, started_at, elapsed, exit);
+    finish(shared, log, req, control, started_at, elapsed, exit);
 }
 
-fn finish_aborted(shared: &Shared, req: &LaunchRequest, t0: Instant) {
+fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest, t0: Instant) {
+    log.info("Launch stopped before the game started");
+    log.close();
     // Stopped before the game even started: nothing was played.
     shared.sessions.lock().unwrap().remove(&req.app_name);
     shared.send(LaunchEvent::Exited {
