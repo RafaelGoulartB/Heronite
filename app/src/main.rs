@@ -1,6 +1,7 @@
 mod assets;
 mod collection;
 mod dialogs;
+mod env;
 mod icons;
 mod images;
 mod pages;
@@ -88,7 +89,7 @@ enum SingleInstance {
 fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
     use system::single_instance::{forward, socket_path, Forward, Message, Server};
     let primary = |server, messages| SingleInstance::Primary { server, messages };
-    if std::env::var("HERONITE_NO_SINGLE_INSTANCE").is_ok_and(|v| !v.is_empty() && v != "0") {
+    if env::flag("HERONITE_NO_SINGLE_INSTANCE") {
         return primary(None, None);
     }
     let socket = socket_path(&heronite_data::HeroicPaths::detect().root);
