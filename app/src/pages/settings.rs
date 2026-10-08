@@ -104,6 +104,21 @@ impl Section {
     }
 }
 
+/// Section the command palette asked for; taken by the page when it is
+/// created or shown again (see [`request_section`]).
+struct PendingSection(Section);
+impl Global for PendingSection {}
+
+/// Makes the Settings page open on `section` the next time it is shown
+/// (call before navigating to it).
+pub fn request_section(section: Section, cx: &mut App) {
+    cx.set_global(PendingSection(section));
+}
+
+fn take_requested_section(cx: &mut App) -> Option<Section> {
+    cx.has_global::<PendingSection>().then(|| cx.remove_global::<PendingSection>().0)
+}
+
 pub struct SettingsPage {
     pub(super) ctx: PageCtx,
     section: Section,
@@ -123,7 +138,7 @@ impl SettingsPage {
         // `HERONITE_DEBUG_PAGE=settings:<section>[:<defaults tab>]`.
         let debug = std::env::var("HERONITE_DEBUG_PAGE").ok();
         let mut parts = debug.as_deref().unwrap_or("").split(':').skip(1);
-        let section = parts.next().and_then(Section::parse).unwrap_or(Section::General);
+        let section = take_requested_section(cx).or_else(|| parts.next().and_then(Section::parse)).unwrap_or(Section::General);
         let defaults_section = match parts.next() {
             Some("other") => HSection::Other,
             Some("advanced") => HSection::Advanced,
@@ -173,6 +188,9 @@ impl SettingsPage {
     /// Called when the page is shown again: lists and flags may have changed
     /// from the Collection (context menu, header).
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        if let Some(section) = take_requested_section(cx) {
+            self.select(section, cx);
+        }
         self.library.reload(&self.ctx, cx);
         self.logs.refresh(cx);
         self.on_section_shown(cx);

@@ -866,3 +866,30 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
 - **Não verificado**: variante com bandeja do diálogo (não abri bandeja real); clique real no X / Alt+F4 (o gancho do GPUI é o mesmo dos
   `*_AFTER_MS`, mas sem clique); pausa de um legendary de verdade no quit (só `FakeJob`); sessão Steam (checkpoint usa o mesmo ledger,
   não exercitado).
+
+## Paleta de comandos (Ctrl K) — agente "palette"
+
+- **Código**: `app/src/collection/palette/` — `matching.rs` (dobra caixa/acentos, tiers exato > prefixo > início de palavra > substring >
+  fuzzy limitado), `sources.rs` (páginas, seções de Settings, ações, jogos, verbos por jogo), `rank.rs` (consulta -> grupos, puro e
+  testado), `view.rs` (overlay: entrada, grupos com legenda, linha selecionada com barra de 2px, rodapé com dicas e filtro), `mod.rs`
+  (cola com `CollectionView`: abrir/fechar, teclas, executar). `CollectionView::open_palette` é pública para o menu ☰.
+- **Teclas**: um interceptador de teclas (`cx.intercept_keystrokes`) pega as teclas antes de qualquer campo: Ctrl K abre/fecha em
+  qualquer lugar (inclusive páginas ☰ e com foco na busca); aberta: ↑ ↓ PgUp PgDn, Tab / Shift Tab (filtro Todos/Pages/Actions/Games),
+  Enter, Esc; clique fora fecha. Globais com a paleta fechada (e sem diálogo/galeria abertos): Ctrl 1..5 páginas, Ctrl `,` Settings,
+  Ctrl N Add game, F5 refresh (mesmo caminho do botão, com scan de ROMs).
+- **Fontes**: Go to (6 páginas; seções de Settings só ao digitar ou no filtro Pages), Actions (Add game, Refresh + ROMs, Scan ROMs,
+  Check for Epic updates = `Downloads::refresh_library`, Open logs folder, Quit = `system::request_quit` com a confirmação de sempre),
+  Games (título + título da loja como nome alternativo). Vazio: 5 jogos recentes + Go to. O melhor jogo do resultado vem com
+  "Play X", "X settings", "Open X folder"; também `play <jogo>`, `<jogo> settings`, `open <jogo>` (verbo no começo ou no fim).
+  Jogar passa por `primary_action` (caminho normal de lançamento).
+- **Ganchos em arquivos compartilhados**: `collection/mod.rs` (`mod palette`, campo `palette`, `Host::new` no construtor,
+  `drive_palette` e `render_palette` no render); `system/mod.rs` (reexporta `request_quit`); `pages/settings.rs`
+  (`request_section` + global `PendingSection`, consumido em `SettingsPage::new` e `refresh`, para abrir Settings numa seção).
+- **Debug**: `HERONITE_DEBUG_PALETTE=<consulta>[@pages|actions|games]` (`-` = vazia), `HERONITE_DEBUG_PALETTE_KEYS=down,tab,...`.
+- **Verificado**: 28 testes de palette (matching, ranking, verbos, filtros, 2000 títulos); capturas com `scripts/shot.sh` (fixture
+  `/tmp/heronite-fixture-palette`, ludusavi/capturas desligados) da consulta vazia, `wi`, `control`, filtro Games com rolagem por
+  teclas; Collection principal não mudou. PSS com a paleta aberta ~+4 a +10 MB (debug, 210 jogos), liberado ao fechar.
+- **Não verificado**: o interceptador de teclas com teclado real (só dá para simular via `HERONITE_DEBUG_PALETTE_KEYS`, que usa o mesmo
+  `palette_key`); executar cada ação ao vivo (Quit/Play/abrir pasta não foram acionados por segurança); estilo ainda local
+  (`palette/style.rs`) — trocar por `glass_panel`/`kbd` da fundação quando ela commitar; entrada no menu ☰ (`nav.rs` é da fundação):
+  chamar `this.open_palette(window, cx)` no clique.

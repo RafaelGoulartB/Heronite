@@ -11,4 +11,4 @@ pub mod signals;
 pub mod single_instance;
 pub mod tray;
 
-pub use hub::{attach_runtime, candidate_keys, exit_code, has_window, init, keep_in_tray, post_game_idle, quit_anyway};
+pub use hub::{attach_runtime, candidate_keys, exit_code, has_window, init, keep_in_tray, post_game_idle, quit_anyway, request_quit};

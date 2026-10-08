@@ -14,6 +14,7 @@ mod header;
 mod list;
 mod metadata_ui;
 mod nav;
+mod palette;
 mod playnite_menu;
 mod screenshot_viewer;
 mod screenshots;
@@ -127,6 +128,8 @@ pub struct CollectionView {
     /// Page shown (☰ menu); the Collection itself is `Page::Collection`.
     page: crate::pages::Page,
     pages: nav::Pages,
+    /// Command palette (Ctrl K), see `palette/mod.rs`.
+    palette: palette::Host,
 }
 
 impl CollectionView {
@@ -241,6 +244,7 @@ impl CollectionView {
             cover_aspect: 1.5,
             page: crate::pages::Page::Collection,
             pages: nav::Pages::default(),
+            palette: palette::Host::new(window, cx),
         };
         window.focus(&this.focus_handle, cx);
         let mut this = this;
@@ -846,6 +850,7 @@ impl Render for CollectionView {
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);
         self.sync_shots(window, cx);
+        self.drive_palette(window, cx);
         let viewport = window.viewport_size();
         let vw = f32::from(viewport.width);
         let scale = window.scale_factor();
@@ -1133,6 +1138,7 @@ impl Render for CollectionView {
             .children(self.dialog.clone())
             .children(self.render_gallery(window, cx))
             .children(self.render_viewer(window, cx))
+            .children(self.render_palette())
     }
 }
 
