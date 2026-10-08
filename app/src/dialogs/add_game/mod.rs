@@ -757,7 +757,7 @@ impl AddGameDialog {
         }
         let shared = self.shared_prefix;
         let mut share_label = "Use shared Wine prefix".to_string();
-        if let Some(w) = self.global.get("wineVersion").and_then(|_| Some(wine_of(&self.global))) {
+        if let Some(w) = self.global.get("wineVersion").map(|_| wine_of(&self.global)) {
             share_label = format!("Use shared Wine prefix ({})", display_wine_name(&w.name));
         }
         col = col.child(

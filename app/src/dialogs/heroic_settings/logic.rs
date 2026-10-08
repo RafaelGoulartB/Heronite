@@ -282,7 +282,7 @@ mod tests {
         );
         assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Section::Wine, Section::Other, Section::Advanced, Section::Gamescope]);
         assert_eq!(sections_for(RunKind::Native, "sideload", false), [Section::Other, Section::Advanced, Section::Gamescope]);
-        assert_eq!(sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves), false);
+        assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
     }
 

@@ -464,7 +464,7 @@ impl CollectionView {
                                     .justify_end()
                                     .gap(px(12.))
                                     .child(
-                                        button("shot-confirm-cancel", ButtonKind::Outline, "Cancel").on_click(
+                                        button("shot-confirm-cancel", ButtonKind::Glass, "Cancel").on_click(
                                             cx.listener(|this, _, _, cx| {
                                                 this.shots.confirm = None;
                                                 cx.notify();

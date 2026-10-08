@@ -287,7 +287,7 @@ pub fn best_find_match(payload: &Value) -> Option<String> {
     let mut best: Option<(&String, f64)> = None;
     for (name, info) in games {
         let score = info.get("score").and_then(Value::as_f64).unwrap_or(0.0);
-        if best.map_or(true, |(_, b)| score > b) {
+        if best.is_none_or(|(_, b)| score > b) {
             best = Some((name, score));
         }
     }

@@ -756,9 +756,11 @@ mod tests {
 
     #[test]
     fn command_lines_hide_secrets() {
-        let mut env = crate::plan::Command::default();
-        env.program = "legendary".into();
-        env.args = vec!["launch".into(), "x y".into()];
+        let mut env = crate::plan::Command {
+            program: "legendary".into(),
+            args: vec!["launch".into(), "x y".into()],
+            ..Default::default()
+        };
         env.env.insert("WINEPREFIX".into(), "/p".into());
         env.env.insert("MY_TOKEN".into(), "abc".into());
         let line = command_line_for_log(&env);

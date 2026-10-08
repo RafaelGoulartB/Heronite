@@ -78,10 +78,6 @@ impl GameRuntime {
         (Self { launcher, paths, sessions: Mutex::new(HashMap::new()) }, frx)
     }
 
-    pub fn is_running(&self, app_name: &str) -> bool {
-        self.launcher.is_running(app_name)
-    }
-
     /// The running (or just started) session of a game.
     pub fn session_info(&self, app_name: &str) -> Option<SessionInfo> {
         self.sessions.lock().ok()?.get(app_name).cloned()
@@ -199,8 +195,6 @@ fn session_info(game: &CollectionGame, rom: Option<String>) -> SessionInfo {
         selected_rom: game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()),
     }
 }
-
-pub type SharedRuntime = Arc<GameRuntime>;
 
 /// Game settings switch "Auto Install/Update DXVK / DXVK-NVAPI / VKD3D on
 /// Prefix": installs or removes `tool` in the prefix of `settings` right away

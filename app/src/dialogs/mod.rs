@@ -47,16 +47,6 @@ pub enum DialogEvent {
     Changed,
     /// Like `Changed`, then close.
     ChangedAndClose,
-    /// Close this dialog and open another one (handled by the Collection).
-    Open(DialogRequest),
-}
-
-/// Dialogs a dialog may ask the Collection to open next.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DialogRequest {
-    ScanRoms(scan_roms::ScanInitial),
-    /// Go to the Emulators page.
-    EmulatorManager,
 }
 
 /// What every dialog may need.

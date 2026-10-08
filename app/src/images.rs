@@ -93,10 +93,6 @@ impl ImageStore {
         None
     }
 
-    pub fn peek(&self, id: &SharedString) -> Option<Arc<RenderImage>> {
-        self.ready.get(id).cloned()
-    }
-
     pub fn on_loaded(&mut self, (id, res): Loaded) {
         log::debug!("image loaded {id}: {}", if res.is_ok() { "ok" } else { "err" });
         self.pending.remove(&id);

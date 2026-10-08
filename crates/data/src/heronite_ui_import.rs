@@ -28,7 +28,7 @@ fn decode_value(raw: &[u8]) -> Option<String> {
     match tag {
         1 => Some(rest.iter().map(|&b| b as char).collect()),
         0 => {
-            let units: Vec<u16> = rest.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+            let units: Vec<u16> = rest.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
             String::from_utf16(&units).ok()
         }
         _ => None,
@@ -51,8 +51,7 @@ pub fn read_local_storage(leveldb_dir: &Path) -> Result<HashMap<String, String>>
         }
         std::fs::copy(entry.path(), tmp.path().join(&name))?;
     }
-    let mut opts = rusty_leveldb::Options::default();
-    opts.create_if_missing = false;
+    let opts = rusty_leveldb::Options { create_if_missing: false, ..Default::default() };
     let mut db = rusty_leveldb::DB::open(tmp.path(), opts).map_err(|e| anyhow::anyhow!("{e}"))?;
     let mut out = HashMap::new();
     let mut it = db.new_iter().map_err(|e| anyhow::anyhow!("{e}"))?;

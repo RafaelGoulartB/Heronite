@@ -59,7 +59,7 @@ pub(crate) fn cover_to_rgba(src: Raster, tw: u32, th: u32, filter: Filter) -> Re
         }
         Channels::Rgb => {
             let mut out = Vec::with_capacity(tw as usize * th as usize * 4);
-            for p in small.chunks_exact(3) {
+            for p in small.as_chunks::<3>().0 {
                 out.extend_from_slice(&[p[0], p[1], p[2], 255]);
             }
             out

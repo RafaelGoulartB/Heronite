@@ -342,15 +342,13 @@ pub(crate) fn find_bytes(hay: &[u8], needle: &[u8], from: usize) -> Option<usize
     let mut i = from;
     let last = hay.len() - needle.len();
     while i <= last {
-        match hay[i..=last].iter().position(|&b| b == first) {
-            None => return None,
-            Some(p) => {
-                i += p;
-                if &hay[i..i + needle.len()] == needle {
-                    return Some(i);
-                }
-                i += 1;
+        {
+            let p = hay[i..=last].iter().position(|&b| b == first)?;
+            i += p;
+            if &hay[i..i + needle.len()] == needle {
+                return Some(i);
             }
+            i += 1;
         }
     }
     None

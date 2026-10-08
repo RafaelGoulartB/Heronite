@@ -32,7 +32,7 @@ fn read_from(path: &Path) -> Vec<WineVersionInfo> {
 }
 
 fn has_key(heroic: &HeroicPaths) -> bool {
-    json_store::read_value(&store_path(heroic)).map_or(false, |v| v.get(KEY).is_some())
+    json_store::read_value(&store_path(heroic)).is_ok_and(|v| v.get(KEY).is_some())
 }
 
 fn write_releases(heroic: &HeroicPaths, list: &[WineVersionInfo]) -> Result<()> {

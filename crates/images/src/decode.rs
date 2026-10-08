@@ -98,7 +98,7 @@ fn decode_generic(bytes: &[u8], fmt: image::ImageFormat) -> Result<Raster> {
         let rgba = img.into_rgba8();
         let (w, h) = rgba.dimensions();
         let data = rgba.into_raw();
-        let opaque = data.chunks_exact(4).all(|p| p[3] == 255);
+        let opaque = data.as_chunks::<4>().0.iter().all(|p| p[3] == 255);
         Ok(Raster { w, h, ch: Channels::Rgba, opaque, data })
     } else {
         let rgb = img.into_rgb8();

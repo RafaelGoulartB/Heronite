@@ -30,7 +30,7 @@ impl ThumbRaw {
         let img = image::load_from_memory(bytes).ok()?.thumbnail(192, 144).to_rgba8();
         let (width, height) = img.dimensions();
         let mut bgra = img.into_raw();
-        for px in bgra.chunks_exact_mut(4) {
+        for px in bgra.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
         }
         Some(Self { width, height, bgra })
@@ -239,7 +239,7 @@ impl Render for LaunchStateDialog {
             .gap(px(16.))
             .child(button("state-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(
-                button("state-play", ButtonKind::Default, if fresh_on { "Start" } else { "Continue" })
+                button("state-play", ButtonKind::Glass, if fresh_on { "Start" } else { "Continue" })
                     .on_click(cx.listener(|this, _, _, cx| this.play(cx))),
             )
             .into_any_element();

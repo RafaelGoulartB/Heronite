@@ -11,11 +11,6 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-/// MUI default primary (focused outlines of the gpui-component widgets).
-pub fn mui_primary() -> Rgba {
-    rgb(0x1976d2)
-}
-
 // ---------------------------------------------------------------------------
 // Toggle switch
 // ---------------------------------------------------------------------------
@@ -261,45 +256,17 @@ pub fn nav_pill(id: impl Into<ElementId>, ic: Icon, label: impl Into<SharedStrin
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonKind {
-    /// Secondary: translucent pill. (Legacy name: was Heroic's plain `.button`.)
-    Default,
-    /// Primary: accent fill, dark text. (Legacy `.button.is-primary`.)
+    /// Accent fill, dark text.
     Primary,
-    /// Primary as well. (Legacy `.button.is-secondary`, the accent button.)
-    Secondary,
-    /// Secondary. (Legacy `.button.is-tertiary`.)
-    Tertiary,
-    /// Secondary. (Legacy outlined button: CHANGE / SEARCH WEB.)
-    Outline,
-    /// Ghost: no fill, muted text. (Legacy plain text button.)
-    Text,
-    /// Secondary, the name new code should use.
+    /// Translucent pill: the default secondary button.
     Glass,
-    /// Ghost, the name new code should use.
+    /// No fill, muted text.
     Ghost,
     /// Destructive actions: red tint.
     Danger,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Look {
-    Soft,
-    Accent,
-    Ghost,
-    Danger,
-}
-
-fn look(kind: ButtonKind) -> Look {
-    match kind {
-        ButtonKind::Default | ButtonKind::Tertiary | ButtonKind::Outline | ButtonKind::Glass => Look::Soft,
-        ButtonKind::Primary | ButtonKind::Secondary => Look::Accent,
-        ButtonKind::Text | ButtonKind::Ghost => Look::Ghost,
-        ButtonKind::Danger => Look::Danger,
-    }
-}
-
 fn button_base(id: impl Into<ElementId>, kind: ButtonKind, label: SharedString, small: bool, enabled: bool) -> Stateful<Div> {
-    let look = look(kind);
     let b = div()
         .id(id)
         .flex()
@@ -312,21 +279,21 @@ fn button_base(id: impl Into<ElementId>, kind: ButtonKind, label: SharedString, 
         .whitespace_nowrap()
         .text_size(px(13.))
         .child(label);
-    let b = match look {
-        Look::Soft => b.bg(theme::button_fill()).border_1().border_color(theme::button_border()).text_color(theme::button_text()),
-        Look::Accent => b.bg(theme::accent()).text_color(theme::on_accent()).font_weight(theme::W_BOLD),
-        Look::Ghost => b.text_color(theme::text_muted()),
-        Look::Danger => b.bg(theme::danger_fill()).text_color(theme::danger_text()),
+    let b = match kind {
+        ButtonKind::Glass => b.bg(theme::button_fill()).border_1().border_color(theme::button_border()).text_color(theme::button_text()),
+        ButtonKind::Primary => b.bg(theme::accent()).text_color(theme::on_accent()).font_weight(theme::W_BOLD),
+        ButtonKind::Ghost => b.text_color(theme::text_muted()),
+        ButtonKind::Danger => b.bg(theme::danger_fill()).text_color(theme::danger_text()),
     };
     if !enabled {
         return b.opacity(0.45).cursor_not_allowed();
     }
     let b = b.cursor_pointer();
-    match look {
-        Look::Soft => b.hover(|s| s.bg(theme::button_fill_hover())),
-        Look::Accent => b.hover(|s| s.bg(theme::accent_overlay())),
-        Look::Ghost => b.hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary())),
-        Look::Danger => b.hover(|s| s.bg(theme::danger_fill_hover())),
+    match kind {
+        ButtonKind::Glass => b.hover(|s| s.bg(theme::button_fill_hover())),
+        ButtonKind::Primary => b.hover(|s| s.bg(theme::accent_overlay())),
+        ButtonKind::Ghost => b.hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary())),
+        ButtonKind::Danger => b.hover(|s| s.bg(theme::danger_fill_hover())),
     }
 }
 

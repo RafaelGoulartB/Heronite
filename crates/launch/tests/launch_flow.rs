@@ -202,7 +202,7 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
     );
     // The prefix remembers the game, so the setup does not run again.
     assert_eq!(fs::read_to_string(r.root.join("pfx/installed_games")).unwrap(), r#"["Calluna"]"#);
-    assert_eq!(log[0], format!("cloud Calluna --skip-upload /saves/Control"));
+    assert_eq!(log[0], "cloud Calluna --skip-upload /saves/Control".to_string());
     assert!(log.last().unwrap().contains("--skip-download"));
 
     // DXVK ended up in the new prefix.

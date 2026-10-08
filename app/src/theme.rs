@@ -1,7 +1,7 @@
 //! Visual tokens taken from Heronite's CSS (theme `nord-dark`, Collection
 //! overlay styles). Values are px at a 16px root unless noted.
 
-use gpui_kit::{hsla, px, rgb, rgba, Hsla, Pixels, Rgba};
+use gpui_kit::{hsla, px, rgb, Hsla, Pixels, Rgba};
 
 pub const FONT_BODY: &str = "Cabin";
 pub const FONT_HEADING: &str = "Rubik";
@@ -31,12 +31,9 @@ pub fn page_bg() -> Rgba {
 pub fn accent() -> Rgba { rgb(0xa5dceb) }
 pub fn accent_overlay() -> Rgba { rgb(0xcbeef8) }
 pub fn navbar_background() -> Rgba { rgb(0x2e3440) }
-pub fn navbar_active_background() -> Rgba { rgb(0x191c22) }
 pub fn background() -> Rgba { rgb(0x191c22) }
 pub fn success() -> Rgba { rgb(0x94f1ab) }
-pub fn success_hover() -> Rgba { rgb(0x75e08f) }
 pub fn danger() -> Rgba { rgb(0xbf616a) }
-pub fn modal_backdrop() -> Rgba { rgba(0x000000cc) }
 
 pub fn selected_ring() -> Rgba { rgb(0xe8dcc0) }
 
@@ -259,7 +256,6 @@ pub fn text_primary() -> Rgba { rgb(0xe8edf4) }
 pub fn text_muted() -> Rgba { rgb(0x9aa6b6) }
 /// Row descriptions (`#8c97a8`).
 pub fn text_dim() -> Rgba { rgb(0x8c97a8) }
-pub fn text_placeholder() -> Rgba { rgb(0x6f7a8a) }
 /// Text drawn on an accent fill.
 pub fn on_accent() -> Rgba { rgb(0x0c1a20) }
 

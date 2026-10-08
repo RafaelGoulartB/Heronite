@@ -107,7 +107,7 @@ impl BestApp {
         if score < 60 {
             return;
         }
-        if self.0.as_ref().map_or(true, |(_, s)| score > *s) {
+        if self.0.as_ref().is_none_or(|(_, s)| score > *s) {
             self.0 = Some((id, score));
         }
     }

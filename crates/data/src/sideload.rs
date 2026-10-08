@@ -54,7 +54,7 @@ fn random_bytes() -> [u8; 16] {
     // `RandomState` keys come from the OS; two independent hashers give 128
     // bits without an extra dependency.
     let mut out = [0u8; 16];
-    for half in out.chunks_exact_mut(8) {
+    for half in out.as_chunks_mut::<8>().0 {
         let mut h = RandomState::new().build_hasher();
         h.write_u128(
             std::time::SystemTime::now()

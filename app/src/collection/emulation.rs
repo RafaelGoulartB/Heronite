@@ -18,16 +18,9 @@ use super::CollectionView;
 use crate::dialogs::launch_state::{LaunchStateDialog, StateRow, ThumbRaw};
 use crate::dialogs::pick_rom::PickRomDialog;
 use crate::dialogs::scan_roms::{ScanInitial, ScanRomsDialog};
-use crate::dialogs::DialogRequest;
 
 /// How long after start the Collection scans the saved ROM folders.
 const STARTUP_SCAN_DELAY: Duration = Duration::from_secs(4);
-
-#[derive(Default)]
-pub struct EmuState {
-    /// A dialog asked the Collection to open another one.
-    pub requested: Option<DialogRequest>,
-}
 
 /// Result of listing a game's save states in the background.
 struct Listing {
@@ -53,17 +46,6 @@ fn list_states(paths: &heronite_data::HeroicPaths, app_name: &str, rom: Option<&
 }
 
 impl CollectionView {
-    /// Opens whatever a dialog asked for (needs a `Window`, so it runs from
-    /// `render`).
-    pub(super) fn drive_emulation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(req) = self.emu.requested.take() {
-            match req {
-                DialogRequest::ScanRoms(init) => self.open_scan_roms(init, window, cx),
-                DialogRequest::EmulatorManager => self.navigate(crate::pages::Page::Emulators, window, cx),
-            }
-        }
-    }
-
     pub(super) fn open_scan_roms(&mut self, initial: ScanInitial, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ctx) = self.dialog_ctx() else { return };
         let view = cx.new(|cx| ScanRomsDialog::new(ctx, initial, window, cx));

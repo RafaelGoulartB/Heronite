@@ -113,23 +113,6 @@ pub fn glass_menu_surface(radius: f32) -> Div {
     d
 }
 
-/// Full-window glass for big sheets (like the Settings sheet of the mockups):
-/// the blurred art under a dark tint, with no border and no rounding.
-pub fn glass_fullscreen() -> Div {
-    let art = backdrop_layer(0.);
-    let has_art = art.is_some();
-    div()
-        .absolute()
-        .inset_0()
-        .children(art)
-        .child(div().absolute().inset_0().bg(if has_art { theme::black_a(0.55) } else { theme::glass_fill_solid() }))
-}
-
-/// Veil darkening the Collection behind modals and drawers.
-pub fn veil() -> Div {
-    div().absolute().inset_0().bg(theme::glass_backdrop_veil())
-}
-
 /// Target size (physical px) of the glass backdrop request for a window of
 /// `w x h` logical px: the window size rounded to 32px steps, so resizing does
 /// not queue a new blur for every pixel (the result is ~1/5 of that anyway).

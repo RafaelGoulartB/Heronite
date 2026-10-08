@@ -177,7 +177,7 @@ pub fn pick_best_match<'a, T>(
         if score < min_score {
             continue;
         }
-        if best.map_or(true, |(_, s)| score > s) {
+        if best.is_none_or(|(_, s)| score > s) {
             best = Some((item, score));
         }
     }

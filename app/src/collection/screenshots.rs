@@ -357,7 +357,7 @@ impl CollectionView {
         cx.spawn(async move |this, cx| {
             while let Some(first) = rx.next().await {
                 let mut batch = vec![first];
-                while let Ok(Some(more)) = rx.try_next() {
+                while let Ok(more) = rx.try_recv() {
                     batch.push(more);
                 }
                 if this.update(cx, |this, cx| {
@@ -578,7 +578,7 @@ impl CollectionView {
                 div().flex().justify_center().my(px(5.6)).child(
                     button(
                         "shot-load-more",
-                        ButtonKind::Outline,
+                        ButtonKind::Glass,
                         format!("Load more ({} remaining)", total - shown),
                     )
                     .on_click(cx.listener(|this, _, _, cx| {

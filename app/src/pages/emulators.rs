@@ -158,7 +158,6 @@ impl EmulatorsPage {
                     this.reload(cx);
                     this.dialog_done(view.clone().into_any(), cx);
                 }
-                DialogEvent::Open(_) => {}
             }
             cx.notify();
         }));

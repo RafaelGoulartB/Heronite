@@ -94,7 +94,7 @@ pub fn parse_vulkan_summary(text: &str) -> Vulkan {
         best = Some(best.map_or(v, |b| b.max(v)));
     }
     match best {
-        Some(v) if v < (1, 3) && v >= (1, 1) => Vulkan::Legacy,
+        Some(v) if ((1, 1)..(1, 3)).contains(&v) => Vulkan::Legacy,
         _ => Vulkan::Modern,
     }
 }

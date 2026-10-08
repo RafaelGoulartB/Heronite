@@ -14,7 +14,6 @@ use crate::ui::icon;
 
 /// `SelectField`: label, 40px select and, when `open`, its menu of `options`
 /// `(label, selected)`. `on_toggle` opens/closes it, `on_pick(index)` picks.
-#[allow(clippy::too_many_arguments)]
 pub fn select_field<V: 'static>(
     id: &str,
     label: Option<&str>,

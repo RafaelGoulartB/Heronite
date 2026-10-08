@@ -488,8 +488,7 @@ mod tests {
         assert!(!snap.show_hidden);
 
         game_config::set_global_setting(&heroic, "/home/u", "maxRecentGames", json!(8)).unwrap();
-        let mut ui = UiState::default();
-        ui.show_hidden = true;
+        let ui = UiState { show_hidden: true, ..Default::default() };
         ui.save(&app).unwrap();
         let snap = read_snapshot(&heroic, &app, "/home/u");
         assert_eq!(snap.max_recent, 8);

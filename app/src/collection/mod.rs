@@ -97,7 +97,6 @@ pub struct CollectionView {
     /// `HERONITE_DEBUG_DIALOG` (opened on the first render with a window).
     pending_debug_dialog: Option<String>,
     dialog_sub: Option<Subscription>,
-    emu: emulation::EmuState,
     epic: epic::EpicState,
     extras: extras::Extras,
     focus_scroll: ScrollHandle,
@@ -161,7 +160,7 @@ impl CollectionView {
             while let Some(first) = rx.next().await {
                 // Batch whatever else already arrived into one notify.
                 let mut batch = vec![first];
-                while let Ok(Some(more)) = rx.try_next() {
+                while let Ok(more) = rx.try_recv() {
                     batch.push(more);
                 }
                 let alive = this
@@ -220,7 +219,6 @@ impl CollectionView {
             dialog: None,
             pending_debug_dialog: None,
             dialog_sub: None,
-            emu: Default::default(),
             epic: Default::default(),
             extras: Default::default(),
             focus_scroll: ScrollHandle::new(),
@@ -264,11 +262,10 @@ impl CollectionView {
             }) else {
                 break;
             };
-            if changed {
-                if this.update(cx, |this, cx| this.reload(cx)).is_err() {
+            if changed
+                && this.update(cx, |this, cx| this.reload(cx)).is_err() {
                     break;
                 }
-            }
         })
         .detach();
         this
@@ -361,11 +358,6 @@ impl CollectionView {
                     this.dialog = None;
                     this.dialog_sub = None;
                     this.reload(cx);
-                }
-                DialogEvent::Open(req) => {
-                    this.dialog = None;
-                    this.dialog_sub = None;
-                    this.emu.requested = Some(req.clone());
                 }
             }
             cx.notify();
@@ -880,7 +872,6 @@ impl Render for CollectionView {
                 }
             }
         }
-        self.drive_emulation(window, cx);
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);
         self.sync_shots(window, cx);

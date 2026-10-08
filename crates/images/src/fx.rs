@@ -3,14 +3,14 @@
 
 /// RGBA <-> BGRA in place.
 pub fn swap_rb(buf: &mut [u8]) {
-    for p in buf.chunks_exact_mut(4) {
+    for p in buf.as_chunks_mut::<4>().0 {
         p.swap(0, 2);
     }
 }
 
 /// Composite straight-alpha pixels over black and make them opaque.
 pub fn flatten_over_black(buf: &mut [u8]) {
-    for p in buf.chunks_exact_mut(4) {
+    for p in buf.as_chunks_mut::<4>().0 {
         let a = p[3] as u32;
         if a != 255 {
             for c in &mut p[..3] {
@@ -41,7 +41,7 @@ pub fn saturate(buf: &mut [u8], s: f32, bgra: bool) {
         [f(m[2][0]), f(m[2][1]), f(m[2][2])],
     ];
     let (ri, bi) = if bgra { (2, 0) } else { (0, 2) };
-    for p in buf.chunks_exact_mut(4) {
+    for p in buf.as_chunks_mut::<4>().0 {
         let (r, g, b) = (p[ri] as i32, p[1] as i32, p[bi] as i32);
         let o = |row: &[i32; 3]| {
             let v = (row[0] * r + row[1] * g + row[2] * b + 32768) >> 16;

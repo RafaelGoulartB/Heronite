@@ -257,7 +257,7 @@ mod tests {
 
     fn png() -> Vec<u8> {
         let mut v = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
-        v.extend(std::iter::repeat(7u8).take(64));
+        v.extend(std::iter::repeat_n(7u8, 64));
         v
     }
 

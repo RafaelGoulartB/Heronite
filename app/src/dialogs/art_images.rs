@@ -22,7 +22,7 @@ impl DialogImages {
         cx.spawn(async move |this, cx| {
             while let Some(first) = rx.next().await {
                 let mut batch = vec![first];
-                while let Ok(Some(more)) = rx.try_next() {
+                while let Ok(more) = rx.try_recv() {
                     batch.push(more);
                 }
                 let alive = this
@@ -55,9 +55,6 @@ impl DialogImages {
         self.store.get_or_request(&key, || chain, pw, ph, Variant::Cover, 100).map(ImageSource::Render)
     }
 
-    pub fn retry_failed(&mut self) {
-        self.store.clear_failed();
-    }
 }
 
 /// Chain for a stored image URL (`http(s)`, `localart://`, `file:`, path).

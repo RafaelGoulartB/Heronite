@@ -124,7 +124,7 @@ fn touch_access(path: &Path) {
 
 fn bgra_from_rgb(rgb: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(rgb.len() / 3 * 4);
-    for p in rgb.chunks_exact(3) {
+    for p in rgb.as_chunks::<3>().0 {
         out.extend_from_slice(&[p[2], p[1], p[0], 255]);
     }
     out
@@ -163,7 +163,7 @@ fn render_preview(source: &Path) -> Result<Decoded, ThumbError> {
 
 fn encode_jpeg(d: &Decoded) -> Result<Vec<u8>, ThumbError> {
     let mut rgb = Vec::with_capacity(d.bgra.len() / 4 * 3);
-    for p in d.bgra.chunks_exact(4) {
+    for p in d.bgra.as_chunks::<4>().0 {
         rgb.extend_from_slice(&[p[2], p[1], p[0]]);
     }
     let mut out = Vec::new();

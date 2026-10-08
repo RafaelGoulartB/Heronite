@@ -212,7 +212,7 @@ impl PaletteView {
                     .rounded_full()
                     .cursor_pointer()
                     .text_size(px(11.5))
-                    .text_color(if on { Hsla::from(white()) } else { Hsla::from(theme::seg_text()) })
+                    .text_color(if on { white() } else { Hsla::from(theme::seg_text()) })
                     .when(on, |d| d.bg(theme::seg_active()))
                     .when(!on, |d| d.hover(|s| s.text_color(white())))
                     .on_click(cx.listener(move |this, _, _, cx| this.set_filter(f, cx)))

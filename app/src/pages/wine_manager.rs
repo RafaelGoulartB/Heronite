@@ -159,7 +159,7 @@ impl WineManagerPage {
                 }
                 // Heroic fetches when it has nothing cached; we also refresh
                 // when the last fetch is stale. Never when offline.
-                let stale = age.map_or(true, |a| a > STALE_AFTER_SECS);
+                let stale = age.is_none_or(|a| a > STALE_AFTER_SECS);
                 if !this.offline && (this.releases.is_empty() || stale) {
                     this.manager.start_refresh(Repository::LINUX.to_vec());
                 }
@@ -421,7 +421,7 @@ impl WineManagerPage {
                     }
                     cx.notify();
                 })));
-        } else if job.as_ref().map_or(false, |j| j.kind != JobKind::Remove) {
+        } else if job.as_ref().is_some_and(|j| j.kind != JobKind::Remove) {
             let k = key.clone();
             actions = actions.child(button_sm(id("cancel"), ButtonKind::Glass, "Cancel").on_click(cx.listener(move |this, _, _, cx| {
                 this.manager.cancel(&k);

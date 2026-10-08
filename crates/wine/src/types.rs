@@ -54,7 +54,7 @@ pub struct WineVersionInfo {
 impl WineVersionInfo {
     pub fn installed(&self) -> bool {
         self.is_installed == Some(true)
-            && self.install_dir.as_deref().map_or(false, |d| !d.is_empty())
+            && self.install_dir.as_deref().is_some_and(|d| !d.is_empty())
     }
 
     pub fn has_update(&self) -> bool {
@@ -63,7 +63,7 @@ impl WineVersionInfo {
 
     /// Releases without a download asset cannot be installed (Heroic hides them).
     pub fn downloadable(&self) -> bool {
-        self.downsize.unwrap_or(0) > 0 && self.download.as_deref().map_or(false, |d| !d.is_empty())
+        self.downsize.unwrap_or(0) > 0 && self.download.as_deref().is_some_and(|d| !d.is_empty())
     }
 }
 

@@ -10,7 +10,7 @@ fn main() {
     for e in std::fs::read_dir(&dir).unwrap().flatten() {
         if samples.len() >= n { break; }
         let b = std::fs::read(e.path()).unwrap();
-        if b.len() < 20_000 || &b[..2] != [0xff, 0xd8] { continue; }
+        if b.len() < 20_000 || b[..2] != [0xff, 0xd8] { continue; }
         let Ok(img) = image::load_from_memory(&b) else { continue };
         if img.width() != 600 && img.width() != 300 { continue; }
         let img = img.resize_to_fill(tw, th, image::imageops::FilterType::Triangle).to_rgba8();

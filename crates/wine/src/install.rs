@@ -324,7 +324,7 @@ pub fn is_managed_dir(heroic: &HeroicPaths, path: &Path) -> bool {
     }
     let tools = heroic.tools_dir();
     ["wine", "proton", "game-porting-toolkit"].iter().any(|d| parent == tools.join(d))
-        || parent.file_name().map_or(false, |n| n == "compatibilitytools.d")
+        || parent.file_name().is_some_and(|n| n == "compatibilitytools.d")
 }
 
 /// Deletes the build and marks it as not installed. Blocking.
@@ -465,7 +465,7 @@ mod tests {
     fn cancel_during_download_cleans_up_and_keeps_existing() {
         let tmp = tempfile::tempdir().unwrap();
         let data = make_tar_gz(tmp.path(), "x");
-        let sum = format!("{}", sha512_hex(&data));
+        let sum = sha512_hex(&data).to_string();
         let base = serve(vec![("/a.tar.gz".into(), data.clone()), ("/a.tar.gz.sha512sum".into(), sum.into_bytes())], 30);
         let mut info = info_for(&base, "a.tar.gz", &data);
         let dest = tmp.path().join("tools/proton");

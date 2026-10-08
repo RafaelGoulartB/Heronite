@@ -37,3 +37,6 @@ ksni = { version = "0.3", default-features = false, features = ["async-io", "blo
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints]
+workspace = true

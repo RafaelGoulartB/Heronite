@@ -187,7 +187,7 @@ impl Render for DownloadsPage {
 
         // History.
         let mut finished: Vec<DmElement> = snap.finished.clone();
-        finished.sort_by(|a, b| b.end_time.cmp(&a.end_time));
+        finished.sort_by_key(|e| std::cmp::Reverse(e.end_time));
         if !finished.is_empty() {
             column = column.child(caption_with(
                 format!("Completed \u{b7} {}", finished.len()),

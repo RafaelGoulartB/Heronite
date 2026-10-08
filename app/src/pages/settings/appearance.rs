@@ -214,7 +214,7 @@ fn set_sliders(a: &State, values: &[(Field, f32)], window: &mut Window, cx: &mut
     }
 }
 
-fn slider_of<'a>(a: &'a State, field: Field) -> &'a Entity<SliderState> {
+fn slider_of(a: &State, field: Field) -> &Entity<SliderState> {
     &a.sliders.iter().find(|(f, _)| *f == field).expect("slider created in State::new").1
 }
 

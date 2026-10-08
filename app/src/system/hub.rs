@@ -204,7 +204,7 @@ pub fn init(
         .detach();
     }
 
-    cx.on_window_closed(|cx, id| on_window_closed(cx, id)).detach();
+    cx.on_window_closed(on_window_closed).detach();
 
     // The Epic service (download queue, startup update check, auto-updates)
     // belongs to the app, not to the window. A one-shot launch has no use for it.
@@ -257,7 +257,7 @@ fn debug_hooks(cx: &mut App, tray_tx: UnboundedSender<TrayCmd>) {
     if let Some(ms) = after("HERONITE_DEBUG_QUIT_AFTER_MS") {
         cx.spawn(async move |cx| {
             cx.background_executor().timer(Duration::from_millis(ms)).await;
-            cx.update(|cx| graceful_quit(cx));
+            cx.update(graceful_quit);
         })
         .detach();
     }
@@ -265,7 +265,7 @@ fn debug_hooks(cx: &mut App, tray_tx: UnboundedSender<TrayCmd>) {
     if let Some(ms) = after("HERONITE_DEBUG_REQUEST_QUIT_AFTER_MS") {
         cx.spawn(async move |cx| {
             cx.background_executor().timer(Duration::from_millis(ms)).await;
-            cx.update(|cx| request_quit(cx));
+            cx.update(request_quit);
         })
         .detach();
     }

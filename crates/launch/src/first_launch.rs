@@ -349,7 +349,7 @@ mod tests {
     }
 
     struct Fx {
-        dir: tempfile::TempDir,
+        _dir: tempfile::TempDir,
         paths: HeroicPaths,
         spawner: InstantSpawner,
         prefix: String,
@@ -361,7 +361,7 @@ mod tests {
             let paths = HeroicPaths::at(dir.path().join("heroic"));
             let prefix = dir.path().join("pfx");
             std::fs::create_dir_all(&prefix).unwrap();
-            Self { dir, paths, spawner: InstantSpawner::default(), prefix: prefix.to_string_lossy().into_owned() }
+            Self { _dir: dir, paths, spawner: InstantSpawner::default(), prefix: prefix.to_string_lossy().into_owned() }
         }
 
         fn spec(&self, fl: FirstLaunch) -> PrepSpec {
@@ -520,7 +520,7 @@ mod tests {
         let fx = Fx::new();
         let epic = FakeEpic::new(None, true, false);
         fx.run(&fx.spec(base()), Some(&epic), &probe(&fx));
-        assert_eq!(*epic.enable_calls.lock().unwrap(), [fx.prefix.clone()]);
+        assert_eq!(*epic.enable_calls.lock().unwrap(), std::slice::from_ref(&fx.prefix));
 
         // Not installed: left alone.
         let fx2 = Fx::new();

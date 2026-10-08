@@ -95,23 +95,6 @@ pub enum PageEvent {
     ShowHidden(bool),
 }
 
-/// Centred column (max 1480px like the focus panel) with the page padding;
-/// scrolls vertically.
-pub fn page_body(id: impl Into<ElementId>) -> Stateful<Div> {
-    div()
-        .id(id)
-        .size_full()
-        .overflow_y_scroll()
-        .px(px(36.))
-        .pt(px(12.))
-        .pb(px(36.))
-}
-
-/// Inner column of [`page_body`]: `page_body(..).child(page_column().child(..))`.
-pub fn page_column() -> Div {
-    div().flex().flex_col().gap(px(16.)).w_full().max_w(px(1480.)).mx_auto()
-}
-
 // ---------------------------------------------------------------------------
 // Glass sheet chrome (Downloads, Wine Manager, Epic Games, Emulators)
 // ---------------------------------------------------------------------------
@@ -153,7 +136,7 @@ pub fn sheet(
                 .gap(px(4.))
                 .min_w_0()
                 .child(page_heading(title))
-                .children(lead.map(|l| help_text(l))),
+                .children(lead.map(help_text)),
         )
         .child(div().flex().flex_none().items_center().gap(px(10.)).children(actions).child(close));
     let body = div()

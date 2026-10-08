@@ -63,7 +63,7 @@ fn tokenize(src: &str) -> Vec<Tok> {
                 // `//` line comment
                 it.next();
                 if it.peek() == Some(&'/') {
-                    while let Some(c) = it.next() {
+                    for c in it.by_ref() {
                         if c == '\n' {
                             break;
                         }

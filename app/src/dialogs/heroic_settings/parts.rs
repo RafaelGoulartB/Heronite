@@ -70,10 +70,6 @@ impl Rows {
         self.child(col)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
     /// The card holding the rows (nothing when there are none).
     pub fn card(self) -> Div {
         if self.0.is_empty() {
@@ -86,7 +82,6 @@ impl Rows {
 impl HeroicSettingsPanel {
     /// A settings row: label, explanation and a switch. `disabled` shows it
     /// dimmed and inert.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn toggle_row(
         &self,
         id: &'static str,
@@ -151,7 +146,6 @@ impl HeroicSettingsPanel {
     }
 
     /// `SelectField`; `options` are `(label, selected)`.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn select_row(
         &self,
         id: &'static str,

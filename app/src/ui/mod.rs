@@ -63,28 +63,6 @@ pub fn chip(text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
-/// Thin overlay scrollbar (`::-webkit-scrollbar { width: 3px }`, thumb
-/// `rgba(255,255,255,.16)`, radius 99). `offset` is the (negative) scroll
-/// offset, `max` the maximum scroll distance, `viewport` the visible height.
-pub fn scrollbar(offset: Pixels, max: Pixels, viewport: Pixels) -> Option<Div> {
-    let (offset, max, viewport) = (f32::from(-offset), f32::from(max), f32::from(viewport));
-    if max <= 0.5 || viewport <= 0. {
-        return None;
-    }
-    let thumb = (viewport * viewport / (viewport + max)).max(24.);
-    let top = (offset / max).clamp(0., 1.) * (viewport - thumb);
-    Some(
-        div()
-            .absolute()
-            .top(px(top))
-            .right(px(1.))
-            .w(px(3.))
-            .h(px(thumb))
-            .rounded_full()
-            .bg(crate::theme::white_a(0.16)),
-    )
-}
-
 // ---------------------------------------------------------------------------
 // Draggable scrollbar
 // ---------------------------------------------------------------------------

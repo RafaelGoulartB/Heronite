@@ -104,7 +104,7 @@ pub fn pick_search_match<'a>(title: &str, results: &'a [SearchHit]) -> Option<&'
     }
     let games: Vec<&SearchHit> = results
         .iter()
-        .filter(|i| i.game_type.as_deref().map_or(true, |t| t.is_empty() || t == "game"))
+        .filter(|i| i.game_type.as_deref().is_none_or(|t| t.is_empty() || t == "game"))
         .collect();
     let pool: Vec<&SearchHit> = if games.is_empty() { results.iter().collect() } else { games };
     let needle = normalize_hltb_title(title);
@@ -546,7 +546,7 @@ mod tests {
         assert_eq!(dot_get(&d, "Dr. Mario"), Some(&json!(2)));
         dot_delete(&mut d, "Plain Title");
         assert!(d.get("Plain Title").is_none());
-        assert_eq!(minutes_since("Fri Sep 18 2026 21:30:21 GMT-0300 (Brasilia Standard Time)").is_some(), true);
+        assert!(minutes_since("Fri Sep 18 2026 21:30:21 GMT-0300 (Brasilia Standard Time)").is_some());
         assert!(minutes_since(&js_date_string()).unwrap().abs() < 2.0);
     }
 

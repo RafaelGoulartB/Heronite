@@ -20,3 +20,6 @@ log.workspace = true
 tempfile = "3"
 qoi = "0.4"
 zstd = "0.13"
+
+[lints]
+workspace = true
