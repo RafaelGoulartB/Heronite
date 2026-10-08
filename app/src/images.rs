@@ -84,6 +84,7 @@ impl ImageStore {
             return None;
         }
         self.pending.insert(id.clone());
+        log::debug!("image request {id}");
         let tx = self.tx.clone();
         let key = id.clone();
         self.loader.submit(Request { chain, width, height, variant, priority }, move |res| {
@@ -97,6 +98,7 @@ impl ImageStore {
     }
 
     pub fn on_loaded(&mut self, (id, res): Loaded) {
+        log::debug!("image loaded {id}: {}", if res.is_ok() { "ok" } else { "err" });
         self.pending.remove(&id);
         match res {
             Ok(decoded) => {

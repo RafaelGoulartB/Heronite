@@ -59,16 +59,19 @@ pub fn card(
 
     let grey = s.grey_uninstalled && !vm.installed && !s.hovered;
     let cover_img = match s.cover {
-        Some(src) => img(src)
-            .size_full()
-            .object_fit(ObjectFit::Cover)
-            .grayscale(grey)
-            .with_animation(
-                ElementId::Name(format!("cover-in-{}", vm.key).into()),
-                Animation::new(Duration::from_millis(500)),
-                |el, t| el.opacity(t),
-            )
-            .into_any_element(),
+        Some(src) => {
+            let el = img(src).size_full().object_fit(ObjectFit::Cover).grayscale(grey);
+            if theme::animations() {
+                el.with_animation(
+                    ElementId::Name(format!("cover-in-{}", vm.key).into()),
+                    Animation::new(Duration::from_millis(500)),
+                    |el, t| el.opacity(t),
+                )
+                .into_any_element()
+            } else {
+                el.into_any_element()
+            }
+        }
         None => div().size_full().into_any_element(),
     };
 

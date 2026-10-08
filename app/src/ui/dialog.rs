@@ -105,11 +105,16 @@ pub fn dialog(
             // `--modal-backdrop` = `--background-darker-80` (#191c22 at 50%).
             .bg(theme::rgb_a(25, 28, 34, 0.5))
             .on_mouse_down(MouseButton::Left, move |_, w, cx| backdrop_close(w, cx))
-            .child(card.with_animation(
-                SharedString::from(format!("{}-open", props.id)),
-                Animation::new(Duration::from_millis(500)).with_easing(ease_out_quint()),
-                |el, t| el.opacity(t).mt(px(50. * (1. - t))),
-            )),
+            .child(if theme::animations() {
+                card.with_animation(
+                    SharedString::from(format!("{}-open", props.id)),
+                    Animation::new(Duration::from_millis(500)).with_easing(ease_out_quint()),
+                    |el, t| el.opacity(t).mt(px(50. * (1. - t))),
+                )
+                .into_any_element()
+            } else {
+                card.into_any_element()
+            }),
     )
     .with_priority(30)
     .into_any_element()

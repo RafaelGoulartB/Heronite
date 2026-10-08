@@ -68,19 +68,20 @@ pub fn stage(art: Option<ImageSource>, art_id: SharedString, s: Scrim) -> AnyEle
     div()
         .absolute()
         .inset_0()
-        .child(
-            img(art)
-                .absolute()
-                .inset_0()
-                .size_full()
-                .object_fit(ObjectFit::Cover)
-                // `img.loaded { transition: opacity 500ms }`
-                .with_animation(
+        .child({
+            let el = img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
+            // `img.loaded { transition: opacity 500ms }`
+            if crate::theme::animations() {
+                el.with_animation(
                     ElementId::Name(format!("stage-{art_id}").into()),
                     Animation::new(std::time::Duration::from_millis(500)),
                     |el, t| el.opacity(t),
-                ),
-        )
+                )
+                .into_any_element()
+            } else {
+                el.into_any_element()
+            }
+        })
         .child(scrim_layers(s))
         .into_any_element()
 }

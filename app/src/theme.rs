@@ -96,3 +96,11 @@ pub fn apply_component_theme(cx: &mut gpui_kit::App) {
     c.border = white_a(0.12);
     c.muted_foreground = white_a(0.38);
 }
+
+/// Fades and transitions on/off. `HERONITE_NO_ANIMATIONS=1` disables them
+/// (reduced motion; also needed for off-screen screenshots, where the
+/// compositor stops sending frames and fades would stay at opacity 0).
+pub fn animations() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("HERONITE_NO_ANIMATIONS").is_none_or(|v| v.is_empty() || v == "0"))
+}
