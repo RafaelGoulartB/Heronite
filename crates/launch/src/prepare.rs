@@ -131,7 +131,7 @@ impl WineRunner for PrefixRunner<'_> {
 }
 
 impl Prep<'_> {
-    fn notice(&self, n: Notice) {
+    pub(crate) fn notice(&self, n: Notice) {
         if n.warning {
             log::warn!("{}", n.message);
         } else {

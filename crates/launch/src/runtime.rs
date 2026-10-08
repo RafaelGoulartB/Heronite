@@ -20,6 +20,7 @@ use heronite_data::HeroicPaths;
 use crate::net::{Net, SystemNet};
 use crate::plan::{Command, LaunchPlan, ProcessPlan, StopSpec};
 use crate::playtime_watch::{wait_for_steam_session, SteamWaitConfig, SteamWaitOutcome};
+use crate::first_launch::EpicSetup;
 use crate::prepare::{CloudSync, Flow, Notice, Prep};
 use crate::probe::{Probe, SystemProbe};
 use crate::procs::{signal_tree, Procs, Sig, SystemProcs};
@@ -362,6 +363,7 @@ impl Default for PrepServices {
 
 struct Shared {
     services: Mutex<PrepServices>,
+    epic: Mutex<Option<Arc<dyn EpicSetup>>>,
     paths: HeroicPaths,
     spawner: Arc<dyn Spawner>,
     procs: Arc<dyn Procs>,
@@ -395,6 +397,7 @@ impl Launcher {
         Self {
             shared: Arc::new(Shared {
                 services: Mutex::new(PrepServices::default()),
+                epic: Mutex::new(None),
                 paths,
                 spawner,
                 procs,
@@ -409,6 +412,12 @@ impl Launcher {
     /// Replaces what launch preparation uses (network, machine, cloud saves).
     pub fn set_prep_services(&self, services: PrepServices) {
         *self.shared.services.lock().unwrap() = services;
+    }
+
+    /// What the first launch of an Epic game in a prefix asks legendary
+    /// (prerequisites, EOS overlay).
+    pub fn set_epic_setup(&self, epic: Arc<dyn EpicSetup>) {
+        *self.shared.epic.lock().unwrap() = Some(epic);
     }
 
     /// Real processes, default timings.
@@ -740,6 +749,14 @@ fn run_process(
         if control.kill.load(Ordering::SeqCst) || !run_to_completion(shared, control, cmd) {
             return finish_aborted(shared, req, t0);
         }
+    }
+    // Redistributables, EOS overlay and known fixes the first time the game
+    // runs in this prefix.
+    let epic = shared.epic.lock().unwrap().clone();
+    match prep.first_launch(&plan.prep, epic.as_deref()) {
+        Flow::Go => {}
+        Flow::Cancelled => return finish_aborted(shared, req, t0),
+        Flow::Fail(message) => return fail(shared, req, message),
     }
     // DXVK / VKD3D into the prefix, anti-cheat runtimes.
     match prep.after_prefix(&plan.prep) {

@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::env::{
     build_wrappers, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env,
 };
-use crate::plan::{Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
+use crate::plan::{Command, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
 use crate::probe::Probe;
 use crate::settings::GameSettings;
 use crate::wine;
@@ -68,6 +68,28 @@ fn known_fixes_env(ctx: &PlanContext, app_name: &str) -> Env {
         env.insert(k.clone(), value);
     }
     env
+}
+
+/// `known_fixes.json` entries that change the prefix: the winetricks verbs
+/// and the programs to run in it (`installFixes`).
+pub fn known_fixes_steps(ctx: &PlanContext, app_name: &str) -> (Vec<String>, Vec<String>) {
+    let entry = ctx
+        .known_fixes
+        .as_ref()
+        .and_then(|k| k.get("epic"))
+        .and_then(|e| e.get(app_name));
+    let list = |key: &str| -> Vec<String> {
+        entry
+            .and_then(|f| f.get(key))
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().filter(|s| !s.is_empty()).map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    (list("winetricks"), list("runInPrefix"))
 }
 
 fn cached_umu_id(ctx: &PlanContext, app_name: &str) -> Option<String> {
@@ -220,6 +242,17 @@ pub fn build(
     if s.auto_sync_saves && !s.saves_path.trim().is_empty() {
         prep.cloud_saves = Some(s.saves_path.clone());
     }
+    // Redistributables, EOS overlay and known fixes: once per game and prefix.
+    let (winetricks, run_in_prefix) = known_fixes_steps(ctx, app);
+    prep.first_launch = Some(FirstLaunch {
+        app_name: app.to_string(),
+        install_path: install_path.to_string(),
+        platform: game.install.platform.clone().unwrap_or_default(),
+        ea_managed: flag(&game.rest, "isEAManaged"),
+        ubisoft_managed: flag(&game.rest, "isUbisoftManaged"),
+        winetricks,
+        run_in_prefix,
+    });
     LaunchPlan::Legendary {
         app_name: app.to_string(),
         process: ProcessPlan {
@@ -297,6 +330,30 @@ mod tests {
             base[k] = v.clone();
         }
         GameSettings::from_map(base.as_object().unwrap(), "/home/u")
+    }
+
+    #[test]
+    fn the_plan_carries_the_first_launch_work() {
+        let mut c = ctx();
+        c.known_fixes = Some(json!({"epic": {"Calluna": {
+            "winetricks": ["vcrun2022", ""], "runInPrefix": ["Redist/setup.exe"], "envVariables": {"A": "b"}
+        }}}));
+        let mut g = game();
+        g.rest.insert("isUbisoftManaged".into(), json!(true));
+        let plan = build_plan_with_settings(&c, &probe(), &g, None, &settings(json!({})), &LaunchOptions::default());
+        let LaunchPlan::Legendary { process, .. } = plan else { panic!("{plan:?}") };
+        let fl = process.prep.first_launch.expect("first launch");
+        assert_eq!(fl.app_name, "Calluna");
+        assert_eq!(fl.install_path, "/games/Control");
+        assert_eq!(fl.platform, "Windows");
+        assert!(fl.ubisoft_managed && !fl.ea_managed);
+        assert_eq!(fl.winetricks, ["vcrun2022"]);
+        assert_eq!(fl.run_in_prefix, ["Redist/setup.exe"]);
+        // Games without an entry still get the Epic setup.
+        let plain = build_plan_with_settings(&ctx(), &probe(), &game(), None, &settings(json!({})), &LaunchOptions::default());
+        let LaunchPlan::Legendary { process, .. } = plain else { panic!() };
+        let fl = process.prep.first_launch.unwrap();
+        assert!(fl.winetricks.is_empty() && fl.run_in_prefix.is_empty());
     }
 
     #[test]

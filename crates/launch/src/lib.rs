@@ -11,7 +11,9 @@
 pub mod dxvk;
 pub mod emulators;
 pub mod env;
+pub mod first_launch;
 pub mod install_state;
+pub mod known_fixes;
 pub mod legendary;
 pub mod library;
 pub mod net;

@@ -137,6 +137,7 @@ impl WineEnv {
             umu: self.umu_download,
             wine: Some(self.settings.clone()),
             cloud_saves: None,
+            ..Default::default()
         }
     }
 

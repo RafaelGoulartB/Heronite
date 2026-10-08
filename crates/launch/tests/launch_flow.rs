@@ -160,7 +160,8 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
     let (events, log) = run(&r);
     assert!(matches!(events.last(), Some(LaunchEvent::Exited { .. })), "{events:?}");
 
-    // Order of the side effects: saves down, prefix, DXVK overrides, game, saves up.
+    // Order of the side effects: saves down, prefix, the first-launch Epic
+    // setup, DXVK overrides, game, saves up.
     let kinds: Vec<&str> = log
         .iter()
         .map(|l| {
@@ -168,6 +169,8 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
                 if l.contains("--skip-upload") { "saves-down" } else { "saves-up" }
             } else if l.starts_with("wine wineboot") {
                 "prefix"
+            } else if l.starts_with("wine reg add HKEY_CLASSES_ROOT") {
+                "epic-setup"
             } else if l.starts_with("wine reg add") {
                 "override"
             } else if l.starts_with("legendary") {
@@ -181,9 +184,11 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
         .collect();
     assert_eq!(
         kinds,
-        ["saves-down", "prefix", "wineserver", "override", "game", "saves-up"],
+        ["saves-down", "prefix", "wineserver", "epic-setup", "override", "game", "saves-up"],
         "{log:#?}"
     );
+    // The prefix remembers the game, so the setup does not run again.
+    assert_eq!(fs::read_to_string(r.root.join("pfx/installed_games")).unwrap(), r#"["Calluna"]"#);
     assert_eq!(log[0], format!("cloud Calluna --skip-upload /saves/Control"));
     assert!(log.last().unwrap().contains("--skip-download"));
 
@@ -211,6 +216,7 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
         [
             "Downloading cloud saves...",
             "Preparing prefix...",
+            "Installing Redistributables (EPIC)",
             "Installing DXVK in the prefix...",
             "Uploading cloud saves..."
         ]

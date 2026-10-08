@@ -19,6 +19,8 @@ pub enum WineTool {
     Winetricks,
     /// Runs this program inside the game's prefix.
     RunExe(String),
+    /// `Winetricks.install`: `winetricks -q <component>` (no GUI).
+    WinetricksInstall(String),
 }
 
 /// A tool command ready to spawn, with what the user should be told.
@@ -60,7 +62,10 @@ pub fn build_tool_command(
             }
             run_in_prefix(ctx, probe, &wine, vec![exe.clone()], Some(node_dirname(exe)))
         }
-        WineTool::Winetricks => winetricks(ctx, probe, &wine, &mut notes)?,
+        WineTool::Winetricks => winetricks(ctx, probe, &wine, None, &mut notes)?,
+        WineTool::WinetricksInstall(component) => {
+            winetricks(ctx, probe, &wine, Some(component), &mut notes)?
+        }
     };
     Ok(ToolCommand { command, notes })
 }
@@ -73,8 +78,20 @@ pub fn wine_command(
     settings: &GameSettings,
     parts: Vec<String>,
 ) -> Result<Command, String> {
+    wine_command_for(ctx, probe, settings, parts, None)
+}
+
+/// [`wine_command`] for a game: `gameInstallPath` also goes into the
+/// environment (`STEAM_COMPAT_INSTALL_PATH`).
+pub fn wine_command_for(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    settings: &GameSettings,
+    parts: Vec<String>,
+    install_path: Option<&str>,
+) -> Result<Command, String> {
     let wine = prepare(ctx, probe, settings)?;
-    Ok(run_in_prefix(ctx, probe, &wine, parts, None))
+    Ok(run_in_prefix_at(ctx, probe, &wine, parts, None, install_path))
 }
 
 /// `runWineCommand` with `protonVerb: 'run'`.
@@ -82,11 +99,22 @@ fn run_in_prefix(
     ctx: &PlanContext,
     probe: &dyn Probe,
     wine: &WineEnv,
-    mut parts: Vec<String>,
+    parts: Vec<String>,
     cwd: Option<String>,
 ) -> Command {
+    run_in_prefix_at(ctx, probe, wine, parts, cwd, None)
+}
+
+fn run_in_prefix_at(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    wine: &WineEnv,
+    mut parts: Vec<String>,
+    cwd: Option<String>,
+    install_path: Option<&str>,
+) -> Command {
     let s = &wine.settings;
-    let mut env = setup_env_vars(s, None, probe);
+    let mut env = setup_env_vars(s, install_path, probe);
     env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
     env.insert("PROTON_VERB".into(), "run".into());
     if wine.runtime == WineRuntime::Proton {
@@ -118,11 +146,13 @@ fn wine_from_proton(wine: &WineEnv, probe: &dyn Probe) -> (String, crate::settin
     (s.wine_prefix.clone(), s.wine_version.clone())
 }
 
-/// `Winetricks.runWithArgs(['-q', '--gui'])`.
+/// `Winetricks.runWithArgs(['-q', '--gui'])`, or `['-q', component]` to
+/// install `component` without the GUI.
 fn winetricks(
     ctx: &PlanContext,
     probe: &dyn Probe,
     wine: &WineEnv,
+    component: Option<&str>,
     notes: &mut Vec<String>,
 ) -> Result<Command, String> {
     let (prefix, wine_version) = wine_from_proton(wine, probe);
@@ -139,9 +169,18 @@ fn winetricks(
     if wine.runtime == WineRuntime::Umu {
         // umu runs winetricks itself; an empty program opens its GUI.
         let umu = umu_path(ctx, probe);
-        env.insert("GAMEID".into(), "winetricks-gui".into());
         env.insert("UMU_RUNTIME_UPDATE".into(), "0".into());
-        return Ok(Command { program: umu, args: vec![String::new()], env, cwd: None });
+        let args = match component {
+            Some(c) => {
+                env.insert("GAMEID".into(), "umu-0".into());
+                vec!["winetricks".to_string(), c.to_string()]
+            }
+            None => {
+                env.insert("GAMEID".into(), "winetricks-gui".into());
+                vec![String::new()]
+            }
+        };
+        return Ok(Command { program: umu, args, env, cwd: None });
     }
 
     let script = winetricks_path(ctx);
@@ -156,7 +195,11 @@ fn winetricks(
     env.insert("GAMEID".into(), "umu-0".into());
     env.insert("UMU_RUNTIME_UPDATE".into(), "0".into());
     notes.extend(missing_dependencies(probe));
-    Ok(Command { program: script, args: vec!["-q".into(), "--gui".into()], env, cwd: None })
+    let args = match component {
+        Some(c) => vec!["-q".to_string(), c.to_string()],
+        None => vec!["-q".to_string(), "--gui".to_string()],
+    };
+    Ok(Command { program: script, args, env, cwd: None })
 }
 
 /// `Winetricks.checkDependencies`.
@@ -322,6 +365,34 @@ mod tests {
         assert_eq!(t.command.args, [""]);
         assert_eq!(t.command.env["GAMEID"], "winetricks-gui");
         assert_eq!(t.command.env["WINEPREFIX"], "/pfx");
+    }
+
+    #[test]
+    fn winetricks_install_runs_the_component_without_the_gui() {
+        let probe = probe().with_env("PATH", "/usr/bin");
+        let wine = WineTool::WinetricksInstall("vcrun2022".into());
+        let t = build_tool_command(&ctx(), &probe, &settings("wine", "/w/bin/wine"), &wine).unwrap();
+        assert_eq!(t.command.program, "/cfg/heroic/tools/winetricks");
+        assert_eq!(t.command.args, ["-q", "vcrun2022"]);
+        assert_eq!(t.command.env["WINEPREFIX"], "/pfx");
+        assert_eq!(t.command.env["GAMEID"], "umu-0");
+
+        // With umu the script is umu's own `winetricks` verb and `-q` is dropped.
+        let t = build_tool_command(&ctx(), &probe, &settings("proton", "/p/GE/proton"), &wine).unwrap();
+        assert_eq!(t.command.program, "/usr/bin/umu-run");
+        assert_eq!(t.command.args, ["winetricks", "vcrun2022"]);
+        assert_eq!(t.command.env["GAMEID"], "umu-0");
+        assert_eq!(t.command.env["UMU_RUNTIME_UPDATE"], "0");
+    }
+
+    #[test]
+    fn wine_command_for_a_game_exports_its_install_path() {
+        let s = settings("wine", "/w/bin/wine");
+        let cmd = wine_command_for(&ctx(), &probe(), &s, vec!["x.exe".into()], Some("/games/g")).unwrap();
+        assert_eq!(cmd.env["STEAM_COMPAT_INSTALL_PATH"], "/games/g");
+        assert_eq!(cmd.args, ["x.exe"]);
+        let plain = wine_command(&ctx(), &probe(), &s, vec!["x.exe".into()]).unwrap();
+        assert!(!plain.env.contains_key("STEAM_COMPAT_INSTALL_PATH"));
     }
 
     #[test]

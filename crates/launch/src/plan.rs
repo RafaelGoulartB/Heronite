@@ -88,6 +88,27 @@ pub struct PrepSpec {
     /// `savesPath` when `autoSyncSaves` is on: cloud saves are downloaded
     /// before the game starts and uploaded after it exits.
     pub cloud_saves: Option<String>,
+    /// Epic game run through Wine: what Heroic does the first time the game
+    /// starts in its prefix (`legendarySetup`, `installFixes`).
+    pub first_launch: Option<FirstLaunch>,
+}
+
+/// What a game needs the first time it runs in a Wine prefix (the prefix
+/// remembers it in its `installed_games` file), ported from `legendarySetup`
+/// and `installFixes`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct FirstLaunch {
+    pub app_name: String,
+    pub install_path: String,
+    /// `install.platform` of the game.
+    pub platform: String,
+    pub ea_managed: bool,
+    pub ubisoft_managed: bool,
+    /// `known_fixes.json`: winetricks verbs.
+    pub winetricks: Vec<String>,
+    /// `known_fixes.json`: programs (relative to the install folder) to run
+    /// in the prefix.
+    pub run_in_prefix: Vec<String>,
 }
 
 impl PrepSpec {
