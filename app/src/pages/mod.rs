@@ -8,6 +8,7 @@
 //! out with [`page_body`] so pages share width and padding.
 
 pub mod downloads;
+pub mod emulators;
 pub mod epic;
 pub mod wine_manager;
 
@@ -23,10 +24,12 @@ pub enum Page {
     Downloads,
     WineManager,
     Epic,
+    Emulators,
 }
 
 impl Page {
-    pub const ALL: [Page; 4] = [Page::Collection, Page::Downloads, Page::WineManager, Page::Epic];
+    pub const ALL: [Page; 5] =
+        [Page::Collection, Page::Downloads, Page::WineManager, Page::Epic, Page::Emulators];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -34,6 +37,7 @@ impl Page {
             Page::Downloads => "Downloads",
             Page::WineManager => "Wine Manager",
             Page::Epic => "Epic Games",
+            Page::Emulators => "Emulators",
         }
     }
 
@@ -43,6 +47,7 @@ impl Page {
             Page::Downloads => Icon::Download,
             Page::WineManager => Icon::WineBar,
             Page::Epic => Icon::AccountCircle,
+            Page::Emulators => Icon::SportsEsports,
         }
     }
 
@@ -53,6 +58,7 @@ impl Page {
             "downloads" => Some(Page::Downloads),
             "wine" => Some(Page::WineManager),
             "epic" => Some(Page::Epic),
+            "emulators" => Some(Page::Emulators),
             _ => None,
         }
     }
@@ -72,6 +78,8 @@ pub enum PageEvent {
     /// Show a toast (`true` = error).
     Toast(String, bool),
     Navigate(Page),
+    /// Open the "Add emulated games" dialog (preview and import) on the Collection.
+    ScanRoms(crate::dialogs::scan_roms::ScanInitial),
 }
 
 /// Centred column (max 1480px like the focus panel) with the page padding;

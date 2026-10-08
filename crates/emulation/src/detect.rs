@@ -155,6 +155,46 @@ pub fn existing_profiles(
     out
 }
 
+/// The profiles a new emulator of `definition_id` starts with: the catalog's,
+/// with RetroArch cores resolved next to `executable`. When the definition
+/// has core-based profiles and some core is found, only those with a core are
+/// kept; when none is found they all stay (the user sets the core paths).
+pub fn profiles_for_definition(
+    env: &dyn DetectEnv,
+    definition_id: &str,
+    executable: &str,
+    launch_kind: &str,
+) -> Vec<UserEmulatorProfile> {
+    let mut profiles = store::default_profiles(definition_id, None);
+    let Some(def) = emulator_definition(definition_id) else {
+        return profiles;
+    };
+    let install_dir = (launch_kind != "flatpak" && executable.contains('/')).then(|| dirname(executable));
+    let mut any_core = false;
+    for p in &mut profiles {
+        let core = p
+            .definition_profile_id
+            .as_deref()
+            .and_then(|pid| def.profiles.iter().find(|d| d.id == pid))
+            .and_then(|d| d.core.as_deref());
+        if let Some(core) = core {
+            p.core_path = find_core_path(env, core, install_dir.as_deref());
+            any_core |= p.core_path.is_some();
+        }
+    }
+    if any_core {
+        profiles.retain(|p| {
+            let has_core = p
+                .definition_profile_id
+                .as_deref()
+                .and_then(|pid| def.profiles.iter().find(|d| d.id == pid))
+                .is_some_and(|d| d.core.is_some());
+            !has_core || p.core_path.is_some()
+        });
+    }
+    profiles
+}
+
 /// `detectEmulators`.
 pub fn detect_emulators(env: &dyn DetectEnv, existing: &[UserEmulator]) -> Vec<DetectedEmulator> {
     let mut found = Vec::new();
@@ -398,6 +438,21 @@ mod tests {
             ra.profiles[0].core_path.as_deref(),
             Some("/var/lib/flatpak/app/org.libretro.RetroArch/current/active/files/lib/libretro/snes9x_libretro.so")
         );
+    }
+
+    #[test]
+    fn new_emulator_profiles_follow_the_cores_found() {
+        let mut env = Fake::default();
+        let all = profiles_for_definition(&env, "retroarch", "/opt/ra/retroarch", "native");
+        assert_eq!(all.len(), 20);
+        assert!(all.iter().all(|p| p.core_path.is_none()));
+        env.files.insert("/opt/ra/cores/snes9x_libretro.so".into());
+        let some = profiles_for_definition(&env, "retroarch", "/opt/ra/retroarch", "native");
+        assert_eq!(some.len(), 1);
+        assert_eq!(some[0].core_path.as_deref(), Some("/opt/ra/cores/snes9x_libretro.so"));
+        let pcsx2 = profiles_for_definition(&env, "pcsx2", "/x/pcsx2", "native");
+        assert_eq!(pcsx2.len(), 1);
+        assert_eq!(profiles_for_definition(&env, "custom", "", "native")[0].name, "Custom");
     }
 
     #[test]

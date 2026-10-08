@@ -341,7 +341,22 @@ impl ScanRomsDialog {
     }
 }
 
-fn mini_checkbox(id: impl Into<ElementId>, checked: bool, disabled: bool) -> Stateful<Div> {
+/// What the profile select shows: the profile name, followed by its platform
+/// when that adds information (a custom profile's platform is just "Other").
+pub(crate) fn profile_label(p: &UserEmulatorProfile) -> String {
+    let platform = p.platform_name.as_deref().map(str::trim).unwrap_or("");
+    let name = p.name.trim();
+    if name.is_empty() {
+        return if platform.is_empty() { "Profile".into() } else { platform.into() };
+    }
+    if platform.is_empty() || platform.eq_ignore_ascii_case("other") || platform.eq_ignore_ascii_case(name) {
+        name.into()
+    } else {
+        format!("{name} \u{b7} {platform}")
+    }
+}
+
+pub(crate) fn mini_checkbox(id: impl Into<ElementId>, checked: bool, disabled: bool) -> Stateful<Div> {
     div()
         .id(id)
         .size(px(18.))
@@ -371,21 +386,13 @@ impl Render for ScanRomsDialog {
         let emu_name = self.emulator().map(|e| e.name.clone()).unwrap_or_else(|| "No emulators yet".into());
         let emu_opts: Vec<(SharedString, bool)> =
             emulators.iter().map(|e| (e.name.clone().into(), e.id == self.emulator_id)).collect();
-        let profile_name = self
-            .profile()
-            .map(|p| p.platform_name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| p.name.clone()))
-            .unwrap_or_default();
+        let profile_name = self.profile().map(profile_label).unwrap_or_default();
         let profile_opts: Vec<(SharedString, bool)> = self
             .emulator()
             .map(|e| {
                 e.profiles
                     .iter()
-                    .map(|p| {
-                        (
-                            p.platform_name.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| p.name.clone()).into(),
-                            p.id == self.profile_id,
-                        )
-                    })
+                    .map(|p| (profile_label(p).into(), p.id == self.profile_id))
                     .collect()
             })
             .unwrap_or_default();
@@ -658,5 +665,25 @@ impl Render for ScanRomsDialog {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::profile_label;
+    use heronite_launch::emulators::UserEmulatorProfile;
+
+    fn profile(name: &str, platform: Option<&str>) -> UserEmulatorProfile {
+        UserEmulatorProfile { name: name.into(), platform_name: platform.map(Into::into), ..Default::default() }
+    }
+
+    #[test]
+    fn profile_label_shows_the_name_when_the_platform_is_other() {
+        assert_eq!(profile_label(&profile("PCSX2", Some("Other"))), "PCSX2");
+        assert_eq!(profile_label(&profile("PCSX2", None)), "PCSX2");
+        assert_eq!(profile_label(&profile("PlayStation 2", Some("PlayStation 2"))), "PlayStation 2");
+        assert_eq!(profile_label(&profile("SNES", Some("Super Nintendo"))), "SNES \u{b7} Super Nintendo");
+        assert_eq!(profile_label(&profile("", Some("Other"))), "Profile");
+        assert_eq!(profile_label(&profile("", Some("Arcade"))), "Arcade");
     }
 }

@@ -42,7 +42,7 @@ pub use save_states::{
 };
 pub use scan::{preview_rom_scan, scan_rom_directory};
 pub use store::{
-    list_rom_scanners, list_user_emulators, remove_rom_scanner, remove_user_emulator,
+    duplicate_user_emulator, insert_user_emulator, replace_user_emulator, list_rom_scanners, list_user_emulators, remove_rom_scanner, remove_user_emulator,
     upsert_rom_scanner, upsert_user_emulator,
 };
 pub use sysfiles::HostEnv;

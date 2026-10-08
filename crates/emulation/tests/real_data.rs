@@ -328,3 +328,17 @@ fn discovery_finds_real_appimages() {
     // No game folder was entered.
     assert!(found.iter().all(|d| !d.executable.contains("/games/")));
 }
+
+/// Read-only: the automatic discovery of this machine finishes quickly.
+#[test]
+fn discovery_on_this_pc_is_quick() {
+    let Some(fx) = fixture() else { return };
+    let existing = store::list_user_emulators(&HeroicPaths::at(&fx)).unwrap();
+    let t = std::time::Instant::now();
+    let found = heronite_emulation::discover::discover_emulators(&heronite_emulation::SystemEnv, &existing);
+    eprintln!("discovery took {:?}", t.elapsed());
+    for d in &found {
+        eprintln!("{:<12} {} ({}) added={}", d.name, d.executable, d.source, d.already_added);
+    }
+    assert!(t.elapsed() < std::time::Duration::from_secs(15));
+}

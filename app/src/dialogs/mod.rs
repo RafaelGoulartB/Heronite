@@ -11,6 +11,9 @@
 //!   (it reloads the library), `DialogEvent::Close` to close.
 
 pub mod add_game;
+pub mod emulator_confirm;
+pub mod emulator_detect;
+pub mod emulator_edit;
 pub mod epic_confirm;
 pub mod epic_import;
 pub mod epic_install;
@@ -29,6 +32,7 @@ pub mod web_image;
 pub mod playnite_import;
 pub mod playtime;
 pub mod remove_game;
+pub mod rom_folder;
 pub mod playnite_merge;
 pub mod scan_roms;
 pub mod settings;

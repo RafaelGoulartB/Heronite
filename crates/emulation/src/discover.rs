@@ -6,7 +6,7 @@
 //! Nothing here executes a file: matching is by name and permission bits only.
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -310,8 +310,15 @@ pub fn common_search_roots(home: &str, existing: &[UserEmulator]) -> Vec<SearchR
         }
         let dir = dirname(&e.executable);
         let parent = dirname(&dir);
+        let grand = dirname(&parent);
         add(dir.clone(), 3, "next to a configured emulator");
-        if parent != dir && parent != "/" && parent != home {
+        // Emulators are often kept one per folder (`Emulation/PS1/emulator`,
+        // `Emulation/PS2/emulator`): look at the siblings too, unless that
+        // would mean searching `$HOME` or a top-level folder.
+        let deep_enough = |p: &str| p.split('/').filter(|s| !s.is_empty()).count() >= 2 && p != home;
+        if deep_enough(&grand) {
+            add(grand, 3, "next to a configured emulator");
+        } else if parent != dir && deep_enough(&parent) {
             add(parent, 1, "next to a configured emulator");
         }
     }
@@ -501,18 +508,6 @@ pub fn add_discovered(paths: &HeroicPaths, items: &[DetectedEmulator]) -> Result
     Ok(added)
 }
 
-/// Folder to start the "Scan a folder" picker in: the first existing of the
-/// configured emulators' parents, else `$HOME`.
-pub fn suggested_scan_folder(home: &str, existing: &[UserEmulator]) -> String {
-    existing
-        .iter()
-        .filter(|e| e.launch_kind != "flatpak" && e.executable.contains('/'))
-        .map(|e| PathBuf::from(dirname(&dirname(&e.executable))))
-        .find(|p| p.is_dir())
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|| home.to_owned())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -676,12 +671,9 @@ mod tests {
             .filter(|r| r.path.starts_with(d.path().to_str().unwrap()))
             .collect();
         let found = discover_in_roots(&Env { home: "/nowhere".into() }, &existing, &roots);
-        // The parent (`.../PS2`) is searched one level deep, not its siblings.
-        assert_eq!(found.len(), 1);
-        assert_eq!(
-            suggested_scan_folder("/h", &existing),
-            d.path().join("elsewhere/PS2").to_str().unwrap()
-        );
+        // Sibling emulator folders (`.../PS1/emulator`) are searched too.
+        let names: HashSet<_> = found.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, HashSet::from(["PCSX2", "DuckStation"]));
         let in_folder = discover_in_folder(&Env { home: "/nowhere".into() }, d.path().join("elsewhere").to_str().unwrap(), &existing);
         let names: HashSet<_> = in_folder.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(names, HashSet::from(["PCSX2", "DuckStation"]));

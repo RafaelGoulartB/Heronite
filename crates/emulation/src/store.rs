@@ -43,7 +43,7 @@ pub fn find_user_emulator_by_definition(
 
 /// `defaultProfiles`: the given profiles, or one per catalog profile with
 /// fresh ids (a single "Custom" profile for unknown definitions).
-fn default_profiles(
+pub fn default_profiles(
     definition_id: &str,
     incoming: Option<Vec<UserEmulatorProfile>>,
 ) -> Vec<UserEmulatorProfile> {
@@ -79,6 +79,25 @@ fn default_profiles(
             extra: Default::default(),
         })
         .collect()
+}
+
+/// One catalog profile as a fresh user profile (new id).
+pub fn catalog_profile(definition_id: &str, profile_id: &str) -> Option<UserEmulatorProfile> {
+    let p = definition_profile(definition_id, profile_id)?;
+    Some(UserEmulatorProfile {
+        id: new_id(),
+        definition_profile_id: Some(p.id.clone()),
+        name: p.name.clone(),
+        platform_id: Some(p.platform_id.clone()),
+        platform_name: Some(p.platform_name.clone()),
+        arguments: p.arguments.clone(),
+        extensions: p.extensions.clone(),
+        core_path: None,
+        folder_indicator: p.folder_indicator.clone(),
+        playlist_extensions: p.playlist_extensions.clone(),
+        working_dir: p.working_dir.clone(),
+        extra: Default::default(),
+    })
 }
 
 fn non_empty(s: Option<&str>) -> Option<String> {

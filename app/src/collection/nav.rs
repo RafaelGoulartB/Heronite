@@ -18,6 +18,7 @@ pub struct Pages {
     downloads: Option<AnyView>,
     wine: Option<AnyView>,
     epic: Option<AnyView>,
+    emulators: Option<AnyView>,
     subs: Vec<Subscription>,
 }
 
@@ -81,6 +82,7 @@ impl CollectionView {
             Page::Downloads => self.pages.downloads.is_none(),
             Page::WineManager => self.pages.wine.is_none(),
             Page::Epic => self.pages.epic.is_none(),
+            Page::Emulators => self.pages.emulators.is_none(),
         };
         if !slot_empty {
             return;
@@ -102,6 +104,11 @@ impl CollectionView {
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
                 self.pages.epic = Some(v.into());
             }
+            Page::Emulators => {
+                let v = cx.new(|cx| pages::emulators::EmulatorsPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.emulators = Some(v.into());
+            }
         }
     }
 
@@ -110,6 +117,7 @@ impl CollectionView {
             PageEvent::LibraryChanged => self.reload(cx),
             PageEvent::Toast(text, error) => self.show_toast(text.clone(), *error, cx),
             PageEvent::Navigate(page) => self.navigate(*page, window, cx),
+            PageEvent::ScanRoms(initial) => self.open_scan_roms(initial.clone(), window, cx),
         }
     }
 
@@ -120,6 +128,7 @@ impl CollectionView {
             Page::Downloads => self.pages.downloads.clone(),
             Page::WineManager => self.pages.wine.clone(),
             Page::Epic => self.pages.epic.clone(),
+            Page::Emulators => self.pages.emulators.clone(),
         }?;
         let header = div()
             .flex()

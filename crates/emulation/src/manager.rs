@@ -87,6 +87,8 @@ pub struct EmulatorSummary {
     pub health: Health,
     pub games: usize,
     pub scanners: Vec<RomScanner>,
+    /// Directories of `scanners` that do not exist (unmounted drive, moved).
+    pub missing_folders: Vec<String>,
 }
 
 /// Everything the manager page shows.
@@ -96,11 +98,19 @@ pub fn overview(paths: &HeroicPaths, env: &dyn DetectEnv) -> Result<Vec<Emulator
     let counts = count_games_by_emulator(paths)?;
     Ok(emulators
         .into_iter()
-        .map(|emulator| EmulatorSummary {
-            health: emulator_health(env, &emulator),
-            games: counts.get(&emulator.id).copied().unwrap_or(0),
-            scanners: scanners.iter().filter(|s| s.emulator_id == emulator.id).cloned().collect(),
-            emulator,
+        .map(|emulator| {
+            let scanners: Vec<RomScanner> = scanners.iter().filter(|s| s.emulator_id == emulator.id).cloned().collect();
+            EmulatorSummary {
+                health: emulator_health(env, &emulator),
+                games: counts.get(&emulator.id).copied().unwrap_or(0),
+                missing_folders: scanners
+                    .iter()
+                    .filter(|s| !Path::new(&s.directory).is_dir())
+                    .map(|s| s.directory.clone())
+                    .collect(),
+                scanners,
+                emulator,
+            }
         })
         .collect())
 }
@@ -234,6 +244,7 @@ mod tests {
         assert_eq!((o[0].games, o[0].scanners.len(), o[0].health), (2, 2, Health::Ok));
         assert_eq!((o[1].games, o[1].scanners.len(), o[1].health), (0, 0, Health::MissingExecutable));
         assert_eq!(o[1].emulator.id, b.id);
+        assert_eq!(o[0].missing_folders, ["/r1", "/r2"]);
         assert_eq!(scanners_using_profile(&o[0].scanners, &a.id, &a.profiles[0].id), 2);
         assert!(orphan_scanners(&paths).unwrap().is_empty());
     }
