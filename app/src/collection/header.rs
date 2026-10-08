@@ -137,160 +137,12 @@ impl CollectionView {
     }
 
     pub(super) fn render_header(&mut self, cx: &mut Context<Self>) -> Div {
-        let install = self.hover_dropdown(
-            Menu::Install,
-            install_icon(self.ui.install_filter),
-            Align::Left,
-            |this, cx| {
-                let mut p = menu_panel(220.);
-                for (i, (f, label)) in [
-                    (InstallFilter::All, "All games"),
-                    (InstallFilter::Installed, "Installed"),
-                    (InstallFilter::Uninstalled, "Not installed / Uninstalled"),
-                ]
-                .into_iter()
-                .enumerate()
-                {
-                    let active = this.ui.install_filter == f;
-                    p = p.child(
-                        menu_item(SharedString::from(format!("install-{i}")), active)
-                            .child(icon(install_icon(f), px(14.4), if active { theme::accent() } else { theme::text_muted() }))
-                            .child(label)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.ui.install_filter = f;
-                                this.save_ui();
-                                this.refresh_groups();
-                                cx.notify();
-                            })),
-                    );
-                }
-                let show_hidden = this.ui.show_hidden;
-                p.child(menu_separator())
-                    .child(
-                        menu_item("install-show-hidden", false)
-                            .justify_between()
-                            .child("Show hidden games")
-                            .child(toggle("install-show-hidden-sw", show_hidden))
-                            .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(!this.ui.show_hidden, cx))),
-                    )
-                    .into_any_element()
-            },
-            cx,
-        );
-
-        let sort = self.hover_dropdown(
-            Menu::Sort,
-            Icon::SortByAlpha,
-            Align::Right,
-            |this, cx| {
-                let mut p = menu_panel(200.);
-                for (i, (m, label)) in
-                    [(SortMode::Title, "Title"), (SortMode::LastPlayed, "Last played"), (SortMode::Playtime, "Playtime")]
-                        .into_iter()
-                        .enumerate()
-                {
-                    p = p.child(menu_item(SharedString::from(format!("sort-{i}")), this.ui.sort == m).child(label).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.ui.sort = m;
-                            this.save_ui();
-                            this.refresh_groups();
-                            cx.notify();
-                        }),
-                    ));
-                }
-                p.into_any_element()
-            },
-            cx,
-        );
-
-        let status = self.hover_dropdown(
-            Menu::Status,
-            Icon::Flag,
-            Align::Right,
-            |this, cx| {
-                let on = this.ui.group_by_status;
-                menu_panel(240.)
-                    .child(
-                        menu_item("status-group", false)
-                            .justify_between()
-                            .child("Group by status")
-                            .child(toggle("status-group-sw", on))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.ui.group_by_status = !this.ui.group_by_status;
-                                this.save_ui();
-                                this.refresh_groups();
-                                cx.notify();
-                            })),
-                    )
-                    .child(menu_separator())
-                    .child(menu_item("status-manage", false).child("Manage statuses…").on_click(cx.listener(
-                        |this, _, window, cx| this.open_manage_statuses(window, cx),
-                    )))
-                    .into_any_element()
-            },
-            cx,
-        );
-
-        let facets_active = self.ui.facet_filters.is_active();
-        let facets = self.hover_dropdown(
-            Menu::Facets,
-            Icon::FilterList,
-            Align::Right,
-            |this, cx| this.render_facet_menu(cx).into_any_element(),
-            cx,
-        );
-        let facets = if facets_active {
-            facets.child(
-                div().absolute().top(px(5.)).right(px(5.)).size(px(6.)).rounded_full().bg(theme::accent()),
-            )
-        } else {
-            facets
-        };
-
-        let refreshing = self.refreshing;
-        let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::white_a(0.58));
-        let refresh = div()
-            .id("hdr-refresh")
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .size(theme::TOOL_BTN)
-            .rounded(px(4.))
-            .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.08)))
-            .on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx)))
-            .child(if refreshing {
-                refresh_icon
-                    .with_animation(
-                        "refresh-spin",
-                        Animation::new(Duration::from_secs(1)).repeat(),
-                        |svg, t| svg.with_transformation(Transformation::rotate(percentage(t))),
-                    )
-                    .into_any_element()
-            } else {
-                refresh_icon.into_any_element()
-            });
-
-        // Closes the focus panel (deselects the game); only shown while it is open.
-        let close = self.focus.is_some().then(|| {
-            div()
-                .id("hdr-focus-close")
-                .flex()
-                .flex_none()
-                .items_center()
-                .justify_center()
-                .size(theme::TOOL_BTN)
-                .rounded(px(4.))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.08)))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.focus = None;
-                    this.selected = None;
-                    cx.notify();
-                }))
-                .child(icon(Icon::Close, theme::TOOL_ICON, theme::white_a(0.58)))
-        });
+        let install = self.hover_dropdown(Menu::Install, install_icon(self.ui.install_filter), Align::Left, |this, cx| this.install_menu(cx), cx);
+        let sort = self.hover_dropdown(Menu::Sort, Icon::SortByAlpha, Align::Right, |this, cx| this.sort_menu(cx), cx);
+        let status = self.hover_dropdown(Menu::Status, Icon::Flag, Align::Right, |this, cx| this.status_menu(cx), cx);
+        let facets = self.facets_button(cx);
+        let refresh = self.refresh_button(cx);
+        let close = self.focus_close_button(cx);
 
         div()
             .relative()
@@ -331,6 +183,150 @@ impl CollectionView {
                     .child(refresh)
                     .children(close),
             )
+    }
+
+    fn install_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut p = menu_panel(220.);
+        for (i, (f, label)) in [
+            (InstallFilter::All, "All games"),
+            (InstallFilter::Installed, "Installed"),
+            (InstallFilter::Uninstalled, "Not installed / Uninstalled"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let active = self.ui.install_filter == f;
+            p = p.child(
+                menu_item(SharedString::from(format!("install-{i}")), active)
+                    .child(icon(install_icon(f), px(14.4), if active { theme::accent() } else { theme::text_muted() }))
+                    .child(label)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.ui.install_filter = f;
+                        this.save_ui();
+                        this.refresh_groups();
+                        cx.notify();
+                    })),
+            );
+        }
+        let show_hidden = self.ui.show_hidden;
+        p.child(menu_separator())
+            .child(
+                menu_item("install-show-hidden", false)
+                    .justify_between()
+                    .child("Show hidden games")
+                    .child(toggle("install-show-hidden-sw", show_hidden))
+                    .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(!this.ui.show_hidden, cx))),
+            )
+            .into_any_element()
+    }
+
+    fn sort_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let mut p = menu_panel(200.);
+        for (i, (m, label)) in
+            [(SortMode::Title, "Title"), (SortMode::LastPlayed, "Last played"), (SortMode::Playtime, "Playtime")]
+                .into_iter()
+                .enumerate()
+        {
+            p = p.child(menu_item(SharedString::from(format!("sort-{i}")), self.ui.sort == m).child(label).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    this.ui.sort = m;
+                    this.save_ui();
+                    this.refresh_groups();
+                    cx.notify();
+                }),
+            ));
+        }
+        p.into_any_element()
+    }
+
+    fn status_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let on = self.ui.group_by_status;
+        menu_panel(240.)
+            .child(
+                menu_item("status-group", false)
+                    .justify_between()
+                    .child("Group by status")
+                    .child(toggle("status-group-sw", on))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.ui.group_by_status = !this.ui.group_by_status;
+                        this.save_ui();
+                        this.refresh_groups();
+                        cx.notify();
+                    })),
+            )
+            .child(menu_separator())
+            .child(menu_item("status-manage", false).child("Manage statuses…").on_click(cx.listener(
+                |this, _, window, cx| this.open_manage_statuses(window, cx),
+            )))
+            .into_any_element()
+    }
+
+    /// Filter button with a dot while a facet filter is active.
+    fn facets_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let facets_active = self.ui.facet_filters.is_active();
+        let facets = self.hover_dropdown(
+            Menu::Facets,
+            Icon::FilterList,
+            Align::Right,
+            |this, cx| this.render_facet_menu(cx).into_any_element(),
+            cx,
+        );
+        if facets_active {
+            facets.child(
+                div().absolute().top(px(5.)).right(px(5.)).size(px(6.)).rounded_full().bg(theme::accent()),
+            )
+        } else {
+            facets
+        }
+    }
+
+    fn refresh_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let refreshing = self.refreshing;
+        let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::white_a(0.58));
+        div()
+            .id("hdr-refresh")
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(theme::TOOL_BTN)
+            .rounded(px(4.))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::white_a(0.08)))
+            .on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx)))
+            .child(if refreshing {
+                refresh_icon
+                    .with_animation(
+                        "refresh-spin",
+                        Animation::new(Duration::from_secs(1)).repeat(),
+                        |svg, t| svg.with_transformation(Transformation::rotate(percentage(t))),
+                    )
+                    .into_any_element()
+            } else {
+                refresh_icon.into_any_element()
+            })
+    }
+
+    /// Closes the focus panel (deselects the game); only shown while it is open.
+    fn focus_close_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        self.focus.is_some().then(|| {
+            div()
+                .id("hdr-focus-close")
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(theme::TOOL_BTN)
+                .rounded(px(4.))
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::white_a(0.08)))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.focus = None;
+                    this.selected = None;
+                    cx.notify();
+                }))
+                .child(icon(Icon::Close, theme::TOOL_ICON, theme::white_a(0.58)))
+        })
     }
 
     /// 20rem × 32px search with an underline only, centred text.
