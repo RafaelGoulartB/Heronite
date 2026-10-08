@@ -828,3 +828,41 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
   `HERONITE_FIXTURE`, pulando `real_machine_detection_and_ludusavi` que roda o Ludusavi real) verde.
 - **Não verificado**: a retomada ao vivo dentro do app (precisaria rodar sem `HERONITE_DISABLE_IDLE_JOBS`); rsync real só em pasta
   temporária pelo teste. O journal inválido/morto de outro jogo não bloqueia novo move, um pendente válido sim (mensagem no erro).
+
+## Desligamento ordenado, jogos independentes e sessão (agente "shutdown")
+- **Confirmação ao sair com jogo rodando** (`app/src/dialogs/quit_confirm.rs`, hub): o botão de fechar da janela (`on_window_should_close`,
+  antes de fechar) e o "Quit" da bandeja checam `State.running` e `session::busy()`. Sem nada pendente: sai (pelo caminho gracioso).
+  Com jogo/pós-jogo: abre "A game is running" na janela principal (mostrada antes se estava escondida) com "Cancel" / "Keep running in
+  tray" / "Quit anyway" (sem bandeja: "Keep open" / "Quit anyway"). `exitToTray` ligado continua só fechando a janela, sem perguntar.
+  O fecho headless (`--launch`, `maybe_exit_idle`) não muda.
+- **Saída graciosa** (`hub::graceful_quit`, idempotente, nunca bloqueia a UI): tira o socket de instância única, desliga a bandeja, grava
+  o tempo de jogo dos jogos rodando (`Launcher::checkpoint_all`, em background), pausa a fila Epic pelo caminho de pausa
+  (`DownloadManager::pause_for_shutdown`: o elemento continua em `queue` e retoma no próximo start; NÃO usa `shutdown()`, que vira Abort) e
+  espera até 5 s o worker ficar ocioso (`is_idle`), depois `cx.quit()`. Watchdog de 15 s força a saída se algum passo travar.
+- **Sinais** (`system/signals.rs`, `signal-hook`): SIGTERM/SIGINT/SIGHUP = quit sem diálogo. A thread de sinais decide a escalada sozinha:
+  segundo sinal (ou sinal com um quit já em andamento) = `exit(128+sinal)` na hora (130/143/129).
+- **Jogos não dependem do launcher** (`launch/runtime.rs`, `log_writer.rs`): stdout/stderr do jogo vão direto para o `launch.log`
+  (descritor `O_APPEND` do próprio `GameLog::child_stdio`, `Stdio::null()` se logs desligados), sem pipe nem thread de bombeamento;
+  as linhas do launcher (cabeçalho, "exited with code", "End of log") continuam no mesmo arquivo, na ordem. O fim da sessão não depende
+  mais do EOF do pipe: `poll()` só devolve "saiu" quando o grupo de processos do jogo inteiro sumiu (mesma semântica do `close` do Node,
+  e launchers que fazem fork continuam sendo esperados). Perda conhecida: o teto de 512 MB do log só vale para linhas do launcher.
+- **Checkpoints de tempo de jogo** (`launch/record.rs` `Checkpointer`): a cada 2 min (e no quit/sinal) grava `timestamp.json`
+  (`lastPlayed`, `totalPlayed` = floor(base + minutos da sessão), base lida uma vez do arquivo) e atualiza no lugar a linha da sessão em
+  `sessions.json` (mesmo `startedAt`); `games.recent` é tocado uma vez. `finish()` usa o mesmo `Checkpointer`, então o final SUBSTITUI os
+  checkpoints (nada contado em dobro). Crash/kill -9/queda de energia perde no máximo ~2 min.
+- **Segunda instância** (`single_instance.rs`, `main.rs`): sem socket / conexão recusada = obsoleto, vira primária como antes. Se o
+  primário existe mas não responde em 5 s ou responde erro: NÃO abre outra instância; imprime erro no stderr, manda notificação
+  ("Heronite is already running but is not responding") e sai com código 1. O servidor só responde `ok` se a mensagem foi entregue ao
+  canal (`err` senão, `closing` depois do quit começar) e o socket é removido no início do quit (`close_active`), sem apagar o de uma
+  instância mais nova no `Drop`.
+- **Verificado**: testes unitários (checkpoints sem dupla contagem, crash entre checkpoints, `checkpoint_all` com fake spawner, stdio
+  direto no arquivo `/proc/<pid>/fd/1`, ordem das linhas, fila Epic pausada no quit e retomada em outro manager, respostas do servidor
+  de instância única: timeout/hangup/err/closing, decisão dos sinais, textos do diálogo). Ao vivo, só em fixture
+  (`/tmp/heronite-fixture-shutdown`, ludusavi desligado, jogo falso `fakegame.sh`): SIGTERM/SIGINT/SIGHUP na instância própria = log
+  "quitting gracefully", sessão gravada, socket removido, jogo continua rodando e escrevendo no log; `kill -9` do app com o jogo vivo;
+  checkpoint periódico aos 120 s (sessions.json + `totalPlayed`); app parado com SIGSTOP + segunda invocação = erro, código 1, cerca de
+  5 s, nenhuma segunda instância; diálogo capturado com `scripts/shot.sh` (`HERONITE_DEBUG_FAKE_SESSION` +
+  `HERONITE_DEBUG_REQUEST_QUIT_AFTER_MS` / `HERONITE_DEBUG_USER_CLOSE_AFTER_MS`).
+- **Não verificado**: variante com bandeja do diálogo (não abri bandeja real); clique real no X / Alt+F4 (o gancho do GPUI é o mesmo dos
+  `*_AFTER_MS`, mas sem clique); pausa de um legendary de verdade no quit (só `FakeJob`); sessão Steam (checkpoint usa o mesmo ledger,
+  não exercitado).
