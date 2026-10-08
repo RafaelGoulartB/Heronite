@@ -272,6 +272,26 @@ impl CollectionView {
                 refresh_icon.into_any_element()
             });
 
+        // Closes the focus panel (deselects the game); only shown while it is open.
+        let close = self.focus.is_some().then(|| {
+            div()
+                .id("hdr-focus-close")
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(theme::TOOL_BTN)
+                .rounded(px(4.))
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::white_a(0.08)))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.focus = None;
+                    this.selected = None;
+                    cx.notify();
+                }))
+                .child(icon(Icon::Close, theme::TOOL_ICON, theme::white_a(0.58)))
+        });
+
         div()
             .relative()
             .flex()
@@ -308,7 +328,8 @@ impl CollectionView {
                     .justify_end()
                     .min_w(px(32.))
                     .children(self.bulk_chip(cx))
-                    .child(refresh),
+                    .child(refresh)
+                    .children(close),
             )
     }
 

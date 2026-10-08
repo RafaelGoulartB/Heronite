@@ -1007,14 +1007,6 @@ impl Render for CollectionView {
                     },
                     focus::FocusActions {
                         on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
-                        on_close: Box::new(
-                            cx.listener(|this, _: &(), _, cx| {
-                                this.focus = None;
-                                this.selected = None;
-                                cx.notify();
-                            })
-                            .into_fn(),
-                        ),
                         on_play: Box::new(move |_, cx| {
                             w3.update(cx, |this, cx| {
                                 this.primary_action(&focus_key, cx);
