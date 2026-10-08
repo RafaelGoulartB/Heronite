@@ -359,6 +359,8 @@ impl CollectionView {
             let mut wrap = div().relative().child(row);
             if open {
                 let mut fly = menu_panel(240.).w(px(280.)).max_h(px(420.)).gap(px(1.9));
+                let query = self.facet_query(kind, cx);
+                fly = fly.children(self.facet_search_box(kind));
                 fly = fly.child(
                     menu_item(SharedString::from(format!("facet-all-{}", kind.as_str())), selected.is_none())
                         .child("All")
@@ -369,7 +371,11 @@ impl CollectionView {
                             }
                         })),
                 );
-                let opts = options.get(kind);
+                let opts: Vec<_> = options
+                    .get(kind)
+                    .iter()
+                    .filter(|o| super::extras::facet_option_matches(&o.value, &query))
+                    .collect();
                 if opts.is_empty() {
                     fly = fly.child(
                         div().mx(px(5.6)).text_size(px(13.33)).text_color(theme::white_a(0.45)).child("None in this library"),

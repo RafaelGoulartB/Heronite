@@ -6,8 +6,9 @@
 //! meta, sessions, metadata, art, playtime) and its recent/favourite/hidden
 //! entries are deleted. Desktop and start menu shortcuts go too.
 //!
-//! Not ported: removing the game from Steam's non-Steam shortcuts
-//! (`removeNonSteamGame`).
+//! Removing the game from Steam's non-Steam shortcuts (`removeNonSteamGame`)
+//! lives in the app (`system::shortcuts`); the app passes
+//! [`ShortcutDirs::none`] when it already took care of the shortcut files.
 
 use std::path::{Path, PathBuf};
 
@@ -37,10 +38,16 @@ impl ShortcutDirs {
         Self { desktop: desktop_dir(home), applications: home.join(".local/share/applications") }
     }
 
+    /// No shortcut directories: leaves shortcuts alone (the caller removes
+    /// them some other way).
+    pub fn none() -> Self {
+        Self { desktop: PathBuf::new(), applications: PathBuf::new() }
+    }
+
     pub fn detect() -> Self {
         match dirs_home() {
             Some(home) => Self::for_home(&home),
-            None => Self { desktop: PathBuf::new(), applications: PathBuf::new() },
+            None => Self::none(),
         }
     }
 

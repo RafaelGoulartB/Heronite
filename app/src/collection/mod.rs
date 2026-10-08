@@ -1,10 +1,12 @@
 //! The Collection screen: stage background, header, grouped list, focus panel.
 
+mod achievements;
 mod card;
 mod context_menu;
 mod data;
 mod emulation;
 mod epic;
+mod extras;
 mod focus;
 mod html;
 mod header;
@@ -14,6 +16,7 @@ mod nav;
 mod playnite_menu;
 mod screenshot_viewer;
 mod screenshots;
+mod sessions;
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
@@ -96,6 +99,7 @@ pub struct CollectionView {
     emu: emulation::EmuState,
     playnite: playnite_menu::PlayniteState,
     epic: epic::EpicState,
+    extras: extras::Extras,
     focus_scroll: ScrollHandle,
     shots: screenshots::Shots,
     toast_task: Option<Task<()>>,
@@ -207,6 +211,7 @@ impl CollectionView {
             emu: Default::default(),
             playnite: Default::default(),
             epic: Default::default(),
+            extras: Default::default(),
             focus_scroll: ScrollHandle::new(),
             shots: Default::default(),
             images,
@@ -475,7 +480,7 @@ impl CollectionView {
         }
         let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
         if let Err(err) = result {
-            self.show_toast(err, true, cx);
+            self.report_launch_error(err, cx);
         }
     }
 
@@ -819,6 +824,7 @@ impl Render for CollectionView {
                 | "settings:metadata" | "wizard" => self.open_metadata_debug(which.as_str(), window, cx),
                 "playnite:import" => self.open_playnite_import(window, cx),
                 "playnite:merge" => self.open_playnite_merge(window, cx),
+                w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => self.open_extras_debug(which.as_str(), window, cx),
                 other => {
                     if !self.epic_debug_dialog(other, window, cx) {
                         self.open_emu_debug_dialog(other, window, cx);
@@ -828,6 +834,7 @@ impl Render for CollectionView {
         }
         self.drive_emulation(window, cx);
         self.drive_epic(window, cx);
+        self.sync_extras(window, cx);
         self.sync_shots(window, cx);
         let viewport = window.viewport_size();
         let vw = f32::from(viewport.width);
@@ -870,10 +877,28 @@ impl Render for CollectionView {
         )
         .absolute()
         .inset_0();
-        let list_scrollbar = crate::ui::scrollbar(
+        let list_scrollbar = crate::ui::scrollbar_draggable(
+            "list-scrollbar",
             self.list_state.scroll_px_offset_for_scrollbar().y,
             self.list_state.max_offset_for_scrollbar().y,
             self.list_state.viewport_bounds().size.height,
+            {
+                let (state, weak) = (self.list_state.clone(), cx.entity().downgrade());
+                move |distance, _, cx| {
+                    state.set_offset_from_scrollbar(point(px(0.), px(-distance)));
+                    weak.update(cx, |_, cx| cx.notify()).ok();
+                }
+            },
+            Some(Rc::new({
+                let state = self.list_state.clone();
+                move |started| {
+                    if started {
+                        state.scrollbar_drag_started();
+                    } else {
+                        state.scrollbar_drag_ended();
+                    }
+                }
+            })),
         );
         let sticky = self.sticky().map(|(g, shift)| {
             div()
@@ -927,6 +952,7 @@ impl Render for CollectionView {
                 let focus_key = vm.key.clone();
                 let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
                 let screenshots = self.screenshots_section(cx);
+                let (w7, focus_extras) = (weak.clone(), self.focus_extras(&focus_key, scale));
                 focus::focus_panel(
                     focus::FocusProps {
                         vm,
@@ -938,6 +964,7 @@ impl Render for CollectionView {
                         active_facets,
                         screenshots,
                         epic: epic_focus,
+                        extras: focus_extras,
                     },
                     focus::FocusActions {
                         on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
@@ -949,6 +976,12 @@ impl Render for CollectionView {
                             })
                             .into_fn(),
                         ),
+                        on_open_details: Box::new({
+                            let key = focus_key.clone();
+                            move |_, cx| {
+                                w7.update(cx, |this, cx| this.open_details(&key, cx)).ok();
+                            }
+                        }),
                         on_play: Box::new(move |_, cx| {
                             w3.update(cx, |this, cx| {
                                 this.primary_action(&focus_key, cx);

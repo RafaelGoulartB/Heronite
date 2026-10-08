@@ -9,6 +9,7 @@ pub mod text;
 pub mod art;
 pub mod collection;
 pub mod config_games;
+pub mod details_url;
 pub mod game_config;
 pub mod focus;
 pub mod heronite_ui_import;

@@ -106,11 +106,24 @@ pub struct FocusProps {
     pub screenshots: Option<AnyElement>,
     /// Epic install / update progress in the footer.
     pub epic: Option<super::epic::FocusEpic>,
+    /// Achievements and session history panels of the side column.
+    pub extras: FocusExtras,
+}
+
+/// Extra panels of the side column (see `extras.rs`).
+#[derive(Default)]
+pub struct FocusExtras {
+    /// Above "Details" (`collectionFocus__panel` of achievements).
+    pub top: Option<AnyElement>,
+    /// Below "How Long To Beat" (play sessions).
+    pub bottom: Option<AnyElement>,
 }
 
 pub struct FocusActions {
     pub on_scroll: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_close: Box<dyn Fn(&mut Window, &mut App)>,
+    /// The "open details page" button (top right).
+    pub on_open_details: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_play: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_favourite: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_metadata: Box<dyn Fn(&mut Window, &mut App)>,
@@ -149,12 +162,26 @@ pub fn panel(facts: bool) -> Div {
 }
 
 pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
-    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, screenshots, epic } = props;
+    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, screenshots, epic, extras } = props;
+    let on_scroll: Rc<dyn Fn(&mut Window, &mut App)> = Rc::from(actions.on_scroll);
     let (epic_el, hide_play) = match epic {
         Some(e) => (Some(e.element), e.replaces_play),
         None => (None, false),
     };
-    let scrollbar = crate::ui::scrollbar(scroll.offset().y, scroll.max_offset().y, scroll.bounds().size.height);
+    let scrollbar = crate::ui::scrollbar_draggable(
+        "focus-scrollbar",
+        scroll.offset().y,
+        scroll.max_offset().y,
+        scroll.bounds().size.height,
+        {
+            let (scroll, on_scroll) = (scroll.clone(), on_scroll.clone());
+            move |distance, window, cx| {
+                scroll.set_offset(point(px(0.), px(-distance)));
+                on_scroll(window, cx);
+            }
+        },
+        None,
+    );
     let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
     let title_size = (viewport_w * 0.022).clamp(24.8, 32.);
     let cover_w = if narrow { 72. } else { 86. };
@@ -229,6 +256,7 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     }
 
     let mut side = div().flex().flex_col().gap(px(14.4)).min_w_0();
+    side = side.children(extras.top);
     side = side.child(
         div()
             .flex()
@@ -239,6 +267,7 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     if let Some(h) = &vm.hltb {
         side = side.child(div().flex().flex_col().child(h3("How Long To Beat")).child(hltb_panel(h)));
     }
+    side = side.children(extras.bottom);
 
     let body = if narrow {
         div().flex().flex_col().gap(px(20.)).child(main).child(side)
@@ -257,7 +286,8 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     };
 
     let on_close = actions.on_close;
-    let on_scroll = actions.on_scroll;
+    let on_open = actions.on_open_details;
+    let on_scroll_wheel = on_scroll.clone();
     let on_play = actions.on_play;
     let on_fav = actions.on_favourite;
     let (on_meta, on_gsettings) = (actions.on_metadata, actions.on_game_settings);
@@ -290,7 +320,7 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
                 .right(px(17.6))
                 .flex()
                 .gap(px(8.))
-                .child(round_button("focus-open", Icon::OpenInNew, 36., 0.42))
+                .child(round_button("focus-open", Icon::OpenInNew, 36., 0.42).on_click(move |_, w, cx| on_open(w, cx)))
                 .child(round_button("focus-close", Icon::Close, 36., 0.42).on_click(move |_, w, cx| on_close(w, cx))),
         )
         .child(
@@ -298,19 +328,19 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
                 .relative()
                 .flex_1()
                 .min_h_0()
-                .children(scrollbar)
                 .child(
             div()
                 .id("focus-inner")
                 .size_full()
                 .overflow_y_scroll()
                 .track_scroll(&scroll)
-                .on_scroll_wheel(move |_, w, cx| on_scroll(w, cx))
+                .on_scroll_wheel(move |_, w, cx| on_scroll_wheel(w, cx))
                 .pt(px(if narrow { 32. } else { 38.4 }))
                 .px(px(if narrow { 19.2 } else { 36. }))
                 .pb(px(16.))
                 .child(div().flex().flex_col().w_full().max_w(px(1480.)).mx_auto().child(header).child(body)),
-                ),
+                )
+                .children(scrollbar),
         )
         .child(
             div()

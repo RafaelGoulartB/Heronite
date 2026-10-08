@@ -16,7 +16,7 @@ pub struct ContextMenuState {
     pub status_open: bool,
 }
 
-fn item(id: impl Into<ElementId>) -> Stateful<Div> {
+pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -241,6 +241,7 @@ impl CollectionView {
         }
 
         let position = state.position;
+        menu = self.extras_context_items(menu, &game, cx);
         menu = self.epic_context_items(menu, &game, cx);
         Some(
             deferred(
