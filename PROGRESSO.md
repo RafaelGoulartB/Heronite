@@ -45,6 +45,11 @@ Diário de trabalho para retomar a migração. Plano geral em `PLANO.md`.
 
 ## Achados de paridade visual
 
+> Decisão do usuário (2026-10-07): diálogos, menus, abas de configuração e modais **não**
+> precisam ser idênticos ao Heronite (gostou do estilo atual). Paridade fina só na tela
+> principal da Collection (grade, painel de foco, faixa de screenshots).
+
+
 - O Heronite só carrega Rubik/Cabin **400**; o Chromium simula negrito para CSS 600/700 e
   renderiza 500 como regular. O GPUI não simula negrito, então usamos o corte real **600** para
   CSS 600/700 (`theme::W_BOLD`) e 400 para CSS 500 (`theme::W_500`). Só os pesos 400 e 600 são

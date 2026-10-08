@@ -56,7 +56,7 @@ sources are in `../HeroicGamesLauncher/src/frontend/screens/LocalLibrary/**`.
   `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=install|sort|status|facets`,
   `HERONITE_DEBUG_DIALOG=settings|statuses` (extend the match in
   `CollectionView::render` for new dialogs, e.g. `settings:screenshots` to open a tab).
-- Compare with the reference PNG (crop the same region with PIL, view both).
+- Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).
 - Anything that WRITES data must be exercised only against a copy:
   `HERONITE_HEROIC_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`
   (copy `/tmp/heronite-fixture`, which mirrors `~/.config/heroic` JSON).
