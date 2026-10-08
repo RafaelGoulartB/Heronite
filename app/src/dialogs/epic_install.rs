@@ -21,7 +21,7 @@ use crate::services::{self, downloads::InstallRequest};
 use crate::theme;
 use crate::ui::controls::{action_button, button, checkbox, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
-use crate::ui::fields::{choose_path, field_label, meta_text, new_input, on_commit, panel, path_field, select_field};
+use crate::ui::fields::{choose_path, meta_text, new_input, on_commit, path_field, select_field};
 use crate::ui::icon;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -297,9 +297,9 @@ impl EpicInstallDialog {
                 .flex()
                 .items_center()
                 .gap(px(8.))
-                .child(icon(ic, px(16.), rgb(0xcaf3fd)))
-                .child(div().text_size(px(15.)).text_color(rgb(0xcaf3fd)).child(format!("{label}:")))
-                .child(div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(white()).child(value))
+                .child(icon(ic, px(16.), crate::theme::text_primary()))
+                .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(format!("{label}:")))
+                .child(div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(value))
         };
         let mut row = div().flex().flex_wrap().gap_x(px(28.)).gap_y(px(6.));
         if have {
@@ -307,15 +307,15 @@ impl EpicInstallDialog {
                 .child(cell(Icon::Download, "Download Size", file_size(self.download_bytes())))
                 .child(cell(Icon::FaHardDrive, "Install Size", file_size(self.disk_bytes())));
         } else if let Some(err) = &self.info_error {
-            row = row.child(div().text_size(px(14.)).text_color(theme::danger()).child(err.lines().next().unwrap_or("").to_string()));
+            row = row.child(div().w_full().text_size(px(14.)).text_color(theme::danger_text()).child(err.lines().next().unwrap_or("").to_string()));
         } else {
             row = row.child(
                 div()
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(icon(Icon::FaSpinner, px(16.), rgb(0xcaf3fd)))
-                    .child(div().text_size(px(15.)).text_color(rgb(0xcaf3fd)).child("Getting download and install size...")),
+                    .child(icon(Icon::FaSpinner, px(16.), crate::theme::text_primary()))
+                    .child(div().text_size(px(13.)).text_color(theme::text_muted()).child("Getting download and install size...")),
             );
         }
         row
@@ -325,7 +325,7 @@ impl EpicInstallDialog {
         let space = self.space.as_ref()?;
         let after = space.free as f64 - self.disk_bytes();
         let enough = self.info.is_none() || after >= 0.;
-        let mut line = div().text_size(px(13.33)).text_color(white()).flex().flex_wrap().gap(px(4.)).child(format!("Space Available: {}", space.message));
+        let mut line = div().text_size(px(13.)).text_color(theme::text_muted()).flex().flex_wrap().gap(px(4.)).child(format!("Space Available: {}", space.message));
         if self.info.is_some() && enough {
             line = line.child(format!(" - After Install: {}", file_size(after)));
         }
@@ -349,15 +349,16 @@ impl EpicInstallDialog {
             .items_center()
             .gap(px(6.))
             .cursor_pointer()
-            .text_size(px(15.))
-            .text_color(rgb(0xcaf3fd))
+            .py(px(8.))
+            .text_size(px(14.))
+            .text_color(crate::theme::text_primary())
             .on_click(cx.listener(|this, _, _, cx| {
                 this.wine_details = !this.wine_details;
                 cx.notify();
             }))
-            .child(icon(if self.wine_details { Icon::ExpandMore } else { Icon::ChevronRight }, px(18.), rgb(0xcaf3fd)))
+            .child(icon(if self.wine_details { Icon::ExpandMore } else { Icon::ChevronRight }, px(18.), crate::theme::text_primary()))
             .child("Show Wine settings");
-        let mut col = div().flex().flex_col().gap(px(10.)).child(toggle);
+        let mut col = crate::ui::controls::card_box().gap(px(10.)).pb(px(14.)).child(toggle);
         if !self.wine_details {
             return Some(col);
         }
@@ -465,54 +466,57 @@ impl Render for EpicInstallDialog {
             body = body.children(self.space_line(cx));
 
             if !self.sdl.is_empty() || !self.dlcs.is_empty() {
-                body = body.child(field_label("Select components to Install:"));
+                body = body.child(crate::ui::controls::section_title("Components to install"));
             }
             if !self.sdl.is_empty() {
-                let mut list = div().flex().flex_col().gap(px(4.));
+                let mut rows: Vec<AnyElement> = Vec::new();
                 for (i, (sdl, on)) in self.sdl.iter().enumerate() {
                     let checked = sdl.required || *on;
                     let row = checkbox(SharedString::from(format!("epic-sdl-{i}")), checked, sdl.name.clone());
-                    list = list.child(if sdl.required {
-                        row.opacity(0.7).cursor_not_allowed()
-                    } else {
-                        row.on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(e) = this.sdl.get_mut(i) {
-                                e.1 = !e.1;
-                            }
-                            cx.notify();
-                        }))
-                    });
+                    rows.push(
+                        if sdl.required {
+                            row.opacity(0.7).cursor_not_allowed()
+                        } else {
+                            row.on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(e) = this.sdl.get_mut(i) {
+                                    e.1 = !e.1;
+                                }
+                                cx.notify();
+                            }))
+                        }
+                        .into_any_element(),
+                    );
                 }
-                body = body.child(list);
+                body = body.child(crate::ui::controls::card(rows));
             }
             if !self.dlcs.is_empty() {
                 let all = self.dlcs.iter().all(|(_, on)| *on);
-                let mut list = div().flex().flex_col().gap(px(4.)).child(
-                    checkbox("epic-dlc-all", all, "Install all DLCs").on_click(cx.listener(move |this, _, _, cx| {
+                let mut rows: Vec<AnyElement> = vec![checkbox("epic-dlc-all", all, "Install all DLCs")
+                    .on_click(cx.listener(move |this, _, _, cx| {
                         let set = !this.dlcs.iter().all(|(_, on)| *on);
                         for d in this.dlcs.iter_mut() {
                             d.1 = set;
                         }
                         cx.notify();
-                    })),
-                );
-                let mut items = div().flex().flex_col().gap(px(2.)).pl(px(12.)).max_h(px(160.)).overflow_hidden();
+                    }))
+                    .into_any_element()];
                 for (i, (dlc, on)) in self.dlcs.iter().enumerate() {
-                    items = items.child(checkbox(SharedString::from(format!("epic-dlc-{i}")), *on, dlc.title.clone()).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            if let Some(e) = this.dlcs.get_mut(i) {
-                                e.1 = !e.1;
-                            }
-                            cx.notify();
-                        }),
-                    ));
+                    rows.push(
+                        checkbox(SharedString::from(format!("epic-dlc-{i}")), *on, dlc.title.clone())
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(e) = this.dlcs.get_mut(i) {
+                                    e.1 = !e.1;
+                                }
+                                cx.notify();
+                            }))
+                            .into_any_element(),
+                    );
                 }
-                list = list.child(items);
-                body = body.child(list);
+                body = body.child(div().id("epic-dlc-list").max_h(px(240.)).overflow_y_scroll().child(crate::ui::controls::card(rows)));
             }
         }
         if let Some(wine) = self.wine_section(cx) {
-            body = body.child(panel().child(wine));
+            body = body.child(wine);
         }
 
         let not_enough = self.space.as_ref().is_some_and(|s| self.info.is_some() && (s.free as f64) < self.disk_bytes());
@@ -528,11 +532,11 @@ impl Render for EpicInstallDialog {
                 cx.listener(|this, _, _, cx| this.install(cx)),
             )
         };
-        let switch = button("epic-switch-mode", ButtonKind::Secondary, if importing { "Install" } else { "Import Game" }).on_click(cx.listener(|this, _, _, cx| {
+        let switch = button("epic-switch-mode", ButtonKind::Glass, if importing { "Install" } else { "Import Game" }).on_click(cx.listener(|this, _, _, cx| {
             this.mode = if this.mode == Mode::Install { Mode::Import } else { Mode::Install };
             cx.notify();
         }));
-        let footer = div().flex().gap(px(16.)).child(switch).child(primary).into_any_element();
+        let footer = div().flex().gap(px(10.)).child(switch).child(primary).into_any_element();
         let entity = cx.entity().downgrade();
         dialog(
             DialogProps { id: "epic-install".into(), title: self.title.clone().into(), width: 600., height: None },

@@ -146,7 +146,7 @@ impl Render for ImagePicker {
             .gap(px(8.))
             .child(action_button(
                 "ag-pick-search",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 "Search",
                 !self.loading,
                 cx.listener(|this, _, _, cx| this.search(cx)),
@@ -227,7 +227,7 @@ impl Render for ImagePicker {
         if !self.loading && self.visible < self.results.len() {
             body = body.child(
                 div().flex().justify_center().child(
-                    button("ag-pick-more", ButtonKind::Outline, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                    button("ag-pick-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
                         this.visible += PAGE_SIZE;
                         cx.notify();
                     })),
@@ -235,13 +235,13 @@ impl Render for ImagePicker {
             );
         }
         if !self.error.is_empty() {
-            body = body.child(div().text_size(px(16.)).text_color(theme::danger()).child(self.error.clone()));
+            body = body.child(div().text_size(px(16.)).text_color(theme::danger_text()).child(self.error.clone()));
         }
 
         let footer = div()
             .flex()
-            .gap(px(16.))
-            .child(action_button("ag-pick-cancel", ButtonKind::Outline, "Cancel", true, cx.listener(|_, _, _, cx| cx.emit(PickerEvent::Close))))
+            .gap(px(10.))
+            .child(action_button("ag-pick-cancel", ButtonKind::Ghost, "Cancel", true, cx.listener(|_, _, _, cx| cx.emit(PickerEvent::Close))))
             .child(action_button(
                 "ag-pick-select",
                 ButtonKind::Primary,

@@ -43,7 +43,7 @@ pub fn radio(on: bool) -> Div {
         .flex_none()
         .rounded_full()
         .border(px(2.))
-        .border_color(if on { theme::accent() } else { rgb(0xcaf3fd) })
+        .border_color(if on { theme::accent() } else { crate::theme::text_primary() })
         .flex()
         .items_center()
         .justify_center()
@@ -96,11 +96,11 @@ impl Render for PickRomDialog {
             .child(list);
         let footer = div()
             .flex()
-            .gap(px(16.))
-            .child(button("rom-cancel", ButtonKind::Outline, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .gap(px(10.))
+            .child(button("rom-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "rom-play",
-                ButtonKind::Default,
+                ButtonKind::Primary,
                 "Play",
                 self.selected.is_some(),
                 cx.listener(|this, _, _, cx| {

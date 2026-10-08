@@ -8,13 +8,12 @@ use heronite_epic::manager::{DmState, Snapshot};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind};
 
-use super::{page_body, page_column, PageCtx, PageEvent};
+use super::{caption_with, empty_row, icon_action, list_item, page_close, sheet, status_pill, PageCtx, PageEvent};
 use crate::icons::Icon;
 use crate::services::widgets::{cover_box, fmt_mib, fmt_percent, progress_bar, Covers};
 use crate::services::{self, Downloads};
 use crate::theme;
-use crate::ui::controls::{button, section_title, ButtonKind};
-use crate::ui::icon;
+use crate::ui::controls::{button_sm, caption, card, card_box, ButtonKind};
 
 pub struct DownloadsPage {
     ctx: PageCtx,
@@ -35,37 +34,11 @@ impl DownloadsPage {
     }
 }
 
-fn card() -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(14.))
-        .p(px(12.))
-        .rounded(px(8.))
-        .bg(theme::white_a(0.05))
-        .border_1()
-        .border_color(theme::white_a(0.08))
-}
-
-fn small_button(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Div> {
-    div()
-        .id(id)
-        .size(px(32.))
-        .flex_none()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(4.))
-        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::white_a(0.12))))
-        .when(!enabled, |d| d.opacity(0.3))
-        .child(icon(ic, px(18.), rgb(0xcaf3fd)))
-}
-
 fn meta_line(el: &DmElement) -> String {
     let kind = if el.kind == ElementKind::Install { "Install" } else { "Update" };
     let platform = if el.params.platform_to_install.is_empty() { "Windows" } else { el.params.platform_to_install.as_str() };
     let size = el.params.size.clone().unwrap_or_else(|| "?? MB".into());
-    format!("{kind} | {platform} | {size}")
+    format!("{kind} \u{b7} {platform} \u{b7} {size}")
 }
 
 fn date_text(ms: u64) -> String {
@@ -93,186 +66,184 @@ impl Render for DownloadsPage {
         let running = snap.state == DmState::Running;
         let paused = !running;
 
-        let mut column = page_column().gap(px(14.));
+        let mut column = div().flex().flex_col().w_full();
 
         // Running element.
         if let Some(cur) = snap.queue.first() {
             let title = cur.params.title();
             let cover = self.covers.get(cur.params.cover().as_deref(), 60., 80., scale);
             let percent = progress.as_ref().map(|p| p.percent as f32);
-            let status = match snap.state {
-                DmState::Running => "Downloading",
-                DmState::Paused => "Paused",
-                DmState::Idle => "Waiting",
+            let (status, status_color) = match snap.state {
+                DmState::Running => ("Downloading", theme::success()),
+                DmState::Paused => ("Paused", theme::accent()),
+                DmState::Idle => ("Waiting", theme::accent()),
             };
-            let mut info = div()
-                .flex_1()
-                .min_w_0()
+            let bar_color = if paused { theme::accent() } else { theme::success() };
+            let info = div()
                 .flex()
                 .flex_col()
-                .gap(px(6.))
+                .gap(px(7.))
                 .child(
                     div()
                         .flex()
-                        .items_baseline()
+                        .items_center()
                         .gap(px(10.))
-                        .child(div().text_size(px(17.)).font_weight(theme::W_BOLD).text_color(white()).child(title.clone()))
-                        .child(div().text_size(px(12.5)).text_color(if paused { theme::accent() } else { theme::success() }).child(status)),
+                        .child(div().text_size(px(17.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(title.clone()))
+                        .child(status_pill(status, status_color)),
                 )
-                .child(div().text_size(px(12.5)).text_color(theme::white_a(0.7)).child(meta_line(cur)))
-                .child(progress_bar(percent, 8., if paused { theme::accent() } else { theme::success() }))
-                .child(div().text_size(px(12.5)).text_color(theme::white_a(0.82)).child(match &progress {
+                .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(meta_line(cur)))
+                .child(progress_bar(percent, 8., bar_color))
+                .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(match &progress {
                     Some(p) => progress_text(p),
                     None if snap.state == DmState::Paused => "Paused - resume to continue where it stopped".to_string(),
                     None if paused => "Press play to start the queue".to_string(),
                     None => "Starting...".to_string(),
                 }));
+            let controls = div()
+                .flex()
+                .gap(px(6.))
+                .child(icon_action("dm-pause", if paused { Icon::PlayArrow } else { Icon::Pause }, true).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.svc.update(cx, |s, _| if s.is_running() { s.pause() } else { s.resume() });
+                        cx.notify();
+                    },
+                )))
+                .child(icon_action("dm-stop", Icon::Close, true).on_click(cx.listener(|this, _, _, cx| {
+                    this.confirm_stop = !this.confirm_stop;
+                    cx.notify();
+                })));
+            let mut now = card_box().child(list_item(Some(cover_box(cover, 60., 80.).into_any_element()), info, controls));
             if self.confirm_stop {
-                info = info.child(
+                now = now.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(
                     div()
                         .flex()
                         .flex_wrap()
                         .items_center()
                         .gap(px(8.))
-                        .mt(px(4.))
-                        .child(div().text_size(px(13.33)).text_color(rgb(0xcaf3fd)).child("Stop the installation? Keep the downloaded files?"))
-                        .child(button("dm-keep-running", ButtonKind::Outline, "Keep installing").on_click(cx.listener(|this, _, _, cx| {
+                        .py(px(12.))
+                        .child(div().flex_1().min_w(px(240.)).text_size(px(13.)).text_color(theme::text_primary()).child("Stop the installation? Keep the downloaded files?"))
+                        .child(button_sm("dm-keep-running", ButtonKind::Ghost, "Keep installing").on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_stop = false;
                             cx.notify();
                         })))
-                        .child(button("dm-stop-keep", ButtonKind::Secondary, "Stop, keep files").on_click(cx.listener(|this, _, _, cx| {
+                        .child(button_sm("dm-stop-keep", ButtonKind::Glass, "Stop, keep files").on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_stop = false;
                             this.svc.update(cx, |s, _| s.cancel_current(false));
                             cx.notify();
                         })))
-                        .child(button("dm-stop-delete", ButtonKind::Tertiary, "Stop, delete files").on_click(cx.listener(|this, _, _, cx| {
+                        .child(button_sm("dm-stop-delete", ButtonKind::Danger, "Stop, delete files").on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_stop = false;
                             this.svc.update(cx, |s, _| s.cancel_current(true));
                             cx.notify();
                         }))),
                 );
             }
-            column = column.child(section_title("Downloading").font_family(theme::FONT_HEADING)).child(
-                card()
-                    .child(cover_box(cover, 60., 80.))
-                    .child(info)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_none()
-                            .gap(px(4.))
-                            .child(
-                                small_button("dm-pause", if paused { Icon::PlayArrow } else { Icon::Pause }, true).on_click(cx.listener(
-                                    move |this, _, _, cx| {
-                                        this.svc.update(cx, |s, _| if s.is_running() { s.pause() } else { s.resume() });
-                                        cx.notify();
-                                    },
-                                )),
-                            )
-                            .child(small_button("dm-stop", Icon::Close, true).on_click(cx.listener(|this, _, _, cx| {
-                                this.confirm_stop = !this.confirm_stop;
-                                cx.notify();
-                            }))),
-                    ),
-            );
+            column = column.child(caption("Downloading")).child(now);
         } else {
             self.confirm_stop = false;
         }
 
         // Waiting elements.
-        column = column.child(section_title("Queued").font_family(theme::FONT_HEADING));
         let waiting: Vec<DmElement> = snap.queue.iter().skip(1).cloned().collect();
-        if waiting.is_empty() {
-            column = column.child(div().text_size(px(14.)).text_color(theme::white_a(0.6)).child("Nothing to download"));
-        }
+        column = column.child(caption(if waiting.is_empty() { "Queued".to_string() } else { format!("Queued \u{b7} {}", waiting.len()) }));
         let last = waiting.len().saturating_sub(1);
+        let mut rows: Vec<AnyElement> = Vec::new();
         for (i, el) in waiting.iter().enumerate() {
             let cover = self.covers.get(el.params.cover().as_deref(), 36., 48., scale);
             let app = el.params.app_name.clone();
             let (a_up, a_down, a_rm) = (app.clone(), app.clone(), app.clone());
-            column = column.child(
-                card()
-                    .child(cover_box(cover, 36., 48.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .child(div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(theme::accent()).child(el.params.title()))
-                            .child(div().text_size(px(12.5)).text_color(theme::white_a(0.7)).child(meta_line(el))),
-                    )
-                    .child(div().text_size(px(12.)).text_color(theme::white_a(0.6)).child(date_text(el.add_to_queue_time)))
-                    .child(
-                        div()
-                            .flex()
-                            .gap(px(2.))
-                            .child(small_button(SharedString::from(format!("dm-up-{app}")), Icon::FaChevronUp, i > 0).on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    this.svc.update(cx, |s, _| s.move_in_queue(&a_up, true));
-                                },
-                            )))
-                            .child(small_button(SharedString::from(format!("dm-down-{app}")), Icon::FaChevronDown, i < last).on_click(
-                                cx.listener(move |this, _, _, cx| {
-                                    this.svc.update(cx, |s, _| s.move_in_queue(&a_down, false));
-                                }),
-                            ))
-                            .child(small_button(SharedString::from(format!("dm-rm-{app}")), Icon::Close, true).on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    this.svc.update(cx, |s, _| s.remove_from_queue(&a_rm));
-                                },
-                            ))),
-                    ),
-            );
+            let content = div()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).truncate().child(el.params.title()))
+                .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(meta_line(el)));
+            let trailing = div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(div().mr(px(6.)).text_size(px(12.)).text_color(theme::text_dim()).child(date_text(el.add_to_queue_time)))
+                .child(icon_action(SharedString::from(format!("dm-up-{app}")), Icon::FaChevronUp, i > 0).when(i > 0, |d| {
+                    d.on_click(cx.listener(move |this, _, _, cx| {
+                        this.svc.update(cx, |s, _| s.move_in_queue(&a_up, true));
+                    }))
+                }))
+                .child(icon_action(SharedString::from(format!("dm-down-{app}")), Icon::FaChevronDown, i < last).when(i < last, |d| {
+                    d.on_click(cx.listener(move |this, _, _, cx| {
+                        this.svc.update(cx, |s, _| s.move_in_queue(&a_down, false));
+                    }))
+                }))
+                .child(icon_action(SharedString::from(format!("dm-rm-{app}")), Icon::Close, true).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.svc.update(cx, |s, _| s.remove_from_queue(&a_rm));
+                    },
+                )));
+            rows.push(list_item(Some(cover_box(cover, 36., 48.).into_any_element()), content, trailing).into_any_element());
         }
+        if rows.is_empty() {
+            rows.push(empty_row("Nothing to download").into_any_element());
+        }
+        column = column.child(card(rows));
 
         // History.
         let mut finished: Vec<DmElement> = snap.finished.clone();
         finished.sort_by(|a, b| b.end_time.cmp(&a.end_time));
         if !finished.is_empty() {
-            column = column.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .mt(px(8.))
-                    .child(section_title("Completed").font_family(theme::FONT_HEADING))
-                    .child(button("dm-clear", ButtonKind::Text, "Clear list").on_click(cx.listener(|this, _, _, cx| {
-                        this.svc.update(cx, |s, _| s.clear_finished());
-                    }))),
-            );
+            column = column.child(caption_with(
+                format!("Completed \u{b7} {}", finished.len()),
+                button_sm("dm-clear", ButtonKind::Ghost, "Clear list").on_click(cx.listener(|this, _, _, cx| {
+                    this.svc.update(cx, |s, _| s.clear_finished());
+                })),
+            ));
         }
+        let mut rows: Vec<AnyElement> = Vec::new();
         for el in finished {
             let cover = self.covers.get(el.params.cover().as_deref(), 36., 48., scale);
             let app = el.params.app_name.clone();
-            let (color, note) = match el.status {
-                Some(DmStatus::Done) => (theme::success(), ""),
-                Some(DmStatus::Error) => (theme::danger(), " (Failed)"),
-                Some(DmStatus::Abort) => (theme::danger(), " (Canceled)"),
-                _ => (rgb(0xcaf3fd), ""),
+            let pill = match el.status {
+                Some(DmStatus::Done) => Some(status_pill("Done", theme::success())),
+                Some(DmStatus::Error) => Some(status_pill("Failed", theme::danger_text())),
+                Some(DmStatus::Abort) => Some(status_pill("Canceled", theme::danger_text())),
+                _ => None,
             };
-            column = column.child(
-                card()
-                    .child(cover_box(cover, 36., 48.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .child(div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(color).child(format!("{}{note}", el.params.title())))
-                            .child(div().text_size(px(12.5)).text_color(theme::white_a(0.7)).child(meta_line(&el))),
-                    )
-                    .child(div().text_size(px(12.)).text_color(theme::white_a(0.6)).child(date_text(el.end_time)))
-                    .child(small_button(SharedString::from(format!("dm-clear-{app}")), Icon::Close, true).on_click(cx.listener(
-                        move |this, _, _, cx| {
-                            this.svc.update(cx, |s, _| s.clear_finished_item(&app));
-                        },
-                    ))),
-            );
+            let content = div()
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).truncate().child(el.params.title()))
+                        .children(pill),
+                )
+                .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(meta_line(&el)));
+            let trailing = div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(div().mr(px(6.)).text_size(px(12.)).text_color(theme::text_dim()).child(date_text(el.end_time)))
+                .child(icon_action(SharedString::from(format!("dm-clear-{app}")), Icon::Close, true).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.svc.update(cx, |s, _| s.clear_finished_item(&app));
+                    },
+                )));
+            rows.push(list_item(Some(cover_box(cover, 36., 48.).into_any_element()), content, trailing).into_any_element());
+        }
+        if !rows.is_empty() {
+            column = column.child(card(rows));
         }
 
         let _ = &self.ctx;
-        page_body("page-downloads").child(column)
+        sheet(
+            "page-downloads",
+            "Downloads",
+            Some("Installs and updates from Epic Games run one at a time, in this order.".into()),
+            None,
+            900.,
+            page_close(cx),
+            column,
+        )
     }
 }

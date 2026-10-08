@@ -513,7 +513,7 @@ impl Render for EmulatorEditDialog {
                 }),
             ));
             if has && !std::path::Path::new(&exe_value).exists() && exe_value.contains('/') {
-                body = body.child(div().text_size(px(13.33)).text_color(theme::danger()).child("This file does not exist."));
+                body = body.child(div().text_size(px(13.33)).text_color(theme::danger_text()).child("This file does not exist."));
             }
         }
         let dir_value = text_of(&self.install_dir, cx);
@@ -581,7 +581,7 @@ impl Render for EmulatorEditDialog {
                         .child(
                             button(
                                 SharedString::from(format!("prof-edit-{i}")),
-                                ButtonKind::Outline,
+                                ButtonKind::Glass,
                                 if open { "Done" } else { "Edit" },
                             )
                             .on_click(cx.listener(move |this, _, window, cx| {
@@ -595,7 +595,7 @@ impl Render for EmulatorEditDialog {
                         )
                         .child(action_button(
                             SharedString::from(format!("prof-rm-{i}")),
-                            ButtonKind::Outline,
+                            ButtonKind::Glass,
                             "Remove",
                             remove_block.is_none(),
                             cx.listener(move |this, _, _, cx| this.remove_profile(i, cx)),
@@ -665,26 +665,26 @@ impl Render for EmulatorEditDialog {
         }
         let missing = self.missing_catalog_profiles();
         let mut adders = div().flex().gap(px(8.)).child(
-            button("prof-add", ButtonKind::Outline, "Add profile").on_click(cx.listener(|this, _, window, cx| this.add_profile(window, cx))),
+            button("prof-add", ButtonKind::Glass, "Add profile").on_click(cx.listener(|this, _, window, cx| this.add_profile(window, cx))),
         );
         if !missing.is_empty() {
             adders = adders.child(
-                button("prof-add-catalog", ButtonKind::Outline, format!("Add {} catalog profile(s)", missing.len()))
+                button("prof-add-catalog", ButtonKind::Glass, format!("Add {} catalog profile(s)", missing.len()))
                     .on_click(cx.listener(|this, _, _, cx| this.add_catalog_profiles(cx))),
             );
         }
         body = body.child(adders);
         if !self.error.is_empty() {
-            body = body.child(div().text_color(theme::danger()).text_size(px(13.33)).child(self.error.clone()));
+            body = body.child(div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone()));
         }
 
         let footer = div()
             .flex()
-            .gap(px(16.))
-            .child(button("emu-edit-cancel", ButtonKind::Outline, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .gap(px(10.))
+            .child(button("emu-edit-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "emu-edit-save",
-                ButtonKind::Default,
+                ButtonKind::Primary,
                 if self.saving {
                     "Saving\u{2026}"
                 } else if self.create {

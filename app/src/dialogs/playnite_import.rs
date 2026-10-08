@@ -11,7 +11,7 @@ use heronite_playnite::{DriveRemap, Playnite, PlayniteImportArgs, PlayniteImport
 
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
-use crate::ui::controls::{button, checkbox, section_title, ButtonKind};
+use crate::ui::controls::{action_button, card, checkbox, section_title, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{choose_path, field_label, new_input, paragraph, path_field, text_default};
 
@@ -32,8 +32,7 @@ pub struct ImportPlayniteDialog {
 
 impl EventEmitter<DialogEvent> for ImportPlayniteDialog {}
 
-/// A [`button`] that reacts only when `enabled`; the disabled look is Heroic's
-/// `.button:disabled` (no background, secondary text, no hover).
+/// A pill button that reacts only when `enabled` (disabled = 45% opacity).
 pub(super) fn action(
     id: &'static str,
     kind: ButtonKind,
@@ -41,40 +40,30 @@ pub(super) fn action(
     enabled: bool,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
-    if enabled {
-        return button(id, kind, label).on_click(on_click).into_any_element();
-    }
-    let label: SharedString = label.into();
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .justify_center()
-        .px(px(10.))
-        .py(px(if kind == ButtonKind::Outline { 8. } else { 7. }))
-        .cursor_not_allowed()
-        .text_size(px(13.33))
-        .text_color(white())
-        .child(label.to_uppercase())
-        .into_any_element()
+    action_button(id, kind, label, enabled, on_click).into_any_element()
 }
 
-/// Disc-less bullet list shared by the Playnite dialogs.
+/// Plain list of lines in a card (one row per item), shared by the Playnite dialogs.
 pub(super) fn bullet_list(items: Vec<String>) -> Div {
-    let mut list = div().flex().flex_col().pl(px(8.));
-    for item in items {
-        list = list.child(
-            div()
-                .flex()
-                .gap(px(8.))
-                .text_size(px(16.))
-                .line_height(px(22.))
-                .text_color(text_default())
-                .child(div().flex_none().child("\u{2022}"))
-                .child(div().min_w_0().child(item)),
-        );
-    }
-    list
+    card(items.into_iter().map(|item| {
+        div().py(px(8.)).text_size(px(13.)).text_color(text_default()).child(item).into_any_element()
+    }))
+}
+
+/// Label on the left, value on the right, one row per pair, in a card.
+pub(super) fn stat_card(items: Vec<(String, String)>) -> Div {
+    card(items.into_iter().map(|(label, value)| {
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(12.))
+            .py(px(8.))
+            .text_size(px(14.))
+            .child(div().text_color(text_default()).child(label))
+            .child(div().text_color(theme::text_muted()).child(value))
+            .into_any_element()
+    }))
 }
 
 impl ImportPlayniteDialog {
@@ -239,8 +228,8 @@ impl ImportPlayniteDialog {
     }
 }
 
-fn count_line(label: &str, n: usize) -> String {
-    format!("{label}: {n}")
+fn count_line(label: &str, n: usize) -> (String, String) {
+    (label.to_string(), n.to_string())
 }
 
 impl Render for ImportPlayniteDialog {
@@ -276,25 +265,24 @@ impl Render for ImportPlayniteDialog {
             body = body.child(drives);
         }
 
-        body = body
-            .child(
-                checkbox("pn-covers", self.fetch_covers, "Download covers from Steam / SteamGridDB")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.fetch_covers = !this.fetch_covers;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                checkbox("pn-merge", self.merge_existing, "Merge into games already imported (keep my status and edits)")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.merge_existing = !this.merge_existing;
-                        cx.notify();
-                    })),
-            );
+        body = body.child(card([
+            checkbox("pn-covers", self.fetch_covers, "Download covers from Steam / SteamGridDB")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.fetch_covers = !this.fetch_covers;
+                    cx.notify();
+                }))
+                .into_any_element(),
+            checkbox("pn-merge", self.merge_existing, "Merge into games already imported (keep my status and edits)")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.merge_existing = !this.merge_existing;
+                    cx.notify();
+                }))
+                .into_any_element(),
+        ]));
 
         if let Some(p) = &self.preview {
             if p.errors.is_empty() {
-                body = body.child(bullet_list(vec![
+                body = body.child(stat_card(vec![
                     count_line("Games", p.game_count),
                     count_line("Session files", p.session_file_count),
                     count_line("Steam", p.counts.steam),
@@ -307,20 +295,20 @@ impl Render for ImportPlayniteDialog {
             }
         }
         if let Some(r) = &self.result {
-            body = body.child(div().text_size(px(16.)).text_color(theme::success()).child(format!(
+            body = body.child(div().text_size(px(14.)).text_color(theme::success()).child(format!(
                 "Imported {}, updated {}, matched store playtime {}, skipped {}, covers {}, sessions {}.",
                 r.imported, r.updated, r.matched_store, r.skipped, r.covers_fetched, r.sessions_imported
             )));
             if !r.errors.is_empty() {
                 body = body.child(
-                    div().text_size(px(13.33)).text_color(theme::danger()).child(
+                    div().text_size(px(13.33)).text_color(theme::danger_text()).child(
                         r.errors.iter().take(6).cloned().collect::<Vec<_>>().join("\n"),
                     ),
                 );
             }
         }
         if let Some(e) = self.error.clone() {
-            body = body.child(div().text_size(px(16.)).text_color(theme::danger()).child(e));
+            body = body.child(div().text_size(px(14.)).text_color(theme::danger_text()).child(e));
         }
         if self.loading && !self.importing {
             body = body.child(field_label("Reading Playnite library\u{2026}"));
@@ -330,10 +318,10 @@ impl Render for ImportPlayniteDialog {
         let busy = self.loading;
         let footer = div()
             .flex()
-            .gap(px(16.))
+            .gap(px(10.))
             .child(action(
                 "pn-preview",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 "Preview",
                 !busy && has_path,
                 cx.listener(|this, _, w, cx| this.run_preview(w, cx)),

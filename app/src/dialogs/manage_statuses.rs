@@ -1,7 +1,7 @@
 //! `ManageStatusesDialog`: rename, reorder, add and remove completion
 //! statuses (`local_library/statuses.json`).
 
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::models::CompletionStatus;
@@ -12,7 +12,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{button, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
-use crate::ui::icon;
+use crate::ui::fields::input_box;
 
 struct Row {
     status: CompletionStatus,
@@ -126,30 +126,11 @@ impl ManageStatusesDialog {
 }
 
 fn field(input: &Entity<InputState>) -> Div {
-    div()
-        .flex_1()
-        .min_w_0()
-        .px(px(6.))
-        .rounded(px(4.))
-        .bg(theme::navbar_background())
-        .border_1()
-        .border_color(theme::background())
-        .text_size(px(13.33))
-        .child(Input::new(input).appearance(false))
+    div().flex_1().min_w_0().child(input_box(input, false))
 }
 
 fn icon_btn(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Div> {
-    div()
-        .id(id)
-        .size(px(32.))
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .rounded(px(4.))
-        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::navbar_active_background())))
-        .when(!enabled, |d| d.opacity(0.35))
-        .child(icon(ic, px(14.), rgb(0xcaf3fd)))
+    crate::pages::icon_action(id, ic, enabled)
 }
 
 impl Render for ManageStatusesDialog {
@@ -190,10 +171,10 @@ impl Render for ManageStatusesDialog {
                     .items_center()
                     .gap(px(8.))
                     .child(field(&self.new_name))
-                    .child(button("st-add", ButtonKind::Text, "Add").on_click(cx.listener(|this, _, w, cx| this.add(w, cx)))),
+                    .child(button("st-add", ButtonKind::Glass, "Add").on_click(cx.listener(|this, _, w, cx| this.add(w, cx)))),
             )
-            .children(self.error.clone().map(|e| div().text_color(theme::danger()).text_size(px(13.)).child(e)));
-        let footer = button("st-close", ButtonKind::Outline, "Close")
+            .children(self.error.clone().map(|e| div().text_color(theme::danger_text()).text_size(px(13.)).child(e)));
+        let footer = button("st-close", ButtonKind::Primary, "Done")
             .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)))
             .into_any_element();
         let entity = cx.entity().downgrade();

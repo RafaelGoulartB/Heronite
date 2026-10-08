@@ -416,12 +416,12 @@ impl Render for ScanRomsDialog {
             .child(div().flex_1().min_w(px(220.)).child(emu_select))
             .child(action_button(
                 "scan-detect",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 if self.detecting { "Detecting…" } else { "Detect on this PC" },
                 !self.detecting,
                 cx.listener(|this, _, _, cx| this.detect(cx)),
             ))
-            .child(button("scan-custom", ButtonKind::Outline, "Custom…").on_click(cx.listener(|this, _, _, cx| {
+            .child(button("scan-custom", ButtonKind::Glass, "Custom…").on_click(cx.listener(|this, _, _, cx| {
                 this.custom_open = !this.custom_open;
                 cx.notify();
             })));
@@ -453,7 +453,7 @@ impl Render for ScanRomsDialog {
                 .child(text_field("Arguments ({ImagePath} is the ROM)", &self.custom_args))
                 .child(div().flex().child(action_button(
                     "custom-save",
-                    ButtonKind::Default,
+                    ButtonKind::Glass,
                     "Save emulator",
                     has_exe && !busy,
                     cx.listener(|this, _, _, cx| this.add_custom(cx)),
@@ -530,7 +530,7 @@ impl Render for ScanRomsDialog {
         let can_scan = !self.emulator_id.is_empty() && !dir_value.is_empty() && !busy;
         let scan_button = action_button(
             "scan-run",
-            ButtonKind::Default,
+            ButtonKind::Glass,
             if busy && self.preview.is_none() { "Scanning…" } else { "Scan folder" },
             can_scan,
             cx.listener(|this, _, _, cx| this.scan(cx)),
@@ -592,13 +592,13 @@ impl Render for ScanRomsDialog {
                             div()
                                 .flex()
                                 .gap(px(8.))
-                                .child(button("scan-all", ButtonKind::Outline, "Select all").on_click(cx.listener(
+                                .child(button("scan-all", ButtonKind::Glass, "Select all").on_click(cx.listener(
                                     |this, _, _, cx| {
                                         this.toggle_all(true);
                                         cx.notify();
                                     },
                                 )))
-                                .child(button("scan-none", ButtonKind::Outline, "Select none").on_click(cx.listener(
+                                .child(button("scan-none", ButtonKind::Glass, "Select none").on_click(cx.listener(
                                     |this, _, _, cx| {
                                         this.toggle_all(false);
                                         cx.notify();
@@ -625,17 +625,17 @@ impl Render for ScanRomsDialog {
             .child(div().flex().child(scan_button))
             .children(preview)
             .children((!self.error.is_empty()).then(|| {
-                div().text_color(theme::danger()).text_size(px(13.33)).child(self.error.clone())
+                div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())
             }))
             ;
 
         let footer = div()
             .flex()
-            .gap(px(16.))
-            .child(button("scan-close", ButtonKind::Outline, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .gap(px(10.))
+            .child(button("scan-close", ButtonKind::Ghost, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "scan-import",
-                ButtonKind::Default,
+                ButtonKind::Primary,
                 format!("Add {selected_count} to Collection"),
                 self.preview.is_some() && selected_count > 0 && !busy,
                 cx.listener(|this, _, _, cx| this.import(cx)),

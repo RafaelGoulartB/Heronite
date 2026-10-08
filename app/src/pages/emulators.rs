@@ -16,7 +16,7 @@ use gpui_kit::*;
 use heronite_emulation::manager::{data_stamp, overview, EmulatorSummary, Health};
 use heronite_emulation::{duplicate_user_emulator, run_rom_scanners, AutoScanReport, RomScanner, SystemEnv};
 
-use super::{page_body, page_column, PageCtx, PageEvent};
+use super::{page_close, sheet, status_pill, tag_pill, PageCtx, PageEvent};
 use crate::dialogs::emulator_confirm::EmulatorConfirmDialog;
 use crate::dialogs::emulator_detect::DetectEmulatorsDialog;
 use crate::dialogs::emulator_edit::EmulatorEditDialog;
@@ -25,8 +25,8 @@ use crate::dialogs::scan_roms::{profile_label, ScanInitial};
 use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, button, page_heading, ButtonKind};
-use crate::ui::fields::{meta_text, panel, paragraph};
+use crate::ui::controls::{action_button, button, button_sm, card_box, ButtonKind};
+use crate::ui::fields::meta_text;
 use crate::ui::icon;
 
 /// A message under the toolbar (result of a scan, an add, a removal...).
@@ -440,31 +440,8 @@ impl EmulatorsPage {
     }
 }
 
-fn chip(text: impl Into<SharedString>) -> Div {
-    div()
-        .px(px(8.))
-        .py(px(2.))
-        .rounded(px(10.))
-        .bg(theme::white_a(0.1))
-        .text_size(px(12.))
-        .text_color(rgb(0xcaf3fd))
-        .child(text.into())
-}
-
 fn health_badge(health: Health) -> Div {
-    let (color, glyph) = if health.is_ok() {
-        (theme::success(), Icon::Check)
-    } else {
-        (theme::danger(), Icon::Warning)
-    };
-    div()
-        .flex()
-        .items_center()
-        .gap(px(4.))
-        .text_size(px(13.33))
-        .text_color(color)
-        .child(icon(glyph, px(14.), color))
-        .child(health.label())
+    div().flex().child(status_pill(health.label(), if health.is_ok() { theme::success() } else { theme::danger_text() }))
 }
 
 fn launch_label(kind: &str) -> &'static str {
@@ -514,86 +491,79 @@ impl EmulatorsPage {
             .gap(px(8.))
             .child({
                 let id = id.clone();
-                button(SharedString::from(format!("emu-edit-{id}")), ButtonKind::Outline, "Edit")
+                button_sm(SharedString::from(format!("emu-edit-{id}")), ButtonKind::Glass, "Edit")
                     .on_click(cx.listener(move |this, _, window, cx| this.open_edit_emulator(&id, window, cx)))
             })
             .child({
                 let id = id.clone();
-                button(SharedString::from(format!("emu-dup-{id}")), ButtonKind::Outline, "Duplicate")
+                button_sm(SharedString::from(format!("emu-dup-{id}")), ButtonKind::Glass, "Duplicate")
                     .on_click(cx.listener(move |this, _, _, cx| this.duplicate(&id, cx)))
             })
             .child({
                 let id = id.clone();
-                button(SharedString::from(format!("emu-rm-{id}")), ButtonKind::Outline, "Remove")
+                button_sm(SharedString::from(format!("emu-rm-{id}")), ButtonKind::Danger, "Remove")
                     .on_click(cx.listener(move |this, _, window, cx| this.confirm_remove_emulator(&id, window, cx)))
             });
 
-        let mut card = panel()
-            .gap(px(10.))
-            .p(px(16.))
-            .child(
-                div()
-                    .flex()
-                    .justify_between()
-                    .items_start()
-                    .gap(px(12.))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap(px(4.))
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .items_center()
-                                    .gap(px(10.))
-                                    .child(
-                                        div()
-                                            .font_family(theme::FONT_HEADING)
-                                            .font_weight(theme::W_BOLD)
-                                            .text_size(px(18.))
-                                            .text_color(white())
-                                            .child(e.name.clone()),
-                                    )
-                                    .child(chip(launch_label(&e.launch_kind)))
-                                    .child(health_badge(s.health)),
-                            )
-                            .child(div().text_size(px(13.33)).text_color(white()).child(location))
-                            .child(
-                                div()
-                                    .text_size(px(13.33))
-                                    .text_color(theme::white_a(0.7))
-                                    .child(format!("{} using it", plural(s.games, "game", "games"))),
+        let mut card = card_box().child(
+            div()
+                .flex()
+                .justify_between()
+                .items_start()
+                .gap(px(12.))
+                .py(px(14.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(5.))
+                        .min_w_0()
+                        .child(
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .items_center()
+                                .gap(px(10.))
+                                .child(
+                                    div()
+                                        .font_family(theme::FONT_HEADING)
+                                        .font_weight(theme::W_BOLD)
+                                        .text_size(px(18.))
+                                        .text_color(theme::text_primary())
+                                        .child(e.name.clone()),
+                                )
+                                .child(tag_pill(launch_label(&e.launch_kind)))
+                                .child(health_badge(s.health)),
+                        )
+                        .child(div().text_size(px(13.)).text_color(theme::text_primary()).truncate().child(location))
+                        .child(meta_text(format!("{} using it", plural(s.games, "game", "games"))))
+                        .child(
+                            div().flex().flex_wrap().items_center().gap(px(6.)).mt(px(4.)).children(platforms.into_iter().map(tag_pill)).children(
+                                (extra > 0).then(|| tag_pill(format!("+{extra} more"))),
                             ),
-                    )
-                    .child(actions),
-            )
-            .child(
-                div().flex().flex_wrap().items_center().gap(px(6.)).children(platforms.into_iter().map(chip)).children(
-                    (extra > 0).then(|| chip(format!("+{extra} more"))),
-                ),
-            );
+                        ),
+                )
+                .child(actions),
+        );
 
         // ROM folders.
-        card = card.child(
+        card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(
             div()
                 .flex()
                 .items_center()
                 .justify_between()
-                .mt(px(4.))
-                .child(div().text_size(px(16.)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child("ROM folders"))
+                .py(px(10.))
+                .child(div().text_size(px(12.)).text_color(theme::text_muted()).child("ROM folders"))
                 .child({
                     let id = id.clone();
-                    button(SharedString::from(format!("emu-addfolder-{id}")), ButtonKind::Outline, "Add ROM folder")
+                    button_sm(SharedString::from(format!("emu-addfolder-{id}")), ButtonKind::Glass, "Add ROM folder")
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.open_folder_dialog(Some(id.clone()), None, window, cx)
                         }))
                 }),
         );
         if s.scanners.is_empty() {
-            card = card.child(meta_text("No ROM folders yet. Add one and its games are added to the Collection."));
+            card = card.child(div().pb(px(14.)).child(meta_text("No ROM folders yet. Add one and its games are added to the Collection.")));
         }
         for sc in &s.scanners {
             let sid = sc.id.clone();
@@ -605,57 +575,52 @@ impl EmulatorsPage {
                 directory: Some(sc.directory.clone()),
             };
             let scanner = sc.clone();
-            card = card.child(
+            card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(
                 div()
                     .flex()
                     .justify_between()
                     .items_center()
                     .gap(px(12.))
-                    .p(px(8.))
-                    .rounded(px(4.))
-                    .bg(theme::black_a(0.2))
+                    .py(px(11.))
+                    .child(icon(Icon::Folder, px(18.), theme::text_muted()))
                     .child(
                         div()
                             .flex()
                             .flex_col()
+                            .flex_1()
                             .min_w_0()
+                            .gap(px(2.))
                             .child(
                                 div()
                                     .flex()
                                     .items_center()
                                     .gap(px(8.))
-                                    .child(div().font_weight(theme::W_BOLD).text_size(px(15.)).truncate().child(sc.directory.clone()))
-                                    .children(missing.then(|| div().text_size(px(13.33)).text_color(theme::danger()).child("Folder not found"))),
+                                    .child(div().text_size(px(14.)).text_color(theme::text_primary()).truncate().child(sc.directory.clone()))
+                                    .children(missing.then(|| status_pill("Folder not found", theme::danger_text()))),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(13.33))
-                                    .text_color(white())
-                                    .child(format!("{profile}  \u{b7}  {}", folder_flags(sc))),
-                            ),
+                            .child(meta_text(format!("{profile}  \u{b7}  {}", folder_flags(sc)))),
                     )
                     .child(
                         div()
                             .flex()
                             .flex_none()
-                            .gap(px(8.))
+                            .gap(px(6.))
                             .child({
                                 let sid = sid.clone();
-                                action_button(
-                                    SharedString::from(format!("scan-now-{sid}")),
-                                    ButtonKind::Default,
-                                    "Scan now",
-                                    !busy && !missing,
-                                    cx.listener(move |this, _, _, cx| this.scan(vec![sid.clone()], "Scanning\u{2026}", cx)),
-                                )
+                                let b = button_sm(SharedString::from(format!("scan-now-{sid}")), ButtonKind::Glass, "Scan now");
+                                if !busy && !missing {
+                                    b.on_click(cx.listener(move |this, _, _, cx| this.scan(vec![sid.clone()], "Scanning\u{2026}", cx)))
+                                } else {
+                                    b.opacity(0.45).cursor_not_allowed()
+                                }
                             })
                             .child(
-                                button(SharedString::from(format!("scan-review-{sid}")), ButtonKind::Outline, "Review\u{2026}")
+                                button_sm(SharedString::from(format!("scan-review-{sid}")), ButtonKind::Glass, "Review\u{2026}")
                                     .on_click(cx.listener(move |_, _, _, cx| cx.emit(PageEvent::ScanRoms(init.clone())))),
                             )
                             .child({
                                 let scanner = scanner.clone();
-                                button(SharedString::from(format!("scan-edit-{sid}")), ButtonKind::Outline, "Edit").on_click(
+                                button_sm(SharedString::from(format!("scan-edit-{sid}")), ButtonKind::Ghost, "Edit").on_click(
                                     cx.listener(move |this, _, window, cx| {
                                         this.open_folder_dialog(None, Some(scanner.clone()), window, cx)
                                     }),
@@ -663,7 +628,7 @@ impl EmulatorsPage {
                             })
                             .child({
                                 let scanner = scanner.clone();
-                                button(SharedString::from(format!("scan-rm-{sid}")), ButtonKind::Outline, "Remove").on_click(
+                                button_sm(SharedString::from(format!("scan-rm-{sid}")), ButtonKind::Ghost, "Remove").on_click(
                                     cx.listener(move |this, _, window, cx| this.confirm_remove_folder(&scanner, window, cx)),
                                 )
                             }),
@@ -686,13 +651,10 @@ impl Render for EmulatorsPage {
             .flex()
             .flex_wrap()
             .gap(px(8.))
-            .child(button("emus-add", ButtonKind::Default, "Add emulator").on_click(cx.listener(|this, _, window, cx| {
-                this.open_add_emulator(window, cx)
-            })))
-            .child(button("emus-detect", ButtonKind::Outline, "Detect emulators\u{2026}").on_click(cx.listener(
+            .child(button("emus-detect", ButtonKind::Glass, "Detect emulators\u{2026}").on_click(cx.listener(
                 |this, _, window, cx| this.open_detect(window, cx),
             )))
-            .child(button("emus-scan-folder", ButtonKind::Outline, "Scan a folder for emulators\u{2026}").on_click(
+            .child(button("emus-scan-folder", ButtonKind::Glass, "Scan a folder for emulators\u{2026}").on_click(
                 cx.listener(|this, _, window, cx| {
                     this.open_detect(window, cx);
                     if let Some(d) = this.dialog.clone().and_then(|v| v.downcast::<DetectEmulatorsDialog>().ok()) {
@@ -700,36 +662,18 @@ impl Render for EmulatorsPage {
                     }
                 }),
             ))
-            .child(button("emus-add-folder", ButtonKind::Outline, "Add ROM folder").on_click(cx.listener(|this, _, window, cx| {
+            .child(button("emus-add-folder", ButtonKind::Glass, "Add ROM folder").on_click(cx.listener(|this, _, window, cx| {
                 this.open_folder_dialog(None, None, window, cx)
             })))
             .child(action_button(
                 "emus-scan-all",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 "Scan all folders now",
                 !busy && folders > 0,
                 cx.listener(|this, _, _, cx| this.scan_all(cx)),
             ));
 
-        let mut column = page_column()
-            .max_w(px(980.))
-            .gap(px(14.))
-            .child(
-                div()
-                    .flex()
-                    .items_baseline()
-                    .gap(px(12.))
-                    .child(page_heading("Emulators"))
-                    .child(meta_text(if self.loaded {
-                        format!("{} \u{b7} {}", plural(self.summaries.len(), "emulator", "emulators"), plural(folders, "ROM folder", "ROM folders"))
-                    } else {
-                        "Loading\u{2026}".to_string()
-                    })),
-            )
-            .child(paragraph(
-                "Emulators launch the games you add from ROM folders. Folders set to scan on refresh add new games whenever the Collection refreshes.",
-            ))
-            .child(toolbar);
+        let mut column = div().flex().flex_col().w_full().gap(px(14.)).child(toolbar);
 
         if let Some(label) = self.busy.clone() {
             column = column.child(
@@ -737,21 +681,22 @@ impl Render for EmulatorsPage {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .text_size(px(14.))
+                    .mx(px(6.))
+                    .text_size(px(13.))
                     .text_color(theme::accent())
                     .child(icon(Icon::Refresh, px(16.), theme::accent()))
                     .child(label),
             );
         }
         if let Some(n) = self.notice.clone() {
-            let color: Hsla = if n.error { theme::danger().into() } else { theme::success().into() };
-            let mut lines = div().flex().flex_col().gap(px(2.)).flex_1().min_w_0();
+            let color = if n.error { theme::danger_text() } else { theme::success() };
+            let mut lines = div().flex().flex_col().gap(px(2.)).flex_1().min_w_0().py(px(12.));
             for (i, l) in n.lines.iter().enumerate() {
-                lines = lines.child(div().text_size(px(14.)).text_color(if i == 0 { color } else { theme::white_a(0.8) }).child(l.clone()));
+                lines = lines.child(div().text_size(px(13.)).text_color(if i == 0 { color } else { theme::text_muted() }).child(l.clone()));
             }
             column = column.child(
-                panel().flex_row().items_start().gap(px(12.)).child(lines).child(
-                    button("emus-notice-x", ButtonKind::Text, "Dismiss").on_click(cx.listener(|this, _, _, cx| {
+                card_box().flex_row().items_center().gap(px(12.)).child(lines).child(
+                    button_sm("emus-notice-x", ButtonKind::Ghost, "Dismiss").on_click(cx.listener(|this, _, _, cx| {
                         this.notice = None;
                         cx.notify();
                     })),
@@ -760,7 +705,7 @@ impl Render for EmulatorsPage {
         }
         if self.loaded && self.summaries.is_empty() {
             column = column.child(
-                panel().p(px(18.)).gap(px(10.)).child(paragraph(
+                card_box().py(px(16.)).child(crate::ui::fields::paragraph(
                     "No emulators configured yet. Detect the ones installed on this PC, or add one from the catalog or as a custom program.",
                 )),
             );
@@ -769,11 +714,20 @@ impl Render for EmulatorsPage {
             column = column.child(self.render_card(&s, cx));
         }
 
-        div()
-            .size_full()
-            .relative()
-            .child(page_body("page-emulators").child(column))
-            .children(self.dialog.clone())
+        let lead = if self.loaded {
+            format!(
+                "{} \u{b7} {}. Folders set to scan on refresh add new games whenever the Collection refreshes.",
+                plural(self.summaries.len(), "emulator", "emulators"),
+                plural(folders, "ROM folder", "ROM folders")
+            )
+        } else {
+            "Loading\u{2026}".to_string()
+        };
+        let add = button("emus-add", ButtonKind::Primary, "Add emulator")
+            .on_click(cx.listener(|this, _, window, cx| this.open_add_emulator(window, cx)))
+            .into_any_element();
+        let close = page_close(cx);
+        div().size_full().relative().child(sheet("page-emulators", "Emulators", Some(lead.into()), Some(add), 1000., close, column)).children(self.dialog.clone())
     }
 }
 

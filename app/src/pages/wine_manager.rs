@@ -17,12 +17,13 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_wine::{Job, JobEvent, JobKind, JobPhase, Repository, WineConfig, WineManager, WineVersionInfo};
 
-use super::{page_body, page_column, PageCtx, PageEvent};
+use super::{page_close, sheet, status_pill, PageCtx, PageEvent};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{button, checkbox, ButtonKind};
+use crate::services::widgets::progress_bar;
+use crate::ui::controls::{button_sm, card_box, tabs, toggle_row, ButtonKind};
 use crate::ui::fields;
-use crate::ui::{icon, tool_button};
+use crate::ui::icon;
 
 /// Refresh the release lists on open when the last fetch is older than this.
 const STALE_AFTER_SECS: u64 = 24 * 3600;
@@ -311,71 +312,53 @@ impl WineManagerPage {
                 .items_center()
                 .justify_center()
                 .size(px(40.))
-                .rounded(px(8.))
+                .rounded_full()
+                .bg(theme::button_fill())
                 .border_1()
-                .border_color(theme::white_a(0.2))
-                .bg(theme::rgb_a(25, 28, 34, 0.8))
-                .child(icon(Icon::Refresh, px(20.), if refreshing { theme::white_a(0.4) } else { rgb(0xcaf3fd).into() }));
+                .border_color(theme::button_border())
+                .child(icon(Icon::Refresh, px(18.), if refreshing { theme::text_dim() } else { theme::text_primary() }));
             if refreshing || self.offline {
-                b.cursor_not_allowed().opacity(0.8)
+                b.cursor_not_allowed().opacity(0.6)
             } else {
-                b.cursor_pointer()
-                    .hover(|s| s.border_color(theme::accent()))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.manager.start_refresh(Repository::LINUX.to_vec());
-                        cx.notify();
-                    }))
+                b.cursor_pointer().hover(|s| s.bg(theme::button_fill_hover())).on_click(cx.listener(|this, _, _, cx| {
+                    this.manager.start_refresh(Repository::LINUX.to_vec());
+                    cx.notify();
+                }))
             }
         };
         div()
             .flex()
             .items_center()
-            .gap(px(16.))
-            .child(div().flex_1().max_w(px(420.)).child(fields::input_box(&self.search, false)))
+            .gap(px(12.))
+            .child(div().flex().flex_1().max_w(px(460.)).child(fields::search_box(&self.search)))
             .child(refresh)
-            .when(refreshing, |d| {
-                d.child(div().text_size(px(13.33)).text_color(theme::white_a(0.7)).child("Fetching releases..."))
-            })
-            .child(div().flex_1())
-            .child(
-                checkbox("wine-to-steam", self.download_to_steam, "Install Proton into Steam (compatibilitytools.d)")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        let v = !this.download_to_steam;
-                        this.set_download_to_steam(v, cx);
-                    })),
-            )
+            .when(refreshing, |d| d.child(div().text_size(px(13.)).text_color(theme::text_muted()).child("Fetching releases...")))
     }
 
     fn render_tabs(&self, cx: &mut Context<Self>) -> Div {
-        let mut row = div()
-            .flex()
-            .w_full()
-            .gap(px(4.))
-            .p(px(4.))
-            .rounded(px(12.))
-            .bg(theme::black_a(0.3));
-        for repo in Repository::LINUX {
-            let active = repo == self.repo;
-            row = row.child(
-                div()
-                    .id(SharedString::from(format!("wine-tab-{}", repo.kind())))
-                    .px(px(16.))
-                    .py(px(8.))
-                    .rounded(px(8.))
-                    .cursor_pointer()
-                    .text_size(px(14.5))
-                    .font_weight(theme::W_BOLD)
-                    .when(active, |d| d.bg(theme::background()).text_color(white()))
-                    .when(!active, |d| d.text_color(theme::white_a(0.6)).hover(|s| s.text_color(white())))
-                    .child(repo.kind())
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.repo = repo;
-                        this.confirm_remove = None;
-                        cx.notify();
-                    })),
-            );
-        }
-        row
+        let this = cx.entity();
+        let items: Vec<(Repository, &'static str)> = Repository::LINUX.iter().map(|r| (*r, r.kind())).collect();
+        tabs("wine-tab", &items, self.repo, move |repo, _, cx| {
+            this.update(cx, |this, cx| {
+                this.repo = repo;
+                this.confirm_remove = None;
+                cx.notify();
+            });
+        })
+    }
+
+    fn steam_row(&self, cx: &mut Context<Self>) -> Div {
+        crate::ui::controls::card([toggle_row(
+            "wine-to-steam",
+            "Install Proton into Steam",
+            Some("Downloads into Steam's compatibilitytools.d folder as well."),
+            self.download_to_steam,
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            let v = !this.download_to_steam;
+            this.set_download_to_steam(v, cx);
+        }))
+        .into_any_element()])
     }
 
     fn info_box(&self) -> Div {
@@ -383,14 +366,12 @@ impl WineManagerPage {
             .flex()
             .items_center()
             .gap(px(10.))
-            .px(px(16.))
-            .py(px(12.))
-            .rounded(px(8.))
-            .bg(theme::rgb_a(25, 28, 34, 0.8))
-            .text_size(px(14.5))
-            .text_color(rgb(0xcaf3fd))
+            .mx(px(6.))
+            .mt(px(14.))
+            .text_size(px(13.))
+            .text_color(theme::text_muted())
             .child(icon(Icon::Check, px(16.), theme::success()))
-            .child(self.repo.explanation())
+            .child(div().flex_1().min_w_0().child(self.repo.explanation()))
     }
 
     fn render_row(&self, r: &WineVersionInfo, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -399,20 +380,20 @@ impl WineManagerPage {
         let confirming = self.confirm_remove.as_deref() == Some(r.version.as_str());
         let key = r.version.clone();
 
-        // Progress bar behind the row (Heroic's `--progress`).
-        let (fraction, bar_alpha) = match job.as_ref().map(|j| &j.phase) {
-            Some(JobPhase::Downloading { percentage, .. }) => ((*percentage / 100.) as f32, 0.30),
-            Some(JobPhase::Unzipping) | Some(JobPhase::Removing) => (1.0, 0.30),
-            Some(JobPhase::Starting) => (0.0, 0.30),
-            None => (0.0, 0.0),
+        // Progress bar under the row (Heroic's `--progress`).
+        let fraction: Option<f32> = match job.as_ref().map(|j| &j.phase) {
+            Some(JobPhase::Downloading { percentage, .. }) => Some(*percentage as f32),
+            Some(JobPhase::Unzipping) | Some(JobPhase::Removing) => Some(100.),
+            Some(JobPhase::Starting) => Some(0.),
+            None => None,
         };
 
         // Size / status column.
         let size_text: SharedString = match job.as_ref().map(|j| &j.phase) {
             Some(JobPhase::Downloading { percentage, speed, eta_secs, .. }) => {
-                let mut s = format!("{percentage:.1}%  ·  {}/s", fmt_size(*speed as u64));
+                let mut s = format!("{percentage:.1}%  \u{b7}  {}/s", fmt_size(*speed as u64));
                 if let Some(eta) = eta_secs {
-                    s.push_str(&format!("  ·  ETA {}", fmt_eta(*eta)));
+                    s.push_str(&format!("  \u{b7}  ETA {}", fmt_eta(*eta)));
                 }
                 s.into()
             }
@@ -423,79 +404,55 @@ impl WineManagerPage {
         };
 
         let id = |p: &str| SharedString::from(format!("wine-{p}-{}", r.version));
-        let mut actions = div().flex().items_center().justify_end().gap(px(6.)).w(px(210.)).flex_none();
+        let mut actions = div().flex().items_center().justify_end().gap(px(6.)).w(px(230.)).flex_none();
         if confirming {
             let k = key.clone();
             let info = r.clone();
             actions = actions
-                .child(div().text_size(px(13.)).text_color(theme::white_a(0.8)).child("Remove?"))
-                .child(
-                    div()
-                        .id(id("yes"))
-                        .px(px(10.))
-                        .py(px(6.))
-                        .rounded(px(4.))
-                        .cursor_pointer()
-                        .bg(theme::danger())
-                        .text_color(white())
-                        .text_size(px(12.5))
-                        .font_weight(theme::W_BOLD)
-                        .child("YES")
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.confirm_remove = None;
-                            this.manager.start_remove(info.clone());
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    button(id("no"), ButtonKind::Tertiary, "No").on_click(cx.listener(move |this, _, _, cx| {
-                        if this.confirm_remove.as_deref() == Some(k.as_str()) {
-                            this.confirm_remove = None;
-                        }
-                        cx.notify();
-                    })),
-                );
+                .child(div().mr(px(2.)).text_size(px(13.)).text_color(theme::text_muted()).child("Remove?"))
+                .child(button_sm(id("yes"), ButtonKind::Danger, "Remove").on_click(cx.listener(move |this, _, _, cx| {
+                    this.confirm_remove = None;
+                    this.manager.start_remove(info.clone());
+                    cx.notify();
+                })))
+                .child(button_sm(id("no"), ButtonKind::Ghost, "No").on_click(cx.listener(move |this, _, _, cx| {
+                    if this.confirm_remove.as_deref() == Some(k.as_str()) {
+                        this.confirm_remove = None;
+                    }
+                    cx.notify();
+                })));
         } else if job.as_ref().map_or(false, |j| j.kind != JobKind::Remove) {
             let k = key.clone();
-            actions = actions.child(
-                button(id("cancel"), ButtonKind::Tertiary, "Cancel").on_click(cx.listener(move |this, _, _, cx| {
-                    this.manager.cancel(&k);
-                    cx.notify();
-                })),
-            );
+            actions = actions.child(button_sm(id("cancel"), ButtonKind::Glass, "Cancel").on_click(cx.listener(move |this, _, _, cx| {
+                this.manager.cancel(&k);
+                cx.notify();
+            })));
         } else if job.is_some() {
             // removing: nothing to click
         } else if installed {
             if let Some(dir) = r.install_dir.clone() {
                 actions = actions.child(
-                    tool_button(id("folder"), Icon::FolderOpen, false)
-                        .on_click(move |_, _, _| open_path(&dir)),
+                    super::icon_action(id("folder"), Icon::FolderOpen, true).on_click(move |_, _, _| open_path(&dir)),
                 );
             }
             if r.has_update() {
                 let info = r.clone();
-                actions = actions.child(
-                    button(id("update"), ButtonKind::Secondary, "Update").on_click(cx.listener(move |this, _, _, cx| {
-                        this.manager.start_install(info.clone());
-                        cx.notify();
-                    })),
-                );
-            }
-            let k = key.clone();
-            actions = actions.child(tool_button(id("remove"), Icon::FaTrash, false).on_click(cx.listener(
-                move |this, _, _, cx| {
-                    this.confirm_remove = Some(k.clone());
-                    cx.notify();
-                },
-            )));
-        } else {
-            let info = r.clone();
-            actions = actions.child(
-                button(id("install"), ButtonKind::Secondary, "Install").on_click(cx.listener(move |this, _, _, cx| {
+                actions = actions.child(button_sm(id("update"), ButtonKind::Primary, "Update").on_click(cx.listener(move |this, _, _, cx| {
                     this.manager.start_install(info.clone());
                     cx.notify();
-                })),
-            );
+                })));
+            }
+            let k = key.clone();
+            actions = actions.child(super::icon_action(id("remove"), Icon::FaTrash, true).on_click(cx.listener(move |this, _, _, cx| {
+                this.confirm_remove = Some(k.clone());
+                cx.notify();
+            })));
+        } else {
+            let info = r.clone();
+            actions = actions.child(button_sm(id("install"), ButtonKind::Glass, "Install").on_click(cx.listener(move |this, _, _, cx| {
+                this.manager.start_install(info.clone());
+                cx.notify();
+            })));
         }
 
         let notes = r.release_notes_link.clone();
@@ -509,55 +466,32 @@ impl WineManagerPage {
                 div()
                     .id(id("notes"))
                     .cursor_pointer()
-                    .text_size(px(15.2))
-                    .text_color(rgb(0xcaf3fd))
+                    .text_size(px(14.))
+                    .text_color(theme::text_primary())
                     .hover(|s| s.text_color(theme::accent()))
                     .when(installed, |d| d.font_weight(theme::W_BOLD))
                     .child(r.version.clone())
                     .when(!notes.is_empty(), |d| d.on_click(move |_, _, _| open_path(&notes))),
             )
-            .when(installed && !r.has_update(), |d| {
-                d.child(div().text_size(px(11.5)).text_color(theme::success()).child("INSTALLED"))
-            })
-            .when(r.has_update(), |d| {
-                d.child(div().text_size(px(11.5)).text_color(rgb(0xf2c76e)).child("UPDATE AVAILABLE"))
-            });
+            .when(installed && !r.has_update(), |d| d.child(status_pill("Installed", theme::success())))
+            .when(r.has_update(), |d| d.child(status_pill("Update available", rgb(0xf2c76e))));
 
         div()
             .id(id("row"))
-            .relative()
             .flex()
+            .flex_col()
             .flex_none()
-            .items_center()
-            .h(px(52.))
-            .px(px(24.))
-            .overflow_hidden()
-            .border_b_1()
-            .border_color(theme::rgb_a(165, 220, 235, 0.25))
-            .hover(|s| s.bg(theme::navbar_active_background()))
-            .when(bar_alpha > 0., |d| {
-                d.child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .bottom_0()
-                        .left_0()
-                        .w(relative(fraction))
-                        .bg(theme::rgb_a(165, 220, 235, bar_alpha)),
-                )
-            })
-            .child(version_cell)
-            .child(div().w(px(130.)).flex_none().text_size(px(14.5)).text_color(theme::white_a(0.7)).child(r.date.clone()))
             .child(
                 div()
-                    .w(px(300.))
-                    .flex_none()
-                    .text_size(px(14.5))
-                    .font_weight(theme::W_BOLD)
-                    .text_color(theme::accent())
-                    .child(size_text),
+                    .flex()
+                    .items_center()
+                    .min_h(px(52.))
+                    .child(version_cell)
+                    .child(div().w(px(110.)).flex_none().text_size(px(13.)).text_color(theme::text_dim()).child(r.date.clone()))
+                    .child(div().w(px(260.)).flex_none().text_size(px(13.)).text_color(if fraction.is_some() { theme::accent() } else { theme::text_muted() }).child(size_text))
+                    .child(actions),
             )
-            .child(actions)
+            .children(fraction.map(|p| div().pb(px(10.)).child(progress_bar(Some(p), 4., theme::accent()))))
     }
 
     fn render_list(&self, cx: &mut Context<Self>) -> Div {
@@ -573,45 +507,30 @@ impl WineManagerPage {
                 self.message("No Wine versions match your search.", true)
             };
         }
-        let header_cell = |t: &'static str| div().text_size(px(12.)).font_weight(theme::W_BOLD).text_color(white()).child(t);
-        let mut list = div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .rounded(px(16.))
-            .overflow_hidden()
-            .bg(theme::rgb_a(25, 28, 34, 0.8))
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .px(px(24.))
-                    .py(px(12.))
-                    .bg(theme::black_a(0.25))
-                    .border_b_1()
-                    .border_color(theme::white_a(0.1))
-                    .child(header_cell("WINE VERSION").flex_1())
-                    .child(header_cell("RELEASE DATE").w(px(130.)).flex_none())
-                    .child(header_cell("SIZE").w(px(300.)).flex_none())
-                    .child(header_cell("ACTION").w(px(210.)).flex_none().flex().justify_end()),
-            );
+        let header_cell = |t: &'static str| div().text_size(px(12.)).text_color(theme::text_muted()).child(t);
+        let mut list = card_box().child(
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .py(px(10.))
+                .child(header_cell("Version").flex_1())
+                .child(header_cell("Release date").w(px(110.)).flex_none())
+                .child(header_cell("Size").w(px(260.)).flex_none())
+                .child(header_cell("").w(px(230.)).flex_none()),
+        );
         for r in &rows {
-            list = list.child(self.render_row(r, cx));
+            list = list.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(self.render_row(r, cx));
         }
         list
     }
 
     fn message(&self, text: &'static str, error: bool) -> Div {
-        div()
-            .flex()
-            .justify_center()
-            .px(px(16.))
+        card_box()
+            .items_center()
             .py(px(24.))
-            .rounded(px(8.))
-            .bg(theme::rgb_a(25, 28, 34, 0.8))
-            .text_size(px(15.2))
-            .text_color(if error { theme::danger().into() } else { theme::white_a(0.8) })
+            .text_size(px(14.))
+            .text_color(if error { theme::danger_text() } else { theme::text_muted() })
             .child(text)
     }
 }
@@ -620,8 +539,27 @@ impl Render for WineManagerPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let toolbar = self.render_toolbar(cx);
         let tabs = self.render_tabs(cx);
+        let steam = self.steam_row(cx);
         let info = self.info_box();
         let list = self.render_list(cx);
-        page_body("page-wine_manager").child(page_column().child(toolbar).child(tabs).child(info).child(list))
+        let column = div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .gap(px(14.))
+            .child(toolbar)
+            .child(div().flex().flex_col().child(tabs).child(info))
+            .child(steam)
+            .child(list);
+        let close = page_close(cx);
+        sheet(
+            "page-wine_manager",
+            "Wine Manager",
+            Some("Download and manage the Wine and Proton builds your games run on.".into()),
+            None,
+            1080.,
+            close,
+            column,
+        )
     }
 }

@@ -410,7 +410,7 @@ impl LogViewer {
                             .overflow_hidden()
                             .text_ellipsis()
                             .whitespace_nowrap()
-                            .text_color(if active { theme::accent() } else { rgb(0xcaf3fd) })
+                            .text_color(if active { theme::accent() } else { crate::theme::text_primary() })
                             .child(name),
                     )
                     .child(
@@ -463,14 +463,14 @@ impl LogViewer {
             bar = bar
                 .child(action_button(
                     "log-latest",
-                    if showing_previous { ButtonKind::Outline } else { ButtonKind::Tertiary },
+                    if showing_previous { ButtonKind::Glass } else { ButtonKind::Primary },
                     "Latest",
                     true,
                     cx.listener(|this, _, _, cx| this.set_previous(false, cx)),
                 ))
                 .child(action_button(
                     "log-previous",
-                    if showing_previous { ButtonKind::Tertiary } else { ButtonKind::Outline },
+                    if showing_previous { ButtonKind::Primary } else { ButtonKind::Glass },
                     "Previous run",
                     true,
                     cx.listener(|this, _, _, cx| this.set_previous(true, cx)),
@@ -479,17 +479,17 @@ impl LogViewer {
         let has_path = path.is_some();
         let (p1, p2) = (path.clone(), path.clone());
         bar = bar
-            .child(action_button("log-refresh", ButtonKind::Outline, "Refresh", true, cx.listener(|this, _, _, cx| this.refresh(cx))))
+            .child(action_button("log-refresh", ButtonKind::Glass, "Refresh", true, cx.listener(|this, _, _, cx| this.refresh(cx))))
             .child(action_button(
                 "log-copy",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 if self.copied { "Copied!" } else { "Copy" },
                 has_path && !self.content.lines.is_empty(),
                 cx.listener(|this, _, _, cx| this.copy(cx)),
             ))
             .child(action_button(
                 "log-folder",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 "Open folder",
                 has_path,
                 cx.listener(move |this, _, _, cx| {
@@ -500,7 +500,7 @@ impl LogViewer {
             ))
             .child(action_button(
                 "log-open",
-                ButtonKind::Outline,
+                ButtonKind::Glass,
                 "Open file",
                 has_path,
                 cx.listener(move |this, _, _, cx| {
@@ -532,7 +532,7 @@ impl LogViewer {
         let lines = c.lines.clone();
         let mono = self.mono.clone();
         let body = if let Some(err) = self.error.clone() {
-            div().p(px(12.)).text_color(theme::danger()).child(err).into_any_element()
+            div().p(px(12.)).text_color(theme::danger_text()).child(err).into_any_element()
         } else if lines.is_empty() {
             let text = if self.busy {
                 "Reading..."
@@ -597,12 +597,12 @@ impl LogViewer {
 
         let mut footer = div().flex().items_center().gap(px(12.)).min_h(px(22.));
         if self.can_load_earlier() {
-            footer = footer.child(action_button("log-earlier", ButtonKind::Outline, "Load earlier", true, cx.listener(|this, _, _, cx| this.load_earlier(cx))));
+            footer = footer.child(action_button("log-earlier", ButtonKind::Glass, "Load earlier", true, cx.listener(|this, _, _, cx| this.load_earlier(cx))));
         } else if c.skipped > 0 {
             footer = footer.child(meta_text("Only the end of this big log is shown here. Use Open file to see all of it."));
         }
         if let Some(n) = self.notice.clone() {
-            footer = footer.child(div().text_size(px(13.)).text_color(theme::danger()).child(n));
+            footer = footer.child(div().text_size(px(13.)).text_color(theme::danger_text()).child(n));
         }
 
         div()

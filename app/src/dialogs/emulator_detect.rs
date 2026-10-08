@@ -253,18 +253,18 @@ impl Render for DetectEmulatorsDialog {
                     .gap(px(8.))
                     .child(action_button(
                         "detect-folder",
-                        ButtonKind::Default,
+                        ButtonKind::Glass,
                         if self.folder_scanning.is_some() { "Searching\u{2026}" } else { "Scan a folder\u{2026}" },
                         !busy,
                         cx.listener(|this, _, window, cx| this.pick_folder(window, cx)),
                     ))
-                    .child(button("detect-all", ButtonKind::Outline, "Select all").on_click(cx.listener(|this, _, _, cx| {
+                    .child(button("detect-all", ButtonKind::Glass, "Select all").on_click(cx.listener(|this, _, _, cx| {
                         for r in this.rows.iter_mut().filter(|r| !r.item.already_added) {
                             r.selected = true;
                         }
                         cx.notify();
                     })))
-                    .child(button("detect-none", ButtonKind::Outline, "Select none").on_click(cx.listener(|this, _, _, cx| {
+                    .child(button("detect-none", ButtonKind::Glass, "Select none").on_click(cx.listener(|this, _, _, cx| {
                         for r in &mut this.rows {
                             r.selected = false;
                         }
@@ -273,15 +273,15 @@ impl Render for DetectEmulatorsDialog {
             )
             .child(meta_text(status))
             .children((!self.rows.is_empty()).then_some(list))
-            .children((!self.error.is_empty()).then(|| div().text_color(theme::danger()).text_size(px(13.33)).child(self.error.clone())));
+            .children((!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())));
 
         let footer = div()
             .flex()
-            .gap(px(16.))
-            .child(button("detect-close", ButtonKind::Outline, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .gap(px(10.))
+            .child(button("detect-close", ButtonKind::Ghost, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "detect-add",
-                ButtonKind::Default,
+                ButtonKind::Primary,
                 if self.adding { "Adding\u{2026}".to_string() } else { format!("Add {selected} emulator(s)") },
                 selected > 0 && !busy,
                 cx.listener(|this, _, _, cx| this.add(cx)),

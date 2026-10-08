@@ -284,14 +284,14 @@ impl Render for RomFolderDialog {
             .child(profile_select)
             .child(folder)
             .child(toggles)
-            .children((!self.error.is_empty()).then(|| div().text_color(theme::danger()).text_size(px(13.33)).child(self.error.clone())));
+            .children((!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())));
         let footer = div()
             .flex()
-            .gap(px(16.))
-            .child(button("romf-cancel", ButtonKind::Outline, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .gap(px(10.))
+            .child(button("romf-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "romf-save",
-                ButtonKind::Default,
+                ButtonKind::Primary,
                 if self.saving {
                     if self.auto_scan { "Scanning\u{2026}" } else { "Saving\u{2026}" }
                 } else if edit {

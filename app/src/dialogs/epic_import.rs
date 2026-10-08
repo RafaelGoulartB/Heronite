@@ -1,7 +1,7 @@
 //! "Import game": pick one of the owned, not installed Epic games; the caller
 //! then opens the install dialog in import mode for it.
 
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::json_store;
@@ -86,11 +86,11 @@ impl Render for EpicImportPicker {
                     .id(SharedString::from(format!("epic-pick-{i}")))
                     .px(px(12.))
                     .py(px(8.))
-                    .rounded(px(4.))
+                    .rounded(px(theme::R_ITEM))
                     .cursor_pointer()
-                    .text_size(px(15.))
-                    .text_color(rgb(0xcaf3fd))
-                    .hover(|s| s.bg(theme::white_a(0.1)))
+                    .text_size(px(14.))
+                    .text_color(crate::theme::text_primary())
+                    .hover(|s| s.bg(theme::menu_item_hover()))
                     .child(title)
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.picked = this.games.get(i).cloned();
@@ -103,17 +103,7 @@ impl Render for EpicImportPicker {
             .flex_col()
             .gap(px(12.))
             .child(meta_text("Choose the game you already have on disk, then pick its folder."))
-            .child(
-                div()
-                    .h(px(40.))
-                    .px(px(12.))
-                    .flex()
-                    .items_center()
-                    .rounded(px(4.))
-                    .bg(theme::navbar_background())
-                    .text_size(px(16.))
-                    .child(div().w_full().child(Input::new(&self.filter).appearance(false))),
-            )
+            .child(div().flex().child(crate::ui::fields::input_box(&self.filter, false)))
             .child(if !self.loaded {
                 meta_text("Loading...")
             } else if self.games.is_empty() {
@@ -122,7 +112,7 @@ impl Render for EpicImportPicker {
                 div().child(list)
             })
             .child(if total > 10 { meta_text(format!("{} more - type to narrow the list", total - 10)) } else { div() });
-        let footer = button("epic-pick-close", ButtonKind::Outline, "Close")
+        let footer = button("epic-pick-close", ButtonKind::Primary, "Close")
             .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)))
             .into_any_element();
         let entity = cx.entity().downgrade();

@@ -58,20 +58,20 @@ impl QuitConfirmDialog {
 impl Render for QuitConfirmDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let body = div().flex().flex_col().gap(px(14.)).child(paragraph(message(&self.games, self.post_game)));
-        let mut footer = div().flex().gap(px(16.));
+        let mut footer = div().flex().gap(px(10.));
         if self.tray {
             footer = footer
-                .child(button("quit-cancel", ButtonKind::Outline, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
-                .child(button("quit-tray", ButtonKind::Default, "Keep running in tray").on_click(cx.listener(|_, _, _, cx| {
+                .child(button("quit-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+                .child(button("quit-tray", ButtonKind::Primary, "Keep running in tray").on_click(cx.listener(|_, _, _, cx| {
                     cx.emit(DialogEvent::Close);
                     crate::system::keep_in_tray(cx);
                 })));
         } else {
             footer = footer.child(
-                button("quit-keep", ButtonKind::Default, "Keep open").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+                button("quit-keep", ButtonKind::Primary, "Keep open").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
             );
         }
-        footer = footer.child(button("quit-anyway", ButtonKind::Outline, "Quit anyway").on_click(cx.listener(|_, _, _, cx| {
+        footer = footer.child(button("quit-anyway", ButtonKind::Danger, "Quit anyway").on_click(cx.listener(|_, _, _, cx| {
             cx.emit(DialogEvent::Close);
             crate::system::quit_anyway(cx);
         })));

@@ -6,7 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_playnite::{Playnite, PlayniteImportResult, PlayniteMergePreview, PlayniteMergePreviewItem};
 
-use super::playnite_import::{action, bullet_list};
+use super::playnite_import::{action, bullet_list, stat_card};
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
 use crate::ui::controls::{button, section_title, ButtonKind};
@@ -32,7 +32,7 @@ fn minutes(v: Option<heronite_data::JsNum>) -> String {
 }
 
 fn section(title: &str, items: &[PlayniteMergePreviewItem], line: impl Fn(&PlayniteMergePreviewItem) -> String) -> Div {
-    let mut s = div().flex().flex_col().gap(px(4.)).child(section_title(title.to_string()));
+    let mut s = div().flex().flex_col().child(section_title(title.to_string()));
     if items.is_empty() {
         return s.child(paragraph_secondary("None"));
     }
@@ -101,7 +101,7 @@ impl MergePlayniteDialog {
 
 impl Render for MergePlayniteDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut body = div().flex().flex_col().gap(px(16.));
+        let mut body = div().flex().flex_col().gap(px(8.));
         if self.loading {
             body = body.child(paragraph("Reading Playnite library\u{2026}"));
         } else {
@@ -111,14 +111,14 @@ impl Render for MergePlayniteDialog {
             ));
             if let Some(p) = self.preview.as_ref().filter(|p| p.errors.is_empty()) {
                 body = body
-                    .child(bullet_list(vec![
-                        format!("New games: {}", p.new_games.len()),
-                        format!("Playtime increases: {}", p.playtime_updates.len()),
-                        format!("Status from Playnite: {}", p.status_from_playnite.len()),
-                        format!("Status conflicts (keep Heroic): {}", p.status_conflicts.len()),
-                        format!("New sessions: {}", p.new_sessions),
-                        format!("Unchanged: {}", p.unchanged),
-                        format!("Skipped: {}", p.skipped),
+                    .child(stat_card(vec![
+                        ("New games".into(), p.new_games.len().to_string()),
+                        ("Playtime increases".into(), p.playtime_updates.len().to_string()),
+                        ("Status from Playnite".into(), p.status_from_playnite.len().to_string()),
+                        ("Status conflicts (keep Heroic)".into(), p.status_conflicts.len().to_string()),
+                        ("New sessions".into(), p.new_sessions.to_string()),
+                        ("Unchanged".into(), p.unchanged.to_string()),
+                        ("Skipped".into(), p.skipped.to_string()),
                     ]))
                     .child(section("New games", &p.new_games, |i| i.title.clone()))
                     .child(section("Playtime increases", &p.playtime_updates, |i| {
@@ -143,29 +143,29 @@ impl Render for MergePlayniteDialog {
             }
         }
         if let Some(r) = &self.result {
-            body = body.child(div().text_size(px(16.)).text_color(theme::success()).child(format!(
+            body = body.child(div().text_size(px(14.)).text_color(theme::success()).child(format!(
                 "Merged without overwriting your Heroic status. New games {}, updated {}, sessions {}, skipped {}.",
                 r.imported, r.updated, r.sessions_imported, r.skipped
             )));
             if !r.errors.is_empty() {
                 body = body.child(
-                    div().text_size(px(13.33)).text_color(theme::danger()).child(
+                    div().text_size(px(13.33)).text_color(theme::danger_text()).child(
                         r.errors.iter().take(4).cloned().collect::<Vec<_>>().join("\n"),
                     ),
                 );
             }
         }
         if let Some(e) = self.error.clone() {
-            body = body.child(div().text_size(px(16.)).text_color(theme::danger()).child(e));
+            body = body.child(div().text_size(px(14.)).text_color(theme::danger_text()).child(e));
         }
 
         let blocked = self.preview.as_ref().map_or(true, |p| p.library_path.is_empty() || !p.errors.is_empty());
         let done = self.result.is_some();
         let footer = div()
             .flex()
-            .gap(px(16.))
+            .gap(px(10.))
             .child(
-                button("pm-close", ButtonKind::Outline, "Close").on_click(cx.listener(move |_, _, _, cx| {
+                button("pm-close", ButtonKind::Ghost, "Close").on_click(cx.listener(move |_, _, _, cx| {
                     cx.emit(if done { DialogEvent::ChangedAndClose } else { DialogEvent::Close })
                 })),
             )

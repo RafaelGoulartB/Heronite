@@ -116,13 +116,13 @@ impl Render for EmulatorConfirmDialog {
             .flex_col()
             .gap(px(14.))
             .child(paragraph(self.message.clone()))
-            .children(self.error.clone().map(|e| div().text_color(theme::danger()).child(e)));
+            .children(self.error.clone().map(|e| div().text_color(theme::danger_text()).child(e)));
         let footer = div()
             .flex()
-            .gap(px(16.))
-            .child(button("emu-confirm-no", ButtonKind::Outline, "No").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .gap(px(10.))
+            .child(button("emu-confirm-no", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(
-                button("emu-confirm-yes", ButtonKind::Default, if self.working { "Removing\u{2026}" } else { "Yes" })
+                button("emu-confirm-yes", ButtonKind::Danger, if self.working { "Removing\u{2026}" } else { "Remove" })
                     .on_click(cx.listener(|this, _, _, cx| this.confirm(cx))),
             );
         let entity = cx.entity().downgrade();

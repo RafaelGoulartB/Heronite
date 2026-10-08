@@ -743,12 +743,12 @@ impl AddGameDialog {
             .gap(px(8.))
             .cursor_pointer()
             .text_size(px(16.))
-            .text_color(rgb(0xcaf3fd))
+            .text_color(crate::theme::text_primary())
             .on_click(cx.listener(|this, _, _, cx| {
                 this.show_wine = !this.show_wine;
                 cx.notify();
             }))
-            .child(icon(if open { Icon::FaChevronUp } else { Icon::FaChevronDown }, px(12.), rgb(0xcaf3fd)))
+            .child(icon(if open { Icon::FaChevronUp } else { Icon::FaChevronDown }, px(12.), crate::theme::text_primary()))
             .child("Show Wine settings");
         let mut col = div().flex().flex_col().gap(px(12.)).child(header);
         if !open {
@@ -833,7 +833,7 @@ impl AddGameDialog {
             },
         ));
         if none_found {
-            col = col.child(div().text_size(px(13.33)).text_color(theme::danger()).child("No Wine version was found, download one from the Wine Manager"));
+            col = col.child(div().text_size(px(13.33)).text_color(theme::danger_text()).child("No Wine version was found, download one from the Wine Manager"));
         }
         col
     }
@@ -861,7 +861,7 @@ impl AddGameDialog {
                         div()
                             .text_size(px(16.))
                             .font_weight(theme::W_BOLD)
-                            .text_color(rgb(0xcaf3fd))
+                            .text_color(crate::theme::text_primary())
                             .child(if title.trim().is_empty() { "Title".to_string() } else { title.clone() }),
                     )
                     .child(meta_text(platform_label(self.platform))),
@@ -894,21 +894,21 @@ impl AddGameDialog {
                     .gap(px(8.))
                     .child(action_button(
                         "ag-find-art",
-                        ButtonKind::Outline,
+                        ButtonKind::Glass,
                         if finding { "Searching\u{2026}" } else { "Find art for this title" },
                         !finding && !title.trim().is_empty(),
                         cx.listener(|this, _, window, cx| this.find_art(window, cx)),
                     ))
                     .child(action_button(
                         "ag-search-square",
-                        ButtonKind::Outline,
+                        ButtonKind::Glass,
                         "Search the web: cover",
                         true,
                         cx.listener(|this, _, window, cx| this.open_picker(Slot::Square, window, cx)),
                     ))
                     .child(action_button(
                         "ag-search-hero",
-                        ButtonKind::Outline,
+                        ButtonKind::Glass,
                         "Search the web: background",
                         true,
                         cx.listener(|this, _, window, cx| this.open_picker(Slot::Cover, window, cx)),
@@ -954,7 +954,7 @@ impl AddGameDialog {
         }
 
         if !self.error.is_empty() {
-            right = right.child(div().text_size(px(14.)).line_height(px(20.)).text_color(theme::danger()).child(self.error.clone()));
+            right = right.child(div().text_size(px(14.)).line_height(px(20.)).text_color(theme::danger_text()).child(self.error.clone()));
         } else if !self.notice.is_empty() {
             right = right.child(div().text_size(px(14.)).line_height(px(20.)).text_color(theme::success()).child(self.notice.clone()));
         }
@@ -964,7 +964,7 @@ impl AddGameDialog {
 
     fn remove_confirmation(&self, cx: &mut Context<Self>) -> Div {
         let title = text_of(&self.title, cx);
-        let mut col = div().flex().flex_col().gap(px(16.)).child(div().text_size(px(16.)).line_height(px(22.)).text_color(rgb(0xcaf3fd)).child(format!(
+        let mut col = div().flex().flex_col().gap(px(16.)).child(div().text_size(px(16.)).line_height(px(22.)).text_color(crate::theme::text_primary()).child(format!(
             "Remove {} from your library? The game's files are not deleted. Its playtime, status, notes, images and Collection data are removed, and so are its shortcuts.",
             if title.trim().is_empty() { "this game" } else { title.trim() }
         )));
@@ -979,7 +979,7 @@ impl AddGameDialog {
                 .child(meta_text(format!("{prefix}  (saves and settings inside it will be lost)")));
         }
         if !self.error.is_empty() {
-            col = col.child(div().text_size(px(14.)).text_color(theme::danger()).child(self.error.clone()));
+            col = col.child(div().text_size(px(14.)).text_color(theme::danger_text()).child(self.error.clone()));
         }
         col
     }
@@ -995,10 +995,10 @@ impl Render for AddGameDialog {
         let (title, body, footer) = if self.confirm_remove {
             let footer = div()
                 .flex()
-                .gap(px(16.))
+                .gap(px(10.))
                 .child(action_button(
                     "ag-remove-back",
-                    ButtonKind::Outline,
+                    ButtonKind::Ghost,
                     "Back",
                     !self.saving,
                     cx.listener(|this, _, _, cx| {
@@ -1009,7 +1009,7 @@ impl Render for AddGameDialog {
                 ))
                 .child(action_button(
                     "ag-remove-yes",
-                    ButtonKind::Default,
+                    ButtonKind::Danger,
                     if self.saving { "Removing\u{2026}" } else { "Remove game" },
                     !self.saving,
                     cx.listener(|this, _, _, cx| this.remove(cx)),
@@ -1026,7 +1026,7 @@ impl Render for AddGameDialog {
             if edit {
                 footer = footer.child(action_button(
                     "ag-remove",
-                    ButtonKind::Outline,
+                    ButtonKind::Glass,
                     "Remove game",
                     can_save,
                     cx.listener(|this, _, _, cx| {
@@ -1040,7 +1040,7 @@ impl Render for AddGameDialog {
             footer = footer.child(div().flex_1());
             footer = footer.child(action_button(
                 "ag-cancel",
-                ButtonKind::Outline,
+                ButtonKind::Ghost,
                 "Cancel",
                 !self.saving,
                 cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)),
@@ -1049,7 +1049,7 @@ impl Render for AddGameDialog {
                 let can_run = can_save && !text_of(&self.title, cx).trim().is_empty();
                 footer = footer.child(action_button(
                     "ag-run-installer",
-                    ButtonKind::Secondary,
+                    ButtonKind::Glass,
                     if self.installer_running { "Running Setup" } else { "Run Installer First" },
                     can_run,
                     cx.listener(|_, _, window, cx| {

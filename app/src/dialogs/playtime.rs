@@ -100,18 +100,18 @@ impl Render for PlaytimeDialog {
                 div()
                     .text_size(px(18.))
                     .font_weight(crate::theme::W_BOLD)
-                    .text_color(rgb(0xcaf3fd))
+                    .text_color(crate::theme::text_primary())
                     .child(format_playtime_minutes(h * 60 + m)),
             )
-            .children(self.error.clone().map(|e| div().text_color(crate::theme::danger()).child(e)));
+            .children(self.error.clone().map(|e| div().text_color(crate::theme::danger_text()).child(e)));
         let footer = div()
             .flex()
-            .gap(px(16.))
+            .gap(px(10.))
             .child(
-                button("playtime-cancel", ButtonKind::Outline, "Cancel")
+                button("playtime-cancel", ButtonKind::Ghost, "Cancel")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
             )
-            .child(button("playtime-save", ButtonKind::Default, "Save").on_click(cx.listener(|this, _, _, cx| this.save(cx))));
+            .child(button("playtime-save", ButtonKind::Primary, "Save").on_click(cx.listener(|this, _, _, cx| this.save(cx))));
         let entity = cx.entity().downgrade();
         dialog(
             DialogProps { id: "playtime".into(), title: "Edit playtime".into(), width: 460., height: None },

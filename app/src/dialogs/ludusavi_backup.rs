@@ -112,14 +112,14 @@ impl Render for LudusaviBackupDialog {
         let body = div()
             .flex()
             .flex_col()
-            .child(paragraph(text).when(is_error, |d| d.text_color(theme::danger())));
-        let mut footer = div().flex().gap(px(16.));
+            .child(paragraph(text).when(is_error, |d| d.text_color(theme::danger_text())));
+        let mut footer = div().flex().gap(px(10.));
         if let Some(path) = path {
             footer = footer
-                .child(button("ludusavi-show", ButtonKind::Outline, "Show in folder").on_click(move |_, _, _| show_in_folder(&path)));
+                .child(button("ludusavi-show", ButtonKind::Glass, "Show in folder").on_click(move |_, _, _| show_in_folder(&path)));
         }
         footer = footer
-            .child(button("ludusavi-close", ButtonKind::Default, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
+            .child(button("ludusavi-close", ButtonKind::Primary, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
         let entity = cx.entity().downgrade();
         dialog(
             DialogProps { id: "ludusavi-backup".into(), title: TITLE.into(), width: 560., height: None },

@@ -18,6 +18,9 @@ use gpui_kit::*;
 use heronite_data::{AppPaths, HeroicPaths};
 
 use crate::icons::Icon;
+use crate::theme;
+use crate::ui::controls::{close_button, help_text, page_heading};
+use crate::ui::{glass, icon};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Page {
@@ -107,4 +110,139 @@ pub fn page_body(id: impl Into<ElementId>) -> Stateful<Div> {
 /// Inner column of [`page_body`]: `page_body(..).child(page_column().child(..))`.
 pub fn page_column() -> Div {
     div().flex().flex_col().gap(px(16.)).w_full().max_w(px(1480.)).mx_auto()
+}
+
+// ---------------------------------------------------------------------------
+// Glass sheet chrome (Downloads, Wine Manager, Epic Games, Emulators)
+// ---------------------------------------------------------------------------
+
+/// Round close button of a [`sheet`]: goes back to the Collection.
+pub fn page_close<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) -> Stateful<Div> {
+    close_button("page-close").on_click(cx.listener(|_, _, _, cx| cx.emit(PageEvent::Navigate(Page::Collection))))
+}
+
+/// Glass sheet floating over the (dimmed) Collection, like the Settings sheet
+/// of `o1-1.jpg`: title (Rubik 26) + lead on the left, `actions` and the round
+/// close button on the right, then a scrolling body. `column` is the content
+/// column (a `Div` whose children are captions and cards); it is centred and
+/// limited to `max_w`. Pages render this as their whole view.
+pub fn sheet(
+    id: impl Into<ElementId>,
+    title: impl Into<SharedString>,
+    lead: Option<SharedString>,
+    actions: Option<AnyElement>,
+    max_w: f32,
+    close: Stateful<Div>,
+    column: impl IntoElement,
+) -> Div {
+    let id: ElementId = id.into();
+    let header = div()
+        .flex()
+        .flex_none()
+        .items_start()
+        .justify_between()
+        .gap(px(16.))
+        .pl(px(32.))
+        .pr(px(24.))
+        .pt(px(24.))
+        .pb(px(8.))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(4.))
+                .min_w_0()
+                .child(page_heading(title))
+                .children(lead.map(|l| help_text(l))),
+        )
+        .child(div().flex().flex_none().items_center().gap(px(10.)).children(actions).child(close));
+    let body = div()
+        .id(id)
+        .flex_1()
+        .min_h_0()
+        .overflow_y_scroll()
+        .px(px(32.))
+        .pt(px(10.))
+        .pb(px(28.))
+        .child(div().flex().flex_col().w_full().max_w(px(max_w)).child(column));
+    div().size_full().p(px(12.)).pt(px(2.)).child(
+        glass::glass_panel(theme::R_SHEET)
+            .size_full()
+            .flex()
+            .flex_col()
+            .text_color(theme::text_primary())
+            .font_family(theme::FONT_BODY)
+            .child(header)
+            .child(body),
+    )
+}
+
+/// One row of a list card: optional leading element (cover, icon), the
+/// content (grows) and trailing controls. Padding 12px 0, like [`crate::ui::controls::row`].
+pub fn list_item(leading: Option<AnyElement>, content: impl IntoElement, trailing: impl IntoElement) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(14.))
+        .py(px(12.))
+        .children(leading)
+        .child(div().flex().flex_col().flex_1().min_w_0().gap(px(3.)).child(content))
+        .child(div().flex().flex_none().items_center().gap(px(6.)).child(trailing))
+}
+
+/// Round 32px icon button for list rows (pause, remove, move up...).
+/// Disabled ones are dimmed and the caller must not attach a click handler.
+pub fn icon_action(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(32.))
+        .rounded_full()
+        .bg(theme::white_a(0.08))
+        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::white_a(0.14))))
+        .when(!enabled, |d| d.opacity(0.35))
+        .child(icon(ic, px(16.), theme::text_primary()))
+}
+
+/// Small tinted status pill ("Ready", "Installed", "Native"): `color` text on
+/// a 16% tint of the same colour.
+pub fn status_pill(text: impl Into<SharedString>, color: Rgba) -> Div {
+    let c: Hsla = color.into();
+    div()
+        .flex_none()
+        .px(px(9.))
+        .py(px(2.))
+        .rounded_full()
+        .bg(Hsla { a: 0.16, ..c })
+        .text_size(px(12.))
+        .text_color(color)
+        .whitespace_nowrap()
+        .child(text.into())
+}
+
+/// Neutral pill (platform names, launch kind).
+pub fn tag_pill(text: impl Into<SharedString>) -> Div {
+    div()
+        .flex_none()
+        .px(px(9.))
+        .py(px(2.))
+        .rounded_full()
+        .bg(theme::white_a(0.08))
+        .text_size(px(12.))
+        .text_color(theme::text_muted())
+        .whitespace_nowrap()
+        .child(text.into())
+}
+
+/// Caption with an action on the right ("Completed" + "Clear list").
+pub fn caption_with(text: impl Into<SharedString>, action: impl IntoElement) -> Div {
+    div().flex().items_end().justify_between().child(crate::ui::controls::caption(text)).child(div().mb(px(2.)).child(action))
+}
+
+/// Empty / info row inside a card.
+pub fn empty_row(text: impl Into<SharedString>) -> Div {
+    div().py(px(14.)).text_size(px(13.)).text_color(theme::text_dim()).child(text.into())
 }

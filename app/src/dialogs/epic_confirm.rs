@@ -11,7 +11,7 @@ use gpui_kit::*;
 
 use super::DialogEvent;
 use crate::theme;
-use crate::ui::controls::{action_button, button, checkbox, ButtonKind};
+use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{choose_path, new_input, paragraph, path_field};
 
@@ -107,30 +107,34 @@ impl Render for EpicConfirmDialog {
                     .max_h(px(320.))
                     .overflow_hidden()
                     .p(px(10.))
-                    .rounded(px(4.))
-                    .bg(theme::black_a(0.3))
-                    .font_family("monospace")
-                    .text_size(px(12.5))
-                    .text_color(white())
+                    .rounded(px(theme::R_INPUT))
+                    .bg(theme::input_fill())
+                    .border_1()
+                    .border_color(theme::input_border())
+                    .font_family(theme::FONT_MONO)
+                    .text_size(px(12.))
+                    .text_color(theme::text_primary())
                     .child(text.clone()),
             );
         }
-        for (i, t) in self.spec.toggles.iter().enumerate() {
-            let on = self.toggles[i];
-            let mut row = div().flex().flex_col().gap(px(2.));
-            let cb = checkbox(SharedString::from(format!("{id}-toggle-{i}")), on, t.label.clone());
-            row = row.child(if t.disabled {
-                cb.opacity(0.55).cursor_not_allowed()
-            } else {
-                cb.on_click(cx.listener(move |this, _, _, cx| {
-                    this.toggles[i] = !this.toggles[i];
-                    cx.notify();
-                }))
-            });
-            if let Some(note) = &t.note {
-                row = row.child(div().pl(px(41.)).text_size(px(13.33)).text_color(theme::white_a(0.75)).child(note.clone()));
+        if !self.spec.toggles.is_empty() {
+            let mut rows: Vec<AnyElement> = Vec::new();
+            for (i, t) in self.spec.toggles.iter().enumerate() {
+                let on = self.toggles[i];
+                let row = crate::ui::controls::toggle_row(SharedString::from(format!("{id}-toggle-{i}")), t.label.clone(), t.note.as_deref(), on);
+                rows.push(
+                    if t.disabled {
+                        row.opacity(0.55).cursor_not_allowed()
+                    } else {
+                        row.on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggles[i] = !this.toggles[i];
+                            cx.notify();
+                        }))
+                    }
+                    .into_any_element(),
+                );
             }
-            body = body.child(row);
+            body = body.child(crate::ui::controls::card(rows));
         }
         if let (Some((label, _, prompt)), Some(input)) = (&self.spec.path, &self.path_input) {
             let has = !input.read(cx).value().trim().is_empty();
@@ -156,14 +160,14 @@ impl Render for EpicConfirmDialog {
             ));
         }
 
-        let mut footer = div().flex().gap(px(16.));
+        let mut footer = div().flex().gap(px(10.));
         match &self.spec.confirm {
             Some(label) => {
-                footer = footer.child(button(SharedString::from(format!("{id}-cancel")), ButtonKind::Outline, "Cancel").on_click(
+                footer = footer.child(button(SharedString::from(format!("{id}-cancel")), ButtonKind::Ghost, "Cancel").on_click(
                     cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)),
                 ));
                 if let Some((label, action)) = self.spec.secondary.clone() {
-                    footer = footer.child(button(SharedString::from(format!("{id}-secondary")), ButtonKind::Secondary, label).on_click(
+                    footer = footer.child(button(SharedString::from(format!("{id}-secondary")), ButtonKind::Glass, label).on_click(
                         cx.listener(move |_, _, _, cx| {
                             action(cx);
                             cx.emit(DialogEvent::Close);
@@ -171,7 +175,7 @@ impl Render for EpicConfirmDialog {
                     ));
                 }
                 let ready = self.spec.path.is_none() || self.path_input.as_ref().is_some_and(|i| !i.read(cx).value().trim().is_empty());
-                let kind = if self.spec.danger { ButtonKind::Tertiary } else { ButtonKind::Primary };
+                let kind = if self.spec.danger { ButtonKind::Danger } else { ButtonKind::Primary };
                 footer = footer.child(action_button(
                     SharedString::from(format!("{id}-confirm")),
                     kind,
@@ -181,7 +185,7 @@ impl Render for EpicConfirmDialog {
                 ));
             }
             None => {
-                footer = footer.child(button(SharedString::from(format!("{id}-close")), ButtonKind::Outline, "Close").on_click(
+                footer = footer.child(button(SharedString::from(format!("{id}-close")), ButtonKind::Primary, "Close").on_click(
                     cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)),
                 ));
             }
