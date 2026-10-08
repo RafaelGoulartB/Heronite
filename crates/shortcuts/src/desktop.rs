@@ -151,16 +151,7 @@ fn write_file(path: &Path, text: &str, mode: u32) -> Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    let tmp = path.with_extension("desktop.tmp");
-    fs::write(&tmp, text)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp, fs::Permissions::from_mode(mode))?;
-    }
-    #[cfg(not(unix))]
-    let _ = mode;
-    fs::rename(&tmp, path)?;
+    heronite_data::temps::write_atomic(path, text.as_bytes(), Some(mode))?;
     Ok(())
 }
 

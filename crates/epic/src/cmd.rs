@@ -3,15 +3,11 @@
 //! passed as-is and output (stdout and stderr) is captured, or streamed line by
 //! line for long operations that can be cancelled.
 
-use std::io::Read;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
+use heronite_data::proc::Run;
 use heronite_data::HeroicPaths;
 use heronite_launch::{legendary::find_legendary, PlanContext, SystemProbe};
 
@@ -48,35 +44,7 @@ impl Output {
     }
 }
 
-/// Lets another thread stop a running command: SIGTERM first (legendary then
-/// saves its resume data), SIGKILL of the whole process group if it lingers.
-#[derive(Debug, Default)]
-pub struct Cancel {
-    requested: AtomicBool,
-    pid: AtomicI32,
-}
-
-impl Cancel {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self::default())
-    }
-
-    pub fn request(&self) {
-        self.requested.store(true, Ordering::SeqCst);
-        #[cfg(unix)]
-        {
-            let pid = self.pid.load(Ordering::SeqCst);
-            if pid > 0 {
-                // SAFETY: plain signal to a process this struct spawned.
-                unsafe { libc::kill(pid, libc::SIGTERM) };
-            }
-        }
-    }
-
-    pub fn is_requested(&self) -> bool {
-        self.requested.load(Ordering::SeqCst)
-    }
-}
+pub use heronite_data::proc::Cancel;
 
 impl Legendary {
     /// Finds the binary like Heronite does (`altLegendaryBin`, the bundled one,
@@ -101,21 +69,6 @@ impl Legendary {
         for (k, v) in env {
             cmd.env(k, v);
         }
-        cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            // Own process group (workers die with it) and SIGTERM if this app dies.
-            cmd.process_group(0);
-            // SAFETY: only async-signal-safe prctl between fork and exec.
-            unsafe {
-                cmd.pre_exec(|| {
-                    #[cfg(target_os = "linux")]
-                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
-                    Ok(())
-                });
-            }
-        }
         cmd
     }
 
@@ -132,141 +85,22 @@ impl Legendary {
         args: &[S],
         env: &[(String, String)],
         cancel: &Cancel,
-        mut on_line: impl FnMut(&str),
+        on_line: impl FnMut(&str),
     ) -> Result<Output> {
         let args: Vec<String> = args.iter().map(|a| a.as_ref().to_string()).collect();
         log::info!("legendary {}", redact(&args).join(" "));
-        let mut child = self
-            .command(&args, env)
-            .spawn()
+        let mut cmd = self.command(&args, env);
+        // SIGTERM only legendary (it saves its resume data); the workers it
+        // left behind are killed with the group afterwards.
+        let mut on_line = on_line;
+        let out = Run::new()
+            .cancel(cancel)
+            .term_main_only()
+            .line_capture()
+            .on_line(&mut on_line)
+            .run(&mut cmd)
             .with_context(|| format!("starting {}", self.bin.display()))?;
-        let pid = child.id() as i32;
-        cancel.pid.store(pid, Ordering::SeqCst);
-        // A cancel requested before the pid was known.
-        if cancel.is_requested() {
-            cancel.request();
-        }
-
-        let (tx, rx) = mpsc::channel::<(bool, String)>();
-        let mut readers = Vec::new();
-        if let Some(pipe) = child.stdout.take() {
-            let tx = tx.clone();
-            readers.push(std::thread::spawn(move || read_lines(pipe, |line| drop(tx.send((false, line))))));
-        }
-        if let Some(pipe) = child.stderr.take() {
-            let tx = tx.clone();
-            readers.push(std::thread::spawn(move || read_lines(pipe, |line| drop(tx.send((true, line))))));
-        }
-        drop(tx);
-
-        let mut out = Output::default();
-        let mut term_sent_at: Option<Instant> = None;
-        let mut gone_at: Option<Instant> = None;
-        let mut status = None;
-        loop {
-            match rx.recv_timeout(Duration::from_millis(100)) {
-                Ok((is_err, line)) => {
-                    on_line(&line);
-                    let buf = if is_err { &mut out.stderr } else { &mut out.stdout };
-                    if buf.len() < 4 * 1024 * 1024 {
-                        buf.push_str(&line);
-                        buf.push('\n');
-                    }
-                    continue;
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => std::thread::sleep(Duration::from_millis(50)),
-            }
-            if status.is_none() {
-                status = child.try_wait()?;
-            }
-            if cancel.is_requested() {
-                match term_sent_at {
-                    None if status.is_none() => {
-                        term_sent_at = Some(Instant::now());
-                        signal_group(pid, libc::SIGTERM, false);
-                    }
-                    Some(at) if status.is_none() && at.elapsed() > Duration::from_secs(15) => {
-                        signal_group(pid, libc::SIGKILL, true)
-                    }
-                    _ => {}
-                }
-            }
-            if status.is_some() {
-                if readers.iter().all(|r| r.is_finished()) {
-                    // Drain what the readers sent just before finishing.
-                    while let Ok((is_err, line)) = rx.try_recv() {
-                        on_line(&line);
-                        let buf = if is_err { &mut out.stderr } else { &mut out.stdout };
-                        buf.push_str(&line);
-                        buf.push('\n');
-                    }
-                    break;
-                }
-                // A worker that inherited the pipes can keep them open after
-                // the main process died: stop waiting for it after a moment.
-                let at = *gone_at.get_or_insert_with(Instant::now);
-                if at.elapsed() > Duration::from_secs(2) {
-                    signal_group(pid, libc::SIGKILL, true);
-                    while let Ok((is_err, line)) = rx.try_recv() {
-                        on_line(&line);
-                        let buf = if is_err { &mut out.stderr } else { &mut out.stdout };
-                        buf.push_str(&line);
-                        buf.push('\n');
-                    }
-                    break;
-                }
-            }
-        }
-        // Whatever of the process group is left (download workers).
-        signal_group(pid, libc::SIGKILL, true);
-        cancel.pid.store(0, Ordering::SeqCst);
-        let status = match status {
-            Some(s) => s,
-            None => child.wait()?,
-        };
-        out.code = status.code();
-        out.aborted = cancel.is_requested();
-        Ok(out)
-    }
-}
-
-/// Signals the child (`whole_group = false`: legendary only, so it can save
-/// its resume data) or its whole process group (download workers included).
-#[cfg(unix)]
-fn signal_group(pid: i32, sig: i32, whole_group: bool) {
-    if pid > 0 {
-        // SAFETY: signalling the child / process group created for this run.
-        unsafe { libc::kill(if whole_group { -pid } else { pid }, sig) };
-    }
-}
-
-#[cfg(not(unix))]
-fn signal_group(_pid: i32, _sig: i32, _whole_group: bool) {}
-
-/// Splits a stream on `\n` and `\r` (legendary redraws progress with `\r`).
-fn read_lines(mut pipe: impl Read, mut emit: impl FnMut(String)) {
-    let mut buf = [0u8; 8192];
-    let mut line: Vec<u8> = Vec::new();
-    loop {
-        match pipe.read(&mut buf) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => {
-                for &b in &buf[..n] {
-                    if b == b'\n' || b == b'\r' {
-                        if !line.is_empty() {
-                            emit(String::from_utf8_lossy(&line).into_owned());
-                            line.clear();
-                        }
-                    } else {
-                        line.push(b);
-                    }
-                }
-            }
-        }
-    }
-    if !line.is_empty() {
-        emit(String::from_utf8_lossy(&line).into_owned());
+        Ok(Output { stdout: out.stdout_text(), stderr: out.stderr_text(), code: out.code, aborted: out.aborted })
     }
 }
 
@@ -314,6 +148,7 @@ pub(crate) mod testing {
 mod tests {
     use super::testing::*;
     use super::*;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn captures_both_streams_and_passes_the_config_path() {

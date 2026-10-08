@@ -2,8 +2,7 @@
 //! `repair`, `uninstall`, `moveInstall` and `importGame` parts of
 //! `LegendaryGame`).
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 use anyhow::{bail, Result};
 use heronite_data::game_config;
@@ -159,10 +158,10 @@ pub struct OpResult {
 }
 
 impl OpResult {
-    fn ok(message: impl Into<String>) -> Self {
+    pub(crate) fn ok(message: impl Into<String>) -> Self {
         Self { ok: true, aborted: false, message: message.into() }
     }
-    fn err(message: impl Into<String>) -> Self {
+    pub(crate) fn err(message: impl Into<String>) -> Self {
         Self { ok: false, aborted: false, message: message.into() }
     }
 }
@@ -255,7 +254,8 @@ pub fn import_game(
 }
 
 /// `moveOnUnix` + `changeGameInstallPath`: moves the install folder into
-/// `new_parent` and tells legendary where it is now.
+/// `new_parent` and tells legendary where it is now (resumable, see
+/// [`crate::moves`]).
 pub fn move_install(
     heroic: &HeroicPaths,
     legendary: &Legendary,
@@ -263,63 +263,7 @@ pub fn move_install(
     install_path: &str,
     new_parent: &str,
 ) -> OpResult {
-    let source = PathBuf::from(install_path);
-    let parent = PathBuf::from(new_parent);
-    if install_path.is_empty() || !source.is_dir() {
-        return OpResult::err("No install path found");
-    }
-    if parent.starts_with(&source) {
-        return OpResult::err(format!(
-            "New install path ({new_parent}) cannot be inside the current install path ({install_path})."
-        ));
-    }
-    let Some(name) = source.file_name() else { return OpResult::err("Invalid install path") };
-    let destination = parent.join(name);
-    if destination.exists() && destination.read_dir().map(|mut d| d.next().is_some()).unwrap_or(true) {
-        return OpResult::err(format!("{} already exists and is not empty", destination.display()));
-    }
-    if let Err(err) = std::fs::create_dir_all(&parent) {
-        return OpResult::err(format!("{err}"));
-    }
-    if let Err(message) = move_dir(&source, &destination) {
-        return OpResult::err(message);
-    }
-    let dest = destination.to_string_lossy().into_owned();
-    let args = ["move", app_name, new_parent, "--skip-move"];
-    match legendary.run(&args, &[]) {
-        Err(err) => OpResult::err(format!("{err:#}")),
-        Ok(out) if out.success() => {
-            let _ = library::write_library(heroic);
-            OpResult::ok(dest)
-        }
-        Ok(out) => OpResult::err(format!("Moved, but legendary could not record the new path: {}", out.error_lines())),
-    }
-}
-
-/// rsync when available (resumable, keeps permissions), `mv` otherwise.
-fn move_dir(source: &Path, destination: &Path) -> std::result::Result<(), String> {
-    let has_rsync = Command::new("rsync").arg("--version").output().is_ok_and(|o| o.status.success());
-    if has_rsync {
-        let origin = format!("{}/", source.display());
-        let out = Command::new("rsync")
-            .args(["--archive", "--no-human-readable", "--remove-source-files"])
-            .arg(&origin)
-            .arg(destination)
-            .output()
-            .map_err(|e| e.to_string())?;
-        if !out.status.success() {
-            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
-        }
-        // Only empty folders are left in the source now.
-        std::fs::remove_dir_all(source).map_err(|e| format!("Copied, but the old folder could not be removed: {e}"))
-    } else {
-        let out = Command::new("mv").arg("-f").arg(source).arg(destination).output().map_err(|e| e.to_string())?;
-        if out.status.success() {
-            Ok(())
-        } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-        }
-    }
+    crate::moves::move_install(heroic, legendary, app_name, install_path, new_parent)
 }
 
 /// `removePrefix`: deletes the game's Wine prefix, with Heroic's sanity checks.

@@ -6,14 +6,14 @@
 //! real `ludusavi backup` is ever executed. Results are written back to
 //! `settings.json` (`ludusavi.lastBackup*`/`lastError`) like Heronite.
 
-use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Result;
 use chrono::{SecondsFormat, Utc};
 use heronite_data::models::LocalMetaFile;
+use heronite_data::proc::Run;
 use heronite_data::{json_store, settings, HeroicPaths};
 use heronite_launch::probe::Probe;
 use heronite_launch::settings::{load_game_settings, GlobalSettings};
@@ -63,44 +63,19 @@ impl CommandRunner for SystemRunner {
             "{}:/usr/bin:/usr/local/bin",
             std::env::var("PATH").unwrap_or_default()
         );
-        let mut child = Command::new(binary)
-            .args(args)
-            .env("PATH", path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+        // Guarded helper: own process group, told to stop if the app dies, and
+        // the whole group is killed on timeout.
+        let mut cmd = Command::new(binary);
+        cmd.args(args).env("PATH", path);
+        let out = Run::new()
+            .timeout(self.timeout)
+            .grace(Duration::from_secs(2))
+            .run(&mut cmd)
             .map_err(|e| e.to_string())?;
-        let mut out = child.stdout.take().expect("piped");
-        let mut err = child.stderr.take().expect("piped");
-        let t_out = std::thread::spawn(move || {
-            let mut b = Vec::new();
-            let _ = out.read_to_end(&mut b);
-            b
-        });
-        let t_err = std::thread::spawn(move || {
-            let mut b = Vec::new();
-            let _ = err.read_to_end(&mut b);
-            b
-        });
-        let deadline = Instant::now() + self.timeout;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(st)) => break st,
-                Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(15)),
-                Ok(None) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!("{binary} timed out after {}s", self.timeout.as_secs()));
-                }
-                Err(e) => return Err(e.to_string()),
-            }
-        };
-        Ok(CommandOutput {
-            stdout: String::from_utf8_lossy(&t_out.join().unwrap_or_default()).into_owned(),
-            stderr: String::from_utf8_lossy(&t_err.join().unwrap_or_default()).into_owned(),
-            code: status.code().unwrap_or(1),
-        })
+        if out.timed_out {
+            return Err(format!("{binary} timed out after {}s", self.timeout.as_secs()));
+        }
+        Ok(CommandOutput { stdout: out.stdout_text(), stderr: out.stderr_text(), code: out.code.unwrap_or(1) })
     }
 }
 

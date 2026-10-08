@@ -109,7 +109,22 @@ impl AppPaths {
         let cache = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join("heronite-rs");
         Self { config, cache }
     }
+    /// The app state that belongs to a Heroic folder: the real one for the
+    /// default `<config>/heroic`, otherwise (fixtures, `HERONITE_HEROIC_DIR`,
+    /// tests) a sibling `<folder>.heronite-rs/` so state that points into a
+    /// copy never leaks into the real config.
+    pub fn for_heroic(heroic: &HeroicPaths) -> Self {
+        let default = dirs::config_dir().map(|c| c.join("heroic"));
+        if default.as_deref() == Some(heroic.root.as_path()) {
+            return Self::detect();
+        }
+        let name = heroic.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "heroic".into());
+        let base = heroic.root.with_file_name(format!("{name}.heronite-rs"));
+        Self { config: base.join("config"), cache: base.join("cache") }
+    }
     pub fn ui_state(&self) -> PathBuf { self.config.join("ui-state.json") }
+    /// Journal of an Epic install move in progress (see `heronite_epic::moves`).
+    pub fn epic_move_journal(&self) -> PathBuf { self.config.join("epic-move.json") }
     pub fn thumbs_dir(&self) -> PathBuf { self.cache.join("thumbs") }
 }
 

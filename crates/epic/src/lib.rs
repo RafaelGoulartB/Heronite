@@ -8,6 +8,7 @@
 //!   update detection.
 //! * [`info`]: `legendary info`, selective downloads, API overrides.
 //! * [`ops`]: install / update / repair / uninstall / move / import.
+//! * [`moves`]: the resumable install move and its journal.
 //! * [`queue`], [`manager`]: the download queue (`store/download-manager.json`).
 //! * [`progress`]: legendary's download progress lines.
 //! * [`saves`]: cloud saves.
@@ -25,6 +26,7 @@ pub mod eos_overlay;
 pub mod info;
 pub mod library;
 pub mod manager;
+pub mod moves;
 pub mod ops;
 pub mod progress;
 pub mod queue;

@@ -198,7 +198,12 @@ impl EpicPage {
         cx.notify();
         cx.spawn(async move |this, cx| {
             let out = cx
-                .background_spawn(async move { Command::new(helper).stdin(Stdio::null()).stderr(Stdio::null()).output() })
+                .background_spawn(async move {
+                    // Guarded helper: closes with the app instead of being orphaned.
+                    let mut cmd = Command::new(helper);
+                    cmd.stdin(Stdio::null()).stderr(Stdio::null());
+                    heronite_data::proc::guard(&mut cmd).output()
+                })
                 .await;
             this.update(cx, |this, cx| {
                 this.window_open = false;

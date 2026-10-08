@@ -5,11 +5,12 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context};
+use heronite_data::proc::Run;
 use heronite_data::HeroicPaths;
 use sha2::{Digest, Sha512};
 
@@ -279,43 +280,21 @@ fn progress(downloaded: u64, total: u64, speed: f64) -> Progress {
 /// Extracts with the system `tar` (handles .tar.gz/.xz/.zst like Heroic) and
 /// can be cancelled by killing it.
 fn extract_tar(archive: &Path, dest: &Path, strip: u32, cancel: &AtomicBool) -> Result<(), InstallError> {
-    let mut child = Command::new("tar")
-        .arg("-xf")
-        .arg(archive)
-        .arg("-C")
-        .arg(dest)
-        .arg(format!("--strip-components={strip}"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
+    let mut cmd = Command::new("tar");
+    cmd.arg("-xf").arg(archive).arg("-C").arg(dest).arg(format!("--strip-components={strip}"));
+    // A guarded helper: told to stop if the app dies, whole group killed on cancel.
+    let poll = || cancel.load(Ordering::Relaxed);
+    let out = Run::new()
+        .poll(&poll)
+        .grace(Duration::from_secs(3))
+        .run(&mut cmd)
         .map_err(|e| InstallError::Failed(format!("could not run tar: {e}")))?;
-    let mut stderr = child.stderr.take();
-    let reader = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(e) = stderr.as_mut() {
-            let _ = e.read_to_string(&mut s);
-        }
-        s
-    });
-    let status = loop {
-        if cancel.load(Ordering::Relaxed) {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = reader.join();
-            return Err(InstallError::Aborted);
-        }
-        match child.try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) => std::thread::sleep(Duration::from_millis(80)),
-            Err(e) => return Err(InstallError::Failed(e.to_string())),
-        }
-    };
-    let err = reader.join().unwrap_or_default();
-    if status.success() {
+    if out.aborted {
+        Err(InstallError::Aborted)
+    } else if out.success() {
         Ok(())
     } else {
-        Err(InstallError::Failed(err.trim().to_owned()))
+        Err(InstallError::Failed(out.stderr_text().trim().to_owned()))
     }
 }
 

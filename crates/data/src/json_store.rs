@@ -9,7 +9,6 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::SystemTime;
@@ -77,19 +76,36 @@ pub fn write_indented(path: &Path, value: &impl Serialize, indent: &[u8]) -> Res
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
-    let tmp = tmp_path(path);
-    {
-        let mut f = fs::File::create(&tmp).with_context(|| format!("creating {}", tmp.display()))?;
-        f.write_all(&bytes)?;
-        f.sync_all()?;
-    }
-    fs::rename(&tmp, path).with_context(|| format!("replacing {}", path.display()))?;
+    crate::temps::write_atomic(path, &bytes, None).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
 }
 
-fn tmp_path(path: &Path) -> PathBuf {
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    path.with_file_name(format!(".{name}.heronite-rs-{}.tmp", std::process::id()))
+/// Removes the temp files a killed process left next to the given folders'
+/// files (see [`crate::temps::sweep_dir`]); only our own names, dead pids or
+/// files older than an hour. Returns how many were removed.
+pub fn sweep_stale_temps(dirs: &[PathBuf]) -> usize {
+    dirs.iter().map(|d| crate::temps::sweep_dir(d).len()).sum()
+}
+
+/// [`sweep_stale_temps`] over the folders where this app writes JSON stores:
+/// the Heroic config folder and its store subfolders, and our own config.
+pub fn sweep_stale_temps_for(heroic: &crate::paths::HeroicPaths, app: &crate::paths::AppPaths) -> usize {
+    let r = &heroic.root;
+    let mut dirs = vec![r.clone(), app.config.clone()];
+    for sub in [
+        "local_library",
+        "store",
+        "store_cache",
+        "GamesConfig",
+        "sideload_apps",
+        "gog_store",
+        "zoom_store",
+        "nile_store",
+        "legendaryConfig/legendary",
+    ] {
+        dirs.push(r.join(sub));
+    }
+    sweep_stale_temps(&dirs)
 }
 
 fn path_lock(path: &Path) -> Arc<Mutex<()>> {
@@ -183,6 +199,42 @@ mod tests {
         assert_eq!(v["known"], 2);
         assert_eq!(v["z"], 1);
         assert_eq!(v["a"]["b"], true);
+    }
+
+    #[test]
+    fn concurrent_writers_of_one_path_do_not_collide_and_leave_no_temps() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("x.json");
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let p = p.clone();
+                std::thread::spawn(move || {
+                    for n in 0..25 {
+                        // Bypasses the per-path lock on purpose (like a direct `write`).
+                        write(&p, &json!({"w": i, "n": n})).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert!(read_value(&p).unwrap().get("n").is_some());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1, "temp files left behind");
+    }
+
+    #[test]
+    fn sweep_covers_the_store_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let heroic = crate::paths::HeroicPaths::at(dir.path().join("heroic"));
+        let app = crate::paths::AppPaths { config: dir.path().join("app"), cache: dir.path().join("cache") };
+        for d in [heroic.root.join("store"), heroic.root.join("local_library"), app.config.clone()] {
+            fs::create_dir_all(&d).unwrap();
+            fs::write(d.join(".s.json.heronite-rs-4194999.tmp"), "x").unwrap();
+            fs::write(d.join("keep.json"), "{}").unwrap();
+        }
+        assert_eq!(sweep_stale_temps_for(&heroic, &app), 3);
+        assert!(heroic.root.join("store/keep.json").exists());
     }
 
     #[test]

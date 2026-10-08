@@ -6,6 +6,7 @@ license.workspace = true
 description = "Desktop / application-menu shortcuts and Steam non-Steam shortcuts (shortcuts.vdf) compatible with Heroic"
 
 [dependencies]
+heronite-data = { path = "../data" }
 anyhow = "1"
 log = "0.4"
 dirs = "6"

@@ -129,45 +129,23 @@ impl Net for SystemNet {
 /// Extracts `archive` (any format the system `tar` knows) into `dest`,
 /// dropping `strip` leading path components. Killed when `cancel` fires.
 pub fn extract_tar(archive: &Path, dest: &Path, strip: u32, cancel: Cancel) -> Result<(), String> {
-    use std::process::{Command, Stdio};
+    use heronite_data::proc::Run;
+    use std::process::Command;
     fs::create_dir_all(dest).map_err(|e| format!("creating {}: {e}", dest.display()))?;
-    let mut child = Command::new("tar")
-        .arg("-xf")
-        .arg(archive)
-        .arg("-C")
-        .arg(dest)
-        .arg(format!("--strip-components={strip}"))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
+    let mut cmd = Command::new("tar");
+    cmd.arg("-xf").arg(archive).arg("-C").arg(dest).arg(format!("--strip-components={strip}"));
+    // A guarded helper: told to stop if the app dies, whole group killed on cancel.
+    let out = Run::new()
+        .poll(cancel)
+        .grace(Duration::from_secs(3))
+        .run(&mut cmd)
         .map_err(|e| format!("could not run tar: {e}"))?;
-    let mut stderr = child.stderr.take();
-    let reader = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(e) = stderr.as_mut() {
-            let _ = e.read_to_string(&mut s);
-        }
-        s
-    });
-    let status = loop {
-        if cancel() {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = reader.join();
-            return Err(CANCELLED.into());
-        }
-        match child.try_wait() {
-            Ok(Some(s)) => break s,
-            Ok(None) => std::thread::sleep(Duration::from_millis(60)),
-            Err(e) => return Err(e.to_string()),
-        }
-    };
-    let err = reader.join().unwrap_or_default();
-    if status.success() {
+    if out.aborted {
+        Err(CANCELLED.into())
+    } else if out.success() {
         Ok(())
     } else {
-        Err(format!("tar failed: {}", err.trim()))
+        Err(format!("tar failed: {}", out.stderr_text().trim()))
     }
 }
 

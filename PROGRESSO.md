@@ -798,3 +798,33 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
   pixel a pixel exceto as mudanças acima e ruído de carregamento assíncrono (capas, rede, tamanho da janela).
 - **Não verificado**: menu aberto do select de Appearance (fica abaixo da dobra do diálogo) e do select Source do diálogo de metadata
   (mesmo código do `select_field`, verificado aberto em Add game e Run as).
+
+## Processos auxiliares e escritas seguras (agente "proc-safety")
+- **Um só jeito de lançar helpers**: `heronite_data::proc` (`guard(&mut Command)` = grupo de processos próprio + `PR_SET_PDEATHSIG(SIGTERM)`
+  no Linux; `Run` = executa bloqueando, captura saída, `on_line`, cancelamento por `Cancel`/`poll`, timeout, SIGTERM e depois SIGKILL
+  do grupo inteiro após a tolerância). Usado por: legendary (`epic/cmd.rs` agora só monta o `Command`), rsync/mv/cp (move), ludusavi
+  (`SystemRunner`), tar (wine `install.rs`, `launch/net.rs` → tools/runtimes) e o helper de login do Epic (`pages/epic.rs`, só `guard`).
+  Jogos, emuladores e abridores destacados (xdg-open etc.) NÃO usam. PDEATHSIG vale para a *thread* que deu spawn: todos os chamadores
+  ficam bloqueados esperando o filho.
+- **Mover instalação Epic retomável** (`crates/epic/src/moves.rs`): journal `epic-move.json` na pasta de config do app (via
+  `AppPaths::for_heroic`; pasta Heroic de fixture/teste usa `<pasta>.heronite-rs/config/`, nunca o config real) escrito antes de mexer
+  em qualquer arquivo, fase `copying` → `recording`, apagado ao concluir ou quando a falha não moveu nada. `resume_interrupted_move`
+  decide pelo estado das duas pastas (`decide`): origem completa + destino sem arquivos = nunca começou (só descarta); arquivos nas
+  duas = repete o rsync (idempotente) e registra; só destino = `legendary move --skip-move`; nenhuma = descarta e avisa. Tentar o
+  mesmo move de novo na mão também retoma (sem o erro "already exists"). Journal inválido (caminhos relativos, perto da raiz, destino
+  fora do novo pai...) é descartado sem tocar em nada. Bug corrigido: `mv` aninhava a pasta dentro de um destino vazio já existente.
+  Ligado em `Downloads::new` (`resume_interrupted_move` + fila só inicia depois, via `run_op_then`).
+- **Pequenos itens**: `WineConfig::set_download_proton_to_steam` usa `json_store::update_value_indented(INDENT_2)`; `first_launch` só
+  grava o jogo em `installed_games` DEPOIS do setup (escrita atômica; passo que nem conseguiu rodar = tenta de novo no próximo launch,
+  instalador que roda e sai com erro continua sendo só aviso); `json_store` usa temp único (`.<nome>.heronite-rs-<pid>-<n>.tmp`,
+  `heronite_data::temps::write_atomic`) e `CacheStore::clear` passa pelo caminho com lock; `shortcuts.vdf` ganha cópia
+  `shortcuts.vdf.heronite-bak` antes de cada escrita + temp único + fsync; `.desktop` também com temp único + fsync.
+- **Limpeza de temporários no startup**: `heronite_shortcuts::sweep_stale_temps_at_startup(&heroic, &app_paths)` (chamar numa thread
+  de fundo no início do `main`). Só remove nomes estritos: `.*.heronite-rs-<pid>[-<n>].tmp` com pid morto ou com mais de 1 h,
+  `shortcuts.vdf.tmp` ao lado de um `shortcuts.vdf` e `*.desktop.tmp` (formatos antigos, só se tiverem mais de 1 h).
+- **Verificado**: testes unitários (grupo do guard, PDEATHSIG ao morrer a thread, cancelamento mata o grupo inclusive worker em
+  background, SIGKILL após a tolerância, timeout; decisões do journal com rsync falso que morre no meio; `mv` sem aninhar; cp-merge;
+  varredura só nos nomes certos; backup do vdf; marker de `installed_games` só depois do setup). `cargo test --workspace` (com
+  `HERONITE_FIXTURE`, pulando `real_machine_detection_and_ludusavi` que roda o Ludusavi real) verde.
+- **Não verificado**: a retomada ao vivo dentro do app (precisaria rodar sem `HERONITE_DISABLE_IDLE_JOBS`); rsync real só em pasta
+  temporária pelo teste. O journal inválido/morto de outro jogo não bloqueia novo move, um pendente válido sim (mensagem no erro).

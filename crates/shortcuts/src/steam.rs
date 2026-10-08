@@ -141,14 +141,22 @@ fn read_doc(file: &Path) -> Result<Document> {
     vdf::parse(&bytes).with_context(|| format!("parsing {}", file.display()))
 }
 
+/// Suffix of the copy of `shortcuts.vdf` made before every write.
+pub const BACKUP_SUFFIX: &str = ".heronite-bak";
+
+/// Writes `shortcuts.vdf`: the current file is copied to
+/// `shortcuts.vdf.heronite-bak` (overwritten each time) first, then the new
+/// content goes to a unique temp file that is fsynced and renamed over it.
 fn write_doc(file: &Path, doc: &Document) -> Result<()> {
-    let tmp = PathBuf::from(format!("{}.tmp", file.display()));
-    let result = fs::write(&tmp, vdf::serialize(doc)).and_then(|_| fs::rename(&tmp, file));
-    if let Err(e) = result {
-        let _ = fs::remove_file(&tmp);
-        return Err(e).with_context(|| format!("writing {}", file.display()));
+    if file.is_file() {
+        let backup = PathBuf::from(format!("{}{BACKUP_SUFFIX}", file.display()));
+        if let Err(e) = fs::copy(file, &backup) {
+            // Without a backup the write could lose the user's shortcuts.
+            return Err(e).with_context(|| format!("backing up {}", file.display()));
+        }
     }
-    Ok(())
+    heronite_data::temps::write_atomic(file, &vdf::serialize(doc), None)
+        .with_context(|| format!("writing {}", file.display()))
 }
 
 /// `checkIfShortcutObjectIsValid`: problems found (empty = valid).
@@ -506,6 +514,28 @@ mod tests {
             fs::write(&file, v).unwrap();
         }
         (dir, steam, file)
+    }
+
+    #[test]
+    fn every_write_backs_up_the_previous_file_and_leaves_no_temp() {
+        let original = vdf::serialize(&Document::empty_shortcuts());
+        let (_d, steam, file) = steam_with(Some(&original));
+        let backup = PathBuf::from(format!("{}{BACKUP_SUFFIX}", file.display()));
+        let art = ArtFiles::default();
+        add_game(&steam, &game(), &spec(), &art).unwrap();
+        // The backup is the file as it was before the write.
+        assert_eq!(fs::read(&backup).unwrap(), original);
+        let with_game = fs::read(&file).unwrap();
+        assert_ne!(with_game, original);
+        // The next write overwrites it with the then-current content.
+        remove_game(&steam, &game()).unwrap();
+        assert_eq!(fs::read(&backup).unwrap(), with_game);
+        let names: Vec<String> = fs::read_dir(file.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.iter().all(|n| !n.ends_with(".tmp")), "{names:?}");
     }
 
     #[test]

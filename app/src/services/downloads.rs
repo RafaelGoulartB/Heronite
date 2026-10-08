@@ -262,6 +262,9 @@ impl Downloads {
             // (network) a little later, then periodically while the app lives.
             let manager = this.manager.clone();
             let heroic = heroic.clone();
+            // An install move cut short by a quit / kill is finished first; the
+            // queue starts after it (two legendary runs would both write installed.json).
+            let move_first = this.resume_interrupted_move(cx);
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(Duration::from_secs(5)).await;
                 // Heronite resumes the same persisted queue on its own start;
@@ -269,7 +272,7 @@ impl Downloads {
                 // it to Heronite while it is open (resume from Downloads).
                 if heronite_running() {
                     log::info!("Heronite is running: not resuming the download queue automatically");
-                } else {
+                } else if !move_first {
                     manager.start();
                 }
                 cx.background_executor().timer(Duration::from_secs(15)).await;
@@ -673,6 +676,29 @@ impl Downloads {
             }
             r
         });
+    }
+
+    /// Finishes the install move an earlier run was interrupted in (see
+    /// `heronite_epic::moves`). `true` when one is being finished: the game shows
+    /// as busy and the download queue starts when it is done.
+    fn resume_interrupted_move(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(journal) = heronite_epic::moves::pending_move(&self.heroic) else { return false };
+        self.run_op_then(
+            &journal.app_name,
+            "Moving",
+            false,
+            cx,
+            |heroic, lg, _, _| {
+                heronite_epic::moves::resume_interrupted_move(heroic, lg)
+                    .unwrap_or_else(|| OpResult { ok: true, aborted: false, message: "The interrupted move was already finished".into() })
+            },
+            |this, _, _| {
+                if !heronite_running() {
+                    this.manager.start();
+                }
+            },
+        );
+        true
     }
 
     pub fn move_install(&mut self, app_name: &str, install_path: &str, new_parent: &str, cx: &mut Context<Self>) {

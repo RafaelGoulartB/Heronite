@@ -11,7 +11,10 @@
 
 pub mod desktop;
 pub mod steam;
+pub mod sweep;
 pub mod vdf;
+
+pub use sweep::sweep_stale_temps_at_startup;
 
 /// Identity of a game for shortcuts.
 #[derive(Debug, Clone, PartialEq, Eq)]

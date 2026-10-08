@@ -120,24 +120,22 @@ impl WineConfig {
     /// `config.json` (`defaultSettings`, 2-space JSON) and, when present, the
     /// copy in `store/config.json` (`settings`, electron-store format).
     pub fn set_download_proton_to_steam(heroic: &HeroicPaths, value: bool) -> anyhow::Result<()> {
-        use anyhow::Context;
-        let path = heroic.root.join("config.json");
-        let mut doc = json_store::read_value(&path)?;
-        if !doc.is_object() {
-            doc = Value::Object(Map::new());
-        }
-        let settings = doc
-            .as_object_mut()
-            .unwrap()
-            .entry("defaultSettings")
-            .or_insert_with(|| Value::Object(Map::new()));
-        if let Some(m) = settings.as_object_mut() {
-            m.insert("downloadProtonToSteam".into(), Value::Bool(value));
-        }
-        let text = serde_json::to_string_pretty(&doc)?;
-        let tmp = path.with_file_name(format!(".config.json.heronite-rs-{}.tmp", std::process::id()));
-        std::fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
-        std::fs::rename(&tmp, &path).with_context(|| format!("replacing {}", path.display()))?;
+        // Heroic's config.json is `JSON.stringify(config, null, 2)`; the store
+        // helper adds the path lock, a unique temp file and the fsync.
+        json_store::update_value_indented(&heroic.root.join("config.json"), json_store::INDENT_2, |doc| {
+            if !doc.is_object() {
+                *doc = Value::Object(Map::new());
+            }
+            let settings = doc
+                .as_object_mut()
+                .unwrap()
+                .entry("defaultSettings")
+                .or_insert_with(|| Value::Object(Map::new()));
+            if let Some(m) = settings.as_object_mut() {
+                m.insert("downloadProtonToSteam".into(), Value::Bool(value));
+            }
+            Ok(())
+        })?;
 
         if heroic.config().exists() {
             json_store::update_value(&heroic.config(), |doc| {
@@ -179,5 +177,21 @@ mod tests {
         assert!(text.contains("\"version\": \"v0\""));
         let store = std::fs::read_to_string(tmp.path().join("store/config.json")).unwrap();
         assert!(store.contains("\"downloadProtonToSteam\": true") && store.contains("\"theme\": \"x\""), "{store}");
+        // Same store helper as every other write: no temp file is left behind.
+        let leftovers: Vec<_> = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+    }
+
+    #[test]
+    fn download_to_steam_creates_a_missing_config_with_two_space_indent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let heroic = HeroicPaths::at(tmp.path());
+        WineConfig::set_download_proton_to_steam(&heroic, true).unwrap();
+        let text = std::fs::read_to_string(tmp.path().join("config.json")).unwrap();
+        assert_eq!(text, "{\n  \"defaultSettings\": {\n    \"downloadProtonToSteam\": true\n  }\n}");
     }
 }

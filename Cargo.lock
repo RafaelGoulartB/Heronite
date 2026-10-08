@@ -3443,6 +3443,7 @@ dependencies = [
  "dirs 6.0.0",
  "icu_collator",
  "indexmap",
+ "libc",
  "log",
  "parking_lot",
  "rusty-leveldb",
@@ -3595,6 +3596,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
+ "heronite-data",
  "libc",
  "log",
  "tempfile",

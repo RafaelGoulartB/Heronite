@@ -3,8 +3,10 @@
 //! `installFixes`).
 //!
 //! The prefix keeps an `installed_games` file with the app names that already
-//! went through this. When the game is not in it yet, it is added (before
-//! anything runs, so a failure never repeats) and then:
+//! went through this. When the game is not in it yet, this runs and the game
+//! is added to the file only AFTER the setup ran to the end (an interrupted,
+//! cancelled or impossible-to-run setup is retried at the next launch; an
+//! installer that runs and exits with an error is a warning, not a retry):
 //!
 //! * Epic: the `com.epicgames.launcher` registry key, the game's
 //!   prerequisites (`manifest.prerequisites` of `legendary info`), the EA App
@@ -15,6 +17,7 @@
 //!
 //! Every failure is a warning: the game starts anyway, like in Heroic.
 
+use std::cell::Cell;
 use std::path::Path;
 use std::time::Duration;
 
@@ -50,8 +53,20 @@ pub trait EpicSetup: Send + Sync {
     fn eos_overlay_enable(&self, prefix: &str) -> Result<(), String>;
 }
 
+/// The app names in the `installed_games` file of `prefix` (empty when the
+/// file is missing; a damaged file counts as empty).
+fn recorded_games(prefix: &str) -> Vec<String> {
+    let file = Path::new(prefix).join("installed_games");
+    std::fs::read_to_string(file).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+}
+
+/// Whether `app_name` already went through the first-launch setup in `prefix`.
+pub fn is_recorded(prefix: &str, app_name: &str) -> bool {
+    recorded_games(prefix).iter().any(|g| g == app_name)
+}
+
 /// Adds `app_name` to the `installed_games` file of `prefix` (created with
-/// the folder when missing). `true` when it was not there yet.
+/// the folder when missing), atomically. `true` when it was not there yet.
 pub fn record_game(prefix: &str, app_name: &str) -> std::io::Result<bool> {
     let dir = Path::new(prefix);
     let file = dir.join("installed_games");
@@ -66,7 +81,8 @@ pub fn record_game(prefix: &str, app_name: &str) -> std::io::Result<bool> {
         return Ok(false);
     }
     games.push(app_name.to_string());
-    std::fs::write(&file, serde_json::to_string(&games).unwrap_or_else(|_| "[]".into()))?;
+    let text = serde_json::to_string(&games).unwrap_or_else(|_| "[]".into());
+    heronite_data::temps::write_atomic(&file, text.as_bytes(), None)?;
     Ok(true)
 }
 
@@ -89,20 +105,28 @@ impl Prep<'_> {
         if prefix.is_empty() {
             return Flow::Go;
         }
-        match record_game(prefix, &fl.app_name) {
-            Ok(true) => log::info!("Created/Updated Wineprefix at {prefix}"),
-            Ok(false) => return Flow::Go,
-            Err(e) => {
-                log::warn!("{prefix}/installed_games: {e}");
-                return Flow::Go;
-            }
+        if is_recorded(prefix, &fl.app_name) {
+            return Flow::Go;
         }
         let ctx = PlanContext::load(self.paths);
-        match self.epic_setup(&ctx, settings, fl, epic) {
+        // Set when a step could not even be run (so the setup is not done).
+        let incomplete = Cell::new(false);
+        match self.epic_setup(&ctx, settings, fl, epic, &incomplete) {
             Flow::Go => {}
             other => return other,
         }
-        self.install_fixes(&ctx, settings, fl)
+        let flow = self.install_fixes(&ctx, settings, fl, &incomplete);
+        if flow == Flow::Go {
+            if incomplete.get() {
+                log::warn!("the setup of {} in {prefix} was incomplete: it runs again at the next launch", fl.app_name);
+            } else {
+                match record_game(prefix, &fl.app_name) {
+                    Ok(_) => log::info!("Created/Updated Wineprefix at {prefix}"),
+                    Err(e) => log::warn!("{prefix}/installed_games: {e}"),
+                }
+            }
+        }
+        flow
     }
 
     fn cancelled(&self) -> bool {
@@ -119,11 +143,13 @@ impl Prep<'_> {
         install_path: Option<&str>,
         wait: bool,
         timeout: Duration,
+        incomplete: &Cell<bool>,
     ) -> bool {
         let cmd = match wine_command_for(ctx, self.probe, settings, parts, install_path) {
             Ok(c) => c,
             Err(e) => {
                 self.notice(Notice::warn(format!("Could not run a Wine command: {e}")));
+                incomplete.set(true);
                 return false;
             }
         };
@@ -149,13 +175,14 @@ impl Prep<'_> {
         settings: &GameSettings,
         fl: &FirstLaunch,
         epic: Option<&dyn EpicSetup>,
+        incomplete: &Cell<bool>,
     ) -> Flow {
         self.notice(Notice::info("Installing Redistributables (EPIC)"));
         let go = |this: &Self| if this.cancelled() { Flow::Cancelled } else { Flow::Go };
 
         // Fixes games like Fallout New Vegas and Dishonored: Death of the Outsider.
         let reg = ["reg", "add", "HKEY_CLASSES_ROOT\\com.epicgames.launcher", "/f"];
-        self.wine_run(ctx, settings, reg.map(String::from).to_vec(), None, true, REG_TIMEOUT);
+        self.wine_run(ctx, settings, reg.map(String::from).to_vec(), None, true, REG_TIMEOUT, incomplete);
         if let Flow::Cancelled = go(self) {
             return Flow::Cancelled;
         }
@@ -170,7 +197,7 @@ impl Prep<'_> {
                         let mut parts = vec![program];
                         parts.extend(shlex::split(&pre.args).unwrap_or_default());
                         log::info!("running the prerequisites of {}: {parts:?}", fl.app_name);
-                        self.wine_run(ctx, settings, parts, Some(&fl.install_path), true, INSTALLER_TIMEOUT);
+                        self.wine_run(ctx, settings, parts, Some(&fl.install_path), true, INSTALLER_TIMEOUT, incomplete);
                     }
                     Ok(_) => {}
                     Err(e) => log::warn!("getInstallInfo failed with {e}"),
@@ -194,7 +221,7 @@ impl Prep<'_> {
             if self.probe.exists(&path) {
                 let mut parts = vec![path];
                 parts.extend(args.into_iter().map(String::from));
-                if !self.wine_run(ctx, settings, parts, None, true, INSTALLER_TIMEOUT) {
+                if !self.wine_run(ctx, settings, parts, None, true, INSTALLER_TIMEOUT, incomplete) {
                     log::warn!("the installer of {what} did not finish cleanly");
                 }
             } else {
@@ -227,14 +254,14 @@ impl Prep<'_> {
     }
 
     /// `installFixes`: the winetricks verbs and programs of `known_fixes.json`.
-    fn install_fixes(&self, ctx: &PlanContext, settings: &GameSettings, fl: &FirstLaunch) -> Flow {
+    fn install_fixes(&self, ctx: &PlanContext, settings: &GameSettings, fl: &FirstLaunch, incomplete: &Cell<bool>) -> Flow {
         if !fl.winetricks.is_empty() {
             self.notice(Notice::info("Applying Winetricks fixes"));
             for verb in &fl.winetricks {
                 if self.cancelled() {
                     return Flow::Cancelled;
                 }
-                self.winetricks_install(ctx, settings, verb);
+                self.winetricks_install(ctx, settings, verb, incomplete);
             }
         }
         if !fl.run_in_prefix.is_empty() {
@@ -244,7 +271,7 @@ impl Prep<'_> {
                     return Flow::Cancelled;
                 }
                 let full = join(&fl.install_path, file);
-                self.wine_run(ctx, settings, vec![full], Some(&fl.install_path), true, INSTALLER_TIMEOUT);
+                self.wine_run(ctx, settings, vec![full], Some(&fl.install_path), true, INSTALLER_TIMEOUT, incomplete);
             }
         }
         if self.cancelled() {
@@ -255,11 +282,12 @@ impl Prep<'_> {
     }
 
     /// `Winetricks.install`: `winetricks -q <verb>` in the game's prefix.
-    fn winetricks_install(&self, ctx: &PlanContext, settings: &GameSettings, verb: &str) {
+    fn winetricks_install(&self, ctx: &PlanContext, settings: &GameSettings, verb: &str, incomplete: &Cell<bool>) {
         // Heroic downloads the script the first time it is needed.
         if !self.probe.exists(&winetricks_path(ctx)) {
             if let Err(e) = crate::tools::download_winetricks(self.paths, self.net, self.cancel) {
                 log::warn!("{e}");
+                incomplete.set(true);
             }
         }
         match winetricks_install_command(ctx, self.probe, settings, verb) {
@@ -271,7 +299,10 @@ impl Prep<'_> {
                     self.notice(Notice::warn(format!("Winetricks could not install {verb}")));
                 }
             }
-            Err(e) => self.notice(Notice::warn(format!("Could not install {verb} with winetricks: {e}"))),
+            Err(e) => {
+                self.notice(Notice::warn(format!("Could not install {verb} with winetricks: {e}")));
+                incomplete.set(true);
+            }
         }
     }
 }
@@ -553,6 +584,8 @@ mod tests {
         let (flow, notices) = fx.run(&spec, None, &p);
         assert_eq!(flow, Flow::Go);
         assert!(notices.iter().any(|n| n.warning && n.message.contains("vcrun2022")), "{notices:?}");
+        // A step that could not run at all leaves the game unrecorded: retried next launch.
+        assert!(!is_recorded(&fx.prefix, "Calluna"));
 
         // Cancelled while preparing.
         let fx = Fx::new();
@@ -563,6 +596,53 @@ mod tests {
         let prep = Prep { paths: &fx.paths, probe: &p, net: &net, spawner: &fx.spawner, cloud: None, cancel: &|| true, notify: &sink };
         assert_eq!(prep.first_launch(&spec, None), Flow::Cancelled);
         assert!(!fx.spawned().iter().any(|c| c.program.ends_with("/winetricks")));
+        assert!(!is_recorded(&fx.prefix, "Calluna"), "an interrupted setup must be retried");
+    }
+
+    #[test]
+    fn the_game_is_recorded_only_after_the_setup_finished() {
+        // The marker is not there while the setup runs: a spawner that looks for it at every command.
+        struct Peek<'a> {
+            inner: InstantSpawner,
+            prefix: &'a str,
+            seen: Mutex<Vec<bool>>,
+        }
+        impl crate::runtime::Spawner for Peek<'_> {
+            fn spawn(&self, cmd: &Command, log: Option<&Path>) -> std::io::Result<Box<dyn crate::runtime::ProcessHandle>> {
+                self.seen.lock().unwrap().push(is_recorded(self.prefix, "Calluna"));
+                self.inner.spawn(cmd, log)
+            }
+            fn open_uri(&self, uri: &str) -> std::io::Result<()> {
+                self.inner.open_uri(uri)
+            }
+            fn kill_pattern(&self, pattern: &str) {
+                self.inner.kill_pattern(pattern)
+            }
+        }
+        let fx = Fx::new();
+        let spec = fx.spec(FirstLaunch { run_in_prefix: vec!["a.exe".into(), "b.exe".into()], ..base() });
+        let peek = Peek { inner: InstantSpawner::default(), prefix: &fx.prefix, seen: Mutex::default() };
+        let p = probe(&fx);
+        let net = FakeNet::offline();
+        let sink = |_: Notice| {};
+        let prep = Prep { paths: &fx.paths, probe: &p, net: &net, spawner: &peek, cloud: None, cancel: &|| false, notify: &sink };
+        assert_eq!(prep.first_launch(&spec, None), Flow::Go);
+        let seen = peek.seen.into_inner().unwrap();
+        assert!(seen.len() >= 3 && seen.iter().all(|recorded| !recorded), "{seen:?}");
+        assert!(is_recorded(&fx.prefix, "Calluna"));
+        // Written atomically: nothing but the marker next to it.
+        let tmp: Vec<_> = std::fs::read_dir(&fx.prefix).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".tmp")).collect();
+        assert!(tmp.is_empty());
+    }
+
+    #[test]
+    fn an_installer_that_exits_with_an_error_does_not_repeat_forever() {
+        let mut fx = Fx::new();
+        fx.spawner.exit_code = 1;
+        let spec = fx.spec(FirstLaunch { run_in_prefix: vec!["a.exe".into()], ..base() });
+        let (flow, _) = fx.run(&spec, None, &probe(&fx));
+        assert_eq!(flow, Flow::Go);
+        assert!(is_recorded(&fx.prefix, "Calluna"));
     }
 
     #[test]

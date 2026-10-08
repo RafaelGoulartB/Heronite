@@ -82,7 +82,10 @@ impl<'a> CacheStore<'a> {
 
     /// `store.clear()`: the file becomes `{}`.
     pub fn clear(&self) -> Result<()> {
-        json_store::write(&self.path(), &Value::Object(Map::new()))
+        json_store::update_value(&self.path(), |doc| {
+            *doc = Value::Object(Map::new());
+            Ok(())
+        })
     }
 }
 
