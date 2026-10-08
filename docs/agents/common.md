@@ -18,7 +18,7 @@ Product decisions:
 - Linux first. Keep code portable where cheap (cfg(target_os) for Linux-only bits).
 
 Engineering rules:
-- Three agents work IN PARALLEL in the same working tree. Only edit the files you own (listed in your brief) plus the
+- Several agents work IN PARALLEL in the same working tree. Only edit the files you own (listed in your brief) plus the
   small hook points explicitly allowed. Never reformat or rewrite other files. Never run `cargo fmt` on the whole
   workspace (format only your files: `rustfmt --edition 2021 <file>` if you want).
 - Keep the tree compiling: work in small compilable steps. Develop backend crates with `cargo test -p <crate>`.
