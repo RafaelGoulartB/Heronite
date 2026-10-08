@@ -319,8 +319,9 @@ impl CollectionView {
                 .inset_0()
                 .flex()
                 .flex_col()
-                // Darker veil than the Collection: pages are mostly text.
-                .bg(theme::rgb_a(10, 12, 16, 0.55))
+                // Darker veil than the Collection: pages are mostly text
+                // (follows the Interface appearance: opaque when Solid).
+                .bg(theme::page_backdrop())
                 .child(header)
                 .child(div().flex_1().min_h_0().child(view))
                 .into_any_element(),

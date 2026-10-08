@@ -119,7 +119,7 @@ impl Section {
     fn blurb(self) -> &'static str {
         match self {
             Section::General => "Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically in the shared Heroic settings.",
-            Section::Appearance => "The artwork of the selected game fills the Collection page. Adjust the glass layer over it so text stays readable on bright artwork.",
+            Section::Appearance => "Two independent looks: the artwork behind the Collection, and the background of menus, dialogs and pages (glass or solid).",
             Section::Advanced => "Logs, folders and cache.",
             Section::GameDefaults => "Values new games start with. Settings of an installed game are changed from its own Settings.",
             Section::Downloads => "Epic downloads and updates.",
@@ -136,7 +136,7 @@ impl Section {
     pub fn keywords(self) -> &'static str {
         match self {
             Section::General => "folders tray shortcuts wine proton language theme",
-            Section::Appearance => "background blur dim darkening saturation cover aspect grey uninstalled artwork glass",
+            Section::Appearance => "background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection",
             Section::Advanced => "cache folders copy settings",
             Section::GameDefaults => "defaults wine prefix gamescope launch options new games",
             Section::Downloads => "epic updates install",

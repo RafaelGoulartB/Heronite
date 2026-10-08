@@ -123,6 +123,8 @@ impl AppPaths {
         Self { config: base.join("config"), cache: base.join("cache") }
     }
     pub fn ui_state(&self) -> PathBuf { self.config.join("ui-state.json") }
+    /// Appearance settings specific to this app (see `heronite_data::appearance`).
+    pub fn appearance(&self) -> PathBuf { self.config.join("appearance.json") }
     /// Journal of an Epic install move in progress (see `heronite_epic::moves`).
     pub fn epic_move_journal(&self) -> PathBuf { self.config.join("epic-move.json") }
     pub fn thumbs_dir(&self) -> PathBuf { self.cache.join("thumbs") }

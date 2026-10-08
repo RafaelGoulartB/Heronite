@@ -129,6 +129,19 @@ impl ImageStore {
         }
     }
 
+    /// Drops the ready textures whose id starts with `prefix` (they are freed
+    /// by the next [`drop_evicted`](Self::drop_evicted)): used when a whole
+    /// kind of texture is switched off (stage art, glass backdrop).
+    pub fn forget_prefix(&mut self, prefix: &str) {
+        let ids: Vec<SharedString> = self.ready.keys().filter(|k| k.starts_with(prefix)).cloned().collect();
+        for id in ids {
+            if let Some(img) = self.ready.remove(&id) {
+                self.evicted.push(img);
+            }
+            self.order.retain(|k| k != &id);
+        }
+    }
+
     /// Forget everything (e.g. after the library changed on disk).
     pub fn clear_failed(&mut self) {
         self.failed.clear();

@@ -8,6 +8,7 @@ pub mod proc;
 pub mod temps;
 pub mod text;
 
+pub mod appearance;
 pub mod art;
 pub mod collection;
 pub mod config_games;

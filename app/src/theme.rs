@@ -118,20 +118,97 @@ pub fn rgba_hsla(r: u8, g: u8, b: u8, a: f32) -> Hsla {
     rgb_a(r, g, b, a).into()
 }
 
-/// Glass surface laid over the blurred art: `rgba(22,27,36,.84)`. With
-/// [`glass_art_dim`] about 8% of the art shows through: a tint of the game's
-/// colours without bright art hurting legibility (the mockup's .62 did).
-pub fn glass_fill() -> Hsla {
-    rgba_hsla(22, 27, 36, 0.84)
+// ---- Runtime appearance (Settings → Appearance) --------------------------
+// One process-wide value read by every glass helper (no `cx` needed, no I/O
+// while rendering). The Collection loads it at start and the Appearance page
+// updates it while a slider moves.
+
+static APPEARANCE: std::sync::RwLock<heronite_data::appearance::Appearance> = std::sync::RwLock::new(
+    heronite_data::appearance::Appearance {
+        collection_opacity: 100.,
+        interface_mode: heronite_data::appearance::InterfaceMode::Transparent,
+        interface_opacity: 84.,
+        interface_blur: 30.,
+        solid_tint: heronite_data::appearance::SolidTint::Slate,
+    },
+);
+
+/// The current appearance settings.
+pub fn appearance() -> heronite_data::appearance::Appearance {
+    *APPEARANCE.read().unwrap_or_else(|e| e.into_inner())
 }
-/// Same surface when there is no art to blur behind it: `rgba(22,27,36,.94)`.
+
+pub fn set_appearance(a: heronite_data::appearance::Appearance) {
+    *APPEARANCE.write().unwrap_or_else(|e| e.into_inner()) = a.normalized();
+}
+
+/// Opacity of the glass panels as a fraction (the Solid mode is fully opaque).
+fn panel_opacity() -> f32 {
+    let a = appearance();
+    match a.interface_mode {
+        heronite_data::appearance::InterfaceMode::Solid => 1.,
+        heronite_data::appearance::InterfaceMode::Transparent => a.interface_opacity / 100.,
+    }
+}
+
+/// Today's default panel opacity (`rgba(22,27,36,.84)`).
+const GLASS_OPACITY_DEFAULT: f32 = 0.84;
+
+/// Do the glass surfaces show blurred art at all? No in Solid mode and when
+/// the panels are fully opaque: then nothing needs to be generated or kept.
+pub fn glass_shows_art() -> bool {
+    panel_opacity() < 0.995
+}
+
+/// Blur (logical px) of the art behind the glass panels.
+pub fn glass_blur_px() -> f32 {
+    appearance().interface_blur
+}
+
+fn solid_mode() -> bool {
+    appearance().interface_mode == heronite_data::appearance::InterfaceMode::Solid
+}
+
+fn glass_tint(a: f32) -> Hsla {
+    // Transparent glass always uses the slate tint; the presets are for Solid.
+    let (r, g, b) = if solid_mode() { appearance().solid_tint.rgb() } else { (22, 27, 36) };
+    rgba_hsla(r, g, b, a)
+}
+
+/// Glass surface laid over the blurred art: `rgba(22,27,36,.84)` by default
+/// (the Interface opacity). With [`glass_art_dim`] about 8% of the art shows
+/// through at the default: a tint of the game's colours without bright art
+/// hurting legibility (the mockup's .62 did). Solid mode: the opaque tint.
+pub fn glass_fill() -> Hsla {
+    glass_tint(panel_opacity())
+}
+/// Same surface when there is no art to blur behind it: `rgba(22,27,36,.94)`
+/// (never more transparent than the glass itself is opaque).
 pub fn glass_fill_solid() -> Hsla {
-    rgba_hsla(22, 27, 36, 0.94)
+    glass_tint(panel_opacity().max(0.94))
 }
 /// Darkening of the blurred art under the glass fill (stands in for the
-/// Collection's scrims that sit between the art and a real backdrop blur).
+/// Collection's scrims that sit between the art and a real backdrop blur):
+/// 50% up to the default opacity, then rising to 100% so that fully opaque
+/// panels hide the art completely.
 pub fn glass_art_dim() -> Hsla {
-    black_a(0.5)
+    let o = panel_opacity();
+    let t = ((o - GLASS_OPACITY_DEFAULT) / (1. - GLASS_OPACITY_DEFAULT)).clamp(0., 1.);
+    black_a(0.5 + 0.5 * t)
+}
+/// Veil over the Collection behind the pages (☰ pages, Settings): `.55` at
+/// the default panel opacity, lighter for more transparent panels and fully
+/// opaque for Solid panels (the pages then show no art at all).
+pub fn page_backdrop() -> Hsla {
+    let o = panel_opacity();
+    let a = if o >= GLASS_OPACITY_DEFAULT {
+        0.55 + 0.45 * ((o - GLASS_OPACITY_DEFAULT) / (1. - GLASS_OPACITY_DEFAULT))
+    } else {
+        0.35 + 0.20 * ((o - 0.5) / (GLASS_OPACITY_DEFAULT - 0.5)).clamp(0., 1.)
+    };
+    // Solid: the plain page colour, no art behind the sheet.
+    let (r, g, b) = if solid_mode() { (7, 9, 12) } else { (10, 12, 16) };
+    rgba_hsla(r, g, b, a)
 }
 pub fn glass_border() -> Hsla {
     white_a(0.11)
@@ -228,3 +305,42 @@ pub fn nav_text() -> Rgba { rgb(0xc3cbd8) }
 pub fn accent_tint() -> Hsla { rgba_hsla(165, 220, 235, 0.16) }
 pub fn accent_tint_border() -> Hsla { rgba_hsla(165, 220, 235, 0.40) }
 pub fn menu_item_hover() -> Hsla { white_a(0.07) }
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+    use heronite_data::appearance::{Appearance, InterfaceMode};
+
+    /// One test only: the appearance is process-wide.
+    #[test]
+    fn glass_tokens_follow_the_appearance() {
+        set_appearance(Appearance::default());
+        assert!((glass_fill().a - 0.84).abs() < 1e-6);
+        assert!((glass_fill_solid().a - 0.94).abs() < 1e-6);
+        assert!((glass_art_dim().a - 0.5).abs() < 1e-6);
+        assert!((page_backdrop().a - 0.55).abs() < 1e-6);
+        assert!(glass_shows_art());
+        assert_eq!(glass_blur_px(), 30.);
+
+        set_appearance(Appearance { interface_opacity: 100., ..Appearance::default() });
+        assert!(!glass_shows_art());
+        assert!((glass_fill().a - 1.).abs() < 1e-6);
+        assert!((glass_art_dim().a - 1.).abs() < 1e-6);
+
+        set_appearance(Appearance { interface_opacity: 50., ..Appearance::default() });
+        assert!((glass_fill().a - 0.5).abs() < 1e-6);
+        assert!((glass_fill_solid().a - 0.94).abs() < 1e-6);
+        assert!(page_backdrop().a < 0.55);
+
+        set_appearance(Appearance { interface_mode: InterfaceMode::Solid, ..Appearance::default() });
+        assert!(!glass_shows_art());
+        assert!((glass_fill().a - 1.).abs() < 1e-6);
+        assert!((page_backdrop().a - 1.).abs() < 1e-6);
+
+        // Out-of-range values are clamped on the way in.
+        set_appearance(Appearance { interface_opacity: 5., interface_blur: 500., ..Appearance::default() });
+        assert!((glass_fill().a - 0.5).abs() < 1e-6);
+        assert_eq!(glass_blur_px(), 60.);
+        set_appearance(Appearance::default());
+    }
+}

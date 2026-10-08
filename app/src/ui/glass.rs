@@ -3,7 +3,8 @@
 //! resolution (`Variant::Glass`, see `CollectionView::glass_image`), exactly
 //! aligned with the window and clipped to the panel's rounded bounds, then the
 //! translucent fill, a border and the top highlight. Without art (or while it
-//! loads) the fill is nearly opaque.
+//! loads) the fill is nearly opaque. The Interface settings (Solid or
+//! Transparent, opacity, blur: `theme::appearance`) drive all of it.
 //!
 //! The image is owned by `CollectionView`, which publishes it every frame
 //! with [`set_backdrop`]; the UI runs on one thread, so a thread-local is
@@ -21,9 +22,9 @@ thread_local! {
     static BACKDROP: RefCell<Option<Arc<RenderImage>>> = const { RefCell::new(None) };
 }
 
-/// Blur radius (logical px) and saturation of the glass backdrop
-/// (`backdrop-filter: blur(30px) saturate(1.5)` in the mockups).
-pub const GLASS_BLUR_PX: f32 = 30.;
+/// Saturation of the glass backdrop (`backdrop-filter: blur(30px)
+/// saturate(1.5)` in the mockups). The blur is a setting
+/// (`theme::glass_blur_px`, Settings → Appearance).
 pub const GLASS_SATURATION: f32 = 1.5;
 
 /// Publishes the blurred art that glass surfaces paint behind themselves.
@@ -33,6 +34,10 @@ pub fn set_backdrop(img: Option<Arc<RenderImage>>) {
 
 /// The blurred art currently published (`None`: solid fallback).
 pub fn backdrop() -> Option<Arc<RenderImage>> {
+    // Solid / fully opaque panels never show the art, even if a stale one is published.
+    if !theme::glass_shows_art() {
+        return None;
+    }
     BACKDROP.with(|b| b.borrow().clone())
 }
 
@@ -117,7 +122,7 @@ pub fn glass_fullscreen() -> Div {
         .absolute()
         .inset_0()
         .children(art)
-        .child(div().absolute().inset_0().bg(if has_art { theme::black_a(0.55) } else { theme::black_a(0.8) }))
+        .child(div().absolute().inset_0().bg(if has_art { theme::black_a(0.55) } else { theme::glass_fill_solid() }))
 }
 
 /// Veil darkening the Collection behind modals and drawers.

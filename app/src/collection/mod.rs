@@ -144,7 +144,7 @@ impl CollectionView {
             }
         });
         let heroic = HeroicPaths::detect();
-        let app_paths = AppPaths::detect();
+        let app_paths = AppPaths::for_heroic(&heroic);
         let ui = if app_paths.ui_state().exists() {
             UiState::load(&app_paths)
         } else {
@@ -155,6 +155,8 @@ impl CollectionView {
             }
             ui
         };
+        // Interface / Collection-art appearance (this app's own file, tiny).
+        crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
         let (images, mut rx) = ImageStore::new(heroic.images_cache_dir(), &app_paths);
         cx.spawn(async move |this, cx| {
             while let Some(first) = rx.next().await {
@@ -760,6 +762,10 @@ impl CollectionView {
     /// it loads.
     fn stage_image(&mut self, window: &Window) -> Option<(SharedString, ImageSource)> {
         if !self.stage_enabled {
+            // Off: the big blurred texture is not kept around.
+            if self.shown_stage.take().is_some() {
+                self.images.forget_prefix("s:");
+            }
             return None;
         }
         let key = self.selected.clone()?;
@@ -791,24 +797,31 @@ impl CollectionView {
     /// Blurred art that glass surfaces (menus, dialogs, pages) paint behind
     /// their translucent fill: the selected game's art at a strong blur and a
     /// tiny resolution (`Variant::Glass`, ~1/5 of the window), cached like the
-    /// stage. `None` (no art, stage disabled) makes them fall back to a solid fill.
+    /// stage. Independent of the Collection background: it exists whenever the
+    /// Interface is Transparent (and not fully opaque). `None` (no art, Solid
+    /// interface) makes the surfaces fall back to a solid fill, and nothing is
+    /// generated or kept.
     fn glass_image(&mut self, window: &Window) -> Option<Arc<RenderImage>> {
-        use crate::ui::glass::{glass_target, GLASS_BLUR_PX, GLASS_SATURATION};
-        if !self.stage_enabled {
+        use crate::ui::glass::{glass_target, GLASS_SATURATION};
+        if !crate::theme::glass_shows_art() {
+            if self.shown_glass.take().is_some() {
+                self.images.forget_prefix("g:");
+            }
             return None;
         }
         let key = self.selected.clone()?;
         let scale = window.scale_factor();
         let size = window.viewport_size();
         let (tw, th) = glass_target(f32::from(size.width), f32::from(size.height), scale);
-        let id: SharedString = format!("g:{key}:{tw}x{th}").into();
+        let blur = crate::theme::glass_blur_px();
+        let id: SharedString = format!("g:{key}:{tw}x{th}:{blur}").into();
         let chains = &self.stage_chains;
         let ready = self.images.get_or_request(
             &id,
             || chains.get(&key).cloned().unwrap_or_default(),
             tw,
             th,
-            Variant::Glass { blur_px: GLASS_BLUR_PX * scale, saturation: GLASS_SATURATION },
+            Variant::Glass { blur_px: blur * scale, saturation: GLASS_SATURATION },
             500,
         );
         if let Some(img) = ready {
@@ -888,8 +901,8 @@ impl Render for CollectionView {
         let page_el = self.render_page(cx);
         let on_page = page_el.is_some();
         let stage_el = match self.stage_image(window) {
-            Some((key, src)) => stage::stage(Some(src), key, self.scrim),
-            None => stage::stage(None, SharedString::default(), self.scrim),
+            Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),
+            None => stage::stage(None, SharedString::default(), self.scrim, 1.),
         };
 
         // The list's padding lives inside each row: GPUI clips list content to

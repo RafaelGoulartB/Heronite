@@ -71,9 +71,30 @@ game's art (blur 30px, saturate 1.5, ~1/5 of the window, cached in the
 `ui::glass::set_backdrop`. Glass surfaces paint it aligned to the window and
 clipped to their rounded bounds (`Window::paint_image` with a sub-rect), under a
 dark dim (`theme::glass_art_dim`) and the translucent fill
-(`rgba(22,27,36,.62)`). No art (stage disabled, no game selected) or still
+(`rgba(22,27,36,.84)` by default). No art (no game selected, Solid) or still
 loading: nearly opaque fill (`.94`). Never blur per frame; never request another
 blur: reuse this one.
+
+**Interface vs Collection appearance** (Settings → Appearance, two independent
+groups). *Collection background* = the stage art behind the list/details: on/off,
+blur, darkening, colour, edge shading in Heronite's `local_library/settings.json`
+(`background`), plus Opacity (`collectionOpacity`, default 100). *Interface
+background* = every glass surface (menus, ☰, context menus, dropdowns, dialogs,
+drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
+`interfaceOpacity` 50-100 (default 84, maps to `glass_fill`; the art dim rises
+from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
+(default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum.
+These live in this app's `appearance.json` (`AppPaths::appearance()`, next to
+`ui-state.json`; `heronite_data::appearance::Appearance`), NOT in ~/.config/heroic.
+At runtime `theme::appearance()/set_appearance()` (a process-wide value) feeds
+`theme::{glass_fill, glass_fill_solid, glass_art_dim, page_backdrop,
+glass_blur_px, glass_shows_art}`; never hard-code those numbers. The glass
+backdrop is generated whenever `glass_shows_art()` (Transparent and < 100%),
+independent of the Collection art; in Solid or at 100% nothing is generated and
+`ImageStore::forget_prefix("g:")` frees the cached texture (same for the stage
+texture "s:" when the Collection art is off). Pages sit on `theme::page_backdrop()`
+(opaque page colour when Solid). Sliders call `set_appearance` live and save on
+release (off the UI thread).
 
 **Surfaces** (`ui::glass`): `glass_panel(radius)` (big shadow; popovers 20, sheets
 26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14),

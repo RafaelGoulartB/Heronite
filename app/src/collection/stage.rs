@@ -61,7 +61,10 @@ pub fn scrim_layers(s: Scrim) -> Div {
 
 /// The stage. `art` is already blurred/saturated; `None` shows the plain page
 /// colour like Heronite does when the background is disabled or missing.
-pub fn stage(art: Option<ImageSource>, art_id: SharedString, s: Scrim) -> AnyElement {
+/// `opacity` (0-1, "Collection background → Opacity") is how visible the art
+/// is over the page colour; the scrims stay as they are.
+pub fn stage(art: Option<ImageSource>, art_id: SharedString, s: Scrim, opacity: f32) -> AnyElement {
+    let opacity = opacity.clamp(0., 1.);
     let Some(art) = art else {
         return div().absolute().inset_0().into_any_element();
     };
@@ -69,13 +72,13 @@ pub fn stage(art: Option<ImageSource>, art_id: SharedString, s: Scrim) -> AnyEle
         .absolute()
         .inset_0()
         .child({
-            let el = img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
+            let el = img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Cover).opacity(opacity);
             // `img.loaded { transition: opacity 500ms }`
             if crate::theme::animations() {
                 el.with_animation(
                     ElementId::Name(format!("stage-{art_id}").into()),
                     Animation::new(std::time::Duration::from_millis(500)),
-                    |el, t| el.opacity(t),
+                    move |el, t| el.opacity(t * opacity),
                 )
                 .into_any_element()
             } else {

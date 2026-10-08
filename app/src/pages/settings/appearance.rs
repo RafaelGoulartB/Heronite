@@ -1,4 +1,13 @@
-//! Settings → Appearance: page background (live preview) and covers.
+//! Settings → Appearance: two independent groups plus the covers.
+//!
+//! - Collection background (the selected game's art behind the Collection):
+//!   on/off, blur, darkening, colour intensity, edge shading live in Heronite's
+//!   `local_library/settings.json` (`background`, shared with Heronite); its
+//!   Opacity lives in this app's `appearance.json` (`collectionOpacity`).
+//! - Interface background (menus, dialogs, pages, palette...): Transparent
+//!   (glass) or Solid, opacity, blur, solid tint; all in `appearance.json`
+//!   (`heronite_data::appearance`). Sliders apply live through
+//!   `theme::set_appearance` and are saved on release.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -6,6 +15,7 @@ use std::time::Duration;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::appearance::{Appearance, InterfaceMode, SolidTint, INTERFACE_BLUR_RANGE, INTERFACE_BLUR_STEP, INTERFACE_OPACITY_RANGE};
 use heronite_data::settings::{self, CoverAspect, EffectiveSettings, PartialBackground};
 use heronite_images::{ImageRef, Opts};
 
@@ -13,7 +23,8 @@ use super::SettingsPage;
 use crate::collection::stage::{scrim_layers, Scrim};
 use crate::pages::PageCtx;
 use crate::theme;
-use crate::ui::controls::{button, caption, card, row, toggle_row, ButtonKind};
+use crate::ui::controls::{button, caption, card, row, tabs, toggle_row, ButtonKind};
+use crate::ui::glass::glass_menu_surface;
 use crate::ui::fields::{meta_text, select_field};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -22,10 +33,17 @@ enum Field {
     Dimming,
     Saturation,
     Scrim,
+    /// Collection art opacity (%).
+    CollectionOpacity,
+    /// Interface panel opacity (%).
+    PanelOpacity,
+    /// Interface blur (px).
+    PanelBlur,
 }
 
 pub struct State {
     enabled: bool,
+    ui: Appearance,
     blur: f32,
     dimming: f32,
     saturation: f32,
@@ -56,14 +74,19 @@ impl State {
         cx: &mut Context<SettingsPage>,
     ) -> Self {
         let b = &s.background;
+        // Already loaded by the Collection (no I/O here).
+        let ui = theme::appearance();
         let mut sliders = Vec::new();
-        for (field, max, value) in [
-            (Field::Blur, 40., b.blur.get()),
-            (Field::Dimming, 90., b.dimming.get()),
-            (Field::Saturation, 150., b.saturation.get()),
-            (Field::Scrim, 150., b.scrim.get()),
+        for (field, min, max, step, value) in [
+            (Field::CollectionOpacity, 0., 100., 1., ui.collection_opacity as f64),
+            (Field::Blur, 0., 40., 1., b.blur.get()),
+            (Field::Dimming, 0., 90., 1., b.dimming.get()),
+            (Field::Saturation, 0., 150., 1., b.saturation.get()),
+            (Field::Scrim, 0., 150., 1., b.scrim.get()),
+            (Field::PanelOpacity, INTERFACE_OPACITY_RANGE.0, INTERFACE_OPACITY_RANGE.1, 1., ui.interface_opacity as f64),
+            (Field::PanelBlur, INTERFACE_BLUR_RANGE.0, INTERFACE_BLUR_RANGE.1, INTERFACE_BLUR_STEP, ui.interface_blur as f64),
         ] {
-            let state = cx.new(|_| SliderState::new().min(0.).max(max).step(1.).default_value(value as f32));
+            let state = cx.new(|_| SliderState::new().min(min).max(max).step(step).default_value(value as f32));
             cx.subscribe_in(&state, window, move |d: &mut SettingsPage, _, ev: &SliderEvent, _, cx| {
                 let (value, release) = match ev {
                     SliderEvent::Change(v) => (v, false),
@@ -76,11 +99,16 @@ impl State {
                     Field::Dimming => a.dimming = v,
                     Field::Saturation => a.saturation = v,
                     Field::Scrim => a.scrim = v,
+                    Field::CollectionOpacity => a.ui.collection_opacity = v,
+                    Field::PanelOpacity => a.ui.interface_opacity = v,
+                    Field::PanelBlur => a.ui.interface_blur = v,
                 }
                 if matches!(field, Field::Blur | Field::Saturation) {
                     schedule_preview(d, cx);
                 }
-                if release {
+                if matches!(field, Field::CollectionOpacity | Field::PanelOpacity | Field::PanelBlur) {
+                    apply_interface(d, release, cx);
+                } else if release {
                     save_background(d, cx);
                 }
                 cx.notify();
@@ -90,6 +118,7 @@ impl State {
         }
         let mut this = Self {
             enabled: b.enabled,
+            ui,
             blur: b.blur.get() as f32,
             dimming: b.dimming.get() as f32,
             saturation: b.saturation.get() as f32,
@@ -141,6 +170,23 @@ fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     }));
 }
 
+/// Applies the Interface / Collection-opacity values to the running app (every
+/// glass surface reads them) and, when `save`, writes them off the UI thread.
+fn apply_interface(d: &mut SettingsPage, save: bool, cx: &mut Context<SettingsPage>) {
+    let ui = d.appearance.ui.normalized();
+    theme::set_appearance(ui);
+    if save {
+        let app = d.ctx.app.clone();
+        cx.background_spawn(async move {
+            if let Err(err) = ui.save(&app) {
+                log::warn!("saving appearance.json: {err:#}");
+            }
+        })
+        .detach();
+    }
+    cx.notify();
+}
+
 fn save_background(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     let a = &d.appearance;
     let patch = PartialBackground {
@@ -160,6 +206,86 @@ fn slider_row(label: String, state: &Entity<SliderState>) -> AnyElement {
     row(label, None, div().w(px(260.)).child(slider)).into_any_element()
 }
 
+fn set_sliders(a: &State, values: &[(Field, f32)], window: &mut Window, cx: &mut Context<SettingsPage>) {
+    for (field, v) in values {
+        if let Some((_, state)) = a.sliders.iter().find(|(f, _)| f == field) {
+            state.update(cx, |s, cx| s.set_value(*v, window, cx));
+        }
+    }
+}
+
+fn slider_of<'a>(a: &'a State, field: Field) -> &'a Entity<SliderState> {
+    &a.sliders.iter().find(|(f, _)| *f == field).expect("slider created in State::new").1
+}
+
+/// Interface mode (Transparent / Solid), its controls and a sample menu.
+fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
+    let this = cx.entity();
+    let mode = tabs("ui-mode", &[(InterfaceMode::Transparent, "Transparent"), (InterfaceMode::Solid, "Solid")], a.ui.interface_mode, {
+        let this = this.clone();
+        move |m, _, cx| {
+            this.update(cx, |d, cx| {
+                d.appearance.ui.interface_mode = m;
+                apply_interface(d, true, cx);
+            });
+        }
+    });
+    let mut rows: Vec<AnyElement> = vec![row(
+        "Panels",
+        Some(match a.ui.interface_mode {
+            InterfaceMode::Transparent => "Glass: the blurred game artwork shows through the panels.",
+            InterfaceMode::Solid => "Opaque panels in a solid colour, no artwork.",
+        }),
+        mode,
+    )
+    .into_any_element()];
+    match a.ui.interface_mode {
+        InterfaceMode::Transparent => {
+            rows.push(slider_row(format!("Opacity: {}%", a.ui.interface_opacity.round()), slider_of(a, Field::PanelOpacity)));
+            rows.push(slider_row(format!("Blur: {} px", a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)));
+        }
+        InterfaceMode::Solid => {
+            let items: Vec<(SolidTint, &'static str)> = SolidTint::ALL.iter().map(|t| (*t, t.label())).collect();
+            let tint = tabs("ui-tint", &items, a.ui.solid_tint, move |t, _, cx| {
+                this.update(cx, |d, cx| {
+                    d.appearance.ui.solid_tint = t;
+                    apply_interface(d, true, cx);
+                });
+            });
+            rows.push(row("Colour", None, tint).into_any_element());
+        }
+    }
+    let sample_item = |label: &'static str, selected: bool| {
+        div()
+            .px(px(10.))
+            .py(px(6.))
+            .rounded(px(theme::R_ITEM))
+            .text_size(px(13.))
+            .text_color(theme::text_primary())
+            .when(selected, |d| d.bg(theme::menu_item_hover()))
+            .child(label)
+    };
+    let sample = glass_menu_surface(theme::R_MENU)
+        .flex()
+        .flex_col()
+        .gap(px(2.))
+        .p(px(6.))
+        .w(px(210.))
+        .child(sample_item("Play", true))
+        .child(sample_item("Add to favourites", false))
+        .child(sample_item("Properties", false));
+    let sample_row = div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(16.))
+        .py(px(14.))
+        .child(div().flex().flex_col().gap(px(1.)).child(div().text_size(px(14.)).text_color(theme::text_primary()).child("Preview")).child(meta_text("A menu with the current settings.")))
+        .child(sample);
+    rows.push(sample_row.into_any_element());
+    card(rows)
+}
+
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     if d.appearance.preview.is_none() && d.appearance.preview_task.is_none() {
         schedule_preview(d, cx);
@@ -176,7 +302,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .overflow_hidden()
         .bg(theme::page_bg())
         .when_some(a.preview.clone().filter(|_| a.enabled), |el, img| {
-            el.child(img_el(img)).child(scrim_layers(scrim))
+            el.child(img_el(img).opacity(a.ui.collection_opacity / 100.)).child(scrim_layers(scrim))
         })
         .child(
             div()
@@ -197,7 +323,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 ),
         );
 
-    let mut rows: Vec<AnyElement> = vec![toggle_row("bg-enabled", "Use the game artwork as page background", None, a.enabled)
+    let mut rows: Vec<AnyElement> = vec![toggle_row("bg-enabled", "Use the game artwork as page background", Some("Only behind the Collection list and the game details."), a.enabled)
         .on_click(cx.listener(|d, _, _, cx| {
             d.appearance.enabled = !d.appearance.enabled;
             save_background(d, cx);
@@ -205,10 +331,12 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .into_any_element()];
     for (field, state) in &a.sliders {
         let label = match field {
+            Field::CollectionOpacity => format!("Opacity: {}%", a.ui.collection_opacity.round()),
             Field::Blur => format!("Blur: {} px", a.blur.round()),
             Field::Dimming => format!("Darkening: {}%", a.dimming.round()),
             Field::Saturation => format!("Colour intensity: {}%", a.saturation.round()),
             Field::Scrim => format!("Edge shading: {}%", a.scrim.round()),
+            Field::PanelOpacity | Field::PanelBlur => continue,
         };
         rows.push(slider_row(label, state));
     }
@@ -247,13 +375,29 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         a.dimming = defaults.dimming.get() as f32;
         a.saturation = defaults.saturation.get() as f32;
         a.scrim = defaults.scrim.get() as f32;
-        let values = [a.blur, a.dimming, a.saturation, a.scrim];
-        for ((_, state), v) in a.sliders.clone().iter().zip(values) {
-            state.update(cx, |s, cx| s.set_value(v, window, cx));
-        }
+        a.ui.collection_opacity = Appearance::default().collection_opacity;
+        set_sliders(a, &[
+            (Field::CollectionOpacity, a.ui.collection_opacity),
+            (Field::Blur, a.blur),
+            (Field::Dimming, a.dimming),
+            (Field::Saturation, a.saturation),
+            (Field::Scrim, a.scrim),
+        ], window, cx);
         schedule_preview(d, cx);
+        apply_interface(d, true, cx);
         save_background(d, cx);
     }));
+    let reset_interface = button("ui-reset", ButtonKind::Glass, "Reset interface").on_click(cx.listener(|d, _, window, cx| {
+        let defaults = Appearance::default();
+        let a = &mut d.appearance;
+        a.ui.interface_mode = defaults.interface_mode;
+        a.ui.interface_opacity = defaults.interface_opacity;
+        a.ui.interface_blur = defaults.interface_blur;
+        a.ui.solid_tint = defaults.solid_tint;
+        set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
+        apply_interface(d, true, cx);
+    }));
+    let interface = interface_group(a, cx);
     let covers = card([
         row("Cover aspect", Some("Shape of the covers in the grid, the details panel and related games."), div().w(px(200.)).child(aspect_select))
             .into_any_element(),
@@ -267,13 +411,18 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     div()
         .flex()
         .flex_col()
-        .child(caption("Page background"))
+        .child(caption("Collection background"))
         .child(preview)
         .child(div().h(px(10.)))
         .child(background)
         .child(div().flex().items_center().justify_between().gap(px(12.)).mt(px(10.)).child(
             div().flex_1().pl(px(6.)).child(meta_text("Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")),
         ).child(reset))
+        .child(caption("Interface background"))
+        .child(interface)
+        .child(div().flex().items_center().justify_between().gap(px(12.)).mt(px(10.)).child(
+            div().flex_1().pl(px(6.)).child(meta_text("Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.")),
+        ).child(reset_interface))
         .child(caption("Covers"))
         .child(covers)
         .into_any_element()

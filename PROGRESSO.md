@@ -1023,3 +1023,30 @@ O import/merge/export do Playnite saiu do app: botão ⇄ do topo da Collection,
 (`sideload_playnite_*`), as sessões com `source: "playnite"`, os metadados vindos do Playnite e os campos `playniteId`
 continuam nos arquivos e são lidos pelo código genérico. A fonte "Playnite" deixou de ser oferecida nos seletores de
 metadados (nada a alimentava no app em Rust), mas continua nas prioridades salvas, que o Heronite lê.
+
+## Appearance dividida: fundo da Collection x fundo da interface (2026-10-08)
+
+Settings → Appearance agora tem dois grupos independentes (`app/src/pages/settings/appearance.rs`):
+- **Collection background** (arte do jogo atrás da lista/detalhes): liga/desliga, Blur, Darkening, Colour intensity, Edge shading continuam em
+  `local_library/settings.json` → `background` (chaves e significado iguais aos do Heronite). Novo: **Opacity** (0-100, padrão 100 = visual
+  de antes), que fica no `appearance.json` do app Rust (o Heronite não tem esse campo).
+- **Interface background** (menus, ☰, menus de contexto, dropdowns, diálogos, gaveta, páginas, paleta): modo **Transparent** (vidro, padrão) ou
+  **Solid**; Transparent tem Opacity 50-100 (padrão 84, = `glass_fill`; a escurecida da arte sobe de .5 a 1 acima de 84, então 100 = opaco) e
+  Blur 0-60 px em passos de 5 (padrão 30); Solid tem 4 cores (Slate padrão, Graphite, Midnight, Plum). Prévia: um menu de exemplo.
+- **Onde fica**: `~/.config/heronite-rs/appearance.json` (`AppPaths::appearance()`, ao lado de `ui-state.json`; para fixtures, `<pasta>.heronite-rs/config/`)
+  com `collectionOpacity`, `interfaceMode`, `interfaceOpacity`, `interfaceBlur`, `interfaceSolidTint` (`crates/data/src/appearance.rs`, leitura
+  leniente, números limitados, chaves desconhecidas preservadas).
+- **Runtime**: `theme::appearance()/set_appearance()` (valor global do processo) alimenta `glass_fill`, `glass_fill_solid`, `glass_art_dim`,
+  `page_backdrop` (antes fixo .55), `glass_blur_px`, `glass_shows_art`. Sliders aplicam ao vivo e gravam ao soltar (fora da thread de UI).
+- **Independência / memória**: a textura de vidro (`g:`) é gerada sempre que a interface é Transparent (< 100%), mesmo com a arte da Collection
+  desligada; Solid ou 100% não gera nem mantém nada (`ImageStore::forget_prefix`), e com a arte da Collection desligada a textura do palco
+  (`s:`) também é liberada. Medido (debug, `/tmp/memcmp2.sh`, fixture): Pss_Anon 62-63 MB padrão vs 60 MB Solid+off (a maior parte da
+  textura fica na GPU, não aparece no Pss).
+- **Ganchos em arquivos compartilhados**: `collection/nav.rs` (1 linha: fundo das páginas = `theme::page_backdrop()`), `images.rs`
+  (`forget_prefix`), `collection/mod.rs` (carrega o `Appearance`, `glass_image`/`stage_image`, e `AppPaths::detect()` -> `for_heroic(&heroic)`,
+  que antes gravava o `ui-state.json` REAL mesmo com `HERONITE_HEROIC_DIR` apontando para uma fixture), `pages/settings.rs` (texto e palavras-chave).
+- **Verificado**: testes (appearance: padrões, arquivo ausente/corrompido, limites, round-trip com chaves desconhecidas; theme: tokens por
+  modo), suíte completa (782 ok), capturas com `scripts/shot.sh` da seção Appearance, Settings com arte ON+Transparent, arte OFF+Transparent,
+  arte ON+Solid, diálogo Manage statuses em Solid e a Collection com Opacity 60. **Não verificado**: arrastar os sliders (sem cliques), então o
+  caminho ao vivo e o salvamento ao soltar só foram compilados; a prévia "Live preview" da Collection fica vazia quando a página é aberta direto
+  por `HERONITE_DEBUG_PAGE` (sem o jogo focado da Coleção), como antes.
