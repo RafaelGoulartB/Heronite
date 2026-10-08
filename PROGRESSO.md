@@ -134,6 +134,19 @@ docs/reference/       screenshots do Heronite para paridade visual
 - [ ] Build Windows (código portável; falta toolchain: máquina Windows ou `cargo-xwin`)
 - [ ] Unificar `ui/fields.rs` e `dialogs/form.rs` (helpers de input duplicados)
 
+### Fase 3 — paridade de recursos com o Heroic (iniciada 2026-10-07)
+Pedido do usuário: trazer Wine Manager, configurações por jogo (Wine/Other/Advanced/Gamescope/Cloud saves),
+login na Epic, biblioteca Epic integrada e instalação/download direto pelo app. Console mode e recursos
+secundários ficam de fora por enquanto. A Collection continua sendo a interface; telas novas entram pelo
+menu ☰ (canto superior esquerdo), sem sidebar.
+- [x] Navegação ☰ (`app/src/pages/`, `collection/nav.rs`): Collection, Downloads, Wine Manager, Epic Games,
+      Settings. `HERONITE_DEBUG_PAGE=downloads|wine|epic`, `HERONITE_DEBUG_DROPDOWN=nav`.
+- [x] Crates esqueleto `heronite-wine` e `heronite-epic` (contratos usados entre agentes).
+- [ ] Epic: login, biblioteca, instalar/atualizar/reparar/mover/desinstalar, fila de downloads, cloud saves
+      (agente "epic", brief em `docs/agents/epic.md`).
+- [ ] Wine Manager + detecção de Wine/Proton (agente "wine", `docs/agents/wine.md`).
+- [ ] Configurações por jogo e globais estilo Heroic (agente "settings", `docs/agents/settings.md`).
+
 ### Diferenças visuais conhecidas (aceitas)
 - Cabeçalho de grupo fixo: sem blur real atrás (gradiente mais escuro no lugar).
 - Painéis de vidro: sem blur extra de 18/22px sobre o stage (o stage já é borrado).
