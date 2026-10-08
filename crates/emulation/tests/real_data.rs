@@ -57,6 +57,9 @@ fn scan_preview_of_the_real_rom_folders() {
     let (_d, paths) = temp_copy(&fx);
     let scanners = store::list_rom_scanners(&paths).unwrap();
     println!("scanners: {}", scanners.len());
+    // A configured folder may legitimately be empty (e.g. no PS3 games yet);
+    // at least one must find games.
+    let mut found = 0;
     for s in scanners {
         if !Path::new(&s.directory).exists() {
             println!("  skip {} (folder missing)", s.directory);
@@ -90,7 +93,7 @@ fn scan_preview_of_the_real_rom_folders() {
             );
         }
         assert!(preview.errors.is_empty());
-        assert!(!preview.games.is_empty());
+        found += preview.games.len();
         // Everything the fixture already imported is flagged as such.
         let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
         let known: HashSet<String> = metas
@@ -159,6 +162,7 @@ fn scan_preview_of_the_real_rom_folders() {
         .unwrap();
         assert!(again.games.iter().all(|g| g.already_imported));
     }
+    assert!(found > 0, "no configured ROM folder had games");
 }
 
 #[test]
