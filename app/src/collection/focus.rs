@@ -115,8 +115,6 @@ pub struct FocusProps {
 pub struct FocusExtras {
     /// Above "Details" (`collectionFocus__panel` of achievements).
     pub top: Option<AnyElement>,
-    /// Below "How Long To Beat" (play sessions).
-    pub bottom: Option<AnyElement>,
 }
 
 pub struct FocusActions {
@@ -264,7 +262,6 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     if let Some(h) = &vm.hltb {
         side = side.child(div().flex().flex_col().child(h3("How Long To Beat")).child(hltb_panel(h)));
     }
-    side = side.children(extras.bottom);
 
     let body = if narrow {
         div().flex().flex_col().gap(px(20.)).child(main).child(side)

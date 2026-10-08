@@ -20,7 +20,7 @@ use heronite_metadata::achievements::{load_achievements, Achievement};
 use heronite_metadata::{Endpoints, Http};
 
 use super::context_menu::item;
-use super::{achievements, focus, sessions, CollectionView};
+use super::{achievements, focus, CollectionView};
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog};
 use crate::dialogs::ludusavi_backup::LudusaviBackupDialog;
 use crate::dialogs::playtime::PlaytimeDialog;
@@ -358,11 +358,12 @@ impl CollectionView {
 
     // ---- focus panel ---------------------------------------------------
 
-    /// Achievements (above Details) and play sessions (below the rest).
+    /// Achievements (above Details).
     pub(super) fn focus_extras(&mut self, key: &str, scale: f32) -> focus::FocusExtras {
         let mut extras = focus::FocusExtras::default();
-        let Some(lib) = self.lib.clone() else { return extras };
-        let Some(game) = lib.get(key) else { return extras };
+        if self.lib.as_ref().and_then(|lib| lib.get(key)).is_none() {
+            return extras;
+        }
 
         if self.extras.ach_key.as_deref() == Some(key) && !self.extras.ach.is_empty() {
             let total = self.extras.ach.len();
@@ -382,10 +383,6 @@ impl CollectionView {
                     .map(ImageSource::Render);
             }
             extras.top = Some(achievements::view(unlocked, total, rows));
-        }
-
-        if let Some(list) = game.sessions.as_ref().filter(|s| !s.is_empty()) {
-            extras.bottom = Some(sessions::view(list.len(), sessions::rows(list, lib.date_locale)));
         }
         extras
     }

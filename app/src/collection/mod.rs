@@ -18,7 +18,6 @@ mod palette;
 mod screenshot_viewer;
 mod screenshots;
 mod system_glue;
-mod sessions;
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
