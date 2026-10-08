@@ -2,12 +2,15 @@
 
 use std::path::Path;
 
+use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_launch::dxvk::{self, Action};
 use heronite_launch::settings::GameSettings;
+use heronite_launch::tools::Tool;
 use heronite_launch::wine_tools::{build_tool_command, WineTool};
 use heronite_launch::{PlanContext, SystemProbe};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::logic::{self, RunKind};
 use super::parts::{column, danger_text, heading, help};
@@ -33,6 +36,8 @@ impl HeroicSettingsPanel {
                 ));
             let dxvk = logic::offers_dxvk(&wine);
             let dxvk_on = self.flag("autoInstallDxvk", false);
+            // Heroic dims the switches ("Please wait...") while a tool is being installed.
+            let tools_busy = self.tool_toggle.is_some();
             if dxvk {
                 col = col.child(self.toggle_row(
                     "auto-dxvk",
@@ -40,7 +45,7 @@ impl HeroicSettingsPanel {
                     false,
                     "Auto Install/Update DXVK on Prefix",
                     Some("DXVK is a Vulkan-based translational layer for DirectX 9, 10 and 11 games. Enabling may improve compatibility. Might cause issues especially for older DirectX games."),
-                    self.flag("autoInstallDxvkNvapi", false) || self.flag("autoInstallVkd3d", false),
+                    self.flag("autoInstallDxvkNvapi", false) || self.flag("autoInstallVkd3d", false) || tools_busy,
                     cx,
                 ));
             }
@@ -50,7 +55,7 @@ impl HeroicSettingsPanel {
                 false,
                 "Auto Install/Update DXVK-NVAPI on Prefix",
                 Some("DXVK-NVAPI is an implementation of NVAPI built on top of DXVK and the linux native NVAPI, it allows for the usage of DLSS on Nvidia GPUs."),
-                !dxvk_on,
+                !dxvk_on || tools_busy,
                 cx,
             ));
             if wine.kind != "proton" {
@@ -60,7 +65,7 @@ impl HeroicSettingsPanel {
                     false,
                     "Auto Install/Update VKD3D on Prefix",
                     Some("VKD3D is a Vulkan-based translational layer for DirectX 12 games. Enabling may improve compatibility significantly. Has no effect on older DirectX games, it requires DXVK."),
-                    !dxvk_on,
+                    !dxvk_on || tools_busy,
                     cx,
                 ));
             }
@@ -234,6 +239,98 @@ impl HeroicSettingsPanel {
                 cx.notify();
             })
             .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+}
+
+/// The prefix tool behind an "Auto Install/Update ..." setting.
+pub(super) fn prefix_tool(key: &str) -> Option<Tool> {
+    match key {
+        "autoInstallDxvk" => Some(Tool::Dxvk),
+        "autoInstallDxvkNvapi" => Some(Tool::DxvkNvapi),
+        "autoInstallVkd3d" => Some(Tool::Vkd3d),
+        _ => None,
+    }
+}
+
+/// What the background install/remove reports.
+enum ToolMsg {
+    Progress(String),
+    Done(Result<dxvk::Outcome, String>),
+}
+
+/// Text for a finished install/remove (no error).
+fn outcome_text(tool: Tool, outcome: &dxvk::Outcome) -> String {
+    let name = tool.label();
+    match outcome {
+        dxvk::Outcome::Installed(v) => format!("{name} {v} installed in the prefix."),
+        dxvk::Outcome::AlreadyInstalled(v) => format!("{name} {v} is already installed in the prefix."),
+        dxvk::Outcome::Removed => format!("{name} removed from the prefix."),
+        dxvk::Outcome::Skipped(why) => format!("{name} not changed in the prefix: {why}."),
+    }
+}
+
+impl HeroicSettingsPanel {
+    /// After the switch `key` was saved as `on`: installs (or removes) the tool
+    /// in the prefix on a background thread, like Heroic's `toggleDXVK` & co.
+    /// Nothing happens when Heroic would not do it either (Proton, GPTK...).
+    /// When the install fails the switch goes back, as in Heroic.
+    pub(super) fn apply_tool_toggle(&mut self, key: &'static str, tool: Tool, on: bool, cx: &mut Context<Self>) {
+        let settings = GameSettings::from_map(&self.settings, &self.home);
+        let Some(action) = dxvk::toggle_action(tool, &settings.wine_version, on) else { return };
+        self.tool_toggle = Some(key);
+        let name = tool.label();
+        let verb = if action == Action::Install { "Installing" } else { "Removing" };
+        self.notice = Some(Notice { text: format!("Please wait... {verb} {name}").into(), error: false });
+        let paths = self.paths.clone();
+        let (tx, mut rx) = futures::channel::mpsc::unbounded();
+        std::thread::spawn(move || {
+            let progress_tx = tx.clone();
+            let res = crate::runtime::toggle_tool_blocking(&paths, &settings, tool, action, &move |m| {
+                let _ = progress_tx.unbounded_send(ToolMsg::Progress(m));
+            });
+            let _ = tx.unbounded_send(ToolMsg::Done(res));
+        });
+        cx.spawn(async move |this, cx| {
+            let mut finished = false;
+            while let Some(msg) = rx.next().await {
+                let done = matches!(msg, ToolMsg::Done(_));
+                this.update(cx, |this, cx| {
+                    match msg {
+                        ToolMsg::Progress(text) => this.notice = Some(Notice { text: text.into(), error: false }),
+                        ToolMsg::Done(Ok(outcome)) => {
+                            this.tool_toggle = None;
+                            this.notice = Some(Notice { text: outcome_text(tool, &outcome).into(), error: false });
+                        }
+                        ToolMsg::Done(Err(e)) => {
+                            this.tool_toggle = None;
+                            this.set(key, Value::Bool(!on), cx);
+                            let what = if action == Action::Install { "install" } else { "remove" };
+                            this.notice = Some(Notice {
+                                text: format!("Could not {what} {name}: {e}. The setting was left unchanged.").into(),
+                                error: true,
+                            });
+                        }
+                    }
+                    cx.notify();
+                })
+                .ok();
+                if done {
+                    finished = true;
+                    break;
+                }
+            }
+            if !finished {
+                // The worker died without reporting.
+                this.update(cx, |this, cx| {
+                    this.tool_toggle = None;
+                    this.notice = Some(Notice { text: format!("{name} stopped unexpectedly.").into(), error: true });
+                    cx.notify();
+                })
+                .ok();
+            }
         })
         .detach();
         cx.notify();

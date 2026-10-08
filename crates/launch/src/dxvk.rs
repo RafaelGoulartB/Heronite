@@ -209,6 +209,25 @@ pub fn install_remove(
     Ok(Outcome::Installed(version))
 }
 
+/// What flipping an "Auto Install/Update ... on Prefix" switch in the game
+/// settings does to the prefix right away, following the conditions of Heroic's
+/// `AutoDXVK`, `AutoDXVKNVAPI` and `AutoVKD3D` components (the switch itself is
+/// saved either way; `None`: only the setting changes, the launch installs the
+/// tool later if it applies).
+///
+/// * DXVK: only Wine builds (not Proton, CrossOver or Game Porting Toolkit,
+///   not `-DXMT` builds);
+/// * VKD3D: anything but Proton (CrossOver has no such switch at all);
+/// * DXVK-NVAPI: anything but Proton (the switch is saved without installing);
+/// * switching on installs ("backup"), switching off removes ("restore").
+pub fn toggle_action(tool: Tool, wine: &crate::settings::WineVersion, enabled: bool) -> Option<Action> {
+    let applies = match tool {
+        Tool::Dxvk => wine.kind == "wine" && !wine.bin.contains("toolkit") && !wine.name.ends_with("-DXMT"),
+        Tool::Vkd3d | Tool::DxvkNvapi => wine.kind != "proton" && wine.kind != "crossover",
+    };
+    applies.then_some(if enabled { Action::Install } else { Action::Restore })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,5 +374,34 @@ mod tests {
         );
         run(&fx, Tool::DxvkNvapi, Action::Install, &rec, &FakeProbe::new("/h"), &FakeNet::offline()).unwrap();
         assert!(rec.0.borrow().iter().all(|c| c[2] != r"HKEY_LOCAL_MACHINE\SOFTWARE\NVIDIA Corporation\Global\NGXCore"));
+    }
+
+    fn wine_of(kind: &str, bin: &str, name: &str) -> crate::settings::WineVersion {
+        WineVersion { kind: kind.into(), bin: bin.into(), name: name.into(), ..Default::default() }
+    }
+
+    #[test]
+    fn toggles_install_and_remove_following_heroics_conditions() {
+        let wine = wine_of("wine", "/w/bin/wine", "Wine-GE");
+        let proton = wine_of("proton", "/p/proton", "GE-Proton");
+        let crossover = wine_of("crossover", "/c/wine", "CrossOver");
+        let gptk = wine_of("wine", "/gptk/toolkit/bin/wine", "GPTK");
+        let dxmt = wine_of("wine", "/w/bin/wine", "Wine Staging-DXMT");
+        // Switching on installs, switching off removes.
+        for tool in Tool::ALL {
+            assert_eq!(toggle_action(tool, &wine, true), Some(Action::Install), "{tool:?}");
+            assert_eq!(toggle_action(tool, &wine, false), Some(Action::Restore), "{tool:?}");
+        }
+        // Proton brings its own DXVK/VKD3D/NVAPI: the setting is saved, nothing is touched.
+        for tool in Tool::ALL {
+            assert_eq!(toggle_action(tool, &proton, true), None, "{tool:?}");
+            assert_eq!(toggle_action(tool, &crossover, true), None, "{tool:?}");
+        }
+        // DXVK is not offered for the toolkit and DXMT builds.
+        assert_eq!(toggle_action(Tool::Dxvk, &gptk, true), None);
+        assert_eq!(toggle_action(Tool::Dxvk, &dxmt, false), None);
+        // VKD3D and NVAPI are (the backend then skips the toolkit prefix itself).
+        assert_eq!(toggle_action(Tool::Vkd3d, &gptk, true), Some(Action::Install));
+        assert_eq!(toggle_action(Tool::DxvkNvapi, &dxmt, true), Some(Action::Install));
     }
 }

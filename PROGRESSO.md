@@ -358,8 +358,8 @@ também acontece quando o jogo é iniciado pelo app Rust. Tudo roda na thread de
 - **App** (`app/src/runtime.rs`): `GameRuntime::play_skip_version_check` ("Play anyway" do diálogo "Game Needs Update"
   passa `--skip-version-check` ao legendary); serviços de preparo (rede, nuvem via Epic); thread de startup que
   atualiza DXVK/VKD3D/DXVK-NVAPI/winetricks 2,5 s após abrir (no máximo 2x por dia, selo `tools/.heronite-last-update-check`;
-  desligada por `HERONITE_DISABLE_IDLE_JOBS=1`). `Prep::toggle_tool` (instalar/restaurar no prefixo) está pronto
-  para os toggles das configurações, mas o diálogo de configurações **ainda não o chama**.
+  desligada por `HERONITE_DISABLE_IDLE_JOBS=1`). `Prep::toggle_tool` (instalar/restaurar no prefixo) é chamado
+  pelos toggles das configurações (ver abaixo).
 - **Pontos de ligação em arquivos compartilhados**: `app/src/collection/mod.rs` (um braço `LaunchEvent::Status` ->
   `show_toast`), `app/src/collection/epic.rs` (Play anyway -> `play_skip_version_check`), `Cargo.lock` (`ureq` no crate
   launch).
@@ -375,3 +375,9 @@ também acontece quando o jogo é iniciado pelo app Rust. Tudo roda na thread de
   `installed_games` do prefixo) e os `installFixes` (winetricks/`runInPrefix` do known_fixes) **não** foram portados;
   CrossOver/Mac fora de escopo; o upload de saves após o jogo mantém o jogo como "em execução" na UI até terminar;
   `isOnline` é um teste TCP em IPs fixos (o Heroic usa o monitor do Electron).
+- **Toggles DXVK / DXVK-NVAPI / VKD3D** (`app/src/dialogs/heroic_settings/wine.rs`, `app/src/runtime.rs::toggle_tool_blocking`,
+  `crates/launch/src/dxvk.rs::toggle_action`): ao salvar o toggle, instala (ligou) ou remove (desligou) a ferramenta no
+  prefixo numa thread, com o progresso na linha de aviso da aba; só Wine para DXVK, VKD3D/NVAPI exceto Proton/CrossOver (as
+  mesmas condições dos componentes do Heroic); se falhar o toggle volta atrás, como no Heroic. Testado só a lógica de decisão
+  (tempdirs, sem prefixo real); a interface não foi exercitada com cliques. O upload de saves pós-jogo continua mantendo o
+  estado "jogando" até acabar (o toast "Uploading cloud saves..." já avisa), sem mudança.

@@ -115,6 +115,8 @@ pub struct HeroicSettingsPanel {
     pub(super) notice: Option<Notice>,
     /// Name of the Wine tool running.
     pub(super) tool_busy: Option<&'static str>,
+    /// Setting whose DXVK/VKD3D/NVAPI install or removal is running.
+    pub(super) tool_toggle: Option<&'static str>,
     pub(super) gpu_count: usize,
     pub(super) gamescope_installed: bool,
     pub(super) runtimes: (bool, bool),
@@ -179,6 +181,7 @@ impl HeroicSettingsPanel {
             inputs,
             notice: None,
             tool_busy: None,
+            tool_toggle: None,
             gpu_count: logic::count_gpus(),
             gamescope_installed: std::env::var_os("HERONITE_DEBUG_GAMESCOPE").is_some()
                 || heronite_launch::Probe::which(&heronite_launch::SystemProbe, "gamescope").is_some(),
@@ -308,9 +311,16 @@ impl HeroicSettingsPanel {
         cx.notify();
     }
 
-    pub(super) fn toggle(&mut self, key: &str, default: bool, cx: &mut Context<Self>) {
+    pub(super) fn toggle(&mut self, key: &'static str, default: bool, cx: &mut Context<Self>) {
+        let tool = wine::prefix_tool(key);
+        if tool.is_some() && self.tool_toggle.is_some() {
+            return;
+        }
         let now = self.flag(key, default);
         self.set(key, Value::Bool(!now), cx);
+        if let Some(tool) = tool {
+            self.apply_tool_toggle(key, tool, !now, cx);
+        }
     }
 
     pub(super) fn set_gamescope(&mut self, field: &str, value: Value, cx: &mut Context<Self>) {

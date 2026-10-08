@@ -132,6 +132,33 @@ impl GameRuntime {
 
 pub type SharedRuntime = Arc<GameRuntime>;
 
+/// Game settings switch "Auto Install/Update DXVK / DXVK-NVAPI / VKD3D on
+/// Prefix": installs or removes `tool` in the prefix of `settings` right away
+/// (Heroic's `toggleDXVK`, `toggleDXVKNVAPI`, `toggleVKD3D`). Blocking and
+/// slow (downloads, wine commands): call it from a thread. `progress` gets the
+/// steps ("Downloading DXVK..."). Not run by tests.
+pub fn toggle_tool_blocking(
+    paths: &HeroicPaths,
+    settings: &heronite_launch::settings::GameSettings,
+    tool: heronite_launch::tools::Tool,
+    action: heronite_launch::dxvk::Action,
+    progress: &dyn Fn(String),
+) -> Result<heronite_launch::dxvk::Outcome, String> {
+    let ctx = PlanContext::load(paths);
+    let (net, spawner, never) = (SystemNet, SystemSpawner::default(), || false);
+    let notify = |n: heronite_launch::prepare::Notice| progress(n.message);
+    let prep = heronite_launch::prepare::Prep {
+        paths,
+        probe: &SystemProbe,
+        net: &net,
+        spawner: &spawner,
+        cloud: None,
+        cancel: &never,
+        notify: &notify,
+    };
+    prep.toggle_tool(&ctx, settings, tool, action)
+}
+
 /// Heroic refreshes DXVK, VKD3D, DXVK-NVAPI and winetricks a few seconds after
 /// start (`DXVK.getLatest()`, `Winetricks.download()` in `main.ts`), so the
 /// first launch that needs them finds them. Off with

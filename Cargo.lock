@@ -3422,6 +3422,7 @@ dependencies = [
  "heronite-wine",
  "image",
  "indexmap",
+ "libc",
  "log",
  "rust-embed",
  "serde_json",
