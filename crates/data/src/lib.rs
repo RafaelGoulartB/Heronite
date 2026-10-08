@@ -17,6 +17,7 @@ pub mod library;
 pub mod playtime;
 pub mod sessions;
 pub mod settings;
+pub mod sideload;
 pub mod status;
 pub mod ui_state;
 
