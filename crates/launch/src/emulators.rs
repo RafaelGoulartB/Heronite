@@ -5,10 +5,6 @@
 use heronite_data::models::Extra;
 use serde::{Deserialize, Serialize};
 
-// ---------------------------------------------------------------------------
-// emulators.json
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmulatorsFile {
@@ -124,10 +120,6 @@ pub fn resolve_profile_template(
         core_path: profile.core_path.clone(),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Catalog (arguments, working dir, stop pattern, flatpak id)
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy)]
 pub struct CatalogProfile {
@@ -306,10 +298,6 @@ pub fn definition_profile(
         .iter()
         .find(|p| p.id == profile_id)
 }
-
-// ---------------------------------------------------------------------------
-// Variables and argv expansion
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LaunchVars {

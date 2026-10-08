@@ -79,10 +79,6 @@ pub fn open_steam_client_uri(
         .map_err(|e| e.to_string())
 }
 
-// ---------------------------------------------------------------------------
-// Environment for xdg-open
-// ---------------------------------------------------------------------------
-
 const ENV_BLOCK_EXACT: &[&str] = &[
     "LD_LIBRARY_PATH",
     "LD_PRELOAD",
@@ -129,10 +125,6 @@ pub fn desktop_protocol_env(
         .filter(|(k, _)| !is_blocked_protocol_env(k))
         .collect()
 }
-
-// ---------------------------------------------------------------------------
-// Libraries and manifests
-// ---------------------------------------------------------------------------
 
 /// Where Steam lives on this machine.
 #[derive(Debug, Clone)]

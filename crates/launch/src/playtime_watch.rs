@@ -149,10 +149,6 @@ impl SteamWatch {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Log tailing (polled; Steam appends to these files)
-// ---------------------------------------------------------------------------
-
 /// Reads whatever is appended to a file after it was opened.
 #[derive(Debug)]
 pub struct LogTail {
@@ -202,10 +198,6 @@ impl LogTail {
         Some(text)
     }
 }
-
-// ---------------------------------------------------------------------------
-// Driver
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 pub struct SteamWaitConfig {

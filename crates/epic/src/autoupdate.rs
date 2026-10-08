@@ -95,10 +95,6 @@ pub fn plan(gates: &Gates, candidates: &[Candidate]) -> Plan {
     plan
 }
 
-// ---------------------------------------------------------------------------
-// Probes
-// ---------------------------------------------------------------------------
-
 /// Whether Heronite/Heroic (Electron, process name `heroic`) is running.
 pub fn heronite_running() -> bool {
     let Ok(dir) = std::fs::read_dir("/proc") else { return false };

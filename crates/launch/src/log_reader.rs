@@ -139,10 +139,6 @@ fn read_dir_files(dir: &Path) -> Vec<PathBuf> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Reading
-// ---------------------------------------------------------------------------
-
 /// The end of a file as text.
 #[derive(Clone, Debug, Default)]
 pub struct Tail {
