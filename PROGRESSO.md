@@ -577,7 +577,7 @@ gerenciar emuladores e pastas de ROM. Os arquivos continuam os do Heronite (`loc
   notice` e ações que gravam (só com fixture!): `add-save:<def>,<exe>[,<nome>]`, `edit-save:<exe>`, `dup`, `scan-all`,
   `remove-yes`, `remove-folder-yes`, `folder-save:<dir>`; `HERONITE_DEBUG_DIALOG=refresh`; `HERONITE_DEBUG_SYNC=1` faz os
   diálogos carregarem dados na hora (a janela oculta não repinta resultados tardios).
-- **Verificado**: 25 testes novos no backend (nomes → catálogo, caminhada limitada, marcação de já configurados, perfis por
+- **Verificado**: 13 testes novos no backend (nomes → catálogo, caminhada limitada, marcação de já configurados, perfis por
   core, insert/replace/duplicate, relatório de scan com pasta quebrada, saúde, contagem de jogos) + 6 no app; teste read-only
   contra o `/data/Games/Emulation` real (acha DuckStation, RPCS3, shadPS4 ×2 e reconhece o PCSX2 configurado, sem entrar em
   `games/`); capturas (workspace 7) da página (1 e 4 emuladores, saúde, pasta inexistente), diálogos add/edit/perfil/RetroArch/
