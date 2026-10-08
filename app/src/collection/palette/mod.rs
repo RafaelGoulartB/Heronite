@@ -17,7 +17,6 @@
 mod matching;
 mod rank;
 mod sources;
-mod style;
 mod view;
 
 use std::rc::Rc;

@@ -9,9 +9,10 @@ use gpui_kit::*;
 
 use super::rank::{search, Filter, ItemRef, Results};
 use super::sources::{Act, Entry};
-use super::style;
 use crate::icons::Icon;
 use crate::theme;
+use crate::ui::controls::kbd;
+use crate::ui::glass::glass_panel;
 use crate::ui::icon;
 
 #[derive(Clone, Debug)]
@@ -176,10 +177,10 @@ impl PaletteView {
             .gap(px(12.))
             .h(px(ROW_H))
             .px(px(12.))
-            .rounded(px(10.))
+            .rounded(px(theme::R_ITEM))
             .cursor_pointer()
-            .when(sel, |d| d.bg(style::selected_fill()))
-            .when(!sel, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+            .when(sel, |d| d.bg(theme::accent_tint()))
+            .when(!sel, |d| d.hover(|s| s.bg(theme::menu_item_hover())))
             .on_mouse_move(cx.listener(move |this, _, _, cx| {
                 if this.selected != n {
                     this.selected = n;
@@ -193,14 +194,14 @@ impl PaletteView {
             .when(sel, |d| {
                 d.child(div().absolute().left(px(0.)).top(px(8.)).bottom(px(8.)).w(px(2.)).rounded_full().bg(theme::accent()))
             })
-            .child(icon(e.icon, px(16.), if sel { theme::accent() } else { style::icon_idle() }))
-            .child(div().flex_none().max_w(px(340.)).truncate().text_size(px(14.)).text_color(style::text()).child(e.title.clone()))
-            .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(style::muted()).child(e.subtitle.clone()))
-            .children(e.shortcut.map(style::kbd))
+            .child(icon(e.icon, px(16.), if sel { theme::accent() } else { theme::text_muted() }))
+            .child(div().flex_none().max_w(px(340.)).truncate().text_size(px(14.)).text_color(theme::text_primary()).child(e.title.clone()))
+            .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(theme::text_dim()).child(e.subtitle.clone()))
+            .children(e.shortcut.map(kbd))
     }
 
     fn filter_pills(&self, cx: &mut Context<Self>) -> Div {
-        let mut bar = div().flex().flex_none().items_center().gap(px(2.)).p(px(2.)).rounded_full().bg(theme::black_a(0.28));
+        let mut bar = div().flex().flex_none().items_center().gap(px(2.)).p(px(2.)).rounded_full().bg(theme::seg_track());
         for f in [Filter::All, Filter::Pages, Filter::Actions, Filter::Games] {
             let on = f == self.filter;
             bar = bar.child(
@@ -211,8 +212,8 @@ impl PaletteView {
                     .rounded_full()
                     .cursor_pointer()
                     .text_size(px(11.5))
-                    .text_color(if on { Hsla::from(white()) } else { Hsla::from(rgb(0xb5bfcc)) })
-                    .when(on, |d| d.bg(theme::white_a(0.14)))
+                    .text_color(if on { Hsla::from(white()) } else { Hsla::from(theme::seg_text()) })
+                    .when(on, |d| d.bg(theme::seg_active()))
                     .when(!on, |d| d.hover(|s| s.text_color(white())))
                     .on_click(cx.listener(move |this, _, _, cx| this.set_filter(f, cx)))
                     .child(f.label()),
@@ -227,7 +228,7 @@ fn hint(keys: Vec<&'static str>, label: &'static str) -> Div {
         .flex()
         .items_center()
         .gap(px(6.))
-        .child(div().flex().gap(px(3.)).children(keys.into_iter().map(style::kbd)))
+        .child(div().flex().gap(px(3.)).children(keys.into_iter().map(kbd)))
         .child(label)
 }
 
@@ -242,7 +243,7 @@ impl Render for PaletteView {
                     .justify_center()
                     .h(px(64.))
                     .text_size(px(13.))
-                    .text_color(style::muted())
+                    .text_color(theme::text_dim())
                     .child(if self.query.trim().is_empty() { "Nothing to show here" } else { "No results" }),
             );
         }
@@ -258,7 +259,7 @@ impl Render for PaletteView {
                     .px(px(12.))
                     .pb(px(4.))
                     .text_size(px(12.))
-                    .text_color(rgb(0x9aa6b6))
+                    .text_color(theme::text_muted())
                     .child(caption),
             );
             for item in items {
@@ -276,9 +277,9 @@ impl Render for PaletteView {
             .px(px(18.))
             .border_b_1()
             .border_color(theme::white_a(0.08))
-            .child(icon(Icon::FaSearch, px(15.), style::icon_idle()))
-            .child(div().flex_1().min_w_0().text_size(px(15.)).text_color(style::text()).child(Input::new(&self.input).appearance(false)))
-            .child(style::kbd("Esc"));
+            .child(icon(Icon::FaSearch, px(15.), theme::text_muted()))
+            .child(div().flex_1().min_w_0().text_size(px(15.)).text_color(theme::text_primary()).child(Input::new(&self.input).appearance(false)))
+            .child(kbd("Esc"));
 
         let footer = div()
             .flex()
@@ -290,34 +291,22 @@ impl Render for PaletteView {
             .border_t_1()
             .border_color(theme::white_a(0.08))
             .text_size(px(12.))
-            .text_color(style::muted())
+            .text_color(theme::text_dim())
             .child(hint(vec!["\u{2191}", "\u{2193}"], "move"))
             .child(hint(vec!["\u{21b5}"], "open"))
             .child(hint(vec!["Tab"], "filter by type"))
             .child(div().flex_1())
             .child(self.filter_pills(cx));
 
-        let panel = div()
+        let panel = glass_panel(theme::R_POPOVER)
             .id("palette")
             .occlude()
             .flex()
             .flex_col()
             .w(px(PANEL_W))
             .max_h(relative(0.9))
-            .rounded(px(20.))
-            .overflow_hidden()
-            .bg(style::panel_fill())
-            .border_1()
-            .border_color(theme::white_a(0.11))
-            .shadow(vec![BoxShadow {
-                color: theme::black_a(0.45),
-                offset: point(px(0.), px(30.)),
-                blur_radius: px(80.),
-                spread_radius: px(0.),
-                inset: false,
-            }])
             .font_family(theme::FONT_BODY)
-            .text_color(style::text())
+            .text_color(theme::text_primary())
             // Clicks on the panel keep the input focused and do not close it.
             .on_mouse_down(
                 MouseButton::Left,
@@ -352,7 +341,7 @@ impl Render for PaletteView {
                 .flex_col()
                 .items_center()
                 .pt(px(TOP))
-                .bg(theme::black_a(0.55))
+                .bg(theme::glass_backdrop_veil())
                 .on_mouse_down(MouseButton::Left, cx.listener(|_, _, _, cx| cx.emit(PaletteEvent::Close)))
                 .child(panel),
         )
