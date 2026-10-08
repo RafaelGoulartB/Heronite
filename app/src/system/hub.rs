@@ -195,7 +195,7 @@ thread_local! {
 }
 
 /// `HERONITE_DEBUG_*` helpers to exercise the window lifecycle without a
-/// mouse: `SHOW_AFTER_MS`, `CLOSE_AFTER_MS` (closed "to the tray"),
+/// mouse: `SHOW_AFTER_MS`, `CLOSE_AFTER_MS` (as if the user closed it),
 /// `QUIT_AFTER_MS`, `TRAY_CMDS=show@500,toggle@1500,launch:<app>@2000,quit@3000`.
 fn debug_hooks(cx: &mut App, tray_tx: UnboundedSender<TrayCmd>) {
     let after = |name: &str| std::env::var(name).ok().and_then(|v| v.parse::<u64>().ok());
@@ -213,8 +213,12 @@ fn debug_hooks(cx: &mut App, tray_tx: UnboundedSender<TrayCmd>) {
         cx.spawn(async move |cx| {
             cx.background_executor().timer(Duration::from_millis(ms)).await;
             cx.update(|cx| {
-                log::info!("[debug] closing the window to the tray");
-                close_window_keep_alive(cx);
+                // Like the user closing the window: `exitToTray` decides whether the app stays.
+                log::info!("[debug] closing the window");
+                let handle = hub(cx).0.borrow().window.as_ref().map(|w| w.handle);
+                if let Some(handle) = handle {
+                    let _ = handle.update(cx, |_, window, _| window.remove_window());
+                }
             });
         })
         .detach();

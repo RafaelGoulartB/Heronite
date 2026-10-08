@@ -391,24 +391,69 @@ também acontece quando o jogo é iniciado pelo app Rust. Tudo roda na thread de
 
 ## Sistema: lançar de fora, atalhos, bandeja (agente "system")
 
-Em andamento. Código em `crates/shortcuts` (atalhos `.desktop` e `shortcuts.vdf` da Steam, sem GPUI) e `app/src/system/**`.
+Código em `crates/shortcuts` (atalhos `.desktop` e `shortcuts.vdf` da Steam, sem GPUI) e `app/src/system/**`
+(`cli`, `single_instance`, `hub`, `tray`, `settings`, `shortcuts`), mais `app/src/collection/system_glue.rs`.
 
-### API para outras features: atalhos ao adicionar/instalar um jogo
-
-`app/src/system/shortcuts.rs` (bloqueante: chamar numa thread/`cx.background_spawn`, nunca na UI):
-
-```rust
-// Respeita addDesktopShortcuts / addStartMenuShortcuts / addSteamShortcuts de config.json (defaultSettings);
-// não faz nada (rápido) se as três estão desligadas. O jogo já precisa estar nos arquivos da biblioteca
-// (a função recarrega a biblioteca para obter título e arte).
-pub fn on_game_added(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome;
-// Outcome { messages: Vec<Message { text: String, error: bool }> }  +  Outcome::summary() -> Option<Message>
-```
-
-Exemplo (no `add_game`, depois de gravar o jogo sideload): 
-`let heroic = self.heroic.clone(); cx.background_spawn(async move { crate::system::shortcuts::on_game_added(&heroic, "sideload", &app_name) })` e mostrar `outcome.summary()` como toast.
-Também existem `add_shortcuts`, `remove_shortcuts`, `shortcuts_exist`, `add_to_steam`, `remove_from_steam`, `is_added_to_steam` (mesma assinatura `(heroic, runner, app_name)`).
-Raízes redirecionáveis: `HERONITE_DESKTOP_DIR`, `HERONITE_APPLICATIONS_DIR`, `HERONITE_STEAM_DIR`.
+- **Lançar sem a UI** (`heronite-rs --launch <runner>_<app>` | `--launch <runner> <app>` | `--launch <app>`, URLs
+  `heroic://launch/[runner/]app`, `heroic://launch?appName=..&runner=..[&arg=..&altExe=..&gui=false]` e as mesmas com
+  `heronite-rs://`; `--no-gui`; `--help`). Parser em `system/cli.rs` (port de `protocol.ts`). Sem runner, procura em
+  legendary, gog, nile, sideload, zoom. `arg=`/`altExe=` são lidos mas **ignorados** (o runtime não tem essa opção ainda).
+- **Instância única**: socket unix `$XDG_RUNTIME_DIR/heronite-rs-<hash da pasta de dados>.sock` (a pasta de fixture nunca
+  fala com a instância do usuário). Segunda invocação envia uma linha JSON e sai; socket velho (crash) é recolhido.
+  `HERONITE_NO_SINGLE_INSTANCE=1` desliga (o `shot.sh` já define).
+- **Janela/ciclo de vida** (`system/hub.rs`, `QuitMode::Explicit`): a janela é criada por função (`show_window`) e destruída
+  ao fechar; o runtime de jogos é único e compartilhado (`attach_runtime`), então fechar a janela com jogo rodando não
+  perde o estado (eventos `Exited` perdidos são reentregues à próxima janela). Regras: `--no-gui`, `gui=false` ou
+  `hideWindowOnProtocolLaunch` => não mostra janela e lança direto (headless; legendary com `--skip-version-check` como
+  o Heroic em `--no-gui`); se o app foi iniciado só para isso e nenhuma janela foi mostrada, **sai quando o jogo termina**
+  (o Heroic só faz isso com `--no-gui`; aqui vale também para URL/atalho, porque o Steam precisa que o processo dure o jogo).
+  Jogo não instalado => mostra a janela e abre o fluxo de instalar. Com janela visível, a requisição vai pelo botão
+  Play da Collection (prompt de update Epic, escolha de ROM...). Com tray vivo, uma requisição "hide" fecha a janela aberta.
+  Código de saída 1 se o jogo não foi achado / falhou.
+- **Bandeja** (`ksni` 0.3, API bloqueante, `async-io` — mesmo executor do zbus que o gpui já usa): ícone `icon-light/dark.png`
+  do Heroic (`darkTrayIcon`), menu = jogos recentes (`store/config.json` `games.recent`, até `maxRecentGames` ou 5),
+  Show/Hide, Quit; clique esquerdo = alterna (com `exitToTray`) ou mostra. Suporta `exitToTray` (fechar a janela a destrói e
+  o app continua — libera a memória da janela), `startInTray`, `noTrayIcon`, `minimizeOnLaunch`, `darkTrayIcon`; sem
+  watcher StatusNotifier o tray não sobe e tudo isso é ignorado (fechar a janela encerra). `HERONITE_NO_TRAY=1` desliga.
+- **Atalhos** (`crates/shortcuts`, `system/shortcuts.rs`): `.desktop` em `~/Desktop` (XDG) e `~/.local/share/applications`
+  (`Exec=<binário> --launch <runner> <app>`, ícone `icons/<app>.(jpg|png)` do Heroic ou PNG 256 gerado da capa); "Add to Steam"
+  em `userdata/<id>/config/shortcuts.vdf` de **todos** os usuários (VDF binário genérico, re-serialização byte a byte; entrada
+  no layout nativo da Steam; `Exe="<binário>"`, `LaunchOptions=--no-gui "heronite-rs://launch?appName=..&runner=.."`; arte
+  em `grid/` `<id>p.jpg`, `<id>.jpg`, `<id>_hero.jpg`, `<id>_logo.jpg` (PNG transparente como o Heroic); reconhece também entradas
+  criadas pelo Heroic (`heroic://launch`)). **Steam precisa estar fechada** (checa `steam.pid` como o Heroic; aberta => erro
+  explicando; o caminho "via SteamClient/CEF" do Heroic não foi portado). Raízes: `HERONITE_DESKTOP_DIR`,
+  `HERONITE_APPLICATIONS_DIR`, `HERONITE_STEAM_DIR`.
+- **UI**: itens "Add/Remove shortcuts" e "Add to / Remove from Steam" no menu de contexto (jogos instalados, não Steam-URI;
+  estado sondado em segundo plano), toggles na aba General (Hide System Tray Icon, Exit to System Tray, Start Minimized, Use Dark
+  Tray Icon, hide window on protocol launch, Add desktop/menu/Steam shortcuts automatically). Instalação Epic concluída chama
+  `on_game_added` (toast com o resultado).
+- **API para outras features** — `system::shortcuts` (bloqueante; usar `std::thread`/`background_spawn`):
+  `on_game_added(&HeroicPaths, runner, app_name) -> Outcome` (respeita as 3 configs; rápido se todas off; o jogo precisa já estar
+  nos arquivos da biblioteca) e o helper `spawn_on_game_added(cx, &heroic, runner, app, |this, outcome, cx| ..)` que faz tudo em
+  segundo plano e chama o callback na UI só se houver mensagem. `Outcome::summary()` junta as mensagens num toast. Também:
+  `add_shortcuts`, `remove_shortcuts`, `shortcuts_exist`, `add_to_steam`, `remove_from_steam`, `is_added_to_steam`.
+- **install.sh**: `Exec=... %U`, `MimeType=x-scheme-handler/heronite-rs` e `xdg-mime default` só para `heronite-rs` (não toma `heroic://`).
+- **Pontos de ligação em arquivos compartilhados**: `app/src/main.rs` (reescrito: CLI, instância única, `system::init`),
+  `collection/mod.rs` (`mod system_glue;`, `attach_runtime` no lugar de `GameRuntime::new`, `runtime,`), `collection/context_menu.rs`
+  (1 linha), `services/downloads.rs` (1 bloco no `Finished`), `dialogs/heroic_settings/general.rs` (`system_rows`),
+  `app/Cargo.toml` (`heronite-shortcuts`, `dirs`, `ksni`, `tempfile` dev, `image` com jpeg/png), `scripts/install.sh`.
+- **Depuração**: `HERONITE_DEBUG_FAKE_LAUNCH=1` (loga em vez de lançar; **sempre use junto com qualquer teste de `--launch`**),
+  `HERONITE_DEBUG_START_HIDDEN`, `HERONITE_DEBUG_SHOW_AFTER_MS`, `HERONITE_DEBUG_CLOSE_AFTER_MS` (como se o usuário fechasse),
+  `HERONITE_DEBUG_QUIT_AFTER_MS`, `HERONITE_DEBUG_TRAY_CMDS=show@500,toggle@1500,launch:<app>@2000,quit@3000`.
+- **Verificação**: 22 testes em `app` (`system::`: CLI/URLs, socket de instância única real em tempdir com socket velho,
+  mensagens, configurações, linhas do menu da bandeja, pixmaps ARGB, chaves de busca, mais um e2e opcional com
+  `HERONITE_FIXTURE_SYSTEM=<cópia dos dados>` que cria/remove `.desktop`, ícone, entrada no `shortcuts.vdf` de uma Steam falsa e a
+  arte, tudo em tempdir) e 21 em `crates/shortcuts` (VDF byte a byte com o arquivo real da Steam e as 7 fixtures do Heroic, add/remove
+  com renumeração, Steam aberta, arquivo corrompido, usuário novo, arte existente). Testado ao vivo (fixture, `shot.sh`):
+  `--no-gui --launch` sem janela e saindo ao fim; jogo inexistente (saída 1); encaminhamento para instância viva (com e sem
+  `--no-gui`); janela fechada com/sem tray (sem tray encerra; com `exitToTray` fica e `Show` recria; PSS 165->151 MB no debug);
+  `startInTray`; tray real registrado no quickshell do usuário (ícone por poucos segundos) com Show/Toggle/Quit simulados;
+  capturas da aba General e do menu de contexto.
+- **Não verificado / limitações**: o menu do tray e o clique no ícone nunca foram exercitados com cliques reais (só os comandos via
+  `TRAY_CMDS`); `Add to Steam` só contra Steam falsa em /tmp (nunca a real, que está aberta); lançamento real headless (sem
+  `FAKE_LAUNCH`) só aconteceu por acidente (ver relatório); `arg=`/`altExe=` ignorados; ícone de GOG do Heroic (`goggame-*.ico`) não
+  usado; `.desktop` da Área de Trabalho não é marcado como confiável (`gio set metadata::trusted`); pós-jogo (Ludusavi/captura)
+  com a janela fechada roda quando a próxima janela abre; macOS/Windows fora de escopo.
 
 ## Sobras da Collection (agente "collection")
 

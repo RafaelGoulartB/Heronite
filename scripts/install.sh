@@ -34,12 +34,15 @@ cat > "$APP_DIR/com.heronite.rs.desktop" <<DESKTOP
 Type=Application
 Name=Heronite (Rust)
 Comment=Game Collection (shares data with Heronite)
-Exec=$PREFIX/heronite-rs
+Exec=$PREFIX/heronite-rs %U
 Icon=$ICON_NAME
 Terminal=false
 Categories=Game;
+MimeType=x-scheme-handler/heronite-rs;
 StartupWMClass=com.heronite.rs
 DESKTOP
 
+# heronite-rs:// links (not heroic://, which stays with Heronite).
+command -v xdg-mime >/dev/null && xdg-mime default com.heronite.rs.desktop x-scheme-handler/heronite-rs >/dev/null 2>&1 || true
 command -v update-desktop-database >/dev/null && update-desktop-database "$APP_DIR" >/dev/null 2>&1 || true
 echo "Installed heronite-rs to $PREFIX"
