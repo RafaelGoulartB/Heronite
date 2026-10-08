@@ -76,6 +76,8 @@ pub struct CollectionView {
     playing: HashMap<String, bool>,
     toast: Option<(SharedString, bool)>,
     context_menu: Option<context_menu::ContextMenuState>,
+    focus_handle: FocusHandle,
+    focus_scroll: ScrollHandle,
     toast_task: Option<Task<()>>,
     images: ImageStore,
     cover_chains: HashMap<SharedString, Vec<ImageRef>>,
@@ -173,6 +175,8 @@ impl CollectionView {
             toast: None,
             toast_task: None,
             context_menu: None,
+            focus_handle: cx.focus_handle(),
+            focus_scroll: ScrollHandle::new(),
             images,
             cover_chains: HashMap::new(),
             stage_chains: HashMap::new(),
@@ -192,6 +196,7 @@ impl CollectionView {
             grey_uninstalled: true,
             cover_aspect: 1.5,
         };
+        window.focus(&this.focus_handle, cx);
         this.spawn_load(cx);
         // Heronite may write the same files: reload when they change.
         cx.spawn(async move |this, cx| loop {
@@ -538,6 +543,9 @@ impl CollectionView {
         let Some(game) = lib.get(&key) else { return };
         let playing = self.playing.contains_key(&game.app_name);
         self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
+        if self.selected.as_ref() != Some(&key) {
+            self.focus_scroll.set_offset(point(px(0.), px(0.)));
+        }
         self.selected = Some(key.clone());
         if persist {
             self.ui.focused_game = Some(key.to_string());
@@ -639,6 +647,11 @@ impl Render for CollectionView {
             .pr(px(16.))
             .child(list(self.list_state.clone(), cx.processor(Self::render_item)).size_full());
 
+        let list_scrollbar = crate::ui::scrollbar(
+            self.list_state.scroll_px_offset_for_scrollbar().y,
+            self.list_state.max_offset_for_scrollbar().y,
+            self.list_state.viewport_bounds().size.height,
+        );
         let sticky = self.sticky().map(|(g, shift)| {
             div()
                 .absolute()
@@ -669,17 +682,37 @@ impl Render for CollectionView {
                         }
                     }
                 }
+                let mut html_images: HashMap<String, ImageSource> = HashMap::new();
+                if let Some(blocks) = vm.overview_html.clone() {
+                    let column = focus::main_column_width(vw - list_w);
+                    for b in blocks.iter() {
+                        if let html::Block::Image { url, width, height } = b {
+                            let (w, h) = focus::html_image_size(*width, *height, column);
+                            let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
+                            let id: SharedString = format!("h:{url}:{pw}x{ph}").into();
+                            let chain = vec![ImageRef::Url(url.clone())];
+                            if let Some(img) =
+                                self.images.get_or_request(&id, || chain, pw, ph, Variant::Cover, 20)
+                            {
+                                html_images.insert(url.clone(), ImageSource::Render(img));
+                            }
+                        }
+                    }
+                }
                 let (w1, w2, w3, w4) = (weak.clone(), weak.clone(), weak.clone(), weak.clone());
                 let focus_key = vm.key.clone();
                 focus::focus_panel(
                     focus::FocusProps {
                         vm,
                         cover_for: Rc::new(move |k| covers.get(k).cloned()),
+                        html_images: Rc::new(move |u| html_images.get(u).cloned()),
+                        scroll: self.focus_scroll.clone(),
                         viewport_w: vw,
                         panel_w: vw - list_w,
                         active_facets,
                     },
                     focus::FocusActions {
+                        on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
                         on_close: Box::new(
                             cx.listener(|this, _: &(), _, cx| {
                                 this.focus = None;
@@ -752,6 +785,24 @@ impl Render for CollectionView {
 
         div()
             .id("collection")
+            .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
+                if ev.keystroke.key == "escape" {
+                    if this.context_menu.is_some() {
+                        this.context_menu = None;
+                    } else if this.open_menu.is_some() {
+                        this.open_menu = None;
+                    } else {
+                        // Heronite clears the selected game on Esc.
+                        this.focus = None;
+                        this.selected = None;
+                    }
+                    cx.notify();
+                }
+            }))
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+                window.focus(&this.focus_handle, cx);
+            }))
             .relative()
             .size_full()
             .overflow_hidden()
@@ -783,7 +834,8 @@ impl Render for CollectionView {
                                         linear_color_stop(theme::rgb_a(7, 9, 12, 0.1), 0.72),
                                     ))
                                     .child(list_el)
-                                    .children(sticky),
+                                    .children(sticky)
+                                    .children(list_scrollbar),
                             )
                             .child(div().flex_1().min_w_0().h_full().child(focus_panel)),
                     ),

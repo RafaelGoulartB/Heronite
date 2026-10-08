@@ -145,6 +145,12 @@ pub fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, playing: bo
         .collect();
 
     let overview = if !d.description.trim().is_empty() { Some(d.description.clone().into()) } else { None };
+    let overview_html = d
+        .description_html
+        .as_deref()
+        .map(super::html::parse)
+        .filter(|b| !b.is_empty())
+        .map(Arc::new);
 
     FocusVm {
         key: g.key.clone().into(),
@@ -152,6 +158,7 @@ pub fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, playing: bo
         meta_line: fd.meta_line.clone().into(),
         cover_key: g.key.clone().into(),
         overview,
+        overview_html,
         related,
         details: rows,
         hltb: fd.hltb.as_ref().filter(|h| h.main_story > 0. || h.main_extra > 0.).map(|h| HltbVm {

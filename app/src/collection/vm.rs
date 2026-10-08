@@ -93,6 +93,8 @@ pub struct FocusVm {
     pub meta_line: SharedString,
     pub cover_key: SharedString,
     pub overview: Option<SharedString>,
+    /// Steam store description (takes precedence over `overview`).
+    pub overview_html: Option<Arc<Vec<super::html::Block>>>,
     pub related: Vec<RelatedGroupVm>,
     pub details: Vec<DetailRow>,
     pub hltb: Option<HltbVm>,

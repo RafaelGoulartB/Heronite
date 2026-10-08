@@ -95,9 +95,26 @@ docs/reference/       screenshots do Heronite para paridade visual
 - [x] Stage + scrim (layout), header (estático), lista virtual agrupada com cabeçalho fixo, cards
       (anel, barra de hover animada, playtime, pulso "jogando")
 - [x] Painel de foco: cabeçalho, overview, relacionados, detalhes com chips, HLTB, rodapé
-- [ ] Ligar aos dados reais (`heronite-data`) e às imagens (`heronite-images`)
-- [ ] Busca, filtros, ordenação, menus suspensos
-- [ ] Screenshots no painel de foco
+- [x] Ligar aos dados reais (`heronite-data`) e às imagens (`heronite-images`, LRU de texturas,
+      stage pré-borrado)
+- [x] Busca, filtro de instalação, ordenação, agrupar por status, filtro por facetas (flyout)
+- [x] Jogar / parar / instalar (Steam) via `heronite-launch`; estado "jogando"; recarga ao sair
+- [x] Menu de contexto (status, jogar, favorito, pasta, ocultar, remover dos recentes)
+- [x] Recarrega quando o Heronite grava (poll de mtime a cada 2 s)
+- [x] Importa o estado de UI do localStorage do Heronite na 1ª execução
+- [x] Overview com HTML da Steam (parser próprio), Esc limpa seleção, scrollbars finas
+- [ ] Screenshots no painel de foco (backend: agente `crates/media`)
+- [ ] Diálogos: configurações, gerenciar status, metadados, arte, Playnite, ROMs
+- [ ] Busca dentro do flyout de facetas; arrastar scrollbar
+
+### Diferenças visuais conhecidas (aceitas)
+- Cabeçalho de grupo fixo: sem blur real atrás (gradiente mais escuro no lugar).
+- Painéis de vidro: sem blur extra de 18/22px sobre o stage (o stage já é borrado).
+
+### Backends em andamento (agentes)
+- `crates/media` (screenshots + captura), `crates/metadata` (IGDB/Steam/Lutris/arte/HLTB/busca
+  de imagens), `crates/playnite` (LiteDB, importar/mesclar/exportar), `crates/emulation` (ROMs,
+  disc-id, save states, Ludusavi, backup).
 - [ ] Menu de contexto, diálogos de status e aparência
 - [ ] Comparação com `docs/reference`
 

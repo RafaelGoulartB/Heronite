@@ -29,9 +29,11 @@ pub fn group_header(g: &GroupVm, stuck: bool) -> Div {
                     .bottom(px(-12.))
                     .left(px(-13.6))
                     .right(px(-16.))
+                    // CSS: rgba(7,9,12,.32)→.14→0 over a 7px backdrop blur.
+                    // Without the blur a darker ramp keeps the label legible.
                     .bg(linear_gradient(
                         180.,
-                        linear_color_stop(theme::rgb_a(7, 9, 12, 0.32), 0.),
+                        linear_color_stop(theme::rgb_a(7, 9, 12, 0.78), 0.),
                         linear_color_stop(theme::rgb_a(7, 9, 12, 0.), 1.),
                     )),
             )

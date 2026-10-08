@@ -12,17 +12,99 @@ use crate::ui::{chip, icon, round_button};
 
 pub type CoverFor = Rc<dyn Fn(&str) -> Option<ImageSource>>;
 
+/// Main-column width in logical px (for sizing description images).
+pub fn main_column_width(panel_w: f32) -> f32 {
+    let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
+    if narrow {
+        panel_w - 2. * 19.2
+    } else {
+        let inner_w = panel_w - 72.;
+        let side_w = (inner_w - 38.4).clamp(352., 480.).min(inner_w * 0.5).max(352.);
+        (inner_w - side_w - 38.4).min(1480.)
+    }
+}
+
+/// Display size of a description image: its HTML size, shrunk to the column.
+pub fn html_image_size(w: u32, h: u32, column: f32) -> (f32, f32) {
+    let (w, h) = if w == 0 || h == 0 { (column, column * 9. / 16.) } else { (w as f32, h as f32) };
+    let scale = (column / w).min(1.);
+    (w * scale, h * scale)
+}
+
+fn render_html(blocks: &[super::html::Block], images: &dyn Fn(&str) -> Option<ImageSource>, column: f32) -> Div {
+    use super::html::{Block, Span};
+    let text_of = |spans: &[Span]| -> StyledText {
+        let mut text = String::new();
+        let mut highlights = Vec::new();
+        for s in spans {
+            let start = text.len();
+            text.push_str(&s.text);
+            if s.bold || s.italic {
+                highlights.push((
+                    start..text.len(),
+                    HighlightStyle {
+                        font_weight: s.bold.then_some(theme::W_BOLD),
+                        font_style: s.italic.then_some(FontStyle::Italic),
+                        ..Default::default()
+                    },
+                ));
+            }
+        }
+        StyledText::new(text).with_highlights(highlights)
+    };
+    let mut out = div().flex().flex_col().text_size(px(15.2)).line_height(px(15.2 * 1.65)).text_color(theme::white_a(0.92));
+    for (i, b) in blocks.iter().enumerate() {
+        out = out.child(match b {
+            Block::Heading(spans) => div()
+                .when(i > 0, |d| d.mt(px(18.4)))
+                .mb(px(7.2))
+                .font_family(theme::FONT_HEADING)
+                .text_size(px(16.32))
+                .font_weight(theme::W_BOLD)
+                .text_color(white())
+                .child(text_of(spans))
+                .into_any_element(),
+            Block::Para(spans) => div().mb(px(12.)).child(text_of(spans)).into_any_element(),
+            Block::ListItem(spans) => div()
+                .flex()
+                .gap(px(8.))
+                .pl(px(6.))
+                .mb(px(4.))
+                .child(div().flex_none().child("•"))
+                .child(div().flex_1().min_w_0().child(text_of(spans)))
+                .into_any_element(),
+            Block::Image { url, width, height } => {
+                let (w, h) = html_image_size(*width, *height, column);
+                div()
+                    .mt(px(13.6))
+                    .mb(px(17.6))
+                    .w(px(w))
+                    .h(px(h))
+                    .rounded(px(6.))
+                    .overflow_hidden()
+                    .children(images(url).map(|src| img(src).size_full().object_fit(ObjectFit::Cover)))
+                    .into_any_element()
+            }
+        });
+    }
+    out
+}
+
 pub struct FocusProps {
     pub vm: FocusVm,
     pub cover_for: CoverFor,
+    /// Description images by URL.
+    pub html_images: CoverFor,
     /// Window width, for `clamp(1.55rem, 2.2vw, 2rem)`.
     pub viewport_w: f32,
     /// Container width of the focus panel (container queries).
     pub panel_w: f32,
     pub active_facets: Vec<(&'static str, SharedString)>,
+    pub scroll: ScrollHandle,
 }
 
 pub struct FocusActions {
+    pub on_scroll: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_close: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_play: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_favourite: Box<dyn Fn(&mut Window, &mut App)>,
@@ -60,7 +142,8 @@ fn panel(facts: bool) -> Div {
 }
 
 pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
-    let FocusProps { vm, cover_for, viewport_w, panel_w, active_facets } = props;
+    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll } = props;
+    let scrollbar = crate::ui::scrollbar(scroll.offset().y, scroll.max_offset().y, scroll.bounds().size.height);
     let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
     let title_size = (viewport_w * 0.022).clamp(24.8, 32.);
     let cover_w = if narrow { 72. } else { 86. };
@@ -116,14 +199,16 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
             .flex()
             .flex_col()
             .child(h3("Overview"))
-            .child(
-                div()
+            .child(match &vm.overview_html {
+                Some(blocks) => render_html(blocks, &*html_images, main_column_width(panel_w)).into_any_element(),
+                None => div()
                     .max_w(px(72. * 7.6))
                     .text_size(px(15.2))
                     .line_height(px(15.2 * 1.65))
                     .text_color(theme::white_a(0.92))
-                    .child(vm.overview.clone().unwrap_or_else(|| "No description available".into())),
-            ),
+                    .child(vm.overview.clone().unwrap_or_else(|| "No description available".into()))
+                    .into_any_element(),
+            }),
     );
     if !vm.related.is_empty() {
         main = main.child(related_panel(&vm.related, &cover_for, actions.on_select.clone()));
@@ -157,6 +242,7 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
     };
 
     let on_close = actions.on_close;
+    let on_scroll = actions.on_scroll;
     let on_play = actions.on_play;
     let on_fav = actions.on_favourite;
     let play_label = if vm.playing {
@@ -193,14 +279,22 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
         )
         .child(
             div()
-                .id("focus-inner")
+                .relative()
                 .flex_1()
                 .min_h_0()
+                .children(scrollbar)
+                .child(
+            div()
+                .id("focus-inner")
+                .size_full()
                 .overflow_y_scroll()
+                .track_scroll(&scroll)
+                .on_scroll_wheel(move |_, w, cx| on_scroll(w, cx))
                 .pt(px(if narrow { 32. } else { 38.4 }))
                 .px(px(if narrow { 19.2 } else { 36. }))
                 .pb(px(16.))
                 .child(div().flex().flex_col().max_w(px(1480.)).child(header).child(body)),
+                ),
         )
         .child(
             div()
