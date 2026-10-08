@@ -3,8 +3,6 @@
 //! under three scrim gradients. CSS multi-stop gradients are split into
 //! two-stop bands because GPUI gradients take exactly two stops.
 
-use std::sync::Arc;
-
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -63,7 +61,7 @@ pub fn scrim_layers(s: Scrim) -> Div {
 
 /// The stage. `art` is already blurred/saturated; `None` shows the plain page
 /// colour like Heronite does when the background is disabled or missing.
-pub fn stage(art: Option<Arc<RenderImage>>, art_id: SharedString, s: Scrim) -> AnyElement {
+pub fn stage(art: Option<ImageSource>, art_id: SharedString, s: Scrim) -> AnyElement {
     let Some(art) = art else {
         return div().absolute().inset_0().into_any_element();
     };
@@ -71,7 +69,7 @@ pub fn stage(art: Option<Arc<RenderImage>>, art_id: SharedString, s: Scrim) -> A
         .absolute()
         .inset_0()
         .child(
-            img(ImageSource::Render(art))
+            img(art)
                 .absolute()
                 .inset_0()
                 .size_full()

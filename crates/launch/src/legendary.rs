@@ -1,0 +1,466 @@
+//! Epic games through the `legendary` CLI bundled with Heroic/Heronite
+//! (port of `LegendaryGame.launch` and `getWineFlags`).
+
+use heronite_data::models::GameInfo;
+use serde_json::Value;
+
+use crate::env::{
+    build_wrappers, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env,
+};
+use crate::plan::{Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
+use crate::probe::Probe;
+use crate::settings::GameSettings;
+use crate::wine;
+
+/// Where the legendary binary may live, in priority order.
+pub fn legendary_candidates(ctx: &PlanContext, probe: &dyn Probe) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(p) = probe
+        .env_var("HERONITE_LEGENDARY_BIN")
+        .filter(|s| !s.is_empty())
+    {
+        out.push(p);
+    }
+    if let Some(p) = ctx.global.alt_legendary_bin() {
+        out.push(p);
+    }
+    let arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        _ => "x64",
+    };
+    let home = probe.home();
+    let rel = format!("resources/app.asar.unpacked/build/bin/{arch}/linux/legendary");
+    for base in [
+        join(&home, ".local/opt/Heronite"),
+        "/opt/Heronite".into(),
+        "/opt/Heroic".into(),
+        "/usr/lib/heroic".into(),
+    ] {
+        out.push(join(&base, &rel));
+    }
+    out
+}
+
+/// First existing candidate, else `legendary` on `$PATH`.
+pub fn find_legendary(ctx: &PlanContext, probe: &dyn Probe) -> Option<String> {
+    legendary_candidates(ctx, probe)
+        .into_iter()
+        .find(|p| probe.exists(p))
+        .or_else(|| probe.which("legendary"))
+}
+
+/// Heroic's `known_fixes.json` env variables for an Epic game.
+fn known_fixes_env(ctx: &PlanContext, app_name: &str) -> Env {
+    let mut env = Env::new();
+    let fixes = ctx
+        .known_fixes
+        .as_ref()
+        .and_then(|k| k.get("epic"))
+        .and_then(|e| e.get(app_name))
+        .and_then(|f| f.get("envVariables"))
+        .and_then(Value::as_object);
+    for (k, v) in fixes.into_iter().flatten() {
+        let value = match v {
+            Value::String(s) => s.clone(),
+            Value::Null => continue,
+            other => other.to_string(),
+        };
+        env.insert(k.clone(), value);
+    }
+    env
+}
+
+fn cached_umu_id(ctx: &PlanContext, app_name: &str) -> Option<String> {
+    ctx.umu_ids
+        .as_ref()?
+        .get(format!("legendary_{app_name}"))?
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn flag(rest: &heronite_data::models::Extra, key: &str) -> bool {
+    rest.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
+pub fn build(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    game: &GameInfo,
+    settings: &GameSettings,
+    opts: &LaunchOptions,
+) -> LaunchPlan {
+    let app = game.app_name.as_str();
+    if !game.is_installed {
+        return LaunchPlan::Unavailable("This Epic game is not installed".into());
+    }
+    let install_path = game.install.install_path.as_deref().unwrap_or("");
+    if install_path.is_empty() || !probe.exists(install_path) {
+        return LaunchPlan::Unavailable(format!("Install folder not found: {install_path}"));
+    }
+    let Some(legendary) = find_legendary(ctx, probe) else {
+        return LaunchPlan::Unavailable("The legendary binary was not found".into());
+    };
+
+    // Epic games on Linux always run through Wine/Proton.
+    let wine = match wine::prepare(ctx, probe, settings) {
+        Ok(w) => w,
+        Err(e) => return LaunchPlan::Unavailable(e),
+    };
+    let s = &wine.settings;
+
+    // umu goes into the wrapper list so legendary starts the game through it.
+    let wp = build_wrappers(s, probe, wine.umu.as_deref());
+    if let Some(err) = wp.error {
+        return LaunchPlan::Unavailable(format!("Launch aborted: {err}"));
+    }
+    let wrappers = wp.wrappers;
+    let wrapper_joined =
+        shlex::try_join(wrappers.iter().map(String::as_str)).unwrap_or_else(|_| wrappers.join(" "));
+
+    // Environment, later entries win (same order as Heroic).
+    let mut env = setup_wrapper_env_vars(app, "legendary");
+    env.extend(setup_env_vars(s, Some(install_path), probe));
+    env.extend(known_fixes_env(ctx, app));
+    env.extend(setup_wine_env_vars(
+        s,
+        game.folder_name.as_deref().unwrap_or("0"),
+        &ctx.runtime_dir(),
+        probe,
+    ));
+    if wine.umu.is_some() {
+        if let Some(id) = cached_umu_id(ctx, app) {
+            env.insert("GAMEID".into(), id);
+        }
+    }
+    env.insert(
+        "LEGENDARY_CONFIG_PATH".into(),
+        ctx.paths
+            .legendary_config_dir()
+            .to_string_lossy()
+            .into_owned(),
+    );
+
+    // Arguments, in the order legendary's command object is flattened.
+    let mut args: Vec<String> = vec!["launch".into(), app.into()];
+    let extra = opts
+        .extra_args
+        .iter()
+        .cloned()
+        .chain(Some(s.launcher_args.clone()))
+        .filter(|a| !a.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !extra.is_empty() {
+        args.extend(
+            shlex::split(&extra)
+                .unwrap_or_else(|| extra.split_whitespace().map(str::to_string).collect()),
+        );
+    }
+    match s.wine_version.kind.as_str() {
+        "proton" => {
+            args.push("--no-wine".into());
+            let wrapper = if wine.umu.is_some() {
+                wrapper_joined.clone()
+            } else {
+                format!(
+                    "{wrapper_joined} \"{}\" waitforexitandrun",
+                    s.wine_version.bin
+                )
+            };
+            args.extend(["--wrapper".into(), wrapper.trim().to_string()]);
+        }
+        _ => {
+            args.extend(["--wine".into(), s.wine_version.bin.clone()]);
+            if !wrapper_joined.is_empty() {
+                args.extend(["--wrapper".into(), wrapper_joined.clone()]);
+            }
+        }
+    }
+    if opts.skip_version_check {
+        args.push("--skip-version-check".into());
+    }
+    let language = if !s.language.is_empty() {
+        Some(s.language.clone())
+    } else {
+        ctx.ui_language.clone()
+    };
+    if let Some(l) = language {
+        args.extend(["--language".into(), l]);
+    }
+    if let Some(exe) = opts.alt_exe.clone().filter(|e| !e.is_empty()) {
+        args.extend(["--override-exe".into(), exe]);
+    } else if !s.target_exe.is_empty() {
+        args.extend(["--override-exe".into(), s.target_exe.clone()]);
+    }
+    if s.offline_mode {
+        args.push("--offline".into());
+    }
+    if flag(&game.rest, "isEAManaged") {
+        args.push("--origin".into());
+    }
+    if flag(&game.rest, "isUbisoftManaged") {
+        args.push("--ubisoft".into());
+    }
+
+    let stop = StopSpec {
+        kill_patterns: vec![app.to_string()],
+        commands: vec![wine.shutdown_command(&env)],
+    };
+    LaunchPlan::Legendary {
+        app_name: app.to_string(),
+        process: ProcessPlan {
+            command: Command {
+                program: legendary.clone(),
+                args,
+                env,
+                cwd: Some(crate::emulators::node_dirname(&legendary)),
+            },
+            stop,
+            notes: wine.notes,
+            ..Default::default()
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plan::{build_plan_with_settings, LaunchPlan};
+    use crate::probe::FakeProbe;
+    use heronite_data::models::InstallInfo;
+    use heronite_data::HeroicPaths;
+    use serde_json::json;
+
+    const UMU: &str = "/hr/tools/runtimes/umu/umu_run.py";
+
+    fn ctx() -> PlanContext {
+        let mut c = PlanContext::load(&HeroicPaths::at("/hr"));
+        c.ui_language = Some("en".into());
+        c.known_fixes =
+            Some(json!({"epic": {"Calluna": {"envVariables": {"FOO": "bar", "FLAG": true}}}}));
+        c.umu_ids = Some(json!({"legendary_Calluna": "umu-870780", "legendary_Other": null}));
+        c
+    }
+
+    fn game() -> GameInfo {
+        let mut g = GameInfo {
+            runner: "legendary".into(),
+            app_name: "Calluna".into(),
+            title: "Control".into(),
+            is_installed: true,
+            folder_name: Some("Control".into()),
+            install: InstallInfo {
+                install_path: Some("/games/Control".into()),
+                platform: Some("Windows".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        g.rest.insert("isEAManaged".into(), json!(false));
+        g
+    }
+
+    fn probe() -> FakeProbe {
+        FakeProbe::new("/home/u")
+            .with_env("HERONITE_LEGENDARY_BIN", "/lg/legendary")
+            .with_path("/lg/legendary")
+            .with_path("/games/Control")
+            .with_path("/p/GE/proton")
+            .with_path(UMU)
+            .with_bin("gamemoderun", "/usr/bin/gamemoderun")
+    }
+
+    fn settings(extra: serde_json::Value) -> GameSettings {
+        let mut base = json!({
+            "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"},
+            "winePrefix": "/pfx", "launcherArgs": "-nolauncher",
+            "enviromentOptions": [{"key": "PROTON_PREFER_SDL", "value": "1"}]
+        });
+        for (k, v) in extra.as_object().unwrap() {
+            base[k] = v.clone();
+        }
+        GameSettings::from_map(base.as_object().unwrap(), "/home/u")
+    }
+
+    #[test]
+    fn proton_through_umu_goes_in_the_wrapper() {
+        let s = settings(json!({"useGameMode": true, "targetExe": "Binaries/Alt.exe"}));
+        let plan = build_plan_with_settings(
+            &ctx(),
+            &probe(),
+            &game(),
+            None,
+            &s,
+            &LaunchOptions {
+                skip_version_check: true,
+                ..Default::default()
+            },
+        );
+        let LaunchPlan::Legendary { process, app_name } = plan else {
+            panic!("{plan:?}")
+        };
+        assert_eq!(app_name, "Calluna");
+        let c = &process.command;
+        assert_eq!(c.program, "/lg/legendary");
+        assert_eq!(
+            c.args,
+            [
+                "launch",
+                "Calluna",
+                "-nolauncher",
+                "--no-wine",
+                "--wrapper",
+                &format!("/usr/bin/gamemoderun {UMU}"),
+                "--skip-version-check",
+                "--language",
+                "en",
+                "--override-exe",
+                "Binaries/Alt.exe"
+            ]
+        );
+        assert_eq!(
+            c.env["LEGENDARY_CONFIG_PATH"],
+            "/hr/legendaryConfig/legendary"
+        );
+        assert_eq!(c.env["GAMEID"], "umu-870780");
+        assert_eq!(c.env["PROTONPATH"], "/p/GE");
+        assert_eq!(c.env["WINEPREFIX"], "/pfx");
+        assert_eq!(c.env["STEAM_COMPAT_INSTALL_PATH"], "/games/Control");
+        assert_eq!(c.env["SteamGameId"], "heroic-Control");
+        assert_eq!(c.env["FOO"], "bar");
+        assert_eq!(c.env["FLAG"], "true");
+        assert_eq!(c.env["HEROIC_APP_RUNNER"], "legendary");
+        assert_eq!(process.stop.kill_patterns, ["Calluna"]);
+    }
+
+    #[test]
+    fn proton_without_umu_names_proton_in_the_wrapper() {
+        let p = FakeProbe::new("/home/u")
+            .with_env("HERONITE_LEGENDARY_BIN", "/lg/legendary")
+            .with_path("/lg/legendary")
+            .with_path("/games/Control")
+            .with_path("/p/GE/proton");
+        let plan = build_plan_with_settings(
+            &ctx(),
+            &p,
+            &game(),
+            None,
+            &settings(json!({})),
+            &Default::default(),
+        );
+        let LaunchPlan::Legendary { process, .. } = plan else {
+            panic!("{plan:?}")
+        };
+        let args = &process.command.args;
+        let i = args.iter().position(|a| a == "--wrapper").unwrap();
+        assert_eq!(args[i + 1], "\"/p/GE/proton\" waitforexitandrun");
+        assert!(args.contains(&"--no-wine".to_string()));
+        assert!(
+            !process.command.env.contains_key("GAMEID") || process.command.env["GAMEID"] == "umu-0"
+        );
+    }
+
+    #[test]
+    fn plain_wine_uses_wine_flag() {
+        let p = FakeProbe::new("/home/u")
+            .with_env("HERONITE_LEGENDARY_BIN", "/lg/legendary")
+            .with_path("/lg/legendary")
+            .with_path("/games/Control")
+            .with_path("/w/bin/wine")
+            .with_path("/w/bin/wineserver")
+            .with_bin("mangohud", "/usr/bin/mangohud");
+        let s = settings(json!({
+            "wineVersion": {"bin": "/w/bin/wine", "name": "Wine", "type": "wine"},
+            "showMangohud": true, "offlineMode": true
+        }));
+        let LaunchPlan::Legendary { process, .. } =
+            build_plan_with_settings(&ctx(), &p, &game(), None, &s, &Default::default())
+        else {
+            panic!()
+        };
+        let a = &process.command.args;
+        assert_eq!(
+            a[3..7],
+            [
+                "--wine",
+                "/w/bin/wine",
+                "--wrapper",
+                "/usr/bin/mangohud --dlsym"
+            ]
+        );
+        assert!(a.contains(&"--offline".to_string()));
+        assert_eq!(process.stop.commands[0].program, "/w/bin/wineserver");
+    }
+
+    #[test]
+    fn unavailable_cases() {
+        let c = ctx();
+        let mut not_installed = game();
+        not_installed.is_installed = false;
+        assert!(build_plan_with_settings(
+            &c,
+            &probe(),
+            &not_installed,
+            None,
+            &settings(json!({})),
+            &Default::default()
+        )
+        .unavailable_reason()
+        .unwrap()
+        .contains("not installed"));
+        let no_dir = FakeProbe::new("/h")
+            .with_env("HERONITE_LEGENDARY_BIN", "/lg/legendary")
+            .with_path("/lg/legendary");
+        assert!(build_plan_with_settings(
+            &c,
+            &no_dir,
+            &game(),
+            None,
+            &settings(json!({})),
+            &Default::default()
+        )
+        .unavailable_reason()
+        .unwrap()
+        .contains("Install folder"));
+        let no_bin = FakeProbe::new("/h")
+            .with_path("/games/Control")
+            .with_path("/p/GE/proton");
+        assert!(build_plan_with_settings(
+            &c,
+            &no_bin,
+            &game(),
+            None,
+            &settings(json!({})),
+            &Default::default()
+        )
+        .unavailable_reason()
+        .unwrap()
+        .contains("legendary binary"));
+    }
+
+    #[test]
+    fn legendary_binary_lookup_order() {
+        let c = ctx();
+        let home_bin = legendary_candidates(&c, &FakeProbe::new("/home/u"))
+            .into_iter()
+            .find(|p| p.starts_with("/home/u"))
+            .unwrap();
+        assert!(
+            home_bin.contains(".local/opt/Heronite/resources/app.asar.unpacked/build/bin/"),
+            "{home_bin}"
+        );
+        let probe = FakeProbe::new("/home/u")
+            .with_path(&home_bin)
+            .with_bin("legendary", "/usr/bin/legendary");
+        assert_eq!(
+            find_legendary(&c, &probe).as_deref(),
+            Some(home_bin.as_str())
+        );
+        let probe = FakeProbe::new("/home/u").with_bin("legendary", "/usr/bin/legendary");
+        assert_eq!(
+            find_legendary(&c, &probe).as_deref(),
+            Some("/usr/bin/legendary")
+        );
+    }
+}

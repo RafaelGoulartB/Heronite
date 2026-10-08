@@ -1,13 +1,29 @@
 //! Data layer shared with Heronite: same files under `~/.config/heroic`.
 
 pub mod json_store;
-pub mod paths;
-
-pub use paths::{AppPaths, HeroicPaths};
 pub mod models;
 pub mod num;
+pub mod paths;
+pub mod text;
 
+pub mod art;
+pub mod collection;
+pub mod config_games;
+pub mod focus;
+pub mod heronite_ui_import;
+pub mod hltb;
+pub mod library;
+pub mod settings;
+pub mod status;
+pub mod ui_state;
+
+pub use art::{ArtContext, ImageRef};
+pub use collection::{
+    FacetFilters, FacetKind, InstallFilter, SortMode, StatusGroup, ViewQuery,
+};
+pub use library::{CollectionGame, Library};
 pub use num::JsNum;
+pub use paths::{AppPaths, HeroicPaths};
 
 #[cfg(test)]
 mod roundtrip_tests {
@@ -18,7 +34,7 @@ mod roundtrip_tests {
     use serde::{de::DeserializeOwned, Serialize};
     use std::path::PathBuf;
 
-    fn check<T: DeserializeOwned + Serialize + Default>(root: &PathBuf, rel: &str) {
+    fn check<T: DeserializeOwned + Serialize + Default>(root: &std::path::Path, rel: &str) {
         let p = root.join(rel);
         if !p.exists() {
             eprintln!("skip {rel}");

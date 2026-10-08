@@ -13,3 +13,4 @@ anyhow.workspace = true
 log.workspace = true
 rust-embed = "8"
 heronite-data = { path = "../crates/data" }
+sha2 = "0.10"

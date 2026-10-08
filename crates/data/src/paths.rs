@@ -57,6 +57,18 @@ impl HeroicPaths {
     pub fn game_config(&self, app_name: &str) -> PathBuf {
         self.j("GamesConfig").join(format!("{app_name}.json"))
     }
+    pub fn zoom_library(&self) -> PathBuf { self.j("store_cache/zoom_library.json") }
+    pub fn gog_installed(&self) -> PathBuf { self.j("gog_store/installed.json") }
+    pub fn zoom_installed(&self) -> PathBuf { self.j("zoom_store/installed.json") }
+    pub fn game_overrides(&self) -> PathBuf { self.j("store/game-overrides.json") }
+    /// `{appId}.{lang}.json` (Steam language name, e.g. `english`).
+    pub fn steam_details(&self, steam_app_id: &str, steam_language: &str) -> PathBuf {
+        self.j("local_library/steam-details").join(format!("{steam_app_id}.{steam_language}.json"))
+    }
+    /// Cached Steam hero: `local_library/heroes/{appId}.jpg`.
+    pub fn steam_hero(&self, steam_app_id: &str) -> PathBuf {
+        self.j("local_library/heroes").join(format!("{steam_app_id}.jpg"))
+    }
     pub fn wiki_game_info(&self) -> PathBuf { self.j("store_cache/wikigameinfo.json") }
     pub fn images_cache_dir(&self) -> PathBuf { self.j("images-cache") }
     pub fn legendary_config_dir(&self) -> PathBuf { self.j("legendaryConfig/legendary") }

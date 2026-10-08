@@ -207,7 +207,7 @@ pub struct BackupSettings {
 pub struct LudusaviSettings {
     #[serde(default)]
     pub enabled: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub use_installed_config: bool,
     #[serde(default)]
     pub binary_path: String,
@@ -273,6 +273,10 @@ pub struct ScreenshotsSettings {
     pub extra: Extra,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_cache_limit() -> JsNum {
     JsNum(500.0)
 }
@@ -301,7 +305,7 @@ pub struct MetadataSettings {
     pub cover_aspect: String,
     #[serde(default)]
     pub download_images: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub auto_fill_missing: bool,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
@@ -435,6 +439,8 @@ pub struct HeroicConfigFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub all_tiles_in_color: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub games: Option<ConfigGames>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings: Option<Map<String, Value>>,
@@ -542,4 +548,51 @@ pub struct InstallInfo {
 /// Collection's key for a game across overlay stores: `"runner:appName"`.
 pub fn game_key(runner: &str, app_name: &str) -> String {
     format!("{runner}:{app_name}")
+}
+
+// ---------------------------------------------------------------------------
+// store/game-overrides.json  (Heroic core: custom title/art per appName)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GameOverridesFile {
+    #[serde(default)]
+    pub overrides: IndexMap<String, GameOverride>,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
+/// Heroic's `GameInfo.overrides`, attached in memory by the frontend.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct GameOverride {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub art_cover: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub art_square: Option<String>,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
+// ---------------------------------------------------------------------------
+// gog_store/installed.json, zoom_store/installed.json
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct InstalledGamesFile {
+    #[serde(default)]
+    pub installed: Vec<InstalledGame>,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
+/// Heroic's `InstalledInfo`; becomes `GameInfo.install` for GOG/Zoom games.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledGame {
+    #[serde(default)]
+    pub app_name: String,
+    #[serde(flatten)]
+    pub info: InstallInfo,
 }

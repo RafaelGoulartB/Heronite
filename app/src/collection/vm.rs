@@ -23,6 +23,8 @@ pub struct GroupVm {
     pub color: Rgba,
     pub cards: Vec<Arc<CardVm>>,
     pub collapsed: bool,
+    /// False when "Group by status" is off (one flat grid).
+    pub show_header: bool,
 }
 
 /// Rows of the virtual list.
@@ -37,8 +39,10 @@ pub enum ListItem {
 pub fn build_items(groups: &[GroupVm], columns: usize) -> Vec<ListItem> {
     let mut items = Vec::new();
     for (gi, g) in groups.iter().enumerate() {
-        items.push(ListItem::Header { group: gi });
-        if g.collapsed {
+        if g.show_header {
+            items.push(ListItem::Header { group: gi });
+        }
+        if g.collapsed && g.show_header {
             continue;
         }
         let mut start = 0;

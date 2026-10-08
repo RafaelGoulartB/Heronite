@@ -31,13 +31,20 @@ pub fn read_value(path: &Path) -> Result<Value> {
     }
 }
 
-/// Reads and deserializes a JSON file; missing files give `T::default()`.
+/// Reads and deserializes a JSON file; missing, empty or `null` files give
+/// `T::default()`. Decodes straight from the bytes (no intermediate `Value`).
 pub fn read<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
-    let value = read_value(path)?;
-    if value.is_null() {
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(T::default()),
+        Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+    };
+    if bytes.iter().all(u8::is_ascii_whitespace) {
         return Ok(T::default());
     }
-    serde_json::from_value(value).with_context(|| format!("decoding {}", path.display()))
+    let doc: Option<T> = serde_json::from_slice(&bytes)
+        .with_context(|| format!("decoding {}", path.display()))?;
+    Ok(doc.unwrap_or_default())
 }
 
 /// Serializes like electron-store: tab indent, no trailing newline.

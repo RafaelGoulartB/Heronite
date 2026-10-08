@@ -1,6 +1,7 @@
 //! The Collection screen: stage background, header, grouped list, focus panel.
 
 mod card;
+mod data;
 mod focus;
 mod header;
 mod list;
@@ -15,12 +16,54 @@ use std::time::Instant;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use crate::theme;
+use heronite_data::hltb::WikiCache;
+use heronite_data::ui_state::UiState;
+use heronite_data::{art, AppPaths, ArtContext, FacetKind, HeroicPaths, Library};
+
+use crate::{images, theme};
 use vm::{CardVm, FocusVm, GroupVm, ListItem};
+
+/// Everything loaded from disk off the UI thread.
+struct Loaded {
+    lib: Library,
+    wiki: WikiCache,
+    covers: HashMap<SharedString, std::path::PathBuf>,
+    stages: HashMap<SharedString, std::path::PathBuf>,
+}
+
+fn load_all(heroic: &HeroicPaths) -> anyhow::Result<Loaded> {
+    let t = Instant::now();
+    let lib = Library::load(heroic)?;
+    let wiki = WikiCache::load(heroic);
+    let shots = (!lib.settings.screenshots.folder.is_empty())
+        .then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
+    let ctx = ArtContext::new(heroic, shots.as_deref());
+    let cache = heroic.images_cache_dir();
+    let mut covers = HashMap::new();
+    let mut stages = HashMap::new();
+    for g in &lib.games {
+        let key: SharedString = g.key.clone().into();
+        if let Some(p) = images::first_local(&art::card_cover(&ctx, g), &cache) {
+            covers.insert(key.clone(), p);
+        }
+        if let Some(p) = images::first_local(&art::stage_art(&ctx, g), &cache) {
+            stages.insert(key, p);
+        }
+    }
+    log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
+    Ok(Loaded { lib, wiki, covers, stages })
+}
 
 pub struct CollectionView {
     started: Instant,
     first_frame_logged: bool,
+    heroic: HeroicPaths,
+    app_paths: AppPaths,
+    lib: Option<Arc<Library>>,
+    wiki: Arc<WikiCache>,
+    ui: UiState,
+    search: String,
+    stages: HashMap<SharedString, ImageSource>,
     groups: Vec<GroupVm>,
     items: Vec<ListItem>,
     columns: usize,
@@ -30,7 +73,6 @@ pub struct CollectionView {
     leaving: Option<SharedString>,
     focus: Option<FocusVm>,
     covers: HashMap<SharedString, ImageSource>,
-    stage_art: Option<Arc<RenderImage>>,
     scrim: stage::Scrim,
     grey_uninstalled: bool,
     cover_aspect: f32,
@@ -46,9 +88,28 @@ impl CollectionView {
                 view.update(cx, |_, cx| cx.notify());
             }
         });
-        let mut this = Self {
+        let heroic = HeroicPaths::detect();
+        let app_paths = AppPaths::detect();
+        let ui = if app_paths.ui_state().exists() {
+            UiState::load(&app_paths)
+        } else {
+            // First run: start where Heronite left off.
+            let ui = heronite_data::heronite_ui_import::import(&heroic).unwrap_or_default();
+            if let Err(err) = ui.save(&app_paths) {
+                log::warn!("saving imported ui state: {err:#}");
+            }
+            ui
+        };
+        let this = Self {
             started,
             first_frame_logged: false,
+            heroic: heroic.clone(),
+            app_paths,
+            lib: None,
+            wiki: Arc::new(WikiCache::default()),
+            ui,
+            search: String::new(),
+            stages: HashMap::new(),
             groups: Vec::new(),
             items: Vec::new(),
             columns: 3,
@@ -58,16 +119,57 @@ impl CollectionView {
             leaving: None,
             focus: None,
             covers: HashMap::new(),
-            stage_art: None,
             scrim: stage::Scrim { dim: 0.14, scrim: 1. },
             grey_uninstalled: true,
             cover_aspect: 1.5,
         };
-        this.set_groups(demo_groups());
-        if let Ok(key) = std::env::var("HERONITE_DEBUG_SELECT") {
-            this.select(key.into());
-        }
+        cx.spawn(async move |this, cx| {
+            let loaded = cx.background_spawn(async move { load_all(&heroic) }).await;
+            this.update(cx, |this, cx| match loaded {
+                Ok(l) => this.apply_loaded(l, cx),
+                Err(err) => log::error!("loading library: {err:#}"),
+            })
+            .ok();
+        })
+        .detach();
         this
+    }
+
+    fn apply_loaded(&mut self, l: Loaded, cx: &mut Context<Self>) {
+        let bg = &l.lib.settings.background;
+        self.scrim = stage::Scrim { dim: bg.dimming.get() as f32 / 100., scrim: bg.scrim.get() as f32 / 100. };
+        self.grey_uninstalled = l.lib.settings.grey_uninstalled_games && !l.lib.settings.all_tiles_in_color;
+        self.covers = l.covers.into_iter().map(|(k, p)| (k, ImageSource::from(p))).collect();
+        self.stages = l.stages.into_iter().map(|(k, p)| (k, ImageSource::from(p))).collect();
+        self.wiki = Arc::new(l.wiki);
+        self.lib = Some(Arc::new(l.lib));
+        self.refresh_groups();
+        let focused = std::env::var("HERONITE_DEBUG_SELECT").ok().or_else(|| self.ui.focused_game.clone());
+        if let Some(key) = focused {
+            self.select(key.into(), false);
+        }
+        log::info!("library on screen after {:?}", self.started.elapsed());
+        cx.notify();
+    }
+
+    fn refresh_groups(&mut self) {
+        let Some(lib) = self.lib.clone() else { return };
+        let groups = data::build_groups(&lib, &self.ui, &self.search, &|_| false);
+        self.set_groups(groups);
+    }
+
+    fn save_ui(&self) {
+        if let Err(err) = self.ui.save(&self.app_paths) {
+            log::warn!("saving ui state: {err:#}");
+        }
+    }
+
+    fn toggle_facet(&mut self, kind: &str, value: &str) {
+        if let Some(kind) = FacetKind::parse(kind) {
+            self.ui.toggle_facet(kind, value);
+            self.save_ui();
+            self.refresh_groups();
+        }
     }
 
     fn set_groups(&mut self, groups: Vec<GroupVm>) {
@@ -106,6 +208,8 @@ impl CollectionView {
                     .id(SharedString::from(format!("group-{gid}")))
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
+                        this.ui.toggle_group(&gid);
+                        this.save_ui();
                         if let Some(g) = this.groups.iter_mut().find(|g| g.id == gid) {
                             g.collapsed = !g.collapsed;
                         }
@@ -146,7 +250,7 @@ impl CollectionView {
                 grey_uninstalled: self.grey_uninstalled,
             },
             cx.listener(move |this, _, _, cx| {
-                this.select(k1.clone());
+                this.select(k1.clone(), true);
                 cx.notify();
             }),
             cx.listener(move |this, hovered: &bool, _, cx| {
@@ -164,10 +268,15 @@ impl CollectionView {
         )
     }
 
-    fn select(&mut self, key: SharedString) {
+    fn select(&mut self, key: SharedString, persist: bool) {
+        let Some(lib) = self.lib.clone() else { return };
+        let Some(game) = lib.get(&key) else { return };
+        self.focus = Some(data::focus_vm(&lib, &self.wiki, game, false));
         self.selected = Some(key.clone());
-        let card = self.groups.iter().flat_map(|g| g.cards.iter()).find(|c| c.key == key).cloned();
-        self.focus = card.map(|c| demo_focus(&c));
+        if persist {
+            self.ui.focused_game = Some(key.to_string());
+            self.save_ui();
+        }
     }
 
     /// Group whose header should be pinned at the top of the list, and how
@@ -232,8 +341,14 @@ impl Render for CollectionView {
                 .child(list::group_header(&self.groups[g], true))
         });
 
+        let weak = cx.entity().downgrade();
+        let active_facets: Vec<(&'static str, SharedString)> = heronite_data::collection::FACET_KINDS
+            .iter()
+            .filter_map(|k| self.ui.facet_filters.get(*k).map(|v| (k.as_str(), SharedString::from(v.to_string()))))
+            .collect();
         let focus_panel = match self.focus.clone() {
             Some(vm) => {
+                let (w1, w2) = (weak.clone(), weak.clone());
                 let covers = self.covers.clone();
                 focus::focus_panel(
                     focus::FocusProps {
@@ -241,7 +356,7 @@ impl Render for CollectionView {
                         cover_for: Rc::new(move |k| covers.get(k).cloned()),
                         viewport_w: vw,
                         panel_w: vw - list_w,
-                        active_facets: Vec::new(),
+                        active_facets,
                     },
                     focus::FocusActions {
                         on_close: Box::new(cx.listener(|this, _: &(), _, cx| {
@@ -251,8 +366,20 @@ impl Render for CollectionView {
                         }).into_fn()),
                         on_play: Box::new(|_, _| log::info!("play")),
                         on_favourite: Box::new(|_, _| log::info!("favourite")),
-                        on_facet: Rc::new(|f, v, _, _| log::info!("facet {f}={v}")),
-                        on_select: Rc::new(|k, _, _| log::info!("select {k}")),
+                        on_facet: Rc::new(move |f, v, _, cx| {
+                            w1.update(cx, |this, cx| {
+                                this.toggle_facet(f, &v);
+                                cx.notify();
+                            })
+                            .ok();
+                        }),
+                        on_select: Rc::new(move |k, _, cx| {
+                            w2.update(cx, |this, cx| {
+                                this.select(k, true);
+                                cx.notify();
+                            })
+                            .ok();
+                        }),
                     },
                 )
             }
@@ -275,7 +402,11 @@ impl Render for CollectionView {
             .bg(theme::page_bg())
             .font_family(theme::FONT_BODY)
             .text_color(white())
-            .child(stage::stage(self.stage_art.clone(), self.selected.clone().unwrap_or_default(), self.scrim))
+            .child(stage::stage(
+                self.selected.as_ref().and_then(|k| self.stages.get(k).cloned()),
+                self.selected.clone().unwrap_or_default(),
+                self.scrim,
+            ))
             .child(
                 div()
                     .absolute()
@@ -318,79 +449,3 @@ impl<F: Fn(&(), &mut Window, &mut App) + 'static> IntoFn for F {
     }
 }
 
-// --- temporary demo data until heronite-data's Library lands -------------
-
-fn demo_groups() -> Vec<GroupVm> {
-    let mk = |k: &str, t: &str, p: &str, inst: bool| {
-        Arc::new(CardVm {
-            key: k.to_string().into(),
-            title: t.to_string().into(),
-            playtime: p.to_string().into(),
-            installed: inst,
-            playing: false,
-            cover_key: k.to_string().into(),
-        })
-    };
-    vec![
-        GroupVm {
-            id: "playing".into(),
-            name: "2. Playing".into(),
-            color: theme::status_color("playing"),
-            cards: vec![mk("a", "Elden Ring", "15h 38m", true), mk("b", "Control", "3h 20m", true)],
-            collapsed: false,
-        },
-        GroupVm {
-            id: "on-going".into(),
-            name: "3. On Going".into(),
-            color: theme::status_color("endless"),
-            cards: vec![
-                mk("c", "Megabonk", "47h 15m", true),
-                mk("d", "The Finals", "70h 53m", false),
-                mk("e", "Brotato", "6h 16m", true),
-                mk("f", "Cult of the Lamb", "26m", true),
-            ],
-            collapsed: false,
-        },
-        GroupVm {
-            id: "plan".into(),
-            name: "4. Plan to Play".into(),
-            color: theme::status_color("plan-to-play"),
-            cards: vec![mk("g", "Metal Gear Solid 4", "Not Played", false)],
-            collapsed: false,
-        },
-    ]
-}
-
-fn demo_focus(c: &CardVm) -> FocusVm {
-    use vm::*;
-    FocusVm {
-        key: c.key.clone(),
-        title: c.title.clone(),
-        meta_line: "2/24/2022 · Xbox Series X|S · Role-playing (RPG) · Adventure".into(),
-        cover_key: c.cover_key.clone(),
-        overview: Some("Elden Ring is an action RPG developed by FromSoftware.".into()),
-        related: vec![],
-        details: vec![
-            DetailRow {
-                label: "Status".into(),
-                value: DetailValue::Status { name: "2. Playing".into(), color: theme::status_color("playing") },
-                split: false,
-            },
-            DetailRow {
-                label: "Developer".into(),
-                value: DetailValue::Chips { values: vec!["FromSoftware".into()], facet: Some("developer"), clamp: false },
-                split: false,
-            },
-            DetailRow { label: "Playtime".into(), value: DetailValue::Text(c.playtime.clone()), split: false },
-            DetailRow {
-                label: "Installation Folder".into(),
-                value: DetailValue::Folder { path: "/data/Games/x".into(), size: None },
-                split: true,
-            },
-        ],
-        hltb: Some(HltbVm { main: Some(6.7), extra: Some(18.8), complete: None, played_hours: 0.9 }),
-        installed: c.installed,
-        playing: c.playing,
-        favourite: false,
-    }
-}

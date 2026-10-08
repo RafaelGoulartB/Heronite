@@ -12,6 +12,10 @@ dirs = "6"
 parking_lot = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 indexmap = { version = "2", features = ["serde"] }
+rusty-leveldb = "4"
+tempfile = "3"
+icu_collator = "2"
+unicode-normalization = "0.1"
 
 [dev-dependencies]
-tempfile = "3"
+
