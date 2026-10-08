@@ -208,7 +208,7 @@ impl Session {
             .ok();
             PENDING.fetch_sub(1, Ordering::SeqCst);
             log::info!("post-game work of the session ended (result shown: {had_notice})");
-            cx.update(|cx| crate::system::post_game_idle(cx));
+            cx.update(crate::system::post_game_idle);
         })
         .detach();
     }

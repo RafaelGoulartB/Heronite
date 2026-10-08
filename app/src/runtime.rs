@@ -87,6 +87,14 @@ impl GameRuntime {
         self.sessions.lock().ok()?.get(app_name).cloned()
     }
 
+    /// `HERONITE_DEBUG_FAKE_SESSION`: registers a session as if the game had
+    /// been launched (nothing is started).
+    pub fn debug_register_session(&self, game: &CollectionGame) {
+        if let Ok(mut s) = self.sessions.lock() {
+            s.insert(game.app_name.clone(), session_info(game, None));
+        }
+    }
+
     /// Takes the session out when it ended.
     pub fn take_session(&self, app_name: &str) -> Option<SessionInfo> {
         self.sessions.lock().ok()?.remove(app_name)
@@ -218,9 +226,10 @@ pub fn toggle_tool_blocking(
 /// Heroic refreshes DXVK, VKD3D, DXVK-NVAPI and winetricks a few seconds after
 /// start (`DXVK.getLatest()`, `Winetricks.download()` in `main.ts`), so the
 /// first launch that needs them finds them. Off with
-/// `HERONITE_DISABLE_IDLE_JOBS` (tests against real data).
+/// `HERONITE_DISABLE_IDLE_JOBS` (tests against real data) or
+/// `HERONITE_DISABLE_TOOLS_UPDATE` (only this).
 fn spawn_tools_update(paths: HeroicPaths) {
-    if std::env::var_os("HERONITE_DISABLE_IDLE_JOBS").is_some() {
+    if std::env::var_os("HERONITE_DISABLE_IDLE_JOBS").is_some() || std::env::var_os("HERONITE_DISABLE_TOOLS_UPDATE").is_some() {
         return;
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {

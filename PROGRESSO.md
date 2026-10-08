@@ -731,3 +731,51 @@ Brief em `docs/agents/logs.md`. Porta o logger do Heroic (`src/backend/logger/**
 - **Não verificado / limites**: cliques reais (sem mouse; a preservação da posição ao "Load earlier" foi só exercitada pelo hook de
   debug, onde o layout ainda não aconteceu); nenhum jogo real foi lançado; logs de instalação/atualização/reparo (`install.log` etc.) e
   `runners/*.log` do legendary ainda não são escritos por este app (o visualizador os mostra se o Heronite os criou); sem upload de log.
+
+## Auto-updates Epic e tarefas pós-jogo sem janela (agente "updates")
+
+- **Serviço pós-jogo independente da janela** (`app/src/services/session.rs`, entidade GPUI global criada pelo hub): o `hub::on_event`
+  entrega todo `LaunchEvent` a ele antes do Collection. Faz, com ou sem janela: chave de save state de jogos emulados
+  (`remember_save_state_key`), backup Ludusavi após o jogo (`backup_after_play`) e a sessão de captura de screenshots
+  (`CaptureService` agora mora aqui; o Collection só repassa a config e recebe `SessionEvent::Capture/Toast`). Playtime/sessão local e
+  upload de cloud save já eram feitos pela thread do launcher (`crates/launch`), então sempre rodaram sem janela. O Collection só
+  observa: toast do resultado, `refresh_shots` quando uma captura é salva e `reload()` da biblioteca no `Exited`.
+  O hub não guarda mais eventos `late` para reentregar (não é mais preciso).
+- **O que o pós-jogo precisa saber** vem do runtime: `GameRuntime` guarda um `SessionInfo` (título, runner, aliases, steam id, ROM
+  jogada) quando lança; o serviço lê/retira no `Launching`/`Exited`. Um lançamento headless (`--no-gui`) não sai até o backup
+  terminar (`session::busy()` no `maybe_exit_idle`).
+- **Notificações do sistema** (`app/src/system/notify.rs`, `notify-rust` que a árvore já tinha pelo crate media; thread própria;
+  `HERONITE_DEBUG_NO_NOTIFY=1` só loga): backup salvo (sempre), falha de backup, erro de lançamento e avisos de cloud save (só sem
+  janela), "Update/Installation Finished/Failed" da fila de downloads e "Updating X in the background" (sem janela).
+  A captura de tela já notificava por conta própria (`feedback.rs`).
+- **Auto-update Epic** (`crates/epic/src/autoupdate.rs`, puro e testado + `Downloads` em `app/src/services/downloads.rs`): o
+  serviço Epic agora é criado pelo hub no início (não só quando a janela abre), então fila, checagem de updates na partida e
+  auto-update funcionam com o app na bandeja (não em lançamento headless de uma vez só). Checagem 20 s após iniciar
+  (`checkForUpdatesOnStartup`, padrão ligado; também roda se `autoUpdateGames` estiver ligado) e **periódica a cada 3 h** quando
+  `autoUpdateGames` está ligado (extensão: o Heroic só checa na partida e no refresh; `HERONITE_DEBUG_UPDATE_INTERVAL_SECS` para teste).
+  Checagem em segundo plano é silenciosa (sem toast de "library refreshed"); offline não checa. Regras do plano
+  (`autoupdate::plan`): `autoUpdateGames` desligado, Heronite rodando (`heroic` em /proc — compartilha a fila), offline ou conexão
+  medida (NetworkManager `Metered` via `busctl`) bloqueiam tudo; `ignoreGameUpdates` pula o jogo; jogo em execução é adiado e entra
+  na fila quando sai (`Downloads::game_running`, avisado pelo hub); já na fila não duplica; update que falhou não é re-tentado
+  automaticamente até reiniciar. Leituras de config/biblioteca saíram da thread da UI.
+- **Pontos em arquivos compartilhados**: `app/Cargo.toml` (+`notify-rust`), `collection/mod.rs` (subscribe no `Session`, removidas
+  as chamadas `shots_launch_event`/`emu_session_ended`), `collection/{emulation,screenshots,system_glue}.rs` (removido o código
+  movido; `on_session_event`), `runtime.rs` do app (`SessionInfo`; `HERONITE_DISABLE_TOOLS_UPDATE` desliga só a atualização de
+  DXVK/winetricks para testar o resto das idle jobs), `system/hub.rs`.
+- **Depuração**: `HERONITE_DEBUG_FAKE_SESSION=<app_name>:<segundos>@<atraso_ms>` simula um jogo rodando (nada é lançado) e dispara
+  todo o pós-jogo; `HERONITE_DEBUG_START_HIDDEN` + `..._SHOW_AFTER_MS` para testar sem janela; `HERONITE_LEGENDARY_BIN` com um
+  script falso; Ludusavi falso via `binaryPath` + `useInstalledConfig:false` nas settings da fixture.
+- **Verificado**: testes (`autoupdate`: plano, prioridade dos bloqueios, valores de `Metered`; `session`: notícia de backup,
+  backup após o jogo com Ludusavi falso, Ludusavi desligado/sessão curta, binário ausente). Ao vivo com fixture (shot.sh, ws 7,
+  legendary e Ludusavi falsos): sem janela — check na partida, update enfileirado e concluído com notificações; jogo "rodando" na hora
+  do check adia o update e o enfileira ao sair (com backup Ludusavi e fim da sessão de captura no mesmo momento); Heronite "rodando"
+  (processo `heroic` falso) bloqueia; loop periódico (12 s) re-checa; `--no-gui` só sai depois do backup; janela reaberta depois
+  funciona; com janela aberta o toast do backup aparece (captura). Uma notificação real foi enviada uma vez (daemon do quickshell,
+  sem erro).
+- **Incidente de teste (para registro)**: no primeiro teste de sessão falsa a fixture ainda apontava para o Ludusavi **real** e
+  rodou `ludusavi backup` do jogo "Control: AWE" (falhou com "No info for these games", nada foi gravado) e, como a fixture tinha
+  captura ligada, registrou/removeu o bind temporário F12 do Hyprland. Depois disso a fixture passou a usar Ludusavi falso e captura
+  desligada.
+- **Não verificado / limitações**: conexão medida real (só o parser; NetworkManager do usuário não é medido); notificação vista na
+  tela (só confirmado que o daemon aceitou); chave de save state de emulador no caminho sem janela (código movido sem mudança, sem
+  teste novo); o `heroic://` com argumentos continua ignorado.

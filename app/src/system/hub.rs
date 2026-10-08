@@ -231,6 +231,11 @@ fn debug_hooks(cx: &mut App, tray_tx: UnboundedSender<TrayCmd>) {
         })
         .detach();
     }
+    // `<app_name>:<seconds>@<delay_ms>`: a game "runs" for that long (nothing
+    // is started) so the post-game work can be watched with or without a window.
+    if let Ok(spec) = std::env::var("HERONITE_DEBUG_FAKE_SESSION") {
+        fake_session(cx, &spec);
+    }
     if let Ok(list) = std::env::var("HERONITE_DEBUG_TRAY_CMDS") {
         for item in list.split(',').filter(|s| !s.is_empty()) {
             let Some((cmd, ms)) = item.split_once('@') else { continue };
@@ -252,6 +257,54 @@ fn debug_hooks(cx: &mut App, tray_tx: UnboundedSender<TrayCmd>) {
             .detach();
         }
     }
+}
+
+fn fake_session(cx: &mut App, spec: &str) {
+    let parse = || -> Option<(String, u64, u64)> {
+        let (app, rest) = spec.split_once(':')?;
+        let (secs, delay) = rest.split_once('@')?;
+        Some((app.to_string(), secs.parse().ok()?, delay.parse().ok()?))
+    };
+    let Some((app_name, secs, delay)) = parse() else {
+        log::warn!("HERONITE_DEBUG_FAKE_SESSION: expected <app_name>:<seconds>@<delay_ms>");
+        return;
+    };
+    let state = hub(cx);
+    let heroic = {
+        let mut s = state.0.borrow_mut();
+        if s.exit_when_idle {
+            // A headless launch (`--launch` with FAKE_LAUNCH) would otherwise
+            // exit before the fake session even starts.
+            s.running.entry(app_name.clone()).or_insert(None);
+        }
+        s.heroic.clone()
+    };
+    cx.spawn(async move |cx| {
+        cx.background_executor().timer(Duration::from_millis(delay)).await;
+        let found = cx
+            .background_spawn(async move {
+                Library::load(&heroic).ok().and_then(|lib| lib.games.iter().find(|g| g.app_name == app_name).cloned())
+            })
+            .await;
+        let Some(game) = found else {
+            log::warn!("[fake-session] game not found");
+            return;
+        };
+        let app = game.app_name.clone();
+        log::info!("[fake-session] {} starts (window: {})", game.title, cx.update(|cx| has_window(cx)));
+        cx.update(|cx| {
+            let runtime = hub(cx).0.borrow().runtime.clone();
+            runtime.debug_register_session(&game);
+            on_event(cx, LaunchEvent::Launching { app_name: app.clone() });
+            on_event(cx, LaunchEvent::Running { app_name: app.clone(), pid: 1 });
+        });
+        cx.background_executor().timer(Duration::from_secs(secs)).await;
+        cx.update(|cx| {
+            log::info!("[fake-session] {} exits (window: {})", game.title, has_window(cx));
+            on_event(cx, LaunchEvent::Exited { app_name: app, elapsed: Duration::from_secs(secs), exit: None, record: None });
+        });
+    })
+    .detach();
 }
 
 // ---------------------------------------------------------------------------

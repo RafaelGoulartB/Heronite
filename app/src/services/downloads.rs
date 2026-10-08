@@ -30,6 +30,14 @@ use serde_json::Value;
 /// would otherwise never notice an update).
 const PERIODIC_CHECK: Duration = Duration::from_secs(3 * 3600);
 
+/// [`PERIODIC_CHECK`], or `HERONITE_DEBUG_UPDATE_INTERVAL_SECS` (tests).
+fn periodic_interval() -> Duration {
+    std::env::var("HERONITE_DEBUG_UPDATE_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .map_or(PERIODIC_CHECK, Duration::from_secs)
+}
+
 /// A one-off operation running for a game.
 #[derive(Clone)]
 pub struct Busy {
@@ -137,6 +145,9 @@ pub struct Downloads {
     playing: HashSet<String>,
     /// Auto-updates waiting for their game to exit.
     deferred: HashSet<String>,
+    /// Games whose automatic update failed: not retried until the next start
+    /// (the periodic check would otherwise fail again every few hours).
+    auto_failed: HashSet<String>,
     pub logging_in: bool,
     /// Last problem of login / refresh, for the Epic page.
     pub last_error: Option<String>,
@@ -199,6 +210,7 @@ impl Downloads {
             quiet_refresh: false,
             playing: HashSet::new(),
             deferred: HashSet::new(),
+            auto_failed: HashSet::new(),
             logging_in: false,
             last_error: None,
             eos: EosStatus::default(),
@@ -237,13 +249,11 @@ impl Downloads {
                     // The startup check is what `checkForUpdatesOnStartup` asks
                     // for (Heroic checks game updates then regardless); the
                     // periodic ones only matter for unattended auto-updates.
-                    if (first && (on_startup || auto)) || (!first && auto) {
-                        if this.update(cx, |this, cx| this.check_for_updates(true, cx)).is_err() {
-                            break;
-                        }
+                    if ((first && on_startup) || auto) && this.update(cx, |this, cx| this.check_for_updates(true, cx)).is_err() {
+                        break;
                     }
                     first = false;
-                    cx.background_executor().timer(PERIODIC_CHECK).await;
+                    cx.background_executor().timer(periodic_interval()).await;
                 }
             })
             .detach();
@@ -358,6 +368,7 @@ impl Downloads {
                 let verb = if element.kind == ElementKind::Install { "Installation" } else { "Update" };
                 match element.status {
                     Some(DmStatus::Done) => {
+                        self.auto_failed.remove(&element.params.app_name);
                         self.toast(cx, format!("{title}: {} finished", verb.to_lowercase()), false);
                         if !crate::system::has_window(cx) {
                             crate::system::notify::send(title.clone(), format!("{verb} Finished"));
@@ -375,6 +386,9 @@ impl Downloads {
                         }
                     }
                     Some(DmStatus::Error) => {
+                        if element.kind == ElementKind::Update {
+                            self.auto_failed.insert(element.params.app_name.clone());
+                        }
                         let why = error.unwrap_or_default();
                         let first = why.lines().next().unwrap_or("").to_string();
                         self.toast(cx, format!("{title}: {} failed{}", verb.to_lowercase(), if first.is_empty() { String::new() } else { format!(" ({first})") }), true);
@@ -801,7 +815,12 @@ impl Downloads {
     /// offline or on a metered connection. `only`: just that game.
     fn queue_auto_updates(&mut self, only: Option<String>, cx: &mut Context<Self>) {
         let heroic = self.heroic.clone();
-        let apps: Vec<String> = self.updates.iter().filter(|a| only.as_ref().is_none_or(|o| o == *a)).cloned().collect();
+        let apps: Vec<String> = self
+            .updates
+            .iter()
+            .filter(|a| only.as_ref().is_none_or(|o| o == *a) && !self.auto_failed.contains(*a))
+            .cloned()
+            .collect();
         if apps.is_empty() {
             return;
         }

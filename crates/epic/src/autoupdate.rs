@@ -66,8 +66,7 @@ pub struct Plan {
 
 /// Decides what to do with the updates found.
 pub fn plan(gates: &Gates, candidates: &[Candidate]) -> Plan {
-    let mut plan = Plan::default();
-    plan.blocked = if !gates.enabled {
+    let blocked = if !gates.enabled {
         Some(Block::Disabled)
     } else if gates.heronite_running {
         Some(Block::HeroniteRunning)
@@ -78,6 +77,7 @@ pub fn plan(gates: &Gates, candidates: &[Candidate]) -> Plan {
     } else {
         None
     };
+    let mut plan = Plan { blocked, ..Default::default() };
     if plan.blocked.is_some() {
         return plan;
     }
