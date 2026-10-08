@@ -119,7 +119,7 @@ fn is_prefix(query: &[&str], folder: &[&str]) -> bool {
 
 /// JS `Math.round` (ties toward +infinity).
 fn js_round(x: f64) -> i32 {
-    (x + 0.5).floor() as i32
+    heronite_data::num::js_round(x) as i32
 }
 
 /// `scoreScreenshotFolder`: 0..=100 similarity between a game name and a

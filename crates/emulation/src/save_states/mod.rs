@@ -66,17 +66,6 @@ pub struct EmulatorSaveStateList {
     pub states: Vec<EmulatorSaveState>,
 }
 
-/// Non-empty values without repeats, in first-seen order.
-fn unique(values: impl IntoIterator<Item = Option<String>>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for v in values.into_iter().flatten() {
-        if !v.is_empty() && !out.contains(&v) {
-            out.push(v);
-        }
-    }
-    out
-}
-
 fn s(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }

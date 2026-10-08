@@ -3,6 +3,11 @@
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// `Math.round`: halves go toward +infinity.
+pub fn js_round(v: f64) -> f64 {
+    (v + 0.5).floor()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
 pub struct JsNum(pub f64);
 

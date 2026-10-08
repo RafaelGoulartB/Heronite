@@ -16,7 +16,7 @@ use crate::models::{
     BackgroundSettings, BackupSettings, CollectionSettingsFile, HeroicConfigFile,
     LudusaviSettings, MetadataSettings, ScreenshotsSettings,
 };
-use crate::num::JsNum;
+use crate::num::{js_round, JsNum};
 use crate::paths::HeroicPaths;
 
 pub const DEFAULT_SCREENSHOT_CACHE_LIMIT_MB: f64 = 500.0;
@@ -212,9 +212,7 @@ pub fn load(paths: &HeroicPaths) -> Result<EffectiveSettings> {
     Ok(EffectiveSettings::from_files(&file, &config))
 }
 
-// ---------------------------------------------------------------------------
 // Normalisation (same clamps and defaults as the TS)
-// ---------------------------------------------------------------------------
 
 /// `Partial<CollectionBackgroundSettings>`.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -258,11 +256,6 @@ pub fn normalize_background(value: Option<&PartialBackground>) -> BackgroundSett
     }
 }
 
-/// `Math.round`: halves go toward +infinity.
-fn js_round(v: f64) -> f64 {
-    (v + 0.5).floor()
-}
-
 fn as_screenshot_cache_limit(value: Option<f64>) -> f64 {
     match value {
         Some(v) if v.is_finite() => js_round(v).clamp(MIN_SCREENSHOT_CACHE_LIMIT_MB, MAX_SCREENSHOT_CACHE_LIMIT_MB),
@@ -298,9 +291,7 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
     }
 }
 
-// ---------------------------------------------------------------------------
 // Setters (read-modify-write of local_library/settings.json)
-// ---------------------------------------------------------------------------
 
 /// `setCollectionUiSettings`.
 pub fn save_ui(

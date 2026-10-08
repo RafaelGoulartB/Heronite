@@ -12,13 +12,13 @@ use super::layouts::{
     child_dirs, dolphin_user_dir, duckstation_data_dirs, mgba_config_path, pcsx2_data_dirs, ppsspp_state_dir,
     retroarch_append_config, retroarch_config_dir, retroarch_core_name, rpcs3_states_root,
 };
-use super::{s, unique, LaunchStateArgs, ParsedState, SaveStateKind};
+use super::{s, LaunchStateArgs, ParsedState, SaveStateKind};
 use crate::catalog::guess_definition_id;
 use crate::disc_id::{
     read_nintendo_disc_id, read_playstation_serial, read_ps3_title_id, read_psp_disc_id,
     serial_from_game_list_cache,
 };
-use crate::pathutil::{base_no_ext, basename, dirname, join};
+use crate::pathutil::{base_no_ext, basename, dirname, join, unique};
 use crate::sysfiles::{
     find_embedded_png, read_zip_entry, resolve_configured_dir, HostEnv, Ini,
 };

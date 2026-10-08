@@ -107,6 +107,17 @@ pub fn base_no_ext(path: &str) -> String {
     base[..base.len() - ext.len()].to_string()
 }
 
+/// Non-empty values without repeats, in first-seen order (candidate lists).
+pub fn unique(values: impl IntoIterator<Item = Option<String>>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for v in values.into_iter().flatten() {
+        if !v.is_empty() && !out.contains(&v) {
+            out.push(v);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

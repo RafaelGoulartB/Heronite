@@ -11,7 +11,7 @@ use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 use heronite_launch::probe::{Probe, SystemProbe};
 
 use crate::catalog::{emulator_definition, emulator_definitions, EmulatorDefinition};
-use crate::pathutil::{dirname, join};
+use crate::pathutil::{dirname, join, unique};
 use crate::store::{self, upsert_emulator_in};
 use crate::types::{DetectedEmulator, DetectedEmulatorProfile, UpsertUserEmulatorArgs};
 
@@ -79,16 +79,6 @@ impl DetectEnv for SystemEnv {
     fn home(&self) -> String {
         SystemProbe.home()
     }
-}
-
-fn unique(values: impl IntoIterator<Item = Option<String>>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for v in values.into_iter().flatten() {
-        if !v.is_empty() && !out.contains(&v) {
-            out.push(v);
-        }
-    }
-    out
 }
 
 fn core_file_name(core: &str) -> String {

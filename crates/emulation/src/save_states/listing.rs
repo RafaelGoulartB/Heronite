@@ -11,12 +11,12 @@ use heronite_launch::plan::pick_rom_path;
 use heronite_launch::probe::SystemProbe;
 
 use super::{
-    engine_for, engine_id_for, thumbnail_for, unique, Engine, EngineContext, EmulatorSaveState,
+    engine_for, engine_id_for, thumbnail_for, Engine, EngineContext, EmulatorSaveState,
     EmulatorSaveStateList, MAX_STATES,
 };
 use crate::catalog::emulator_definition;
 use crate::iso::iso_millis;
-use crate::pathutil::join;
+use crate::pathutil::{join, unique};
 use crate::store::resolve_template;
 use crate::sysfiles::HostEnv;
 

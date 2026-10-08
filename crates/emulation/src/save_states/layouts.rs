@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 
 use super::engine::EngineContext;
-use super::{s, unique};
-use crate::pathutil::{base_no_ext, dirname, join};
+use super::s;
+use crate::pathutil::{base_no_ext, dirname, join, unique};
 use crate::sysfiles::{resolve_configured_dir, HostEnv, Ini};
 
 /// The executable's folder when it holds one of the portable-mode marker files.
