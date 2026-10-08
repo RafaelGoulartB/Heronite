@@ -46,6 +46,12 @@ fn main() {
     };
     // SIGTERM / SIGINT / SIGHUP are a quit (see `system::signals`).
     let signals = system::signals::spawn();
+    // Temp files of writes cut short by a crash or kill (only ours, by name).
+    std::thread::spawn(|| {
+        let heroic = heronite_data::HeroicPaths::detect();
+        let app = heronite_data::AppPaths::for_heroic(&heroic);
+        heronite_shortcuts::sweep_stale_temps_at_startup(&heroic, &app);
+    });
 
     gpui_kit::application()
         .with_assets(assets::Assets)
