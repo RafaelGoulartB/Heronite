@@ -95,7 +95,7 @@ impl GameRuntime {
             return open_steam_client_uri(&SystemSpawner::default(), &SystemProbe, SteamAction::Install, id);
         }
         Err(match game.runner.as_str() {
-            "legendary" => "Installing Epic games is not available yet; install it in Heronite/Heroic.".into(),
+            "legendary" => "Epic games are installed from the install dialog.".into(),
             _ => "This game has no install action.".into(),
         })
     }

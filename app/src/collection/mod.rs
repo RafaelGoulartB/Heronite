@@ -4,6 +4,7 @@ mod card;
 mod context_menu;
 mod data;
 mod emulation;
+mod epic;
 mod focus;
 mod html;
 mod header;
@@ -94,6 +95,7 @@ pub struct CollectionView {
     dialog_sub: Option<Subscription>,
     emu: emulation::EmuState,
     playnite: playnite_menu::PlayniteState,
+    epic: epic::EpicState,
     focus_scroll: ScrollHandle,
     shots: screenshots::Shots,
     toast_task: Option<Task<()>>,
@@ -204,6 +206,7 @@ impl CollectionView {
             dialog_sub: None,
             emu: Default::default(),
             playnite: Default::default(),
+            epic: Default::default(),
             focus_scroll: ScrollHandle::new(),
             shots: Default::default(),
             images,
@@ -461,6 +464,9 @@ impl CollectionView {
             }
             return;
         }
+        if self.epic_primary(&game, cx) {
+            return;
+        }
         if game.installed && self.start_emulated(&game, cx) {
             return;
         }
@@ -656,6 +662,7 @@ impl CollectionView {
                 hovered: self.hovered.as_ref() == Some(&key),
                 leaving: self.leaving.as_ref() == Some(&key),
                 grey_uninstalled: self.grey_uninstalled,
+                epic: self.epic_card(&key, cx),
             },
             cx.listener(move |this, _, _, cx| {
                 this.select(k1.clone(), true);
@@ -810,11 +817,14 @@ impl Render for CollectionView {
                 "playnite:import" => self.open_playnite_import(window, cx),
                 "playnite:merge" => self.open_playnite_merge(window, cx),
                 other => {
-                    self.open_emu_debug_dialog(other, window, cx);
+                    if !self.epic_debug_dialog(other, window, cx) {
+                        self.open_emu_debug_dialog(other, window, cx);
+                    }
                 }
             }
         }
         self.drive_emulation(window, cx);
+        self.drive_epic(window, cx);
         self.sync_shots(window, cx);
         let viewport = window.viewport_size();
         let vw = f32::from(viewport.width);
@@ -912,6 +922,7 @@ impl Render for CollectionView {
                 let (w1, w2, w3, w4) = (weak.clone(), weak.clone(), weak.clone(), weak.clone());
                 let (w5, w6) = (weak.clone(), weak.clone());
                 let focus_key = vm.key.clone();
+                let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
                 let screenshots = self.screenshots_section(cx);
                 focus::focus_panel(
                     focus::FocusProps {
@@ -923,6 +934,7 @@ impl Render for CollectionView {
                         panel_w: vw - list_w,
                         active_facets,
                         screenshots,
+                        epic: epic_focus,
                     },
                     focus::FocusActions {
                         on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),

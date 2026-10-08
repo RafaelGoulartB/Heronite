@@ -104,6 +104,8 @@ pub struct FocusProps {
     pub scroll: ScrollHandle,
     /// "Screenshots" section (first block of the main column).
     pub screenshots: Option<AnyElement>,
+    /// Epic install / update progress in the footer.
+    pub epic: Option<super::epic::FocusEpic>,
 }
 
 pub struct FocusActions {
@@ -147,7 +149,11 @@ pub fn panel(facts: bool) -> Div {
 }
 
 pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
-    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, screenshots } = props;
+    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, screenshots, epic } = props;
+    let (epic_el, hide_play) = match epic {
+        Some(e) => (Some(e.element), e.replaces_play),
+        None => (None, false),
+    };
     let scrollbar = crate::ui::scrollbar(scroll.offset().y, scroll.max_offset().y, scroll.bounds().size.height);
     let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
     let title_size = (viewport_w * 0.022).clamp(24.8, 32.);
@@ -327,7 +333,8 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
                 )
                 .child(round_button("focus-meta", Icon::TravelExplore, 42., 0.72).on_click(move |_, w, cx| on_meta(w, cx)))
                 .child(round_button("focus-settings", Icon::Settings, 42., 0.72).on_click(move |_, w, cx| on_gsettings(w, cx)))
-                .child(
+                .children(epic_el)
+                .when(!hide_play, |d| d.child(
                     div()
                         .id("focus-play")
                         .flex()
@@ -354,7 +361,7 @@ pub fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
                         .on_click(move |_, w, cx| on_play(w, cx))
                         .child(icon(play_icon, px(19.2), rgb(0x161616)))
                         .child(play_label),
-                ),
+                )),
         )
         .into_any_element()
 }

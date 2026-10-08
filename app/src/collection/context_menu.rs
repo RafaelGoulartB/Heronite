@@ -241,6 +241,7 @@ impl CollectionView {
         }
 
         let position = state.position;
+        menu = self.epic_context_items(menu, &game, cx);
         Some(
             deferred(
                 div()

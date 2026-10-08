@@ -20,6 +20,8 @@ pub struct CardState<'a> {
     /// The pointer just left this card: play the bar's slide-out.
     pub leaving: bool,
     pub grey_uninstalled: bool,
+    /// Epic install / update progress and update hint.
+    pub epic: Option<super::epic::CardEpic>,
 }
 
 pub fn card(
@@ -138,6 +140,7 @@ pub fn card(
                 .shadow(vec![shadow])
                 .bg(theme::rgb_a(255, 255, 255, 0.03))
                 .child(div().size_full().rounded(px(6.)).overflow_hidden().child(cover_img))
+                .children(s.epic.as_ref().map(super::epic::card_overlay))
                 .children(ring.map(|color| {
                     div()
                         .absolute()
