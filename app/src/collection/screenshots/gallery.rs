@@ -117,69 +117,8 @@ impl CollectionView {
         let first_row = ((off / step).floor() as isize - 1).max(0) as usize;
         let last_row = ((off + view_h) / step).floor() as usize + 1;
 
-        let mut grid = div().flex().flex_col().gap(px(GRID_GAP));
-        for (r, chunk) in (0..shown).collect::<Vec<_>>().chunks(cols).enumerate() {
-            let mut row = div().flex().gap(px(GRID_GAP)).h(px(ROW_H)).flex_none();
-            for &i in chunk {
-                let src = if (first_row..=last_row).contains(&r) {
-                    let p = self.shots.items[i].path.clone();
-                    self.shots.thumb(&p)
-                } else {
-                    None
-                };
-                    row = row.child(
-                    thumb_tile(SharedString::from(format!("shot-grid-{i}")), src, false)
-                        .w(px(col_w))
-                        .h(px(ROW_H))
-                        .flex_none()
-                        .on_click(cx.listener(move |this, _, window, cx| this.shots_open_view(i, window, cx))),
-                );
-            }
-            grid = grid.child(row);
-        }
-        if shown < total {
-            grid = grid.child(
-                div().flex().justify_center().my(px(5.6)).child(
-                    button(
-                        "shot-load-more",
-                        ButtonKind::Glass,
-                        format!("Load more ({} remaining)", total - shown),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.shots.gallery_count = (this.shots.gallery_count + GALLERY_PAGE).min(this.shots.items.len());
-                        cx.notify();
-                    })),
-                ),
-            );
-        }
-
-        let close = icon_button("shot-gallery-close", Icon::Close, 36., 0.42, 0.72)
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.shots_close_gallery();
-                cx.notify();
-            }));
-        let header = div()
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap(px(12.))
-            .mb(px(12.))
-            .child(
-                div()
-                    .flex()
-                    .items_baseline()
-                    .gap(px(8.8))
-                    .child(
-                        div()
-                            .text_size(px(16.8))
-                            .font_weight(theme::W_BOLD)
-                            .text_color(white())
-                            .font_family(theme::FONT_BODY)
-                            .child("Screenshots"),
-                    )
-                    .child(div().text_size(px(13.6)).text_color(theme::white_a(0.62)).child(total.to_string())),
-            )
-            .child(close);
+        let grid = self.gallery_grid(cols, col_w, shown, first_row..=last_row, cx);
+        let header = Self::gallery_header(total, cx);
 
         let modal = div()
             .id("shot-gallery-modal")
@@ -241,6 +180,85 @@ impl CollectionView {
             .with_priority(50)
             .into_any_element(),
         )
+    }
+
+    /// Thumbnails in rows of `cols`; only rows in `visible_rows` get textures.
+    fn gallery_grid(
+        &mut self,
+        cols: usize,
+        col_w: f32,
+        shown: usize,
+        visible_rows: std::ops::RangeInclusive<usize>,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let total = self.shots.items.len();
+        let mut grid = div().flex().flex_col().gap(px(GRID_GAP));
+        for (r, chunk) in (0..shown).collect::<Vec<_>>().chunks(cols).enumerate() {
+            let mut row = div().flex().gap(px(GRID_GAP)).h(px(ROW_H)).flex_none();
+            for &i in chunk {
+                let src = if visible_rows.contains(&r) {
+                    let p = self.shots.items[i].path.clone();
+                    self.shots.thumb(&p)
+                } else {
+                    None
+                };
+                row = row.child(
+                    thumb_tile(SharedString::from(format!("shot-grid-{i}")), src, false)
+                        .w(px(col_w))
+                        .h(px(ROW_H))
+                        .flex_none()
+                        .on_click(cx.listener(move |this, _, window, cx| this.shots_open_view(i, window, cx))),
+                );
+            }
+            grid = grid.child(row);
+        }
+        if shown < total {
+            grid = grid.child(
+                div().flex().justify_center().my(px(5.6)).child(
+                    button(
+                        "shot-load-more",
+                        ButtonKind::Glass,
+                        format!("Load more ({} remaining)", total - shown),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.shots.gallery_count = (this.shots.gallery_count + GALLERY_PAGE).min(this.shots.items.len());
+                        cx.notify();
+                    })),
+                ),
+            );
+        }
+        grid
+    }
+
+    /// Title, count and close button.
+    fn gallery_header(total: usize, cx: &mut Context<Self>) -> Div {
+        let close = icon_button("shot-gallery-close", Icon::Close, 36., 0.42, 0.72)
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.shots_close_gallery();
+                cx.notify();
+            }));
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(12.))
+            .mb(px(12.))
+            .child(
+                div()
+                    .flex()
+                    .items_baseline()
+                    .gap(px(8.8))
+                    .child(
+                        div()
+                            .text_size(px(16.8))
+                            .font_weight(theme::W_BOLD)
+                            .text_color(white())
+                            .font_family(theme::FONT_BODY)
+                            .child("Screenshots"),
+                    )
+                    .child(div().text_size(px(13.6)).text_color(theme::white_a(0.62)).child(total.to_string())),
+            )
+            .child(close)
     }
 }
 
