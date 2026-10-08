@@ -21,6 +21,8 @@ serde_json.workspace = true
 heronite-media = { path = "../crates/media" }
 heronite-playnite = { path = "../crates/playnite" }
 heronite-emulation = { path = "../crates/emulation" }
+heronite-wine = { path = "../crates/wine" }
+heronite-epic = { path = "../crates/epic" }
 image = { version = "0.25", default-features = false }
 smallvec = "1"
 futures = "0.3"

@@ -3036,11 +3036,13 @@ dependencies = [
  "gpui-kit",
  "heronite-data",
  "heronite-emulation",
+ "heronite-epic",
  "heronite-images",
  "heronite-launch",
  "heronite-media",
  "heronite-metadata",
  "heronite-playnite",
+ "heronite-wine",
  "image",
  "indexmap",
  "log",
@@ -3083,6 +3085,19 @@ dependencies = [
  "serde_json",
  "tempfile",
  "uuid",
+]
+
+[[package]]
+name = "heronite-epic"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-launch",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -3170,6 +3185,18 @@ dependencies = [
  "indexmap",
  "log",
  "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "heronite-wine"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "log",
  "serde",
  "serde_json",
  "tempfile",

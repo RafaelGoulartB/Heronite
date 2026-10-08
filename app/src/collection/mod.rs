@@ -9,6 +9,7 @@ mod html;
 mod header;
 mod list;
 mod metadata_ui;
+mod nav;
 mod playnite_menu;
 mod screenshot_viewer;
 mod screenshots;
@@ -115,6 +116,9 @@ pub struct CollectionView {
     stage_enabled: bool,
     grey_uninstalled: bool,
     cover_aspect: f32,
+    /// Page shown (☰ menu); the Collection itself is `Page::Collection`.
+    page: crate::pages::Page,
+    pages: nav::Pages,
 }
 
 impl CollectionView {
@@ -220,8 +224,14 @@ impl CollectionView {
             stage_enabled: true,
             grey_uninstalled: true,
             cover_aspect: 1.5,
+            page: crate::pages::Page::Collection,
+            pages: nav::Pages::default(),
         };
         window.focus(&this.focus_handle, cx);
+        let mut this = this;
+        if let Some(page) = std::env::var("HERONITE_DEBUG_PAGE").ok().and_then(|p| crate::pages::Page::from_debug(&p)) {
+            this.navigate(page, window, cx);
+        }
         this.spawn_load(cx);
         this.start_idle_jobs(cx);
         this.init_metadata(window, cx);
@@ -374,6 +384,7 @@ impl CollectionView {
                 "sort" => Some(Menu::Sort),
                 "status" => Some(Menu::Status),
                 "playnite" => Some(Menu::Playnite),
+                "nav" => Some(Menu::Nav),
                 "facets" => {
                     self.facet_flyout = Some(FacetKind::Developer);
                     Some(Menu::Facets)
@@ -796,6 +807,8 @@ impl Render for CollectionView {
         }
 
         let header = self.render_header(cx);
+        let page_el = self.render_page(cx);
+        let on_page = page_el.is_some();
         let stage_el = match self.stage_image(window) {
             Some((key, src)) => stage::stage(Some(src), key, self.scrim),
             None => stage::stage(None, SharedString::default(), self.scrim),
@@ -1006,7 +1019,8 @@ impl Render for CollectionView {
             .font_family(theme::FONT_BODY)
             .text_color(white())
             .child(stage_el)
-            .child(
+            .children(page_el)
+            .when(!on_page, |root| root.child(
                 div()
                     .absolute()
                     .inset_0()
@@ -1036,7 +1050,7 @@ impl Render for CollectionView {
                             )
                             .child(div().flex_1().min_w_0().h_full().child(focus_panel)),
                     ),
-            )
+            ))
             .children(toast)
             .children(self.render_context_menu(window, cx))
             .children(self.dialog.clone())

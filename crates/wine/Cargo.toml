@@ -1,0 +1,16 @@
+[package]
+name = "heronite-wine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Wine/Proton manager (download, install, remove) and compatibility layer detection compatible with Heronite's data files"
+
+[dependencies]
+heronite-data = { path = "../data" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+anyhow = "1"
+log = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

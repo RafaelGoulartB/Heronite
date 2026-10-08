@@ -3,6 +3,7 @@ mod collection;
 mod dialogs;
 mod icons;
 mod images;
+mod pages;
 mod runtime;
 mod theme;
 mod ui;

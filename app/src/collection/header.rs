@@ -22,6 +22,7 @@ pub enum Menu {
     Sort,
     Status,
     Playnite,
+    Nav,
 }
 
 const CLOSE_DELAY: Duration = Duration::from_millis(180);
@@ -94,7 +95,7 @@ impl CollectionView {
         }
     }
 
-    fn hover_dropdown(
+    pub(super) fn hover_dropdown(
         &self,
         menu: Menu,
         ic: Icon,
@@ -272,7 +273,7 @@ impl CollectionView {
                     .flex_1()
                     .items_center()
                     .min_w(px(32.))
-                    .child(tool_button("hdr-sidebar", Icon::Menu, false))
+                    .child(self.nav_dropdown(cx))
                     .child(install),
             )
             .child(
