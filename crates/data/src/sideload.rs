@@ -12,6 +12,9 @@
 //! * `GamesConfig/<app>.json`: the Wine prefix/version chosen in the dialog
 //!   (written the way `GameConfig.setSetting` does).
 //!
+//! Removing a game is `heronite_metadata::remove::remove_collection_game`;
+//! this module only adds the optional Wine prefix removal.
+//!
 //! `app_name` ids are `short-uuid`'s default output (a UUIDv4 in the Flickr
 //! base58 alphabet, 22 characters), exactly what Heroic generates.
 
@@ -24,7 +27,7 @@ use serde_json::{json, Map, Value};
 
 use crate::game_config;
 use crate::json_store;
-use crate::models::{LocalMetaFile, SessionsFile, TimestampFile};
+use crate::models::LocalMetaFile;
 use crate::paths::HeroicPaths;
 
 /// `short-uuid` default alphabet (`flickrBase58`).
@@ -318,45 +321,9 @@ pub fn find_game(paths: &HeroicPaths, app_name: &str) -> Result<Option<Value>> {
 }
 
 // ---------------------------------------------------------------------------
-// Removing
+// Removing: the game itself goes through `heronite_metadata::remove`
+// (Heronite's "Remove from Collection"); only the Wine prefix is handled here.
 // ---------------------------------------------------------------------------
-
-/// Takes the game out of every store this app owns: the sideload entry,
-/// overlay meta, sessions, playtime and the "recent" entry (what Heroic's
-/// sideload uninstall plus Heronite's "Remove from Collection" delete). Art
-/// and Collection metadata files are removed by the caller (they live in the
-/// metadata crate). Returns whether a library entry existed.
-pub fn remove_game(paths: &HeroicPaths, app_name: &str) -> Result<bool> {
-    let existed = json_store::update_value(&paths.sideload_library(), |doc| {
-        let obj = doc.as_object_mut().expect("object");
-        let Some(Value::Array(list)) = obj.get_mut("games") else { return Ok(false) };
-        let before = list.len();
-        list.retain(|g| g.get("app_name").and_then(Value::as_str) != Some(app_name));
-        Ok(list.len() != before)
-    })?;
-    if paths.local_meta().exists() {
-        json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
-            f.games.shift_remove(app_name);
-            Ok(())
-        })?;
-    }
-    if paths.sessions().exists() {
-        json_store::update::<SessionsFile, _>(&paths.sessions(), |f| {
-            f.sessions.shift_remove(app_name);
-            Ok(())
-        })?;
-    }
-    if paths.timestamps().exists() {
-        json_store::update::<TimestampFile, _>(&paths.timestamps(), |f| {
-            f.shift_remove(app_name);
-            Ok(())
-        })?;
-    }
-    if paths.config().exists() {
-        crate::config_games::remove_recent(paths, app_name)?;
-    }
-    Ok(existed)
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrefixOutcome {
@@ -646,39 +613,6 @@ mod tests {
     }
 
     #[test]
-    fn removing_cleans_every_owned_store() {
-        let (_d, paths) = setup();
-        fs::create_dir_all(paths.timestamps().parent().unwrap()).unwrap();
-        save_game(&paths, &spec("a", "/g/a.exe", SideloadPlatform::Windows)).unwrap();
-        save_game(&paths, &spec("b", "/g/b.exe", SideloadPlatform::Windows)).unwrap();
-        fs::create_dir_all(paths.sessions().parent().unwrap()).unwrap();
-        fs::write(
-            paths.sessions(),
-            "{\n\t\"sessions\": {\n\t\t\"a\": [],\n\t\t\"b\": []\n\t}\n}",
-        )
-        .unwrap();
-        fs::write(paths.timestamps(), "{\n\t\"a\": {\n\t\t\"totalPlayed\": 5\n\t},\n\t\"b\": {\n\t\t\"totalPlayed\": 7\n\t}\n}").unwrap();
-        fs::write(
-            paths.config(),
-            "{\n\t\"games\": {\n\t\t\"recent\": [\n\t\t\t{\n\t\t\t\t\"appName\": \"a\",\n\t\t\t\t\"title\": \"A\"\n\t\t\t}\n\t\t]\n\t}\n}",
-        )
-        .unwrap();
-        assert!(remove_game(&paths, "a").unwrap());
-        assert!(!remove_game(&paths, "a").unwrap());
-        let lib = json_store::read_value(&paths.sideload_library()).unwrap();
-        assert_eq!(lib["games"].as_array().unwrap().len(), 1);
-        assert_eq!(lib["games"][0]["app_name"], "b");
-        let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
-        assert!(metas.games.contains_key("b") && !metas.games.contains_key("a"));
-        let sessions = json_store::read_value(&paths.sessions()).unwrap();
-        assert!(sessions["sessions"].get("a").is_none() && sessions["sessions"].get("b").is_some());
-        let ts = json_store::read_value(&paths.timestamps()).unwrap();
-        assert!(ts.get("a").is_none() && ts.get("b").is_some());
-        let cfg = json_store::read_value(&paths.config()).unwrap();
-        assert_eq!(cfg["games"]["recent"], json!([]));
-    }
-
-    #[test]
     fn prefix_removal_follows_heroics_sanity_checks() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
@@ -744,9 +678,6 @@ mod tests {
         let cut = before.rfind("\n\t]").expect("games array end");
         assert!(after.starts_with(&before[..cut]), "existing entries changed");
         assert!(after.ends_with("\n\t]\n}"));
-        // And removing it again restores the original bytes.
-        assert!(remove_game(&paths, "brand-new").unwrap());
-        assert_eq!(fs::read_to_string(paths.sideload_library()).unwrap(), before);
     }
 
     #[test]

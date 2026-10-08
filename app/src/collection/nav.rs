@@ -40,6 +40,14 @@ impl CollectionView {
                 }
                 p.child(menu_separator())
                     .child(
+                        menu_item("nav-add-game", false)
+                            .child(icon(Icon::Add, px(16.), rgb(0xcaf3fd)))
+                            .child("Add game")
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_add_game(window, cx);
+                            })),
+                    )
+                    .child(
                         menu_item("nav-settings", false)
                             .child(icon(Icon::Settings, px(16.), rgb(0xcaf3fd)))
                             .child("Settings")

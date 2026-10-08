@@ -1,5 +1,6 @@
 //! The Collection screen: stage background, header, grouped list, focus panel.
 
+mod add_game;
 mod achievements;
 mod card;
 mod context_menu;
@@ -16,8 +17,8 @@ mod nav;
 mod playnite_menu;
 mod screenshot_viewer;
 mod screenshots;
-mod sessions;
 mod system_glue;
+mod sessions;
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
@@ -826,6 +827,9 @@ impl Render for CollectionView {
                 "playnite:import" => self.open_playnite_import(window, cx),
                 "playnite:merge" => self.open_playnite_merge(window, cx),
                 w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => self.open_extras_debug(which.as_str(), window, cx),
+                w if w.starts_with("add-game") || w.starts_with("edit-game") => {
+                    self.add_game_debug_dialog(w, window, cx);
+                }
                 other => {
                     if !self.epic_debug_dialog(other, window, cx) {
                         self.open_emu_debug_dialog(other, window, cx);

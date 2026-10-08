@@ -3,6 +3,7 @@
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 pub enum Icon {
+    Add,
     AccessTime,
     Backspace,
     Cancel,
@@ -77,6 +78,7 @@ impl Icon {
     pub fn path(self) -> &'static str {
         use Icon::*;
         match self {
+            Add => "icons/add.svg",
             AccessTime => "icons/access-time.svg",
             Backspace => "icons/backspace.svg",
             Cancel => "icons/cancel.svg",

@@ -10,6 +10,7 @@
 //! - Emit `DialogEvent::Changed` after writing data the Collection shows
 //!   (it reloads the library), `DialogEvent::Close` to close.
 
+pub mod add_game;
 pub mod epic_confirm;
 pub mod epic_import;
 pub mod epic_install;

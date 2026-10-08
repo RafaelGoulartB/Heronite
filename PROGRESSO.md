@@ -443,3 +443,45 @@ Brief em `docs/agents/collection-extras.md`. Código novo: `app/src/collection/{
 - Aviso para o agente "system": `app/src/system/hub.rs` tem um `#[test]` que falha ao compilar o binário de testes do
   app (`recursion limit reached while expanding #[test]`: o glob `use super::*` traz o macro `test` do gpui). Importar os
   itens explicitamente no módulo de testes resolve.
+
+## Adicionar / editar jogo sideload (agente "addgame")
+
+Porta o "Add game" do Heroic (`SideloadDialog` + seletores de plataforma e de Wine do `InstallModal`). Programa nativo
+Linux, programa Windows (Wine/Proton) ou jogo de navegador entram em `sideload_apps/library.json` do mesmo jeito que o
+Heroic grava, e podem ser editados/removidos depois.
+
+- **Onde**: ☰ → "Add game"; menu de contexto → "Edit game" (jogos sideload que não sejam Steam/emulador).
+  `HERONITE_DEBUG_DIALOG=add-game[:estado]` e `edit-game:<appName>[:estado]` (estados separados por `+`:
+  `windows`, `linux`, `browser`, `shared`, `platform-open`, `wine-open`, `remove`, `picker`, `art=<capa>[,<hero>]`,
+  `save`, `remove-now`; `HERONITE_DEBUG_NO_SEARCH=1` não busca imagens na web). Cuidado no zsh: `$APP:remove` vira modificador, use `${APP}`.
+- **Código**: `crates/data/src/sideload.rs` (formato dos arquivos, ids, meta do overlay, prefixo Wine, testes),
+  `app/src/dialogs/add_game/{mod,logic,picker}.rs` (diálogo, regras puras, busca de imagens), glue em
+  `app/src/collection/add_game.rs`.
+- **O que grava** (igual ao `addNewApp` + hooks do Heronite): entrada `GameInfo` na ordem de chaves do Heroic
+  (`runner, app_name, title, install{executable,platform,is_dlc}, folder_name, art_cover, is_installed, art_square,
+  canRunOffline, browserUrl, customUserAgent, launchFullScreen`, `is_linux_native` no fim como o
+  `syncLocalExecutablePlatform`); `app_name` = `short-uuid` (UUIDv4 em base58 flickr, 22 chars, conferido contra a lib
+  JS); `local_library/library.json` (`applySideloadAppToLocalMeta`: `playniteId heroic_<id>`, `source manual`,
+  `launchKind executable`, `remappedExecutable`); `GamesConfig/<id>.json` (prefixo, Wine, bottle) para jogos Windows,
+  pelo mesmo `set_game_settings` das configurações. Edição = merge raso `{...atual, ...novo}` (campos desconhecidos,
+  posição das chaves e arte já existente preservados). A plataforma escolhida fica fixa via `runAs` do overlay quando
+  difere do que a detecção do arquivo diz (ELF/`#!`/AppImage → Linux, MZ/.exe → Windows).
+- **Diálogo**: título (sem caracteres especiais, máx. 40), arte quadrada e capa/hero (URL, arquivo local → `file://`,
+  clique na imagem ou botões abrem a busca web DuckDuckGo/Bing/Google; "Find art" usa Steam CDN/SteamGridDB (com chave)/
+  Bottles; ao sair do título busca sozinho se não há arte), plataforma, executável (pasta de instalação derivada),
+  seção Wine (prefixo compartilhado ou `defaultWinePrefixDir/<título>`, versão do Wine), URL/User-Agent/tela cheia
+  para navegador, "Run Installer First" (roda um .exe no prefixo escolhido), "Remove game" (usa
+  `heronite_metadata::remove::remove_collection_game` do agente collection + opção de apagar o prefixo Wine com as
+  checagens do `removePrefix` do Heroic).
+- **Atalhos**: após adicionar chama `crate::system::shortcuts::on_game_added` (agente system); mensagens só vão para o log
+  (o diálogo fecha antes de haver toast).
+- **Verificado**: 15 testes do módulo de dados (bytes preservados num cópia da biblioteca real, ordem das chaves,
+  edição, meta, config de jogo, checagens de prefixo) + 8 de lógica do diálogo; capturas do diálogo vazio, Windows
+  preenchido (seção Wine), Linux com select aberto, navegador, edição, confirmação de remoção, busca de imagens, menu ☰ e
+  menu de contexto; fluxos `save` / `edit save sem mudanças` / `remove-now` rodados no app contra uma cópia da biblioteca
+  (adicionar → arquivos esperados; editar sem mexer → arquivos idênticos byte a byte; remover → biblioteca volta aos bytes
+  originais).
+- **Não verificado**: cliques reais, seletor de arquivos nativo, busca de imagens na web (só o estado vazio), "Run
+  Installer First" e a pré-visualização das imagens (o workspace oculto não entrega os quadros tardios; os logs mostram o
+  carregamento ok), uso real com Wine/Proton. Sem macOS. O picker do SteamGridDB (grids/heroes da API) não foi portado:
+  a busca web ocupa o lugar dele.

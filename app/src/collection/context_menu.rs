@@ -198,6 +198,19 @@ impl CollectionView {
             );
         }
 
+        // Edit game (sideloaded programs and browser games; not Steam/emulated entries).
+        if game.runner == "sideload" && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
+            let k = key.clone();
+            menu = menu.child(
+                item("cm-edit-game")
+                    .child(icon(Icon::Edit, px(20.), rgb(0xcaf3fd)))
+                    .child("Edit game")
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.open_edit_game(&k, window, cx);
+                    })),
+            );
+        }
+
         let k = key.clone();
         menu = menu.child(
             item("cm-metadata")
@@ -243,6 +256,7 @@ impl CollectionView {
         let position = state.position;
         menu = self.extras_context_items(menu, &game, cx);
         menu = self.epic_context_items(menu, &game, cx);
+        menu = self.system_context_items(menu, &game, cx);
         Some(
             deferred(
                 div()
@@ -256,7 +270,6 @@ impl CollectionView {
                         anchored()
                             .position(position)
                             .snap_to_window_with_margin(px(8.))
-        menu = self.system_context_items(menu, &game, cx);
                             .child(div().occlude().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(menu)),
                     ),
             )
