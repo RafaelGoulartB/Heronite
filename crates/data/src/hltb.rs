@@ -124,7 +124,20 @@ impl WikiCache {
         if title.is_empty() || title == "__timestamp" {
             return None;
         }
-        self.entries.get(&remove_special_characters(title)).filter(|v| v.is_object())
+        let key = remove_special_characters(title);
+        if let Some(v) = self.entries.get(&key).filter(|v| v.is_object()) {
+            return Some(v);
+        }
+        // electron-store (dot-prop) stores `a.b` as nested objects.
+        if key.contains('.') {
+            let mut parts = key.split('.');
+            let mut cur = self.entries.get(parts.next()?)?;
+            for part in parts {
+                cur = cur.get(part)?;
+            }
+            return Some(cur).filter(|v| v.is_object());
+        }
+        None
     }
 
     /// Cached wiki info for `title` (the Collection title); `store_title` is
@@ -157,6 +170,13 @@ impl WikiCache {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dotted_titles_are_nested_like_electron_store() {
+        let v = serde_json::json!({"Ori and the Blind Forest": {}, "S": {"T": {"R": {"A": {"howlongtobeat": {"mainStory": 3.5}}}}}});
+        let cache = super::WikiCache { entries: v.as_object().unwrap().clone() };
+        assert!(cache.lookup("S.T.R.A", "").and_then(|e| e.hltb).is_some());
+    }
+
     use super::*;
     use serde_json::json;
 
