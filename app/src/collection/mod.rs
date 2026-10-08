@@ -13,22 +13,26 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
 
+use futures::StreamExt;
+use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-
 use heronite_data::hltb::WikiCache;
 use heronite_data::ui_state::UiState;
 use heronite_data::{art, AppPaths, ArtContext, FacetKind, HeroicPaths, Library};
+use heronite_images::{ImageRef, Variant};
 
-use crate::{images, theme};
+use crate::images::{to_chain, ImageStore};
+use crate::theme;
+use header::Menu;
 use vm::{CardVm, FocusVm, GroupVm, ListItem};
 
 /// Everything loaded from disk off the UI thread.
 struct Loaded {
     lib: Library,
     wiki: WikiCache,
-    covers: HashMap<SharedString, std::path::PathBuf>,
-    stages: HashMap<SharedString, std::path::PathBuf>,
+    covers: HashMap<SharedString, Vec<ImageRef>>,
+    stages: HashMap<SharedString, Vec<ImageRef>>,
 }
 
 fn load_all(heroic: &HeroicPaths) -> anyhow::Result<Loaded> {
@@ -38,17 +42,12 @@ fn load_all(heroic: &HeroicPaths) -> anyhow::Result<Loaded> {
     let shots = (!lib.settings.screenshots.folder.is_empty())
         .then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
     let ctx = ArtContext::new(heroic, shots.as_deref());
-    let cache = heroic.images_cache_dir();
     let mut covers = HashMap::new();
     let mut stages = HashMap::new();
     for g in &lib.games {
         let key: SharedString = g.key.clone().into();
-        if let Some(p) = images::first_local(&art::card_cover(&ctx, g), &cache) {
-            covers.insert(key.clone(), p);
-        }
-        if let Some(p) = images::first_local(&art::stage_art(&ctx, g), &cache) {
-            stages.insert(key, p);
-        }
+        covers.insert(key.clone(), to_chain(&art::card_cover(&ctx, g)));
+        stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
     Ok(Loaded { lib, wiki, covers, stages })
@@ -63,7 +62,16 @@ pub struct CollectionView {
     wiki: Arc<WikiCache>,
     ui: UiState,
     search: String,
-    stages: HashMap<SharedString, ImageSource>,
+    search_input: Entity<InputState>,
+    open_menu: Option<Menu>,
+    menu_close: Option<Task<()>>,
+    facet_flyout: Option<FacetKind>,
+    refreshing: bool,
+    images: ImageStore,
+    cover_chains: HashMap<SharedString, Vec<ImageRef>>,
+    stage_chains: HashMap<SharedString, Vec<ImageRef>>,
+    /// Last stage texture shown, kept while the next one loads.
+    shown_stage: Option<(SharedString, Arc<RenderImage>)>,
     groups: Vec<GroupVm>,
     items: Vec<ListItem>,
     columns: usize,
@@ -72,14 +80,16 @@ pub struct CollectionView {
     hovered: Option<SharedString>,
     leaving: Option<SharedString>,
     focus: Option<FocusVm>,
-    covers: HashMap<SharedString, ImageSource>,
     scrim: stage::Scrim,
+    blur_px: f32,
+    saturation: f32,
+    stage_enabled: bool,
     grey_uninstalled: bool,
     cover_aspect: f32,
 }
 
 impl CollectionView {
-    pub fn new(started: Instant, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(started: Instant, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let list_state = ListState::new(0, ListAlignment::Top, px(500.));
         let weak = cx.entity().downgrade();
         list_state.set_scroll_handler(move |_, _, cx| {
@@ -100,16 +110,48 @@ impl CollectionView {
             }
             ui
         };
+        let (images, mut rx) = ImageStore::new(heroic.images_cache_dir(), &app_paths);
+        cx.spawn(async move |this, cx| {
+            while let Some(first) = rx.next().await {
+                // Batch whatever else already arrived into one notify.
+                let mut batch = vec![first];
+                while let Ok(Some(more)) = rx.try_next() {
+                    batch.push(more);
+                }
+                let alive = this
+                    .update(cx, |this, cx| {
+                        for item in batch {
+                            this.images.on_loaded(item);
+                        }
+                        cx.notify();
+                    })
+                    .is_ok();
+                if !alive {
+                    break;
+                }
+            }
+        })
+        .detach();
+
+        let search_input = Self::new_search_input(window, cx);
         let this = Self {
             started,
             first_frame_logged: false,
-            heroic: heroic.clone(),
+            heroic,
             app_paths,
             lib: None,
             wiki: Arc::new(WikiCache::default()),
             ui,
             search: String::new(),
-            stages: HashMap::new(),
+            search_input,
+            open_menu: None,
+            menu_close: None,
+            facet_flyout: None,
+            refreshing: false,
+            images,
+            cover_chains: HashMap::new(),
+            stage_chains: HashMap::new(),
+            shown_stage: None,
             groups: Vec::new(),
             items: Vec::new(),
             columns: 3,
@@ -118,38 +160,72 @@ impl CollectionView {
             hovered: None,
             leaving: None,
             focus: None,
-            covers: HashMap::new(),
             scrim: stage::Scrim { dim: 0.14, scrim: 1. },
+            blur_px: 6.,
+            saturation: 0.94,
+            stage_enabled: true,
             grey_uninstalled: true,
             cover_aspect: 1.5,
         };
+        this.spawn_load(cx);
+        this
+    }
+
+    fn spawn_load(&self, cx: &mut Context<Self>) {
+        let heroic = self.heroic.clone();
         cx.spawn(async move |this, cx| {
             let loaded = cx.background_spawn(async move { load_all(&heroic) }).await;
-            this.update(cx, |this, cx| match loaded {
-                Ok(l) => this.apply_loaded(l, cx),
-                Err(err) => log::error!("loading library: {err:#}"),
+            this.update(cx, |this, cx| {
+                this.refreshing = false;
+                match loaded {
+                    Ok(l) => this.apply_loaded(l),
+                    Err(err) => log::error!("loading library: {err:#}"),
+                }
+                cx.notify();
             })
             .ok();
         })
         .detach();
-        this
     }
 
-    fn apply_loaded(&mut self, l: Loaded, cx: &mut Context<Self>) {
-        let bg = &l.lib.settings.background;
+    pub(super) fn reload(&mut self, cx: &mut Context<Self>) {
+        if self.refreshing {
+            return;
+        }
+        self.refreshing = true;
+        self.images.clear_failed();
+        self.spawn_load(cx);
+        cx.notify();
+    }
+
+    fn apply_loaded(&mut self, l: Loaded) {
+        let first = self.lib.is_none();
+        let s = &l.lib.settings;
+        let bg = &s.background;
         self.scrim = stage::Scrim { dim: bg.dimming.get() as f32 / 100., scrim: bg.scrim.get() as f32 / 100. };
-        self.grey_uninstalled = l.lib.settings.grey_uninstalled_games && !l.lib.settings.all_tiles_in_color;
-        self.covers = l.covers.into_iter().map(|(k, p)| (k, ImageSource::from(p))).collect();
-        self.stages = l.stages.into_iter().map(|(k, p)| (k, ImageSource::from(p))).collect();
+        self.blur_px = bg.blur.get() as f32;
+        self.saturation = bg.saturation.get() as f32 / 100.;
+        self.stage_enabled = bg.enabled;
+        self.grey_uninstalled = s.grey_uninstalled_games && !s.all_tiles_in_color;
+        self.cover_chains = l.covers;
+        self.stage_chains = l.stages;
         self.wiki = Arc::new(l.wiki);
         self.lib = Some(Arc::new(l.lib));
         self.refresh_groups();
-        let focused = std::env::var("HERONITE_DEBUG_SELECT").ok().or_else(|| self.ui.focused_game.clone());
+        let focused = if first {
+            std::env::var("HERONITE_DEBUG_SELECT").ok().or_else(|| self.ui.focused_game.clone())
+        } else {
+            self.selected.as_ref().map(|s| s.to_string())
+        };
         if let Some(key) = focused {
             self.select(key.into(), false);
+            if first {
+                self.reveal_selected();
+            }
         }
-        log::info!("library on screen after {:?}", self.started.elapsed());
-        cx.notify();
+        if first {
+            log::info!("library on screen after {:?}", self.started.elapsed());
+        }
     }
 
     fn refresh_groups(&mut self) {
@@ -182,6 +258,30 @@ impl CollectionView {
         self.list_state.reset(self.items.len());
     }
 
+    /// Scrolls the list so the selected card's row is visible
+    /// (`scrollIntoView({ block: 'nearest' })`).
+    fn reveal_selected(&mut self) {
+        let Some(sel) = self.selected.clone() else { return };
+        let ix = self.items.iter().position(|it| match *it {
+            ListItem::Row { group, start } => {
+                let g = &self.groups[group];
+                g.cards[start..(start + self.columns).min(g.cards.len())].iter().any(|c| c.key == sel)
+            }
+            _ => false,
+        });
+        if let Some(ix) = ix {
+            let viewport = self.list_state.viewport_bounds();
+            if viewport.size.height > px(0.) && self.list_state.bounds_for_item(ix).is_some() {
+                self.list_state.scroll_to_reveal_item(ix);
+            } else {
+                // Not laid out yet: put the row (and its group header when it
+                // is the group's first row) at the top.
+                let top = if ix > 0 && matches!(self.items[ix - 1], ListItem::Header { .. }) { ix - 1 } else { ix };
+                self.list_state.scroll_to(ListOffset { item_ix: top, offset_in_item: px(0.) });
+            }
+        }
+    }
+
     fn list_column_width(viewport_w: f32) -> (f32, usize) {
         if viewport_w <= 780. {
             (theme::LIST_COL_W_SM, 1)
@@ -196,7 +296,17 @@ impl CollectionView {
         theme::CARD_W * self.cover_aspect
     }
 
-    fn render_item(&mut self, ix: usize, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    /// Cover texture for `key` at `w`×`h` logical px (requested on demand).
+    fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
+        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
+        let id: SharedString = format!("c:{key}:{pw}x{ph}").into();
+        let chains = &self.cover_chains;
+        self.images
+            .get_or_request(&id, || chains.get(key).cloned().unwrap_or_default(), pw, ph, Variant::Cover, priority)
+            .map(ImageSource::Render)
+    }
+
+    fn render_item(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(item) = self.items.get(ix).copied() else {
             return div().into_any_element();
         };
@@ -219,16 +329,19 @@ impl CollectionView {
                     .into_any_element()
             }
             ListItem::Row { group, start } => {
-                let g = &self.groups[group];
-                let end = (start + self.columns).min(g.cards.len());
-                let last_row = end == g.cards.len();
+                let cards: Vec<Arc<CardVm>> = {
+                    let g = &self.groups[group];
+                    g.cards[start..(start + self.columns).min(g.cards.len())].to_vec()
+                };
+                let last_row = start + cards.len() == self.groups[group].cards.len();
                 let mut row = div()
                     .flex()
                     .gap(px(theme::CARD_GAP_X))
                     .pt(px(if start == 0 { 7.2 } else { 0. }))
                     .pb(px(if last_row { 5.6 + 13.6 } else { theme::CARD_GAP_Y }));
-                for c in &g.cards[start..end] {
-                    row = row.child(self.render_card(c.clone(), cx));
+                let scale = window.scale_factor();
+                for c in cards {
+                    row = row.child(self.render_card(c, scale, cx));
                 }
                 row.into_any_element()
             }
@@ -236,14 +349,16 @@ impl CollectionView {
         }
     }
 
-    fn render_card(&self, c: Arc<CardVm>, cx: &mut Context<Self>) -> AnyElement {
+    fn render_card(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
         let key = c.key.clone();
+        let cover_h = self.cover_h();
+        let cover = self.cover(&c.cover_key, theme::CARD_W, cover_h, scale, 100);
         let (k1, k2, k3) = (key.clone(), key.clone(), key.clone());
         card::card(
             card::CardState {
                 vm: &c,
-                cover: self.covers.get(&c.cover_key).cloned(),
-                cover_h: self.cover_h(),
+                cover,
+                cover_h,
                 selected: self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
                 leaving: self.leaving.as_ref() == Some(&key),
@@ -294,13 +409,16 @@ impl CollectionView {
             ListItem::Row { group, .. } => group,
             ListItem::End => return None,
         };
-        // Push the pinned header up when the next header approaches.
+        if !self.groups[group].show_header {
+            return None;
+        }
         let next_header = self.items[top.item_ix + 1..]
             .iter()
             .position(|it| matches!(it, ListItem::Header { .. }))
             .map(|p| top.item_ix + 1 + p);
         let mut shift = 0.;
-        if let (Some(nh), Some(vp)) = (next_header, Some(self.list_state.viewport_bounds())) {
+        if let Some(nh) = next_header {
+            let vp = self.list_state.viewport_bounds();
             if let Some(b) = self.list_state.bounds_for_item(nh) {
                 let dist = f32::from(b.origin.y - vp.origin.y);
                 if dist < list::GROUP_HEADER_H {
@@ -310,6 +428,36 @@ impl CollectionView {
         }
         Some((group, shift))
     }
+
+    /// Current stage texture: the selected game's, or the previous one while
+    /// it loads.
+    fn stage_image(&mut self, window: &Window) -> Option<(SharedString, ImageSource)> {
+        if !self.stage_enabled {
+            return None;
+        }
+        let key = self.selected.clone()?;
+        let scale = window.scale_factor();
+        let size = window.viewport_size();
+        let (pw, ph) = ((f32::from(size.width) * scale) as u32, (f32::from(size.height) * scale) as u32);
+        let blur = self.blur_px * scale;
+        let sat = self.saturation;
+        let id: SharedString = format!("s:{key}:{pw}x{ph}:{blur}:{sat}").into();
+        let chains = &self.stage_chains;
+        let ready = self.images.get_or_request(
+            &id,
+            || chains.get(&key).cloned().unwrap_or_default(),
+            pw,
+            ph,
+            Variant::Stage { blur_px: blur, saturation: sat },
+            1000,
+        );
+        if let Some(img) = ready {
+            self.shown_stage = Some((key, img));
+        } else if self.stage_chains.get(&key).is_none_or(|c| c.is_empty()) {
+            self.shown_stage = None;
+        }
+        self.shown_stage.as_ref().map(|(k, img)| (k.clone(), ImageSource::Render(img.clone())))
+    }
 }
 
 impl Render for CollectionView {
@@ -318,13 +466,21 @@ impl Render for CollectionView {
             self.first_frame_logged = true;
             log::info!("first render after {:?}", self.started.elapsed());
         }
+        self.images.drop_evicted(window);
         let viewport = window.viewport_size();
         let vw = f32::from(viewport.width);
+        let scale = window.scale_factor();
         let (list_w, columns) = Self::list_column_width(vw);
         if columns != self.columns {
             self.columns = columns;
             self.rebuild_items();
         }
+
+        let header = self.render_header(cx);
+        let stage_el = match self.stage_image(window) {
+            Some((key, src)) => stage::stage(Some(src), key, self.scrim),
+            None => stage::stage(None, SharedString::default(), self.scrim),
+        };
 
         let list_el = div()
             .size_full()
@@ -348,8 +504,21 @@ impl Render for CollectionView {
             .collect();
         let focus_panel = match self.focus.clone() {
             Some(vm) => {
+                // Resolve every cover the panel shows up front.
+                let mut covers: HashMap<SharedString, ImageSource> = HashMap::new();
+                let narrow = vw - list_w <= 1100. - theme::LIST_COL_W_MD;
+                let fw = if narrow { 72. } else { 86. };
+                if let Some(src) = self.cover(&vm.cover_key, fw, fw * 1.5, scale, 200) {
+                    covers.insert(vm.cover_key.clone(), src);
+                }
+                for g in &vm.related {
+                    for c in &g.games {
+                        if let Some(src) = self.cover(&c.cover_key, 78., 117., scale, 50) {
+                            covers.insert(c.cover_key.clone(), src);
+                        }
+                    }
+                }
                 let (w1, w2) = (weak.clone(), weak.clone());
-                let covers = self.covers.clone();
                 focus::focus_panel(
                     focus::FocusProps {
                         vm,
@@ -359,11 +528,14 @@ impl Render for CollectionView {
                         active_facets,
                     },
                     focus::FocusActions {
-                        on_close: Box::new(cx.listener(|this, _: &(), _, cx| {
-                            this.focus = None;
-                            this.selected = None;
-                            cx.notify();
-                        }).into_fn()),
+                        on_close: Box::new(
+                            cx.listener(|this, _: &(), _, cx| {
+                                this.focus = None;
+                                this.selected = None;
+                                cx.notify();
+                            })
+                            .into_fn(),
+                        ),
                         on_play: Box::new(|_, _| log::info!("play")),
                         on_favourite: Box::new(|_, _| log::info!("favourite")),
                         on_facet: Rc::new(move |f, v, _, cx| {
@@ -376,6 +548,7 @@ impl Render for CollectionView {
                         on_select: Rc::new(move |k, _, cx| {
                             w2.update(cx, |this, cx| {
                                 this.select(k, true);
+                                this.reveal_selected();
                                 cx.notify();
                             })
                             .ok();
@@ -402,18 +575,14 @@ impl Render for CollectionView {
             .bg(theme::page_bg())
             .font_family(theme::FONT_BODY)
             .text_color(white())
-            .child(stage::stage(
-                self.selected.as_ref().and_then(|k| self.stages.get(k).cloned()),
-                self.selected.clone().unwrap_or_default(),
-                self.scrim,
-            ))
+            .child(stage_el)
             .child(
                 div()
                     .absolute()
                     .inset_0()
                     .flex()
                     .flex_col()
-                    .child(header::header())
+                    .child(header)
                     .child(
                         div()
                             .flex()
@@ -448,4 +617,3 @@ impl<F: Fn(&(), &mut Window, &mut App) + 'static> IntoFn for F {
         Box::new(move |w, cx| self(&(), w, cx))
     }
 }
-

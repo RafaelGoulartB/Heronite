@@ -1,5 +1,7 @@
 //! Small styled building blocks shared by the Collection screens.
 
+pub mod dropdown;
+
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 

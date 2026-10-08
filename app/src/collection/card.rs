@@ -163,7 +163,8 @@ fn playtime_label(vm: &CardVm) -> Div {
         .text_size(px(12.))
         .font_weight(theme::W_500)
         .text_color(theme::white_a(0.72))
-        .child(icon(Icon::AccessTime, px(14.), theme::white_a(0.72 * 0.78)))
+        // MUI's 1.5rem SvgIcon size wins over the 14px rule in Heronite.
+        .child(icon(Icon::AccessTime, px(24.), theme::white_a(0.72 * 0.78)))
         .when(vm.playing, |d| {
             d.child(
                 div().size(px(6.)).rounded_full().bg(theme::success()).with_animation(

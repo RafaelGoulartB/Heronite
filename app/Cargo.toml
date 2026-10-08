@@ -13,4 +13,8 @@ anyhow.workspace = true
 log.workspace = true
 rust-embed = "8"
 heronite-data = { path = "../crates/data" }
-sha2 = "0.10"
+heronite-images = { path = "../crates/images" }
+heronite-launch = { path = "../crates/launch" }
+image = { version = "0.25", default-features = false }
+smallvec = "1"
+futures = "0.3"

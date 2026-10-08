@@ -1,0 +1,22 @@
+[package]
+name = "heronite-images"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Same major/minor as gpui-pre 0.3.8 (image 0.25.x) so the app can wrap the
+# BGRA Vec in `image::RgbaImage::from_raw` -> `image::Frame` without conversion.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
+# Scaled-on-decode JPEG (DCT 1/2, 1/4, 1/8). rayon disabled: no hidden thread pool.
+jpeg-decoder = { version = "0.3", default-features = false }
+fast_image_resize = "6"
+lz4_flex = { version = "0.11", default-features = false, features = ["std", "safe-encode", "safe-decode"] }
+sha2 = "0.10"
+ureq = "3"
+log.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+qoi = "0.4"
+zstd = "0.13"
