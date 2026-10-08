@@ -9,8 +9,9 @@ use heronite_emulation::{list_rom_scanners, list_user_emulators};
 use super::SettingsDialog;
 use crate::dialogs::{DialogCtx, DialogEvent, DialogRequest};
 use crate::theme;
-use crate::ui::controls::{button, ButtonKind};
-use crate::ui::fields::{meta_text, panel, paragraph_secondary};
+use crate::ui::controls::{button, caption, card_box, help_text, ButtonKind};
+use crate::ui::fields::meta_text;
+use crate::ui::chip;
 
 #[derive(Default)]
 pub struct State {
@@ -55,36 +56,27 @@ fn summary_line(emulators: usize, folders: usize) -> String {
 }
 
 pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<SettingsDialog>) -> AnyElement {
-    let mut card = panel().gap(px(10.));
+    let mut summary = card_box().py(px(14.)).gap(px(10.));
     match &d.emulators.summary {
-        None => card = card.child(meta_text("Loading\u{2026}")),
+        None => summary = summary.child(meta_text("Loading\u{2026}")),
         Some((names, folders)) => {
-            card = card.child(div().text_size(px(16.)).text_color(white()).child(summary_line(names.len(), *folders)));
+            summary = summary.child(div().text_size(px(14.)).text_color(theme::text_primary()).child(summary_line(names.len(), *folders)));
             if !names.is_empty() {
-                card = card.child(div().flex().flex_wrap().gap(px(6.)).children(names.iter().map(|n| {
-                    div()
-                        .px(px(8.))
-                        .py(px(2.))
-                        .rounded(px(10.))
-                        .bg(theme::white_a(0.1))
-                        .text_size(px(12.))
-                        .text_color(rgb(0xcaf3fd))
-                        .child(n.clone())
-                })));
+                summary = summary.child(div().flex().flex_wrap().gap(px(6.)).children(names.iter().map(|n| chip(n.clone()))));
             }
         }
     }
     div()
         .flex()
         .flex_col()
-        .gap(px(12.))
-        .child(paragraph_secondary(
+        .child(help_text(
             "Emulators, their platforms and the ROM folders are managed on the Emulators page: add or detect emulators, \
              edit their profiles and scan folders. Games stay in Collection and launch through the emulator you picked.",
         ))
-        .child(card)
-        .child(div().flex().child(
-            button("emu-open-manager", ButtonKind::Default, "Open emulator manager")
+        .child(caption("Configured"))
+        .child(summary)
+        .child(div().flex().mt(px(12.)).child(
+            button("emu-open-manager", ButtonKind::Glass, "Open emulator manager")
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Open(DialogRequest::EmulatorManager)))),
         ))
         .into_any_element()

@@ -11,9 +11,7 @@ use heronite_data::{game_config, HeroicPaths};
 
 use super::SettingsPage;
 use crate::pages::{PageCtx, PageEvent};
-use crate::theme;
-use crate::ui::controls::{action_button, section_title, ButtonKind};
-use crate::ui::fields::{meta_text, panel};
+use crate::ui::controls::{action_button, caption, card, row, ButtonKind};
 
 #[derive(Default)]
 pub struct State {
@@ -103,45 +101,36 @@ impl SettingsPage {
 
         // Folders.
         let (cfg, app_cfg) = (heroic.root.clone(), self.ctx.app.config.clone());
-        let folders = panel()
-            .gap(px(10.))
-            .p(px(14.))
-            .child(section_title("Folders"))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(12.))
-                    .child(action_button(
-                        "adv-open-config",
-                        ButtonKind::Outline,
-                        "Open config folder",
-                        true,
-                        cx.listener(move |this, _, _, cx| this.open_dir(cfg.clone(), cx)),
-                    ))
-                    .child(match logs.clone() {
-                        Some(dir) => action_button(
-                            "adv-open-logs",
-                            ButtonKind::Outline,
-                            "Open logs folder",
-                            true,
-                            cx.listener(move |this, _, _, cx| this.open_dir(dir.clone(), cx)),
-                        ),
-                        None => action_button("adv-open-logs", ButtonKind::Outline, "Open logs folder", false, |_, _, _| {}),
-                    })
-                    .child(action_button(
-                        "adv-open-app",
-                        ButtonKind::Outline,
-                        "Open app data folder",
-                        true,
-                        cx.listener(move |this, _, _, cx| this.open_dir(app_cfg.clone(), cx)),
-                    )),
+        let logs_btn = match logs.clone() {
+            Some(dir) => action_button(
+                "adv-open-logs",
+                ButtonKind::Glass,
+                "Open",
+                true,
+                cx.listener(move |this, _, _, cx| this.open_dir(dir.clone(), cx)),
+            ),
+            None => action_button("adv-open-logs", ButtonKind::Glass, "Open", false, |_, _, _| {}),
+        };
+        let folders = card([
+            row(
+                "Config folder",
+                Some("Shared with Heroic and Heronite."),
+                action_button("adv-open-config", ButtonKind::Glass, "Open", true, cx.listener(move |this, _, _, cx| this.open_dir(cfg.clone(), cx))),
             )
-            .child(meta_text(if logs.is_some() {
-                "The config folder is shared with Heroic and Heronite."
-            } else {
-                "The config folder is shared with Heroic and Heronite. There is no logs folder yet: it appears when a game is launched."
-            }));
+            .into_any_element(),
+            row(
+                "Logs folder",
+                Some(if logs.is_some() { "Logs of this app, Heroic and your games." } else { "There is no logs folder yet: it appears when a game is launched." }),
+                logs_btn,
+            )
+            .into_any_element(),
+            row(
+                "App data folder",
+                Some("Where this app keeps its own data."),
+                action_button("adv-open-app", ButtonKind::Glass, "Open", true, cx.listener(move |this, _, _, cx| this.open_dir(app_cfg.clone(), cx))),
+            )
+            .into_any_element(),
+        ]);
 
         // Clear cache.
         let size_line = match self.advanced.size {
@@ -150,50 +139,48 @@ impl SettingsPage {
             None => "Measuring...".into(),
         };
         let has_cache = self.advanced.size.is_some_and(|r| r.files > 0);
-        let mut cache = panel()
-            .gap(px(10.))
-            .p(px(14.))
-            .child(section_title("Clear Cache"))
-            .child(meta_text("This action clears the following caches:"))
-            .child(bullets(&[
-                "Third-party game info (scores, Steam compatibility, HowLongToBeat, PCGamingWiki).",
-                "Epic library info (list of games, install dialog info, game info). Refresh the library in the Epic page to rebuild it.",
-                "Resized image thumbnails of this app (rebuilt as you browse).",
-            ]))
-            .child(meta_text("This will NOT delete: store logins, installed games, game settings, the Collection data or the GOG and Amazon caches."))
-            .child(meta_text(size_line));
-        let confirming = self.advanced.confirm;
-        let mut row = div().flex().items_center().gap(px(12.));
-        if confirming {
-            row = row
-                .child(
-                    action_button("adv-cache-cancel", ButtonKind::Outline, "Cancel", true, cx.listener(|this, _, _, cx| {
-                        this.advanced.confirm = false;
-                        cx.notify();
-                    })),
-                )
-                .child(action_button("adv-cache-yes", ButtonKind::Tertiary, "Yes, clear the cache", true, cx.listener(|this, _, _, cx| this.clear_cache(cx))));
+        let control: AnyElement = if self.advanced.confirm {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(action_button("adv-cache-cancel", ButtonKind::Ghost, "Cancel", true, cx.listener(|this, _, _, cx| {
+                    this.advanced.confirm = false;
+                    cx.notify();
+                })))
+                .child(action_button("adv-cache-yes", ButtonKind::Danger, "Yes, clear the cache", true, cx.listener(|this, _, _, cx| this.clear_cache(cx))))
+                .into_any_element()
         } else {
-            row = row.child(action_button(
+            action_button(
                 "adv-cache-clear",
-                ButtonKind::Tertiary,
+                ButtonKind::Glass,
                 if self.advanced.busy { "Clearing..." } else { "Clear cache" },
                 has_cache && !self.advanced.busy,
                 cx.listener(|this, _, _, cx| {
                     this.advanced.confirm = true;
                     cx.notify();
                 }),
-            ));
-        }
-        cache = cache.child(row);
+            )
+            .into_any_element()
+        };
+        let cache = card([
+            row(
+                "Clear cache",
+                Some(&format!("{size_line} Clears third-party game info (scores, Steam compatibility, HowLongToBeat, PCGamingWiki), Epic library info and resized thumbnails; they are rebuilt as you browse. Store logins, installed games, game settings, the Collection data and the GOG and Amazon caches are kept.")),
+                control,
+            )
+            .into_any_element(),
+        ]);
 
         // Copy settings.
         let copied = self.advanced.copied;
-        let copy = panel().gap(px(10.)).p(px(14.)).child(section_title("Settings")).child(
-            div().flex().items_center().gap(px(12.)).child(action_button(
+        let copy = card([row(
+            "Copy all settings",
+            Some("Puts the settings JSON on the clipboard. API keys are left out."),
+            action_button(
                 "adv-copy",
-                ButtonKind::Outline,
-                if copied { "Copied to clipboard!" } else { "Copy all settings to clipboard" },
+                ButtonKind::Glass,
+                if copied { "Copied to clipboard!" } else { "Copy to clipboard" },
                 true,
                 cx.listener(|this, _, _, cx| {
                     let text = settings_json(&this.ctx.heroic, &std::env::var("HOME").unwrap_or_default());
@@ -201,31 +188,24 @@ impl SettingsPage {
                     this.advanced.copied = true;
                     cx.notify();
                 }),
-            )).child(meta_text("API keys are left out.")),
-        );
+            ),
+        )
+        .into_any_element()]);
 
-        let mut col = div().flex().flex_col().gap(px(16.)).child(folders).child(cache).child(copy);
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .child(caption("Folders"))
+            .child(folders)
+            .child(caption("Cache"))
+            .child(cache)
+            .child(caption("Settings"))
+            .child(copy);
         if let Some((text, error)) = self.advanced.notice.clone() {
-            col = col.child(div().text_size(px(14.)).text_color(if error { theme::danger() } else { theme::success() }).child(text));
+            col = col.child(super::library::notice_line(text, error));
         }
         col
     }
-}
-
-fn bullets(items: &[&str]) -> Div {
-    let mut col = div().flex().flex_col().gap(px(3.)).pl(px(8.));
-    for item in items {
-        col = col.child(
-            div()
-                .flex()
-                .gap(px(8.))
-                .text_size(px(13.33))
-                .text_color(white())
-                .child(div().flex_none().child("•"))
-                .child(div().flex_1().child(item.to_string())),
-        );
-    }
-    col
 }
 
 #[cfg(test)]

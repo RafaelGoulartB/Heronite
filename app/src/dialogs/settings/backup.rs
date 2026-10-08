@@ -10,8 +10,8 @@ use heronite_emulation::backup::run_collection_backup;
 use super::SettingsDialog;
 use crate::dialogs::DialogCtx;
 use crate::theme;
-use crate::ui::controls::{action_button, ButtonKind};
-use crate::ui::fields::{choose_path, meta_text, new_input, on_commit, paragraph_secondary, path_field, select_field};
+use crate::ui::controls::{action_button, caption, card_box, help_text, ButtonKind};
+use crate::ui::fields::{choose_path, meta_text, new_input, on_commit, path_field, select_field};
 
 const INTERVALS: [(&str, &str); 3] = [("daily", "Once a day"), ("weekly", "Once a week"), ("monthly", "Once a month")];
 
@@ -146,25 +146,31 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
         },
     );
 
-    div()
+    let setup = card_box().py(px(12.)).gap(px(12.)).child(folder).child(interval);
+    let action = div()
         .flex()
-        .flex_col()
+        .items_center()
         .gap(px(12.))
-        .child(paragraph_secondary(
-            "Copies Heroic config (Collection, playtime, statuses, Local games, logins) into the folder below. Installed games are not included. Cache and Wine tools are skipped. A dated folder is created when Heroic Local opens, if the schedule is due.",
-        ))
-        .child(folder)
-        .child(interval)
-        .child(div().flex().child(action_button(
+        .mt(px(12.))
+        .child(action_button(
             "backup-now",
             ButtonKind::Primary,
             if running { "Backing up…" } else { "Backup now" },
             !running && has,
             cx.listener(|d, _, window, cx| backup_now(d, window, cx)),
-        )))
-        .child(meta_text(last_line))
-        .children((!message.is_empty()).then(|| div().text_color(theme::success()).child(message)))
-        .children((!error.is_empty()).then(|| div().text_color(theme::danger()).child(error)))
-        .children(stored_error.map(|e| div().text_color(theme::danger()).child(e)))
+        ))
+        .child(meta_text(last_line));
+    div()
+        .flex()
+        .flex_col()
+        .child(help_text(
+            "Copies Heroic config (Collection, playtime, statuses, Local games, logins) into the folder below. Installed games are not included. Cache and Wine tools are skipped. A dated folder is created when Heroic Local opens, if the schedule is due.",
+        ))
+        .child(caption("Scheduled backup"))
+        .child(setup)
+        .child(action)
+        .children((!message.is_empty()).then(|| div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::success()).child(message)))
+        .children((!error.is_empty()).then(|| div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::danger_text()).child(error)))
+        .children(stored_error.map(|e| div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::danger_text()).child(e)))
         .into_any_element()
 }

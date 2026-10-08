@@ -14,8 +14,8 @@ use crate::dialogs::metadata_wizard::hub;
 use crate::dialogs::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, checkbox, section_title, ButtonKind};
-use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit, paragraph_secondary, select_field};
+use crate::ui::controls::{action_button, caption, card, card_box, help_text, toggle_row, ButtonKind};
+use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit, select_field};
 use crate::ui::icon;
 
 pub struct State {
@@ -113,69 +113,74 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
     let (auto_fill, download) = (m.auto_fill_missing, m.download_images);
     let testing = d.metadata.testing;
 
+    let creds = card_box().py(px(12.)).gap(px(12.)).child(labeled("Twitch / IGDB Client ID", input_box(&d.metadata.client_id, false))).child(
+        labeled("Twitch / IGDB Client Secret", input_box(&d.metadata.secret, false)),
+    );
+    let actions = div()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .mt(px(12.))
+        .child(action_button("md-test", ButtonKind::Glass, "Test IGDB", !testing, cx.listener(|d, _, _, cx| test_igdb(d, cx))))
+        .child(action_button(
+            "md-wizard",
+            ButtonKind::Primary,
+            "Download metadata\u{2026}",
+            true,
+            cx.listener(|_, _, _, cx| hub(cx).update(cx, |h, cx| h.request_wizard(cx))),
+        ))
+        .children(d.metadata.ok_message.clone().map(|t| div().ml(px(6.)).text_size(px(13.)).text_color(theme::success()).child(t)));
+    let images = card([
+        toggle_row("md-autofill", "Fill missing metadata in the background", None, auto_fill)
+            .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.auto_fill_missing = !auto_fill)))
+            .into_any_element(),
+        toggle_row("md-download", "Copy covers to disk", Some("Off keeps the CDN URLs instead of storing the images."), download)
+            .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.download_images = !download)))
+            .into_any_element(),
+    ]);
+
     let mut col = div()
         .flex()
         .flex_col()
-        .gap(px(12.))
-        .child(paragraph_secondary(
+        .child(help_text(
             "Collection uses IGDB first, then Steam, store pages, Lutris, and Playnite files. Create a Twitch app to get IGDB keys: https://dev.twitch.tv/console",
         ))
-        .child(section_title("Twitch / IGDB API"))
-        .child(labeled("Twitch / IGDB Client ID", input_box(&d.metadata.client_id, false)))
-        .child(labeled("Twitch / IGDB Client Secret", input_box(&d.metadata.secret, false)))
-        .child(
-            div()
-                .flex()
-                .gap(px(8.))
-                .child(action_button("md-test", ButtonKind::Outline, "Test IGDB", !testing, cx.listener(|d, _, _, cx| test_igdb(d, cx))))
-                .child(action_button(
-                    "md-wizard",
-                    ButtonKind::Primary,
-                    "Download metadata\u{2026}",
-                    true,
-                    cx.listener(|_, _, _, cx| hub(cx).update(cx, |h, cx| h.request_wizard(cx))),
-                )),
-        )
-        .children(d.metadata.ok_message.clone().map(|t| div().text_size(px(16.)).text_color(theme::success()).child(t)))
-        .child(section_title("Images & fields"))
-        .child(checkbox("md-autofill", auto_fill, "Fill missing metadata in the background").on_click(cx.listener(
-            move |d, _, _, cx| persist(d, cx, |m| m.auto_fill_missing = !auto_fill),
-        )))
-        .child(checkbox("md-download", download, "Copy covers to disk (default keeps CDN URLs)").on_click(cx.listener(
-            move |d, _, _, cx| persist(d, cx, |m| m.download_images = !download),
-        )));
+        .child(caption("Twitch / IGDB API"))
+        .child(creds)
+        .child(actions)
+        .child(caption("Images & fields"))
+        .child(images);
 
-    // <details> Field priority (advanced)
+    // Field priority (advanced), collapsible.
     let open = d.metadata.advanced_open;
     col = col.child(
         div()
             .id("md-advanced")
             .flex()
             .items_center()
-            .gap(px(8.))
+            .gap(px(6.))
+            .mt(px(14.))
+            .mx(px(6.))
+            .mb(px(6.))
             .cursor_pointer()
             .on_click(cx.listener(|d, _, _, cx| {
                 d.metadata.advanced_open = !d.metadata.advanced_open;
                 d.metadata.open_select = None;
                 cx.notify();
             }))
-            .child(div().w(px(13.)).flex().justify_center().child(icon(
-                if open { Icon::ExpandMore } else { Icon::ChevronRight },
-                px(18.),
-                white(),
-            )))
-            .child(div().font_family(theme::FONT_HEADING).text_size(px(20.)).text_color(white()).child("Field priority (advanced)")),
+            .child(icon(if open { Icon::ExpandMore } else { Icon::ChevronRight }, px(16.), theme::text_muted()))
+            .child(div().text_size(px(12.)).text_color(theme::text_muted()).child("Field priority (advanced)")),
     );
     if open {
-        col = col.child(meta_text("Preferred source per field. Other sources still fill empty values."));
-        let mut grid = div().flex().flex_wrap().gap_x(px(8.)).gap_y(px(8.));
+        col = col.child(div().px(px(6.)).pb(px(8.)).child(meta_text("Preferred source per field. Other sources still fill empty values.")));
+        let mut grid = card_box().py(px(12.)).flex_row().flex_wrap().gap_x(px(12.)).gap_y(px(10.));
         for field in METADATA_FIELDS {
             let current = preferred_source(d, field);
             let label = SOURCES.iter().find(|(v, _)| *v == current).map(|(_, l)| *l).unwrap_or("Auto (IGDB first)");
             let is_open = d.metadata.open_select == Some(field);
             let options: Vec<(SharedString, bool)> =
                 SOURCES.iter().map(|(v, l)| (SharedString::from(*l), *v == current)).collect();
-            grid = grid.child(div().w(px(204.)).child(select_field(
+            grid = grid.child(div().w(px(200.)).child(select_field(
                 &format!("md-prio-{field}"),
                 Some(metadata_field_label(field)),
                 label,

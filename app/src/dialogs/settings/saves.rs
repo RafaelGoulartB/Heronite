@@ -13,10 +13,8 @@ use super::SettingsDialog;
 use crate::dialogs::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{checkbox, help_text};
-use crate::ui::fields::{
-    choose_path, new_input, on_commit, panel, paragraph_secondary, path_field, select_field,
-};
+use crate::ui::controls::{caption, card, card_box, help_text, toggle_row};
+use crate::ui::fields::{choose_path, meta_text, new_input, on_commit, path_field, select_field};
 use crate::ui::icon;
 
 const FORMATS: [(&str, &str); 2] = [("zip", "Zip"), ("simple", "Simple folder")];
@@ -98,16 +96,16 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
     let details_open = d.saves.details_open.unwrap_or(!locked);
 
     let callout: AnyElement = match &detected {
-        None => panel().child(help_text("Looking for Ludusavi…")).into_any_element(),
+        None => card_box().py(px(12.)).child(help_text("Looking for Ludusavi…")).into_any_element(),
         Some(Some(f)) => {
             let compression = if f.format.as_deref() == Some("zip") {
                 f.compression.as_ref().map(|c| format!(" / {c}")).unwrap_or_default()
             } else {
                 String::new()
             };
-            panel()
-                .py(px(6.))
-                .child(div().text_size(px(13.33)).text_color(white()).child(format!(
+            card_box()
+                .py(px(12.))
+                .child(div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_primary()).child(format!(
                     "Found Ludusavi {} at {}. Backups go to {} ({}{}).",
                     f.version.clone().unwrap_or_default(),
                     f.binary,
@@ -117,10 +115,14 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
                 )))
                 .into_any_element()
         }
-        Some(None) => div()
-            .text_color(rgb(0xf0a202))
-            .text_size(px(14.))
-            .child("Ludusavi was not found automatically. Set the binary and backup folder below.")
+        Some(None) => card_box()
+            .py(px(12.))
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(theme::danger_text())
+                    .child("Ludusavi was not found automatically. Set the binary and backup folder below."),
+            )
             .into_any_element(),
     };
 
@@ -208,15 +210,16 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
         .flex()
         .items_center()
         .gap(px(6.))
+        .mt(px(14.))
+        .mx(px(6.))
+        .mb(px(6.))
         .cursor_pointer()
         .on_click(cx.listener(move |d, _, _, cx| {
             d.saves.details_open = Some(!details_open);
             cx.notify();
         }))
-        .child(
-            icon(Icon::PlayArrow, px(22.), white()).with_transformation(Transformation::rotate(percentage(if details_open { 0.25 } else { 0. }))),
-        )
-        .child(div().text_size(px(19.2)).font_weight(theme::W_BOLD).text_color(rgb(0xcaf3fd)).child("Backup location & format"));
+        .child(icon(if details_open { Icon::ExpandMore } else { Icon::ChevronRight }, px(16.), theme::text_muted()))
+        .child(div().text_size(px(12.)).text_color(theme::text_muted()).child("Backup location & format"));
 
     let mut last = match &l.last_backup_at {
         Some(at) => format!("Last save backup: {}", format_time(at)),
@@ -229,33 +232,46 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
         last.push_str(&format!(" · {p}"));
     }
 
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(12.))
-        .child(paragraph_secondary(
-            "When enabled, Heroic Local backs up the game save with Ludusavi after you close a game. Right-click a Collection card to back up that game now.",
-        ))
-        .child(checkbox("ludusavi-enabled", l.enabled, "Back up saves when a game closes").on_click(cx.listener(
-            move |d, _, _, cx| {
+    let enable = card([
+        toggle_row("ludusavi-enabled", "Back up saves when a game closes", None, l.enabled)
+            .on_click(cx.listener(move |d, _, _, cx| {
                 let on = !d.settings.ludusavi.enabled;
                 save(d, LudusaviSettingsPatch { enabled: Some(on), ..Default::default() }, cx);
-            },
-        )))
-        .child(callout)
-        .child(
-            div()
-                .when(!config_known, |d| d.opacity(0.5))
-                .child(checkbox("ludusavi-use-config", l.use_installed_config, "Use installed Ludusavi settings (path, zip, compression)").when(config_known, |c| {
+            }))
+            .into_any_element(),
+        div()
+            .when(!config_known, |d| d.opacity(0.5))
+            .child(
+                toggle_row(
+                    "ludusavi-use-config",
+                    "Use installed Ludusavi settings",
+                    Some("Path, zip and compression come from Ludusavi's own configuration."),
+                    l.use_installed_config,
+                )
+                .when(config_known, |c| {
                     c.on_click(cx.listener(move |d, _, _, cx| {
                         let on = !d.settings.ludusavi.use_installed_config;
                         save(d, LudusaviSettingsPatch { use_installed_config: Some(on), ..Default::default() }, cx);
                     }))
-                })),
-        )
+                }),
+            )
+            .into_any_element(),
+    ]);
+
+    div()
+        .flex()
+        .flex_col()
+        .child(help_text(
+            "When enabled, Heroic Local backs up the game save with Ludusavi after you close a game. Right-click a Collection card to back up that game now.",
+        ))
+        .child(caption("Save backups"))
+        .child(enable)
+        .child(div().mt(px(10.)).child(callout))
         .child(summary)
-        .children(details_open.then(|| div().flex().flex_col().gap(px(12.)).child(binary).child(folder).child(format).child(compression)))
-        .child(div().text_size(px(13.33)).text_color(white()).child(last))
-        .children(l.last_error.clone().map(|e| div().text_color(theme::danger()).text_size(px(14.)).child(e)))
+        .children(details_open.then(|| {
+            card_box().py(px(12.)).gap(px(12.)).child(binary).child(folder).child(format).child(compression)
+        }))
+        .child(div().mt(px(12.)).mx(px(6.)).child(meta_text(last)))
+        .children(l.last_error.clone().map(|e| div().mt(px(8.)).mx(px(6.)).text_color(theme::danger_text()).text_size(px(13.)).child(e)))
         .into_any_element()
 }

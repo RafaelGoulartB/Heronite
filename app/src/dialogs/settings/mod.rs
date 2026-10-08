@@ -60,9 +60,18 @@ impl SettingsDialog {
         let emulators = emulators::State::new(&ctx, &settings, window, cx);
         let backup = backup::State::new(&ctx, &settings, window, cx);
         let saves = saves::State::new(&ctx, &settings, window, cx);
+        // Debug: `HERONITE_DEBUG_SETTINGS_TAB=appearance|screenshots|metadata|emulators|backup|saves`.
+        let tab = match std::env::var("HERONITE_DEBUG_SETTINGS_TAB").as_deref() {
+            Ok("screenshots") => Tab::Screenshots,
+            Ok("metadata") => Tab::Metadata,
+            Ok("emulators") => Tab::Emulators,
+            Ok("backup") => Tab::Backup,
+            Ok("saves") => Tab::Saves,
+            _ => Tab::Appearance,
+        };
         Self {
             ctx,
-            tab: Tab::Appearance,
+            tab,
             settings,
             error: None,
             appearance,
@@ -124,11 +133,10 @@ impl Render for SettingsDialog {
         let body = div()
             .flex()
             .flex_col()
-            .gap(px(16.))
             .child(tab_bar)
-            .child(content)
-            .children(self.error.clone().map(|e| div().text_color(theme::danger()).text_size(px(13.)).child(e)));
-        let footer = button("settings-close", ButtonKind::Outline, "Close")
+            .child(div().mt(px(12.)).child(content))
+            .children(self.error.clone().map(|e| div().mt(px(12.)).mx(px(6.)).text_color(theme::danger_text()).text_size(px(13.)).child(e)));
+        let footer = button("settings-close", ButtonKind::Primary, "Done")
             .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)))
             .into_any_element();
         let entity = cx.entity().downgrade();
@@ -137,8 +145,8 @@ impl Render for SettingsDialog {
             DialogProps {
                 id: "collection-settings".into(),
                 title: "Collection settings".into(),
-                width: 840f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
-                height: Some(debug_dialog_height().unwrap_or(620f32.min(vh * 0.7))),
+                width: 900f32.min(f32::from(window.viewport_size().width) * 0.92),
+                height: Some(debug_dialog_height().unwrap_or(680f32.min(vh * 0.74))),
             },
             body.into_any_element(),
             Some(footer),

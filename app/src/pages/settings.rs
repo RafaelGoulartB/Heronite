@@ -21,12 +21,13 @@ pub mod sysinfo;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::{page_body, page_column, PageCtx, PageEvent};
+use super::{Page, PageCtx, PageEvent};
 use crate::dialogs::heroic_settings::logic::{Section as HSection, DEFAULT_SECTIONS};
 use crate::dialogs::heroic_settings::{GlobalView, HeroicSettingsPanel, Target};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::tabs;
+use crate::ui::controls::{close_button, help_text, nav_pill, page_heading, tabs};
+use crate::ui::glass::glass_panel;
 use crate::ui::icon;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -60,7 +61,7 @@ impl Section {
         match self {
             Section::General => Icon::Settings,
             Section::GameDefaults => Icon::Tune,
-            Section::Library => Icon::VisibilityOff,
+            Section::Library => Icon::GridView,
             Section::Downloads => Icon::Download,
             Section::Advanced => Icon::Build,
             Section::Logs => Icon::Description,
@@ -252,28 +253,41 @@ impl SettingsPage {
         div().flex().flex_col().gap(px(16.)).child(bar).child(panel).into_any_element()
     }
 
+    /// Left column of the sheet: title (gear + "Settings") and the section pills.
     fn nav(&self, cx: &mut Context<Self>) -> Div {
-        let mut col = div().flex().flex_col().gap(px(2.)).w(px(210.)).flex_none().pt(px(12.)).pl(px(24.)).pr(px(8.));
-        for s in Section::ALL {
-            let active = self.section == s;
-            col = col.child(
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .flex_none()
+            .w(px(230.))
+            .h_full()
+            .px(px(14.))
+            .pt(px(26.))
+            .pb(px(16.))
+            .border_r_1()
+            .border_color(theme::row_separator())
+            .child(
                 div()
-                    .id(SharedString::from(format!("settings-nav-{s:?}")))
                     .flex()
                     .items_center()
                     .gap(px(10.))
                     .px(px(12.))
-                    .py(px(9.))
-                    .rounded(px(6.))
-                    .cursor_pointer()
-                    .text_size(px(15.))
-                    .font_weight(if active { theme::W_BOLD } else { theme::W_500 })
-                    .text_color(if active { theme::accent() } else { rgb(0xcaf3fd) })
-                    .when(active, |d| d.bg(theme::white_a(0.08)))
-                    .hover(|d| d.bg(theme::white_a(0.1)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.select(s, cx)))
-                    .child(icon(s.icon(), px(18.), if active { theme::accent() } else { rgb(0xcaf3fd) }))
-                    .child(s.label()),
+                    .pb(px(18.))
+                    .child(icon(Icon::Settings, px(18.), theme::text_primary()))
+                    .child(
+                        div()
+                            .font_family(theme::FONT_HEADING)
+                            .text_size(px(19.))
+                            .font_weight(theme::W_BOLD)
+                            .text_color(theme::text_primary())
+                            .child("Settings"),
+                    ),
+            );
+        for s in Section::ALL {
+            let active = self.section == s;
+            col = col.child(
+                nav_pill(SharedString::from(format!("settings-nav-{s:?}")), s.icon(), s.label(), active)
+                    .on_click(cx.listener(move |this, _, _, cx| this.select(s, cx))),
             );
         }
         col
@@ -302,19 +316,37 @@ impl Render for SettingsPage {
             .flex()
             .flex_col()
             .gap(px(4.))
-            .child(
-                div()
-                    .font_family(theme::FONT_HEADING)
-                    .text_size(px(22.))
-                    .font_weight(theme::W_BOLD)
-                    .text_color(white())
-                    .child(section.label()),
-            )
-            .child(div().text_size(px(13.33)).text_color(theme::white_a(0.7)).child(section.blurb()));
+            .pr(px(48.))
+            .child(page_heading(section.label()))
+            .child(help_text(section.blurb()));
         // The log viewer wants the width; the forms read better narrow.
-        let max_w = if section == Section::Logs { px(1400.) } else { px(780.) };
-        let column = page_column().max_w(max_w).mx(px(0.)).ml(px(8.)).gap(px(20.)).child(title).child(body);
-        div().size_full().flex().child(self.nav(cx)).child(div().flex_1().min_w_0().h_full().child(page_body("page-settings").child(column)))
+        let max_w = if section == Section::Logs { px(1400.) } else { px(880.) };
+        let column = div().flex().flex_col().w_full().max_w(max_w).mx_auto().gap(px(14.)).child(title).child(body);
+        let content = div()
+            .id("page-settings")
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .overflow_y_scroll()
+            .px(px(36.))
+            .pt(px(26.))
+            .pb(px(32.))
+            .child(column);
+        let close = close_button("settings-close")
+            .absolute()
+            .top(px(20.))
+            .right(px(20.))
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(PageEvent::Navigate(Page::Collection))));
+        // The sheet floats over the blurred art, inset from the window edges.
+        let sheet = glass_panel(theme::R_SHEET)
+            .flex()
+            .size_full()
+            .text_color(theme::text_primary())
+            .font_family(theme::FONT_BODY)
+            .child(self.nav(cx))
+            .child(content)
+            .child(close);
+        div().size_full().p(px(12.)).pt(px(2.)).child(sheet)
     }
 }
 

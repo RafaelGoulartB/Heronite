@@ -14,8 +14,8 @@ use super::SettingsDialog;
 use crate::collection::stage::{scrim_layers, Scrim};
 use crate::dialogs::DialogCtx;
 use crate::theme;
-use crate::ui::controls::{button, checkbox, help_text, section_title, ButtonKind};
-use crate::ui::fields::select_field;
+use crate::ui::controls::{button, caption, card, help_text, row, toggle_row, ButtonKind};
+use crate::ui::fields::{meta_text, select_field};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Field {
@@ -146,15 +146,10 @@ fn save_background(d: &mut SettingsDialog, cx: &mut Context<SettingsDialog>) {
     d.saved(res, cx);
 }
 
-fn slider_cell(label: String, state: &Entity<SliderState>) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(6.))
-        .flex_1()
-        .min_w(px(200.))
-        .child(div().text_size(px(13.33)).text_color(rgb(0xcaf3fd)).child(label))
-        .child(Slider::new(state).bg(crate::ui::controls::mui_primary()).text_color(crate::ui::controls::mui_primary()))
+/// A slider row: label (with the live value) on the left, the slider on the right.
+fn slider_row(label: String, state: &Entity<SliderState>) -> AnyElement {
+    let slider = Slider::new(state).bg(theme::accent()).text_color(theme::accent());
+    row(label, None, div().w(px(260.)).child(slider)).into_any_element()
 }
 
 pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<SettingsDialog>) -> AnyElement {
@@ -167,11 +162,11 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
         .relative()
         .h(px(148.))
         .w_full()
-        .rounded(px(4.))
+        .rounded(px(theme::R_TILE))
         .border_1()
         .border_color(theme::white_a(0.08))
         .overflow_hidden()
-        .bg(if a.enabled && a.preview.is_some() { theme::page_bg() } else { theme::page_bg() })
+        .bg(theme::page_bg())
         .when_some(a.preview.clone().filter(|_| a.enabled), |el, img| {
             el.child(img_el(img)).child(scrim_layers(scrim))
         })
@@ -185,7 +180,7 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
                 .gap(px(2.))
                 .px(px(12.))
                 .py(px(10.))
-                .child(div().text_size(px(13.33)).font_weight(theme::W_BOLD).text_color(white()).child("Live preview"))
+                .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(white()).child("Live preview"))
                 .child(
                     div()
                         .text_size(px(12.))
@@ -194,7 +189,12 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
                 ),
         );
 
-    let mut sliders = div().flex().flex_wrap().gap_x(px(24.)).gap_y(px(12.));
+    let mut rows: Vec<AnyElement> = vec![toggle_row("bg-enabled", "Use the game artwork as page background", None, a.enabled)
+        .on_click(cx.listener(|d, _, _, cx| {
+            d.appearance.enabled = !d.appearance.enabled;
+            save_background(d, cx);
+        }))
+        .into_any_element()];
     for (field, state) in &a.sliders {
         let label = match field {
             Field::Blur => format!("Blur: {} px", a.blur.round()),
@@ -202,8 +202,9 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
             Field::Saturation => format!("Colour intensity: {}%", a.saturation.round()),
             Field::Scrim => format!("Edge shading: {}%", a.scrim.round()),
         };
-        sliders = sliders.child(slider_cell(label, state).max_w(px(240.)));
+        rows.push(slider_row(label, state));
     }
+    let background = card(rows);
 
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
     let aspect_label = ASPECTS.iter().find(|(a, _)| *a == aspect).map(|(_, l)| *l).unwrap_or("Steam (2:3)");
@@ -230,52 +231,46 @@ pub fn render(d: &mut SettingsDialog, _window: &mut Window, cx: &mut Context<Set
     );
 
     let grey = d.settings.grey_uninstalled_games;
+    let reset = button("bg-reset", ButtonKind::Glass, "Reset background").on_click(cx.listener(|d, _, window, cx| {
+        let defaults = heronite_data::models::BackgroundSettings::default();
+        let a = &mut d.appearance;
+        a.enabled = defaults.enabled;
+        a.blur = defaults.blur.get() as f32;
+        a.dimming = defaults.dimming.get() as f32;
+        a.saturation = defaults.saturation.get() as f32;
+        a.scrim = defaults.scrim.get() as f32;
+        let values = [a.blur, a.dimming, a.saturation, a.scrim];
+        for ((_, state), v) in a.sliders.clone().iter().zip(values) {
+            state.update(cx, |s, cx| s.set_value(v, window, cx));
+        }
+        schedule_preview(d, cx);
+        save_background(d, cx);
+    }));
+    let covers = card([
+        row("Cover aspect", Some("Shape of the covers in the grid, the details panel and related games."), div().w(px(200.)).child(aspect_select))
+            .into_any_element(),
+        toggle_row("grey-uninstalled", "Show uninstalled games in grey", None, grey)
+            .on_click(cx.listener(move |d, _, _, cx| {
+                let res = settings::save_grey_uninstalled(&d.ctx.heroic, !grey);
+                d.saved(res, cx);
+            }))
+            .into_any_element(),
+    ]);
     div()
         .flex()
         .flex_col()
-        .gap(px(12.))
-        .child(section_title("Page background"))
         .child(help_text(
             "The artwork of the selected game fills the Collection page. Adjust the glass layer over it so text stays readable on bright artwork.",
         ))
+        .child(caption("Page background"))
         .child(preview)
-        .child(checkbox("bg-enabled", a.enabled, "Use the game artwork as page background").on_click(cx.listener(
-            |d, _, _, cx| {
-                d.appearance.enabled = !d.appearance.enabled;
-                save_background(d, cx);
-            },
-        )))
-        .child(sliders)
-        .child(help_text(
-            "Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit.",
-        ))
-        .child(div().flex().child(button("bg-reset", ButtonKind::Outline, "Reset background to default").on_click(
-            cx.listener(|d, _, window, cx| {
-                let defaults = heronite_data::models::BackgroundSettings::default();
-                let a = &mut d.appearance;
-                a.enabled = defaults.enabled;
-                a.blur = defaults.blur.get() as f32;
-                a.dimming = defaults.dimming.get() as f32;
-                a.saturation = defaults.saturation.get() as f32;
-                a.scrim = defaults.scrim.get() as f32;
-                let values = [a.blur, a.dimming, a.saturation, a.scrim];
-                for ((_, state), v) in a.sliders.clone().iter().zip(values) {
-                    state.update(cx, |s, cx| s.set_value(v, window, cx));
-                }
-                schedule_preview(d, cx);
-                save_background(d, cx);
-            }),
-        )))
-        .child(section_title("Covers"))
-        .child(div().text_size(px(13.33)).text_color(rgb(0xcaf3fd)).child("Cover aspect"))
-        .child(aspect_select)
-        .child(help_text("Shape of the covers in the grid, the details panel and related games."))
-        .child(checkbox("grey-uninstalled", grey, "Show uninstalled games in grey").on_click(cx.listener(
-            move |d, _, _, cx| {
-                let res = settings::save_grey_uninstalled(&d.ctx.heroic, !grey);
-                d.saved(res, cx);
-            },
-        )))
+        .child(div().h(px(10.)))
+        .child(background)
+        .child(div().flex().items_center().justify_between().gap(px(12.)).mt(px(10.)).child(
+            div().flex_1().pl(px(6.)).child(meta_text("Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")),
+        ).child(reset))
+        .child(caption("Covers"))
+        .child(covers)
         .into_any_element()
 }
 

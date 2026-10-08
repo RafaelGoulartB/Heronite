@@ -14,8 +14,8 @@ use super::SettingsPage;
 use crate::icons::Icon;
 use crate::pages::{PageCtx, PageEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, checkbox, section_title, ButtonKind};
-use crate::ui::fields::{meta_text, panel, select_field};
+use crate::ui::controls::{action_button, caption, card, row, toggle_row, ButtonKind};
+use crate::ui::fields::select_field;
 use crate::ui::icon;
 
 pub type Entries = Vec<(String, String)>;
@@ -159,19 +159,34 @@ impl SettingsPage {
         );
     }
 
-    fn entry_row(&self, id: String, title: &str, app: &str, label: &'static str, cx: &mut Context<Self>, on_click: impl Fn(&mut Self, &mut Context<Self>) + 'static) -> Div {
+    /// One game of a list card: title, app name below, pill action on the right.
+    fn entry_row(
+        &self,
+        id: String,
+        title: &str,
+        app: &str,
+        label: &'static str,
+        cx: &mut Context<Self>,
+        on_click: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+    ) -> AnyElement {
         let shown = if title.is_empty() { app.to_string() } else { title.to_string() };
+        let desc = (!title.is_empty()).then_some(app);
+        row(
+            shown,
+            desc,
+            action_button(SharedString::from(id), ButtonKind::Glass, label, !self.library.busy, cx.listener(move |this, _, _, cx| on_click(this, cx))),
+        )
+        .into_any_element()
+    }
+
+    /// Caption of a list card with an action button on the right.
+    fn list_caption(title: String, action: impl IntoElement) -> Div {
         div()
             .flex()
-            .items_center()
-            .gap(px(10.))
-            .px(px(12.))
-            .py(px(6.))
-            .rounded(px(4.))
-            .bg(theme::white_a(0.04))
-            .child(div().flex_1().min_w_0().truncate().text_size(px(15.)).text_color(white()).child(shown))
-            .child(div().flex_none().max_w(px(200.)).truncate().text_size(px(12.)).text_color(theme::white_a(0.45)).child(app.to_string()))
-            .child(action_button(SharedString::from(id), ButtonKind::Outline, label, !self.library.busy, cx.listener(move |this, _, _, cx| on_click(this, cx))))
+            .items_end()
+            .justify_between()
+            .child(caption(title))
+            .child(div().flex_none().pt(px(8.)).child(action))
     }
 
     pub(super) fn library_section(&mut self, cx: &mut Context<Self>) -> Div {
@@ -179,67 +194,46 @@ impl SettingsPage {
         let busy = self.library.busy;
 
         // -- Show hidden ---------------------------------------------------------
-        let show = panel()
-            .gap(px(6.))
-            .p(px(14.))
-            .child(checkbox("lib-show-hidden", snap.show_hidden, "Show hidden games").on_click(cx.listener(|this, _, _, cx| {
-                let on = !this.library.snap.show_hidden;
-                this.set_show_hidden(on, cx);
-            })))
-            .child(
-                div()
-                    .pl(px(41.))
-                    .child(meta_text("Hidden games appear in the Collection, greyed with a \"Hidden\" tag, and can be unhidden from their menu. The same switch is in the filter menu of the header.")),
-            );
+        let show = card([toggle_row(
+            "lib-show-hidden",
+            "Show hidden games",
+            Some("Hidden games appear in the Collection, greyed with a \"Hidden\" tag, and can be unhidden from their menu. The same switch is in the filter menu of the header."),
+            snap.show_hidden,
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            let on = !this.library.snap.show_hidden;
+            this.set_show_hidden(on, cx);
+        }))
+        .into_any_element()]);
 
         // -- Hidden games --------------------------------------------------------
-        let mut hidden = panel().gap(px(8.)).p(px(14.)).child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(12.))
-                .child(section_title(format!("Hidden games ({})", snap.hidden.len())))
-                .child(div().flex_1())
-                .child(action_button(
-                    "lib-unhide-all",
-                    ButtonKind::Outline,
-                    "Unhide all",
-                    !busy && !snap.hidden.is_empty(),
-                    cx.listener(|this, _, _, cx| this.library_clear("hidden", cx)),
-                )),
-        );
-        if snap.hidden.is_empty() {
-            hidden = hidden.child(meta_text("No hidden games. Use \"Hide\" in a game's context menu."));
-        }
+        let mut rows: Vec<AnyElement> = Vec::new();
         for (i, (app, title)) in snap.hidden.iter().enumerate() {
             let app_name = app.clone();
-            hidden = hidden.child(self.entry_row(format!("lib-unhide-{i}"), title, app, "Unhide", cx, move |this, cx| {
+            rows.push(self.entry_row(format!("lib-unhide-{i}"), title, app, "Unhide", cx, move |this, cx| {
                 this.library_unhide(app_name.clone(), cx)
             }));
         }
+        if rows.is_empty() {
+            rows.push(empty_row("No hidden games. Use \"Hide\" in a game's context menu."));
+        }
+        let hidden_head = Self::list_caption(
+            format!("Hidden games ({})", snap.hidden.len()),
+            action_button(
+                "lib-unhide-all",
+                ButtonKind::Glass,
+                "Unhide all",
+                !busy && !snap.hidden.is_empty(),
+                cx.listener(|this, _, _, cx| this.library_clear("hidden", cx)),
+            ),
+        );
+        let hidden = card(rows);
 
         // -- Favourites ----------------------------------------------------------
-        let mut favs = panel().gap(px(8.)).p(px(14.)).child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(12.))
-                .child(section_title(format!("Favourites ({})", snap.favourites.len())))
-                .child(div().flex_1())
-                .child(action_button(
-                    "lib-fav-clear",
-                    ButtonKind::Outline,
-                    "Clear favourites",
-                    !busy && !snap.favourites.is_empty(),
-                    cx.listener(|this, _, _, cx| this.library_clear("favourites", cx)),
-                )),
-        );
-        if snap.favourites.is_empty() {
-            favs = favs.child(meta_text("No favourites. Use \"Add to favourites\" in a game's context menu."));
-        }
+        let mut rows: Vec<AnyElement> = Vec::new();
         for (i, (app, title)) in snap.favourites.iter().enumerate() {
             let app_name = app.clone();
-            favs = favs.child(self.entry_row(format!("lib-fav-{i}"), title, app, "Remove", cx, move |this, cx| {
+            rows.push(self.entry_row(format!("lib-fav-{i}"), title, app, "Remove", cx, move |this, cx| {
                 let app = app_name.clone();
                 this.library_job(
                     Box::new(move |heroic, _| {
@@ -250,13 +244,27 @@ impl SettingsPage {
                 );
             }));
         }
+        if rows.is_empty() {
+            rows.push(empty_row("No favourites. Use \"Add to favourites\" in a game's context menu."));
+        }
+        let favs_head = Self::list_caption(
+            format!("Favourites ({})", snap.favourites.len()),
+            action_button(
+                "lib-fav-clear",
+                ButtonKind::Glass,
+                "Clear favourites",
+                !busy && !snap.favourites.is_empty(),
+                cx.listener(|this, _, _, cx| this.library_clear("favourites", cx)),
+            ),
+        );
+        let favs = card(rows);
 
         // -- Recent --------------------------------------------------------------
         let options: Vec<(SharedString, bool)> =
             (1..=10).map(|n| (SharedString::from(n.to_string()), n == snap.max_recent)).collect();
         let select = select_field(
             "lib-max-recent",
-            Some("Recent Games to Show"),
+            None,
             snap.max_recent.to_string(),
             false,
             self.library.open_select,
@@ -271,42 +279,57 @@ impl SettingsPage {
                 this.set_max_recent(i as i64 + 1, cx);
             },
         );
-        let recent = panel()
-            .gap(px(10.))
-            .p(px(14.))
-            .child(section_title("Recent games"))
-            .child(div().w(px(220.)).child(select))
-            .child(meta_text("How many recently played games the tray menu lists."))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(12.))
-                    .child(action_button(
-                        "lib-recent-clear",
-                        ButtonKind::Outline,
-                        "Clear recent",
-                        !busy && !snap.recent.is_empty(),
-                        cx.listener(|this, _, _, cx| this.library_clear("recent", cx)),
-                    ))
-                    .child(meta_text(format!("{} game(s) in the recent list", snap.recent.len()))),
-            );
+        let recent = card([
+            row("Recent games to show", Some("How many recently played games the tray menu lists."), div().w(px(120.)).child(select)).into_any_element(),
+            row(
+                "Clear recent games",
+                Some(&format!("{} game(s) in the recent list", snap.recent.len())),
+                action_button(
+                    "lib-recent-clear",
+                    ButtonKind::Glass,
+                    "Clear recent",
+                    !busy && !snap.recent.is_empty(),
+                    cx.listener(|this, _, _, cx| this.library_clear("recent", cx)),
+                ),
+            )
+            .into_any_element(),
+        ]);
 
-        let mut col = div().flex().flex_col().gap(px(16.)).child(show).child(hidden).child(favs).child(recent);
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .child(show)
+            .child(hidden_head)
+            .child(hidden)
+            .child(favs_head)
+            .child(favs)
+            .child(caption("Recent games"))
+            .child(recent);
         if let Some((text, error)) = self.library.notice.clone() {
-            col = col.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .text_size(px(14.))
-                    .text_color(if error { theme::danger() } else { theme::success() })
-                    .child(icon(if error { Icon::Warning } else { Icon::Check }, px(16.), if error { theme::danger() } else { theme::success() }))
-                    .child(text),
-            );
+            col = col.child(notice_line(text, error));
         }
         col
     }
+}
+
+/// Placeholder row of an empty list card.
+fn empty_row(text: &str) -> AnyElement {
+    div().py(px(14.)).text_size(px(13.)).text_color(theme::text_dim()).child(text.to_string()).into_any_element()
+}
+
+/// Result line under the cards (success / error).
+pub(super) fn notice_line(text: SharedString, error: bool) -> Div {
+    let color = if error { theme::danger() } else { theme::success() };
+    div()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .mt(px(14.))
+        .mx(px(6.))
+        .text_size(px(13.))
+        .text_color(color)
+        .child(icon(if error { Icon::Warning } else { Icon::Check }, px(16.), color))
+        .child(text)
 }
 
 

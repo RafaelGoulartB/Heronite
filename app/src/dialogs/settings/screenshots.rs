@@ -11,7 +11,7 @@ use super::SettingsDialog;
 use crate::collection::screenshots_global;
 use crate::dialogs::DialogCtx;
 use crate::theme;
-use crate::ui::controls::{action_button, checkbox, section_title, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, card_box, help_text, row, toggle_row, ButtonKind};
 use crate::ui::fields::{choose_path, input_box, labeled, meta_text, new_input, on_commit, path_field};
 
 pub struct State {
@@ -171,98 +171,111 @@ pub fn render(d: &mut SettingsDialog, window: &mut Window, cx: &mut Context<Sett
         focused,
     );
 
-    let mut col = div()
-        .flex()
-        .flex_col()
-        .gap(px(12.))
-        .child(section_title("Screenshots folder"))
-        .child(meta_text(
-            "Folder with a subfolder per game (Xbox Game Bar Captures, NVIDIA, etc.). Collection matches those names to the selected game even when they are not identical.",
-        ))
-        .child(path_field(
-            "shot-folder-icon",
-            Some("Screenshots folder"),
-            &st.folder,
-            has_folder,
-            false,
-            cx.listener(move |d: &mut SettingsDialog, _: &ClickEvent, window, cx| {
-                // Backspace clears the folder, Folder opens the chooser.
-                if has_folder {
-                    d.screenshots.folder.update(cx, |s, cx| s.set_value("", window, cx));
-                    save(d, Some(String::new()), None, None, None, cx);
-                } else {
-                    choose_path(window, cx, true, "Choose", |d: &mut SettingsDialog, path, window, cx| {
-                        d.screenshots.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
-                        save(d, Some(path), None, None, None, cx);
-                    });
-                }
-            }),
-        ))
-        .child(section_title("In-game capture"))
-        .child(
-            checkbox("shot-capture-enabled", s.capture_enabled, "Capture screenshots while a game is running").on_click(
-                cx.listener(move |d, _, _, cx| {
-                    let next = !d.settings.screenshots.capture_enabled;
-                    save(d, None, None, Some(next), None, cx);
-                }),
-            ),
-        )
-        .child(labeled("Screenshot shortcut", hotkey))
-        .child(meta_text(
-            "Click the shortcut field and press the desired key combination. Captures are saved in the matched game folder and appear automatically in Collection.",
-        ));
-    if s.capture_enabled {
-        col = match status {
-            Some(status) if status.registered => {
-                col.child(div().text_size(px(13.33)).text_color(theme::success()).child("Shortcut registered and ready."))
+    let folder = card_box().py(px(12.)).child(path_field(
+        "shot-folder-icon",
+        Some("Screenshots folder"),
+        &st.folder,
+        has_folder,
+        false,
+        cx.listener(move |d: &mut SettingsDialog, _: &ClickEvent, window, cx| {
+            // "Clear" empties the folder, "Browse" opens the chooser.
+            if has_folder {
+                d.screenshots.folder.update(cx, |s, cx| s.set_value("", window, cx));
+                save(d, Some(String::new()), None, None, None, cx);
+            } else {
+                choose_path(window, cx, true, "Choose", |d: &mut SettingsDialog, path, window, cx| {
+                    d.screenshots.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+                    save(d, Some(path), None, None, None, cx);
+                });
             }
-            Some(status) if status.error.is_some() => col.child(
-                div().text_size(px(13.33)).text_color(theme::danger()).child(status.error.unwrap_or_default()),
-            ),
-            _ => col.child(meta_text("The shortcut activates automatically when a game starts.")),
-        };
-    }
+        }),
+    ));
+
+    let status_line: Option<(SharedString, bool)> = if s.capture_enabled {
+        Some(match status {
+            Some(status) if status.registered => ("Shortcut registered and ready.".into(), false),
+            Some(status) if status.error.is_some() => (status.error.unwrap_or_default().into(), true),
+            _ => ("The shortcut activates automatically when a game starts.".into(), false),
+        })
+    } else {
+        None
+    };
+    let capture = card([
+        toggle_row("shot-capture-enabled", "Capture screenshots while a game is running", None, s.capture_enabled)
+            .on_click(cx.listener(move |d, _, _, cx| {
+                let next = !d.settings.screenshots.capture_enabled;
+                save(d, None, None, Some(next), None, cx);
+            }))
+            .into_any_element(),
+        div()
+            .py(px(12.))
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(labeled("Screenshot shortcut", hotkey))
+            .child(meta_text(
+                "Click the shortcut field and press the desired key combination. Captures are saved in the matched game folder and appear automatically in Collection.",
+            ))
+            .children(status_line.map(|(text, error)| {
+                div().text_size(px(12.)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text)
+            }))
+            .into_any_element(),
+    ]);
 
     let can_clear = !st.busy && st.info.is_some_and(|i| i.item_count > 0);
-    col = col
-        .child(section_title("Preview cache"))
-        .child(meta_text(
-            "Thumbnails generated so the screenshot gallery opens instantly. They are recreated on demand after clearing.",
-        ))
-        .child(labeled("Preview cache limit (MB)", input_box(&st.limit, st.busy)))
-        .child(div().flex().child(action_button(
-            "shot-clear-cache",
-            ButtonKind::Outline,
-            if st.busy { "Clearing…" } else { "Clear preview cache" },
-            can_clear,
-            cx.listener(|d, _, _, cx| {
-                d.screenshots.busy = true;
-                d.screenshots.message = None;
-                let cache = d.screenshots.cache.clone();
-                cx.spawn(async move |this, cx| {
-                    let info = cx.background_spawn(async move { cache.clear() }).await;
-                    this.update(cx, |d, cx| {
-                        d.screenshots.busy = false;
-                        d.screenshots.info = Some(info);
-                        d.screenshots.message = Some("Screenshot preview cache cleared.".into());
-                        cx.notify();
-                    })
-                    .ok();
-                })
-                .detach();
-                cx.notify();
-            }),
-        )));
-    if let Some(i) = st.info {
-        col = col.child(meta_text(format!(
-            "{} used by {} previews · {} limit",
+    let usage = st.info.map(|i| {
+        format!(
+            "{} used by {} previews, {} limit.",
             format_cache_size(i.size_bytes),
             i.item_count,
             format_cache_size(i.limit_bytes)
-        )));
-    }
+        )
+    });
+    let clear = action_button(
+        "shot-clear-cache",
+        ButtonKind::Glass,
+        if st.busy { "Clearing…" } else { "Clear preview cache" },
+        can_clear,
+        cx.listener(|d, _, _, cx| {
+            d.screenshots.busy = true;
+            d.screenshots.message = None;
+            let cache = d.screenshots.cache.clone();
+            cx.spawn(async move |this, cx| {
+                let info = cx.background_spawn(async move { cache.clear() }).await;
+                this.update(cx, |d, cx| {
+                    d.screenshots.busy = false;
+                    d.screenshots.info = Some(info);
+                    d.screenshots.message = Some("Screenshot preview cache cleared.".into());
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+            cx.notify();
+        }),
+    );
+    let cache_card = card([
+        div().py(px(12.)).child(labeled("Preview cache limit (MB)", input_box(&st.limit, st.busy))).into_any_element(),
+        row("Clear preview cache", usage.as_deref(), clear).into_any_element(),
+    ]);
+
+    let mut col = div()
+        .flex()
+        .flex_col()
+        .child(help_text(
+            "Folder with a subfolder per game (Xbox Game Bar Captures, NVIDIA, etc.). Collection matches those names to the selected game even when they are not identical.",
+        ))
+        .child(caption("Screenshots folder"))
+        .child(folder)
+        .child(caption("In-game capture"))
+        .child(capture)
+        .child(caption("Preview cache"))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
+            "Thumbnails generated so the screenshot gallery opens instantly. They are recreated on demand after clearing.",
+        )))
+        .child(cache_card);
     if let Some(m) = st.message.clone() {
-        col = col.child(div().text_size(px(13.33)).text_color(theme::success()).child(m));
+        col = col.child(div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::success()).child(m));
     }
     col.into_any_element()
 }
@@ -273,20 +286,14 @@ fn input_box_text(base: Stateful<Div>, text: String, focused: bool) -> Stateful<
     base.flex()
         .items_center()
         .w_full()
-        .h(px(40.))
-        .px(px(22.))
-        .rounded(px(4.))
-        .bg(theme::navbar_background())
-        .shadow(vec![BoxShadow {
-            color: theme::black_a(0.25),
-            offset: point(px(0.), px(4.)),
-            blur_radius: px(4.),
-            spread_radius: px(0.),
-            inset: false,
-        }])
-        .when(focused, |d| d.border_1().border_color(theme::accent()))
-        .font_family(theme::FONT_HEADING)
-        .text_size(px(16.))
-        .text_color(white())
+        .h(px(theme::INPUT_H))
+        .px(px(14.))
+        .rounded(px(theme::R_INPUT))
+        .bg(theme::input_fill())
+        .border_1()
+        .border_color(if focused { theme::input_border_focus() } else { theme::input_border() })
+        .font_family(theme::FONT_BODY)
+        .text_size(px(14.))
+        .text_color(theme::text_primary())
         .child(text)
 }

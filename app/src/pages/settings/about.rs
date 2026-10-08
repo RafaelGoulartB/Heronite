@@ -7,8 +7,8 @@ use super::sysinfo::{self, SystemInfo};
 use super::SettingsPage;
 use crate::pages::PageCtx;
 use crate::theme;
-use crate::ui::controls::{action_button, section_title, ButtonKind};
-use crate::ui::fields::{meta_text, panel};
+use crate::ui::controls::{action_button, caption, card, row, ButtonKind};
+use crate::ui::fields::meta_text;
 
 #[derive(Default)]
 pub struct State {
@@ -85,73 +85,86 @@ impl State {
     }
 }
 
-fn row(label: &str, value: impl Into<SharedString>) -> Div {
-    div()
-        .flex()
-        .gap(px(12.))
-        .text_size(px(14.))
-        .child(div().w(px(150.)).flex_none().text_color(theme::white_a(0.6)).child(label.to_string()))
-        .child(div().flex_1().min_w_0().text_color(white()).child(value.into()))
+/// Key / value row: label left, the value (selectable-looking, wraps) right.
+fn info_row(label: &str, value: impl Into<SharedString>) -> AnyElement {
+    row(label.to_string(), None, div().max_w(px(520.)).text_size(px(14.)).text_color(theme::text_muted()).text_right().child(value.into()))
+        .into_any_element()
 }
 
 impl SettingsPage {
     pub(super) fn about_section(&mut self, cx: &mut Context<Self>) -> Div {
         let a = &self.about;
         let s = &a.system;
-        let app = panel()
-            .gap(px(8.))
-            .p(px(14.))
-            .child(section_title("Heronite"))
-            .child(row("Version", format!("{} (Rust rewrite)", env!("CARGO_PKG_VERSION"))))
-            .child(row("Legendary", a.legendary.clone().unwrap_or_else(|| if a.loaded && a.wine_count.is_some() { "not found".into() } else { "...".into() })))
-            .child(row(
+        let app = card([
+            info_row("Version", format!("{} (Rust rewrite)", env!("CARGO_PKG_VERSION"))),
+            info_row("Legendary", a.legendary.clone().unwrap_or_else(|| if a.loaded && a.wine_count.is_some() { "not found".into() } else { "...".into() })),
+            info_row(
                 "Wine / Proton found",
                 match (a.wine_count, a.proton_count) {
                     (Some(w), Some(p)) => format!("{w} Wine, {p} Proton"),
                     _ => "...".into(),
                 },
-            ))
-            .child(row("Config folder", self.ctx.heroic.root.display().to_string()))
-            .child(row("App data folder", self.ctx.app.config.display().to_string()))
-            .child(row("Cache folder", self.ctx.app.cache.display().to_string()))
-            .child(meta_text("The config folder is shared with Heroic and Heronite, so both can be used during the transition."));
+            ),
+            info_row("Config folder", self.ctx.heroic.root.display().to_string()),
+            info_row("App data folder", self.ctx.app.config.display().to_string()),
+            info_row("Cache folder", self.ctx.app.cache.display().to_string()),
+        ]);
 
-        let mut sys = panel().gap(px(8.)).p(px(14.)).child(section_title("System"));
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .child(caption("Heronite"))
+            .child(app)
+            .child(div().mx(px(6.)).mt(px(8.)).child(meta_text("The config folder is shared with Heroic and Heronite, so both can be used during the transition.")))
+            .child(caption("System"));
         if s.os.is_empty() {
-            sys = sys.child(meta_text("Reading system information..."));
+            col = col.child(card([empty_line("Reading system information...")]));
         } else {
-            sys = sys
-                .child(row("OS", s.os.clone()))
-                .child(row("Kernel", s.kernel.clone()))
-                .child(row("CPU", format!("{} ({} threads)", s.cpu, s.cores)))
-                .child(row("Memory", sysinfo::human_memory(s.memory_kb)));
+            let mut rows = vec![
+                info_row("OS", s.os.clone()),
+                info_row("Kernel", s.kernel.clone()),
+                info_row("CPU", format!("{} ({} threads)", s.cpu, s.cores)),
+                info_row("Memory", sysinfo::human_memory(s.memory_kb)),
+            ];
             for (i, g) in s.gpus.iter().enumerate() {
                 let driver = match &g.driver_version {
                     Some(v) => format!("{} {v}", g.driver),
                     None => g.driver.clone(),
                 };
-                sys = sys.child(row(&if s.gpus.len() > 1 { format!("GPU {}", i + 1) } else { "GPU".to_string() }, format!("{} {}  (driver {driver})", g.vendor, g.name)));
+                rows.push(info_row(&if s.gpus.len() > 1 { format!("GPU {}", i + 1) } else { "GPU".to_string() }, format!("{} {}  (driver {driver})", g.vendor, g.name)));
             }
             if s.gpus.is_empty() {
-                sys = sys.child(row("GPU", "not detected"));
+                rows.push(info_row("GPU", "not detected"));
             }
             if !s.session.is_empty() {
-                sys = sys.child(row("Session", s.session.clone()));
+                rows.push(info_row("Session", s.session.clone()));
             }
             let copied = a.copied;
-            sys = sys.child(div().pt(px(4.)).flex().child(action_button(
-                "about-copy",
-                ButtonKind::Outline,
-                if copied { "Copied to clipboard!" } else { "Copy to clipboard" },
-                true,
-                cx.listener(|this, _, _, cx| {
-                    let text = this.about.report(&this.ctx);
-                    cx.write_to_clipboard(ClipboardItem::new_string(text));
-                    this.about.copied = true;
-                    cx.notify();
-                }),
-            )));
+            rows.push(
+                row(
+                    "Copy system information",
+                    Some("For bug reports."),
+                    action_button(
+                        "about-copy",
+                        ButtonKind::Glass,
+                        if copied { "Copied to clipboard!" } else { "Copy to clipboard" },
+                        true,
+                        cx.listener(|this, _, _, cx| {
+                            let text = this.about.report(&this.ctx);
+                            cx.write_to_clipboard(ClipboardItem::new_string(text));
+                            this.about.copied = true;
+                            cx.notify();
+                        }),
+                    ),
+                )
+                .into_any_element(),
+            );
+            col = col.child(card(rows));
         }
-        div().flex().flex_col().gap(px(16.)).child(app).child(sys)
+        col
     }
+}
+
+fn empty_line(text: &str) -> AnyElement {
+    div().py(px(14.)).text_size(px(13.)).text_color(theme::text_dim()).child(text.to_string()).into_any_element()
 }
