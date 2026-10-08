@@ -1,0 +1,442 @@
+//! Shortcuts for games: `.desktop` files (Desktop and application menu) and
+//! "Add to Steam". Glue between the library, Heroic's settings and the
+//! `heronite-shortcuts` crate.
+//!
+//! Every function here is **blocking** (reads the library, writes files,
+//! may download artwork): call it from a background thread (`cx.background_spawn`
+//! or `std::thread`), never from the UI thread.
+//!
+//! # For other features
+//!
+//! After a game was added or installed, call
+//!
+//! ```ignore
+//! let outcome = crate::system::shortcuts::on_game_added(&heroic_paths, "sideload", &app_name);
+//! for m in &outcome.messages { /* show_toast(m.text, m.error) */ }
+//! ```
+//!
+//! It honours `addDesktopShortcuts` / `addStartMenuShortcuts` /
+//! `addSteamShortcuts` of Heroic's global settings (does nothing, quickly,
+//! when all three are off). The game must already be in the library files
+//! (the function reloads them to get title and artwork). Roots can be
+//! redirected with `HERONITE_DESKTOP_DIR`, `HERONITE_APPLICATIONS_DIR` and
+//! `HERONITE_STEAM_DIR`.
+
+use std::path::{Path, PathBuf};
+
+use heronite_data::game_config::load_global;
+use heronite_data::{art, AppPaths, ArtContext, CollectionGame, HeroicPaths, Library};
+use heronite_shortcuts::desktop::{self, Roots};
+use heronite_shortcuts::steam::{self, ArtFiles, ShortcutSpec};
+use heronite_shortcuts::GameId;
+use serde_json::Value;
+
+/// One line for the user (a toast).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Message {
+    pub text: String,
+    pub error: bool,
+}
+
+/// What an operation did.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    pub messages: Vec<Message>,
+}
+
+impl Outcome {
+    fn ok(&mut self, text: impl Into<String>) {
+        self.messages.push(Message { text: text.into(), error: false });
+    }
+
+    fn err(&mut self, text: impl Into<String>) {
+        self.messages.push(Message { text: text.into(), error: true });
+    }
+
+    /// All messages as one toast (`error` when any failed).
+    pub fn summary(&self) -> Option<Message> {
+        if self.messages.is_empty() {
+            return None;
+        }
+        Some(Message {
+            text: self.messages.iter().map(|m| m.text.as_str()).collect::<Vec<_>>().join("\n"),
+            error: self.messages.iter().any(|m| m.error),
+        })
+    }
+}
+
+/// The three automatic-shortcut settings.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AutoSettings {
+    pub desktop: bool,
+    pub menu: bool,
+    pub steam: bool,
+}
+
+impl AutoSettings {
+    pub fn load(heroic: &HeroicPaths) -> Self {
+        let g = load_global(heroic, &home());
+        let flag = |k: &str| g.get(k).and_then(Value::as_bool).unwrap_or(false);
+        Self { desktop: flag("addDesktopShortcuts"), menu: flag("addStartMenuShortcuts"), steam: flag("addSteamShortcuts") }
+    }
+
+    pub fn any(self) -> bool {
+        self.desktop || self.menu || self.steam
+    }
+}
+
+fn home() -> String {
+    dirs::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// Steam install folder: `HERONITE_STEAM_DIR`, else `defaultSteamPath`.
+pub fn steam_path(heroic: &HeroicPaths) -> PathBuf {
+    if let Some(dir) = std::env::var_os("HERONITE_STEAM_DIR") {
+        return PathBuf::from(dir);
+    }
+    let g = load_global(heroic, &home());
+    steam::clean_steam_path(g.get("defaultSteamPath").and_then(Value::as_str).unwrap_or(""))
+}
+
+/// The executable shortcuts point at.
+fn own_exe() -> PathBuf {
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("heronite-rs"));
+    // A replaced binary shows up as ".../heronite-rs (deleted)".
+    let s = exe.to_string_lossy();
+    PathBuf::from(s.strip_suffix(" (deleted)").unwrap_or(&s).to_string())
+}
+
+fn find_game(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Result<(Library, std::sync::Arc<CollectionGame>), String> {
+    let lib = Library::load(heroic).map_err(|e| format!("Could not read the library: {e:#}"))?;
+    let game = lib
+        .games
+        .iter()
+        .find(|g| g.app_name == app_name && (runner.is_empty() || g.runner == runner))
+        .cloned()
+        .ok_or_else(|| format!("Game {app_name} was not found in the library"))?;
+    Ok((lib, game))
+}
+
+fn is_dlc(game: &CollectionGame) -> bool {
+    game.game.install.is_dlc == Some(true)
+}
+
+fn game_id(game: &CollectionGame) -> GameId {
+    GameId { runner: game.runner.clone(), app_name: game.app_name.clone(), title: game.title.clone() }
+}
+
+// ---------------------------------------------------------------------------
+// Artwork
+// ---------------------------------------------------------------------------
+
+fn image_opts(heroic: &HeroicPaths) -> heronite_images::Opts {
+    heronite_images::Opts::new(heroic.images_cache_dir(), Some(AppPaths::detect().thumbs_dir()))
+}
+
+/// Writes the first loadable image of `chain` as a `w`x`h` file (`cover`
+/// crop). `png`: PNG, else JPEG q90.
+fn render(chain: &[heronite_data::ImageRef], w: u32, h: u32, dest: &Path, png: bool, opts: &heronite_images::Opts) -> Option<PathBuf> {
+    let chain = crate::images::to_chain(chain);
+    if chain.is_empty() {
+        return None;
+    }
+    let decoded = match heronite_images::load_cover(&chain, w, h, opts) {
+        Ok(d) => d,
+        Err(e) => {
+            log::warn!("shortcut artwork {}: {e}", dest.display());
+            return None;
+        }
+    };
+    let (width, height) = (decoded.width, decoded.height);
+    let mut buf = decoded.bgra;
+    heronite_images::fx::swap_rb(&mut buf);
+    let img = image::RgbaImage::from_raw(width, height, buf)?;
+    if let Some(dir) = dest.parent() {
+        std::fs::create_dir_all(dir).ok()?;
+    }
+    let tmp = dest.with_extension("tmp");
+    let written = (|| -> Result<(), String> {
+        let file = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        let mut file = std::io::BufWriter::new(file);
+        if png {
+            img.write_to(&mut file, image::ImageFormat::Png).map_err(|e| e.to_string())
+        } else {
+            let rgb = image::DynamicImage::ImageRgba8(img).to_rgb8();
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 90).encode_image(&rgb).map_err(|e| e.to_string())
+        }
+    })();
+    match written.and_then(|_| std::fs::rename(&tmp, dest).map_err(|e| e.to_string())) {
+        Ok(()) => Some(dest.to_path_buf()),
+        Err(e) => {
+            log::warn!("writing {}: {e}", dest.display());
+            let _ = std::fs::remove_file(&tmp);
+            None
+        }
+    }
+}
+
+/// Icon for the `.desktop` files: Heroic's `icons/<appName>.(jpg|png)` when
+/// it exists, else a 256x256 PNG made from the cover and kept there.
+pub fn icon_file(heroic: &HeroicPaths, lib: &Library, game: &CollectionGame) -> Option<PathBuf> {
+    let dir = heroic.root.join("icons");
+    for ext in ["jpg", "png"] {
+        let p = dir.join(format!("{}.{ext}", game.app_name));
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    let shots = (!lib.settings.screenshots.folder.is_empty()).then(|| PathBuf::from(&lib.settings.screenshots.folder));
+    let ctx = ArtContext::new(heroic, shots.as_deref());
+    render(&art::card_cover(&ctx, game), 256, 256, &dir.join(format!("{}.png", game.app_name)), true, &image_opts(heroic))
+}
+
+/// Grid artwork for Steam, generated into the app cache.
+fn steam_art(heroic: &HeroicPaths, lib: &Library, game: &CollectionGame) -> ArtFiles {
+    let shots = (!lib.settings.screenshots.folder.is_empty()).then(|| PathBuf::from(&lib.settings.screenshots.folder));
+    let ctx = ArtContext::new(heroic, shots.as_deref());
+    let opts = image_opts(heroic);
+    let dir = AppPaths::detect().cache.join("steam-art").join(format!("{}_{}", game.runner, game.app_name));
+    let cover_chain = art::card_cover(&ctx, game);
+    let stage_chain = art::stage_art(&ctx, game);
+    // Wide images come from the stage/hero chain, else the cover.
+    let wide = if stage_chain.is_empty() { &cover_chain } else { &stage_chain };
+    ArtFiles {
+        cover: render(&cover_chain, 600, 900, &dir.join("cover.jpg"), false, &opts),
+        header: render(wide, 920, 430, &dir.join("header.jpg"), false, &opts),
+        hero: render(wide, 1920, 620, &dir.join("hero.jpg"), false, &opts),
+        logo: None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+/// Desktop / application-menu shortcut files (`addShortcuts` without Steam).
+/// `desktop`/`menu` pick the targets.
+fn write_desktop(heroic: &HeroicPaths, lib: &Library, game: &CollectionGame, desktop: bool, menu: bool, out: &mut Outcome) {
+    let roots = Roots::detect();
+    let icon = icon_file(heroic, lib, game);
+    match desktop::add(&roots, &game_id(game), &own_exe(), icon.as_deref(), desktop, menu) {
+        Ok(w) => {
+            let mut places = Vec::new();
+            if w.desktop.is_some() {
+                places.push("Desktop");
+            }
+            if w.menu.is_some() {
+                places.push("Start Menu");
+            }
+            if !places.is_empty() {
+                out.ok(format!("Shortcuts were created on {}", places.join(" and ")));
+            }
+        }
+        Err(e) => out.err(format!("Could not create the shortcuts for {}: {e:#}", game.title)),
+    }
+}
+
+/// Context-menu "Add shortcuts": Desktop and application menu, whatever the
+/// automatic settings say (Heroic's `fromMenu`).
+pub fn add_shortcuts(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome {
+    let mut out = Outcome::default();
+    match find_game(heroic, runner, app_name) {
+        Ok((lib, game)) => {
+            if !is_dlc(&game) {
+                write_desktop(heroic, &lib, &game, true, true, &mut out);
+            }
+        }
+        Err(e) => out.err(e),
+    }
+    out
+}
+
+/// Context-menu "Remove shortcuts".
+pub fn remove_shortcuts(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome {
+    let mut out = Outcome::default();
+    match find_game(heroic, runner, app_name) {
+        Ok((_, game)) => match desktop::remove(&Roots::detect(), &game.title) {
+            Ok(_) => out.ok("Shortcuts were removed from Desktop and Start Menu"),
+            Err(e) => out.err(format!("Could not remove the shortcuts of {}: {e:#}", game.title)),
+        },
+        Err(e) => out.err(e),
+    }
+    out
+}
+
+/// `shortcutsExists`: for the menu label.
+pub fn shortcuts_exist(heroic: &HeroicPaths, runner: &str, app_name: &str) -> bool {
+    find_game(heroic, runner, app_name).map(|(_, g)| desktop::exists(&Roots::detect(), &g.title)).unwrap_or(false)
+}
+
+fn last_play_secs(game: &CollectionGame) -> Option<u32> {
+    let ts = game.last_played.as_deref()?;
+    chrono::DateTime::parse_from_rfc3339(ts).ok().map(|d| d.timestamp().clamp(0, u32::MAX as i64) as u32)
+}
+
+fn steam_spec(game: &CollectionGame, icon: Option<&Path>) -> ShortcutSpec {
+    let exe = own_exe();
+    let start_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    ShortcutSpec {
+        exe: format!("\"{}\"", exe.display()),
+        start_dir: format!("\"{}\"", start_dir.display()),
+        launch_options: format!("--no-gui \"{}\"", heronite_shortcuts::launch_url("heronite-rs", &game.runner, &game.app_name)),
+        icon: icon.map(|p| p.to_string_lossy().into_owned()),
+        last_play_time: last_play_secs(game),
+    }
+}
+
+/// "Add to Steam" (Steam must be closed).
+pub fn add_to_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome {
+    let mut out = Outcome::default();
+    let (lib, game) = match find_game(heroic, runner, app_name) {
+        Ok(v) => v,
+        Err(e) => {
+            out.err(e);
+            return out;
+        }
+    };
+    if is_dlc(&game) {
+        return out;
+    }
+    let steam_dir = steam_path(heroic);
+    if steam::is_steam_running(&steam_dir) {
+        out.err(format!(
+            "Steam is running. Close Steam and try again: it overwrites its shortcuts when it exits, so adding {} now would be lost.",
+            game.title
+        ));
+        return out;
+    }
+    let icon = icon_file(heroic, &lib, &game);
+    let art = steam_art(heroic, &lib, &game);
+    match steam::add_game(&steam_dir, &game_id(&game), &steam_spec(&game, icon.as_deref()), &art) {
+        Ok(report) if report.errors.is_empty() => {
+            out.ok(format!("{} was successfully added to Steam. A restart of Steam is required for changes to take effect.", game.title))
+        }
+        Ok(report) => {
+            for e in &report.errors {
+                log::error!("{e}");
+            }
+            out.ok(format!(
+                "{} could not be added to all found Steam users. See logs for more info. A restart of Steam is required for changes to take effect.",
+                game.title
+            ));
+        }
+        Err(e) => out.err(format!("Adding {} to Steam failed with:\n{e:#}", game.title)),
+    }
+    out
+}
+
+/// "Remove from Steam" (Steam must be closed).
+pub fn remove_from_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome {
+    let mut out = Outcome::default();
+    let (_, game) = match find_game(heroic, runner, app_name) {
+        Ok(v) => v,
+        Err(e) => {
+            out.err(e);
+            return out;
+        }
+    };
+    match steam::remove_game(&steam_path(heroic), &game_id(&game)) {
+        Ok(report) if report.errors.is_empty() => {
+            if !report.users_done.is_empty() {
+                out.ok(format!("{} was successfully removed from Steam. A restart of Steam is required for changes to take effect.", game.title));
+            }
+        }
+        Ok(report) => {
+            for e in &report.errors {
+                log::error!("{e}");
+            }
+            out.err(format!(
+                "{} could not be removed from all found Steam users. See logs for more info. A restart of Steam is required for changes to take effect.",
+                game.title
+            ));
+        }
+        Err(e) => out.err(format!("Removing {} from Steam failed with:\n{e:#}", game.title)),
+    }
+    out
+}
+
+/// `isAddedToSteam`: for the menu label.
+pub fn is_added_to_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> bool {
+    find_game(heroic, runner, app_name)
+        .map(|(_, g)| steam::is_added(&steam_path(heroic), &game_id(&g)))
+        .unwrap_or(false)
+}
+
+/// Heroic's `addShortcuts(game)` after a game was installed or added: the
+/// automatic settings decide what is created (Desktop, application menu,
+/// Steam). Returns quickly when all three are off.
+pub fn on_game_added(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome {
+    let settings = AutoSettings::load(heroic);
+    let mut out = Outcome::default();
+    if !settings.any() {
+        return out;
+    }
+    let (lib, game) = match find_game(heroic, runner, app_name) {
+        Ok(v) => v,
+        Err(e) => {
+            out.err(e);
+            return out;
+        }
+    };
+    if is_dlc(&game) {
+        return out;
+    }
+    log::info!("adding shortcuts for {}", game.title);
+    if settings.steam {
+        out.messages.extend(add_to_steam(heroic, runner, app_name).messages);
+    }
+    if settings.desktop || settings.menu {
+        write_desktop(heroic, &lib, &game, settings.desktop, settings.menu, &mut out);
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn summary_joins_messages() {
+        let mut o = Outcome::default();
+        assert!(o.summary().is_none());
+        o.ok("a");
+        o.err("b");
+        let s = o.summary().unwrap();
+        assert_eq!(s.text, "a\nb");
+        assert!(s.error);
+    }
+
+    #[test]
+    fn auto_settings_come_from_config_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let heroic = HeroicPaths::at(dir.path());
+        assert!(!AutoSettings::load(&heroic).any());
+        fs::write(
+            dir.path().join("config.json"),
+            "{\n  \"defaultSettings\": {\n    \"addDesktopShortcuts\": true,\n    \"addSteamShortcuts\": true\n  },\n  \"version\": \"v0\"\n}",
+        )
+        .unwrap();
+        let s = AutoSettings::load(&heroic);
+        assert!(s.desktop && s.steam && !s.menu);
+    }
+
+    #[test]
+    fn on_game_added_does_nothing_when_settings_are_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let heroic = HeroicPaths::at(dir.path());
+        assert_eq!(on_game_added(&heroic, "sideload", "nope"), Outcome::default());
+    }
+
+    #[test]
+    fn steam_path_override_and_quote_stripping() {
+        let dir = tempfile::tempdir().unwrap();
+        let heroic = HeroicPaths::at(dir.path());
+        fs::write(
+            dir.path().join("config.json"),
+            "{\n  \"defaultSettings\": {\n    \"defaultSteamPath\": \"/home/u/.steam/steam'\"\n  },\n  \"version\": \"v0\"\n}",
+        )
+        .unwrap();
+        assert_eq!(steam_path(&heroic), PathBuf::from("/home/u/.steam/steam"));
+    }
+}

@@ -6,6 +6,7 @@ mod images;
 mod pages;
 mod runtime;
 mod services;
+mod system;
 mod theme;
 mod ui;
 

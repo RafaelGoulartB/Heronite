@@ -388,3 +388,24 @@ também acontece quando o jogo é iniciado pelo app Rust. Tudo roda na thread de
   mesmas condições dos componentes do Heroic); se falhar o toggle volta atrás, como no Heroic. Testado só a lógica de decisão
   (tempdirs, sem prefixo real); a interface não foi exercitada com cliques. O upload de saves pós-jogo continua mantendo o
   estado "jogando" até acabar (o toast "Uploading cloud saves..." já avisa), sem mudança.
+
+## Sistema: lançar de fora, atalhos, bandeja (agente "system")
+
+Em andamento. Código em `crates/shortcuts` (atalhos `.desktop` e `shortcuts.vdf` da Steam, sem GPUI) e `app/src/system/**`.
+
+### API para outras features: atalhos ao adicionar/instalar um jogo
+
+`app/src/system/shortcuts.rs` (bloqueante: chamar numa thread/`cx.background_spawn`, nunca na UI):
+
+```rust
+// Respeita addDesktopShortcuts / addStartMenuShortcuts / addSteamShortcuts de config.json (defaultSettings);
+// não faz nada (rápido) se as três estão desligadas. O jogo já precisa estar nos arquivos da biblioteca
+// (a função recarrega a biblioteca para obter título e arte).
+pub fn on_game_added(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome;
+// Outcome { messages: Vec<Message { text: String, error: bool }> }  +  Outcome::summary() -> Option<Message>
+```
+
+Exemplo (no `add_game`, depois de gravar o jogo sideload): 
+`let heroic = self.heroic.clone(); cx.background_spawn(async move { crate::system::shortcuts::on_game_added(&heroic, "sideload", &app_name) })` e mostrar `outcome.summary()` como toast.
+Também existem `add_shortcuts`, `remove_shortcuts`, `shortcuts_exist`, `add_to_steam`, `remove_from_steam`, `is_added_to_steam` (mesma assinatura `(heroic, runner, app_name)`).
+Raízes redirecionáveis: `HERONITE_DESKTOP_DIR`, `HERONITE_APPLICATIONS_DIR`, `HERONITE_STEAM_DIR`.
