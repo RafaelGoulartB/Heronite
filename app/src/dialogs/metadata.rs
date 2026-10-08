@@ -119,7 +119,7 @@ impl MetadataDialog {
         })
         .detach();
         let igdb_id = game.metadata.as_ref().and_then(|m| m.igdb_id).map(|n| n.get() as i64);
-        let auto_fetch = std::env::var("HERONITE_DEBUG_FETCH").is_ok();
+        let auto_fetch = crate::env::flag("HERONITE_DEBUG_FETCH");
         let runner = if game.runner == "zoom" { "sideload".to_string() } else { game.runner.clone() };
         let mut this = Self {
             ctx,
@@ -315,28 +315,9 @@ impl MetadataDialog {
                     .child(detail),
             )
     }
-}
 
-impl Render for MetadataDialog {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.images.update(cx, |im, _| im.frame(window));
+    fn render_source_row(&self, cx: &mut Context<Self>) -> Div {
         let busy = self.busy.is_some();
-
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .gap(px(16.))
-            .child(help_text(
-                "IGDB is tried first, then Steam, the store page and Lutris. Use this for games that are not on Steam.",
-            ))
-            .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(self.title.clone()));
-        if self.preview.as_ref().is_some_and(|p| !p.igdb_configured) {
-            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::accent_tint()).text_size(px(13.)).text_color(theme::text_primary()).child(
-                "IGDB is not configured. Add a Twitch Client ID and Secret in Collection settings for the richest data.",
-            ));
-        }
-
-        // Source + Fetch
         let sources: Vec<(SharedString, bool)> =
             FETCH_SOURCES.iter().map(|(id, label)| ((*label).into(), *id == self.source)).collect();
         let select = select_field(
@@ -359,113 +340,142 @@ impl Render for MetadataDialog {
                 cx.notify();
             },
         );
-        body = body.child(
-            div()
-                .flex()
-                .items_end()
-                .gap(px(8.))
-                .child(div().w(px(200.)).child(select))
-                .child(action_button(
-                    "md-fetch",
-                    ButtonKind::Primary,
-                    if self.busy == Some(Busy::Preview) { "Fetching\u{2026}" } else { "Fetch" },
-                    !busy,
-                    cx.listener(|this, _, _, cx| this.run_preview(None, cx)),
-                )),
-        );
+        div()
+            .flex()
+            .items_end()
+            .gap(px(8.))
+            .child(div().w(px(200.)).child(select))
+            .child(action_button(
+                "md-fetch",
+                ButtonKind::Primary,
+                if self.busy == Some(Busy::Preview) { "Fetching\u{2026}" } else { "Fetch" },
+                !busy,
+                cx.listener(|this, _, _, cx| this.run_preview(None, cx)),
+            ))
+    }
 
-        // IGDB search
-        body = body.child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(div().flex_1().child(input_box(&self.search, false)))
-                .child(action_button(
-                    "md-search",
-                    ButtonKind::Glass,
-                    if self.busy == Some(Busy::Search) { "Searching\u{2026}" } else { "Find on IGDB" },
-                    !busy,
-                    cx.listener(|this, _, _, cx| this.run_search(cx)),
-                )),
-        );
-        if !self.hits.is_empty() {
-            let mut hits = div().flex().flex_wrap().gap(px(4.));
-            for (i, hit) in self.hits.clone().into_iter().enumerate() {
-                let selected = self.igdb_id.map(|n| n.to_string()) == Some(hit.id.clone());
-                let id = hit.id.parse::<i64>().ok();
-                let label = match hit.year {
-                    Some(y) => format!("{} ({y})", hit.name),
-                    None => hit.name.clone(),
-                };
-                hits = hits.child(
-                    div()
-                        .id(SharedString::from(format!("hit-{i}")))
-                        .px(px(11.))
-                        .py(px(4.))
-                        .rounded_full()
-                        .border_1()
-                        .border_color(if selected { theme::accent().into() } else { theme::white_a(0.12) })
-                        .bg(if selected { theme::rgb_a(165, 220, 235, 0.22).into() } else { theme::white_a(0.04) })
-                        .text_size(px(13.))
-                        .text_color(theme::text_primary())
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if let Some(id) = id {
-                                this.run_preview(Some(id), cx);
-                            }
-                        }))
-                        .child(label),
-                );
+    fn render_search_row(&self, cx: &mut Context<Self>) -> Div {
+        let busy = self.busy.is_some();
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(div().flex_1().child(input_box(&self.search, false)))
+            .child(action_button(
+                "md-search",
+                ButtonKind::Glass,
+                if self.busy == Some(Busy::Search) { "Searching\u{2026}" } else { "Find on IGDB" },
+                !busy,
+                cx.listener(|this, _, _, cx| this.run_search(cx)),
+            ))
+    }
+
+    fn render_hits(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if self.hits.is_empty() {
+            return None;
+        }
+        let mut hits = div().flex().flex_wrap().gap(px(4.));
+        for (i, hit) in self.hits.clone().into_iter().enumerate() {
+            let selected = self.igdb_id.map(|n| n.to_string()) == Some(hit.id.clone());
+            let id = hit.id.parse::<i64>().ok();
+            let label = match hit.year {
+                Some(y) => format!("{} ({y})", hit.name),
+                None => hit.name.clone(),
+            };
+            hits = hits.child(
+                div()
+                    .id(SharedString::from(format!("hit-{i}")))
+                    .px(px(11.))
+                    .py(px(4.))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(if selected { theme::accent().into() } else { theme::white_a(0.12) })
+                    .bg(if selected { theme::rgb_a(165, 220, 235, 0.22).into() } else { theme::white_a(0.04) })
+                    .text_size(px(13.))
+                    .text_color(theme::text_primary())
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if let Some(id) = id {
+                            this.run_preview(Some(id), cx);
+                        }
+                    }))
+                    .child(label),
+            );
+        }
+        Some(hits)
+    }
+
+    fn render_compare(&mut self, cx: &mut Context<Self>) -> Option<Div> {
+        let preview = self.preview.clone()?;
+        let current = preview.current.clone().or_else(|| self.game.metadata.as_deref().cloned());
+        let mut compare = div().flex().flex_col().gap(px(16.));
+        for field in METADATA_FIELDS {
+            let has = |m: Option<&CollectionGameMetadata>| !format_value(m, field).is_empty();
+            let visible = has(current.as_ref())
+                || has(Some(&preview.proposed))
+                || preview.candidates.iter().any(|c| has(Some(&c.metadata)));
+            if !visible {
+                continue;
             }
-            body = body.child(hits);
+            let mut options = vec![("keep".to_string(), "Keep current".to_string(), format_value(current.as_ref(), field))];
+            for c in &preview.candidates {
+                let v = format_value(Some(&c.metadata), field);
+                if !v.is_empty() {
+                    options.push((c.source.clone(), source_label(&c.source), v));
+                }
+            }
+            if options.len() <= 1 && options[0].2.is_empty() {
+                continue;
+            }
+            let picked = self
+                .picks
+                .get(field)
+                .cloned()
+                .or_else(|| preview.proposed.field_sources.get(field).cloned())
+                .unwrap_or_else(|| "keep".into());
+            let picked = if picked == "manual" { "keep".to_string() } else { picked };
+            let mut row = div().flex().flex_wrap().gap(px(4.));
+            for (id, label, value) in options {
+                let selected = picked == id;
+                row = row.child(self.choice_tile(field, id, label, value, selected, cx));
+            }
+            compare = compare.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(7.))
+                    .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(field_label(field)))
+                    .child(row),
+            );
+        }
+        Some(compare)
+    }
+}
+
+impl Render for MetadataDialog {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.images.update(cx, |im, _| im.frame(window));
+        let busy = self.busy.is_some();
+
+        let mut body = div()
+            .flex()
+            .flex_col()
+            .gap(px(16.))
+            .child(help_text(
+                "IGDB is tried first, then Steam, the store page and Lutris. Use this for games that are not on Steam.",
+            ))
+            .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(self.title.clone()));
+        if self.preview.as_ref().is_some_and(|p| !p.igdb_configured) {
+            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::accent_tint()).text_size(px(13.)).text_color(theme::text_primary()).child(
+                "IGDB is not configured. Add a Twitch Client ID and Secret in Collection settings for the richest data.",
+            ));
         }
 
-        // Per-field comparison
-        if let Some(preview) = self.preview.clone() {
-            let current = preview.current.clone().or_else(|| self.game.metadata.as_deref().cloned());
-            let mut compare = div().flex().flex_col().gap(px(16.));
-            for field in METADATA_FIELDS {
-                let has = |m: Option<&CollectionGameMetadata>| !format_value(m, field).is_empty();
-                let visible = has(current.as_ref())
-                    || has(Some(&preview.proposed))
-                    || preview.candidates.iter().any(|c| has(Some(&c.metadata)));
-                if !visible {
-                    continue;
-                }
-                let mut options = vec![("keep".to_string(), "Keep current".to_string(), format_value(current.as_ref(), field))];
-                for c in &preview.candidates {
-                    let v = format_value(Some(&c.metadata), field);
-                    if !v.is_empty() {
-                        options.push((c.source.clone(), source_label(&c.source), v));
-                    }
-                }
-                if options.len() <= 1 && options[0].2.is_empty() {
-                    continue;
-                }
-                let picked = self
-                    .picks
-                    .get(field)
-                    .cloned()
-                    .or_else(|| preview.proposed.field_sources.get(field).cloned())
-                    .unwrap_or_else(|| "keep".into());
-                let picked = if picked == "manual" { "keep".to_string() } else { picked };
-                let mut row = div().flex().flex_wrap().gap(px(4.));
-                for (id, label, value) in options {
-                    let selected = picked == id;
-                    row = row.child(self.choice_tile(field, id, label, value, selected, cx));
-                }
-                compare = compare.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(7.))
-                        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(field_label(field)))
-                        .child(row),
-                );
-            }
-            body = body.child(compare);
-        }
+        body = body
+            .child(self.render_source_row(cx))
+            .child(self.render_search_row(cx))
+            .children(self.render_hits(cx))
+            .children(self.render_compare(cx));
         if !self.error.is_empty() {
             body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::danger_fill()).text_size(px(13.)).text_color(theme::danger_text()).child(self.error.clone()));
         }

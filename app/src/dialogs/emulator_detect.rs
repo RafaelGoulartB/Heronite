@@ -68,7 +68,7 @@ impl DetectEmulatorsDialog {
             added: 0,
         };
         // Screenshots: the hidden window does not repaint late results.
-        if std::env::var_os("HERONITE_DEBUG_SYNC").is_some() {
+        if crate::env::flag("HERONITE_DEBUG_SYNC") {
             this.scanning = false;
             match find() {
                 Ok(items) => merge_rows(&mut this.rows, items),

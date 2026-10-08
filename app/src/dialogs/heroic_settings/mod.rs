@@ -187,7 +187,7 @@ impl HeroicSettingsPanel {
             tool_busy: None,
             tool_toggle: None,
             gpu_count: logic::count_gpus(),
-            gamescope_installed: std::env::var_os("HERONITE_DEBUG_GAMESCOPE").is_some()
+            gamescope_installed: crate::env::flag("HERONITE_DEBUG_GAMESCOPE")
                 || heronite_launch::Probe::which(&heronite_launch::SystemProbe, "gamescope").is_some(),
             runtimes,
             env_error: String::new(),
@@ -201,7 +201,7 @@ impl HeroicSettingsPanel {
         this.maybe_detect_saves(window, cx);
         // Debug: HERONITE_DEBUG_SETTINGS_SET='key=<json or text>,gamescope.field=<value>' saves values as if
         // the user had changed them (exercises the write path without clicks).
-        if let Ok(spec) = std::env::var("HERONITE_DEBUG_SETTINGS_SET") {
+        if let Some(spec) = crate::env::value("HERONITE_DEBUG_SETTINGS_SET") {
             for pair in spec.split(',') {
                 if let Some((k, v)) = pair.split_once('=') {
                     // JSON when it parses, else a plain string (no quotes through the shell).
@@ -402,7 +402,7 @@ impl HeroicSettingsPanel {
 
     fn load_wine_list(&mut self, cx: &mut Context<Self>) {
         // Debug captures only keep the first frames: load in place there.
-        if std::env::var_os("HERONITE_DEBUG_DIALOG").is_some() {
+        if crate::env::flag("HERONITE_DEBUG_DIALOG") {
             self.wine_list = Some(heronite_wine::list_installations(&self.paths));
             return;
         }
@@ -479,5 +479,5 @@ impl Render for HeroicSettingsPanel {
 
 /// `HERONITE_DEBUG_DIALOG_H=<px>`: taller settings dialogs for captures.
 pub fn debug_dialog_height() -> Option<f32> {
-    std::env::var("HERONITE_DEBUG_DIALOG_H").ok().and_then(|v| v.parse().ok())
+    crate::env::parse("HERONITE_DEBUG_DIALOG_H")
 }
