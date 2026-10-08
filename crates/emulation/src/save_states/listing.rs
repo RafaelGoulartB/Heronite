@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 
 use anyhow::Result;
-use chrono::{DateTime, SecondsFormat, Utc};
 use heronite_data::models::{LocalGameMeta, LocalMetaFile};
 use heronite_data::{json_store, HeroicPaths};
 use heronite_launch::emulators::EmulatorsFile;
@@ -16,6 +15,7 @@ use super::{
     EmulatorSaveStateList, MAX_STATES,
 };
 use crate::catalog::emulator_definition;
+use crate::iso::iso_millis;
 use crate::pathutil::join;
 use crate::store::resolve_template;
 use crate::sysfiles::HostEnv;
@@ -79,10 +79,6 @@ pub(super) fn resolve(paths: &HeroicPaths, app_name: &str, rom_path: Option<&str
         ctx: EngineContext { executable, flatpak_id, core_path },
         rom_path: rom,
     }))
-}
-
-fn iso_millis(t: SystemTime) -> String {
-    DateTime::<Utc>::from(t).to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
 pub(super) struct Found {

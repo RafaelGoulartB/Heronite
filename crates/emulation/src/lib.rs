@@ -18,6 +18,7 @@ pub mod detect;
 pub mod discover;
 pub mod disc_id;
 pub mod import;
+mod iso;
 pub mod jobs;
 pub mod manager;
 pub mod ludusavi;

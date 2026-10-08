@@ -7,11 +7,12 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Datelike, Local, SecondsFormat, Utc};
+use chrono::{DateTime, Datelike, Local};
 use heronite_data::models::BackupSettings;
 use heronite_data::{settings, HeroicPaths};
 use serde::{Deserialize, Serialize};
 
+use crate::iso::iso_millis;
 use crate::pathutil::{join, resolve};
 use crate::settings_ext::{record_collection_backup, BackupRecord};
 
@@ -183,7 +184,7 @@ pub fn run_collection_backup(paths: &HeroicPaths, force: bool, now: DateTime<Loc
         return skipped("already-running");
     };
 
-    let at = now.with_timezone(&Utc).to_rfc3339_opts(SecondsFormat::Millis, true);
+    let at = iso_millis(now);
     let destination = join(&folder, &format!("heroic-{}", local_date_key(now)));
     let outcome = (|| -> Result<()> {
         // Checked first (Heronite removes the old copy before checking).
@@ -240,7 +241,7 @@ mod tests {
         BackupSettings {
             folder: folder.into(),
             interval: interval.into(),
-            last_backup_at: last.map(|l| l.with_timezone(&Utc).to_rfc3339_opts(SecondsFormat::Millis, true)),
+            last_backup_at: last.map(iso_millis),
             ..Default::default()
         }
     }

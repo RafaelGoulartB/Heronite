@@ -3,7 +3,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
-use chrono::{SecondsFormat, Utc};
 use heronite_data::models::LocalMetaFile;
 use heronite_data::{json_store, settings, HeroicPaths};
 use heronite_launch::probe::Probe;
@@ -16,6 +15,7 @@ use super::commands::{
 };
 use super::detect::detect_ludusavi;
 use super::runner::{CommandOutput, CommandRunner};
+use crate::iso::iso_now;
 use crate::pathutil::join;
 use crate::settings_ext::{record_ludusavi_backup, LudusaviRecord};
 
@@ -82,10 +82,6 @@ pub struct LudusaviEnv<'a> {
     pub paths: &'a HeroicPaths,
     pub runner: &'a dyn CommandRunner,
     pub probe: &'a dyn Probe,
-}
-
-fn iso_now() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
 }
 
 fn record_error(paths: &HeroicPaths, error: &str) {
