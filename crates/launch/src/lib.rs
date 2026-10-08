@@ -24,6 +24,7 @@ pub mod settings;
 pub mod steam;
 pub mod vdf;
 pub mod wine;
+pub mod wine_tools;
 
 pub use plan::{
     build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext,
