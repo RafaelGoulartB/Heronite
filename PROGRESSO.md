@@ -328,3 +328,50 @@ saves na nuvem. O `legendaryConfig/**` só é gravado pelo próprio legendary.
   sem branches/builds (GOG), sem atalhos de desktop/Steam, sem notificações do sistema, sem checagem de "Epic offline";
   `detect_path` não descarta o `save_path` já guardado (o Heroic edita o `installed.json`); "Play anyway" no aviso de
   update pode ser recusado pelo legendary (o plano de lançamento ainda não passa `--skip-version-check`).
+
+## Paridade de lançamento Wine/Proton + Epic (agente "launch")
+
+O que o Heroic faz *em volta* de um lançamento (`prepareLaunch`, `prepareWineLaunch`, `launchEventCallback`) agora
+também acontece quando o jogo é iniciado pelo app Rust. Tudo roda na thread de lançamento (nunca na UI) e avisa por
+`LaunchEvent::Status { message, warning }`, que a Collection mostra como toast.
+
+- **Plano** (`crates/launch/src/plan.rs`): `ProcessPlan.prep: PrepSpec` descreve o que o lançamento precisa
+  (`umu` a baixar, `wine` = configurações efetivas do jogo, `cloud_saves` = `savesPath`). Planos de Wine (sideload,
+  emuladores `.exe`) e de Epic preenchem; Epic agora também cria o prefixo que falta (`pre_commands`, como o
+  `verifyWinePrefix`), antes de instalar o DXVK. Se o umu é desejado e não está instalado, o plano usa umu e o
+  lançamento o baixa (antes caía para Proton direto); sem rede, o erro manda ligar "Disable UMU".
+- **Ordem** (`runtime.rs::run_process`): saves da nuvem (`--skip-upload`, só `autoSyncSaves` + `savesPath` + online) ->
+  umu -> criação do prefixo ("Preparing prefix...") -> DXVK/DXVK-NVAPI/VKD3D no prefixo (só Wine, conforme
+  `autoInstallDxvk`/`autoInstallDxvkNvapi`/`autoInstallVkd3d`) -> runtimes EAC/BattlEye (`eacRuntime`/`battlEyeRuntime`)
+  -> jogo -> upload dos saves (`--skip-download`; não conta como tempo de jogo; não roda após "force clear").
+  Parar durante o preparo cancela sem iniciar o jogo nem gravar sessão. Falhas de saves/DXVK/runtimes são avisos
+  (toast de erro) e o jogo inicia, como no Heroic; só a falta do umu aborta.
+- **Módulos novos** (`crates/launch/src/`): `prepare.rs` (orquestra; trait `CloudSync` implementada em
+  `app/src/runtime.rs` com `heronite_epic::saves::sync_flag`, porque o crate epic depende do launch), `tools.rs`
+  (`installOrUpdateTool`/`DXVK.getLatest`: baixa o release do GitHub para `tools/<tool>/<release>` + `latest_<tool>`,
+  extração em pasta oculta e rename atômico; winetricks; escolha DXVK 1.10.3/VKD3D 2.6 se a GPU só tem Vulkan 1.1/1.2 via
+  `vulkaninfo`), `runtimes.rs` (API do Lutris: umu, `eac_runtime`, `battleye_runtime`, `current_version`), `dxvk.rs`
+  (`DXVK.installRemove`: copia DLLs para system32/syswow64, overrides `native,builtin` via `reg add`, `current_<tool>`,
+  nvngx.dll para DLSS; restore = `reg delete` + remoção + `wineboot -u`; só DLLs, ignora os `*-tests.exe`), `net.rs`
+  (`Net`: online, JSON, download; `extract_tar`; `FakeNet` para testes). `wine.rs` ganhou `prepare_for_launch` e
+  `wine_tools.rs` `wine_command`.
+- **App** (`app/src/runtime.rs`): `GameRuntime::play_skip_version_check` ("Play anyway" do diálogo "Game Needs Update"
+  passa `--skip-version-check` ao legendary); serviços de preparo (rede, nuvem via Epic); thread de startup que
+  atualiza DXVK/VKD3D/DXVK-NVAPI/winetricks 2,5 s após abrir (no máximo 2x por dia, selo `tools/.heronite-last-update-check`;
+  desligada por `HERONITE_DISABLE_IDLE_JOBS=1`). `Prep::toggle_tool` (instalar/restaurar no prefixo) está pronto
+  para os toggles das configurações, mas o diálogo de configurações **ainda não o chama**.
+- **Pontos de ligação em arquivos compartilhados**: `app/src/collection/mod.rs` (um braço `LaunchEvent::Status` ->
+  `show_toast`), `app/src/collection/epic.rs` (Play anyway -> `play_skip_version_check`), `Cargo.lock` (`ureq` no crate
+  launch).
+- **Verificação**: 106 testes unitários do crate (tempdirs, `FakeNet`, spawner instantâneo, scripts falsos);
+  `tests/runtime.rs` (ordem/eventos/cancelamento com `FakeSpawner`); `tests/launch_flow.rs` lança um jogo Epic de
+  verdade com processos reais mas `legendary`/`wine` falsos (script) e confere a ordem: saves ↓, `wineboot --init`,
+  `reg add` do DXVK, jogo, saves ↑, e o `--skip-version-check`; `tests/real_network.rs` (`--ignored`) baixou de
+  verdade DXVK/VKD3D/NVAPI/winetricks/umu/EAC/BattlEye para um tempdir e o layout é idêntico ao de
+  `~/.config/heroic/tools`; o app abre na fixture `/tmp/heronite-fixture-launch` e a atualização de startup instalou as
+  ferramentas lá.
+- **Não verificado / limitações**: nada rodou com wine/proton/umu/legendary reais nem com um jogo; o toast de status só
+  foi coberto por teste (sem captura); o `legendarySetup` do Heroic (redistribuíveis/pré-requisitos do Epic, EOS overlay,
+  `installed_games` do prefixo) e os `installFixes` (winetricks/`runInPrefix` do known_fixes) **não** foram portados;
+  CrossOver/Mac fora de escopo; o upload de saves após o jogo mantém o jogo como "em execução" na UI até terminar;
+  `isOnline` é um teste TCP em IPs fixos (o Heroic usa o monitor do Electron).

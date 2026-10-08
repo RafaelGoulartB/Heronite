@@ -142,7 +142,7 @@ fn spawn_tools_update(paths: HeroicPaths) {
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
-        heronite_launch::tools::update_all(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
+        heronite_launch::tools::update_all_if_due(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
     });
     if let Err(e) = spawned {
         log::warn!("could not start the tools update: {e}");

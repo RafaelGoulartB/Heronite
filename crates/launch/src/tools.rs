@@ -289,6 +289,31 @@ pub fn update_all(paths: &HeroicPaths, net: &dyn Net, cancel: Cancel, report: &d
     }
 }
 
+const CHECK_STAMP: &str = ".heronite-last-update-check";
+const CHECK_INTERVAL: Duration = Duration::from_secs(12 * 3600);
+
+/// [`update_all`] at most twice a day (a stamp file in `tools/`), so frequent
+/// restarts do not hit GitHub's rate limit each time. Heroic checks on every
+/// start; the result is the same, only later.
+pub fn update_all_if_due(paths: &HeroicPaths, net: &dyn Net, cancel: Cancel, report: &dyn Fn(&str)) -> bool {
+    let stamp = paths.tools_dir().join(CHECK_STAMP);
+    let due = fs::metadata(&stamp)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| SystemTime::now().duration_since(t).ok())
+        .map(|age| age >= CHECK_INTERVAL)
+        .unwrap_or(true);
+    if !due || !net.is_online() {
+        return false;
+    }
+    update_all(paths, net, cancel, report);
+    if !cancel() {
+        let _ = fs::create_dir_all(paths.tools_dir());
+        let _ = fs::write(&stamp, "");
+    }
+    true
+}
+
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
@@ -413,6 +438,25 @@ mod tests {
         assert_eq!(installed_version(&paths, Tool::Dxvk), None);
         fs::write(tools.join("latest_dxvk"), "gone").unwrap();
         assert_eq!(installed_version(&paths, Tool::Dxvk), None);
+    }
+
+    #[test]
+    fn the_startup_update_runs_at_most_twice_a_day() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        // Nothing is served: every tool fails, which is logged, never fatal.
+        let net = FakeNet::online();
+        assert!(update_all_if_due(&paths, &net, &|| false, &|_| {}));
+        let asked = net.requests().len();
+        assert!(asked >= 3, "{asked}");
+        assert!(!update_all_if_due(&paths, &net, &|| false, &|_| {}));
+        assert_eq!(net.requests().len(), asked);
+        // An old stamp makes it due again; offline it is never attempted.
+        let stamp = paths.tools_dir().join(CHECK_STAMP);
+        let old = SystemTime::now() - Duration::from_secs(13 * 3600);
+        fs::File::options().write(true).open(&stamp).unwrap().set_modified(old).unwrap();
+        assert!(!update_all_if_due(&paths, &FakeNet::offline(), &|| false, &|_| {}));
+        assert!(update_all_if_due(&paths, &net, &|| false, &|_| {}));
     }
 
     #[test]
