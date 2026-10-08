@@ -274,10 +274,6 @@ pub fn decide_status_merge(
     (heroic.to_owned(), decision)
 }
 
-// ---------------------------------------------------------------------------
-// Mutations
-// ---------------------------------------------------------------------------
-
 /// Extra data for [`set_game_status`] when the game has no overlay entry yet.
 #[derive(Debug, Clone, Default)]
 pub struct SetStatusExtras {

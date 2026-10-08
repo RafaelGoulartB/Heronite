@@ -320,11 +320,8 @@ pub fn find_game(paths: &HeroicPaths, app_name: &str) -> Result<Option<Value>> {
         .cloned())
 }
 
-// ---------------------------------------------------------------------------
 // Removing: the game itself goes through `heronite_metadata::remove`
 // (Heronite's "Remove from Collection"); only the Wine prefix is handled here.
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PrefixOutcome {
     Removed(PathBuf),

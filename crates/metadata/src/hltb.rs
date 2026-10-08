@@ -306,9 +306,7 @@ impl HltbClient {
     }
 }
 
-// ---------------------------------------------------------------------------
 // store_cache/wikigameinfo.json
-// ---------------------------------------------------------------------------
 
 /// dot-prop path of an electron-store key (`a.b` is nested, `\.` is a dot).
 fn dot_path(key: &str) -> Vec<String> {

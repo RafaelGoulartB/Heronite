@@ -19,10 +19,6 @@ use crate::pathutil::{basename, dirname};
 use crate::store::{self, insert_user_emulator};
 use crate::types::{DetectedEmulator, DetectedEmulatorProfile};
 
-// ---------------------------------------------------------------------------
-// Matching file names against the catalog
-// ---------------------------------------------------------------------------
-
 /// A Switch emulator the catalog has no entry for (yuzu and its forks). It is
 /// registered as a `custom` emulator with this profile.
 struct CustomProfile {
@@ -140,10 +136,6 @@ fn has_exec_bit(meta: &std::fs::Metadata) -> bool {
 fn has_exec_bit(_: &std::fs::Metadata) -> bool {
     true
 }
-
-// ---------------------------------------------------------------------------
-// Walking folders
-// ---------------------------------------------------------------------------
 
 /// Directory names never entered (ROM, save and cache trees can be huge).
 const SKIP_DIRS: &[&str] = &[
@@ -267,10 +259,6 @@ fn consider(path: &Path, out: &mut Vec<Candidate>) {
     });
 }
 
-// ---------------------------------------------------------------------------
-// Where to look
-// ---------------------------------------------------------------------------
-
 /// A folder to search with its label (shown as the result's source).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchRoot {
@@ -324,10 +312,6 @@ pub fn common_search_roots(home: &str, existing: &[UserEmulator]) -> Vec<SearchR
     }
     roots
 }
-
-// ---------------------------------------------------------------------------
-// Putting results together
-// ---------------------------------------------------------------------------
 
 fn canonical(path: &str) -> String {
     std::fs::canonicalize(path).map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| path.to_owned())

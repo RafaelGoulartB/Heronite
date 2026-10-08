@@ -15,10 +15,6 @@ use crate::text::{facet_key, locale_cmp, locale_cmp_base, split_names, unique_na
 
 pub type Game = Arc<CollectionGame>;
 
-// ---------------------------------------------------------------------------
-// Install filter and sort
-// ---------------------------------------------------------------------------
-
 /// `InstallFilter` (stored as `all` / `installed` / `uninstalled`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -70,10 +66,6 @@ impl SortMode {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Facets
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -315,10 +307,6 @@ pub fn collect_tag_options(games: &[Game]) -> Vec<(&'static str, Vec<String>)> {
         .collect()
 }
 
-// ---------------------------------------------------------------------------
-// Filter + sort
-// ---------------------------------------------------------------------------
-
 /// The toolbar state that decides which games the list shows.
 #[derive(Debug, Clone, Default)]
 pub struct ViewQuery {
@@ -375,10 +363,6 @@ pub fn filter_games(games: &[Game], query: &ViewQuery) -> Vec<Game> {
     out.sort_by(|a, b| compare_games(a, b, query.sort));
     out
 }
-
-// ---------------------------------------------------------------------------
-// Grouping by status
-// ---------------------------------------------------------------------------
 
 /// A section of the grouped list.
 #[derive(Debug, Clone)]
@@ -445,10 +429,6 @@ pub fn group_by_status(filtered: &[Game], statuses: &[CompletionStatus]) -> Vec<
     groups
 }
 
-// ---------------------------------------------------------------------------
-// Related games
-// ---------------------------------------------------------------------------
-
 /// Items per group.
 pub const RELATED_MAX_ITEMS: usize = 16;
 
@@ -510,10 +490,6 @@ pub fn related_games_for(current: &CollectionGame, games: &[Game]) -> Vec<Relate
     let series: Vec<String> = current.details.series.iter().cloned().collect();
     related_games(current, &series, &current.details.developers, games)
 }
-
-// ---------------------------------------------------------------------------
-// Playtime
-// ---------------------------------------------------------------------------
 
 /// `formatPlaytimeMinutes`: `0m`, `45m`, `2h`, `2h 5m`.
 pub fn format_playtime_minutes(minutes: u64) -> String {

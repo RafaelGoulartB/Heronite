@@ -100,10 +100,6 @@ impl StoreLibraries {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Playnite
-// ---------------------------------------------------------------------------
-
 /// The fields of a Playnite game the metadata uses (`PlayniteGame`).
 #[derive(Debug, Clone, Default)]
 pub struct PlayniteGame {

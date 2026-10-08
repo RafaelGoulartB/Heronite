@@ -26,9 +26,7 @@ pub const TRANSPARENT_LOGO_PNG: [u8; 68] = [
 /// and Heroic's (a shortcut created by Heroic for the same game counts).
 const SCHEMES: [&str; 2] = ["heronite-rs", "heroic"];
 
-// ---------------------------------------------------------------------------
 // Ids (steam-rom-manager's generate-app-id)
-// ---------------------------------------------------------------------------
 
 /// zlib's CRC-32.
 pub fn crc32(data: &[u8]) -> u32 {
@@ -65,10 +63,6 @@ impl GridIds {
         Self::from_appid(shortcut_appid(exe, app_name))
     }
 }
-
-// ---------------------------------------------------------------------------
-// Steam folders
-// ---------------------------------------------------------------------------
 
 /// `defaultSteamPath` with the quotes Heroic strips.
 pub fn clean_steam_path(raw: &str) -> PathBuf {
@@ -124,9 +118,7 @@ pub fn user_folders(userdata: &Path) -> Result<Vec<String>, String> {
     Ok(folders)
 }
 
-// ---------------------------------------------------------------------------
 // shortcuts.vdf
-// ---------------------------------------------------------------------------
 
 fn key_eq(e: &Entry, key: &str) -> bool {
     e.key.eq_ignore_ascii_case(key.as_bytes())
@@ -265,10 +257,6 @@ fn renumber(shortcuts: &mut [Entry]) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Artwork
-// ---------------------------------------------------------------------------
-
 const COVER_SUFFIX: &str = "p.jpg";
 const HERO_SUFFIX: &str = "_hero.jpg";
 const LOGO_SUFFIX: &str = "_logo.jpg";
@@ -346,10 +334,6 @@ pub fn remove_art(config_dir: &Path, ids: &GridIds) -> Vec<String> {
     }
     errors
 }
-
-// ---------------------------------------------------------------------------
-// Add / remove / query
-// ---------------------------------------------------------------------------
 
 /// Result of [`add_game`] / [`remove_game`] when at least one user changed
 /// (or already had the right state).

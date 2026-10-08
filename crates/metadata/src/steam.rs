@@ -270,9 +270,7 @@ pub fn fetch_steam_metadata(
     Some(metadata_from_details(app_name, runner, id, &details))
 }
 
-// ---------------------------------------------------------------------------
 // Heroes (`heroes.ts`)
-// ---------------------------------------------------------------------------
 
 fn download_hero(http: &Http, url: &str, dest: &Path) -> bool {
     let resp = match http.get(url).timeout_secs(25).max_bytes(30 * 1024 * 1024).send() {

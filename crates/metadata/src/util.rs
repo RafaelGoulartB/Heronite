@@ -187,10 +187,6 @@ pub fn pick_best_match<'a, T>(
 /// Default `minScore` of `pickBestMatch`.
 pub const MIN_MATCH_SCORE: i32 = 45;
 
-// ---------------------------------------------------------------------------
-// Files / images
-// ---------------------------------------------------------------------------
-
 /// `folderName`: `${runner}_${appName}` with runs of unusual characters
 /// replaced by `_`, at most 120 characters.
 pub fn folder_name(runner: &str, app_name: &str) -> String {

@@ -135,10 +135,8 @@ pub fn write(dir: &Path, key: &ThumbKey, d: &Decoded, compress: bool) -> Result<
     write_atomic(&path_of(dir, key), &buf)
 }
 
-// ---------------------------------------------------------------------------
 // Negative cache: remember that a candidate failed (404, not an image, ...)
 // so every app start does not retry the network for the same dead URL.
-
 fn neg_path(dir: &Path, identity: &str) -> PathBuf {
     let mut h = Sha256::new();
     h.update(b"neg1");
@@ -158,8 +156,6 @@ pub(crate) fn is_negative(dir: &Path, identity: &str, ttl: Duration) -> bool {
 pub(crate) fn mark_negative(dir: &Path, identity: &str) {
     let _ = write_atomic(&neg_path(dir, identity), b"");
 }
-
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EvictStats {

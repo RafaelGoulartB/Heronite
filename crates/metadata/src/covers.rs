@@ -175,10 +175,6 @@ fn best_of(title: &str, search_apps: &Value, store: &Value) -> Option<String> {
     best.0.map(|(i, _)| i)
 }
 
-// ---------------------------------------------------------------------------
-// SteamGridDB
-// ---------------------------------------------------------------------------
-
 fn sgdb_get(http: &Http, api_key: &str, path: &str, params: &[(&str, &str)]) -> Result<Value> {
     let resp = http
         .get(format!("{}{path}", http.endpoints.steamgriddb))

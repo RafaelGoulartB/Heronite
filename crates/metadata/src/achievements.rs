@@ -89,9 +89,7 @@ pub fn panel_rows(items: &[Achievement]) -> (usize, Vec<&Achievement>) {
     (count, unlocked.chain(locked).take(SHOWN_ACHIEVEMENTS).collect())
 }
 
-// ---------------------------------------------------------------------------
 // Cache (`store_cache/gog_achievements.json`)
-// ---------------------------------------------------------------------------
 
 fn cache_path(paths: &HeroicPaths) -> std::path::PathBuf {
     paths.root.join("store_cache").join("gog_achievements.json")
@@ -122,9 +120,7 @@ fn js_date_now() -> String {
     chrono::Local::now().format("%a %b %d %Y %H:%M:%S GMT%z (Local Time)").to_string()
 }
 
-// ---------------------------------------------------------------------------
 // Credentials (`gog_store/auth.json`)
-// ---------------------------------------------------------------------------
 
 /// What the request needs from `auth.json`.
 #[derive(Debug, Clone, PartialEq)]
@@ -161,10 +157,6 @@ pub fn gog_logged_in(paths: &HeroicPaths) -> bool {
         .and_then(|d| d.get("isLoggedIn").and_then(Value::as_bool))
         .unwrap_or(false)
 }
-
-// ---------------------------------------------------------------------------
-// Load
-// ---------------------------------------------------------------------------
 
 /// `GOGGame.getAchievements`: cache, then the gameplay API. Blocking
 /// (network): call from a worker thread. Failures give an empty list.

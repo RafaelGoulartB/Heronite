@@ -308,10 +308,6 @@ pub fn resolve_template(emulator: &UserEmulator, profile: &UserEmulatorProfile) 
     }
 }
 
-// ---------------------------------------------------------------------------
-// Scanners
-// ---------------------------------------------------------------------------
-
 pub fn list_rom_scanners(paths: &HeroicPaths) -> Result<Vec<RomScanner>> {
     let f: RomScannersFile = json_store::read(&paths.rom_scanners())?;
     Ok(f.scanners)

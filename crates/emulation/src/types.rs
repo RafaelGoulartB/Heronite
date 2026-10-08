@@ -7,9 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::catalog::EmulatorDefinition;
 
-// ---------------------------------------------------------------------------
 // local_library/rom-scanners.json
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,10 +39,6 @@ pub struct RomScanner {
     #[serde(flatten)]
     pub extra: Extra,
 }
-
-// ---------------------------------------------------------------------------
-// IPC arguments
-// ---------------------------------------------------------------------------
 
 /// `UpsertUserEmulatorArgs`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -154,10 +148,6 @@ pub struct RomScanImportResult {
     pub scanner_id: String,
     pub errors: Vec<String>,
 }
-
-// ---------------------------------------------------------------------------
-// Detection
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
