@@ -926,7 +926,9 @@ impl Render for CollectionView {
                     cx.notify();
                 }
             }))
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| {
+            // Capture phase: runs before children, so a clicked input (search,
+            // dialog fields) takes focus right after; clicks elsewhere blur it.
+            .capture_any_mouse_down(cx.listener(|this, _, window, cx| {
                 window.focus(&this.focus_handle, cx);
             }))
             .relative()
