@@ -3430,6 +3430,7 @@ dependencies = [
  "notify-rust",
  "rust-embed",
  "serde_json",
+ "signal-hook",
  "smallvec",
  "tempfile",
 ]
