@@ -51,7 +51,18 @@ impl EpicPage {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
         let code = new_input(window, cx, "", "Authorization code or the page's JSON");
-        Self { ctx, svc, code, confirm_logout: false, window_open: false, notice: None, dialog: None, dialog_sub: None }
+        let mut this = Self { ctx, svc, code, confirm_logout: false, window_open: false, notice: None, dialog: None, dialog_sub: None };
+        // Screenshots: `HERONITE_DEBUG_EPIC_PAGE=import|logout`.
+        match std::env::var("HERONITE_DEBUG_EPIC_PAGE").as_deref() {
+            Ok("import") => {
+                let heroic = this.ctx.heroic.clone();
+                let picker = cx.new(|cx| EpicImportPicker::new(heroic, window, cx));
+                this.open_dialog(picker, window, cx);
+            }
+            Ok("logout") => this.confirm_logout = true,
+            _ => {}
+        }
+        this
     }
 
     fn open_dialog<V>(&mut self, view: Entity<V>, window: &mut Window, cx: &mut Context<Self>)
