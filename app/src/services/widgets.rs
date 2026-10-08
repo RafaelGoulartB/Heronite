@@ -50,7 +50,7 @@ impl Covers {
         cx.spawn(async move |this, cx| {
             while let Some(first) = rx.next().await {
                 let mut batch = vec![first];
-                while let Ok(Some(more)) = rx.try_next() {
+                while let Ok(more) = rx.try_recv() {
                     batch.push(more);
                 }
                 let alive = this

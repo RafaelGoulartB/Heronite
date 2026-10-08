@@ -7,7 +7,7 @@ pub mod widgets;
 use gpui_kit::*;
 use heronite_data::HeroicPaths;
 
-pub use downloads::{Downloads, DownloadsEvent};
+pub use downloads::Downloads;
 
 struct DownloadsGlobal(Entity<Downloads>);
 impl Global for DownloadsGlobal {}

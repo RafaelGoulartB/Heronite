@@ -93,7 +93,12 @@ impl LegendaryJob {
             return JobResult::error(format!("{} games ({app}) are not supported yet", p.title()));
         }
         let platform = if p.platform_to_install.is_empty() { "Windows" } else { p.platform_to_install.as_str() };
-        let total = install_info(&self.heroic, &self.legendary, &p.app_name, platform).map(|i| i.download_size()).ok();
+        // Heroic scales progress by the manifest's download size. An update only
+        // fetches the changed files, so there legendary's own percent is used.
+        let total = match el.kind {
+            ElementKind::Install => install_info(&self.heroic, &self.legendary, &p.app_name, platform).map(|i| i.download_size()).ok(),
+            ElementKind::Update => None,
+        };
         let dl = DownloadSettings::load(&self.heroic);
         let mut args = match el.kind {
             ElementKind::Install => install_args(&p.app_name, platform, &p.path, &p.sdl_list, &dl),
@@ -488,7 +493,7 @@ mod tests {
         let (job, _) = job(dir.path(), "if [ \"$1\" = info ]; then echo '{\"manifest\": {\"download_size\": 1}}'; fi");
         let r = job.run(&element(ElementKind::Update), &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Done);
-        assert_eq!(calls(dir.path())[1], "update Calluna -y --skip-sdl");
+        assert_eq!(calls(dir.path()), ["update Calluna -y --skip-sdl"]);
     }
 
     #[test]
@@ -610,9 +615,13 @@ mod tests {
         game_config::set_game_setting(&heroic, "B", &home(), "winePrefix", json!(other.to_str().unwrap())).unwrap();
         assert!(!remove_prefix(&heroic, "B").unwrap());
         assert!(other.exists());
-        // The default install path is never deleted.
-        game_config::set_game_setting(&heroic, "C", &home(), "winePrefix", json!(format!("{}/Games/Heroic", home()))).unwrap();
+        // The default install path is never deleted (a temp one: never touch real folders in tests).
+        let default_install = dir.path().join("Games/Heroic");
+        std::fs::create_dir_all(default_install.join("drive_c")).unwrap();
+        game_config::set_global_setting(&heroic, &home(), "defaultInstallPath", json!(default_install.to_str().unwrap())).unwrap();
+        game_config::set_game_setting(&heroic, "C", &home(), "winePrefix", json!(default_install.to_str().unwrap())).unwrap();
         assert!(!remove_prefix(&heroic, "C").unwrap());
+        assert!(default_install.exists());
     }
 
     #[test]

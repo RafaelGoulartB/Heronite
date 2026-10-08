@@ -36,7 +36,6 @@ pub struct Busy {
 pub struct Account {
     pub logged_in: bool,
     pub name: String,
-    pub account_id: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -146,6 +145,9 @@ impl Downloads {
             last_error: None,
         };
         this.reload_local(cx);
+        if let Ok(op) = std::env::var("HERONITE_DEBUG_EPIC_OP") {
+            this.debug_op(&op, cx);
+        }
         if let Some(app) = fake {
             this.seed_fake(&app);
         } else if let Some(app) = std::env::var("HERONITE_DEBUG_QUEUE_INSTALL").ok().filter(|s| !s.is_empty()) {
@@ -222,17 +224,8 @@ impl Downloads {
         })
     }
 
-    pub fn is_paused(&self) -> bool {
-        self.snapshot.state == DmState::Paused
-    }
-
     pub fn is_running(&self) -> bool {
         self.snapshot.state == DmState::Running
-    }
-
-    /// Items waiting plus the running one.
-    pub fn queue_len(&self) -> usize {
-        self.snapshot.queue.len()
     }
 
     fn emit(&self, cx: &mut Context<Self>, ev: DownloadsEvent) {
@@ -240,7 +233,9 @@ impl Downloads {
     }
 
     fn toast(&self, cx: &mut Context<Self>, text: impl Into<String>, error: bool) {
-        self.emit(cx, DownloadsEvent::Toast(text.into(), error));
+        let text = text.into();
+        log::info!("epic: {text}");
+        self.emit(cx, DownloadsEvent::Toast(text, error));
     }
 
     /// Account, stats and updates from files on disk.
@@ -266,7 +261,7 @@ impl Downloads {
 
     fn apply_account(&mut self, info: Option<UserInfo>) {
         self.account = match info {
-            Some(i) => Account { logged_in: true, name: i.display_name, account_id: i.account_id },
+            Some(i) => Account { logged_in: true, name: i.display_name },
             None => Account::default(),
         };
     }
@@ -637,6 +632,19 @@ impl Downloads {
         .detach();
     }
 
+    /// Queues an update for every installed game that has one.
+    pub fn update_all(&mut self, cx: &mut Context<Self>) {
+        let apps: Vec<String> = self.updates.iter().cloned().collect();
+        for app in apps {
+            if self.queued(&app).is_some() {
+                continue;
+            }
+            if let Some(info) = library_entry(&self.heroic, &app) {
+                self.queue_update(info, cx);
+            }
+        }
+    }
+
     /// `autoUpdateGames`: queues the updates found, except for games that
     /// ignore updates (`ignoreGameUpdates` in their settings).
     fn queue_auto_updates(&mut self, cx: &mut Context<Self>) {
@@ -730,6 +738,24 @@ impl Downloads {
     }
 
     // --- debugging -------------------------------------------------------
+
+    /// `HERONITE_DEBUG_EPIC_OP=verify:<app>|uninstall:<app>[:prefix][:settings]|move:<app>:<dir>|import:<app>:<dir>|sync:<app>`:
+    /// runs one operation at startup (for end-to-end checks with a fake legendary).
+    fn debug_op(&mut self, op: &str, cx: &mut Context<Self>) {
+        let parts: Vec<&str> = op.split(':').collect();
+        let app = parts.get(1).copied().unwrap_or_default().to_string();
+        let install_path = library_entry(&self.heroic, &app)
+            .and_then(|g| g.pointer("/install/install_path").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_default();
+        match parts.first().copied() {
+            Some("verify") => self.verify(&app, cx),
+            Some("uninstall") => self.uninstall(&app, parts.contains(&"prefix"), parts.contains(&"settings"), cx),
+            Some("move") => self.move_install(&app, &install_path, parts.get(2).copied().unwrap_or_default(), cx),
+            Some("import") => self.import_game(&app, parts.get(2).copied().unwrap_or_default(), "Windows", None, None, cx),
+            Some("sync") => self.sync_saves(&app, &app, cx),
+            _ => log::warn!("unknown HERONITE_DEBUG_EPIC_OP {op}"),
+        }
+    }
 
     /// `HERONITE_DEBUG_QUEUE_INSTALL=<appName>`: queues an install of that game
     /// into `$HERONITE_DEBUG_INSTALL_DIR` the way the install dialog would.

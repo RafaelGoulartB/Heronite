@@ -376,7 +376,7 @@ impl CollectionView {
             .get("cloud_save_enabled")
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        let mut add = |menu: Div, id: &str, ic: Icon, label: &str, req: Box<dyn Fn(&str) -> Option<Request>>, cx: &mut Context<Self>| {
+        let add = |menu: Div, id: &str, ic: Icon, label: &str, req: Box<dyn Fn(&str) -> Option<Request>>, cx: &mut Context<Self>| {
             let k = key.clone();
             menu.child(menu_row(SharedString::from(format!("cm-epic-{id}")), ic, label).on_click(cx.listener(move |this, _, _, cx| {
                 this.context_menu = None;

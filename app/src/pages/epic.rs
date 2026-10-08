@@ -13,7 +13,7 @@ use crate::dialogs::epic_import::EpicImportPicker;
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
-use crate::services::{self, Downloads, DownloadsEvent};
+use crate::services::{self, Downloads};
 use crate::theme;
 use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::fields::{meta_text, new_input, panel, paragraph};
@@ -50,12 +50,6 @@ impl EpicPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
-        cx.subscribe(&svc, |_, _, ev: &DownloadsEvent, cx| match ev {
-            DownloadsEvent::LibraryChanged => cx.emit(PageEvent::LibraryChanged),
-            DownloadsEvent::Toast(text, error) => cx.emit(PageEvent::Toast(text.clone(), *error)),
-            DownloadsEvent::Message { .. } => {}
-        })
-        .detach();
         let code = new_input(window, cx, "", "Authorization code or the page's JSON");
         Self { ctx, svc, code, confirm_logout: false, window_open: false, notice: None, dialog: None, dialog_sub: None }
     }
@@ -158,6 +152,11 @@ impl Render for EpicPage {
                 !refreshing,
                 cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.refresh_library(cx))),
             ));
+            if updates > 0 {
+                actions = actions.child(button("epic-update-all", ButtonKind::Secondary, format!("Update all ({updates})")).on_click(
+                    cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.update_all(cx))),
+                ));
+            }
             actions = actions.child(button("epic-import", ButtonKind::Secondary, "Import game").on_click(cx.listener(|this, _, window, cx| {
                 let heroic = this.ctx.heroic.clone();
                 let picker = cx.new(|cx| EpicImportPicker::new(heroic, window, cx));

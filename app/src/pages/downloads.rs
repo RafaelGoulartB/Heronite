@@ -11,7 +11,7 @@ use heronite_epic::queue::{DmElement, DmStatus, ElementKind};
 use super::{page_body, page_column, PageCtx, PageEvent};
 use crate::icons::Icon;
 use crate::services::widgets::{cover_box, fmt_mib, fmt_percent, progress_bar, Covers};
-use crate::services::{self, Downloads, DownloadsEvent};
+use crate::services::{self, Downloads};
 use crate::theme;
 use crate::ui::controls::{button, ButtonKind};
 use crate::ui::icon;
@@ -30,12 +30,6 @@ impl DownloadsPage {
     pub fn new(ctx: PageCtx, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
-        cx.subscribe(&svc, |_, _, ev: &DownloadsEvent, cx| {
-            if matches!(ev, DownloadsEvent::LibraryChanged) {
-                cx.emit(PageEvent::LibraryChanged);
-            }
-        })
-        .detach();
         let covers = Covers::new(&ctx.heroic, &ctx.app, cx, |this: &mut Self| &mut this.covers);
         Self { ctx, svc, covers, confirm_stop: false }
     }
