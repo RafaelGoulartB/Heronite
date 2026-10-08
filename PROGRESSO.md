@@ -111,6 +111,20 @@ docs/reference/       screenshots do Heronite para paridade visual
 - Cabeçalho de grupo fixo: sem blur real atrás (gradiente mais escuro no lugar).
 - Painéis de vidro: sem blur extra de 18/22px sobre o stage (o stage já é borrado).
 
+### Estado dos crates de backend
+- [x] `crates/media` — matching de pastas (idêntico ao match.ts), lista, miniaturas no mesmo cache
+      do Heronite, lixeira, serviço de captura (portal/Hyprland/grim; partes com efeito colateral
+      não testadas ao vivo).
+- [x] `crates/emulation` — catálogo/detecção, scanners, import de ROMs, disc-id, save states,
+      Ludusavi, backup agendado, idle jobs.
+- [ ] `crates/metadata` (agente em andamento)
+- [ ] `crates/playnite` (agente em andamento)
+
+### UI em andamento (agentes, ver `docs/UI-CONVENTIONS.md`)
+- Screenshots: faixa no foco, galeria, visualizador, aba de configurações, captura.
+- Emulação/backups: Scan ROMs, gerenciador de emuladores, abas Emulators/Backup/Save backup,
+  escolha de ROM e save state ao jogar, Ludusavi pós-jogo, idle jobs.
+
 ### Backends em andamento (agentes)
 - `crates/media` (screenshots + captura), `crates/metadata` (IGDB/Steam/Lutris/arte/HLTB/busca
   de imagens), `crates/playnite` (LiteDB, importar/mesclar/exportar), `crates/emulation` (ROMs,
