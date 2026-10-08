@@ -1,0 +1,22 @@
+[package]
+name = "heronite-metadata"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Collection metadata and artwork backend (IGDB, Steam, Lutris, merge, art, web image search, HowLongToBeat) compatible with Heronite's data files"
+
+[dependencies]
+heronite-data = { path = "../data" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+anyhow = "1"
+log = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+indexmap = { version = "2", features = ["serde"] }
+regex = "1"
+ureq = "3"
+url = "2"
+parking_lot = "0.12"
+
+[dev-dependencies]
+tempfile = "3"
