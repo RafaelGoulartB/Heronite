@@ -116,9 +116,15 @@ impl Downloads {
             // legendary is located when the first element runs.
             Arc::new(LazyJob { heroic: heroic.clone() })
         };
-        let manager = DownloadManager::new(heroic.clone(), job, move |ev| {
+        let notify = move |ev| {
             let _ = tx.unbounded_send(ev);
-        });
+        };
+        // The fake queue must never reach download-manager.json.
+        let manager = if fake.is_some() {
+            DownloadManager::new_ephemeral(heroic.clone(), job, notify)
+        } else {
+            DownloadManager::new(heroic.clone(), job, notify)
+        };
         cx.spawn(async move |this, cx| {
             while let Some(ev) = rx.next().await {
                 if this.update(cx, |this, cx| this.on_manager_event(ev, cx)).is_err() {
@@ -160,7 +166,14 @@ impl Downloads {
             let heroic = heroic.clone();
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(Duration::from_secs(5)).await;
-                manager.start();
+                // Heronite resumes the same persisted queue on its own start;
+                // two legendary processes on one game would fight, so leave
+                // it to Heronite while it is open (resume from Downloads).
+                if heronite_running() {
+                    log::info!("Heronite is running: not resuming the download queue automatically");
+                } else {
+                    manager.start();
+                }
                 cx.background_executor().timer(Duration::from_secs(15)).await;
                 let check = game_config::load_global(&heroic, &ops::home())
                     .get("checkForUpdatesOnStartup")
@@ -817,6 +830,15 @@ impl Downloads {
             manager.add(mk(g, ElementKind::Update, size));
         }
     }
+}
+
+/// Whether Heronite/Heroic (Electron, process name `heroic`) is running.
+fn heronite_running() -> bool {
+    let Ok(dir) = std::fs::read_dir("/proc") else { return false };
+    dir.flatten().any(|e| {
+        e.file_name().to_str().is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
+            && std::fs::read_to_string(e.path().join("comm")).is_ok_and(|c| c.trim() == "heroic")
+    })
 }
 
 /// The library file's `GameInfo` of one game.

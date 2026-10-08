@@ -72,6 +72,8 @@ struct Inner {
 
 struct Shared {
     heroic: HeroicPaths,
+    /// In-memory only (debug fakes): never reads or writes download-manager.json.
+    ephemeral: bool,
     job: Arc<dyn Job>,
     notify: Arc<dyn Fn(Event) + Send + Sync>,
     inner: Mutex<Inner>,
@@ -86,15 +88,33 @@ impl DownloadManager {
     /// Loads the persisted queue. Nothing runs until [`start`](Self::start).
     pub fn new(heroic: HeroicPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
         let file = queue::load(&heroic);
+        Self::with_state(heroic, job, notify, file.queue, file.finished, false)
+    }
+
+    /// A queue that lives only in memory (screenshots / debug fakes): it
+    /// neither loads nor saves `store/download-manager.json`.
+    pub fn new_ephemeral(heroic: HeroicPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
+        Self::with_state(heroic, job, notify, Vec::new(), Vec::new(), true)
+    }
+
+    fn with_state(
+        heroic: HeroicPaths,
+        job: Arc<dyn Job>,
+        notify: impl Fn(Event) + Send + Sync + 'static,
+        queue: Vec<DmElement>,
+        finished: Vec<DmElement>,
+        ephemeral: bool,
+    ) -> Self {
         Self {
             shared: Arc::new(Shared {
                 heroic,
+                ephemeral,
                 job,
                 notify: Arc::new(notify),
                 inner: Mutex::new(Inner {
                     state: DmState::Idle,
-                    queue: file.queue,
-                    finished: file.finished,
+                    queue,
+                    finished,
                     current: None,
                     worker: false,
                 }),
@@ -116,6 +136,9 @@ impl DownloadManager {
     }
 
     fn persist(&self, g: &Inner) {
+        if self.shared.ephemeral {
+            return;
+        }
         if let Err(err) = queue::save(&self.shared.heroic, &g.queue, &g.finished) {
             log::error!("saving the download queue: {err:#}");
         }
