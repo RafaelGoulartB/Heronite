@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use heronite_data::models::{GameInfo, InstallInfo};
 use heronite_data::HeroicPaths;
+use heronite_launch::first_launch::{EpicSetup, Prerequisite};
 use heronite_launch::net::FakeNet;
 use heronite_launch::plan::{LaunchOptions, PlanContext};
 use heronite_launch::prepare::CloudSync;
@@ -51,6 +52,10 @@ struct Rig {
 
 /// Wine game "Calluna" with a missing prefix, DXVK on and cloud saves on.
 fn rig(skip_version_check: bool) -> Rig {
+    rig_with(skip_version_check, None)
+}
+
+fn rig_with(skip_version_check: bool, known_fixes: Option<serde_json::Value>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().to_path_buf();
     let paths = HeroicPaths::at(root.join("heroic"));
@@ -90,6 +95,7 @@ fi"#,
     let mut ctx = PlanContext::load(&paths);
     ctx.global = GlobalSettings::from_defaults(defaults);
     ctx.ui_language = Some("en".into());
+    ctx.known_fixes = known_fixes;
 
     let settings = GameSettings::from_map(
         json!({
@@ -122,6 +128,10 @@ fi"#,
 }
 
 fn run(r: &Rig) -> (Vec<LaunchEvent>, Vec<String>) {
+    run_with(r, None)
+}
+
+fn run_with(r: &Rig, epic: Option<Arc<dyn EpicSetup>>) -> (Vec<LaunchEvent>, Vec<String>) {
     let (tx, rx) = channel();
     let home = r.root.join("home");
     let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
@@ -133,6 +143,9 @@ fn run(r: &Rig) -> (Vec<LaunchEvent>, Vec<String>) {
         net: Arc::new(FakeNet::online()),
         cloud: Some(Arc::new(LoggingCloud(r.log.clone()))),
     });
+    if let Some(epic) = epic {
+        launcher.set_epic_setup(epic);
+    }
     launcher
         .launch(LaunchRequest {
             app_name: "Calluna".into(),
@@ -229,4 +242,58 @@ fn play_anyway_reaches_legendary() {
     let (_, log) = run(&r);
     let game = log.iter().find(|l| l.starts_with("legendary")).unwrap();
     assert!(game.contains("--skip-version-check"), "{game}");
+}
+
+struct FakeEpic;
+impl EpicSetup for FakeEpic {
+    fn prerequisites(&self, _: &str, _: &str) -> Result<Option<Prerequisite>, String> {
+        Ok(Some(Prerequisite { path: "Redist\\setup.exe".into(), args: "/q /norestart".into() }))
+    }
+    fn eos_overlay_installed(&self) -> bool {
+        false
+    }
+    fn eos_overlay_enabled(&self, _: &str) -> bool {
+        false
+    }
+    fn eos_overlay_enable(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// The first launch in a prefix installs the game's prerequisites and its
+/// known fixes before DXVK and the game; the second one skips all of it.
+#[test]
+fn the_first_launch_in_a_prefix_runs_prerequisites_and_fixes_once() {
+    let fixes = json!({"epic": {"Calluna": {"runInPrefix": ["Fix/vc.exe"]}}});
+    let r = rig_with(false, Some(fixes));
+    let epic: Arc<dyn EpicSetup> = Arc::new(FakeEpic);
+    let (events, log) = run_with(&r, Some(epic.clone()));
+    assert!(matches!(events.last(), Some(LaunchEvent::Exited { .. })), "{events:?}");
+
+    let game_dir = r.root.join("games/Control");
+    let wine: Vec<&String> = log.iter().filter(|l| l.starts_with("wine ")).collect();
+    let at = |needle: &str| wine.iter().position(|l| l.contains(needle)).unwrap_or_else(|| panic!("{needle} in {wine:#?}"));
+    assert!(at("wineboot --init") < at("com.epicgames.launcher"));
+    assert!(at("com.epicgames.launcher") < at(&format!("{}/Redist/setup.exe /q /norestart", game_dir.display())));
+    assert!(at("Redist/setup.exe") < at(&format!("{}/Fix/vc.exe", game_dir.display())));
+    assert!(at("Fix/vc.exe") < at("DllOverrides"), "fixes come before DXVK: {wine:#?}");
+    assert_eq!(
+        fs::read_to_string(r.root.join("pfx/installed_games")).unwrap(),
+        r#"["Calluna"]"#
+    );
+    let messages: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            LaunchEvent::Status { message, .. } => Some(message.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(messages.contains(&"Installing Redistributables (EPIC)".to_string()), "{messages:?}");
+    assert!(messages.contains(&"Installing Redistributables (FIXES)".to_string()), "{messages:?}");
+
+    // Second launch: the prefix remembers the game.
+    fs::remove_file(&r.log).unwrap();
+    let (_, log) = run_with(&r, Some(epic));
+    assert!(!log.iter().any(|l| l.contains("setup.exe") || l.contains("vc.exe") || l.contains("com.epicgames")), "{log:#?}");
+    assert!(log.iter().any(|l| l.starts_with("legendary launch")));
 }

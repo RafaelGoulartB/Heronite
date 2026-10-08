@@ -587,3 +587,64 @@ gerenciar emuladores e pastas de ROM. Os arquivos continuam os do Heronite (`loc
 - **Não verificado / limites**: cliques reais e o seletor de arquivo nativo (sem mouse); toast "Added N new game(s)" na captura
   (frame tardio); `flatpak info` real (Flatpak não instalado aqui); emuladores `.exe` com Wine; macOS/Windows. Nenhum emulador
   ou jogo foi executado. O diálogo "Add emulated games" ainda tem "Detect on this PC"/"Custom…" próprios (só PATH/Flatpak).
+
+## Epic: pré-requisitos, fixes conhecidos, EOS Overlay e Modify Installation (agente "epic2")
+
+Port do que o Heroic faz na **primeira vez que um jogo roda num prefixo** (`prepareWineLaunch` -> `legendarySetup` +
+`installFixes`), do EOS Overlay (`legendary/eos_overlay/eos_overlay.ts`) e do `ModifyInstallModal` do Epic.
+
+- **Primeiro lançamento no prefixo** (`crates/launch/src/first_launch.rs`, chamado em `runtime.rs::run_process` depois de
+  criar o prefixo e antes de DXVK/VKD3D): o prefixo guarda um `installed_games` (JSON compacto, lista de app names, o mesmo
+  arquivo do Heroic; arquivo estragado recomeça). Se o jogo não está nele, é gravado **antes** de qualquer coisa (como o Heroic,
+  uma falha não repete) e roda: `reg add HKEY_CLASSES_ROOT\com.epicgames.launcher /f`; os **pré-requisitos** do jogo
+  (`manifest.prerequisites` do `legendary info`, só plataformas Windows/Win32, não EA/Ubisoft; `path` relativo à pasta do jogo,
+  `args` separados como shell; `\` do manifesto vira `/`); instalador do EA App / Ubisoft Connect de `tools/redist/legendary`
+  (só avisa se o arquivo não existe, quem baixa é a instalação de terceiros, ainda não suportada); **EOS Overlay** ligado para o
+  prefixo se o overlay está instalado e ainda desligado (só Linux, `legendary eos-overlay info/enable --prefix`, `pfx` no Proton);
+  depois os **fixes** do `known_fixes.json` (`epic[app]`): `winetricks -q <verbo>` por verbo (umu: `umu-run winetricks <verbo>`;
+  baixa o script se faltar) e `runInPrefix` (programas relativos à pasta do jogo). Cada comando Wine usa o Wine/Proton do jogo
+  (`wine_command_for`: mesmo ambiente do `runWineCommand`, com `STEAM_COMPAT_INSTALL_PATH`) e espera o `wineserver --wait`. Toda
+  falha é aviso e o jogo inicia. Toasts: "Installing Redistributables (EPIC)", "Applying Winetricks fixes", "Installing
+  Redistributables (FIXES)" (textos do Heroic). Parar durante o preparo cancela sem iniciar o jogo.
+- **Ponte com o legendary**: o crate `launch` não depende do `epic`, então o `Launcher` recebe um `EpicSetup`
+  (`Launcher::set_epic_setup`; implementação `EpicLaunchSetup` em `app/src/services/downloads.rs`, ligada em `app/src/runtime.rs`).
+- **known_fixes.json** (`crates/launch/src/known_fixes.rs`): o Heroic o baixa de
+  `raw.githubusercontent.com/Heroic-Games-Launcher/known-fixes/main/known_fixes.json` quando o MD5 local difere do
+  `knownFixesSha` do `releases-info/.../release-data.json`; o app faz o mesmo 2,5 s depois de abrir (mesma thread da
+  atualização das ferramentas, desligada por `HERONITE_DISABLE_IDLE_JOBS=1`), via arquivo temporário validado como JSON e rename
+  (um download quebrado nunca troca o arquivo). MD5 próprio (sem dependência nova). As variáveis de ambiente do known_fixes já
+  eram aplicadas (`legendary.rs::known_fixes_env`).
+- **EOS Overlay** (`crates/epic/src/eos_overlay.rs`, 6 testes): status (`overlay_install.json`), última versão
+  (`overlay_version.json`, `legendary status` se faltar), instalar/atualizar (primeiro sem `-y` para ler "Download size", depois
+  `eos-overlay install -y --path tools/eos_overlay` com progresso em %), remover, `enable/disable [--prefix]`, `info`
+  ("Overlay enabled: Yes/No"). **Página Epic Games**: seção "EOS Overlay" (instalada/não, versão atual e última, Check for
+  updates / Update / Uninstall com confirmação / Install / Cancel, barra de progresso). **Menu de contexto** (jogos Epic
+  instalados, Linux, não EA/Ubisoft): "Enable/Disable EOS Overlay" (estado lido em segundo plano; sem overlay instalado pergunta
+  "The EOS Overlay is not installed. Do you want to install it now?" e, instalado, liga para o jogo). Heroic coloca o toggle por
+  jogo no submenu do jogo e a instalação nas configurações avançadas; aqui ficaram no menu e na página Epic.
+- **Modify Installation** (`app/src/dialogs/epic_modify.rs`): item "Modify installation" no menu de contexto de jogos Epic
+  instalados com `dlcList` (lido do arquivo da biblioteca pelo serviço, porque o modelo enxuto da Collection o descarta). Lista as
+  DLCs que a conta possui (`owned_dlc` do `legendary info`) com tamanho (`info` de cada DLC, uma por vez como o Heroic); por DLC:
+  Install (entra na fila de downloads com a pasta e a plataforma do jogo base, fecha o diálogo como o Heroic), Uninstall (com
+  confirmação, bloqueado enquanto há download rodando) ou Cancel (tira da fila / para o download). Exatamente o `DLCList` do
+  Heroic: **o Heroic não tem edição de SDL/componentes para jogos Epic instalados** (só DLCs), então isso não foi inventado.
+- **Pontos de ligação em arquivos compartilhados**: `app/src/runtime.rs` (uma linha `set_epic_setup` + chamada do updater de
+  known_fixes), `app/src/dialogs/mod.rs` (`pub mod epic_modify`), `crates/launch/src/{plan,wine,runtime,prepare}.rs` (campo
+  `PrepSpec::first_launch`, `Launcher::set_epic_setup`, `Prep::notice` público no crate). Nenhum arquivo de `dialogs/settings/**`
+  nem `heroic_settings/**`; `collection/mod.rs` não precisou de braço de debug (o `epic_debug_dialog` já pega `epic-*`).
+- **Depuração**: `HERONITE_DEBUG_DIALOG=epic-modify:<app>` e `epic-eos-install:<app>`; `HERONITE_DEBUG_EPIC_PAGE=eos-remove`;
+  `HERONITE_DEBUG_EPIC_OP=eos-install|eos-remove|eos-enable:<app>|eos-disable:<app>|install-dlc:<dlc>:<pasta>`;
+  `HERONITE_DEBUG_MENU=legendary_<app>` abre o menu de contexto.
+- **Verificação**: crate launch 122 testes (+ `tests/launch_flow.rs` com processos reais e wine/legendary falsos: ordem
+  prefixo -> `reg add` -> pré-requisito -> `runInPrefix` -> DXVK -> jogo -> saves, e a segunda execução não repete nada);
+  crate epic 69 testes; capturas com um `legendary` falso (`/tmp/epic2-fake/legendary`, python) e a fixture
+  `/tmp/heronite-fixture-epic2`: diálogo Modify (3 DLCs, uma instalada), menu com "Modify installation" e "Enable/Disable EOS
+  Overlay", seção EOS (não instalado, instalando 30%, instalado com update e confirmação), prompt "Overlay not installed";
+  `install-dlc` enfileirou `install <dlc> --platform Windows --base-path <pasta> --skip-dlcs -y --skip-sdl`;
+  `eos-enable` rodou `eos-overlay enable --prefix <prefixo>/pfx`. `legendary eos-overlay info` real (só leitura): "No
+  Legendary-managed installation found" quando não instalado.
+- **Não verificado / limitações**: nenhum jogo, wine, winetricks ou legendary de escrita reais rodaram (só scripts falsos); o
+  formato exato da linha `Overlay enabled:` com o overlay instalado não foi visto (o Heroic só procura "Overlay enabled" + "Yes");
+  cliques reais não testados (sem mouse); ligar/desligar global do overlay no Windows e macOS fora de escopo; o estado do overlay por
+  jogo no menu é lido uma vez por sessão (o auto-enable do primeiro lançamento só aparece depois de reabrir o app); instalar
+  EA/Ubisoft continua sem suporte (o instalador só é usado se já estiver em `tools/redist/legendary`).

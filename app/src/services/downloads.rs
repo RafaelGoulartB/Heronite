@@ -1053,7 +1053,7 @@ impl Downloads {
 
     // --- debugging -------------------------------------------------------
 
-    /// `HERONITE_DEBUG_EPIC_OP=verify:<app>|uninstall:<app>[:prefix][:settings]|move:<app>:<dir>|import:<app>:<dir>|sync:<app>|eos-install|eos-remove|eos-enable:<app>|eos-disable:<app>`:
+    /// `HERONITE_DEBUG_EPIC_OP=verify:<app>|uninstall:<app>[:prefix][:settings]|move:<app>:<dir>|import:<app>:<dir>|sync:<app>|install-dlc:<dlc>:<dir>|eos-install|eos-remove|eos-enable:<app>|eos-disable:<app>`:
     /// runs one operation at startup (for end-to-end checks with a fake legendary).
     fn debug_op(&mut self, op: &str, cx: &mut Context<Self>) {
         let parts: Vec<&str> = op.split(':').collect();
@@ -1067,6 +1067,12 @@ impl Downloads {
             Some("move") => self.move_install(&app, &install_path, parts.get(2).copied().unwrap_or_default(), cx),
             Some("import") => self.import_game(&app, parts.get(2).copied().unwrap_or_default(), "Windows", None, None, cx),
             Some("sync") => self.sync_saves(&app, &app, cx),
+            Some("install-dlc") => {
+                // `install-dlc:<dlcApp>:<base folder>`
+                if let Some(info) = library_entry(&self.heroic, &app) {
+                    self.install_dlc(info, parts.get(2).copied().unwrap_or_default(), "Windows", Some("2 GiB".into()), cx);
+                }
+            }
             Some("eos-install") => self.eos_install(cx),
             Some("eos-remove") => self.eos_remove(cx),
             Some("eos-enable") => {
