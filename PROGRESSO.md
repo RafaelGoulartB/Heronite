@@ -142,10 +142,17 @@ menu ☰ (canto superior esquerdo), sem sidebar.
 - [x] Navegação ☰ (`app/src/pages/`, `collection/nav.rs`): Collection, Downloads, Wine Manager, Epic Games,
       Settings. `HERONITE_DEBUG_PAGE=downloads|wine|epic`, `HERONITE_DEBUG_DROPDOWN=nav`.
 - [x] Crates esqueleto `heronite-wine` e `heronite-epic` (contratos usados entre agentes).
-- [ ] Epic: login, biblioteca, instalar/atualizar/reparar/mover/desinstalar, fila de downloads, cloud saves
+- [x] Epic: login, biblioteca, instalar/atualizar/reparar/mover/desinstalar, fila de downloads, cloud saves
       (agente "epic", brief em `docs/agents/epic.md`).
-- [ ] Wine Manager + detecção de Wine/Proton (agente "wine", `docs/agents/wine.md`).
-- [ ] Configurações por jogo e globais estilo Heroic (agente "settings", `docs/agents/settings.md`).
+- [x] Wine Manager + detecção de Wine/Proton (agente "wine", `docs/agents/wine.md`).
+- [x] Configurações por jogo e globais estilo Heroic (agente "settings", `docs/agents/settings.md`).
+- [x] Paridade do lançamento: cloud saves automáticos, "Play anyway", preparo do prefixo (DXVK/VKD3D/NVAPI,
+      runtimes EAC/BattlEye, umu), download das ferramentas (`docs/agents/launch-parity.md`).
+- [ ] Testar ao vivo (cliques): login Epic, instalar/pausar/cancelar, Wine Manager, abas novas.
+- [ ] Faltam: `legendarySetup` (redistribuíveis/EOS overlay), `known_fixes` installFixes, EA/Ubisoft,
+      seletor de plataforma, atalhos de desktop.
+- Release após a fase 3: 537 testes passando, PSS ~100–106 MB (malloc_trim após a carga), binário 47 MB
+      + `heronite-epic-login` 1 MB.
 
 ### Diferenças visuais conhecidas (aceitas)
 - Cabeçalho de grupo fixo: sem blur real atrás (gradiente mais escuro no lugar).
