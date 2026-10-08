@@ -33,6 +33,26 @@ Diário de trabalho para retomar a migração. Plano geral em `PLANO.md`.
 - Script: `/tmp/heronite-bench/run-electron.sh` (pode sumir no reboot; lógica descrita acima).
 - Referências visuais (via CDP, `--remote-debugging-port=9333`): `docs/reference/*.png`.
 
+## Como testar visualmente (sem atrapalhar os outros workspaces)
+
+- `scripts/shot.sh /tmp/x.png [espera_s] [binário]` abre o `heronite-rs` no workspace 2 em modo
+  silencioso, captura a janela com `grim -T <stableId>` (funciona mesmo fora da tela), imprime o
+  PSS e fecha. `SHOT_ENV="HERONITE_DEBUG_SELECT=<key>"` pré-seleciona um jogo.
+- O Heronite pode ser capturado do mesmo jeito (`grim -T` com o stableId da janela
+  `com.heronite.launcher`) ou via CDP (`--remote-debugging-port=9333`,
+  `/tmp/heronite-bench/cdp-shot.mjs`).
+- Hyprland 0.56 usa config Lua: `hyprctl eval 'hl.exec_cmd("cmd", { workspace = "2 silent" })'`.
+
+## Achados de paridade visual
+
+- O Heronite só carrega Rubik/Cabin **400**; o Chromium simula negrito para CSS 600/700 e
+  renderiza 500 como regular. O GPUI não simula negrito, então usamos o corte real **600** para
+  CSS 600/700 (`theme::W_BOLD`) e 400 para CSS 500 (`theme::W_500`). Só os pesos 400 e 600 são
+  embutidos.
+- `box-shadow: 0 0 0 2px` (anel de seleção) vira uma borda de 2px num div absoluto em -2px.
+- Gradientes multi-stop do scrim viram faixas de gradientes de 2 stops (`stage.rs`).
+- Tema real do usuário: `nord-dark` (não midnightMirage).
+
 ## Primeiras medições GPUI
 
 - Hello world em **debug**: 179 MB PSS. Composição: driver NVIDIA ~55 MB, camada de validação
@@ -60,13 +80,20 @@ docs/reference/       screenshots do Heronite para paridade visual
 - [ ] `heronite-launch`: Steam URI, nativo, emulador, Proton/umu, legendary; sessões e playtime
 
 ### Fase 2 — UI da Collection
-- [ ] Tema (nord-dark, fontes Rubik/Cabin, ícones)
-- [ ] Stage + scrim, header, lista agrupada com cabeçalhos fixos, cards
-- [ ] Painel de foco (overview, relacionados, detalhes, HLTB do cache, screenshots)
+- [x] Tema (nord-dark, fontes Rubik/Cabin 400+600, ícones MUI/FontAwesome em SVG)
+- [x] Stage + scrim (layout), header (estático), lista virtual agrupada com cabeçalho fixo, cards
+      (anel, barra de hover animada, playtime, pulso "jogando")
+- [x] Painel de foco: cabeçalho, overview, relacionados, detalhes com chips, HLTB, rodapé
+- [ ] Ligar aos dados reais (`heronite-data`) e às imagens (`heronite-images`)
+- [ ] Busca, filtros, ordenação, menus suspensos
+- [ ] Screenshots no painel de foco
 - [ ] Menu de contexto, diálogos de status e aparência
 - [ ] Comparação com `docs/reference`
 
 ## Log
 
+- 2026-10-07 (tarde): UI da Collection montada com dados de demonstração; layout bate com a
+  referência quase ao pixel. Agentes em paralelo: lógica de dados (`crates/data`), imagens
+  (`crates/images`), lançamento (`crates/launch`).
 - 2026-10-07: workspace criado; GPUI validado; linha de base medida; camada de dados compatível com
   testes de ida e volta nos arquivos reais.
