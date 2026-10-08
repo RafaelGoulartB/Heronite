@@ -22,9 +22,8 @@ thread_local! {
     static BACKDROP: RefCell<Option<Arc<RenderImage>>> = const { RefCell::new(None) };
 }
 
-/// Saturation of the glass backdrop (`backdrop-filter: blur(30px)
-/// saturate(1.5)` in the mockups). The blur is a setting
-/// (`theme::glass_blur_px`, Settings → Appearance).
+/// Saturation of the glass backdrop (CSS `saturate(1.5)`). The blur is a
+/// setting (`theme::glass_blur_px`, Settings → Appearance).
 pub const GLASS_SATURATION: f32 = 1.5;
 
 /// Publishes the blurred art that glass surfaces paint behind themselves.
@@ -82,35 +81,27 @@ fn layers(radius: f32) -> [AnyElement; 4] {
     ]
 }
 
-/// A big glass surface (popover, sheet, drawer, modal): border, big shadow
-/// and the glass layers. Children added by the caller paint above the layers.
-/// Corners are not clipped for children: give edge-to-edge children their own
-/// radius.
-pub fn glass_panel(radius: f32) -> Div {
-    let mut d = div()
-        .relative()
-        .rounded(px(radius))
-        .border_1()
-        .border_color(theme::glass_border())
-        .shadow(theme::glass_shadow());
+/// A glass surface with the given `shadow` and the glass layers. Children
+/// added by the caller paint above the layers.
+fn surface(radius: f32, shadow: Vec<BoxShadow>) -> Div {
+    let mut d = div().relative().rounded(px(radius)).border_1().border_color(theme::glass_border()).shadow(shadow);
     for l in layers(radius) {
         d = d.child(l);
     }
     d
 }
 
+/// A big glass surface (popover, sheet, drawer, modal): border, big shadow
+/// and the glass layers. Children added by the caller paint above the layers.
+/// Corners are not clipped for children: give edge-to-edge children their own
+/// radius.
+pub fn glass_panel(radius: f32) -> Div {
+    surface(radius, theme::glass_shadow())
+}
+
 /// Compact glass surface for menus and dropdown lists (smaller shadow).
 pub fn glass_menu_surface(radius: f32) -> Div {
-    let mut d = div()
-        .relative()
-        .rounded(px(radius))
-        .border_1()
-        .border_color(theme::glass_border())
-        .shadow(theme::glass_shadow_sm());
-    for l in layers(radius) {
-        d = d.child(l);
-    }
-    d
+    surface(radius, theme::glass_shadow_sm())
 }
 
 /// Target size (physical px) of the glass backdrop request for a window of

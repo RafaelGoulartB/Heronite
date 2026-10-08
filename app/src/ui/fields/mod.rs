@@ -9,9 +9,8 @@
 //! * [`select`]: [`select::select_field`] (label, select, open menu).
 //! * [`tags`]: [`tags::TagField`] (chips + autocomplete) and tag helpers.
 //!
-//! Values come from `TextInputField/index.css`, `SelectField/index.css` and
-//! the captures in `docs/reference/dialogs/`. Callers import from
-//! `crate::ui::fields` only; the submodules are an implementation detail.
+//! Values come from Heroic's `TextInputField/index.css` and
+//! `SelectField/index.css`. Callers import from `crate::ui::fields` only.
 
 mod input;
 mod select;

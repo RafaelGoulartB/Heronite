@@ -1,8 +1,6 @@
-//! Glass form controls and typography (docs/agents/glass-common.md): toggle
-//! switches, pill buttons, segmented tabs, cards of rows, captions, kicker,
-//! kbd chips, close button and navigation pills. The legacy names
-//! (`checkbox`, `mini_checkbox`, `button`, `tabs`, `section_title`...) keep
-//! their signatures and render the glass look.
+//! Glass form controls and typography: toggle switches, pill buttons,
+//! segmented tabs, cards of rows, captions, kicker, kbd chips, close button
+//! and navigation pills.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -10,10 +8,6 @@ use gpui_kit::*;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
-
-// ---------------------------------------------------------------------------
-// Toggle switch
-// ---------------------------------------------------------------------------
 
 /// Critically damped spring: the knob settles in about 150ms.
 const TOGGLE_SPRING: SpringConfig = SpringConfig::new(900., 60., 1.);
@@ -94,14 +88,10 @@ pub fn toggle_row(id: impl Into<ElementId>, label: impl Into<SharedString>, desc
     row(label, description, sw).id(id).cursor_pointer()
 }
 
-/// Legacy checkbox: a toggle row with a bit less padding.
+/// A [`toggle_row`] without description and with less padding.
 pub fn checkbox(id: impl Into<ElementId>, checked: bool, label: impl Into<SharedString>) -> Stateful<Div> {
     toggle_row(id, label, None, checked).py(px(7.))
 }
-
-// ---------------------------------------------------------------------------
-// Cards, rows, captions, titles
-// ---------------------------------------------------------------------------
 
 /// Label (14px) with an optional description (12px) on the left, `control`
 /// on the right. Padding 11px 0; put rows inside a [`card`].
@@ -159,7 +149,7 @@ pub fn caption(text: impl Into<SharedString>) -> Div {
     div().mt(px(14.)).mx(px(6.)).mb(px(6.)).text_size(px(12.)).text_color(theme::text_muted()).child(text.into())
 }
 
-/// Section heading inside dialogs: same look as [`caption`].
+/// Section heading inside dialogs (same look as [`caption`]).
 pub fn section_title(text: impl Into<SharedString>) -> Div {
     caption(text)
 }
@@ -250,10 +240,6 @@ pub fn nav_pill(id: impl Into<ElementId>, ic: Icon, label: impl Into<SharedStrin
         .child(label.into())
 }
 
-// ---------------------------------------------------------------------------
-// Buttons
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonKind {
     /// Accent fill, dark text.
@@ -323,10 +309,6 @@ pub fn action_button(
         b
     }
 }
-
-// ---------------------------------------------------------------------------
-// Segmented tabs
-// ---------------------------------------------------------------------------
 
 /// Segmented pill tabs: a dark pill track with the active item lifted
 /// (`rgba(255,255,255,.14)`, white text). Scrolls horizontally when too wide.

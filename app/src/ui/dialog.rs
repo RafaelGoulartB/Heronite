@@ -1,6 +1,5 @@
 //! Glass modal and drawer. The Collection stays visible behind a dark veil;
-//! the panel is a glass surface (blurred art + translucent fill, see
-//! `ui::glass`) with a round close button.
+//! the panel is a glass surface (see `ui::glass`) with a round close button.
 //!
 //! * [`dialog`]: centred modal, radius 26, title Rubik 22, padding 28.
 //! * [`drawer`]: right-hand sheet inset 10px, radius 24, with header and
