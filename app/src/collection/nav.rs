@@ -19,6 +19,7 @@ pub struct Pages {
     wine: Option<AnyView>,
     epic: Option<AnyView>,
     emulators: Option<AnyView>,
+    settings: Option<AnyView>,
     subs: Vec<Subscription>,
 }
 
@@ -49,13 +50,10 @@ impl CollectionView {
                             })),
                     )
                     .child(
-                        menu_item("nav-settings", false)
-                            .child(icon(Icon::Settings, px(16.), rgb(0xcaf3fd)))
+                        menu_item("nav-settings", this.page == Page::Settings)
+                            .child(icon(Icon::Settings, px(16.), if this.page == Page::Settings { theme::accent() } else { rgb(0xcaf3fd) }))
                             .child("Settings")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_menu = None;
-                                this.open_settings(window, cx);
-                            })),
+                            .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Settings, window, cx))),
                     )
                     .into_any_element()
             },
@@ -77,12 +75,19 @@ impl CollectionView {
 
     fn ensure_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         let ctx = self.page_ctx();
+        if page == Page::Settings {
+            // Coming back: lists and flags may have changed in the Collection.
+            if let Some(v) = self.pages.settings.clone().and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok()) {
+                v.update(cx, |p, cx| p.refresh(cx));
+            }
+        }
         let slot_empty = match page {
             Page::Collection => return,
             Page::Downloads => self.pages.downloads.is_none(),
             Page::WineManager => self.pages.wine.is_none(),
             Page::Epic => self.pages.epic.is_none(),
             Page::Emulators => self.pages.emulators.is_none(),
+            Page::Settings => self.pages.settings.is_none(),
         };
         if !slot_empty {
             return;
@@ -109,6 +114,11 @@ impl CollectionView {
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
                 self.pages.emulators = Some(v.into());
             }
+            Page::Settings => {
+                let v = cx.new(|cx| pages::settings::SettingsPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.settings = Some(v.into());
+            }
         }
     }
 
@@ -118,6 +128,7 @@ impl CollectionView {
             PageEvent::Toast(text, error) => self.show_toast(text.clone(), *error, cx),
             PageEvent::Navigate(page) => self.navigate(*page, window, cx),
             PageEvent::ScanRoms(initial) => self.open_scan_roms(initial.clone(), window, cx),
+            PageEvent::ShowHidden(on) => self.set_show_hidden(*on, cx),
         }
     }
 
@@ -129,6 +140,7 @@ impl CollectionView {
             Page::WineManager => self.pages.wine.clone(),
             Page::Epic => self.pages.epic.clone(),
             Page::Emulators => self.pages.emulators.clone(),
+            Page::Settings => self.pages.settings.clone(),
         }?;
         let header = div()
             .flex()

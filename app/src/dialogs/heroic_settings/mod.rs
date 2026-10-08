@@ -31,6 +31,7 @@ use serde_json::{json, Value};
 use crate::theme;
 use crate::ui::fields::new_input;
 
+pub use general::GlobalView;
 pub use logic::{GameFacts, Section};
 
 /// What the settings are bound to.
@@ -105,6 +106,8 @@ pub struct HeroicSettingsPanel {
     pub(super) home: String,
     pub(super) target: Target,
     pub(super) section: Section,
+    /// Which global view the General section shows (Settings page).
+    pub(super) global_view: GlobalView,
     /// Effective values (defaults overlaid with the game's own).
     pub(super) settings: Settings,
     /// `None` while the Wine list loads.
@@ -175,6 +178,7 @@ impl HeroicSettingsPanel {
             home,
             target,
             section,
+            global_view: GlobalView::default(),
             settings,
             wine_list: None,
             open_select: None,

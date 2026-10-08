@@ -6,21 +6,105 @@ use gpui_kit::*;
 use serde_json::Value;
 
 use super::parts::{column, heading, help};
-use super::HeroicSettingsPanel;
+use super::{HeroicSettingsPanel, Section, Target};
+use heronite_data::HeroicPaths;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
 
+/// What the global ("General") panel shows. The Settings page hosts one
+/// panel and switches between these; the Game defaults use the other tabs.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum GlobalView {
+    #[default]
+    General,
+    Downloads,
+    Advanced,
+}
+
 impl HeroicSettingsPanel {
-    pub(super) fn general_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+    /// A panel bound to the global settings showing `view`.
+    pub fn new_global(paths: HeroicPaths, view: GlobalView, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut this = Self::new(paths, Target::Defaults, Section::General, window, cx);
+        this.global_view = view;
+        this
+    }
+
+    /// Switches between the global views (closing open menus).
+    pub fn set_global_view(&mut self, view: GlobalView, cx: &mut Context<Self>) {
+        if self.global_view != view {
+            self.global_view = view;
+            self.open_select = None;
+            self.notice = None;
+            cx.notify();
+        }
+    }
+
+    pub(super) fn general_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        match self.global_view {
+            GlobalView::General => self.general_view(window, cx),
+            GlobalView::Downloads => self.downloads_view(cx),
+            GlobalView::Advanced => self.advanced_view(cx),
+        }
+    }
+
+    /// Epic downloads and game updates.
+    fn downloads_view(&mut self, cx: &mut Context<Self>) -> Div {
+        column()
+            .child(self.max_workers_field(cx))
+            .child(help("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))
+            .child(self.path_row("altLegendaryBin", Some("Choose an Alternative Legendary Binary"), false, "Select Legendary Binary", true, cx))
+            .child(help("Leave it empty to use the built-in Legendary binary."))
+            .child(self.toggle_row(
+                "download-no-https",
+                "downloadNoHttps",
+                false,
+                "Download games without HTTPS (useful for CDNs e.g. LanCache)",
+                None,
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "auto-update",
+                "autoUpdateGames",
+                false,
+                "Automatically update games",
+                Some("Saved in the shared Heroic settings and honoured by Heronite. This app lists updates in the Epic page and the Downloads page, but does not install them on its own."),
+                false,
+                cx,
+            ))
+    }
+
+    /// Logging and advanced switches (folders and cache live in the page).
+    fn advanced_view(&mut self, cx: &mut Context<Self>) -> Div {
+        column()
+            .child(self.toggle_row(
+                "disable-logs",
+                "disableLogs",
+                false,
+                "Disable Logs",
+                Some("Toggle this checkbox ON to disable most of the writes to log files (critical information is always logged). Make sure to turn OFF this setting before reporting any issue. Saved in the shared Heroic settings (Heronite); this app only logs to the terminal."),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "disable-gog-presence",
+                "disableGOGPresence",
+                false,
+                "Disable GOG Galaxy presence",
+                Some("Shared setting honoured by Heronite."),
+                false,
+                cx,
+            ))
+    }
+
+    fn general_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let col = column()
             .child(self.path_row("defaultInstallPath", Some("Default Installation Path"), true, "Choose the default installation folder", false, cx))
             .child(self.path_row("defaultWinePrefixDir", Some("Set Folder for new Wine Prefixes"), true, "Select a Folder for new Wine Prefixes", false, cx))
             .child(self.path_row("defaultSteamPath", Some("Default Steam path"), true, "Steam path.", false, cx))
             .child(help("This path lets Heroic determine what version of Proton Steam uses, for adding non-Steam games to Steam."))
-            .child(self.path_row("altLegendaryBin", Some("Choose an Alternative Legendary Binary"), false, "Select Legendary Binary", true, cx))
-            .child(self.max_workers_field(cx))
             .child(self.toggle_row("minimize", "minimizeOnLaunch", false, "Minimize after game launch", None, false, cx))
             .child(self.system_rows(cx))
             .child(heading("Wine and Proton"))
@@ -74,7 +158,7 @@ impl HeroicSettingsPanel {
         let mut items: Vec<(SharedString, bool)> = vec![("Max".into(), current == 0)];
         items.extend((1..=cores).map(|n| (SharedString::from(n.to_string()), n == current)));
         let shown = if current == 0 { "Max".to_string() } else { current.to_string() };
-        div().w(px(220.)).child(self.select_row(
+        div().w(px(360.)).child(self.select_row(
             "max-workers",
             Some("Maximum Number of Workers when downloading"),
             shown,

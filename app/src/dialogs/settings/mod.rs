@@ -6,7 +6,6 @@
 pub mod appearance;
 pub mod backup;
 pub mod emulators;
-pub mod heroic;
 pub mod metadata;
 pub mod saves;
 pub mod screenshots;
@@ -29,9 +28,6 @@ pub enum Tab {
     Emulators,
     Backup,
     Saves,
-    /// Heroic's global settings (`heroic_settings`).
-    General,
-    GameDefaults,
 }
 
 pub struct SettingsDialog {
@@ -45,7 +41,6 @@ pub struct SettingsDialog {
     pub emulators: emulators::State,
     pub backup: backup::State,
     pub saves: saves::State,
-    pub heroic: heroic::State,
 }
 
 impl EventEmitter<DialogEvent> for SettingsDialog {}
@@ -76,7 +71,6 @@ impl SettingsDialog {
             emulators,
             backup,
             saves,
-            heroic: Default::default(),
         }
     }
 
@@ -105,8 +99,6 @@ impl Render for SettingsDialog {
                 (Tab::Emulators, "Emulators"),
                 (Tab::Backup, "Backup"),
                 (Tab::Saves, "Save backup"),
-                (Tab::General, "General"),
-                (Tab::GameDefaults, "Defaults"),
             ],
             self.tab,
             {
@@ -128,8 +120,6 @@ impl Render for SettingsDialog {
             Tab::Emulators => emulators::render(self, window, cx),
             Tab::Backup => backup::render(self, window, cx),
             Tab::Saves => saves::render(self, window, cx),
-            Tab::General => heroic::render_general(self, window, cx),
-            Tab::GameDefaults => heroic::render_defaults(self, window, cx),
         };
         let body = div()
             .flex()
@@ -157,14 +147,4 @@ impl Render for SettingsDialog {
             },
         )
     }
-}
-
-/// Placeholder body for tabs that are not ported yet.
-pub fn pending(text: &str) -> AnyElement {
-    div()
-        .py(px(24.))
-        .text_size(px(14.))
-        .text_color(theme::white_a(0.6))
-        .child(format!("{text} — not available in this build yet."))
-        .into_any_element()
 }

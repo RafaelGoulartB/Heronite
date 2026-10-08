@@ -648,3 +648,38 @@ Port do que o Heroic faz na **primeira vez que um jogo roda num prefixo** (`prep
   cliques reais não testados (sem mouse); ligar/desligar global do overlay no Windows e macOS fora de escopo; o estado do overlay por
   jogo no menu é lido uma vez por sessão (o auto-enable do primeiro lançamento só aparece depois de reabrir o app); instalar
   EA/Ubisoft continua sem suporte (o instalador só é usado se já estiver em `tools/redist/legendary`).
+
+## Settings global e jogos ocultos (agente "settings2")
+
+Brief em `docs/agents/global-settings.md`. ☰ → **Settings** agora é uma página (`Page::Settings`, `HERONITE_DEBUG_PAGE=settings[:secao[:aba]]`)
+com a configuração GLOBAL do app; a engrenagem do header continua abrindo o diálogo "Collection settings" (Appearance, Screenshots,
+Metadata, Emulators, Backup, Save backup). As abas General e Defaults saíram do diálogo (o código foi reaproveitado, não duplicado).
+
+- **Seções** (lista à esquerda, conteúdo à direita): *General* (pastas padrão, bandeja, atalhos, Wine/Proton, caminhos Wine
+  customizados — o `HeroicSettingsPanel` com `GlobalView::General`), *Game defaults* (Wine/Other/Advanced/Gamescope sobre
+  `config.json`), *Library*, *Downloads* (`maxWorkers`, `altLegendaryBin`, `downloadNoHttps`, `autoUpdateGames`), *Advanced*
+  (`disableLogs`, `disableGOGPresence`, abrir pasta de config/logs/dados do app, Clear Cache, copiar settings sem API keys), *About*
+  (versão, pastas, legendary, nº de Wine/Proton, SO/CPU/RAM/GPU lidos de `/proc`, `/sys` e `pci.ids`, sem spawnar nada).
+- **Hidden games**: o flag "Show hidden games" vive no `ui-state.json` (`showHidden`; o Heroic guarda em localStorage, não dá para
+  compartilhar). Ligado, `Library::load_with(paths, true)` mantém os jogos de `games.hidden` marcados (`CollectionGame.hidden`): entram
+  em grupos e busca, cartão com capa cinza/translúcida e etiqueta "Hidden", item do menu de contexto vira "Unhide". Atalho no menu do
+  filtro de instalação do header ("Show hidden games") e na seção Library. `Library::load` continua sem os ocultos (tray, atalhos etc.).
+- **Library**: lista de ocultos (Unhide / Unhide all), favoritos (Remove / Clear), `maxRecentGames` (1–10, default 5; usado pelo tray)
+  e "Clear recent". Tudo via `config_games` (read-modify-write do `store/config.json`, formato e chaves desconhecidas preservados).
+- **Clear Cache** (`heronite_data::maintenance`): só o que o app reconstrói — `wikigameinfo.json`, `legendary_{library,gameinfo,install_info}.json`
+  e o cache de miniaturas do app. Não mexe nos caches de GOG/Amazon, logins, jogos, settings nem dados da Collection. Pede confirmação.
+- **UiState::save** agora faz merge (preserva chaves desconhecidas do `ui-state.json`).
+- **Ganchos em arquivos compartilhados**: `pages/mod.rs` (`Page::Settings`, `PageEvent::ShowHidden`, `from_debug`), `collection/nav.rs`
+  (slot da página, item ☰ Settings navega, `ShowHidden` → `set_show_hidden`, `refresh()` ao voltar), `collection/mod.rs` (`load_all(heroic,
+  include_hidden)`, remoção do debug `settings:general|defaults`), `collection/context_menu.rs` (Hide/Unhide), `collection/header.rs`,
+  `card.rs`, `data.rs`, `vm.rs`, `dialogs/heroic_settings/{mod,general}.rs` (`GlobalView`, `new_global`), `dialogs/settings/mod.rs`.
+- **Debug** (só com fixture!): `HERONITE_DEBUG_SETTINGS_ACTION=unhide:<app>|unhide-all|fav-clear|recent-clear|max-recent:<n>|show-hidden:on|off|clear-cache`.
+  Dica: `AppPaths` segue `XDG_CONFIG_HOME`/`XDG_CACHE_HOME`; use-os numa cópia junto de `HERONITE_HEROIC_DIR` para não tocar `~/.config/heronite-rs`.
+- **Verificado**: testes (data: show_hidden, `load_with`, listas/clear, manutenção, merge do ui-state; app: snapshot da Library, sysinfo,
+  cópia de settings sem chaves); capturas de todas as seções, ☰, menu do filtro, cartões com etiqueta "Hidden" e menu "Unhide"; ações
+  rodadas contra a fixture (unhide, unhide all, clear recent, maxRecentGames, show-hidden, clear cache) com diff dos arquivos: só mudam as
+  chaves esperadas, indentação (tab / 2 espaços) e chaves extras preservadas; 208 → 214 jogos ao desocultar.
+- **Não verificado / limites**: cliques reais e seletor de arquivo (sem mouse); o visual cinza das capas ocultas (as capas desses jogos
+  não chegam na janela do workspace oculto; a etiqueta aparece); "Open … folder" (xdg-open) não foi disparado. `autoUpdateGames` e
+  `disableLogs` só gravam a chave compartilhada (o Heronite honra; este app ainda não atualiza sozinho nem grava log em arquivo);
+  `checkForUpdatesOnStartup`, tema/idioma, Discord RPC, modo console e features experimentais ficaram de fora (não se aplicam aqui).
