@@ -67,6 +67,14 @@ impl InstallInfo {
         (find("tag_download_size"), find("tag_disk_size"))
     }
 
+    /// `manifest.prerequisites`: the program (relative to the install folder)
+    /// and its arguments the game wants run before it starts.
+    pub fn prerequisites(&self) -> Option<(String, String)> {
+        let pre = self.0.pointer("/manifest/prerequisites")?;
+        let path = pre.get("path").and_then(Value::as_str).filter(|p| !p.is_empty())?;
+        Some((path.to_string(), pre.get("args").and_then(Value::as_str).unwrap_or_default().to_string()))
+    }
+
     /// `game.cloud_saves_supported`.
     pub fn cloud_saves_supported(&self) -> bool {
         self.0.pointer("/game/cloud_saves_supported").and_then(Value::as_bool).unwrap_or(false)
@@ -221,6 +229,13 @@ mod tests {
         assert_eq!(i.tag_sizes("voices_de"), (100., 150.));
         assert_eq!(i.tag_sizes("nope"), (0., 0.));
         assert!(i.cloud_saves_supported());
+        assert_eq!(i.prerequisites(), None);
+        let with = InstallInfo(json!({"manifest": {"prerequisites": {
+            "ids": ["x"], "name": "", "path": "Engine\\Redist\\setup.exe", "args": "/silent"}}}));
+        assert_eq!(with.prerequisites(), Some(("Engine\\Redist\\setup.exe".into(), "/silent".into())));
+        let empty = InstallInfo(json!({"manifest": {"prerequisites": {"path": "", "args": ""}}}));
+        assert_eq!(empty.prerequisites(), None);
+        assert_eq!(InstallInfo(json!({"manifest": {"prerequisites": null}})).prerequisites(), None);
     }
 
     #[test]

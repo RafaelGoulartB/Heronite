@@ -19,8 +19,6 @@ pub enum WineTool {
     Winetricks,
     /// Runs this program inside the game's prefix.
     RunExe(String),
-    /// `Winetricks.install`: `winetricks -q <component>` (no GUI).
-    WinetricksInstall(String),
 }
 
 /// A tool command ready to spawn, with what the user should be told.
@@ -63,10 +61,21 @@ pub fn build_tool_command(
             run_in_prefix(ctx, probe, &wine, vec![exe.clone()], Some(node_dirname(exe)))
         }
         WineTool::Winetricks => winetricks(ctx, probe, &wine, None, &mut notes)?,
-        WineTool::WinetricksInstall(component) => {
-            winetricks(ctx, probe, &wine, Some(component), &mut notes)?
-        }
     };
+    Ok(ToolCommand { command, notes })
+}
+
+/// `Winetricks.install`: `winetricks -q <component>` without the GUI, in the
+/// game's prefix.
+pub fn winetricks_install_command(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    settings: &GameSettings,
+    component: &str,
+) -> Result<ToolCommand, String> {
+    let wine = prepare(ctx, probe, settings)?;
+    let mut notes = wine.notes.clone();
+    let command = winetricks(ctx, probe, &wine, Some(component), &mut notes)?;
     Ok(ToolCommand { command, notes })
 }
 
@@ -370,15 +379,14 @@ mod tests {
     #[test]
     fn winetricks_install_runs_the_component_without_the_gui() {
         let probe = probe().with_env("PATH", "/usr/bin");
-        let wine = WineTool::WinetricksInstall("vcrun2022".into());
-        let t = build_tool_command(&ctx(), &probe, &settings("wine", "/w/bin/wine"), &wine).unwrap();
+        let t = winetricks_install_command(&ctx(), &probe, &settings("wine", "/w/bin/wine"), "vcrun2022").unwrap();
         assert_eq!(t.command.program, "/cfg/heroic/tools/winetricks");
         assert_eq!(t.command.args, ["-q", "vcrun2022"]);
         assert_eq!(t.command.env["WINEPREFIX"], "/pfx");
         assert_eq!(t.command.env["GAMEID"], "umu-0");
 
         // With umu the script is umu's own `winetricks` verb and `-q` is dropped.
-        let t = build_tool_command(&ctx(), &probe, &settings("proton", "/p/GE/proton"), &wine).unwrap();
+        let t = winetricks_install_command(&ctx(), &probe, &settings("proton", "/p/GE/proton"), "vcrun2022").unwrap();
         assert_eq!(t.command.program, "/usr/bin/umu-run");
         assert_eq!(t.command.args, ["winetricks", "vcrun2022"]);
         assert_eq!(t.command.env["GAMEID"], "umu-0");

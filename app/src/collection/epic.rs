@@ -15,9 +15,10 @@ use serde_json::Value;
 use super::CollectionView;
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog, Toggle};
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
+use crate::dialogs::epic_modify::EpicModifyDialog;
 use crate::icons::Icon;
 use crate::pages::Page;
-use crate::services::downloads::{Downloads, DownloadsEvent, QueueState};
+use crate::services::downloads::{Downloads, DownloadsEvent, EosGame, QueueState};
 use crate::services::widgets::{fmt_percent, progress_bar};
 use crate::theme;
 use crate::ui::icon;
@@ -31,6 +32,12 @@ pub enum Request {
     UpdatePrompt(String),
     Message { title: String, text: String },
     OpenDownloads,
+    /// Modify installation (DLCs).
+    Modify(String),
+    /// "The EOS Overlay is not installed. Do you want to install it now?"
+    EosInstall(String),
+    /// Enable / disable the EOS Overlay for the game's prefix.
+    EosToggle(String),
 }
 
 #[derive(Default)]
@@ -151,6 +158,9 @@ impl CollectionView {
                 DownloadsEvent::Message { title, text } => {
                     this.epic.pending = Some(Request::Message { title: title.clone(), text: text.clone() });
                 }
+                DownloadsEvent::EosNotInstalled { app_name } => {
+                    this.epic.pending = Some(Request::EosInstall(app_name.clone()));
+                }
             }
             cx.notify();
         }));
@@ -169,6 +179,14 @@ impl CollectionView {
             Request::Move(key) => self.epic_open_move(&key, window, cx),
             Request::Verify(key) => self.epic_open_verify(&key, window, cx),
             Request::UpdatePrompt(key) => self.epic_open_update_prompt(&key, window, cx),
+            Request::Modify(key) => self.epic_open_modify(&key, cx),
+            Request::EosInstall(app) => self.epic_open_eos_install(&app, window, cx),
+            Request::EosToggle(key) => {
+                if let Some(game) = self.epic_game(&key) {
+                    let app = game.app_name.clone();
+                    self.epic_service(cx).update(cx, |s, cx| s.eos_toggle_game(&app, cx));
+                }
+            }
             Request::Message { title, text } => {
                 let mut spec = Confirm::new("epic-message", title, "");
                 spec.text = Some(text);
@@ -376,6 +394,9 @@ impl CollectionView {
             .get("cloud_save_enabled")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        // The Collection's game model leaves these out; the service read them from the library file.
+        let flags = svc.read(cx).game_flags(&game.app_name);
+        let (third_party, has_dlcs) = (flags.third_party, flags.has_dlcs);
         let add = |menu: Div, id: &str, ic: Icon, label: &str, req: Box<dyn Fn(&str) -> Option<Request>>, cx: &mut Context<Self>| {
             let k = key.clone();
             menu.child(menu_row(SharedString::from(format!("cm-epic-{id}")), ic, label).on_click(cx.listener(move |this, _, _, cx| {
@@ -409,6 +430,19 @@ impl CollectionView {
         }
         menu = add(menu, "verify", Icon::Build, "Verify and repair", Box::new(|k| Some(Request::Verify(k.to_string()))), cx);
         menu = add(menu, "move", Icon::Folder, "Move install", Box::new(|k| Some(Request::Move(k.to_string()))), cx);
+        if has_dlcs && !third_party {
+            menu = add(menu, "modify", Icon::Tune, "Modify installation", Box::new(|k| Some(Request::Modify(k.to_string()))), cx);
+        }
+        // The overlay is enabled per Wine prefix on Linux only.
+        if cfg!(target_os = "linux") && !third_party {
+            let app = game.app_name.clone();
+            svc.update(cx, |s, cx| s.eos_load_game(&app, cx));
+            let state = svc.read(cx).eos_game(&game.app_name);
+            if let Some(state @ (EosGame::Enabled | EosGame::Disabled)) = state {
+                let label = if state == EosGame::Enabled { "Disable EOS Overlay" } else { "Enable EOS Overlay" };
+                menu = add(menu, "eos", Icon::Fullscreen, label, Box::new(|k| Some(Request::EosToggle(k.to_string()))), cx);
+            }
+        }
         if cloud {
             menu = add(menu, "sync", Icon::CloudSync, "Cloud saves sync", Box::new(|_| None), cx);
         }
@@ -427,6 +461,38 @@ impl CollectionView {
             let (app, title) = (game.app_name.clone(), game.title.clone());
             svc.update(cx, |s, cx| s.sync_saves(&app, &title, cx));
         }
+    }
+
+    fn epic_open_modify(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(game) = self.epic_game(key) else { return };
+        let info = Self::epic_game_info(&game);
+        let heroic = self.heroic.clone();
+        let view = cx.new(|cx| EpicModifyDialog::new(heroic, info, cx));
+        self.open_dialog(view, cx);
+    }
+
+    /// `enable()` of the EOS overlay without the overlay: offers to install it.
+    fn epic_open_eos_install(&mut self, app_name: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let mut spec = Confirm::new(
+            "epic-eos-install",
+            "Overlay not installed",
+            "The EOS Overlay is not installed. Do you want to install it now?",
+        );
+        spec.confirm = Some("Install".into());
+        let app = app_name.to_string();
+        let view = cx.new(|cx| {
+            EpicConfirmDialog::new(
+                spec,
+                move |_, cx| {
+                    let svc = crate::services::downloads(cx);
+                    let app = app.clone();
+                    svc.update(cx, |s, cx| s.eos_install_and_enable(&app, cx));
+                },
+                window,
+                cx,
+            )
+        });
+        self.open_dialog(view, cx);
     }
 
     fn epic_open_install(&mut self, key: &str, import: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -605,7 +671,7 @@ impl CollectionView {
 
     /// `HERONITE_DEBUG_DIALOG=epic-install:<appName>` / `epic-import:<appName>` /
     /// `epic-uninstall:<appName>` / `epic-move:..` / `epic-verify:..` /
-    /// `epic-update:..` / `epic-message`.
+    /// `epic-update:..` / `epic-modify:..` / `epic-eos-install:..` / `epic-message`.
     pub(super) fn epic_debug_dialog(&mut self, which: &str, _window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some((kind, app)) = which.split_once(':').map(|(k, a)| (k, a.to_string())).or_else(|| which.starts_with("epic-").then(|| (which, String::new()))) else {
             return false;
@@ -618,6 +684,8 @@ impl CollectionView {
             "epic-move" => Some(Request::Move(key)),
             "epic-verify" => Some(Request::Verify(key)),
             "epic-update" => Some(Request::UpdatePrompt(key)),
+            "epic-modify" => Some(Request::Modify(key)),
+            "epic-eos-install" => Some(Request::EosInstall(app.clone())),
             "epic-message" => Some(Request::Message {
                 title: "Cloud saves: Control".into(),
                 text: "[cli] INFO: Cloud save sync for Control\n[cli] INFO: Remote save is newer, downloading 3 files\n[cli] INFO: Download finished".into(),

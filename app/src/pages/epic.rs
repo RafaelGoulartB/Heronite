@@ -6,6 +6,7 @@ use std::process::{Command, Stdio};
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_epic::eos_overlay;
 use heronite_epic::user::BROWSER_LOGIN_URL;
 
 use super::{page_body, page_column, PageCtx, PageEvent};
@@ -13,6 +14,7 @@ use crate::dialogs::epic_import::EpicImportPicker;
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
+use crate::services::widgets::{fmt_percent, progress_bar};
 use crate::services::{self, Downloads};
 use crate::theme;
 use crate::ui::controls::{action_button, button, ButtonKind};
@@ -24,6 +26,8 @@ pub struct EpicPage {
     svc: Entity<Downloads>,
     code: Entity<InputState>,
     confirm_logout: bool,
+    /// "Are you sure you want to uninstall the EOS Overlay?" is showing.
+    confirm_eos_remove: bool,
     /// The embedded login window is open.
     window_open: bool,
     notice: Option<(SharedString, bool)>,
@@ -51,7 +55,19 @@ impl EpicPage {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
         let code = new_input(window, cx, "", "Authorization code or the page's JSON");
-        let mut this = Self { ctx, svc, code, confirm_logout: false, window_open: false, notice: None, dialog: None, dialog_sub: None };
+        // Installed version and the latest one (Heroic asks when the settings open).
+        svc.update(cx, |s, cx| s.eos_reload(true, cx));
+        let mut this = Self {
+            ctx,
+            svc,
+            code,
+            confirm_logout: false,
+            confirm_eos_remove: std::env::var("HERONITE_DEBUG_EPIC_PAGE").as_deref() == Ok("eos-remove"),
+            window_open: false,
+            notice: None,
+            dialog: None,
+            dialog_sub: None,
+        };
         // Screenshots: `HERONITE_DEBUG_EPIC_PAGE=import|logout`.
         match std::env::var("HERONITE_DEBUG_EPIC_PAGE").as_deref() {
             Ok("import") => {
@@ -86,6 +102,86 @@ impl EpicPage {
         }));
         self.dialog = Some(view.into());
         cx.notify();
+    }
+
+    /// The EOS Overlay: install / update / uninstall (the per-game switch is in
+    /// the game's context menu, like Heroic's game menu).
+    fn eos_panel(&mut self, cx: &mut Context<Self>) -> Div {
+        let (eos, busy) = {
+            let s = self.svc.read(cx);
+            (s.eos().clone(), s.busy_of(eos_overlay::APP_NAME).cloned())
+        };
+        let working = busy.is_some();
+        let mut panel = panel().gap(px(12.)).p(px(18.)).child(paragraph(eos_main_text(eos.installed, working)));
+        if eos.installed && !working {
+            panel = panel
+                .child(paragraph(format!("Current Version: {}", eos.version)))
+                .child(paragraph(format!("Latest Version: {}", eos.latest)));
+        }
+        if let Some(b) = &busy {
+            panel = panel.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .w(px(360.))
+                    .child(div().text_size(px(13.33)).text_color(white()).child(match b.percent {
+                        Some(p) => format!("{} {}", b.label, fmt_percent(p as f64)),
+                        None => format!("{}...", b.label),
+                    }))
+                    .child(progress_bar(b.percent, 5., theme::accent())),
+            );
+        }
+        let mut actions = div().flex().flex_wrap().items_center().gap(px(12.));
+        if let Some(b) = busy {
+            if let Some(cancel) = b.cancel {
+                actions = actions.child(button("eos-cancel", ButtonKind::Tertiary, "Cancel").on_click(move |_, _, _| cancel.request()));
+            }
+        } else if eos.installed {
+            let outdated = !eos.latest.is_empty() && eos.latest != eos.version && !eos.checking;
+            if outdated {
+                actions = actions.child(button("eos-update", ButtonKind::Primary, "Update").on_click(cx.listener(|this, _, _, cx| {
+                    this.svc.update(cx, |s, cx| s.eos_install(cx));
+                })));
+            } else {
+                actions = actions.child(action_button(
+                    "eos-check",
+                    ButtonKind::Primary,
+                    if eos.checking { "Checking for updates..." } else { "Check for updates" },
+                    !eos.checking,
+                    cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.eos_check_updates(cx))),
+                ));
+            }
+            actions = actions.child(button("eos-remove", ButtonKind::Tertiary, "Uninstall").on_click(cx.listener(|this, _, _, cx| {
+                this.confirm_eos_remove = !this.confirm_eos_remove;
+                cx.notify();
+            })));
+        } else {
+            actions = actions.child(button("eos-install", ButtonKind::Primary, "Install").on_click(cx.listener(|this, _, _, cx| {
+                this.svc.update(cx, |s, cx| s.eos_install(cx));
+            })));
+        }
+        panel = panel.child(actions);
+        if self.confirm_eos_remove && eos.installed && !working {
+            panel = panel.child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap(px(12.))
+                    .child(div().text_size(px(14.)).text_color(rgb(0xcaf3fd)).child("Are you sure you want to uninstall the EOS Overlay?"))
+                    .child(button("eos-remove-no", ButtonKind::Outline, "No").on_click(cx.listener(|this, _, _, cx| {
+                        this.confirm_eos_remove = false;
+                        cx.notify();
+                    })))
+                    .child(button("eos-remove-yes", ButtonKind::Tertiary, "Yes").on_click(cx.listener(|this, _, _, cx| {
+                        this.confirm_eos_remove = false;
+                        this.svc.update(cx, |s, cx| s.eos_remove(cx));
+                        cx.notify();
+                    }))),
+            );
+        }
+        panel.child(meta_text("Enable or disable the overlay for a game from the game's menu (right-click)."))
     }
 
     fn start_window_login(&mut self, cx: &mut Context<Self>) {
@@ -139,6 +235,16 @@ impl EpicPage {
         }
         self.notice = None;
         self.svc.update(cx, |s, cx| s.login(text, cx));
+    }
+}
+
+/// Text under "EOS Overlay" (`getMainEosText`).
+fn eos_main_text(installed: bool, working: bool) -> &'static str {
+    match (installed, working) {
+        (true, true) => "The EOS Overlay is being updated...",
+        (true, false) => "The EOS Overlay is installed",
+        (false, true) => "The EOS Overlay is being installed...",
+        (false, false) => "The EOS Overlay is not installed",
     }
 }
 
@@ -257,6 +363,7 @@ impl Render for EpicPage {
                 )));
             column = column.child(browser);
         }
+        column = column.child(heading("EOS Overlay")).child(self.eos_panel(cx));
         if let Some((text, error)) = self.notice.clone() {
             column = column.child(div().text_size(px(14.)).text_color(if error { theme::danger().into() } else { white() }).child(text));
         }

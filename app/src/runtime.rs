@@ -51,6 +51,7 @@ impl GameRuntime {
             net: Arc::new(SystemNet),
             cloud: Some(Arc::new(EpicCloudSaves(paths.clone()))),
         });
+        launcher.set_epic_setup(Arc::new(crate::services::downloads::EpicLaunchSetup(paths.clone())));
         spawn_tools_update(paths.clone());
         (Self { launcher, paths }, frx)
     }
@@ -170,6 +171,10 @@ fn spawn_tools_update(paths: HeroicPaths) {
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
         heronite_launch::tools::update_all_if_due(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
+        // known_fixes.json (winetricks verbs, env variables) as Heroic keeps it.
+        if let Err(e) = heronite_launch::known_fixes::update_if_needed(&paths, &SystemNet, &|| false) {
+            log::warn!("{e}");
+        }
     });
     if let Err(e) = spawned {
         log::warn!("could not start the tools update: {e}");

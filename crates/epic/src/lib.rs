@@ -11,6 +11,7 @@
 //! * [`queue`], [`manager`]: the download queue (`store/download-manager.json`).
 //! * [`progress`]: legendary's download progress lines.
 //! * [`saves`]: cloud saves.
+//! * [`eos_overlay`]: the EOS Overlay (`legendary eos-overlay`).
 //!
 //! legendary's own files (`legendaryConfig/legendary/**`) are only ever
 //! written by legendary.
@@ -18,6 +19,7 @@
 pub mod cache_store;
 pub mod cmd;
 pub mod disk;
+pub mod eos_overlay;
 pub mod info;
 pub mod library;
 pub mod manager;

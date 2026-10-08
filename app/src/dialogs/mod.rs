@@ -17,6 +17,7 @@ pub mod emulator_edit;
 pub mod epic_confirm;
 pub mod epic_import;
 pub mod epic_install;
+pub mod epic_modify;
 pub mod launch_state;
 pub mod ludusavi_backup;
 pub mod pick_rom;

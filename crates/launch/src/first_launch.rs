@@ -22,7 +22,7 @@ use crate::env::join;
 use crate::plan::{FirstLaunch, PlanContext, PrepSpec};
 use crate::prepare::{run_wait, Flow, Notice, Prep};
 use crate::settings::GameSettings;
-use crate::wine_tools::{build_tool_command, wine_command_for, winetricks_path, WineTool};
+use crate::wine_tools::{wine_command_for, winetricks_install_command, winetricks_path};
 
 /// How long one installer may take (Heroic does not limit it).
 const INSTALLER_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -262,7 +262,7 @@ impl Prep<'_> {
                 log::warn!("{e}");
             }
         }
-        match build_tool_command(ctx, self.probe, settings, &WineTool::WinetricksInstall(verb.to_string())) {
+        match winetricks_install_command(ctx, self.probe, settings, verb) {
             Ok(tool) => {
                 for note in &tool.notes {
                     log::warn!("winetricks: {note}");
