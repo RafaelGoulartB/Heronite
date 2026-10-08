@@ -1,0 +1,359 @@
+//! Installing and removing DXVK / DXVK-NVAPI / VKD3D in a Wine prefix (port of
+//! `DXVK.installRemove` in `backend/tools/index.ts`): copy the release's DLLs
+//! into the prefix, register the `native,builtin` overrides and remember the
+//! version in `<prefix>/current_<tool>`.
+//!
+//! Only plain Wine prefixes are touched (a Proton prefix has no
+//! `.update-timestamp`; Proton brings its own DXVK).
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use heronite_data::HeroicPaths;
+
+use crate::net::{Cancel, Net};
+use crate::probe::Probe;
+use crate::settings::GameSettings;
+use crate::tools::{self, Tool, Vulkan};
+
+/// Runs `wine <parts>` inside the game's prefix and waits for it
+/// (Heroic's `runWineCommand({ wait: true, protonVerb: 'run' })`).
+pub trait WineRunner {
+    fn run(&self, parts: &[String]) -> bool;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    /// Heroic's `'backup'`: install (or update) the tool in the prefix.
+    Install,
+    /// Heroic's `'restore'`: remove it and bring back Wine's own DLLs.
+    Restore,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    Installed(String),
+    AlreadyInstalled(String),
+    Removed,
+    /// Nothing to do here (Proton prefix, GPTK, prefix not created yet).
+    Skipped(String),
+}
+
+pub struct Env<'a> {
+    pub paths: &'a HeroicPaths,
+    pub net: &'a dyn Net,
+    pub probe: &'a dyn Probe,
+    pub runner: &'a dyn WineRunner,
+    pub vulkan: Vulkan,
+    pub cancel: Cancel<'a>,
+    /// Told what is about to take a while ("Downloading DXVK...").
+    pub progress: &'a dyn Fn(&str),
+}
+
+fn dll_names(dir: &Path) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.to_ascii_lowercase().ends_with(".dll"))
+        .collect();
+    v.sort();
+    v
+}
+
+const OVERRIDES_KEY: &str = r"HKEY_CURRENT_USER\Software\Wine\DllOverrides";
+
+fn override_name(dll: &str) -> String {
+    dll.trim_end_matches(".dll").trim_end_matches(".DLL").to_string()
+}
+
+/// Override names of both DLL sets, each once (64-bit ones only in 64-bit prefixes).
+fn override_names(is64: bool, dlls64: &[String], dlls32: &[String]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let sets: &[&[String]] = if is64 { &[dlls64, dlls32] } else { &[dlls32] };
+    sets.iter().flat_map(|s| s.iter()).map(|d| override_name(d)).filter(|n| seen.insert(n.clone())).collect()
+}
+
+fn reg_add(name: &str) -> Vec<String> {
+    ["reg", "add", OVERRIDES_KEY, "/v", name, "/d", "native,builtin", "/f"].iter().map(|s| s.to_string()).collect()
+}
+
+fn reg_delete(name: &str) -> Vec<String> {
+    ["reg", "delete", OVERRIDES_KEY, "/v", name, "/f"].iter().map(|s| s.to_string()).collect()
+}
+
+/// Folder holding `nvngx.dll` (shipped by the NVIDIA driver), for DLSS.
+pub fn nvngx_dir(probe: &dyn Probe) -> Option<String> {
+    ["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib32"]
+        .iter()
+        .map(|base| format!("{base}/nvidia/wine"))
+        .find(|dir| probe.exists(&format!("{dir}/nvngx.dll")))
+}
+
+fn copy_dll(from: &Path, to: &Path) {
+    if let Some(dir) = to.parent() {
+        let _ = fs::create_dir_all(dir);
+    }
+    if let Err(e) = fs::copy(from, to) {
+        log::error!("Error when copying {}: {e}", from.display());
+    }
+}
+
+/// `DXVK.installRemove` for one tool in the prefix of `settings`.
+pub fn install_remove(
+    env: &Env,
+    settings: &GameSettings,
+    tool: Tool,
+    action: Action,
+) -> Result<Outcome, String> {
+    if settings.wine_version.bin.contains("toolkit") {
+        // It would break Apple's implementation.
+        return Ok(Outcome::Skipped("Game Porting Toolkit prefix".into()));
+    }
+    let prefix = PathBuf::from(&settings.wine_prefix);
+    if !prefix.join(".update-timestamp").exists() {
+        // Proton prefix or not created yet; not an error, or the toggle would stick.
+        return Ok(Outcome::Skipped("not a Wine prefix (yet)".into()));
+    }
+    let is64 = prefix.join("drive_c/windows/syswow64").exists();
+    if !is64 {
+        log::warn!("32-bit prefix detected!");
+    }
+    if tools::installed_version(env.paths, tool).is_none() {
+        (env.progress)(&format!("Downloading {}...", tool.label()));
+    }
+    let release = tools::ensure(env.paths, env.net, tool, env.vulkan, env.cancel)?;
+    let version = release.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
+    let dir32 = release.join(tool.dir32());
+    let dir64 = release.join("x64");
+    let dlls32 = dll_names(&dir32);
+    let dlls64 = dll_names(&dir64);
+    let system32 = prefix.join("drive_c/windows/system32");
+    let syswow64 = prefix.join("drive_c/windows/syswow64");
+    let marker = prefix.join(format!("current_{}", tool.name()));
+    let current = fs::read_to_string(&marker).ok().and_then(|t| t.lines().next().map(str::to_string)).unwrap_or_default();
+
+    if action == Action::Restore {
+        let _ = fs::remove_file(&marker);
+        for name in override_names(is64, &dlls64, &dlls32) {
+            env.runner.run(&reg_delete(&name));
+        }
+        let mut doomed: Vec<PathBuf> = Vec::new();
+        if is64 {
+            doomed.extend(dlls64.iter().map(|d| system32.join(d)));
+            doomed.extend(dlls32.iter().map(|d| syswow64.join(d)));
+        } else {
+            doomed.extend(dlls32.iter().map(|d| system32.join(d)));
+        }
+        for f in doomed {
+            if let Err(e) = fs::remove_file(&f) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    log::error!("Error removing {}: {e}", f.display());
+                }
+            }
+        }
+        // Restore Wine's stock libraries.
+        env.runner.run(&["wineboot".to_string(), "-u".to_string()]);
+        return Ok(Outcome::Removed);
+    }
+
+    if current == version {
+        return Ok(Outcome::AlreadyInstalled(version));
+    }
+    (env.progress)(&format!("Installing {} in the prefix...", tool.label()));
+    if is64 {
+        for d in &dlls32 {
+            copy_dll(&dir32.join(d), &syswow64.join(d));
+        }
+        for d in &dlls64 {
+            copy_dll(&dir64.join(d), &system32.join(d));
+        }
+    } else {
+        for d in &dlls32 {
+            copy_dll(&dir32.join(d), &system32.join(d));
+        }
+    }
+    for name in override_names(is64, &dlls64, &dlls32) {
+        env.runner.run(&reg_add(&name));
+    }
+
+    // nvngx.dll makes DLSS work on NVIDIA GPUs.
+    if tool == Tool::DxvkNvapi {
+        match nvngx_dir(env.probe) {
+            Some(dir) => {
+                for dll in ["nvngx.dll", "_nvngx.dll"] {
+                    let from = Path::new(&dir).join(dll);
+                    if from.exists() {
+                        copy_dll(&from, &system32.join(dll));
+                    }
+                }
+                env.runner.run(
+                    &[
+                        "reg",
+                        "add",
+                        r"HKEY_LOCAL_MACHINE\SOFTWARE\NVIDIA Corporation\Global\NGXCore",
+                        "/v",
+                        "FullPath",
+                        "/d",
+                        r"C:\windows\system32",
+                        "/f",
+                    ]
+                    .map(String::from),
+                );
+            }
+            None => log::warn!("Could not find nvngx.dll for DLSS!"),
+        }
+    }
+    tools::write_atomic(&marker, &version)?;
+    Ok(Outcome::Installed(version))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::net::FakeNet;
+    use crate::probe::FakeProbe;
+    use crate::settings::WineVersion;
+    use std::cell::RefCell;
+
+    struct Recorder(RefCell<Vec<Vec<String>>>);
+    impl WineRunner for Recorder {
+        fn run(&self, parts: &[String]) -> bool {
+            self.0.borrow_mut().push(parts.to_vec());
+            true
+        }
+    }
+
+    struct Fixture {
+        _dir: tempfile::TempDir,
+        paths: HeroicPaths,
+        prefix: PathBuf,
+        settings: GameSettings,
+    }
+
+    /// A Wine prefix and an installed `dxvk-1.0` with 32/64-bit DLLs.
+    fn fixture(tool: Tool) -> Fixture {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let prefix = dir.path().join("pfx");
+        for d in ["drive_c/windows/system32", "drive_c/windows/syswow64"] {
+            fs::create_dir_all(prefix.join(d)).unwrap();
+        }
+        fs::write(prefix.join(".update-timestamp"), "1").unwrap();
+        let release = tools::tool_dir(&paths, tool).join("rel-1");
+        for (d, files) in [(tool.dir32(), ["a.dll", "b.dll", "readme.txt"]), ("x64", ["a.dll", "c.dll", "tests.exe"])] {
+            fs::create_dir_all(release.join(d)).unwrap();
+            for f in files {
+                fs::write(release.join(d).join(f), format!("{d}/{f}")).unwrap();
+            }
+        }
+        fs::write(tools::tool_dir(&paths, tool).join(format!("latest_{}", tool.name())), "rel-1\n").unwrap();
+        let settings = GameSettings {
+            wine_prefix: prefix.to_string_lossy().into_owned(),
+            wine_version: WineVersion { bin: "/w/bin/wine".into(), name: "W".into(), kind: "wine".into(), ..Default::default() },
+            ..Default::default()
+        };
+        Fixture { _dir: dir, paths, prefix, settings }
+    }
+
+    fn run(fx: &Fixture, tool: Tool, action: Action, rec: &Recorder, probe: &FakeProbe, net: &FakeNet) -> Result<Outcome, String> {
+        let env = Env { paths: &fx.paths, net, probe, runner: rec, vulkan: Vulkan::Modern, cancel: &|| false, progress: &|_| {} };
+        install_remove(&env, &fx.settings, tool, action)
+    }
+
+    #[test]
+    fn install_copies_dlls_registers_overrides_and_remembers_the_version() {
+        let fx = fixture(Tool::Dxvk);
+        let rec = Recorder(RefCell::new(vec![]));
+        let out = run(&fx, Tool::Dxvk, Action::Install, &rec, &FakeProbe::new("/h"), &FakeNet::offline()).unwrap();
+        assert_eq!(out, Outcome::Installed("rel-1".into()));
+        let sys32 = fx.prefix.join("drive_c/windows/system32");
+        let wow = fx.prefix.join("drive_c/windows/syswow64");
+        // 64-bit DLLs in system32, 32-bit ones in syswow64; non-DLL files stay out.
+        assert_eq!(fs::read_to_string(sys32.join("c.dll")).unwrap(), "x64/c.dll");
+        assert_eq!(fs::read_to_string(wow.join("b.dll")).unwrap(), "x32/b.dll");
+        assert!(!sys32.join("tests.exe").exists() && !wow.join("readme.txt").exists());
+        assert_eq!(fs::read_to_string(fx.prefix.join("current_dxvk")).unwrap(), "rel-1");
+        let calls = rec.0.borrow();
+        let names: Vec<&str> = calls.iter().map(|c| c[4].as_str()).collect();
+        assert_eq!(names, ["a", "c", "b"], "each override once");
+        assert_eq!(calls[0], ["reg", "add", OVERRIDES_KEY, "/v", "a", "/d", "native,builtin", "/f"]);
+    }
+
+    #[test]
+    fn installing_twice_is_a_no_op() {
+        let fx = fixture(Tool::Dxvk);
+        let rec = Recorder(RefCell::new(vec![]));
+        let (probe, net) = (FakeProbe::new("/h"), FakeNet::offline());
+        run(&fx, Tool::Dxvk, Action::Install, &rec, &probe, &net).unwrap();
+        let calls = rec.0.borrow().len();
+        assert_eq!(run(&fx, Tool::Dxvk, Action::Install, &rec, &probe, &net).unwrap(), Outcome::AlreadyInstalled("rel-1".into()));
+        assert_eq!(rec.0.borrow().len(), calls);
+    }
+
+    #[test]
+    fn restore_removes_dlls_overrides_and_reboots_the_prefix() {
+        let fx = fixture(Tool::Dxvk);
+        let rec = Recorder(RefCell::new(vec![]));
+        let (probe, net) = (FakeProbe::new("/h"), FakeNet::offline());
+        run(&fx, Tool::Dxvk, Action::Install, &rec, &probe, &net).unwrap();
+        rec.0.borrow_mut().clear();
+        assert_eq!(run(&fx, Tool::Dxvk, Action::Restore, &rec, &probe, &net).unwrap(), Outcome::Removed);
+        assert!(!fx.prefix.join("current_dxvk").exists());
+        for f in ["system32/a.dll", "system32/c.dll", "syswow64/a.dll", "syswow64/b.dll"] {
+            assert!(!fx.prefix.join("drive_c/windows").join(f).exists(), "{f}");
+        }
+        let calls = rec.0.borrow();
+        assert_eq!(calls.first().unwrap()[1], "delete");
+        assert_eq!(calls.last().unwrap(), &["wineboot", "-u"]);
+    }
+
+    #[test]
+    fn a_32_bit_prefix_gets_everything_in_system32() {
+        let fx = fixture(Tool::Dxvk);
+        fs::remove_dir_all(fx.prefix.join("drive_c/windows/syswow64")).unwrap();
+        let rec = Recorder(RefCell::new(vec![]));
+        run(&fx, Tool::Dxvk, Action::Install, &rec, &FakeProbe::new("/h"), &FakeNet::offline()).unwrap();
+        assert!(fx.prefix.join("drive_c/windows/system32/b.dll").exists());
+        assert!(!fx.prefix.join("drive_c/windows/system32/c.dll").exists());
+    }
+
+    #[test]
+    fn proton_toolkit_and_missing_prefixes_are_skipped() {
+        let mut fx = fixture(Tool::Dxvk);
+        let rec = Recorder(RefCell::new(vec![]));
+        let (probe, net) = (FakeProbe::new("/h"), FakeNet::offline());
+        fs::remove_file(fx.prefix.join(".update-timestamp")).unwrap();
+        assert!(matches!(run(&fx, Tool::Dxvk, Action::Install, &rec, &probe, &net).unwrap(), Outcome::Skipped(_)));
+        fx.settings.wine_version.bin = "/gptk/toolkit/bin/wine".into();
+        assert!(matches!(run(&fx, Tool::Dxvk, Action::Install, &rec, &probe, &net).unwrap(), Outcome::Skipped(_)));
+        assert!(rec.0.borrow().is_empty());
+        assert!(!fx.prefix.join("current_dxvk").exists());
+    }
+
+    #[test]
+    fn vkd3d_uses_its_x86_folder_and_a_missing_tool_offline_is_an_error() {
+        let fx = fixture(Tool::Vkd3d);
+        let rec = Recorder(RefCell::new(vec![]));
+        let probe = FakeProbe::new("/h");
+        run(&fx, Tool::Vkd3d, Action::Install, &rec, &probe, &FakeNet::offline()).unwrap();
+        assert_eq!(fs::read_to_string(fx.prefix.join("drive_c/windows/syswow64/b.dll")).unwrap(), "x86/b.dll");
+        // DXVK is not installed in this fixture.
+        let err = run(&fx, Tool::Dxvk, Action::Install, &rec, &probe, &FakeNet::offline()).unwrap_err();
+        assert!(err.contains("DXVK"), "{err}");
+    }
+
+    #[test]
+    fn nvapi_also_copies_nvngx_when_the_driver_ships_it() {
+        let fx = fixture(Tool::DxvkNvapi);
+        let rec = Recorder(RefCell::new(vec![]));
+        assert_eq!(nvngx_dir(&FakeProbe::new("/h")), None);
+        assert_eq!(
+            nvngx_dir(&FakeProbe::new("/h").with_path("/usr/lib/nvidia/wine/nvngx.dll")).as_deref(),
+            Some("/usr/lib/nvidia/wine")
+        );
+        run(&fx, Tool::DxvkNvapi, Action::Install, &rec, &FakeProbe::new("/h"), &FakeNet::offline()).unwrap();
+        assert!(rec.0.borrow().iter().all(|c| c[2] != r"HKEY_LOCAL_MACHINE\SOFTWARE\NVIDIA Corporation\Global\NGXCore"));
+    }
+}

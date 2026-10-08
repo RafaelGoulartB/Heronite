@@ -8,7 +8,9 @@ use crate::emulators::{node_basename, node_dirname};
 use crate::env::{
     build_wrappers, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env,
 };
-use crate::plan::{Command, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
+use crate::plan::{
+    Command, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec, WineRuntime,
+};
 use crate::probe::Probe;
 use crate::settings::{GameSettings, WineVersion};
 
@@ -45,6 +47,8 @@ pub struct WineEnv {
     pub settings: GameSettings,
     pub runtime: WineRuntime,
     pub umu: Option<String>,
+    /// `umu` is used but not installed yet: the launch downloads it first.
+    pub umu_download: bool,
     pub server: Option<String>,
     pub notes: Vec<String>,
 }
@@ -55,6 +59,26 @@ pub fn prepare(
     ctx: &PlanContext,
     probe: &dyn Probe,
     settings: &GameSettings,
+) -> Result<WineEnv, String> {
+    prepare_with(ctx, probe, settings, false)
+}
+
+/// Like [`prepare`] for an actual launch: a missing umu runtime is planned
+/// for (the launch downloads it, as Heroic does) instead of falling back to
+/// running Proton directly.
+pub fn prepare_for_launch(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    settings: &GameSettings,
+) -> Result<WineEnv, String> {
+    prepare_with(ctx, probe, settings, true)
+}
+
+fn prepare_with(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    settings: &GameSettings,
+    download_umu: bool,
 ) -> Result<WineEnv, String> {
     let mut settings = settings.clone();
     let mut notes = Vec::new();
@@ -75,8 +99,13 @@ pub fn prepare(
     }
     let kind = settings.wine_version.kind.clone();
     let umu_file = umu_path(ctx, probe);
-    let umu_ok = kind == "proton" && settings.disable_umu != Some(true) && probe.exists(&umu_file);
-    if kind == "proton" && settings.disable_umu != Some(true) && !umu_ok {
+    let wants_umu = kind == "proton" && settings.disable_umu != Some(true);
+    let umu_present = probe.exists(&umu_file);
+    let umu_download = wants_umu && !umu_present && download_umu;
+    let umu_ok = wants_umu && (umu_present || download_umu);
+    if umu_download {
+        notes.push("umu-run was not found; it will be downloaded".to_string());
+    } else if wants_umu && !umu_ok {
         notes.push("umu-run was not found; running Proton directly".to_string());
     }
     let runtime = if umu_ok {
@@ -95,12 +124,22 @@ pub fn prepare(
         settings,
         runtime,
         umu: umu_ok.then_some(umu_file),
+        umu_download,
         server,
         notes,
     })
 }
 
 impl WineEnv {
+    /// What the launch must do around this Wine setup (see [`PrepSpec`]).
+    pub(crate) fn prep_spec(&self) -> PrepSpec {
+        PrepSpec {
+            umu: self.umu_download,
+            wine: Some(self.settings.clone()),
+            cloud_saves: None,
+        }
+    }
+
     /// Binary that runs Windows programs: umu, proton or wine.
     pub fn runner_bin(&self) -> String {
         match &self.umu {
@@ -137,7 +176,7 @@ impl WineEnv {
     }
 
     /// `verifyWinePrefix`: files that must exist for the prefix to be usable.
-    fn prefix_missing(&self, probe: &dyn Probe) -> bool {
+    pub(crate) fn prefix_missing(&self, probe: &dyn Probe) -> bool {
         let prefix = &self.settings.wine_prefix;
         let mut required: Vec<String> = [
             "dosdevices",
@@ -161,7 +200,7 @@ impl WineEnv {
     }
 
     /// Commands creating the prefix when it is missing.
-    fn prefix_creation(&self, env: &Env) -> Vec<Command> {
+    pub(crate) fn prefix_creation(&self, env: &Env) -> Vec<Command> {
         let mut e = env.clone();
         e.insert("PROTON_VERB".into(), "run".into());
         let bin = self.runner_bin();
@@ -210,7 +249,7 @@ pub fn build_wine_plan(
     if executable.starts_with('/') && !probe.exists(executable) {
         return LaunchPlan::Unavailable(format!("Executable not found: {executable}"));
     }
-    let wine = match prepare(ctx, probe, settings) {
+    let wine = match prepare_for_launch(ctx, probe, settings) {
         Ok(w) => w,
         Err(e) => return LaunchPlan::Unavailable(e),
     };
@@ -269,6 +308,7 @@ pub fn build_wine_plan(
             pre_commands,
             wait_after_exit,
             make_executable: None,
+            prep: wine.prep_spec(),
             notes: wine.notes,
         },
     }

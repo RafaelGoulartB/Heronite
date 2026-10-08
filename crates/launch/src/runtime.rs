@@ -17,8 +17,11 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use heronite_data::HeroicPaths;
 
+use crate::net::{Net, SystemNet};
 use crate::plan::{Command, LaunchPlan, ProcessPlan, StopSpec};
 use crate::playtime_watch::{wait_for_steam_session, SteamWaitConfig, SteamWaitOutcome};
+use crate::prepare::{CloudSync, Flow, Notice, Prep};
+use crate::probe::{Probe, SystemProbe};
 use crate::procs::{signal_tree, Procs, Sig, SystemProcs};
 use crate::record::{self, PlayRecord, RecordOutcome, MIN_SESSION_SECONDS};
 use crate::steam::{desktop_protocol_env, SteamLocator};
@@ -253,6 +256,14 @@ pub enum LaunchEvent {
     },
     /// Spawning failed, Steam never started the game, or recording failed.
     Error { app_name: String, message: String },
+    /// Progress or a non-fatal problem while the launch is prepared or
+    /// finished ("Preparing prefix...", "Downloading DXVK...", a cloud save
+    /// error). The game keeps going; `warning` says something went wrong.
+    Status {
+        app_name: String,
+        message: String,
+        warning: bool,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -330,7 +341,27 @@ struct Control {
     steam_pids: Arc<Mutex<BTreeSet<u32>>>,
 }
 
+/// What the pre-launch preparation talks to (replaceable for tests and the
+/// app: the Epic crate provides the cloud saves).
+#[derive(Clone)]
+pub struct PrepServices {
+    pub probe: Arc<dyn Probe>,
+    pub net: Arc<dyn Net>,
+    pub cloud: Option<Arc<dyn CloudSync>>,
+}
+
+impl Default for PrepServices {
+    fn default() -> Self {
+        Self {
+            probe: Arc::new(SystemProbe),
+            net: Arc::new(SystemNet),
+            cloud: None,
+        }
+    }
+}
+
 struct Shared {
+    services: Mutex<PrepServices>,
     paths: HeroicPaths,
     spawner: Arc<dyn Spawner>,
     procs: Arc<dyn Procs>,
@@ -363,6 +394,7 @@ impl Launcher {
     ) -> Self {
         Self {
             shared: Arc::new(Shared {
+                services: Mutex::new(PrepServices::default()),
                 paths,
                 spawner,
                 procs,
@@ -372,6 +404,11 @@ impl Launcher {
                 sessions: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    /// Replaces what launch preparation uses (network, machine, cloud saves).
+    pub fn set_prep_services(&self, services: PrepServices) {
+        *self.shared.services.lock().unwrap() = services;
     }
 
     /// Real processes, default timings.
@@ -521,10 +558,9 @@ fn finish(
     req: &LaunchRequest,
     control: &Control,
     started_at: chrono::DateTime<Utc>,
-    t0: Instant,
+    elapsed: Duration,
     exit: Option<ExitInfo>,
 ) {
-    let elapsed = t0.elapsed();
     // Free the slot first so listeners can relaunch right away.
     shared.sessions.lock().unwrap().remove(&req.app_name);
     let mut outcome = None;
@@ -621,7 +657,7 @@ fn run_steam(
             ),
         ),
         SteamWaitOutcome::Finished | SteamWaitOutcome::Aborted => {
-            finish(shared, req, control, started_at, t0, None)
+            finish(shared, req, control, started_at, t0.elapsed(), None)
         }
     }
 }
@@ -673,10 +709,47 @@ fn run_process(
             log::warn!("creating {dir}: {e}");
         }
     }
+    let services = shared.services.lock().unwrap().clone();
+    let status = |n: Notice| {
+        shared.send(LaunchEvent::Status {
+            app_name: req.app_name.clone(),
+            message: n.message,
+            warning: n.warning,
+        })
+    };
+    let cancelled = || control.abort.load(Ordering::SeqCst) || control.kill.load(Ordering::SeqCst);
+    let prep = Prep {
+        paths: &shared.paths,
+        probe: &*services.probe,
+        net: &*services.net,
+        spawner: &*shared.spawner,
+        cloud: services.cloud.as_deref(),
+        cancel: &cancelled,
+        notify: &status,
+    };
+    // Cloud saves down, umu runtime.
+    match prep.before_prefix(&req.app_name, &plan.prep) {
+        Flow::Go => {}
+        Flow::Cancelled => return finish_aborted(shared, req, t0),
+        Flow::Fail(message) => return fail(shared, req, message),
+    }
+    if !plan.pre_commands.is_empty() {
+        status(Notice::info("Preparing prefix..."));
+    }
     for cmd in &plan.pre_commands {
         if control.kill.load(Ordering::SeqCst) || !run_to_completion(shared, control, cmd) {
             return finish_aborted(shared, req, t0);
         }
+    }
+    // DXVK / VKD3D into the prefix, anti-cheat runtimes.
+    match prep.after_prefix(&plan.prep) {
+        Flow::Go => {}
+        Flow::Cancelled => return finish_aborted(shared, req, t0),
+        Flow::Fail(message) => return fail(shared, req, message),
+    }
+    if cancelled() {
+        // Stopped while preparing: the game must not start afterwards.
+        return finish_aborted(shared, req, t0);
     }
     if let Some(path) = &plan.make_executable {
         if let Err(e) = shared.spawner.make_executable(path) {
@@ -747,7 +820,12 @@ fn run_process(
             run_to_completion(shared, control, cmd);
         }
     }
-    finish(shared, req, control, started_at, t0, exit);
+    // The session ends here; saving to the cloud is not playtime.
+    let elapsed = t0.elapsed();
+    if !aborted {
+        prep.after_exit(&req.app_name, &plan.prep);
+    }
+    finish(shared, req, control, started_at, elapsed, exit);
 }
 
 fn finish_aborted(shared: &Shared, req: &LaunchRequest, t0: Instant) {

@@ -64,7 +64,14 @@ pub struct GameSettings {
     pub max_sharpness: Option<i64>,
     pub enable_dxvk_fps_limit: bool,
     pub dxvk_fps_cap: String,
+    /// `autoInstallDxvk`: copy DXVK into Wine prefixes before launching.
+    pub auto_install_dxvk: bool,
     pub auto_install_dxvk_nvapi: bool,
+    /// `autoInstallVkd3d`.
+    pub auto_install_vkd3d: bool,
+    /// `autoSyncSaves` + `savesPath`: cloud saves around a launch.
+    pub auto_sync_saves: bool,
+    pub saves_path: String,
     pub eac_runtime: bool,
     pub battleye_runtime: bool,
     pub prefer_system_libs: bool,
@@ -189,7 +196,11 @@ impl GameSettings {
             max_sharpness: m.get("maxSharpness").and_then(Value::as_i64),
             enable_dxvk_fps_limit: b("enableDXVKFpsLimit"),
             dxvk_fps_cap: text(m.get("DXVKFpsCap")),
+            auto_install_dxvk: b("autoInstallDxvk"),
             auto_install_dxvk_nvapi: b("autoInstallDxvkNvapi"),
+            auto_install_vkd3d: b("autoInstallVkd3d"),
+            auto_sync_saves: b("autoSyncSaves"),
+            saves_path: text(m.get("savesPath")),
             eac_runtime: b("eacRuntime"),
             battleye_runtime: b("battlEyeRuntime"),
             prefer_system_libs: b("preferSystemLibs"),

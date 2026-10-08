@@ -8,20 +8,25 @@
 //!   with Heronite.
 //! * [`steam`]: `steam://` URIs and installed-app detection.
 
+pub mod dxvk;
 pub mod emulators;
 pub mod env;
 pub mod install_state;
 pub mod legendary;
 pub mod library;
+pub mod net;
 pub mod native;
 pub mod plan;
 pub mod playtime_watch;
 pub mod probe;
+pub mod prepare;
 pub mod procs;
 pub mod record;
+pub mod runtimes;
 pub mod runtime;
 pub mod settings;
 pub mod steam;
+pub mod tools;
 pub mod vdf;
 pub mod wine;
 pub mod wine_tools;

@@ -103,7 +103,7 @@ pub fn build(
     };
 
     // Epic games on Linux always run through Wine/Proton.
-    let wine = match wine::prepare(ctx, probe, settings) {
+    let wine = match wine::prepare_for_launch(ctx, probe, settings) {
         Ok(w) => w,
         Err(e) => return LaunchPlan::Unavailable(e),
     };
@@ -207,6 +207,19 @@ pub fn build(
         kill_patterns: vec![app.to_string()],
         commands: vec![wine.shutdown_command(&env)],
     };
+    // Heroic creates a missing prefix (`verifyWinePrefix`) before anything
+    // else touches it, so DXVK can be installed into it.
+    let (create_dirs, pre_commands) = if wine.prefix_missing(probe) {
+        (vec![s.wine_prefix.clone()], wine.prefix_creation(&env))
+    } else {
+        (vec![], vec![])
+    };
+    // Cloud saves are synced around the launch when `autoSyncSaves` is on
+    // and there is a folder to sync.
+    let mut prep = wine.prep_spec();
+    if s.auto_sync_saves && !s.saves_path.trim().is_empty() {
+        prep.cloud_saves = Some(s.saves_path.clone());
+    }
     LaunchPlan::Legendary {
         app_name: app.to_string(),
         process: ProcessPlan {
@@ -217,6 +230,9 @@ pub fn build(
                 cwd: Some(crate::emulators::node_dirname(&legendary)),
             },
             stop,
+            create_dirs,
+            pre_commands,
+            prep,
             notes: wine.notes,
             ..Default::default()
         },
@@ -335,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    fn proton_without_umu_names_proton_in_the_wrapper() {
+    fn proton_with_umu_disabled_names_proton_in_the_wrapper() {
         let p = FakeProbe::new("/home/u")
             .with_env("HERONITE_LEGENDARY_BIN", "/lg/legendary")
             .with_path("/lg/legendary")
@@ -346,7 +362,7 @@ mod tests {
             &p,
             &game(),
             None,
-            &settings(json!({})),
+            &settings(json!({"disableUMU": true})),
             &Default::default(),
         );
         let LaunchPlan::Legendary { process, .. } = plan else {
@@ -359,6 +375,81 @@ mod tests {
         assert!(
             !process.command.env.contains_key("GAMEID") || process.command.env["GAMEID"] == "umu-0"
         );
+    }
+
+    fn legendary_process(probe: &FakeProbe, s: &GameSettings, opts: &LaunchOptions) -> ProcessPlan {
+        match build_plan_with_settings(&ctx(), probe, &game(), None, s, opts) {
+            LaunchPlan::Legendary { process, .. } => process,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn play_anyway_passes_skip_version_check() {
+        let p = probe();
+        let s = settings(json!({}));
+        let normal = legendary_process(&p, &s, &Default::default());
+        assert!(!normal.command.args.contains(&"--skip-version-check".to_string()));
+        let anyway = LaunchOptions {
+            skip_version_check: true,
+            ..Default::default()
+        };
+        let process = legendary_process(&p, &s, &anyway);
+        assert!(process.command.args.contains(&"--skip-version-check".to_string()));
+    }
+
+    #[test]
+    fn cloud_saves_need_autosync_and_a_folder() {
+        let p = probe();
+        let off = legendary_process(&p, &settings(json!({"savesPath": "/saves"})), &Default::default());
+        assert_eq!(off.prep.cloud_saves, None);
+        let no_path = legendary_process(&p, &settings(json!({"autoSyncSaves": true, "savesPath": "  "})), &Default::default());
+        assert_eq!(no_path.prep.cloud_saves, None);
+        let on = legendary_process(
+            &p,
+            &settings(json!({"autoSyncSaves": true, "savesPath": "/saves"})),
+            &Default::default(),
+        );
+        assert_eq!(on.prep.cloud_saves.as_deref(), Some("/saves"));
+        // The Wine side of the preparation travels with the plan.
+        let wine = on.prep.wine.as_ref().unwrap();
+        assert_eq!(wine.wine_prefix, "/pfx");
+        assert!(!on.prep.umu);
+    }
+
+    #[test]
+    fn a_missing_prefix_is_created_before_the_game_starts() {
+        let p = probe();
+        let process = legendary_process(&p, &settings(json!({})), &Default::default());
+        assert_eq!(process.create_dirs, ["/pfx"]);
+        assert_eq!(process.pre_commands[0].program, UMU);
+        assert_eq!(process.pre_commands[0].args, ["createprefix"]);
+        assert_eq!(process.pre_commands[0].env["PROTON_VERB"], "run");
+        assert_eq!(process.pre_commands[0].env["WINEPREFIX"], "/pfx");
+        // An existing prefix needs nothing.
+        let mut ready = probe().with_path("/pfx");
+        for f in ["dosdevices", "drive_c", "system.reg", "user.reg", "userdef.reg"] {
+            ready = ready.with_path(&format!("/pfx/pfx/{f}"));
+        }
+        for f in ["pfx.lock", "tracked_files", "version", "config_info"] {
+            ready = ready.with_path(&format!("/pfx/{f}"));
+        }
+        let process = legendary_process(&ready, &settings(json!({})), &Default::default());
+        assert!(process.create_dirs.is_empty() && process.pre_commands.is_empty());
+    }
+
+    #[test]
+    fn a_missing_umu_runtime_is_planned_for_download() {
+        let p = FakeProbe::new("/home/u")
+            .with_env("HERONITE_LEGENDARY_BIN", "/lg/legendary")
+            .with_path("/lg/legendary")
+            .with_path("/games/Control")
+            .with_path("/p/GE/proton");
+        let process = legendary_process(&p, &settings(json!({})), &Default::default());
+        assert!(process.prep.umu);
+        let args = &process.command.args;
+        let i = args.iter().position(|a| a == "--wrapper").unwrap();
+        assert_eq!(args[i + 1], UMU);
     }
 
     #[test]

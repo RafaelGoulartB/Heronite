@@ -6,10 +6,23 @@ use std::sync::Arc;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use heronite_data::{CollectionGame, HeroicPaths};
 use heronite_launch::steam::{open_steam_client_uri, SteamAction, SteamLocator};
+use heronite_launch::net::SystemNet;
+use heronite_launch::prepare::CloudSync;
+use heronite_launch::runtime::PrepServices;
 use heronite_launch::{
     build_plan, LaunchEvent, LaunchOptions, LaunchPlan, LaunchRequest, Launcher, PlanContext, SystemProbe,
     SystemSpawner,
 };
+
+/// Cloud saves around a launch go through legendary (the Epic crate depends on
+/// the launch crate, so the launcher gets this through a trait).
+struct EpicCloudSaves(HeroicPaths);
+
+impl CloudSync for EpicCloudSaves {
+    fn sync(&self, app_name: &str, saves_path: &str, flag: &str) -> Result<String, String> {
+        heronite_epic::saves::sync_flag(&self.0, app_name, saves_path, Some(flag)).map_err(|e| format!("{e:#}"))
+    }
+}
 
 pub struct GameRuntime {
     launcher: Launcher,
@@ -33,6 +46,12 @@ impl GameRuntime {
         let ctx = PlanContext::load(&paths);
         let steam = SteamLocator::detect(&ctx.global, &SystemProbe);
         let launcher = Launcher::system(paths.clone(), steam, tx);
+        launcher.set_prep_services(PrepServices {
+            probe: Arc::new(SystemProbe),
+            net: Arc::new(SystemNet),
+            cloud: Some(Arc::new(EpicCloudSaves(paths.clone()))),
+        });
+        spawn_tools_update(paths.clone());
         (Self { launcher, paths }, frx)
     }
 
@@ -49,8 +68,18 @@ impl GameRuntime {
     /// and a save state chosen in the launch dialog (pending, one-shot) adds its
     /// arguments. Returns the ROM the plan runs.
     pub fn play_emulated(&self, game: &CollectionGame, rom: Option<String>) -> Result<Option<String>, String> {
+        self.launch_with(game, rom, LaunchOptions::default())
+    }
+
+    /// "Play anyway" for an Epic game with a pending update: legendary is told
+    /// not to check the game version (`--skip-version-check`).
+    pub fn play_skip_version_check(&self, game: &CollectionGame) -> Result<(), String> {
+        let opts = LaunchOptions { skip_version_check: true, ..Default::default() };
+        self.launch_with(game, None, opts).map(|_| ())
+    }
+
+    fn launch_with(&self, game: &CollectionGame, rom: Option<String>, mut opts: LaunchOptions) -> Result<Option<String>, String> {
         let ctx = PlanContext::load(&self.paths);
-        let mut opts = LaunchOptions::default();
         if game.launch_kind.as_deref() == Some("emulator") {
             let wanted = rom.clone().or_else(|| game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()));
             if let Some(state) =
@@ -102,3 +131,20 @@ impl GameRuntime {
 }
 
 pub type SharedRuntime = Arc<GameRuntime>;
+
+/// Heroic refreshes DXVK, VKD3D, DXVK-NVAPI and winetricks a few seconds after
+/// start (`DXVK.getLatest()`, `Winetricks.download()` in `main.ts`), so the
+/// first launch that needs them finds them. Off with
+/// `HERONITE_DISABLE_IDLE_JOBS` (tests against real data).
+fn spawn_tools_update(paths: HeroicPaths) {
+    if std::env::var_os("HERONITE_DISABLE_IDLE_JOBS").is_some() {
+        return;
+    }
+    let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+        heronite_launch::tools::update_all(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
+    });
+    if let Err(e) = spawned {
+        log::warn!("could not start the tools update: {e}");
+    }
+}

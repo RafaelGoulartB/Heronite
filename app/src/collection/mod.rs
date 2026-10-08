@@ -450,6 +450,8 @@ impl CollectionView {
                 self.playing.remove(&app_name);
                 self.show_toast(message, true, cx);
             }
+            // Preparing the launch (prefix, DXVK, cloud saves...): progress and non-fatal problems.
+            LaunchEvent::Status { message, warning, .. } => self.show_toast(message, warning, cx),
         }
         self.refresh_groups();
         cx.notify();

@@ -65,6 +65,18 @@ pub fn build_tool_command(
     Ok(ToolCommand { command, notes })
 }
 
+/// `runWineCommand({ commandParts, protonVerb: 'run' })` for the game's Wine
+/// (used by the pre-launch preparation: DXVK overrides, `wineboot -u`).
+pub fn wine_command(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    settings: &GameSettings,
+    parts: Vec<String>,
+) -> Result<Command, String> {
+    let wine = prepare(ctx, probe, settings)?;
+    Ok(run_in_prefix(ctx, probe, &wine, parts, None))
+}
+
 /// `runWineCommand` with `protonVerb: 'run'`.
 fn run_in_prefix(
     ctx: &PlanContext,

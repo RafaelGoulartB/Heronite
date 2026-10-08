@@ -70,6 +70,30 @@ pub struct ProcessPlan {
     pub make_executable: Option<String>,
     /// Human-readable decisions worth logging (e.g. fell back to default Wine).
     pub notes: Vec<String>,
+    /// What Heroic's `prepareLaunch` / `prepareWineLaunch` and the cloud-save
+    /// sync around a launch need before and after the process runs.
+    pub prep: PrepSpec,
+}
+
+/// Work around a launch that needs the network, the tools folder or the
+/// Wine prefix (run by [`crate::prepare`] on the launch thread).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PrepSpec {
+    /// The umu runtime is wanted but not installed: download it first.
+    pub umu: bool,
+    /// Effective settings of a game run through Wine/Proton: drives the
+    /// DXVK / DXVK-NVAPI / VKD3D install into the prefix and the EAC /
+    /// BattlEye runtime downloads.
+    pub wine: Option<GameSettings>,
+    /// `savesPath` when `autoSyncSaves` is on: cloud saves are downloaded
+    /// before the game starts and uploaded after it exits.
+    pub cloud_saves: Option<String>,
+}
+
+impl PrepSpec {
+    pub fn is_empty(&self) -> bool {
+        *self == PrepSpec::default()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,6 +347,7 @@ fn executable_plan(
         .steam_runtime
         .as_ref()
         .map(|_| crate::wine::umu_path(ctx, probe));
+    let umu_missing = umu.as_deref().is_some_and(|u| !probe.exists(u));
     let wp = build_wrappers(settings, probe, umu.as_deref());
     if let Some(err) = wp.error {
         return LaunchPlan::Unavailable(format!("Launch aborted: {err}"));
@@ -350,6 +375,10 @@ fn executable_plan(
             commands: vec![],
         },
         make_executable: (!probe.is_executable(&executable)).then(|| executable.clone()),
+        prep: PrepSpec {
+            umu: umu_missing,
+            ..Default::default()
+        },
         ..Default::default()
     })
 }
@@ -783,33 +812,44 @@ mod tests {
     }
 
     #[test]
-    fn proton_without_umu_runs_proton_directly() {
+    fn disabled_umu_runs_proton_directly() {
         let probe = FakeProbe::new("/home/u")
             .with_path("/p/GE/proton")
             .with_path("/games/win/game.exe");
         let game = sideload("g", "/games/win/game.exe", "Windows");
-        let plan = build_plan_with_settings(
+        // umu is wanted but not installed: the launch downloads it (Heroic
+        // does too) instead of silently running Proton without the runtime.
+        let LaunchPlan::Wine {
+            process, runtime, ..
+        } = build_plan_with_settings(
             &ctx(json!({})),
             &probe,
             &game,
             Some(&meta("executable")),
             &proton_settings(),
             &Default::default(),
-        );
-        let LaunchPlan::Wine {
-            process, runtime, ..
-        } = plan
+        )
         else {
             panic!()
         };
-        assert_eq!(runtime, WineRuntime::Proton);
-        assert_eq!(process.command.program, "/p/GE/proton");
-        assert_eq!(
-            process.command.args[..2],
-            ["waitforexitandrun", "/games/win/game.exe"]
-        );
+        assert_eq!(runtime, WineRuntime::Umu);
+        assert_eq!(process.command.program, UMU);
+        assert!(process.prep.umu);
         assert!(process.notes.iter().any(|n| n.contains("umu-run")));
-        // disableUMU also forces this path.
+        assert_eq!(process.prep.wine.as_ref().unwrap().wine_prefix, "/pfx");
+        // With umu in place there is nothing to download.
+        let LaunchPlan::Wine { process, .. } = build_plan_with_settings(
+            &ctx(json!({})),
+            &proton_probe(),
+            &game,
+            Some(&meta("executable")),
+            &proton_settings(),
+            &Default::default(),
+        ) else {
+            panic!()
+        };
+        assert!(!process.prep.umu);
+        // disableUMU runs Proton directly.
         let probe2 = proton_probe();
         let mut s = proton_settings();
         s.disable_umu = Some(true);
@@ -824,6 +864,22 @@ mod tests {
             panic!()
         };
         assert_eq!(runtime, WineRuntime::Proton);
+        let LaunchPlan::Wine { process, .. } = build_plan_with_settings(
+            &ctx(json!({})),
+            &probe2,
+            &game,
+            Some(&meta("executable")),
+            &s,
+            &Default::default(),
+        ) else {
+            panic!()
+        };
+        assert_eq!(process.command.program, "/p/GE/proton");
+        assert_eq!(
+            process.command.args[..2],
+            ["waitforexitandrun", "/games/win/game.exe"]
+        );
+        assert!(!process.prep.umu);
     }
 
     #[test]

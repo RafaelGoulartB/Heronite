@@ -581,7 +581,7 @@ impl CollectionView {
                 weak2
                     .update(cx, |this, cx| {
                         if let Some(g) = this.epic_game(&k2) {
-                            if let Err(err) = this.runtime.play(&g) {
+                            if let Err(err) = this.runtime.play_skip_version_check(&g) {
                                 this.show_toast(err, true, cx);
                             }
                         }

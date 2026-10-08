@@ -12,7 +12,11 @@ use heronite_data::models::SessionsFile;
 use heronite_data::{json_store, HeroicPaths};
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::procs::{FakeProcs, Procs, SystemProcs};
-use heronite_launch::runtime::FakeSpawner;
+use heronite_launch::net::FakeNet;
+use heronite_launch::plan::PrepSpec;
+use heronite_launch::prepare::CloudSync;
+use heronite_launch::probe::SystemProbe;
+use heronite_launch::runtime::{FakeSpawner, PrepServices};
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::{
     Command, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig,
@@ -568,4 +572,141 @@ fn real_spawn_failure_is_reported() {
         panic!()
     };
     assert!(message.contains("could not start"), "{message}");
+}
+
+// ---------------------------------------------------------------------------
+// Launch preparation: cloud saves, umu, prefix creation
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+struct RecordingCloud {
+    calls: std::sync::Mutex<Vec<(String, String)>>,
+    upload_delay: Duration,
+}
+
+impl CloudSync for RecordingCloud {
+    fn sync(&self, app: &str, path: &str, flag: &str) -> Result<String, String> {
+        self.calls.lock().unwrap().push((flag.to_string(), format!("{app}:{path}")));
+        if flag == "--skip-download" {
+            std::thread::sleep(self.upload_delay);
+        }
+        Ok(String::new())
+    }
+}
+
+fn services(online: bool, cloud: Option<Arc<RecordingCloud>>) -> PrepServices {
+    PrepServices {
+        probe: Arc::new(SystemProbe),
+        net: Arc::new(if online { FakeNet::online() } else { FakeNet::offline() }),
+        cloud: cloud.map(|c| c as Arc<dyn CloudSync>),
+    }
+}
+
+fn status_of(ev: LaunchEvent) -> (String, bool) {
+    match ev {
+        LaunchEvent::Status { message, warning, .. } => (message, warning),
+        other => panic!("expected a status, got {other:?}"),
+    }
+}
+
+#[test]
+fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
+    let r = rig();
+    let cloud = Arc::new(RecordingCloud { upload_delay: Duration::from_millis(500), ..Default::default() });
+    r.launcher.set_prep_services(services(true, Some(cloud.clone())));
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.prep = PrepSpec { cloud_saves: Some("/saves".into()), ..Default::default() };
+    r.launcher.launch(request("Calluna", LaunchPlan::Native(process))).unwrap();
+
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert_eq!(status_of(next(&r.rx)), ("Downloading cloud saves...".to_string(), false));
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    // The download ran before the game was spawned.
+    assert_eq!(*cloud.calls.lock().unwrap(), [("--skip-upload".to_string(), "Calluna:/saves".to_string())]);
+
+    std::thread::sleep(Duration::from_millis(60));
+    r.spawner.finish(0, 0);
+    assert_eq!(status_of(next(&r.rx)), ("Uploading cloud saves...".to_string(), false));
+    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
+    // The upload (500 ms) is not playtime.
+    assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
+    assert_eq!(cloud.calls.lock().unwrap()[1], ("--skip-download".to_string(), "Calluna:/saves".to_string()));
+    assert!(!r.launcher.is_running("Calluna"));
+}
+
+#[test]
+fn a_forced_clear_does_not_upload_saves() {
+    let r = rig();
+    let cloud = Arc::new(RecordingCloud::default());
+    r.launcher.set_prep_services(services(true, Some(cloud.clone())));
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.prep = PrepSpec { cloud_saves: Some("/s".into()), ..Default::default() };
+    r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    let _download = next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert!(r.launcher.force_clear("g"));
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert_eq!(cloud.calls.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn offline_launches_skip_cloud_saves_silently() {
+    let r = rig();
+    let cloud = Arc::new(RecordingCloud::default());
+    r.launcher.set_prep_services(services(false, Some(cloud.clone())));
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.prep = PrepSpec { cloud_saves: Some("/s".into()), ..Default::default() };
+    r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert!(cloud.calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_missing_umu_runtime_that_cannot_be_downloaded_fails_the_launch() {
+    let r = rig();
+    r.launcher.set_prep_services(services(false, None));
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.prep = PrepSpec { umu: true, ..Default::default() };
+    r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    let LaunchEvent::Error { message, .. } = next(&r.rx) else { panic!() };
+    assert!(message.contains("umu"), "{message}");
+    assert!(r.spawner.spawned().is_empty());
+    assert!(!r.launcher.is_running("g"));
+}
+
+#[test]
+fn prefix_creation_is_announced_and_runs_before_the_game() {
+    let r = rig();
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.pre_commands = vec![Command { program: "/w/wine".into(), args: vec!["wineboot".into()], ..Default::default() }];
+    r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert_eq!(status_of(next(&r.rx)), ("Preparing prefix...".to_string(), false));
+    wait_until("the prefix command", || !r.spawner.spawned().is_empty());
+    assert_eq!(r.spawner.spawned()[0].program, "/w/wine");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(r.spawner.spawned()[1].program, "/games/run.sh");
+    r.spawner.finish(1, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+}
+
+#[test]
+fn stopping_while_preparing_ends_the_launch_without_a_session() {
+    let r = rig();
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.pre_commands = vec![Command { program: "/w/wine".into(), ..Default::default() }];
+    r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    let _ = next(&r.rx);
+    wait_until("the prefix command", || !r.spawner.spawned().is_empty());
+    assert!(r.launcher.stop("g"));
+    let LaunchEvent::Exited { record, .. } = next(&r.rx) else { panic!() };
+    assert!(record.is_none());
+    assert_eq!(r.spawner.spawned().len(), 1, "the game never started");
 }
