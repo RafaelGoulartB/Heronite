@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Opens heronite-rs on Hyprland workspace 2 (silently), captures its window
+# Opens heronite-rs on Hyprland workspace 7 (silently), captures its window
 # with `grim -T` (works even when the window is off-screen), prints memory,
 # then closes ONLY the window it opened (safe with concurrent runs).
 #   usage: scripts/shot.sh out.png [wait_seconds] [binary]
@@ -13,7 +13,7 @@ import json,sys
 for c in json.load(sys.stdin):
   if c['class']=='com.heronite.rs': print(c['stableId'], c['pid'])"; }
 BEFORE=$(list | cut -d' ' -f1 | tr '\n' ' ')
-hyprctl eval "hl.exec_cmd(\"env HERONITE_NO_ANIMATIONS=1 HERONITE_NO_SINGLE_INSTANCE=1 HERONITE_NO_TRAY=1 ${SHOT_ENV:-} $BIN > $LOG 2>&1\", { workspace = \"2 silent\" })" >/dev/null
+hyprctl eval "hl.exec_cmd(\"env HERONITE_NO_ANIMATIONS=1 HERONITE_NO_SINGLE_INSTANCE=1 HERONITE_NO_TRAY=1 ${SHOT_ENV:-} $BIN > $LOG 2>&1\", { workspace = \"7 silent\" })" >/dev/null
 ID=""; P=""
 for _ in $(seq 1 200); do
   while read -r sid pid; do

@@ -35,10 +35,10 @@ SAFETY (strict — the user's real data and Heronite are live on this machine):
 - Never launch games, emulators, Steam, real winecfg/winetricks against real prefixes, Ludusavi, or real backups.
 - Never delete/modify /data/Games/** or ~/Games/** or the real ~/.config/heroic/tools.
 - Never print credentials/tokens (legendary user.json, IGDB keys).
-- GUI windows: ONLY via scripts/shot.sh (opens on Hyprland workspace 2 silently, captures with grim -T, closes only
+- GUI windows: ONLY via scripts/shot.sh (opens on Hyprland workspace 7 silently, captures with grim -T, closes only
   its own window). Never open windows any other way, never switch workspaces, never move/click the mouse.
   Usage: `SHOT_ENV="HERONITE_DISABLE_IDLE_JOBS=1 HERONITE_HEROIC_DIR=/tmp/heronite-fixture-x HERONITE_DEBUG_PAGE=wine" scripts/shot.sh /tmp/x.png 3`
-  then view the PNG (crop/resize with python PIL if large). Note: workspace 2 is usually hidden so late-arriving
+  then view the PNG (crop/resize with python PIL if large). Note: workspace 7 is usually hidden so late-arriving
   images may be missing from captures — that is a capture limitation, not a bug. You cannot click; add debug env hooks
   (like HERONITE_DEBUG_PAGE / HERONITE_DEBUG_DIALOG) to open the states you need to verify.
 - Unset ELECTRON_RUN_AS_NODE if you ever run Electron (you shouldn't need to).
