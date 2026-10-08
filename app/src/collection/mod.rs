@@ -77,6 +77,8 @@ pub struct CollectionView {
     menu_close: Option<Task<()>>,
     /// Hovered parts of the open header menu (`ui::dropdown::PART_*`).
     menu_parts: u8,
+    /// Smooth mouse-wheel scrolling of the game list.
+    wheel: WheelScroll,
     facet_flyout: Option<FacetKind>,
     refreshing: bool,
     runtime: Arc<GameRuntime>,
@@ -184,6 +186,7 @@ impl CollectionView {
             open_menu: None,
             menu_close: None,
             menu_parts: 0,
+            wheel: WheelScroll::default(),
             facet_flyout: None,
             refreshing: false,
             runtime: Arc::new(runtime),
@@ -513,6 +516,52 @@ impl CollectionView {
         }
     }
 
+    /// Mouse wheel over the list. Wheel notches (line deltas) scroll
+    /// ~100px like Chromium, animated over ~120ms; touchpads (pixel deltas)
+    /// are applied as they come.
+    fn on_wheel(&mut self, delta: ScrollDelta, window: &mut Window, cx: &mut Context<Self>) {
+        match delta {
+            ScrollDelta::Pixels(p) => {
+                self.list_state.scroll_by(-p.y);
+                cx.notify();
+            }
+            ScrollDelta::Lines(l) => {
+                self.wheel.pending += -l.y * WHEEL_PX_PER_LINE;
+                if !self.wheel.ticking {
+                    self.wheel.ticking = true;
+                    self.wheel.last = Some(Instant::now());
+                    cx.on_next_frame(window, |this, window, cx| this.tick_wheel(window, cx));
+                }
+            }
+        }
+    }
+
+    fn tick_wheel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let now = Instant::now();
+        let dt = self.wheel.last.map_or(0.016, |l| now.duration_since(l).as_secs_f32()).clamp(0.001, 0.05);
+        self.wheel.last = Some(now);
+        // Exponential ease-out (time constant 40ms): ~95% done in 120ms.
+        let k = 1. - (-dt / 0.04).exp();
+        let mut step = self.wheel.pending * k;
+        if self.wheel.pending.abs() < 1. {
+            step = self.wheel.pending;
+        }
+        self.wheel.pending -= step;
+        // Stop at the edges instead of accumulating pending distance.
+        let before = self.list_state.scroll_px_offset_for_scrollbar().y;
+        self.list_state.scroll_by(px(step));
+        let max = self.list_state.max_offset_for_scrollbar().y;
+        if (step < 0. && f32::from(before) >= 0.) || (step > 0. && f32::from(-before) >= f32::from(max)) {
+            self.wheel.pending = 0.;
+        }
+        cx.notify();
+        if self.wheel.pending != 0. {
+            cx.on_next_frame(window, |this, window, cx| this.tick_wheel(window, cx));
+        } else {
+            self.wheel.ticking = false;
+        }
+    }
+
     fn list_column_width(viewport_w: f32) -> (f32, usize) {
         if viewport_w <= 780. {
             (theme::LIST_COL_W_SM, 1)
@@ -709,6 +758,7 @@ impl CollectionView {
 
 impl Render for CollectionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timer = RenderTimer(Instant::now());
         if !self.first_frame_logged {
             self.first_frame_logged = true;
             log::info!("first render after {:?}", self.started.elapsed());
@@ -757,6 +807,24 @@ impl Render for CollectionView {
             .size_full()
             .child(list(self.list_state.clone(), cx.processor(Self::render_item)).size_full());
 
+        // Captures wheel events over the list (before the list's own handler)
+        // to scroll farther and smoothly. Uses its own hitbox so dialogs and
+        // menus drawn on top keep their scrolling.
+        let weak_wheel = cx.entity().downgrade();
+        let wheel_layer = canvas(
+            |bounds, window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
+            move |_, hitbox, window, _| {
+                window.on_mouse_event(move |ev: &ScrollWheelEvent, phase, window, cx| {
+                    if phase == DispatchPhase::Capture && hitbox.is_hovered(window) {
+                        cx.stop_propagation();
+                        let delta = ev.delta;
+                        weak_wheel.update(cx, |this, cx| this.on_wheel(delta, window, cx)).ok();
+                    }
+                });
+            },
+        )
+        .absolute()
+        .inset_0();
         let list_scrollbar = crate::ui::scrollbar(
             self.list_state.scroll_px_offset_for_scrollbar().y,
             self.list_state.max_offset_for_scrollbar().y,
@@ -962,6 +1030,7 @@ impl Render for CollectionView {
                                         linear_color_stop(theme::rgb_a(7, 9, 12, 0.1), 0.72),
                                     ))
                                     .child(list_el)
+                                    .child(wheel_layer)
                                     .children(sticky)
                                     .children(list_scrollbar),
                             )
@@ -973,6 +1042,26 @@ impl Render for CollectionView {
             .children(self.dialog.clone())
             .children(self.render_gallery(window, cx))
             .children(self.render_viewer(window, cx))
+    }
+}
+
+/// Pixels per wheel "line": Wayland sends 3 lines per notch, Chromium
+/// scrolls ~100px per notch.
+const WHEEL_PX_PER_LINE: f32 = 100. / 3.;
+
+#[derive(Default)]
+struct WheelScroll {
+    pending: f32,
+    ticking: bool,
+    last: Option<Instant>,
+}
+
+/// Logs how long `CollectionView::render` took (RUST_LOG=debug).
+struct RenderTimer(Instant);
+
+impl Drop for RenderTimer {
+    fn drop(&mut self) {
+        log::debug!("render {:?}", self.0.elapsed());
     }
 }
 
