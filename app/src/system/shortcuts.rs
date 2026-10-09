@@ -28,6 +28,8 @@ use heronite_data::game_config::load_global;
 use heronite_data::{art, AppPaths, ArtContext, CollectionGame, HeroicPaths, Library};
 use heronite_shortcuts::desktop::{self, Roots};
 use heronite_shortcuts::steam::{self, ArtFiles, ShortcutSpec};
+use heronite_shortcuts::steam_client::{SteamClient, DEFAULT_ADDR};
+use heronite_shortcuts::steam_running::{self, UrlHandler};
 use heronite_shortcuts::GameId;
 use serde_json::Value;
 
@@ -280,7 +282,29 @@ fn steam_spec(game: &CollectionGame, icon: Option<&Path>) -> ShortcutSpec {
     }
 }
 
-/// "Add to Steam" (Steam must be closed).
+/// The running Steam's debugger: `HERONITE_STEAM_CEF` (`host:port`, tests
+/// against a fake) or Steam's own address.
+fn steam_client() -> SteamClient {
+    SteamClient::new(crate::env::value("HERONITE_STEAM_CEF").unwrap_or_else(|| DEFAULT_ADDR.to_string()))
+}
+
+/// Where `.desktop` wrappers for the `steam://addnonsteamgame` fallback live.
+fn wrapper_dir() -> PathBuf {
+    Roots::detect().applications.join(steam::WRAPPER_DIRS[0])
+}
+
+/// The `steam` command: `HERONITE_STEAM_BIN` (tests), `steam` on the PATH.
+fn url_handler() -> UrlHandler {
+    UrlHandler::new(crate::env::value("HERONITE_STEAM_BIN").unwrap_or_else(|| "steam".into()), wrapper_dir())
+}
+
+const STEAM_RUNNING: &str =
+    "Steam is running. Close Steam and try again, or restart Steam once to let Heronite manage shortcuts while Steam is running.";
+
+/// "Add to Steam". With Steam closed, `shortcuts.vdf` is edited (Steam picks
+/// it up at its next start). With Steam running, Heroic's order: its debugging
+/// interface, else the `steam://addnonsteamgame` handler (which also turns the
+/// interface on for the next Steam start).
 pub fn add_to_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome {
     let mut out = Outcome::default();
     let (lib, game) = match find_game(heroic, runner, app_name) {
@@ -294,16 +318,37 @@ pub fn add_to_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outco
         return out;
     }
     let steam_dir = steam_path(heroic);
-    if steam::is_steam_running(&steam_dir) {
-        out.err(format!(
-            "Steam is running. Close Steam and try again: it overwrites its shortcuts when it exits, so adding {} now would be lost.",
-            game.title
-        ));
-        return out;
+    let running = steam::is_steam_running(&steam_dir);
+    let client = steam_client();
+    let live = running && client.is_available();
+    if running && !live {
+        steam::enable_client_api_on_next_start(&steam_dir);
+        if steam::is_added(&steam_dir, &game_id(&game)) {
+            out.ok(format!("{} was successfully added to Steam.", game.title));
+            return out;
+        }
     }
     let icon = icon_file(heroic, &lib, &game);
     let art = steam_art(heroic, &lib, &game);
-    match steam::add_game(&steam_dir, &game_id(&game), &steam_spec(&game, icon.as_deref()), &art) {
+    let spec = steam_spec(&game, icon.as_deref());
+    if live {
+        match steam_running::add_with_client(&client, &steam_dir, &game_id(&game), &spec, &art) {
+            Ok(_) => out.ok(format!("{} was successfully added to Steam.", game.title)),
+            Err(e) => out.err(format!("Adding {} to Steam failed with:\n{e:#}", game.title)),
+        }
+        return out;
+    }
+    if running {
+        match steam_running::add_with_url_handler(&url_handler(), &steam_dir, &game_id(&game), &spec, &art) {
+            Ok(_) => out.ok(format!("{} was successfully added to Steam.", game.title)),
+            Err(e) => {
+                log::error!("Failed to add {} to Steam via the url handler with: {e:#}", game.title);
+                out.err(STEAM_RUNNING);
+            }
+        }
+        return out;
+    }
+    match steam::add_game(&steam_dir, &game_id(&game), &spec, &art) {
         Ok(report) if report.errors.is_empty() => {
             out.ok(format!("{} was successfully added to Steam. A restart of Steam is required for changes to take effect.", game.title))
         }
@@ -321,7 +366,8 @@ pub fn add_to_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outco
     out
 }
 
-/// "Remove from Steam" (Steam must be closed).
+/// "Remove from Steam": the file with Steam closed, the debugging interface
+/// with Steam running (the URL handler cannot remove).
 pub fn remove_from_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> Outcome {
     let mut out = Outcome::default();
     let (_, game) = match find_game(heroic, runner, app_name) {
@@ -331,7 +377,23 @@ pub fn remove_from_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> 
             return out;
         }
     };
-    match steam::remove_game(&steam_path(heroic), &game_id(&game)) {
+    let steam_dir = steam_path(heroic);
+    if steam::is_steam_running(&steam_dir) {
+        let client = steam_client();
+        if !client.is_available() {
+            steam::enable_client_api_on_next_start(&steam_dir);
+            log::error!("Can't remove \"{}\" from Steam while Steam is running.", game.title);
+            out.err(STEAM_RUNNING);
+            return out;
+        }
+        match steam_running::remove_with_client(&client, &steam_dir, &game_id(&game), &wrapper_dir()) {
+            Ok(true) => out.ok(format!("{} was successfully removed from Steam.", game.title)),
+            Ok(false) => {}
+            Err(e) => out.err(format!("Removing {} from Steam failed with:\n{e:#}", game.title)),
+        }
+        return out;
+    }
+    match steam::remove_game(&steam_dir, &game_id(&game)) {
         Ok(report) if report.errors.is_empty() => {
             if !report.users_done.is_empty() {
                 out.ok(format!("{} was successfully removed from Steam. A restart of Steam is required for changes to take effect.", game.title));
@@ -351,11 +413,21 @@ pub fn remove_from_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> 
     out
 }
 
-/// `isAddedToSteam`: for the menu label.
+/// `isAddedToSteam`: for the menu label. A running Steam with its debugging
+/// interface is asked directly (its list is newer than the file).
 pub fn is_added_to_steam(heroic: &HeroicPaths, runner: &str, app_name: &str) -> bool {
-    find_game(heroic, runner, app_name)
-        .map(|(_, g)| steam::is_added(&steam_path(heroic), &game_id(&g)))
-        .unwrap_or(false)
+    let Ok((_, game)) = find_game(heroic, runner, app_name) else { return false };
+    let steam_dir = steam_path(heroic);
+    if steam::is_steam_running(&steam_dir) {
+        let client = steam_client();
+        if client.is_available() {
+            match steam_running::is_added_with_client(&client, &game_id(&game)) {
+                Ok(added) => return added,
+                Err(e) => log::warn!("Failed to list Steam shortcuts with: {e:#}"),
+            }
+        }
+    }
+    steam::is_added(&steam_dir, &game_id(&game))
 }
 
 /// Heroic's `addShortcuts(game)` after a game was installed or added: the

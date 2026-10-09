@@ -117,7 +117,10 @@ pub fn build(
         return LaunchPlan::Unavailable("This Epic game is not installed".into());
     }
     let install_path = game.install.install_path.as_deref().unwrap_or("");
-    if install_path.is_empty() || !probe.exists(install_path) {
+    // EA app / Ubisoft Connect games live inside the prefix, with their store
+    // app; legendary only opens them through it (`--origin` / `--ubisoft`).
+    let third_party = game.rest.get("thirdPartyManagedApp").and_then(Value::as_str).is_some_and(|s| !s.is_empty());
+    if !third_party && (install_path.is_empty() || !probe.exists(install_path)) {
         return LaunchPlan::Unavailable(format!("Install folder not found: {install_path}"));
     }
     let Some(legendary) = find_legendary(ctx, probe) else {
@@ -330,6 +333,22 @@ mod tests {
             base[k] = v.clone();
         }
         GameSettings::from_map(base.as_object().unwrap(), "/home/u")
+    }
+
+    #[test]
+    fn store_app_games_launch_without_an_install_folder() {
+        let mut g = game();
+        g.install.install_path = None;
+        let missing = build_plan_with_settings(&ctx(), &probe(), &g, None, &settings(json!({})), &LaunchOptions::default());
+        assert!(matches!(missing, LaunchPlan::Unavailable(ref why) if why.contains("Install folder not found")), "{missing:?}");
+
+        g.rest.insert("thirdPartyManagedApp".into(), json!("UbisoftConnect"));
+        g.rest.insert("isUbisoftManaged".into(), json!(true));
+        let plan = build_plan_with_settings(&ctx(), &probe(), &g, None, &settings(json!({})), &LaunchOptions::default());
+        let LaunchPlan::Legendary { process, .. } = plan else { panic!("{plan:?}") };
+        assert!(process.command.args.iter().any(|a| a == "--ubisoft"), "{:?}", process.command.args);
+        assert!(!process.command.env.contains_key("STEAM_COMPAT_INSTALL_PATH"));
+        assert!(process.prep.first_launch.unwrap().ubisoft_managed);
     }
 
     #[test]

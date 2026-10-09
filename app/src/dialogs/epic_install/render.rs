@@ -153,7 +153,25 @@ impl Render for EpicInstallDialog {
         let importing = self.mode == Mode::Import;
         let mut body = div().flex().flex_col().gap(px(14.));
 
-        if importing {
+        if let Some((header, detail)) = self.third_party_notice() {
+            let mut notice = div()
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .child(div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child("This game is managed by a third-party application"))
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(header));
+            if !detail.is_empty() {
+                notice = notice.child(meta_text(detail));
+            }
+            body = body.child(
+                crate::ui::controls::card_box()
+                    .flex_row()
+                    .gap(px(12.))
+                    .p(px(14.))
+                    .child(icon(if self.third_party.as_ref().is_some_and(Result::is_ok) { Icon::Check } else { Icon::Warning }, px(20.), theme::text_primary()))
+                    .child(notice.flex_1().min_w_0()),
+            );
+        } else if importing {
             body = body.child(meta_text("Choose the folder where the game is already installed (the folder that holds the game files)."));
             let has = !text_of(&self.import_path, cx).is_empty();
             body = body.child(path_field(
@@ -247,8 +265,8 @@ impl Render for EpicInstallDialog {
             body = body.child(wine);
         }
 
-        let not_enough = self.space.as_ref().is_some_and(|s| self.info.is_some() && (s.free as f64) < self.disk_bytes());
-        let ready = self.info.is_some() && !text_of(&self.path, cx).is_empty() && !self.busy;
+        let not_enough = self.third_party.is_none() && self.space.as_ref().is_some_and(|s| self.info.is_some() && (s.free as f64) < self.disk_bytes());
+        let ready = self.can_install(cx);
         let primary = if importing {
             action_button("epic-do-import", ButtonKind::Primary, "Import", !text_of(&self.import_path, cx).is_empty(), cx.listener(|this, _, _, cx| this.import(cx)))
         } else {
@@ -264,7 +282,7 @@ impl Render for EpicInstallDialog {
             this.mode = if this.mode == Mode::Install { Mode::Import } else { Mode::Install };
             cx.notify();
         }));
-        let footer = div().flex().gap(px(10.)).child(switch).child(primary).into_any_element();
+        let footer = div().flex().gap(px(10.)).when(self.third_party.is_none(), |d| d.child(switch)).child(primary).into_any_element();
         let entity = cx.entity().downgrade();
         dialog(
             DialogProps { id: "epic-install".into(), title: self.title.clone().into(), width: 600., height: None },

@@ -3617,6 +3617,7 @@ dependencies = [
  "heronite-data",
  "libc",
  "log",
+ "serde_json",
  "tempfile",
 ]
 

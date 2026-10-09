@@ -15,6 +15,7 @@ use crate::library;
 use crate::manager::{Job, JobResult};
 use crate::progress::{verification_percent, Progress, ProgressParser};
 use crate::queue::{DmElement, DmStatus, ElementKind};
+use crate::third_party::{self, Provider};
 
 /// Settings of `config.json` that change how legendary downloads.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -87,9 +88,10 @@ pub struct LegendaryJob {
 impl LegendaryJob {
     fn run_install(&self, el: &DmElement, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
         let p = &el.params;
-        let third_party = p.game_info.get("thirdPartyManagedApp").and_then(Value::as_str).filter(|s| !s.is_empty());
-        if let Some(app) = third_party {
-            return JobResult::error(format!("{} games ({app}) are not supported yet", p.title()));
+        match third_party::managed_by(&p.game_info) {
+            Some(Ok(provider)) => return self.run_third_party(el, provider, cancel, on_progress),
+            Some(Err(app)) => return JobResult::error(format!("{} is managed by {app}, which is not supported", p.title())),
+            None => {}
         }
         let platform = if p.platform_to_install.is_empty() { "Windows" } else { p.platform_to_install.as_str() };
         // Heroic scales progress by the manifest's download size. An update only
@@ -125,6 +127,25 @@ impl LegendaryJob {
                 JobResult::error(if why.is_empty() { format!("legendary exited with {:?}", out.code) } else { why })
             }
         }
+    }
+
+    /// `installEA` / `installUbisoft` on Linux: fetch the store's installer
+    /// (run in the prefix at the first launch) and mark the game installed.
+    fn run_third_party(&self, el: &DmElement, provider: Provider, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
+        if let Err(err) = third_party::ensure_installer(&self.heroic, provider, cancel, on_progress) {
+            if cancel.is_requested() {
+                return JobResult::abort();
+            }
+            return JobResult::error(format!("Could not download the {} installer: {err:#}", provider.label()));
+        }
+        let platform = if el.params.platform_to_install.is_empty() { "Windows" } else { el.params.platform_to_install.as_str() };
+        if let Err(err) = third_party::add_installed(&self.heroic, &el.params.app_name, platform) {
+            return JobResult::error(format!("{err:#}"));
+        }
+        if let Err(err) = library::write_library(&self.heroic) {
+            log::warn!("rebuilding the library: {err:#}");
+        }
+        JobResult::done()
     }
 
     fn run_once(
@@ -204,7 +225,18 @@ pub fn repair(
 
 /// `uninstall` (`legendary uninstall -y`) and rebuilds the library file. The
 /// caller removes the prefix / settings afterwards if the user asked for it.
+/// An EA app / Ubisoft Connect game only leaves `third-party-installed.json`
+/// (the game itself lives inside the prefix, with its store app).
 pub fn uninstall(heroic: &HeroicPaths, legendary: &Legendary, app_name: &str) -> OpResult {
+    if third_party::is_installed(heroic, app_name) {
+        return match third_party::remove_installed(heroic, app_name) {
+            Ok(_) => {
+                let _ = library::write_library(heroic);
+                OpResult::ok("Uninstalled")
+            }
+            Err(err) => OpResult::err(format!("{err:#}")),
+        };
+    }
     match legendary.run(&["uninstall", app_name, "-y"], &[]) {
         Err(err) => OpResult::err(format!("{err:#}")),
         Ok(out) if out.success() => {
@@ -441,17 +473,41 @@ mod tests {
     }
 
     #[test]
-    fn failures_and_third_party_games_are_errors() {
+    fn failures_and_unsupported_stores_are_errors() {
         let dir = tempfile::tempdir().unwrap();
         let (job, _) = job(dir.path(), "if [ \"$1\" = info ]; then echo '{\"manifest\": {}}'; else echo '[cli] ERROR: disk full' >&2; exit 1; fi");
         let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Error);
         assert!(r.error.unwrap().contains("disk full"));
         let mut third = element(ElementKind::Install);
-        third.params.game_info = json!({"title": "FIFA", "thirdPartyManagedApp": "Origin"});
+        third.params.game_info = json!({"title": "Overwatch", "thirdPartyManagedApp": "Battle.net"});
         let r = job.run(&third, &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Error);
-        assert!(r.error.unwrap().contains("not supported"));
+        assert!(r.error.unwrap().contains("Battle.net, which is not supported"));
+    }
+
+    #[test]
+    fn ea_and_ubisoft_games_install_and_uninstall_without_legendary() {
+        let dir = tempfile::tempdir().unwrap();
+        let (job, heroic) = job(dir.path(), "echo called >&2; exit 1");
+        // The installer is already there: nothing to download.
+        let redist = third_party::redist_dir(&heroic);
+        std::fs::create_dir_all(&redist).unwrap();
+        std::fs::write(redist.join("UbisoftConnectInstaller.exe"), "MZ").unwrap();
+        let mut el = element(ElementKind::Install);
+        el.params.app_name = "Anchovy".into();
+        el.params.path = "thirdParty".into();
+        el.params.game_info = json!({"title": "Rayman Legends", "thirdPartyManagedApp": "UbisoftConnect"});
+        let r = job.run(&el, &Cancel::new(), &mut |_| {});
+        assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
+        assert!(third_party::is_installed(&heroic, "Anchovy"));
+        assert!(calls(dir.path()).is_empty(), "legendary must not run");
+        assert!(heroic.legendary_library().exists());
+
+        let r = uninstall(&heroic, &job.legendary, "Anchovy");
+        assert!(r.ok, "{}", r.message);
+        assert!(!third_party::is_installed(&heroic, "Anchovy"));
+        assert!(calls(dir.path()).is_empty(), "legendary must not run");
     }
 
     #[test]

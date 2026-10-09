@@ -231,6 +231,10 @@ struct RawGame {
     extra: Option<Value>,
     /// Kept in `GameInfo::rest` (the game settings show the Cloud saves tab).
     cloud_save_enabled: Option<bool>,
+    /// Kept in `GameInfo::rest`: EA app / Ubisoft Connect games install
+    /// differently.
+    #[serde(rename = "thirdPartyManagedApp")]
+    third_party_managed_app: Option<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -266,10 +270,16 @@ impl From<RawGame> for GameInfo {
             is_linux_native: g.is_linux_native,
             description: g.description,
             extra: g.extra,
-            rest: g
-                .cloud_save_enabled
-                .map(|b| [("cloud_save_enabled".to_string(), Value::Bool(b))].into_iter().collect())
-                .unwrap_or_default(),
+            rest: {
+                let mut rest = crate::models::Extra::new();
+                if let Some(b) = g.cloud_save_enabled {
+                    rest.insert("cloud_save_enabled".to_string(), Value::Bool(b));
+                }
+                if let Some(app) = g.third_party_managed_app.filter(|s| !s.is_empty()) {
+                    rest.insert("thirdPartyManagedApp".to_string(), Value::String(app));
+                }
+                rest
+            },
         }
     }
 }

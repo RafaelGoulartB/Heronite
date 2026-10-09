@@ -150,8 +150,7 @@ menu ☰ (canto superior esquerdo), sem sidebar.
 - [x] Paridade do lançamento: cloud saves automáticos, "Play anyway", preparo do prefixo (DXVK/VKD3D/NVAPI,
       runtimes EAC/BattlEye, umu), download das ferramentas (`docs/agents/launch-parity.md`).
 - [ ] Testar ao vivo (cliques): login Epic, instalar/pausar/cancelar, Wine Manager, abas novas.
-- [ ] Faltam: `legendarySetup` (redistribuíveis/EOS overlay), `known_fixes` installFixes, EA/Ubisoft,
-      seletor de plataforma, atalhos de desktop.
+- [ ] Falta: seletor de plataforma (`legendarySetup`, `known_fixes`, EA/Ubisoft e atalhos já entraram).
 - [x] Fase 3b (2026-10-08): itens restantes da Collection, Add game (sideload), `--launch`/`heroic://`/`heronite-rs://`,
       instância única, atalhos (desktop/menu/Steam), bandeja. Janelas de teste agora no **workspace 7**.
 - Release após a fase 3: 537 testes passando, PSS ~100–106 MB (malloc_trim após a carga), binário 47 MB
@@ -333,8 +332,7 @@ saves na nuvem. O `legendaryConfig/**` só é gravado pelo próprio legendary.
   reconstruída -> Collection recarregada -> histórico `done`); capturas de todas as telas e diálogos.
 - **Limitações**: instalar/atualizar/verificar/mover/desinstalar/importar/sync de saves **nunca rodaram com o
   legendary real** (só contra o falso); cliques reais não testados (sem mouse; o login embutido nunca foi usado com
-  credenciais); jogos gerenciados por terceiros (EA/Ubisoft) dão erro "not supported yet" (o Heroic só grava
-  `third-party-installed.json` no Linux, dentro do `legendaryConfig`); sem seletor de plataforma (só Windows no Linux),
+  credenciais); jogos EA/Ubisoft: ver a seção "EA app / Ubisoft Connect" no fim; sem seletor de plataforma (só Windows no Linux),
   sem branches/builds (GOG), sem atalhos de desktop/Steam, sem notificações do sistema, sem checagem de "Epic offline";
   `detect_path` não descarta o `save_path` já guardado (o Heroic edita o `installed.json`); "Play anyway" no aviso de
   update pode ser recusado pelo legendary (o plano de lançamento ainda não passa `--skip-version-check`).
@@ -423,8 +421,7 @@ Código em `crates/shortcuts` (atalhos `.desktop` e `shortcuts.vdf` da Steam, se
   em `userdata/<id>/config/shortcuts.vdf` de **todos** os usuários (VDF binário genérico, re-serialização byte a byte; entrada
   no layout nativo da Steam; `Exe="<binário>"`, `LaunchOptions=--no-gui "heronite-rs://launch?appName=..&runner=.."`; arte
   em `grid/` `<id>p.jpg`, `<id>.jpg`, `<id>_hero.jpg`, `<id>_logo.jpg` (PNG transparente como o Heroic); reconhece também entradas
-  criadas pelo Heroic (`heroic://launch`)). **Steam precisa estar fechada** (checa `steam.pid` como o Heroic; aberta => erro
-  explicando; o caminho "via SteamClient/CEF" do Heroic não foi portado). Raízes: `HERONITE_DESKTOP_DIR`,
+  criadas pelo Heroic (`heroic://launch`)). Com a Steam aberta: ver "Add to Steam com a Steam aberta" no fim. Raízes: `HERONITE_DESKTOP_DIR`,
   `HERONITE_APPLICATIONS_DIR`, `HERONITE_STEAM_DIR`.
 - **UI**: itens "Add/Remove shortcuts" e "Add to / Remove from Steam" no menu de contexto (jogos instalados, não Steam-URI;
   estado sondado em segundo plano), toggles na aba General (Hide System Tray Icon, Exit to System Tray, Start Minimized, Use Dark
@@ -1113,3 +1110,37 @@ neutralizada da fixture. Ganchos novos: `HERONITE_DEBUG_BROWSE=<n>@<ms>` (seleci
   (acorda a janela no workspace oculto durante a espera). Não testado com um controle físico (nenhum conectado).
 - **Fora do console** (precisam do desktop): escolher arte da web nas configurações do jogo (só "voltar ao padrão"), o assistente
   de metadados, editar status, digitar a senha da Epic na janela de login (o código de autorização funciona pelo teclado na tela).
+
+## Add to Steam com a Steam aberta e jogos EA / Ubisoft (2026-10-09)
+
+**Steam aberta** (port de `nonesteamgame/{steamClient,steamUrlHandler}.ts`): a Steam lê `shortcuts.vdf` só ao abrir e o regrava ao
+sair, então com ela aberta o arquivo não serve. Ordem do Heroic:
+1. **API do cliente** (`crates/shortcuts/src/steam_client.rs`): depurador CEF da Steam em `127.0.0.1:8080` (só existe se o arquivo
+   `.cef-enable-remote-debugging` estava na pasta da Steam quando ela abriu; nesta máquina ele já existe). `GET /json` acha o alvo
+   `SharedJSContext` e um WebSocket roda `Runtime.evaluate` com `SteamClient.Apps.AddShortcut/SetShortcut*/RemoveShortcut/
+   SetCustomArtworkForApp` e a lista de `appStore`/`appDetailsStore` (os mesmos scripts do Heroic). HTTP e WebSocket mínimos escritos
+   à mão (TCP local, sem TLS, sem dependência nova); o WebSocket sempre vai ao endereço configurado, nunca ao host que a lista indicar.
+   Efeito imediato, sem reiniciar a Steam; a arte vai para o `grid/` de todos os usuários e também pela API.
+2. **Sem a API**: cria o arquivo-flag (vale no próximo início da Steam) e usa `steam steam://addnonsteamgame/<wrapper>` com um
+   `.desktop` em `~/.local/share/applications/heronite-rs-steam-shortcuts/<runner>-<app>.desktop` (+ `/tmp/addnonsteamgamefile`);
+   espera a Steam gravar a entrada (até 10 s) para pôr a arte (`steam_running.rs`). Remover sem a API não dá: erro pedindo para fechar
+   a Steam ou reiniciá-la uma vez.
+- `is_added_to_steam` pergunta ao cliente quando ele responde. Atalhos casam pelo link de lançamento (nosso e do Heroic) ou pelo wrapper
+  (nosso ou `heroic-steam-shortcuts`). No app: `system/shortcuts.rs` (`add_to_steam`, `remove_from_steam`, `is_added_to_steam`).
+- Testes: `HERONITE_STEAM_CEF=<host:porta>` e `HERONITE_STEAM_BIN` trocam o depurador e o comando `steam`. 35 testes no crate, incluindo
+  um depurador CEF falso (lista, add, remove, arte, exceções, frames grandes), arte para todos os usuários e o URL handler com `steam`
+  falso. **Não verificado com a Steam real** (estava fechada).
+
+**EA app / Ubisoft Connect** (port de `thirdParty.ts`, `installEA`/`installUbisoft`, `ThirdPartyDialog`): o diálogo de instalar mostra o
+aviso do Heroic e só as opções de Wine (sem tamanho, pasta, DLC ou importar). O job da fila não chama o legendary: baixa
+`EAappInstaller.exe` (2 MB) ou `UbisoftConnectInstaller.exe` (264 MB, com progresso e cancelar, `.part` + rename) para
+`tools/redist/legendary` e grava `legendaryConfig/legendary/third-party-installed.json` (`[["app","Windows"]]`, sem duplicar). No
+primeiro lançamento o instalador roda no prefixo (já existia em `first_launch`) e o legendary abre o jogo com `--origin`/`--ubisoft`;
+o plano de lançamento não exige mais pasta de instalação para esses jogos. Desinstalar só tira o jogo do arquivo (o jogo vive no
+prefixo; "remove prefix" o apaga). Menu de contexto sem Import / Update / Verify / Move, como no Heroic. Outras lojas
+(`thirdPartyManagedApp` desconhecido) continuam sem suporte, com mensagem clara. O leitor enxuto da biblioteca agora mantém
+`thirdPartyManagedApp` em `GameInfo::rest`.
+- Verificado (fixture `/tmp/heronite-fixture-3p`, legendary falso): diálogo desktop e console, menu antes e depois de instalar, job real
+  do EA (baixou o instalador verdadeiro, gravou o arquivo, biblioteca reconstruída com o jogo instalado, nenhuma chamada ao legendary)
+  e uninstall. **Não verificado**: rodar o instalador da EA/Ubisoft no Wine e jogar (nenhum jogo foi lançado).
+

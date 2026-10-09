@@ -4,6 +4,8 @@
 //!   application menu (`~/.local/share/applications`).
 //! * [`vdf`] + [`steam`]: the binary `shortcuts.vdf` of every Steam user
 //!   ("Add to Steam" as a non-Steam game) and its `grid/` artwork.
+//! * [`steam_client`] + [`steam_running`]: the same while Steam runs, through
+//!   its CEF debugging interface or the `steam://addnonsteamgame` handler.
 //!
 //! Nothing here knows about GPUI or the library: callers pass plain data, and
 //! every root (Desktop, applications, Steam) is a parameter so tests (and the
@@ -11,6 +13,8 @@
 
 pub mod desktop;
 pub mod steam;
+pub mod steam_client;
+pub mod steam_running;
 pub mod sweep;
 pub mod vdf;
 

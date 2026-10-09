@@ -180,25 +180,31 @@ impl CollectionView {
         if queued {
             menu = add(menu, "downloads", Icon::Downloading, "Show in Downloads", Box::new(|_| Some(Request::OpenDownloads)), cx);
         }
+        // EA app / Ubisoft Connect keep their games: legendary cannot import,
+        // update, verify or move them (Heroic hides these too).
         if !game.installed {
-            menu = add(
-                menu,
-                "import",
-                Icon::FolderOpen,
-                "Import game",
-                Box::new(|k| Some(Request::Install { key: k.to_string(), import: true })),
-                cx,
-            );
+            if !third_party {
+                menu = add(
+                    menu,
+                    "import",
+                    Icon::FolderOpen,
+                    "Import game",
+                    Box::new(|k| Some(Request::Install { key: k.to_string(), import: true })),
+                    cx,
+                );
+            }
             return menu;
         }
         if busy || queued {
             return menu;
         }
-        if update {
-            menu = add(menu, "update", Icon::Update, "Update", Box::new(|_| None), cx);
+        if !third_party {
+            if update {
+                menu = add(menu, "update", Icon::Update, "Update", Box::new(|_| None), cx);
+            }
+            menu = add(menu, "verify", Icon::Build, "Verify and repair", Box::new(|k| Some(Request::Verify(k.to_string()))), cx);
+            menu = add(menu, "move", Icon::Folder, "Move install", Box::new(|k| Some(Request::Move(k.to_string()))), cx);
         }
-        menu = add(menu, "verify", Icon::Build, "Verify and repair", Box::new(|k| Some(Request::Verify(k.to_string()))), cx);
-        menu = add(menu, "move", Icon::Folder, "Move install", Box::new(|k| Some(Request::Move(k.to_string()))), cx);
         if has_dlcs && !third_party {
             menu = add(menu, "modify", Icon::Tune, "Modify installation", Box::new(|k| Some(Request::Modify(k.to_string()))), cx);
         }

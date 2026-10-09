@@ -2,8 +2,8 @@
 //! plus the artwork in `config/grid/`. Port of Heroic's
 //! `shortcuts/nonesteamgame/{nonesteamgame,steamhelper,steamProcess}.ts` for
 //! the case where Steam is **not running** (Steam reads `shortcuts.vdf` at
-//! start and rewrites it on exit, so a change made meanwhile is lost; Heroic
-//! then needs Steam's CEF debugging API, which is out of scope here).
+//! start and rewrites it on exit, so a change made meanwhile is lost). A
+//! running Steam goes through [`crate::steam_running`].
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -174,6 +174,26 @@ pub fn validate(doc: &Document) -> Vec<String> {
     errors
 }
 
+/// Folders (under the application menu folder) of the `.desktop` wrappers
+/// added through `steam://addnonsteamgame`: ours and Heroic's.
+pub const WRAPPER_DIRS: [&str; 2] = ["heronite-rs-steam-shortcuts", "heroic-steam-shortcuts"];
+
+/// `<runner>-<appName>.desktop`, Heroic's `steamShortcutWrapperPath` name.
+pub fn wrapper_file_name(game: &GameId) -> String {
+    format!("{}-{}.desktop", game.runner, game.app_name)
+}
+
+/// `matchesHeroicGame`: a launch link of `game`, or a wrapper of `game` as
+/// the executable or shortcut path.
+pub fn matches_shortcut(exe: &str, shortcut_path: &str, launch_options: &str, game: &GameId) -> bool {
+    let name = wrapper_file_name(game);
+    let wrapper = WRAPPER_DIRS.iter().any(|dir| {
+        let tail = format!("{dir}/{name}");
+        exe.contains(&tail) || shortcut_path.contains(&tail)
+    });
+    wrapper || matches_game(launch_options, game)
+}
+
 /// Does a shortcut point at `game`? Matches the launch links of this app and
 /// of Heroic (`appName=X&runner=Y`, `launch/X"`, `launch/Y/X"`).
 pub fn matches_game(launch_options: &str, game: &GameId) -> bool {
@@ -188,9 +208,10 @@ pub fn matches_game(launch_options: &str, game: &GameId) -> bool {
 
 fn find_entry(shortcuts: &[Entry], game: &GameId) -> Option<usize> {
     shortcuts.iter().position(|e| {
-        e.value
-            .as_obj()
-            .is_some_and(|f| field(f, "LaunchOptions").is_some_and(|lo| matches_game(&lo, game)))
+        e.value.as_obj().is_some_and(|f| {
+            let get = |k: &str| field(f, k).unwrap_or_default();
+            matches_shortcut(&get("Exe"), &get("ShortcutPath"), &get("LaunchOptions"), game)
+        })
     })
 }
 
@@ -454,6 +475,31 @@ pub fn remove_game(steam: &Path, game: &GameId) -> Result<Report> {
     Ok(report)
 }
 
+/// `enableSteamClientApiOnNextStart`: creates the flag file that makes the
+/// next Steam start open its debugging interface.
+pub fn enable_client_api_on_next_start(steam: &Path) {
+    let flag = steam.join(crate::steam_client::FLAG_FILE);
+    if !flag.exists() {
+        if let Err(e) = fs::write(&flag, "") {
+            log::warn!("Failed to create {} with: {e}", flag.display());
+        }
+    }
+}
+
+/// The `appid` of `game`'s shortcut in the first user file that has one.
+pub fn find_appid(steam: &Path, game: &GameId) -> Option<u32> {
+    let userdata = steam.join("userdata");
+    user_folders(&userdata).ok()?.iter().find_map(|folder| {
+        let doc = read_doc(&userdata.join(folder).join("config").join("shortcuts.vdf")).ok()?;
+        let shortcuts = doc.get("shortcuts").and_then(Node::as_obj)?;
+        let fields = shortcuts.get(find_entry(shortcuts, game)?)?.value.as_obj()?;
+        match fields.iter().find(|e| key_eq(e, "appid")).map(|e| &e.value) {
+            Some(Node::Int(id)) => Some(*id),
+            _ => None,
+        }
+    })
+}
+
 /// `isAddedToSteam` for at least one user (reads the files; never writes).
 pub fn is_added(steam: &Path, game: &GameId) -> bool {
     let userdata = steam.join("userdata");
@@ -557,6 +603,18 @@ mod tests {
         assert!(!matches_game("--no-gui \"heronite-rs://launch?appName=QuailX&runner=legendary\"", &g));
         assert!(!matches_game("--no-gui \"heronite-rs://launch?appName=Quail&runner=gog\"", &g));
         assert!(!matches_game("something else Quail legendary", &g));
+    }
+
+    #[test]
+    fn wrapper_shortcuts_match_by_path() {
+        let g = game();
+        let ours = "/home/u/.local/share/applications/heronite-rs-steam-shortcuts/legendary-Quail.desktop";
+        let heroics = "/home/u/.local/share/applications/heroic-steam-shortcuts/legendary-Quail.desktop";
+        assert!(matches_shortcut("", ours, "", &g));
+        assert!(matches_shortcut(&format!("\"{heroics}\""), "", "", &g));
+        assert!(!matches_shortcut("", "/x/heronite-rs-steam-shortcuts/legendary-QuailX.desktop", "", &g));
+        assert!(!matches_shortcut("", "/x/other/legendary-Quail.desktop", "", &g));
+        assert!(matches_shortcut("", "", "\"heroic://launch/Quail\"", &g));
     }
 
     #[test]

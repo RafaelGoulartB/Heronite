@@ -1,7 +1,9 @@
 //! Install dialog of an Epic game (port of Heroic's `InstallModal` ->
 //! `DownloadDialog` / `ImportDialog`): install path with free space, sizes
 //! from `legendary info`, DLC and selective-download (SDL) choices, Wine
-//! settings on Linux, and "Import Game" for an existing install.
+//! settings on Linux, and "Import Game" for an existing install. EA app /
+//! Ubisoft Connect games get Heroic's `ThirdPartyDialog` instead: a notice and
+//! the Wine settings.
 
 mod console;
 mod render;
@@ -14,6 +16,7 @@ use heronite_data::{AppPaths, HeroicPaths};
 use heronite_epic::cmd::Legendary;
 use heronite_epic::disk::{self, DiskSpace};
 use heronite_epic::info::{self, Dlc, InstallInfo, Sdl};
+use heronite_epic::third_party::{self, Provider};
 use heronite_epic::util::{file_size, remove_special_characters};
 use heronite_wine::WineInstallation;
 use serde_json::Value;
@@ -34,6 +37,8 @@ pub struct EpicInstallDialog {
     app_name: String,
     title: String,
     mode: Mode,
+    /// Managed by a store app: `Err(name)` when Heroic does not support it.
+    third_party: Option<Result<Provider, String>>,
     platform: String,
     /// `legendary info` result (None while loading).
     info: Option<InstallInfo>,
@@ -100,12 +105,16 @@ impl EpicInstallDialog {
         on_commit(&path, window, cx, |this: &mut Self, _, _, cx| this.check_space(cx));
         let prefix = new_input(window, cx, &suggested_prefix, "");
         let import_path = new_input(window, cx, "", "");
+        let third_party = third_party::managed_by(&game);
+        // legendary can neither download nor import these games.
+        let mode = if third_party.is_some() { Mode::Install } else { mode };
         let mut this = Self {
             heroic,
             game,
             app_name,
             title,
             mode,
+            third_party,
             platform: "Windows".into(),
             info: None,
             info_error: None,
@@ -128,6 +137,10 @@ impl EpicInstallDialog {
             console_list: Default::default(),
             layer: Default::default(),
         };
+        if this.third_party.is_some() {
+            this.load_wine(cx);
+            return this;
+        }
         // A warm cache (6 hours) shows the sizes at once; a statvfs is cheap.
         let cached = heronite_epic::cache_store::CacheStore::install_info(&this.heroic)
             .get(&this.app_name)
@@ -257,11 +270,21 @@ impl EpicInstallDialog {
         ((!prefix.is_empty()).then_some(prefix), version.or_else(|| self.default_wine.clone()))
     }
 
+    fn can_install(&self, cx: &App) -> bool {
+        match &self.third_party {
+            Some(tp) => tp.is_ok() && !self.busy,
+            None => self.info.is_some() && !text_of(&self.path, cx).is_empty() && !self.busy,
+        }
+    }
+
     fn install(&mut self, cx: &mut Context<Self>) {
-        let path = text_of(&self.path, cx);
-        if path.is_empty() || self.info.is_none() {
+        if !self.can_install(cx) {
             return;
         }
+        if self.third_party.is_some() {
+            return self.install_third_party(cx);
+        }
+        let path = text_of(&self.path, cx);
         let (wine_prefix, wine_version) = self.wine_selection(cx);
         let req = InstallRequest {
             game_info: self.game.clone(),
@@ -276,6 +299,40 @@ impl EpicInstallDialog {
         };
         services::downloads(cx).update(cx, |s, cx| s.queue_install(req, cx));
         cx.emit(DialogEvent::Close);
+    }
+
+    /// Heroic queues these with the path `thirdParty`: the job only fetches
+    /// the store's installer, which the first launch runs in the prefix.
+    fn install_third_party(&mut self, cx: &mut Context<Self>) {
+        let (wine_prefix, wine_version) = self.wine_selection(cx);
+        let req = InstallRequest {
+            game_info: self.game.clone(),
+            path: "thirdParty".into(),
+            platform: self.platform.clone(),
+            sdl_tags: Vec::new(),
+            dlcs: Vec::new(),
+            language: String::new(),
+            size: None,
+            wine_prefix,
+            wine_version,
+        };
+        services::downloads(cx).update(cx, |s, cx| s.queue_install(req, cx));
+        cx.emit(DialogEvent::Close);
+    }
+
+    /// Heroic's `ThirdPartyDialog` text, told the Linux way (the installer
+    /// runs at the first launch, not at install).
+    fn third_party_notice(&self) -> Option<(String, String)> {
+        Some(match self.third_party.as_ref()? {
+            Ok(p) => (
+                format!("This game is managed by a third-party application: \"{}\"", p.label()),
+                format!(
+                    "Install downloads the {0} installer. The first time you play, it runs in the game's Wine prefix: sign in to {0} there to install and play the game.",
+                    p.label()
+                ),
+            ),
+            Err(name) => (format!("This game is managed by \"{name}\", which is not supported."), String::new()),
+        })
     }
 
     fn import(&mut self, cx: &mut Context<Self>) {

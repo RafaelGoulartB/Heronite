@@ -24,7 +24,13 @@ impl EpicInstallDialog {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         let mut rows = Vec::new();
         let importing = self.mode == Mode::Import;
-        if !importing {
+        if let (Some(tp), Some((_, detail))) = (&self.third_party, self.third_party_notice()) {
+            let (ic, store) = match tp {
+                Ok(p) => (Icon::Check, p.label().to_string()),
+                Err(name) => (Icon::Warning, format!("{name} (not supported)")),
+            };
+            rows.push(Row::info("third-party", "Managed by", store).icon(ic).desc(detail));
+        } else if !importing {
             let sizes = match (&self.info, &self.info_error) {
                 (Some(_), _) => format!("Download {}  \u{b7}  On disk {}", file_size(self.download_bytes()), file_size(self.disk_bytes())),
                 (None, Some(e)) => format!("Could not read the sizes: {}", e.lines().next().unwrap_or("")),
@@ -68,9 +74,11 @@ impl EpicInstallDialog {
             rows.push(Row::action("import", "Import").icon(Icon::Check).enabled(!text_of(&self.import_path, cx).is_empty()));
             rows.push(Row::action("mode", "Download and install instead").icon(Icon::Download));
         } else {
-            let ready = self.info.is_some() && !text_of(&self.path, cx).is_empty() && !self.busy;
-            rows.push(Row::action("install", if self.not_enough() { "Force install" } else { "Install" }).icon(Icon::Download).enabled(ready));
-            rows.push(Row::action("mode", "Import an existing install instead").icon(Icon::FolderOpen));
+            let label = if self.third_party.is_none() && self.not_enough() { "Force install" } else { "Install" };
+            rows.push(Row::action("install", label).icon(Icon::Download).enabled(self.can_install(cx)));
+            if self.third_party.is_none() {
+                rows.push(Row::action("mode", "Import an existing install instead").icon(Icon::FolderOpen));
+            }
         }
         rows.push(Row::action("cancel", "Cancel"));
         rows

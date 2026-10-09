@@ -28,18 +28,24 @@ impl CollectionView {
         if queued {
             rows.push(Row::action("epic:downloads", "Show in Downloads").icon(Icon::Downloading));
         }
+        // EA app / Ubisoft Connect keep their games: legendary cannot import,
+        // update, verify or move them (Heroic hides these too).
         if !game.installed {
-            rows.push(Row::action("epic:import", "Import an existing install").icon(Icon::FolderOpen));
+            if !flags.third_party {
+                rows.push(Row::action("epic:import", "Import an existing install").icon(Icon::FolderOpen));
+            }
             return rows;
         }
         if busy || queued {
             return rows;
         }
-        if update {
-            rows.push(Row::action("epic:update", "Update").icon(Icon::Update));
+        if !flags.third_party {
+            if update {
+                rows.push(Row::action("epic:update", "Update").icon(Icon::Update));
+            }
+            rows.push(Row::action("epic:verify", "Verify and repair").icon(Icon::Build));
+            rows.push(Row::action("epic:move", "Move install").icon(Icon::Folder));
         }
-        rows.push(Row::action("epic:verify", "Verify and repair").icon(Icon::Build));
-        rows.push(Row::action("epic:move", "Move install").icon(Icon::Folder));
         if flags.has_dlcs && !flags.third_party {
             rows.push(Row::action("epic:modify", "Modify installation").icon(Icon::Tune).desc("Choose the DLCs to keep installed"));
         }
