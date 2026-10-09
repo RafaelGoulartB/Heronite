@@ -19,7 +19,7 @@ use heronite_data::{AppPaths, HeroicPaths};
 
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{close_button, help_text, page_heading};
+use crate::ui::controls::{close_button, help_text, page_heading, CAPTION_H};
 use crate::ui::{glass, icon};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -100,41 +100,53 @@ pub fn page_close<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) -> 
     close_button("page-close").on_click(cx.listener(|_, _, _, cx| cx.emit(PageEvent::Navigate(Page::Collection))))
 }
 
+/// Horizontal room for a [`sheet`]'s content: the window minus the sheet's
+/// inset (12px each side) and the body padding (32px each side).
+pub fn content_width(window: &Window) -> f32 {
+    f32::from(window.viewport_size().width) - 24. - 64.
+}
+
 /// Glass sheet floating over the (dimmed) Collection: title (Rubik 26) + lead
-/// on the left, `actions` and the round close button on the right, then a
-/// scrolling body. `column` is the content column (a `Div` whose children are
-/// captions and cards), limited to `max_w`. Pages render this as their whole
-/// view (Downloads, Wine Manager, Epic Games, Emulators).
+/// on the left, `actions` on the right, then a scrolling body. Title and body
+/// share one column of at most `max_w`, centred in the sheet, so a wide
+/// window gets even margins instead of an empty right side. The round close
+/// button sits in the sheet's top-right corner, as in Settings. Pages render
+/// this as their whole view (Downloads, Wine Manager, Epic Games, Emulators).
 pub fn sheet(
     id: impl Into<ElementId>,
     title: impl Into<SharedString>,
     lead: Option<SharedString>,
     actions: Option<AnyElement>,
     max_w: f32,
+    window: &Window,
     close: Stateful<Div>,
     column: impl IntoElement,
 ) -> Div {
     let id: ElementId = id.into();
-    let header = div()
-        .flex()
-        .flex_none()
-        .items_start()
-        .justify_between()
-        .gap(px(16.))
-        .pl(px(32.))
-        .pr(px(24.))
-        .pt(px(24.))
-        .pb(px(8.))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(4.))
-                .min_w_0()
-                .child(page_heading(title))
-                .children(lead.map(help_text)),
-        )
-        .child(div().flex().flex_none().items_center().gap(px(10.)).children(actions).child(close));
+    // Keep the actions clear of the close button once the column reaches it.
+    let room = content_width(window);
+    let clear_close = (room - max_w) / 2. < 40.;
+    let header = div().flex_none().px(px(32.)).pt(px(24.)).pb(px(8.)).child(
+        div()
+            .flex()
+            .items_start()
+            .justify_between()
+            .gap(px(16.))
+            .w_full()
+            .max_w(px(max_w))
+            .mx_auto()
+            .when(clear_close, |d| d.pr(px(44.)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .min_w_0()
+                    .child(page_heading(title))
+                    .children(lead.map(help_text)),
+            )
+            .child(div().flex().flex_none().items_center().gap(px(10.)).children(actions)),
+    );
     let body = div()
         .id(id)
         .flex_1()
@@ -143,17 +155,30 @@ pub fn sheet(
         .px(px(32.))
         .pt(px(10.))
         .pb(px(28.))
-        .child(div().flex().flex_col().w_full().max_w(px(max_w)).child(column));
+        .child(div().flex().flex_col().w_full().max_w(px(max_w)).mx_auto().child(column));
     div().size_full().p(px(12.)).pt(px(2.)).child(
         glass::glass_panel(theme::R_SHEET)
+            .relative()
             .size_full()
             .flex()
             .flex_col()
             .text_color(theme::text_primary())
             .font_family(theme::FONT_BODY)
             .child(header)
-            .child(body),
+            .child(body)
+            .child(close.absolute().top(px(20.)).right(px(20.))),
     )
+}
+
+/// Columns of equal width side by side, top-aligned, when `wide`; otherwise
+/// the same blocks stacked in order. Each block is a flex column.
+pub fn columns(wide: bool, blocks: impl IntoIterator<Item = Div>) -> Div {
+    let mut row = div().flex().w_full();
+    row = if wide { row.items_start().gap(px(24.)) } else { row.flex_col() };
+    for b in blocks {
+        row = row.child(b.flex().flex_col().min_w_0().when(wide, |b| b.flex_basis(px(0.)).flex_grow(1.)));
+    }
+    row
 }
 
 /// One row of a list card: optional leading element (cover, icon), the
@@ -216,16 +241,19 @@ pub fn tag_pill(text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
-/// Caption with an action on the right ("Completed" + "Clear list").
+/// Caption with an action on the right ("Completed" + "Clear list"). As
+/// tall as a plain caption (the action overflows it), so the cards below
+/// line up with those of neighbouring columns.
 pub fn caption_with(text: impl Into<SharedString>, action: impl IntoElement) -> Div {
     div()
         .flex()
         .items_center()
         .justify_between()
         .gap(px(12.))
+        .h(px(CAPTION_H))
         .mt(px(14.))
         .mb(px(6.))
-        .child(div().mx(px(6.)).text_size(px(12.)).text_color(theme::text_muted()).child(text.into()))
+        .child(div().mx(px(6.)).text_size(px(12.)).line_height(px(CAPTION_H)).text_color(theme::text_muted()).child(text.into()))
         .child(action)
 }
 

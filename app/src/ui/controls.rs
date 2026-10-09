@@ -144,9 +144,12 @@ pub fn card(rows: impl IntoIterator<Item = AnyElement>) -> Div {
     c
 }
 
+/// Line height of a [`caption`].
+pub const CAPTION_H: f32 = 16.;
+
 /// Section caption above a card: 12px muted, sentence case.
 pub fn caption(text: impl Into<SharedString>) -> Div {
-    div().mt(px(14.)).mx(px(6.)).mb(px(6.)).text_size(px(12.)).text_color(theme::text_muted()).child(text.into())
+    div().mt(px(14.)).mx(px(6.)).mb(px(6.)).text_size(px(12.)).line_height(px(CAPTION_H)).text_color(theme::text_muted()).child(text.into())
 }
 
 /// Page / sheet title: Rubik 600, 26px.

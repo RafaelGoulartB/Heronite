@@ -9,7 +9,7 @@ use gpui_kit::*;
 use heronite_epic::eos_overlay;
 use heronite_epic::user::BROWSER_LOGIN_URL;
 
-use super::{page_close, sheet, status_pill, PageCtx, PageEvent};
+use super::{columns, content_width, page_close, sheet, status_pill, PageCtx, PageEvent};
 use crate::dialogs::epic_import::EpicImportPicker;
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::DialogEvent;
@@ -255,7 +255,7 @@ fn eos_main_text(installed: bool, working: bool) -> &'static str {
 }
 
 impl Render for EpicPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (account, stats, updates, refreshing, logging_in, last_error) = {
             let s = self.svc.read(cx);
             (s.account().clone(), s.stats().clone(), s.updates_count(), s.refreshing, s.logging_in, s.last_error.clone())
@@ -394,14 +394,18 @@ impl Render for EpicPage {
                 .child(card([step1.into_any_element(), step2.into_any_element()]))
                 .child(div().mt(px(8.)).mx(px(6.)).child(meta_text(BROWSER_LOGIN_URL)));
         }
-        column = column.child(caption("EOS Overlay")).child(self.eos_panel(cx));
         if let Some((text, error)) = self.notice.clone() {
             column = column.child(div().mt(px(14.)).mx(px(6.)).text_size(px(13.)).text_color(if error { theme::danger_text() } else { theme::text_primary() }).child(text));
         }
         if let Some(err) = last_error {
             column = column.child(div().mt(px(10.)).mx(px(6.)).text_size(px(12.)).text_color(theme::danger_text()).child(err.lines().next().unwrap_or("").to_string()));
         }
-        column = column.child(div().mt(px(18.)).mx(px(6.)).child(meta_text("Games are installed, updated and verified with legendary. Files are shared with Heroic and Heronite.")));
+        let eos = div()
+            .child(caption("EOS Overlay"))
+            .child(self.eos_panel(cx))
+            .child(div().mt(px(18.)).mx(px(6.)).child(meta_text("Games are installed, updated and verified with legendary. Files are shared with Heroic and Heronite.")));
+        // Wide: the account on the left, the EOS Overlay on the right.
+        let wide = content_width(window) >= 1000.;
 
         let close = page_close(cx);
         div()
@@ -412,9 +416,10 @@ impl Render for EpicPage {
                 "Epic Games",
                 Some("Your account, library and the EOS Overlay.".into()),
                 None,
-                760.,
+                1320.,
+                window,
                 close,
-                column,
+                columns(wide, [column, eos]),
             ))
             .children(self.dialog.clone())
     }

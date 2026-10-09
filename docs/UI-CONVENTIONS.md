@@ -132,9 +132,13 @@ panels (`dialogs/heroic_settings`) build their cards with `parts::rows()` (`.chi
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →
 Game defaults can host them too.
 
-**Pages** (`pages/mod.rs`, ☰ pages other than Settings): `sheet(id, title, lead, actions, max_w, close, column)`
+**Pages** (`pages/mod.rs`, ☰ pages other than Settings): `sheet(id, title, lead, actions, max_w, window, close, column)`
 = glass sheet inset 12px under the slim header (title Rubik 26 + lead, optional header actions, round close =
-`page_close(cx)` which navigates back to the Collection, scrolling body with a column limited to `max_w`). Fill the column
+`page_close(cx)` in the sheet's top-right corner, which navigates back to the Collection, then a scrolling body). Title
+and body share one column of at most `max_w`, **centred**: never leave content stuck to the left of a wide window.
+Use the width instead of a narrow strip: pick the layout from `content_width(window)` — `columns(wide, [a, b])` puts
+blocks side by side (stacked when narrow), a `grid().grid_cols(n)` holds repeated cards (Emulators), and a fixed side
+column + the main list suits browsers (Wine Manager). Check new pages at ~1000px and on an ultrawide. Fill the column
 with `caption` + `card`/`card_box` + `row`. List helpers: `list_item(leading, content, trailing)` (card row with cover/icon),
 `icon_action(id, icon, enabled)` (round 32px list button), `status_pill(text, colour)` / `tag_pill(text)`,
 `caption_with(text, action)` (caption + action on the right), `empty_row(text)`. Progress bars: `services::widgets::progress_bar`.

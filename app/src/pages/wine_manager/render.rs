@@ -98,6 +98,7 @@ impl WineManagerPage {
         };
         div()
             .flex()
+            .flex_wrap()
             .items_center()
             .gap(px(12.))
             .child(div().flex().flex_1().max_w(px(460.)).child(fields::search_box(&self.search)))
@@ -115,6 +116,50 @@ impl WineManagerPage {
                 cx.notify();
             });
         })
+    }
+
+    /// The repositories as a list (wide layout): name, what it offers and how
+    /// many of its builds are installed; the selected one is tinted.
+    pub(super) fn render_sources(&self, cx: &mut Context<Self>) -> Div {
+        let mut list = card_box().py(px(8.)).px(px(8.)).gap(px(2.));
+        for (i, repo) in Repository::LINUX.iter().copied().enumerate() {
+            let active = repo == self.repo;
+            let installed: Vec<&WineVersionInfo> = self.releases.iter().filter(|r| r.kind == repo.kind() && r.installed()).collect();
+            let summary = match installed.len() {
+                0 => "Nothing installed".to_string(),
+                n => format!("{n} installed \u{b7} {}", fmt_size(installed.iter().map(|r| r.disksize).sum())),
+            };
+            list = list.child(
+                div()
+                    .id(SharedString::from(format!("wine-source-{i}")))
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.))
+                    .px(px(12.))
+                    .py(px(10.))
+                    .rounded(px(12.))
+                    .cursor_pointer()
+                    .when(active, |d| d.bg(theme::accent_tint()))
+                    .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.repo = repo;
+                        this.confirm_remove = None;
+                        cx.notify();
+                    }))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap(px(8.))
+                            .child(div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(repo.kind()))
+                            .when(active, |d| d.child(icon(Icon::Check, px(16.), theme::accent()))),
+                    )
+                    .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(repo.explanation()))
+                    .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(summary)),
+            );
+        }
+        list
     }
 
     pub(super) fn render_steam_row(&self, cx: &mut Context<Self>) -> Div {

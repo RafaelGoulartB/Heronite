@@ -21,7 +21,7 @@ use gpui_kit::*;
 use heronite_emulation::manager::{data_stamp, overview, EmulatorSummary};
 use heronite_emulation::{AutoScanReport, SystemEnv};
 
-use super::{page_close, sheet, PageCtx, PageEvent};
+use super::{content_width, page_close, sheet, PageCtx, PageEvent};
 use crate::ui::controls::{button, ButtonKind};
 use render::render_empty;
 
@@ -146,9 +146,22 @@ impl Render for EmulatorsPage {
         if self.loaded && self.summaries.is_empty() {
             column = column.child(render_empty());
         }
+        // One card per emulator, in as many columns as fit (at most 3, and no
+        // more than there are cards); the column grows with them.
+        const CARD_MIN: f32 = 600.;
+        const GAP: f32 = 14.;
+        let fit = ((content_width(window) + GAP) / (CARD_MIN + GAP)).floor() as usize;
+        let cols = fit.clamp(1, 3).min(self.summaries.len().max(1));
+        let max_w = match cols {
+            1 => 1000.,
+            2 => 1640.,
+            _ => 2280.,
+        };
+        let mut grid = div().grid().grid_cols(cols as u16).gap(px(GAP)).w_full();
         for s in self.summaries.clone() {
-            column = column.child(self.render_card(&s, cx));
+            grid = grid.child(self.render_card(&s, cx));
         }
+        column = column.child(grid);
 
         let lead = if self.loaded {
             format!(
@@ -163,7 +176,7 @@ impl Render for EmulatorsPage {
             .on_click(cx.listener(|this, _, window, cx| this.open_add_emulator(window, cx)))
             .into_any_element();
         let close = page_close(cx);
-        div().size_full().relative().child(sheet("page-emulators", "Emulators", Some(lead.into()), Some(add), 1000., close, column)).children(self.dialog.clone())
+        div().size_full().relative().child(sheet("page-emulators", "Emulators", Some(lead.into()), Some(add), max_w, window, close, column)).children(self.dialog.clone())
     }
 }
 

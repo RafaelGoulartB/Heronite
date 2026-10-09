@@ -8,7 +8,7 @@ use heronite_epic::manager::{DmState, Snapshot};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind};
 
-use super::{caption_with, empty_row, icon_action, list_item, page_close, sheet, status_pill, PageCtx, PageEvent};
+use super::{caption_with, columns, content_width, empty_row, icon_action, list_item, page_close, sheet, status_pill, PageCtx, PageEvent};
 use crate::icons::Icon;
 use crate::services::widgets::{cover_box, fmt_mib, fmt_percent, progress_bar, Covers};
 use crate::services::{self, Downloads};
@@ -65,6 +65,9 @@ impl Render for DownloadsPage {
         let progress = snap.current.as_ref().and_then(|(app, _)| svc.progress_of(app).cloned());
         let running = snap.state == DmState::Running;
         let paused = !running;
+        // Wide: the running download on top, then the queue and the history
+        // side by side. Narrow: all three stacked.
+        let wide = content_width(window) >= 1080.;
 
         let mut column = div().flex().flex_col().w_full();
 
@@ -143,7 +146,7 @@ impl Render for DownloadsPage {
         }
 
         let waiting: Vec<DmElement> = snap.queue.iter().skip(1).cloned().collect();
-        column = column.child(caption(if waiting.is_empty() { "Queued".to_string() } else { format!("Queued \u{b7} {}", waiting.len()) }));
+        let mut queued = div().child(caption(if waiting.is_empty() { "Queued".to_string() } else { format!("Queued \u{b7} {}", waiting.len()) }));
         let last = waiting.len().saturating_sub(1);
         let mut rows: Vec<AnyElement> = Vec::new();
         for (i, el) in waiting.iter().enumerate() {
@@ -181,12 +184,13 @@ impl Render for DownloadsPage {
         if rows.is_empty() {
             rows.push(empty_row("Nothing to download").into_any_element());
         }
-        column = column.child(card(rows));
+        queued = queued.child(card(rows));
 
+        let mut done = div();
         let mut finished: Vec<DmElement> = snap.finished.clone();
         finished.sort_by_key(|e| std::cmp::Reverse(e.end_time));
         if !finished.is_empty() {
-            column = column.child(caption_with(
+            done = done.child(caption_with(
                 format!("Completed \u{b7} {}", finished.len()),
                 button_sm("dm-clear", ButtonKind::Ghost, "Clear list").on_click(cx.listener(|this, _, _, cx| {
                     this.svc.update(cx, |s, _| s.clear_finished());
@@ -229,8 +233,11 @@ impl Render for DownloadsPage {
             rows.push(list_item(Some(cover_box(cover, 36., 48.).into_any_element()), content, trailing).into_any_element());
         }
         if !rows.is_empty() {
-            column = column.child(card(rows));
+            done = done.child(card(rows));
+        } else if wide {
+            done = done.child(caption("Completed")).child(card([empty_row("Finished installs and updates show up here").into_any_element()]));
         }
+        column = column.child(columns(wide, [queued, done]));
 
         let _ = &self.ctx;
         sheet(
@@ -238,7 +245,8 @@ impl Render for DownloadsPage {
             "Downloads",
             Some("Installs and updates from Epic Games run one at a time, in this order.".into()),
             None,
-            900.,
+            1560.,
+            window,
             page_close(cx),
             column,
         )

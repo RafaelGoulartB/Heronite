@@ -19,7 +19,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_wine::{Job, JobEvent, JobKind, JobPhase, Repository, WineConfig, WineManager, WineVersionInfo};
 
-use super::{page_close, sheet, PageCtx, PageEvent};
+use super::{content_width, page_close, sheet, PageCtx, PageEvent};
 use crate::ui::fields;
 
 /// Refresh the release lists on open when the last fetch is older than this.
@@ -271,28 +271,43 @@ impl WineManagerPage {
 }
 
 impl Render for WineManagerPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let toolbar = self.render_toolbar(cx);
-        let tabs = self.render_tabs(cx);
         let steam = self.render_steam_row(cx);
-        let info = self.render_info();
         let list = self.render_list(cx);
-        let column = div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .gap(px(14.))
-            .child(toolbar)
-            .child(div().flex().flex_col().child(tabs).child(info))
-            .child(steam)
-            .child(list);
+        // Wide: search, sources and the Steam switch in a side column, the
+        // versions beside it. Narrow: all stacked, sources as tabs.
+        let wide = content_width(window) >= 1100.;
+        let column = if wide {
+            let side = div()
+                .flex()
+                .flex_col()
+                .flex_none()
+                .w(px(340.))
+                .gap(px(14.))
+                .child(toolbar)
+                .child(self.render_sources(cx))
+                .child(steam);
+            div().flex().items_start().gap(px(24.)).w_full().child(side).child(div().flex_1().min_w_0().child(list))
+        } else {
+            div()
+                .flex()
+                .flex_col()
+                .w_full()
+                .gap(px(14.))
+                .child(toolbar)
+                .child(div().flex().flex_col().child(self.render_tabs(cx)).child(self.render_info()))
+                .child(steam)
+                .child(list)
+        };
         let close = page_close(cx);
         sheet(
             "page-wine_manager",
             "Wine Manager",
             Some("Download and manage the Wine and Proton builds your games run on.".into()),
             None,
-            1080.,
+            1480.,
+            window,
             close,
             column,
         )
