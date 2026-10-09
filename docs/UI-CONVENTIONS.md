@@ -16,7 +16,7 @@ pages, settings) follows the **Glass design system** below
   (text fields), `slider::{Slider, SliderState}`. Style everything else by hand.
 
 ## Layout of the code
-- `app/src/theme.rs` — tokens (nord-dark colours, fonts, status colours,
+- `app/src/theme/` — tokens (`color`, `font`, `layout`, `glass`: nord-dark colours, fonts, status colours,
   `W_BOLD` = CSS 600/700, `W_500` = CSS 500, and the glass tokens: fills,
   borders, radii `R_*`, text colours, toggle / button / segmented / input
   values). Never hard-code a new colour twice; add it here.
@@ -46,8 +46,7 @@ pages, settings) follows the **Glass design system** below
   `DialogCtx` (paths + `Arc<Library>`). Open it from `CollectionView` with
   `self.open_dialog(cx.new(|cx| V::new(ctx, window, cx)), cx)`.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
-- Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings.rs`, Ctrl ,). The old
-  Collection settings dialog and the header gear are gone. The left nav is grouped under captions
+- Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
   (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library),
   Collection (Metadata, Screenshots, Backups), Help (Logs, About). A section = title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
@@ -97,9 +96,7 @@ texture "s:" when the Collection art is off). Pages sit on `theme::page_backdrop
 release (off the UI thread).
 
 **Surfaces** (`ui::glass`): `glass_panel(radius)` (big shadow; popovers 20, sheets
-26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14),
-`glass_fullscreen()` (blurred art for big sheets), `veil()` (dark backdrop behind
-modals). Children added after the constructor paint above the layers. Children
+26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14). Children added after the constructor paint above the layers. Children
 are not clipped to the rounded corners: give edge-to-edge children their own radius.
 
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
@@ -119,18 +116,17 @@ slots (build the header with `kicker`, `dialog_title`, `close_button`).
   `checkbox(id, checked, label)` (= toggle row) and `mini_checkbox` (30x18 switch).
   The caller adds `.on_click`.
 - `button(id, kind, label)` / `button_sm` / `action_button(.., enabled, on_click)`:
-  pill buttons, sentence case. `ButtonKind::{Glass, Default, Tertiary, Outline}` =
-  secondary, `{Primary, Secondary}` = accent fill, `{Ghost, Text}` = ghost,
-  `Danger`. New code: `Glass` / `Primary` / `Ghost` / `Danger`. Disabled = 45%.
+  pill buttons, sentence case. `ButtonKind::Glass` = secondary, `Primary` = accent
+  fill, `Ghost` = no fill, `Danger` = red tint. Disabled = 45%.
 - `tabs(id, items, active, on_select)` = segmented pills (scrolls horizontally).
 - `card(rows)` / `card_box()` + `row(label, desc, control)` (11px padding,
-  separators between rows), `caption(text)` (=`section_title`), `page_heading`
+  separators between rows), `caption(text)`, `page_heading`
   (Rubik 26), `dialog_title` (Rubik 22), `help_text` (lead), `kicker` (the only
   uppercase text), `kbd("Ctrl K")`, `close_button(id)`, `nav_pill(id, icon, label, active)`.
 - Fields (`ui::fields`): `path_field` shows a folder icon and "Clear"/"Browse" in accent;
   `select_field`'s list is a scrollable glass menu; labels are 12px muted.
 
-**Game settings drawer** (`dialogs/game_settings.rs`): the first `drawer` caller. Tabs are
+**Game settings drawer** (`dialogs/game_settings/`): the first `drawer` caller. Tabs are
 segmented pills in the header slot; each tab is a stack of `caption` + `card`. The Heroic
 panels (`dialogs/heroic_settings`) build their cards with `parts::rows()` (`.child(toggle_row)`,
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →

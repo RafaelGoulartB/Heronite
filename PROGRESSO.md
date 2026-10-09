@@ -1050,3 +1050,27 @@ Settings → Appearance agora tem dois grupos independentes (`app/src/pages/sett
   arte ON+Solid, diálogo Manage statuses em Solid e a Collection com Opacity 60. **Não verificado**: arrastar os sliders (sem cliques), então o
   caminho ao vivo e o salvamento ao soltar só foram compilados; a prévia "Live preview" da Collection fica vazia quando a página é aberta direto
   por `HERONITE_DEBUG_PAGE` (sem o jogo focado da Coleção), como antes.
+
+## Passada de qualidade de código (2026-10-08)
+Refatoração sem mudança de comportamento. Regras novas em `docs/CODE-STYLE.md` (tamanho de arquivos, divisão de views GPUI em
+diretórios, o que comentar e o que não comentar, `crate::env` para `HERONITE_*`, clippy zerado) e mapa do projeto em `docs/ARCHITECTURE.md`.
+- **Arquivos grandes divididos** (maior arquivo sem testes: 1483 → ~520 linhas): `services/downloads.rs` → `services/downloads/` (10 arquivos),
+  `system/hub.rs` → `system/hub/` (7), `collection/mod.rs` (1186 → 333, `render` de ~330 → ~60 linhas) mais `screenshots/`, `epic/`, `focus/`,
+  `dialogs/{game_settings,add_game,emulator_edit,scan_roms,log_viewer,epic_install}`, `pages/{emulators,wine_manager,settings/library}`,
+  `theme.rs` → `theme/`, `launch/{runtime,plan,log_writer}`, `emulation/{save_states,ludusavi}`, `data/models`, `metadata/service`,
+  `media/capture`. Os caminhos usados por outros módulos continuam iguais (`pub use`).
+- **Comentários**: réguas `// ----` 177 → 7, removidos rótulos óbvios, histórico ("antes era", "foi removido") e referências a mockups/briefs.
+- **Clippy**: 91 avisos → 0; lints do workspace permitem só `type_complexity` e `too_many_arguments` (callbacks GPUI).
+- **Código morto**: funções de tema/ui sem uso, `DialogEvent::Open`/`DialogRequest`, 7 ícones sem uso (e os SVGs), dependência `indexmap` do app;
+  `ButtonKind` reduzido a `Primary/Glass/Ghost/Danger`; `section_title` → `caption`.
+- **Duplicações unificadas**: `text_of` dos diálogos, `js_round` (`heronite_data::num`), `unique()` e timestamp ISO na emulação, superfície de
+  vidro (`glass_panel`/`glass_menu_surface`).
+- **`crate::env::{flag, value, parse}`**: todas as leituras `HERONITE_*` do app. Diferença só em ganchos de debug/teste: `""` e `"0"` agora
+  contam como desligado (antes alguns valiam só por existir).
+- **Teste**: `real_data.rs` só executa o `ludusavi` real (somente leitura, `--version`/`config path`) com `HERONITE_TEST_REAL_LUDUSAVI=1`.
+- **Verificado**: clippy zerado, suíte completa (782 ok, nenhum teste perdido), capturas da Collection, painel de foco, Game settings,
+  Settings → Appearance e Emulators numa cópia neutralizada da fixture.
+- **Pendências vistas**: `sanitize_filename` duplicado com regras diferentes em `metadata/src/remove.rs` e `shortcuts/src/desktop.rs`
+  (os dois nomeiam os mesmos `.desktop`: títulos como `COM0` podem divergir); escrita atômica em 3 lugares (`data/temps`,
+  `metadata/images`, `images/fetch`); `extract_tar` quase igual em `launch/net.rs` e `wine/install.rs`; erros como `Result<_, String>`
+  (67 lugares) misturados com `anyhow`.
