@@ -1070,7 +1070,8 @@ diretórios, o que comentar e o que não comentar, `crate::env` para `HERONITE_*
 - **Teste**: `real_data.rs` só executa o `ludusavi` real (somente leitura, `--version`/`config path`) com `HERONITE_TEST_REAL_LUDUSAVI=1`.
 - **Verificado**: clippy zerado, suíte completa (782 ok, nenhum teste perdido), capturas da Collection, painel de foco, Game settings,
   Settings → Appearance e Emulators numa cópia neutralizada da fixture.
-- **Pendências vistas**: `sanitize_filename` duplicado com regras diferentes em `metadata/src/remove.rs` e `shortcuts/src/desktop.rs`
-  (os dois nomeiam os mesmos `.desktop`: títulos como `COM0` podem divergir); escrita atômica em 3 lugares (`data/temps`,
+- **Corrigido**: `sanitize_filename` tinha duas versões (criar atalho em `shortcuts/desktop.rs`, apagar em `metadata/remove.rs`) que
+  divergiam em `COM0`/`LPT0` e no caractere DEL; agora as duas usam `heronite_data::text::sanitize_filename` (a do pacote npm).
+- **Pendências vistas**: escrita atômica em 3 lugares (`data/temps`,
   `metadata/images`, `images/fetch`); `extract_tar` quase igual em `launch/net.rs` e `wine/install.rs`; erros como `Result<_, String>`
   (67 lugares) misturados com `anyhow`.
