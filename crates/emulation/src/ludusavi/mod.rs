@@ -11,6 +11,7 @@ mod commands;
 mod detect;
 #[cfg(test)]
 mod fake;
+mod last_backup;
 mod runner;
 
 pub use backup::{
@@ -22,4 +23,5 @@ pub use commands::{
     BackupCommand,
 };
 pub use detect::{detect_ludusavi, parse_config, resolve_binary, yaml_get, LudusaviDetected};
+pub use last_backup::{last_backup, LastBackup};
 pub use runner::{CommandOutput, CommandRunner, SystemRunner, LUDUSAVI_TIMEOUT};

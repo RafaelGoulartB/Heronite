@@ -1,4 +1,5 @@
-//! `CollectionFocus`: the detail panel on the right of the list.
+//! `CollectionFocus`: the detail panel on the right of the list: a fixed left
+//! column (cover, Play, status, rating, facts) next to the scrolling details.
 
 mod description;
 mod panels;
@@ -13,23 +14,54 @@ use gpui_kit::*;
 use self::description::render_html;
 use self::panels::{details_panel, hltb_panel, related_panel};
 use super::vm::FocusVm;
-use crate::icons::Icon;
 use crate::theme;
-use crate::ui::{icon, round_button};
 
 pub(super) type CoverFor = Rc<dyn Fn(&str) -> Option<ImageSource>>;
 
-/// Main-column width in logical px (for sizing description images).
-pub(super) fn main_column_width(panel_w: f32) -> f32 {
+/// Widths of the focus panel's columns, in logical px.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Layout {
+    /// Everything stacked in one scrolling column (the left column becomes a row).
+    pub narrow: bool,
+    /// Fixed left column (cover, Play, status, rating, facts); 0 when narrow.
+    pub left_w: f32,
+    /// Main and side columns stacked (not enough room for both).
+    pub stacked: bool,
+    pub main_w: f32,
+    pub side_w: f32,
+    /// Empty space before the left column, so that the left column and the
+    /// details (at most 1480 wide) sit centred in a very wide panel.
+    pub offset: f32,
+}
+
+const LEFT_PAD: f32 = 36.;
+const CONTENT_PAD_L: f32 = 32.;
+const CONTENT_PAD_R: f32 = 36.;
+const COL_GAP: f32 = 38.4;
+
+pub(super) fn layout(panel_w: f32) -> Layout {
     let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
     if narrow {
-        panel_w - 2. * 19.2
-    } else {
-        // `.collectionFocus__header/__body { width: min(1480px, 100%); margin-inline: auto }`
-        let inner_w = (panel_w - 72.).min(1480.);
-        let side_w = (inner_w - 38.4).clamp(352., 480.).min(inner_w * 0.5).max(352.);
-        (inner_w - side_w - 38.4).min(1480.)
+        let w = panel_w - 2. * 19.2;
+        return Layout { narrow, left_w: 0., stacked: true, main_w: w, side_w: w, offset: 0. };
     }
+    let left_w = if panel_w >= 1400. { 264. } else { 232. };
+    // `.collectionFocus__body { width: min(1480px, 100%) }`, next to the left column.
+    let room = panel_w - LEFT_PAD - left_w - CONTENT_PAD_L - CONTENT_PAD_R;
+    let inner_w = room.min(1480.);
+    let offset = ((room - inner_w) / 2.).max(0.);
+    if inner_w < 352. + COL_GAP + 440. {
+        return Layout { narrow, left_w, stacked: true, main_w: inner_w, side_w: inner_w, offset };
+    }
+    // minmax(0,1.2fr) minmax(22rem,30rem): the side column reaches its
+    // max (480) before the flexible column takes the rest.
+    let side_w = (inner_w - COL_GAP).clamp(352., 480.).min(inner_w * 0.5).max(352.);
+    Layout { narrow, left_w, stacked: false, main_w: inner_w - side_w - COL_GAP, side_w, offset }
+}
+
+/// Main-column width in logical px (for sizing description images).
+pub(super) fn main_column_width(panel_w: f32) -> f32 {
+    layout(panel_w).main_w
 }
 
 pub(super) struct FocusProps {
@@ -43,10 +75,13 @@ pub(super) struct FocusProps {
     pub panel_w: f32,
     pub active_facets: Vec<(&'static str, SharedString)>,
     pub scroll: ScrollHandle,
+    /// Cover, Play, status, rating and facts (see `focus_left.rs`): a fixed
+    /// column on the left, or a row under the title when narrow.
+    pub left: AnyElement,
     /// "Screenshots" section (first block of the main column).
     pub screenshots: Option<AnyElement>,
-    /// Epic install / update progress in the footer.
-    pub epic: Option<super::epic::FocusEpic>,
+    /// Sessions and screenshots by day (after the overview).
+    pub timeline: Option<AnyElement>,
     /// Achievements and session history panels of the side column.
     pub extras: FocusExtras,
 }
@@ -60,10 +95,6 @@ pub(super) struct FocusExtras {
 
 pub(super) struct FocusActions {
     pub on_scroll: Box<dyn Fn(&mut Window, &mut App)>,
-    pub on_play: Box<dyn Fn(&mut Window, &mut App)>,
-    pub on_favourite: Box<dyn Fn(&mut Window, &mut App)>,
-    pub on_metadata: Box<dyn Fn(&mut Window, &mut App)>,
-    pub on_game_settings: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_facet: Rc<dyn Fn(&'static str, SharedString, &mut Window, &mut App)>,
     pub on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
 }
@@ -98,12 +129,9 @@ pub fn panel(facts: bool) -> Div {
 }
 
 pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
-    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, screenshots, epic, extras } = props;
+    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, left, screenshots, timeline, extras } =
+        props;
     let on_scroll: Rc<dyn Fn(&mut Window, &mut App)> = Rc::from(actions.on_scroll);
-    let (epic_el, hide_play) = match epic {
-        Some(e) => (Some(e.element), e.replaces_play),
-        None => (None, false),
-    };
     let scrollbar = crate::ui::scrollbar_draggable(
         "focus-scrollbar",
         scroll.offset().y,
@@ -118,28 +146,40 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         },
         None,
     );
-    let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
+    let lay = layout(panel_w);
     let title_size = (viewport_w * 0.022).clamp(24.8, 32.);
-    let cover_w = if narrow { 72. } else { 86. };
 
-    let header = header(&vm, title_size, cover_w, &cover_for);
-    let main = main_column(&vm, screenshots, &html_images, &cover_for, panel_w, actions.on_select);
+    let header = header(&vm, title_size);
+    let main = main_column(&vm, screenshots, timeline, &html_images, &cover_for, panel_w, actions.on_select);
     let side = side_column(&vm, extras.top, &active_facets, actions.on_facet);
-    let body = body(narrow, panel_w, main, side);
+    let body = body(&lay, main, side);
+    let (left_col, left_row) = if lay.narrow { (None, Some(div().mb(px(24.)).child(left))) } else { (Some(left), None) };
 
     let on_scroll_wheel = on_scroll.clone();
     div()
         .id("focus")
         .relative()
         .flex()
-        .flex_col()
         .size_full()
         .min_w_0()
+        .children(left_col.map(|left| {
+            div()
+                .id("focus-left")
+                .flex_none()
+                .w(px(lay.offset + lay.left_w + LEFT_PAD))
+                .h_full()
+                .overflow_y_scroll()
+                .pt(px(38.4))
+                .pl(px(lay.offset + LEFT_PAD))
+                .pb(px(16.))
+                .child(left)
+        }))
         .child(
             div()
                 .relative()
                 .flex_1()
-                .min_h_0()
+                .min_w_0()
+                .h_full()
                 .child(
                     div()
                         .id("focus-inner")
@@ -147,67 +187,54 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
                         .overflow_y_scroll()
                         .track_scroll(&scroll)
                         .on_scroll_wheel(move |_, w, cx| on_scroll_wheel(w, cx))
-                        .pt(px(if narrow { 32. } else { 38.4 }))
-                        .px(px(if narrow { 19.2 } else { 36. }))
-                        .pb(px(16.))
-                        .child(div().flex().flex_col().w_full().max_w(px(1480.)).mx_auto().child(header).child(body)),
+                        .pt(px(if lay.narrow { 32. } else { 38.4 }))
+                        .pl(px(if lay.narrow { 19.2 } else { CONTENT_PAD_L }))
+                        .pr(px(if lay.narrow { 19.2 } else { CONTENT_PAD_R }))
+                        .pb(px(24.))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .w_full()
+                                .max_w(px(1480.))
+                                .when(lay.narrow, |d| d.mx_auto())
+                                .child(header)
+                                .children(left_row)
+                                .child(body),
+                        ),
                 )
                 .children(scrollbar),
         )
-        .child(footer(&vm, epic_el, hide_play, actions.on_play, actions.on_favourite, actions.on_metadata, actions.on_game_settings))
         .into_any_element()
 }
 
-/// Title, meta line and cover.
-fn header(vm: &FocusVm, title_size: f32, cover_w: f32, cover_for: &CoverFor) -> Div {
+/// Title and meta line.
+fn header(vm: &FocusVm, title_size: f32) -> Div {
     div()
         .flex()
-        .items_start()
-        .justify_between()
-        .gap(px(24.))
+        .flex_col()
+        .min_w_0()
         .mb(px(28.))
-        .pr(px(84.))
         .child(
             div()
-                .flex()
-                .flex_col()
-                .min_w_0()
-                .child(
-                    div()
-                        .mb(px(6.4))
-                        .font_family(theme::FONT_HEADING)
-                        .text_size(px(title_size))
-                        .line_height(px(title_size * 1.15))
-                        .font_weight(theme::W_BOLD)
-                        .text_color(white())
-                        .child(vm.title.clone()),
-                )
-                .when(!vm.meta_line.is_empty(), |d| {
-                    d.child(div().text_size(px(13.)).text_color(theme::white_a(0.7)).child(vm.meta_line.clone()))
-                }),
+                .mb(px(6.4))
+                .font_family(theme::FONT_HEADING)
+                .text_size(px(title_size))
+                .line_height(px(title_size * 1.15))
+                .font_weight(theme::W_BOLD)
+                .text_color(white())
+                .child(vm.title.clone()),
         )
-        .child(
-            div()
-                .flex_none()
-                .w(px(cover_w))
-                .h(px(cover_w * 1.5))
-                .rounded(px(6.))
-                .overflow_hidden()
-                .shadow(vec![BoxShadow {
-                    color: theme::black_a(0.5),
-                    offset: point(px(0.), px(10.)),
-                    blur_radius: px(28.),
-                    spread_radius: px(0.),
-                    inset: false,
-                }])
-                .children(cover_for(&vm.cover_key).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))),
-        )
+        .when(!vm.meta_line.is_empty(), |d| {
+            d.child(div().text_size(px(13.)).text_color(theme::white_a(0.7)).child(vm.meta_line.clone()))
+        })
 }
 
-/// Screenshots, overview and related games.
+/// Screenshots, overview, timeline and related games.
 fn main_column(
     vm: &FocusVm,
     screenshots: Option<AnyElement>,
+    timeline: Option<AnyElement>,
     html_images: &CoverFor,
     cover_for: &CoverFor,
     panel_w: f32,
@@ -233,6 +260,7 @@ fn main_column(
                     .into_any_element(),
             }),
     );
+    main = main.children(timeline);
     if !vm.related.is_empty() {
         main = main.child(related_panel(&vm.related, cover_for, on_select));
     }
@@ -255,87 +283,10 @@ fn side_column(
     side
 }
 
-/// Main and side columns: stacked when narrow, side by side otherwise.
-fn body(narrow: bool, panel_w: f32, main: Div, side: Div) -> Div {
-    if narrow {
+/// Main and side columns: stacked when there is no room, side by side otherwise.
+fn body(lay: &Layout, main: Div, side: Div) -> Div {
+    if lay.stacked {
         return div().flex().flex_col().gap(px(20.)).child(main).child(side);
     }
-    // minmax(0,1.2fr) minmax(22rem,30rem): the side column reaches its
-    // max (480) before the flexible column takes the rest.
-    // `.collectionFocus__header/__body { width: min(1480px, 100%); margin-inline: auto }`
-    let inner_w = (panel_w - 72.).min(1480.);
-    let side_w = (inner_w - 38.4).clamp(352., 480.).min(inner_w * 0.5).max(352.);
-    div().flex().items_start().gap(px(38.4)).child(main.flex_1()).child(side.w(px(side_w)).flex_none())
-}
-
-/// Favourite, metadata and settings buttons, Epic progress and Play.
-fn footer(
-    vm: &FocusVm,
-    epic_el: Option<AnyElement>,
-    hide_play: bool,
-    on_play: Box<dyn Fn(&mut Window, &mut App)>,
-    on_fav: Box<dyn Fn(&mut Window, &mut App)>,
-    on_meta: Box<dyn Fn(&mut Window, &mut App)>,
-    on_gsettings: Box<dyn Fn(&mut Window, &mut App)>,
-) -> Div {
-    let play_label = if vm.playing {
-        "Stop"
-    } else if vm.installed {
-        "Play Now"
-    } else {
-        "Install"
-    };
-    let play_icon = if vm.playing {
-        Icon::Stop
-    } else if vm.installed {
-        Icon::PlayArrow
-    } else {
-        Icon::Download
-    };
-    div()
-        .flex()
-        .flex_none()
-        .justify_end()
-        .items_center()
-        .gap(px(10.))
-        .pt(px(11.2))
-        .px(px(20.))
-        .pb(px(16.))
-        .child(
-            round_button("focus-fav", if vm.favourite { Icon::Star } else { Icon::StarBorder }, 42., 0.72)
-                .on_click(move |_, w, cx| on_fav(w, cx)),
-        )
-        .child(round_button("focus-meta", Icon::TravelExplore, 42., 0.72).on_click(move |_, w, cx| on_meta(w, cx)))
-        .child(round_button("focus-settings", Icon::Settings, 42., 0.72).on_click(move |_, w, cx| on_gsettings(w, cx)))
-        .children(epic_el)
-        .when(!hide_play, |d| {
-            d.child(
-                div()
-                    .id("focus-play")
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .gap(px(6.))
-                    .min_w(px(118.))
-                    .py(px(8.32))
-                    .px(px(20.))
-                    .rounded_full()
-                    .bg(rgb(0xf3f5f7))
-                    .hover(|s| s.bg(rgb(0xffffff)))
-                    .text_color(rgb(0x161616))
-                    .font_weight(theme::W_BOLD)
-                    .text_size(px(15.2))
-                    .cursor_pointer()
-                    .shadow(vec![BoxShadow {
-                        color: theme::black_a(0.28),
-                        offset: point(px(0.), px(8.)),
-                        blur_radius: px(24.),
-                        spread_radius: px(0.),
-                        inset: false,
-                    }])
-                    .on_click(move |_, w, cx| on_play(w, cx))
-                    .child(icon(play_icon, px(19.2), rgb(0x161616)))
-                    .child(play_label),
-            )
-        })
+    div().flex().items_start().gap(px(COL_GAP)).child(main.flex_1()).child(side.w(px(lay.side_w)).flex_none())
 }

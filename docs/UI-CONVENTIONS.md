@@ -109,6 +109,13 @@ after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The
 pages grouped (Collection, Downloads, Statistics | Epic, Wine Manager, Emulators), then Add game, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right.
 
+**Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
+(`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, star rating, facts card with score,
+library, save backup and Linux) next to the scrolling title + details; no footer. `focus::layout(panel_w)` picks the widths:
+narrow = one column with the left block as a row under the title; otherwise left column + main/side (stacked when tight),
+centred as a group in wide panels. The main column holds Screenshots, Overview, **Timeline** (`timeline.rs`: days of play with
+the screenshots of their sessions, thumbnails only) and Related. Facts that are not in the Library load in `game_facts.rs`.
+
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
 Collection's context menu (`collection/context_menu.rs::item`/`paper`) uses the

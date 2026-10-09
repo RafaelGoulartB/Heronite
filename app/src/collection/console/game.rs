@@ -25,7 +25,6 @@ pub(super) struct GameNav {
 fn detail_text(v: &DetailValue) -> String {
     match v {
         DetailValue::Text(t) => t.to_string(),
-        DetailValue::Status { name, .. } => name.to_string(),
         DetailValue::Chips { values, .. } => values.iter().map(|s| s.as_ref()).collect::<Vec<_>>().join(", "),
         DetailValue::Folder { path, size } => match size {
             Some(s) => format!("{path} ({s})"),
@@ -135,12 +134,19 @@ impl CollectionView {
 
         let mut about = div().id("console-game-about").flex().flex_col().gap(u(14.)).overflow_y_scroll().track_scroll(&self.console.game.about);
         if let Some(f) = &focus {
-            let facts = div().flex().flex_col().gap(u(8.)).children(f.details.iter().map(|d| {
+            // Status, score and library live in the desktop left column, not in `details`.
+            let head = [
+                f.status.as_ref().map(|s| (SharedString::from("Status"), s.name.to_string())),
+                f.score.as_ref().map(|s| (SharedString::from("Score"), s.to_string())),
+                Some((SharedString::from("Library"), f.library.to_string())),
+            ];
+            let rows = head.into_iter().flatten().chain(f.details.iter().map(|d| (d.label.clone(), detail_text(&d.value))));
+            let facts = div().flex().flex_col().gap(u(8.)).children(rows.map(|(label, value)| {
                 div()
                     .flex()
                     .gap(u(14.))
-                    .child(div().flex_none().w(u(150.)).text_size(u(14.)).text_color(theme::text_dim()).child(d.label.clone()))
-                    .child(div().flex_1().min_w_0().text_size(u(14.)).text_color(theme::text_primary()).child(detail_text(&d.value)))
+                    .child(div().flex_none().w(u(150.)).text_size(u(14.)).text_color(theme::text_dim()).child(label))
+                    .child(div().flex_1().min_w_0().text_size(u(14.)).text_color(theme::text_primary()).child(value))
             }));
             about = about.child(facts);
             if let Some(h) = &f.hltb {

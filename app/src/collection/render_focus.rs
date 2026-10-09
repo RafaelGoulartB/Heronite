@@ -12,7 +12,7 @@ use super::{focus, html, CollectionView};
 use crate::theme;
 
 impl CollectionView {
-    pub(super) fn render_focus_panel(&mut self, vw: f32, list_w: f32, scale: f32, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn render_focus_panel(&mut self, vw: f32, vh: f32, list_w: f32, scale: f32, cx: &mut Context<Self>) -> AnyElement {
         let weak = cx.entity().downgrade();
         let active_facets: Vec<(&'static str, SharedString)> = heronite_data::collection::FACET_KINDS
             .iter()
@@ -29,14 +29,15 @@ impl CollectionView {
                 .child("No game selected")
                 .into_any_element();
         };
-        let covers = self.focus_covers(&vm, vw, list_w, scale);
+        let covers = self.focus_covers(&vm, scale);
         let html_images = self.focus_html_images(&vm, vw, list_w, scale);
-        let (w1, w2, w3, w4) = (weak.clone(), weak.clone(), weak.clone(), weak.clone());
-        let (w5, w6) = (weak.clone(), weak.clone());
-        let focus_key = vm.key.clone();
+        let (w1, w2) = (weak.clone(), weak.clone());
+        let lay = focus::layout(vw - list_w);
         let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
+        let left = self.focus_left(&vm, &lay, epic_focus, scale, vh, cx);
         let screenshots = self.screenshots_section(cx);
-        let focus_extras = self.focus_extras(&focus_key, scale);
+        let timeline = self.timeline_section(&vm.key, lay.main_w, cx);
+        let focus_extras = self.focus_extras(&vm.key, scale);
         focus::focus_panel(
             focus::FocusProps {
                 vm,
@@ -46,28 +47,13 @@ impl CollectionView {
                 viewport_w: vw,
                 panel_w: vw - list_w,
                 active_facets,
+                left,
                 screenshots,
-                epic: epic_focus,
+                timeline,
                 extras: focus_extras,
             },
             focus::FocusActions {
                 on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
-                on_play: Box::new(move |_, cx| {
-                    w3.update(cx, |this, cx| {
-                        this.primary_action(&focus_key, cx);
-                        cx.notify();
-                    })
-                    .ok();
-                }),
-                on_favourite: Box::new(move |_, cx| {
-                    w4.update(cx, |this, cx| this.toggle_favourite(cx)).ok();
-                }),
-                on_metadata: Box::new(move |window, cx| {
-                    w5.update(cx, |this, cx| this.open_metadata(window, cx)).ok();
-                }),
-                on_game_settings: Box::new(move |window, cx| {
-                    w6.update(cx, |this, cx| this.open_game_settings(window, cx)).ok();
-                }),
                 on_facet: Rc::new(move |f, v, _, cx| {
                     w1.update(cx, |this, cx| {
                         this.toggle_facet(f, &v);
@@ -87,14 +73,9 @@ impl CollectionView {
         )
     }
 
-    /// Every cover the panel shows: the game's own and the related games'.
-    fn focus_covers(&mut self, vm: &super::vm::FocusVm, vw: f32, list_w: f32, scale: f32) -> HashMap<SharedString, ImageSource> {
+    /// Covers of the related games (the game's own is in the left column).
+    fn focus_covers(&mut self, vm: &super::vm::FocusVm, scale: f32) -> HashMap<SharedString, ImageSource> {
         let mut covers: HashMap<SharedString, ImageSource> = HashMap::new();
-        let narrow = vw - list_w <= 1100. - theme::LIST_COL_W_MD;
-        let fw = if narrow { 72. } else { 86. };
-        if let Some(src) = self.cover(&vm.cover_key, fw, fw * 1.5, scale, 200) {
-            covers.insert(vm.cover_key.clone(), src);
-        }
         for g in &vm.related {
             for c in &g.games {
                 if let Some(src) = self.cover(&c.cover_key, 78., 117., scale, 50) {

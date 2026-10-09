@@ -13,6 +13,8 @@ mod emulation;
 mod epic;
 mod extras;
 mod focus;
+mod focus_left;
+mod game_facts;
 mod header;
 mod html;
 mod list;
@@ -26,6 +28,7 @@ mod render_focus;
 mod screenshot_viewer;
 mod screenshots;
 mod scroll;
+mod timeline;
 mod system_glue;
 pub use screenshots::screenshots_global;
 pub mod stage;
@@ -84,6 +87,8 @@ pub struct CollectionView {
     dialog_sub: Option<Subscription>,
     epic: epic::EpicState,
     extras: extras::Extras,
+    /// Rating, save backup, Linux facts and timeline of the focused game.
+    facts: game_facts::Facts,
     focus_scroll: ScrollHandle,
     shots: screenshots::Shots,
     toast_task: Option<Task<()>>,
@@ -174,6 +179,7 @@ impl CollectionView {
             dialog_sub: None,
             epic: Default::default(),
             extras: Default::default(),
+            facts: Default::default(),
             focus_scroll: ScrollHandle::new(),
             shots: Default::default(),
             images,
@@ -280,6 +286,7 @@ impl CollectionView {
         self.open_pending_debug_dialog(window, cx);
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);
+        self.sync_facts(cx);
         self.sync_shots(window, cx);
         self.drive_palette(window, cx);
         crate::ui::glass::set_backdrop(self.glass_image(window));
@@ -303,7 +310,8 @@ impl CollectionView {
             None => stage::stage(None, SharedString::default(), self.scrim, 1.),
         };
         let list_column = self.render_list_column(list_w, cx);
-        let focus_panel = self.render_focus_panel(vw, list_w, scale, cx);
+        let vh = f32::from(window.viewport_size().height);
+        let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
         let toast = self.render_toast();
 
         div()

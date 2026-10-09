@@ -6,7 +6,7 @@
 mod background;
 mod gallery;
 
-pub use gallery::icon_button;
+pub use gallery::{icon_button, thumb_tile};
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};

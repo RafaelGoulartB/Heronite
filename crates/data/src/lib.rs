@@ -8,6 +8,7 @@ pub mod proc;
 pub mod temps;
 pub mod text;
 
+pub mod anticheat;
 pub mod appearance;
 pub mod art;
 pub mod collection;
@@ -20,11 +21,13 @@ pub mod hltb;
 pub mod library;
 pub mod maintenance;
 pub mod playtime;
+pub mod ratings;
 pub mod sessions;
 pub mod settings;
 pub mod sideload;
 pub mod stats;
 pub mod status;
+pub mod timeline;
 pub mod ui_state;
 
 pub use art::{ArtContext, ImageRef};

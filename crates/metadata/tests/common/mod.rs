@@ -103,6 +103,7 @@ impl Server {
             steamgriddb: format!("{b}/sgdb/api/v2"),
             bottles_steamgrid: format!("{b}/bottles"),
             hltb: format!("{b}/hltb"),
+            protondb: format!("{b}/protondb"),
             duckduckgo: format!("{b}/ddg"),
             bing: format!("{b}/bing"),
             google: format!("{b}/google"),

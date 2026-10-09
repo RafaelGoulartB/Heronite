@@ -75,6 +75,7 @@ impl CollectionView {
             };
             let mut row = div()
                 .flex()
+                .w_full()
                 .items_center()
                 .gap(px(10.))
                 .child(
@@ -82,7 +83,8 @@ impl CollectionView {
                         .flex()
                         .flex_col()
                         .gap(px(5.))
-                        .w(px(250.))
+                        .flex_1()
+                        .min_w_0()
                         .child(div().text_size(px(13.33)).text_color(white()).child(label))
                         .child(progress_bar(percent, 5., theme::accent())),
                 );
@@ -126,6 +128,7 @@ impl CollectionView {
                 .id("epic-focus-update")
                 .flex()
                 .items_center()
+                .justify_center()
                 .gap(px(6.))
                 .px(px(16.))
                 .py(px(8.32))

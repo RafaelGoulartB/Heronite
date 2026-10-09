@@ -77,13 +77,6 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         clamp,
     };
 
-    if let Some(st) = display_status(g.status_raw.as_deref(), &lib.statuses) {
-        rows.push(DetailRow {
-            label: "Status".into(),
-            value: DetailValue::Status { name: st.name.clone().into(), color: theme::status_color(&st.slug) },
-            split: false,
-        });
-    }
     if !d.developers.is_empty() {
         rows.push(DetailRow { label: "Developer".into(), value: chips(&d.developers, Some("developer"), false), split: false });
     }
@@ -97,10 +90,6 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             split: false,
         });
     }
-    if let Some(score) = d.critic_score {
-        rows.push(DetailRow { label: "Score".into(), value: text(&fmt_number(score)), split: false });
-    }
-    rows.push(DetailRow { label: "Library".into(), value: text(g.source_label), split: false });
     rows.push(DetailRow {
         label: "Last Played".into(),
         value: text(fd.last_played.as_deref().unwrap_or("Never")),
@@ -168,6 +157,13 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             complete: Some(h.completionist as f32),
             played_hours: g.playtime_minutes as f32 / 60.,
         }),
+        status: display_status(g.status_raw.as_deref(), &lib.statuses).map(|st| StatusVm {
+            id: st.id.clone().into(),
+            name: st.name.clone().into(),
+            color: theme::status_color(&st.slug),
+        }),
+        score: d.critic_score.map(|s| fmt_number(s).into()),
+        library: g.source_label.into(),
         installed: g.installed,
         playing,
         favourite: g.favourite,

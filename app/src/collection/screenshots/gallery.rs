@@ -73,7 +73,7 @@ impl CollectionView {
         )
     }
 
-    fn shots_open_view(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::collection) fn shots_open_view(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
         self.shots.view = Some(i);
         self.shots.fit = false;
         self.shots.controls_visible = true;
@@ -262,7 +262,7 @@ impl CollectionView {
 
 /// `.collectionScreenshots__thumb`: rounded tile with cover image; the image
 /// grows 4% on hover (no transform in GPUI, so the box is enlarged instead).
-fn thumb_tile(id: SharedString, src: Option<ImageSource>, hover_zoom: bool) -> Stateful<Div> {
+pub fn thumb_tile(id: SharedString, src: Option<ImageSource>, hover_zoom: bool) -> Stateful<Div> {
     let group: SharedString = format!("{id}-g").into();
     let mut tile = div()
         .id(id)

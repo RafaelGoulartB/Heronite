@@ -60,7 +60,6 @@ pub(super) fn build_items(groups: &[GroupVm], columns: usize) -> Vec<ListItem> {
 #[derive(Clone)]
 pub(super) enum DetailValue {
     Text(SharedString),
-    Status { name: SharedString, color: Rgba },
     /// Chips; `facet` makes them clickable filters (`"developer"`, ...).
     Chips { values: Vec<SharedString>, facet: Option<&'static str>, clamp: bool },
     Folder { path: SharedString, size: Option<SharedString> },
@@ -89,6 +88,13 @@ pub(super) struct RelatedGroupVm {
 }
 
 #[derive(Clone)]
+pub(super) struct StatusVm {
+    pub id: SharedString,
+    pub name: SharedString,
+    pub color: Rgba,
+}
+
+#[derive(Clone)]
 pub(super) struct FocusVm {
     pub key: SharedString,
     pub title: SharedString,
@@ -100,6 +106,12 @@ pub(super) struct FocusVm {
     pub related: Vec<RelatedGroupVm>,
     pub details: Vec<DetailRow>,
     pub hltb: Option<HltbVm>,
+    /// Current status (left column selector), `None` when the stored id is unknown.
+    pub status: Option<StatusVm>,
+    /// Critic score of the left column's facts card.
+    pub score: Option<SharedString>,
+    /// "Library" of the facts card: Steam, Epic, GOG...
+    pub library: SharedString,
     pub installed: bool,
     pub playing: bool,
     pub favourite: bool,

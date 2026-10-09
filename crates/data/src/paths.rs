@@ -45,6 +45,7 @@ impl HeroicPaths {
     pub fn emulators(&self) -> PathBuf { self.j("local_library/emulators.json") }
     pub fn rom_scanners(&self) -> PathBuf { self.j("local_library/rom-scanners.json") }
     pub fn screenshot_thumbnails_dir(&self) -> PathBuf { self.j("local_library/screenshot-thumbnails") }
+    pub fn ratings(&self) -> PathBuf { self.j("local_library/ratings.json") }
 
     // Heroic core stores.
     pub fn sideload_library(&self) -> PathBuf { self.j("sideload_apps/library.json") }
@@ -73,6 +74,8 @@ impl HeroicPaths {
     pub fn images_cache_dir(&self) -> PathBuf { self.j("images-cache") }
     pub fn legendary_config_dir(&self) -> PathBuf { self.j("legendaryConfig/legendary") }
     pub fn tools_dir(&self) -> PathBuf { self.j("tools") }
+    /// Heroic's copy of areweanticheatyet.com.
+    pub fn anticheat(&self) -> PathBuf { self.j("areweanticheatyet.json") }
 
     /// Resolves a `localart://<kind>/<rest>` URL to a file, refusing traversal.
     /// `screenshots` URLs need the configured screenshot folder.

@@ -32,14 +32,6 @@ pub(super) fn details_panel(
             .child(row.label.clone());
         let value: AnyElement = match &row.value {
             DetailValue::Text(t) => div().line_height(px(18.2)).child(t.clone()).into_any_element(),
-            DetailValue::Status { name, color } => div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .line_height(px(18.2))
-                .child(div().size(px(8.)).flex_none().rounded_full().bg(*color))
-                .child(name.clone())
-                .into_any_element(),
             DetailValue::Chips { values, facet, clamp } => {
                 let mut wrap = div().flex().flex_wrap().gap(px(5.12));
                 for (ci, v) in values.iter().enumerate() {
