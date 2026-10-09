@@ -20,7 +20,7 @@ fn health_badge(health: Health) -> Div {
     div().flex().child(status_pill(health.label(), if health.is_ok() { theme::success() } else { theme::danger_text() }))
 }
 
-fn launch_label(kind: &str) -> &'static str {
+pub(super) fn launch_label(kind: &str) -> &'static str {
     match kind {
         "flatpak" => "Flatpak",
         "wine" => "Wine",
@@ -28,7 +28,7 @@ fn launch_label(kind: &str) -> &'static str {
     }
 }
 
-fn folder_flags(s: &RomScanner) -> String {
+pub(super) fn folder_flags(s: &RomScanner) -> String {
     let mut flags = vec![];
     flags.push(if s.scan_subfolders { "Subfolders" } else { "Top folder only" });
     if s.merge_related_files {

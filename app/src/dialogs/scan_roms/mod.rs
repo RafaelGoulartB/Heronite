@@ -2,6 +2,7 @@
 //! ROM folder, preview what a scan finds and import it as Collection games.
 
 mod actions;
+mod console;
 mod render;
 
 use gpui_kit::component::input::InputState;
@@ -47,6 +48,8 @@ pub struct ScanRomsDialog {
     custom_exe: Entity<InputState>,
     custom_ext: Entity<InputState>,
     custom_args: Entity<InputState>,
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<DialogEvent> for ScanRomsDialog {}
@@ -81,6 +84,8 @@ impl ScanRomsDialog {
             custom_exe: new_input(window, cx, "", ""),
             custom_ext: new_input(window, cx, "iso,cue,chd,zip", ""),
             custom_args: new_input(window, cx, "{ImagePath}", ""),
+            console_list: Default::default(),
+            layer: Default::default(),
         };
         let mut this = this;
         // Screenshots: the hidden window does not repaint late results.
@@ -188,6 +193,9 @@ impl Render for ScanRomsDialog {
         // pending value here where a `Window` is at hand.
         if let Some(dir) = self.pending_dir.take() {
             self.directory.update(cx, |s, cx| s.set_value(dir, window, cx));
+        }
+        if crate::console::active() {
+            return self.render_console(cx);
         }
         let dir_value = text_of(&self.directory, cx);
         let busy = self.loading;

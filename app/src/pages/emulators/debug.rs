@@ -81,6 +81,27 @@ impl EmulatorsPage {
                     d.update(cx, |d, cx| d.debug_fill_and_save(&dir, window, cx));
                 }
             }
+            "pick-rom" => {
+                // Dialog of the Collection's launch flow with sample discs.
+                let roms = vec![
+                    ("Disc 1".to_string(), "/tmp/roms/Final Fantasy X (Disc 1).iso".to_string()),
+                    ("Disc 2".to_string(), "/tmp/roms/Final Fantasy X (Disc 2).iso".to_string()),
+                ];
+                let view = cx.new(|_| crate::dialogs::pick_rom::PickRomDialog::new("Final Fantasy X".into(), roms, None, std::rc::Rc::new(|_, _| {})));
+                self.open_dialog(view, window, cx);
+            }
+            "launch-state" => {
+                use crate::dialogs::launch_state::{LaunchStateDialog, StateRow, ThumbRaw};
+                let thumb = |shade: u8| ThumbRaw { width: 96, height: 72, bgra: (0..96 * 72).flat_map(|i| [shade, 90 + (i % 96) as u8, 60, 255]).collect() };
+                let at = |ago: i64| (chrono::Utc::now() - chrono::Duration::hours(ago)).to_rfc3339();
+                let states = vec![
+                    StateRow { path: "/tmp/s/resume".into(), resume: true, slot: None, modified_at: at(2), thumb: Some(thumb(40)) },
+                    StateRow { path: "/tmp/s/1".into(), resume: false, slot: Some(1), modified_at: at(30), thumb: Some(thumb(160)) },
+                    StateRow { path: "/tmp/s/2".into(), resume: false, slot: Some(2), modified_at: at(400), thumb: None },
+                ];
+                let view = cx.new(|_| LaunchStateDialog::new("Gran Turismo 4".into(), "PCSX2".into(), states, std::rc::Rc::new(|_, _| {})));
+                self.open_dialog(view, window, cx);
+            }
             "detect" => self.open_detect(window, cx),
             "folder" => self.open_folder_dialog(first, None, window, cx),
             "folder-edit" => {

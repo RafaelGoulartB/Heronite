@@ -14,7 +14,7 @@ use crate::dialogs::DialogEvent;
 use crate::pages::PageEvent;
 
 impl EmulatorsPage {
-    fn open_dialog<V>(&mut self, view: Entity<V>, window: &mut Window, cx: &mut Context<Self>)
+    pub(super) fn open_dialog<V>(&mut self, view: Entity<V>, window: &mut Window, cx: &mut Context<Self>)
     where
         V: Render + EventEmitter<DialogEvent>,
     {

@@ -227,6 +227,10 @@ impl CollectionView {
             return;
         }
         if pad == Pad::Start {
+            // An overlay of the page (the keyboard's Done) gets it first.
+            if self.page != Page::Collection && self.pages.hook(self.page).is_some_and(|h| h.pad(pad, window, cx)) {
+                return;
+            }
             self.open_sidebar();
             return;
         }

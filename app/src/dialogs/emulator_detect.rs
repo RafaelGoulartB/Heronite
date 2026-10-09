@@ -3,6 +3,8 @@
 //! folder the user picks. Pick which ones to add; they get the catalog
 //! profiles. Used by the Emulators page.
 
+mod console;
+
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::HeroicPaths;
@@ -33,6 +35,8 @@ pub struct DetectEmulatorsDialog {
     error: String,
     /// Emulators added (read by the page once the dialog closes).
     pub added: usize,
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<DialogEvent> for DetectEmulatorsDialog {}
@@ -66,6 +70,8 @@ impl DetectEmulatorsDialog {
             adding: false,
             error: String::new(),
             added: 0,
+            console_list: Default::default(),
+            layer: Default::default(),
         };
         // Screenshots: the hidden window does not repaint late results.
         if crate::env::flag("HERONITE_DEBUG_SYNC") {
@@ -172,6 +178,9 @@ fn profiles_summary(item: &DetectedEmulator) -> String {
 
 impl Render for DetectEmulatorsDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console();
+        }
         let busy = self.scanning || self.folder_scanning.is_some() || self.adding;
         let selected = self.selected_count();
 

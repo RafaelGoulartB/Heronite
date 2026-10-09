@@ -25,6 +25,13 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
         crate::dialogs::epic_modify::EpicModifyDialog,
         crate::dialogs::game_settings::GameSettingsDialog,
         crate::dialogs::add_game::AddGameDialog,
+        crate::dialogs::emulator_edit::EmulatorEditDialog,
+        crate::dialogs::emulator_detect::DetectEmulatorsDialog,
+        crate::dialogs::emulator_confirm::EmulatorConfirmDialog,
+        crate::dialogs::rom_folder::RomFolderDialog,
+        crate::dialogs::scan_roms::ScanRomsDialog,
+        crate::dialogs::pick_rom::PickRomDialog,
+        crate::dialogs::launch_state::LaunchStateDialog,
     );
     None
 }

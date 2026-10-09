@@ -1,6 +1,8 @@
 //! `LaunchStateDialog` ("How do you want to play?"): continue from one of the
 //! emulator's save states or start from the beginning.
 
+mod console;
+
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -68,6 +70,7 @@ pub struct LaunchStateDialog {
     /// Index into `rows`; `None` = start from the beginning.
     selected: Option<usize>,
     on_play: Rc<dyn Fn(Option<String>, &mut App)>,
+    console_scroll: ScrollHandle,
 }
 
 impl EventEmitter<DialogEvent> for LaunchStateDialog {}
@@ -127,7 +130,7 @@ impl LaunchStateDialog {
             })
             .collect();
         let selected = if rows.is_empty() { None } else { Some(0) };
-        Self { title, emulator, rows, selected, on_play }
+        Self { title, emulator, rows, selected, on_play, console_scroll: ScrollHandle::new() }
     }
 
     fn play(&self, cx: &mut App) {
@@ -154,6 +157,9 @@ fn thumb_box(content: impl IntoElement) -> Div {
 
 impl Render for LaunchStateDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console();
+        }
         let item = |id: SharedString, on: bool| {
             div()
                 .id(id)

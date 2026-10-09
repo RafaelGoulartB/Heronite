@@ -2,6 +2,8 @@
 //! Heronite's `removeUserEmulator` does, the ROM folders that use it; games
 //! stay in the Collection) or a saved ROM folder.
 
+mod console;
+
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::HeroicPaths;
@@ -26,6 +28,7 @@ pub struct EmulatorConfirmDialog {
     message: String,
     working: bool,
     error: Option<SharedString>,
+    console_list: crate::console::list::ListNav,
 }
 
 impl EventEmitter<DialogEvent> for EmulatorConfirmDialog {}
@@ -58,6 +61,7 @@ impl EmulatorConfirmDialog {
             message: remove_emulator_message(name, games, folders),
             working: false,
             error: None,
+            console_list: Default::default(),
         }
     }
 
@@ -69,6 +73,7 @@ impl EmulatorConfirmDialog {
             message: format!("Stop scanning {directory}? Games already added stay in the Collection."),
             working: false,
             error: None,
+            console_list: Default::default(),
         }
     }
 
@@ -111,6 +116,9 @@ impl EmulatorConfirmDialog {
 
 impl Render for EmulatorConfirmDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console();
+        }
         let body = div()
             .flex()
             .flex_col()

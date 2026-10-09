@@ -3,6 +3,7 @@
 //! Emulators page. Writes `local_library/emulators.json` through
 //! `heronite_emulation::store`.
 
+mod console;
 mod profiles;
 mod render;
 
@@ -63,6 +64,9 @@ pub struct EmulatorEditDialog {
     error: String,
     /// The emulator that was saved (read by the page after the dialog closes).
     pub saved: Option<UserEmulator>,
+    console_list: crate::console::list::ListNav,
+    console_profile_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<DialogEvent> for EmulatorEditDialog {}
@@ -101,6 +105,9 @@ impl EmulatorEditDialog {
             saving: false,
             error: String::new(),
             saved: None,
+            console_list: Default::default(),
+            console_profile_list: Default::default(),
+            layer: Default::default(),
         };
         // Folders that point at this emulator (profiles in use) and, for new
         // emulators, what is installed on this PC (prefills the executable).
@@ -294,6 +301,9 @@ impl Render for EmulatorEditDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         for (input, value) in std::mem::take(&mut self.pending) {
             input.update(cx, |s, cx| s.set_value(value, window, cx));
+        }
+        if crate::console::active() {
+            return self.render_console(cx);
         }
         let mut body = div().flex().flex_col().gap(px(12.));
         body = self.render_fields(body, cx);

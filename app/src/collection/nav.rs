@@ -321,6 +321,7 @@ impl CollectionView {
             Page::Emulators => {
                 let v = cx.new(|cx| pages::emulators::EmulatorsPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Emulators, crate::console::PadHook::new(&v));
                 self.pages.emulators = Some(v.into());
             }
             Page::Statistics => {

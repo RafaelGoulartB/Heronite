@@ -7,9 +7,10 @@
 //! `heronite_emulation`. All reads and scans run off the UI thread.
 //!
 //! Debug: `HERONITE_DEBUG_EMU_PAGE=add|add:<definition>|edit|edit-profile|detect|folder|folder-edit|
-//! remove|remove-folder|notice` opens that state (use a fixture dir); see `debug.rs`.
+//! remove|remove-folder|notice|pick-rom|launch-state` opens that state (use a fixture dir); see `debug.rs`.
 
 mod actions;
+mod console;
 mod debug;
 mod dialogs;
 mod render;
@@ -46,6 +47,8 @@ pub struct EmulatorsPage {
     confirm_notice: Option<String>,
     /// Pending `HERONITE_DEBUG_EMU_PAGE` request, run by the first render after the load.
     debug: Option<String>,
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<PageEvent> for EmulatorsPage {}
@@ -78,6 +81,8 @@ impl EmulatorsPage {
             dialog_sub: None,
             confirm_notice: None,
             debug: crate::env::value("HERONITE_DEBUG_EMU_PAGE"),
+            console_list: Default::default(),
+            layer: Default::default(),
         };
         this.reload(cx);
         // The Collection refresh and the scan dialogs write the same files:
@@ -139,6 +144,9 @@ impl Render for EmulatorsPage {
         if self.debug.is_some() && self.loaded {
             self.run_debug(window, cx);
         }
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         let folders = self.total_folders();
 
         let mut column = div().flex().flex_col().w_full().gap(px(14.)).child(self.render_toolbar(folders, cx));
@@ -176,7 +184,7 @@ impl Render for EmulatorsPage {
             .on_click(cx.listener(|this, _, window, cx| this.open_add_emulator(window, cx)))
             .into_any_element();
         let close = page_close(cx);
-        div().size_full().relative().child(sheet("page-emulators", "Emulators", Some(lead.into()), Some(add), max_w, window, close, column)).children(self.dialog.clone())
+        div().size_full().relative().child(sheet("page-emulators", "Emulators", Some(lead.into()), Some(add), max_w, window, close, column)).children(self.dialog.clone()).into_any_element()
     }
 }
 

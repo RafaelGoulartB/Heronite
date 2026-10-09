@@ -1,6 +1,8 @@
 //! `PickRomDialog` ("Choose disc"): a title with several ROMs asks which one
 //! to launch.
 
+mod console;
+
 use std::rc::Rc;
 
 use gpui_kit::prelude::*;
@@ -18,6 +20,7 @@ pub struct PickRomDialog {
     roms: Vec<(String, String)>,
     selected: Option<String>,
     on_play: Rc<dyn Fn(String, &mut App)>,
+    console_list: crate::console::list::ListNav,
 }
 
 impl EventEmitter<DialogEvent> for PickRomDialog {}
@@ -32,7 +35,9 @@ impl PickRomDialog {
         let selected = selected_path
             .filter(|p| roms.iter().any(|(_, rp)| rp == p))
             .or_else(|| roms.first().map(|(_, p)| p.clone()));
-        Self { title, roms, selected, on_play }
+        let mut this = Self { title, roms, selected, on_play, console_list: Default::default() };
+        this.console_focus_selected();
+        this
     }
 }
 
@@ -52,6 +57,9 @@ pub fn radio(on: bool) -> Div {
 
 impl Render for PickRomDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console();
+        }
         let mut list = div().flex().flex_col().gap(px(8.));
         for (i, (name, path)) in self.roms.iter().enumerate() {
             let on = self.selected.as_deref() == Some(path.as_str());

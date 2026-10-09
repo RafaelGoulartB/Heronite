@@ -2,6 +2,8 @@
 //! the scan options. Saving with "scan on refresh" on also scans the folder
 //! right away. Used by the Emulators page.
 
+mod console;
+
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -42,6 +44,8 @@ pub struct RomFolderDialog {
     saving: bool,
     error: String,
     pub outcome: Option<SaveOutcome>,
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<DialogEvent> for RomFolderDialog {}
@@ -93,6 +97,8 @@ impl RomFolderDialog {
             saving: false,
             error: String::new(),
             outcome: None,
+            console_list: Default::default(),
+            layer: Default::default(),
         }
     }
 
@@ -182,6 +188,9 @@ impl RomFolderDialog {
 
 impl Render for RomFolderDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(cx);
+        }
         let edit = self.scanner.is_some();
         let dir_value = text_of(&self.directory, cx);
         let has_dir = !dir_value.is_empty();

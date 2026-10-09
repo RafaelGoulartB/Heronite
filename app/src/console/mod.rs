@@ -11,6 +11,7 @@
 
 pub mod browser;
 pub mod input;
+pub mod layers;
 pub mod kit;
 pub mod list;
 pub mod osk;
