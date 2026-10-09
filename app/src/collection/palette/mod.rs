@@ -216,6 +216,7 @@ impl CollectionView {
                 }
             }
             // The quit question needs the window: ask once this update ended.
+            Act::Console => self.set_console(true, window, cx),
             Act::Quit => cx.defer(crate::system::request_quit),
             Act::SelectGame(key) => self.palette_select(&key, window, cx),
             Act::PlayGame(key) => {

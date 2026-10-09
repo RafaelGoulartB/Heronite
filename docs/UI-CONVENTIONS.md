@@ -150,6 +150,26 @@ in `theme::chart_series(i)` for the top 5 games of the period (`Stats::series`),
 game keeps its colour in every block of the page. Hovering a bar / heatmap cell updates the line above it (no tooltips).
 `HERONITE_DEBUG_PAGE=stats:week|month|year|all` opens it on a span.
 
+**Console mode** (`app/src/console/`, shell in `collection/console/`): an extra controller-first TV mode
+(proposal "2 · Console", `docs/design/propostas-v1-telas/o2-*.jpg`), entered from ☰ › Console mode or the palette,
+remembered across restarts (`ui-state.json` `consoleMode`). The desktop look must not change: every page and dialog
+keeps its desktop render and, when `crate::console::active()`, returns its console layout instead
+(`render_console`, usually in a child module `console.rs`) and implements `console::PadTarget` (`on_pad` + `hints`).
+- Input: `console::input` reads controllers with gilrs on a thread that only runs in console mode (presses only count
+  while the window is focused); the keyboard maps to the same `Pad`s (arrows, Enter = A, Esc = B, X, Y, Q/E = LB/RB, M = menu).
+- Hosting: pages register their hook in `nav.rs` (`pages.hooks`); dialogs are found by `console::registry::hook_for`
+  (add new console-capable dialogs there). Overlays owned by a view use `console::Layer` (drawn by the owner; for a
+  view embedded in a smaller area wrap it with `kit::window_layer`).
+- Building blocks: `console::kit` (sizes through `u()`, scaled to the window height; `row_base`, `toggle_pill`, `choice`,
+  `tabs`, `glyph`, `hint_bar`, `modal`), `console::list` (`Row`s + `ListNav`: one focused row, values changed with ◀ ▶,
+  `Outcome` tells the owner what happened; `simple_dialog` for confirmations), `console::sheet::Sheet`,
+  `console::osk::Osk` (on-screen keyboard; never use text inputs in console layouts), `console::browser::Browser`
+  (folder / file picker; the portal file chooser cannot be driven by a controller).
+- Layout: top bar = `kit::wordmark` + LB/RB `kit::tabs` + `kit::clock`, content padded `u(46.)`, lists about `u(900.)`
+  wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
+- Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page) starts in console mode without saving it;
+  `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`).
+
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
 `text_muted`, `text_dim`, `accent_tint`, ...).

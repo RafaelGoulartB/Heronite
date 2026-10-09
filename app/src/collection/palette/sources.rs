@@ -27,6 +27,8 @@ pub(super) enum Act {
     ScanRoms,
     EpicUpdates,
     OpenLogs,
+    /// Console mode (controller, TV layout).
+    Console,
     Quit,
     SelectGame(String),
     PlayGame(String),
@@ -131,6 +133,7 @@ pub(super) fn static_entries() -> Vec<Entry> {
     v.push(action(Act::ScanRoms, "Scan ROMs\u{2026}", "Add games from a ROM folder", Icon::FolderOpen, None, "emulation import folder"));
     v.push(action(Act::EpicUpdates, "Check for Epic updates", "Refresh the Epic library and look for updates", Icon::Update, None, "epic games legendary upgrade"));
     v.push(action(Act::OpenLogs, "Open logs folder", "Heroic and game logs", Icon::Description, None, "log folder directory debug"));
+    v.push(action(Act::Console, "Console mode", "Controller-first TV layout", Icon::Tv, None, "controller gamepad tv big picture couch"));
     v.push(action(Act::Quit, "Quit", "Close Heronite", Icon::Logout, None, "exit close"));
     v
 }
@@ -205,7 +208,7 @@ mod tests {
         let sections = v.iter().filter(|e| matches!(e.act, Act::Section(_))).count();
         assert_eq!(sections, Section::ALL.len());
         assert!(v.iter().filter(|e| matches!(e.act, Act::Section(_))).all(|e| e.secondary));
-        for a in [Act::AddGame, Act::Refresh, Act::ScanRoms, Act::EpicUpdates, Act::OpenLogs, Act::Quit] {
+        for a in [Act::AddGame, Act::Refresh, Act::ScanRoms, Act::EpicUpdates, Act::OpenLogs, Act::Console, Act::Quit] {
             assert!(v.iter().any(|e| e.act == a && e.kind == Kind::Action), "{a:?}");
         }
     }
