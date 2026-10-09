@@ -13,6 +13,7 @@ Diário de trabalho para retomar a migração. Plano geral em `PLANO.md`.
 | Estado de UI próprio | `~/.config/heronite-rs/ui-state.json` (no Heronite isso fica no localStorage do Chromium) |
 | Cache de imagens | Compartilha `~/.config/heroic/images-cache/<sha256(url)>` com o Heronite; miniaturas redimensionadas em `~/.cache/heronite-rs/thumbs` |
 | Binário | `heronite-rs` (não conflita com `~/.local/bin/heronite`) |
+| Builds | Testar: `cargo run --profile quick -p heronite` (otimizado, sem LTO, ~10 s por mudança). Instalar: `--release` (LTO fat, ~9 min). Linker `lld` em `.cargo/config.toml` |
 | Plataforma | Linux primeiro; caminhos via `dirs`, código Linux-only atrás de `cfg(target_os = "linux")` |
 | Janelas de teste | Abrir **só no workspace 2** do Hyprland: `/tmp/heronite-bench/ws2.sh <cmd>` → `hyprctl eval 'hl.exec_cmd(cmd, {workspace="2 silent"})'` |
 
