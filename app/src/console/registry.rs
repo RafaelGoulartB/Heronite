@@ -24,6 +24,7 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
         crate::dialogs::epic_import::EpicImportPicker,
         crate::dialogs::epic_modify::EpicModifyDialog,
         crate::dialogs::game_settings::GameSettingsDialog,
+        crate::dialogs::add_game::AddGameDialog,
     );
     None
 }

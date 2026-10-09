@@ -23,6 +23,8 @@ use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::icon;
 
+mod console;
+
 const PAGE_SIZE: usize = 20;
 
 /// Which slot the image is for.
@@ -48,6 +50,9 @@ pub struct ImagePicker {
     loading: bool,
     error: String,
     request: u64,
+    /// Console mode: the grid scroll and the keyboard on top of it.
+    scroll: ScrollHandle,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<PickerEvent> for ImagePicker {}
@@ -86,6 +91,8 @@ impl ImagePicker {
             loading: false,
             error: String::new(),
             request: 0,
+            scroll: ScrollHandle::new(),
+            layer: Default::default(),
         };
         // Captures of the empty state: no network.
         if !crate::env::flag("HERONITE_DEBUG_NO_SEARCH") {
@@ -138,6 +145,9 @@ impl ImagePicker {
 impl Render for ImagePicker {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
+        if crate::console::active() {
+            return self.render_console(cx);
+        }
         let (tw, th) = if self.slot == Slot::Square { (120., 180.) } else { (240., 90.) };
 
         let toolbar = div()
@@ -259,5 +269,6 @@ impl Render for ImagePicker {
                 entity.update(cx, |_, cx| cx.emit(PickerEvent::Close)).ok();
             },
         )
+        .into_any_element()
     }
 }

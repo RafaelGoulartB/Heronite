@@ -15,7 +15,7 @@ pub enum OskEvent {
     Cancel,
 }
 
-const ROWS: [&str; 4] = ["1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-"];
+const ROWS: [&str; 5] = ["1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-", "/:?=&_%#+@"];
 /// Bottom row: Shift, Space, Delete, Done.
 const SPECIAL: [&str; 4] = ["Shift", "Space", "\u{232b}", "Done"];
 const SPECIAL_ROW: usize = ROWS.len();
@@ -223,6 +223,7 @@ mod tests {
         assert_eq!((k.row, k.col), (1, 0));
         k.step(Pad::Left);
         assert_eq!(k.col, 9, "wraps");
+        k.step(Pad::Down);
         k.step(Pad::Down);
         k.step(Pad::Down);
         k.step(Pad::Down);

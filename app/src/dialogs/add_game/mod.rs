@@ -7,6 +7,7 @@
 
 mod actions;
 mod art;
+mod console;
 mod debug;
 mod form;
 mod logic;
@@ -87,6 +88,9 @@ pub struct AddGameDialog {
     removable_prefix: Option<String>,
     error: String,
     notice: String,
+    /// Console mode: focus of the rows, and the sheet / keyboard / picker on top.
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
     _subs: Vec<Subscription>,
 }
 
@@ -230,6 +234,8 @@ impl AddGameDialog {
             removable_prefix,
             error: String::new(),
             notice: String::new(),
+            console_list: Default::default(),
+            layer: Default::default(),
             _subs: subs,
         };
         if matches!(this.mode, Mode::Add) {
@@ -246,6 +252,9 @@ impl AddGameDialog {
 impl Render for AddGameDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         let edit = self.is_edit();
         let entity = cx.entity().downgrade();
         let vw = f32::from(window.viewport_size().width);
@@ -335,6 +344,6 @@ impl Render for AddGameDialog {
             },
         );
         let nested = self.picker.as_ref().map(|(p, _)| AnyView::from(p.clone()));
-        div().absolute().inset_0().child(main).children(nested)
+        div().absolute().inset_0().child(main).children(nested).into_any_element()
     }
 }
