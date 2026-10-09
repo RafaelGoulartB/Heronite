@@ -166,6 +166,7 @@ impl CollectionView {
                 "3" => self.navigate(Page::WineManager, window, cx),
                 "4" => self.navigate(Page::Epic, window, cx),
                 "5" => self.navigate(Page::Emulators, window, cx),
+                "6" => self.navigate(Page::Statistics, window, cx),
                 "," => self.navigate(Page::Settings, window, cx),
                 "n" => {
                     self.open_add_game(window, cx);

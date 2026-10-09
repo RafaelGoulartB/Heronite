@@ -110,6 +110,7 @@ pub(super) fn static_entries() -> Vec<Entry> {
     v.push(page(Page::WineManager, "Download and manage Proton / Wine", "Ctrl 3", "proton wine runner compatibility"));
     v.push(page(Page::Epic, "Account and library", "Ctrl 4", "epic games store account login legendary"));
     v.push(page(Page::Emulators, "Emulators and ROM folders", "Ctrl 5", "emulator rom retro console"));
+    v.push(page(Page::Statistics, "Play time and habits", "Ctrl 6", "stats playtime hours activity chart most played"));
     v.push(page(Page::Settings, "Global settings", "Ctrl ,", "preferences options config"));
     for s in Section::ALL {
         let mut e = Entry::new(
@@ -200,7 +201,7 @@ mod tests {
     fn static_entries_list_every_page_section_and_action() {
         let v = static_entries();
         let pages: Vec<_> = v.iter().filter(|e| e.kind == Kind::Page && !e.secondary).map(|e| e.title.to_string()).collect();
-        assert_eq!(pages, ["Collection", "Downloads", "Wine Manager", "Epic Games", "Emulators", "Settings"]);
+        assert_eq!(pages, ["Collection", "Downloads", "Wine Manager", "Epic Games", "Emulators", "Statistics", "Settings"]);
         let sections = v.iter().filter(|e| matches!(e.act, Act::Section(_))).count();
         assert_eq!(sections, Section::ALL.len());
         assert!(v.iter().filter(|e| matches!(e.act, Act::Section(_))).all(|e| e.secondary));

@@ -33,6 +33,19 @@ pub fn success() -> Rgba { rgb(0x94f1ab) }
 pub fn danger() -> Rgba { rgb(0xbf616a) }
 pub fn selected_ring() -> Rgba { rgb(0xe8dcc0) }
 
+/// Statistics charts: one colour per top game (most played first); the rest
+/// share [`chart_other`].
+pub fn chart_series(i: usize) -> Rgba {
+    match i {
+        0 => rgb(0xa5dceb),
+        1 => rgb(0xc6a9ee),
+        2 => rgb(0x94e8b0),
+        3 => rgb(0xf2cd85),
+        _ => rgb(0xf09f8f),
+    }
+}
+pub fn chart_other() -> Hsla { white_a(0.22) }
+
 /// Status colours (`statusColors.ts`).
 pub fn status_color(slug: &str) -> Rgba {
     match slug {

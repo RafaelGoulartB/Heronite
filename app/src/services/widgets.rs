@@ -80,6 +80,17 @@ impl Covers {
         self.store.get_or_request(&id, chain, pw, ph, Variant::Cover, 100).map(ImageSource::Render)
     }
 
+    /// Like [`Covers::get`] for a library game's cover chain (`key` names
+    /// the game in the cache id).
+    pub fn get_chain(&mut self, key: &str, chain: &[ImageRef], w: f32, h: f32, scale: f32) -> Option<ImageSource> {
+        if chain.is_empty() {
+            return None;
+        }
+        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
+        let id: SharedString = format!("c:{key}:{pw}x{ph}").into();
+        self.store.get_or_request(&id, || chain.to_vec(), pw, ph, Variant::Cover, 100).map(ImageSource::Render)
+    }
+
     pub fn drop_evicted(&mut self, window: &mut Window) {
         self.store.drop_evicted(window);
     }

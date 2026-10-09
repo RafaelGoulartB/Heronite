@@ -23,6 +23,7 @@ pub mod playtime;
 pub mod sessions;
 pub mod settings;
 pub mod sideload;
+pub mod stats;
 pub mod status;
 pub mod ui_state;
 

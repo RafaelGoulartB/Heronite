@@ -60,6 +60,7 @@ pub enum Icon {
     CloudSync,
     Update,
     Memory,
+    BarChart,
     /// Multi-colour 32px circle buttons (rendered with `img`, not `svg`).
     PlayCircle,
     InstallCircle,
@@ -93,6 +94,7 @@ impl Icon {
             Fullscreen => "icons/fullscreen.svg",
             FullscreenExit => "icons/fullscreen-exit.svg",
             History => "icons/history.svg",
+            BarChart => "icons/bar-chart.svg",
             Menu => "icons/menu.svg",
             OpenInNew => "icons/open-in-new.svg",
             PlayArrow => "icons/play-arrow.svg",

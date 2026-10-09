@@ -61,7 +61,10 @@ impl CollectionView {
             this.update(cx, |this, cx| {
                 this.refreshing = false;
                 match loaded {
-                    Ok(l) => this.apply_loaded(l),
+                    Ok(l) => {
+                        this.apply_loaded(l);
+                        this.nav_library_loaded(cx);
+                    }
                     Err(err) => log::error!("loading library: {err:#}"),
                 }
                 cx.notify();

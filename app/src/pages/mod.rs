@@ -11,6 +11,7 @@ pub mod downloads;
 pub mod emulators;
 pub mod epic;
 pub mod settings;
+pub mod stats;
 pub mod wine_manager;
 
 use gpui_kit::prelude::*;
@@ -29,13 +30,14 @@ pub enum Page {
     WineManager,
     Epic,
     Emulators,
+    Statistics,
     /// Global settings (☰ → Settings); not in [`Page::ALL`], the menu lists it last.
     Settings,
 }
 
 impl Page {
-    pub const ALL: [Page; 5] =
-        [Page::Collection, Page::Downloads, Page::WineManager, Page::Epic, Page::Emulators];
+    pub const ALL: [Page; 6] =
+        [Page::Collection, Page::Downloads, Page::WineManager, Page::Epic, Page::Emulators, Page::Statistics];
 
     pub fn title(self) -> &'static str {
         match self {
@@ -44,6 +46,7 @@ impl Page {
             Page::WineManager => "Wine Manager",
             Page::Epic => "Epic Games",
             Page::Emulators => "Emulators",
+            Page::Statistics => "Statistics",
             Page::Settings => "Settings",
         }
     }
@@ -55,6 +58,7 @@ impl Page {
             Page::WineManager => Icon::WineBar,
             Page::Epic => Icon::AccountCircle,
             Page::Emulators => Icon::SportsEsports,
+            Page::Statistics => Icon::BarChart,
             Page::Settings => Icon::Settings,
         }
     }
@@ -67,6 +71,8 @@ impl Page {
             "wine" => Some(Page::WineManager),
             "epic" => Some(Page::Epic),
             "emulators" => Some(Page::Emulators),
+            // `stats[:week|month|year|all]`, see `stats::StatsPage`.
+            s if s == "stats" || s.starts_with("stats:") => Some(Page::Statistics),
             // `settings[:section[:tab]]`, see `settings::SettingsPage`.
             s if s == "settings" || s.starts_with("settings:") => Some(Page::Settings),
             _ => None,
@@ -93,6 +99,8 @@ pub enum PageEvent {
     /// "Show hidden games" changed in Settings: the Collection saves the flag
     /// and reloads its library.
     ShowHidden(bool),
+    /// Select this game (`CollectionGame::key`) on the Collection.
+    ShowGame(String),
 }
 
 /// Round close button of a [`sheet`]: goes back to the Collection.

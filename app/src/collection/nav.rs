@@ -19,6 +19,7 @@ pub struct Pages {
     wine: Option<AnyView>,
     epic: Option<AnyView>,
     emulators: Option<AnyView>,
+    stats: Option<AnyView>,
     settings: Option<AnyView>,
     subs: Vec<Subscription>,
     meta: NavMeta,
@@ -30,8 +31,27 @@ pub struct Pages {
 struct NavMeta {
     wine: Option<String>,
     emulators: Option<usize>,
+    /// Play time this month ("12h 5m this month").
+    month: Option<String>,
     loading: bool,
     loaded_at: Option<std::time::Instant>,
+}
+
+/// This month's play time from the loaded library's sessions.
+fn month_meta(lib: &heronite_data::Library) -> String {
+    use heronite_data::stats;
+    let history = stats::history(lib.games.iter().map(|g| stats::GameInput {
+        sessions: g.sessions.as_deref().map_or(&[], Vec::as_slice),
+        lifetime_minutes: 0,
+        first_played: None,
+    }));
+    let today = chrono::Local::now().date_naive();
+    let secs = stats::compute(&history, stats::Period::of(stats::Span::Month, today), today).total_secs;
+    if secs > 0. {
+        format!("{} this month", stats::fmt_secs(secs))
+    } else {
+        "Nothing this month".into()
+    }
 }
 
 /// Default Wine/Proton name (`config.json` > `defaultSettings.wineVersion`)
@@ -132,16 +152,28 @@ impl CollectionView {
         }
         meta.loading = true;
         let heroic = self.heroic.clone();
+        let lib = self.lib.clone();
         cx.spawn(async move |this, cx| {
-            let (wine, emulators) = cx.background_spawn(async move { read_nav_meta(&heroic) }).await;
+            let (wine, emulators, month) = cx
+                .background_spawn(async move {
+                    let (wine, emulators) = read_nav_meta(&heroic);
+                    (wine, emulators, lib.map(|l| month_meta(&l)))
+                })
+                .await;
             this.update(cx, |this, cx| {
                 let m = &mut this.pages.meta;
                 m.loading = false;
                 m.loaded_at = Some(std::time::Instant::now());
-                if m.wine != wine || m.emulators != emulators {
+                if m.wine != wine || m.emulators != emulators || m.month != month {
                     m.wine = wine;
                     m.emulators = emulators;
+                    m.month = month;
                     cx.notify();
+                }
+                // The library arrived while this ran without it.
+                if m.month.is_none() && this.lib.is_some() {
+                    m.loaded_at = None;
+                    this.sync_nav_meta(cx);
                 }
             })
             .ok();
@@ -167,12 +199,14 @@ impl CollectionView {
                     Some(n) => plural(n, "emulator", "emulators"),
                     None => "\u{2026}".into(),
                 };
+                let month = meta.month.clone().unwrap_or_else(|| "\u{2026}".into());
                 let metas = [
                     plural(games, "game", "games"),
                     downloads,
                     wine,
                     if signed_in { "Signed in".into() } else { "Not signed in".into() },
                     emulators,
+                    month,
                 ];
                 let mut tiles: Vec<Stateful<Div>> = Page::ALL
                     .iter()
@@ -236,12 +270,17 @@ impl CollectionView {
                 v.update(cx, |p, cx| p.refresh(window, cx));
             }
         }
+        if page == Page::Statistics {
+            // Hand the page the library after the slot below is filled.
+            cx.defer_in(window, |this, _, cx| this.offer_stats_data(cx));
+        }
         let slot_empty = match page {
             Page::Collection => return,
             Page::Downloads => self.pages.downloads.is_none(),
             Page::WineManager => self.pages.wine.is_none(),
             Page::Epic => self.pages.epic.is_none(),
             Page::Emulators => self.pages.emulators.is_none(),
+            Page::Statistics => self.pages.stats.is_none(),
             Page::Settings => self.pages.settings.is_none(),
         };
         if !slot_empty {
@@ -269,12 +308,33 @@ impl CollectionView {
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
                 self.pages.emulators = Some(v.into());
             }
+            Page::Statistics => {
+                let v = cx.new(|cx| pages::stats::StatsPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.stats = Some(v.into());
+            }
             Page::Settings => {
                 let v = cx.new(|cx| pages::settings::SettingsPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
                 self.pages.settings = Some(v.into());
             }
         }
+    }
+
+    /// A (re)loaded library: refresh the ☰ tiles that read it and the
+    /// Statistics page.
+    pub(super) fn nav_library_loaded(&mut self, cx: &mut Context<Self>) {
+        self.pages.meta.loaded_at = None;
+        self.sync_nav_meta(cx);
+        self.offer_stats_data(cx);
+    }
+
+    /// Gives the Statistics page the current library (it skips the work
+    /// when the library did not change).
+    pub(super) fn offer_stats_data(&self, cx: &mut Context<Self>) {
+        let (Some(lib), Some(view)) = (self.lib.clone(), self.pages.stats.clone()) else { return };
+        let Ok(view) = view.downcast::<pages::stats::StatsPage>() else { return };
+        view.update(cx, |p, cx| p.set_library(lib, &self.cover_chains, cx));
     }
 
     fn on_page_event<E>(&mut self, _: &Entity<E>, ev: &PageEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -284,6 +344,13 @@ impl CollectionView {
             PageEvent::Navigate(page) => self.navigate(*page, window, cx),
             PageEvent::ScanRoms(initial) => self.open_scan_roms(initial.clone(), window, cx),
             PageEvent::ShowHidden(on) => self.set_show_hidden(*on, cx),
+            PageEvent::ShowGame(key) => {
+                self.navigate(Page::Collection, window, cx);
+                if self.lib.as_ref().is_some_and(|l| l.get(key).is_some()) {
+                    self.select(key.clone().into(), true);
+                    self.reveal_selected();
+                }
+            }
         }
     }
 
@@ -295,6 +362,7 @@ impl CollectionView {
             Page::WineManager => self.pages.wine.clone(),
             Page::Epic => self.pages.epic.clone(),
             Page::Emulators => self.pages.emulators.clone(),
+            Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
         }?;
         let header = div()

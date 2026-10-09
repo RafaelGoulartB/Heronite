@@ -143,6 +143,12 @@ with `caption` + `card`/`card_box` + `row`. List helpers: `list_item(leading, co
 `icon_action(id, icon, enabled)` (round 32px list button), `status_pill(text, colour)` / `tag_pill(text)`,
 `caption_with(text, action)` (caption + action on the right), `empty_row(text)`. Progress bars: `services::widgets::progress_bar`.
 Confirmations inside a page are inline rows of a card (text + ghost "Cancel" + danger button), not modals.
+Statistics (`pages/stats.rs`, Ctrl 6) only reads: the Collection hands it the loaded library
+(`StatsPage::set_library`, on navigate and after each reload) and the numbers come from `heronite_data::stats`
+(sessions cut into hours; sessions under 2 min are failed launches and ignored). Charts are plain divs: bars stacked
+in `theme::chart_series(i)` for the top 5 games of the period (`Stats::series`), the rest `theme::chart_other()`; a
+game keeps its colour in every block of the page. Hovering a bar / heatmap cell updates the line above it (no tooltips).
+`HERONITE_DEBUG_PAGE=stats:week|month|year|all` opens it on a span.
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
