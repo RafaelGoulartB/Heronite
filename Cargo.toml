@@ -16,10 +16,61 @@ log = "0.4"
 
 [profile.release]
 opt-level = 3
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# Code that is cold for a launcher (D-Bus, codecs we never decode, TLS,
+# SVG icons rasterised once, markdown) is optimised for size. Rendering,
+# images, JSON and regex stay at -O3. With fat LTO the binary went from 50 to
+# 44 MB with the same startup time (release builds take ~9 min instead of ~3).
+[profile.release.package.zbus]
+opt-level = "s"
+[profile.release.package.zvariant]
+opt-level = "s"
+[profile.release.package.zbus_names]
+opt-level = "s"
+[profile.release.package.oo7]
+opt-level = "s"
+[profile.release.package.ashpd]
+opt-level = "s"
+[profile.release.package.accesskit]
+opt-level = "s"
+[profile.release.package.accesskit_unix]
+opt-level = "s"
+[profile.release.package.accesskit_atspi_common]
+opt-level = "s"
+[profile.release.package.accesskit_consumer]
+opt-level = "s"
+[profile.release.package.ksni]
+opt-level = "s"
+[profile.release.package.notify-rust]
+opt-level = "s"
+[profile.release.package.exr]
+opt-level = "s"
+[profile.release.package.tiff]
+opt-level = "s"
+[profile.release.package.image-webp]
+opt-level = "s"
+[profile.release.package.gif]
+opt-level = "s"
+[profile.release.package.qoi]
+opt-level = "s"
+[profile.release.package.rustls]
+opt-level = "s"
+[profile.release.package.ring]
+opt-level = "s"
+[profile.release.package.webpki-roots]
+opt-level = "s"
+[profile.release.package.usvg]
+opt-level = "s"
+[profile.release.package.resvg]
+opt-level = "s"
+[profile.release.package.tiny-skia]
+opt-level = "s"
+[profile.release.package.markdown]
+opt-level = "s"
 
 [profile.dev.package."*"]
 opt-level = 2
