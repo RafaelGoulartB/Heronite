@@ -1075,3 +1075,24 @@ diretórios, o que comentar e o que não comentar, `crate::env` para `HERONITE_*
 - **Pendências vistas**: escrita atômica em 3 lugares (`data/temps`,
   `metadata/images`, `images/fetch`); `extract_tar` quase igual em `launch/net.rs` e `wine/install.rs`; erros como `Result<_, String>`
   (67 lugares) misturados com `anyhow`.
+
+## Desempenho: memória, CPU e tamanho (2026-10-08)
+Medido com `scripts/idle-cost.sh <binário> <fixture>` (CPU, wakeups por thread, PSS e VRAM via `nvidia-smi`), numa cópia
+neutralizada da fixture. Ganchos novos: `HERONITE_DEBUG_BROWSE=<n>@<ms>` (seleciona n jogos seguidos) e `HERONITE_DEBUG_FAKE_TRAY=1`
+(age como se houvesse bandeja, para medir a janela fechada sem pôr um ícone na barra).
+- **Memória ao navegar** (60 jogos): anônima 248 → 62 MB. O cache de texturas (`app/src/images.rs`) agora tem orçamento de 48 MB em
+  bytes (antes: 160 itens, qualquer tamanho) e guarda no máximo 2 fundos de palco e 2 de vidro. A maior parte do ganho veio do
+  alocador: `main::tune_allocator` fixa `M_MMAP_THRESHOLD` (128 KiB), `M_TRIM_THRESHOLD` e 2 arenas, então os buffers das imagens
+  decodificadas voltam ao sistema ao serem liberados.
+- **Janela fechada na bandeja**: anônima 47 → 36 MB (`malloc_trim` logo após fechar). O contexto de GPU do GPUI continua vivo
+  (~22 MiB de VRAM e as threads do driver): limitação do GPUI.
+- **CPU durante um jogo**: as threads de acompanhamento esperam numa condvar (`heronite_launch::wake::Wake`) em vez de checar
+  flags em laço: processo do jogo checado 1×/s (antes 4×/s), o checkpoint de tempo de jogo dorme até o próximo (antes 4×/s), e o
+  acompanhamento de jogos da Steam deixou de acordar a cada 25 ms (40×/s). Parar e abortar continuam imediatos.
+- **Binário**: 50 → 44 MB com `lto = "fat"` e `opt-level = "s"` só para crates frios (D-Bus, codecs que não usamos, TLS, SVG,
+  markdown). Abertura igual (~225 ms até o primeiro quadro). Custo: build release ~9 min (antes ~3).
+- **Não mudou**: o fundo do palco já era gerado com no máximo 960 px (a pipeline compensa o desfoque); render da Collection
+  ~0,34 ms; vigilância de disco a cada 2 s faz ~12 `stat` (irrelevante).
+- **Pendente**: com a janela aberta (e depois de fechada para a bandeja) a thread principal acorda ~100×/s (CPU ~0,07 %). É um
+  pingue-pongue entre a thread principal e um worker do GPUI (eventfd do calloop); uma janela GPUI mínima às vezes mostra o mesmo.
+  Escondido desde o início: 2×/s.
