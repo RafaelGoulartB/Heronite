@@ -15,6 +15,7 @@ use crate::plan::StopSpec;
 use crate::procs::Procs;
 use crate::record::{Checkpointer, PlayRecord};
 use crate::steam::SteamLocator;
+use crate::wake::Wake;
 
 pub(super) struct Control {
     /// Stop tracking (force clear, or the end of a stop).
@@ -34,6 +35,26 @@ pub(super) struct Control {
     /// The game is running (the session has playtime to checkpoint).
     pub(super) playing: AtomicBool,
     pub(super) ledger: Mutex<Ledger>,
+    /// Notified whenever `abort`, `kill`, `playing` or `ledger.finished`
+    /// change, so the tracking threads sleep instead of polling them.
+    pub(super) wake: Wake,
+}
+
+impl Control {
+    pub(super) fn set_abort(&self) {
+        self.abort.store(true, Ordering::SeqCst);
+        self.wake.notify();
+    }
+
+    pub(super) fn set_kill(&self) {
+        self.kill.store(true, Ordering::SeqCst);
+        self.wake.notify();
+    }
+
+    pub(super) fn set_playing(&self) {
+        self.playing.store(true, Ordering::SeqCst);
+        self.wake.notify();
+    }
 }
 
 /// What was persisted of the session so far.

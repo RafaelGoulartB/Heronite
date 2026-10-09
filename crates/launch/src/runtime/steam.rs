@@ -34,6 +34,7 @@ pub(super) fn run_steam(
         &move || locator.log_files(),
         &shared.cfg.steam,
         &control.abort,
+        &control.wake,
         &control.steam_pids,
         &mut |pid| {
             announced = Some(pid);
@@ -41,7 +42,7 @@ pub(super) fn run_steam(
             control.pid.store(pid, Ordering::SeqCst);
             // Only now do we know the game is really running.
             let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
-            control.playing.store(true, Ordering::SeqCst);
+            control.set_playing();
             shared.send(LaunchEvent::Running {
                 app_name: req.app_name.clone(),
                 pid,

@@ -2,7 +2,7 @@
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use chrono::Utc;
 
@@ -76,6 +76,7 @@ struct SessionEnd(Arc<Control>);
 impl Drop for SessionEnd {
     fn drop(&mut self) {
         self.0.ledger.lock().unwrap_or_else(|e| e.into_inner()).finished = true;
+        self.0.wake.notify();
     }
 }
 
@@ -83,20 +84,16 @@ impl Drop for SessionEnd {
 /// crash, a kill or a power cut loses at most that much.
 fn spawn_checkpointer(shared: Arc<Shared>, app_name: String, control: Arc<Control>) {
     let _ = std::thread::Builder::new().name(format!("checkpoint-{app_name}")).spawn(move || {
-        let mut last = Instant::now();
+        let finished = || control.ledger.lock().map(|l| l.finished).unwrap_or(true);
+        // Until the game runs (preparing a prefix can take minutes).
+        control.wake.wait_while(Duration::MAX, || !finished() && !control.playing.load(Ordering::SeqCst));
         loop {
-            std::thread::sleep(Duration::from_millis(250));
-            if control.ledger.lock().map(|l| l.finished).unwrap_or(true) {
+            let interval = Duration::from_millis(shared.checkpoint_ms.load(Ordering::SeqCst));
+            control.wake.wait_while(interval, || !finished());
+            if finished() {
                 return;
             }
-            if !control.playing.load(Ordering::SeqCst) {
-                last = Instant::now();
-                continue;
-            }
-            if last.elapsed() >= Duration::from_millis(shared.checkpoint_ms.load(Ordering::SeqCst)) {
-                shared.checkpoint(&control, &app_name);
-                last = Instant::now();
-            }
+            shared.checkpoint(&control, &app_name);
         }
     });
 }

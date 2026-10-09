@@ -79,7 +79,7 @@ pub struct LauncherConfig {
 impl Default for LauncherConfig {
     fn default() -> Self {
         Self {
-            poll_interval: Duration::from_millis(250),
+            poll_interval: Duration::from_secs(1),
             kill_grace: Duration::from_secs(5),
             min_session_seconds: MIN_SESSION_SECONDS,
             steam: SteamWaitConfig::default(),

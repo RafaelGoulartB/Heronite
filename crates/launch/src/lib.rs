@@ -32,6 +32,7 @@ pub mod settings;
 pub mod steam;
 pub mod tools;
 pub mod vdf;
+pub mod wake;
 pub mod wine;
 pub mod wine_tools;
 

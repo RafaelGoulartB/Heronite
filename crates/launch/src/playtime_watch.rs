@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use regex::Regex;
 
 use crate::procs::Procs;
+use crate::wake::Wake;
 
 pub const LOG_TAIL_BYTES: u64 = 64 * 1024;
 
@@ -228,19 +229,8 @@ pub enum SteamWaitOutcome {
     Aborted,
 }
 
-pub fn sleep_abortable(total: Duration, abort: &AtomicBool) {
-    let step = Duration::from_millis(25);
-    let deadline = Instant::now() + total;
-    while !abort.load(Ordering::SeqCst) {
-        let now = Instant::now();
-        if now >= deadline {
-            return;
-        }
-        std::thread::sleep(step.min(deadline - now));
-    }
-}
-
 /// Blocks until the Steam game started via `steam://rungameid/<id>` exits.
+/// Setting `abort` must be followed by `wake.notify()`.
 ///
 /// `log_files` is called now and then to discover Steam's logs; `shared`
 /// mirrors the tracked pids (so a caller can kill them); `on_first_pid` fires
@@ -251,6 +241,7 @@ pub fn wait_for_steam_session(
     log_files: &dyn Fn() -> Vec<PathBuf>,
     cfg: &SteamWaitConfig,
     abort: &AtomicBool,
+    wake: &Wake,
     shared: &Mutex<BTreeSet<u32>>,
     on_first_pid: &mut dyn FnMut(u32),
 ) -> SteamWaitOutcome {
@@ -298,7 +289,7 @@ pub fn wait_for_steam_session(
         if Instant::now() >= deadline {
             return SteamWaitOutcome::NotStarted;
         }
-        sleep_abortable(cfg.poll_interval, abort);
+        wake.wait_while(cfg.poll_interval, || !abort.load(Ordering::SeqCst));
         let mut new = Vec::new();
         for t in tails.values_mut() {
             if let Some(chunk) = t.read_new() {
@@ -321,7 +312,7 @@ pub fn wait_for_steam_session(
         if watch.finished() {
             return SteamWaitOutcome::Finished;
         }
-        sleep_abortable(cfg.poll_interval, abort);
+        wake.wait_while(cfg.poll_interval, || !abort.load(Ordering::SeqCst));
         let mut new = Vec::new();
         for t in tails.values_mut() {
             if let Some(chunk) = t.read_new() {
@@ -423,6 +414,7 @@ mod tests {
                 &move || vec![l2.clone()],
                 &fast_cfg(),
                 &a2,
+                &Wake::default(),
                 &s2,
                 &mut |pid| first = Some(pid),
             );
@@ -467,6 +459,7 @@ mod tests {
             &move || vec![l.clone()],
             &cfg,
             &abort,
+            &Wake::default(),
             &shared,
             &mut |_| {},
         );
@@ -480,6 +473,7 @@ mod tests {
             &move || vec![l.clone()],
             &fast_cfg(),
             &abort,
+            &Wake::default(),
             &shared,
             &mut |_| {},
         );

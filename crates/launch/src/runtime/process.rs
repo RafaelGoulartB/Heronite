@@ -144,7 +144,7 @@ pub(super) fn run_process(
     };
     control.pid.store(handle.pid(), Ordering::SeqCst);
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
-    control.playing.store(true, Ordering::SeqCst);
+    control.set_playing();
     shared.send(LaunchEvent::Running {
         app_name: req.app_name.clone(),
         pid: handle.pid(),
@@ -185,7 +185,11 @@ pub(super) fn run_process(
                 _ => {}
             }
         }
-        std::thread::sleep(shared.cfg.poll_interval);
+        // Sleeps until the next poll unless a stop arrives first.
+        let kill_pending = terminated_at.is_none();
+        control.wake.wait_while(shared.cfg.poll_interval, || {
+            !control.abort.load(Ordering::SeqCst) && !(kill_pending && control.kill.load(Ordering::SeqCst))
+        });
     }
 
     match exit {

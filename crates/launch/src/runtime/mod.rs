@@ -162,6 +162,7 @@ impl Launcher {
             t0: Instant::now(),
             playing: AtomicBool::new(false),
             ledger: Mutex::new(Ledger { cp: Checkpointer::default(), finished: false }),
+            wake: Default::default(),
         });
         {
             let mut sessions = self.shared.sessions.lock().unwrap();
@@ -200,9 +201,9 @@ impl Launcher {
         }
         if control.steam {
             // Heronite's stop only ends tracking for Steam games.
-            control.abort.store(true, Ordering::SeqCst);
+            control.set_abort();
         } else {
-            control.kill.store(true, Ordering::SeqCst);
+            control.set_kill();
         }
         let spawner = self.shared.spawner.clone();
         let stop = control.stop.clone();
@@ -239,7 +240,7 @@ impl Launcher {
             return false;
         };
         control.record.store(record, Ordering::SeqCst);
-        control.abort.store(true, Ordering::SeqCst);
+        control.set_abort();
         true
     }
 }
