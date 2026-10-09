@@ -162,10 +162,16 @@ fn tile(src: Option<ImageSource>, title: &str, w: Pixels, h: Pixels, focused: bo
 }
 
 impl CollectionView {
-    fn tile_for(&mut self, key: &SharedString, focused: bool, window: &Window) -> Div {
+    /// A cover tile; `load`: it is on screen, so its image is requested (off
+    /// screen it only shows what is already cached).
+    fn tile_for(&mut self, key: &SharedString, focused: bool, load: bool, window: &Window) -> Div {
         let (w, h) = (TILE_W, TILE_W * self.cover_aspect);
         let s = kit::scale();
-        let src = self.cover(key, w * s, h * s, window.scale_factor(), if focused { 200 } else { 50 });
+        let src = if load {
+            self.cover(key, w * s, h * s, window.scale_factor(), if focused { 200 } else { 50 })
+        } else {
+            self.cover_peek(key, w * s, h * s, window.scale_factor())
+        };
         let game = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
         let title = game.as_ref().map_or(String::new(), |g| g.title.clone());
         let playing = game.as_ref().is_some_and(|g| self.playing.contains_key(&g.app_name));
@@ -239,10 +245,16 @@ impl CollectionView {
         self.console_focus_game(Some(focused.clone()), cx);
 
         let mut list = div().id("console-shelves").flex().flex_col().gap(u(18.)).overflow_y_scroll().track_scroll(&shelves_scroll).px(u(SIDE)).pb(u(20.));
+        let step = f32::from(u(TILE_W + GAP));
+        let per_row = (f32::from(window.viewport_size().width) / step).ceil() as usize + 1;
         for (i, shelf) in shelves.iter().enumerate() {
             let mut row = div().id(("console-shelf", i)).flex().gap(u(GAP)).py(u(6.)).px(u(4.)).overflow_x_scroll().track_scroll(&rows[i]);
+            // On screen: the focused shelf and the one under it, the columns
+            // the shelf is scrolled to (and the focus, before it scrolls).
+            let first = (-f32::from(rows[i].offset().x) / step).floor().max(0.) as usize;
             for (c, key) in shelf.keys.iter().enumerate() {
-                row = row.child(self.tile_for(key, i == si && c == cols[i], window));
+                let visible = (i == si || i == si + 1) && ((first..=first + per_row).contains(&c) || c.abs_diff(cols[i]) <= 2);
+                row = row.child(self.tile_for(key, i == si && c == cols[i], visible, window));
             }
             list = list.child(
                 div()
@@ -355,10 +367,15 @@ impl CollectionView {
                 .child(div().text_size(u(16.)).font_weight(theme::W_BOLD).max_w(u(260.)).truncate().child(value.clone()))
         }));
         let mut grid = div().id("console-grid").flex().flex_col().gap(u(GAP)).overflow_y_scroll().track_scroll(&scroll).px(u(SIDE)).pb(u(24.));
+        // On screen: the rows the grid is scrolled to, and the focused one.
+        let row_step = f32::from(u(TILE_W * self.cover_aspect + GAP));
+        let first_row = (-f32::from(scroll.offset().y) / row_step).floor().max(0.) as usize;
+        let rows_shown = (f32::from(window.viewport_size().height) / row_step).ceil() as usize + 1;
         for (r, chunk) in keys.chunks(cols).enumerate() {
+            let visible = (first_row..=first_row + rows_shown).contains(&r) || r.abs_diff(index / cols) <= 1;
             let mut line = div().flex().gap(u(GAP)).px(u(4.)).pt(u(4.));
             for (c, key) in chunk.iter().enumerate() {
-                line = line.child(self.tile_for(key, grid_focus && r * cols + c == index, window));
+                line = line.child(self.tile_for(key, grid_focus && r * cols + c == index, visible, window));
             }
             grid = grid.child(line);
         }

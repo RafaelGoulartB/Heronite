@@ -334,7 +334,11 @@ impl CollectionView {
         let key = self.console.art_key.clone()?;
         let scale = window.scale_factor();
         let size = window.viewport_size();
-        let (pw, ph) = ((f32::from(size.width) * scale) as u32, (f32::from(size.height) * scale) as u32);
+        // Under the gradients a smaller texture looks the same and keeps the
+        // covers in the cache budget (a full ultrawide frame is ~20 MB).
+        let (w, h) = (f32::from(size.width) * scale, f32::from(size.height) * scale);
+        let shrink = (1920. / w).min(1.);
+        let (pw, ph) = ((w * shrink) as u32, (h * shrink) as u32);
         let id: SharedString = format!("s:{key}:{pw}x{ph}:console").into();
         let chains = &self.stage_chains;
         let ready = self.images.get_or_request(
