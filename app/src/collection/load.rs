@@ -93,11 +93,33 @@ impl CollectionView {
         self.saturation = bg.saturation.get() as f32 / 100.;
         self.stage_enabled = bg.enabled;
         self.grey_uninstalled = s.grey_uninstalled_games && !s.all_tiles_in_color;
+        // Textures are keyed by game, not by image: a game whose art changed
+        // (custom cover/background, metadata) must load it again.
+        let mut stale: Vec<String> = Vec::new();
+        for (key, chain) in &self.cover_chains {
+            if l.covers.get(key) != Some(chain) {
+                stale.push(format!("c:{key}:"));
+            }
+        }
+        for (key, chain) in &self.stage_chains {
+            if l.stages.get(key) != Some(chain) {
+                stale.extend([format!("s:{key}:"), format!("g:{key}:")]);
+            }
+        }
+        if !stale.is_empty() {
+            self.images.invalidate(&stale);
+        }
         self.cover_chains = l.covers;
         self.stage_chains = l.stages;
         self.wiki = Arc::new(l.wiki);
         self.lib = Some(Arc::new(l.lib));
+        // Rebuilding the rows resets the list to the top; a reload (a dialog
+        // saved, the files changed on disk) keeps the user's place.
+        let scroll = (!first).then(|| self.list_state.logical_scroll_top());
         self.refresh_groups();
+        if let (Some(top), Some(last)) = (scroll, self.items.len().checked_sub(1)) {
+            self.list_state.scroll_to(ListOffset { item_ix: top.item_ix.min(last), offset_in_item: top.offset_in_item });
+        }
         let focused = if first {
             crate::env::value("HERONITE_DEBUG_SELECT").or_else(|| self.ui.focused_game.clone())
         } else {

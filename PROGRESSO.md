@@ -1144,3 +1144,14 @@ prefixo; "remove prefix" o apaga). Menu de contexto sem Import / Update / Verify
   do EA (baixou o instalador verdadeiro, gravou o arquivo, biblioteca reconstruída com o jogo instalado, nenhuma chamada ao legendary)
   e uninstall. **Não verificado**: rodar o instalador da EA/Ubisoft no Wine e jogar (nenhum jogo foi lançado).
 
+
+## Imagens trocadas aparecem na hora (2026-10-09)
+- **Bug**: trocar a capa ou o fundo nas configurações do jogo atualizava a gaveta, mas a Collection (cartão, painel de foco, fundo do
+  palco e vidro) continuava com a imagem antiga até reabrir o app. As texturas da Collection têm o jogo como chave (`c:<jogo>`,
+  `s:<jogo>`, `g:<jogo>`), não a imagem; a recarga lia a cadeia nova, mas a textura antiga continuava no cache.
+- **Correção**: `apply_loaded` (`collection/load.rs`) compara as cadeias de capa e de fundo novas com as antigas e chama
+  `ImageStore::invalidate` para os jogos que mudaram. Cada pedido ao loader agora leva uma geração: o resultado de um pedido
+  invalidado ainda em andamento é descartado. Vale também para mudanças feitas pelo Heronite (poll de 2 s) e pelos metadados.
+- **Junto**: a recarga deixou de voltar a lista ao topo (`list_state.reset` zerava a rolagem; a posição agora é restaurada).
+- Gancho: `HERONITE_DEBUG_SET_ART=<cover|hero>:<arquivo>@<ms>` troca a imagem pelo mesmo caminho do botão "Change" (só fixture).
+  Verificado com capturas antes e depois (capa e fundo) e, para confirmar a causa, com a invalidação desligada (fundo ficava velho).

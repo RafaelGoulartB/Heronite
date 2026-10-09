@@ -47,18 +47,37 @@ impl GameSettingsDialog {
 
     fn pick_image(&mut self, kind: ArtKind, cx: &mut Context<Self>) {
         let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some("Select".into()) });
-        let (service, runner, app) = (self.service.clone(), self.runner(), self.game.app_name.clone());
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = rx.await else { return };
             let Some(path) = paths.into_iter().next() else { return };
-            this.update(cx, |this, cx| {
-                this.busy = Some(Busy::Art(kind));
-                this.error.clear();
-                cx.notify();
-            })
-            .ok();
-            let res = cx.background_spawn(async move { service.set_art_from_file(&runner, &app, kind, &path.to_string_lossy()) }).await;
+            this.update(cx, |this, cx| this.set_image_file(kind, path.to_string_lossy().into_owned(), cx)).ok();
+        })
+        .detach();
+    }
+
+    fn set_image_file(&mut self, kind: ArtKind, path: String, cx: &mut Context<Self>) {
+        self.busy = Some(Busy::Art(kind));
+        self.error.clear();
+        let (service, runner, app) = (self.service.clone(), self.runner(), self.game.app_name.clone());
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { service.set_art_from_file(&runner, &app, kind, &path) }).await;
             this.update(cx, |this, cx| this.art_result(res, cx)).ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// `HERONITE_DEBUG_SET_ART=<cover|hero>:<file>@<ms>`: after `ms`, sets that
+    /// image as if picked with "Change" (fixtures only: it writes the art).
+    pub(super) fn debug_set_art(&mut self, cx: &mut Context<Self>) {
+        let Some(spec) = crate::env::value("HERONITE_DEBUG_SET_ART") else { return };
+        let (what, delay) = spec.rsplit_once('@').map(|(w, d)| (w.to_string(), d.parse().unwrap_or(0))).unwrap_or((spec.clone(), 0));
+        let Some((kind, file)) = what.split_once(':') else { return };
+        let kind = if kind == "hero" { ArtKind::Hero } else { ArtKind::Cover };
+        let file = file.to_string();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(delay)).await;
+            this.update(cx, |this, cx| this.set_image_file(kind, file, cx)).ok();
         })
         .detach();
     }

@@ -168,6 +168,7 @@ impl GameSettingsDialog {
         if let Some(text) = this.launch.as_ref().map(|l| l.initial_exe.clone()) {
             this.refresh_launch(&text);
         }
+        this.debug_set_art(cx);
         this
     }
 

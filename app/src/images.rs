@@ -10,7 +10,8 @@ use gpui_kit::{RenderImage, SharedString, Window};
 use heronite_data::AppPaths;
 use heronite_images::{Decoded, ImageError, Loader, LoaderConfig, Opts, Request, Variant};
 
-pub type Loaded = (SharedString, Result<Arc<Decoded>, ImageError>);
+/// A finished load: texture id, request generation, result.
+pub type Loaded = (SharedString, u64, Result<Arc<Decoded>, ImageError>);
 
 /// Converts the data layer's chain (which ends with the bundled placeholder
 /// marker) to the loader's.
@@ -40,7 +41,10 @@ pub struct ImageStore {
     /// Least recently used first.
     order: VecDeque<SharedString>,
     bytes: usize,
-    pending: HashSet<SharedString>,
+    /// Loads in flight and their generation: a result whose generation is no
+    /// longer here was [`invalidate`](Self::invalidate)d and is dropped.
+    pending: HashMap<SharedString, u64>,
+    next_gen: u64,
     failed: HashSet<SharedString>,
     evicted: Vec<Arc<RenderImage>>,
 }
@@ -56,7 +60,8 @@ impl ImageStore {
             ready: HashMap::new(),
             order: VecDeque::new(),
             bytes: 0,
-            pending: HashSet::new(),
+            pending: HashMap::new(),
+            next_gen: 0,
             failed: HashSet::new(),
             evicted: Vec::new(),
         };
@@ -83,7 +88,7 @@ impl ImageStore {
             }
             return Some(img.clone());
         }
-        if self.pending.contains(id) || self.failed.contains(id) {
+        if self.pending.contains_key(id) || self.failed.contains(id) {
             return None;
         }
         let chain = chain();
@@ -91,12 +96,14 @@ impl ImageStore {
             self.failed.insert(id.clone());
             return None;
         }
-        self.pending.insert(id.clone());
+        self.next_gen += 1;
+        let generation = self.next_gen;
+        self.pending.insert(id.clone(), generation);
         log::debug!("image request {id}");
         let tx = self.tx.clone();
         let key = id.clone();
         self.loader.submit(Request { chain, width, height, variant, priority }, move |res| {
-            let _ = tx.unbounded_send((key, res));
+            let _ = tx.unbounded_send((key, generation, res));
         });
         None
     }
@@ -107,8 +114,11 @@ impl ImageStore {
         self.ready.get(id).map(|(img, _)| img.clone())
     }
 
-    pub fn on_loaded(&mut self, (id, res): Loaded) {
+    pub fn on_loaded(&mut self, (id, generation, res): Loaded) {
         log::debug!("image loaded {id}: {}", if res.is_ok() { "ok" } else { "err" });
+        if self.pending.get(&id) != Some(&generation) {
+            return;
+        }
         self.pending.remove(&id);
         match res {
             Ok(decoded) => {
@@ -175,8 +185,69 @@ impl ImageStore {
         }
     }
 
+    /// Forgets every texture whose id starts with one of `prefixes`: ready,
+    /// failed and in flight (its result is dropped), so the next request loads
+    /// the image again. Used when the image behind an id changed.
+    pub fn invalidate(&mut self, prefixes: &[String]) {
+        let hit = |k: &SharedString| prefixes.iter().any(|p| k.starts_with(p.as_str()));
+        let ids: Vec<SharedString> = self.ready.keys().filter(|k| hit(k)).cloned().collect();
+        for id in &ids {
+            self.remove(id);
+        }
+        self.order.retain(|k| !hit(k));
+        self.failed.retain(|k| !hit(k));
+        self.pending.retain(|k, _| !hit(k));
+    }
+
     /// Forgets the failed loads so they are tried again (e.g. after the library changed on disk).
     pub fn clear_failed(&mut self) {
         self.failed.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::StreamExt;
+    use heronite_data::HeroicPaths;
+
+    fn store(dir: &std::path::Path) -> (ImageStore, UnboundedReceiver<Loaded>) {
+        ImageStore::new(dir.join("images-cache"), &AppPaths::for_heroic(&HeroicPaths::at(dir)))
+    }
+
+    /// A missing file: the load fails, which is enough to see where results go.
+    fn request(s: &mut ImageStore, dir: &std::path::Path, id: &str) {
+        let chain = vec![heronite_images::ImageRef::File(dir.join("missing.png"))];
+        assert!(s.get_or_request(&id.into(), || chain, 10, 10, Variant::Cover, 1).is_none());
+    }
+
+    #[test]
+    fn results_of_invalidated_requests_are_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, mut rx) = store(dir.path());
+        request(&mut s, dir.path(), "c:a:10x10");
+        let first = futures::executor::block_on(rx.next()).unwrap();
+
+        // The art changed while the old image was loading: its result must not count.
+        s.invalidate(&["c:a:".to_string()]);
+        request(&mut s, dir.path(), "c:a:10x10");
+        s.on_loaded(first);
+        assert!(!s.failed.contains("c:a:10x10"));
+        assert!(s.pending.contains_key("c:a:10x10"));
+
+        let second = futures::executor::block_on(rx.next()).unwrap();
+        s.on_loaded(second);
+        assert!(s.failed.contains("c:a:10x10"));
+        assert!(s.pending.is_empty());
+
+        // Invalidating also forgets the failure, so the next request loads again.
+        s.invalidate(&["c:a:".to_string()]);
+        assert!(!s.failed.contains("c:a:10x10"));
+        request(&mut s, dir.path(), "c:a:10x10");
+        assert!(s.pending.contains_key("c:a:10x10"));
+        // Other games are left alone.
+        request(&mut s, dir.path(), "c:ab:10x10");
+        s.invalidate(&["c:a:".to_string()]);
+        assert!(s.pending.contains_key("c:ab:10x10"));
     }
 }
