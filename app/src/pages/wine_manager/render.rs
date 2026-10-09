@@ -55,7 +55,7 @@ fn job_fraction(job: Option<&Job>) -> Option<f32> {
 }
 
 /// Text of the size column: the job's progress, or the size on disk / to download.
-fn size_text(job: Option<&Job>, r: &WineVersionInfo) -> SharedString {
+pub(super) fn size_text(job: Option<&Job>, r: &WineVersionInfo) -> SharedString {
     match job.map(|j| &j.phase) {
         Some(JobPhase::Downloading { percentage, speed, eta_secs, .. }) => {
             let mut s = format!("{percentage:.1}%  \u{b7}  {}/s", fmt_size(*speed as u64));

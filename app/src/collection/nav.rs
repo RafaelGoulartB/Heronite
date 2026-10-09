@@ -303,16 +303,19 @@ impl CollectionView {
             Page::Downloads => {
                 let v = cx.new(|cx| pages::downloads::DownloadsPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Downloads, crate::console::PadHook::new(&v));
                 self.pages.downloads = Some(v.into());
             }
             Page::WineManager => {
                 let v = cx.new(|cx| pages::wine_manager::WineManagerPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::WineManager, crate::console::PadHook::new(&v));
                 self.pages.wine = Some(v.into());
             }
             Page::Epic => {
                 let v = cx.new(|cx| pages::epic::EpicPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Epic, crate::console::PadHook::new(&v));
                 self.pages.epic = Some(v.into());
             }
             Page::Emulators => {
@@ -323,6 +326,7 @@ impl CollectionView {
             Page::Statistics => {
                 let v = cx.new(|cx| pages::stats::StatsPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Statistics, crate::console::PadHook::new(&v));
                 self.pages.stats = Some(v.into());
             }
             Page::Settings => {

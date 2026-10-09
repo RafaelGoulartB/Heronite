@@ -325,3 +325,25 @@ pub fn empty(ic: Icon, title_text: impl Into<SharedString>, body: impl Into<Shar
         .child(title(title_text, 22.))
         .child(body_text(body))
 }
+
+/// Centred modal panel over a dim (sheets, console dialogs).
+pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElement) -> Div {
+    div().absolute().inset_0().child(scrim()).child(
+        div().absolute().inset_0().flex().items_center().justify_center().pb(u(60.)).child(
+            div()
+                .w(u(width))
+                .max_w(relative(0.94))
+                .max_h(relative(0.86))
+                .flex()
+                .flex_col()
+                .gap(u(14.))
+                .p(u(26.))
+                .rounded(u(24.))
+                .bg(theme::console_sidebar())
+                .border_1()
+                .border_color(theme::white_a(0.1))
+                .child(title(heading, 26.))
+                .child(div().flex().flex_col().flex_1().min_h_0().gap(u(14.)).child(body)),
+        ),
+    )
+}

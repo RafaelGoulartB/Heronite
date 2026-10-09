@@ -4,6 +4,8 @@
 //! from `heronite_data::stats` over the Collection's loaded library (handed
 //! in with [`StatsPage::set_library`]); nothing is read from disk here.
 
+mod console;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -39,6 +41,8 @@ pub struct StatsPage {
     hover_bar: Option<usize>,
     hover_cell: Option<(usize, usize)>,
     show_all: bool,
+    /// Scroll of the console layout.
+    console_scroll: ScrollHandle,
 }
 
 impl EventEmitter<PageEvent> for StatsPage {}
@@ -75,6 +79,7 @@ impl StatsPage {
             hover_bar: None,
             hover_cell: None,
             show_all: false,
+            console_scroll: ScrollHandle::new(),
         }
     }
 
@@ -768,6 +773,9 @@ fn notice(ic: Icon, title: String, body: &str) -> Div {
 
 impl Render for StatsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         self.covers.drop_evicted(window);
         let cw = content_width(window);
         let wide = cw >= 1100.;
@@ -805,7 +813,7 @@ impl Render for StatsPage {
                 column = column.child(columns(wide, [games, habits]));
             }
         }
-        sheet("stats-body", "Statistics", lead, Some(controls), 1560., window, page_close(cx), column)
+        sheet("stats-body", "Statistics", lead, Some(controls), 1560., window, page_close(cx), column).into_any_element()
     }
 }
 

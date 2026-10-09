@@ -41,7 +41,9 @@ impl CollectionView {
             }
             cx.notify();
         }));
-        self.dialog = Some(view.into());
+        let view: AnyView = view.into();
+        self.dialog_hook = crate::console::registry::hook_for(&view);
+        self.dialog = Some(view);
         cx.notify();
     }
 

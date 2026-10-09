@@ -198,6 +198,7 @@ impl CollectionView {
             console: Default::default(),
         };
         window.focus(&this.focus_handle, cx);
+        this.console_init(window, cx);
         if let Some(page) = crate::env::value("HERONITE_DEBUG_PAGE").and_then(|p| crate::pages::Page::from_debug(&p)) {
             this.navigate(page, window, cx);
         }
@@ -206,7 +207,6 @@ impl CollectionView {
         this.init_metadata(window, cx);
         this.spawn_disk_watch(cx);
         this.spawn_debug_browse(cx);
-        this.console_init(window, cx);
         this
     }
 }

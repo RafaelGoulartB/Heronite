@@ -14,6 +14,7 @@ pub mod input;
 pub mod kit;
 pub mod list;
 pub mod osk;
+pub mod registry;
 pub mod sheet;
 
 use std::rc::Rc;
@@ -134,5 +135,48 @@ pub struct Overlay {
 impl Overlay {
     pub fn new<V: PadTarget + Render>(view: &Entity<V>) -> Self {
         Self { view: view.clone().into(), hook: PadHook::new(view) }
+    }
+}
+
+/// An overlay owned by a page or dialog (its own sheets, keyboard,
+/// picker): drawn on top of the owner's console layout, gets the presses
+/// first.
+#[derive(Default)]
+pub struct Layer {
+    overlay: Option<Overlay>,
+    sub: Option<Subscription>,
+}
+
+impl Layer {
+    pub fn open<V: PadTarget + Render>(&mut self, view: &Entity<V>, sub: Subscription) {
+        self.overlay = Some(Overlay::new(view));
+        self.sub = Some(sub);
+    }
+
+    pub fn close(&mut self) {
+        self.overlay = None;
+        self.sub = None;
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.overlay.is_some()
+    }
+
+    /// `true` when the layer took `pad` (B on an overlay that ignores it
+    /// closes the layer).
+    pub fn pad(&mut self, pad: Pad, window: &mut Window, cx: &mut App) -> bool {
+        let Some(o) = self.overlay.clone() else { return false };
+        if !o.hook.pad(pad, window, cx) && pad == Pad::B {
+            self.close();
+        }
+        true
+    }
+
+    pub fn hints(&self, cx: &App) -> Option<Vec<Hint>> {
+        self.overlay.as_ref().map(|o| o.hook.hints(cx))
+    }
+
+    pub fn view(&self) -> Option<AnyView> {
+        self.overlay.as_ref().map(|o| o.view.clone())
     }
 }

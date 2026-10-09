@@ -9,6 +9,7 @@
 //! open removal confirmation, the GE-Proton tab, or a real install of `<version>`
 //! (use a fixture dir!) for screenshots.
 
+mod console;
 mod render;
 
 use std::collections::HashMap;
@@ -41,6 +42,10 @@ pub struct WineManagerPage {
     offline: bool,
     /// Screenshot helper: fake jobs shown instead of real ones.
     fake: HashMap<String, Job>,
+    /// Console mode: focused row, open sheet / keyboard, search text.
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
+    console_query: String,
 }
 
 impl EventEmitter<PageEvent> for WineManagerPage {}
@@ -81,6 +86,9 @@ impl WineManagerPage {
             last_rev: 0,
             offline: crate::env::flag("HERONITE_WINE_OFFLINE"),
             fake: HashMap::new(),
+            console_list: Default::default(),
+            layer: Default::default(),
+            console_query: String::new(),
         };
         let auto_install = debug.split(',').find_map(|t| t.strip_prefix("install=")).map(str::to_owned);
         this.init(debug_has("progress"), debug_has("confirm"), auto_install, cx);
@@ -272,6 +280,9 @@ impl WineManagerPage {
 
 impl Render for WineManagerPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         let toolbar = self.render_toolbar(cx);
         let steam = self.render_steam_row(cx);
         let list = self.render_list(cx);
@@ -311,5 +322,6 @@ impl Render for WineManagerPage {
             close,
             column,
         )
+        .into_any_element()
     }
 }

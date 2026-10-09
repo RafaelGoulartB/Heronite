@@ -3,6 +3,8 @@
 //! move install, verify and repair, update prompt) - or just a text to read
 //! (cloud saves output).
 
+mod console;
+
 use std::rc::Rc;
 
 use gpui_kit::component::input::InputState;
@@ -68,6 +70,8 @@ pub struct EpicConfirmDialog {
     toggles: Vec<bool>,
     path_input: Option<Entity<InputState>>,
     on_confirm: Rc<dyn Fn(Choice, &mut App)>,
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<DialogEvent> for EpicConfirmDialog {}
@@ -81,7 +85,7 @@ impl EpicConfirmDialog {
     ) -> Self {
         let toggles = spec.toggles.iter().map(|t| t.value).collect();
         let path_input = spec.path.as_ref().map(|(_, initial, _)| new_input(window, cx, initial, ""));
-        Self { spec, toggles, path_input, on_confirm: Rc::new(on_confirm) }
+        Self { spec, toggles, path_input, on_confirm: Rc::new(on_confirm), console_list: Default::default(), layer: Default::default() }
     }
 
     fn confirm(&mut self, cx: &mut Context<Self>) {
@@ -96,6 +100,9 @@ impl EpicConfirmDialog {
 
 impl Render for EpicConfirmDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(cx);
+        }
         let id = self.spec.id.clone();
         let mut body = div().flex().flex_col().gap(px(14.));
         for line in self.spec.message.lines() {
@@ -199,5 +206,6 @@ impl Render for EpicConfirmDialog {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
         )
+        .into_any_element()
     }
 }

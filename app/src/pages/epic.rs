@@ -1,6 +1,8 @@
 //! Epic Games page: log in (embedded login window, or the browser + pasted
 //! code), account, library refresh and importing an installed game.
 
+mod console;
+
 use std::process::{Command, Stdio};
 
 use gpui_kit::component::input::InputState;
@@ -33,6 +35,9 @@ pub struct EpicPage {
     notice: Option<(SharedString, bool)>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
+    /// Console mode: focused row and the open sheet / keyboard.
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<PageEvent> for EpicPage {}
@@ -68,6 +73,8 @@ impl EpicPage {
             notice: None,
             dialog: None,
             dialog_sub: None,
+            console_list: Default::default(),
+            layer: Default::default(),
         };
         // Screenshots: `HERONITE_DEBUG_EPIC_PAGE=import|logout|eos-remove`.
         match debug.as_deref() {
@@ -256,6 +263,9 @@ fn eos_main_text(installed: bool, working: bool) -> &'static str {
 
 impl Render for EpicPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         let (account, stats, updates, refreshing, logging_in, last_error) = {
             let s = self.svc.read(cx);
             (s.account().clone(), s.stats().clone(), s.updates_count(), s.refreshing, s.logging_in, s.last_error.clone())
@@ -422,5 +432,6 @@ impl Render for EpicPage {
                 columns(wide, [column, eos]),
             ))
             .children(self.dialog.clone())
+            .into_any_element()
     }
 }

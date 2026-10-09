@@ -1,6 +1,8 @@
 //! Downloads page: the running install/update with its progress, the queue
 //! (reorder / remove) and the history, backed by the Epic download manager.
 
+mod console;
+
 use chrono::{Local, TimeZone};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -21,6 +23,9 @@ pub struct DownloadsPage {
     covers: Covers,
     /// "Stop installation" question open for the running element.
     confirm_stop: bool,
+    /// Console mode: focused row and the open sheet.
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<PageEvent> for DownloadsPage {}
@@ -30,7 +35,7 @@ impl DownloadsPage {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
         let covers = Covers::new(&ctx.heroic, &ctx.app, cx, |this: &mut Self| &mut this.covers);
-        Self { ctx, svc, covers, confirm_stop: false }
+        Self { ctx, svc, covers, confirm_stop: false, console_list: Default::default(), layer: Default::default() }
     }
 }
 
@@ -58,6 +63,9 @@ fn progress_text(p: &Progress) -> String {
 
 impl Render for DownloadsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         self.covers.drop_evicted(window);
         let scale = window.scale_factor();
         let svc = self.svc.read(cx);
@@ -250,5 +258,6 @@ impl Render for DownloadsPage {
             page_close(cx),
             column,
         )
+        .into_any_element()
     }
 }
