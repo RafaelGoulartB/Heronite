@@ -34,35 +34,7 @@ impl Roots {
     }
 }
 
-/// `sanitize-filename` (npm) with an empty replacement, as Heroic uses it for
-/// the shortcut file names.
-pub fn sanitize_filename(input: &str) -> String {
-    let mut s: String = input
-        .chars()
-        .filter(|c| {
-            !matches!(c, '/' | '?' | '<' | '>' | '\\' | ':' | '*' | '|' | '"')
-                && !matches!(*c as u32, 0x00..=0x1f | 0x80..=0x9f)
-        })
-        .collect();
-    if !s.is_empty() && s.chars().all(|c| c == '.') {
-        s.clear();
-    }
-    let lower = s.to_ascii_lowercase();
-    let stem = lower.split('.').next().unwrap_or("");
-    let reserved = matches!(stem, "con" | "prn" | "aux" | "nul")
-        || ((stem.starts_with("com") || stem.starts_with("lpt")) && stem.len() == 4 && stem.as_bytes()[3].is_ascii_digit());
-    if reserved {
-        s.clear();
-    }
-    while s.ends_with('.') || s.ends_with(' ') {
-        s.pop();
-    }
-    // 255 bytes, on a char boundary.
-    while s.len() > 255 {
-        s.pop();
-    }
-    s
-}
+pub use heronite_data::text::sanitize_filename;
 
 /// `(desktop file, application-menu file)` for a title.
 pub fn shortcut_files(roots: &Roots, title: &str) -> (Option<PathBuf>, PathBuf) {
@@ -184,22 +156,6 @@ mod tests {
 
     fn game(title: &str) -> GameId {
         GameId { runner: "legendary".into(), app_name: "Quail".into(), title: title.into() }
-    }
-
-    #[test]
-    fn sanitize_matches_npm_package() {
-        assert_eq!(sanitize_filename("Half-Life: Alyx"), "Half-Life Alyx");
-        assert_eq!(sanitize_filename("a/b\\c?d*e|f\"g<h>i"), "abcdefghi");
-        assert_eq!(sanitize_filename("Game..."), "Game");
-        assert_eq!(sanitize_filename("trailing "), "trailing");
-        assert_eq!(sanitize_filename(".."), "");
-        assert_eq!(sanitize_filename("CON"), "");
-        assert_eq!(sanitize_filename("con.txt"), "");
-        assert_eq!(sanitize_filename("COM1"), "");
-        assert_eq!(sanitize_filename("com10"), "com10");
-        assert_eq!(sanitize_filename("The Witcher 3: Wild Hunt"), "The Witcher 3 Wild Hunt");
-        assert_eq!(sanitize_filename("tab\there"), "tabhere");
-        assert_eq!(sanitize_filename(&"a".repeat(300)).len(), 255);
     }
 
     #[test]

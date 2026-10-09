@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 use heronite_data::models::{LocalMetaFile, SessionsFile};
 use heronite_data::paths::HeroicPaths;
+use heronite_data::text::sanitize_filename;
 use heronite_data::{config_games, json_store};
 use serde_json::Value;
 
@@ -83,33 +84,6 @@ fn parse_desktop_dir(text: &str, home: &Path) -> Option<PathBuf> {
         None => PathBuf::from(value),
     };
     (path.is_absolute() && path != home).then_some(path)
-}
-
-/// `sanitize-filename`: drops path separators, reserved characters and
-/// control characters, trailing dots/spaces, Windows reserved names; at most
-/// 255 bytes.
-pub fn sanitize_filename(input: &str) -> String {
-    let cleaned: String = input
-        .chars()
-        .filter(|c| !matches!(c, '/' | '?' | '<' | '>' | '\\' | ':' | '*' | '|' | '"') && !c.is_control())
-        .collect();
-    let mut name = cleaned.trim_end_matches(['.', ' ']).to_string();
-    if name == "." || name == ".." {
-        name.clear();
-    }
-    let stem = name.split('.').next().unwrap_or("").to_ascii_lowercase();
-    let reserved = matches!(stem.as_str(), "con" | "prn" | "aux" | "nul")
-        || (stem.len() == 4
-            && (stem.starts_with("com") || stem.starts_with("lpt"))
-            && stem.as_bytes()[3].is_ascii_digit()
-            && stem.as_bytes()[3] != b'0');
-    if reserved {
-        name.clear();
-    }
-    while name.len() > 255 {
-        name.pop();
-    }
-    name
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
