@@ -143,8 +143,9 @@ fn tune_allocator() {
     }
 }
 
-/// Startup parses several MB of JSON on worker threads; glibc keeps the
-/// freed pages in per-thread arenas. Give them back once loading settled.
+/// Gives freed heap pages back to the OS a moment after a burst of frees
+/// (startup parsing, the window closing to the tray); glibc keeps them
+/// otherwise.
 pub fn trim_heap_later() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     std::thread::spawn(|| {
