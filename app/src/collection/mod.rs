@@ -198,6 +198,7 @@ impl CollectionView {
         this.start_idle_jobs(cx);
         this.init_metadata(window, cx);
         this.spawn_disk_watch(cx);
+        this.spawn_debug_browse(cx);
         this
     }
 }

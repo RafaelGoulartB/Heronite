@@ -25,15 +25,24 @@ pub fn to_chain(chain: &[heronite_data::ImageRef]) -> Vec<heronite_images::Image
         .collect()
 }
 
+/// Pixel bytes the ready textures may hold. Each one also has a copy in the
+/// GPU atlas, so the real cost is about twice this.
+const BUDGET_BYTES: usize = 48 << 20;
+
+/// Window-sized kinds (stage, glass backdrop) keep only the current texture
+/// and the previous one (shown while the next loads), whatever the budget.
+const KEEP_LATEST: [(&str, usize); 2] = [("s:", 2), ("g:", 2)];
+
 pub struct ImageStore {
     loader: Loader,
     tx: UnboundedSender<Loaded>,
-    ready: HashMap<SharedString, Arc<RenderImage>>,
+    ready: HashMap<SharedString, (Arc<RenderImage>, usize)>,
+    /// Least recently used first.
     order: VecDeque<SharedString>,
+    bytes: usize,
     pending: HashSet<SharedString>,
     failed: HashSet<SharedString>,
     evicted: Vec<Arc<RenderImage>>,
-    capacity: usize,
 }
 
 impl ImageStore {
@@ -46,11 +55,10 @@ impl ImageStore {
             tx,
             ready: HashMap::new(),
             order: VecDeque::new(),
+            bytes: 0,
             pending: HashSet::new(),
             failed: HashSet::new(),
             evicted: Vec::new(),
-            // ~3 screens of covers at 125px: a few MB of textures.
-            capacity: 160,
         };
         (store, rx)
     }
@@ -66,7 +74,7 @@ impl ImageStore {
         variant: Variant,
         priority: i32,
     ) -> Option<Arc<RenderImage>> {
-        if let Some(img) = self.ready.get(id) {
+        if let Some((img, _)) = self.ready.get(id) {
             if self.order.back() != Some(id) {
                 if let Some(pos) = self.order.iter().position(|k| k == id) {
                     self.order.remove(pos);
@@ -99,23 +107,48 @@ impl ImageStore {
         match res {
             Ok(decoded) => {
                 let decoded = Decoded::from_shared(decoded);
+                let size = decoded.byte_len();
                 let frame = image::Frame::new(decoded.into_image_buffer());
                 let img = Arc::new(RenderImage::new(smallvec::smallvec![frame]));
-                self.ready.insert(id.clone(), img);
-                self.order.push_back(id);
-                while self.order.len() > self.capacity {
-                    if let Some(old) = self.order.pop_front() {
-                        if let Some(img) = self.ready.remove(&old) {
-                            self.evicted.push(img);
-                        }
-                    }
+                if let Some((old, old_size)) = self.ready.insert(id.clone(), (img, size)) {
+                    self.bytes -= old_size;
+                    self.evicted.push(old);
+                    self.order.retain(|k| k != &id);
                 }
+                self.bytes += size;
+                self.order.push_back(id);
+                self.evict();
             }
             Err(err) => {
                 log::debug!("image {id}: {err}");
                 self.failed.insert(id);
             }
         }
+    }
+
+    fn remove(&mut self, id: &SharedString) {
+        if let Some((img, size)) = self.ready.remove(id) {
+            self.bytes -= size;
+            self.evicted.push(img);
+        }
+    }
+
+    /// Drops the oldest textures over [`KEEP_LATEST`] and [`BUDGET_BYTES`]
+    /// (the newest one always stays).
+    fn evict(&mut self) {
+        for (prefix, keep) in KEEP_LATEST {
+            let of_kind: Vec<SharedString> = self.order.iter().filter(|k| k.starts_with(prefix)).cloned().collect();
+            for id in of_kind.iter().take(of_kind.len().saturating_sub(keep)) {
+                self.remove(id);
+                self.order.retain(|k| k != id);
+            }
+        }
+        while self.bytes > BUDGET_BYTES && self.order.len() > 1 {
+            if let Some(old) = self.order.pop_front() {
+                self.remove(&old);
+            }
+        }
+        log::debug!("image store: {} textures, {:.1} MB", self.order.len(), self.bytes as f64 / 1048576.);
     }
 
     /// Frees GPU atlas space of evicted textures (needs the window).
@@ -131,9 +164,7 @@ impl ImageStore {
     pub fn forget_prefix(&mut self, prefix: &str) {
         let ids: Vec<SharedString> = self.ready.keys().filter(|k| k.starts_with(prefix)).cloned().collect();
         for id in ids {
-            if let Some(img) = self.ready.remove(&id) {
-                self.evicted.push(img);
-            }
+            self.remove(&id);
             self.order.retain(|k| k != &id);
         }
     }

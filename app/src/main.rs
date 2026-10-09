@@ -17,6 +17,7 @@ use gpui_kit::*;
 
 fn main() {
     let started = Instant::now();
+    tune_allocator();
     env_logger_init();
 
     let cli = system::cli::parse(std::env::args().skip(1));
@@ -124,6 +125,22 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
         }
     }
     primary(None, None)
+}
+
+/// The app stays open for days and decodes large images on worker threads.
+/// glibc's defaults suit short programs: big buffers move into the heap once
+/// a few were freed (dynamic mmap threshold) and every thread gets its own
+/// arena, so freed pixels stay in the process. Fixed thresholds send every
+/// buffer above 128 KiB to `mmap` (back to the OS on free), and two arenas
+/// bound the fragmentation.
+fn tune_allocator() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: mallopt only changes allocator tuning; called before any thread starts.
+    unsafe {
+        libc::mallopt(libc::M_MMAP_THRESHOLD, 128 * 1024);
+        libc::mallopt(libc::M_TRIM_THRESHOLD, 512 * 1024);
+        libc::mallopt(libc::M_ARENA_MAX, 2);
+    }
 }
 
 /// Startup parses several MB of JSON on worker threads; glibc keeps the

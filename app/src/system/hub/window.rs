@@ -67,7 +67,7 @@ pub(super) fn close_window_keep_alive(cx: &mut App) -> bool {
     let hub = hub(cx);
     let handle = {
         let mut s = hub.0.borrow_mut();
-        if s.tray.is_none() {
+        if !s.has_tray() {
             return false;
         }
         let Some(handle) = s.window.as_ref().map(|w| w.handle) else { return false };
@@ -98,7 +98,7 @@ pub(super) fn on_window_closed(cx: &mut App, id: WindowId) {
         if s.quitting {
             return;
         }
-        s.tray.is_some() && (hiding || settings.exit_to_tray)
+        s.has_tray() && (hiding || settings.exit_to_tray)
     };
     if keep {
         log::info!("window closed, staying in the tray");

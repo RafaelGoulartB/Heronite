@@ -26,7 +26,7 @@ fn ask_quit_confirm(cx: &mut App, titles: Vec<String>, busy: bool) -> bool {
     let hub = hub(cx);
     let (view, tray) = {
         let s = hub.0.borrow();
-        (s.window.as_ref().map(|w| w.view.clone()), s.tray.is_some())
+        (s.window.as_ref().map(|w| w.view.clone()), s.has_tray())
     };
     let Some(view) = view else { return false };
     view.update(cx, |v, cx| v.system_quit_confirm(titles, busy, tray, cx)).is_ok()
@@ -43,7 +43,7 @@ pub(super) fn allow_user_close(cx: &mut App) -> bool {
             return true;
         }
         let settings = s.settings();
-        s.tray.is_some() && (s.hiding || settings.exit_to_tray)
+        s.has_tray() && (s.hiding || settings.exit_to_tray)
     };
     if stays_alive {
         return true;

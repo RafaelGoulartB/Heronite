@@ -43,7 +43,8 @@ pub fn init(
     let tray = (!settings.no_tray_icon && !crate::env::flag("HERONITE_NO_TRAY"))
         .then(|| tray::spawn(heroic.clone(), settings.dark_tray_icon, settings.exit_to_tray, settings.max_recent, false, tray_tx.clone()))
         .flatten();
-    let tray_alive = tray.is_some();
+    let fake_tray = crate::env::flag("HERONITE_DEBUG_FAKE_TRAY");
+    let tray_alive = tray.is_some() || fake_tray;
 
     let debug_hidden = crate::env::flag("HERONITE_DEBUG_START_HIDDEN");
     let hide = cli.hide_window(settings.hide_window_on_protocol_launch);
@@ -59,6 +60,7 @@ pub fn init(
         subscriber: None,
         running: HashMap::new(),
         tray,
+        fake_tray,
         exit_when_idle: cli.launch.is_some() && !want_window && !start_in_tray,
         hiding: false,
         quitting: false,

@@ -22,8 +22,13 @@ impl CollectionView {
         let key = self.selected.clone()?;
         let scale = window.scale_factor();
         let size = window.viewport_size();
-        let (pw, ph) = ((f32::from(size.width) * scale) as u32, (f32::from(size.height) * scale) as u32);
+        // A blurred stage made at half the window's resolution looks the same
+        // once the GPU scales it up, for a quarter of the memory and work.
         let blur = self.blur_px * scale;
+        let shrink = if blur >= 4. { 2. } else { 1. };
+        let pw = (f32::from(size.width) * scale / shrink).round() as u32;
+        let ph = (f32::from(size.height) * scale / shrink).round() as u32;
+        let blur = blur / shrink;
         let sat = self.saturation;
         let id: SharedString = format!("s:{key}:{pw}x{ph}:{blur}:{sat}").into();
         let chains = &self.stage_chains;

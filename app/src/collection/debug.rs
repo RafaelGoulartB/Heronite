@@ -79,4 +79,30 @@ impl CollectionView {
             }
         }
     }
+
+    /// `HERONITE_DEBUG_BROWSE=<count>@<ms>`: selects the next `count` games of
+    /// the list, one every `ms`, like a user browsing (memory checks).
+    pub(super) fn spawn_debug_browse(&self, cx: &mut Context<Self>) {
+        let Some(spec) = crate::env::value("HERONITE_DEBUG_BROWSE") else { return };
+        let (count, ms) = spec.split_once('@').unwrap_or((spec.as_str(), "300"));
+        let (Ok(count), Ok(ms)) = (count.parse::<usize>(), ms.parse::<u64>()) else { return };
+        cx.spawn(async move |this, cx| {
+            for i in 0..count {
+                cx.background_executor().timer(std::time::Duration::from_millis(ms)).await;
+                let alive = this.update(cx, |this, cx| {
+                    let keys: Vec<SharedString> = this.groups.iter().flat_map(|g| g.cards.iter().map(|c| c.key.clone())).collect();
+                    if let Some(key) = keys.get(i % keys.len().max(1)).cloned() {
+                        this.select(key, false);
+                        this.reveal_selected();
+                        cx.notify();
+                    }
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+            log::info!("[debug] browse done");
+        })
+        .detach();
+    }
 }

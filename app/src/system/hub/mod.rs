@@ -70,6 +70,9 @@ struct State {
     /// Games started by this process (pid once known).
     running: HashMap<String, Option<u32>>,
     tray: Option<TrayHandle>,
+    /// `HERONITE_DEBUG_FAKE_TRAY`: behave as if a tray icon existed (measure
+    /// the app closed to the tray without putting an icon in the user's bar).
+    fake_tray: bool,
     /// Quit when the last game ends and no window was shown (started only to
     /// launch a game without UI).
     exit_when_idle: bool,
@@ -83,6 +86,10 @@ struct State {
 }
 
 impl State {
+    fn has_tray(&self) -> bool {
+        self.tray.is_some() || self.fake_tray
+    }
+
     /// Settings, re-read only when the file changed (a `stat` per call).
     fn settings(&mut self) -> SysSettings {
         let stamp = heronite_data::game_config::global_config_path(&self.heroic)
