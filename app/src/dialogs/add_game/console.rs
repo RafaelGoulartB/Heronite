@@ -402,7 +402,7 @@ impl AddGameDialog {
         let name = if slot == Slot::Square { "Cover art" } else { "Background art" };
         let sheet = cx.new(|_| Sheet::new(name, None, rows));
         let sub = cx.subscribe_in(&sheet, window, move |this, _, ev: &SheetEvent, window, cx| {
-            let SheetEvent::Activate(id) = ev else { return };
+            let SheetEvent::Activate(id) = ev;
             this.layer.close();
             match id.as_ref() {
                 "web" => this.open_picker_console(slot, window, cx),

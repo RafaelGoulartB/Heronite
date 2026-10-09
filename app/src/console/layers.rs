@@ -73,11 +73,10 @@ pub fn open_sheet<T: HasLayer + 'static>(
 ) {
     let sheet = cx.new(|_| Sheet::new(title, message, rows));
     let sub = cx.subscribe_in(&sheet, window, move |this, _, ev: &SheetEvent, window, cx| {
-        if let SheetEvent::Activate(id) = ev {
-            this.layer_mut().close();
-            chosen(this, id, window, cx);
-            cx.notify();
-        }
+        let SheetEvent::Activate(id) = ev;
+        this.layer_mut().close();
+        chosen(this, id, window, cx);
+        cx.notify();
     });
     layer.open(&sheet, sub);
 }
