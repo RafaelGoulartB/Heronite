@@ -1096,3 +1096,19 @@ neutralizada da fixture. Ganchos novos: `HERONITE_DEBUG_BROWSE=<n>@<ms>` (seleci
 - **Pendente**: com a janela aberta (e depois de fechada para a bandeja) a thread principal acorda ~100×/s (CPU ~0,07 %). É um
   pingue-pongue entre a thread principal e um worker do GPUI (eventfd do calloop); uma janela GPUI mínima às vezes mostra o mesmo.
   Escondido desde o início: 2×/s.
+
+## Estatísticas e modo console (2026-10-09)
+- **Estatísticas** (☰ › Statistics, Ctrl 6): semana / mês / ano / tudo, a partir das sessões já carregadas pela biblioteca
+  (`heronite_data::stats`; sessões < 2 min são lançamentos que falharam e ficam de fora). Totais, gráfico de atividade por jogo,
+  mais jogados e mapa dia × hora.
+- **Modo console** (☰ › Console mode, ou Ctrl K): modo extra para TV e controle, no estilo da proposta "2 · Console". Lembrado
+  entre aberturas (`ui-state.json` `consoleMode`); o desktop não muda. Controles lidos com `gilrs` numa thread que só existe no
+  modo console (só contam com a janela em foco); o teclado faz as mesmas funções. Biblioteca redesenhada (Início com prateleiras,
+  Biblioteca em grade com filtros e busca), página do jogo, menu lateral, e versões console de todas as páginas (Downloads, Wine
+  Manager, Epic, Emulators, Statistics, Settings) e dos diálogos usados nesses fluxos (instalar/importar/modificar Epic,
+  configurações do jogo, Add game, emuladores e pastas de ROM, confirmações, logs). Teclado na tela e seletor de pastas próprios
+  (o seletor do portal não funciona com controle). Convenções em `docs/UI-CONVENTIONS.md` (Console mode).
+- **Testes**: `HERONITE_DEBUG_CONSOLE=1|game:<chave>` e `HERONITE_DEBUG_PAD=<sequência>`; capturas com `/tmp/shot-console.sh`
+  (acorda a janela no workspace oculto durante a espera). Não testado com um controle físico (nenhum conectado).
+- **Fora do console** (precisam do desktop): escolher arte da web nas configurações do jogo (só "voltar ao padrão"), o assistente
+  de metadados, editar status, digitar a senha da Epic na janela de login (o código de autorização funciona pelo teclado na tela).
