@@ -3,6 +3,7 @@
 //! from `legendary info`, DLC and selective-download (SDL) choices, Wine
 //! settings on Linux, and "Import Game" for an existing install.
 
+mod console;
 mod render;
 
 use gpui_kit::component::input::InputState;
@@ -55,6 +56,9 @@ pub struct EpicInstallDialog {
     default_wine: Option<Value>,
     import_path: Entity<InputState>,
     busy: bool,
+    /// Console mode: focused row and the folder picker.
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<DialogEvent> for EpicInstallDialog {}
@@ -121,6 +125,8 @@ impl EpicInstallDialog {
             default_wine,
             import_path,
             busy: false,
+            console_list: Default::default(),
+            layer: Default::default(),
         };
         // A warm cache (6 hours) shows the sizes at once; a statvfs is cheap.
         let cached = heronite_epic::cache_store::CacheStore::install_info(&this.heroic)

@@ -284,3 +284,70 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .children(l.last_error.clone().map(|e| div().mt(px(8.)).mx(px(6.)).text_color(theme::danger_text()).text_size(px(13.)).child(e)))
         .into_any_element()
 }
+
+/// Console mode rows of Backups: Ludusavi, then the Collection backup.
+pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    use crate::icons::Icon;
+    let l = &d.settings.ludusavi;
+    let detected = d.saves.detected.clone();
+    let config_known = detected.as_ref().and_then(|x| x.as_ref()).map(|x| x.config_path.is_some()).unwrap_or(false);
+    let locked = l.use_installed_config && config_known;
+    let found = match &detected {
+        None => "Looking for Ludusavi\u{2026}".to_string(),
+        Some(Some(f)) => format!("Found: {}", f.binary),
+        Some(None) => "Ludusavi was not found".into(),
+    };
+    let mut rows = vec![
+        Row::header("Save backups (Ludusavi)"),
+        Row::toggle("lu-enabled", "Back up saves when a game closes", l.enabled).desc(found),
+        Row::toggle("lu-config", "Use Ludusavi's own settings", l.use_installed_config).enabled(config_known).desc("Path, zip and compression come from Ludusavi's configuration"),
+    ];
+    if !locked {
+        rows.push(Row::text("lu-binary", "Ludusavi program", d.saves.binary.read(cx).value().to_string()).icon(Icon::Description));
+        rows.push(Row::text("lu-folder", "Backup folder", d.saves.folder.read(cx).value().to_string()).icon(Icon::FolderOpen));
+        let fi = FORMATS.iter().position(|(k, _)| *k == l.format).unwrap_or(0);
+        rows.push(Row::choice("lu-format", "Backup format", FORMATS.iter().map(|(_, x)| SharedString::from(*x)).collect(), fi));
+        let ci = COMPRESSIONS.iter().position(|(k, _)| *k == l.compression).unwrap_or(0);
+        rows.push(Row::choice("lu-compression", "Compression", COMPRESSIONS.iter().map(|(_, x)| SharedString::from(*x)).collect(), ci).enabled(l.format == "zip"));
+    }
+    if let Some(e) = &l.last_error {
+        rows.push(Row::info("lu-error", e.clone(), "").danger());
+    }
+    rows.extend(super::backup::console_rows(d, cx));
+    rows
+}
+
+pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    use crate::console::browser::PickKind;
+    use crate::console::list::{Outcome, Value};
+    match &outcome {
+        Outcome::Changed(id, Value::Toggle(on)) => match id.as_ref() {
+            "lu-enabled" => save(d, LudusaviSettingsPatch { enabled: Some(*on), ..Default::default() }, cx),
+            "lu-config" => save(d, LudusaviSettingsPatch { use_installed_config: Some(*on), ..Default::default() }, cx),
+            _ => {}
+        },
+        Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "lu-format" => {
+            save(d, LudusaviSettingsPatch { format: Some(FORMATS[*index].0.into()), ..Default::default() }, cx)
+        }
+        Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "lu-compression" => {
+            save(d, LudusaviSettingsPatch { compression: Some(COMPRESSIONS[*index].0.into()), ..Default::default() }, cx)
+        }
+        Outcome::Activate(id) if id.as_ref() == "lu-binary" => {
+            d.console_browse("Ludusavi program", PickKind::File(Vec::new()), None, window, cx, |d, path, window, cx| {
+                d.saves.binary.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+                save(d, LudusaviSettingsPatch { binary_path: Some(path), ..Default::default() }, cx);
+                detect(d, window, cx);
+            });
+        }
+        Outcome::Activate(id) if id.as_ref() == "lu-folder" => {
+            let start = Some(std::path::PathBuf::from(d.saves.folder.read(cx).value().to_string()));
+            d.console_browse("Ludusavi backup folder", PickKind::Folder, start, window, cx, |d, path, window, cx| {
+                d.saves.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+                save(d, LudusaviSettingsPatch { backup_path: Some(path), ..Default::default() }, cx);
+            });
+        }
+        _ => super::backup::console_apply(d, outcome, window, cx),
+    }
+    cx.notify();
+}

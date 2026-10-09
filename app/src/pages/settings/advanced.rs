@@ -205,6 +205,61 @@ impl SettingsPage {
     }
 }
 
+/// Console mode rows of "Folders and cache".
+pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    use crate::icons::Icon;
+    let a = &p.advanced;
+    let size_line = match a.size {
+        Some(r) if r.files > 0 => format!("{} file(s), {}", r.files, maintenance::human_size(r.bytes)),
+        Some(_) => "Nothing to clear".into(),
+        None => "Measuring\u{2026}".into(),
+    };
+    let has_cache = a.size.is_some_and(|r| r.files > 0);
+    let mut rows = vec![
+        Row::header("Folders"),
+        Row::action("open-config", "Open the config folder").icon(Icon::FolderOpen).desc("Shared with Heroic and Heronite"),
+        Row::action("open-logs", "Open the logs folder").icon(Icon::FolderOpen).enabled(logs_dir(&p.ctx.heroic).is_some()),
+        Row::action("open-app", "Open the app data folder").icon(Icon::FolderOpen),
+        Row::header("Cache"),
+    ];
+    if a.confirm {
+        rows.push(Row::action("cache-no", "Keep the cache"));
+        rows.push(Row::action("cache-yes", "Yes, clear the cache").danger());
+    } else {
+        rows.push(Row::action("cache", if a.busy { "Clearing\u{2026}" } else { "Clear the cache" }).icon(Icon::DeleteOutline).desc(size_line).enabled(has_cache && !a.busy));
+    }
+    rows.push(Row::header("Settings"));
+    rows.push(Row::action("copy", if a.copied { "Copied to the clipboard" } else { "Copy all settings" }).desc("API keys are left out"));
+    if let Some((text, _)) = &a.notice {
+        rows.push(Row::info("notice", text.clone(), ""));
+    }
+    rows
+}
+
+pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list::Outcome, cx: &mut Context<SettingsPage>) {
+    let crate::console::list::Outcome::Activate(id) = outcome else { return };
+    match id.as_ref() {
+        "open-config" => p.open_dir(p.ctx.heroic.root.clone(), cx),
+        "open-logs" => {
+            if let Some(dir) = logs_dir(&p.ctx.heroic) {
+                p.open_dir(dir, cx);
+            }
+        }
+        "open-app" => p.open_dir(p.ctx.app.config.clone(), cx),
+        "cache" => p.advanced.confirm = true,
+        "cache-no" => p.advanced.confirm = false,
+        "cache-yes" => p.clear_cache(cx),
+        "copy" => {
+            let text = settings_json(&p.ctx.heroic, &std::env::var("HOME").unwrap_or_default());
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            p.advanced.copied = true;
+        }
+        _ => {}
+    }
+    cx.notify();
+}
+
 #[cfg(test)]
 mod tests {
     use super::{settings_json, HeroicPaths};

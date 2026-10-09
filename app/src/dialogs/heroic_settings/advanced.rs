@@ -15,18 +15,18 @@ use crate::ui::icon;
 
 /// Static description of a two-column table setting.
 #[derive(Clone, Copy)]
-struct PairTable {
-    id: &'static str,
-    title: &'static str,
-    setting: &'static str,
-    k1: &'static str,
-    k2: &'static str,
-    in1: &'static str,
-    in2: &'static str,
-    env: bool,
+pub(super) struct PairTable {
+    pub(super) id: &'static str,
+    pub(super) title: &'static str,
+    pub(super) setting: &'static str,
+    pub(super) k1: &'static str,
+    pub(super) k2: &'static str,
+    pub(super) in1: &'static str,
+    pub(super) in2: &'static str,
+    pub(super) env: bool,
 }
 
-const ENV: PairTable = PairTable {
+pub(super) const ENV: PairTable = PairTable {
     id: "env",
     title: "Environment Variables",
     setting: "enviromentOptions",
@@ -36,7 +36,7 @@ const ENV: PairTable = PairTable {
     in2: "env.value",
     env: true,
 };
-const WRAPPERS: PairTable = PairTable {
+pub(super) const WRAPPERS: PairTable = PairTable {
     id: "wrap",
     title: "Wrapper command:",
     setting: "wrapperOptions",
@@ -182,7 +182,7 @@ impl HeroicSettingsPanel {
         col.child(help(note).px(px(6.)))
     }
 
-    fn pair_remove(&mut self, t: PairTable, index: usize, cx: &mut Context<Self>) {
+    pub(super) fn pair_remove(&mut self, t: PairTable, index: usize, cx: &mut Context<Self>) {
         let mut rows = pairs(self.settings.get(t.setting), t.k1, t.k2);
         if index < rows.len() {
             rows.remove(index);
@@ -190,7 +190,7 @@ impl HeroicSettingsPanel {
         }
     }
 
-    fn pair_add(&mut self, t: PairTable, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn pair_add(&mut self, t: PairTable, window: &mut Window, cx: &mut Context<Self>) {
         let mut a = self.input_text(t.in1, cx).trim().to_string();
         let mut b = self.input_text(t.in2, cx).trim().to_string();
         if t.env {

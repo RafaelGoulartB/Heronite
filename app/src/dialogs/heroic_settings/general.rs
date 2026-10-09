@@ -232,7 +232,7 @@ impl HeroicSettingsPanel {
         card_rows.card()
     }
 
-    fn custom_paths(&self) -> Vec<String> {
+    pub(super) fn custom_paths(&self) -> Vec<String> {
         self.settings
             .get("customWinePaths")
             .and_then(Value::as_array)

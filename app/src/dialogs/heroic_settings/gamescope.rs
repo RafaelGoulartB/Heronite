@@ -9,16 +9,16 @@ use super::HeroicSettingsPanel;
 use crate::ui::controls::toggle_row;
 use crate::ui::fields::{field_label, input_box};
 
-const UPSCALE_METHODS: [(&str, &str); 4] = [
+pub(super) const UPSCALE_METHODS: [(&str, &str); 4] = [
     ("fsr", "AMD FidelityFX\u{2122} Super Resolution 1.0 (FSR)"),
     ("nis", "NVIDIA Image Scale (NIS)"),
     ("integer", "Interger Upscale"),
     ("stretch", "Stretch Image"),
 ];
-const WINDOW_TYPES: [(&str, &str); 3] = [("fullscreen", "Fullscreen"), ("borderless", "Borderless"), ("windowed", "Windowed")];
+pub(super) const WINDOW_TYPES: [(&str, &str); 3] = [("fullscreen", "Fullscreen"), ("borderless", "Borderless"), ("windowed", "Windowed")];
 
 impl HeroicSettingsPanel {
-    fn gs_flag(&self, field: &str) -> bool {
+    pub(super) fn gs_flag(&self, field: &str) -> bool {
         matches!(self.gamescope().get(field), Some(Value::Bool(true)))
     }
 

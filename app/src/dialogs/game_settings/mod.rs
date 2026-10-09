@@ -1,6 +1,7 @@
 //! `GameSettingsDialog` ("Game settings"): Images, Details and Launch tabs for
 //! one game, plus Heroic's own settings tabs.
 
+mod console;
 mod details;
 mod images;
 mod launch;
@@ -113,6 +114,9 @@ pub struct GameSettingsDialog {
     launch: Option<LaunchState>,
     /// Heroic settings: the view and the tabs this game has.
     heroic: Option<(Entity<HeroicSettingsPanel>, Vec<Section>)>,
+    /// Console mode: focused row and the open keyboard / picker.
+    console_list: crate::console::list::ListNav,
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<DialogEvent> for GameSettingsDialog {}
@@ -158,6 +162,8 @@ impl GameSettingsDialog {
             heroic,
             game,
             ctx,
+            console_list: Default::default(),
+            layer: Default::default(),
         };
         if let Some(text) = this.launch.as_ref().map(|l| l.initial_exe.clone()) {
             this.refresh_launch(&text);
@@ -209,6 +215,9 @@ fn block(el: impl IntoElement) -> AnyElement {
 
 impl Render for GameSettingsDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         self.images.update(cx, |im, _| im.frame(window));
         let mut items = vec![(Tab::Images, Tab::Images.label()), (Tab::Details, Tab::Details.label())];
         if self.launch.is_some() {
@@ -315,7 +324,7 @@ impl Render for GameSettingsDialog {
             Some(Nested::Screenshot(v, _)) => Some(v.clone().into()),
             None => None,
         };
-        div().absolute().inset_0().child(main).children(nested)
+        div().absolute().inset_0().child(main).children(nested).into_any_element()
     }
 }
 

@@ -54,7 +54,7 @@ impl HeroicSettingsPanel {
         cx.notify();
     }
 
-    fn sync_saves(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn sync_saves(&mut self, cx: &mut Context<Self>) {
         let Some(app) = self.facts().map(|f| f.app_name.clone()) else { return };
         let path = self.text("savesPath");
         if path.is_empty() || self.saves.syncing {

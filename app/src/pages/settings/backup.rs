@@ -174,3 +174,51 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .children(stored_error.map(|e| div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::danger_text()).child(e)))
         .into_any_element()
 }
+
+/// Console mode rows of the Collection backup (under Ludusavi's).
+pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    use crate::icons::Icon;
+    let b = &d.backup;
+    let ii = INTERVALS.iter().position(|(v, _)| *v == b.interval).unwrap_or(1);
+    let last = match &d.settings.backup.last_backup_at {
+        Some(at) => format!("Last backup: {}", format_time(at)),
+        None => "No backup yet".into(),
+    };
+    let mut rows = vec![
+        Row::header("Collection backup"),
+        Row::text("bk-folder", "Backup folder", b.folder.read(cx).value().to_string()).icon(Icon::FolderOpen),
+        Row::choice("bk-interval", "How often", INTERVALS.iter().map(|(_, l)| SharedString::from(*l)).collect(), ii),
+        Row::action("bk-now", if b.running { "Backing up\u{2026}" } else { "Back up now" }).icon(Icon::Save).enabled(!b.running).desc(last),
+    ];
+    if !b.message.is_empty() {
+        rows.push(Row::info("bk-message", b.message.clone(), ""));
+    }
+    if !b.error.is_empty() {
+        rows.push(Row::info("bk-error", b.error.clone(), "").danger());
+    }
+    rows
+}
+
+pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    use crate::console::list::{Outcome, Value};
+    match outcome {
+        Outcome::Activate(id) => match id.as_ref() {
+            "bk-folder" => {
+                let start = Some(std::path::PathBuf::from(d.backup.folder.read(cx).value().to_string()));
+                d.console_browse("Backup folder", crate::console::browser::PickKind::Folder, start, window, cx, |d, path, window, cx| {
+                    d.backup.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+                    persist(d, Some(path), None, cx);
+                });
+            }
+            "bk-now" => backup_now(d, window, cx),
+            _ => {}
+        },
+        Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "bk-interval" => {
+            d.backup.interval = INTERVALS[index].0.to_string();
+            let interval = d.backup.interval.clone();
+            persist(d, None, Some(interval), cx);
+        }
+        _ => {}
+    }
+}

@@ -431,3 +431,151 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
 fn img_el(img: Arc<RenderImage>) -> Img {
     gpui_kit::img(ImageSource::Render(img)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)
 }
+
+/// Console mode rows (the sliders become ◀ ▶ numbers).
+pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    let a = &d.appearance;
+    let n = |v: f32| v.round() as i64;
+    let mut rows = vec![
+        Row::header("Collection background"),
+        Row::toggle("bg-enabled", "Game artwork behind the library", a.enabled).desc("Desktop mode's Collection background"),
+        Row::number("bg-opacity", "Opacity", n(a.ui.collection_opacity), 0, 100, 5, "%"),
+        Row::number("bg-blur", "Blur", n(a.blur), 0, 40, 1, " px"),
+        Row::number("bg-dim", "Darkening", n(a.dimming), 0, 90, 5, "%"),
+        Row::number("bg-sat", "Colour intensity", n(a.saturation), 0, 150, 5, "%"),
+        Row::number("bg-scrim", "Edge shading", n(a.scrim), 0, 150, 5, "%"),
+        Row::action("bg-reset", "Reset the background"),
+        Row::header("Interface background"),
+        Row::choice("ui-mode", "Panels", vec!["Transparent".into(), "Solid".into()], if a.ui.interface_mode == InterfaceMode::Solid { 1 } else { 0 }),
+    ];
+    match a.ui.interface_mode {
+        InterfaceMode::Transparent => {
+            rows.push(Row::number("ui-opacity", "Opacity", n(a.ui.interface_opacity), INTERFACE_OPACITY_RANGE.0 as i64, INTERFACE_OPACITY_RANGE.1 as i64, 2, "%"));
+            rows.push(Row::number("ui-blur", "Blur", n(a.ui.interface_blur), INTERFACE_BLUR_RANGE.0 as i64, INTERFACE_BLUR_RANGE.1 as i64, INTERFACE_BLUR_STEP as i64, " px"));
+        }
+        InterfaceMode::Solid => {
+            let tints: Vec<SharedString> = SolidTint::ALL.iter().map(|t| SharedString::from(t.label())).collect();
+            let i = SolidTint::ALL.iter().position(|t| *t == a.ui.solid_tint).unwrap_or(0);
+            rows.push(Row::choice("ui-tint", "Colour", tints, i));
+        }
+    }
+    rows.push(Row::action("ui-reset", "Reset the interface"));
+    rows.push(Row::header("Covers"));
+    let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
+    let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
+    rows.push(Row::choice("aspect", "Cover aspect", ASPECTS.iter().map(|(_, l)| SharedString::from(*l)).collect(), ai));
+    rows.push(Row::toggle("grey", "Show uninstalled games in grey", d.settings.grey_uninstalled_games));
+    rows
+}
+
+pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    use crate::console::list::{Outcome, Value};
+    match outcome {
+        Outcome::Changed(id, Value::Number { value, .. }) => {
+            let v = value as f32;
+            let a = &mut d.appearance;
+            let field = match id.as_ref() {
+                "bg-opacity" => {
+                    a.ui.collection_opacity = v;
+                    Field::CollectionOpacity
+                }
+                "bg-blur" => {
+                    a.blur = v;
+                    Field::Blur
+                }
+                "bg-dim" => {
+                    a.dimming = v;
+                    Field::Dimming
+                }
+                "bg-sat" => {
+                    a.saturation = v;
+                    Field::Saturation
+                }
+                "bg-scrim" => {
+                    a.scrim = v;
+                    Field::Scrim
+                }
+                "ui-opacity" => {
+                    a.ui.interface_opacity = v;
+                    Field::PanelOpacity
+                }
+                "ui-blur" => {
+                    a.ui.interface_blur = v;
+                    Field::PanelBlur
+                }
+                _ => return,
+            };
+            set_sliders(a, &[(field, v)], window, cx);
+            if matches!(field, Field::CollectionOpacity | Field::PanelOpacity | Field::PanelBlur) {
+                apply_interface(d, true, cx);
+            } else {
+                save_background(d, cx);
+            }
+        }
+        Outcome::Changed(id, Value::Toggle(on)) => match id.as_ref() {
+            "bg-enabled" => {
+                d.appearance.enabled = on;
+                save_background(d, cx);
+            }
+            "grey" => {
+                let res = settings::save_grey_uninstalled(&d.ctx.heroic, on);
+                d.saved(res, cx);
+            }
+            _ => {}
+        },
+        Outcome::Changed(id, Value::Choice { index, .. }) => match id.as_ref() {
+            "ui-mode" => {
+                d.appearance.ui.interface_mode = if index == 1 { InterfaceMode::Solid } else { InterfaceMode::Transparent };
+                apply_interface(d, true, cx);
+            }
+            "ui-tint" => {
+                if let Some(t) = SolidTint::ALL.get(index) {
+                    d.appearance.ui.solid_tint = *t;
+                    apply_interface(d, true, cx);
+                }
+            }
+            "aspect" => {
+                let mut patch = d.settings.metadata.clone();
+                patch.cover_aspect = ASPECTS[index].0.as_str().to_string();
+                let res = settings::save_metadata(&d.ctx.heroic, &patch);
+                d.saved(res, cx);
+            }
+            _ => {}
+        },
+        Outcome::Activate(id) => match id.as_ref() {
+            "bg-reset" => {
+                let defaults = heronite_data::models::BackgroundSettings::default();
+                let a = &mut d.appearance;
+                a.enabled = defaults.enabled;
+                a.blur = defaults.blur.get() as f32;
+                a.dimming = defaults.dimming.get() as f32;
+                a.saturation = defaults.saturation.get() as f32;
+                a.scrim = defaults.scrim.get() as f32;
+                a.ui.collection_opacity = Appearance::default().collection_opacity;
+                let values = [
+                    (Field::CollectionOpacity, a.ui.collection_opacity),
+                    (Field::Blur, a.blur),
+                    (Field::Dimming, a.dimming),
+                    (Field::Saturation, a.saturation),
+                    (Field::Scrim, a.scrim),
+                ];
+                set_sliders(a, &values, window, cx);
+                apply_interface(d, true, cx);
+                save_background(d, cx);
+            }
+            "ui-reset" => {
+                let defaults = Appearance::default();
+                let a = &mut d.appearance;
+                a.ui.interface_mode = defaults.interface_mode;
+                a.ui.interface_opacity = defaults.interface_opacity;
+                a.ui.interface_blur = defaults.interface_blur;
+                a.ui.solid_tint = defaults.solid_tint;
+                set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
+                apply_interface(d, true, cx);
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+}

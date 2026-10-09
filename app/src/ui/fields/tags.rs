@@ -113,6 +113,17 @@ impl TagField {
         }
     }
 
+    /// Replaces the values (console mode edits a field as one list).
+    pub fn set_values(&mut self, values: Vec<String>, cx: &mut Context<Self>) {
+        let mut v = unique_tags(values);
+        if !self.multiple {
+            v.truncate(1);
+        }
+        self.values = v;
+        cx.emit(TagEvent::Changed);
+        cx.notify();
+    }
+
     pub fn values(&self) -> &[String] {
         &self.values
     }

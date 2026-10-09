@@ -18,15 +18,15 @@ use crate::ui::controls::{action_button, card, help_text, row, caption, ButtonKi
 use crate::ui::fields::{input_box, labeled, new_input, select_field};
 
 pub(super) struct LaunchState {
-    executable: Entity<InputState>,
-    run_as: String,
-    run_as_open: bool,
+    pub(super) executable: Entity<InputState>,
+    pub(super) run_as: String,
+    pub(super) run_as_open: bool,
     pub(super) initial_exe: String,
-    initial_run_as: String,
-    exists: bool,
-    detected: ExecutableKind,
-    effective: Platform,
-    saved: bool,
+    pub(super) initial_run_as: String,
+    pub(super) exists: bool,
+    pub(super) detected: ExecutableKind,
+    pub(super) effective: Platform,
+    pub(super) saved: bool,
 }
 
 pub(super) fn detect(path: &str) -> (bool, ExecutableKind) {

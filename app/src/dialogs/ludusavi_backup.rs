@@ -56,6 +56,7 @@ pub fn describe(result: &LudusaviBackupResult, title: &str) -> Outcome {
 
 pub struct LudusaviBackupDialog {
     outcome: Outcome,
+    console_list: crate::console::list::ListNav,
 }
 
 impl EventEmitter<DialogEvent> for LudusaviBackupDialog {}
@@ -63,7 +64,7 @@ impl EventEmitter<DialogEvent> for LudusaviBackupDialog {}
 impl LudusaviBackupDialog {
     /// A dialog that already shows `outcome` (screenshots).
     pub fn showing(outcome: Outcome) -> Self {
-        Self { outcome }
+        Self { outcome, console_list: Default::default() }
     }
 
     /// Starts the backup right away on a worker thread.
@@ -86,7 +87,7 @@ impl LudusaviBackupDialog {
             .ok();
         })
         .detach();
-        Self { outcome: Outcome::Running }
+        Self { outcome: Outcome::Running, console_list: Default::default() }
     }
 }
 
@@ -109,6 +110,12 @@ impl Render for LudusaviBackupDialog {
             Outcome::Error(m) => (m.clone(), true, None),
             Outcome::Done { message, path } => (message.clone(), false, path.clone()),
         };
+        if crate::console::active() {
+            let rows = vec![crate::console::list::Row::action("close", "Close")];
+            let error = is_error.then(|| SharedString::from(text.clone()));
+            let message = if is_error { String::new() } else { text };
+            return crate::console::list::simple_dialog(&mut self.console_list, "console-ludusavi", TITLE, &message, error, &rows);
+        }
         let body = div()
             .flex()
             .flex_col()
@@ -129,6 +136,21 @@ impl Render for LudusaviBackupDialog {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
         )
+        .into_any_element()
+    }
+}
+
+impl crate::console::PadTarget for LudusaviBackupDialog {
+    fn on_pad(&mut self, pad: crate::console::Pad, _: &mut Window, cx: &mut Context<Self>) -> bool {
+        if pad == crate::console::Pad::A {
+            cx.emit(DialogEvent::Close);
+            return true;
+        }
+        false
+    }
+
+    fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
+        vec![crate::console::hint(crate::console::Btn::A, "Close")]
     }
 }
 

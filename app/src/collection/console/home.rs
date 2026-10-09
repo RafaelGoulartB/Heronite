@@ -351,7 +351,7 @@ impl CollectionView {
                 .min_h(u(46.))
                 .px(u(18.))
                 .when(!on, |d| d.bg(theme::white_a(0.07)))
-                .child(div().text_size(u(14.)).text_color(if on { theme::console_on_focus().into() } else { theme::text_muted() }).child(label.clone()))
+                .child(div().text_size(u(14.)).text_color(if on { theme::console_on_focus() } else { theme::text_muted() }).child(label.clone()))
                 .child(div().text_size(u(16.)).font_weight(theme::W_BOLD).max_w(u(260.)).truncate().child(value.clone()))
         }));
         let mut grid = div().id("console-grid").flex().flex_col().gap(u(GAP)).overflow_y_scroll().track_scroll(&scroll).px(u(SIDE)).pb(u(24.));

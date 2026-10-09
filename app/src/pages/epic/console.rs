@@ -75,13 +75,12 @@ impl EpicPage {
         let rows = vec![Row::action("no", "Cancel"), Row::action("yes", yes.to_string()).danger()];
         let sheet = cx.new(|_| Sheet::new(title.to_string(), Some(message.to_string()), rows));
         let sub = cx.subscribe(&sheet, move |this, _, ev: &SheetEvent, cx| {
-            if let SheetEvent::Activate(id) = ev {
-                this.layer.close();
-                if id.as_ref() == "yes" {
-                    on_yes(this, cx);
-                }
-                cx.notify();
+            let SheetEvent::Activate(id) = ev;
+            this.layer.close();
+            if id.as_ref() == "yes" {
+                on_yes(this, cx);
             }
+            cx.notify();
         });
         self.layer.open(&sheet, sub);
     }

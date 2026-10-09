@@ -9,6 +9,7 @@
 //! tab.
 
 mod advanced;
+mod console;
 mod gamescope;
 mod general;
 pub mod logic;
@@ -118,6 +119,10 @@ pub struct HeroicSettingsPanel {
     pub(super) notice: Option<Notice>,
     /// Name of the Wine tool running.
     pub(super) tool_busy: Option<&'static str>,
+    /// Console mode: focused row, open keyboard / picker, rows focused.
+    console_list: crate::console::list::ListNav,
+    console_layer: crate::console::Layer,
+    console_active: bool,
     /// Setting whose DXVK/VKD3D/NVAPI install or removal is running.
     pub(super) tool_toggle: Option<&'static str>,
     pub(super) gpu_count: usize,
@@ -195,6 +200,9 @@ impl HeroicSettingsPanel {
             debounce: HashMap::new(),
             queue: Vec::new(),
             writing: false,
+            console_list: Default::default(),
+            console_layer: Default::default(),
+            console_active: true,
             _subs: subs,
         };
         this.load_wine_list(cx);
@@ -423,6 +431,9 @@ pub(super) fn value_text(v: Option<&Value>) -> String {
 
 impl Render for HeroicSettingsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         let content = match self.section {
             Section::General => self.general_tab(window, cx),
             Section::Wine => self.wine_tab(window, cx),
@@ -468,6 +479,7 @@ impl Render for HeroicSettingsPanel {
             .child(content)
             .children(notice)
             .child(footer)
+            .into_any_element()
     }
 }
 

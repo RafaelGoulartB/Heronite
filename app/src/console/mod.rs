@@ -70,9 +70,7 @@ pub enum Btn {
     /// "LB RB" pair.
     Bumpers,
     LT,
-    RT,
     Start,
-    Select,
     /// "◀ ▶".
     LeftRight,
 }

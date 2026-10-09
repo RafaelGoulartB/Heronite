@@ -35,7 +35,7 @@ fn detail_text(v: &DetailValue) -> String {
 }
 
 impl CollectionView {
-    fn game_rows(&self, g: &CollectionGame) -> Vec<Row> {
+    fn game_rows(&mut self, g: &CollectionGame, cx: &mut Context<Self>) -> Vec<Row> {
         let playing = self.playing.contains_key(&g.app_name);
         let (label, ic) = if playing {
             ("Stop", Icon::Stop)
@@ -54,11 +54,34 @@ impl CollectionView {
         if g.installed {
             rows.push(Row::action("settings", "Game settings").icon(Icon::Tune).desc("Wine / Proton, launch options, Gamescope\u{2026}"));
         }
-        rows.push(Row::text("playtime", "Playtime", heronite_data::collection::playtime_label(g.playtime_minutes)).icon(Icon::AccessTime));
-        rows.push(Row::toggle("hidden", "Hidden", g.hidden).icon(Icon::VisibilityOff).desc("Hidden games stay out of the library"));
-        if g.recent {
-            rows.push(Row::action("recent", "Remove from recent").icon(Icon::History));
+        if !playing {
+            rows.push(Row::text("playtime", "Playtime", heronite_data::collection::playtime_label(g.playtime_minutes)).icon(Icon::AccessTime));
         }
+
+        // What the desktop context menu offers besides the above.
+        let mut manage = self.epic_console_rows(g, cx);
+        let steam_game = matches!(g.launch_kind.as_deref(), Some("steam-uri"));
+        if g.installed && !steam_game && g.game.install.is_dlc != Some(true) {
+            let (shortcuts, in_steam) = self.probe_shortcuts(g, cx);
+            manage.push(Row::toggle("sys:shortcuts", "Desktop and menu shortcuts", shortcuts).icon(Icon::OpenInNew));
+            manage.push(Row::toggle("sys:steam", "In Steam", in_steam).icon(Icon::SportsEsports).desc("As a non-Steam game in your Steam library"));
+        }
+        manage.push(Row::action("x:ludusavi", "Back up saves (Ludusavi)").icon(Icon::Save));
+        manage.push(Row::toggle("hidden", "Hidden", g.hidden).icon(Icon::VisibilityOff).desc("Hidden games stay out of the library"));
+        if g.recent {
+            manage.push(Row::action("recent", "Remove from recent").icon(Icon::History));
+        }
+        if g.runner == "sideload" && !playing && !matches!(g.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
+            manage.push(Row::action("x:edit", "Edit game").icon(Icon::Edit));
+        }
+        if g.steam_launch_id.is_some() && g.installed && !playing {
+            manage.push(Row::action("x:steam-uninstall", "Uninstall\u{2026}").icon(Icon::DeleteForever).danger());
+        }
+        if g.runner == "sideload" && !playing {
+            manage.push(Row::action("x:remove", "Remove from Collection\u{2026}").icon(Icon::DeleteForever).danger());
+        }
+        rows.push(Row::header("Manage"));
+        rows.extend(manage);
         rows
     }
 
@@ -67,7 +90,7 @@ impl CollectionView {
             return kit::empty(Icon::Warning, "This game is gone", "Press B to go back.").into_any_element();
         };
         self.console_focus_game(Some(key.clone()), cx);
-        let rows = self.game_rows(&g);
+        let rows = self.game_rows(&g, cx);
         let list = self.console.game.list.render("console-game-actions", &rows, true);
         let s = kit::scale();
         let (cw, ch) = (130., 130. * self.cover_aspect);
@@ -184,10 +207,31 @@ impl CollectionView {
             self.primary_action(key, cx);
             return true;
         }
-        let rows = self.game_rows(&g);
+        let rows = self.game_rows(&g, cx);
         match self.console.game.list.on_pad(pad, &rows) {
+            Outcome::Activate(id) if id.starts_with("epic:") => self.epic_console_activate(&id, key, cx),
+            Outcome::Changed(id, _) if id.as_ref() == "epic:eos" => self.epic_console_activate(&id, key, cx),
+            Outcome::Changed(id, Value::Toggle(on)) if id.starts_with("sys:") => {
+                let (runner, app) = (g.runner.clone(), g.app_name.clone());
+                let steam = id.as_ref() == "sys:steam";
+                self.system_op(g.key.clone(), cx, move |heroic| {
+                    use crate::system::shortcuts as sc;
+                    match (steam, on) {
+                        (false, true) => sc::add_shortcuts(heroic, &runner, &app),
+                        (false, false) => sc::remove_shortcuts(heroic, &runner, &app),
+                        (true, true) => sc::add_to_steam(heroic, &runner, &app),
+                        (true, false) => sc::remove_from_steam(heroic, &runner, &app),
+                    }
+                });
+            }
             Outcome::Activate(id) => match id.as_ref() {
                 "primary" => self.primary_action(key, cx),
+                "x:ludusavi" => self.open_ludusavi_backup(key, cx),
+                "x:steam-uninstall" => self.open_steam_uninstall(key, window, cx),
+                "x:remove" => self.open_remove_game(key, cx),
+                "x:edit" => {
+                    self.open_edit_game(key, window, cx);
+                }
                 "settings" => self.console_game_settings(key, window, cx),
                 "playtime" => self.console_edit_playtime(key, window, cx),
                 "recent" => {

@@ -22,16 +22,15 @@ impl CollectionView {
         let sheet = cx.new(|_| Sheet::new(format!("Playtime \u{b7} {}", g.title), None, rows));
         let app_name = g.app_name.clone();
         let sub = cx.subscribe(&sheet, move |this, sheet, ev: &SheetEvent, cx| {
-            if let SheetEvent::Activate(id) = ev {
-                if id.as_ref() == "save" {
-                    let s = sheet.read(cx);
-                    let minutes = s.number("hours") * 60 + s.number("minutes");
-                    if let Err(err) = set_playtime_minutes(&this.heroic, &app_name, minutes as f64) {
-                        this.show_toast(format!("Could not save the playtime: {err:#}"), true, cx);
-                    }
-                    this.close_console_overlay(cx);
-                    this.reload(cx);
+            let SheetEvent::Activate(id) = ev;
+            if id.as_ref() == "save" {
+                let s = sheet.read(cx);
+                let minutes = s.number("hours") * 60 + s.number("minutes");
+                if let Err(err) = set_playtime_minutes(&this.heroic, &app_name, minutes as f64) {
+                    this.show_toast(format!("Could not save the playtime: {err:#}"), true, cx);
                 }
+                this.close_console_overlay(cx);
+                this.reload(cx);
             }
         });
         self.open_console_overlay(&sheet, sub, cx);

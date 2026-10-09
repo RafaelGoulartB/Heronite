@@ -21,6 +21,7 @@ pub struct RemoveGameDialog {
     title: String,
     working: bool,
     error: Option<SharedString>,
+    console_list: crate::console::list::ListNav,
 }
 
 impl EventEmitter<DialogEvent> for RemoveGameDialog {}
@@ -34,7 +35,7 @@ pub fn confirm_message(title: &str) -> String {
 
 impl RemoveGameDialog {
     pub fn new(ctx: DialogCtx, app_name: String, runner: String, title: String) -> Self {
-        Self { ctx, app_name, runner, title, working: false, error: None }
+        Self { ctx, app_name, runner, title, working: false, error: None, console_list: Default::default() }
     }
 
     fn confirm(&mut self, cx: &mut Context<Self>) {
@@ -80,6 +81,10 @@ impl RemoveGameDialog {
 
 impl Render for RemoveGameDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            let rows = self.console_rows();
+            return crate::console::list::simple_dialog(&mut self.console_list, "console-remove-game", TITLE, &confirm_message(&self.title), self.error.clone(), &rows);
+        }
         let body = div()
             .flex()
             .flex_col()
@@ -103,6 +108,34 @@ impl Render for RemoveGameDialog {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
         )
+        .into_any_element()
+    }
+}
+
+impl RemoveGameDialog {
+    fn console_rows(&self) -> Vec<crate::console::list::Row> {
+        use crate::console::list::Row;
+        vec![Row::action("cancel", "Cancel"), Row::action("remove", if self.working { "Removing\u{2026}" } else { "Remove" }).danger().enabled(!self.working)]
+    }
+}
+
+impl crate::console::PadTarget for RemoveGameDialog {
+    fn on_pad(&mut self, pad: crate::console::Pad, _: &mut Window, cx: &mut Context<Self>) -> bool {
+        use crate::console::list::Outcome;
+        let rows = self.console_rows();
+        match self.console_list.on_pad(pad, &rows) {
+            Outcome::Activate(id) if id.as_ref() == "remove" => self.confirm(cx),
+            Outcome::Activate(_) => cx.emit(DialogEvent::Close),
+            Outcome::Ignored => return false,
+            _ => {}
+        }
+        cx.notify();
+        true
+    }
+
+    fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
+        use crate::console::{hint, Btn};
+        vec![hint(Btn::A, "Select"), hint(Btn::B, "Cancel")]
     }
 }
 

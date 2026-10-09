@@ -55,11 +55,10 @@ impl DownloadsPage {
     fn open_sheet(&mut self, title: String, message: Option<String>, rows: Vec<Row>, cx: &mut Context<Self>, on: impl Fn(&mut Self, &str, &mut Context<Self>) + 'static) {
         let sheet = cx.new(|_| Sheet::new(title, message, rows));
         let sub = cx.subscribe(&sheet, move |this, _, ev: &SheetEvent, cx| {
-            if let SheetEvent::Activate(id) = ev {
-                this.layer.close();
-                on(this, id, cx);
-                cx.notify();
-            }
+            let SheetEvent::Activate(id) = ev;
+            this.layer.close();
+            on(this, id, cx);
+            cx.notify();
         });
         self.layer.open(&sheet, sub);
     }

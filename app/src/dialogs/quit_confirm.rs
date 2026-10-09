@@ -19,6 +19,7 @@ pub struct QuitConfirmDialog {
     games: Vec<String>,
     post_game: bool,
     tray: bool,
+    console_list: crate::console::list::ListNav,
 }
 
 impl EventEmitter<DialogEvent> for QuitConfirmDialog {}
@@ -51,12 +52,17 @@ pub fn message(games: &[String], post_game: bool) -> String {
 
 impl QuitConfirmDialog {
     pub fn new(games: Vec<String>, post_game: bool, tray: bool) -> Self {
-        Self { games, post_game, tray }
+        Self { games, post_game, tray, console_list: Default::default() }
     }
 }
 
 impl Render for QuitConfirmDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            let rows = self.console_rows();
+            let text = message(&self.games, self.post_game);
+            return crate::console::list::simple_dialog(&mut self.console_list, "console-quit", "A game is running", &text, None, &rows);
+        }
         let body = div().flex().flex_col().gap(px(14.)).child(paragraph(message(&self.games, self.post_game)));
         let mut footer = div().flex().gap(px(10.));
         if self.tray {
@@ -84,6 +90,48 @@ impl Render for QuitConfirmDialog {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
         )
+        .into_any_element()
+    }
+}
+
+impl QuitConfirmDialog {
+    fn console_rows(&self) -> Vec<crate::console::list::Row> {
+        use crate::console::list::Row;
+        let mut rows = Vec::new();
+        if self.tray {
+            rows.push(Row::action("tray", "Keep running in tray"));
+            rows.push(Row::action("cancel", "Cancel"));
+        } else {
+            rows.push(Row::action("cancel", "Keep open"));
+        }
+        rows.push(Row::action("quit", "Quit anyway").danger());
+        rows
+    }
+}
+
+impl crate::console::PadTarget for QuitConfirmDialog {
+    fn on_pad(&mut self, pad: crate::console::Pad, _: &mut Window, cx: &mut Context<Self>) -> bool {
+        use crate::console::list::Outcome;
+        let rows = self.console_rows();
+        match self.console_list.on_pad(pad, &rows) {
+            Outcome::Activate(id) => {
+                cx.emit(DialogEvent::Close);
+                match id.as_ref() {
+                    "tray" => crate::system::keep_in_tray(cx),
+                    "quit" => crate::system::quit_anyway(cx),
+                    _ => {}
+                }
+            }
+            Outcome::Ignored => return false,
+            _ => {}
+        }
+        cx.notify();
+        true
+    }
+
+    fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
+        use crate::console::{hint, Btn};
+        vec![hint(Btn::A, "Select"), hint(Btn::B, "Cancel")]
     }
 }
 

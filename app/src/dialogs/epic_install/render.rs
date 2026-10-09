@@ -147,6 +147,9 @@ impl EpicInstallDialog {
 
 impl Render for EpicInstallDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(cx);
+        }
         let importing = self.mode == Mode::Import;
         let mut body = div().flex().flex_col().gap(px(14.));
 
@@ -271,6 +274,7 @@ impl Render for EpicInstallDialog {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
         )
+        .into_any_element()
     }
 }
 

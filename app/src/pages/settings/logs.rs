@@ -47,6 +47,24 @@ impl SettingsPage {
     }
 }
 
+/// Console mode: the logs viewer handles its own rows (see `console.rs`).
+pub(super) fn console_rows(_: &SettingsPage) -> Vec<crate::console::list::Row> {
+    Vec::new()
+}
+
+pub(super) fn console_apply(_: &mut SettingsPage, _: crate::console::list::Outcome, _: &mut Context<SettingsPage>) {}
+
+impl SettingsPage {
+    /// The viewer, created on first use (console mode).
+    pub(super) fn logs_viewer(&mut self, cx: &mut Context<Self>) -> Entity<LogViewer> {
+        if self.logs.viewer.is_none() {
+            let heroic = self.ctx.heroic.clone();
+            self.logs.viewer = Some(cx.new(|cx| LogViewer::new(heroic, Scope::All, start(), true, None, cx)));
+        }
+        self.logs.viewer.clone().expect("created above")
+    }
+}
+
 /// Heroic's `formatSystemInfo` for this machine: CPU, memory, GPUs and OS.
 pub fn system_info_text() -> String {
     format_system_info(&sysinfo::gather())

@@ -13,7 +13,6 @@ use crate::theme;
 
 pub enum SheetEvent {
     Activate(SharedString),
-    Changed(SharedString, Value),
 }
 
 pub struct Sheet {
@@ -56,9 +55,8 @@ impl PadTarget for Sheet {
             Outcome::Activate(id) => cx.emit(SheetEvent::Activate(id)),
             Outcome::Changed(id, value) => {
                 if let Some(r) = self.rows.iter_mut().find(|r| r.id == id) {
-                    r.value = value.clone();
+                    r.value = value;
                 }
-                cx.emit(SheetEvent::Changed(id, value));
             }
             Outcome::Moved | Outcome::Edge(_) => {}
             Outcome::Ignored => return false,

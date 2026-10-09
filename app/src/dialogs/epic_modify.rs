@@ -46,6 +46,7 @@ pub struct EpicModifyDialog {
     /// DLC waiting for the answer to "Do you want to uninstall...".
     confirm: Option<usize>,
     _subs: Vec<Subscription>,
+    console_list: crate::console::list::ListNav,
 }
 
 impl EventEmitter<DialogEvent> for EpicModifyDialog {}
@@ -75,6 +76,7 @@ impl EpicModifyDialog {
             error: None,
             confirm: None,
             _subs: subs,
+            console_list: Default::default(),
         };
         this.load(cx);
         this
@@ -269,6 +271,24 @@ impl EpicModifyDialog {
 
 impl Render for EpicModifyDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            let rows = self.console_rows(cx);
+            let message = if let Some(e) = &self.error {
+                e.lines().next().unwrap_or("").to_string()
+            } else if !self.loaded {
+                "Getting the DLCs\u{2026}".into()
+            } else if let Some(i) = self.confirm.filter(|i| *i < self.rows.len()) {
+                format!("Uninstall \u{201c}{}\u{201d} (DLC)?", self.rows[i].dlc.title)
+            } else if self.rows.is_empty() {
+                "No DLCs found".into()
+            } else if self.install_path.is_empty() {
+                "The install folder of the game is unknown, DLCs cannot be installed.".into()
+            } else {
+                String::new()
+            };
+            let title = format!("Modify installation \u{b7} {}", self.title);
+            return crate::console::list::simple_dialog(&mut self.console_list, "console-epic-modify", title, &message, None, &rows);
+        }
         let mut body = div().flex().flex_col().gap(px(8.));
         if let Some(err) = &self.error {
             body = body.child(div().text_size(px(14.)).text_color(theme::danger_text()).child(err.lines().next().unwrap_or("").to_string()));
@@ -355,5 +375,91 @@ impl Render for EpicModifyDialog {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
         )
+        .into_any_element()
+    }
+}
+
+impl EpicModifyDialog {
+    fn console_rows(&self, cx: &App) -> Vec<crate::console::list::Row> {
+        use crate::console::list::Row as CRow;
+        if self.confirm.is_some_and(|i| i < self.rows.len()) {
+            return vec![CRow::action("no", "Cancel"), CRow::action("yes", "Uninstall").danger()];
+        }
+        let s = self.svc.read(cx);
+        let downloading = s.snapshot().state == DmState::Running;
+        let mut rows = Vec::new();
+        for (i, r) in self.rows.iter().enumerate() {
+            let app = &r.dlc.app_name;
+            let size = r.size.map(file_size).unwrap_or_else(|| "\u{2026}".into());
+            let state = if let Some(b) = s.busy_of(app) {
+                format!("{}\u{2026}", b.label)
+            } else if let Some(q) = s.queue_state(app) {
+                match (q, s.progress_of(app).map(|p| p.percent)) {
+                    (QueueState::Downloading, Some(p)) => format!("Installing {} \u{b7} A cancels", fmt_percent(p)),
+                    (QueueState::Downloading, None) => "Installing\u{2026} \u{b7} A cancels".into(),
+                    (QueueState::Paused, _) => "Paused \u{b7} A cancels".into(),
+                    (QueueState::Waiting, _) => "Queued \u{b7} A cancels".into(),
+                }
+            } else if r.installed {
+                if downloading { format!("Installed \u{b7} {size}") } else { format!("Installed \u{b7} {size} \u{b7} A uninstalls") }
+            } else {
+                format!("{size} \u{b7} A installs")
+            };
+            rows.push(CRow::info(SharedString::from(format!("d{i}")), r.dlc.title.clone(), state));
+        }
+        rows.push(CRow::action("close", "Close"));
+        rows
+    }
+}
+
+impl crate::console::PadTarget for EpicModifyDialog {
+    fn on_pad(&mut self, pad: crate::console::Pad, _: &mut Window, cx: &mut Context<Self>) -> bool {
+        use crate::console::list::Outcome;
+        if pad == crate::console::Pad::B && self.confirm.is_some() {
+            self.confirm = None;
+            cx.notify();
+            return true;
+        }
+        let rows = self.console_rows(cx);
+        match self.console_list.on_pad(pad, &rows) {
+            Outcome::Activate(id) => match id.as_ref() {
+                "close" => cx.emit(DialogEvent::Close),
+                "no" => self.confirm = None,
+                "yes" => {
+                    if let Some(i) = self.confirm {
+                        self.uninstall(i, cx);
+                    }
+                }
+                id => {
+                    if let Some(i) = id.strip_prefix('d').and_then(|n| n.parse::<usize>().ok()) {
+                        let (queued, busy, downloading) = {
+                            let s = self.svc.read(cx);
+                            let app = &self.rows[i].dlc.app_name;
+                            (s.queue_state(app).is_some(), s.busy_of(app).is_some(), s.snapshot().state == DmState::Running)
+                        };
+                        if busy {
+                        } else if queued {
+                            self.cancel(i, cx);
+                        } else if self.rows[i].installed {
+                            if !downloading {
+                                self.confirm = Some(i);
+                                self.console_list.reset();
+                            }
+                        } else if self.rows[i].info.is_some() && self.rows[i].size.is_some() {
+                            self.install(i, cx);
+                        }
+                    }
+                }
+            },
+            Outcome::Ignored => return false,
+            _ => {}
+        }
+        cx.notify();
+        true
+    }
+
+    fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
+        use crate::console::{hint, Btn};
+        vec![hint(Btn::A, "Select"), hint(Btn::B, if self.confirm.is_some() { "Cancel" } else { "Close" })]
     }
 }

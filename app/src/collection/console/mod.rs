@@ -20,7 +20,7 @@ use heronite_images::Variant;
 use super::CollectionView;
 use crate::console::input::{self, PadMsg};
 use crate::console::kit::{self, u};
-use crate::console::{self, hint, Btn, Hint, Overlay, Pad, PadHook};
+use crate::console::{self, hint, Btn, Hint, Overlay, Pad};
 use crate::pages::Page;
 use crate::theme;
 
@@ -62,9 +62,13 @@ impl CollectionView {
     /// At start: reopens in console mode when it was left on
     /// (`HERONITE_DEBUG_CONSOLE=1` forces it, without saving).
     pub(super) fn console_init(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let forced = crate::env::flag("HERONITE_DEBUG_CONSOLE");
-        if self.ui.console_mode || forced {
+        // `HERONITE_DEBUG_CONSOLE=1`, or `=game:<key>` to open that game's page.
+        let debug = crate::env::value("HERONITE_DEBUG_CONSOLE");
+        if self.ui.console_mode || debug.is_some() {
             self.enter_console(window, cx);
+        }
+        if let Some(key) = debug.as_deref().and_then(|d| d.strip_prefix("game:")) {
+            self.open_game_page(key.to_string().into());
         }
     }
 
@@ -412,9 +416,4 @@ impl CollectionView {
             .child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(theme::console_bg())))
             .into_any_element()
     }
-}
-
-/// Hooks of the page views that take presses in console mode.
-pub(super) fn page_hook<V: console::PadTarget>(view: &Entity<V>) -> PadHook {
-    PadHook::new(view)
 }

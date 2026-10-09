@@ -7,6 +7,7 @@
 //! boundary away), renders only the visible lines (GPUI `list`), and "Load
 //! earlier" reads more, up to [`MAX_VIEW_BYTES`].
 
+mod console;
 mod load;
 mod render;
 
@@ -76,6 +77,7 @@ pub struct LogViewer {
     notice: Option<SharedString>,
     copied: bool,
     mono: SharedString,
+    console_list: crate::console::list::ListNav,
 }
 
 /// A monospace family that exists on this machine (GPUI does not resolve the
@@ -125,6 +127,7 @@ impl LogViewer {
             notice: None,
             copied: false,
             mono: mono_family(cx),
+            console_list: Default::default(),
         };
         this.reload_entries(cx);
         // Debug: `HERONITE_DEBUG_LOG_EARLIER=<n>` presses "Load earlier" n times.

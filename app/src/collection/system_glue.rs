@@ -144,7 +144,7 @@ impl CollectionView {
 
     /// Cached `(shortcuts exist, added to Steam)`; starts a refresh when the
     /// entry is missing or older than a few seconds.
-    fn probe_shortcuts(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> (bool, bool) {
+    pub(super) fn probe_shortcuts(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> (bool, bool) {
         let key = game.key.clone();
         let current = cx
             .default_global::<MenuProbes>()
@@ -178,7 +178,7 @@ impl CollectionView {
 
     /// Runs a shortcuts operation in the background, shows its result as a
     /// toast and forgets the cached menu state.
-    fn system_op(&mut self, key: String, cx: &mut Context<Self>, op: impl FnOnce(&heronite_data::HeroicPaths) -> sc::Outcome + Send + 'static) {
+    pub(super) fn system_op(&mut self, key: String, cx: &mut Context<Self>, op: impl FnOnce(&heronite_data::HeroicPaths) -> sc::Outcome + Send + 'static) {
         let heroic = self.heroic.clone();
         cx.spawn(async move |this, cx| {
             let outcome = cx.background_spawn(async move { op(&heroic) }).await;

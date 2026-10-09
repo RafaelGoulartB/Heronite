@@ -312,3 +312,84 @@ fn input_box_text(base: Stateful<Div>, text: String, focused: bool) -> Stateful<
         .text_color(theme::text_primary())
         .child(text)
 }
+
+/// Shortcuts offered in console mode (a controller cannot record one).
+const CONSOLE_SHORTCUTS: [&str; 5] = ["F12", "Shift+F12", "CommandOrControl+F12", "Alt+F12", "CommandOrControl+Shift+S"];
+
+fn console_shortcuts(current: &str) -> Vec<String> {
+    let mut v: Vec<String> = CONSOLE_SHORTCUTS.iter().map(|s| s.to_string()).collect();
+    if !v.iter().any(|s| s == current) {
+        v.insert(0, current.to_string());
+    }
+    v
+}
+
+/// Console mode rows.
+pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    use crate::icons::Icon;
+    let s = &d.settings.screenshots;
+    let st = &d.screenshots;
+    let accel = if s.capture_accelerator.is_empty() { DEFAULT_CAPTURE_ACCELERATOR.to_string() } else { s.capture_accelerator.clone() };
+    let shortcuts = console_shortcuts(&accel);
+    let si = shortcuts.iter().position(|x| *x == accel).unwrap_or(0);
+    let usage = st.info.map(|i| format!("{} used by {} previews", format_cache_size(i.size_bytes), i.item_count)).unwrap_or_default();
+    let mut rows = vec![
+        Row::text("folder", "Screenshots folder", st.folder.read(cx).value().to_string()).icon(Icon::FolderOpen),
+        Row::header("Capture"),
+        Row::toggle("capture", "Capture screenshots while a game runs", s.capture_enabled),
+        Row::choice("shortcut", "Screenshot shortcut", shortcuts.into_iter().map(SharedString::from).collect(), si).desc("Captures go to the game's folder and show up in the Collection"),
+        Row::header("Preview cache"),
+        Row::number("limit", "Cache limit", s.cache_limit_mb.get() as i64, 50, 10_000, 50, " MB"),
+        Row::action("clear", if st.busy { "Clearing\u{2026}" } else { "Clear the preview cache" }).desc(usage).enabled(!st.busy && st.info.is_some_and(|i| i.item_count > 0)),
+    ];
+    if let Some(m) = &st.message {
+        rows.push(Row::info("message", m.clone(), ""));
+    }
+    rows
+}
+
+pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    use crate::console::list::{Outcome, Value};
+    match outcome {
+        Outcome::Activate(id) => match id.as_ref() {
+            "folder" => {
+                let start = Some(std::path::PathBuf::from(d.screenshots.folder.read(cx).value().to_string()));
+                d.console_browse("Screenshots folder", crate::console::browser::PickKind::Folder, start, window, cx, |d, path, window, cx| {
+                    d.screenshots.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+                    save(d, Some(path), None, None, None, cx);
+                });
+            }
+            "clear" => {
+                d.screenshots.busy = true;
+                d.screenshots.message = None;
+                let cache = d.screenshots.cache.clone();
+                cx.spawn(async move |this, cx| {
+                    let info = cx.background_spawn(async move { cache.clear() }).await;
+                    this.update(cx, |d, cx| {
+                        d.screenshots.busy = false;
+                        d.screenshots.info = Some(info);
+                        d.screenshots.message = Some("Screenshot preview cache cleared.".into());
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .detach();
+            }
+            _ => {}
+        },
+        Outcome::Changed(id, Value::Toggle(on)) if id.as_ref() == "capture" => save(d, None, None, Some(on), None, cx),
+        Outcome::Changed(id, Value::Choice { options, index }) if id.as_ref() == "shortcut" => {
+            if let Some(a) = options.get(index) {
+                save(d, None, None, None, Some(a.to_string()), cx);
+            }
+        }
+        Outcome::Changed(id, Value::Number { value, .. }) if id.as_ref() == "limit" => {
+            let text = value.to_string();
+            d.screenshots.limit.update(cx, |s, cx| s.set_value(text, window, cx));
+            save(d, None, Some(value as f64), None, None, cx);
+        }
+        _ => {}
+    }
+    cx.notify();
+}

@@ -168,3 +168,52 @@ impl SettingsPage {
 fn empty_line(text: &str) -> AnyElement {
     div().py(px(14.)).text_size(px(13.)).text_color(theme::text_dim()).child(text.to_string()).into_any_element()
 }
+
+/// Console mode rows: the same facts, read-only, and the copy action.
+pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    let a = &p.about;
+    let s = &a.system;
+    let mut rows = vec![
+        Row::header("Heronite"),
+        Row::info("i:version", "Version", format!("{} (Rust rewrite)", env!("CARGO_PKG_VERSION"))),
+        Row::info("i:legendary", "Legendary", a.legendary.clone().unwrap_or_else(|| "\u{2026}".into())),
+        Row::info(
+            "i:wine",
+            "Wine / Proton found",
+            match (a.wine_count, a.proton_count) {
+                (Some(w), Some(pr)) => format!("{w} Wine, {pr} Proton"),
+                _ => "\u{2026}".into(),
+            },
+        ),
+        Row::info("i:config", "Config folder", p.ctx.heroic.root.display().to_string()),
+        Row::header("System"),
+    ];
+    if s.os.is_empty() {
+        rows.push(Row::info("i:reading", "Reading system information\u{2026}", ""));
+    } else {
+        rows.push(Row::info("i:os", "OS", s.os.clone()));
+        rows.push(Row::info("i:kernel", "Kernel", s.kernel.clone()));
+        rows.push(Row::info("i:cpu", "CPU", format!("{} ({} threads)", s.cpu, s.cores)));
+        rows.push(Row::info("i:mem", "Memory", sysinfo::human_memory(s.memory_kb)));
+        for (i, g) in s.gpus.iter().enumerate() {
+            rows.push(Row::info(SharedString::from(format!("i:gpu{i}")), "GPU", format!("{} {}", g.vendor, g.name)));
+        }
+        if !s.session.is_empty() {
+            rows.push(Row::info("i:session", "Session", s.session.clone()));
+        }
+        rows.push(Row::action("copy", if a.copied { "Copied to the clipboard" } else { "Copy the system information" }).desc("For bug reports"));
+    }
+    rows
+}
+
+pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list::Outcome, cx: &mut Context<SettingsPage>) {
+    if let crate::console::list::Outcome::Activate(id) = outcome {
+        if id.as_ref() == "copy" {
+            let text = p.about.report(&p.ctx);
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            p.about.copied = true;
+            cx.notify();
+        }
+    }
+}

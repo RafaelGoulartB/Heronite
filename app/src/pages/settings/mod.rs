@@ -22,6 +22,7 @@ mod about;
 mod advanced;
 mod appearance;
 mod backup;
+mod console;
 mod library;
 pub mod logs;
 mod metadata;
@@ -94,6 +95,8 @@ pub struct SettingsPage {
     advanced: advanced::State,
     about: about::State,
     logs: logs::State,
+    /// Console mode focus, keyboard and pickers.
+    console: console::ConsoleState,
 }
 
 impl EventEmitter<PageEvent> for SettingsPage {}
@@ -132,6 +135,7 @@ impl SettingsPage {
             advanced: advanced::State::default(),
             about: about::State::default(),
             logs: logs::State::default(),
+            console: Default::default(),
             ctx,
             section,
             global: None,
@@ -362,6 +366,9 @@ impl SettingsPage {
 
 impl Render for SettingsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         let section = self.section;
         let body = self.render_body(window, cx);
         let title = div()
@@ -398,6 +405,6 @@ impl Render for SettingsPage {
             .child(self.nav(cx))
             .child(content)
             .child(close);
-        div().size_full().p(px(12.)).pt(px(2.)).child(sheet)
+        div().size_full().p(px(12.)).pt(px(2.)).child(sheet).into_any_element()
     }
 }

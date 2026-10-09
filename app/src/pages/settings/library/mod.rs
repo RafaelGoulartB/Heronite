@@ -173,6 +173,57 @@ impl SettingsPage {
     }
 }
 
+/// Console mode rows of the section.
+pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    let s = &p.library.snap;
+    let mut rows = vec![
+        Row::toggle("show-hidden", "Show hidden games", s.show_hidden).desc("Hidden games stay in the library, marked"),
+        Row::number("max-recent", "Recent games to keep", s.max_recent, 1, 10, 1, ""),
+        Row::header(format!("Hidden games \u{b7} {}", s.hidden.len())),
+    ];
+    for (app, title) in &s.hidden {
+        rows.push(Row::info(SharedString::from(format!("h:{app}")), title.clone(), "A shows it again"));
+    }
+    if !s.hidden.is_empty() {
+        rows.push(Row::action("unhide-all", "Show all hidden games").enabled(!p.library.busy));
+    }
+    rows.push(Row::header(format!("Favourites \u{b7} {}", s.favourites.len())));
+    for (app, title) in &s.favourites {
+        rows.push(Row::info(SharedString::from(format!("f:{app}")), title.clone(), ""));
+    }
+    if !s.favourites.is_empty() {
+        rows.push(Row::action("fav-clear", "Clear favourites").danger().enabled(!p.library.busy));
+    }
+    rows.push(Row::header(format!("Recent \u{b7} {}", s.recent.len())));
+    if !s.recent.is_empty() {
+        rows.push(Row::action("recent-clear", "Clear recent games").danger().enabled(!p.library.busy));
+    }
+    if let Some((text, _)) = &p.library.notice {
+        rows.push(Row::info("notice", text.clone(), ""));
+    }
+    rows
+}
+
+pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list::Outcome, cx: &mut Context<SettingsPage>) {
+    use crate::console::list::{Outcome, Value};
+    match outcome {
+        Outcome::Changed(id, Value::Toggle(on)) if id.as_ref() == "show-hidden" => p.set_show_hidden(on, cx),
+        Outcome::Changed(id, Value::Number { value, .. }) if id.as_ref() == "max-recent" => p.set_max_recent(value, cx),
+        Outcome::Activate(id) => match id.as_ref() {
+            "unhide-all" => p.library_clear("hidden", cx),
+            "fav-clear" => p.library_clear("favourites", cx),
+            "recent-clear" => p.library_clear("recent", cx),
+            id => {
+                if let Some(app) = id.strip_prefix("h:") {
+                    p.library_unhide(app.to_string(), cx);
+                }
+            }
+        },
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{game_config, json, read_snapshot, AppPaths, HeroicPaths, UiState};

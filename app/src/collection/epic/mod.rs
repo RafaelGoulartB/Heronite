@@ -3,6 +3,7 @@
 //! and the confirmations behind them. The work itself is done by
 //! `services::Downloads` (download queue and operations).
 
+mod console;
 mod dialogs;
 mod focus;
 

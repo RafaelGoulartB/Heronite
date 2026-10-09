@@ -135,13 +135,6 @@ impl ListNav {
         rows.get(self.focus).filter(|r| r.focusable())
     }
 
-    pub fn focus_id(&mut self, rows: &[Row], id: &str) {
-        if let Some(i) = rows.iter().position(|r| r.id.as_ref() == id) {
-            self.focus = i;
-            self.reveal = true;
-        }
-    }
-
     pub fn reset(&mut self) {
         self.focus = 0;
         self.reveal = true;
@@ -266,7 +259,7 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
             .max_w(u(420.))
             .truncate()
             .text_size(u(15.))
-            .text_color(if focused { theme::console_on_focus().into() } else { theme::text_muted() })
+            .text_color(if focused { theme::console_on_focus() } else { theme::text_muted() })
             .child(if t.is_empty() { SharedString::from("\u{2014}") } else { t.clone() })
             .into_any_element(),
         Value::Header => div().into_any_element(),
@@ -287,6 +280,19 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
                 })),
         )
         .child(value)
+}
+
+/// A small console dialog: title, message lines, an optional error and the
+/// rows (confirmations).
+pub fn simple_dialog(nav: &mut ListNav, id: &'static str, title: impl Into<SharedString>, message: &str, error: Option<SharedString>, rows: &[Row]) -> AnyElement {
+    let mut body = div().flex().flex_col().gap(u(12.));
+    for line in message.lines().filter(|l| !l.trim().is_empty()) {
+        body = body.child(kit::body_text(line.to_string()));
+    }
+    if let Some(e) = error {
+        body = body.child(kit::body_text(e).text_color(theme::danger_text()));
+    }
+    kit::modal(title, 680., body.child(nav.render(id, rows, true).min_h_0())).into_any_element()
 }
 
 #[cfg(test)]
@@ -325,8 +331,7 @@ mod tests {
     #[test]
     fn values_change_with_left_right_and_a() {
         let r = rows();
-        let mut nav = ListNav::default();
-        nav.focus = 1;
+        let mut nav = ListNav { focus: 1, ..Default::default() };
         assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Changed("tray".into(), Value::Toggle(false)));
         nav.focus = 2;
         assert_eq!(nav.on_pad(Pad::Left, &r), Outcome::Moved, "already first");

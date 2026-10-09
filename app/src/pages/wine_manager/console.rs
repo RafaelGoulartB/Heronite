@@ -69,7 +69,7 @@ impl WineManagerPage {
         let message = Some(format!("{} \u{b7} {}", r.kind, size_text(job.as_ref(), &r)));
         let sheet = cx.new(|_| Sheet::new(r.version.clone(), message, rows));
         let sub = cx.subscribe(&sheet, move |this, sheet, ev: &SheetEvent, cx| {
-            let SheetEvent::Activate(id) = ev else { return };
+            let SheetEvent::Activate(id) = ev;
             match id.as_ref() {
                 "install" => {
                     this.layer.close();

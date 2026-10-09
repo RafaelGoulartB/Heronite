@@ -128,9 +128,7 @@ pub fn glyph(btn: Btn) -> Div {
         Btn::LB => cap("LB"),
         Btn::RB => cap("RB"),
         Btn::LT => cap("LT"),
-        Btn::RT => cap("RT"),
         Btn::Start => cap("\u{2630}"),
-        Btn::Select => cap("\u{29c9}"),
         Btn::Bumpers => div().flex().gap(u(4.)).child(cap("LB")).child(cap("RB")),
         Btn::LeftRight => div().flex().gap(u(4.)).child(cap("\u{25c0}")).child(cap("\u{25b6}")),
     }
@@ -193,7 +191,7 @@ pub fn toggle_pill(on: bool, focused: bool) -> Div {
             .child("On")
     } else {
         d.bg(if focused { theme::black_a(0.12) } else { theme::white_a(0.1) })
-            .text_color(if focused { theme::console_on_focus().into() } else { theme::text_muted() })
+            .text_color(if focused { theme::console_on_focus() } else { theme::text_muted() })
             .child("Off")
     }
 }
@@ -221,35 +219,6 @@ pub fn choice(value: impl Into<SharedString>, focused: bool, can_left: bool, can
                 .child(value.into()),
         )
         .child(arrow(Icon::ChevronRight, can_right))
-}
-
-/// Pill button ("Play", "Install"): `primary` is the light one.
-pub fn button(label: impl Into<SharedString>, ic: Option<Icon>, primary: bool, focused: bool) -> Div {
-    let (bg, fg): (Hsla, Hsla) = if focused || primary {
-        (theme::console_focus().into(), theme::console_on_focus().into())
-    } else {
-        (theme::white_a(0.1), theme::text_primary().into())
-    };
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(u(10.))
-        .h(u(52.))
-        .px(u(28.))
-        .rounded(u(14.))
-        .bg(bg)
-        .text_color(fg)
-        .text_size(u(18.))
-        .font_weight(theme::W_BOLD)
-        .border_2()
-        .border_color(if focused { theme::white_a(0.9) } else { transparent_black() })
-        .when(focused, |d| {
-            d.shadow(shadow(0.5, 8., 24.))
-        })
-        .when(!focused && primary, |d| d.opacity(0.85))
-        .children(ic.map(|ic| icon(ic, u(20.), fg)))
-        .child(label.into())
 }
 
 /// Tabs switched with LB / RB; the active one is white and underlined.
@@ -346,4 +315,13 @@ pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElemen
                 .child(div().flex().flex_col().flex_1().min_h_0().gap(u(14.)).child(body)),
         ),
     )
+}
+
+/// Draws `child` over the whole window, whatever the caller's bounds (for
+/// overlays of views embedded in a smaller area, like a settings panel).
+pub fn window_layer(window: &Window, child: impl IntoElement) -> AnyElement {
+    let size = window.viewport_size();
+    deferred(anchored().position(point(px(0.), px(0.))).child(div().relative().w(size.width).h(size.height).child(child)))
+        .with_priority(5)
+        .into_any_element()
 }

@@ -332,6 +332,7 @@ impl CollectionView {
             Page::Settings => {
                 let v = cx.new(|cx| pages::settings::SettingsPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Settings, crate::console::PadHook::new(&v));
                 self.pages.settings = Some(v.into());
             }
         }

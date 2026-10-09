@@ -209,3 +209,69 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     }
     col.into_any_element()
 }
+
+/// Console mode rows.
+pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    let m = &d.settings.metadata;
+    let secret = d.metadata.secret.read(cx).value().to_string();
+    let mut rows = vec![
+        Row::header("Twitch / IGDB API"),
+        Row::text("client-id", "Client ID", d.metadata.client_id.read(cx).value().to_string()).desc("Create a Twitch app to get IGDB keys: dev.twitch.tv/console"),
+        Row::text("secret", "Client secret", "\u{2022}".repeat(secret.chars().count().min(24))),
+        Row::action("test", if d.metadata.testing { "Testing\u{2026}" } else { "Test IGDB" }).enabled(!d.metadata.testing).desc(d.metadata.ok_message.clone().unwrap_or_default()),
+        Row::header("Images and fields"),
+        Row::toggle("autofill", "Fill missing metadata in the background", m.auto_fill_missing),
+        Row::toggle("download", "Copy covers to disk", m.download_images).desc("Off keeps the CDN addresses instead"),
+        Row::header("Preferred source per field"),
+    ];
+    for field in METADATA_FIELDS {
+        let current = preferred_source(d, field);
+        let i = SOURCES.iter().position(|(v, _)| *v == current).unwrap_or(0);
+        rows.push(Row::choice(SharedString::from(format!("prio:{field}")), metadata_field_label(field), SOURCES.iter().map(|(_, l)| SharedString::from(*l)).collect(), i));
+    }
+    rows
+}
+
+pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    use crate::console::list::{Outcome, Value};
+    match outcome {
+        Outcome::Activate(id) => match id.as_ref() {
+            "client-id" => {
+                let cur = d.metadata.client_id.read(cx).value().to_string();
+                d.console_osk("IGDB client ID", &cur, window, cx, |d, text, window, cx| {
+                    let text = text.trim().to_string();
+                    d.metadata.client_id.update(cx, |s, cx| s.set_value(text.clone(), window, cx));
+                    persist(d, cx, |m| m.igdb_client_id = text);
+                });
+            }
+            "secret" => d.console_osk("IGDB client secret", "", window, cx, |d, text, window, cx| {
+                let text = text.trim().to_string();
+                d.metadata.secret.update(cx, |s, cx| s.set_value(text.clone(), window, cx));
+                persist(d, cx, |m| m.igdb_client_secret = text);
+            }),
+            "test" => test_igdb(d, cx),
+            _ => {}
+        },
+        Outcome::Changed(id, Value::Toggle(on)) => match id.as_ref() {
+            "autofill" => persist(d, cx, |m| m.auto_fill_missing = on),
+            "download" => persist(d, cx, |m| m.download_images = on),
+            _ => {}
+        },
+        Outcome::Changed(id, Value::Choice { index, .. }) => {
+            if let Some(field) = id.strip_prefix("prio:").and_then(|f| METADATA_FIELDS.iter().find(|x| **x == f)).copied() {
+                let value = SOURCES[index].0;
+                let default = default_field_priority(field);
+                let next: Vec<String> = if value == "auto" {
+                    default
+                } else {
+                    std::iter::once(value.to_string()).chain(default.into_iter().filter(|s| s != value)).collect()
+                };
+                persist(d, cx, |m| {
+                    m.field_priority.insert(field.to_string(), next);
+                });
+            }
+        }
+        _ => {}
+    }
+}

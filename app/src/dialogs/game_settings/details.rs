@@ -57,7 +57,7 @@ fn split_list(value: &str) -> Vec<String> {
     value.split([',', ';', '\n']).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
 }
 
-const TAG_FIELDS: [(&str, &str, bool); 8] = [
+pub(super) const TAG_FIELDS: [(&str, &str, bool); 8] = [
     ("series", "Series", false),
     ("developers", "Developers", true),
     ("publishers", "Publishers", true),
@@ -69,14 +69,14 @@ const TAG_FIELDS: [(&str, &str, bool); 8] = [
 ];
 
 pub(super) struct Details {
-    name: Entity<InputState>,
-    description: Entity<TextareaState>,
-    release: Entity<InputState>,
-    score: Entity<InputState>,
-    websites: Entity<InputState>,
-    notes: Entity<TextareaState>,
+    pub(super) name: Entity<InputState>,
+    pub(super) description: Entity<TextareaState>,
+    pub(super) release: Entity<InputState>,
+    pub(super) score: Entity<InputState>,
+    pub(super) websites: Entity<InputState>,
+    pub(super) notes: Entity<TextareaState>,
     /// In [`TAG_FIELDS`] order.
-    tags: Vec<Entity<TagField>>,
+    pub(super) tags: Vec<Entity<TagField>>,
 }
 
 impl GameSettingsDialog {

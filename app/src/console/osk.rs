@@ -35,10 +35,6 @@ impl Osk {
         Self { title: title.into(), text: initial.to_string(), row: 1, col: 0, shift: false }
     }
 
-    pub fn text(&self) -> &str {
-        &self.text
-    }
-
     fn key_at(&self, row: usize, col: usize) -> char {
         let c = ROWS[row].chars().nth(col).unwrap_or(' ');
         if self.shift {
