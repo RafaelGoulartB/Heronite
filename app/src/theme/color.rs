@@ -118,3 +118,9 @@ pub fn nav_text() -> Rgba { rgb(0xc3cbd8) }
 pub fn accent_tint() -> Hsla { rgba_hsla(165, 220, 235, 0.16) }
 pub fn accent_tint_border() -> Hsla { rgba_hsla(165, 220, 235, 0.40) }
 pub fn menu_item_hover() -> Hsla { white_a(0.07) }
+
+// Collection header: icons, search pill and filter chips stay faint over the art.
+pub fn tool_icon() -> Hsla { white_a(0.55) }
+pub fn search_fill() -> Hsla { white_a(0.06) }
+pub fn search_fill_hover() -> Hsla { white_a(0.09) }
+pub fn chip_fill() -> Hsla { white_a(0.07) }

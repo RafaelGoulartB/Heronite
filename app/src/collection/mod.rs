@@ -61,6 +61,8 @@ pub struct CollectionView {
     search: String,
     search_input: Entity<InputState>,
     open_menu: Option<Menu>,
+    /// Pending hover-intent open of a header menu.
+    menu_open: Option<Task<()>>,
     menu_close: Option<Task<()>>,
     /// Hovered parts of the open header menu (`ui::dropdown::PART_*`).
     menu_parts: u8,
@@ -154,6 +156,7 @@ impl CollectionView {
             search: String::new(),
             search_input,
             open_menu: None,
+            menu_open: None,
             menu_close: None,
             menu_parts: 0,
             wheel: WheelScroll::default(),
@@ -292,7 +295,7 @@ impl CollectionView {
             self.rebuild_items();
         }
 
-        let header = self.render_header(cx);
+        let header = self.render_header(list_w, window, cx);
         let page_el = self.render_page(cx);
         let on_page = page_el.is_some();
         let stage_el = match self.stage_image(window) {

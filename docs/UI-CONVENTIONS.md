@@ -99,6 +99,16 @@ release (off the UI thread).
 26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14). Children added after the constructor paint above the layers. Children
 are not clipped to the rounded corners: give edge-to-edge children their own radius.
 
+**Collection header** (`collection/header.rs`, the one place the main screen departs from Heronite, by user
+decision): faint, no bar fill. Over the list column: ☰ (`tool_button`, radius 10, icon `theme::tool_icon()`), the
+search pill (`search_fill`, accent ring while focused, clear button) and the View button (`Icon::Tune`, accent while
+anything is filtered) whose single menu holds Show (segmented), Sort by (segmented), Group by status / Show hidden
+games (switches), Filter by (facet rows with a flyout to the right) and Manage statuses. Each active filter appears
+as a removable `filter_chip` after it. Right: bulk metadata, refresh, close focus. Header menus open on click or
+after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The ☰ menu (`nav.rs`) is a list:
+pages grouped (Collection, Downloads, Statistics | Epic, Wine Manager, Emulators), then Add game, Console mode,
+then Settings and Command palette with their keys; each row = icon square + title + meta on the right.
+
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
 Collection's context menu (`collection/context_menu.rs::item`/`paper`) uses the
@@ -178,7 +188,7 @@ checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_prima
 drawn before the compositor stopped sending frames, so late images (art, covers)
 are missing. Take a first capture to wake the window, wait a second, then take
 the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
-`HERONITE_DEBUG_DROPDOWN=nav|install|sort|status|facets`, `HERONITE_DEBUG_MENU=<key>`,
+`HERONITE_DEBUG_DROPDOWN=nav|view|facets`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.config/heroic/images-cache` into the fixture or no art appears at all.
 
@@ -205,7 +215,7 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
   off-screen), prints PSS and closes it. Never open windows anywhere else,
   never switch workspaces, never move/click the real mouse.
 - Debug hooks (env, via `SHOT_ENV="..."`): `HERONITE_DEBUG_SELECT=<runner_appName>`,
-  `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=install|sort|status|facets`,
+  `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|facets|nav`,
   `HERONITE_DEBUG_DIALOG=settings|statuses` (extend the match in
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section).
 - Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).

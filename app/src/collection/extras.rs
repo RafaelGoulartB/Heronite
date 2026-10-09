@@ -392,16 +392,16 @@ impl CollectionView {
         let f = self.extras.facet_search.as_ref().filter(|f| f.kind == kind)?;
         Some(
             div()
-                .mx(px(5.6))
-                .mb(px(3.))
-                .px(px(8.))
-                .h(px(30.))
+                .mx(px(2.))
+                .mb(px(4.))
+                .px(px(12.))
+                .h(px(32.))
                 .flex()
                 .items_center()
-                .rounded(px(4.))
-                .bg(theme::white_a(0.07))
+                .rounded_full()
+                .bg(theme::search_fill())
                 .border_1()
-                .border_color(theme::white_a(0.1))
+                .border_color(theme::input_border())
                 .text_size(px(14.))
                 .text_color(white())
                 .child(div().flex_1().min_w_0().child(Input::new(&f.input).appearance(false))),

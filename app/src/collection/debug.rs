@@ -10,7 +10,7 @@ use super::{context_menu, CollectionView};
 
 impl CollectionView {
     /// `HERONITE_DEBUG_MENU=<card key>` opens its context menu (with the
-    /// status flyout), `HERONITE_DEBUG_DROPDOWN=install|sort|status|nav|facets`
+    /// status flyout), `HERONITE_DEBUG_DROPDOWN=view|nav|facets`
     /// opens a header menu, `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
     /// the first render that has a window (`open_pending_debug_dialog`).
     pub(super) fn apply_debug_env(&mut self) {
@@ -26,13 +26,11 @@ impl CollectionView {
         }
         if let Some(menu) = crate::env::value("HERONITE_DEBUG_DROPDOWN") {
             self.open_menu = match menu.as_str() {
-                "install" => Some(Menu::Install),
-                "sort" => Some(Menu::Sort),
-                "status" => Some(Menu::Status),
+                "view" | "install" | "sort" | "status" => Some(Menu::View),
                 "nav" => Some(Menu::Nav),
                 "facets" => {
                     self.facet_flyout = Some(FacetKind::Developer);
-                    Some(Menu::Facets)
+                    Some(Menu::View)
                 }
                 _ => None,
             };

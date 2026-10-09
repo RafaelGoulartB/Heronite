@@ -1,5 +1,7 @@
-//! `header.collection__header`: 42px, three columns (left tools, centred
-//! search + filters, right tools) and its hover dropdowns.
+//! `header.collection__header`: 42px. Left, over the list column: ☰, the
+//! search pill and the View button (filters, sort, grouping in one menu);
+//! then one chip per active filter; right: bulk metadata, refresh and the
+//! focus panel's close.
 
 use std::time::Duration;
 
@@ -12,27 +14,19 @@ use heronite_data::{FacetKind, InstallFilter, SortMode};
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::dropdown::{dropdown, menu_item, menu_panel, menu_separator, Align};
-use crate::ui::{icon, tool_button};
+use crate::ui::dropdown::{dropdown, menu_item, menu_panel, menu_separator, Align, PART_BUTTON};
+use crate::ui::{icon, tool_button, tool_button_base};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Menu {
-    Install,
-    Facets,
-    Sort,
-    Status,
+    /// Show / sort / group / filter.
+    View,
     Nav,
 }
 
 const CLOSE_DELAY: Duration = Duration::from_millis(180);
-
-fn install_icon(f: InstallFilter) -> Icon {
-    match f {
-        InstallFilter::All => Icon::FaBorderAll,
-        InstallFilter::Installed => Icon::FaHardDrive,
-        InstallFilter::Uninstalled => Icon::FaHardDriveRegular,
-    }
-}
+/// Hover intent: passing over a button on the way elsewhere opens nothing.
+const OPEN_DELAY: Duration = Duration::from_millis(140);
 
 fn facet_label(k: FacetKind) -> &'static str {
     match k {
@@ -48,7 +42,7 @@ impl CollectionView {
     pub(super) fn new_search_input(window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
         let state = cx.new(|cx| {
             let mut s = InputState::new(window, cx);
-            s.set_placeholder("Search for Games", window, cx);
+            s.set_placeholder("Search games", window, cx);
             s
         });
         cx.subscribe_in(&state, window, |this, state, _ev: &gpui_kit::component::input::InputEvent, _window, cx| {
@@ -63,14 +57,28 @@ impl CollectionView {
         state
     }
 
+    fn open_header_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
+        if self.open_menu != Some(menu) {
+            self.open_menu = Some(menu);
+            self.menu_parts = PART_BUTTON;
+            self.facet_flyout = None;
+        }
+        self.menu_open = None;
+        self.menu_close = None;
+        cx.notify();
+    }
+
     /// `part`: which piece of the dropdown changed hover (see
-    /// `ui::dropdown::PART_*`). Closes 180ms after the last part is left.
+    /// `ui::dropdown::PART_*`). Opens after [`OPEN_DELAY`] on the button and
+    /// closes 180ms after the last part is left.
     pub(super) fn menu_hover(&mut self, menu: Menu, part: u8, hovered: bool, cx: &mut Context<Self>) {
         if hovered {
             if self.open_menu != Some(menu) {
-                self.open_menu = Some(menu);
-                self.menu_parts = 0;
-                self.facet_flyout = None;
+                self.menu_open = Some(cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(OPEN_DELAY).await;
+                    this.update(cx, |this, cx| this.open_header_menu(menu, cx)).ok();
+                }));
+                return;
             }
             self.menu_parts |= part;
             self.menu_close = None;
@@ -91,13 +99,15 @@ impl CollectionView {
                 })
                 .ok();
             }));
+        } else if part == PART_BUTTON {
+            self.menu_open = None;
         }
     }
 
     pub(super) fn hover_dropdown(
         &self,
         menu: Menu,
-        ic: Icon,
+        button: Stateful<Div>,
         align: Align,
         body: impl FnOnce(&Self, &mut Context<Self>) -> AnyElement,
         cx: &mut Context<Self>,
@@ -106,12 +116,7 @@ impl CollectionView {
         let content = open.then(|| body(self, cx));
         dropdown(
             SharedString::from(format!("dd-{menu:?}")),
-            tool_button(SharedString::from(format!("btn-{menu:?}")), ic, open).on_click(cx.listener(
-                move |this, _, _, cx| {
-                    this.open_menu = Some(menu);
-                    cx.notify();
-                },
-            )),
+            button.on_click(cx.listener(move |this, _, _, cx| this.open_header_menu(menu, cx))),
             content,
             align,
             {
@@ -136,11 +141,32 @@ impl CollectionView {
         cx.notify();
     }
 
-    pub(super) fn render_header(&mut self, cx: &mut Context<Self>) -> Div {
-        let install = self.hover_dropdown(Menu::Install, install_icon(self.ui.install_filter), Align::Left, |this, cx| this.install_menu(cx), cx);
-        let sort = self.hover_dropdown(Menu::Sort, Icon::SortByAlpha, Align::Right, |this, cx| this.sort_menu(cx), cx);
-        let status = self.hover_dropdown(Menu::Status, Icon::Flag, Align::Right, |this, cx| this.status_menu(cx), cx);
-        let facets = self.facets_button(cx);
+    fn set_install_filter(&mut self, f: InstallFilter, cx: &mut Context<Self>) {
+        self.ui.install_filter = f;
+        self.save_ui();
+        self.refresh_groups();
+        cx.notify();
+    }
+
+    /// Whether the View menu hides any game (its button turns accent).
+    fn view_filtered(&self) -> bool {
+        self.ui.install_filter != InstallFilter::All || self.ui.show_hidden || self.ui.facet_filters.is_active()
+    }
+
+    pub(super) fn render_header(&mut self, list_w: f32, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let open = self.open_menu == Some(Menu::View);
+        let view_btn = tool_button_base("btn-View", open).child(icon(
+            Icon::Tune,
+            theme::TOOL_ICON,
+            if self.view_filtered() {
+                theme::accent().into()
+            } else if open {
+                theme::white_a(1.)
+            } else {
+                theme::tool_icon()
+            },
+        ));
+        let view = self.hover_dropdown(Menu::View, view_btn, Align::Left, |this, cx| this.view_menu(cx), cx);
         let refresh = self.refresh_button(cx);
         let close = self.focus_close_button(cx);
 
@@ -151,102 +177,131 @@ impl CollectionView {
             .items_center()
             .h(theme::HEADER_H)
             .px(px(12.))
-            .gap(px(8.))
+            .gap(px(10.))
+            .child(
+                // Spans the list column (up to its border) so the search
+                // reads as the list's own.
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(6.))
+                    .w(px((list_w - 24.).max(300.)))
+                    .child(self.nav_dropdown(cx))
+                    .child(self.search_box(window, cx))
+                    .child(view),
+            )
             .child(
                 div()
                     .flex()
                     .flex_1()
+                    .min_w_0()
                     .items_center()
-                    .min_w(px(32.))
-                    .child(self.nav_dropdown(cx))
-                    .child(install),
+                    .gap(px(6.))
+                    .overflow_hidden()
+                    .children(self.filter_chips(cx)),
             )
             .child(
                 div()
                     .flex()
                     .flex_none()
                     .items_center()
-                    .gap(px(4.))
-                    .child(self.search_box())
-                    .child(facets)
-                    .child(sort)
-                    .child(status),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .items_center()
-                    .justify_end()
-                    .min_w(px(32.))
+                    .gap(px(2.))
                     .children(self.bulk_chip(cx))
                     .child(refresh)
                     .children(close),
             )
     }
 
-    fn install_menu(&self, cx: &mut Context<Self>) -> AnyElement {
-        let mut p = menu_panel(220.);
-        for (i, (f, label)) in [
-            (InstallFilter::All, "All games"),
-            (InstallFilter::Installed, "Installed"),
-            (InstallFilter::Uninstalled, "Not installed / Uninstalled"),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let active = self.ui.install_filter == f;
-            p = p.child(
-                menu_item(SharedString::from(format!("install-{i}")), active)
-                    .child(icon(install_icon(f), px(14.4), if active { theme::accent() } else { theme::text_muted() }))
-                    .child(label)
+    /// One removable chip per filter the View menu has set.
+    fn filter_chips(&self, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
+        let mut chips = Vec::new();
+        match self.ui.install_filter {
+            InstallFilter::All => {}
+            f => chips.push(
+                filter_chip("chip-install", None, if f == InstallFilter::Installed { "Installed" } else { "Not installed" })
+                    .on_click(cx.listener(|this, _, _, cx| this.set_install_filter(InstallFilter::All, cx))),
+            ),
+        }
+        if self.ui.show_hidden {
+            chips.push(
+                filter_chip("chip-hidden", None, "Hidden shown")
+                    .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(false, cx))),
+            );
+        }
+        for kind in FACET_KINDS {
+            let Some(value) = self.ui.facet_filters.get(kind).filter(|v| !v.is_empty()) else { continue };
+            let value = value.to_owned();
+            chips.push(
+                filter_chip(SharedString::from(format!("chip-{}", kind.as_str())), Some(facet_label(kind)), &value)
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.ui.install_filter = f;
+                        this.toggle_facet(kind.as_str(), &value);
+                        cx.notify();
+                    })),
+            );
+        }
+        chips
+    }
+
+    /// Show (install filter), sort, the two switches, facet filters and
+    /// "Manage statuses…" in one panel.
+    fn view_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+        let weak = cx.entity().downgrade();
+        let install = crate::ui::controls::tabs(
+            "view-install",
+            &[(InstallFilter::All, "All"), (InstallFilter::Installed, "Installed"), (InstallFilter::Uninstalled, "Not installed")],
+            self.ui.install_filter,
+            {
+                let weak = weak.clone();
+                move |f, _, cx| {
+                    weak.update(cx, |this, cx| this.set_install_filter(f, cx)).ok();
+                }
+            },
+        );
+        let sort = crate::ui::controls::tabs(
+            "view-sort",
+            &[(SortMode::Title, "Title"), (SortMode::LastPlayed, "Last played"), (SortMode::Playtime, "Playtime")],
+            self.ui.sort,
+            move |m, _, cx| {
+                weak.update(cx, |this, cx| {
+                    this.ui.sort = m;
+                    this.save_ui();
+                    this.refresh_groups();
+                    cx.notify();
+                })
+                .ok();
+            },
+        );
+        let facets_active = self.ui.facet_filters.is_active();
+        let mut filter_title = section_label("Filter by");
+        if facets_active {
+            filter_title = filter_title.child(
+                div()
+                    .id("facet-clear")
+                    .text_color(theme::accent())
+                    .cursor_pointer()
+                    .hover(|s| s.text_color(white()))
+                    .child("Clear")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.ui.clear_facets();
                         this.save_ui();
                         this.refresh_groups();
                         cx.notify();
                     })),
             );
         }
-        let show_hidden = self.ui.show_hidden;
-        p.child(menu_separator())
-            .child(
-                menu_item("install-show-hidden", false)
-                    .justify_between()
-                    .child("Show hidden games")
-                    .child(toggle("install-show-hidden-sw", show_hidden))
-                    .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(!this.ui.show_hidden, cx))),
-            )
-            .into_any_element()
-    }
-
-    fn sort_menu(&self, cx: &mut Context<Self>) -> AnyElement {
-        let mut p = menu_panel(200.);
-        for (i, (m, label)) in
-            [(SortMode::Title, "Title"), (SortMode::LastPlayed, "Last played"), (SortMode::Playtime, "Playtime")]
-                .into_iter()
-                .enumerate()
-        {
-            p = p.child(menu_item(SharedString::from(format!("sort-{i}")), self.ui.sort == m).child(label).on_click(
-                cx.listener(move |this, _, _, cx| {
-                    this.ui.sort = m;
-                    this.save_ui();
-                    this.refresh_groups();
-                    cx.notify();
-                }),
-            ));
-        }
-        p.into_any_element()
-    }
-
-    fn status_menu(&self, cx: &mut Context<Self>) -> AnyElement {
-        let on = self.ui.group_by_status;
-        menu_panel(240.)
+        menu_panel(300.)
+            .w(px(300.))
+            .child(section_label("Show").mt(px(2.)))
+            .child(div().px(px(4.)).child(install))
+            .child(section_label("Sort by"))
+            .child(div().px(px(4.)).child(sort))
+            .child(menu_separator().mt(px(8.)))
             .child(
                 menu_item("status-group", false)
                     .justify_between()
                     .child("Group by status")
-                    .child(toggle("status-group-sw", on))
+                    .child(toggle("status-group-sw", self.ui.group_by_status))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.ui.group_by_status = !this.ui.group_by_status;
                         this.save_ui();
@@ -254,45 +309,30 @@ impl CollectionView {
                         cx.notify();
                     })),
             )
-            .child(menu_separator())
-            .child(menu_item("status-manage", false).child("Manage statuses…").on_click(cx.listener(
-                |this, _, window, cx| this.open_manage_statuses(window, cx),
-            )))
-            .into_any_element()
-    }
-
-    /// Filter button with a dot while a facet filter is active.
-    fn facets_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let facets_active = self.ui.facet_filters.is_active();
-        let facets = self.hover_dropdown(
-            Menu::Facets,
-            Icon::FilterList,
-            Align::Right,
-            |this, cx| this.render_facet_menu(cx).into_any_element(),
-            cx,
-        );
-        if facets_active {
-            facets.child(
-                div().absolute().top(px(5.)).right(px(5.)).size(px(6.)).rounded_full().bg(theme::accent()),
+            .child(
+                menu_item("install-show-hidden", false)
+                    .justify_between()
+                    .child("Show hidden games")
+                    .child(toggle("install-show-hidden-sw", self.ui.show_hidden))
+                    .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(!this.ui.show_hidden, cx))),
             )
-        } else {
-            facets
-        }
+            .child(menu_separator())
+            .child(filter_title.mt(px(2.)))
+            .children(self.facet_rows(cx))
+            .child(menu_separator())
+            .child(
+                menu_item("status-manage", false)
+                    .child(icon(Icon::Flag, px(15.), theme::text_muted()))
+                    .child("Manage statuses…")
+                    .on_click(cx.listener(|this, _, window, cx| this.open_manage_statuses(window, cx))),
+            )
+            .into_any_element()
     }
 
     fn refresh_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let refreshing = self.refreshing;
-        let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::white_a(0.58));
-        div()
-            .id("hdr-refresh")
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .size(theme::TOOL_BTN)
-            .rounded(px(4.))
-            .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.08)))
+        let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::tool_icon());
+        tool_button_base("hdr-refresh", false)
             .on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx)))
             .child(if refreshing {
                 refresh_icon
@@ -310,67 +350,91 @@ impl CollectionView {
     /// Closes the focus panel (deselects the game); only shown while it is open.
     fn focus_close_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         self.focus.is_some().then(|| {
-            div()
-                .id("hdr-focus-close")
-                .flex()
-                .flex_none()
-                .items_center()
-                .justify_center()
-                .size(theme::TOOL_BTN)
-                .rounded(px(4.))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.08)))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.focus = None;
-                    this.selected = None;
-                    cx.notify();
-                }))
-                .child(icon(Icon::Close, theme::TOOL_ICON, theme::white_a(0.58)))
+            tool_button("hdr-focus-close", Icon::Close, false).on_click(cx.listener(|this, _, _, cx| {
+                this.focus = None;
+                this.selected = None;
+                cx.notify();
+            }))
         })
     }
 
-    /// 20rem × 32px search with an underline only, centred text.
-    fn search_box(&self) -> Div {
-        let focused = !self.search.is_empty();
+    /// 32px pill: faint fill, brighter with an accent ring while focused;
+    /// a clear button once something is typed.
+    fn search_box(&self, window: &Window, cx: &mut Context<Self>) -> Stateful<Div> {
+        let focused = self.search_input.read(cx).focus_handle(cx).is_focused(window);
+        let has_text = !self.search.is_empty();
         div()
-            .relative()
+            .id("hdr-search")
             .flex()
+            .flex_1()
+            .min_w_0()
             .items_center()
-            .w(px(320.))
-            .h(px(32.))
-            .border_b_1()
-            .border_color(theme::white_a(if focused { 0.48 } else { 0.18 }))
-            .child(
-                div()
-                    .absolute()
-                    .left(px(4.))
-                    .child(icon(Icon::FaSearch, px(12.8), theme::white_a(if focused { 0.72 } else { 0.42 }))),
-            )
+            .gap(px(8.))
+            .h(theme::TOOL_BTN)
+            .pl(px(12.))
+            .pr(px(if has_text { 4. } else { 12. }))
+            .rounded_full()
+            .border_1()
+            .border_color(if focused { theme::input_border_focus() } else { theme::white_a(0.) })
+            .bg(if focused || has_text { theme::search_fill_hover() } else { theme::search_fill() })
+            .hover(|s| s.bg(theme::search_fill_hover()))
+            .child(icon(Icon::FaSearch, px(12.), theme::white_a(if focused || has_text { 0.75 } else { 0.42 })))
             .child(
                 div()
                     .flex_1()
-                    .pl(px(22.))
-                    .text_size(px(16.))
-                    .text_color(theme::white_a(0.88))
-                    .child(Input::new(&self.search_input).appearance(false).text_center()),
+                    .min_w_0()
+                    .text_size(px(14.))
+                    .text_color(theme::white_a(0.92))
+                    .child(Input::new(&self.search_input).appearance(false)),
             )
+            .when(has_text, |d| {
+                d.child(
+                    div()
+                        .id("hdr-search-clear")
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .justify_center()
+                        .size(px(24.))
+                        .rounded_full()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::white_a(0.1)))
+                        .child(icon(Icon::Close, px(14.), theme::white_a(0.7)))
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.search_input.update(cx, |s, cx| s.set_value("", window, cx));
+                            this.search.clear();
+                            this.refresh_groups();
+                            cx.notify();
+                        })),
+                )
+            })
     }
 
-    fn render_facet_menu(&self, cx: &mut Context<Self>) -> Div {
-        let Some(lib) = self.lib.clone() else { return menu_panel(200.) };
+    /// The five facet rows (current value on the right) and, for the
+    /// hovered one, its searchable flyout opening to the right.
+    fn facet_rows(&self, cx: &mut Context<Self>) -> Vec<Div> {
+        let Some(lib) = self.lib.clone() else { return Vec::new() };
         let options = collect_facet_options(&lib.games);
-        let mut p = menu_panel(200.).max_w(px(240.));
+        let mut rows = Vec::new();
         for kind in FACET_KINDS {
             let selected = self.ui.facet_filters.get(kind).map(str::to_owned);
             let open = self.facet_flyout == Some(kind);
-            let mut label = div().flex().flex_col().min_w_0().gap(px(1.6)).child(facet_label(kind));
-            if let Some(sel) = &selected {
-                label = label.child(div().max_w(px(160.)).truncate().text_size(px(11.5)).opacity(0.7).child(sel.clone()));
-            }
-            let row = menu_item(SharedString::from(format!("facet-{}", kind.as_str())), selected.is_some() || open)
+            let row = menu_item(SharedString::from(format!("facet-{}", kind.as_str())), open)
                 .justify_between()
-                .child(label)
-                .child(icon(Icon::ChevronRight, px(16.), theme::white_a(0.7)))
+                .child(div().flex_none().child(facet_label(kind)))
+                .child(
+                    div()
+                        .flex()
+                        .flex_1()
+                        .min_w_0()
+                        .justify_end()
+                        .items_center()
+                        .gap(px(4.))
+                        .children(selected.clone().map(|sel| {
+                            div().min_w_0().truncate().text_size(px(12.5)).text_color(theme::accent()).child(sel)
+                        }))
+                        .child(icon(Icon::ChevronRight, px(16.), theme::white_a(0.5))),
+                )
                 .on_hover(cx.listener(move |this, h: &bool, _, cx| {
                     if *h && this.facet_flyout != Some(kind) {
                         this.facet_flyout = Some(kind);
@@ -431,34 +495,59 @@ impl CollectionView {
                     div()
                         .id(SharedString::from(format!("facet-fly-{}", kind.as_str())))
                         .absolute()
-                        .top_0()
-                        .right(relative(1.))
-                        .mr(px(-2.))
+                        .top(px(-6.))
+                        .left(relative(1.))
+                        .ml(px(4.))
                         .occlude()
                         .on_hover(cx.listener(|this, h: &bool, _, cx| {
-                            this.menu_hover(Menu::Facets, crate::ui::dropdown::PART_FLYOUT, *h, cx)
+                            this.menu_hover(Menu::View, crate::ui::dropdown::PART_FLYOUT, *h, cx)
                         }))
                         .child(fly),
                 );
             }
-            p = p.child(wrap);
+            rows.push(wrap);
         }
-        if self.ui.facet_filters.is_active() {
-            p = p.child(menu_separator()).child(
-                menu_item("facet-clear", false)
-                    .justify_center()
-                    .text_color(theme::accent())
-                    .child("Clear filters")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.ui.clear_facets();
-                        this.save_ui();
-                        this.refresh_groups();
-                        cx.notify();
-                    })),
-            );
-        }
-        p
+        rows
     }
+}
+
+/// Small muted heading inside the View menu (with room for an action on
+/// the right).
+fn section_label(text: &'static str) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .px(px(10.))
+        .pt(px(8.))
+        .pb(px(4.))
+        .text_size(px(12.))
+        .text_color(theme::text_muted())
+        .child(text)
+}
+
+/// Active filter in the header: faint pill, `kind` muted before the value;
+/// clicking it removes the filter.
+fn filter_chip(id: impl Into<ElementId>, kind: Option<&'static str>, value: &str) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(6.))
+        .h(px(26.))
+        .pl(px(10.))
+        .pr(px(6.))
+        .max_w(px(220.))
+        .rounded_full()
+        .bg(theme::chip_fill())
+        .text_size(px(12.5))
+        .text_color(theme::text_primary())
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::white_a(0.12)))
+        .children(kind.map(|k| div().flex_none().text_color(theme::text_muted()).child(k)))
+        .child(div().min_w_0().truncate().child(value.to_owned()))
+        .child(icon(Icon::Close, px(13.), theme::white_a(0.6)))
 }
 
 /// Compact glass switch of the menu rows (the row itself handles the click).

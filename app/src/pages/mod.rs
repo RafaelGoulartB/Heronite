@@ -31,14 +31,11 @@ pub enum Page {
     Epic,
     Emulators,
     Statistics,
-    /// Global settings (☰ → Settings); not in [`Page::ALL`], the menu lists it last.
+    /// Global settings (☰ → Settings, listed last).
     Settings,
 }
 
 impl Page {
-    pub const ALL: [Page; 6] =
-        [Page::Collection, Page::Downloads, Page::WineManager, Page::Epic, Page::Emulators, Page::Statistics];
-
     pub fn title(self) -> &'static str {
         match self {
             Page::Collection => "Collection",

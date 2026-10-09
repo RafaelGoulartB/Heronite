@@ -42,10 +42,10 @@ pub fn menu_separator() -> Div {
     div().h(px(1.)).my(px(4.)).mx(px(4.)).bg(theme::white_a(0.08))
 }
 
+/// Which edge of the button the menu lines up with.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Align {
     Left,
-    Right,
 }
 
 /// Hover callback of a dropdown: `(part, hovered)`. Parts: 1 = button,
@@ -85,7 +85,6 @@ pub fn dropdown(
             .on_hover(move |h, w, cx| h2(PART_PANEL, *h, w, cx));
         let positioned = match align {
             Align::Left => positioned.left_0(),
-            Align::Right => positioned.right_0(),
         };
         container = container.child(deferred(positioned.child(menu)).with_priority(10));
     }

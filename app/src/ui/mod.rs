@@ -20,9 +20,9 @@ pub fn icon(icon: Icon, size: Pixels, color: impl Into<Hsla>) -> Svg {
     svg().path(icon.path()).size(size).flex_none().text_color(color.into())
 }
 
-/// Header tool button: 32×32, radius 4, icon .58 white, hover white on .08.
-pub fn tool_button(id: impl Into<ElementId>, ic: Icon, active: bool) -> Stateful<Div> {
-    let color = if active { theme::white_a(1.) } else { theme::white_a(0.58) };
+/// Empty header tool button: 32×32, radius 10, no fill until hovered or
+/// `active` (white .08). The caller adds the icon.
+pub fn tool_button_base(id: impl Into<ElementId>, active: bool) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -30,11 +30,17 @@ pub fn tool_button(id: impl Into<ElementId>, ic: Icon, active: bool) -> Stateful
         .items_center()
         .justify_center()
         .size(theme::TOOL_BTN)
-        .rounded(px(4.))
+        .rounded(px(theme::R_ITEM))
         .cursor_pointer()
         .when(active, |d| d.bg(theme::white_a(0.08)))
         .hover(|s| s.bg(theme::white_a(0.08)))
-        .child(icon(ic, theme::TOOL_ICON, color))
+}
+
+/// Header tool button: [`tool_button_base`] with an icon at .55 white
+/// (white while `active`).
+pub fn tool_button(id: impl Into<ElementId>, ic: Icon, active: bool) -> Stateful<Div> {
+    let color = if active { theme::white_a(1.) } else { theme::tool_icon() };
+    tool_button_base(id, active).child(icon(ic, theme::TOOL_ICON, color))
 }
 
 /// Round translucent button used in the focus panel (tools 36px, footer 42px).

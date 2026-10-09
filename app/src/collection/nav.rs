@@ -9,7 +9,7 @@ use super::CollectionView;
 use crate::icons::Icon;
 use crate::pages::{self, Page, PageCtx, PageEvent};
 use crate::theme;
-use crate::ui::dropdown::Align;
+use crate::ui::dropdown::{menu_separator, Align};
 use crate::ui::{glass, icon};
 
 /// Lazily created page views.
@@ -95,59 +95,59 @@ pub(super) fn downloads_meta(svc: Option<&crate::services::downloads::Downloads>
     }
 }
 
-/// One tile of the ☰ grid: icon, title, one-line meta.
-fn tile(id: SharedString, ic: Icon, title: &str, meta: String, active: bool, dashed: bool) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex()
-        .flex_col()
-        .flex_1()
-        .min_w_0()
-        .gap(px(2.))
-        .p(px(12.))
-        .rounded(px(theme::R_TILE))
-        .border_1()
-        .border_color(if active {
-            theme::accent_tint_border()
-        } else if dashed {
-            theme::white_a(0.2)
-        } else {
-            theme::white_a(0.)
-        })
-        .when(dashed, |d| d.border_dashed())
-        .bg(if active {
-            theme::accent_tint()
-        } else if dashed {
-            theme::white_a(0.)
-        } else {
-            theme::card_fill()
-        })
-        .cursor_pointer()
-        .hover(|s| s.bg(if active { theme::accent_tint() } else { theme::white_a(0.09) }))
-        .child(div().mb(px(6.)).child(icon(ic, px(20.), theme::accent())))
-        .child(div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).truncate().child(title.to_string()))
-        .child(div().text_size(px(12.)).text_color(theme::text_muted()).truncate().child(meta))
-}
-
-/// Full-width row under the tiles (Settings, Command palette) with its kbd hint.
-fn bottom_row(id: &'static str, ic: Icon, label: &str, hint: &str, active: bool) -> Stateful<Div> {
+/// One row of the ☰ menu: icon in a small rounded square, title, and on
+/// the right a one-line meta (accent when `live`) or a key hint.
+fn nav_row(id: SharedString, ic: Icon, title: &str, trailing: Trailing, active: bool) -> Stateful<Div> {
+    let trailing = match trailing {
+        Trailing::None => None,
+        Trailing::Meta(text, live) => Some(
+            div()
+                .min_w_0()
+                .truncate()
+                .text_size(px(12.))
+                .text_color(if live { theme::accent() } else { theme::text_dim() })
+                .child(text)
+                .into_any_element(),
+        ),
+        Trailing::Key(k) => Some(crate::ui::controls::kbd(k).into_any_element()),
+    };
     div()
         .id(id)
         .flex()
         .items_center()
         .gap(px(10.))
-        .mt(px(8.))
-        .px(px(12.))
-        .py(px(10.))
-        .rounded(px(theme::R_INPUT))
-        .bg(if active { theme::accent_tint() } else { theme::card_fill() })
+        .h(px(40.))
+        .px(px(6.))
+        .rounded(px(theme::R_ITEM))
+        .when(active, |d| d.bg(theme::accent_tint()))
         .cursor_pointer()
-        .hover(|s| s.bg(if active { theme::accent_tint() } else { theme::white_a(0.09) }))
-        .text_size(px(14.))
-        .text_color(if active { white() } else { theme::text_primary().into() })
-        .child(icon(ic, px(16.), if active { theme::accent() } else { theme::text_muted() }))
-        .child(div().flex_1().child(label.to_string()))
-        .when(!hint.is_empty(), |d| d.child(crate::ui::controls::kbd(hint.to_string())))
+        .hover(|s| s.bg(if active { theme::accent_tint() } else { theme::menu_item_hover() }))
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(28.))
+                .rounded(px(8.))
+                .bg(if active { theme::accent_tint() } else { theme::white_a(0.06) })
+                .child(icon(ic, px(16.), if active { theme::accent() } else { theme::text_muted() })),
+        )
+        .child(
+            div()
+                .flex_none()
+                .text_size(px(14.))
+                .text_color(if active { white() } else { theme::text_primary().into() })
+                .child(title.to_string()),
+        )
+        .child(div().flex().flex_1().min_w_0().justify_end().children(trailing))
+}
+
+enum Trailing {
+    None,
+    /// Text, and whether it reports something running.
+    Meta(String, bool),
+    Key(&'static str),
 }
 
 impl CollectionView {
@@ -190,9 +190,10 @@ impl CollectionView {
     }
 
     pub(super) fn nav_dropdown(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let open = self.open_menu == Some(Menu::Nav);
         self.hover_dropdown(
             Menu::Nav,
-            Icon::Menu,
+            crate::ui::tool_button("btn-Nav", Icon::Menu, open),
             Align::Left,
             |this, cx| {
                 let games = this.lib.as_ref().map_or(0, |l| l.games.len());
@@ -201,61 +202,65 @@ impl CollectionView {
                 let signed_in = svc.is_some_and(|s| s.account().logged_in);
                 let downloads = downloads_meta(svc);
                 let meta = &this.pages.meta;
-                let wine = meta.wine.clone().unwrap_or_else(|| "\u{2026}".into());
+                let pending = || "\u{2026}".to_string();
                 let emulators = match meta.emulators {
-                    Some(0) => "No emulators".to_string(),
+                    Some(0) => "None".to_string(),
                     Some(n) => plural(n, "emulator", "emulators"),
-                    None => "\u{2026}".into(),
+                    None => pending(),
                 };
-                let month = meta.month.clone().unwrap_or_else(|| "\u{2026}".into());
-                let metas = [
-                    plural(games, "game", "games"),
-                    downloads,
-                    wine,
-                    if signed_in { "Signed in".into() } else { "Not signed in".into() },
-                    emulators,
-                    month,
-                ];
-                let mut tiles: Vec<Stateful<Div>> = Page::ALL
-                    .iter()
-                    .zip(metas)
-                    .map(|(&page, meta)| {
-                        tile(SharedString::from(format!("nav-{page:?}")), page.icon(), page.title(), meta, this.page == page, false)
-                            .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
-                    })
-                    .collect();
-                tiles.push(
-                    tile("nav-add-game".into(), Icon::Add, "Add game", "Sideload or ROM".into(), false, true)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_add_game(window, cx);
-                        })),
-                );
-                let mut p = glass::glass_panel(theme::R_POPOVER).w(px(330.)).p(px(10.)).flex().flex_col().gap(px(8.));
-                while !tiles.is_empty() {
-                    let rest = tiles.split_off(2.min(tiles.len()));
-                    p = p.child(div().flex().gap(px(8.)).children(std::mem::replace(&mut tiles, rest)));
+                let downloading = downloads != "Idle";
+                let trailing = |page: Page| match page {
+                    Page::Collection => Trailing::Meta(plural(games, "game", "games"), false),
+                    Page::Downloads => Trailing::Meta(downloads.clone(), downloading),
+                    Page::Statistics => Trailing::Meta(meta.month.clone().unwrap_or_else(pending), false),
+                    Page::Epic => Trailing::Meta(if signed_in { "Signed in".into() } else { "Not signed in".into() }, false),
+                    Page::WineManager => Trailing::Meta(meta.wine.clone().unwrap_or_else(pending), false),
+                    Page::Emulators => Trailing::Meta(emulators.clone(), false),
+                    Page::Settings => Trailing::Key("Ctrl ,"),
+                };
+                let mut p = glass::glass_panel(theme::R_POPOVER).w(px(300.)).p(px(6.)).flex().flex_col().gap(px(2.));
+                // Where the games are, then what sets them up.
+                for (i, group) in [
+                    &[Page::Collection, Page::Downloads, Page::Statistics][..],
+                    &[Page::Epic, Page::WineManager, Page::Emulators][..],
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if i > 0 {
+                        p = p.child(menu_separator());
+                    }
+                    for &page in group {
+                        p = p.child(
+                            nav_row(SharedString::from(format!("nav-{page:?}")), page.icon(), page.title(), trailing(page), this.page == page)
+                                .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx))),
+                        );
+                    }
                 }
-                p.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .child(
-                            bottom_row("nav-console", Icon::Tv, "Console mode", "", false)
-                                .on_click(cx.listener(|this, _, window, cx| this.set_console(true, window, cx))),
-                        )
-                        .child(
-                            bottom_row("nav-settings", Icon::Settings, "Settings", "Ctrl ,", this.page == Page::Settings)
-                                .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Settings, window, cx))),
-                        )
-                        .child(
-                            bottom_row("nav-palette", Icon::FaSearch, "Command palette", "Ctrl K", false)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_menu = None;
-                                    this.open_palette(window, cx);
-                                })),
-                        ),
-                )
-                .into_any_element()
+                p.child(menu_separator())
+                    .child(
+                        nav_row("nav-add-game".into(), Icon::Add, "Add game", Trailing::Meta("Sideload or ROM".into(), false), false)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_add_game(window, cx);
+                            })),
+                    )
+                    .child(
+                        nav_row("nav-console".into(), Icon::Tv, "Console mode", Trailing::None, false)
+                            .on_click(cx.listener(|this, _, window, cx| this.set_console(true, window, cx))),
+                    )
+                    .child(menu_separator())
+                    .child(
+                        nav_row("nav-Settings".into(), Icon::Settings, "Settings", trailing(Page::Settings), this.page == Page::Settings)
+                            .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Settings, window, cx))),
+                    )
+                    .child(
+                        nav_row("nav-palette".into(), Icon::FaSearch, "Command palette", Trailing::Key("Ctrl K"), false)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_menu = None;
+                                this.open_palette(window, cx);
+                            })),
+                    )
+                    .into_any_element()
             },
             cx,
         )
