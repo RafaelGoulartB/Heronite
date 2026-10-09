@@ -23,7 +23,7 @@ use crate::theme;
 use crate::ui::controls::{close_button, help_text, page_heading, CAPTION_H};
 use crate::ui::{glass, icon};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Page {
     Collection,
     Downloads,

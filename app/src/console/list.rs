@@ -1,0 +1,345 @@
+//! Focusable rows for console screens: one focused row at a time, values
+//! changed with ◀ ▶ (or A), the list scrolled to keep the focus visible.
+//!
+//! The owner builds `Vec<Row>` from its state on every render and keeps a
+//! [`ListNav`] (focus + scroll). [`ListNav::on_pad`] answers what happened
+//! (moved, a value changed, a row was activated); the owner applies it and
+//! the next render shows it.
+
+use gpui_kit::prelude::*;
+use gpui_kit::*;
+
+use super::kit::{self, u};
+use super::Pad;
+use crate::icons::Icon;
+use crate::theme;
+use crate::ui::icon;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Value {
+    /// Plain action ("›" on the right).
+    Action,
+    Toggle(bool),
+    Choice { options: Vec<SharedString>, index: usize },
+    Number { value: i64, min: i64, max: i64, step: i64, suffix: &'static str },
+    /// Editable text shown on the right; A asks the owner to edit it.
+    Text(SharedString),
+    /// Read-only text on the right.
+    Info(SharedString),
+    /// Caption between groups (not focusable).
+    Header,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Row {
+    pub id: SharedString,
+    pub label: SharedString,
+    pub desc: Option<SharedString>,
+    pub value: Value,
+    pub enabled: bool,
+    pub danger: bool,
+    pub icon: Option<Icon>,
+}
+
+impl Row {
+    fn new(id: impl Into<SharedString>, label: impl Into<SharedString>, value: Value) -> Self {
+        Self { id: id.into(), label: label.into(), desc: None, value, enabled: true, danger: false, icon: None }
+    }
+    pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
+        Self::new(id, label, Value::Action)
+    }
+    pub fn toggle(id: impl Into<SharedString>, label: impl Into<SharedString>, on: bool) -> Self {
+        Self::new(id, label, Value::Toggle(on))
+    }
+    pub fn choice(id: impl Into<SharedString>, label: impl Into<SharedString>, options: Vec<SharedString>, index: usize) -> Self {
+        let index = index.min(options.len().saturating_sub(1));
+        Self::new(id, label, Value::Choice { options, index })
+    }
+    pub fn number(id: impl Into<SharedString>, label: impl Into<SharedString>, value: i64, min: i64, max: i64, step: i64, suffix: &'static str) -> Self {
+        Self::new(id, label, Value::Number { value: value.clamp(min, max), min, max, step, suffix })
+    }
+    pub fn text(id: impl Into<SharedString>, label: impl Into<SharedString>, value: impl Into<SharedString>) -> Self {
+        Self::new(id, label, Value::Text(value.into()))
+    }
+    pub fn info(id: impl Into<SharedString>, label: impl Into<SharedString>, value: impl Into<SharedString>) -> Self {
+        Self::new(id, label, Value::Info(value.into()))
+    }
+    pub fn header(label: impl Into<SharedString>) -> Self {
+        let label = label.into();
+        Self::new(SharedString::from(format!("h:{label}")), label, Value::Header)
+    }
+    pub fn desc(mut self, d: impl Into<SharedString>) -> Self {
+        let d = d.into();
+        self.desc = (!d.is_empty()).then_some(d);
+        self
+    }
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+    pub fn danger(mut self) -> Self {
+        self.danger = true;
+        self
+    }
+    pub fn icon(mut self, ic: Icon) -> Self {
+        self.icon = Some(ic);
+        self
+    }
+    fn focusable(&self) -> bool {
+        self.value != Value::Header
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Outcome {
+    /// Not for the list (the owner or the shell may use it).
+    Ignored,
+    Moved,
+    /// A on an action / text / info row.
+    Activate(SharedString),
+    /// The new value of a toggle / choice / number.
+    Changed(SharedString, Value),
+    /// Up on the first row or Down on the last: the owner may move the focus
+    /// to another block.
+    Edge(Pad),
+}
+
+pub struct ListNav {
+    pub focus: usize,
+    scroll: ScrollHandle,
+    reveal: bool,
+}
+
+impl Default for ListNav {
+    fn default() -> Self {
+        Self { focus: 0, scroll: ScrollHandle::new(), reveal: true }
+    }
+}
+
+impl ListNav {
+    /// Keeps the focus on a focusable row inside `rows`.
+    pub fn clamp(&mut self, rows: &[Row]) {
+        if rows.is_empty() {
+            self.focus = 0;
+            return;
+        }
+        self.focus = self.focus.min(rows.len() - 1);
+        if !rows[self.focus].focusable() {
+            if let Some(i) = (self.focus..rows.len()).chain((0..self.focus).rev()).find(|&i| rows[i].focusable()) {
+                self.focus = i;
+            }
+        }
+    }
+
+    pub fn focused<'a>(&self, rows: &'a [Row]) -> Option<&'a Row> {
+        rows.get(self.focus).filter(|r| r.focusable())
+    }
+
+    pub fn focus_id(&mut self, rows: &[Row], id: &str) {
+        if let Some(i) = rows.iter().position(|r| r.id.as_ref() == id) {
+            self.focus = i;
+            self.reveal = true;
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.focus = 0;
+        self.reveal = true;
+        self.scroll.set_offset(point(px(0.), px(0.)));
+    }
+
+    fn step(&mut self, rows: &[Row], down: bool, by: usize) -> bool {
+        let mut moved = 0;
+        let mut i = self.focus;
+        loop {
+            let next = if down { i + 1 } else { i.wrapping_sub(1) };
+            if next >= rows.len() {
+                break;
+            }
+            i = next;
+            if rows[i].focusable() {
+                self.focus = i;
+                moved += 1;
+                if moved == by {
+                    break;
+                }
+            }
+        }
+        if moved > 0 {
+            self.reveal = true;
+        }
+        moved > 0
+    }
+
+    pub fn on_pad(&mut self, pad: Pad, rows: &[Row]) -> Outcome {
+        self.clamp(rows);
+        let Some(row) = rows.get(self.focus) else { return Outcome::Ignored };
+        match pad {
+            Pad::Up | Pad::Down => {
+                if self.step(rows, pad == Pad::Down, 1) {
+                    Outcome::Moved
+                } else {
+                    Outcome::Edge(pad)
+                }
+            }
+            Pad::ScrollUp | Pad::ScrollDown => {
+                if self.step(rows, pad == Pad::ScrollDown, 5) {
+                    Outcome::Moved
+                } else {
+                    Outcome::Ignored
+                }
+            }
+            Pad::Left | Pad::Right | Pad::A if row.enabled => {
+                let right = pad != Pad::Left;
+                let changed = match &row.value {
+                    Value::Toggle(on) => Some(Value::Toggle(!on)),
+                    Value::Choice { options, index } => {
+                        let n = options.len();
+                        let next = match pad {
+                            Pad::A if n > 0 => (index + 1) % n,
+                            Pad::Right => (index + 1).min(n.saturating_sub(1)),
+                            Pad::Left => index.saturating_sub(1),
+                            _ => *index,
+                        };
+                        (next != *index).then(|| Value::Choice { options: options.clone(), index: next })
+                    }
+                    Value::Number { value, min, max, step, suffix } if pad != Pad::A => {
+                        let next = if right { value + step } else { value - step }.clamp(*min, *max);
+                        (next != *value).then_some(Value::Number { value: next, min: *min, max: *max, step: *step, suffix })
+                    }
+                    Value::Action | Value::Text(_) | Value::Info(_) if pad == Pad::A => {
+                        return Outcome::Activate(row.id.clone());
+                    }
+                    _ => None,
+                };
+                match changed {
+                    Some(v) => Outcome::Changed(row.id.clone(), v),
+                    None if pad == Pad::A => Outcome::Ignored,
+                    // ◀ ▶ on a row without a value: let the owner move sideways.
+                    None if !matches!(row.value, Value::Toggle(_) | Value::Choice { .. } | Value::Number { .. }) => Outcome::Edge(pad),
+                    None => Outcome::Moved,
+                }
+            }
+            _ => Outcome::Ignored,
+        }
+    }
+
+    /// The rows in a vertical scroll area (`id` must be unique on screen).
+    /// `active` = the list has the focus (else no pill is drawn).
+    pub fn render(&mut self, id: impl Into<ElementId>, rows: &[Row], active: bool) -> Stateful<Div> {
+        self.clamp(rows);
+        if self.reveal && active {
+            self.reveal = false;
+            self.scroll.scroll_to_item(self.focus);
+        }
+        let mut list = div().id(id).flex().flex_col().gap(u(4.)).overflow_y_scroll().track_scroll(&self.scroll);
+        for (i, r) in rows.iter().enumerate() {
+            list = list.child(render_row(r, active && i == self.focus));
+        }
+        list
+    }
+}
+
+/// One row (also used outside lists).
+pub fn render_row(r: &Row, focused: bool) -> Div {
+    if r.value == Value::Header {
+        return kit::caption(r.label.clone());
+    }
+    let label_color: Hsla = if focused {
+        theme::console_on_focus().into()
+    } else if r.danger {
+        theme::danger_text().into()
+    } else {
+        theme::text_primary().into()
+    };
+    let value: AnyElement = match &r.value {
+        Value::Action => icon(Icon::ChevronRight, u(18.), if focused { label_color } else { theme::text_dim().into() }).into_any_element(),
+        Value::Toggle(on) => kit::toggle_pill(*on, focused).into_any_element(),
+        Value::Choice { options, index } => {
+            let text = options.get(*index).cloned().unwrap_or_default();
+            kit::choice(text, focused, *index > 0, index + 1 < options.len()).into_any_element()
+        }
+        Value::Number { value, min, max, suffix, .. } => {
+            kit::choice(format!("{value}{suffix}"), focused, value > min, value < max).into_any_element()
+        }
+        Value::Text(t) | Value::Info(t) => div()
+            .max_w(u(420.))
+            .truncate()
+            .text_size(u(15.))
+            .text_color(if focused { theme::console_on_focus().into() } else { theme::text_muted() })
+            .child(if t.is_empty() { SharedString::from("\u{2014}") } else { t.clone() })
+            .into_any_element(),
+        Value::Header => div().into_any_element(),
+    };
+    kit::row_base(focused)
+        .when(!r.enabled, |d| d.opacity(0.4))
+        .children(r.icon.map(|ic| icon(ic, u(22.), label_color)))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .py(u(10.))
+                .child(div().text_size(u(18.)).text_color(label_color).truncate().child(r.label.clone()))
+                .children(r.desc.clone().filter(|_| focused).map(|d| {
+                    div().text_size(u(13.)).line_height(u(18.)).text_color(Hsla { a: 0.7, ..label_color }).child(d)
+                })),
+        )
+        .child(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ListNav, Outcome, Row, Value};
+    use crate::console::Pad;
+
+    fn rows() -> Vec<Row> {
+        vec![
+            Row::header("General"),
+            Row::toggle("tray", "Exit to tray", true),
+            Row::choice("lang", "Language", vec!["English".into(), "Português".into()], 0),
+            Row::number("vol", "Volume", 50, 0, 100, 10, "%"),
+            Row::action("logs", "Open logs").enabled(false),
+            Row::action("about", "About"),
+        ]
+    }
+
+    #[test]
+    fn skips_headers_and_reports_edges() {
+        let r = rows();
+        let mut nav = ListNav::default();
+        nav.clamp(&r);
+        assert_eq!(nav.focus, 1);
+        assert_eq!(nav.on_pad(Pad::Up, &r), Outcome::Edge(Pad::Up));
+        for _ in 0..4 {
+            assert_eq!(nav.on_pad(Pad::Down, &r), Outcome::Moved);
+        }
+        assert_eq!(nav.focus, 5);
+        assert_eq!(nav.on_pad(Pad::Down, &r), Outcome::Edge(Pad::Down));
+        assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Activate("about".into()));
+        nav.focus = 4;
+        assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Ignored, "disabled");
+    }
+
+    #[test]
+    fn values_change_with_left_right_and_a() {
+        let r = rows();
+        let mut nav = ListNav::default();
+        nav.focus = 1;
+        assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Changed("tray".into(), Value::Toggle(false)));
+        nav.focus = 2;
+        assert_eq!(nav.on_pad(Pad::Left, &r), Outcome::Moved, "already first");
+        match nav.on_pad(Pad::Right, &r) {
+            Outcome::Changed(id, Value::Choice { index, .. }) => assert_eq!((id.as_ref(), index), ("lang", 1)),
+            o => panic!("{o:?}"),
+        }
+        nav.focus = 3;
+        match nav.on_pad(Pad::Left, &r) {
+            Outcome::Changed(_, Value::Number { value, .. }) => assert_eq!(value, 40),
+            o => panic!("{o:?}"),
+        }
+        nav.focus = 5;
+        assert_eq!(nav.on_pad(Pad::Right, &r), Outcome::Edge(Pad::Right));
+    }
+}

@@ -125,6 +125,9 @@ impl CollectionView {
     /// Every keystroke of the window, before anything else sees it. Returns
     /// whether it was taken.
     fn palette_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if crate::console::active() {
+            return self.console_key(ks, window, cx);
+        }
         let m = &ks.modifiers;
         let key = ks.key.as_str();
         let ctrl = m.control && !m.alt && !m.platform && !m.shift;

@@ -23,6 +23,14 @@ pub struct Pages {
     settings: Option<AnyView>,
     subs: Vec<Subscription>,
     meta: NavMeta,
+    /// Controller hooks of the pages (console mode).
+    hooks: std::collections::HashMap<Page, crate::console::PadHook>,
+}
+
+impl Pages {
+    pub(super) fn hook(&self, page: Page) -> Option<crate::console::PadHook> {
+        self.hooks.get(&page).cloned()
+    }
 }
 
 /// Live one-line facts the ☰ menu tiles show. Read off the UI thread
@@ -72,7 +80,7 @@ fn plural(n: usize, one: &str, many: &str) -> String {
 }
 
 /// "1 active · 42%", "Paused · 42%", "3 queued" or "Idle".
-fn downloads_meta(svc: Option<&crate::services::downloads::Downloads>) -> String {
+pub(super) fn downloads_meta(svc: Option<&crate::services::downloads::Downloads>) -> String {
     use heronite_epic::manager::DmState;
     let Some(svc) = svc else { return "Idle".into() };
     let snap = svc.snapshot();
@@ -139,7 +147,7 @@ fn bottom_row(id: &'static str, ic: Icon, label: &str, hint: &str, active: bool)
         .text_color(if active { white() } else { theme::text_primary().into() })
         .child(icon(ic, px(16.), if active { theme::accent() } else { theme::text_muted() }))
         .child(div().flex_1().child(label.to_string()))
-        .child(crate::ui::controls::kbd(hint.to_string()))
+        .when(!hint.is_empty(), |d| d.child(crate::ui::controls::kbd(hint.to_string())))
 }
 
 impl CollectionView {
@@ -231,6 +239,10 @@ impl CollectionView {
                     div()
                         .flex()
                         .flex_col()
+                        .child(
+                            bottom_row("nav-console", Icon::Tv, "Console mode", "", false)
+                                .on_click(cx.listener(|this, _, window, cx| this.set_console(true, window, cx))),
+                        )
                         .child(
                             bottom_row("nav-settings", Icon::Settings, "Settings", "Ctrl ,", this.page == Page::Settings)
                                 .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Settings, window, cx))),
@@ -352,6 +364,20 @@ impl CollectionView {
                 }
             }
         }
+    }
+
+    /// The current page's view alone (console mode draws its own chrome).
+    pub(super) fn render_page_view(&self) -> Option<AnyElement> {
+        let view = match self.page {
+            Page::Collection => return None,
+            Page::Downloads => self.pages.downloads.clone(),
+            Page::WineManager => self.pages.wine.clone(),
+            Page::Epic => self.pages.epic.clone(),
+            Page::Emulators => self.pages.emulators.clone(),
+            Page::Statistics => self.pages.stats.clone(),
+            Page::Settings => self.pages.settings.clone(),
+        }?;
+        Some(view.into_any_element())
     }
 
     /// Header + body of the current non-Collection page.

@@ -5,6 +5,7 @@ mod actions;
 mod add_game;
 mod backdrop;
 mod card;
+mod console;
 mod context_menu;
 mod data;
 mod debug;
@@ -74,6 +75,8 @@ pub struct CollectionView {
     context_menu: Option<context_menu::ContextMenuState>,
     focus_handle: FocusHandle,
     dialog: Option<AnyView>,
+    /// Controller hook of the open dialog (console mode).
+    dialog_hook: Option<crate::console::PadHook>,
     /// `HERONITE_DEBUG_DIALOG` (opened on the first render with a window).
     pending_debug_dialog: Option<String>,
     dialog_sub: Option<Subscription>,
@@ -109,6 +112,8 @@ pub struct CollectionView {
     pages: nav::Pages,
     /// Command palette (Ctrl K), see `palette/mod.rs`.
     palette: palette::Host,
+    /// Console mode state (`console/`).
+    console: console::ConsoleUi,
 }
 
 impl CollectionView {
@@ -161,6 +166,7 @@ impl CollectionView {
             context_menu: None,
             focus_handle: cx.focus_handle(),
             dialog: None,
+            dialog_hook: None,
             pending_debug_dialog: None,
             dialog_sub: None,
             epic: Default::default(),
@@ -189,6 +195,7 @@ impl CollectionView {
             page: crate::pages::Page::Collection,
             pages: nav::Pages::default(),
             palette: palette::Host::new(window, cx),
+            console: Default::default(),
         };
         window.focus(&this.focus_handle, cx);
         if let Some(page) = crate::env::value("HERONITE_DEBUG_PAGE").and_then(|p| crate::pages::Page::from_debug(&p)) {
@@ -199,6 +206,7 @@ impl CollectionView {
         this.init_metadata(window, cx);
         this.spawn_disk_watch(cx);
         this.spawn_debug_browse(cx);
+        this.console_init(window, cx);
         this
     }
 }
@@ -254,6 +262,12 @@ impl CollectionView {
 
 impl Render for CollectionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.render_desktop(window, cx)
+    }
+}
+
+impl CollectionView {
+    fn render_desktop(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let _timer = RenderTimer(Instant::now());
         if !self.first_frame_logged {
             self.first_frame_logged = true;
@@ -267,6 +281,9 @@ impl Render for CollectionView {
         self.drive_palette(window, cx);
         crate::ui::glass::set_backdrop(self.glass_image(window));
         self.sync_nav_meta(cx);
+        if crate::console::active() {
+            return self.render_console(window, cx);
+        }
         let vw = f32::from(window.viewport_size().width);
         let scale = window.scale_factor();
         let (list_w, columns) = Self::list_column_width(vw);
@@ -321,6 +338,7 @@ impl Render for CollectionView {
             .children(self.render_gallery(window, cx))
             .children(self.render_viewer(window, cx))
             .children(self.render_palette())
+            .into_any_element()
     }
 }
 

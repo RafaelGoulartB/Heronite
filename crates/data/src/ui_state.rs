@@ -32,6 +32,8 @@ pub struct UiState {
     /// `show_hidden`, so it cannot be shared): hidden games stay in the
     /// Collection, flagged.
     pub show_hidden: bool,
+    /// The app was left in console mode (it reopens in it).
+    pub console_mode: bool,
 }
 
 impl Default for UiState {
@@ -45,6 +47,7 @@ impl Default for UiState {
             focused_game: None,
             group_by_status: true,
             show_hidden: false,
+            console_mode: false,
         }
     }
 }
@@ -82,6 +85,7 @@ impl UiState {
             .map(str::to_owned);
         state.group_by_status = value.get("groupByStatus").and_then(Value::as_bool).unwrap_or(true);
         state.show_hidden = value.get("showHidden").and_then(Value::as_bool).unwrap_or(false);
+        state.console_mode = value.get("consoleMode").and_then(Value::as_bool).unwrap_or(false);
         state
     }
 
@@ -102,6 +106,7 @@ impl UiState {
             "focusedGame": self.focused_game,
             "groupByStatus": self.group_by_status,
             "showHidden": self.show_hidden,
+            "consoleMode": self.console_mode,
         })
     }
 
@@ -181,6 +186,7 @@ mod tests {
             focused_game: Some("sideload_steam_400".into()),
             group_by_status: false,
             show_hidden: true,
+            console_mode: true,
             ..Default::default()
         };
         state.toggle_facet(FacetKind::Genre, "RPG");
@@ -196,6 +202,7 @@ mod tests {
         assert_eq!(on_disk["sort"], "lastPlayed");
         assert_eq!(on_disk["installFilter"], "installed");
         assert_eq!(on_disk["showHidden"], true);
+        assert_eq!(on_disk["consoleMode"], true);
         state.clear_facets();
         assert!(!state.facet_filters.is_active());
     }

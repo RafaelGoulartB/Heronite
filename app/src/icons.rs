@@ -1,6 +1,6 @@
 //! Icon paths inside the embedded assets.
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {
     Add,
     AccessTime,
@@ -61,6 +61,7 @@ pub enum Icon {
     Update,
     Memory,
     BarChart,
+    Tv,
     /// Multi-colour 32px circle buttons (rendered with `img`, not `svg`).
     PlayCircle,
     InstallCircle,
@@ -95,6 +96,7 @@ impl Icon {
             FullscreenExit => "icons/fullscreen-exit.svg",
             History => "icons/history.svg",
             BarChart => "icons/bar-chart.svg",
+            Tv => "icons/tv.svg",
             Menu => "icons/menu.svg",
             OpenInNew => "icons/open-in-new.svg",
             PlayArrow => "icons/play-arrow.svg",

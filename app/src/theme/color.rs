@@ -33,6 +33,18 @@ pub fn success() -> Rgba { rgb(0x94f1ab) }
 pub fn danger() -> Rgba { rgb(0xbf616a) }
 pub fn selected_ring() -> Rgba { rgb(0xe8dcc0) }
 
+/// Console mode (proposal "2 · Console"): dark surfaces, a light pill for
+/// the focused row, controller button colours.
+pub fn console_bg() -> Rgba { rgb(0x0b0e13) }
+pub fn console_sidebar() -> Rgba { rgb(0x0e1218) }
+pub fn console_focus() -> Rgba { rgb(0xeef2f7) }
+pub fn console_on_focus() -> Rgba { rgb(0x0d1117) }
+pub fn console_on() -> Rgba { rgb(0x3dd68c) }
+pub fn console_btn_a() -> Rgba { rgb(0x3ecf8e) }
+pub fn console_btn_b() -> Rgba { rgb(0xf0727a) }
+pub fn console_btn_x() -> Rgba { rgb(0x6cb6ff) }
+pub fn console_btn_y() -> Rgba { rgb(0xf5cd5b) }
+
 /// Statistics charts: one colour per top game (most played first); the rest
 /// share [`chart_other`].
 pub fn chart_series(i: usize) -> Rgba {

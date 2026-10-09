@@ -56,7 +56,7 @@ impl CollectionView {
         cx.notify();
     }
 
-    fn set_status(&mut self, key: &str, status_id: String, cx: &mut Context<Self>) {
+    pub(super) fn set_status(&mut self, key: &str, status_id: String, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = lib.get(key) else { return };
         let extras = SetStatusExtras {
