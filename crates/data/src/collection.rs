@@ -596,11 +596,11 @@ mod tests {
         ];
         let groups = group_by_status(&games, &statuses);
         let summary: Vec<_> = groups.iter().map(|g| (g.id.as_str(), g.games.len())).collect();
-        assert_eq!(summary, [("playing", 1), ("beaten", 2), ("not-played", 1), ("ungrouped", 1)]);
-        assert_eq!(groups[1].color, Some("#f4d35e"));
+        assert_eq!(summary, [("beaten", 2), ("playing", 1), ("not-played", 1), ("ungrouped", 1)]);
+        assert_eq!(groups[0].color, Some("#f4d35e"));
         assert!(groups[3].is_other());
         assert_eq!(groups[3].name, "Other");
-        assert_eq!(groups[1].games[0].app_name, "a");
+        assert_eq!(groups[0].games[0].app_name, "a");
     }
 
     #[test]

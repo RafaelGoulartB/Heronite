@@ -68,19 +68,20 @@ fn status(id: &str, name: &str, slug: &str, order: i64) -> CompletionStatus {
     }
 }
 
-/// `DEFAULT_STATUSES`. Note the TS gives "On Going" the same order (30) as
-/// "On Hold"; it is kept as is, the name breaks the tie.
+/// The statuses of a fresh install. Same ids and slugs as Heronite's
+/// `DEFAULT_STATUSES` (so its colours and Playnite mapping apply), in this
+/// app's own order.
 pub fn default_statuses() -> Vec<CompletionStatus> {
     vec![
-        status("playing", "Playing", "playing", 10),
-        status("plan-to-play", "Plan to Play", "plan-to-play", 20),
-        status("on-hold", "On Hold", "on-hold", 30),
-        status("played", "Played", "played", 40),
+        status("beaten", "Beaten", "beaten", 10),
+        status("playing", "Playing", "playing", 20),
         status("endless", "On Going", "endless", 30),
-        status("beaten", "Beaten", "beaten", 60),
-        status("completed", "Completed", "completed", 70),
-        status("abandoned", "Abandoned", "abandoned", 80),
-        status("not-played", "Not Played", "not-played", 90),
+        status("plan-to-play", "Plan to Play", "plan-to-play", 40),
+        status("played", "Played", "played", 50),
+        status("on-hold", "On Hold", "on-hold", 60),
+        status("not-played", "Not Played", "not-played", 70),
+        status("completed", "Completed", "completed", 80),
+        status("abandoned", "Abandoned", "abandoned", 90),
     ]
 }
 
@@ -456,13 +457,14 @@ mod tests {
     }
 
     #[test]
-    fn default_order_breaks_ties_by_name() {
+    fn default_order() {
         let mut s = default_statuses();
         sort_statuses(&mut s);
         assert_eq!(
             ids(&s),
-            ["playing", "plan-to-play", "endless", "on-hold", "played", "beaten", "completed", "abandoned", "not-played"]
+            ["beaten", "playing", "endless", "plan-to-play", "played", "on-hold", "not-played", "completed", "abandoned"]
         );
+        assert!(s.iter().all(|s| !s.name.starts_with(|c: char| c.is_ascii_digit())));
     }
 
     #[test]
@@ -481,7 +483,7 @@ mod tests {
     #[test]
     fn merge_decisions() {
         let mut s = default_statuses();
-        s[0].playnite_id = Some("p-playing".into());
+        s[1].playnite_id = Some("p-playing".into());
         // No Heroic status yet: take Playnite's.
         let (id, d) = decide_status_merge(None, None, Some("p-playing"), "playing", &s);
         assert_eq!((id.as_str(), d), ("playing", StatusMergeDecision::TakePlaynite));
@@ -558,7 +560,7 @@ mod tests {
         let (_d, paths) = temp_paths();
         let only = default_statuses().remove(0);
         json_store::write(&paths.statuses(), &StatusesFile { statuses: vec![only], ..Default::default() }).unwrap();
-        let list = delete_status(&paths, "playing").unwrap();
+        let list = delete_status(&paths, "beaten").unwrap();
         assert_eq!(list.len(), 1);
     }
 
