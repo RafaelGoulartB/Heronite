@@ -96,16 +96,6 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         split: false,
     });
     rows.push(DetailRow { label: "Playtime".into(), value: text(&fd.playtime), split: false });
-    if let Some(path) = &d.install_path {
-        rows.push(DetailRow {
-            label: "Installation Folder".into(),
-            value: DetailValue::Folder {
-                path: path.clone().into(),
-                size: d.install_size.clone().filter(|s| s != "0").map(Into::into),
-            },
-            split: true,
-        });
-    }
     if !d.features.is_empty() {
         rows.push(DetailRow { label: "Features".into(), value: chips(&d.features[..d.features.len().min(8)], None, false), split: true });
     }
@@ -164,6 +154,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         }),
         score: d.critic_score.map(|s| fmt_number(s).into()),
         library: g.source_label.into(),
+        install_size: d.install_size.clone().filter(|s| s != "0").map(Into::into),
         installed: g.installed,
         playing,
         favourite: g.favourite,

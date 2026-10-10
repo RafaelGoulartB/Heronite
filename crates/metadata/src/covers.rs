@@ -96,14 +96,39 @@ pub fn score_steam_name(query: &str, name: &str) -> i32 {
     0
 }
 
-/// Keeps the best-scoring Steam app (>= 60); the first wins ties.
+/// Words a store adds after a game's name for another edition of the same game.
+const EDITION_WORDS: &[&str] = &[
+    "goty", "game", "of", "the", "year", "edition", "definitive", "deluxe", "complete", "remastered", "enhanced",
+    "director", "directors", "s", "cut", "ultimate", "gold", "special", "anniversary", "standard", "digital",
+];
+
+/// Strict [`score_steam_name`]: 100 for the same name, 95 for the same name
+/// followed only by edition words ("Sekiro: Shadows Die Twice - GOTY
+/// Edition"), 0 otherwise (a sequel or another game never matches).
+pub fn strict_steam_score(query: &str, name: &str) -> i32 {
+    let wanted = normalize_title(query);
+    let got = normalize_title(name);
+    if wanted.is_empty() || got.is_empty() {
+        return 0;
+    }
+    if wanted == got {
+        return 100;
+    }
+    match got.strip_prefix(&wanted).and_then(|rest| rest.strip_prefix(' ')) {
+        Some(rest) if rest.split(' ').all(|w| EDITION_WORDS.contains(&w)) => 95,
+        _ => 0,
+    }
+}
+
+/// Keeps the best-scoring Steam app (>= 60); the first wins ties. `strict`
+/// scores with [`strict_steam_score`] instead.
 #[derive(Default)]
-struct BestApp(Option<(String, i32)>);
+struct BestApp(Option<(String, i32)>, bool);
 
 impl BestApp {
     fn consider(&mut self, id: Option<String>, name: &str, title: &str) {
         let Some(id) = id.filter(|i| !i.is_empty() && i != "0") else { return };
-        let score = score_steam_name(title, name);
+        let score = if self.1 { strict_steam_score(title, name) } else { score_steam_name(title, name) };
         if score < 60 {
             return;
         }
@@ -118,7 +143,17 @@ impl BestApp {
 
 /// `steamAppIdFromTitle`: Steam community `SearchApps`, then the store search.
 pub fn steam_app_id_from_title(http: &Http, title: &str) -> Option<String> {
-    let mut best = BestApp::default();
+    search_steam_app_id(http, title, false)
+}
+
+/// Like [`steam_app_id_from_title`] but only for the same game (see
+/// [`strict_steam_score`]): for places where a wrong game is worse than none.
+pub fn steam_app_id_exact(http: &Http, title: &str) -> Option<String> {
+    search_steam_app_id(http, title, true)
+}
+
+fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String> {
+    let mut best = BestApp(None, strict);
     for query in title_queries(title) {
         let community = http
             .get(format!("{}/actions/SearchApps/{}", http.endpoints.steam_community, encode_uri_component(&query)))
@@ -379,6 +414,18 @@ mod tests {
 
     fn fixture(name: &str) -> Value {
         serde_json::from_str(&std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn strict_score_accepts_editions_only() {
+        assert_eq!(strict_steam_score("Grand Theft Auto V", "Grand Theft Auto V"), 100);
+        assert_eq!(strict_steam_score("Batman™ Arkham City", "Batman: Arkham City"), 100);
+        assert_eq!(strict_steam_score("Sekiro: Shadows Die Twice", "Sekiro™: Shadows Die Twice - GOTY Edition"), 95);
+        assert_eq!(strict_steam_score("Death Stranding", "DEATH STRANDING DIRECTOR'S CUT"), 95);
+        assert_eq!(strict_steam_score("God of War", "God of War Ragnarök"), 0);
+        assert_eq!(strict_steam_score("Portal", "Portal 2"), 0);
+        assert_eq!(strict_steam_score("Hades II", "Hades"), 0);
+        assert_eq!(strict_steam_score("Portal", "Portal Soundtrack"), 0);
     }
 
     #[test]

@@ -179,6 +179,21 @@ impl SteamLocator {
         dedup_existing(roots)
     }
 
+    /// Folder of an installed Steam game: `steamapps/common/<installdir>` of
+    /// the first library whose `appmanifest_<id>.acf` lists it.
+    pub fn install_dir(&self, app_id: &str) -> Option<PathBuf> {
+        if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        self.library_roots().into_iter().find_map(|root| {
+            let apps = root.join("steamapps");
+            let text = fs::read_to_string(apps.join(format!("appmanifest_{app_id}.acf"))).ok()?;
+            let doc = Vdf::parse(&text).ok()?;
+            let dir = doc.get("AppState")?.str_of("installdir").filter(|d| !d.is_empty())?;
+            Some(apps.join("common").join(dir)).filter(|p| p.is_dir())
+        })
+    }
+
     /// Steam console logs that mention game processes.
     pub fn log_files(&self) -> Vec<PathBuf> {
         const NAMES: [&str; 3] = [
@@ -409,6 +424,30 @@ mod tests {
         assert!(!is_non_game_steam_app("Portal", "400"));
         assert!(!is_non_game_steam_app("Protonmail Simulator", "9")); // "proton" followed by a letter
         assert!(!is_non_game_steam_app("Frostpunk", "323190"));
+    }
+
+    #[test]
+    fn install_dir_follows_the_manifest_of_any_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let steam = home.join(".steam").join("steam");
+        let extra = dir.path().join("SteamLibrary");
+        write(
+            &steam.join("steamapps/libraryfolders.vdf"),
+            &format!("\"libraryfolders\" {{ \"1\" {{ \"path\" \"{}\" }} }}", extra.display()),
+        );
+        write(
+            &extra.join("steamapps/appmanifest_1245620.acf"),
+            "\"AppState\"\n{\n\t\"appid\"\t\"1245620\"\n\t\"installdir\"\t\"ELDEN RING\"\n}\n",
+        );
+        fs::create_dir_all(extra.join("steamapps/common/ELDEN RING")).unwrap();
+        write(&steam.join("steamapps/appmanifest_400.acf"), "\"AppState\" { \"installdir\" \"Portal\" }");
+        let loc = SteamLocator { home, steam_path: steam, system_roots: vec![] };
+        assert_eq!(loc.install_dir("1245620"), Some(extra.join("steamapps/common/ELDEN RING")));
+        // Listed but the folder is gone; unknown id; not an id.
+        assert_eq!(loc.install_dir("400"), None);
+        assert_eq!(loc.install_dir("9"), None);
+        assert_eq!(loc.install_dir("../x"), None);
     }
 
     #[test]

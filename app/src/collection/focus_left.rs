@@ -278,7 +278,18 @@ impl CollectionView {
             Some(Backup::Off) | None => {}
         }
         if let Some(linux) = self.facts.linux.as_ref().filter(|l| !l.is_empty()) {
-            rows.push(fact_row("On Linux", linux_value(linux)).into_any_element());
+            let mut value = linux_value(linux);
+            if linux.steam_app_id.is_some() {
+                value = value.child(icon(Icon::OpenInNew, px(13.), theme::white_a(0.4)));
+            }
+            let row = fact_row("On Linux", value);
+            rows.push(match linux.steam_app_id.clone() {
+                // ProtonDB page of the game.
+                Some(id) => clickable(row, "focus-linux")
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_protondb(&id, cx)))
+                    .into_any_element(),
+                None => row.into_any_element(),
+            });
         }
         let mut card = panel(true).pt(px(6.)).pb(px(6.));
         let n = rows.len();
@@ -293,10 +304,7 @@ impl CollectionView {
     /// "Save backup": clicking it backs the saves up now.
     fn backup_row(&self, key: &SharedString, value: Div, cx: &mut Context<Self>) -> AnyElement {
         let key = key.clone();
-        fact_row("Save backup", value)
-            .id("focus-backup")
-            .cursor_pointer()
-            .hover(|s| s.text_color(white()))
+        clickable(fact_row("Save backup", value), "focus-backup")
             .on_click(cx.listener(move |this, _, _, cx| this.open_ludusavi_backup(&key, cx)))
             .into_any_element()
     }
@@ -312,6 +320,12 @@ fn fact_row(label: &'static str, value: Div) -> Div {
         .text_size(px(13.))
         .child(div().flex_none().text_color(theme::white_a(0.52)).child(label))
         .child(value.min_w_0().truncate().text_color(theme::white_a(0.94)))
+}
+
+/// A facts row that does something on click: pointer and a faint highlight
+/// that reaches a little past the text.
+fn clickable(row: Div, id: &'static str) -> Stateful<Div> {
+    row.id(id).mx(px(-8.)).px(px(8.)).rounded(px(7.)).cursor_pointer().hover(|s| s.bg(theme::white_a(0.06)))
 }
 
 /// "Today", "Yesterday", "3 days ago"...; green within a week, amber after a month.

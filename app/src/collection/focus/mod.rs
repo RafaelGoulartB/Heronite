@@ -35,7 +35,8 @@ pub(super) struct Layout {
 }
 
 const LEFT_PAD: f32 = 36.;
-const CONTENT_PAD_L: f32 = 32.;
+/// Gap between the left column and the details (same as between main and side).
+const CONTENT_PAD_L: f32 = COL_GAP;
 const CONTENT_PAD_R: f32 = 36.;
 const COL_GAP: f32 = 38.4;
 
@@ -97,6 +98,8 @@ pub(super) struct FocusActions {
     pub on_scroll: Box<dyn Fn(&mut Window, &mut App)>,
     pub on_facet: Rc<dyn Fn(&'static str, SharedString, &mut Window, &mut App)>,
     pub on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
+    /// A folder row of Details (install, emulator, ROM): opens it in the file manager.
+    pub on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
 }
 
 pub(super) fn h3(text: impl Into<SharedString>) -> Div {
@@ -151,59 +154,80 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
 
     let header = header(&vm, title_size);
     let main = main_column(&vm, screenshots, timeline, &html_images, &cover_for, panel_w, actions.on_select);
-    let side = side_column(&vm, extras.top, &active_facets, actions.on_facet);
+    let side = side_column(&vm, extras.top, &active_facets, actions.on_facet, actions.on_open_folder);
     let body = body(&lay, main, side);
-    let (left_col, left_row) = if lay.narrow { (None, Some(div().mb(px(24.)).child(left))) } else { (Some(left), None) };
+    // Wide: the title sits above a fixed left column and the scrolling
+    // details, so the cover, "Screenshots" and "Details" start on one line.
+    // Narrow: everything scrolls, the left block is a row under the title.
+    let (top, scrolled_header, left_col, left_row) = if lay.narrow {
+        (None, Some(header), None, Some(div().mb(px(24.)).child(left)))
+    } else {
+        (Some(header), None, Some(left), None)
+    };
 
     let on_scroll_wheel = on_scroll.clone();
     div()
         .id("focus")
         .relative()
         .flex()
+        .flex_col()
         .size_full()
         .min_w_0()
-        .children(left_col.map(|left| {
+        .children(top.map(|h| {
             div()
-                .id("focus-left")
                 .flex_none()
-                .w(px(lay.offset + lay.left_w + LEFT_PAD))
-                .h_full()
-                .overflow_y_scroll()
                 .pt(px(38.4))
                 .pl(px(lay.offset + LEFT_PAD))
-                .pb(px(16.))
-                .child(left)
+                .pr(px(CONTENT_PAD_R))
+                .child(h.max_w(px(lay.left_w + CONTENT_PAD_L + 1480.)))
         }))
         .child(
             div()
-                .relative()
+                .flex()
                 .flex_1()
-                .min_w_0()
-                .h_full()
+                .min_h_0()
+                .children(left_col.map(|left| {
+                    div()
+                        .id("focus-left")
+                        .flex_none()
+                        .w(px(lay.offset + lay.left_w + LEFT_PAD))
+                        .h_full()
+                        .overflow_y_scroll()
+                        .pl(px(lay.offset + LEFT_PAD))
+                        .pb(px(16.))
+                        .child(left)
+                }))
                 .child(
                     div()
-                        .id("focus-inner")
-                        .size_full()
-                        .overflow_y_scroll()
-                        .track_scroll(&scroll)
-                        .on_scroll_wheel(move |_, w, cx| on_scroll_wheel(w, cx))
-                        .pt(px(if lay.narrow { 32. } else { 38.4 }))
-                        .pl(px(if lay.narrow { 19.2 } else { CONTENT_PAD_L }))
-                        .pr(px(if lay.narrow { 19.2 } else { CONTENT_PAD_R }))
-                        .pb(px(24.))
+                        .relative()
+                        .flex_1()
+                        .min_w_0()
+                        .h_full()
                         .child(
                             div()
-                                .flex()
-                                .flex_col()
-                                .w_full()
-                                .max_w(px(1480.))
-                                .when(lay.narrow, |d| d.mx_auto())
-                                .child(header)
-                                .children(left_row)
-                                .child(body),
-                        ),
-                )
-                .children(scrollbar),
+                                .id("focus-inner")
+                                .size_full()
+                                .overflow_y_scroll()
+                                .track_scroll(&scroll)
+                                .on_scroll_wheel(move |_, w, cx| on_scroll_wheel(w, cx))
+                                .pt(px(if lay.narrow { 32. } else { 0. }))
+                                .pl(px(if lay.narrow { 19.2 } else { CONTENT_PAD_L }))
+                                .pr(px(if lay.narrow { 19.2 } else { CONTENT_PAD_R }))
+                                .pb(px(24.))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .w_full()
+                                        .max_w(px(1480.))
+                                        .when(lay.narrow, |d| d.mx_auto())
+                                        .children(scrolled_header)
+                                        .children(left_row)
+                                        .child(body),
+                                ),
+                        )
+                        .children(scrollbar),
+                ),
         )
         .into_any_element()
 }
@@ -273,10 +297,11 @@ fn side_column(
     top: Option<AnyElement>,
     active_facets: &[(&'static str, SharedString)],
     on_facet: Rc<dyn Fn(&'static str, SharedString, &mut Window, &mut App)>,
+    on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
 ) -> Div {
     let mut side = div().flex().flex_col().gap(px(14.4)).min_w_0();
     side = side.children(top);
-    side = side.child(div().flex().flex_col().child(h3("Details")).child(details_panel(&vm.details, active_facets, on_facet)));
+    side = side.child(div().flex().flex_col().child(h3("Details")).child(details_panel(&vm.details, active_facets, on_facet, on_open_folder)));
     if let Some(h) = &vm.hltb {
         side = side.child(div().flex().flex_col().child(h3("How Long To Beat")).child(hltb_panel(h)));
     }

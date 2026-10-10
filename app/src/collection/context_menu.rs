@@ -184,17 +184,14 @@ impl CollectionView {
                 })),
         );
 
-        if let Some(path) = game.details.install_path.clone() {
+        if game.installed {
+            let k = key.clone();
             menu = menu.child(
                 item("cm-folder")
                     .child(icon(Icon::FolderOpen, px(18.), theme::text_muted()))
                     .child("Open install folder")
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        let dir = std::path::Path::new(&path);
-                        let target = if dir.is_file() { dir.parent().unwrap_or(dir) } else { dir };
-                        if let Err(err) = std::process::Command::new("xdg-open").arg(target).spawn() {
-                            this.show_toast(format!("{err}"), true, cx);
-                        }
+                        this.open_install_folder(&k, cx);
                         this.close_context_menu(cx);
                     })),
             );

@@ -4,14 +4,21 @@
 //! One file per game, `<cache_dir>/<appid>.json`:
 //! `{"tier": "gold", "fetchedAt": "<rfc3339>"}`. Games ProtonDB does not know
 //! (404) are stored as `"unknown"` so they are not fetched again that week.
+//!
+//! ProtonDB only knows Steam ids: games from other stores get theirs from a
+//! strict Steam search by title ([`steam_id_for_title`]), cached in
+//! `<cache_dir>/titles.json` (`{"<normalized title>": {"id": "...", "fetchedAt": "..."}}`).
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use heronite_data::json_store;
 use serde::{Deserialize, Serialize};
 
+use crate::covers::steam_app_id_exact;
 use crate::http::Http;
+use crate::util::normalize_title;
 
 /// A cached tier older than this is fetched again.
 pub const MAX_AGE_SECS: u64 = 7 * 24 * 3600;
@@ -113,6 +120,62 @@ pub fn tier(cache_dir: &Path, http: &Http, steam_app_id: &str) -> Option<String>
     }
 }
 
+/// A Steam id found by title is searched again after this long.
+pub const TITLE_MAX_AGE_SECS: u64 = 30 * 24 * 3600;
+/// "Not on Steam" is kept a shorter time (it may have been a network failure).
+pub const TITLE_MISS_MAX_AGE_SECS: u64 = 3 * 24 * 3600;
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct TitleEntry {
+    id: Option<String>,
+    fetched_at: String,
+}
+
+fn titles_file(cache_dir: &Path) -> PathBuf {
+    cache_dir.join("titles.json")
+}
+
+fn read_title(cache_dir: &Path, title: &str, now: DateTime<Utc>) -> Option<Option<String>> {
+    let key = normalize_title(title);
+    let titles: BTreeMap<String, TitleEntry> = json_store::read(&titles_file(cache_dir)).ok()?;
+    let entry = titles.get(&key)?;
+    let age = now.signed_duration_since(DateTime::parse_from_rfc3339(&entry.fetched_at).ok()?).num_seconds();
+    let max = if entry.id.is_some() { TITLE_MAX_AGE_SECS } else { TITLE_MISS_MAX_AGE_SECS };
+    (0..max as i64).contains(&age).then(|| entry.id.clone().filter(|id| valid_app_id(id)))
+}
+
+fn write_title(cache_dir: &Path, title: &str, id: Option<&str>, now: DateTime<Utc>) {
+    let entry = TitleEntry { id: id.map(str::to_owned), fetched_at: now.to_rfc3339() };
+    let res = json_store::update::<BTreeMap<String, TitleEntry>, _>(&titles_file(cache_dir), |titles| {
+        titles.insert(normalize_title(title), entry);
+        Ok(())
+    });
+    if let Err(e) = res {
+        log::warn!("ProtonDB title cache write failed for {title}: {e:#}");
+    }
+}
+
+/// The cached Steam id of a game from another store: `Some(Some(id))` found,
+/// `Some(None)` searched and not on Steam, `None` not cached (or stale). No network.
+pub fn cached_steam_id_for_title(cache_dir: &Path, title: &str) -> Option<Option<String>> {
+    read_title(cache_dir, title, Utc::now())
+}
+
+/// The Steam id of a game from another store, by its title (only the same
+/// game, see [`steam_app_id_exact`]); cached.
+pub fn steam_id_for_title(cache_dir: &Path, http: &Http, title: &str) -> Option<String> {
+    if normalize_title(title).is_empty() {
+        return None;
+    }
+    if let Some(cached) = cached_steam_id_for_title(cache_dir, title) {
+        return cached;
+    }
+    let found = steam_app_id_exact(http, title).filter(|id| valid_app_id(id));
+    write_title(cache_dir, title, found.as_deref(), Utc::now());
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,6 +214,22 @@ mod tests {
         assert_eq!(cached_tier(dir.path(), "../3"), None);
         assert_eq!(cached_tier(dir.path(), ""), None);
         assert_eq!(tier(dir.path(), &Http::default(), "abc"), None);
+    }
+
+    #[test]
+    fn title_cache_keeps_hits_longer_than_misses() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = Utc::now();
+        assert_eq!(cached_steam_id_for_title(dir.path(), "Hades"), None);
+        write_title(dir.path(), "Hades", Some("1145360"), now - Duration::days(10));
+        write_title(dir.path(), "Not A Steam Game", None, now - Duration::days(1));
+        // Same key for another spelling of the title.
+        assert_eq!(cached_steam_id_for_title(dir.path(), "HADES™"), Some(Some("1145360".into())));
+        assert_eq!(cached_steam_id_for_title(dir.path(), "Not a Steam game"), Some(None));
+        write_title(dir.path(), "Not A Steam Game", None, now - Duration::days(4));
+        assert_eq!(cached_steam_id_for_title(dir.path(), "Not A Steam Game"), None);
+        write_title(dir.path(), "Hades", Some("1145360"), now - Duration::days(31));
+        assert_eq!(cached_steam_id_for_title(dir.path(), "Hades"), None);
     }
 
     #[test]

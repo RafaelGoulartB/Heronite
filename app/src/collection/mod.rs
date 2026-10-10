@@ -22,6 +22,7 @@ mod list_view;
 mod load;
 mod metadata_ui;
 mod nav;
+mod open_links;
 mod palette;
 mod pumps;
 mod render_focus;

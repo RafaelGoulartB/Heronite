@@ -29,9 +29,10 @@ impl CollectionView {
                 .child("No game selected")
                 .into_any_element();
         };
+        let vm = self.with_folder_rows(vm);
         let covers = self.focus_covers(&vm, scale);
         let html_images = self.focus_html_images(&vm, vw, list_w, scale);
-        let (w1, w2) = (weak.clone(), weak.clone());
+        let (w1, w2, w3) = (weak.clone(), weak.clone(), weak.clone());
         let lay = focus::layout(vw - list_w);
         let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
         let left = self.focus_left(&vm, &lay, epic_focus, scale, vh, cx);
@@ -69,8 +70,27 @@ impl CollectionView {
                     })
                     .ok();
                 }),
+                on_open_folder: Rc::new(move |path, _, cx| {
+                    w3.update(cx, |this, cx| this.open_folder(path.to_string().into(), cx)).ok();
+                }),
             },
         )
+    }
+
+    /// Details with the folders found on disk (install, or emulator + ROM)
+    /// after "Playtime".
+    fn with_folder_rows(&self, mut vm: super::vm::FocusVm) -> super::vm::FocusVm {
+        let rows = self.facts.folders.iter().enumerate().map(|(i, (kind, path))| super::vm::DetailRow {
+            label: kind.label().into(),
+            value: super::vm::DetailValue::Folder {
+                path: path.to_string_lossy().into_owned().into(),
+                size: (*kind == super::open_links::FolderKind::Install).then(|| vm.install_size.clone()).flatten(),
+            },
+            split: i == 0,
+        });
+        let at = vm.details.iter().position(|r| r.label.as_ref() == "Playtime").map_or(vm.details.len(), |i| i + 1);
+        vm.details.splice(at..at, rows.collect::<Vec<_>>());
+        vm
     }
 
     /// Covers of the related games (the game's own is in the left column).

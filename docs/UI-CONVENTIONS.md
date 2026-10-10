@@ -111,10 +111,17 @@ then Settings and Command palette with their keys; each row = icon square + titl
 
 **Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
 (`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, star rating, facts card with score,
-library, save backup and Linux) next to the scrolling title + details; no footer. `focus::layout(panel_w)` picks the widths:
-narrow = one column with the left block as a row under the title; otherwise left column + main/side (stacked when tight),
-centred as a group in wide panels. The main column holds Screenshots, Overview, **Timeline** (`timeline.rs`: days of play with
+library, save backup and Linux) next to the scrolling details; no footer. The title + meta line sit above both, fixed and
+aligned with the cover's left edge, so the cover, "Screenshots" and "Details" start on one line; the gap left column → main
+equals main → side (`COL_GAP`). `focus::layout(panel_w)` picks the widths: narrow = everything scrolls in one column with the
+left block as a row under the title; otherwise left column + main/side (stacked when tight), centred as a group in wide panels. The main column holds Screenshots, Overview, **Timeline** (`timeline.rs`: days of play with
 the screenshots of their sessions, thumbnails only) and Related. Facts that are not in the Library load in `game_facts.rs`.
+Clickable facts: "Save backup" backs up now, "On Linux" opens the ProtonDB page, the Details folder rows open the file manager;
+rows that act get `focus_left::clickable` (pointer + faint highlight). Folder rows are resolved on disk, never shown from
+imported fields (`open_links::game_folders`): Steam games → the folder of their `appmanifest`; emulated games → "Emulator
+Folder" + "ROM Folder"; others → the stored path only when it exists (Playnite's Windows paths are dropped). ProtonDB needs a
+Steam id: the game's, the metadata's, else a strict Steam search by title (`covers::steam_app_id_exact`, same name or name +
+edition words, cached in `~/.cache/heronite-rs/protondb/titles.json`); emulated games have no "On Linux" row.
 
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The

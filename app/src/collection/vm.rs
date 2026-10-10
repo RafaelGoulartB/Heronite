@@ -112,6 +112,9 @@ pub(super) struct FocusVm {
     pub score: Option<SharedString>,
     /// "Library" of the facts card: Steam, Epic, GOG...
     pub library: SharedString,
+    /// Size shown under the install folder (the folders themselves are
+    /// resolved on disk, see `game_facts.rs`).
+    pub install_size: Option<SharedString>,
     pub installed: bool,
     pub playing: bool,
     pub favourite: bool,

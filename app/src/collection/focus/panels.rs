@@ -15,6 +15,7 @@ pub(super) fn details_panel(
     rows: &[DetailRow],
     active: &[(&'static str, SharedString)],
     on_facet: Rc<dyn Fn(&'static str, SharedString, &mut Window, &mut App)>,
+    on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
 ) -> Div {
     let mut p = panel(true);
     for (ri, row) in rows.iter().enumerate() {
@@ -65,7 +66,16 @@ pub(super) fn details_panel(
                 .flex()
                 .flex_col()
                 .gap(px(2.4))
-                .child(div().line_height(px(18.2)).child(path.clone()))
+                .child({
+                    let (open, target) = (on_open_folder.clone(), path.clone());
+                    div()
+                        .id(SharedString::from(format!("focus-folder-{ri}")))
+                        .line_height(px(18.2))
+                        .cursor_pointer()
+                        .hover(|s| s.text_color(theme::accent()))
+                        .on_click(move |_, w, cx| open(target.clone(), w, cx))
+                        .child(path.clone())
+                })
                 .children(size.clone().map(|s| div().text_size(px(12.)).text_color(theme::white_a(0.52)).child(s)))
                 .into_any_element(),
         };
