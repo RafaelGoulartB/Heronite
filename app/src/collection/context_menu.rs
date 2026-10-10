@@ -35,8 +35,18 @@ pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
         .hover(|s| s.bg(theme::menu_item_hover()).text_color(white()))
 }
 
+/// Inner padding of the menu (and its flyouts).
+const PAPER_PAD: f32 = 6.;
+
 fn paper() -> Div {
-    crate::ui::glass::glass_menu_surface(theme::R_MENU).flex().flex_col().gap(px(2.)).p(px(6.))
+    crate::ui::glass::glass_menu_surface(theme::R_MENU).flex().flex_col().gap(px(2.)).p(px(PAPER_PAD))
+}
+
+/// Puts an absolute flyout next to its row, clear of the menu's edge: the
+/// row is inset by the menu padding, so step over it plus a small gap.
+pub(super) fn place_flyout(fly: Div, left: bool) -> Div {
+    let offset = px(PAPER_PAD + 4.);
+    if left { fly.right(relative(1.)).mr(offset) } else { fly.left(relative(1.)).ml(offset) }
 }
 
 impl CollectionView {
@@ -137,8 +147,7 @@ impl CollectionView {
                         })),
                 );
             }
-            let fly = div().absolute().top(px(-6.)).occlude().child(fly);
-            let fly = if flyout_left { fly.right(relative(1.)).mr(px(-2.)) } else { fly.left(relative(1.)).ml(px(-2.)) };
+            let fly = place_flyout(div().absolute().top(px(-6.)).occlude().child(fly), flyout_left);
             status_row = status_row.child(fly);
         }
         status_row

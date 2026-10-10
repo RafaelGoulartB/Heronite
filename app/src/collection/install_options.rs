@@ -229,8 +229,6 @@ impl CollectionView {
             .p(px(6.))
             .min_w(px(280.))
             .children(self.way_rows(game, "cm-install", cx));
-        let fly = div().absolute().top(px(-6.)).occlude().child(fly);
-        let fly = if flyout_left { fly.right(relative(1.)).mr(px(-2.)) } else { fly.left(relative(1.)).ml(px(-2.)) };
-        fly.into_any_element()
+        super::context_menu::place_flyout(div().absolute().top(px(-6.)).occlude().child(fly), flyout_left).into_any_element()
     }
 }

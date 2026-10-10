@@ -497,7 +497,8 @@ impl CollectionView {
                         .absolute()
                         .top(px(-6.))
                         .left(relative(1.))
-                        .ml(px(4.))
+                        // Past the menu padding (6) plus a small gap.
+                        .ml(px(10.))
                         .occlude()
                         .on_hover(cx.listener(|this, h: &bool, _, cx| {
                             this.menu_hover(Menu::View, crate::ui::dropdown::PART_FLYOUT, *h, cx)

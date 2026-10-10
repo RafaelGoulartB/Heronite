@@ -58,7 +58,7 @@ impl SettingsPage {
         if rows.is_empty() {
             rows.push(empty_row("No hidden games. Use \"Hide\" in a game's context menu.").into_any_element());
         }
-        let head = caption_with(
+        let head = list_caption(
             format!("Hidden games ({})", snap.hidden.len()),
             action_button(
                 "lib-unhide-all",
@@ -92,7 +92,7 @@ impl SettingsPage {
         if rows.is_empty() {
             rows.push(empty_row("No favourites. Use \"Add to favourites\" in a game's context menu.").into_any_element());
         }
-        let head = caption_with(
+        let head = list_caption(
             format!("Favourites ({})", snap.favourites.len()),
             action_button(
                 "lib-fav-clear",
@@ -225,6 +225,13 @@ impl SettingsPage {
             .child(step("next", Icon::ChevronRight, page + 1 < pages, 1, cx));
         Some(row.child(toggle("Collapse", false, cx)).child(nav).into_any_element())
     }
+}
+
+/// [`caption_with`] that grows to its button: this page is one column, so
+/// nothing needs it as short as a plain caption, and the full-size button
+/// would otherwise overflow onto the card below.
+fn list_caption(text: String, action: impl IntoElement) -> Div {
+    caption_with(text, action).h_auto().mt(px(8.))
 }
 
 /// Result line under the cards (success / error).
