@@ -25,7 +25,8 @@ pub(super) struct Layout {
     pub narrow: bool,
     /// Fixed left column (cover, Play, status, rating, facts); 0 when narrow.
     pub left_w: f32,
-    /// Main and side columns stacked (not enough room for both).
+    /// Main and side sections in one column (no room for both columns at a
+    /// readable width).
     pub stacked: bool,
     pub main_w: f32,
     pub side_w: f32,
@@ -39,6 +40,11 @@ const LEFT_PAD: f32 = 36.;
 const CONTENT_PAD_L: f32 = COL_GAP;
 const CONTENT_PAD_R: f32 = 36.;
 const COL_GAP: f32 = 38.4;
+/// Narrowest main column (screenshots, overview, timeline) kept next to the
+/// side column; below it the side sections join the main column.
+const MAIN_MIN_W: f32 = 520.;
+const SIDE_MIN_W: f32 = 352.;
+const SIDE_MAX_W: f32 = 480.;
 
 pub(super) fn layout(panel_w: f32) -> Layout {
     let narrow = panel_w <= 1100. - theme::LIST_COL_W_MD;
@@ -51,13 +57,14 @@ pub(super) fn layout(panel_w: f32) -> Layout {
     let room = panel_w - LEFT_PAD - left_w - CONTENT_PAD_L - CONTENT_PAD_R;
     let inner_w = room.min(1480.);
     let offset = ((room - inner_w) / 2.).max(0.);
-    if inner_w < 352. + COL_GAP + 440. {
-        return Layout { narrow, left_w, stacked: true, main_w: inner_w, side_w: inner_w, offset };
-    }
     // minmax(0,1.2fr) minmax(22rem,30rem): the side column reaches its
     // max (480) before the flexible column takes the rest.
-    let side_w = (inner_w - COL_GAP).clamp(352., 480.).min(inner_w * 0.5).max(352.);
-    Layout { narrow, left_w, stacked: false, main_w: inner_w - side_w - COL_GAP, side_w, offset }
+    let side_w = (inner_w - COL_GAP).clamp(SIDE_MIN_W, SIDE_MAX_W).min(inner_w * 0.5).max(SIDE_MIN_W);
+    let main_w = inner_w - side_w - COL_GAP;
+    if main_w < MAIN_MIN_W {
+        return Layout { narrow, left_w, stacked: true, main_w: inner_w, side_w: inner_w, offset };
+    }
+    Layout { narrow, left_w, stacked: false, main_w, side_w, offset }
 }
 
 /// Main-column width in logical px (for sizing description images).
@@ -153,9 +160,17 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
     let title_size = (viewport_w * 0.022).clamp(24.8, 32.);
 
     let header = header(&vm, title_size);
-    let main = main_column(&vm, screenshots, timeline, &html_images, &cover_for, panel_w, actions.on_select);
-    let side = side_column(&vm, extras.top, &active_facets, actions.on_facet, actions.on_open_folder);
-    let body = body(&lay, main, side);
+    let details = details_panel(&vm.details, &active_facets, actions.on_facet, actions.on_open_folder);
+    let sections = Sections {
+        screenshots,
+        overview: overview(&vm, &html_images, panel_w),
+        timeline,
+        related: (!vm.related.is_empty()).then(|| related_panel(&vm.related, &cover_for, actions.on_select)),
+        top: extras.top,
+        details: div().flex().flex_col().child(h3("Details")).child(details),
+        hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3("How Long To Beat")).child(hltb_panel(h))),
+    };
+    let body = body(&lay, sections);
     // Wide: the title sits above a fixed left column and the scrolling
     // details, so the cover, "Screenshots" and "Details" start on one line.
     // Narrow: everything scrolls, the left block is a row under the title.
@@ -254,64 +269,82 @@ fn header(vm: &FocusVm, title_size: f32) -> Div {
         })
 }
 
-/// Screenshots, overview, timeline and related games.
-fn main_column(
-    vm: &FocusVm,
+/// The blocks of the details, placed by [`body`].
+struct Sections {
     screenshots: Option<AnyElement>,
+    overview: Div,
     timeline: Option<AnyElement>,
-    html_images: &CoverFor,
-    cover_for: &CoverFor,
-    panel_w: f32,
-    on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
-) -> Div {
-    let mut main = div().flex().flex_col().gap(px(24.)).min_w_0();
-    if let Some(s) = screenshots {
-        main = main.child(s);
-    }
-    main = main.child(
-        div()
+    related: Option<Div>,
+    /// Extra panel above "Details" (achievements).
+    top: Option<AnyElement>,
+    details: Div,
+    hltb: Option<Div>,
+}
+
+fn overview(vm: &FocusVm, html_images: &CoverFor, panel_w: f32) -> Div {
+    div().flex().flex_col().child(h3("Overview")).child(match &vm.overview_html {
+        Some(blocks) => render_html(blocks, &**html_images, main_column_width(panel_w)).into_any_element(),
+        None => div()
+            .max_w(px(72. * 7.6))
+            .text_size(px(15.2))
+            .line_height(px(15.2 * 1.65))
+            .text_color(theme::white_a(0.92))
+            .child(vm.overview.clone().unwrap_or_else(|| "No description available".into()))
+            .into_any_element(),
+    })
+}
+
+/// Two columns (screenshots, overview, timeline, related | extra panel,
+/// details, How Long To Beat), or one when stacked. Stacked, the short side
+/// sections come right after the overview so a long timeline does not push
+/// them out of sight.
+fn body(lay: &Layout, s: Sections) -> Div {
+    let Sections { screenshots, overview, timeline, related, top, details, hltb } = s;
+    if lay.stacked {
+        return div()
             .flex()
             .flex_col()
-            .child(h3("Overview"))
-            .child(match &vm.overview_html {
-                Some(blocks) => render_html(blocks, &**html_images, main_column_width(panel_w)).into_any_element(),
-                None => div()
-                    .max_w(px(72. * 7.6))
-                    .text_size(px(15.2))
-                    .line_height(px(15.2 * 1.65))
-                    .text_color(theme::white_a(0.92))
-                    .child(vm.overview.clone().unwrap_or_else(|| "No description available".into()))
-                    .into_any_element(),
-            }),
-    );
-    main = main.children(timeline);
-    if !vm.related.is_empty() {
-        main = main.child(related_panel(&vm.related, cover_for, on_select));
+            .gap(px(24.))
+            .min_w_0()
+            .children(screenshots)
+            .child(overview)
+            .children(hltb)
+            .children(top)
+            .child(details)
+            .children(timeline)
+            .children(related);
     }
-    main
-}
-
-/// Extra top panel, details and How Long To Beat.
-fn side_column(
-    vm: &FocusVm,
-    top: Option<AnyElement>,
-    active_facets: &[(&'static str, SharedString)],
-    on_facet: Rc<dyn Fn(&'static str, SharedString, &mut Window, &mut App)>,
-    on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
-) -> Div {
-    let mut side = div().flex().flex_col().gap(px(14.4)).min_w_0();
-    side = side.children(top);
-    side = side.child(div().flex().flex_col().child(h3("Details")).child(details_panel(&vm.details, active_facets, on_facet, on_open_folder)));
-    if let Some(h) = &vm.hltb {
-        side = side.child(div().flex().flex_col().child(h3("How Long To Beat")).child(hltb_panel(h)));
-    }
-    side
-}
-
-/// Main and side columns: stacked when there is no room, side by side otherwise.
-fn body(lay: &Layout, main: Div, side: Div) -> Div {
-    if lay.stacked {
-        return div().flex().flex_col().gap(px(20.)).child(main).child(side);
-    }
+    let main = div().flex().flex_col().gap(px(24.)).min_w_0().children(screenshots).child(overview).children(timeline).children(related);
+    let side = div().flex().flex_col().gap(px(14.4)).min_w_0().children(top).child(details).children(hltb);
     div().flex().items_start().gap(px(COL_GAP)).child(main.flex_1()).child(side.w(px(lay.side_w)).flex_none())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{layout, MAIN_MIN_W, SIDE_MAX_W};
+    use crate::theme;
+
+    #[test]
+    fn wide_panel_keeps_two_detail_columns() {
+        let lay = layout(1920. - theme::LIST_COL_W);
+        assert!(!lay.narrow && !lay.stacked);
+        assert!(lay.main_w >= MAIN_MIN_W);
+        assert_eq!(lay.side_w, SIDE_MAX_W);
+    }
+
+    #[test]
+    fn medium_panel_stacks_the_side_sections() {
+        // 1600 px window next to the 3-cover list: two columns would leave
+        // the main one about 380 px wide.
+        let lay = layout(1600. - theme::LIST_COL_W);
+        assert!(!lay.narrow && lay.stacked);
+        assert_eq!(lay.left_w, 232.);
+    }
+
+    #[test]
+    fn small_panel_is_narrow() {
+        let lay = layout(1000. - theme::LIST_COL_W_MD);
+        assert!(lay.narrow && lay.stacked);
+        assert_eq!(lay.left_w, 0.);
+    }
 }
