@@ -222,6 +222,18 @@ impl ThumbnailCache {
         }
     }
 
+    /// `from` became `to` with the same pixels and times (a lossless
+    /// conversion): its preview moves to the new key instead of being rebuilt.
+    pub fn rename_source(&self, from: &Path, to: &Path) {
+        let (old, new) = (self.cache_path_for(from), self.cache_path_for(to));
+        if !old.is_file() || fs::rename(&old, &new).is_err() {
+            return;
+        }
+        let _ = fs::remove_file(sidecar(&old));
+        let meta = serde_json::json!({ "sourcePath": to.to_string_lossy() });
+        let _ = fs::write(sidecar(&new), meta.to_string());
+    }
+
     /// Makes sure the preview exists and returns its JPEG path.
     pub fn thumbnail_path(&self, source: &Path) -> Result<PathBuf, ThumbError> {
         self.ensure(source).map(|(p, _)| p)
@@ -492,6 +504,23 @@ mod tests {
         let info = cache.info();
         assert_eq!(info.item_count, 1);
         assert!(info.size_bytes > 0);
+    }
+
+    #[test]
+    fn a_renamed_source_keeps_its_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("shot.png");
+        write_png(&src, 400, 240, |x, _| [x as u8, 0, 0]);
+        let cache = ThumbnailCache::new(dir.path().join("cache"), 50.0);
+        cache.thumbnail(&src).unwrap();
+        let to = dir.path().join("shot.webp");
+        fs::rename(&src, &to).unwrap();
+        cache.rename_source(&src, &to);
+        let path = cache.cached_path(&to).expect("moved, still current");
+        let meta: serde_json::Value = serde_json::from_str(&fs::read_to_string(sidecar(&path)).unwrap()).unwrap();
+        assert_eq!(meta["sourcePath"], to.to_string_lossy().as_ref());
+        assert!(!cache.cache_path_for(&src).exists());
+        assert_eq!(cache.info().item_count, 1);
     }
 
     #[test]

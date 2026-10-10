@@ -19,7 +19,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
  ├─ heronite-emulation  emulators, ROM scan, save states, Ludusavi   → data, launch
  ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
- ├─ heronite-media      screenshots: listing, thumbnails, capture    → data, images
+ ├─ heronite-media      screenshots: listing, thumbnails, capture,
+ │                      lossless PNG → WebP compression              → data, images
  ├─ heronite-wine       Wine/Proton manager                          → data
  └─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf       → data
 epic-login (bin)        WebKit window for the Epic login (keeps a web engine out of the app)
@@ -53,7 +54,7 @@ calls them from `cx.background_spawn` or worker threads.
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the Epic service), `session` (post-game work), `widgets` |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the Epic service), `session` (post-game work), `compression` (background lossless compression of the captures), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `collection/` | the main screen (`CollectionView`): list, header, focus panel, stage, context menu, command palette, screenshots, and the glue to dialogs and services |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |

@@ -68,6 +68,19 @@ impl CollectionView {
         cx.notify();
     }
 
+    /// The background compression renamed captures (`.png` -> `.webp`).
+    pub(super) fn on_compression_event(&mut self, ev: &crate::services::compression::CompressionEvent, cx: &mut Context<Self>) {
+        use crate::services::compression::CompressionEvent;
+        match ev {
+            CompressionEvent::Converted(renamed) => {
+                if self.shots.follow_renames(renamed) {
+                    cx.notify();
+                }
+            }
+            CompressionEvent::ArtChanged => self.reload(cx),
+        }
+    }
+
     /// The question before quitting while games run (window X without a tray
     /// to stay in, tray "Quit").
     pub fn system_quit_confirm(&mut self, games: Vec<String>, post_game: bool, tray: bool, cx: &mut Context<Self>) {

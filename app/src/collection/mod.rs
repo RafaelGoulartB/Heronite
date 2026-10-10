@@ -151,6 +151,10 @@ impl CollectionView {
         if let Some(session) = crate::services::session::get(cx) {
             cx.subscribe(&session, |this, _, ev: &crate::services::session::SessionEvent, cx| this.on_session_event(ev, cx)).detach();
         }
+        // Captures converted to WebP in the background (renamed files).
+        if let Some(compression) = crate::services::compression::get(cx) {
+            cx.subscribe(&compression, |this, _, ev, cx| this.on_compression_event(ev, cx)).detach();
+        }
 
         let search_input = Self::new_search_input(window, cx);
         let mut this = Self {

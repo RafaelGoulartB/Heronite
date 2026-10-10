@@ -22,6 +22,7 @@ pub mod library;
 pub mod maintenance;
 pub mod playtime;
 pub mod ratings;
+pub mod screenshot_prefs;
 pub mod sessions;
 pub mod settings;
 pub mod sideload;

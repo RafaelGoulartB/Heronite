@@ -50,6 +50,7 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
         session.update(cx, |s, cx| s.on_launch_event(&ev, cx));
     }
     tell_downloads(cx, &ev);
+    tell_compression(cx, &ev);
     if !has_window(cx) {
         notify_without_window(&ev);
     }
@@ -72,6 +73,17 @@ fn tell_downloads(cx: &mut App, ev: &LaunchEvent) {
         LaunchEvent::Status { .. } => return,
     };
     downloads.update(cx, |d, cx| d.game_running(app_name, running, cx));
+}
+
+/// Capture compression pauses while any game runs.
+fn tell_compression(cx: &mut App, ev: &LaunchEvent) {
+    let Some(compression) = crate::services::compression::get(cx) else { return };
+    let (app_name, running) = match ev {
+        LaunchEvent::Launching { app_name } | LaunchEvent::Running { app_name, .. } => (app_name, true),
+        LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => (app_name, false),
+        LaunchEvent::Status { .. } => return,
+    };
+    compression.update(cx, |c, cx| c.set_game_running(app_name, running, cx));
 }
 
 /// With the window closed to the tray nobody sees toasts: problems of a

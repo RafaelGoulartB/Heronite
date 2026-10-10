@@ -120,6 +120,8 @@ pub(super) fn graceful_quit(cx: &mut App) {
     if let Some(t) = tray {
         t.shutdown();
     }
+    // Stops the current encode at once; the next start resumes the queue.
+    crate::services::compression::shutdown(cx);
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {
         // Only asks (legendary gets SIGTERM); waited for below.

@@ -7,8 +7,10 @@
 //!   `local_library/screenshot-thumbnails` (port of `thumbnails.ts`).
 //! * [`trash_screenshot`] - move an original to the freedesktop trash.
 //! * [`capture`]  - global-shortcut screen capture (port of `capture.ts`).
+//! * [`compress`] - lossless PNG -> WebP conversion of the captures (this app only).
 
 pub mod capture;
+pub mod compress;
 pub mod list;
 pub mod matching;
 pub mod thumbnails;

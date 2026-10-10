@@ -256,6 +256,35 @@ impl Shots {
         }
     }
 
+    /// Listed files were replaced by others with the same pixels (lossless
+    /// compression): the items, textures and open image follow them, so
+    /// nothing is decoded again. Returns whether a listed item changed.
+    pub(super) fn follow_renames(&mut self, renamed: &[(PathBuf, PathBuf)]) -> bool {
+        let mut changed = false;
+        for (from, to) in renamed {
+            let name = to.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if let Some(item) = self.items.iter_mut().find(|i| i.path == *from) {
+                item.id = match item.id.rsplit_once('/') {
+                    Some((dir, _)) => format!("{dir}/{name}"),
+                    None => name.clone(),
+                };
+                item.name = name;
+                item.path = to.clone();
+                changed = true;
+            }
+            if let Some(img) = self.tex.ready.remove(from) {
+                self.tex.ready.insert(to.clone(), img);
+                if let Some(p) = self.tex.order.iter_mut().find(|p| *p == from) {
+                    *p = to.clone();
+                }
+            }
+            if let Some(full) = self.full.as_mut().filter(|f| f.path == *from) {
+                full.path = to.clone();
+            }
+        }
+        changed
+    }
+
     fn on_thumb(&mut self, path: PathBuf, res: Result<Decoded, String>) {
         self.tex.pending.remove(&path);
         match res {
