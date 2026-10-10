@@ -442,9 +442,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
             "Folder with a subfolder per game (Xbox Game Bar Captures, NVIDIA, etc.). Collection matches those names to the selected game even when they are not identical.",
         )))
-        .child(folder)
-        .child(caption("In-game capture"))
-        .child(capture);
+        .child(folder);
     if let Some(card) = compress_card {
         col = col
             .child(caption("Lossless compression"))
@@ -454,6 +452,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             .child(card);
     }
     col = col
+        .child(caption("In-game capture"))
+        .child(capture)
         .child(caption("Preview cache"))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
             "Thumbnails generated so the screenshot gallery opens instantly. They are recreated on demand after clearing.",
@@ -504,16 +504,11 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let shortcuts = console_shortcuts(&accel);
     let si = shortcuts.iter().position(|x| *x == accel).unwrap_or(0);
     let usage = st.info.map(|i| format!("{} used by {} previews", format_cache_size(i.size_bytes), i.item_count)).unwrap_or_default();
-    let mut rows = vec![
-        Row::text("folder", "Screenshots folder", st.folder.read(cx).value().to_string()).icon(Icon::FolderOpen),
-        Row::header("Capture"),
-        Row::toggle("capture", "Capture screenshots while a game runs", s.capture_enabled),
-        Row::choice("shortcut", "Screenshot shortcut", shortcuts.into_iter().map(SharedString::from).collect(), si).desc("Captures go to the game's folder and show up in the Collection"),
-    ];
+    let mut rows = vec![Row::text("folder", "Screenshots folder", st.folder.read(cx).value().to_string()).icon(Icon::FolderOpen)];
     if let Some(c) = st.compression.as_ref().map(|c| c.read(cx)) {
         if !s.folder.is_empty() {
             let (used, details) = usage_text(Some(c));
-            rows.insert(1, Row::info("usage", "Space used", used).desc(details.unwrap_or_default()));
+            rows.push(Row::info("usage", "Space used", used).desc(details.unwrap_or_default()));
         }
         let (label, desc) = compression_status(c);
         rows.extend([
@@ -524,6 +519,9 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         ]);
     }
     rows.extend([
+        Row::header("Capture"),
+        Row::toggle("capture", "Capture screenshots while a game runs", s.capture_enabled),
+        Row::choice("shortcut", "Screenshot shortcut", shortcuts.into_iter().map(SharedString::from).collect(), si).desc("Captures go to the game's folder and show up in the Collection"),
         Row::header("Preview cache"),
         Row::number("limit", "Cache limit", s.cache_limit_mb.get() as i64, 50, 10_000, 50, " MB"),
         Row::action("clear", if st.busy { "Clearing\u{2026}" } else { "Clear the preview cache" }).desc(usage).enabled(!st.busy && st.info.is_some_and(|i| i.item_count > 0)),
