@@ -29,6 +29,7 @@ pub mod record;
 pub mod runtimes;
 pub mod runtime;
 pub mod settings;
+pub mod shared_folders;
 pub mod steam;
 pub mod tools;
 pub mod vdf;

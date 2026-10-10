@@ -183,6 +183,8 @@ fn after_added(paths: &heronite_data::HeroicPaths, spec: &SideloadSpec) {
 fn run_exe_blocking(paths: &heronite_data::HeroicPaths, home: &str, map: &Settings, exe: &str) -> Result<String, String> {
     let settings = GameSettings::from_map(map, home);
     let ctx = PlanContext::load(paths);
+    // A new prefix is created first so shared folders get their drive letters.
+    heronite_launch::shared_folders::create_prefix_first(&ctx, &SystemProbe, &settings)?;
     let built = build_tool_command(&ctx, &SystemProbe, &settings, &WineTool::RunExe(exe.to_string()))?;
     let c = &built.command;
     let mut cmd = std::process::Command::new(&c.program);

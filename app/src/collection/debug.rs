@@ -18,7 +18,8 @@ impl CollectionView {
             self.context_menu = Some(context_menu::ContextMenuState {
                 key: key.into(),
                 position: point(px(200.), px(160.)),
-                status_open: true,
+                status_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_none(),
+                install_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_some(),
             });
         }
         if let Some(which) = crate::env::value("HERONITE_DEBUG_DIALOG") {
@@ -66,6 +67,8 @@ impl CollectionView {
                     self.open_game_log(&key, cx);
                 }
             }
+            w if w.starts_with("manual-install:") => self.open_manual_install(&w["manual-install:".len()..], window, cx),
+            w if w.starts_with("local-uninstall:") => self.open_sideload_uninstall(&w["local-uninstall:".len()..], window, cx),
             w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => self.open_extras_debug(which.as_str(), window, cx),
             w if w.starts_with("add-game") || w.starts_with("edit-game") => {
                 self.add_game_debug_dialog(w, window, cx);

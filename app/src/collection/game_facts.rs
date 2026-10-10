@@ -64,6 +64,8 @@ pub(super) struct Facts {
     /// Star under the pointer (preview of a new rating).
     pub rating_hover: Option<u8>,
     pub status_open: bool,
+    /// The other ways to install, under the Install button.
+    pub install_menu_open: bool,
     /// Days of the timeline shown.
     pub timeline_days: usize,
     /// Timeline of the focused game and what it was built from.
@@ -109,6 +111,8 @@ impl CollectionView {
         self.facts.rating_hover = None;
         // `HERONITE_DEBUG_FOCUS_STATUS=1` opens the status selector (screenshots).
         self.facts.status_open = crate::env::value("HERONITE_DEBUG_FOCUS_STATUS").is_some();
+        // `HERONITE_DEBUG_INSTALL_MENU=1`: the other ways to install.
+        self.facts.install_menu_open = crate::env::value("HERONITE_DEBUG_INSTALL_MENU").is_some();
         self.facts.timeline_days = TIMELINE_DAYS;
         let (Some(lib), Some(key)) = (self.lib.clone(), target) else { return };
         let Some(game) = lib.get(&key).cloned() else { return };

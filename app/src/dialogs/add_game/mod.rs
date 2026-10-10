@@ -39,6 +39,20 @@ use picker::ImagePicker;
 pub enum Mode {
     Add,
     Edit(String),
+    /// "Install manually" of a game from the library: the Add form (Wine,
+    /// prefix, "Run Installer First") with the game's title and art filled in.
+    Install(Prefill),
+}
+
+/// What [`Mode::Install`] starts with. `app_name`: the sideloaded entry to
+/// install into (it keeps its playtime and status); `None` adds a new local
+/// game (a game of another store).
+#[derive(Clone, Debug, Default)]
+pub struct Prefill {
+    pub app_name: Option<String>,
+    pub title: String,
+    pub square: String,
+    pub hero: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -110,10 +124,11 @@ impl AddGameDialog {
         let global = game_config::load_global(&ctx.heroic, &home);
         let edited: Option<Game> = match &mode {
             Mode::Edit(app) => ctx.lib.games.iter().find(|g| &g.app_name == app && g.runner == "sideload").cloned(),
-            Mode::Add => None,
+            Mode::Add | Mode::Install(_) => None,
         };
         let app_name = match (&mode, &edited) {
             (Mode::Edit(app), _) => app.clone(),
+            (Mode::Install(Prefill { app_name: Some(app), .. }), _) => app.clone(),
             _ => sideload::generate_app_name(),
         };
 
@@ -141,6 +156,11 @@ impl AddGameDialog {
                     heronite_launch::native::Platform::Windows => SideloadPlatform::Windows,
                 }
             };
+        }
+        if let Mode::Install(p) = &mode {
+            title = p.title.clone();
+            square = p.square.clone();
+            hero = if p.hero != p.square { p.hero.clone() } else { String::new() };
         }
         let removable_prefix = edited.as_ref().and_then(|_| {
             if platform != SideloadPlatform::Windows {
@@ -238,7 +258,7 @@ impl AddGameDialog {
             layer: Default::default(),
             _subs: subs,
         };
-        if matches!(this.mode, Mode::Add) {
+        if !this.is_edit() {
             this.load_wine_list(cx);
         }
         this
@@ -246,6 +266,24 @@ impl AddGameDialog {
 
     fn is_edit(&self) -> bool {
         matches!(self.mode, Mode::Edit(_))
+    }
+
+    /// Text above the form: the store warning when adding, what to do when
+    /// installing.
+    fn top_note(&self) -> Option<&'static str> {
+        match self.mode {
+            Mode::Add => Some("Important! Are you adding a game from Epic, GOG or Amazon? Do NOT use this feature for that. Log into the store from the menu, look for the game in your library and use Install / Import instead."),
+            Mode::Edit(_) => None,
+            Mode::Install(_) => Some("Install this game without its store: use Run Installer First to run its setup program in the prefix below, then select the installed game's executable. Or select the executable of a copy you already have."),
+        }
+    }
+
+    fn dialog_title(&self) -> &'static str {
+        match self.mode {
+            Mode::Add => "Add game",
+            Mode::Edit(_) => "Edit game",
+            Mode::Install(_) => "Install game",
+        }
     }
 }
 
@@ -327,7 +365,7 @@ impl Render for AddGameDialog {
             footer = footer.child(button("ag-finish", ButtonKind::Primary, finish_label).when(!can_save, |b| b.opacity(0.5)).on_click(cx.listener(
                 |this, _, _, cx| this.save(cx),
             )));
-            (if edit { "Edit game" } else { "Add game" }, self.form(window, cx), footer)
+            (self.dialog_title(), self.form(window, cx), footer)
         };
 
         let main = dialog(

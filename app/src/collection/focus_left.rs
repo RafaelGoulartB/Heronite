@@ -72,7 +72,7 @@ impl CollectionView {
     }
 
     /// Play / Stop / Install, or the Epic install progress that replaces it.
-    fn play_area(&self, vm: &FocusVm, epic: Option<FocusEpic>, cx: &mut Context<Self>) -> AnyElement {
+    fn play_area(&mut self, vm: &FocusVm, epic: Option<FocusEpic>, cx: &mut Context<Self>) -> AnyElement {
         let (epic_el, hide_play) = match epic {
             Some(e) => (Some(e.element), e.replaces_play),
             None => (None, false),
@@ -109,13 +109,32 @@ impl CollectionView {
                     spread_radius: px(0.),
                     inset: false,
                 }])
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.primary_action(&key, cx);
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.install_or_play(&key, window, cx);
                     cx.notify();
                 }))
                 .child(icon(ic, px(20.), rgb(0x161616)))
                 .child(label)
         });
+        // Not installed: an arrow with the other ways to install next to it.
+        let game = self.lib.as_ref().and_then(|l| l.get(&vm.key)).cloned().filter(|_| !vm.playing && !vm.installed);
+        let play = match (play, game) {
+            (Some(play), Some(game)) => match self.install_more_button(&game, cx) {
+                Some(more) => Some(
+                    div()
+                        .relative()
+                        .flex()
+                        .gap(px(8.))
+                        .w_full()
+                        .child(play.flex_1().w_auto())
+                        .child(more)
+                        .children(self.install_menu(&game, cx))
+                        .into_any_element(),
+                ),
+                None => Some(play.into_any_element()),
+            },
+            (play, _) => play.map(IntoElement::into_any_element),
+        };
         div().flex().flex_col().gap(px(8.)).children(play).children(epic_el).into_any_element()
     }
 

@@ -264,6 +264,7 @@ impl CollectionView {
                 move |this, _, window, cx| this.open_steam_uninstall(&k, window, cx),
             )));
         }
+        menu = self.sideload_uninstall_item(menu, game, tracking, cx);
         if game.runner == "sideload" && !tracking {
             let k = key.clone();
             menu = menu.child(row("cm-remove-collection", Icon::DeleteForever, "Remove from Collection").on_click(

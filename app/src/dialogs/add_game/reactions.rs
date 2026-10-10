@@ -91,8 +91,12 @@ impl AddGameDialog {
 
     fn wine_loaded(&mut self, list: Vec<WineInstallation>) {
         // `WineSelector`: the first available version unless one is chosen.
-        if self.wine.is_none() {
-            self.wine = list.first().cloned();
+        // A default that is not installed anymore (its folder is gone) is
+        // replaced too: one with the same name, else the first.
+        let missing = self.wine.as_ref().is_some_and(|w| !list.iter().any(|l| l.bin == w.bin));
+        if self.wine.is_none() || missing {
+            let same_name = self.wine.as_ref().and_then(|w| list.iter().find(|l| l.name.replace(' ', "-").eq_ignore_ascii_case(&w.name.replace(' ', "-"))));
+            self.wine = same_name.or(list.first()).cloned();
         }
         self.wine_list = Some(list);
     }

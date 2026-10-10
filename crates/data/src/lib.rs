@@ -25,6 +25,7 @@ pub mod ratings;
 pub mod sessions;
 pub mod settings;
 pub mod sideload;
+pub mod sideload_uninstall;
 pub mod stats;
 pub mod status;
 pub mod timeline;

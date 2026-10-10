@@ -15,6 +15,8 @@ pub(super) struct ContextMenuState {
     pub key: SharedString,
     pub position: Point<Pixels>,
     pub status_open: bool,
+    /// Flyout of the Install row (the other ways to install).
+    pub install_open: bool,
 }
 
 pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
@@ -39,7 +41,7 @@ fn paper() -> Div {
 
 impl CollectionView {
     pub(super) fn open_context_menu(&mut self, key: SharedString, position: Point<Pixels>, cx: &mut Context<Self>) {
-        self.context_menu = Some(ContextMenuState { key, position, status_open: false });
+        self.context_menu = Some(ContextMenuState { key, position, status_open: false, install_open: false });
         cx.notify();
     }
 
@@ -75,14 +77,15 @@ impl CollectionView {
         let lib = self.lib.clone()?;
         let game = lib.get(&state.key)?.clone();
         let key = state.key.clone();
-        let (position, status_open) = (state.position, state.status_open);
+        let (position, status_open, install_open) = (state.position, state.status_open, state.install_open);
         let playing = self.playing.contains_key(&game.app_name);
         let viewport = window.viewport_size();
         let flyout_left = f32::from(viewport.width - position.x) < 280. + 240.;
 
         let mut menu = paper().min_w(px(240.));
         menu = menu.child(Self::status_row(&lib, &game, &key, status_open, flyout_left, cx));
-        menu = Self::game_items(menu, &game, &key, playing, cx);
+        menu = menu.child(self.primary_row(&game, &key, playing, install_open, flyout_left, cx));
+        menu = Self::game_items(menu, &game, &key, cx);
         menu = self.extras_context_items(menu, &game, cx);
         menu = self.epic_context_items(menu, &game, cx);
         menu = self.system_context_items(menu, &game, cx);
@@ -109,6 +112,7 @@ impl CollectionView {
                     if *h {
                         if let Some(m) = this.context_menu.as_mut() {
                             m.status_open = true;
+                            m.install_open = false;
                         }
                         cx.notify();
                     }
@@ -140,8 +144,17 @@ impl CollectionView {
         status_row
     }
 
-    /// Play / favourite / folder / settings / metadata / hide / log items.
-    fn game_items(mut menu: Div, game: &CollectionGame, key: &SharedString, playing: bool, cx: &mut Context<Self>) -> Div {
+    /// Play / Stop / Install; a not installed game with other ways to
+    /// install gets them in a flyout (same as the arrow of the focus panel).
+    fn primary_row(
+        &mut self,
+        game: &CollectionGame,
+        key: &SharedString,
+        playing: bool,
+        install_open: bool,
+        flyout_left: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let k = key.clone();
         let (label, ic) = if playing {
             ("Stop", Icon::Stop)
@@ -150,27 +163,47 @@ impl CollectionView {
         } else {
             ("Install", Icon::Download)
         };
+        let more = !playing && super::install_options::has_more_ways(game);
+        let mut row = item("cm-primary")
+            .on_hover(cx.listener(move |this, h: &bool, _, cx| {
+                if *h {
+                    if let Some(m) = this.context_menu.as_mut() {
+                        m.status_open = false;
+                        m.install_open = more;
+                    }
+                    cx.notify();
+                }
+            }))
+            .child(icon(ic, px(18.), theme::text_muted()))
+            .child(label)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.close_context_menu(cx);
+                this.install_or_play(&k, window, cx);
+            }));
+        if more {
+            row = row.child(div().flex_1()).child(icon(Icon::ChevronRight, px(18.), theme::text_muted()));
+        }
+        let mut wrap = div().relative().child(row);
+        if more && install_open {
+            wrap = wrap.child(self.install_flyout(game, flyout_left, cx));
+        }
+        wrap
+    }
+
+    /// Favourite / folder / settings / metadata / hide / log items.
+    fn game_items(mut menu: Div, game: &CollectionGame, key: &SharedString, cx: &mut Context<Self>) -> Div {
+        let k = key.clone();
         menu = menu.child(
-            item("cm-primary")
+            item("cm-fav")
                 .on_hover(cx.listener(|this, h: &bool, _, cx| {
                     if *h {
                         if let Some(m) = this.context_menu.as_mut() {
                             m.status_open = false;
+                            m.install_open = false;
                         }
                         cx.notify();
                     }
                 }))
-                .child(icon(ic, px(18.), theme::text_muted()))
-                .child(label)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.primary_action(&k, cx);
-                    this.close_context_menu(cx);
-                })),
-        );
-
-        let k = key.clone();
-        menu = menu.child(
-            item("cm-fav")
                 .child(icon(if game.favourite { Icon::Favorite } else { Icon::FavoriteBorder }, px(18.), theme::text_muted()))
                 .child(if game.favourite { "Remove from favourites" } else { "Add to favourites" })
                 .on_click(cx.listener(move |this, _, _, cx| {

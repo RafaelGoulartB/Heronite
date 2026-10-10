@@ -42,6 +42,7 @@ pub fn build_tool_command(
     tool: &WineTool,
 ) -> Result<ToolCommand, String> {
     let wine = prepare(ctx, probe, settings)?;
+    crate::shared_folders::map_for(&wine.settings);
     let mut notes = wine.notes.clone();
     if !probe.exists(&wine.settings.wine_prefix) {
         notes.push(format!(
@@ -125,11 +126,24 @@ fn run_in_prefix_at(
     let s = &wine.settings;
     let mut env = setup_env_vars(s, install_path, probe);
     env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
+    quiet_wine_debug(&mut env, s);
     env.insert("PROTON_VERB".into(), "run".into());
     if wine.runtime == WineRuntime::Proton {
         parts.insert(0, "run".into());
     }
     Command { program: wine.runner_bin(), args: parts, env, cwd }
+}
+
+/// Programs run in the prefix (installers, winecfg, winetricks, wineboot)
+/// get no `WINEDEBUG=+fixme` from "Enable verbose logs" (games still do):
+/// with it, repack installers fail while unpacking ("Unarc.dll returned an
+/// error code: -2 / unsupported compression method") and the same setup
+/// works without it. Proton then uses its own default (`-all`). A WINEDEBUG
+/// the user set in the environment variables is kept.
+fn quiet_wine_debug(env: &mut Env, s: &GameSettings) {
+    if !s.env_options.iter().any(|(k, _)| k == "WINEDEBUG") {
+        env.remove("WINEDEBUG");
+    }
 }
 
 /// `getWineFromProton`: with plain Proton (no umu), winetricks needs the
@@ -173,6 +187,7 @@ fn winetricks(
 
     let mut env = setup_env_vars(&s, None, probe);
     env.extend(setup_wine_env_vars(&s, "0", &ctx.runtime_dir(), probe));
+    quiet_wine_debug(&mut env, &s);
     env.insert("WINEPREFIX".into(), prefix);
 
     if wine.runtime == WineRuntime::Umu {
@@ -304,6 +319,17 @@ mod tests {
         assert_eq!(t.command.cwd.as_deref(), Some("/games"));
         assert_eq!(t.command.env["STEAM_COMPAT_DATA_PATH"], "/pfx");
         assert_eq!(t.command.env["PROTON_VERB"], "run");
+    }
+
+    #[test]
+    fn verbose_logs_do_not_reach_programs_run_in_the_prefix() {
+        let mut s = settings("proton", "/p/GE/proton");
+        s.verbose_logs = true;
+        let run = |s: &GameSettings| build_tool_command(&ctx(), &probe(), s, &WineTool::RunExe("/games/g.exe".into())).unwrap();
+        assert!(!run(&s).command.env.contains_key("WINEDEBUG"));
+        // The user's own value stays.
+        s.env_options.push(("WINEDEBUG".into(), "+relay".into()));
+        assert_eq!(run(&s).command.env["WINEDEBUG"], "+relay");
     }
 
     #[test]

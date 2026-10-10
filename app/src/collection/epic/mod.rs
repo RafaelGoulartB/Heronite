@@ -43,7 +43,7 @@ pub enum Request {
 pub(super) struct EpicState {
     service: Option<Entity<Downloads>>,
     subs: Vec<Subscription>,
-    pending: Option<Request>,
+    pub(super) pending: Option<Request>,
 }
 
 /// What a card shows on top of its cover.
@@ -176,6 +176,17 @@ impl CollectionView {
     /// Play/Install button of an Epic game. Returns `true` when handled here:
     /// uninstalled games open the install dialog, games in the queue open the
     /// Downloads page, outdated games ask to update first.
+    /// Legendary can import an existing install of `game` (not EA app /
+    /// Ubisoft Connect games, which live in their store's prefix).
+    pub(super) fn epic_can_import(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> bool {
+        if game.runner != "legendary" || game.installed {
+            return false;
+        }
+        let svc = self.epic_service(cx);
+        let third_party = svc.read(cx).game_flags(&game.app_name).third_party;
+        !third_party
+    }
+
     pub(super) fn epic_primary(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> bool {
         if game.runner != "legendary" {
             return false;

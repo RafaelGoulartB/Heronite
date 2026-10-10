@@ -44,6 +44,9 @@ impl CollectionView {
             ("Install", Icon::Download)
         };
         let mut rows = vec![Row::action("primary", label).icon(ic)];
+        if !playing && super::super::install_options::can_install_manually(g) && super::super::install_options::store_install_label(g).is_some() {
+            rows.push(Row::action("x:manual-install", "Install manually\u{2026}").icon(Icon::Edit).desc("Run an installer or pick the game's files"));
+        }
         if let Some(lib) = &self.lib {
             let names: Vec<SharedString> = lib.statuses.iter().map(|s| SharedString::from(s.name.clone())).collect();
             let index = lib.statuses.iter().position(|s| s.id == g.status_id).unwrap_or(0);
@@ -75,6 +78,9 @@ impl CollectionView {
         }
         if g.steam_launch_id.is_some() && g.installed && !playing {
             manage.push(Row::action("x:steam-uninstall", "Uninstall\u{2026}").icon(Icon::DeleteForever).danger());
+        }
+        if !playing && super::super::sideload_uninstall::can_uninstall_local(g) {
+            manage.push(Row::action("x:local-uninstall", "Uninstall\u{2026}").icon(Icon::DeleteForever).danger());
         }
         if g.runner == "sideload" && !playing {
             manage.push(Row::action("x:remove", "Remove from Collection\u{2026}").icon(Icon::DeleteForever).danger());
@@ -231,9 +237,11 @@ impl CollectionView {
                 });
             }
             Outcome::Activate(id) => match id.as_ref() {
-                "primary" => self.primary_action(key, cx),
+                "primary" => self.install_or_play(key, window, cx),
+                "x:manual-install" => self.open_manual_install(key, window, cx),
                 "x:ludusavi" => self.open_ludusavi_backup(key, cx),
                 "x:steam-uninstall" => self.open_steam_uninstall(key, window, cx),
+                "x:local-uninstall" => self.open_sideload_uninstall(key, window, cx),
                 "x:remove" => self.open_remove_game(key, cx),
                 "x:edit" => {
                     self.open_edit_game(key, window, cx);

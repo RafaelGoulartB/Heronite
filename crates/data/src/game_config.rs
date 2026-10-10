@@ -110,7 +110,7 @@ const FACTORY_JSON: &str = r#"{
   "disableGOGPresence": false
 }"#;
 
-fn expand_tilde(s: &str, home: &str) -> String {
+pub fn expand_tilde(s: &str, home: &str) -> String {
     if s.contains('~') {
         s.replacen('~', home, 1)
     } else {
@@ -180,7 +180,8 @@ const INHERITED_KEYS: [&str; 24] = [
 ];
 const INHERITED_KEYS_2: [&str; 5] =
     ["useGameMode", "battlEyeRuntime", "eacRuntime", "beforeLaunchScriptPath", "afterLaunchScriptPath"];
-const INHERITED_KEYS_3: [&str; 3] = ["gamescope", "verboseLogs", "advertiseAvxForRosetta"];
+// `heroniteSharedFolders` is Heronite's ("Folders visible to Proton").
+const INHERITED_KEYS_3: [&str; 4] = ["gamescope", "verboseLogs", "advertiseAvxForRosetta", "heroniteSharedFolders"];
 
 /// The defaults of `GameConfigV0.getSettings()` before the game's own section
 /// is laid over them. `is_new_file`: the game has no config file yet

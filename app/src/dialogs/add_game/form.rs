@@ -173,10 +173,8 @@ impl AddGameDialog {
             );
 
         let mut right = div().flex().flex_col().flex_1().min_w_0().gap(px(16.));
-        if !self.is_edit() {
-            right = right.child(panel().child(div().text_size(px(14.)).line_height(px(20.)).text_color(white()).child(
-                "Important! Are you adding a game from Epic, GOG or Amazon? Do NOT use this feature for that. Log into the store from the menu, look for the game in your library and use Install / Import instead.",
-            )));
+        if let Some(note) = self.top_note() {
+            right = right.child(panel().child(div().text_size(px(14.)).line_height(px(20.)).text_color(white()).child(note)));
         }
         right = right.child(
             div()

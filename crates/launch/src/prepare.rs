@@ -200,6 +200,7 @@ impl Prep<'_> {
     pub fn after_prefix(&self, spec: &PrepSpec) -> Flow {
         let Some(settings) = &spec.wine else { return Flow::Go };
         let ctx = PlanContext::load(self.paths);
+        crate::shared_folders::map_for(settings);
 
         if settings.wine_version.kind == "wine" {
             let wanted = [

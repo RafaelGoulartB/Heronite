@@ -151,6 +151,8 @@ impl HeroicSettingsPanel {
         col = col.child(heading("Sync and compatibility")).child(sync.card());
         if self.is_game() {
             col = col.child(self.tools_row(cx));
+        } else {
+            col = col.child(self.shared_folders_section(cx));
         }
         col
     }
@@ -349,6 +351,8 @@ fn run_tool_blocking(paths: &heronite_data::HeroicPaths, home: &str, app: &str, 
     let map = heronite_data::game_config::load_game(paths, app, home);
     let settings = GameSettings::from_map(&map, home);
     let ctx = PlanContext::load(paths);
+    // A new prefix is created first so shared folders get their drive letters.
+    heronite_launch::shared_folders::create_prefix_first(&ctx, &SystemProbe, &settings)?;
     let built = build_tool_command(&ctx, &SystemProbe, &settings, tool)?;
     let c = &built.command;
     let mut cmd = std::process::Command::new(&c.program);

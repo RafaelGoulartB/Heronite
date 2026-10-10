@@ -239,10 +239,12 @@ impl AddGameDialog {
         let title = text_of(&self.title, cx);
         let heading = if self.confirm_remove {
             "REMOVE GAME"
-        } else if self.is_edit() {
-            "EDIT GAME"
         } else {
-            "ADD GAME"
+            match self.mode {
+                super::Mode::Add => "ADD GAME",
+                super::Mode::Edit(_) => "EDIT GAME",
+                super::Mode::Install(_) => "INSTALL GAME",
+            }
         };
 
         let mut left = div().w(u(820.)).max_w_full().flex_none().flex().flex_col().min_h_0().gap(u(8.));
@@ -251,10 +253,8 @@ impl AddGameDialog {
                 "Remove {} from your library? The game's files are not deleted. Its playtime, status, notes, images and Collection data are removed, and so are its shortcuts.",
                 if title.trim().is_empty() { "this game" } else { title.trim() }
             )));
-        } else if !self.is_edit() {
-            left = left.child(kit::body_text(
-                "Adding a game from Epic, GOG or Amazon? Do not use this. Log into the store and use Install or Import on the game instead.",
-            ));
+        } else if let Some(note) = self.top_note() {
+            left = left.child(kit::body_text(note));
         }
         left = left.child(self.console_list.render("console-add-game", &rows, !self.layer.is_open()).flex_1().min_h_0());
         left = left.child(div().min_h(u(24.)).text_size(u(15.)).line_height(u(22.)).children(self.console_status(cx).map(|(t, c)| div().text_color(c).child(t))));

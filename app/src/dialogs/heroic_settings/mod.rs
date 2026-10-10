@@ -16,6 +16,7 @@ pub mod logic;
 mod other;
 mod parts;
 mod saves;
+mod shared_folders;
 mod wine;
 
 use std::collections::HashMap;

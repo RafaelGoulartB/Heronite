@@ -232,6 +232,13 @@ pub fn setup_wine_env_vars(
         );
     }
     if is_proton {
+        use crate::shared_folders::{container_env, ENV_KEY};
+        let user = s.env_options.iter().find(|(k, _)| k == ENV_KEY).map(|(_, v)| v.clone());
+        if let Some(v) = container_env(&s.shared_folders, &[probe.env_var(ENV_KEY), user]) {
+            ret.insert(ENV_KEY.into(), v);
+        }
+    }
+    if is_proton {
         // GE-Proton guesses the AppID from the prefix path otherwise.
         let compat = probe
             .env_var("STEAM_COMPAT_APP_ID")
@@ -435,6 +442,22 @@ mod tests {
 
     fn settings(v: serde_json::Value) -> GameSettings {
         GameSettings::from_map(v.as_object().unwrap(), "/home/u")
+    }
+
+    #[test]
+    fn shared_folders_reach_the_runtime_container() {
+        let proton = json!({"bin": "/t/GE-Proton9/proton", "name": "GE-Proton9", "type": "proton"});
+        let s = settings(json!({
+            "wineVersion": proton, "winePrefix": "/pfx",
+            "heroniteSharedFolders": ["/data", "/games/"],
+            "enviromentOptions": [{"key":"PRESSURE_VESSEL_FILESYSTEMS_RW","value":"/srv"}]
+        }));
+        let probe = FakeProbe::new("/home/u");
+        let e = setup_wine_env_vars(&s, "0", "/r", &probe);
+        assert_eq!(e["PRESSURE_VESSEL_FILESYSTEMS_RW"], "/srv:/data:/games");
+        // Plain Wine runs outside the container.
+        let wine = settings(json!({"wineVersion": {"bin": "/usr/bin/wine", "name": "Wine", "type": "wine"}, "heroniteSharedFolders": ["/data"]}));
+        assert!(!setup_wine_env_vars(&wine, "0", "/r", &probe).contains_key("PRESSURE_VESSEL_FILESYSTEMS_RW"));
     }
 
     #[test]
