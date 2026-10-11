@@ -154,12 +154,13 @@ scripts/install.sh
 The app is a Cargo workspace. `app/` is the GPUI binary (`heronite-rs`): the Collection screen, dialogs, ☰ pages, and console mode. The `crates/` folder holds the GPUI-free libraries: data files and Heroic migration, launching and playtime, Epic (legendary), emulation, metadata, screenshots and images, Wine/Proton, and shortcuts. A separate small binary handles the Epic login window, which keeps a web engine out of the main app.
 
 ```bash
+cargo fmt --all
 cargo clippy --workspace --all-targets
 cargo test --workspace
 cargo build --release -p heronite -p heronite-epic-login
 ```
 
-`HERONITE_DEBUG_*` environment variables open a page, dialog, or menu at startup, for screenshots and tests without clicking. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the crates and patterns, [CODE-STYLE.md](docs/CODE-STYLE.md) for the code rules, and [UI-CONVENTIONS.md](docs/UI-CONVENTIONS.md) for the look of the UI. [CI](.github/workflows/ci.yml) runs clippy and the tests on every push and pull request. To release, merge a pull request labelled `release:patch`, `release:minor`, or `release:major`, or run the [release workflow](.github/workflows/release.yml) from the Actions tab. It bumps the version in `Cargo.toml` (`scripts/bump-version.py`), tags it, builds the AppImage (`scripts/appimage.sh`), and publishes a GitHub release. Issues and pull requests are welcome.
+`HERONITE_DEBUG_*` environment variables open a page, dialog, or menu at startup, for screenshots and tests without clicking. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the crates and patterns, [CODE-STYLE.md](docs/CODE-STYLE.md) for the code rules, and [UI-CONVENTIONS.md](docs/UI-CONVENTIONS.md) for the look of the UI. [CI](.github/workflows/ci.yml) checks the formatting (`rustfmt.toml`) and runs clippy and the tests on every push and pull request. To release, merge a pull request labelled `release:patch`, `release:minor`, or `release:major`, or run the [release workflow](.github/workflows/release.yml) from the Actions tab. It bumps the version in `Cargo.toml` (`scripts/bump-version.py`), tags it, builds the AppImage (`scripts/appimage.sh`), and publishes a GitHub release. Issues and pull requests are welcome.
 
 ## License
 
