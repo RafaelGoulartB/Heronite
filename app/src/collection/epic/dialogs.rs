@@ -39,11 +39,8 @@ impl CollectionView {
 
     /// `enable()` of the EOS overlay without the overlay: offers to install it.
     pub(super) fn epic_open_eos_install(&mut self, app_name: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let mut spec = Confirm::new(
-            "epic-eos-install",
-            "Overlay not installed",
-            "The EOS Overlay is not installed. Do you want to install it now?",
-        );
+        let mut spec =
+            Confirm::new("epic-eos-install", "Overlay not installed", "The EOS Overlay is not installed. Do you want to install it now?");
         spec.confirm = Some("Install".into());
         let app = app_name.to_string();
         let view = cx.new(|cx| {
@@ -102,7 +99,8 @@ impl CollectionView {
                 value: false,
                 disabled: protect,
                 note: Some(if protect {
-                    "The Wine prefix for this game is the default prefix. If you really want to delete it, you have to do it manually.".into()
+                    "The Wine prefix for this game is the default prefix. If you really want to delete it, you have to do it manually."
+                        .into()
                 } else {
                     "Note: This can't be undone and will also remove not backed up save files.".into()
                 }),
@@ -122,11 +120,8 @@ impl CollectionView {
             EpicConfirmDialog::new(
                 spec,
                 move |choice, cx| {
-                    let (prefix, settings) = if has_prefix_toggle {
-                        (choice.toggles[0], choice.toggles[1])
-                    } else {
-                        (false, choice.toggles[0])
-                    };
+                    let (prefix, settings) =
+                        if has_prefix_toggle { (choice.toggles[0], choice.toggles[1]) } else { (false, choice.toggles[0]) };
                     let svc = crate::services::downloads(cx);
                     let app = app.clone();
                     svc.update(cx, |s, cx| s.uninstall(&app, prefix, settings, cx));
@@ -144,11 +139,8 @@ impl CollectionView {
             return;
         }
         let Some(current) = game.game.install.install_path.clone() else { return };
-        let mut spec = Confirm::new(
-            "epic-move",
-            "Move Game Installation",
-            format!("{}\nThis can take a long time, are you sure?", game.title),
-        );
+        let mut spec =
+            Confirm::new("epic-move", "Move Game Installation", format!("{}\nThis can take a long time, are you sure?", game.title));
         let parent = std::path::Path::new(&current).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
         spec.path = Some(("Choose where you want to move".into(), parent, "Choose where you want to move".into()));
         spec.confirm = Some("Move".into());
@@ -197,11 +189,8 @@ impl CollectionView {
 
     pub(super) fn epic_open_update_prompt(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
-        let mut spec = Confirm::new(
-            "epic-update",
-            "Game Needs Update",
-            format!("{}\nThis game has an update, apply update now?", game.title),
-        );
+        let mut spec =
+            Confirm::new("epic-update", "Game Needs Update", format!("{}\nThis game has an update, apply update now?", game.title));
         spec.confirm = Some("Update".into());
         let weak = cx.entity().downgrade();
         let k = key.to_string();
@@ -239,7 +228,9 @@ impl CollectionView {
     /// `epic-uninstall:<appName>` / `epic-move:..` / `epic-verify:..` /
     /// `epic-update:..` / `epic-modify:..` / `epic-eos-install:..` / `epic-message`.
     pub(in crate::collection) fn epic_debug_dialog(&mut self, which: &str, _window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some((kind, app)) = which.split_once(':').map(|(k, a)| (k, a.to_string())).or_else(|| which.starts_with("epic-").then(|| (which, String::new()))) else {
+        let Some((kind, app)) =
+            which.split_once(':').map(|(k, a)| (k, a.to_string())).or_else(|| which.starts_with("epic-").then(|| (which, String::new())))
+        else {
             return false;
         };
         let key = format!("legendary_{app}");

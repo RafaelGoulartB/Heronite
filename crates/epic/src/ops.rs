@@ -148,13 +148,7 @@ impl LegendaryJob {
         JobResult::done()
     }
 
-    fn run_once(
-        &self,
-        args: &[String],
-        total: Option<f64>,
-        cancel: &Cancel,
-        on_progress: &mut dyn FnMut(Progress),
-    ) -> Result<Output> {
+    fn run_once(&self, args: &[String], total: Option<f64>, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<Output> {
         let mut parser = ProgressParser::new(total);
         self.legendary.run_streaming(args, &[], cancel, |line| {
             if let Some(p) = parser.feed(line) {
@@ -260,13 +254,7 @@ pub fn force_uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: 
 }
 
 /// `importGame`: tells legendary an existing folder is the install of a game.
-pub fn import_game(
-    data_paths: &DataPaths,
-    legendary: &Legendary,
-    app_name: &str,
-    folder: &str,
-    platform: &str,
-) -> OpResult {
+pub fn import_game(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, folder: &str, platform: &str) -> OpResult {
     if !Path::new(folder).is_dir() {
         return OpResult::err("The folder does not exist");
     }
@@ -288,13 +276,7 @@ pub fn import_game(
 /// `moveOnUnix` + `changeGameInstallPath`: moves the install folder into
 /// `new_parent` and tells legendary where it is now (resumable, see
 /// [`crate::moves`]).
-pub fn move_install(
-    data_paths: &DataPaths,
-    legendary: &Legendary,
-    app_name: &str,
-    install_path: &str,
-    new_parent: &str,
-) -> OpResult {
+pub fn move_install(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, install_path: &str, new_parent: &str) -> OpResult {
     crate::moves::move_install(data_paths, legendary, app_name, install_path, new_parent)
 }
 
@@ -335,12 +317,7 @@ pub fn remove_settings_and_logs(data_paths: &DataPaths, app_name: &str) {
 
 /// Writes the Wine settings picked in the install dialog (Heroic's
 /// `writeConfig` at install time on Linux).
-pub fn write_wine_config(
-    data_paths: &DataPaths,
-    app_name: &str,
-    wine_prefix: &str,
-    wine_version: Option<&Value>,
-) -> Result<()> {
+pub fn write_wine_config(data_paths: &DataPaths, app_name: &str, wine_prefix: &str, wine_version: Option<&Value>) -> Result<()> {
     if wine_prefix.is_empty() && wine_version.is_none() {
         return Ok(());
     }
@@ -358,12 +335,7 @@ pub fn write_wine_config(
 /// Removes `<path>/<folder_name>` (the partial download of a cancelled
 /// install). Refuses anything that is not a plain folder name.
 pub fn remove_partial_download(path: &str, folder_name: &str) -> bool {
-    if path.is_empty()
-        || folder_name.is_empty()
-        || folder_name.contains('/')
-        || folder_name == ".."
-        || folder_name == "."
-    {
+    if path.is_empty() || folder_name.is_empty() || folder_name.contains('/') || folder_name == ".." || folder_name == "." {
         return false;
     }
     let target = Path::new(path.trim_matches('\'')).join(folder_name);
@@ -411,8 +383,20 @@ mod tests {
         assert_eq!(
             install_args("A", "Windows", "/g", &tags, &dls),
             [
-                "install", "A", "--install-tag=", "--install-tag", "voices", "--platform", "Windows", "--base-path", "/g",
-                "--skip-dlcs", "-y", "--max-workers", "4", "--no-https"
+                "install",
+                "A",
+                "--install-tag=",
+                "--install-tag",
+                "voices",
+                "--platform",
+                "Windows",
+                "--base-path",
+                "/g",
+                "--skip-dlcs",
+                "-y",
+                "--max-workers",
+                "4",
+                "--no-https"
             ]
         );
         assert_eq!(update_args("update", "A", &dls), ["update", "A", "-y", "--skip-sdl", "--max-workers", "4", "--no-https"]);
@@ -423,7 +407,10 @@ mod tests {
         let data_paths = DataPaths::at(dir.join("h"));
         std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
         let lg = fake(dir, body);
-        (LegendaryJob { data_paths: data_paths.clone(), legendary: Legendary::with_bin(lg.bin, data_paths.legendary_config_dir()) }, data_paths)
+        (
+            LegendaryJob { data_paths: data_paths.clone(), legendary: Legendary::with_bin(lg.bin, data_paths.legendary_config_dir()) },
+            data_paths,
+        )
     }
 
     fn element(kind: ElementKind) -> DmElement {
@@ -475,7 +462,8 @@ mod tests {
     #[test]
     fn failures_and_unsupported_stores_are_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, _) = job(dir.path(), "if [ \"$1\" = info ]; then echo '{\"manifest\": {}}'; else echo '[cli] ERROR: disk full' >&2; exit 1; fi");
+        let (job, _) =
+            job(dir.path(), "if [ \"$1\" = info ]; then echo '{\"manifest\": {}}'; else echo '[cli] ERROR: disk full' >&2; exit 1; fi");
         let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Error);
         assert!(r.error.unwrap().contains("disk full"));
@@ -590,12 +578,24 @@ mod tests {
         assert!(!src.exists());
         assert_eq!(calls(dir.path())[0], format!("move Calluna {} --skip-move", new_parent.display()));
         // Into itself, and onto a non-empty destination: refused.
-        let again = move_install(&data_paths, &job.legendary, "Calluna", new_parent.join("Control").to_str().unwrap(), new_parent.join("Control/x").to_str().unwrap());
+        let again = move_install(
+            &data_paths,
+            &job.legendary,
+            "Calluna",
+            new_parent.join("Control").to_str().unwrap(),
+            new_parent.join("Control/x").to_str().unwrap(),
+        );
         assert!(!again.ok);
         let clash = dir.path().join("clash/Control");
         std::fs::create_dir_all(&clash).unwrap();
         std::fs::write(clash.join("f"), "x").unwrap();
-        let r = move_install(&data_paths, &job.legendary, "Calluna", new_parent.join("Control").to_str().unwrap(), dir.path().join("clash").to_str().unwrap());
+        let r = move_install(
+            &data_paths,
+            &job.legendary,
+            "Calluna",
+            new_parent.join("Control").to_str().unwrap(),
+            dir.path().join("clash").to_str().unwrap(),
+        );
         assert!(!r.ok && r.message.contains("not empty"));
     }
 

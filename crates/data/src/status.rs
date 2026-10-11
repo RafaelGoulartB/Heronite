@@ -18,18 +18,8 @@ use crate::text::locale_cmp;
 /// Slug id of the group collecting games whose status id is unknown.
 pub const UNKNOWN_GROUP_ID: &str = "ungrouped";
 
-pub const SLUGS: [&str; 10] = [
-    "playing",
-    "plan-to-play",
-    "on-hold",
-    "played",
-    "endless",
-    "beaten",
-    "completed",
-    "abandoned",
-    "not-played",
-    "custom",
-];
+pub const SLUGS: [&str; 10] =
+    ["playing", "plan-to-play", "on-hold", "played", "endless", "beaten", "completed", "abandoned", "not-played", "custom"];
 
 /// `STATUS_COLORS` of `statusColors.ts` (`None` for an unknown slug, like the
 /// `undefined` the TS produces).
@@ -88,10 +78,7 @@ pub fn default_statuses() -> Vec<CompletionStatus> {
 /// `normalizeStatusName`.
 fn normalize_status_name(name: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
-    let stripped: String = name
-        .nfd()
-        .filter(|c| !('\u{0300}'..='\u{036f}').contains(c))
-        .collect();
+    let stripped: String = name.nfd().filter(|c| !('\u{0300}'..='\u{036f}').contains(c)).collect();
     // /^\d+\s*[.)-]?\s*/
     let digits = stripped.bytes().take_while(u8::is_ascii_digit).count();
     let mut rest = stripped.as_str();
@@ -102,11 +89,7 @@ fn normalize_status_name(name: &str) -> String {
         }
     }
     let lowered = rest.to_lowercase();
-    lowered
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
+    lowered.split(|c: char| !c.is_ascii_alphanumeric()).filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ")
 }
 
 /// `slugFromStatusName`: maps a Playnite status name (English/Portuguese
@@ -129,11 +112,7 @@ pub fn slug_from_status_name(name: &str) -> &'static str {
 /// `getCompletionStatuses` ordering: `sortOrder`, then name (`localeCompare`).
 pub fn sort_statuses(statuses: &mut [CompletionStatus]) {
     statuses.sort_by(|a, b| {
-        a.sort_order
-            .get()
-            .partial_cmp(&b.sort_order.get())
-            .unwrap_or(Ordering::Equal)
-            .then_with(|| locale_cmp(&a.name, &b.name))
+        a.sort_order.get().partial_cmp(&b.sort_order.get()).unwrap_or(Ordering::Equal).then_with(|| locale_cmp(&a.name, &b.name))
     });
 }
 
@@ -169,15 +148,9 @@ pub fn resolve_status_id(stored: Option<&str>, statuses: &[CompletionStatus]) ->
 /// The status shown by the Focus panel / card dot: `completionStatusId` (or
 /// `not-played`) looked up by id; the Focus falls back to the first
 /// `not-played` slug, the card to the one with id `not-played`.
-pub fn display_status<'a>(
-    stored: Option<&str>,
-    statuses: &'a [CompletionStatus],
-) -> Option<&'a CompletionStatus> {
+pub fn display_status<'a>(stored: Option<&str>, statuses: &'a [CompletionStatus]) -> Option<&'a CompletionStatus> {
     let id = stored.filter(|s| !s.is_empty()).unwrap_or("not-played");
-    statuses
-        .iter()
-        .find(|s| s.id == id)
-        .or_else(|| statuses.iter().find(|s| s.slug == "not-played"))
+    statuses.iter().find(|s| s.id == id).or_else(|| statuses.iter().find(|s| s.slug == "not-played"))
 }
 
 /// `fallbackStatusId`.
@@ -256,22 +229,12 @@ pub fn decide_status_merge(
     if playnite_status == last_playnite_status {
         return (local.to_owned(), StatusMergeDecision::Unchanged);
     }
-    let last_imported = last_playnite_status
-        .filter(|s| !s.is_empty())
-        .map(|s| status_id_for_playnite(Some(s), statuses));
+    let last_imported = last_playnite_status.filter(|s| !s.is_empty()).map(|s| status_id_for_playnite(Some(s), statuses));
     if last_imported.as_deref() == Some(local) {
-        let decision = if from_playnite == local {
-            StatusMergeDecision::Unchanged
-        } else {
-            StatusMergeDecision::TakePlaynite
-        };
+        let decision = if from_playnite == local { StatusMergeDecision::Unchanged } else { StatusMergeDecision::TakePlaynite };
         return (from_playnite.to_owned(), decision);
     }
-    let decision = if from_playnite == local {
-        StatusMergeDecision::Unchanged
-    } else {
-        StatusMergeDecision::Conflict
-    };
+    let decision = if from_playnite == local { StatusMergeDecision::Unchanged } else { StatusMergeDecision::Conflict };
     (local.to_owned(), decision)
 }
 
@@ -288,12 +251,7 @@ pub struct SetStatusExtras {
 /// `app_name`. A game without an entry (an Epic game never imported, say) gets
 /// a minimal one, exactly like Heronite: `playniteId = heroic_<appName>`,
 /// `source = other`, `launchKind = unavailable`. Returns the stored entry.
-pub fn set_game_status(
-    paths: &DataPaths,
-    app_name: &str,
-    status_id: &str,
-    extras: &SetStatusExtras,
-) -> Result<LocalGameMeta> {
+pub fn set_game_status(paths: &DataPaths, app_name: &str, status_id: &str, extras: &SetStatusExtras) -> Result<LocalGameMeta> {
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
         if let Some(existing) = file.games.get_mut(app_name) {
             existing.completion_status_id = Some(status_id.to_owned());
@@ -306,10 +264,7 @@ pub fn set_game_status(
         let meta = LocalGameMeta {
             app_name: app_name.to_owned(),
             runner: runner.to_owned(),
-            playnite_id: extras
-                .playnite_id
-                .clone()
-                .unwrap_or_else(|| format!("heroic_{app_name}")),
+            playnite_id: extras.playnite_id.clone().unwrap_or_else(|| format!("heroic_{app_name}")),
             source: "other".into(),
             launch_kind: "unavailable".into(),
             title: extras.title.clone().unwrap_or_else(|| app_name.to_owned()),
@@ -338,13 +293,8 @@ pub fn upsert_status(paths: &DataPaths, status: CompletionStatus) -> Result<Vec<
 /// A user-created status (slug `custom`) placed after the existing ones.
 pub fn new_custom_status(name: &str, statuses: &[CompletionStatus]) -> CompletionStatus {
     let max = statuses.iter().map(|s| s.sort_order.get()).fold(0.0, f64::max);
-    let id = format!(
-        "custom_{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or_default()
-    );
+    let id =
+        format!("custom_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or_default());
     CompletionStatus {
         id,
         name: name.trim().to_owned(),
@@ -460,10 +410,7 @@ mod tests {
     fn default_order() {
         let mut s = default_statuses();
         sort_statuses(&mut s);
-        assert_eq!(
-            ids(&s),
-            ["beaten", "playing", "endless", "plan-to-play", "played", "on-hold", "not-played", "completed", "abandoned"]
-        );
+        assert_eq!(ids(&s), ["beaten", "playing", "endless", "plan-to-play", "played", "on-hold", "not-played", "completed", "abandoned"]);
         assert!(s.iter().all(|s| !s.name.starts_with(|c: char| c.is_ascii_digit())));
     }
 

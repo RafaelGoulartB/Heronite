@@ -19,10 +19,8 @@ use crate::pathutil::{basename, ext_lower, join, normalize_key, resolve};
 use crate::store::{self, resolve_template};
 use crate::types::{RomScanArgs, RomScanItem, RomScanPreview};
 
-const SKIP_DIRS: &[&str] = &[
-    "bios", "firmware", "saves", "save", "savestates", "states", "cheats", "sysdata", "sys",
-    "system", ".git", "media", "manuals",
-];
+const SKIP_DIRS: &[&str] =
+    &["bios", "firmware", "saves", "save", "savestates", "states", "cheats", "sysdata", "sys", "system", ".git", "media", "manuals"];
 
 fn skip_dir(name: &str) -> bool {
     SKIP_DIRS.contains(&name.to_lowercase().as_str())
@@ -30,22 +28,15 @@ fn skip_dir(name: &str) -> bool {
 
 /// `readdirSync` order: libuv sorts entries.
 fn read_dir_sorted(dir: &str) -> Option<Vec<String>> {
-    let mut names: Vec<String> = fs::read_dir(dir)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().into_owned())
-        .collect();
+    let mut names: Vec<String> =
+        fs::read_dir(dir).ok()?.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
     names.sort();
     Some(names)
 }
 
 /// The set of ROM paths already imported for this emulator/profile
 /// (`importedRomPaths`), normalized with [`normalize_key`].
-pub fn imported_rom_paths(
-    metas: &LocalMetaFile,
-    emulator_id: &str,
-    profile_id: &str,
-) -> HashSet<String> {
+pub fn imported_rom_paths(metas: &LocalMetaFile, emulator_id: &str, profile_id: &str) -> HashSet<String> {
     let mut set = HashSet::new();
     for meta in metas.games.values() {
         if meta.emulator_id.as_deref() != Some(emulator_id) {
@@ -80,14 +71,8 @@ pub fn read_playlist_files(file_path: &str) -> std::io::Result<Vec<String>> {
     let bytes = fs::read(file_path)?;
     let text = String::from_utf8_lossy(&bytes);
     Ok(match ext.as_str() {
-        "cue" => cue_re()
-            .captures_iter(&text)
-            .map(|c| join(&dir, &c[1]))
-            .collect(),
-        "gdi" => quoted_re()
-            .captures_iter(&text)
-            .map(|c| join(&dir, &c[1]))
-            .collect(),
+        "cue" => cue_re().captures_iter(&text).map(|c| join(&dir, &c[1])).collect(),
+        "gdi" => quoted_re().captures_iter(&text).map(|c| join(&dir, &c[1])).collect(),
         _ => text
             .lines()
             .map(str::trim)
@@ -125,13 +110,7 @@ fn walk_files(directory: &str, scan_subfolders: bool, acc: &mut Vec<String>, dep
     }
 }
 
-fn walk_folders_with_indicator(
-    directory: &str,
-    indicator: &str,
-    scan_subfolders: bool,
-    acc: &mut Vec<String>,
-    depth: usize,
-) {
+fn walk_folders_with_indicator(directory: &str, indicator: &str, scan_subfolders: bool, acc: &mut Vec<String>, depth: usize) {
     let Some(entries) = read_dir_sorted(directory) else {
         return;
     };
@@ -156,12 +135,7 @@ fn walk_folders_with_indicator(
 
 fn to_scan_item(title: String, roms: Vec<LocalGameRom>, imported: &HashSet<String>) -> RomScanItem {
     let already = roms.iter().all(|r| imported.contains(&normalize_key(&r.path)));
-    RomScanItem {
-        title,
-        roms,
-        already_imported: already,
-        import: !already,
-    }
+    RomScanItem { title, roms, already_imported: already, import: !already }
 }
 
 /// Scan options of `scanRomDirectory`.
@@ -173,10 +147,7 @@ pub struct ScanOptions {
 
 impl Default for ScanOptions {
     fn default() -> Self {
-        Self {
-            scan_subfolders: true,
-            merge_related_files: true,
-        }
+        Self { scan_subfolders: true, merge_related_files: true }
     }
 }
 
@@ -206,11 +177,7 @@ pub fn scan_rom_directory(
         return preview;
     }
 
-    let extensions: HashSet<String> = template
-        .extensions
-        .iter()
-        .map(|e| e.trim_start_matches('.').to_lowercase())
-        .collect();
+    let extensions: HashSet<String> = template.extensions.iter().map(|e| e.trim_start_matches('.').to_lowercase()).collect();
     let playlists: HashSet<String> = template
         .playlist_extensions
         .clone()
@@ -221,9 +188,7 @@ pub fn scan_rom_directory(
 
     let mut files = Vec::new();
     match template.folder_indicator.as_deref() {
-        Some(ind) => {
-            walk_folders_with_indicator(&directory, ind, options.scan_subfolders, &mut files, 0)
-        }
+        Some(ind) => walk_folders_with_indicator(&directory, ind, options.scan_subfolders, &mut files, 0),
         None => walk_files(&directory, options.scan_subfolders, &mut files, 0),
     }
 
@@ -248,9 +213,7 @@ pub fn scan_rom_directory(
         candidates.push((file, title));
     }
 
-    let filtered = candidates
-        .into_iter()
-        .filter(|(p, _)| !skip_children.contains(&normalize_key(p)));
+    let filtered = candidates.into_iter().filter(|(p, _)| !skip_children.contains(&normalize_key(p)));
 
     // Insertion-ordered groups.
     let mut order: Vec<String> = Vec::new();
@@ -262,11 +225,7 @@ pub fn scan_rom_directory(
             path: path.clone(),
             extra: Default::default(),
         };
-        let key = if options.merge_related_files {
-            title.to_lowercase()
-        } else {
-            path
-        };
+        let key = if options.merge_related_files { title.to_lowercase() } else { path };
         if !groups.contains_key(&key) {
             order.push(key.clone());
         }
@@ -312,10 +271,7 @@ pub fn preview_rom_scan(paths: &DataPaths, args: &RomScanArgs) -> Result<RomScan
         &emulator,
         &profile,
         &args.directory,
-        ScanOptions {
-            scan_subfolders: args.scan_subfolders != Some(false),
-            merge_related_files: args.merge_related_files != Some(false),
-        },
+        ScanOptions { scan_subfolders: args.scan_subfolders != Some(false), merge_related_files: args.merge_related_files != Some(false) },
         &imported,
     ))
 }
@@ -406,7 +362,11 @@ mod tests {
     fn playlists_hide_their_tracks() {
         let d = tempfile::tempdir().unwrap();
         let root = d.path();
-        write(root.join("Game (USA).cue"), "FILE \"Game (USA) (Track 1).bin\" BINARY\n  TRACK 01 MODE2/2352\nFILE \"Game (USA) (Track 2).bin\" BINARY\n").unwrap();
+        write(
+            root.join("Game (USA).cue"),
+            "FILE \"Game (USA) (Track 1).bin\" BINARY\n  TRACK 01 MODE2/2352\nFILE \"Game (USA) (Track 2).bin\" BINARY\n",
+        )
+        .unwrap();
         write(root.join("Game (USA) (Track 1).bin"), "x").unwrap();
         write(root.join("Game (USA) (Track 2).bin"), "x").unwrap();
         write(root.join("Multi.m3u"), "# comment\nMulti (Disc 1).chd\nMulti (Disc 2).chd\n").unwrap();

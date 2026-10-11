@@ -177,10 +177,9 @@ impl CollectionView {
                     })
                     .await;
                 this.update(cx, |_, cx| {
-                    cx.default_global::<MenuProbes>().0.insert(
-                        key,
-                        Probe { shortcuts: probed.0, steam: probed.1, at: Instant::now(), pending: false },
-                    );
+                    cx.default_global::<MenuProbes>()
+                        .0
+                        .insert(key, Probe { shortcuts: probed.0, steam: probed.1, at: Instant::now(), pending: false });
                     cx.notify();
                 })
                 .ok();
@@ -192,7 +191,12 @@ impl CollectionView {
 
     /// Runs a shortcuts operation in the background, shows its result as a
     /// toast and forgets the cached menu state.
-    pub(super) fn system_op(&mut self, key: String, cx: &mut Context<Self>, op: impl FnOnce(&heronite_data::DataPaths) -> sc::Outcome + Send + 'static) {
+    pub(super) fn system_op(
+        &mut self,
+        key: String,
+        cx: &mut Context<Self>,
+        op: impl FnOnce(&heronite_data::DataPaths) -> sc::Outcome + Send + 'static,
+    ) {
         let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let outcome = cx.background_spawn(async move { op(&data_paths) }).await;

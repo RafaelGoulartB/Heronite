@@ -24,11 +24,7 @@ pub struct HostEnv {
 
 impl HostEnv {
     pub fn system() -> Self {
-        let var = |k: &str| {
-            std::env::var_os(k)
-                .filter(|v| !v.is_empty())
-                .map(PathBuf::from)
-        };
+        let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
         Self {
             home: dirs_home(),
             xdg_config_home_var: var("XDG_CONFIG_HOME"),
@@ -40,27 +36,17 @@ impl HostEnv {
 
     /// A sandbox: everything under `home`, no environment overrides.
     pub fn sandbox(home: impl Into<PathBuf>, tmp: impl Into<PathBuf>) -> Self {
-        Self {
-            home: home.into(),
-            xdg_config_home_var: None,
-            xdg_data_home_var: None,
-            dolphin_userpath: None,
-            tmp_dir: tmp.into(),
-        }
+        Self { home: home.into(), xdg_config_home_var: None, xdg_data_home_var: None, dolphin_userpath: None, tmp_dir: tmp.into() }
     }
 
     /// `xdgConfigHome()`.
     pub fn xdg_config_home(&self) -> PathBuf {
-        self.xdg_config_home_var
-            .clone()
-            .unwrap_or_else(|| self.home.join(".config"))
+        self.xdg_config_home_var.clone().unwrap_or_else(|| self.home.join(".config"))
     }
 
     /// `xdgDataHome()`.
     pub fn xdg_data_home(&self) -> PathBuf {
-        self.xdg_data_home_var
-            .clone()
-            .unwrap_or_else(|| self.home.join(".local/share"))
+        self.xdg_data_home_var.clone().unwrap_or_else(|| self.home.join(".local/share"))
     }
 
     /// `flatpakDir`.
@@ -74,9 +60,7 @@ impl HostEnv {
 }
 
 fn dirs_home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
+    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// `key = value` INI and RetroArch-style `key = "value"` files. Keys before
@@ -107,10 +91,7 @@ impl Ini {
             if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
                 value = &value[1..value.len() - 1];
             }
-            ini.sections
-                .entry(current.clone())
-                .or_default()
-                .insert(key, value.to_string());
+            ini.sections.entry(current.clone()).or_default().insert(key, value.to_string());
         }
         ini
     }
@@ -123,11 +104,7 @@ impl Ini {
 
     /// `iniValue`: `None` for missing or empty values.
     pub fn get(&self, section: &str, key: &str) -> Option<&str> {
-        self.sections
-            .get(section)
-            .and_then(|s| s.get(key))
-            .map(String::as_str)
-            .filter(|v| !v.is_empty())
+        self.sections.get(section).and_then(|s| s.get(key)).map(String::as_str).filter(|v| !v.is_empty())
     }
 }
 
@@ -147,11 +124,7 @@ pub fn resolve_configured_dir(value: Option<&str>, base: &str, home: &Path) -> O
     } else {
         value.to_string()
     };
-    Some(if expanded.starts_with('/') {
-        expanded
-    } else {
-        resolve_from(base, &expanded)
-    })
+    Some(if expanded.starts_with('/') { expanded } else { resolve_from(base, &expanded) })
 }
 
 fn read_at(file: &mut File, position: u64, length: usize) -> Vec<u8> {
@@ -209,9 +182,7 @@ pub fn read_zip_entry(path: &Path, entry_name: &str) -> Option<Vec<u8>> {
                 0 => Some(data),
                 8 => {
                     let mut out = Vec::new();
-                    flate2::read::DeflateDecoder::new(&data[..])
-                        .read_to_end(&mut out)
-                        .ok()?;
+                    flate2::read::DeflateDecoder::new(&data[..]).read_to_end(&mut out).ok()?;
                     Some(out)
                 }
                 _ => None,
@@ -255,9 +226,8 @@ mod tests {
 
     #[test]
     fn ini_parsing_matches_heronite() {
-        let ini = Ini::parse(
-            "top = 1\n; comment\n[Folders]\nSavestates = /data/states\nEmpty =\n[ports.qt]\nsavestatePath = \"~/states\"\n",
-        );
+        let ini =
+            Ini::parse("top = 1\n; comment\n[Folders]\nSavestates = /data/states\nEmpty =\n[ports.qt]\nsavestatePath = \"~/states\"\n");
         assert_eq!(ini.get("", "top"), Some("1"));
         assert_eq!(ini.get("Folders", "Savestates"), Some("/data/states"));
         assert_eq!(ini.get("Folders", "Empty"), None);

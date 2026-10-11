@@ -37,11 +37,7 @@ pub fn run_idle_jobs(paths: &DataPaths) -> IdleReport {
 }
 
 /// Runs the jobs on a background thread after `delay` (use [`IDLE_DELAY`]).
-pub fn spawn_idle_jobs(
-    paths: DataPaths,
-    delay: Duration,
-    on_done: impl FnOnce(IdleReport) + Send + 'static,
-) -> JoinHandle<()> {
+pub fn spawn_idle_jobs(paths: DataPaths, delay: Duration, on_done: impl FnOnce(IdleReport) + Send + 'static) -> JoinHandle<()> {
     std::thread::spawn(move || {
         std::thread::sleep(delay);
         on_done(run_idle_jobs(&paths));

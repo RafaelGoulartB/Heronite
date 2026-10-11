@@ -127,9 +127,8 @@ impl ScreenshotArtDialog {
         self.error.clear();
         let (service, runner, app, kind) = (self.service.clone(), self.runner.clone(), self.app_name.clone(), self.kind);
         cx.spawn(async move |this, cx| {
-            let res = cx
-                .background_spawn(async move { service.set_art_from_file(&runner, &app, kind, &item.path.to_string_lossy()) })
-                .await;
+            let res =
+                cx.background_spawn(async move { service.set_art_from_file(&runner, &app, kind, &item.path.to_string_lossy()) }).await;
             this.update(cx, |this, cx| {
                 this.saving = false;
                 match res {
@@ -169,20 +168,14 @@ impl Render for ScreenshotArtDialog {
                     .child("Loading\u{2026}"),
             );
         } else if self.items.is_empty() {
-            grid = grid.child(
-                div()
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_size(px(14.))
-                    .text_color(theme::text_muted())
-                    .child(if self.folder_configured {
+            grid =
+                grid.child(div().w_full().flex().items_center().justify_center().text_size(px(14.)).text_color(theme::text_muted()).child(
+                    if self.folder_configured {
                         "No screenshots found for this game."
                     } else {
                         "Set a screenshots folder in Collection settings first."
-                    }),
-            );
+                    },
+                ));
         } else {
             let shown = self.items.len().min(self.visible);
             for i in 0..shown {
@@ -224,23 +217,36 @@ impl Render for ScreenshotArtDialog {
             )))
             .child(grid);
         if !self.loading && self.visible < self.items.len() {
-            body = body.child(
-                div().flex().justify_center().child(
-                    button("sa-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
-                        this.visible += PAGE_SIZE;
-                        this.load_thumbs(cx);
-                        cx.notify();
-                    })),
-                ),
-            );
+            body = body.child(div().flex().justify_center().child(
+                button("sa-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                    this.visible += PAGE_SIZE;
+                    this.load_thumbs(cx);
+                    cx.notify();
+                })),
+            ));
         }
         if !self.error.is_empty() {
-            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::danger_fill()).text_size(px(13.)).text_color(theme::danger_text()).child(self.error.clone()));
+            body = body.child(
+                div()
+                    .px(px(14.))
+                    .py(px(10.))
+                    .rounded(px(theme::R_INPUT))
+                    .bg(theme::danger_fill())
+                    .text_size(px(13.))
+                    .text_color(theme::danger_text())
+                    .child(self.error.clone()),
+            );
         }
         let footer = div()
             .flex()
             .gap(px(16.))
-            .child(action_button("sa-cancel", ButtonKind::Ghost, "Cancel", !self.saving, cx.listener(|_, _, _, cx| cx.emit(ArtEvent::Close))))
+            .child(action_button(
+                "sa-cancel",
+                ButtonKind::Ghost,
+                "Cancel",
+                !self.saving,
+                cx.listener(|_, _, _, cx| cx.emit(ArtEvent::Close)),
+            ))
             .child(action_button(
                 "sa-select",
                 ButtonKind::Primary,
@@ -251,7 +257,12 @@ impl Render for ScreenshotArtDialog {
         let entity = cx.entity().downgrade();
         let vw = f32::from(window.viewport_size().width);
         dialog(
-            DialogProps { id: "collection-screenshot-art".into(), title: "Select screenshot".into(), width: 960f32.min(vw * 0.96), height: None },
+            DialogProps {
+                id: "collection-screenshot-art".into(),
+                title: "Select screenshot".into(),
+                width: 960f32.min(vw * 0.96),
+                height: None,
+            },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {

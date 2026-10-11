@@ -66,17 +66,8 @@ pub fn parse_ddg_images(body: &Value) -> Vec<WebImage> {
 pub fn parse_google_html(html: &str) -> Vec<WebImage> {
     let flat = html.replace("\r\n", "").replace(['\r', '\n'], "");
     let rx = re!(r#"\["(https://encrypted-[^,]+?)",\d+,\d+\],\["(http.+?)",(\d+),(\d+)\]"#);
-    let rows: Vec<_> = rx
-        .captures_iter(&flat)
-        .map(|c| {
-            (
-                c[2].to_owned(),
-                c[1].to_owned(),
-                c[4].parse().unwrap_or(0),
-                c[3].parse().unwrap_or(0),
-            )
-        })
-        .collect();
+    let rows: Vec<_> =
+        rx.captures_iter(&flat).map(|c| (c[2].to_owned(), c[1].to_owned(), c[4].parse().unwrap_or(0), c[3].parse().unwrap_or(0))).collect();
     map_images(rows)
 }
 
@@ -84,9 +75,8 @@ fn html_unescape(s: &str) -> String {
     let s = re!(r"&#x([0-9a-fA-F]+);").replace_all(s, |c: &regex::Captures| {
         u32::from_str_radix(&c[1], 16).ok().and_then(char::from_u32).map(String::from).unwrap_or_default()
     });
-    let s = re!(r"&#([0-9]+);").replace_all(&s, |c: &regex::Captures| {
-        c[1].parse::<u32>().ok().and_then(char::from_u32).map(String::from).unwrap_or_default()
-    });
+    let s = re!(r"&#([0-9]+);")
+        .replace_all(&s, |c: &regex::Captures| c[1].parse::<u32>().ok().and_then(char::from_u32).map(String::from).unwrap_or_default());
     s.replace("&quot;", "\"").replace("&lt;", "<").replace("&gt;", ">").replace("&#39;", "'").replace("&amp;", "&")
 }
 

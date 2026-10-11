@@ -32,14 +32,22 @@ impl DownloadsPage {
         let mut rows = Vec::new();
         if !snap.queue.is_empty() {
             let running = snap.state == DmState::Running;
-            rows.push(Row::action("pause", if running { "Pause" } else { "Resume" }).icon(if running { Icon::Pause } else { Icon::PlayArrow }));
+            rows.push(Row::action("pause", if running { "Pause" } else { "Resume" }).icon(if running {
+                Icon::Pause
+            } else {
+                Icon::PlayArrow
+            }));
             rows.push(Row::action("stop", "Stop installing\u{2026}").icon(Icon::Stop).danger());
         }
         let waiting: Vec<&DmElement> = snap.queue.iter().skip(1).collect();
         if !waiting.is_empty() {
             rows.push(Row::header(format!("Queued \u{b7} {}", waiting.len())));
             for el in waiting {
-                rows.push(Row::action(SharedString::from(format!("q:{}", el.params.app_name)), el.params.title()).desc(meta_line(el)).icon(Icon::Download));
+                rows.push(
+                    Row::action(SharedString::from(format!("q:{}", el.params.app_name)), el.params.title())
+                        .desc(meta_line(el))
+                        .icon(Icon::Download),
+                );
             }
         }
         if !snap.finished.is_empty() {
@@ -52,7 +60,14 @@ impl DownloadsPage {
         rows
     }
 
-    fn open_sheet(&mut self, title: String, message: Option<String>, rows: Vec<Row>, cx: &mut Context<Self>, on: impl Fn(&mut Self, &str, &mut Context<Self>) + 'static) {
+    fn open_sheet(
+        &mut self,
+        title: String,
+        message: Option<String>,
+        rows: Vec<Row>,
+        cx: &mut Context<Self>,
+        on: impl Fn(&mut Self, &str, &mut Context<Self>) + 'static,
+    ) {
         let sheet = cx.new(|_| Sheet::new(title, message, rows));
         let sub = cx.subscribe(&sheet, move |this, _, ev: &SheetEvent, cx| {
             let SheetEvent::Activate(id) = ev;
@@ -144,7 +159,14 @@ impl DownloadsPage {
                         .flex_1()
                         .min_w_0()
                         .gap(u(10.))
-                        .child(div().flex().items_center().gap(u(14.)).child(kit::title(cur.params.title(), 30.)).child(kit::badge(status, if running { theme::console_btn_a() } else { theme::accent() })))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(u(14.))
+                                .child(kit::title(cur.params.title(), 30.))
+                                .child(kit::badge(status, if running { theme::console_btn_a() } else { theme::accent() })),
+                        )
                         .child(div().text_size(u(15.)).text_color(theme::text_muted()).child(meta_line(cur)))
                         .child(progress_bar(percent, f32::from(u(10.)), if running { theme::success() } else { theme::accent() }))
                         .child(div().text_size(u(15.)).text_color(theme::text_muted()).child(match &progress {

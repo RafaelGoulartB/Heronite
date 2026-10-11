@@ -86,7 +86,8 @@ impl SettingsPanel {
         };
         let mut items: Vec<(SharedString, bool)> = vec![("None".into(), current == "none")];
         items.extend(logic::STEAM_RUNTIMES.iter().map(|(id, name)| (SharedString::from(*name), *id == current)));
-        let shown = logic::STEAM_RUNTIMES.iter().find(|(id, _)| *id == current).map(|(_, n)| (*n).to_string()).unwrap_or_else(|| "None".into());
+        let shown =
+            logic::STEAM_RUNTIMES.iter().find(|(id, _)| *id == current).map(|(_, n)| (*n).to_string()).unwrap_or_else(|| "None".into());
         self.select_row("steam-runtime", Some("Use Steam Runtime"), shown, items, false, cx, |this, i, _, cx| {
             let v = if i == 0 { Value::Bool(false) } else { Value::String(logic::STEAM_RUNTIMES[i - 1].0.into()) };
             this.set("steamRuntime", v, cx);

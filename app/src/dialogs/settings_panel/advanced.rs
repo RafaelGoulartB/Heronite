@@ -81,10 +81,18 @@ impl SettingsPanel {
                 notes.push(danger_text(err));
             }
             notes.push(help("Use the Game Arguments to be called after the launch command, for instance: -nolauncher to skip the launcher in some games, etc."));
-            launch = launch.field_help(self.text_row("launcherArgs", Some("Game Arguments (appended to game launch command)"), None), notes);
+            launch =
+                launch.field_help(self.text_row("launcherArgs", Some("Game Arguments (appended to game launch command)"), None), notes);
         }
         launch = launch
-            .field(self.path_row("beforeScript", Some("Select a script to run before the game is launched"), false, "Select script ...", true, cx))
+            .field(self.path_row(
+                "beforeScript",
+                Some("Select a script to run before the game is launched"),
+                false,
+                "Select script ...",
+                true,
+                cx,
+            ))
             .field(self.path_row("afterScript", Some("Select a script to run after the game exits"), false, "Select script ...", true, cx));
         col = col.child(heading("Launch")).child(launch.card());
         col = col.child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
@@ -152,7 +160,10 @@ impl SettingsPanel {
                         this.set_input(t.in2, &eb, window, cx);
                         cx.notify();
                     })))
-                    .child(icon_button(format!("{}-del-{i}", t.id), Icon::DeleteOutline).on_click(cx.listener(move |this, _, _, cx| this.pair_remove(t, i, cx)))),
+                    .child(
+                        icon_button(format!("{}-del-{i}", t.id), Icon::DeleteOutline)
+                            .on_click(cx.listener(move |this, _, _, cx| this.pair_remove(t, i, cx))),
+                    ),
             );
         }
         let add = div()

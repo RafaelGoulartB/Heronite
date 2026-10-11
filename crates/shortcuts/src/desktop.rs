@@ -46,10 +46,7 @@ pub fn shortcut_files(roots: &Roots, title: &str) -> (Option<PathBuf>, PathBuf) 
 pub fn quote_exec_arg(arg: &str) -> String {
     let needs_quotes = arg.is_empty()
         || arg.chars().any(|c| {
-            matches!(
-                c,
-                ' ' | '\t' | '\n' | '"' | '\'' | '\\' | '>' | '<' | '~' | '|' | '&' | ';' | '$' | '*' | '?' | '#' | '(' | ')' | '`'
-            )
+            matches!(c, ' ' | '\t' | '\n' | '"' | '\'' | '\\' | '>' | '<' | '~' | '|' | '&' | ';' | '$' | '*' | '?' | '#' | '(' | ')' | '`')
         });
     let arg = arg.replace('%', "%%");
     if !needs_quotes {
@@ -74,20 +71,12 @@ fn escape_value(value: &str) -> String {
 /// Content of the `.desktop` file. `exec` is the already-quoted command line.
 pub fn desktop_file_text(title: &str, exec: &str, icon: Option<&str>) -> String {
     let icon_line = icon.map(|i| format!("Icon={}\n", escape_value(i))).unwrap_or_default();
-    format!(
-        "[Desktop Entry]\nName={}\nExec={exec}\nTerminal=false\nType=Application\n{icon_line}Categories=Game;\n",
-        escape_value(title)
-    )
+    format!("[Desktop Entry]\nName={}\nExec={exec}\nTerminal=false\nType=Application\n{icon_line}Categories=Game;\n", escape_value(title))
 }
 
 /// `<exe> --launch <runner> <appName>`, quoted for `Exec=`.
 pub fn exec_line(exe: &Path, game: &GameId) -> String {
-    format!(
-        "{} --launch {} {}",
-        quote_exec_arg(&exe.to_string_lossy()),
-        quote_exec_arg(&game.runner),
-        quote_exec_arg(&game.app_name)
-    )
+    format!("{} --launch {} {}", quote_exec_arg(&exe.to_string_lossy()), quote_exec_arg(&game.runner), quote_exec_arg(&game.app_name))
 }
 
 /// What [`add`] wrote.

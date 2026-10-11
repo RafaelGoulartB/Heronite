@@ -16,9 +16,8 @@ fn fixture() -> Option<DataPaths> {
 }
 
 fn captures(lib: &Library) -> Option<PathBuf> {
-    let dir = std::env::var_os("HERONITE_CAPTURES")
-        .map(PathBuf::from)
-        .or_else(|| lib.settings.screenshots_folder().map(Path::to_path_buf))?;
+    let dir =
+        std::env::var_os("HERONITE_CAPTURES").map(PathBuf::from).or_else(|| lib.settings.screenshots_folder().map(Path::to_path_buf))?;
     dir.is_dir().then_some(dir)
 }
 
@@ -79,7 +78,6 @@ fn cache_key_agrees_with_the_real_heronite_cache() {
     println!("cache keys checked: {checked}, mismatching: {bad}");
     assert!(checked == 0 || bad == 0, "{bad}/{checked} keys differ from Heronite's");
 }
-
 
 /// Our previews of real screenshots (written to a tempdir) look like Heronite's.
 #[test]

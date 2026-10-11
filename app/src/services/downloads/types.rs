@@ -68,10 +68,15 @@ pub enum DownloadsEvent {
     LibraryChanged,
     Toast(String, bool),
     /// Text for a message dialog (cloud saves output).
-    Message { title: String, text: String },
+    Message {
+        title: String,
+        text: String,
+    },
     /// "Enable EOS Overlay" was asked for a game but the overlay is not
     /// installed: the Collection offers to install it now.
-    EosNotInstalled { app_name: String },
+    EosNotInstalled {
+        app_name: String,
+    },
 }
 
 /// The EOS Overlay as the Epic page shows it.

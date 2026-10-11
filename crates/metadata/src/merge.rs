@@ -115,22 +115,14 @@ pub struct MergeArgs<'a> {
 
 /// `mergeMetadata`.
 pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
-    let mut next = args
-        .current
-        .cloned()
-        .unwrap_or_else(|| blank_metadata(args.app_name, args.runner));
+    let mut next = args.current.cloned().unwrap_or_else(|| blank_metadata(args.app_name, args.runner));
 
-    let by_source: IndexMap<&str, &CollectionGameMetadata> =
-        args.candidates.iter().map(|c| (c.source, c.metadata)).collect();
+    let by_source: IndexMap<&str, &CollectionGameMetadata> = args.candidates.iter().map(|c| (c.source, c.metadata)).collect();
 
     for field in METADATA_FIELDS {
         let pick = args.field_picks.and_then(|p| p.get(field)).map(String::as_str);
         if matches!(pick, Some("keep") | Some("manual")) {
-            let kept = args
-                .current
-                .and_then(|c| c.field_sources.get(field))
-                .cloned()
-                .unwrap_or_else(|| "manual".to_owned());
+            let kept = args.current.and_then(|c| c.field_sources.get(field)).cloned().unwrap_or_else(|| "manual".to_owned());
             next.field_sources.insert(field.to_owned(), kept);
             continue;
         }
@@ -146,9 +138,7 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
 
         let configured: &[String] = args.priority.get(field).map(Vec::as_slice).unwrap_or(&[]);
         let order: Vec<&str> = match pick {
-            Some(p) => std::iter::once(p)
-                .chain(configured.iter().map(String::as_str).filter(|s| *s != p))
-                .collect(),
+            Some(p) => std::iter::once(p).chain(configured.iter().map(String::as_str).filter(|s| *s != p)).collect(),
             None => configured.iter().map(String::as_str).collect(),
         };
 
@@ -173,14 +163,10 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
             next.igdb_id = md.igdb_id;
             next.igdb_slug = md.igdb_slug.clone();
         }
-        if md.lutris_slug.as_deref().is_some_and(|s| !s.is_empty())
-            && !next.lutris_slug.as_deref().is_some_and(|s| !s.is_empty())
-        {
+        if md.lutris_slug.as_deref().is_some_and(|s| !s.is_empty()) && !next.lutris_slug.as_deref().is_some_and(|s| !s.is_empty()) {
             next.lutris_slug = md.lutris_slug.clone();
         }
-        if md.steam_app_id.as_deref().is_some_and(|s| !s.is_empty())
-            && !next.steam_app_id.as_deref().is_some_and(|s| !s.is_empty())
-        {
+        if md.steam_app_id.as_deref().is_some_and(|s| !s.is_empty()) && !next.steam_app_id.as_deref().is_some_and(|s| !s.is_empty()) {
             next.steam_app_id = md.steam_app_id.clone();
         }
         if md.title.as_deref().is_some_and(|s| !s.is_empty()) && !next.title.as_deref().is_some_and(|s| !s.is_empty()) {
@@ -200,19 +186,14 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
 
 /// `withPreferredSource`: puts `source` first for every field (no-op for
 /// `None` / `"auto"`).
-pub fn with_preferred_source(
-    priority: &IndexMap<String, Vec<String>>,
-    source: Option<&str>,
-) -> IndexMap<String, Vec<String>> {
+pub fn with_preferred_source(priority: &IndexMap<String, Vec<String>>, source: Option<&str>) -> IndexMap<String, Vec<String>> {
     let Some(source) = source.filter(|s| *s != "auto") else {
         return priority.clone();
     };
     let mut next = priority.clone();
     for field in METADATA_FIELDS {
-        let rest: Vec<String> = priority
-            .get(field)
-            .map(|l| l.iter().filter(|s| s.as_str() != source).cloned().collect())
-            .unwrap_or_default();
+        let rest: Vec<String> =
+            priority.get(field).map(|l| l.iter().filter(|s| s.as_str() != source).cloned().collect()).unwrap_or_default();
         let mut list = vec![source.to_owned()];
         list.extend(rest);
         next.insert(field.to_owned(), list);
@@ -272,10 +253,7 @@ mod tests {
             m.steam_app_id = Some("42".into());
         });
         let pr = priority();
-        let cands = [
-            MergeCandidate { source: "igdb", metadata: &igdb },
-            MergeCandidate { source: "steam", metadata: &steam },
-        ];
+        let cands = [MergeCandidate { source: "igdb", metadata: &igdb }, MergeCandidate { source: "steam", metadata: &steam }];
         let out = merge(None, &cands, &pr, true, false, None);
         assert_eq!(out.description.as_deref(), Some("igdb text"));
         assert_eq!(out.field_sources["description"], "igdb");
@@ -343,10 +321,7 @@ mod tests {
             m.description = Some("steam".into());
         });
         let pr = priority();
-        let cands = [
-            MergeCandidate { source: "igdb", metadata: &igdb },
-            MergeCandidate { source: "steam", metadata: &steam },
-        ];
+        let cands = [MergeCandidate { source: "igdb", metadata: &igdb }, MergeCandidate { source: "steam", metadata: &steam }];
         let picks: IndexMap<String, String> = [
             ("description".to_string(), "keep".to_string()),
             ("genres".to_string(), "steam".to_string()),

@@ -15,12 +15,11 @@ mod last_backup;
 mod runner;
 
 pub use backup::{
-    backup_after_play, backup_for_game, notification, AfterPlay, BackupReason, LudusaviBackupResult, LudusaviEnv,
-    LudusaviGame, SKIP_SESSION_SECONDS,
+    backup_after_play, backup_for_game, notification, AfterPlay, BackupReason, LudusaviBackupResult, LudusaviEnv, LudusaviGame,
+    SKIP_SESSION_SECONDS,
 };
 pub use commands::{
-    backup_command, best_find_match, find_commands, game_names, parse_json, total_games, wine_prefix_for_ludusavi,
-    BackupCommand,
+    backup_command, best_find_match, find_commands, game_names, parse_json, total_games, wine_prefix_for_ludusavi, BackupCommand,
 };
 pub use detect::{detect_ludusavi, parse_config, resolve_binary, yaml_get, LudusaviDetected};
 pub use last_backup::{last_backup, LastBackup};

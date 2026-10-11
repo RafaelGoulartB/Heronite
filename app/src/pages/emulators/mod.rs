@@ -193,7 +193,12 @@ impl Render for EmulatorsPage {
             .on_click(cx.listener(|this, _, window, cx| this.open_add_emulator(window, cx)))
             .into_any_element();
         let close = page_close(cx);
-        div().size_full().relative().child(sheet("page-emulators", "Emulators", Some(lead.into()), Some(add), max_w, window, close, column)).children(self.dialog.clone()).into_any_element()
+        div()
+            .size_full()
+            .relative()
+            .child(sheet("page-emulators", "Emulators", Some(lead.into()), Some(add), max_w, window, close, column))
+            .children(self.dialog.clone())
+            .into_any_element()
     }
 }
 
@@ -214,4 +219,3 @@ mod tests {
         assert_eq!(n.lines.len(), 2);
     }
 }
-

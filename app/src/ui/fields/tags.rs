@@ -198,15 +198,8 @@ impl TagField {
 
 impl Render for TagField {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut boxed = input_surface()
-            .min_h(px(theme::INPUT_H))
-            .w_full()
-            .px(px(10.))
-            .py(px(4.))
-            .flex()
-            .flex_wrap()
-            .items_center()
-            .gap(px(4.));
+        let mut boxed =
+            input_surface().min_h(px(theme::INPUT_H)).w_full().px(px(10.)).py(px(4.)).flex().flex_wrap().items_center().gap(px(4.));
         if self.multiple {
             for (i, v) in self.values.iter().enumerate() {
                 boxed = boxed.child(
@@ -245,12 +238,8 @@ impl Render for TagField {
         if self.focused {
             let items = self.suggestions(cx);
             if !items.is_empty() {
-                let mut list = div()
-                    .id(SharedString::from(format!("{}-menu", self.id)))
-                    .flex()
-                    .flex_col()
-                    .max_h(px(240.))
-                    .overflow_y_scroll();
+                let mut list =
+                    div().id(SharedString::from(format!("{}-menu", self.id))).flex().flex_col().max_h(px(240.)).overflow_y_scroll();
                 for (i, item) in items.into_iter().enumerate() {
                     let value = item.clone();
                     list = list.child(
@@ -270,17 +259,8 @@ impl Render for TagField {
                     );
                 }
                 wrap = wrap.child(
-                    deferred(
-                        div()
-                            .absolute()
-                            .top(relative(1.))
-                            .left_0()
-                            .w_full()
-                            .pt(px(4.))
-                            .occlude()
-                            .child(menu_panel(120.).child(list)),
-                    )
-                    .with_priority(40),
+                    deferred(div().absolute().top(relative(1.)).left_0().w_full().pt(px(4.)).occlude().child(menu_panel(120.).child(list)))
+                        .with_priority(40),
                 );
             }
         }

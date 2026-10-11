@@ -4,9 +4,9 @@
 
 use super::portal::PortalShortcut;
 use super::{
-    capture_folder, current_game, feedback, grim, hyprland, portal, temporary_name, to_hyprland_binding,
-    to_portal_trigger, unique_screenshot_path, ActiveGame, CaptureConfig, CaptureEvent, CaptureMessages,
-    CaptureOutcome, CaptureStatus, ShortcutBackend, SkipReason,
+    capture_folder, current_game, feedback, grim, hyprland, portal, temporary_name, to_hyprland_binding, to_portal_trigger,
+    unique_screenshot_path, ActiveGame, CaptureConfig, CaptureEvent, CaptureMessages, CaptureOutcome, CaptureStatus, ShortcutBackend,
+    SkipReason,
 };
 use crate::list::resolve_path;
 use signal_hook::consts::signal::SIGUSR2;
@@ -141,8 +141,7 @@ impl CaptureService {
         CaptureStatus {
             registered: st.hyprland.is_some() || st.portal_registered.is_some(),
             accelerator: st.config.accelerator.clone(),
-            active_game: current_game(st.games.values())
-                .map(|g| (g.app_name.clone(), g.runner.clone(), g.title.clone())),
+            active_game: current_game(st.games.values()).map(|g| (g.app_name.clone(), g.runner.clone(), g.title.clone())),
             error: st.registration_error.clone(),
         }
     }
@@ -225,10 +224,7 @@ impl CaptureService {
                             st.last_notified_error = None;
                         }
                         log::info!("Collection screenshot shortcut {accel_ready} registered");
-                        svc.send(CaptureEvent::ShortcutRegistered {
-                            accelerator: accel_ready,
-                            backend: ShortcutBackend::Portal,
-                        });
+                        svc.send(CaptureEvent::ShortcutRegistered { accelerator: accel_ready, backend: ShortcutBackend::Portal });
                     }
                     Err(e) => svc.registration_failed(e),
                 }
@@ -289,11 +285,7 @@ impl CaptureService {
         let outcome = match self.capture_into(&config, &game) {
             Ok(path) => {
                 log::info!("Collection screenshot saved to {}", path.display());
-                self.send(CaptureEvent::Saved {
-                    app_name: game.app_name.clone(),
-                    runner: game.runner.clone(),
-                    path: path.clone(),
-                });
+                self.send(CaptureEvent::Saved { app_name: game.app_name.clone(), runner: game.runner.clone(), path: path.clone() });
                 let m = &self.inner.options.messages;
                 if !feedback::show_osd(&m.saved_title, &game.title) {
                     feedback::notify(
@@ -370,6 +362,5 @@ fn capture_display_png() -> Result<Vec<u8>, String> {
 }
 
 fn is_temporary(path: &Path) -> bool {
-    path.starts_with(std::env::temp_dir())
-        || std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| path.starts_with(d))
+    path.starts_with(std::env::temp_dir()) || std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| path.starts_with(d))
 }

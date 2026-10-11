@@ -52,9 +52,7 @@ pub fn resolve(path: &str) -> String {
     if path.starts_with('/') {
         return resolve_abs(path);
     }
-    let cwd = std::env::current_dir()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "/".into());
+    let cwd = std::env::current_dir().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| "/".into());
     resolve_abs(&format!("{cwd}/{path}"))
 }
 
@@ -94,10 +92,7 @@ pub fn ext_lower(path: &str) -> String {
 /// `normalizePath` of scan.ts / import-roms.ts: resolved, `/`-separated,
 /// no trailing slash, lower-cased.
 pub fn normalize_key(value: &str) -> String {
-    resolve(value)
-        .replace('\\', "/")
-        .trim_end_matches('/')
-        .to_lowercase()
+    resolve(value).replace('\\', "/").trim_end_matches('/').to_lowercase()
 }
 
 /// Name without its extension (`basename(p, extname(p))`).

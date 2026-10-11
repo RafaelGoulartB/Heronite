@@ -21,7 +21,6 @@ pub(super) struct EosEntry {
     loading: bool,
 }
 
-
 impl EosEntry {
     pub(super) fn set(state: EosGame) -> Self {
         Self { state, stamp: None, registry: None, loading: false }
@@ -182,8 +181,13 @@ impl Downloads {
                             PrefixFolder::NotApplicable => EosGame::Unavailable,
                             PrefixFolder::Invalid => EosGame::Disabled,
                             PrefixFolder::Valid(prefix) => {
-                                let enabled = Legendary::locate(&data_paths).map(|lg| eos_overlay::is_enabled(&lg, Some(&prefix))).unwrap_or(false);
-                                if enabled { EosGame::Enabled } else { EosGame::Disabled }
+                                let enabled =
+                                    Legendary::locate(&data_paths).map(|lg| eos_overlay::is_enabled(&lg, Some(&prefix))).unwrap_or(false);
+                                if enabled {
+                                    EosGame::Enabled
+                                } else {
+                                    EosGame::Disabled
+                                }
                             }
                         };
                         (state, registry, stamp)
@@ -271,7 +275,7 @@ impl Downloads {
 
 #[cfg(test)]
 mod tests {
-    use super::{EosStamp, DataPaths};
+    use super::{DataPaths, EosStamp};
     use std::time::{Duration, SystemTime};
 
     #[test]

@@ -142,15 +142,7 @@ pub fn sheet(
             .max_w(px(max_w))
             .mx_auto()
             .when(clear_close, |d| d.pr(px(44.)))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.))
-                    .min_w_0()
-                    .child(page_heading(title))
-                    .children(lead.map(help_text)),
-            )
+            .child(div().flex().flex_col().gap(px(4.)).min_w_0().child(page_heading(title)).children(lead.map(help_text)))
             .child(div().flex().flex_none().items_center().gap(px(10.)).children(actions)),
     );
     let body = div()

@@ -191,26 +191,8 @@ impl CollectionView {
                     .child(self.search_box(window, cx))
                     .child(view),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_w_0()
-                    .items_center()
-                    .gap(px(6.))
-                    .overflow_hidden()
-                    .children(self.filter_chips(cx)),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(2.))
-                    .children(self.bulk_chip(cx))
-                    .child(refresh)
-                    .children(close),
-            )
+            .child(div().flex().flex_1().min_w_0().items_center().gap(px(6.)).overflow_hidden().children(self.filter_chips(cx)))
+            .child(div().flex().flex_none().items_center().gap(px(2.)).children(self.bulk_chip(cx)).child(refresh).children(close))
     }
 
     /// One removable chip per filter the View menu has set.
@@ -225,20 +207,18 @@ impl CollectionView {
         }
         if self.ui.show_hidden {
             chips.push(
-                filter_chip("chip-hidden", None, "Hidden shown")
-                    .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(false, cx))),
+                filter_chip("chip-hidden", None, "Hidden shown").on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(false, cx))),
             );
         }
         for kind in FACET_KINDS {
             let Some(value) = self.ui.facet_filters.get(kind).filter(|v| !v.is_empty()) else { continue };
             let value = value.to_owned();
-            chips.push(
-                filter_chip(SharedString::from(format!("chip-{}", kind.as_str())), Some(facet_label(kind)), &value)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.toggle_facet(kind.as_str(), &value);
-                        cx.notify();
-                    })),
-            );
+            chips.push(filter_chip(SharedString::from(format!("chip-{}", kind.as_str())), Some(facet_label(kind)), &value).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    this.toggle_facet(kind.as_str(), &value);
+                    cx.notify();
+                }),
+            ));
         }
         chips
     }
@@ -332,19 +312,15 @@ impl CollectionView {
     fn refresh_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let refreshing = self.refreshing;
         let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::tool_icon());
-        tool_button_base("hdr-refresh", false)
-            .on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx)))
-            .child(if refreshing {
-                refresh_icon
-                    .with_animation(
-                        "refresh-spin",
-                        Animation::new(Duration::from_secs(1)).repeat(),
-                        |svg, t| svg.with_transformation(Transformation::rotate(percentage(t))),
-                    )
-                    .into_any_element()
-            } else {
-                refresh_icon.into_any_element()
-            })
+        tool_button_base("hdr-refresh", false).on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx))).child(if refreshing {
+            refresh_icon
+                .with_animation("refresh-spin", Animation::new(Duration::from_secs(1)).repeat(), |svg, t| {
+                    svg.with_transformation(Transformation::rotate(percentage(t)))
+                })
+                .into_any_element()
+        } else {
+            refresh_icon.into_any_element()
+        })
     }
 
     /// Closes the focus panel (deselects the game); only shown while it is open.
@@ -430,9 +406,11 @@ impl CollectionView {
                         .justify_end()
                         .items_center()
                         .gap(px(4.))
-                        .children(selected.clone().map(|sel| {
-                            div().min_w_0().truncate().text_size(px(12.5)).text_color(theme::accent()).child(sel)
-                        }))
+                        .children(
+                            selected
+                                .clone()
+                                .map(|sel| div().min_w_0().truncate().text_size(px(12.5)).text_color(theme::accent()).child(sel)),
+                        )
                         .child(icon(Icon::ChevronRight, px(16.), theme::white_a(0.5))),
                 )
                 .on_hover(cx.listener(move |this, h: &bool, _, cx| {
@@ -447,28 +425,29 @@ impl CollectionView {
                 let query = self.facet_query(kind, cx);
                 fly = fly.children(self.facet_search_box(kind));
                 fly = fly.child(
-                    menu_item(SharedString::from(format!("facet-all-{}", kind.as_str())), selected.is_none())
-                        .child("All")
-                        .on_click(cx.listener(move |this, _, _, cx| {
+                    menu_item(SharedString::from(format!("facet-all-{}", kind.as_str())), selected.is_none()).child("All").on_click(
+                        cx.listener(move |this, _, _, cx| {
                             if let Some(sel) = this.ui.facet_filters.get(kind).map(str::to_owned) {
                                 this.toggle_facet(kind.as_str(), &sel);
                                 cx.notify();
                             }
-                        })),
+                        }),
+                    ),
                 );
-                let opts: Vec<_> = options
-                    .get(kind)
-                    .iter()
-                    .filter(|o| super::extras::facet_option_matches(&o.value, &query))
-                    .collect();
+                let opts: Vec<_> = options.get(kind).iter().filter(|o| super::extras::facet_option_matches(&o.value, &query)).collect();
                 if opts.is_empty() {
-                    fly = fly.child(
-                        div().mx(px(5.6)).text_size(px(13.33)).text_color(theme::white_a(0.45)).child("None in this library"),
-                    );
+                    fly = fly.child(div().mx(px(5.6)).text_size(px(13.33)).text_color(theme::white_a(0.45)).child("None in this library"));
                 }
-                let mut list = div().id(SharedString::from(format!("facet-list-{}", kind.as_str()))).flex().flex_col().gap(px(1.9)).overflow_y_scroll().max_h(px(380.));
+                let mut list = div()
+                    .id(SharedString::from(format!("facet-list-{}", kind.as_str())))
+                    .flex()
+                    .flex_col()
+                    .gap(px(1.9))
+                    .overflow_y_scroll()
+                    .max_h(px(380.));
                 for (i, o) in opts.iter().enumerate() {
-                    let is_sel = selected.as_deref().is_some_and(|s| heronite_data::text::facet_key(s) == heronite_data::text::facet_key(&o.value));
+                    let is_sel =
+                        selected.as_deref().is_some_and(|s| heronite_data::text::facet_key(s) == heronite_data::text::facet_key(&o.value));
                     let value = o.value.clone();
                     list = list.child(
                         menu_item(SharedString::from(format!("facet-{}-{i}", kind.as_str())), is_sel)
@@ -500,9 +479,9 @@ impl CollectionView {
                         // Past the menu padding (6) plus a small gap.
                         .ml(px(10.))
                         .occlude()
-                        .on_hover(cx.listener(|this, h: &bool, _, cx| {
-                            this.menu_hover(Menu::View, crate::ui::dropdown::PART_FLYOUT, *h, cx)
-                        }))
+                        .on_hover(
+                            cx.listener(|this, h: &bool, _, cx| this.menu_hover(Menu::View, crate::ui::dropdown::PART_FLYOUT, *h, cx)),
+                        )
                         .child(fly),
                 );
             }
@@ -558,12 +537,7 @@ fn toggle(id: &'static str, on: bool) -> Stateful<Div> {
 
 impl CollectionView {
     /// Opens the Settings page on `section`.
-    pub(super) fn open_settings_section(
-        &mut self,
-        section: crate::pages::settings::Section,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn open_settings_section(&mut self, section: crate::pages::settings::Section, window: &mut Window, cx: &mut Context<Self>) {
         crate::pages::settings::request_section(section, cx);
         self.navigate(crate::pages::Page::Settings, window, cx);
     }

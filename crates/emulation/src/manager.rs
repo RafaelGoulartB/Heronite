@@ -103,11 +103,7 @@ pub fn overview(paths: &DataPaths, env: &dyn DetectEnv) -> Result<Vec<EmulatorSu
             EmulatorSummary {
                 health: emulator_health(env, &emulator),
                 games: counts.get(&emulator.id).copied().unwrap_or(0),
-                missing_folders: scanners
-                    .iter()
-                    .filter(|s| !Path::new(&s.directory).is_dir())
-                    .map(|s| s.directory.clone())
-                    .collect(),
+                missing_folders: scanners.iter().filter(|s| !Path::new(&s.directory).is_dir()).map(|s| s.directory.clone()).collect(),
                 scanners,
                 emulator,
             }
@@ -119,10 +115,7 @@ pub fn overview(paths: &DataPaths, env: &dyn DetectEnv) -> Result<Vec<EmulatorSu
 /// hand edits; `remove_user_emulator` removes its own).
 pub fn orphan_scanners(paths: &DataPaths) -> Result<Vec<RomScanner>> {
     let emulators = store::list_user_emulators(paths)?;
-    Ok(store::list_rom_scanners(paths)?
-        .into_iter()
-        .filter(|s| !emulators.iter().any(|e| e.id == s.emulator_id))
-        .collect())
+    Ok(store::list_rom_scanners(paths)?.into_iter().filter(|s| !emulators.iter().any(|e| e.id == s.emulator_id)).collect())
 }
 
 /// How many saved ROM folders use a profile of an emulator.
@@ -216,7 +209,9 @@ mod tests {
             },
         )
         .unwrap();
-        let b = store::insert_user_emulator(&paths, UserEmulator { definition_id: "custom".into(), name: "B".into(), ..Default::default() }).unwrap();
+        let b =
+            store::insert_user_emulator(&paths, UserEmulator { definition_id: "custom".into(), name: "B".into(), ..Default::default() })
+                .unwrap();
         for dir in ["/r1", "/r2"] {
             store::upsert_rom_scanner(
                 &paths,
@@ -231,10 +226,7 @@ mod tests {
         }
         json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
             for (k, e) in [("g1", Some(&a.id)), ("g2", Some(&a.id)), ("g3", None)] {
-                f.games.insert(
-                    k.into(),
-                    LocalGameMeta { app_name: k.into(), emulator_id: e.cloned(), ..Default::default() },
-                );
+                f.games.insert(k.into(), LocalGameMeta { app_name: k.into(), emulator_id: e.cloned(), ..Default::default() });
             }
             Ok(())
         })

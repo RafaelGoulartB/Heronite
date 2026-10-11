@@ -35,7 +35,13 @@ fn phase<T>(name: &str, f: impl FnOnce() -> T) -> T {
     let base = status("VmRSS:");
     let t = Instant::now();
     let r = f();
-    println!("  [{name}] wall {:.0} ms | RSS before {:.1} MB, peak {:.1} MB, after {:.1} MB", t.elapsed().as_secs_f64() * 1e3, mb(base), mb(status("VmHWM:")), mb(status("VmRSS:")));
+    println!(
+        "  [{name}] wall {:.0} ms | RSS before {:.1} MB, peak {:.1} MB, after {:.1} MB",
+        t.elapsed().as_secs_f64() * 1e3,
+        mb(base),
+        mb(status("VmHWM:")),
+        mb(status("VmRSS:"))
+    );
     r
 }
 
@@ -52,8 +58,16 @@ fn main() {
     };
     let (tw, th) = (flag(&mut args, "--tw", 250), flag(&mut args, "--th", 375));
     let threads = flag(&mut args, "--threads", 3) as usize;
-    let keep = if let Some(i) = args.iter().position(|a| a == "--keep") { args.remove(i); true } else { false };
-    let cache: PathBuf = args.first().map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap()).join(".local/share/heronite/images-cache"));
+    let keep = if let Some(i) = args.iter().position(|a| a == "--keep") {
+        args.remove(i);
+        true
+    } else {
+        false
+    };
+    let cache: PathBuf = args
+        .first()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap()).join(".local/share/heronite/images-cache"));
     let n: usize = args.get(1).map(|s| s.parse().unwrap()).unwrap_or(100);
 
     // Pick portrait JPEG covers and landscape heroes by header dims only.
@@ -64,7 +78,9 @@ fn main() {
             break;
         }
         let Ok(b) = std::fs::read(e.path()) else { continue };
-        if b.len() < 4096 { continue; }
+        if b.len() < 4096 {
+            continue;
+        }
         let Ok(r) = image::ImageReader::new(Cursor::new(&b)).with_guessed_format() else { continue };
         let Ok((w, h)) = r.into_dimensions() else { continue };
         if h > w && w >= 300 && covers.len() < n {
@@ -73,7 +89,15 @@ fn main() {
             heroes.push((e.path(), w, h, b.len()));
         }
     }
-    println!("cache {} | {} covers (e.g. {}x{}, avg {} KB), {} heroes | target {tw}x{th}", cache.display(), covers.len(), covers[0].1, covers[0].2, covers.iter().map(|c| c.3).sum::<usize>() / covers.len() / 1024, heroes.len());
+    println!(
+        "cache {} | {} covers (e.g. {}x{}, avg {} KB), {} heroes | target {tw}x{th}",
+        cache.display(),
+        covers.len(),
+        covers[0].1,
+        covers[0].2,
+        covers.iter().map(|c| c.3).sum::<usize>() / covers.len() / 1024,
+        heroes.len()
+    );
     let _ = std::fs::write("/proc/self/clear_refs", "5");
     println!("baseline RSS {:.1} MB", mb(status("VmRSS:")));
 
@@ -91,11 +115,18 @@ fn main() {
             let t = Instant::now();
             let d = load_cover(c, tw, th, &o).unwrap();
             ms.push(t.elapsed().as_secs_f64() * 1e3);
-            if keep { kept.push(d); }
+            if keep {
+                kept.push(d);
+            }
         }
         stats("cold load_cover", ms);
     });
-    println!("  retained outputs: {} x {:.0} KB = {:.1} MB", kept.len(), (tw * th * 4) as f64 / 1024.0, (kept.len() as u64 * (tw * th * 4) as u64) as f64 / 1048576.0);
+    println!(
+        "  retained outputs: {} x {:.0} KB = {:.1} MB",
+        kept.len(),
+        (tw * th * 4) as f64 / 1024.0,
+        (kept.len() as u64 * (tw * th * 4) as u64) as f64 / 1048576.0
+    );
     drop(kept);
 
     println!("\n== Cover: warm (thumb cache hit), sequential ==");
@@ -110,12 +141,21 @@ fn main() {
         stats("warm load_cover", ms);
     });
     let sz: u64 = std::fs::read_dir(tmp.join("thumbs")).unwrap().flatten().filter_map(|e| e.metadata().ok()).map(|m| m.len()).sum();
-    println!("  thumb cache: {:.1} MB on disk for {} covers (raw would be {:.1} MB)", sz as f64 / 1048576.0, chains.len(), (chains.len() as u32 * tw * th * 4) as f64 / 1048576.0);
+    println!(
+        "  thumb cache: {:.1} MB on disk for {} covers (raw would be {:.1} MB)",
+        sz as f64 / 1048576.0,
+        chains.len(),
+        (chains.len() as u32 * tw * th * 4) as f64 / 1048576.0
+    );
 
     println!("\n== Cover: decode-path comparison (no thumb cache) ==");
     let mut o2 = o.clone();
     o2.thumbs_dir = None;
-    for (name, scaled, f) in [("jpeg scaled + Lanczos3", true, Filter::Lanczos3), ("jpeg full    + Lanczos3", false, Filter::Lanczos3), ("jpeg scaled + Bilinear", true, Filter::Bilinear)] {
+    for (name, scaled, f) in [
+        ("jpeg scaled + Lanczos3", true, Filter::Lanczos3),
+        ("jpeg full    + Lanczos3", false, Filter::Lanczos3),
+        ("jpeg scaled + Bilinear", true, Filter::Bilinear),
+    ] {
         o2.jpeg_scaled_decode = scaled;
         o2.filter = f;
         let mut ms = Vec::new();

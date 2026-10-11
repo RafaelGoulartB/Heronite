@@ -269,7 +269,13 @@ pub fn fade_in<E: Styled + IntoElement + 'static>(id: impl Into<ElementId>, el: 
 
 /// `el` built at the spring position of `on` (0 = off, 1 = on); a new
 /// element starts settled. Without animations it is built at 0 or 1.
-pub fn spring<E: IntoElement + 'static>(id: impl Into<ElementId>, el: E, cfg: SpringConfig, on_: bool, build: impl FnOnce(E, f32) -> E + 'static) -> AnyElement {
+pub fn spring<E: IntoElement + 'static>(
+    id: impl Into<ElementId>,
+    el: E,
+    cfg: SpringConfig,
+    on_: bool,
+    build: impl FnOnce(E, f32) -> E + 'static,
+) -> AnyElement {
     if !on() {
         return build(el, if on_ { 1. } else { 0. }).into_any_element();
     }

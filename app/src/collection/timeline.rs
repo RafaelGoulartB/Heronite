@@ -55,13 +55,12 @@ impl CollectionView {
 
         let more = days.len() - shown;
         let footer = if more > 0 {
-            Some(
-                button_sm("timeline-more", ButtonKind::Ghost, format!("Show {} more", more.min(TIMELINE_DAYS * 2)))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.facts.timeline_days += TIMELINE_DAYS * 2;
-                        cx.notify();
-                    })),
-            )
+            Some(button_sm("timeline-more", ButtonKind::Ghost, format!("Show {} more", more.min(TIMELINE_DAYS * 2))).on_click(cx.listener(
+                |this, _, _, cx| {
+                    this.facts.timeline_days += TIMELINE_DAYS * 2;
+                    cx.notify();
+                },
+            )))
         } else if shown > TIMELINE_DAYS {
             Some(button_sm("timeline-less", ButtonKind::Ghost, "Show less").on_click(cx.listener(|this, _, _, cx| {
                 this.facts.timeline_days = TIMELINE_DAYS;
@@ -203,15 +202,11 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, til
                 .relative()
                 .flex_none()
                 .w(px(RAIL_W))
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(5.))
-                        .left(px(2.))
-                        .size(px(10.))
-                        .rounded_full()
-                        .bg(if day.sessions > 0 { theme::accent().into() } else { theme::white_a(0.4) }),
-                )
+                .child(div().absolute().top(px(5.)).left(px(2.)).size(px(10.)).rounded_full().bg(if day.sessions > 0 {
+                    theme::accent().into()
+                } else {
+                    theme::white_a(0.4)
+                }))
                 .when(has_next, |d| {
                     d.child(div().absolute().top(px(20.)).bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::white_a(0.1)))
                 }),

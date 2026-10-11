@@ -12,14 +12,10 @@ use heronite_emulation::detect::{detect_emulators, SystemEnv};
 use heronite_emulation::disc_id::{read_playstation_serial, serial_from_game_list_cache};
 use heronite_emulation::import::emu_app_name;
 use heronite_emulation::pathutil::normalize_key;
-use heronite_emulation::{
-    list_emulator_save_states, preview_rom_scan, store, HostEnv, RomScanArgs, RomScanImportArgs,
-};
+use heronite_emulation::{list_emulator_save_states, preview_rom_scan, store, HostEnv, RomScanArgs, RomScanImportArgs};
 
 fn fixture() -> Option<PathBuf> {
-    let p = std::env::var_os("HERONITE_FIXTURE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp/heronite-fixture"));
+    let p = std::env::var_os("HERONITE_FIXTURE").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp/heronite-fixture"));
     if p.join("local_library/emulators.json").exists() {
         Some(p)
     } else {
@@ -85,12 +81,7 @@ fn scan_preview_of_the_real_rom_folders() {
             preview.errors
         );
         for g in &preview.games {
-            println!(
-                "    {:<62} roms={} imported={}",
-                g.title,
-                g.roms.len(),
-                g.already_imported
-            );
+            println!("    {:<62} roms={} imported={}", g.title, g.roms.len(), g.already_imported);
         }
         assert!(preview.errors.is_empty());
         found += preview.games.len();
@@ -277,7 +268,11 @@ fn config_backup_of_a_copy_of_the_fixture() {
             .unwrap()
             .map(|e| {
                 let e = e.unwrap();
-                if e.file_type().unwrap().is_dir() { walk(&e.path()) } else { e.metadata().unwrap().len() }
+                if e.file_type().unwrap().is_dir() {
+                    walk(&e.path())
+                } else {
+                    e.metadata().unwrap().len()
+                }
             })
             .sum()
     }
@@ -287,10 +282,7 @@ fn config_backup_of_a_copy_of_the_fixture() {
 fn real_save_state_dirs_per_engine() {
     use heronite_emulation::save_states::{Engine, EngineContext};
     let env = HostEnv::system();
-    let ctx = EngineContext {
-        executable: Some("/data/Games/Emulation/PS2/emulator/pcsx2-v2.8.2.AppImage".into()),
-        ..Default::default()
-    };
+    let ctx = EngineContext { executable: Some("/data/Games/Emulation/PS2/emulator/pcsx2-v2.8.2.AppImage".into()), ..Default::default() };
     for (name, engine) in [
         ("pcsx2", Engine::Pcsx2),
         ("duckstation", Engine::DuckStation),
@@ -301,11 +293,7 @@ fn real_save_state_dirs_per_engine() {
     ] {
         for dir in engine.state_dirs(&env, &ctx, "/nonexistent/rom.bin", &[]) {
             let count = std::fs::read_dir(&dir)
-                .map(|rd| {
-                    rd.filter_map(|e| e.ok())
-                        .filter(|e| engine.parse(&e.file_name().to_string_lossy()).is_some())
-                        .count()
-                })
+                .map(|rd| rd.filter_map(|e| e.ok()).filter(|e| engine.parse(&e.file_name().to_string_lossy()).is_some()).count())
                 .ok();
             println!("{name:<12} {dir}  exists={} state files={:?}", count.is_some(), count);
         }

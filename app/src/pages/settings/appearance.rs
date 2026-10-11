@@ -24,8 +24,8 @@ use crate::collection::stage::{scrim_layers, Scrim};
 use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{button, caption, card, row, tabs, toggle_row, ButtonKind};
-use crate::ui::glass::glass_menu_surface;
 use crate::ui::fields::{meta_text, select_field};
+use crate::ui::glass::glass_menu_surface;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Field {
@@ -155,9 +155,7 @@ fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     let (blur, sat) = (a.blur, a.saturation / 100.);
     d.appearance.preview_task = Some(cx.spawn(async move |this, cx| {
         cx.background_executor().timer(Duration::from_millis(60)).await;
-        let decoded = cx
-            .background_spawn(async move { heronite_images::load_stage(&chain, 776, 148, blur, sat, &opts) })
-            .await;
+        let decoded = cx.background_spawn(async move { heronite_images::load_stage(&chain, 776, 148, blur, sat, &opts) }).await;
         if let Ok(decoded) = decoded {
             let frame = image::Frame::new(decoded.into_image_buffer());
             let img = Arc::new(RenderImage::new(smallvec::smallvec![frame]));
@@ -280,7 +278,14 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
         .justify_between()
         .gap(px(16.))
         .py(px(14.))
-        .child(div().flex().flex_col().gap(px(1.)).child(div().text_size(px(14.)).text_color(theme::text_primary()).child("Preview")).child(meta_text("A menu with the current settings.")))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(1.))
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child("Preview"))
+                .child(meta_text("A menu with the current settings.")),
+        )
         .child(sample);
     rows.push(sample_row.into_any_element());
     card(rows)
@@ -316,19 +321,21 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 .py(px(10.))
                 .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(white()).child("Live preview"))
                 .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(theme::white_a(0.8))
-                        .child("Titles, details and tags sit on top of this layer."),
+                    div().text_size(px(12.)).text_color(theme::white_a(0.8)).child("Titles, details and tags sit on top of this layer."),
                 ),
         );
 
-    let mut rows: Vec<AnyElement> = vec![toggle_row("bg-enabled", "Use the game artwork as page background", Some("Only behind the Collection list and the game details."), a.enabled)
-        .on_click(cx.listener(|d, _, _, cx| {
-            d.appearance.enabled = !d.appearance.enabled;
-            save_background(d, cx);
-        }))
-        .into_any_element()];
+    let mut rows: Vec<AnyElement> = vec![toggle_row(
+        "bg-enabled",
+        "Use the game artwork as page background",
+        Some("Only behind the Collection list and the game details."),
+        a.enabled,
+    )
+    .on_click(cx.listener(|d, _, _, cx| {
+        d.appearance.enabled = !d.appearance.enabled;
+        save_background(d, cx);
+    }))
+    .into_any_element()];
     for (field, state) in &a.sliders {
         let label = match field {
             Field::CollectionOpacity => format!("Opacity: {}%", a.ui.collection_opacity.round()),
@@ -376,13 +383,18 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         a.saturation = defaults.saturation.get() as f32;
         a.scrim = defaults.scrim.get() as f32;
         a.ui.collection_opacity = Appearance::default().collection_opacity;
-        set_sliders(a, &[
-            (Field::CollectionOpacity, a.ui.collection_opacity),
-            (Field::Blur, a.blur),
-            (Field::Dimming, a.dimming),
-            (Field::Saturation, a.saturation),
-            (Field::Scrim, a.scrim),
-        ], window, cx);
+        set_sliders(
+            a,
+            &[
+                (Field::CollectionOpacity, a.ui.collection_opacity),
+                (Field::Blur, a.blur),
+                (Field::Dimming, a.dimming),
+                (Field::Saturation, a.saturation),
+                (Field::Scrim, a.scrim),
+            ],
+            window,
+            cx,
+        );
         schedule_preview(d, cx);
         apply_interface(d, true, cx);
         save_background(d, cx);
@@ -399,8 +411,12 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     }));
     let interface = interface_group(a, cx);
     let covers = card([
-        row("Cover aspect", Some("Shape of the covers in the grid, the details panel and related games."), div().w(px(200.)).child(aspect_select))
-            .into_any_element(),
+        row(
+            "Cover aspect",
+            Some("Shape of the covers in the grid, the details panel and related games."),
+            div().w(px(200.)).child(aspect_select),
+        )
+        .into_any_element(),
         toggle_row("grey-uninstalled", "Show uninstalled games in grey", None, grey)
             .on_click(cx.listener(move |d, _, _, cx| {
                 let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);
@@ -415,14 +431,32 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .child(preview)
         .child(div().h(px(10.)))
         .child(background)
-        .child(div().flex().items_center().justify_between().gap(px(12.)).mt(px(10.)).child(
-            div().flex_1().pl(px(6.)).child(meta_text("Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")),
-        ).child(reset))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(12.))
+                .mt(px(10.))
+                .child(div().flex_1().pl(px(6.)).child(meta_text(
+                    "Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit.",
+                )))
+                .child(reset),
+        )
         .child(caption("Interface background"))
         .child(interface)
-        .child(div().flex().items_center().justify_between().gap(px(12.)).mt(px(10.)).child(
-            div().flex_1().pl(px(6.)).child(meta_text("Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.")),
-        ).child(reset_interface))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(12.))
+                .mt(px(10.))
+                .child(div().flex_1().pl(px(6.)).child(meta_text(
+                    "Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.",
+                )))
+                .child(reset_interface),
+        )
         .child(caption("Covers"))
         .child(covers)
         .into_any_element()
@@ -447,12 +481,33 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         Row::number("bg-scrim", "Edge shading", n(a.scrim), 0, 150, 5, "%"),
         Row::action("bg-reset", "Reset the background"),
         Row::header("Interface background"),
-        Row::choice("ui-mode", "Panels", vec!["Transparent".into(), "Solid".into()], if a.ui.interface_mode == InterfaceMode::Solid { 1 } else { 0 }),
+        Row::choice(
+            "ui-mode",
+            "Panels",
+            vec!["Transparent".into(), "Solid".into()],
+            if a.ui.interface_mode == InterfaceMode::Solid { 1 } else { 0 },
+        ),
     ];
     match a.ui.interface_mode {
         InterfaceMode::Transparent => {
-            rows.push(Row::number("ui-opacity", "Opacity", n(a.ui.interface_opacity), INTERFACE_OPACITY_RANGE.0 as i64, INTERFACE_OPACITY_RANGE.1 as i64, 2, "%"));
-            rows.push(Row::number("ui-blur", "Blur", n(a.ui.interface_blur), INTERFACE_BLUR_RANGE.0 as i64, INTERFACE_BLUR_RANGE.1 as i64, INTERFACE_BLUR_STEP as i64, " px"));
+            rows.push(Row::number(
+                "ui-opacity",
+                "Opacity",
+                n(a.ui.interface_opacity),
+                INTERFACE_OPACITY_RANGE.0 as i64,
+                INTERFACE_OPACITY_RANGE.1 as i64,
+                2,
+                "%",
+            ));
+            rows.push(Row::number(
+                "ui-blur",
+                "Blur",
+                n(a.ui.interface_blur),
+                INTERFACE_BLUR_RANGE.0 as i64,
+                INTERFACE_BLUR_RANGE.1 as i64,
+                INTERFACE_BLUR_STEP as i64,
+                " px",
+            ));
         }
         InterfaceMode::Solid => {
             let tints: Vec<SharedString> = SolidTint::ALL.iter().map(|t| SharedString::from(t.label())).collect();
@@ -469,7 +524,12 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     rows
 }
 
-pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+pub(super) fn console_apply(
+    d: &mut SettingsPage,
+    outcome: crate::console::list::Outcome,
+    window: &mut Window,
+    cx: &mut Context<SettingsPage>,
+) {
     use crate::console::list::{Outcome, Value};
     match outcome {
         Outcome::Changed(id, Value::Number { value, .. }) => {
@@ -571,7 +631,12 @@ pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list:
                 a.ui.interface_opacity = defaults.interface_opacity;
                 a.ui.interface_blur = defaults.interface_blur;
                 a.ui.solid_tint = defaults.solid_tint;
-                set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
+                set_sliders(
+                    a,
+                    &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)],
+                    window,
+                    cx,
+                );
                 apply_interface(d, true, cx);
             }
             _ => {}
@@ -589,30 +654,58 @@ pub(super) fn palette_commands(d: Option<&SettingsPage>, loaded: Option<&Effecti
     let ui = d.map(|d| d.appearance.ui).unwrap_or_else(theme::appearance);
     let mut v = Vec::new();
     if let Some(bg) = d.map(|d| d.appearance.enabled).or(settings.map(|s| s.background.enabled)) {
-        v.push(if bg {
-            PageCommand::new("bg", "Turn off the background artwork", "The selected game's art behind the Collection", Icon::VisibilityOff)
-        } else {
-            PageCommand::new("bg", "Use the game artwork as background", "The selected game's art behind the Collection", Icon::Visibility)
+        v.push(
+            if bg {
+                PageCommand::new(
+                    "bg",
+                    "Turn off the background artwork",
+                    "The selected game's art behind the Collection",
+                    Icon::VisibilityOff,
+                )
+            } else {
+                PageCommand::new(
+                    "bg",
+                    "Use the game artwork as background",
+                    "The selected game's art behind the Collection",
+                    Icon::Visibility,
+                )
+            }
+            .keywords("appearance stage wallpaper picture backdrop"),
+        );
+    }
+    v.push(
+        match ui.interface_mode {
+            InterfaceMode::Transparent => {
+                PageCommand::new("mode", "Switch the interface to Solid", "Opaque panels in a solid colour", Icon::Tune)
+            }
+            InterfaceMode::Solid => {
+                PageCommand::new("mode", "Switch the interface to Transparent", "Glass panels over the game artwork", Icon::Tune)
+            }
         }
-        .keywords("appearance stage wallpaper picture backdrop"));
-    }
-    v.push(match ui.interface_mode {
-        InterfaceMode::Transparent => PageCommand::new("mode", "Switch the interface to Solid", "Opaque panels in a solid colour", Icon::Tune),
-        InterfaceMode::Solid => PageCommand::new("mode", "Switch the interface to Transparent", "Glass panels over the game artwork", Icon::Tune),
-    }
-    .keywords("appearance glass opaque panels menus dialogs theme"));
+        .keywords("appearance glass opaque panels menus dialogs theme"),
+    );
     for t in SolidTint::ALL {
         let current = ui.interface_mode == InterfaceMode::Solid && ui.solid_tint == t;
         v.push(
-            PageCommand::new(format!("tint:{}", t.as_str()), format!("Solid interface: {}", t.label()), "Panels in this colour", Icon::Tune)
-                .keywords("appearance colour color tint theme")
-                .disabled(current.then_some("In use")),
+            PageCommand::new(
+                format!("tint:{}", t.as_str()),
+                format!("Solid interface: {}", t.label()),
+                "Panels in this colour",
+                Icon::Tune,
+            )
+            .keywords("appearance colour color tint theme")
+            .disabled(current.then_some("In use")),
         );
     }
     if let Some(grey) = settings.map(|s| s.grey_uninstalled_games) {
         v.push(
-            PageCommand::new("grey", if grey { "Show uninstalled games in colour" } else { "Show uninstalled games in grey" }, "Covers of the Collection", Icon::GridView)
-                .keywords("appearance covers greyscale gray"),
+            PageCommand::new(
+                "grey",
+                if grey { "Show uninstalled games in colour" } else { "Show uninstalled games in grey" },
+                "Covers of the Collection",
+                Icon::GridView,
+            )
+            .keywords("appearance covers greyscale gray"),
         );
     }
     v

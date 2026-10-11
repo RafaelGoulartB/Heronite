@@ -14,13 +14,13 @@ use heronite_images::ImageRef;
 use heronite_metadata::{MetadataService, WebImage};
 
 use crate::dialogs::art_images::{picture, DialogImages};
-use crate::ui::fields::{new_input, search_box};
 use crate::dialogs::metadata_wizard::hub;
 use crate::dialogs::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
+use crate::ui::fields::{new_input, search_box};
 use crate::ui::icon;
 
 mod console;
@@ -163,15 +163,8 @@ impl Render for ImagePicker {
             ))
             .child(search_box(&self.query));
 
-        let mut grid = div()
-            .id("ag-pick-grid")
-            .flex()
-            .flex_wrap()
-            .gap(px(9.6))
-            .min_h(px(288.))
-            .max_h(px(380.))
-            .overflow_y_scroll()
-            .p(px(3.));
+        let mut grid =
+            div().id("ag-pick-grid").flex().flex_wrap().gap(px(9.6)).min_h(px(288.)).max_h(px(380.)).overflow_y_scroll().p(px(3.));
         if self.loading {
             grid = grid.child(
                 div()
@@ -235,14 +228,12 @@ impl Render for ImagePicker {
             .child(toolbar)
             .child(grid);
         if !self.loading && self.visible < self.results.len() {
-            body = body.child(
-                div().flex().justify_center().child(
-                    button("ag-pick-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
-                        this.visible += PAGE_SIZE;
-                        cx.notify();
-                    })),
-                ),
-            );
+            body = body.child(div().flex().justify_center().child(
+                button("ag-pick-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                    this.visible += PAGE_SIZE;
+                    cx.notify();
+                })),
+            ));
         }
         if !self.error.is_empty() {
             body = body.child(div().text_size(px(16.)).text_color(theme::danger_text()).child(self.error.clone()));
@@ -251,7 +242,13 @@ impl Render for ImagePicker {
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(action_button("ag-pick-cancel", ButtonKind::Ghost, "Cancel", true, cx.listener(|_, _, _, cx| cx.emit(PickerEvent::Close))))
+            .child(action_button(
+                "ag-pick-cancel",
+                ButtonKind::Ghost,
+                "Cancel",
+                true,
+                cx.listener(|_, _, _, cx| cx.emit(PickerEvent::Close)),
+            ))
             .child(action_button(
                 "ag-pick-select",
                 ButtonKind::Primary,

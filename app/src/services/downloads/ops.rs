@@ -53,10 +53,7 @@ impl Downloads {
             return;
         }
         let cancel = cancellable.then(Cancel::new);
-        self.busy.insert(
-            app_name.to_string(),
-            Busy { label: label.to_string().into(), percent: None, cancel: cancel.clone() },
-        );
+        self.busy.insert(app_name.to_string(), Busy { label: label.to_string().into(), percent: None, cancel: cancel.clone() });
         cx.notify();
         let (tx, mut rx) = unbounded::<OpMsg>();
         let data_paths = self.data_paths.clone();
@@ -160,8 +157,11 @@ impl Downloads {
             false,
             cx,
             |data_paths, lg, _, _| {
-                heronite_epic::moves::resume_interrupted_move(data_paths, lg)
-                    .unwrap_or_else(|| OpResult { ok: true, aborted: false, message: "The interrupted move was already finished".into() })
+                heronite_epic::moves::resume_interrupted_move(data_paths, lg).unwrap_or_else(|| OpResult {
+                    ok: true,
+                    aborted: false,
+                    message: "The interrupted move was already finished".into(),
+                })
             },
             |this, _, _| this.manager.start(),
         );
@@ -215,7 +215,13 @@ impl Downloads {
             let path = if configured.is_empty() {
                 match saves::detect_path(data_paths, &app) {
                     Ok(Some(p)) => p,
-                    Ok(None) => return OpResult { ok: false, aborted: false, message: "The save folder could not be detected; set it in the game settings".into() },
+                    Ok(None) => {
+                        return OpResult {
+                            ok: false,
+                            aborted: false,
+                            message: "The save folder could not be detected; set it in the game settings".into(),
+                        }
+                    }
                     Err(err) => return OpResult { ok: false, aborted: false, message: format!("{err:#}") },
                 }
             } else {

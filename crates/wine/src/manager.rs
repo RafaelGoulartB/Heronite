@@ -26,7 +26,13 @@ pub enum JobKind {
 pub enum JobPhase {
     /// Queued/starting (fetching the checksum, no bytes yet).
     Starting,
-    Downloading { percentage: f64, downloaded: u64, total: u64, speed: f64, eta_secs: Option<u64> },
+    Downloading {
+        percentage: f64,
+        downloaded: u64,
+        total: u64,
+        speed: f64,
+        eta_secs: Option<u64>,
+    },
     Unzipping,
     Removing,
 }
@@ -40,13 +46,27 @@ pub struct Job {
 /// Something the UI should react to (toast, reload the list).
 #[derive(Clone, Debug, PartialEq)]
 pub enum JobEvent {
-    Installed { version: String, update: bool },
-    Cancelled { version: String },
-    Removed { version: String },
-    Failed { version: String, message: String },
+    Installed {
+        version: String,
+        update: bool,
+    },
+    Cancelled {
+        version: String,
+    },
+    Removed {
+        version: String,
+    },
+    Failed {
+        version: String,
+        message: String,
+    },
     /// The release list was refreshed; `errors` lists repositories that failed.
-    Refreshed { errors: Vec<String> },
-    RefreshFailed { message: String },
+    Refreshed {
+        errors: Vec<String>,
+    },
+    RefreshFailed {
+        message: String,
+    },
 }
 
 struct Active {

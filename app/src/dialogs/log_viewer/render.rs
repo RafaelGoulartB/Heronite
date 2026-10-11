@@ -278,7 +278,13 @@ impl LogViewer {
         let c = &self.content;
         let mut footer = div().flex().items_center().gap(px(12.)).min_h(px(22.));
         if self.can_load_earlier() {
-            footer = footer.child(action_button("log-earlier", ButtonKind::Glass, "Load earlier", true, cx.listener(|this, _, _, cx| this.load_earlier(cx))));
+            footer = footer.child(action_button(
+                "log-earlier",
+                ButtonKind::Glass,
+                "Load earlier",
+                true,
+                cx.listener(|this, _, _, cx| this.load_earlier(cx)),
+            ));
         } else if c.skipped > 0 {
             footer = footer.child(meta_text("Only the end of this big log is shown here. Use Open file to see all of it."));
         }

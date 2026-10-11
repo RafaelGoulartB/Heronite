@@ -32,8 +32,13 @@ pub(super) struct GroupVm {
 /// Rows of the virtual list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ListItem {
-    Header { group: usize },
-    Row { group: usize, start: usize },
+    Header {
+        group: usize,
+    },
+    Row {
+        group: usize,
+        start: usize,
+    },
     /// Bottom padding of the list (2rem).
     End,
 }
@@ -61,8 +66,15 @@ pub(super) fn build_items(groups: &[GroupVm], columns: usize) -> Vec<ListItem> {
 pub(super) enum DetailValue {
     Text(SharedString),
     /// Chips; `facet` makes them clickable filters (`"developer"`, ...).
-    Chips { values: Vec<SharedString>, facet: Option<&'static str>, clamp: bool },
-    Folder { path: SharedString, size: Option<SharedString> },
+    Chips {
+        values: Vec<SharedString>,
+        facet: Option<&'static str>,
+        clamp: bool,
+    },
+    Folder {
+        path: SharedString,
+        size: Option<SharedString>,
+    },
 }
 
 #[derive(Clone)]

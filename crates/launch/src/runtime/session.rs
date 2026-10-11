@@ -42,20 +42,12 @@ pub(super) fn finish(
             Ok(o) => outcome = Some(o),
             Err(e) => {
                 log::error!("recording session of {}: {e:#}", req.app_name);
-                shared.send(LaunchEvent::Error {
-                    app_name: req.app_name.clone(),
-                    message: format!("could not record playtime: {e:#}"),
-                });
+                shared.send(LaunchEvent::Error { app_name: req.app_name.clone(), message: format!("could not record playtime: {e:#}") });
             }
         }
     }
     drop(ledger);
-    shared.send(LaunchEvent::Exited {
-        app_name: req.app_name.clone(),
-        elapsed,
-        exit,
-        record: outcome,
-    });
+    shared.send(LaunchEvent::Exited { app_name: req.app_name.clone(), elapsed, exit, record: outcome });
 }
 
 pub(super) fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, message: String) {
@@ -63,10 +55,7 @@ pub(super) fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, message:
     log.close();
     shared.sessions.lock().unwrap().remove(&req.app_name);
     log::error!("{}: {message}", req.app_name);
-    shared.send(LaunchEvent::Error {
-        app_name: req.app_name.clone(),
-        message,
-    });
+    shared.send(LaunchEvent::Error { app_name: req.app_name.clone(), message });
 }
 
 /// Marks the session's ledger finished however the session thread ends (also
@@ -104,9 +93,7 @@ pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<
     spawn_checkpointer(shared.clone(), req.app_name.clone(), control.clone());
     let log = open_game_log(&shared, &req);
     match &req.plan {
-        LaunchPlan::SteamUri { app_id, uri } => {
-            run_steam(&shared, &log, &req, &control, app_id, uri, started_at, t0)
-        }
+        LaunchPlan::SteamUri { app_id, uri } => run_steam(&shared, &log, &req, &control, app_id, uri, started_at, t0),
         LaunchPlan::Unavailable(r) => fail(&shared, &log, &req, r.clone()),
         other => {
             let process = other.process().expect("process plan").clone();

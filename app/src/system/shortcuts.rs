@@ -401,7 +401,10 @@ pub fn remove_from_steam(data_paths: &DataPaths, runner: &str, app_name: &str) -
     match steam::remove_game(&steam_dir, &game_id(&game)) {
         Ok(report) if report.errors.is_empty() => {
             if !report.users_done.is_empty() {
-                out.ok(format!("{} was successfully removed from Steam. A restart of Steam is required for changes to take effect.", game.title));
+                out.ok(format!(
+                    "{} was successfully removed from Steam. A restart of Steam is required for changes to take effect.",
+                    game.title
+                ));
             }
         }
         Ok(report) => {

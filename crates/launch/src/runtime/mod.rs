@@ -32,9 +32,7 @@ use state::{Control, Ledger, Shared};
 
 pub use fake::{FakeHandleState, FakeSpawner};
 pub use spawner::{ExitInfo, ProcessHandle, Spawner, SystemSpawner};
-pub use types::{
-    LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices, StopOptions, SystemInfoFn, CHECKPOINT_INTERVAL,
-};
+pub use types::{LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices, StopOptions, SystemInfoFn, CHECKPOINT_INTERVAL};
 
 /// Tracks running games. Cheap to clone.
 #[derive(Clone)]
@@ -93,7 +91,8 @@ impl Launcher {
     /// quits). Blocking file I/O: call it off the UI thread. Returns how
     /// many games were running.
     pub fn checkpoint_all(&self) -> usize {
-        let running: Vec<(String, Arc<Control>)> = self.shared.sessions.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let running: Vec<(String, Arc<Control>)> =
+            self.shared.sessions.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         let n = running.iter().filter(|(_, c)| c.playing.load(Ordering::SeqCst)).count();
         for (app_name, control) in &running {
             self.shared.checkpoint(control, app_name);
@@ -104,14 +103,7 @@ impl Launcher {
     /// Real processes, default timings.
     pub fn system(paths: DataPaths, steam: SteamLocator, events: Sender<LaunchEvent>) -> Self {
         let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
-        Self::new(
-            paths,
-            steam,
-            Arc::new(SystemSpawner::new(procs.clone())),
-            procs,
-            LauncherConfig::default(),
-            events,
-        )
+        Self::new(paths, steam, Arc::new(SystemSpawner::new(procs.clone())), procs, LauncherConfig::default(), events)
     }
 
     pub fn is_running(&self, app_name: &str) -> bool {
@@ -119,14 +111,7 @@ impl Launcher {
     }
 
     pub fn running_apps(&self) -> Vec<String> {
-        let mut v: Vec<String> = self
-            .shared
-            .sessions
-            .lock()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
+        let mut v: Vec<String> = self.shared.sessions.lock().unwrap().keys().cloned().collect();
         v.sort();
         v
     }
@@ -134,9 +119,7 @@ impl Launcher {
     /// Pid of the tracked process, once known.
     pub fn pid_of(&self, app_name: &str) -> Option<u32> {
         let s = self.shared.sessions.lock().unwrap();
-        s.get(app_name)
-            .map(|c| c.pid.load(Ordering::SeqCst))
-            .filter(|p| *p != 0)
+        s.get(app_name).map(|c| c.pid.load(Ordering::SeqCst)).filter(|p| *p != 0)
     }
 
     /// Starts the game in the background; progress arrives as [`LaunchEvent`]s.
@@ -144,11 +127,7 @@ impl Launcher {
         if let LaunchPlan::Unavailable(reason) = &req.plan {
             return Err(LaunchError::Unavailable(reason.clone()));
         }
-        let stop = req
-            .plan
-            .process()
-            .map(|p| p.stop.clone())
-            .unwrap_or_default();
+        let stop = req.plan.process().map(|p| p.stop.clone()).unwrap_or_default();
         let control = Arc::new(Control {
             abort: AtomicBool::new(false),
             kill: AtomicBool::new(false),
@@ -171,9 +150,7 @@ impl Launcher {
             }
             sessions.insert(req.app_name.clone(), control.clone());
         }
-        self.shared.send(LaunchEvent::Launching {
-            app_name: req.app_name.clone(),
-        });
+        self.shared.send(LaunchEvent::Launching { app_name: req.app_name.clone() });
         let shared = self.shared.clone();
         std::thread::Builder::new()
             .name(format!("launch-{}", req.app_name))

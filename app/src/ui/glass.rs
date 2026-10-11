@@ -70,14 +70,7 @@ fn layers(radius: f32) -> [AnyElement; 4] {
         // The real backdrop is the dark, scrimmed Collection; the raw art is brighter.
         div().absolute().inset_0().rounded(px(inner)).bg(dim).into_any_element(),
         div().absolute().inset_0().rounded(px(inner)).bg(fill).into_any_element(),
-        div()
-            .absolute()
-            .top_0()
-            .left(px(radius))
-            .right(px(radius))
-            .h(px(1.))
-            .bg(theme::glass_highlight())
-            .into_any_element(),
+        div().absolute().top_0().left(px(radius)).right(px(radius)).h(px(1.)).bg(theme::glass_highlight()).into_any_element(),
     ]
 }
 

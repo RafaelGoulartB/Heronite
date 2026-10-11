@@ -10,10 +10,7 @@ use heronite_launch::emulators::EmulatorsFile;
 use heronite_launch::plan::pick_rom_path;
 use heronite_launch::probe::SystemProbe;
 
-use super::{
-    engine_for, engine_id_for, thumbnail_for, Engine, EngineContext, EmulatorSaveState,
-    EmulatorSaveStateList, MAX_STATES,
-};
+use super::{engine_for, engine_id_for, thumbnail_for, EmulatorSaveState, EmulatorSaveStateList, Engine, EngineContext, MAX_STATES};
 use crate::catalog::emulator_definition;
 use crate::iso::iso_millis;
 use crate::pathutil::{join, unique};
@@ -67,9 +64,7 @@ pub(super) fn resolve(paths: &DataPaths, app_name: &str, rom_path: Option<&str>)
     let executable = if flatpak_id.is_some() {
         None
     } else {
-        Some(emulator.executable.clone())
-            .filter(|e| !e.is_empty())
-            .or_else(|| meta.remapped_executable.clone().filter(|e| !e.is_empty()))
+        Some(emulator.executable.clone()).filter(|e| !e.is_empty()).or_else(|| meta.remapped_executable.clone().filter(|e| !e.is_empty()))
     };
     let core_path = profile.and_then(|p| resolve_template(&emulator, p).core_path);
     Ok(Some(Resolved {
@@ -91,10 +86,7 @@ pub(super) fn collect_states(r: &Resolved, env: &HostEnv, keys: &[String], modif
     let mut seen = HashSet::new();
     for dir in unique(r.engine.state_dirs(env, &r.ctx, &r.rom_path, keys).into_iter().map(Some)) {
         let Ok(rd) = std::fs::read_dir(&dir) else { continue };
-        let mut names: Vec<String> = rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
+        let mut names: Vec<String> = rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         names.sort();
         for name in names {
             let Some(parsed) = r.engine.parse(&name) else { continue };
@@ -116,13 +108,7 @@ pub(super) fn collect_states(r: &Resolved, env: &HostEnv, keys: &[String], modif
             seen.insert(path.clone());
             found.push(Found {
                 key: parsed.key,
-                state: EmulatorSaveState {
-                    path,
-                    kind: parsed.kind,
-                    slot: parsed.slot,
-                    modified_at: iso_millis(mtime),
-                    thumbnail: None,
-                },
+                state: EmulatorSaveState { path, kind: parsed.kind, slot: parsed.slot, modified_at: iso_millis(mtime), thumbnail: None },
             });
         }
     }
@@ -132,11 +118,12 @@ pub(super) fn collect_states(r: &Resolved, env: &HostEnv, keys: &[String], modif
 
 pub(super) fn rom_keys_for(r: &Resolved, env: &HostEnv) -> Vec<String> {
     unique(
-        r.engine
-            .rom_keys(env, &r.ctx, &r.rom_path)
-            .into_iter()
-            .map(Some)
-            .chain([r.meta.save_state_keys.as_ref().and_then(|m| m.get(&r.rom_path)).cloned()]),
+        r.engine.rom_keys(env, &r.ctx, &r.rom_path).into_iter().map(Some).chain([r
+            .meta
+            .save_state_keys
+            .as_ref()
+            .and_then(|m| m.get(&r.rom_path))
+            .cloned()]),
     )
 }
 
@@ -224,7 +211,6 @@ mod tests {
     use std::fs;
 
     use crate::save_states::{s, set_pending_launch_state, PendingLaunchStates, SaveStateKind};
-
 
     /// End to end with a PCSX2 sandbox: ROM key from the game list cache,
     /// states listed newest first with thumbnails, pending args, and key

@@ -25,11 +25,7 @@ impl Vdf {
     /// Parses a document. The result is always an object holding the
     /// top-level keys (e.g. `AppState`, `libraryfolders`).
     pub fn parse(text: &str) -> Result<Vdf, VdfError> {
-        let mut p = Parser {
-            s: text.as_bytes(),
-            text,
-            i: 0,
-        };
+        let mut p = Parser { s: text.as_bytes(), text, i: 0 };
         let entries = p.entries(true)?;
         Ok(Vdf::Obj(entries))
     }
@@ -37,10 +33,7 @@ impl Vdf {
     /// Case-insensitive key lookup (Steam is inconsistent about casing).
     pub fn get(&self, key: &str) -> Option<&Vdf> {
         match self {
-            Vdf::Obj(entries) => entries
-                .iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case(key))
-                .map(|(_, v)| v),
+            Vdf::Obj(entries) => entries.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| v),
             Vdf::Str(_) => None,
         }
     }
@@ -136,10 +129,7 @@ impl Parser<'_> {
             }
             _ => {
                 let start = self.i;
-                while self.i < self.s.len()
-                    && !self.s[self.i].is_ascii_whitespace()
-                    && !matches!(self.s[self.i], b'{' | b'}' | b'"')
-                {
+                while self.i < self.s.len() && !self.s[self.i].is_ascii_whitespace() && !matches!(self.s[self.i], b'{' | b'}' | b'"') {
                     self.i += 1;
                 }
                 Ok(Some(Tok::Str(self.text[start..self.i].to_string())))
@@ -188,20 +178,17 @@ mod tests {
         let st = v.get("appstate").unwrap();
         assert_eq!(st.str_of("AppID"), Some("400"));
         assert_eq!(st.str_of("name"), Some("Portal \"x\""));
-        assert_eq!(
-            st.get("UserConfig").unwrap().str_of("language"),
-            Some("english")
-        );
+        assert_eq!(st.get("UserConfig").unwrap().str_of("language"), Some("english"));
     }
 
     #[test]
     fn parses_libraryfolders_in_both_formats() {
-        let modern = Vdf::parse("\"libraryfolders\" { \"0\" { \"path\" \"/a\" \"apps\" { \"1\" \"2\" } } \"1\" { \"path\" \"/b\" } }").unwrap();
+        let modern =
+            Vdf::parse("\"libraryfolders\" { \"0\" { \"path\" \"/a\" \"apps\" { \"1\" \"2\" } } \"1\" { \"path\" \"/b\" } }").unwrap();
         let folders = modern.get("libraryfolders").unwrap();
         assert_eq!(folders.entries().len(), 2);
         assert_eq!(folders.entries()[1].1.str_of("path"), Some("/b"));
-        let old = Vdf::parse("\"LibraryFolders\" { \"TimeNextStatsReport\" \"1\" \"1\" \"/old\" }")
-            .unwrap();
+        let old = Vdf::parse("\"LibraryFolders\" { \"TimeNextStatsReport\" \"1\" \"1\" \"/old\" }").unwrap();
         assert_eq!(old.get("libraryfolders").unwrap().str_of("1"), Some("/old"));
     }
 

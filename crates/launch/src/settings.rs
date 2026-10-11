@@ -145,10 +145,7 @@ impl GameSettings {
                 if exe.is_empty() {
                     continue;
                 }
-                wrapper_options.push(Wrapper {
-                    exe,
-                    args: text(e.get("args")),
-                });
+                wrapper_options.push(Wrapper { exe, args: text(e.get("args")) });
             }
         }
         let gs = match m.get("gamescope") {
@@ -274,15 +271,9 @@ impl GlobalSettings {
 
 /// Reads `GamesConfig/<appName>.json` (the section named after the game) and
 /// merges it over the global defaults.
-pub fn load_game_settings(
-    paths: &DataPaths,
-    app_name: &str,
-    global: &GlobalSettings,
-    probe: &dyn Probe,
-) -> GameSettings {
+pub fn load_game_settings(paths: &DataPaths, app_name: &str, global: &GlobalSettings, probe: &dyn Probe) -> GameSettings {
     let mut merged = global.defaults.clone();
-    let file =
-        heronite_data::json_store::read_value(&paths.game_config(app_name)).unwrap_or(Value::Null);
+    let file = heronite_data::json_store::read_value(&paths.game_config(app_name)).unwrap_or(Value::Null);
     if let Some(Value::Object(section)) = file.get(app_name) {
         for (k, v) in section {
             merged.insert(k.clone(), v.clone());
@@ -307,10 +298,7 @@ mod tests {
             "disableUMU": true
         });
         let s = GameSettings::from_map(m.as_object().unwrap(), "/home/u");
-        assert_eq!(
-            s.env_options,
-            vec![("A".into(), "x y".into()), ("B".into(), "1".into())]
-        );
+        assert_eq!(s.env_options, vec![("A".into(), "x y".into()), ("B".into(), "1".into())]);
         assert_eq!(s.wrapper_options[0].exe, "mangohud");
         assert_eq!(s.wine_version.bin, "/p/proton");
         assert_eq!(s.wine_prefix, "/home/u/pfx");
@@ -328,11 +316,8 @@ mod tests {
             r#"{"defaultSettings":{"useGameMode":true,"winePrefix":"/g","wineVersion":{"bin":"/w","name":"W","type":"wine"}},"version":"v0"}"#,
         )
         .unwrap();
-        std::fs::write(
-            paths.game_config("g1"),
-            r#"{"g1":{"useGameMode":false,"winePrefix":"/mine"},"version":"v0","explicit":true}"#,
-        )
-        .unwrap();
+        std::fs::write(paths.game_config("g1"), r#"{"g1":{"useGameMode":false,"winePrefix":"/mine"},"version":"v0","explicit":true}"#)
+            .unwrap();
         let global = GlobalSettings::load(&paths);
         let probe = crate::probe::FakeProbe::new("/h");
         let s = load_game_settings(&paths, "g1", &global, &probe);

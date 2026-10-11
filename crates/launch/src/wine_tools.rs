@@ -35,20 +35,12 @@ pub fn winetricks_path(ctx: &PlanContext) -> String {
 
 /// Builds the command for `tool` against the game's effective `settings`.
 /// `Err` explains why nothing can run (no usable Wine, missing winetricks...).
-pub fn build_tool_command(
-    ctx: &PlanContext,
-    probe: &dyn Probe,
-    settings: &GameSettings,
-    tool: &WineTool,
-) -> Result<ToolCommand, String> {
+pub fn build_tool_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, tool: &WineTool) -> Result<ToolCommand, String> {
     let wine = prepare(ctx, probe, settings)?;
     crate::shared_folders::map_for(&wine.settings);
     let mut notes = wine.notes.clone();
     if !probe.exists(&wine.settings.wine_prefix) {
-        notes.push(format!(
-            "The Wine prefix {} does not exist yet; Wine creates it on first run",
-            wine.settings.wine_prefix
-        ));
+        notes.push(format!("The Wine prefix {} does not exist yet; Wine creates it on first run", wine.settings.wine_prefix));
     }
     let command = match tool {
         WineTool::Winecfg => run_in_prefix(ctx, probe, &wine, vec!["winecfg".into()], None),
@@ -82,12 +74,7 @@ pub fn winetricks_install_command(
 
 /// `runWineCommand({ commandParts, protonVerb: 'run' })` for the game's Wine
 /// (used by the pre-launch preparation: DXVK overrides, `wineboot -u`).
-pub fn wine_command(
-    ctx: &PlanContext,
-    probe: &dyn Probe,
-    settings: &GameSettings,
-    parts: Vec<String>,
-) -> Result<Command, String> {
+pub fn wine_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, parts: Vec<String>) -> Result<Command, String> {
     wine_command_for(ctx, probe, settings, parts, None)
 }
 
@@ -105,13 +92,7 @@ pub fn wine_command_for(
 }
 
 /// `runWineCommand` with `protonVerb: 'run'`.
-fn run_in_prefix(
-    ctx: &PlanContext,
-    probe: &dyn Probe,
-    wine: &WineEnv,
-    parts: Vec<String>,
-    cwd: Option<String>,
-) -> Command {
+fn run_in_prefix(ctx: &PlanContext, probe: &dyn Probe, wine: &WineEnv, parts: Vec<String>, cwd: Option<String>) -> Command {
     run_in_prefix_at(ctx, probe, wine, parts, cwd, None)
 }
 
@@ -209,9 +190,7 @@ fn winetricks(
 
     let script = winetricks_path(ctx);
     if !probe.exists(&script) {
-        return Err(format!(
-            "winetricks was not found at {script}. It is downloaded with the Wine tools updates"
-        ));
+        return Err(format!("winetricks was not found at {script}. It is downloaded with the Wine tools updates"));
     }
     let wine_dir = node_dirname(&wine_version.bin);
     let path = probe.env_var("PATH").unwrap_or_default();
@@ -250,9 +229,9 @@ pub fn is_windows_program(path: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::emulators::EmulatorsFile;
     use crate::probe::FakeProbe;
     use crate::settings::{GlobalSettings, WineVersion};
-    use crate::emulators::EmulatorsFile;
     use heronite_data::DataPaths;
 
     fn ctx() -> PlanContext {
@@ -334,13 +313,8 @@ mod tests {
 
     #[test]
     fn umu_is_preferred_for_proton() {
-        let t = build_tool_command(
-            &ctx(),
-            &probe(),
-            &settings("proton", "/p/GE/proton"),
-            &WineTool::RunExe("/games/g.exe".into()),
-        )
-        .unwrap();
+        let t =
+            build_tool_command(&ctx(), &probe(), &settings("proton", "/p/GE/proton"), &WineTool::RunExe("/games/g.exe".into())).unwrap();
         assert_eq!(t.command.program, "/usr/bin/umu-run");
         assert_eq!(t.command.args, ["/games/g.exe"]);
         assert_eq!(t.command.env["PROTONPATH"], "/p/GE");

@@ -30,8 +30,7 @@ use crate::images::materialize_metadata_image;
 use crate::lutris::fetch_lutris_metadata;
 use crate::merge::{merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
 use crate::providers::{
-    fetch_playnite_metadata, metadata_from_playnite_game, metadata_from_store_game, PlayniteGame, PlayniteSource,
-    StoreLibraries,
+    fetch_playnite_metadata, metadata_from_playnite_game, metadata_from_store_game, PlayniteGame, PlayniteSource, StoreLibraries,
 };
 use crate::steam::{self, SteamAppDetails, SteamState};
 use crate::store::{as_runner, current_or_blank, get_game_metadata, list_game_metadata, upsert_game_metadata};
@@ -132,15 +131,9 @@ impl MetadataService {
     fn candidate_for(&self, source: &str, game: &MetadataApplyArgs) -> Option<MetadataCandidate> {
         let (app, runner) = (game.app_name.as_str(), game.runner.as_str());
         let metadata = match source {
-            "igdb" => self.igdb.fetch(
-                &self.http,
-                &self.credentials(),
-                app,
-                runner,
-                &game.title,
-                self.steam_id_for(game).as_deref(),
-                game.igdb_id,
-            ),
+            "igdb" => {
+                self.igdb.fetch(&self.http, &self.credentials(), app, runner, &game.title, self.steam_id_for(game).as_deref(), game.igdb_id)
+            }
             "steam" => steam::fetch_steam_metadata(
                 &self.paths,
                 &self.http,
@@ -219,23 +212,22 @@ impl MetadataService {
             preserve_manual,
             field_picks: args.field_picks.as_ref(),
         });
-        Ok(MetadataPreview {
-            app_name: args.app_name.clone(),
-            current,
-            proposed,
-            candidates,
-            igdb_configured: self.igdb_configured(),
-        })
+        Ok(MetadataPreview { app_name: args.app_name.clone(), current, proposed, candidates, igdb_configured: self.igdb_configured() })
     }
 
     /// `persistImages`.
     fn persist_images(&self, mut md: CollectionGameMetadata, download: bool) -> CollectionGameMetadata {
         md.cover_url = materialize_metadata_image(
-            &self.paths, &self.http, &md.runner, &md.app_name, ArtKind::Cover, md.cover_url.as_deref(), download,
+            &self.paths,
+            &self.http,
+            &md.runner,
+            &md.app_name,
+            ArtKind::Cover,
+            md.cover_url.as_deref(),
+            download,
         );
-        md.hero_url = materialize_metadata_image(
-            &self.paths, &self.http, &md.runner, &md.app_name, ArtKind::Hero, md.hero_url.as_deref(), download,
-        );
+        md.hero_url =
+            materialize_metadata_image(&self.paths, &self.http, &md.runner, &md.app_name, ArtKind::Hero, md.hero_url.as_deref(), download);
         md
     }
 

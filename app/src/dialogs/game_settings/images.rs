@@ -14,7 +14,7 @@ use crate::dialogs::screenshot_art::ScreenshotArtDialog;
 use crate::dialogs::web_image::{ArtEvent, WebImageDialog};
 use crate::dialogs::{DialogCtx, DialogEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, card, help_text, caption, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, help_text, ButtonKind};
 
 /// Width of the background preview inside the drawer card.
 const HERO_W: f32 = 500.;
@@ -24,8 +24,18 @@ impl GameSettingsDialog {
     pub(super) fn default_art(ctx: &DialogCtx, game: &Game) -> (Vec<ImageRef>, Vec<ImageRef>) {
         let shots = ctx.lib.settings.screenshots_folder().map(|p| p.to_path_buf());
         let art_ctx = ArtContext::new(&ctx.data_paths, shots.as_deref());
-        let old_cover = game.art.as_deref().and_then(|a| a.cover_url.clone()).map(|u| chain_for_url(&ctx.data_paths, shots.as_deref(), &u)).unwrap_or_default();
-        let old_hero = game.art.as_deref().and_then(|a| a.hero_url.clone()).map(|u| chain_for_url(&ctx.data_paths, shots.as_deref(), &u)).unwrap_or_default();
+        let old_cover = game
+            .art
+            .as_deref()
+            .and_then(|a| a.cover_url.clone())
+            .map(|u| chain_for_url(&ctx.data_paths, shots.as_deref(), &u))
+            .unwrap_or_default();
+        let old_hero = game
+            .art
+            .as_deref()
+            .and_then(|a| a.hero_url.clone())
+            .map(|u| chain_for_url(&ctx.data_paths, shots.as_deref(), &u))
+            .unwrap_or_default();
         let default_cover: Vec<ImageRef> =
             crate::images::to_chain(&art::card_cover(&art_ctx, game)).into_iter().filter(|r| !old_cover.contains(r)).collect();
         let default_hero: Vec<ImageRef> =
@@ -243,7 +253,10 @@ impl GameSettingsDialog {
             .flex()
             .flex_col()
             .gap(px(6.))
-            .child(help_text("These images are used in Collection. Steam art stays cached; a custom file replaces it until you reset.").px(px(6.)))
+            .child(
+                help_text("These images are used in Collection. Steam art stays cached; a custom file replaces it until you reset.")
+                    .px(px(6.)),
+            )
             .child(caption("Cover"))
             .child(card([cover.into_any_element()]))
             .child(caption("Background"))

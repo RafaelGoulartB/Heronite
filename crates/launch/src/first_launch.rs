@@ -89,11 +89,7 @@ pub fn record_game(prefix: &str, app_name: &str) -> std::io::Result<bool> {
 /// The prefix folder the EOS overlay commands take (`getWinePrefixFolder`):
 /// `pfx` inside a Proton prefix; `None` when it is not a Wine prefix yet.
 pub fn eos_prefix_folder(settings: &GameSettings, exists: &dyn Fn(&str) -> bool) -> Option<String> {
-    let folder = if settings.wine_version.kind == "proton" {
-        join(&settings.wine_prefix, "pfx")
-    } else {
-        settings.wine_prefix.clone()
-    };
+    let folder = if settings.wine_version.kind == "proton" { join(&settings.wine_prefix, "pfx") } else { settings.wine_prefix.clone() };
     exists(&join(&folder, "user.reg")).then_some(folder)
 }
 
@@ -156,12 +152,8 @@ impl Prep<'_> {
         let ok = run_wait(self.spawner, &cmd, timeout, self.cancel);
         if wait && !self.cancelled() {
             if let Some(server) = &settings.wine_version.wineserver {
-                let wait_cmd = crate::plan::Command {
-                    program: server.clone(),
-                    args: vec!["--wait".into()],
-                    env: cmd.env.clone(),
-                    cwd: None,
-                };
+                let wait_cmd =
+                    crate::plan::Command { program: server.clone(), args: vec!["--wait".into()], env: cmd.env.clone(), cwd: None };
                 run_wait(self.spawner, &wait_cmd, timeout, self.cancel);
             }
         }
@@ -386,15 +378,7 @@ mod tests {
             let seen = Mutex::new(Vec::new());
             let sink = |n: Notice| seen.lock().unwrap().push(n);
             let net = FakeNet::offline();
-            let prep = Prep {
-                paths: &self.paths,
-                probe,
-                net: &net,
-                spawner: &self.spawner,
-                cloud: None,
-                cancel: &|| false,
-                notify: &sink,
-            };
+            let prep = Prep { paths: &self.paths, probe, net: &net, spawner: &self.spawner, cloud: None, cancel: &|| false, notify: &sink };
             let flow = prep.first_launch(spec, epic);
             let notices = seen.into_inner().unwrap();
             (flow, notices)
@@ -415,12 +399,7 @@ mod tests {
     }
 
     fn base() -> FirstLaunch {
-        FirstLaunch {
-            app_name: "Calluna".into(),
-            install_path: "/games/Control".into(),
-            platform: "Windows".into(),
-            ..Default::default()
-        }
+        FirstLaunch { app_name: "Calluna".into(), install_path: "/games/Control".into(), platform: "Windows".into(), ..Default::default() }
     }
 
     #[test]
@@ -457,10 +436,7 @@ mod tests {
     fn prerequisites_run_in_the_prefix_once() {
         let fx = Fx::new();
         let epic = FakeEpic::new(
-            Some(Prerequisite {
-                path: "Engine\\Extras\\Redist\\UEPrereqSetup_x64.exe".into(),
-                args: "/silent /name \"Some Name\"".into(),
-            }),
+            Some(Prerequisite { path: "Engine\\Extras\\Redist\\UEPrereqSetup_x64.exe".into(), args: "/silent /name \"Some Name\"".into() }),
             false,
             false,
         );
@@ -476,10 +452,7 @@ mod tests {
         assert_eq!(cmds[0].env["WINEPREFIX"], fx.prefix);
         assert_eq!((cmds[1].program.as_str(), cmds[1].args.as_slice()), ("/w/bin/wineserver", ["--wait".to_string()].as_slice()));
         assert_eq!(cmds[2].program, "/w/bin/wine");
-        assert_eq!(
-            cmds[2].args,
-            ["/games/Control/Engine/Extras/Redist/UEPrereqSetup_x64.exe", "/silent", "/name", "Some Name"]
-        );
+        assert_eq!(cmds[2].args, ["/games/Control/Engine/Extras/Redist/UEPrereqSetup_x64.exe", "/silent", "/name", "Some Name"]);
         assert_eq!(cmds[2].env["STEAM_COMPAT_INSTALL_PATH"], "/games/Control");
         assert_eq!(cmds.len(), 4);
         assert_eq!(std::fs::read_to_string(join(&fx.prefix, "installed_games")).unwrap(), r#"["Calluna"]"#);
@@ -564,9 +537,7 @@ mod tests {
         assert_eq!(tricks[0].args, ["-q", "vcrun2022"]);
         assert_eq!(tricks[1].args, ["-q", "d3dcompiler_47"]);
         assert_eq!(tricks[0].env["WINEPREFIX"], fx.prefix);
-        assert!(cmds
-            .iter()
-            .any(|c| c.args == ["/games/Control/EpicOnlineServices/EpicOnlineServicesInstaller.exe"]));
+        assert!(cmds.iter().any(|c| c.args == ["/games/Control/EpicOnlineServices/EpicOnlineServicesInstaller.exe"]));
         // The verbs come before the programs.
         let at = |needle: &str| cmds.iter().position(|c| c.args.iter().any(|a| a.contains(needle))).unwrap();
         assert!(at("d3dcompiler_47") < at("EpicOnlineServicesInstaller"));
@@ -577,10 +548,7 @@ mod tests {
         // winetricks missing: warning, the launch goes on.
         let fx = Fx::new();
         let spec = fx.spec(FirstLaunch { winetricks: vec!["vcrun2022".into()], ..base() });
-        let p = FakeProbe::new("/home/u")
-            .with_path("/w/bin/wine")
-            .with_path("/w/bin/wineserver")
-            .with_path(&fx.prefix);
+        let p = FakeProbe::new("/home/u").with_path("/w/bin/wine").with_path("/w/bin/wineserver").with_path(&fx.prefix);
         let (flow, notices) = fx.run(&spec, None, &p);
         assert_eq!(flow, Flow::Go);
         assert!(notices.iter().any(|n| n.warning && n.message.contains("vcrun2022")), "{notices:?}");
@@ -631,7 +599,8 @@ mod tests {
         assert!(seen.len() >= 3 && seen.iter().all(|recorded| !recorded), "{seen:?}");
         assert!(is_recorded(&fx.prefix, "Calluna"));
         // Written atomically: nothing but the marker next to it.
-        let tmp: Vec<_> = std::fs::read_dir(&fx.prefix).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".tmp")).collect();
+        let tmp: Vec<_> =
+            std::fs::read_dir(&fx.prefix).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".tmp")).collect();
         assert!(tmp.is_empty());
     }
 

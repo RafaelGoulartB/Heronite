@@ -180,7 +180,10 @@ mod tests {
 
     #[test]
     fn platform_detection_and_run_as() {
-        let probe = FakeProbe::new("/h").with_file("/g/elf", b"\x7fELF\x02").with_file("/g/pe", b"MZ\x90").with_file("/g/blob", b"\x00\x01\x02\x03");
+        let probe = FakeProbe::new("/h")
+            .with_file("/g/elf", b"\x7fELF\x02")
+            .with_file("/g/pe", b"MZ\x90")
+            .with_file("/g/blob", b"\x00\x01\x02\x03");
         assert_eq!(detect_platform("/g/elf", &probe), Some(SideloadPlatform::Linux));
         assert_eq!(detect_platform("/g/pe", &probe), Some(SideloadPlatform::Windows));
         assert_eq!(detect_platform("/g/blob", &probe), None);

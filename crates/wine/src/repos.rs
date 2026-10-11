@@ -45,9 +45,7 @@ impl Repository {
     }
 
     pub fn from_kind(kind: &str) -> Option<Self> {
-        [Repository::ProtonGe, Repository::ProtonCachyos, Repository::Proton, Repository::WineLutris]
-            .into_iter()
-            .find(|r| r.kind() == kind)
+        [Repository::ProtonGe, Repository::ProtonCachyos, Repository::Proton, Repository::WineLutris].into_iter().find(|r| r.kind() == kind)
     }
 
     /// Blurb under the tabs (Heroic `wineExplanation.*`).
@@ -157,10 +155,7 @@ pub fn parse_releases(repo: Repository, json: &str) -> Result<Vec<WineVersionInf
     }
 
     if !releases.is_empty() {
-        let latest = releases
-            .iter()
-            .find(|r| ends_with_digits_dash_digits(&r.version))
-            .unwrap_or(&releases[0]);
+        let latest = releases.iter().find(|r| ends_with_digits_dash_digits(&r.version)).unwrap_or(&releases[0]);
         let entry = WineVersionInfo {
             version: format!("{}-latest", latest.kind),
             kind: latest.kind.clone(),
@@ -181,9 +176,8 @@ pub fn parse_releases(repo: Repository, json: &str) -> Result<Vec<WineVersionInf
 /// it on demand only).
 pub fn fetch_releases(repo: Repository, count: usize) -> Result<Vec<WineVersionInfo>> {
     let url = format!("{}?per_page={count}", repo.api_url());
-    let body = http_get_text(&url, 2 * 1024 * 1024).map_err(|e| {
-        anyhow!("Could not fetch available releases from {}: {e}", repo.api_url())
-    })?;
+    let body =
+        http_get_text(&url, 2 * 1024 * 1024).map_err(|e| anyhow!("Could not fetch available releases from {}: {e}", repo.api_url()))?;
     parse_releases(repo, &body)
 }
 
@@ -215,7 +209,13 @@ pub(crate) fn http_get_text(url: &str, max: u64) -> Result<String> {
         .call()
         .map_err(|e| match e {
             ureq::Error::StatusCode(403) | ureq::Error::StatusCode(429) => {
-                anyhow!("GitHub API rate limit reached (HTTP {}), try again later", match e { ureq::Error::StatusCode(c) => c, _ => 0 })
+                anyhow!(
+                    "GitHub API rate limit reached (HTTP {}), try again later",
+                    match e {
+                        ureq::Error::StatusCode(c) => c,
+                        _ => 0,
+                    }
+                )
             }
             ureq::Error::StatusCode(c) => anyhow!("HTTP {c}"),
             e => anyhow!("{e}"),

@@ -48,7 +48,8 @@ impl CollectionView {
             "statuses" => self.open_manage_statuses(window, cx),
             "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
             // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves
-            w @ ("gamesettings:wine" | "gamesettings:other" | "gamesettings:advanced" | "gamesettings:gamescope" | "gamesettings:saves") => {
+            w
+            @ ("gamesettings:wine" | "gamesettings:other" | "gamesettings:advanced" | "gamesettings:gamescope" | "gamesettings:saves") => {
                 use crate::dialogs::game_settings::Tab;
                 let tab = match w {
                     "gamesettings:wine" => Tab::Wine,
@@ -69,7 +70,9 @@ impl CollectionView {
             }
             w if w.starts_with("manual-install:") => self.open_manual_install(&w["manual-install:".len()..], window, cx),
             w if w.starts_with("local-uninstall:") => self.open_sideload_uninstall(&w["local-uninstall:".len()..], window, cx),
-            w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => self.open_extras_debug(which.as_str(), window, cx),
+            w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => {
+                self.open_extras_debug(which.as_str(), window, cx)
+            }
             w if w.starts_with("add-game") || w.starts_with("edit-game") => {
                 self.add_game_debug_dialog(w, window, cx);
             }

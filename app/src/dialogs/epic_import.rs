@@ -68,7 +68,15 @@ impl EpicImportPicker {
             .ok();
         })
         .detach();
-        Self { games: Vec::new(), loaded: false, filter, picked: None, console_list: Default::default(), console_query: String::new(), layer: Default::default() }
+        Self {
+            games: Vec::new(),
+            loaded: false,
+            filter,
+            picked: None,
+            console_list: Default::default(),
+            console_query: String::new(),
+            layer: Default::default(),
+        }
     }
 }
 

@@ -69,17 +69,13 @@ impl Procs for SystemProcs {
             return false;
         }
         match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
-            Ok(stat) => parse_stat(&stat)
-                .map(|(s, _)| s != 'Z' && s != 'X')
-                .unwrap_or(false),
+            Ok(stat) => parse_stat(&stat).map(|(s, _)| s != 'Z' && s != 'X').unwrap_or(false),
             Err(_) => false,
         }
     }
 
     fn comm(&self, pid: u32) -> Option<String> {
-        std::fs::read_to_string(format!("/proc/{pid}/comm"))
-            .ok()
-            .map(|s| s.trim().to_string())
+        std::fs::read_to_string(format!("/proc/{pid}/comm")).ok().map(|s| s.trim().to_string())
     }
 
     fn children(&self, pid: u32) -> Vec<u32> {
@@ -92,10 +88,7 @@ impl Procs for SystemProcs {
                 continue;
             };
             if let Ok(stat) = std::fs::read_to_string(format!("/proc/{child}/stat")) {
-                if parse_stat(&stat)
-                    .map(|(_, ppid)| ppid == pid)
-                    .unwrap_or(false)
-                {
+                if parse_stat(&stat).map(|(_, ppid)| ppid == pid).unwrap_or(false) {
                     out.push(child);
                 }
             }
@@ -161,12 +154,7 @@ impl Procs for FakeProcs {
     }
     fn children(&self, pid: u32) -> Vec<u32> {
         let s = self.inner.lock().unwrap();
-        let mut v: Vec<u32> = s
-            .parents
-            .iter()
-            .filter(|(c, p)| **p == pid && s.alive.contains(c))
-            .map(|(c, _)| *c)
-            .collect();
+        let mut v: Vec<u32> = s.parents.iter().filter(|(c, p)| **p == pid && s.alive.contains(c)).map(|(c, _)| *c).collect();
         v.sort_unstable();
         v
     }
@@ -181,10 +169,7 @@ mod tests {
 
     #[test]
     fn parses_stat_with_odd_comm() {
-        assert_eq!(
-            parse_stat("42 (my (weird) app) S 7 42 42 0"),
-            Some(('S', 7))
-        );
+        assert_eq!(parse_stat("42 (my (weird) app) S 7 42 42 0"), Some(('S', 7)));
         assert_eq!(parse_stat("42 (x) Z 1 0"), Some(('Z', 1)));
     }
 

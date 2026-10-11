@@ -126,10 +126,7 @@ impl Session {
             }
         })
         .detach();
-        let svc = CaptureService::new(
-            std_tx,
-            ServiceOptions { portal_app_id: Some("com.heronite.launcher".into()), ..Default::default() },
-        );
+        let svc = CaptureService::new(std_tx, ServiceOptions { portal_app_id: Some("com.heronite.launcher".into()), ..Default::default() });
         if let Some(cfg) = self.capture_cfg.clone() {
             svc.set_config(cfg);
         }

@@ -17,7 +17,6 @@
 //! launcher staying alive. The launcher appends its own lines (header before
 //! the spawn, "exited" and "End of log" after) to the same file.
 
-
 mod format;
 mod game_log;
 mod header;

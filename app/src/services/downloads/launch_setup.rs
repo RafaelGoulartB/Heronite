@@ -28,6 +28,10 @@ impl heronite_launch::first_launch::EpicSetup for EpicLaunchSetup {
     fn eos_overlay_enable(&self, prefix: &str) -> Result<(), String> {
         let lg = Legendary::locate(&self.0).map_err(|e| format!("{e:#}"))?;
         let r = eos_overlay::enable(&lg, Some(prefix));
-        if r.ok { Ok(()) } else { Err(r.message) }
+        if r.ok {
+            Ok(())
+        } else {
+            Err(r.message)
+        }
     }
 }

@@ -71,21 +71,16 @@ impl CollectionView {
                 }
                 (None, None) => (String::new(), None),
             };
-            let mut row = div()
-                .flex()
-                .w_full()
-                .items_center()
-                .gap(px(10.))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(5.))
-                        .flex_1()
-                        .min_w_0()
-                        .child(div().text_size(px(13.33)).text_color(white()).child(label))
-                        .child(progress_bar(percent, 5., theme::accent())),
-                );
+            let mut row = div().flex().w_full().items_center().gap(px(10.)).child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(5.))
+                    .flex_1()
+                    .min_w_0()
+                    .child(div().text_size(px(13.33)).text_color(white()).child(label))
+                    .child(progress_bar(percent, 5., theme::accent())),
+            );
             if queue.is_some() && active.is_none() && !first {
                 // Waiting behind other downloads: it can only be taken out of the queue.
                 let remove_app = app.clone();
@@ -102,14 +97,12 @@ impl CollectionView {
             } else if queue.is_some() && active.is_none() {
                 let paused = !running;
                 row = row
-                    .child(
-                        round_btn("epic-focus-pause", if paused { Icon::PlayArrow } else { Icon::Pause }).on_click(cx.listener(
-                            move |this, _, _, cx| {
-                                let svc = this.epic_service(cx);
-                                svc.update(cx, |s, _| if s.is_running() { s.pause() } else { s.resume() });
-                            },
-                        )),
-                    )
+                    .child(round_btn("epic-focus-pause", if paused { Icon::PlayArrow } else { Icon::Pause }).on_click(cx.listener(
+                        move |this, _, _, cx| {
+                            let svc = this.epic_service(cx);
+                            svc.update(cx, |s, _| if s.is_running() { s.pause() } else { s.resume() });
+                        },
+                    )))
                     .child(round_btn("epic-focus-open", Icon::Downloading).on_click(cx.listener(|this, _, _, cx| {
                         this.epic.pending = Some(Request::OpenDownloads);
                         cx.notify();
@@ -146,7 +139,6 @@ impl CollectionView {
         None
     }
 
-
     /// The Epic actions `game` offers now (none for other runners).
     pub(in crate::collection) fn epic_actions(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<GameActionItem> {
         let mut v = Vec::new();
@@ -158,12 +150,7 @@ impl CollectionView {
             let s = svc.read(cx);
             (s.busy_of(&game.app_name).is_some(), s.queued(&game.app_name).is_some(), s.has_update(&game.app_name))
         };
-        let cloud = game
-            .game
-            .rest
-            .get("cloud_save_enabled")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+        let cloud = game.game.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false);
         // The Collection's game model leaves these out; the service read them from the library file.
         let flags = svc.read(cx).game_flags(&game.app_name);
         let (third_party, has_dlcs) = (flags.third_party, flags.has_dlcs);

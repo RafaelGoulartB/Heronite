@@ -182,7 +182,16 @@ pub fn focus_pill(radius: f32) -> AnyElement {
 
 /// Base of a focusable row: transparent, or the light pill when focused.
 pub fn row_base(focused: bool) -> Div {
-    let d = div().relative().flex().items_center().gap(u(16.)).min_h(u(56.)).px(u(22.)).rounded(u(14.)).border_2().border_color(transparent_black());
+    let d = div()
+        .relative()
+        .flex()
+        .items_center()
+        .gap(u(16.))
+        .min_h(u(56.))
+        .px(u(22.))
+        .rounded(u(14.))
+        .border_2()
+        .border_color(transparent_black());
     if focused {
         d.text_color(theme::console_on_focus()).child(focus_pill(14.))
     } else {
@@ -269,10 +278,7 @@ pub fn tabs(items: &[SharedString], active: usize) -> Div {
 
 /// "21:04".
 pub fn clock() -> Div {
-    div()
-        .text_size(u(16.))
-        .text_color(theme::text_primary())
-        .child(chrono::Local::now().format("%H:%M").to_string())
+    div().text_size(u(16.)).text_color(theme::text_primary()).child(chrono::Local::now().format("%H:%M").to_string())
 }
 
 /// Section caption inside a list ("Display", "Controls").

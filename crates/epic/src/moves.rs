@@ -187,9 +187,7 @@ pub fn move_install_with(
         return OpResult::err("No install path found");
     }
     if parent.starts_with(&source) {
-        return OpResult::err(format!(
-            "New install path ({new_parent}) cannot be inside the current install path ({install_path})."
-        ));
+        return OpResult::err(format!("New install path ({new_parent}) cannot be inside the current install path ({install_path})."));
     }
     let Some(name) = source.file_name() else { return OpResult::err("Invalid install path") };
     let destination = parent.join(name);
@@ -441,10 +439,8 @@ mod tests {
         // The fake rsync reads the journal while it runs.
         let fx = Fx::new("true");
         let journal = journal_path(&fx.data_paths);
-        let tools = fx.fake_rsync(
-            "rsync-peek",
-            &format!("cp \"{}\" \"{}\"; exit 20", journal.display(), fx.dir.path().join("peek.json").display()),
-        );
+        let tools = fx
+            .fake_rsync("rsync-peek", &format!("cp \"{}\" \"{}\"; exit 20", journal.display(), fx.dir.path().join("peek.json").display()));
         let r = fx.mv(&tools);
         assert!(!r.ok);
         let peek: MoveJournal = serde_json::from_str(&fs::read_to_string(fx.dir.path().join("peek.json")).unwrap()).unwrap();
@@ -600,14 +596,28 @@ mod tests {
         let other = fx.dir.path().join("other/Hades");
         fs::create_dir_all(&other).unwrap();
         fs::write(other.join("f"), "x").unwrap();
-        let r = move_install_with(&fx.data_paths, &fx.lg, &NO_RSYNC, "Other", other.to_str().unwrap(), fx.dir.path().join("n2").to_str().unwrap());
+        let r = move_install_with(
+            &fx.data_paths,
+            &fx.lg,
+            &NO_RSYNC,
+            "Other",
+            other.to_str().unwrap(),
+            fx.dir.path().join("n2").to_str().unwrap(),
+        );
         assert!(!r.ok && r.message.contains("Calluna"), "{}", r.message);
         assert!(other.join("f").exists());
 
         // Once the first move is gone for good, its journal no longer blocks.
         fs::remove_dir_all(&fx.source).unwrap();
         fs::remove_dir_all(fx.dest()).unwrap();
-        let r = move_install_with(&fx.data_paths, &fx.lg, &NO_RSYNC, "Other", other.to_str().unwrap(), fx.dir.path().join("n2").to_str().unwrap());
+        let r = move_install_with(
+            &fx.data_paths,
+            &fx.lg,
+            &NO_RSYNC,
+            "Other",
+            other.to_str().unwrap(),
+            fx.dir.path().join("n2").to_str().unwrap(),
+        );
         assert!(r.ok, "{}", r.message);
     }
 

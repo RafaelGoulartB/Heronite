@@ -256,7 +256,6 @@ mod tests {
     use super::tests_support::REAL;
     use super::*;
 
-
     #[test]
     fn real_file_round_trips_byte_identical() {
         let doc = parse(REAL).unwrap();

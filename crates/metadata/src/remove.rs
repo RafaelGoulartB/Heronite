@@ -68,10 +68,7 @@ fn dirs_home() -> Option<PathBuf> {
 
 /// `XDG_DESKTOP_DIR` of `~/.config/user-dirs.dirs`, else `~/Desktop`.
 pub fn desktop_dir(home: &Path) -> PathBuf {
-    let config = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| home.join(".config"));
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home.join(".config"));
     let text = std::fs::read_to_string(config.join("user-dirs.dirs")).unwrap_or_default();
     parse_desktop_dir(&text, home).unwrap_or_else(|| home.join("Desktop"))
 }
@@ -95,12 +92,7 @@ pub struct RemoveOutcome {
 }
 
 /// `removeCollectionGame` + the renderer follow-up (hidden, favourites).
-pub fn remove_collection_game(
-    paths: &DataPaths,
-    shortcuts: &ShortcutDirs,
-    app_name: &str,
-    runner: &str,
-) -> Result<RemoveOutcome> {
+pub fn remove_collection_game(paths: &DataPaths, shortcuts: &ShortcutDirs, app_name: &str, runner: &str) -> Result<RemoveOutcome> {
     if runner != "sideload" {
         bail!(ONLY_LOCAL_MESSAGE);
     }

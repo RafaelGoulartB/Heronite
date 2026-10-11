@@ -45,7 +45,8 @@ impl LaunchStateDialog {
                 .text_size(u(22.))
                 .child(content)
         };
-        let mut list = div().id("console-launch-states").flex().flex_col().gap(u(6.)).overflow_y_scroll().track_scroll(&self.console_scroll);
+        let mut list =
+            div().id("console-launch-states").flex().flex_col().gap(u(6.)).overflow_y_scroll().track_scroll(&self.console_scroll);
         for (i, row) in self.rows.iter().enumerate() {
             let on = focus == i;
             let fg: Hsla = if on { theme::console_on_focus().into() } else { theme::text_primary().into() };
@@ -55,29 +56,26 @@ impl LaunchStateDialog {
                 None => div().text_color(white()).child(row.glyph.clone()).into_any_element(),
             };
             list = list.child(
-                kit::row_base(on)
-                    .py(u(8.))
-                    .child(thumb(content))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .min_w_0()
-                            .child(div().text_size(u(19.)).text_color(fg).child(row.label.clone()))
-                            .child(div().text_size(u(14.)).text_color(Hsla { a: 0.7, ..fg }).child(row.when.clone())),
-                    ),
+                kit::row_base(on).py(u(8.)).child(thumb(content)).child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .min_w_0()
+                        .child(div().text_size(u(19.)).text_color(fg).child(row.label.clone()))
+                        .child(div().text_size(u(14.)).text_color(Hsla { a: 0.7, ..fg }).child(row.when.clone())),
+                ),
             );
         }
         let on = focus == self.rows.len();
         let fg: Hsla = if on { theme::console_on_focus().into() } else { theme::text_primary().into() };
         list = list.child(
             kit::row_base(on).py(u(8.)).child(thumb(icon(Icon::Replay, u(32.), white()).into_any_element())).child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .child(div().text_size(u(19.)).text_color(fg).child("Start from the beginning"))
-                    .child(div().text_size(u(14.)).text_color(Hsla { a: 0.7, ..fg }).child("Boot the game normally. In-game saves on memory cards are kept.")),
+                div().flex().flex_col().min_w_0().child(div().text_size(u(19.)).text_color(fg).child("Start from the beginning")).child(
+                    div()
+                        .text_size(u(14.))
+                        .text_color(Hsla { a: 0.7, ..fg })
+                        .child("Boot the game normally. In-game saves on memory cards are kept."),
+                ),
             ),
         );
         let who = if self.emulator.is_empty() { "The emulator" } else { &self.emulator };

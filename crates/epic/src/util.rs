@@ -34,9 +34,7 @@ fn trim_decimals(v: f64) -> String {
 
 fn special_chars() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r#"('[A-Za-z0-9_])|(\\[A-Za-z0-9_]{5})|(\\"(\\.|[^"])*")|[^()|0-9a-zA-Z\s]"#).expect("valid regex")
-    })
+    RE.get_or_init(|| Regex::new(r#"('[A-Za-z0-9_])|(\\[A-Za-z0-9_]{5})|(\\"(\\.|[^"])*")|[^()|0-9a-zA-Z\s]"#).expect("valid regex"))
 }
 
 /// `cleanTitle`.

@@ -7,9 +7,7 @@ use std::sync::Arc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_emulation::ludusavi::{
-    backup_for_game, BackupReason, CommandRunner, LudusaviBackupResult, LudusaviEnv, LudusaviGame,
-};
+use heronite_emulation::ludusavi::{backup_for_game, BackupReason, CommandRunner, LudusaviBackupResult, LudusaviEnv, LudusaviGame};
 use heronite_launch::SystemProbe;
 
 use super::{DialogCtx, DialogEvent};
@@ -29,7 +27,10 @@ pub enum Outcome {
     Message(String),
     Error(String),
     /// Backup saved; `path` enables "Show in folder".
-    Done { message: String, path: Option<String> },
+    Done {
+        message: String,
+        path: Option<String>,
+    },
 }
 
 /// Port of the branches of `handleLudusaviBackup`.
@@ -46,10 +47,7 @@ pub fn describe(result: &LudusaviBackupResult, title: &str) -> Outcome {
     }
     let name = result.game_name.as_deref().filter(|n| !n.is_empty()).unwrap_or(title);
     match result.backup_path.as_deref().filter(|p| !p.is_empty()) {
-        Some(path) => Outcome::Done {
-            message: format!("Saved a Ludusavi backup for {name} in {path}."),
-            path: Some(path.to_string()),
-        },
+        Some(path) => Outcome::Done { message: format!("Saved a Ludusavi backup for {name} in {path}."), path: Some(path.to_string()) },
         None => Outcome::Done { message: format!("Saved a Ludusavi backup for {name}."), path: None },
     }
 }
@@ -116,14 +114,11 @@ impl Render for LudusaviBackupDialog {
             let message = if is_error { String::new() } else { text };
             return crate::console::list::simple_dialog(&mut self.console_list, "console-ludusavi", TITLE, &message, error, &rows);
         }
-        let body = div()
-            .flex()
-            .flex_col()
-            .child(paragraph(text).when(is_error, |d| d.text_color(theme::danger_text())));
+        let body = div().flex().flex_col().child(paragraph(text).when(is_error, |d| d.text_color(theme::danger_text())));
         let mut footer = div().flex().gap(px(10.));
         if let Some(path) = path {
-            footer = footer
-                .child(button("ludusavi-show", ButtonKind::Glass, "Show in folder").on_click(move |_, _, _| show_in_folder(&path)));
+            footer =
+                footer.child(button("ludusavi-show", ButtonKind::Glass, "Show in folder").on_click(move |_, _, _| show_in_folder(&path)));
         }
         footer = footer
             .child(button("ludusavi-close", ButtonKind::Primary, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
@@ -167,10 +162,7 @@ mod tests {
     #[test]
     fn busy_no_match_and_errors() {
         let busy = result(|r| r.skipped_reason = Some("already-running".into()));
-        assert_eq!(
-            describe(&busy, "G"),
-            Outcome::Message("Ludusavi is already backing up a save. Wait a moment and try again.".into())
-        );
+        assert_eq!(describe(&busy, "G"), Outcome::Message("Ludusavi is already backing up a save. Wait a moment and try again.".into()));
         let no_match = result(|r| {
             r.skipped_reason = Some("no-match".into());
             r.error = Some("nothing".into());
@@ -189,15 +181,9 @@ mod tests {
         });
         assert_eq!(
             describe(&with, "Fallback"),
-            Outcome::Done {
-                message: "Saved a Ludusavi backup for Portal 2 in /b/Portal 2.".into(),
-                path: Some("/b/Portal 2".into())
-            }
+            Outcome::Done { message: "Saved a Ludusavi backup for Portal 2 in /b/Portal 2.".into(), path: Some("/b/Portal 2".into()) }
         );
         let without = result(|r| r.ran = true);
-        assert_eq!(
-            describe(&without, "Fallback"),
-            Outcome::Done { message: "Saved a Ludusavi backup for Fallback.".into(), path: None }
-        );
+        assert_eq!(describe(&without, "Fallback"), Outcome::Done { message: "Saved a Ludusavi backup for Fallback.".into(), path: None });
     }
 }

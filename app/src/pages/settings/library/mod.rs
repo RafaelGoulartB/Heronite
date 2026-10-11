@@ -36,12 +36,7 @@ const DEFAULT_MAX_RECENT: i64 = 5;
 
 fn read_snapshot(data_paths: &DataPaths, app: &AppPaths, home: &str) -> Snapshot {
     let settings = game_config::load_global(data_paths, home);
-    let max_recent = settings
-        .get("maxRecentGames")
-        .and_then(|v| v.as_i64())
-        .filter(|n| *n >= 1)
-        .unwrap_or(DEFAULT_MAX_RECENT)
-        .min(10);
+    let max_recent = settings.get("maxRecentGames").and_then(|v| v.as_i64()).filter(|n| *n >= 1).unwrap_or(DEFAULT_MAX_RECENT).min(10);
     Snapshot {
         show_hidden: UiState::load(app).show_hidden,
         hidden: config_games::list_entries(data_paths, "hidden"),
@@ -77,7 +72,11 @@ impl State {
         if let Some(v) = crate::env::value("HERONITE_DEBUG_LIBRARY_PAGER") {
             if let Some((which, page)) = v.split_once(':') {
                 let pg = Pager::expanded_at(page.parse().unwrap_or(0));
-                if which == "hidden" { hidden_pg = pg } else { fav_pg = pg }
+                if which == "hidden" {
+                    hidden_pg = pg
+                } else {
+                    fav_pg = pg
+                }
             }
         }
         Self { snap, hidden_pg, fav_pg, open_select: false, busy: false, notice: None }

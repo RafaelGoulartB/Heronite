@@ -13,11 +13,7 @@ fn list_mut<'a>(doc: &'a mut Value, key: &str) -> &'a mut Vec<Value> {
     if !doc.is_object() {
         *doc = Value::Object(Default::default());
     }
-    let games = doc
-        .as_object_mut()
-        .expect("object")
-        .entry("games")
-        .or_insert_with(|| Value::Object(Default::default()));
+    let games = doc.as_object_mut().expect("object").entry("games").or_insert_with(|| Value::Object(Default::default()));
     if !games.is_object() {
         *games = Value::Object(Default::default());
     }
@@ -34,11 +30,7 @@ fn is_entry(v: &Value, app_name: &str) -> bool {
 
 fn contains(path: &std::path::Path, key: &str, app_name: &str) -> Result<bool> {
     let doc = json_store::read_value(path)?;
-    Ok(doc
-        .get("games")
-        .and_then(|g| g.get(key))
-        .and_then(Value::as_array)
-        .is_some_and(|l| l.iter().any(|v| is_entry(v, app_name))))
+    Ok(doc.get("games").and_then(|g| g.get(key)).and_then(Value::as_array).is_some_and(|l| l.iter().any(|v| is_entry(v, app_name))))
 }
 
 /// `addGameToFavourites`: any previous entry is dropped and the game is

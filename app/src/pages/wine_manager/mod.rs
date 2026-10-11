@@ -61,7 +61,6 @@ fn stamp_path(ctx: &PageCtx) -> std::path::PathBuf {
     ctx.app.config.join("wine-releases-fetched")
 }
 
-
 impl WineManagerPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let manager = WineManager::new(ctx.data_paths.clone());
@@ -267,9 +266,7 @@ impl WineManagerPage {
         self.download_to_steam = value;
         let data_paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx
-                .background_spawn(async move { WineConfig::set_download_proton_to_steam(&data_paths, value) })
-                .await;
+            let res = cx.background_spawn(async move { WineConfig::set_download_proton_to_steam(&data_paths, value) }).await;
             if let Err(e) = res {
                 this.update(cx, |this, cx| {
                     this.download_to_steam = !value;
@@ -296,15 +293,8 @@ impl Render for WineManagerPage {
         // versions beside it. Narrow: all stacked, sources as tabs.
         let wide = content_width(window) >= 1100.;
         let column = if wide {
-            let side = div()
-                .flex()
-                .flex_col()
-                .flex_none()
-                .w(px(340.))
-                .gap(px(14.))
-                .child(toolbar)
-                .child(self.render_sources(cx))
-                .child(steam);
+            let side =
+                div().flex().flex_col().flex_none().w(px(340.)).gap(px(14.)).child(toolbar).child(self.render_sources(cx)).child(steam);
             div().flex().items_start().gap(px(24.)).w_full().child(side).child(div().flex_1().min_w_0().child(list))
         } else {
             div()

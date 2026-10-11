@@ -100,10 +100,7 @@ pub fn install_into(
     }
     fs::create_dir_all(install_dir).with_context(|| format!("creating {}", install_dir.display()))?;
     if !install_dir.is_dir() {
-        return Err(InstallError::Failed(format!(
-            "Installation directory {} is not a directory!",
-            install_dir.display()
-        )));
+        return Err(InstallError::Failed(format!("Installation directory {} is not a directory!", install_dir.display())));
     }
 
     let file_name = download.rsplit('/').next().unwrap_or("download.tar");
@@ -116,10 +113,9 @@ pub fn install_into(
 
     // Source checksum (a `.sha512sum` file next to the archive).
     let source_checksum = match info.checksum.as_deref().filter(|c| !c.is_empty()) {
-        Some(url) => Some(
-            repos::http_get_text(url, 1024 * 1024)
-                .map_err(|e| InstallError::Failed(format!("Could not fetch the checksum: {e}")))?,
-        ),
+        Some(url) => {
+            Some(repos::http_get_text(url, 1024 * 1024).map_err(|e| InstallError::Failed(format!("Could not fetch the checksum: {e}")))?)
+        }
         None => None,
     };
 
@@ -143,9 +139,7 @@ pub fn install_into(
             let _ = fs::remove_file(&part_file);
             return Err(match e {
                 InstallError::Aborted => InstallError::Aborted,
-                InstallError::Failed(m) => {
-                    InstallError::Failed(format!("Download of {} failed with:\n {m}", info.version))
-                }
+                InstallError::Failed(m) => InstallError::Failed(format!("Download of {} failed with:\n {m}", info.version)),
             });
         }
     };
@@ -226,10 +220,7 @@ fn download_file(
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<String, InstallError> {
     let fail = |m: String| InstallError::Failed(m);
-    let mut resp = repos::http_agent()
-        .get(url)
-        .call()
-        .map_err(|e| fail(format!("{url}: {e}")))?;
+    let mut resp = repos::http_agent().get(url).call().map_err(|e| fail(format!("{url}: {e}")))?;
     let total = resp
         .headers()
         .get("content-length")

@@ -55,19 +55,11 @@ pub fn is_executable_game(game: &GameInfo, meta: Option<&LocalGameMeta>) -> bool
     if game.runner != "sideload" {
         return false;
     }
-    !matches!(
-        meta.map(|m| m.launch_kind.as_str()),
-        Some("emulator") | Some("steam-uri")
-    )
+    !matches!(meta.map(|m| m.launch_kind.as_str()), Some("emulator") | Some("steam-uri"))
 }
 
 /// `runAs` from the Collection, else detection, else the stored platform.
-pub fn effective_platform(
-    game: &GameInfo,
-    meta: Option<&LocalGameMeta>,
-    executable: &str,
-    probe: &dyn Probe,
-) -> Platform {
+pub fn effective_platform(game: &GameInfo, meta: Option<&LocalGameMeta>, executable: &str, probe: &dyn Probe) -> Platform {
     match meta.and_then(|m| m.run_as.as_deref()) {
         Some("linux") => return Platform::Linux,
         Some("windows") => return Platform::Windows,
@@ -77,13 +69,7 @@ pub fn effective_platform(
         ExecutableKind::Linux => Platform::Linux,
         ExecutableKind::Windows => Platform::Windows,
         ExecutableKind::Unknown => {
-            if game
-                .install
-                .platform
-                .as_deref()
-                .map(|p| p.eq_ignore_ascii_case("linux"))
-                .unwrap_or(false)
-            {
+            if game.install.platform.as_deref().map(|p| p.eq_ignore_ascii_case("linux")).unwrap_or(false) {
                 Platform::Linux
             } else {
                 Platform::Windows
@@ -105,66 +91,29 @@ mod tests {
             .with_file("/g/pe", b"MZ\x90\x00")
             .with_file("/g/blob", b"\x00\x01\x02\x03")
             .with_file("/g/Game.AppImage", b"\x00\x00\x00\x00");
-        assert_eq!(
-            detect_executable_kind("/g/elf", &probe),
-            ExecutableKind::Linux
-        );
-        assert_eq!(
-            detect_executable_kind("/g/script", &probe),
-            ExecutableKind::Linux
-        );
-        assert_eq!(
-            detect_executable_kind("/g/pe", &probe),
-            ExecutableKind::Windows
-        );
-        assert_eq!(
-            detect_executable_kind("/g/blob", &probe),
-            ExecutableKind::Unknown
-        );
-        assert_eq!(
-            detect_executable_kind("/g/Game.AppImage", &probe),
-            ExecutableKind::Linux
-        );
+        assert_eq!(detect_executable_kind("/g/elf", &probe), ExecutableKind::Linux);
+        assert_eq!(detect_executable_kind("/g/script", &probe), ExecutableKind::Linux);
+        assert_eq!(detect_executable_kind("/g/pe", &probe), ExecutableKind::Windows);
+        assert_eq!(detect_executable_kind("/g/blob", &probe), ExecutableKind::Unknown);
+        assert_eq!(detect_executable_kind("/g/Game.AppImage", &probe), ExecutableKind::Linux);
         // A Windows extension wins even over an ELF header.
         let probe2 = FakeProbe::new("/h").with_file("/g/x.exe", b"\x7fELF");
-        assert_eq!(
-            detect_executable_kind("/g/x.exe", &probe2),
-            ExecutableKind::Windows
-        );
+        assert_eq!(detect_executable_kind("/g/x.exe", &probe2), ExecutableKind::Windows);
         assert_eq!(detect_executable_kind("", &probe), ExecutableKind::Unknown);
     }
 
     #[test]
     fn run_as_overrides_detection() {
         let probe = FakeProbe::new("/h").with_file("/g/elf", b"\x7fELF");
-        let mut game = GameInfo {
-            runner: "sideload".into(),
-            app_name: "a".into(),
-            ..Default::default()
-        };
-        let mut meta = LocalGameMeta {
-            app_name: "a".into(),
-            ..Default::default()
-        };
-        assert_eq!(
-            effective_platform(&game, Some(&meta), "/g/elf", &probe),
-            Platform::Linux
-        );
+        let mut game = GameInfo { runner: "sideload".into(), app_name: "a".into(), ..Default::default() };
+        let mut meta = LocalGameMeta { app_name: "a".into(), ..Default::default() };
+        assert_eq!(effective_platform(&game, Some(&meta), "/g/elf", &probe), Platform::Linux);
         meta.run_as = Some("windows".into());
-        assert_eq!(
-            effective_platform(&game, Some(&meta), "/g/elf", &probe),
-            Platform::Windows
-        );
+        assert_eq!(effective_platform(&game, Some(&meta), "/g/elf", &probe), Platform::Windows);
         meta.run_as = Some("auto".into());
         game.install.platform = Some("linux".into());
-        assert_eq!(
-            effective_platform(&game, Some(&meta), "/unknown", &probe),
-            Platform::Linux
-        );
+        assert_eq!(effective_platform(&game, Some(&meta), "/unknown", &probe), Platform::Linux);
         game.install.platform = Some("Windows".into());
-        assert_eq!(
-            effective_platform(&game, None, "/unknown", &probe),
-            Platform::Windows
-        );
+        assert_eq!(effective_platform(&game, None, "/unknown", &probe), Platform::Windows);
     }
 }

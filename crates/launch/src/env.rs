@@ -91,10 +91,7 @@ pub fn join(a: &str, b: &str) -> String {
 }
 
 fn dirname(p: &str) -> String {
-    Path::new(p)
-        .parent()
-        .map(|d| d.to_string_lossy().into_owned())
-        .unwrap_or_else(|| ".".into())
+    Path::new(p).parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_else(|| ".".into())
 }
 
 /// `lib`/`lib32` of a Wine build as Heroic's `getWineLibs` finds them.
@@ -106,10 +103,7 @@ pub fn wine_libs(s: &GameSettings, probe: &dyn Probe) -> (Option<String>, Option
     let dir = dirname(&w.bin);
     let lib32 = join(&dir, "../lib");
     let lib = join(&dir, "../lib64");
-    (
-        probe.exists(&lib).then_some(lib),
-        probe.exists(&lib32).then_some(lib32),
-    )
+    (probe.exists(&lib).then_some(lib), probe.exists(&lib32).then_some(lib32))
 }
 
 fn deprecated_ge_regex() -> &'static Regex {
@@ -118,12 +112,7 @@ fn deprecated_ge_regex() -> &'static Regex {
 }
 
 /// `setupWineEnvVars`. `runtime_dir` is `<data>/tools/runtimes`.
-pub fn setup_wine_env_vars(
-    s: &GameSettings,
-    game_id: &str,
-    runtime_dir: &str,
-    probe: &dyn Probe,
-) -> Env {
+pub fn setup_wine_env_vars(s: &GameSettings, game_id: &str, runtime_dir: &str, probe: &dyn Probe) -> Env {
     let w = &s.wine_version;
     let kind = w.kind.as_str();
     let home = probe.home();
@@ -134,21 +123,14 @@ pub fn setup_wine_env_vars(
             ret.insert("WINEPREFIX".into(), s.wine_prefix.clone());
             // Don't let Wine mess with file associations.
             let wmb = "winemenubuilder.exe=d";
-            if let Some((k, v)) = s
-                .env_options
-                .iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case("winedlloverrides"))
-            {
+            if let Some((k, v)) = s.env_options.iter().find(|(k, _)| k.eq_ignore_ascii_case("winedlloverrides")) {
                 ret.insert(k.clone(), format!("{v};{wmb}"));
             } else {
                 ret.insert("WINEDLLOVERRIDES".into(), wmb.into());
             }
         }
         "proton" => {
-            ret.insert(
-                "STEAM_COMPAT_CLIENT_INSTALL_PATH".into(),
-                join(&home, ".steam/steam"),
-            );
+            ret.insert("STEAM_COMPAT_CLIENT_INSTALL_PATH".into(), join(&home, ".steam/steam"));
             ret.insert("WINEPREFIX".into(), s.wine_prefix.clone());
             ret.insert("STEAM_COMPAT_DATA_PATH".into(), s.wine_prefix.clone());
             ret.insert("PROTONPATH".into(), dirname(&w.bin));
@@ -167,10 +149,7 @@ pub fn setup_wine_env_vars(
     }
     if s.enable_fsr {
         ret.insert("WINE_FULLSCREEN_FSR".into(), "1".into());
-        ret.insert(
-            "WINE_FULLSCREEN_FSR_STRENGTH".into(),
-            s.max_sharpness.filter(|n| *n != 0).unwrap_or(2).to_string(),
-        );
+        ret.insert("WINE_FULLSCREEN_FSR_STRENGTH".into(), s.max_sharpness.filter(|n| *n != 0).unwrap_or(2).to_string());
     } else {
         ret.insert("WINE_FULLSCREEN_FSR".into(), "0".into());
     }
@@ -220,16 +199,10 @@ pub fn setup_wine_env_vars(
         ret.insert("DXVK_NVAPI_ALLOW_OTHER_DRIVERS".into(), "1".into());
     }
     if s.eac_runtime {
-        ret.insert(
-            "PROTON_EAC_RUNTIME".into(),
-            join(runtime_dir, "eac_runtime"),
-        );
+        ret.insert("PROTON_EAC_RUNTIME".into(), join(runtime_dir, "eac_runtime"));
     }
     if s.battleye_runtime {
-        ret.insert(
-            "PROTON_BATTLEYE_RUNTIME".into(),
-            join(runtime_dir, "battleye_runtime"),
-        );
+        ret.insert("PROTON_BATTLEYE_RUNTIME".into(), join(runtime_dir, "battleye_runtime"));
     }
     if is_proton {
         use crate::shared_folders::{container_env, ENV_KEY};
@@ -240,24 +213,12 @@ pub fn setup_wine_env_vars(
     }
     if is_proton {
         // GE-Proton guesses the AppID from the prefix path otherwise.
-        let compat = probe
-            .env_var("STEAM_COMPAT_APP_ID")
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| "0".into());
+        let compat = probe.env_var("STEAM_COMPAT_APP_ID").filter(|v| !v.is_empty()).unwrap_or_else(|| "0".into());
         ret.insert("STEAM_COMPAT_APP_ID".into(), compat.clone());
-        ret.insert(
-            "SteamAppId".into(),
-            probe
-                .env_var("SteamAppId")
-                .filter(|v| !v.is_empty())
-                .unwrap_or(compat),
-        );
+        ret.insert("SteamAppId".into(), probe.env_var("SteamAppId").filter(|v| !v.is_empty()).unwrap_or(compat));
         ret.insert(
             "SteamGameId".into(),
-            probe
-                .env_var("SteamGameId")
-                .filter(|v| !v.is_empty())
-                .unwrap_or_else(|| format!("heroic-{game_id}")),
+            probe.env_var("SteamGameId").filter(|v| !v.is_empty()).unwrap_or_else(|| format!("heroic-{game_id}")),
         );
         ret.insert("PROTON_LOG_DIR".into(), home.clone());
         if s.verbose_logs {
@@ -275,22 +236,15 @@ pub fn setup_wine_env_vars(
     }
     if !s.prefer_system_libs && kind == "wine" {
         if probe.env_var("ORIG_LD_LIBRARY_PATH").is_none() {
-            ret.insert(
-                "ORIG_LD_LIBRARY_PATH".into(),
-                probe.env_var("LD_LIBRARY_PATH").unwrap_or_default(),
-            );
+            ret.insert("ORIG_LD_LIBRARY_PATH".into(), probe.env_var("LD_LIBRARY_PATH").unwrap_or_default());
         }
         if let (Some(lib), Some(lib32)) = wine_libs(s, probe) {
-            let ld = [
-                Some(lib.clone()),
-                Some(lib32.clone()),
-                probe.env_var("LD_LIBRARY_PATH"),
-            ]
-            .into_iter()
-            .flatten()
-            .filter(|p| !p.is_empty())
-            .collect::<Vec<_>>()
-            .join(":");
+            let ld = [Some(lib.clone()), Some(lib32.clone()), probe.env_var("LD_LIBRARY_PATH")]
+                .into_iter()
+                .flatten()
+                .filter(|p| !p.is_empty())
+                .collect::<Vec<_>>()
+                .join(":");
             ret.insert("LD_LIBRARY_PATH".into(), ld);
             let (g64, g32) = (join(&lib, "gstreamer-1.0"), join(&lib32, "gstreamer-1.0"));
             if probe.exists(&g64) && probe.exists(&g32) {
@@ -301,10 +255,7 @@ pub fn setup_wine_env_vars(
                 ret.insert("WINEDLLPATH".into(), format!("{d64}:{d32}"));
             }
         } else {
-            log::error!(
-                "Couldn't find all library folders of {}; falling back to system libraries",
-                w.name
-            );
+            log::error!("Couldn't find all library folders of {}; falling back to system libraries", w.name);
         }
     }
     if deprecated_ge_regex().is_match(&w.name) {
@@ -323,11 +274,7 @@ pub struct WrapperPlan {
 /// Port of the Linux half of `prepareLaunch` + `setupWrappers`.
 /// `steam_runtime` is the umu binary when the wrapper list should include it
 /// (native games with the Steam runtime, or legendary through Proton+umu).
-pub fn build_wrappers(
-    s: &GameSettings,
-    probe: &dyn Probe,
-    steam_runtime: Option<&str>,
-) -> WrapperPlan {
+pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option<&str>) -> WrapperPlan {
     let mut error = None;
     let mut mangohud: Vec<String> = Vec::new();
     let mut gamemode: Option<String> = None;
@@ -336,28 +283,19 @@ pub fn build_wrappers(
     if s.show_mangohud && probe.env_var("SteamDeck").as_deref() != Some("1") {
         match probe.which("mangohud") {
             Some(bin) => mangohud = vec![bin, "--dlsym".into()],
-            None => {
-                error = Some(
-                    "Mangohud is enabled, but `mangohud` executable could not be found on $PATH"
-                        .to_string(),
-                )
-            }
+            None => error = Some("Mangohud is enabled, but `mangohud` executable could not be found on $PATH".to_string()),
         }
     }
     if s.use_game_mode {
         match probe.which("gamemoderun") {
             Some(bin) => gamemode = Some(bin),
             None => {
-                error.get_or_insert_with(|| {
-                    "GameMode is enabled, but `gamemoderun` executable could not be found on $PATH".to_string()
-                });
+                error.get_or_insert_with(|| "GameMode is enabled, but `gamemoderun` executable could not be found on $PATH".to_string());
             }
         }
     }
     let g = &s.gamescope;
-    if (g.enable_limiter || g.enable_upscaling)
-        && probe.env_var("SteamDeck").as_deref() != Some("1")
-    {
+    if (g.enable_limiter || g.enable_upscaling) && probe.env_var("SteamDeck").as_deref() != Some("1") {
         if let Some(bin) = probe.which("gamescope") {
             let old = probe.gamescope_is_old(&bin);
             gamescope.push(bin);
@@ -408,9 +346,7 @@ pub fn build_wrappers(
             // Must be the last option.
             gamescope.push("--".into());
         } else {
-            log::warn!(
-                "Gamescope is enabled, but `gamescope` executable could not be found on $PATH"
-            );
+            log::warn!("Gamescope is enabled, but `gamescope` executable could not be found on $PATH");
         }
     }
 
@@ -456,7 +392,8 @@ mod tests {
         let e = setup_wine_env_vars(&s, "0", "/r", &probe);
         assert_eq!(e["PRESSURE_VESSEL_FILESYSTEMS_RW"], "/srv:/data:/games");
         // Plain Wine runs outside the container.
-        let wine = settings(json!({"wineVersion": {"bin": "/usr/bin/wine", "name": "Wine", "type": "wine"}, "heroniteSharedFolders": ["/data"]}));
+        let wine =
+            settings(json!({"wineVersion": {"bin": "/usr/bin/wine", "name": "Wine", "type": "wine"}, "heroniteSharedFolders": ["/data"]}));
         assert!(!setup_wine_env_vars(&wine, "0", "/r", &probe).contains_key("PRESSURE_VESSEL_FILESYSTEMS_RW"));
     }
 
@@ -472,10 +409,7 @@ mod tests {
         let e = setup_wine_env_vars(&s, "0", "/tools/runtimes", &probe);
         assert_eq!(e["STEAM_COMPAT_DATA_PATH"], "/pfx");
         assert_eq!(e["PROTONPATH"], "/t/GE-Proton9");
-        assert_eq!(
-            e["STEAM_COMPAT_CLIENT_INSTALL_PATH"],
-            "/home/u/.steam/steam"
-        );
+        assert_eq!(e["STEAM_COMPAT_CLIENT_INSTALL_PATH"], "/home/u/.steam/steam");
         assert_eq!(e["SteamGameId"], "heroic-0");
         assert_eq!(e["PROTON_NO_FSYNC"], "1");
         assert!(!e.contains_key("PROTON_NO_ESYNC"));
@@ -483,10 +417,7 @@ mod tests {
         assert_eq!(e["DXVK_HUD"], "fps");
         assert_eq!(e["WINE_FULLSCREEN_FSR"], "0");
         assert_eq!(e["DXVK_LOG_LEVEL"], "info");
-        assert!(
-            !e.contains_key("WINEDEBUG"),
-            "user-set WINEDEBUG is left to the env options"
-        );
+        assert!(!e.contains_key("WINEDEBUG"), "user-set WINEDEBUG is left to the env options");
         assert!(!e.contains_key("LD_LIBRARY_PATH"));
     }
 
@@ -497,11 +428,7 @@ mod tests {
             "winePrefix": "/pfx", "enableFsync": true,
             "enviromentOptions": [{"key":"WINEDLLOVERRIDES","value":"dxgi=n"}]
         }));
-        let probe = FakeProbe::new("/h")
-            .with_path("/w/lib64")
-            .with_path("/w/lib")
-            .with_path("/w/lib64/wine")
-            .with_path("/w/lib/wine");
+        let probe = FakeProbe::new("/h").with_path("/w/lib64").with_path("/w/lib").with_path("/w/lib64/wine").with_path("/w/lib/wine");
         let e = setup_wine_env_vars(&s, "0", "/r", &probe);
         assert_eq!(e["WINEDLLOVERRIDES"], "dxgi=n;winemenubuilder.exe=d");
         assert_eq!(e["WINEFSYNC"], "1");
@@ -516,23 +443,10 @@ mod tests {
             "useGameMode": true, "showMangohud": true,
             "wrapperOptions": [{"exe":"taskset","args":"-c 0-3"}]
         }));
-        let probe = FakeProbe::new("/h")
-            .with_bin("mangohud", "/usr/bin/mangohud")
-            .with_bin("gamemoderun", "/usr/bin/gamemoderun");
+        let probe = FakeProbe::new("/h").with_bin("mangohud", "/usr/bin/mangohud").with_bin("gamemoderun", "/usr/bin/gamemoderun");
         let w = build_wrappers(&s, &probe, Some("/umu"));
         assert!(w.error.is_none());
-        assert_eq!(
-            w.wrappers,
-            [
-                "taskset",
-                "-c",
-                "0-3",
-                "/usr/bin/mangohud",
-                "--dlsym",
-                "/usr/bin/gamemoderun",
-                "/umu"
-            ]
-        );
+        assert_eq!(w.wrappers, ["taskset", "-c", "0-3", "/usr/bin/mangohud", "--dlsym", "/usr/bin/gamemoderun", "/umu"]);
         let missing = build_wrappers(&s, &FakeProbe::new("/h"), None);
         assert!(missing.error.unwrap().contains("mangohud"));
     }

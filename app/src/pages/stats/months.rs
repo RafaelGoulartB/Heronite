@@ -51,13 +51,11 @@ fn bucket_short(b: &Bucket) -> String {
 /// Gradient layer between `from` and `to` (fractions of the parent height).
 fn band(from: f32, to: f32, a0: f32, a1: f32, color: Rgba) -> Div {
     let c: Hsla = color.into();
-    div()
-        .absolute()
-        .left_0()
-        .right_0()
-        .top(relative(from))
-        .h(relative(to - from))
-        .bg(linear_gradient(180., linear_color_stop(Hsla { a: a0, ..c }, 0.), linear_color_stop(Hsla { a: a1, ..c }, 1.)))
+    div().absolute().left_0().right_0().top(relative(from)).h(relative(to - from)).bg(linear_gradient(
+        180.,
+        linear_color_stop(Hsla { a: a0, ..c }, 0.),
+        linear_color_stop(Hsla { a: a1, ..c }, 1.),
+    ))
 }
 
 /// Small dark pill over art.
@@ -89,7 +87,10 @@ impl StatsPage {
         let what = if st.buckets.first().is_some_and(|b| (b.end - b.start).num_days() > 31) { "year" } else { "month" };
         panel()
             .pb_0()
-            .child(panel_head(if what == "year" { "Year by year" } else { "Month by month" }, hint(format!("One card per {what} \u{b7} scroll sideways or pick one on the ruler"))))
+            .child(panel_head(
+                if what == "year" { "Year by year" } else { "Month by month" },
+                hint(format!("One card per {what} \u{b7} scroll sideways or pick one on the ruler")),
+            ))
             .child(track)
             .child(self.ruler(st, active, cx))
             .into_any_element()
@@ -173,7 +174,16 @@ impl StatsPage {
                         .child(label),
                 )
         };
-        let mut row = div().flex().items_center().justify_center().gap(px(6.)).h(px(84.)).mx(px(-24.)).mt(px(6.)).border_t_1().border_color(theme::white_a(0.08));
+        let mut row = div()
+            .flex()
+            .items_center()
+            .justify_center()
+            .gap(px(6.))
+            .h(px(84.))
+            .mx(px(-24.))
+            .mt(px(6.))
+            .border_t_1()
+            .border_color(theme::white_a(0.08));
         row = row.child(prev.mr(px(8.)));
         let first = match st.period.span {
             Span::All => "All".to_string(),
@@ -230,7 +240,15 @@ impl StatsPage {
             plot = plot
                 .child(div().absolute().top_0().bottom_0().left(px(x)).right_0().bg(theme::black_a(0.2)))
                 .child(div().absolute().top_0().bottom_0().left(px(x)).w(px(1.)).bg(theme::white_a(0.3)))
-                .child(div().absolute().top(px(6.)).left(px(x + 8.)).text_size(px(11.5)).text_color(theme::text_dim()).child(format!("Today \u{b7} {}", short_date(today))))
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(6.))
+                        .left(px(x + 8.))
+                        .text_size(px(11.5))
+                        .text_color(theme::text_dim())
+                        .child(format!("Today \u{b7} {}", short_date(today))),
+                )
                 .when(PLOT_W - x > 70., |p| {
                     p.child(
                         div()
@@ -278,7 +296,12 @@ impl StatsPage {
                         .items_center()
                         .text_size(px(12.))
                         .text_color(theme::text_muted())
-                        .child(div().font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(format!("{} \u{b7} 0 h", bucket_name(b))))
+                        .child(
+                            div()
+                                .font_weight(theme::W_BOLD)
+                                .text_color(theme::text_primary())
+                                .child(format!("{} \u{b7} 0 h", bucket_name(b))),
+                        )
                         .child("a real break"),
                 );
         }
@@ -324,24 +347,41 @@ impl StatsPage {
             .map(|(slot, g)| (slot, series_color(Some(slot)), self.game_title(*g), st.game(*g).map_or(0., |s| s.secs)))
             .collect();
         legend.push((TOP_N, theme::chart_other(), "Other games".into(), (st.total_secs - top_secs).max(0.)));
-        let legend = div().mt_auto().pt(px(14.)).border_t_1().border_color(theme::white_a(0.08)).grid().grid_cols(2).gap_x(px(18.)).gap_y(px(2.)).children(legend.into_iter().map(|(slot, c, name, secs)| {
-            div()
-                .id(("river-legend", slot))
-                .flex()
-                .items_center()
-                .gap(px(9.))
-                .h(px(30.))
-                .px(px(8.))
-                .mx(px(-8.))
-                .rounded(px(9.))
-                .text_size(px(13.))
-                .min_w_0()
-                .hover(|s| s.bg(theme::white_a(0.06)))
-                .on_hover(hover(Hover::Slot(slot), cx))
-                .child(div().flex_none().size(px(8.)).rounded_full().bg(c))
-                .child(div().flex_1().min_w_0().truncate().child(name))
-                .child(div().flex_none().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(12.5)).text_color(theme::text_muted()).child(format!("{}h", (secs / 3600.).round())))
-        }));
+        let legend = div()
+            .mt_auto()
+            .pt(px(14.))
+            .border_t_1()
+            .border_color(theme::white_a(0.08))
+            .grid()
+            .grid_cols(2)
+            .gap_x(px(18.))
+            .gap_y(px(2.))
+            .children(legend.into_iter().map(|(slot, c, name, secs)| {
+                div()
+                    .id(("river-legend", slot))
+                    .flex()
+                    .items_center()
+                    .gap(px(9.))
+                    .h(px(30.))
+                    .px(px(8.))
+                    .mx(px(-8.))
+                    .rounded(px(9.))
+                    .text_size(px(13.))
+                    .min_w_0()
+                    .hover(|s| s.bg(theme::white_a(0.06)))
+                    .on_hover(hover(Hover::Slot(slot), cx))
+                    .child(div().flex_none().size(px(8.)).rounded_full().bg(c))
+                    .child(div().flex_1().min_w_0().truncate().child(name))
+                    .child(
+                        div()
+                            .flex_none()
+                            .font_family(theme::FONT_HEADING)
+                            .font_weight(theme::W_BOLD)
+                            .text_size(px(12.5))
+                            .text_color(theme::text_muted())
+                            .child(format!("{}h", (secs / 3600.).round())),
+                    )
+            }));
 
         let pause = st.buckets.iter().find(|b| !b.future && b.secs <= 0.).map(bucket_name);
         let (kick, title, accent) = match st.period.span {
@@ -357,11 +397,28 @@ impl StatsPage {
             .text_size(px(14.))
             .text_color(theme::white_a(0.82))
             .child(format!("Band thickness is the hours you played each {unit}."))
-            .children(pause.map(|m| div().child(div().flex().gap_x(px(4.)).child(div().font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(m)).child("pinches shut: a real pause."))));
+            .children(pause.map(|m| {
+                div().child(
+                    div()
+                        .flex()
+                        .gap_x(px(4.))
+                        .child(div().font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(m))
+                        .child("pinches shut: a real pause."),
+                )
+            }));
         let top = st.games.first().map(|g| g.game);
         let bg = top.and_then(|g| self.art(g, RIVER_W, MH, window));
         let fill = card_fill();
-        let mut card = div().relative().flex_none().w(px(RIVER_W)).h(px(MH)).rounded(px(18.)).overflow_hidden().bg(fill).border_1().border_color(theme::white_a(0.08));
+        let mut card = div()
+            .relative()
+            .flex_none()
+            .w(px(RIVER_W))
+            .h(px(MH))
+            .rounded(px(18.))
+            .overflow_hidden()
+            .bg(fill)
+            .border_1()
+            .border_color(theme::white_a(0.08));
         if let Some(src) = bg {
             card = card.child(img(src).absolute().inset_0().size_full().object_fit(ObjectFit::Cover).rounded(px(17.)));
         }
@@ -406,18 +463,28 @@ impl StatsPage {
         let busiest = st.buckets.iter().enumerate().max_by(|a, c| a.1.secs.total_cmp(&c.1.secs)).map(|(j, _)| j);
         let top = st.bucket_games.get(i).and_then(|g| g.first().copied());
         if let Some((a, z)) = st.streak_range.filter(|(a, _)| within(*a) && st.streak > 2) {
-            return (format!("{} days", st.streak), format!("Longest streak {of}"), format!("{} to {}, not a single day missed", short_date(a), short_date(z)));
+            return (
+                format!("{} days", st.streak),
+                format!("Longest streak {of}"),
+                format!("{} to {}, not a single day missed", short_date(a), short_date(z)),
+            );
         }
         if busiest == Some(i) {
             let detail = match (top, best) {
-                (Some((g, s)), Some((d, ds))) => format!("{:.0}% of it was {}, best day {} on {}", s / b.secs * 100., self.game_title(g), fmt_secs(ds), short_date(d)),
+                (Some((g, s)), Some((d, ds))) => {
+                    format!("{:.0}% of it was {}, best day {} on {}", s / b.secs * 100., self.game_title(g), fmt_secs(ds), short_date(d))
+                }
                 _ => String::new(),
             };
             let unit = if (b.end - b.start).num_days() > 31 { "year" } else { "month" };
             return ("#1".into(), format!("Busiest {unit} {of} \u{b7} {}", hours_text(b.secs)), detail);
         }
         if let Some(l) = st.longest.filter(|l| within(l.start.date())) {
-            return (fmt_secs(l.secs), format!("Longest session {of}"), format!("{} \u{b7} {}", self.game_title(l.game), day_label(l.start.date())));
+            return (
+                fmt_secs(l.secs),
+                format!("Longest session {of}"),
+                format!("{} \u{b7} {}", self.game_title(l.game), day_label(l.start.date())),
+            );
         }
         let new = st.games.iter().filter(|g| g.new && g.first_played.is_some_and(within)).count();
         match best {
@@ -454,7 +521,9 @@ impl StatsPage {
                         .text_color(theme::text_muted())
                         .child(num.clone()),
                 )
-                .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(30.)).line_height(px(32.)).child(name))
+                .child(
+                    div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(30.)).line_height(px(32.)).child(name),
+                )
         };
         let shell = |w: f32| {
             div()
@@ -469,7 +538,13 @@ impl StatsPage {
                 .bg(card_fill())
                 .border_1()
                 .border_color(theme::white_a(0.08))
-                .shadow(vec![BoxShadow { color: theme::black_a(0.28), offset: point(px(0.), px(10.)), blur_radius: px(30.), spread_radius: px(0.), inset: false }])
+                .shadow(vec![BoxShadow {
+                    color: theme::black_a(0.28),
+                    offset: point(px(0.), px(10.)),
+                    blur_radius: px(30.),
+                    spread_radius: px(0.),
+                    inset: false,
+                }])
         };
         let today = today();
         if b.future {
@@ -481,14 +556,40 @@ impl StatsPage {
                         .flex_1()
                         .bg(linear_gradient(180., linear_color_stop(rgb(0x141922), 0.), linear_color_stop(rgb(0x10151c), 1.)))
                         .child(head(name.clone()))
-                        .child(div().absolute().left_0().right_0().top(relative(0.38)).flex().justify_center().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(170.)).text_color(theme::white_a(0.05)).child(num.clone())),
+                        .child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .right_0()
+                                .top(relative(0.38))
+                                .flex()
+                                .justify_center()
+                                .font_family(theme::FONT_HEADING)
+                                .font_weight(theme::W_BOLD)
+                                .text_size(px(170.))
+                                .text_color(theme::white_a(0.05))
+                                .child(num.clone()),
+                        ),
                 )
                 .child(
                     div()
                         .px(px(22.))
                         .pb(px(26.))
-                        .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(44.)).text_color(theme::text_dim()).child("0 h"))
-                        .child(div().mt(px(6.)).text_size(px(12.5)).text_color(theme::text_muted()).child(format!("Not played yet \u{b7} today is {}", short_date(today)))),
+                        .child(
+                            div()
+                                .font_family(theme::FONT_HEADING)
+                                .font_weight(theme::W_BOLD)
+                                .text_size(px(44.))
+                                .text_color(theme::text_dim())
+                                .child("0 h"),
+                        )
+                        .child(
+                            div()
+                                .mt(px(6.))
+                                .text_size(px(12.5))
+                                .text_color(theme::text_muted())
+                                .child(format!("Not played yet \u{b7} today is {}", short_date(today))),
+                        ),
                 )
                 .into_any_element();
         }
@@ -517,7 +618,16 @@ impl StatsPage {
                 .bg(theme::white_a(0.05))
                 .border_1()
                 .border_color(Hsla { a: 0.26, ..Hsla::from(theme::accent()) })
-                .child(div().flex_none().min_w(px(76.)).font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(24.)).text_color(theme::accent()).child(big))
+                .child(
+                    div()
+                        .flex_none()
+                        .min_w(px(76.))
+                        .font_family(theme::FONT_HEADING)
+                        .font_weight(theme::W_BOLD)
+                        .text_size(px(24.))
+                        .text_color(theme::accent())
+                        .child(big),
+                )
                 .child(
                     div()
                         .flex()
@@ -530,34 +640,33 @@ impl StatsPage {
         if b.secs <= 0. {
             let gap = st.longest_break.filter(|g| g.last < b.end && g.back > b.start);
             let (big, title, detail) = match gap {
-                Some(g) => (g.days.to_string(), "Days without a session".to_string(), format!("{} to {}, your longest break", short_date(g.last + Duration::days(1)), short_date(g.back - Duration::days(1)))),
+                Some(g) => (
+                    g.days.to_string(),
+                    "Days without a session".to_string(),
+                    format!("{} to {}, your longest break", short_date(g.last + Duration::days(1)), short_date(g.back - Duration::days(1))),
+                ),
                 None => ("0".into(), "Days played".into(), format!("Nothing played in {name}")),
             };
             return shell(MONTH_W)
                 .child(
-                    div()
-                        .relative()
-                        .flex_1()
-                        .bg(rgb(0x10151c))
-                        .child(head(name.clone()))
-                        .child(
-                            div()
-                                .absolute()
-                                .left(relative(0.5))
-                                .top(relative(0.54))
-                                .ml(px(-42.))
-                                .mt(px(-42.))
-                                .size(px(84.))
-                                .rounded_full()
-                                .border_2()
-                                .border_color(theme::white_a(0.2))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .gap(px(10.))
-                                .child(div().w(px(10.)).h(px(32.)).rounded(px(4.)).bg(theme::white_a(0.55)))
-                                .child(div().w(px(10.)).h(px(32.)).rounded(px(4.)).bg(theme::white_a(0.55))),
-                        ),
+                    div().relative().flex_1().bg(rgb(0x10151c)).child(head(name.clone())).child(
+                        div()
+                            .absolute()
+                            .left(relative(0.5))
+                            .top(relative(0.54))
+                            .ml(px(-42.))
+                            .mt(px(-42.))
+                            .size(px(84.))
+                            .rounded_full()
+                            .border_2()
+                            .border_color(theme::white_a(0.2))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(10.))
+                            .child(div().w(px(10.)).h(px(32.)).rounded(px(4.)).bg(theme::white_a(0.55)))
+                            .child(div().w(px(10.)).h(px(32.)).rounded(px(4.)).bg(theme::white_a(0.55))),
+                    ),
                 )
                 .child(
                     div()
@@ -565,8 +674,22 @@ impl StatsPage {
                         .flex_col()
                         .px(px(22.))
                         .pb(px(20.))
-                        .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(54.)).line_height(px(56.)).child("0 h"))
-                        .child(div().mt(px(6.)).mb(px(12.)).text_size(px(12.5)).text_color(theme::text_muted()).child("Time off. The controller stayed on the shelf."))
+                        .child(
+                            div()
+                                .font_family(theme::FONT_HEADING)
+                                .font_weight(theme::W_BOLD)
+                                .text_size(px(54.))
+                                .line_height(px(56.))
+                                .child("0 h"),
+                        )
+                        .child(
+                            div()
+                                .mt(px(6.))
+                                .mb(px(12.))
+                                .text_size(px(12.5))
+                                .text_color(theme::text_muted())
+                                .child("Time off. The controller stayed on the shelf."),
+                        )
                         .child(hbox(big, title, detail))
                         .child(dlab)
                         .child(daily),
@@ -589,8 +712,25 @@ impl StatsPage {
                     .items_center()
                     .gap(px(12.))
                     .h(px(46.))
-                    .child(div().w(px(12.)).font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(12.)).text_color(theme::text_dim()).child((r + 1).to_string()))
-                    .child(div().flex_none().w(px(30.)).h(px(40.)).rounded(px(6.)).overflow_hidden().bg(theme::white_a(0.06)).children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))))
+                    .child(
+                        div()
+                            .w(px(12.))
+                            .font_family(theme::FONT_HEADING)
+                            .font_weight(theme::W_BOLD)
+                            .text_size(px(12.))
+                            .text_color(theme::text_dim())
+                            .child((r + 1).to_string()),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(30.))
+                            .h(px(40.))
+                            .rounded(px(6.))
+                            .overflow_hidden()
+                            .bg(theme::white_a(0.06))
+                            .children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -606,9 +746,26 @@ impl StatsPage {
                                     .child(div().flex_none().size(px(8.)).rounded_full().bg(c))
                                     .child(div().truncate().child(self.game_title(*g))),
                             )
-                            .child(div().mt(px(6.)).h(px(5.)).rounded_full().bg(theme::white_a(0.07)).child(div().h_full().w(relative((*secs / max) as f32)).rounded_full().bg(c))),
+                            .child(
+                                div()
+                                    .mt(px(6.))
+                                    .h(px(5.))
+                                    .rounded_full()
+                                    .bg(theme::white_a(0.07))
+                                    .child(div().h_full().w(relative((*secs / max) as f32)).rounded_full().bg(c)),
+                            ),
                     )
-                    .child(div().flex_none().min_w(px(70.)).flex().justify_end().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(14.)).child(fmt_secs(*secs))),
+                    .child(
+                        div()
+                            .flex_none()
+                            .min_w(px(70.))
+                            .flex()
+                            .justify_end()
+                            .font_family(theme::FONT_HEADING)
+                            .font_weight(theme::W_BOLD)
+                            .text_size(px(14.))
+                            .child(fmt_secs(*secs)),
+                    ),
             );
         }
         let rest: f64 = games.iter().skip(3).map(|g| g.1).sum();
@@ -630,7 +787,8 @@ impl StatsPage {
         // Screenshots taken that month of its top games (any game if none).
         let mut shots: Vec<(usize, std::path::PathBuf)> = Vec::new();
         if let Some(all) = self.shots.clone() {
-            let in_month = |g: usize| all.get(&g).and_then(|l| l.iter().filter(|s| b.start <= s.at.date() && s.at.date() < b.end).nth(0).cloned());
+            let in_month =
+                |g: usize| all.get(&g).and_then(|l| l.iter().filter(|s| b.start <= s.at.date() && s.at.date() < b.end).nth(0).cloned());
             for (g, _) in games.iter().take(3) {
                 if let Some(s) = in_month(*g) {
                     shots.push((*g, s.path));
@@ -733,7 +891,15 @@ impl StatsPage {
                     .text_size(px(11.5))
                     .child(div().size(px(8.)).rounded_full().bg(series_color(st.series_of(g))))
                     .child(if is_month { "Game of the month" } else { "Game of the year" })
-                    .child(div().font_family(theme::FONT_BODY).font_weight(theme::W_REGULAR).text_color(theme::text_muted()).max_w(px(220.)).truncate().child(self.game_title(g)))
+                    .child(
+                        div()
+                            .font_family(theme::FONT_BODY)
+                            .font_weight(theme::W_REGULAR)
+                            .text_color(theme::text_muted())
+                            .max_w(px(220.))
+                            .truncate()
+                            .child(self.game_title(g)),
+                    )
             }));
         let body = div()
             .relative()
@@ -742,8 +908,22 @@ impl StatsPage {
             .mt(px(-50.))
             .px(px(22.))
             .pb(px(20.))
-            .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(54.)).line_height(px(56.)).child(fmt_secs(b.secs)))
-            .child(div().mt(px(6.)).mb(px(12.)).text_size(px(12.5)).text_color(theme::text_muted()).child(format!("played in {name}{partial} \u{b7} {days} of {span_days} days")))
+            .child(
+                div()
+                    .font_family(theme::FONT_HEADING)
+                    .font_weight(theme::W_BOLD)
+                    .text_size(px(54.))
+                    .line_height(px(56.))
+                    .child(fmt_secs(b.secs)),
+            )
+            .child(
+                div()
+                    .mt(px(6.))
+                    .mb(px(12.))
+                    .text_size(px(12.5))
+                    .text_color(theme::text_muted())
+                    .child(format!("played in {name}{partial} \u{b7} {days} of {span_days} days")),
+            )
             .when(!big.is_empty(), |d| d.child(hbox(big, title, detail)))
             .child(rows)
             .child(dlab)
@@ -780,7 +960,13 @@ impl StatsPage {
                     .flex()
                     .items_end()
                     .when(secs > 0. && step == 1, |el| el.on_hover(hover(Hover::Day(d), cx)))
-                    .child(div().w_full().h(px(if secs > 0. { ((secs / scale) as f32 * 44.).max(3.) } else { 0. })).rounded_t(px(3.)).bg(color)),
+                    .child(
+                        div()
+                            .w_full()
+                            .h(px(if secs > 0. { ((secs / scale) as f32 * 44.).max(3.) } else { 0. }))
+                            .rounded_t(px(3.))
+                            .bg(color),
+                    ),
             );
             d = end;
         }

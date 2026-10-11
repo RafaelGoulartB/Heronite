@@ -19,7 +19,8 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::theme;
 
-const RUN_AS: [(&str, &str); 3] = [("auto", "Automatic (from the file)"), ("linux", "Linux native"), ("windows", "Windows (Wine / Proton)")];
+const RUN_AS: [(&str, &str); 3] =
+    [("auto", "Automatic (from the file)"), ("linux", "Linux native"), ("windows", "Windows (Wine / Proton)")];
 
 /// Which text field a keyboard edit goes to.
 #[derive(Clone, Copy)]
@@ -70,9 +71,15 @@ impl GameSettingsDialog {
                 let effective = if l.effective == Platform::Linux { "runs natively on Linux" } else { "runs through Wine / Proton" };
                 let index = RUN_AS.iter().position(|(v, _)| *v == l.run_as).unwrap_or(0);
                 vec![
-                    Row::text("exe", "Executable", exe.clone()).icon(Icon::Description).desc(if l.exists { format!("{detected}, {effective}") } else { "File not found".into() }),
+                    Row::text("exe", "Executable", exe.clone()).icon(Icon::Description).desc(if l.exists {
+                        format!("{detected}, {effective}")
+                    } else {
+                        "File not found".into()
+                    }),
                     Row::choice("run-as", "Run as", RUN_AS.iter().map(|(_, t)| SharedString::from(*t)).collect(), index),
-                    Row::action("save-launch", if l.saved && !dirty { "Saved" } else { "Save" }).icon(Icon::Save).enabled(dirty && !exe.trim().is_empty() && self.busy.is_none()),
+                    Row::action("save-launch", if l.saved && !dirty { "Saved" } else { "Save" })
+                        .icon(Icon::Save)
+                        .enabled(dirty && !exe.trim().is_empty() && self.busy.is_none()),
                 ]
             }
             Tab::Details => {
@@ -93,7 +100,11 @@ impl GameSettingsDialog {
                     rows.push(Row::text(SharedString::from(format!("f:tag{i}")), *label, values));
                 }
                 rows.push(Row::header(""));
-                rows.push(Row::action("save-details", if self.busy.is_some() { "Saving\u{2026}" } else { "Save" }).icon(Icon::Save).enabled(dirty && self.busy.is_none()));
+                rows.push(
+                    Row::action("save-details", if self.busy.is_some() { "Saving\u{2026}" } else { "Save" })
+                        .icon(Icon::Save)
+                        .enabled(dirty && self.busy.is_none()),
+                );
                 rows
             }
             Tab::Images => {
@@ -101,7 +112,10 @@ impl GameSettingsDialog {
                 vec![
                     Row::info("img-cover", "Cover", if self.art.cover_url.is_some() { "Custom" } else { "Default" }),
                     Row::info("img-hero", "Background", if self.art.hero_url.is_some() { "Custom" } else { "Default" }),
-                    Row::action("img-reset", "Use the default images").icon(Icon::Replay).enabled(custom && self.busy.is_none()).desc("Choosing new images from the web needs desktop mode"),
+                    Row::action("img-reset", "Use the default images")
+                        .icon(Icon::Replay)
+                        .enabled(custom && self.busy.is_none())
+                        .desc("Choosing new images from the web needs desktop mode"),
                 ]
             }
             _ => Vec::new(),
@@ -178,12 +192,17 @@ impl GameSettingsDialog {
             self.images.update(cx, |im, _| im.get("gs-console-hero", hero_chain, w, h))
         };
         let (cover_chain, _) = self.art_chain(ArtKind::Cover);
-        let cover = if cover_chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get("gs-console-cover", cover_chain, 110. * s * scale, 150. * s * scale)) };
+        let cover = if cover_chain.is_empty() {
+            None
+        } else {
+            self.images.update(cx, |im, _| im.get("gs-console-cover", cover_chain, 110. * s * scale, 150. * s * scale))
+        };
 
         let tabs = self.console_tabs();
         let active = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
         let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
-        let mut meta = vec![self.game.source_label.to_string(), if self.game.installed { "Installed".into() } else { "Not installed".into() }];
+        let mut meta =
+            vec![self.game.source_label.to_string(), if self.game.installed { "Installed".into() } else { "Not installed".into() }];
         if self.game.playtime_minutes > 0 {
             meta.push(format!("{} played", heronite_data::collection::format_playtime_minutes(self.game.playtime_minutes)));
         }

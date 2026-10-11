@@ -168,10 +168,7 @@ fn ext_from_url(url: &str, content_type: &str) -> String {
     if !from_type.is_empty() {
         return from_type.into();
     }
-    url::Url::parse(url)
-        .ok()
-        .and_then(|u| Path::new(u.path()).extension().map(|e| normalize_ext(&e.to_string_lossy())))
-        .unwrap_or_default()
+    url::Url::parse(url).ok().and_then(|u| Path::new(u.path()).extension().map(|e| normalize_ext(&e.to_string_lossy()))).unwrap_or_default()
 }
 
 fn download_image_bytes(http: &Http, url: &str) -> Result<(Vec<u8>, String)> {
@@ -267,7 +264,8 @@ mod tests {
         let paths = DataPaths::at(dir.path().join("cfg"));
         // Heronite already wrote an entry with a field we do not model.
         fs::create_dir_all(paths.local_library()).unwrap();
-        fs::write(paths.art(), "{\n\t\"games\": {\n\t\t\"sideload:other\": {\n\t\t\t\"heroUrl\": \"x\"\n\t\t}\n\t},\n\t\"future\": 1\n}").unwrap();
+        fs::write(paths.art(), "{\n\t\"games\": {\n\t\t\"sideload:other\": {\n\t\t\t\"heroUrl\": \"x\"\n\t\t}\n\t},\n\t\"future\": 1\n}")
+            .unwrap();
         let src = dir.path().join("my cover.PNG");
         fs::write(&src, png()).unwrap();
 

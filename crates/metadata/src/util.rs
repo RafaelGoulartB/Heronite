@@ -16,11 +16,7 @@ pub(crate) use re;
 
 /// `blankMetadata`.
 pub fn blank_metadata(app_name: &str, runner: &str) -> CollectionGameMetadata {
-    CollectionGameMetadata {
-        app_name: app_name.to_owned(),
-        runner: runner.to_owned(),
-        ..Default::default()
-    }
+    CollectionGameMetadata { app_name: app_name.to_owned(), runner: runner.to_owned(), ..Default::default() }
 }
 
 /// `uniqueNames`: trims, drops empties, de-duplicates case-insensitively and
@@ -123,20 +119,15 @@ pub fn normalize_title(title: &str) -> String {
 /// suffix, with `" - "` turned into `": "`, and without a demo/beta marker.
 pub fn title_queries(title: &str) -> Vec<String> {
     let cleaned = re!(r"\s+").replace_all(&title.replace('_', " "), " ").trim().to_owned();
-    let no_edition = re!(r"(?i)\s*[-–:]\s*(definitive|ultimate|complete|goty|deluxe|gold|standard|windows|linux).*$")
-        .replace(&cleaned, "")
-        .into_owned();
+    let no_edition =
+        re!(r"(?i)\s*[-–:]\s*(definitive|ultimate|complete|goty|deluxe|gold|standard|windows|linux).*$").replace(&cleaned, "").into_owned();
     let colon = re!(r"\s+-\s+").replace_all(&cleaned, ": ").into_owned();
     let no_marker = re!(r"(?i)\s*[-–:]?\s*[(\[]?\s*\b(?:(?:multiplayer|open|closed|public|free)\s+)?(?:demo|beta|alpha|playtest|trial|preview|early\s+access)\b\s*[)\]]?\s*$")
         .replace(&no_edition, "")
         .trim()
         .to_owned();
     let mut seen = HashSet::new();
-    [cleaned, no_edition, colon, no_marker]
-        .into_iter()
-        .filter(|q| seen.insert(q.clone()))
-        .filter(|q| q.chars().count() >= 2)
-        .collect()
+    [cleaned, no_edition, colon, no_marker].into_iter().filter(|q| seen.insert(q.clone())).filter(|q| q.chars().count() >= 2).collect()
 }
 
 /// `scoreTitle`.
@@ -165,12 +156,7 @@ pub fn score_title(query: &str, name: &str) -> i32 {
 }
 
 /// `pickBestMatch` (first best score wins ties).
-pub fn pick_best_match<'a, T>(
-    title: &str,
-    items: &'a [T],
-    name_of: impl Fn(&T) -> String,
-    min_score: i32,
-) -> Option<&'a T> {
+pub fn pick_best_match<'a, T>(title: &str, items: &'a [T], name_of: impl Fn(&T) -> String, min_score: i32) -> Option<&'a T> {
     let mut best: Option<(&T, i32)> = None;
     for item in items {
         let score = score_title(title, &name_of(item));
@@ -200,9 +186,7 @@ pub fn encode_uri_component(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')' => {
-                out.push(b as char)
-            }
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')' => out.push(b as char),
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }

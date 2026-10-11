@@ -6,12 +6,12 @@ use gpui_kit::*;
 use serde_json::Value;
 
 use super::parts::{column, heading, help, rows, Rows};
-use super::{SettingsPanel, Section, Target};
-use heronite_data::DataPaths;
+use super::{Section, SettingsPanel, Target};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
+use heronite_data::DataPaths;
 
 /// What the global ("General") panel shows. The Settings page hosts one
 /// panel and switches between these; the Game defaults use the other tabs.
@@ -57,7 +57,14 @@ impl SettingsPanel {
                 vec![help("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core.")],
             )
             .field_help(
-                self.path_row("altLegendaryBin", Some("Choose an Alternative Legendary Binary"), false, "Select Legendary Binary", true, cx),
+                self.path_row(
+                    "altLegendaryBin",
+                    Some("Choose an Alternative Legendary Binary"),
+                    false,
+                    "Select Legendary Binary",
+                    true,
+                    cx,
+                ),
                 vec![help("Leave it empty to use the one in the data folder (tools/bin/legendary).")],
             );
         let toggles = rows()
@@ -99,8 +106,22 @@ impl SettingsPanel {
 
     fn general_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let folders = rows()
-            .field(self.path_row("defaultInstallPath", Some("Default Installation Path"), true, "Choose the default installation folder", false, cx))
-            .field(self.path_row("defaultWinePrefixDir", Some("Set Folder for new Wine Prefixes"), true, "Select a Folder for new Wine Prefixes", false, cx))
+            .field(self.path_row(
+                "defaultInstallPath",
+                Some("Default Installation Path"),
+                true,
+                "Choose the default installation folder",
+                false,
+                cx,
+            ))
+            .field(self.path_row(
+                "defaultWinePrefixDir",
+                Some("Set Folder for new Wine Prefixes"),
+                true,
+                "Select a Folder for new Wine Prefixes",
+                false,
+                cx,
+            ))
             .field_help(
                 self.path_row("defaultSteamPath", Some("Default Steam path"), true, "Steam path.", false, cx),
                 vec![help("This path lets Heronite determine what version of Proton Steam uses, for adding non-Steam games to Steam.")],
@@ -156,8 +177,24 @@ impl SettingsPanel {
                 false,
                 cx,
             ))
-            .child(self.toggle_row("shortcuts-desktop", "addDesktopShortcuts", false, "Add desktop shortcuts automatically", None, false, cx))
-            .child(self.toggle_row("shortcuts-menu", "addStartMenuShortcuts", false, "Add games to start menu automatically", None, false, cx))
+            .child(self.toggle_row(
+                "shortcuts-desktop",
+                "addDesktopShortcuts",
+                false,
+                "Add desktop shortcuts automatically",
+                None,
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "shortcuts-menu",
+                "addStartMenuShortcuts",
+                false,
+                "Add games to start menu automatically",
+                None,
+                false,
+                cx,
+            ))
             .child(self.toggle_row("shortcuts-steam", "addSteamShortcuts", false, "Add games to Steam automatically", None, false, cx))
     }
 

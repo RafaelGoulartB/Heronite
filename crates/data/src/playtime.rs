@@ -51,9 +51,7 @@ pub fn set_playtime_minutes(paths: &DataPaths, app_name: &str, minutes: f64) -> 
         }
         let map = root.as_object_mut().expect("object");
         let current = map.get(app_name).and_then(Value::as_object);
-        let text = |key: &str| {
-            current.and_then(|c| c.get(key)).and_then(Value::as_str).unwrap_or("").to_string()
-        };
+        let text = |key: &str| current.and_then(|c| c.get(key)).and_then(Value::as_str).unwrap_or("").to_string();
         let mut entry = Map::new();
         entry.insert("firstPlayed".into(), json!(text("firstPlayed")));
         entry.insert("lastPlayed".into(), json!(text("lastPlayed")));
@@ -119,10 +117,7 @@ mod tests {
         let (_d, paths) = setup(None);
         set_playtime_minutes(&paths, "n", 90.0).unwrap();
         let text = fs::read_to_string(paths.timestamps()).unwrap();
-        assert_eq!(
-            text,
-            "{\n\t\"n\": {\n\t\t\"firstPlayed\": \"\",\n\t\t\"lastPlayed\": \"\",\n\t\t\"totalPlayed\": 90\n\t}\n}"
-        );
+        assert_eq!(text, "{\n\t\"n\": {\n\t\t\"firstPlayed\": \"\",\n\t\t\"lastPlayed\": \"\",\n\t\t\"totalPlayed\": 90\n\t}\n}");
         set_playtime_minutes(&paths, "n", -4.0).unwrap();
         assert_eq!(get_playtime_minutes(&paths, "n"), 0);
         assert_eq!(get_playtime_minutes(&paths, "missing"), 0);

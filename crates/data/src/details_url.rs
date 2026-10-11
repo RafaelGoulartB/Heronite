@@ -21,10 +21,7 @@ pub fn details_url(game: &CollectionGame) -> Option<String> {
     if let Some(id) = game.steam_app_id.as_deref().filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())) {
         return Some(format!("https://store.steampowered.com/app/{id}"));
     }
-    game.metadata
-        .as_ref()
-        .and_then(|m| m.websites.iter().map(|w| w.trim()).find(|w| is_web(w)))
-        .map(str::to_string)
+    game.metadata.as_ref().and_then(|m| m.websites.iter().map(|w| w.trim()).find(|w| is_web(w))).map(str::to_string)
 }
 
 #[cfg(test)]

@@ -227,9 +227,12 @@ impl Render for MetadataWizard {
         }
         body = body
             .child(
-                div().h(px(8.)).rounded_full().bg(theme::white_a(0.08)).overflow_hidden().child(
-                    div().h_full().w(relative(p.percent.min(100) as f32 / 100.)).bg(theme::accent()),
-                ),
+                div()
+                    .h(px(8.))
+                    .rounded_full()
+                    .bg(theme::white_a(0.08))
+                    .overflow_hidden()
+                    .child(div().h_full().w(relative(p.percent.min(100) as f32 / 100.)).bg(theme::accent())),
             )
             .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(status));
         if running {
@@ -273,12 +276,8 @@ impl Render for MetadataWizard {
             );
         }
         footer = footer.child(
-            button(
-                "wiz-close",
-                if running { ButtonKind::Primary } else { ButtonKind::Glass },
-                if running { "Hide" } else { "Close" },
-            )
-            .on_click(cx.listener(|this, _, _, cx| this.hide(cx))),
+            button("wiz-close", if running { ButtonKind::Primary } else { ButtonKind::Glass }, if running { "Hide" } else { "Close" })
+                .on_click(cx.listener(|this, _, _, cx| this.hide(cx))),
         );
 
         let entity = cx.entity().downgrade();

@@ -268,10 +268,11 @@ impl WineManagerPage {
                 })));
         } else if job.is_some_and(|j| j.kind != JobKind::Remove) {
             let k = key.clone();
-            actions = actions.child(button_sm(row_id("cancel", r), ButtonKind::Glass, "Cancel").on_click(cx.listener(move |this, _, _, cx| {
-                this.manager.cancel(&k);
-                cx.notify();
-            })));
+            actions =
+                actions.child(button_sm(row_id("cancel", r), ButtonKind::Glass, "Cancel").on_click(cx.listener(move |this, _, _, cx| {
+                    this.manager.cancel(&k);
+                    cx.notify();
+                })));
         } else if job.is_some() {
             // Removing: nothing to click.
         } else if r.installed() {
@@ -280,10 +281,12 @@ impl WineManagerPage {
             }
             if r.has_update() {
                 let info = r.clone();
-                actions = actions.child(button_sm(row_id("update", r), ButtonKind::Primary, "Update").on_click(cx.listener(move |this, _, _, cx| {
-                    this.manager.start_install(info.clone());
-                    cx.notify();
-                })));
+                actions = actions.child(button_sm(row_id("update", r), ButtonKind::Primary, "Update").on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        this.manager.start_install(info.clone());
+                        cx.notify();
+                    },
+                )));
             }
             let k = key.clone();
             actions = actions.child(icon_action(row_id("remove", r), Icon::FaTrash, true).on_click(cx.listener(move |this, _, _, cx| {
@@ -292,10 +295,12 @@ impl WineManagerPage {
             })));
         } else {
             let info = r.clone();
-            actions = actions.child(button_sm(row_id("install", r), ButtonKind::Glass, "Install").on_click(cx.listener(move |this, _, _, cx| {
-                this.manager.start_install(info.clone());
-                cx.notify();
-            })));
+            actions = actions.child(button_sm(row_id("install", r), ButtonKind::Glass, "Install").on_click(cx.listener(
+                move |this, _, _, cx| {
+                    this.manager.start_install(info.clone());
+                    cx.notify();
+                },
+            )));
         }
         actions
     }

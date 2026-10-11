@@ -96,29 +96,17 @@ fn agent(opts: &Opts) -> &'static ureq::Agent {
 }
 
 fn download(url: &str, opts: &Opts) -> Result<Vec<u8>> {
-    let mut resp = agent(opts)
-        .get(url)
-        .call()
-        .map_err(|e| ImageError::Http(format!("{url}: {e}")))?; // 4xx/5xx are errors
+    let mut resp = agent(opts).get(url).call().map_err(|e| ImageError::Http(format!("{url}: {e}")))?; // 4xx/5xx are errors
     let status = resp.status();
     if !status.is_success() {
         return Err(ImageError::Http(format!("{url}: status {status}")));
     }
-    let ctype = resp
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_ascii_lowercase();
+    let ctype = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
     if ctype.starts_with("text/") {
         return Err(ImageError::NotAnImage(format!("{url}: content-type {ctype}")));
     }
-    let bytes = resp
-        .body_mut()
-        .with_config()
-        .limit(opts.max_download_bytes)
-        .read_to_vec()
-        .map_err(|e| ImageError::Http(format!("{url}: {e}")))?;
+    let bytes =
+        resp.body_mut().with_config().limit(opts.max_download_bytes).read_to_vec().map_err(|e| ImageError::Http(format!("{url}: {e}")))?;
     if !sniff(&bytes) {
         return Err(ImageError::NotAnImage(format!("{url}: body is not a supported image ({} bytes)", bytes.len())));
     }
@@ -163,9 +151,7 @@ mod tests {
 
     fn png_bytes() -> Vec<u8> {
         let mut out = Vec::new();
-        image::DynamicImage::new_rgb8(2, 2)
-            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
-            .unwrap();
+        image::DynamicImage::new_rgb8(2, 2).write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png).unwrap();
         out
     }
 
@@ -181,7 +167,8 @@ mod tests {
                 let req = String::from_utf8_lossy(&buf[..n]).to_string();
                 let path = req.split_whitespace().nth(1).unwrap().to_string();
                 let r = routes.iter().find(|r| r.0 == path).unwrap();
-                let head = format!("HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", r.1, r.2, r.3.len());
+                let head =
+                    format!("HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", r.1, r.2, r.3.len());
                 s.write_all(head.as_bytes()).unwrap();
                 s.write_all(&r.3).unwrap();
             }

@@ -32,11 +32,8 @@ impl LauncherLogger {
     /// Opens today's log and prunes old ones. `disabled` (the global
     /// `disableLogs`) keeps everything but the warning out of the file.
     pub fn open(paths: LogPaths, disabled: bool) -> Self {
-        let this = Self {
-            paths,
-            disabled,
-            state: Mutex::new(LauncherState { date: chrono::Local::now().date_naive(), file: None, written: 0 }),
-        };
+        let this =
+            Self { paths, disabled, state: Mutex::new(LauncherState { date: chrono::Local::now().date_naive(), file: None, written: 0 }) };
         {
             let mut st = this.state.lock().unwrap();
             this.rotate(&mut st);

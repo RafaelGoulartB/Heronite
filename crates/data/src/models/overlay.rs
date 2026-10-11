@@ -142,7 +142,6 @@ pub struct CompletionStatus {
     pub extra: Extra,
 }
 
-
 // local_library/metadata.json
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -230,4 +229,3 @@ pub struct CollectionGameArt {
     #[serde(flatten)]
     pub extra: Extra,
 }
-

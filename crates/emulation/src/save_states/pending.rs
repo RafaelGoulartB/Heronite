@@ -24,11 +24,8 @@ impl LaunchStateArgs {
     /// Prepends the state arguments to the emulator argv (dropping the ROM
     /// path when the state replaces the image).
     pub fn apply(&self, argv: Vec<String>, rom_path: Option<&str>) -> Vec<String> {
-        let rest: Vec<String> = if self.replaces_image {
-            argv.into_iter().filter(|p| Some(p.as_str()) != rom_path).collect()
-        } else {
-            argv
-        };
+        let rest: Vec<String> =
+            if self.replaces_image { argv.into_iter().filter(|p| Some(p.as_str()) != rom_path).collect() } else { argv };
         self.args.iter().cloned().chain(rest).collect()
     }
 }
@@ -64,10 +61,7 @@ impl PendingLaunchStates {
     }
 
     pub fn set(&self, app_name: &str, rom_path: &str, args: LaunchStateArgs) {
-        self.inner
-            .lock()
-            .unwrap()
-            .insert(app_name.into(), (args, rom_path.into(), Instant::now() + self.ttl));
+        self.inner.lock().unwrap().insert(app_name.into(), (args, rom_path.into(), Instant::now() + self.ttl));
     }
 
     /// `takePendingLaunchState`: consumes the entry (even when it does not
@@ -106,8 +100,7 @@ pub fn set_pending_launch_state(
             let Some(state) = states.into_iter().find(|f| f.state.path == sp) else {
                 return Ok(false);
             };
-            r.engine
-                .load_args(env, &r.ctx, &state.state.path, state.state.kind, state.state.slot)?
+            r.engine.load_args(env, &r.ctx, &state.state.path, state.state.kind, state.state.slot)?
         }
         None => {
             let fresh = r.engine.fresh_args(env, &r.ctx)?;

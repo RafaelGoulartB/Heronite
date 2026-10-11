@@ -13,13 +13,7 @@ use crate::ui::icon;
 const TOGGLE_SPRING: SpringConfig = SpringConfig::new(900., 60., 1.);
 
 fn knob_shadow() -> Vec<BoxShadow> {
-    vec![BoxShadow {
-        color: theme::black_a(0.4),
-        offset: point(px(0.), px(1.)),
-        blur_radius: px(3.),
-        spread_radius: px(0.),
-        inset: false,
-    }]
+    vec![BoxShadow { color: theme::black_a(0.4), offset: point(px(0.), px(1.)), blur_radius: px(3.), spread_radius: px(0.), inset: false }]
 }
 
 /// Accent fill (fading in) and white knob (sliding) of a switch `w` wide
@@ -29,14 +23,7 @@ fn switch_fx(key: String, on: bool, w: f32, knob: f32, inset: f32) -> AnyElement
     let build = move |fx: Div, t: f32| {
         let t = t.clamp(0., 1.);
         fx.child(div().absolute().inset_0().rounded_full().bg(theme::accent()).opacity(t)).child(
-            div()
-                .absolute()
-                .top(px(inset))
-                .left(px(inset + travel * t))
-                .size(px(knob))
-                .rounded_full()
-                .bg(white())
-                .shadow(knob_shadow()),
+            div().absolute().top(px(inset)).left(px(inset + travel * t)).size(px(knob)).rounded_full().bg(white()).shadow(knob_shadow()),
         )
     };
     let fx = div().absolute().inset_0();

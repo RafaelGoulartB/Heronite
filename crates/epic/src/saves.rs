@@ -94,7 +94,10 @@ pub(crate) fn detect_path_with(data_paths: &DataPaths, legendary: &Legendary, ap
     let probe = SystemProbe;
     let settings = load_game_settings(data_paths, app_name, &ctx.global, &probe);
     let prefix = settings.wine_prefix.clone();
-    if !prefix.is_empty() && !std::path::Path::new(&prefix).join("user.reg").exists() && !std::path::Path::new(&prefix).join("pfx/user.reg").exists() {
+    if !prefix.is_empty()
+        && !std::path::Path::new(&prefix).join("user.reg").exists()
+        && !std::path::Path::new(&prefix).join("pfx/user.reg").exists()
+    {
         bail!("The Wine prefix of this game does not exist yet; launch the game once or set the save folder by hand");
     }
     let env: Vec<(String, String)> = setup_wine_env_vars(&settings, "0", &ctx.runtime_dir(), &probe).into_iter().collect();
@@ -125,10 +128,7 @@ mod tests {
     #[test]
     fn sync_arguments() {
         assert_eq!(sync_args("A", "/s", None), ["sync-saves", "A", "--save-path", "/s", "-y"]);
-        assert_eq!(
-            sync_args("A", "/s", Some("--force-upload")),
-            ["sync-saves", "A", "--force-upload", "--save-path", "/s", "-y"]
-        );
+        assert_eq!(sync_args("A", "/s", Some("--force-upload")), ["sync-saves", "A", "--force-upload", "--save-path", "/s", "-y"]);
         assert_eq!(SyncMode::ForceDownload.flag(), Some("--force-download"));
         assert_eq!(SyncMode::Both.flag(), None);
     }
@@ -176,7 +176,11 @@ mod tests {
         .unwrap();
         // The fake "computes" the path the way legendary stores it.
         let inst = data_paths.legendary_config_dir().join("installed.json");
-        let body = format!("echo '{{\"A\": {{\"save_path\": \"/pfx/saves\"}}}}' > \"{}\"; echo WINEPREFIX=$WINEPREFIX >> \"{}\"", inst.display(), dir.path().join("calls.log").display());
+        let body = format!(
+            "echo '{{\"A\": {{\"save_path\": \"/pfx/saves\"}}}}' > \"{}\"; echo WINEPREFIX=$WINEPREFIX >> \"{}\"",
+            inst.display(),
+            dir.path().join("calls.log").display()
+        );
         let lg = fake(dir.path(), &body);
         let found = detect_path_with(&data_paths, &lg, "A").unwrap();
         assert_eq!(found.as_deref(), Some("/pfx/saves"));

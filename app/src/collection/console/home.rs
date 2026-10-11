@@ -67,7 +67,18 @@ pub(super) struct LibraryNav {
 
 impl Default for LibraryNav {
     fn default() -> Self {
-        Self { toolbar: None, index: 0, show: 0, sort: 0, status: 0, search: String::new(), scroll: Glide::new(Axis::Y), reveal: false, restart: false, cols: 6 }
+        Self {
+            toolbar: None,
+            index: 0,
+            show: 0,
+            sort: 0,
+            status: 0,
+            search: String::new(),
+            scroll: Glide::new(Axis::Y),
+            reveal: false,
+            restart: false,
+            cols: 6,
+        }
     }
 }
 
@@ -189,11 +200,14 @@ fn tile(id: SharedString, src: Option<ImageSource>, title: &str, w: Pixels, h: P
                     )
                     .into_any_element(),
             })
-            .when(playing, |d| {
-                d.child(div().absolute().top(u(8.)).left(u(8.)).child(kit::badge("Playing", theme::console_btn_a())))
-            })
+            .when(playing, |d| d.child(div().absolute().top(u(8.)).left(u(8.)).child(kit::badge("Playing", theme::console_btn_a()))))
     };
-    div().flex_none().relative().w(w).h(h).child(motion::spring(id, div().absolute().inset_0(), motion::LIFT, focused, move |d, t| d.child(face(t))))
+    div()
+        .flex_none()
+        .relative()
+        .w(w)
+        .h(h)
+        .child(motion::spring(id, div().absolute().inset_0(), motion::LIFT, focused, move |d, t| d.child(face(t))))
 }
 
 /// A Home / Library body sliding in from the side of its tab (`dir` -1 =
@@ -238,7 +252,8 @@ impl CollectionView {
         if g.playtime_minutes > 0 {
             facts.push(format!("{} played", heronite_data::collection::format_playtime_minutes(g.playtime_minutes)));
         }
-        let status = self.lib.as_ref().and_then(|l| l.statuses.iter().find(|s| s.id == g.status_id)).map(|s| (s.name.clone(), s.slug.clone()));
+        let status =
+            self.lib.as_ref().and_then(|l| l.statuses.iter().find(|s| s.id == g.status_id)).map(|s| (s.name.clone(), s.slug.clone()));
         let overview = self.focus.as_ref().filter(|f| f.key.as_ref() == g.key).and_then(|f| f.overview.clone());
         let hero = div()
             .relative()
@@ -257,7 +272,9 @@ impl CollectionView {
                     .child(facts.join(" \u{b7} "))
                     .children(status.map(|(name, slug)| kit::badge(name, theme::status_color(&slug)))),
             )
-            .children(overview.map(|o| motion::fade_in(SharedString::from(format!("hero-about-{}", g.key)), kit::body_text(clip(&o, 300)).line_clamp(3), 260)));
+            .children(overview.map(|o| {
+                motion::fade_in(SharedString::from(format!("hero-about-{}", g.key)), kit::body_text(clip(&o, 300)).line_clamp(3), 260)
+            }));
         // A new game slides in a little (never from blank: holding a
         // direction keeps the text readable).
         div().child(motion::enter_from(SharedString::from(format!("hero-{}", g.key)), hero, 300, 14., 0., 0.25))
@@ -391,7 +408,13 @@ impl CollectionView {
 
     pub(super) fn home_hints(&self) -> Vec<Hint> {
         let primary = self.selected.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).map(|g| self.primary_label(g)).unwrap_or("Play");
-        vec![hint(Btn::A, "Details"), hint(Btn::X, primary), hint(Btn::Y, "Search"), hint(Btn::Bumpers, "Library"), hint(Btn::Start, "Menu")]
+        vec![
+            hint(Btn::A, "Details"),
+            hint(Btn::X, primary),
+            hint(Btn::Y, "Search"),
+            hint(Btn::Bumpers, "Library"),
+            hint(Btn::Start, "Menu"),
+        ]
     }
 
     /// "Play", "Install" or "Stop" for the X shortcut.
@@ -437,15 +460,21 @@ impl CollectionView {
         let focused = keys.get(index).cloned();
         self.console_focus_game(focused.clone(), cx);
 
-        let bar = div().flex().items_center().gap(u(12.)).px(u(SIDE)).pb(u(16.)).children(chips.iter().enumerate().map(|(i, (label, value))| {
-            let on = toolbar == Some(i);
-            kit::row_base(on)
-                .min_h(u(46.))
-                .px(u(18.))
-                .when(!on, |d| d.bg(theme::white_a(0.07)))
-                .child(div().text_size(u(14.)).text_color(if on { theme::console_on_focus() } else { theme::text_muted() }).child(label.clone()))
-                .child(div().text_size(u(16.)).font_weight(theme::W_BOLD).max_w(u(260.)).truncate().child(value.clone()))
-        }));
+        let bar =
+            div().flex().items_center().gap(u(12.)).px(u(SIDE)).pb(u(16.)).children(chips.iter().enumerate().map(|(i, (label, value))| {
+                let on = toolbar == Some(i);
+                kit::row_base(on)
+                    .min_h(u(46.))
+                    .px(u(18.))
+                    .when(!on, |d| d.bg(theme::white_a(0.07)))
+                    .child(
+                        div()
+                            .text_size(u(14.))
+                            .text_color(if on { theme::console_on_focus() } else { theme::text_muted() })
+                            .child(label.clone()),
+                    )
+                    .child(div().text_size(u(16.)).font_weight(theme::W_BOLD).max_w(u(260.)).truncate().child(value.clone()))
+            }));
         let mut grid = div().id("console-grid").flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
         // On screen: the rows the grid is scrolled to, and the focused one.
         // The others are empty boxes of the same height (cheap to lay out
@@ -481,7 +510,11 @@ impl CollectionView {
                     0.,
                     0.3,
                 ))
-                .child(div().flex_none().text_size(u(15.)).text_color(theme::text_muted()).child(format!("{} of {}", index + 1, keys.len())))
+                .child(div().flex_none().text_size(u(15.)).text_color(theme::text_muted()).child(format!(
+                    "{} of {}",
+                    index + 1,
+                    keys.len()
+                )))
         });
         div()
             .flex()
@@ -572,7 +605,13 @@ impl CollectionView {
 
     pub(super) fn library_hints(&self) -> Vec<Hint> {
         if self.console.library.toolbar.is_some() {
-            return vec![hint(Btn::A, "Change"), hint(Btn::X, "Reset"), hint(Btn::Y, "Search"), hint(Btn::Bumpers, "Home"), hint(Btn::Start, "Menu")];
+            return vec![
+                hint(Btn::A, "Change"),
+                hint(Btn::X, "Reset"),
+                hint(Btn::Y, "Search"),
+                hint(Btn::Bumpers, "Home"),
+                hint(Btn::Start, "Menu"),
+            ];
         }
         let primary = self.selected.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).map(|g| self.primary_label(g)).unwrap_or("Play");
         vec![hint(Btn::A, "Details"), hint(Btn::X, primary), hint(Btn::Y, "Search"), hint(Btn::Bumpers, "Home"), hint(Btn::Start, "Menu")]

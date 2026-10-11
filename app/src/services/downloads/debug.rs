@@ -56,7 +56,9 @@ impl Downloads {
             return;
         };
         let path = crate::env::value("HERONITE_DEBUG_INSTALL_DIR").unwrap_or_else(|| "/tmp/heronite-fake-games".into());
-        let dlcs = crate::env::value("HERONITE_DEBUG_INSTALL_DLCS").map(|d| d.split(',').filter(|s| !s.is_empty()).map(str::to_string).collect()).unwrap_or_default();
+        let dlcs = crate::env::value("HERONITE_DEBUG_INSTALL_DLCS")
+            .map(|d| d.split(',').filter(|s| !s.is_empty()).map(str::to_string).collect())
+            .unwrap_or_default();
         self.queue_install(
             InstallRequest {
                 game_info,
@@ -117,13 +119,7 @@ impl Job for FakeJob {
     fn run(&self, _element: &DmElement, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
         let mut percent = 37.4;
         while !cancel.is_requested() {
-            on_progress(Progress {
-                percent,
-                downloaded_mib: percent * 120.,
-                eta: "00:08:20".into(),
-                down_speed: 5.43,
-                disk_speed: 5.12,
-            });
+            on_progress(Progress { percent, downloaded_mib: percent * 120., eta: "00:08:20".into(), down_speed: 5.43, disk_speed: 5.12 });
             percent = (percent + 0.1).min(99.);
             std::thread::sleep(Duration::from_millis(1000));
         }

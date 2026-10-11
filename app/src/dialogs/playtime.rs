@@ -85,17 +85,8 @@ impl Render for PlaytimeDialog {
             .flex()
             .flex_col()
             .gap(px(16.))
-            .child(paragraph(format!(
-                "Set the total time played for {}. New sessions keep adding to this value.",
-                self.title
-            )))
-            .child(
-                div()
-                    .flex()
-                    .gap(px(16.))
-                    .child(field("Hours", &self.hours))
-                    .child(field("Minutes", &self.minutes)),
-            )
+            .child(paragraph(format!("Set the total time played for {}. New sessions keep adding to this value.", self.title)))
+            .child(div().flex().gap(px(16.)).child(field("Hours", &self.hours)).child(field("Minutes", &self.minutes)))
             .child(
                 div()
                     .text_size(px(18.))
@@ -107,10 +98,7 @@ impl Render for PlaytimeDialog {
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(
-                button("playtime-cancel", ButtonKind::Ghost, "Cancel")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
-            )
+            .child(button("playtime-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(button("playtime-save", ButtonKind::Primary, "Save").on_click(cx.listener(|this, _, _, cx| this.save(cx))));
         let entity = cx.entity().downgrade();
         dialog(

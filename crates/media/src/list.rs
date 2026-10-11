@@ -75,11 +75,7 @@ pub struct ScreenshotsResult {
 
 /// Lexical `path.resolve`: absolute, `.`/`..` collapsed, no symlink resolution.
 pub fn resolve_path(path: &Path) -> PathBuf {
-    let abs = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir().unwrap_or_default().join(path)
-    };
+    let abs = if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir().unwrap_or_default().join(path) };
     let mut out = PathBuf::new();
     for c in abs.components() {
         match c {

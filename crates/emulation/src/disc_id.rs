@@ -46,10 +46,7 @@ fn read_at(file: &mut File, position: u64, length: usize) -> Vec<u8> {
 fn detect_layout(file: &mut File) -> Layout {
     let head = read_at(file, 0, 16);
     if head.len() == 16 && head[..12] == SYNC {
-        return Layout {
-            size: RAW_SECTOR,
-            offset: if head[15] == 2 { 24 } else { 16 },
-        };
+        return Layout { size: RAW_SECTOR, offset: if head[15] == 2 { 24 } else { 16 } };
     }
     Layout { size: SECTOR, offset: 0 }
 }
@@ -60,11 +57,7 @@ fn read_logical(file: &mut File, layout: Layout, lba: u32, length: usize) -> Vec
     let mut sector = lba as u64;
     while remaining > 0 {
         let take = remaining.min(SECTOR);
-        let chunk = read_at(
-            file,
-            sector * layout.size as u64 + layout.offset as u64,
-            take,
-        );
+        let chunk = read_at(file, sector * layout.size as u64 + layout.offset as u64, take);
         if chunk.is_empty() {
             break;
         }
@@ -101,28 +94,18 @@ fn parse_directory(data: &[u8]) -> Vec<DirEntry> {
         }
         let Some(&name_len) = data.get(pos + 32) else { break };
         let name_len = name_len as usize;
-        let (Some(name_bytes), Some(lba), Some(size), Some(&flags)) = (
-            data.get(pos + 33..pos + 33 + name_len),
-            u32le(data, pos + 2),
-            u32le(data, pos + 10),
-            data.get(pos + 25),
-        ) else {
+        let (Some(name_bytes), Some(lba), Some(size), Some(&flags)) =
+            (data.get(pos + 33..pos + 33 + name_len), u32le(data, pos + 2), u32le(data, pos + 10), data.get(pos + 25))
+        else {
             break;
         };
         let raw: String = name_bytes.iter().map(|&b| b as char).collect();
         let name = match raw.rfind(';') {
-            Some(i) if raw[i + 1..].chars().all(|c| c.is_ascii_digit()) && i + 1 < raw.len() => {
-                raw[..i].to_string()
-            }
+            Some(i) if raw[i + 1..].chars().all(|c| c.is_ascii_digit()) && i + 1 < raw.len() => raw[..i].to_string(),
             _ => raw,
         }
         .to_uppercase();
-        entries.push(DirEntry {
-            name,
-            lba,
-            size,
-            is_dir: flags & 0x02 != 0,
-        });
+        entries.push(DirEntry { name, lba, size, is_dir: flags & 0x02 != 0 });
         pos += length;
     }
     entries
@@ -147,12 +130,7 @@ pub fn read_iso_file(image: &Path, file_path: &[&str], max_bytes: usize) -> Opti
             if entry.is_dir {
                 return None;
             }
-            return Some(read_logical(
-                &mut file,
-                layout,
-                entry.lba,
-                (entry.size as usize).min(max_bytes),
-            ));
+            return Some(read_logical(&mut file, layout, entry.lba, (entry.size as usize).min(max_bytes)));
         }
         if !entry.is_dir {
             return None;
@@ -183,19 +161,12 @@ pub fn resolve_image_path(rom: &Path) -> PathBuf {
     let target = if ext == "cue" {
         first_cue_file_re().captures(&text).map(|c| c[1].to_string())
     } else {
-        text.lines()
-            .map(str::trim)
-            .find(|l| !l.is_empty() && !l.starts_with('#'))
-            .map(str::to_string)
+        text.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')).map(str::to_string)
     };
     let Some(target) = target else {
         return rom.to_path_buf();
     };
-    let resolved = if target.starts_with('/') {
-        target
-    } else {
-        join(&dirname(&s), &target)
-    };
+    let resolved = if target.starts_with('/') { target } else { join(&dirname(&s), &target) };
     let next = PathBuf::from(&resolved);
     if next == rom {
         return next;
@@ -233,9 +204,7 @@ pub fn read_sfo(data: &[u8]) -> IndexMap<String, String> {
     if data.len() < 20 || &data[..4] != b"\0PSF" {
         return result;
     }
-    let (Some(key_table), Some(data_table), Some(count)) =
-        (u32le(data, 8), u32le(data, 12), u32le(data, 16))
-    else {
+    let (Some(key_table), Some(data_table), Some(count)) = (u32le(data, 8), u32le(data, 12), u32le(data, 16)) else {
         return result;
     };
     for index in 0..count as usize {
@@ -243,21 +212,14 @@ pub fn read_sfo(data: &[u8]) -> IndexMap<String, String> {
         if entry + 16 > data.len() {
             break;
         }
-        let (Some(key_off), Some(format), Some(length), Some(data_off)) = (
-            u16le(data, entry),
-            u16le(data, entry + 2),
-            u32le(data, entry + 4),
-            u32le(data, entry + 12),
-        ) else {
+        let (Some(key_off), Some(format), Some(length), Some(data_off)) =
+            (u16le(data, entry), u16le(data, entry + 2), u32le(data, entry + 4), u32le(data, entry + 12))
+        else {
             break;
         };
         let key_start = key_table as usize + key_off as usize;
         let value_start = data_table as usize + data_off as usize;
-        let Some(key_end) = data
-            .get(key_start..)
-            .and_then(|s| s.iter().position(|&b| b == 0))
-            .map(|p| key_start + p)
-        else {
+        let Some(key_end) = data.get(key_start..).and_then(|s| s.iter().position(|&b| b == 0)).map(|p| key_start + p) else {
             continue;
         };
         if format != 0x0204 {
@@ -266,10 +228,7 @@ pub fn read_sfo(data: &[u8]) -> IndexMap<String, String> {
         let end = (value_start + length as usize).min(data.len());
         let value = data.get(value_start..end).unwrap_or(&[]);
         let value = String::from_utf8_lossy(value);
-        result.insert(
-            latin1(&data[key_start..key_end]),
-            value.trim_end_matches('\0').to_string(),
-        );
+        result.insert(latin1(&data[key_start..key_end]), value.trim_end_matches('\0').to_string());
     }
     result
 }
@@ -294,9 +253,7 @@ pub fn read_psp_disc_id(rom: &Path) -> Option<String> {
 
 fn ps3_title(data: Option<Vec<u8>>) -> Option<String> {
     let id = read_sfo(&data?).get("TITLE_ID")?.clone();
-    let ok = id.len() == 9
-        && id[..4].chars().all(|c| c.is_ascii_uppercase())
-        && id[4..].chars().all(|c| c.is_ascii_digit());
+    let ok = id.len() == 9 && id[..4].chars().all(|c| c.is_ascii_uppercase()) && id[4..].chars().all(|c| c.is_ascii_digit());
     ok.then_some(id)
 }
 
@@ -507,14 +464,8 @@ mod tests {
 
     #[test]
     fn system_cnf_serials() {
-        assert_eq!(
-            serial_from_system_cnf("BOOT2 = cdrom0:\\SLUS_209.46;1\r\nVER = 1.00\r\n").as_deref(),
-            Some("SLUS-20946")
-        );
-        assert_eq!(
-            serial_from_system_cnf("BOOT = cdrom:\\SCUS_941.63;1\nTCB = 4").as_deref(),
-            Some("SCUS-94163")
-        );
+        assert_eq!(serial_from_system_cnf("BOOT2 = cdrom0:\\SLUS_209.46;1\r\nVER = 1.00\r\n").as_deref(), Some("SLUS-20946"));
+        assert_eq!(serial_from_system_cnf("BOOT = cdrom:\\SCUS_941.63;1\nTCB = 4").as_deref(), Some("SCUS-94163"));
         assert_eq!(serial_from_system_cnf("BOOT2 = cdrom0:\\NOPE.ELF"), None);
         assert_eq!(serial_from_system_cnf("junk"), None);
     }
@@ -537,16 +488,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut iso = IsoBuilder::new();
         let (lba, size) = iso.add_file(b"BOOT = cdrom:\\SCUS_941.63;1\n");
-        std::fs::write(
-            dir.path().join("game.bin"),
-            iso.finish(vec![dir_record("SYSTEM.CNF;1", false, lba, size)], true),
-        )
-        .unwrap();
-        std::fs::write(
-            dir.path().join("game.cue"),
-            "FILE \"game.bin\" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00\r\n",
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("game.bin"), iso.finish(vec![dir_record("SYSTEM.CNF;1", false, lba, size)], true)).unwrap();
+        std::fs::write(dir.path().join("game.cue"), "FILE \"game.bin\" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00\r\n")
+            .unwrap();
         std::fs::write(dir.path().join("list.m3u"), "#EXTM3U\ngame.cue\n").unwrap();
         assert_eq!(read_playstation_serial(&dir.path().join("game.cue")).as_deref(), Some("SCUS-94163"));
         assert_eq!(read_playstation_serial(&dir.path().join("list.m3u")).as_deref(), Some("SCUS-94163"));
@@ -577,11 +521,7 @@ mod tests {
         let usrdir = dir.path().join("Game/PS3_GAME/USRDIR");
         std::fs::create_dir_all(&usrdir).unwrap();
         std::fs::write(usrdir.join("EBOOT.BIN"), "x").unwrap();
-        std::fs::write(
-            dir.path().join("Game/PS3_GAME/PARAM.SFO"),
-            sfo(&[("TITLE_ID", "BCUS98114")]),
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("Game/PS3_GAME/PARAM.SFO"), sfo(&[("TITLE_ID", "BCUS98114")])).unwrap();
         assert_eq!(read_ps3_title_id(&usrdir.join("EBOOT.BIN")).as_deref(), Some("BCUS98114"));
         assert_eq!(read_ps3_title_id(&dir.path().join("Game")).as_deref(), Some("BCUS98114"));
 

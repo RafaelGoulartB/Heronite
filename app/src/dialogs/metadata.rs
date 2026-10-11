@@ -7,9 +7,9 @@ use std::sync::Arc;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::settings::METADATA_FIELDS;
-use heronite_data::collection::Game;
 use heronite_metadata::{MetadataApplyArgs, MetadataPreview, MetadataSearchHit, MetadataService};
 
 use super::art_images::{chain_for_url, picture, DialogImages};
@@ -20,13 +20,8 @@ use crate::ui::controls::{action_button, button, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{input_box, new_input, select_field};
 
-pub const FETCH_SOURCES: [(&str, &str); 5] = [
-    ("auto", "Auto (IGDB first)"),
-    ("igdb", "IGDB"),
-    ("steam", "Steam"),
-    ("store", "Store"),
-    ("lutris", "Lutris"),
-];
+pub const FETCH_SOURCES: [(&str, &str); 5] =
+    [("auto", "Auto (IGDB first)"), ("igdb", "IGDB"), ("steam", "Steam"), ("store", "Store"), ("lutris", "Lutris")];
 
 pub fn field_label(field: &str) -> &'static str {
     match field {
@@ -48,11 +43,13 @@ pub fn field_label(field: &str) -> &'static str {
 }
 
 fn source_label(source: &str) -> String {
-    FETCH_SOURCES
-        .iter()
-        .find(|(id, _)| *id == source)
-        .map(|(_, l)| l.to_string())
-        .unwrap_or_else(|| if source == "manual" { "Manual".into() } else { source.to_string() })
+    FETCH_SOURCES.iter().find(|(id, _)| *id == source).map(|(_, l)| l.to_string()).unwrap_or_else(|| {
+        if source == "manual" {
+            "Manual".into()
+        } else {
+            source.to_string()
+        }
+    })
 }
 
 fn format_value(md: Option<&CollectionGameMetadata>, field: &str) -> String {
@@ -211,8 +208,7 @@ impl MetadataDialog {
             this.update(cx, |this, cx| {
                 this.busy = None;
                 if hits.is_empty() {
-                    this.error =
-                        "No IGDB matches. Check the title or add Twitch API credentials in Collection settings.".into();
+                    this.error = "No IGDB matches. Check the title or add Twitch API credentials in Collection settings.".into();
                 }
                 this.hits = hits;
                 cx.notify();
@@ -248,16 +244,20 @@ impl MetadataDialog {
         cx.notify();
     }
 
-    fn choice_tile(&mut self, field: &'static str, id: String, label: String, value: String, selected: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn choice_tile(
+        &mut self,
+        field: &'static str,
+        id: String,
+        label: String,
+        value: String,
+        selected: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let is_image = field == "cover" || field == "hero";
         let detail: AnyElement = if is_image {
             let chain = chain_for_url(&self.ctx.data_paths, self.ctx.lib.settings.screenshots_folder(), &value);
             if chain.is_empty() {
-                div()
-                    .text_size(px(12.))
-                    .text_color(white())
-                    .child(if value.is_empty() { "Empty" } else { "Local file" })
-                    .into_any_element()
+                div().text_size(px(12.)).text_color(white()).child(if value.is_empty() { "Empty" } else { "Local file" }).into_any_element()
             } else {
                 let (w, h) = if field == "cover" { (72., 108.) } else { (144., 54.) };
                 let src = self.images.update(cx, |im, _| im.get(&format!("md:{value}"), chain, w, h));
@@ -318,8 +318,7 @@ impl MetadataDialog {
 
     fn render_source_row(&self, cx: &mut Context<Self>) -> Div {
         let busy = self.busy.is_some();
-        let sources: Vec<(SharedString, bool)> =
-            FETCH_SOURCES.iter().map(|(id, label)| ((*label).into(), *id == self.source)).collect();
+        let sources: Vec<(SharedString, bool)> = FETCH_SOURCES.iter().map(|(id, label)| ((*label).into(), *id == self.source)).collect();
         let select = select_field(
             "md-source",
             Some("Source"),
@@ -340,34 +339,24 @@ impl MetadataDialog {
                 cx.notify();
             },
         );
-        div()
-            .flex()
-            .items_end()
-            .gap(px(8.))
-            .child(div().w(px(200.)).child(select))
-            .child(action_button(
-                "md-fetch",
-                ButtonKind::Primary,
-                if self.busy == Some(Busy::Preview) { "Fetching\u{2026}" } else { "Fetch" },
-                !busy,
-                cx.listener(|this, _, _, cx| this.run_preview(None, cx)),
-            ))
+        div().flex().items_end().gap(px(8.)).child(div().w(px(200.)).child(select)).child(action_button(
+            "md-fetch",
+            ButtonKind::Primary,
+            if self.busy == Some(Busy::Preview) { "Fetching\u{2026}" } else { "Fetch" },
+            !busy,
+            cx.listener(|this, _, _, cx| this.run_preview(None, cx)),
+        ))
     }
 
     fn render_search_row(&self, cx: &mut Context<Self>) -> Div {
         let busy = self.busy.is_some();
-        div()
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .child(div().flex_1().child(input_box(&self.search, false)))
-            .child(action_button(
-                "md-search",
-                ButtonKind::Glass,
-                if self.busy == Some(Busy::Search) { "Searching\u{2026}" } else { "Find on IGDB" },
-                !busy,
-                cx.listener(|this, _, _, cx| this.run_search(cx)),
-            ))
+        div().flex().items_center().gap(px(8.)).child(div().flex_1().child(input_box(&self.search, false))).child(action_button(
+            "md-search",
+            ButtonKind::Glass,
+            if self.busy == Some(Busy::Search) { "Searching\u{2026}" } else { "Find on IGDB" },
+            !busy,
+            cx.listener(|this, _, _, cx| this.run_search(cx)),
+        ))
     }
 
     fn render_hits(&self, cx: &mut Context<Self>) -> Option<Div> {
@@ -411,9 +400,8 @@ impl MetadataDialog {
         let mut compare = div().flex().flex_col().gap(px(16.));
         for field in METADATA_FIELDS {
             let has = |m: Option<&CollectionGameMetadata>| !format_value(m, field).is_empty();
-            let visible = has(current.as_ref())
-                || has(Some(&preview.proposed))
-                || preview.candidates.iter().any(|c| has(Some(&c.metadata)));
+            let visible =
+                has(current.as_ref()) || has(Some(&preview.proposed)) || preview.candidates.iter().any(|c| has(Some(&c.metadata)));
             if !visible {
                 continue;
             }
@@ -461,14 +449,19 @@ impl Render for MetadataDialog {
             .flex()
             .flex_col()
             .gap(px(16.))
-            .child(help_text(
-                "IGDB is tried first, then Steam, the store page and Lutris. Use this for games that are not on Steam.",
-            ))
+            .child(help_text("IGDB is tried first, then Steam, the store page and Lutris. Use this for games that are not on Steam."))
             .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(self.title.clone()));
         if self.preview.as_ref().is_some_and(|p| !p.igdb_configured) {
-            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::accent_tint()).text_size(px(13.)).text_color(theme::text_primary()).child(
-                "IGDB is not configured. Add a Twitch Client ID and Secret in Collection settings for the richest data.",
-            ));
+            body = body.child(
+                div()
+                    .px(px(14.))
+                    .py(px(10.))
+                    .rounded(px(theme::R_INPUT))
+                    .bg(theme::accent_tint())
+                    .text_size(px(13.))
+                    .text_color(theme::text_primary())
+                    .child("IGDB is not configured. Add a Twitch Client ID and Secret in Collection settings for the richest data."),
+            );
         }
 
         body = body
@@ -477,7 +470,16 @@ impl Render for MetadataDialog {
             .children(self.render_hits(cx))
             .children(self.render_compare(cx));
         if !self.error.is_empty() {
-            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::danger_fill()).text_size(px(13.)).text_color(theme::danger_text()).child(self.error.clone()));
+            body = body.child(
+                div()
+                    .px(px(14.))
+                    .py(px(10.))
+                    .rounded(px(theme::R_INPUT))
+                    .bg(theme::danger_fill())
+                    .text_size(px(13.))
+                    .text_color(theme::danger_text())
+                    .child(self.error.clone()),
+            );
         }
 
         let footer = div()

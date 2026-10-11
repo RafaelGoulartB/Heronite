@@ -37,11 +37,8 @@ pub fn sanitize_rom_name(name: &str) -> String {
 pub fn rom_properties(original: &str) -> Vec<String> {
     let mut out = Vec::new();
     for caps in props_re().captures_iter(original) {
-        let value = caps
-            .get(1)
-            .map(|m| m.as_str())
-            .filter(|s| !s.is_empty())
-            .or_else(|| caps.get(2).map(|m| m.as_str()).filter(|s| !s.is_empty()));
+        let value =
+            caps.get(1).map(|m| m.as_str()).filter(|s| !s.is_empty()).or_else(|| caps.get(2).map(|m| m.as_str()).filter(|s| !s.is_empty()));
         let Some(value) = value else { continue };
         for part in value.split(',') {
             let t = part.trim();
@@ -60,10 +57,7 @@ pub fn rom_disc_label(original: &str) -> Option<String> {
         ["disc", "disk", "side"].iter().any(|w| {
             lower.strip_prefix(w).is_some_and(|rest| {
                 // `\b` after the word: next char must not be a word char.
-                rest.chars()
-                    .next()
-                    .map(|c| !(c.is_alphanumeric() || c == '_'))
-                    .unwrap_or(true)
+                rest.chars().next().map(|c| !(c.is_alphanumeric() || c == '_')).unwrap_or(true)
             })
         })
     })
@@ -98,15 +92,9 @@ mod tests {
 
     #[test]
     fn properties_and_disc() {
-        assert_eq!(
-            rom_properties("Final Fantasy VII (USA) (Disc 1) [!]"),
-            ["USA", "Disc 1", "!"]
-        );
+        assert_eq!(rom_properties("Final Fantasy VII (USA) (Disc 1) [!]"), ["USA", "Disc 1", "!"]);
         assert_eq!(rom_properties("A (En,Fr,De)"), ["En", "Fr", "De"]);
-        assert_eq!(
-            rom_disc_label("Final Fantasy VII (USA) (Disc 1)").as_deref(),
-            Some("Disc 1")
-        );
+        assert_eq!(rom_disc_label("Final Fantasy VII (USA) (Disc 1)").as_deref(), Some("Disc 1"));
         assert_eq!(rom_disc_label("Game (Side B)").as_deref(), Some("Side B"));
         assert_eq!(rom_disc_label("Game (Discovery)"), None);
         assert_eq!(rom_disc_label("Game (USA)"), None);

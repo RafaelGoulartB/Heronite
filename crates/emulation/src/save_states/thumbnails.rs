@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use super::{Engine, EmulatorSaveState};
+use super::{EmulatorSaveState, Engine};
 use crate::sysfiles::image_mime;
 
 /// Raw screenshot of a state (PNG or JPEG bytes); decode it in the UI.
@@ -26,10 +26,8 @@ pub fn thumbnail_for(engine: Engine, state: &EmulatorSaveState) -> Option<Arc<Th
     if let Some(hit) = thumb_cache().lock().unwrap().get(&key) {
         return hit.clone();
     }
-    let value = engine
-        .thumbnail(&state.path)
-        .filter(|b| !b.is_empty())
-        .map(|bytes| Arc::new(Thumbnail { mime: image_mime(&bytes), bytes }));
+    let value =
+        engine.thumbnail(&state.path).filter(|b| !b.is_empty()).map(|bytes| Arc::new(Thumbnail { mime: image_mime(&bytes), bytes }));
     thumb_cache().lock().unwrap().insert(key, value.clone());
     value
 }

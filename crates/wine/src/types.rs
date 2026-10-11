@@ -53,8 +53,7 @@ pub struct WineVersionInfo {
 
 impl WineVersionInfo {
     pub fn installed(&self) -> bool {
-        self.is_installed == Some(true)
-            && self.install_dir.as_deref().is_some_and(|d| !d.is_empty())
+        self.is_installed == Some(true) && self.install_dir.as_deref().is_some_and(|d| !d.is_empty())
     }
 
     pub fn has_update(&self) -> bool {
@@ -89,9 +88,7 @@ impl WineConfig {
     /// `store/config.json` copy; missing keys get Heroic's defaults.
     pub fn load(data_paths: &DataPaths) -> Self {
         let mut cfg = Self::default();
-        let from_default = json_store::read_value(&data_paths.global_config())
-            .ok()
-            .and_then(|v| v.get("defaultSettings").cloned());
+        let from_default = json_store::read_value(&data_paths.global_config()).ok().and_then(|v| v.get("defaultSettings").cloned());
         let doc = match from_default {
             Some(v) if v.is_object() => Some(v),
             _ => json_store::read_value(&data_paths.store_config()).ok().filter(Value::is_object),
@@ -104,8 +101,7 @@ impl WineConfig {
                 cfg.custom_wine_paths = a.iter().filter_map(Value::as_str).map(str::to_owned).collect();
             }
             cfg.show_valve_proton = m.get("showValveProton").and_then(Value::as_bool).unwrap_or(false);
-            cfg.download_proton_to_steam =
-                m.get("downloadProtonToSteam").and_then(Value::as_bool).unwrap_or(false);
+            cfg.download_proton_to_steam = m.get("downloadProtonToSteam").and_then(Value::as_bool).unwrap_or(false);
         }
         if cfg.default_steam_path.is_empty() {
             let home = dirs::home_dir().unwrap_or_default();
@@ -126,11 +122,7 @@ impl WineConfig {
             if !doc.is_object() {
                 *doc = Value::Object(Map::new());
             }
-            let settings = doc
-                .as_object_mut()
-                .unwrap()
-                .entry("defaultSettings")
-                .or_insert_with(|| Value::Object(Map::new()));
+            let settings = doc.as_object_mut().unwrap().entry("defaultSettings").or_insert_with(|| Value::Object(Map::new()));
             if let Some(m) = settings.as_object_mut() {
                 m.insert("downloadProtonToSteam".into(), Value::Bool(value));
             }
@@ -178,11 +170,8 @@ mod tests {
         let store = std::fs::read_to_string(tmp.path().join("store/config.json")).unwrap();
         assert!(store.contains("\"downloadProtonToSteam\": true") && store.contains("\"theme\": \"x\""), "{store}");
         // Same store helper as every other write: no temp file is left behind.
-        let leftovers: Vec<_> = std::fs::read_dir(tmp.path())
-            .unwrap()
-            .flatten()
-            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
-            .collect();
+        let leftovers: Vec<_> =
+            std::fs::read_dir(tmp.path()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".tmp")).collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
     }
 

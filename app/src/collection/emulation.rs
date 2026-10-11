@@ -9,10 +9,8 @@ use std::time::Duration;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::CollectionGame;
+use heronite_emulation::{list_emulator_save_states, set_emulator_launch_rom, set_pending_launch_state, HostEnv, PendingLaunchStates};
 use heronite_emulation::{run_rom_scanners, AutoScanReport};
-use heronite_emulation::{
-    list_emulator_save_states, set_emulator_launch_rom, set_pending_launch_state, HostEnv, PendingLaunchStates,
-};
 
 use super::CollectionView;
 use crate::dialogs::launch_state::{LaunchStateDialog, StateRow, ThumbRaw};
@@ -90,13 +88,7 @@ impl CollectionView {
         true
     }
 
-    fn open_pick_rom(
-        &mut self,
-        game: &CollectionGame,
-        roms: Vec<(String, String)>,
-        selected: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
+    fn open_pick_rom(&mut self, game: &CollectionGame, roms: Vec<(String, String)>, selected: Option<String>, cx: &mut Context<Self>) {
         let weak = cx.entity().downgrade();
         let key = game.key.clone();
         let on_play: Rc<dyn Fn(String, &mut App)> = Rc::new(move |rom, cx| {
@@ -129,14 +121,8 @@ impl CollectionView {
                     let listing = list_states(&paths, &app, r.as_deref());
                     if listing.as_ref().map(|l| l.rows.is_empty()).unwrap_or(true) {
                         // No states: clear any stale choice (and apply "fresh" arguments).
-                        let _ = set_pending_launch_state(
-                            &paths,
-                            &HostEnv::system(),
-                            PendingLaunchStates::global(),
-                            &app,
-                            r.as_deref(),
-                            None,
-                        );
+                        let _ =
+                            set_pending_launch_state(&paths, &HostEnv::system(), PendingLaunchStates::global(), &app, r.as_deref(), None);
                     }
                     listing
                 })

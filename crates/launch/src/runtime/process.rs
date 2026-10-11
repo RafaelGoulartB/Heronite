@@ -40,10 +40,7 @@ fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command, log: Opt
             handle.terminate();
             killed_at = Some(Instant::now());
         }
-        if killed_at
-            .map(|t| t.elapsed() > shared.cfg.kill_grace)
-            .unwrap_or(false)
-        {
+        if killed_at.map(|t| t.elapsed() > shared.cfg.kill_grace).unwrap_or(false) {
             handle.kill();
             return true;
         }
@@ -72,11 +69,7 @@ pub(super) fn run_process(
         } else {
             log.info(&n.message);
         }
-        shared.send(LaunchEvent::Status {
-            app_name: req.app_name.clone(),
-            message: n.message,
-            warning: n.warning,
-        })
+        shared.send(LaunchEvent::Status { app_name: req.app_name.clone(), message: n.message, warning: n.warning })
     };
     let cancelled = || control.abort.load(Ordering::SeqCst) || control.kill.load(Ordering::SeqCst);
     let prep = Prep {
@@ -125,30 +118,16 @@ pub(super) fn run_process(
             log::warn!("chmod {path}: {e}");
         }
     }
-    log.info(&format!(
-        "Launching {}: {}\n",
-        req.title,
-        log_writer::command_line_for_log(&plan.command)
-    ));
+    log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&plan.command)));
     log.info("Game Output:");
     let mut handle = match shared.spawner.spawn_logged(&plan.command, Some(log.clone())) {
         Ok(h) => h,
-        Err(e) => {
-            return fail(
-                shared,
-                log,
-                req,
-                format!("could not start {}: {e}", plan.command.program),
-            )
-        }
+        Err(e) => return fail(shared, log, req, format!("could not start {}: {e}", plan.command.program)),
     };
     control.pid.store(handle.pid(), Ordering::SeqCst);
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
     control.set_playing();
-    shared.send(LaunchEvent::Running {
-        app_name: req.app_name.clone(),
-        pid: handle.pid(),
-    });
+    shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid: handle.pid() });
 
     let mut terminated_at: Option<Instant> = None;
     let mut exit: Option<ExitInfo> = None;
@@ -215,12 +194,7 @@ fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest, t0: Insta
     log.close();
     // Stopped before the game even started: nothing was played.
     shared.sessions.lock().unwrap().remove(&req.app_name);
-    shared.send(LaunchEvent::Exited {
-        app_name: req.app_name.clone(),
-        elapsed: t0.elapsed(),
-        exit: None,
-        record: None,
-    });
+    shared.send(LaunchEvent::Exited { app_name: req.app_name.clone(), elapsed: t0.elapsed(), exit: None, record: None });
 }
 
 fn describe_exit(info: ExitInfo) -> String {

@@ -137,8 +137,7 @@ mod tests {
         png_at(&root.join(".cache/x.png"), 7200);
         png_at(&root.join("loose.png"), 7200);
         fs::write(root.join("Elden Ring/notes.txt"), "x").unwrap();
-        let names: Vec<String> =
-            pending(root).iter().map(|p| p.strip_prefix(root).unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<String> = pending(root).iter().map(|p| p.strip_prefix(root).unwrap().to_string_lossy().into_owned()).collect();
         assert_eq!(names, ["Elden Ring/new.PNG", "Elden Ring/2024/nested.png", "Elden Ring/old.png"]);
     }
 

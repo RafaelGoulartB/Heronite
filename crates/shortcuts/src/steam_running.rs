@@ -57,9 +57,7 @@ fn grid_files(grid: &Path, ids: &GridIds) -> Vec<(PathBuf, Artwork)> {
         (ids.other.clone(), Artwork::WideGrid),
     ]
     .into_iter()
-    .filter_map(|(stem, kind)| {
-        ["jpg", "png"].iter().map(|ext| grid.join(format!("{stem}.{ext}"))).find(|p| p.exists()).map(|p| (p, kind))
-    })
+    .filter_map(|(stem, kind)| ["jpg", "png"].iter().map(|ext| grid.join(format!("{stem}.{ext}"))).find(|p| p.exists()).map(|p| (p, kind)))
     .collect()
 }
 
@@ -271,7 +269,15 @@ mod tests {
     fn client_add_sets_artwork_for_every_user() {
         let dir = tempfile::tempdir().unwrap();
         let steam = steam_dir(dir.path());
-        let fake = start(Box::new(|expr| if expr.contains("allApps") { json!([]) } else if expr.contains("AddShortcut") { json!(3_000_000_001u64) } else { json!(true) }));
+        let fake = start(Box::new(|expr| {
+            if expr.contains("allApps") {
+                json!([])
+            } else if expr.contains("AddShortcut") {
+                json!(3_000_000_001u64)
+            } else {
+                json!(true)
+            }
+        }));
         let client = SteamClient::new(&fake.addr);
         let already = add_with_client(&client, &steam, &game(), &spec(), &art(dir.path())).unwrap();
         assert!(!already);

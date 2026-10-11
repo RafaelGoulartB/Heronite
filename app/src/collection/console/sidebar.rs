@@ -115,7 +115,13 @@ impl CollectionView {
             }
             let on = i == focused;
             let current = item.page() == Some(self.page);
-            let fg: Hsla = if on { theme::console_on_focus().into() } else if current { white() } else { theme::text_primary().into() };
+            let fg: Hsla = if on {
+                theme::console_on_focus().into()
+            } else if current {
+                white()
+            } else {
+                theme::text_primary().into()
+            };
             let badge = match item {
                 Item::Go(Page::Downloads) => downloads.clone().filter(|d| d != "Idle"),
                 _ => None,
@@ -124,7 +130,14 @@ impl CollectionView {
                 kit::row_base(on)
                     .h(u(60.))
                     .child(icon(item.icon(), u(26.), if on { fg } else { theme::text_muted().into() }))
-                    .child(div().flex_1().text_size(u(21.)).text_color(fg).when(current && !on, |d| d.font_weight(theme::W_BOLD)).child(item.label()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(u(21.))
+                            .text_color(fg)
+                            .when(current && !on, |d| d.font_weight(theme::W_BOLD))
+                            .child(item.label()),
+                    )
                     .children(badge.map(|b| kit::badge(b, theme::console_btn_a()))),
             );
         }

@@ -110,22 +110,11 @@ pub enum LaunchPlan {
     /// A Linux program started directly (with Heroic's wrappers and env).
     Native(ProcessPlan),
     /// A Windows program through umu/Proton/Wine.
-    Wine {
-        process: ProcessPlan,
-        runtime: WineRuntime,
-        prefix: String,
-    },
+    Wine { process: ProcessPlan, runtime: WineRuntime, prefix: String },
     /// An emulator with its ROM.
-    Emulator {
-        process: ProcessPlan,
-        emulator: String,
-        rom: Option<String>,
-    },
+    Emulator { process: ProcessPlan, emulator: String, rom: Option<String> },
     /// `legendary launch <app>` (Epic).
-    Legendary {
-        process: ProcessPlan,
-        app_name: String,
-    },
+    Legendary { process: ProcessPlan, app_name: String },
     /// Cannot be launched; the string says why.
     Unavailable(String),
 }

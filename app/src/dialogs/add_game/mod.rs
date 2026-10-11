@@ -364,9 +364,11 @@ impl Render for AddGameDialog {
                     }),
                 ));
             }
-            footer = footer.child(button("ag-finish", ButtonKind::Primary, finish_label).when(!can_save, |b| b.opacity(0.5)).on_click(cx.listener(
-                |this, _, _, cx| this.save(cx),
-            )));
+            footer = footer.child(
+                button("ag-finish", ButtonKind::Primary, finish_label)
+                    .when(!can_save, |b| b.opacity(0.5))
+                    .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
+            );
             (self.dialog_title(), self.form(window, cx), footer)
         };
 

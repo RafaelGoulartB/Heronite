@@ -6,7 +6,7 @@ use gpui_kit::*;
 use heronite_data::config_games;
 
 use super::pager::{ListKind, Pager, COLLAPSED_ROWS};
-use super::{Snapshot, SettingsPage};
+use super::{SettingsPage, Snapshot};
 use crate::icons::Icon;
 use crate::pages::{caption_with, empty_row, icon_action};
 use crate::theme;
@@ -24,7 +24,8 @@ impl SettingsPage {
         let favourites = self.render_favourites(&snap, cx);
         let recent = self.render_recent(&snap, cx);
 
-        let mut col = div().flex().flex_col().child(show).children(hidden).children(favourites).child(caption("Recent games")).child(recent);
+        let mut col =
+            div().flex().flex_col().child(show).children(hidden).children(favourites).child(caption("Recent games")).child(recent);
         if let Some((text, error)) = self.library.notice.clone() {
             col = col.child(notice_line(text, error));
         }
@@ -51,9 +52,11 @@ impl SettingsPage {
         let range = self.library.hidden_pg.range(snap.hidden.len());
         for (i, (app, title)) in snap.hidden.iter().enumerate().skip(range.start).take(range.len()) {
             let app_name = app.clone();
-            rows.push(self.entry_row(format!("lib-unhide-{i}"), title, app, "Unhide", cx, move |this, cx| {
-                this.library_unhide(app_name.clone(), cx)
-            }));
+            rows.push(
+                self.entry_row(format!("lib-unhide-{i}"), title, app, "Unhide", cx, move |this, cx| {
+                    this.library_unhide(app_name.clone(), cx)
+                }),
+            );
         }
         if rows.is_empty() {
             rows.push(empty_row("No hidden games. Use \"Hide\" in a game's context menu.").into_any_element());
@@ -108,8 +111,7 @@ impl SettingsPage {
 
     /// Card with the "Recent games to show" select and "Clear recent".
     fn render_recent(&self, snap: &Snapshot, cx: &mut Context<Self>) -> Div {
-        let options: Vec<(SharedString, bool)> =
-            (1..=10).map(|n| (SharedString::from(n.to_string()), n == snap.max_recent)).collect();
+        let options: Vec<(SharedString, bool)> = (1..=10).map(|n| (SharedString::from(n.to_string()), n == snap.max_recent)).collect();
         let select = select_field(
             "lib-max-recent",
             None,
@@ -128,7 +130,8 @@ impl SettingsPage {
             },
         );
         card([
-            row("Recent games to show", Some("How many recently played games the tray menu lists."), div().w(px(120.)).child(select)).into_any_element(),
+            row("Recent games to show", Some("How many recently played games the tray menu lists."), div().w(px(120.)).child(select))
+                .into_any_element(),
             row(
                 "Clear recent games",
                 Some(&format!("{} game(s) in the recent list", snap.recent.len())),
@@ -159,7 +162,13 @@ impl SettingsPage {
         row(
             shown,
             desc,
-            action_button(SharedString::from(id), ButtonKind::Glass, label, !self.library.busy, cx.listener(move |this, _, _, cx| on_click(this, cx))),
+            action_button(
+                SharedString::from(id),
+                ButtonKind::Glass,
+                label,
+                !self.library.busy,
+                cx.listener(move |this, _, _, cx| on_click(this, cx)),
+            ),
         )
         .into_any_element()
     }
@@ -198,7 +207,9 @@ impl SettingsPage {
         };
         let row = div().flex().items_center().justify_between().gap(px(12.)).mt(px(8.));
         if !pager.expanded {
-            return Some(row.child(toggle("Expand", true, cx)).child(meta_text(format!("Showing {COLLAPSED_ROWS} of {total}"))).into_any_element());
+            return Some(
+                row.child(toggle("Expand", true, cx)).child(meta_text(format!("Showing {COLLAPSED_ROWS} of {total}"))).into_any_element(),
+            );
         }
         let range = pager.range(total);
         let pages = Pager::pages(total);

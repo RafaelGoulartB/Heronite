@@ -33,11 +33,7 @@ fn clamp(value: &Value) -> u8 {
 /// empty map; zeros are dropped.
 pub fn load(paths: &DataPaths) -> HashMap<String, u8> {
     let file: RatingsFile = json_store::read(&paths.ratings()).unwrap_or_default();
-    file.ratings
-        .into_iter()
-        .map(|(key, stars)| (key, clamp(&stars)))
-        .filter(|(_, stars)| *stars > 0)
-        .collect()
+    file.ratings.into_iter().map(|(key, stars)| (key, clamp(&stars))).filter(|(_, stars)| *stars > 0).collect()
 }
 
 /// Sets the rating of a game. `None` or `Some(0)` removes it; other values

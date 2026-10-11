@@ -143,9 +143,7 @@ impl Compression {
         let (runs, rx) = channel::<Run>();
         let (tx, mut reports) = unbounded::<Report>();
         let worker_data_paths = data_paths.clone();
-        let spawned = std::thread::Builder::new()
-            .name("screenshot-compress".into())
-            .spawn(move || worker(rx, tx, worker_data_paths));
+        let spawned = std::thread::Builder::new().name("screenshot-compress".into()).spawn(move || worker(rx, tx, worker_data_paths));
         if let Err(e) = spawned {
             log::error!("could not start the screenshot compression thread: {e}");
         }
@@ -335,8 +333,7 @@ impl Compression {
         for report in batch {
             match report {
                 // Reports of a run that was replaced only count conversions.
-                Report::Started { run, .. } | Report::Progress { run, .. } | Report::Finished { run, .. }
-                    if Some(run) != current => {}
+                Report::Started { run, .. } | Report::Progress { run, .. } | Report::Finished { run, .. } if Some(run) != current => {}
                 Report::Started { total, .. } => {
                     if !self.game_running() {
                         self.phase = Phase::Working { done: 0, total, current: String::new() };

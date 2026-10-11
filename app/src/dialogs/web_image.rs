@@ -7,19 +7,19 @@ use std::time::Duration;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::models::CollectionGameArt;
 use heronite_data::collection::Game;
+use heronite_data::models::CollectionGameArt;
 use heronite_images::ImageRef;
 use heronite_metadata::{ArtKind, MetadataService, WebImage};
 
 use super::art_images::{picture, DialogImages};
-use crate::ui::fields::{new_input, search_box};
 use super::metadata_wizard::hub;
 use super::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, button, checkbox, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
+use crate::ui::fields::{new_input, search_box};
 use crate::ui::icon;
 
 const PAGE_SIZE: usize = 20;
@@ -139,9 +139,7 @@ impl WebImageDialog {
         let (service, runner, app, kind) = (self.service.clone(), self.runner.clone(), self.app_name.clone(), self.kind);
         cx.spawn(async move |this, cx| {
             let res = cx
-                .background_spawn(async move {
-                    service.set_art_from_url(&runner, &app, kind, &image.image_url, Some(&image.thumb_url))
-                })
+                .background_spawn(async move { service.set_art_from_url(&runner, &app, kind, &image.image_url, Some(&image.thumb_url)) })
                 .await;
             this.update(cx, |this, cx| {
                 this.saving = false;
@@ -187,15 +185,7 @@ impl Render for WebImageDialog {
                 }
             })));
 
-        let mut grid = div()
-            .id("wi-grid")
-            .flex()
-            .flex_wrap()
-            .gap(px(9.6))
-            .min_h(px(288.))
-            .max_h(px(380.))
-            .overflow_y_scroll()
-            .p(px(3.));
+        let mut grid = div().id("wi-grid").flex().flex_wrap().gap(px(9.6)).min_h(px(288.)).max_h(px(380.)).overflow_y_scroll().p(px(3.));
         if self.loading {
             grid = grid.child(
                 div()
@@ -206,13 +196,11 @@ impl Render for WebImageDialog {
                     .gap(px(9.6))
                     .text_size(px(14.))
                     .text_color(theme::text_muted())
-                    .child(
-                        icon(Icon::FaSpinner, px(16.), theme::text_muted()).with_animation(
-                            "wi-spin",
-                            Animation::new(Duration::from_secs(1)).repeat(),
-                            |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
-                        ),
-                    )
+                    .child(icon(Icon::FaSpinner, px(16.), theme::text_muted()).with_animation(
+                        "wi-spin",
+                        Animation::new(Duration::from_secs(1)).repeat(),
+                        |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
+                    ))
                     .child("Searching\u{2026}"),
             );
         } else {
@@ -254,23 +242,28 @@ impl Render for WebImageDialog {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(help_text(format!(
-                "Pick an image from the web. Collection saves it like a file you selected yourself. {kind_label}"
-            )))
+            .child(help_text(format!("Pick an image from the web. Collection saves it like a file you selected yourself. {kind_label}")))
             .child(toolbar)
             .child(grid);
         if !self.loading && self.visible < self.results.len() {
-            body = body.child(
-                div().flex().justify_center().child(
-                    button("wi-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
-                        this.visible += PAGE_SIZE;
-                        cx.notify();
-                    })),
-                ),
-            );
+            body = body.child(div().flex().justify_center().child(
+                button("wi-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                    this.visible += PAGE_SIZE;
+                    cx.notify();
+                })),
+            ));
         }
         if !self.error.is_empty() {
-            body = body.child(div().px(px(14.)).py(px(10.)).rounded(px(theme::R_INPUT)).bg(theme::danger_fill()).text_size(px(13.)).text_color(theme::danger_text()).child(self.error.clone()));
+            body = body.child(
+                div()
+                    .px(px(14.))
+                    .py(px(10.))
+                    .rounded(px(theme::R_INPUT))
+                    .bg(theme::danger_fill())
+                    .text_size(px(13.))
+                    .text_color(theme::danger_text())
+                    .child(self.error.clone()),
+            );
         }
 
         let footer = div()
@@ -293,12 +286,7 @@ impl Render for WebImageDialog {
         let entity = cx.entity().downgrade();
         let vw = f32::from(window.viewport_size().width);
         dialog(
-            DialogProps {
-                id: "collection-web-image".into(),
-                title: "Search images".into(),
-                width: 960f32.min(vw * 0.96),
-                height: None,
-            },
+            DialogProps { id: "collection-web-image".into(), title: "Search images".into(), width: 960f32.min(vw * 0.96), height: None },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {

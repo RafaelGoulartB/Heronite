@@ -165,11 +165,7 @@ mod tests {
     fn falls_back_to_mapping_name_and_proton_prefix() {
         let tmp = tempfile::tempdir().unwrap();
         game(tmp.path(), "Odd Folder", Some("name: Real Title\n"));
-        game(
-            tmp.path(),
-            "Other",
-            Some("name: Other\nfiles:\n  /s/steamapps/compatdata/12345/pfx/save.dat:\n    hash: a\n"),
-        );
+        game(tmp.path(), "Other", Some("name: Other\nfiles:\n  /s/steamapps/compatdata/12345/pfx/save.dat:\n    hash: a\n"));
         assert_eq!(find_in(tmp.path(), "real title", None).unwrap().dir, tmp.path().join("Odd Folder"));
         assert_eq!(find_in(tmp.path(), "Unrelated", Some("12345")).unwrap().game_name, "Other");
         assert!(find_in(tmp.path(), "Unrelated", Some("1234")).is_none());

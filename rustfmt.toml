@@ -1,0 +1,3 @@
+# Wide lines, like the code was written before rustfmt was adopted.
+max_width = 140
+use_small_heuristics = "Max"

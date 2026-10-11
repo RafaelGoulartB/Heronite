@@ -11,7 +11,6 @@ use crate::prepare::CloudSync;
 use crate::probe::{Probe, SystemProbe};
 use crate::record::{RecordOutcome, MIN_SESSION_SECONDS};
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum LaunchEvent {
     /// Accepted; the process (or the Steam URI) is being started.
@@ -20,22 +19,13 @@ pub enum LaunchEvent {
     Running { app_name: String, pid: u32 },
     /// The game is gone (or tracking was cleared). `record` is what was
     /// written to the data files, `None` if recording failed or was disabled.
-    Exited {
-        app_name: String,
-        elapsed: Duration,
-        exit: Option<ExitInfo>,
-        record: Option<RecordOutcome>,
-    },
+    Exited { app_name: String, elapsed: Duration, exit: Option<ExitInfo>, record: Option<RecordOutcome> },
     /// Spawning failed, Steam never started the game, or recording failed.
     Error { app_name: String, message: String },
     /// Progress or a non-fatal problem while the launch is prepared or
     /// finished ("Preparing prefix...", "Downloading DXVK...", a cloud save
     /// error). The game keeps going; `warning` says something went wrong.
-    Status {
-        app_name: String,
-        message: String,
-        warning: bool,
-    },
+    Status { app_name: String, message: String, warning: bool },
 }
 
 #[derive(Debug, Clone)]
@@ -95,7 +85,6 @@ pub struct StopOptions {
     pub kill_steam_processes: bool,
 }
 
-
 /// How often a running game's playtime is saved.
 pub const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(120);
 
@@ -110,11 +99,7 @@ pub struct PrepServices {
 
 impl Default for PrepServices {
     fn default() -> Self {
-        Self {
-            probe: Arc::new(SystemProbe),
-            net: Arc::new(SystemNet),
-            cloud: None,
-        }
+        Self { probe: Arc::new(SystemProbe), net: Arc::new(SystemNet), cloud: None }
     }
 }
 

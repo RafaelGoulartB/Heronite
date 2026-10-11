@@ -77,14 +77,8 @@ impl EventEmitter<DialogEvent> for LaunchStateDialog {}
 
 fn relative(dt: DateTime<Utc>) -> String {
     let secs = (Utc::now() - dt).num_seconds().max(0);
-    let units = [
-        (365 * 24 * 3600, "year"),
-        (30 * 24 * 3600, "month"),
-        (7 * 24 * 3600, "week"),
-        (24 * 3600, "day"),
-        (3600, "hour"),
-        (60, "minute"),
-    ];
+    let units =
+        [(365 * 24 * 3600, "year"), (30 * 24 * 3600, "month"), (7 * 24 * 3600, "week"), (24 * 3600, "day"), (3600, "hour"), (60, "minute")];
     for (size, name) in units {
         if secs >= size {
             let n = secs / size;
@@ -105,12 +99,7 @@ fn describe(iso: &str) -> String {
 }
 
 impl LaunchStateDialog {
-    pub fn new(
-        title: String,
-        emulator: String,
-        states: Vec<StateRow>,
-        on_play: Rc<dyn Fn(Option<String>, &mut App)>,
-    ) -> Self {
+    pub fn new(title: String, emulator: String, states: Vec<StateRow>, on_play: Rc<dyn Fn(Option<String>, &mut App)>) -> Self {
         let rows: Vec<Row> = states
             .into_iter()
             .map(|s| Row {

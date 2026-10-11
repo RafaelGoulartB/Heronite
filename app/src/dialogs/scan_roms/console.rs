@@ -57,7 +57,9 @@ impl ScanRomsDialog {
                 .enabled(can_scan),
         );
         let missing = self.state.detected.iter().filter(|d| !d.already_added).count();
-        let detect = Row::action("detect", if self.detecting { "Detecting\u{2026}" } else { "Detect emulators on this PC" }).icon(Icon::TravelExplore).enabled(!self.detecting);
+        let detect = Row::action("detect", if self.detecting { "Detecting\u{2026}" } else { "Detect emulators on this PC" })
+            .icon(Icon::TravelExplore)
+            .enabled(!self.detecting);
         rows.push(if missing > 0 { detect.desc(format!("{missing} emulator(s) found on this PC.")) } else { detect });
 
         if let Some(p) = &self.preview {
@@ -134,7 +136,11 @@ impl PadTarget for ScanRomsDialog {
                 ("merge", Value::Toggle(on)) => self.merge_related = on,
                 ("auto", Value::Toggle(on)) => self.auto_scan = on,
                 (id, Value::Toggle(on)) => {
-                    if let Some(g) = id.strip_prefix("g:").and_then(|n| n.parse::<usize>().ok()).and_then(|i| self.preview.as_mut().and_then(|p| p.games.get_mut(i))) {
+                    if let Some(g) = id
+                        .strip_prefix("g:")
+                        .and_then(|n| n.parse::<usize>().ok())
+                        .and_then(|i| self.preview.as_mut().and_then(|p| p.games.get_mut(i)))
+                    {
                         g.import = on;
                     }
                 }
@@ -145,10 +151,18 @@ impl PadTarget for ScanRomsDialog {
                     let current = text_of(&self.directory, cx);
                     let start = (!current.is_empty()).then(|| std::path::PathBuf::from(current));
                     let input = self.directory.clone();
-                    open_browser(&mut self.layer, "Choose the ROM folder", PickKind::Folder, start.as_deref(), window, cx, move |this: &mut Self, p, window, cx| {
-                        input.update(cx, |s, cx| s.set_value(p.display().to_string(), window, cx));
-                        this.preview = None;
-                    });
+                    open_browser(
+                        &mut self.layer,
+                        "Choose the ROM folder",
+                        PickKind::Folder,
+                        start.as_deref(),
+                        window,
+                        cx,
+                        move |this: &mut Self, p, window, cx| {
+                            input.update(cx, |s, cx| s.set_value(p.display().to_string(), window, cx));
+                            this.preview = None;
+                        },
+                    );
                 }
                 "scan" => self.scan(cx),
                 "detect" => self.detect(cx),

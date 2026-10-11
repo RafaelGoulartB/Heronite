@@ -8,22 +8,35 @@ use super::{today, StatsPage};
 use crate::icons::Icon;
 use crate::pages::commands::{CommandCtx, PageCommand, PaletteCommands};
 
-const SPANS: [(Span, &str, &str); 4] =
-    [(Span::Week, "week", "This week"), (Span::Month, "month", "This month"), (Span::Year, "year", "This year"), (Span::All, "all", "All time")];
+const SPANS: [(Span, &str, &str); 4] = [
+    (Span::Week, "week", "This week"),
+    (Span::Month, "month", "This month"),
+    (Span::Year, "year", "This year"),
+    (Span::All, "all", "All time"),
+];
 
 impl PaletteCommands for StatsPage {
     fn palette_commands(page: Option<&Self>, _ctx: &CommandCtx, _cx: &App) -> Vec<PageCommand> {
         let mut v: Vec<PageCommand> = SPANS
             .iter()
             .map(|(span, id, label)| {
-                let shown = page.is_some_and(|p| p.review.is_none() && p.period.span == *span && (*span == Span::All || p.period.contains(today())));
-                PageCommand::new(format!("span:{id}"), format!("Statistics: {}", label.to_lowercase()), "Play time and habits", Icon::BarChart)
-                    .keywords("stats playtime hours period")
-                    .disabled(shown.then_some("Shown now"))
+                let shown = page
+                    .is_some_and(|p| p.review.is_none() && p.period.span == *span && (*span == Span::All || p.period.contains(today())));
+                PageCommand::new(
+                    format!("span:{id}"),
+                    format!("Statistics: {}", label.to_lowercase()),
+                    "Play time and habits",
+                    Icon::BarChart,
+                )
+                .keywords("stats playtime hours period")
+                .disabled(shown.then_some("Shown now"))
             })
             .collect();
         let last = today().year() - 1;
-        v.push(PageCommand::new("review-last", format!("Year in review {last}"), "Last year in games, as stories", Icon::BarChart).keywords("wrapped recap retrospective"));
+        v.push(
+            PageCommand::new("review-last", format!("Year in review {last}"), "Last year in games, as stories", Icon::BarChart)
+                .keywords("wrapped recap retrospective"),
+        );
         v
     }
 

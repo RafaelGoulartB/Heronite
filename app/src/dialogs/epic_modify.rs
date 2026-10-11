@@ -291,7 +291,8 @@ impl Render for EpicModifyDialog {
         }
         let mut body = div().flex().flex_col().gap(px(8.));
         if let Some(err) = &self.error {
-            body = body.child(div().text_size(px(14.)).text_color(theme::danger_text()).child(err.lines().next().unwrap_or("").to_string()));
+            body =
+                body.child(div().text_size(px(14.)).text_color(theme::danger_text()).child(err.lines().next().unwrap_or("").to_string()));
         } else if !self.loaded {
             body = body.child(
                 div()
@@ -304,7 +305,9 @@ impl Render for EpicModifyDialog {
         } else if self.rows.is_empty() {
             body = body.child(paragraph("No DLCs found"));
         } else {
-            let head = |text: &'static str| div().text_size(px(13.33)).font_weight(theme::W_BOLD).text_color(crate::theme::text_primary()).child(text);
+            let head = |text: &'static str| {
+                div().text_size(px(13.33)).font_weight(theme::W_BOLD).text_color(crate::theme::text_primary()).child(text)
+            };
             body = body.child(
                 div()
                     .flex()
@@ -350,10 +353,12 @@ impl Render for EpicModifyDialog {
                             div()
                                 .flex()
                                 .gap(px(12.))
-                                .child(button("epic-modify-confirm-no", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|this, _, _, cx| {
-                                    this.confirm = None;
-                                    cx.notify();
-                                })))
+                                .child(button("epic-modify-confirm-no", ButtonKind::Ghost, "Cancel").on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.confirm = None;
+                                        cx.notify();
+                                    },
+                                )))
                                 .child(
                                     button("epic-modify-confirm-yes", ButtonKind::Danger, "Uninstall")
                                         .on_click(cx.listener(move |this, _, _, cx| this.uninstall(i, cx))),
@@ -365,10 +370,16 @@ impl Render for EpicModifyDialog {
                 body = body.child(meta_text("The install folder of the game is unknown, DLCs cannot be installed."));
             }
         }
-        let footer = button("epic-modify-close", ButtonKind::Primary, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)));
+        let footer =
+            button("epic-modify-close", ButtonKind::Primary, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)));
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "epic-modify".into(), title: format!("Modify Installation - {}", self.title).into(), width: 680., height: None },
+            DialogProps {
+                id: "epic-modify".into(),
+                title: format!("Modify Installation - {}", self.title).into(),
+                width: 680.,
+                height: None,
+            },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
@@ -401,7 +412,11 @@ impl EpicModifyDialog {
                     (QueueState::Waiting, _) => "Queued \u{b7} A cancels".into(),
                 }
             } else if r.installed {
-                if downloading { format!("Installed \u{b7} {size}") } else { format!("Installed \u{b7} {size} \u{b7} A uninstalls") }
+                if downloading {
+                    format!("Installed \u{b7} {size}")
+                } else {
+                    format!("Installed \u{b7} {size} \u{b7} A uninstalls")
+                }
             } else {
                 format!("{size} \u{b7} A installs")
             };

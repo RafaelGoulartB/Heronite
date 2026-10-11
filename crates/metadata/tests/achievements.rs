@@ -28,9 +28,7 @@ fn root(logged_in: bool, token_age_s: f64) -> (tempfile::TempDir, DataPaths) {
 
 fn server() -> Server {
     Server::start(|req| {
-        if req.path() == "/clients/1207658924/users/42/achievements"
-            && req.header("authorization") == Some("Bearer tok-1")
-        {
+        if req.path() == "/clients/1207658924/users/42/achievements" && req.header("authorization") == Some("Bearer tok-1") {
             return Resp::json(json!({"items":[
                 {"achievement_id":"1","achievement_key":"A","visible":true,"name":"First","description":"d",
                  "image_url_unlocked":"https://x/u.png","image_url_locked":"https://x/l.png","rarity":2.5,

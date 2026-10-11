@@ -8,9 +8,9 @@ use heronite_data::models::{CollectionGameMetadata, LocalGameMeta};
 use heronite_metadata::{DetailsPatch, DetailsResult};
 
 use super::{block, Busy, GameSettingsDialog};
-use crate::ui::controls::{card, help_text, caption};
-use crate::ui::fields::{input_box, labeled, new_input, new_textarea, textarea_box, TagEvent, TagField};
 use crate::dialogs::{DialogCtx, DialogEvent};
+use crate::ui::controls::{caption, card, help_text};
+use crate::ui::fields::{input_box, labeled, new_input, new_textarea, textarea_box, TagEvent, TagField};
 
 #[derive(Clone, PartialEq, Default)]
 pub(super) struct Form {
@@ -49,7 +49,11 @@ pub(super) fn form_from(title: &str, md: Option<&CollectionGameMetadata>, meta: 
             .map(|n| if n.get().fract() == 0.0 { format!("{}", n.get() as i64) } else { n.get().to_string() })
             .unwrap_or_default(),
         websites: md.map(|m| m.websites.join(", ")).unwrap_or_default(),
-        notes: md.and_then(|m| m.notes.clone()).filter(|n| !n.is_empty()).or_else(|| meta.and_then(|m| m.notes.clone())).unwrap_or_default(),
+        notes: md
+            .and_then(|m| m.notes.clone())
+            .filter(|n| !n.is_empty())
+            .or_else(|| meta.and_then(|m| m.notes.clone()))
+            .unwrap_or_default(),
     }
 }
 

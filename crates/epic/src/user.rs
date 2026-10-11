@@ -167,7 +167,8 @@ mod tests {
     fn codes_are_extracted_from_what_users_paste() {
         assert_eq!(extract_code(CODE).as_deref(), Some(CODE));
         assert_eq!(extract_code(&format!("  \"{CODE}\"\n")).as_deref(), Some(CODE));
-        let blob = format!(r#"{{"redirectUrl":"https://localhost/launcher/authorized?code={CODE}","sid":null,"authorizationCode":"{CODE}"}}"#);
+        let blob =
+            format!(r#"{{"redirectUrl":"https://localhost/launcher/authorized?code={CODE}","sid":null,"authorizationCode":"{CODE}"}}"#);
         assert_eq!(extract_code(&blob).as_deref(), Some(CODE));
         assert_eq!(extract_code(&format!("https://localhost/launcher/authorized?code={CODE}")).as_deref(), Some(CODE));
         assert_eq!(extract_code("{}"), None);

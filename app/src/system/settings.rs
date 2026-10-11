@@ -72,10 +72,11 @@ mod tests {
         let s = SysSettings::from_map(&m);
         assert!(!s.exit_to_tray && !s.start_in_tray && !s.no_tray_icon);
         assert_eq!(s.max_recent, 5);
-        let m: Settings = json!({"exitToTray": true, "startInTray": true, "darkTrayIcon": true, "maxRecentGames": 3, "hideWindowOnProtocolLaunch": true})
-            .as_object()
-            .unwrap()
-            .clone();
+        let m: Settings =
+            json!({"exitToTray": true, "startInTray": true, "darkTrayIcon": true, "maxRecentGames": 3, "hideWindowOnProtocolLaunch": true})
+                .as_object()
+                .unwrap()
+                .clone();
         let s = SysSettings::from_map(&m);
         assert!(s.exit_to_tray && s.start_in_tray && s.dark_tray_icon && s.hide_window_on_protocol_launch);
         assert_eq!(s.max_recent, 3);

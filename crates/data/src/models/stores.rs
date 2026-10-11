@@ -181,4 +181,3 @@ pub struct InstalledGame {
     #[serde(flatten)]
     pub info: InstallInfo,
 }
-

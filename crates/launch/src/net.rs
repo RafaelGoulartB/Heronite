@@ -45,9 +45,7 @@ fn agent() -> &'static ureq::Agent {
 
 fn http_error(e: ureq::Error) -> String {
     match e {
-        ureq::Error::StatusCode(403) | ureq::Error::StatusCode(429) => {
-            "rate limit reached (HTTP 403/429), try again later".to_string()
-        }
+        ureq::Error::StatusCode(403) | ureq::Error::StatusCode(429) => "rate limit reached (HTTP 403/429), try again later".to_string(),
         ureq::Error::StatusCode(c) => format!("HTTP {c}"),
         e => e.to_string(),
     }
@@ -65,10 +63,7 @@ impl Net for SystemNet {
             }
         }
         let online = PROBES.iter().any(|addr| {
-            addr.parse::<SocketAddr>()
-                .ok()
-                .map(|a| TcpStream::connect_timeout(&a, Duration::from_secs(2)).is_ok())
-                .unwrap_or(false)
+            addr.parse::<SocketAddr>().ok().map(|a| TcpStream::connect_timeout(&a, Duration::from_secs(2)).is_ok()).unwrap_or(false)
         });
         *LAST.lock().unwrap() = Some((Instant::now(), online));
         online
@@ -83,23 +78,13 @@ impl Net for SystemNet {
             .build()
             .call()
             .map_err(http_error)?;
-        let text = resp
-            .body_mut()
-            .with_config()
-            .limit(32 * 1024 * 1024)
-            .read_to_string()
-            .map_err(|e| e.to_string())?;
+        let text = resp.body_mut().with_config().limit(32 * 1024 * 1024).read_to_string().map_err(|e| e.to_string())?;
         serde_json::from_str(&text).map_err(|e| format!("invalid JSON from {url}: {e}"))
     }
 
     fn download(&self, url: &str, dest: &Path, cancel: Cancel) -> Result<(), String> {
         let mut resp = agent().get(url).call().map_err(http_error)?;
-        let total = resp
-            .headers()
-            .get("content-length")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(0);
+        let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
         let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
         if let Some(dir) = dest.parent() {
             fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
@@ -135,11 +120,7 @@ pub fn extract_tar(archive: &Path, dest: &Path, strip: u32, cancel: Cancel) -> R
     let mut cmd = Command::new("tar");
     cmd.arg("-xf").arg(archive).arg("-C").arg(dest).arg(format!("--strip-components={strip}"));
     // A guarded helper: told to stop if the app dies, whole group killed on cancel.
-    let out = Run::new()
-        .poll(cancel)
-        .grace(Duration::from_secs(3))
-        .run(&mut cmd)
-        .map_err(|e| format!("could not run tar: {e}"))?;
+    let out = Run::new().poll(cancel).grace(Duration::from_secs(3)).run(&mut cmd).map_err(|e| format!("could not run tar: {e}"))?;
     if out.aborted {
         Err(CANCELLED.into())
     } else if out.success() {

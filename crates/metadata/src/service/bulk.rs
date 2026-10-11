@@ -17,7 +17,6 @@ const WEEK_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 pub const AUTO_FILL_BATCH: usize = 40;
 
 impl MetadataService {
-
     /// `getBulkMetadataProgress`.
     pub fn bulk_progress(&self) -> BulkProgress {
         self.bulk.lock().clone()
@@ -119,7 +118,9 @@ impl MetadataService {
             );
             let step = || -> Result<Option<CollectionGameMetadata>> {
                 let current = get_game_metadata(&self.paths, as_runner(&game.runner), &game.app_name)?;
-                if !overwrite && current.as_ref().is_some_and(|c| c.fetched_at.as_deref().is_some_and(|f| !f.is_empty()) && c.fetch_error.is_none()) {
+                if !overwrite
+                    && current.as_ref().is_some_and(|c| c.fetched_at.as_deref().is_some_and(|f| !f.is_empty()) && c.fetch_error.is_none())
+                {
                     return Ok(None);
                 }
                 self.apply_game_metadata(&MetadataApplyArgs {
@@ -200,9 +201,9 @@ impl MetadataService {
                 None => true,
                 Some(c) if c.fetch_error.is_some() => match c.fetched_at.as_deref() {
                     None | Some("") => true,
-                    Some(at) => chrono::DateTime::parse_from_rfc3339(at)
-                        .map(|t| now_ms() - t.timestamp_millis() > WEEK_MS)
-                        .unwrap_or(false),
+                    Some(at) => {
+                        chrono::DateTime::parse_from_rfc3339(at).map(|t| now_ms() - t.timestamp_millis() > WEEK_MS).unwrap_or(false)
+                    }
                 },
                 Some(_) => false,
             };

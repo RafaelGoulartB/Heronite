@@ -39,7 +39,13 @@ impl EmulatorEditDialog {
             let ids = definition_ids();
             let names: Vec<SharedString> = ids
                 .iter()
-                .map(|id| if id == "custom" { "Custom".into() } else { emulator_definition(id).map(|d| d.name.clone()).unwrap_or_default().into() })
+                .map(|id| {
+                    if id == "custom" {
+                        "Custom".into()
+                    } else {
+                        emulator_definition(id).map(|d| d.name.clone()).unwrap_or_default().into()
+                    }
+                })
                 .collect();
             let index = ids.iter().position(|i| *i == self.definition_id).unwrap_or(0);
             rows.push(
@@ -53,7 +59,9 @@ impl EmulatorEditDialog {
         if self.launch_kind == "flatpak" {
             rows.push(Row::text("flatpak", "Flatpak application id", text_of(&self.flatpak_id, cx)).icon(Icon::Edit));
         } else {
-            rows.push(Row::text("exe", "Executable", text_of(&self.executable, cx)).icon(Icon::FolderOpen).desc("A picks the file. X clears it."));
+            rows.push(
+                Row::text("exe", "Executable", text_of(&self.executable, cx)).icon(Icon::FolderOpen).desc("A picks the file. X clears it."),
+            );
         }
         rows.push(
             Row::text("dir", "Install folder (optional)", text_of(&self.install_dir, cx))
@@ -89,13 +97,19 @@ impl EmulatorEditDialog {
         let mut rows = vec![
             Row::text("pf-name", "Profile name", text_of(&f.name, cx)).icon(Icon::Edit),
             Row::text("pf-platform", "Platform", text_of(&f.platform, cx)).icon(Icon::Edit),
-            Row::text("pf-args", "Arguments", text_of(&f.arguments, cx))
+            Row::text("pf-args", "Arguments", text_of(&f.arguments, cx)).icon(Icon::Edit).desc(
+                "May use {ImagePath}, {ImageName}, {ImageNameNoExt}, {ImageDir}, {EmulatorDir}, {CorePath}, {Name} and {InstallDir}.",
+            ),
+            Row::text("pf-ext", "ROM extensions", text_of(&f.extensions, cx))
                 .icon(Icon::Edit)
-                .desc("May use {ImagePath}, {ImageName}, {ImageNameNoExt}, {ImageDir}, {EmulatorDir}, {CorePath}, {Name} and {InstallDir}."),
-            Row::text("pf-ext", "ROM extensions", text_of(&f.extensions, cx)).icon(Icon::Edit).desc("Comma-separated, for example iso, cue, chd."),
+                .desc("Comma-separated, for example iso, cue, chd."),
         ];
         if self.core_relevant(p) {
-            rows.push(Row::text("pf-core", "RetroArch core (.so)", text_of(&f.core, cx)).icon(Icon::FolderOpen).desc("A picks the file. X clears it."));
+            rows.push(
+                Row::text("pf-core", "RetroArch core (.so)", text_of(&f.core, cx))
+                    .icon(Icon::FolderOpen)
+                    .desc("A picks the file. X clears it."),
+            );
         }
         let wd = WORKING_DIRS.iter().position(|w| Some(w.0) == f.working_dir.as_deref().or(Some(""))).unwrap_or(0);
         rows.push(Row::choice("pf-wd", "Working folder", WORKING_DIRS.iter().map(|w| SharedString::from(w.1)).collect(), wd));
@@ -159,7 +173,15 @@ impl EmulatorEditDialog {
         });
     }
 
-    fn console_pick(&mut self, title: &str, kind: PickKind, input: Entity<InputState>, window: &mut Window, cx: &mut Context<Self>, after: fn(&mut Self, &str, &mut Context<Self>)) {
+    fn console_pick(
+        &mut self,
+        title: &str,
+        kind: PickKind,
+        input: Entity<InputState>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        after: fn(&mut Self, &str, &mut Context<Self>),
+    ) {
         let current = text_of(&input, cx);
         let start = (!current.is_empty()).then(|| std::path::PathBuf::from(&current));
         open_browser(&mut self.layer, title, kind, start.as_deref(), window, cx, move |this: &mut Self, p, window, cx| {

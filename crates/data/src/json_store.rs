@@ -23,8 +23,7 @@ use serde_json::Value;
 pub fn read_value(path: &Path) -> Result<Value> {
     match fs::read(path) {
         Ok(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => Ok(Value::Null),
-        Ok(bytes) => serde_json::from_slice(&bytes)
-            .with_context(|| format!("parsing {}", path.display())),
+        Ok(bytes) => serde_json::from_slice(&bytes).with_context(|| format!("parsing {}", path.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
         Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
     }
@@ -41,8 +40,7 @@ pub fn read<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
     if bytes.iter().all(u8::is_ascii_whitespace) {
         return Ok(T::default());
     }
-    let doc: Option<T> = serde_json::from_slice(&bytes)
-        .with_context(|| format!("decoding {}", path.display()))?;
+    let doc: Option<T> = serde_json::from_slice(&bytes).with_context(|| format!("decoding {}", path.display()))?;
     Ok(doc.unwrap_or_default())
 }
 
@@ -110,12 +108,7 @@ pub fn sweep_stale_temps_for(data_paths: &crate::paths::DataPaths, app: &crate::
 
 fn path_lock(path: &Path) -> Arc<Mutex<()>> {
     static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
-    LOCKS
-        .get_or_init(Default::default)
-        .lock()
-        .entry(path.to_path_buf())
-        .or_default()
-        .clone()
+    LOCKS.get_or_init(Default::default).lock().entry(path.to_path_buf()).or_default().clone()
 }
 
 /// Read-modify-write of the raw JSON document. The closure gets the current
@@ -126,11 +119,7 @@ pub fn update_value<R>(path: &Path, f: impl FnOnce(&mut Value) -> Result<R>) -> 
 }
 
 /// [`update_value`] writing with another indent string (e.g. [`INDENT_2`]).
-pub fn update_value_indented<R>(
-    path: &Path,
-    indent: &[u8],
-    f: impl FnOnce(&mut Value) -> Result<R>,
-) -> Result<R> {
+pub fn update_value_indented<R>(path: &Path, indent: &[u8], f: impl FnOnce(&mut Value) -> Result<R>) -> Result<R> {
     let lock = path_lock(path);
     let _guard = lock.lock();
     let mut value = read_value(path)?;

@@ -13,21 +13,13 @@ use crate::sysfiles::{resolve_configured_dir, HostEnv, Ini};
 fn portable_dir(ctx: &EngineContext, markers: &[&str]) -> Option<PathBuf> {
     let exe = ctx.executable.as_deref()?;
     let dir = dirname(exe);
-    markers
-        .iter()
-        .any(|m| Path::new(&dir).join(m).exists())
-        .then(|| PathBuf::from(dir))
+    markers.iter().any(|m| Path::new(&dir).join(m).exists()).then(|| PathBuf::from(dir))
 }
 
 /// Sorted full paths of the sub-folders of `root`.
 pub(super) fn child_dirs(root: &Path) -> Vec<String> {
     let mut v: Vec<String> = std::fs::read_dir(root)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok())
-                .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-                .map(|e| s(&e.path()))
-                .collect()
-        })
+        .map(|rd| rd.filter_map(|e| e.ok()).filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)).map(|e| s(&e.path())).collect())
         .unwrap_or_default();
     v.sort();
     v
@@ -114,11 +106,7 @@ pub(super) fn retroarch_core_name(env: &HostEnv, ctx: &EngineContext) -> Option<
     let cfg_dir = s(&config_dir);
     let cfg = Ini::read(&config_dir.join("retroarch.cfg"));
     let dirs = unique([
-        resolve_configured_dir(
-            cfg.as_ref().and_then(|c| c.get("", "libretro_info_path")),
-            &cfg_dir,
-            &env.home,
-        ),
+        resolve_configured_dir(cfg.as_ref().and_then(|c| c.get("", "libretro_info_path")), &cfg_dir, &env.home),
         Some(join(&cfg_dir, "cores")),
         Some(join(&cfg_dir, "info")),
         Some(dirname(core)),

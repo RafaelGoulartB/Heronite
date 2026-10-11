@@ -131,12 +131,7 @@ fn year_from_unix(value: Option<f64>) -> Option<i32> {
 /// `mapGame`: IGDB row to a metadata candidate.
 pub fn map_game(app_name: &str, runner: &str, game: &IgdbGame) -> CollectionGameMetadata {
     let companies = |pred: fn(&Company) -> bool| {
-        unique_names12(
-            game.involved_companies
-                .iter()
-                .filter(|c| pred(c))
-                .map(|c| c.company.as_ref().and_then(|n| n.name.as_deref())),
-        )
+        unique_names12(game.involved_companies.iter().filter(|c| pred(c)).map(|c| c.company.as_ref().and_then(|n| n.name.as_deref())))
     };
     let names = |list: &[Named], max: usize| unique_names(list.iter().map(|n| n.name.as_deref()), max);
 
@@ -321,9 +316,7 @@ impl Igdb {
         if !creds.configured() {
             return IgdbCredentialTest { ok: false, error: Some("Add a Twitch Client ID and Client Secret first.".into()) };
         }
-        let result = self
-            .twitch_token(http, creds, true)
-            .and_then(|_| self.query_games(http, creds, "fields id; limit 1;"));
+        let result = self.twitch_token(http, creds, true).and_then(|_| self.query_games(http, creds, "fields id; limit 1;"));
         match result {
             Ok(_) => IgdbCredentialTest { ok: true, error: None },
             Err(e) => {
@@ -340,10 +333,7 @@ impl Igdb {
         }
         let mut hits: Vec<MetadataSearchHit> = Vec::new();
         for query in title_queries(title) {
-            let body = format!(
-                "search \"{}\"; fields name,slug,first_release_date; limit 8;",
-                escape_apicalypse(&query)
-            );
+            let body = format!("search \"{}\"; fields name,slug,first_release_date; limit 8;", escape_apicalypse(&query));
             match self.query_games(http, creds, &body) {
                 Ok(games) => {
                     for game in games {
@@ -382,9 +372,8 @@ impl Igdb {
     fn by_steam_id(&self, http: &Http, creds: &IgdbCredentials, steam_app_id: &str) -> Result<Option<IgdbGame>> {
         let uid = escape_apicalypse(steam_app_id);
         for field in ["external_game_source", "category"] {
-            let body = format!(
-                "fields {GAME_FIELDS}; where external_games.uid = \"{uid}\" & external_games.{field} = {STEAM_EXTERNAL}; limit 1;"
-            );
+            let body =
+                format!("fields {GAME_FIELDS}; where external_games.uid = \"{uid}\" & external_games.{field} = {STEAM_EXTERNAL}; limit 1;");
             if let Some(game) = self.query_games(http, creds, &body)?.into_iter().next() {
                 return Ok(Some(game));
             }
@@ -475,10 +464,7 @@ mod tests {
 
     #[test]
     fn steam_id_from_legacy_category_also_works() {
-        let game: IgdbGame = serde_json::from_str(
-            r#"{"id":1,"name":"X","external_games":[{"uid":"99","category":1}]}"#,
-        )
-        .unwrap();
+        let game: IgdbGame = serde_json::from_str(r#"{"id":1,"name":"X","external_games":[{"uid":"99","category":1}]}"#).unwrap();
         assert_eq!(map_game("a", "sideload", &game).steam_app_id.as_deref(), Some("99"));
     }
 

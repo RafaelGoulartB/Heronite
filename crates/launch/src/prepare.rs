@@ -239,13 +239,7 @@ impl Prep<'_> {
 
     /// `DXVK.installRemove`: installs `tool` into (or removes it from) the
     /// prefix of `settings`. Also behind the toggles of the game settings.
-    pub fn toggle_tool(
-        &self,
-        ctx: &PlanContext,
-        settings: &GameSettings,
-        tool: Tool,
-        action: Action,
-    ) -> Result<dxvk::Outcome, String> {
+    pub fn toggle_tool(&self, ctx: &PlanContext, settings: &GameSettings, tool: Tool, action: Action) -> Result<dxvk::Outcome, String> {
         let runner = PrefixRunner { ctx, prep: self, settings };
         let progress = |m: &str| self.notice(Notice::info(m));
         let env = dxvk::Env {
@@ -344,7 +338,13 @@ pub(crate) mod tests {
         }
     }
 
-    fn collect<'a>(fx: &'a Fx, probe: &'a FakeProbe, net: &'a FakeNet, cloud: Option<&'a dyn CloudSync>, sink: &'a dyn Fn(Notice)) -> Prep<'a> {
+    fn collect<'a>(
+        fx: &'a Fx,
+        probe: &'a FakeProbe,
+        net: &'a FakeNet,
+        cloud: Option<&'a dyn CloudSync>,
+        sink: &'a dyn Fn(Notice),
+    ) -> Prep<'a> {
         Prep { paths: &fx.paths, probe, net, spawner: &fx.spawner, cloud, cancel: &|| false, notify: sink }
     }
 

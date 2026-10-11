@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::*;
 
-use super::window::{close_window_keep_alive, show_window};
 use super::hub;
+use super::window::{close_window_keep_alive, show_window};
 
 /// Games the launcher is tracking (titles, sorted) and whether post-game work
 /// (backups, cloud saves) is still running: what a quit would leave behind.

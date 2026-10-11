@@ -222,21 +222,22 @@ impl<'a> Run<'a> {
         let mut gone_at: Option<Instant> = None;
         let mut status: Option<ExitStatus> = None;
         let lines = self.lines;
-        let feed = |out: &mut RunOutput, split: &mut [LineSplitter; 2], on_line: &mut Option<&mut dyn FnMut(&str)>, is_err: bool, chunk: &[u8]| {
-            let buf = if is_err { &mut out.stderr } else { &mut out.stdout };
-            if !lines && buf.len() < CAPTURE_LIMIT {
-                buf.extend_from_slice(chunk);
-            }
-            split[is_err as usize].feed(chunk, |line| {
-                if let Some(f) = on_line.as_mut() {
-                    f(line);
+        let feed =
+            |out: &mut RunOutput, split: &mut [LineSplitter; 2], on_line: &mut Option<&mut dyn FnMut(&str)>, is_err: bool, chunk: &[u8]| {
+                let buf = if is_err { &mut out.stderr } else { &mut out.stdout };
+                if !lines && buf.len() < CAPTURE_LIMIT {
+                    buf.extend_from_slice(chunk);
                 }
-                if lines && buf.len() < CAPTURE_LIMIT {
-                    buf.extend_from_slice(line.as_bytes());
-                    buf.push(b'\n');
-                }
-            });
-        };
+                split[is_err as usize].feed(chunk, |line| {
+                    if let Some(f) = on_line.as_mut() {
+                        f(line);
+                    }
+                    if lines && buf.len() < CAPTURE_LIMIT {
+                        buf.extend_from_slice(line.as_bytes());
+                        buf.push(b'\n');
+                    }
+                });
+            };
         loop {
             match rx.recv_timeout(Duration::from_millis(100)) {
                 Ok((is_err, chunk)) => feed(&mut out, &mut split, &mut self.on_line, is_err, &chunk),

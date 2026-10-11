@@ -5,20 +5,14 @@
 use heronite_data::models::GameInfo;
 
 use crate::emulators::{node_basename, node_dirname};
-use crate::env::{
-    build_wrappers, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env,
-};
-use crate::plan::{
-    Command, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec, WineRuntime,
-};
+use crate::env::{build_wrappers, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
+use crate::plan::{Command, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::{GameSettings, WineVersion};
 
 /// Heroic's `getUmuPath`: `umu-run` on `$PATH`, else its bundled copy.
 pub fn umu_path(ctx: &PlanContext, probe: &dyn Probe) -> String {
-    probe
-        .which("umu-run")
-        .unwrap_or_else(|| join(&join(&ctx.tools_dir(), "runtimes"), "umu/umu_run.py"))
+    probe.which("umu-run").unwrap_or_else(|| join(&join(&ctx.tools_dir(), "runtimes"), "umu/umu_run.py"))
 }
 
 /// `wineserver` next to the Wine binary (or the one stored in the config).
@@ -55,40 +49,24 @@ pub struct WineEnv {
 
 /// Picks the game's Wine, falling back to the global default like
 /// `checkWineBeforeLaunch` (minus its dialog). Err = nothing usable.
-pub fn prepare(
-    ctx: &PlanContext,
-    probe: &dyn Probe,
-    settings: &GameSettings,
-) -> Result<WineEnv, String> {
+pub fn prepare(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings) -> Result<WineEnv, String> {
     prepare_with(ctx, probe, settings, false)
 }
 
 /// Like [`prepare`] for an actual launch: a missing umu runtime is planned
 /// for (the launch downloads it, as Heroic does) instead of falling back to
 /// running Proton directly.
-pub fn prepare_for_launch(
-    ctx: &PlanContext,
-    probe: &dyn Probe,
-    settings: &GameSettings,
-) -> Result<WineEnv, String> {
+pub fn prepare_for_launch(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings) -> Result<WineEnv, String> {
     prepare_with(ctx, probe, settings, true)
 }
 
-fn prepare_with(
-    ctx: &PlanContext,
-    probe: &dyn Probe,
-    settings: &GameSettings,
-    download_umu: bool,
-) -> Result<WineEnv, String> {
+fn prepare_with(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, download_umu: bool) -> Result<WineEnv, String> {
     let mut settings = settings.clone();
     let mut notes = Vec::new();
     if !valid_wine(&settings.wine_version, probe) {
         let default = ctx.global.wine_version();
         if valid_wine(&default, probe) {
-            notes.push(format!(
-                "Wine version '{}' is not valid; using the default '{}'",
-                settings.wine_version.name, default.name
-            ));
+            notes.push(format!("Wine version '{}' is not valid; using the default '{}'", settings.wine_version.name, default.name));
             settings.wine_version = default;
         } else {
             return Err(format!(
@@ -115,30 +93,14 @@ fn prepare_with(
     } else {
         WineRuntime::Wine
     };
-    let server = if kind == "wine" {
-        wine_server_of(&settings.wine_version, probe)
-    } else {
-        None
-    };
-    Ok(WineEnv {
-        settings,
-        runtime,
-        umu: umu_ok.then_some(umu_file),
-        umu_download,
-        server,
-        notes,
-    })
+    let server = if kind == "wine" { wine_server_of(&settings.wine_version, probe) } else { None };
+    Ok(WineEnv { settings, runtime, umu: umu_ok.then_some(umu_file), umu_download, server, notes })
 }
 
 impl WineEnv {
     /// What the launch must do around this Wine setup (see [`PrepSpec`]).
     pub(crate) fn prep_spec(&self) -> PrepSpec {
-        PrepSpec {
-            umu: self.umu_download,
-            wine: Some(self.settings.clone()),
-            cloud_saves: None,
-            ..Default::default()
-        }
+        PrepSpec { umu: self.umu_download, wine: Some(self.settings.clone()), cloud_saves: None, ..Default::default() }
     }
 
     /// Binary that runs Windows programs: umu, proton or wine.
@@ -154,12 +116,7 @@ impl WineEnv {
         if let Some(server) = &self.server {
             let mut e = Env::new();
             e.insert("WINEPREFIX".into(), self.settings.wine_prefix.clone());
-            return Command {
-                program: server.clone(),
-                args: vec!["-k".into()],
-                env: e,
-                cwd: None,
-            };
+            return Command { program: server.clone(), args: vec!["-k".into()], env: e, cwd: None };
         }
         let mut e = env.clone();
         e.insert("PROTON_VERB".into(), "run".into());
@@ -168,27 +125,14 @@ impl WineEnv {
             args.push("run".to_string());
         }
         args.extend(["wineboot".to_string(), "-k".to_string()]);
-        Command {
-            program: self.runner_bin(),
-            args,
-            env: e,
-            cwd: None,
-        }
+        Command { program: self.runner_bin(), args, env: e, cwd: None }
     }
 
     /// `verifyWinePrefix`: files that must exist for the prefix to be usable.
     pub(crate) fn prefix_missing(&self, probe: &dyn Probe) -> bool {
         let prefix = &self.settings.wine_prefix;
-        let mut required: Vec<String> = [
-            "dosdevices",
-            "drive_c",
-            "system.reg",
-            "user.reg",
-            "userdef.reg",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+        let mut required: Vec<String> =
+            ["dosdevices", "drive_c", "system.reg", "user.reg", "userdef.reg"].iter().map(|s| s.to_string()).collect();
         let mut files = vec![prefix.clone()];
         if self.settings.wine_version.kind == "proton" {
             required = required.into_iter().map(|p| format!("pfx/{p}")).collect();
@@ -206,33 +150,15 @@ impl WineEnv {
         e.insert("PROTON_VERB".into(), "run".into());
         let bin = self.runner_bin();
         let main = match self.runtime {
-            WineRuntime::Umu => Command {
-                program: bin,
-                args: vec!["createprefix".into()],
-                env: e.clone(),
-                cwd: None,
-            },
-            WineRuntime::Proton => Command {
-                program: bin,
-                args: vec!["run".into(), "wineboot".into(), "--init".into()],
-                env: e.clone(),
-                cwd: None,
-            },
-            WineRuntime::Wine => Command {
-                program: bin,
-                args: vec!["wineboot".into(), "--init".into()],
-                env: e.clone(),
-                cwd: None,
-            },
+            WineRuntime::Umu => Command { program: bin, args: vec!["createprefix".into()], env: e.clone(), cwd: None },
+            WineRuntime::Proton => {
+                Command { program: bin, args: vec!["run".into(), "wineboot".into(), "--init".into()], env: e.clone(), cwd: None }
+            }
+            WineRuntime::Wine => Command { program: bin, args: vec!["wineboot".into(), "--init".into()], env: e.clone(), cwd: None },
         };
         let mut out = vec![main];
         if let Some(server) = &self.server {
-            out.push(Command {
-                program: server.clone(),
-                args: vec!["--wait".into()],
-                env: e,
-                cwd: None,
-            });
+            out.push(Command { program: server.clone(), args: vec!["--wait".into()], env: e, cwd: None });
         }
         out
     }
@@ -278,32 +204,21 @@ pub fn build_wine_plan(
     full.extend(parts);
     let program = full.remove(0);
 
-    let (create_dirs, pre_commands) = if wine.prefix_missing(probe) {
-        (vec![s.wine_prefix.clone()], wine.prefix_creation(&env))
-    } else {
-        (vec![], vec![])
-    };
+    let (create_dirs, pre_commands) =
+        if wine.prefix_missing(probe) { (vec![s.wine_prefix.clone()], wine.prefix_creation(&env)) } else { (vec![], vec![]) };
     let wait_after_exit = wine.server.as_ref().map(|server| Command {
         program: server.clone(),
         args: vec!["--wait".into()],
         env: env.clone(),
         cwd: Some(node_dirname(executable)),
     });
-    let stop = StopSpec {
-        kill_patterns: vec![node_basename(executable)],
-        commands: vec![wine.shutdown_command(&env)],
-    };
+    let stop = StopSpec { kill_patterns: vec![node_basename(executable)], commands: vec![wine.shutdown_command(&env)] };
 
     LaunchPlan::Wine {
         runtime: wine.runtime,
         prefix: s.wine_prefix.clone(),
         process: ProcessPlan {
-            command: Command {
-                program,
-                args: full,
-                env,
-                cwd: Some(node_dirname(executable)),
-            },
+            command: Command { program, args: full, env, cwd: Some(node_dirname(executable)) },
             stop,
             create_dirs,
             pre_commands,

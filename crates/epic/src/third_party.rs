@@ -122,7 +122,12 @@ pub fn remove_installed(data_paths: &DataPaths, app_name: &str) -> Result<bool> 
 
 /// The installer of `provider`, downloaded once (into `<file>.part`, renamed
 /// when complete). `on_progress` gets the download progress.
-pub fn ensure_installer(data_paths: &DataPaths, provider: Provider, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<PathBuf> {
+pub fn ensure_installer(
+    data_paths: &DataPaths,
+    provider: Provider,
+    cancel: &Cancel,
+    on_progress: &mut dyn FnMut(Progress),
+) -> Result<PathBuf> {
     let dir = redist_dir(data_paths);
     let dest = dir.join(provider.installer_file());
     if dest.is_file() {

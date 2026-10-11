@@ -57,11 +57,7 @@ impl CollectionView {
         let latest = self.shots.full_req.clone();
         self.shots.full_pending = Some((path.clone(), bx));
         let _ = std::thread::Builder::new().name("screenshot-full".into()).spawn(move || {
-            let res = if latest.load(Ordering::SeqCst) != req {
-                Err("superseded".to_string())
-            } else {
-                load_full(&path, bx)
-            };
+            let res = if latest.load(Ordering::SeqCst) != req { Err("superseded".to_string()) } else { load_full(&path, bx) };
             let _ = tx.unbounded_send(Msg::Full { req, path, res });
         });
     }
@@ -262,10 +258,7 @@ impl CollectionView {
             .on_mouse_move(cx.listener(|this, ev: &MouseMoveEvent, _, cx| {
                 this.shots_reveal_controls(cx);
                 if let (Some(d), Some(MouseButton::Left)) = (this.shots.drag, ev.pressed_button) {
-                    this.shots.pan = (
-                        d.pan.0 + f32::from(ev.position.x - d.mouse.x),
-                        d.pan.1 + f32::from(ev.position.y - d.mouse.y),
-                    );
+                    this.shots.pan = (d.pan.0 + f32::from(ev.position.x - d.mouse.x), d.pan.1 + f32::from(ev.position.y - d.mouse.y));
                     cx.notify();
                 }
             }))
@@ -292,9 +285,13 @@ impl CollectionView {
         if controls {
             overlay = overlay.child(tools);
             if n > 1 {
-                overlay = overlay
-                    .child(Self::viewer_nav("shot-prev", Icon::ChevronLeft, true, -1, cx))
-                    .child(Self::viewer_nav("shot-next", Icon::ChevronRight, false, 1, cx));
+                overlay = overlay.child(Self::viewer_nav("shot-prev", Icon::ChevronLeft, true, -1, cx)).child(Self::viewer_nav(
+                    "shot-next",
+                    Icon::ChevronRight,
+                    false,
+                    1,
+                    cx,
+                ));
             }
             overlay = overlay.child(
                 div()
@@ -391,48 +388,37 @@ impl CollectionView {
                 if busy {
                     b = b.opacity(0.55);
                 } else {
-                    b = b
-                        .cursor_pointer()
-                        .hover(|s| s.bg(theme::rgb_a(190, 45, 45, 0.9)))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.shots.confirm = Some(i);
-                            cx.notify();
-                        }));
+                    b = b.cursor_pointer().hover(|s| s.bg(theme::rgb_a(190, 45, 45, 0.9))).on_click(cx.listener(move |this, _, _, cx| {
+                        this.shots.confirm = Some(i);
+                        cx.notify();
+                    }));
                 }
                 b
             })
-            .child(
-                icon_button(
-                    "shot-fit",
-                    if fit { Icon::FullscreenExit } else { Icon::Fullscreen },
-                    36.,
-                    0.72,
-                    0.92,
-                )
-                .on_click(cx.listener(|this, _, _, cx| {
+            .child(icon_button("shot-fit", if fit { Icon::FullscreenExit } else { Icon::Fullscreen }, 36., 0.72, 0.92).on_click(
+                cx.listener(|this, _, _, cx| {
                     this.shots_toggle_fit();
                     cx.notify();
-                })),
-            )
-            .child(icon_button("shot-view-close", Icon::Close, 36., 0.72, 0.92).on_click(cx.listener(
-                |this, _, _, cx| {
-                    this.shots_close_view();
-                    cx.notify();
-                },
-            )))
+                }),
+            ))
+            .child(icon_button("shot-view-close", Icon::Close, 36., 0.72, 0.92).on_click(cx.listener(|this, _, _, cx| {
+                this.shots_close_view();
+                cx.notify();
+            })))
     }
 
     /// Previous / next arrow, vertically centred.
     fn viewer_nav(id: &'static str, ic: Icon, left: bool, delta: isize, cx: &mut Context<Self>) -> Stateful<Div> {
-        let b = icon_button(id, ic, 46., 0.72, 0.92)
-            .absolute()
-            .top(relative(0.5))
-            .mt(px(-23.))
-            .on_click(cx.listener(move |this, _, _, cx| {
+        let b =
+            icon_button(id, ic, 46., 0.72, 0.92).absolute().top(relative(0.5)).mt(px(-23.)).on_click(cx.listener(move |this, _, _, cx| {
                 this.shots_step(delta);
                 cx.notify();
             }));
-        if left { b.left(px(19.2)) } else { b.right(px(19.2)) }
+        if left {
+            b.left(px(19.2))
+        } else {
+            b.right(px(19.2))
+        }
     }
 
     fn viewer_error(err: SharedString) -> Div {
@@ -479,21 +465,15 @@ impl CollectionView {
                             .flex()
                             .justify_end()
                             .gap(px(12.))
-                            .child(
-                                button("shot-confirm-cancel", ButtonKind::Glass, "Cancel").on_click(
-                                    cx.listener(|this, _, _, cx| {
-                                        this.shots.confirm = None;
-                                        cx.notify();
-                                    }),
-                                ),
-                            )
-                            .child(
-                                button("shot-confirm-ok", ButtonKind::Primary, "Move to trash").on_click(
-                                    cx.listener(|this, _, _, cx| {
-                                        this.shots_delete(cx);
-                                    }),
-                                ),
-                            ),
+                            .child(button("shot-confirm-cancel", ButtonKind::Glass, "Cancel").on_click(cx.listener(|this, _, _, cx| {
+                                this.shots.confirm = None;
+                                cx.notify();
+                            })))
+                            .child(button("shot-confirm-ok", ButtonKind::Primary, "Move to trash").on_click(cx.listener(
+                                |this, _, _, cx| {
+                                    this.shots_delete(cx);
+                                },
+                            ))),
                     ),
             )
     }

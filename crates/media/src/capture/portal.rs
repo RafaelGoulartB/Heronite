@@ -107,13 +107,8 @@ async fn run(
 /// portal wrote.
 pub fn screenshot() -> Result<PathBuf, String> {
     pollster::block_on(async {
-        let response = Screenshot::request()
-            .interactive(false)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .response()
-            .map_err(|e| e.to_string())?;
+        let response =
+            Screenshot::request().interactive(false).send().await.map_err(|e| e.to_string())?.response().map_err(|e| e.to_string())?;
         file_uri_to_path(response.uri().as_str()).ok_or_else(|| format!("unsupported screenshot uri {}", response.uri()))
     })
 }

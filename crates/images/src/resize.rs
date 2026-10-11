@@ -42,13 +42,8 @@ pub(crate) fn cover_to_rgba(src: Raster, tw: u32, th: u32, filter: Filter) -> Re
     };
     let src_img = Image::from_vec_u8(w0, h0, src.data, pt).map_err(|e| ImageError::Decode(e.to_string()))?;
     let mut dst = Image::new(tw, th, pt);
-    let opts = ResizeOptions::new()
-        .resize_alg(filter.alg())
-        .crop(crop.x, crop.y, crop.w, crop.h)
-        .use_alpha(!opaque);
-    Resizer::new()
-        .resize(&src_img, &mut dst, &opts)
-        .map_err(|e| ImageError::Decode(e.to_string()))?;
+    let opts = ResizeOptions::new().resize_alg(filter.alg()).crop(crop.x, crop.y, crop.w, crop.h).use_alpha(!opaque);
+    Resizer::new().resize(&src_img, &mut dst, &opts).map_err(|e| ImageError::Decode(e.to_string()))?;
     drop(src_img); // free the (possibly large) source before expanding
     let small = dst.into_vec();
     Ok(match ch {
@@ -84,7 +79,15 @@ mod tests {
     #[test]
     fn cover_crops_center_wide_source() {
         // 30x10 source: red edges, green middle (central 10x10 is inside the green band).
-        let src = raster_rgb(30, 10, |x, _| if x < 7 { [255, 0, 0] } else if x < 23 { [0, 255, 0] } else { [0, 0, 255] });
+        let src = raster_rgb(30, 10, |x, _| {
+            if x < 7 {
+                [255, 0, 0]
+            } else if x < 23 {
+                [0, 255, 0]
+            } else {
+                [0, 0, 255]
+            }
+        });
         // Square target => crops the central 10x10 => pure green.
         let out = cover_to_rgba(src, 8, 8, Filter::Bilinear).unwrap();
         assert_eq!(out.len(), 8 * 8 * 4);
@@ -96,7 +99,15 @@ mod tests {
     #[test]
     fn cover_crops_center_tall_source() {
         // 10x30: top red, mid green, bottom blue
-        let src = raster_rgb(10, 30, |_, y| if y < 10 { [255, 0, 0] } else if y < 20 { [0, 255, 0] } else { [0, 0, 255] });
+        let src = raster_rgb(10, 30, |_, y| {
+            if y < 10 {
+                [255, 0, 0]
+            } else if y < 20 {
+                [0, 255, 0]
+            } else {
+                [0, 0, 255]
+            }
+        });
         let out = cover_to_rgba(src, 5, 5, Filter::Lanczos3).unwrap();
         for p in out.chunks(4) {
             assert!(p[1] > 240 && p[0] < 16 && p[2] < 16, "{p:?}");

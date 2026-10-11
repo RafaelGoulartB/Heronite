@@ -78,13 +78,14 @@ impl CollectionView {
                 while let Ok(more) = rx.try_recv() {
                     batch.push(more);
                 }
-                if this.update(cx, |this, cx| {
-                    for m in batch {
-                        this.shots_on_msg(m, cx);
-                    }
-                    cx.notify();
-                })
-                .is_err()
+                if this
+                    .update(cx, |this, cx| {
+                        for m in batch {
+                            this.shots_on_msg(m, cx);
+                        }
+                        cx.notify();
+                    })
+                    .is_err()
                 {
                     break;
                 }

@@ -8,9 +8,9 @@ use heronite_data::Library;
 use heronite_launch::LaunchEvent;
 
 use super::events::on_event;
+use super::hub;
 use super::quit::{allow_user_close, graceful_quit, request_quit};
 use super::window::{has_window, show_window};
-use super::hub;
 use crate::system::tray::TrayCmd;
 
 /// `HERONITE_DEBUG_*` helpers to exercise the window lifecycle without a

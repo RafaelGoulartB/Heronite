@@ -88,7 +88,8 @@ impl Browser {
                 }
             }
         }
-        let mut this = Self { title: title.into(), kind, dir: dir.clone(), entries: Vec::new(), loading: true, error: None, nav: ListNav::default() };
+        let mut this =
+            Self { title: title.into(), kind, dir: dir.clone(), entries: Vec::new(), loading: true, error: None, nav: ListNav::default() };
         this.open(dir, cx);
         this
     }
@@ -130,7 +131,11 @@ impl Browser {
             rows.push(Row::action("use", "Use this folder").icon(Icon::Check));
         }
         for (i, e) in self.entries.iter().enumerate() {
-            rows.push(Row::action(SharedString::from(format!("e{i}")), e.name.clone()).icon(if e.dir { Icon::Folder } else { Icon::Description }));
+            rows.push(Row::action(SharedString::from(format!("e{i}")), e.name.clone()).icon(if e.dir {
+                Icon::Folder
+            } else {
+                Icon::Description
+            }));
         }
         rows
     }

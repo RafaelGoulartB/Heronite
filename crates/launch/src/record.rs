@@ -54,9 +54,7 @@ fn entry_mut<'a>(root: &'a mut Value, app_name: &str) -> &'a mut Map<String, Val
         *root = Value::Object(Map::new());
     }
     let map = root.as_object_mut().unwrap();
-    let entry = map
-        .entry(app_name.to_string())
-        .or_insert_with(|| Value::Object(Map::new()));
+    let entry = map.entry(app_name.to_string()).or_insert_with(|| Value::Object(Map::new()));
     if !entry.is_object() {
         *entry = Value::Object(Map::new());
     }
@@ -66,10 +64,7 @@ fn entry_mut<'a>(root: &'a mut Value, app_name: &str) -> &'a mut Map<String, Val
 /// Launch-time bookkeeping: `firstPlayed` if the game has no entry yet.
 pub fn mark_started(paths: &DataPaths, app_name: &str, started_at: DateTime<Utc>) -> Result<()> {
     json_store::update_value(&paths.timestamps(), |root| {
-        let exists = root
-            .as_object()
-            .map(|m| m.contains_key(app_name))
-            .unwrap_or(false);
+        let exists = root.as_object().map(|m| m.contains_key(app_name)).unwrap_or(false);
         if !exists {
             entry_mut(root, app_name).insert("firstPlayed".into(), Value::String(iso(started_at)));
         }
@@ -157,27 +152,18 @@ pub fn add_recent_game(paths: &DataPaths, app_name: &str, title: &str) -> Result
             *root = Value::Object(Map::new());
         }
         let map = root.as_object_mut().unwrap();
-        let games = map
-            .entry("games")
-            .or_insert_with(|| Value::Object(Map::new()));
+        let games = map.entry("games").or_insert_with(|| Value::Object(Map::new()));
         if !games.is_object() {
             *games = Value::Object(Map::new());
         }
         let games = games.as_object_mut().unwrap();
-        let recent = games
-            .entry("recent")
-            .or_insert_with(|| Value::Array(Vec::new()));
+        let recent = games.entry("recent").or_insert_with(|| Value::Array(Vec::new()));
         if !recent.is_array() {
             *recent = Value::Array(Vec::new());
         }
         let list = recent.as_array_mut().unwrap();
         // Entries without an appName are dropped, like Heroic's filter does.
-        list.retain(|g| {
-            g.get("appName")
-                .and_then(Value::as_str)
-                .map(|a| !a.is_empty() && a != app_name)
-                .unwrap_or(false)
-        });
+        list.retain(|g| g.get("appName").and_then(Value::as_str).map(|a| !a.is_empty() && a != app_name).unwrap_or(false));
         list.insert(0, json!({ "appName": app_name, "title": title }));
         Ok(())
     })
@@ -254,28 +240,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         mark_started(&paths, "g1", t(0)).unwrap();
-        assert_eq!(
-            read(&paths.timestamps()),
-            "{\n\t\"g1\": {\n\t\t\"firstPlayed\": \"2026-10-07T12:00:00.000Z\"\n\t}\n}"
-        );
+        assert_eq!(read(&paths.timestamps()), "{\n\t\"g1\": {\n\t\t\"firstPlayed\": \"2026-10-07T12:00:00.000Z\"\n\t}\n}");
         // Second launch does not move firstPlayed.
         mark_started(&paths, "g1", t(99_000)).unwrap();
 
-        let rec = PlayRecord {
-            app_name: "g1".into(),
-            title: "Game One".into(),
-            started_at: t(0),
-            ended_at: t(90_500),
-        };
+        let rec = PlayRecord { app_name: "g1".into(), title: "Game One".into(), started_at: t(0), ended_at: t(90_500) };
         let out = record_play(&paths, &rec, MIN_SESSION_SECONDS).unwrap();
-        assert_eq!(
-            out,
-            RecordOutcome {
-                elapsed_seconds: 90,
-                session_recorded: true,
-                total_played_minutes: 1
-            }
-        );
+        assert_eq!(out, RecordOutcome { elapsed_seconds: 90, session_recorded: true, total_played_minutes: 1 });
 
         assert_eq!(
             read(&paths.timestamps()),
@@ -287,10 +258,7 @@ mod tests {
             json!({"startedAt":"2026-10-07T12:00:00.000Z","endedAt":"2026-10-07T12:01:30.500Z","elapsedSeconds":90,"source":"heroic"})
         );
         let cfg: Value = serde_json::from_str(&read(&paths.store_config())).unwrap();
-        assert_eq!(
-            cfg["games"]["recent"],
-            json!([{"appName":"g1","title":"Game One"}])
-        );
+        assert_eq!(cfg["games"]["recent"], json!([{"appName":"g1","title":"Game One"}]));
     }
 
     #[test]
@@ -303,12 +271,7 @@ mod tests {
             r#"{"g1":{"firstPlayed":"2025-01-01T00:00:00.000Z","lastPlayed":"2025-01-01T01:00:00.000Z","totalPlayed":200,"other":1},"g2":{"totalPlayed":5}}"#,
         )
         .unwrap();
-        let rec = PlayRecord {
-            app_name: "g1".into(),
-            title: "x".into(),
-            started_at: t(0),
-            ended_at: t(150_000),
-        }; // 2.5 min
+        let rec = PlayRecord { app_name: "g1".into(), title: "x".into(), started_at: t(0), ended_at: t(150_000) }; // 2.5 min
         assert_eq!(update_timestamps(&paths, &rec).unwrap(), 202);
         let v: Value = serde_json::from_str(&read(&paths.timestamps())).unwrap();
         assert_eq!(v["g1"]["totalPlayed"], 202);
@@ -321,12 +284,7 @@ mod tests {
     fn short_sessions_only_touch_timestamps_and_recent() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        let rec = PlayRecord {
-            app_name: "g1".into(),
-            title: "x".into(),
-            started_at: t(0),
-            ended_at: t(4_999),
-        };
+        let rec = PlayRecord { app_name: "g1".into(), title: "x".into(), started_at: t(0), ended_at: t(4_999) };
         let out = record_play(&paths, &rec, MIN_SESSION_SECONDS).unwrap();
         assert_eq!(out.elapsed_seconds, 4);
         assert!(!out.session_recorded);
@@ -338,12 +296,8 @@ mod tests {
     fn sessions_dedupe_and_cap_at_200_newest_first() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        let mk = |i: i64| PlayRecord {
-            app_name: "g1".into(),
-            title: "x".into(),
-            started_at: t(i * 60_000),
-            ended_at: t(i * 60_000 + 30_000),
-        };
+        let mk =
+            |i: i64| PlayRecord { app_name: "g1".into(), title: "x".into(), started_at: t(i * 60_000), ended_at: t(i * 60_000 + 30_000) };
         for i in 0..203 {
             record_play(&paths, &mk(i), 5).unwrap();
         }
@@ -372,10 +326,7 @@ mod tests {
         .unwrap();
         add_recent_game(&paths, "b", "B2").unwrap();
         let v: Value = serde_json::from_str(&read(&paths.store_config())).unwrap();
-        assert_eq!(
-            v["games"]["recent"],
-            json!([{"appName":"b","title":"B2"},{"appName":"a","title":"A"}])
-        );
+        assert_eq!(v["games"]["recent"], json!([{"appName":"b","title":"B2"},{"appName":"a","title":"A"}]));
         assert_eq!(v["games"]["hidden"][0]["appName"], "h");
         assert_eq!(v["language"], "en");
     }

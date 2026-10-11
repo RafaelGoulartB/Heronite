@@ -77,12 +77,7 @@ pub struct EpicConfirmDialog {
 impl EventEmitter<DialogEvent> for EpicConfirmDialog {}
 
 impl EpicConfirmDialog {
-    pub fn new(
-        spec: Confirm,
-        on_confirm: impl Fn(Choice, &mut App) + 'static,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(spec: Confirm, on_confirm: impl Fn(Choice, &mut App) + 'static, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let toggles = spec.toggles.iter().map(|t| t.value).collect();
         let path_input = spec.path.as_ref().map(|(_, initial, _)| new_input(window, cx, initial, ""));
         Self { spec, toggles, path_input, on_confirm: Rc::new(on_confirm), console_list: Default::default(), layer: Default::default() }
@@ -128,7 +123,8 @@ impl Render for EpicConfirmDialog {
             let mut rows: Vec<AnyElement> = Vec::new();
             for (i, t) in self.spec.toggles.iter().enumerate() {
                 let on = self.toggles[i];
-                let row = crate::ui::controls::toggle_row(SharedString::from(format!("{id}-toggle-{i}")), t.label.clone(), t.note.as_deref(), on);
+                let row =
+                    crate::ui::controls::toggle_row(SharedString::from(format!("{id}-toggle-{i}")), t.label.clone(), t.note.as_deref(), on);
                 rows.push(
                     if t.disabled {
                         row.opacity(0.55).cursor_not_allowed()
@@ -170,9 +166,10 @@ impl Render for EpicConfirmDialog {
         let mut footer = div().flex().gap(px(10.));
         match &self.spec.confirm {
             Some(label) => {
-                footer = footer.child(button(SharedString::from(format!("{id}-cancel")), ButtonKind::Ghost, "Cancel").on_click(
-                    cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)),
-                ));
+                footer = footer.child(
+                    button(SharedString::from(format!("{id}-cancel")), ButtonKind::Ghost, "Cancel")
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+                );
                 if let Some((label, action)) = self.spec.secondary.clone() {
                     footer = footer.child(button(SharedString::from(format!("{id}-secondary")), ButtonKind::Glass, label).on_click(
                         cx.listener(move |_, _, _, cx| {
@@ -192,9 +189,10 @@ impl Render for EpicConfirmDialog {
                 ));
             }
             None => {
-                footer = footer.child(button(SharedString::from(format!("{id}-close")), ButtonKind::Primary, "Close").on_click(
-                    cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)),
-                ));
+                footer = footer.child(
+                    button(SharedString::from(format!("{id}-close")), ButtonKind::Primary, "Close")
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+                );
             }
         }
         let entity = cx.entity().downgrade();

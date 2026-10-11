@@ -26,7 +26,8 @@ impl PaletteCommands for EmulatorsPage {
     fn palette_commands(page: Option<&Self>, _ctx: &CommandCtx, _cx: &App) -> Vec<PageCommand> {
         let none = page.is_some_and(|p| p.loaded && p.summaries.is_empty());
         vec![
-            PageCommand::new("add", "Add emulator\u{2026}", "RetroArch, Dolphin, PCSX2\u{2026}", Icon::Add).keywords("new emulation retro console"),
+            PageCommand::new("add", "Add emulator\u{2026}", "RetroArch, Dolphin, PCSX2\u{2026}", Icon::Add)
+                .keywords("new emulation retro console"),
             PageCommand::new("detect", "Detect emulators\u{2026}", "Find the emulators installed on this computer", Icon::TravelExplore)
                 .keywords("scan find search emulation"),
             PageCommand::new("folder", "Add ROM folder\u{2026}", "A folder of games for an emulator", Icon::FolderOpen)

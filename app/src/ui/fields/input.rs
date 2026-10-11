@@ -151,11 +151,12 @@ pub fn path_field(
         .when(!disabled, |d| d.cursor_pointer().hover(|s| s.text_color(theme::accent_overlay())).on_click(on_icon))
         .child(if has_value { "Clear" } else { "Browse" })
         .into_any_element();
-    div()
-        .flex()
-        .flex_col()
-        .children(label.map(|l| field_label(l.to_string())))
-        .child(field_row(input, disabled, Some(icon(Icon::Folder, px(16.), theme::text_muted()).into_any_element()), Some(action)))
+    div().flex().flex_col().children(label.map(|l| field_label(l.to_string()))).child(field_row(
+        input,
+        disabled,
+        Some(icon(Icon::Folder, px(16.), theme::text_muted()).into_any_element()),
+        Some(action),
+    ))
 }
 
 /// Opens the platform file chooser and reports the choice.

@@ -18,16 +18,16 @@ pub mod legendary;
 pub mod library;
 pub mod log_reader;
 pub mod log_writer;
-pub mod net;
 pub mod native;
+pub mod net;
 pub mod plan;
 pub mod playtime_watch;
-pub mod probe;
 pub mod prepare;
+pub mod probe;
 pub mod procs;
 pub mod record;
-pub mod runtimes;
 pub mod runtime;
+pub mod runtimes;
 pub mod settings;
 pub mod shared_folders;
 pub mod steam;
@@ -37,12 +37,8 @@ pub mod wake;
 pub mod wine;
 pub mod wine_tools;
 
-pub use plan::{
-    build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext,
-    ProcessPlan, StopSpec, WineRuntime,
-};
+pub use plan::{build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 pub use probe::{Probe, SystemProbe};
 pub use runtime::{
-    ExitInfo, LaunchError, LaunchEvent, LaunchRequest, Launcher, LauncherConfig, ProcessHandle,
-    Spawner, StopOptions, SystemSpawner,
+    ExitInfo, LaunchError, LaunchEvent, LaunchRequest, Launcher, LauncherConfig, ProcessHandle, Spawner, StopOptions, SystemSpawner,
 };

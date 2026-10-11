@@ -30,18 +30,8 @@ fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
     })
 }
 
-pub(super) fn build_groups(
-    lib: &Library,
-    ui: &UiState,
-    search: &str,
-    is_playing: &dyn Fn(&str) -> bool,
-) -> Vec<GroupVm> {
-    let query = ViewQuery {
-        search: search.to_string(),
-        install: ui.install_filter,
-        facets: ui.facet_filters.clone(),
-        sort: ui.sort,
-    };
+pub(super) fn build_groups(lib: &Library, ui: &UiState, search: &str, is_playing: &dyn Fn(&str) -> bool) -> Vec<GroupVm> {
+    let query = ViewQuery { search: search.to_string(), install: ui.install_filter, facets: ui.facet_filters.clone(), sort: ui.sort };
     let filtered = collection::filter_games(&lib.games, &query);
     if !ui.group_by_status {
         return vec![GroupVm {
@@ -84,17 +74,9 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         rows.push(DetailRow { label: "Publisher".into(), value: chips(&d.publishers, Some("publisher"), false), split: false });
     }
     if let Some(series) = &d.series {
-        rows.push(DetailRow {
-            label: "Series".into(),
-            value: chips(std::slice::from_ref(series), Some("series"), false),
-            split: false,
-        });
+        rows.push(DetailRow { label: "Series".into(), value: chips(std::slice::from_ref(series), Some("series"), false), split: false });
     }
-    rows.push(DetailRow {
-        label: "Last Played".into(),
-        value: text(fd.last_played.as_deref().unwrap_or("Never")),
-        split: false,
-    });
+    rows.push(DetailRow { label: "Last Played".into(), value: text(fd.last_played.as_deref().unwrap_or("Never")), split: false });
     rows.push(DetailRow { label: "Playtime".into(), value: text(&fd.playtime), split: false });
     if !d.features.is_empty() {
         rows.push(DetailRow { label: "Features".into(), value: chips(&d.features[..d.features.len().min(8)], None, false), split: true });
@@ -103,7 +85,11 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         rows.push(DetailRow { label: "Themes".into(), value: chips(&d.themes[..d.themes.len().min(8)], None, false), split: true });
     }
     if d.platforms.len() > 1 {
-        rows.push(DetailRow { label: "Platforms".into(), value: chips(&d.platforms[..d.platforms.len().min(8)], None, false), split: true });
+        rows.push(DetailRow {
+            label: "Platforms".into(),
+            value: chips(&d.platforms[..d.platforms.len().min(8)], None, false),
+            split: true,
+        });
     }
     if !d.genres.is_empty() {
         rows.push(DetailRow { label: "Tags".into(), value: chips(&d.genres, Some("genre"), true), split: true });
@@ -125,12 +111,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         .collect();
 
     let overview = if !d.description.trim().is_empty() { Some(d.description.clone().into()) } else { None };
-    let overview_html = d
-        .description_html
-        .as_deref()
-        .map(super::html::parse)
-        .filter(|b| !b.is_empty())
-        .map(Arc::new);
+    let overview_html = d.description_html.as_deref().map(super::html::parse).filter(|b| !b.is_empty()).map(Arc::new);
 
     FocusVm {
         key: g.key.clone().into(),

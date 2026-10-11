@@ -10,13 +10,13 @@
 //!   does not model survive a read-modify-write.
 //! - Numbers use [`JsNum`] so integers are written without `.0`.
 
-mod stores;
 mod overlay;
 mod settings;
+mod stores;
 
-pub use stores::*;
 pub use overlay::*;
 pub use settings::*;
+pub use stores::*;
 
 use serde_json::{Map, Value};
 

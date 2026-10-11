@@ -92,10 +92,7 @@ impl State {
 
     /// Settings, re-read only when the file changed (a `stat` per call).
     fn settings(&mut self) -> SysSettings {
-        let stamp = self.data_paths.global_config()
-            .metadata()
-            .and_then(|m| m.modified())
-            .ok();
+        let stamp = self.data_paths.global_config().metadata().and_then(|m| m.modified()).ok();
         if stamp != self.settings_stamp {
             self.settings = SysSettings::load(&self.data_paths);
             self.settings_stamp = stamp;

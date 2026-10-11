@@ -11,9 +11,9 @@ use heronite_data::DataPaths;
 use heronite_emulation::discover::{add_discovered, discover_emulators, discover_in_folder};
 use heronite_emulation::{list_user_emulators, DetectedEmulator, SystemEnv};
 
-use crate::ui::controls::mini_checkbox;
 use super::DialogEvent;
 use crate::theme;
+use crate::ui::controls::mini_checkbox;
 use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{choose_path, meta_text, paragraph};
@@ -221,7 +221,13 @@ impl Render for DetectEmulatorsDialog {
                                     .flex()
                                     .items_center()
                                     .gap(px(8.))
-                                    .child(div().font_weight(theme::W_BOLD).text_size(px(14.)).text_color(theme::text_primary()).child(r.item.name.clone()))
+                                    .child(
+                                        div()
+                                            .font_weight(theme::W_BOLD)
+                                            .text_size(px(14.))
+                                            .text_color(theme::text_primary())
+                                            .child(r.item.name.clone()),
+                                    )
                                     .child(crate::pages::tag_pill(if added { "Already added".to_string() } else { r.item.source.clone() })),
                             )
                             .child(div().text_size(px(12.)).text_color(theme::text_muted()).truncate().child(loc))
@@ -237,20 +243,14 @@ impl Render for DetectEmulatorsDialog {
         } else if self.rows.is_empty() {
             "No emulators found automatically. Scan a folder that contains them (for example your Emulation folder).".to_string()
         } else {
-            format!(
-                "{} found, {} not added yet.",
-                self.rows.len(),
-                self.rows.iter().filter(|r| !r.item.already_added).count()
-            )
+            format!("{} found, {} not added yet.", self.rows.len(), self.rows.iter().filter(|r| !r.item.already_added).count())
         };
 
         let body = div()
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(paragraph(
-                "Emulators found on this PC. Tick the ones to add; each starts with the platforms of its catalog entry.",
-            ))
+            .child(paragraph("Emulators found on this PC. Tick the ones to add; each starts with the platforms of its catalog entry."))
             .child(
                 div()
                     .flex()
@@ -278,7 +278,9 @@ impl Render for DetectEmulatorsDialog {
             )
             .child(meta_text(status))
             .children((!self.rows.is_empty()).then(|| crate::ui::controls::card_box().py(px(6.)).child(list)))
-            .children((!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())));
+            .children(
+                (!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())),
+            );
 
         let footer = div()
             .flex()

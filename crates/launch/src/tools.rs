@@ -67,9 +67,7 @@ impl Tool {
         match (self, vulkan) {
             (Tool::Dxvk, Vulkan::Legacy) => "https://api.github.com/repos/doitsujin/dxvk/releases/tags/v1.10.3",
             (Tool::Dxvk, _) => "https://api.github.com/repos/doitsujin/dxvk/releases/latest",
-            (Tool::Vkd3d, Vulkan::Legacy) => {
-                "https://api.github.com/repos/Heroic-Games-Launcher/vkd3d-proton/releases/tags/v2.6"
-            }
+            (Tool::Vkd3d, Vulkan::Legacy) => "https://api.github.com/repos/Heroic-Games-Launcher/vkd3d-proton/releases/tags/v2.6",
             (Tool::Vkd3d, _) => "https://api.github.com/repos/Heroic-Games-Launcher/vkd3d-proton/releases/latest",
             (Tool::DxvkNvapi, _) => "https://api.github.com/repos/jp7677/dxvk-nvapi/releases/latest",
         }
@@ -151,16 +149,8 @@ fn release_name(asset: &str) -> String {
 /// there. Downloads into a temporary file and extracts into a hidden folder
 /// that is renamed when complete, so an interruption never leaves a broken
 /// release behind.
-pub fn install_or_update(
-    paths: &DataPaths,
-    net: &dyn Net,
-    tool: Tool,
-    vulkan: Vulkan,
-    cancel: Cancel,
-) -> Result<Updated, String> {
-    let release = net
-        .get_json(tool.release_url(vulkan))
-        .map_err(|e| format!("could not fetch the {} release: {e}", tool.label()))?;
+pub fn install_or_update(paths: &DataPaths, net: &dyn Net, tool: Tool, vulkan: Vulkan, cancel: Cancel) -> Result<Updated, String> {
+    let release = net.get_json(tool.release_url(vulkan)).map_err(|e| format!("could not fetch the {} release: {e}", tool.label()))?;
     let asset = release
         .get("assets")
         .and_then(Value::as_array)
@@ -207,13 +197,7 @@ pub fn install_or_update(
 }
 
 /// Makes sure some release of `tool` is installed (downloads when none is).
-pub fn ensure(
-    paths: &DataPaths,
-    net: &dyn Net,
-    tool: Tool,
-    vulkan: Vulkan,
-    cancel: Cancel,
-) -> Result<PathBuf, String> {
+pub fn ensure(paths: &DataPaths, net: &dyn Net, tool: Tool, vulkan: Vulkan, cancel: Cancel) -> Result<PathBuf, String> {
     if let Some(dir) = installed_dir(paths, tool) {
         return Ok(dir);
     }
@@ -405,7 +389,8 @@ mod tests {
         let tools = paths.tools_dir().join("vkd3d");
         fs::create_dir_all(tools.join("vkd3d-proton-1")).unwrap();
         fs::write(tools.join("latest_vkd3d"), "vkd3d-proton-1\n").unwrap();
-        let net = FakeNet::online().with_json(Tool::Vkd3d.release_url(Vulkan::Modern), release("vkd3d-proton-2.tar.zst", "http://x/missing"));
+        let net =
+            FakeNet::online().with_json(Tool::Vkd3d.release_url(Vulkan::Modern), release("vkd3d-proton-2.tar.zst", "http://x/missing"));
         let err = install_or_update(&paths, &net, Tool::Vkd3d, Vulkan::Modern, &|| false).unwrap_err();
         assert!(err.contains("VKD3D"), "{err}");
         assert_eq!(installed_version(&paths, Tool::Vkd3d).as_deref(), Some("vkd3d-proton-1"));

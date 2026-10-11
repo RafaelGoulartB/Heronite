@@ -23,30 +23,17 @@ pub fn get_user_emulator(paths: &DataPaths, id: &str) -> Result<Option<UserEmula
     Ok(list_user_emulators(paths)?.into_iter().find(|e| e.id == id))
 }
 
-pub fn find_user_emulator_by_playnite_id(
-    paths: &DataPaths,
-    playnite_id: &str,
-) -> Result<Option<UserEmulator>> {
-    Ok(list_user_emulators(paths)?
-        .into_iter()
-        .find(|e| e.playnite_id.as_deref() == Some(playnite_id)))
+pub fn find_user_emulator_by_playnite_id(paths: &DataPaths, playnite_id: &str) -> Result<Option<UserEmulator>> {
+    Ok(list_user_emulators(paths)?.into_iter().find(|e| e.playnite_id.as_deref() == Some(playnite_id)))
 }
 
-pub fn find_user_emulator_by_definition(
-    paths: &DataPaths,
-    definition_id: &str,
-) -> Result<Option<UserEmulator>> {
-    Ok(list_user_emulators(paths)?
-        .into_iter()
-        .find(|e| e.definition_id == definition_id))
+pub fn find_user_emulator_by_definition(paths: &DataPaths, definition_id: &str) -> Result<Option<UserEmulator>> {
+    Ok(list_user_emulators(paths)?.into_iter().find(|e| e.definition_id == definition_id))
 }
 
 /// `defaultProfiles`: the given profiles, or one per catalog profile with
 /// fresh ids (a single "Custom" profile for unknown definitions).
-pub fn default_profiles(
-    definition_id: &str,
-    incoming: Option<Vec<UserEmulatorProfile>>,
-) -> Vec<UserEmulatorProfile> {
+pub fn default_profiles(definition_id: &str, incoming: Option<Vec<UserEmulatorProfile>>) -> Vec<UserEmulatorProfile> {
     if let Some(p) = incoming.filter(|p| !p.is_empty()) {
         return p;
     }
@@ -105,22 +92,13 @@ fn non_empty(s: Option<&str>) -> Option<String> {
 }
 
 /// `upsertUserEmulator` on an in-memory list.
-pub fn upsert_emulator_in(
-    emulators: &mut Vec<UserEmulator>,
-    args: UpsertUserEmulatorArgs,
-) -> UserEmulator {
+pub fn upsert_emulator_in(emulators: &mut Vec<UserEmulator>, args: UpsertUserEmulatorArgs) -> UserEmulator {
     let existing: Option<UserEmulator> = if let Some(id) = &args.id {
         emulators.iter().find(|e| &e.id == id).cloned()
     } else if let Some(pid) = &args.playnite_id {
-        emulators
-            .iter()
-            .find(|e| e.playnite_id.as_deref() == Some(pid.as_str()))
-            .cloned()
+        emulators.iter().find(|e| e.playnite_id.as_deref() == Some(pid.as_str())).cloned()
     } else if args.definition_id != "custom" {
-        emulators
-            .iter()
-            .find(|e| e.definition_id == args.definition_id && e.executable == args.executable.trim())
-            .cloned()
+        emulators.iter().find(|e| e.definition_id == args.definition_id && e.executable == args.executable.trim()).cloned()
     } else {
         None
     };
@@ -128,32 +106,16 @@ pub fn upsert_emulator_in(
     let name = non_empty(Some(&args.name))
         .or_else(|| existing.as_ref().map(|e| e.name.clone()).filter(|n| !n.is_empty()))
         .unwrap_or_else(|| args.definition_id.clone());
-    let profiles_in = args
-        .profiles
-        .clone()
-        .or_else(|| existing.as_ref().map(|e| e.profiles.clone()));
+    let profiles_in = args.profiles.clone().or_else(|| existing.as_ref().map(|e| e.profiles.clone()));
     let next = UserEmulator {
-        id: existing
-            .as_ref()
-            .map(|e| e.id.clone())
-            .or_else(|| args.id.clone())
-            .unwrap_or_else(new_id),
+        id: existing.as_ref().map(|e| e.id.clone()).or_else(|| args.id.clone()).unwrap_or_else(new_id),
         definition_id: args.definition_id.clone(),
         name,
         executable: args.executable.trim().to_owned(),
-        install_dir: non_empty(args.install_dir.as_deref())
-            .or_else(|| existing.as_ref().and_then(|e| e.install_dir.clone())),
+        install_dir: non_empty(args.install_dir.as_deref()).or_else(|| existing.as_ref().and_then(|e| e.install_dir.clone())),
         launch_kind: args.launch_kind.clone(),
-        flatpak_id: args
-            .flatpak_id
-            .clone()
-            .filter(|s| !s.is_empty())
-            .or_else(|| existing.as_ref().and_then(|e| e.flatpak_id.clone())),
-        playnite_id: args
-            .playnite_id
-            .clone()
-            .filter(|s| !s.is_empty())
-            .or_else(|| existing.as_ref().and_then(|e| e.playnite_id.clone())),
+        flatpak_id: args.flatpak_id.clone().filter(|s| !s.is_empty()).or_else(|| existing.as_ref().and_then(|e| e.flatpak_id.clone())),
+        playnite_id: args.playnite_id.clone().filter(|s| !s.is_empty()).or_else(|| existing.as_ref().and_then(|e| e.playnite_id.clone())),
         profiles: default_profiles(&args.definition_id, profiles_in),
         // Keep fields this app does not model.
         extra: existing.map(|e| e.extra).unwrap_or_default(),
@@ -166,13 +128,8 @@ pub fn upsert_emulator_in(
 }
 
 /// `upsertUserEmulator` (`UpsertUserEmulatorArgs` of the UI).
-pub fn upsert_user_emulator(
-    paths: &DataPaths,
-    args: UpsertUserEmulatorArgs,
-) -> Result<UserEmulator> {
-    json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
-        Ok(upsert_emulator_in(&mut f.emulators, args))
-    })
+pub fn upsert_user_emulator(paths: &DataPaths, args: UpsertUserEmulatorArgs) -> Result<UserEmulator> {
+    json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| Ok(upsert_emulator_in(&mut f.emulators, args)))
 }
 
 /// `removeUserEmulator`: also drops the scanners that used it. Returns the
@@ -246,9 +203,7 @@ pub fn duplicate_user_emulator(paths: &DataPaths, id: &str) -> Result<UserEmulat
 }
 
 fn emulator_definition_name(definition_id: &str) -> String {
-    crate::catalog::emulator_definition(definition_id)
-        .map(|d| d.name.clone())
-        .unwrap_or_else(|| definition_id.to_owned())
+    crate::catalog::emulator_definition(definition_id).map(|d| d.name.clone()).unwrap_or_else(|| definition_id.to_owned())
 }
 
 /// What `resolveProfileTemplate` yields (everything scanning and launching
@@ -266,44 +221,23 @@ pub struct ResolvedTemplate {
 }
 
 pub fn resolve_template(emulator: &UserEmulator, profile: &UserEmulatorProfile) -> ResolvedTemplate {
-    let catalog = profile
-        .definition_profile_id
-        .as_deref()
-        .and_then(|pid| definition_profile(&emulator.definition_id, pid));
+    let catalog = profile.definition_profile_id.as_deref().and_then(|pid| definition_profile(&emulator.definition_id, pid));
     ResolvedTemplate {
         arguments: if !profile.arguments.is_empty() {
             profile.arguments.clone()
         } else {
-            catalog
-                .map(|c| c.arguments.clone())
-                .filter(|a| !a.is_empty())
-                .unwrap_or_else(|| "{ImagePath}".into())
+            catalog.map(|c| c.arguments.clone()).filter(|a| !a.is_empty()).unwrap_or_else(|| "{ImagePath}".into())
         },
         extensions: if !profile.extensions.is_empty() {
             profile.extensions.clone()
         } else {
             catalog.map(|c| c.extensions.clone()).unwrap_or_default()
         },
-        folder_indicator: profile
-            .folder_indicator
-            .clone()
-            .or_else(|| catalog.and_then(|c| c.folder_indicator.clone())),
-        playlist_extensions: profile
-            .playlist_extensions
-            .clone()
-            .or_else(|| catalog.and_then(|c| c.playlist_extensions.clone())),
-        working_dir: profile
-            .working_dir
-            .clone()
-            .or_else(|| catalog.and_then(|c| c.working_dir.clone())),
-        platform_id: profile
-            .platform_id
-            .clone()
-            .or_else(|| catalog.map(|c| c.platform_id.clone())),
-        platform_name: profile
-            .platform_name
-            .clone()
-            .or_else(|| catalog.map(|c| c.platform_name.clone())),
+        folder_indicator: profile.folder_indicator.clone().or_else(|| catalog.and_then(|c| c.folder_indicator.clone())),
+        playlist_extensions: profile.playlist_extensions.clone().or_else(|| catalog.and_then(|c| c.playlist_extensions.clone())),
+        working_dir: profile.working_dir.clone().or_else(|| catalog.and_then(|c| c.working_dir.clone())),
+        platform_id: profile.platform_id.clone().or_else(|| catalog.map(|c| c.platform_id.clone())),
+        platform_name: profile.platform_name.clone().or_else(|| catalog.map(|c| c.platform_name.clone())),
         core_path: profile.core_path.clone(),
     }
 }
@@ -326,31 +260,20 @@ pub fn upsert_rom_scanner(paths: &DataPaths, args: UpsertRomScannerArgs) -> Resu
             .as_ref()
             .and_then(|id| f.scanners.iter().find(|s| &s.id == id))
             .or_else(|| {
-                f.scanners.iter().find(|s| {
-                    s.emulator_id == args.emulator_id
-                        && s.profile_id == args.profile_id
-                        && s.directory == args.directory
-                })
+                f.scanners
+                    .iter()
+                    .find(|s| s.emulator_id == args.emulator_id && s.profile_id == args.profile_id && s.directory == args.directory)
             })
             .cloned();
-        let profile = emulator
-            .as_ref()
-            .and_then(|e| e.profile(&args.profile_id).cloned());
-        let default_name = [
-            emulator.as_ref().map(|e| e.name.as_str()),
-            profile.as_ref().map(|p| p.name.as_str()),
-        ]
-        .into_iter()
-        .flatten()
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ");
+        let profile = emulator.as_ref().and_then(|e| e.profile(&args.profile_id).cloned());
+        let default_name = [emulator.as_ref().map(|e| e.name.as_str()), profile.as_ref().map(|p| p.name.as_str())]
+            .into_iter()
+            .flatten()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" \u{b7} ");
         let next = RomScanner {
-            id: existing
-                .as_ref()
-                .map(|s| s.id.clone())
-                .or_else(|| args.id.clone())
-                .unwrap_or_else(new_id),
+            id: existing.as_ref().map(|s| s.id.clone()).or_else(|| args.id.clone()).unwrap_or_else(new_id),
             name: non_empty(args.name.as_deref())
                 .or_else(|| existing.as_ref().map(|s| s.name.clone()).filter(|n| !n.is_empty()))
                 .or_else(|| Some(default_name).filter(|n| !n.is_empty()))
@@ -358,18 +281,9 @@ pub fn upsert_rom_scanner(paths: &DataPaths, args: UpsertRomScannerArgs) -> Resu
             emulator_id: args.emulator_id.clone(),
             profile_id: args.profile_id.clone(),
             directory: args.directory.trim().to_owned(),
-            scan_subfolders: args
-                .scan_subfolders
-                .or(existing.as_ref().map(|s| s.scan_subfolders))
-                .unwrap_or(true),
-            merge_related_files: args
-                .merge_related_files
-                .or(existing.as_ref().map(|s| s.merge_related_files))
-                .unwrap_or(true),
-            auto_scan_on_refresh: args
-                .auto_scan_on_refresh
-                .or(existing.as_ref().map(|s| s.auto_scan_on_refresh))
-                .unwrap_or(true),
+            scan_subfolders: args.scan_subfolders.or(existing.as_ref().map(|s| s.scan_subfolders)).unwrap_or(true),
+            merge_related_files: args.merge_related_files.or(existing.as_ref().map(|s| s.merge_related_files)).unwrap_or(true),
+            auto_scan_on_refresh: args.auto_scan_on_refresh.or(existing.as_ref().map(|s| s.auto_scan_on_refresh)).unwrap_or(true),
             extra: existing.map(|s| s.extra).unwrap_or_default(),
         };
         match f.scanners.iter().position(|s| s.id == next.id) {

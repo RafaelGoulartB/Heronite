@@ -32,10 +32,7 @@ fn account_library_refresh_and_info() {
 
     // An owned game that is not installed: sizes come from the manifest.
     let games = library::build_library(&data_paths);
-    let game = games
-        .iter()
-        .find(|g| g["is_installed"] == false && g["install"]["is_dlc"] == false)
-        .expect("a game that is not installed");
+    let game = games.iter().find(|g| g["is_installed"] == false && g["install"]["is_dlc"] == false).expect("a game that is not installed");
     let app = game["app_name"].as_str().unwrap();
     let i = info::install_info(&data_paths, &legendary, app, "Windows").unwrap();
     println!("{app}: download {} disk {} dlc {}", i.download_size(), i.disk_size(), i.owned_dlc().len());

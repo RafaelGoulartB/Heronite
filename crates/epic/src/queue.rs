@@ -92,15 +92,7 @@ pub struct DmElement {
 
 impl DmElement {
     pub fn new(kind: ElementKind, params: InstallParams) -> Self {
-        Self {
-            params,
-            kind,
-            add_to_queue_time: now_ms(),
-            end_time: 0,
-            start_time: 0,
-            status: None,
-            extra: Map::new(),
-        }
+        Self { params, kind, add_to_queue_time: now_ms(), end_time: 0, start_time: 0, status: None, extra: Map::new() }
     }
 
     pub fn same_game(&self, app_name: &str, runner: &str) -> bool {

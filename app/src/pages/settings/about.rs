@@ -73,7 +73,13 @@ impl State {
             format!("Memory: {}", sysinfo::human_memory(s.memory_kb)),
         ];
         for g in &s.gpus {
-            out.push(format!("GPU: {} {} (driver {}{})", g.vendor, g.name, g.driver, g.driver_version.as_deref().map(|v| format!(" {v}")).unwrap_or_default()));
+            out.push(format!(
+                "GPU: {} {} (driver {}{})",
+                g.vendor,
+                g.name,
+                g.driver,
+                g.driver_version.as_deref().map(|v| format!(" {v}")).unwrap_or_default()
+            ));
         }
         if !s.session.is_empty() {
             out.push(format!("Session: {}", s.session));
@@ -96,7 +102,10 @@ impl SettingsPage {
         let s = &a.system;
         let app = card([
             info_row("Version", format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
-            info_row("Legendary", a.legendary.clone().unwrap_or_else(|| if a.loaded && a.wine_count.is_some() { "not found".into() } else { "...".into() })),
+            info_row(
+                "Legendary",
+                a.legendary.clone().unwrap_or_else(|| if a.loaded && a.wine_count.is_some() { "not found".into() } else { "...".into() }),
+            ),
             info_row(
                 "Wine / Proton found",
                 match (a.wine_count, a.proton_count) {
@@ -109,12 +118,7 @@ impl SettingsPage {
             info_row("Cache folder", self.ctx.app.cache.display().to_string()),
         ]);
 
-        let mut col = div()
-            .flex()
-            .flex_col()
-            .child(caption("Heronite"))
-            .child(app)
-            .child(caption("System"));
+        let mut col = div().flex().flex_col().child(caption("Heronite")).child(app).child(caption("System"));
         if s.os.is_empty() {
             col = col.child(card([empty_line("Reading system information...")]));
         } else {
@@ -129,7 +133,10 @@ impl SettingsPage {
                     Some(v) => format!("{} {v}", g.driver),
                     None => g.driver.clone(),
                 };
-                rows.push(info_row(&if s.gpus.len() > 1 { format!("GPU {}", i + 1) } else { "GPU".to_string() }, format!("{} {}  (driver {driver})", g.vendor, g.name)));
+                rows.push(info_row(
+                    &if s.gpus.len() > 1 { format!("GPU {}", i + 1) } else { "GPU".to_string() },
+                    format!("{} {}  (driver {driver})", g.vendor, g.name),
+                ));
             }
             if s.gpus.is_empty() {
                 rows.push(info_row("GPU", "not detected"));
@@ -200,7 +207,9 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
         if !s.session.is_empty() {
             rows.push(Row::info("i:session", "Session", s.session.clone()));
         }
-        rows.push(Row::action("copy", if a.copied { "Copied to the clipboard" } else { "Copy the system information" }).desc("For bug reports"));
+        rows.push(
+            Row::action("copy", if a.copied { "Copied to the clipboard" } else { "Copy the system information" }).desc("For bug reports"),
+        );
     }
     rows
 }

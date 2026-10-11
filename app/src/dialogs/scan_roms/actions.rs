@@ -1,10 +1,10 @@
 //! Background work of the dialog: detecting emulators, saving a custom one, scanning and importing.
 
-use heronite_emulation::{
-    add_detected_emulators, import_scanned_roms, preview_rom_scan, upsert_user_emulator, RomScanArgs, RomScanImportArgs,
-    SystemEnv, UpsertUserEmulatorArgs,
-};
 use gpui_kit::prelude::*;
+use heronite_emulation::{
+    add_detected_emulators, import_scanned_roms, preview_rom_scan, upsert_user_emulator, RomScanArgs, RomScanImportArgs, SystemEnv,
+    UpsertUserEmulatorArgs,
+};
 use heronite_launch::emulators::UserEmulatorProfile;
 
 use super::{text_of, ScanInitial, ScanRomsDialog};

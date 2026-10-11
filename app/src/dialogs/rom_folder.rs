@@ -52,12 +52,7 @@ impl EventEmitter<DialogEvent> for RomFolderDialog {}
 
 /// The name the store gives a folder: "Emulator \u{b7} Profile".
 fn default_name(e: &UserEmulator, p: Option<&UserEmulatorProfile>) -> String {
-    [Some(e.name.as_str()), p.map(|p| p.name.as_str())]
-        .into_iter()
-        .flatten()
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join(" \u{b7} ")
+    [Some(e.name.as_str()), p.map(|p| p.name.as_str())].into_iter().flatten().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" \u{b7} ")
 }
 
 impl RomFolderDialog {
@@ -72,10 +67,7 @@ impl RomFolderDialog {
         cx: &mut Context<Self>,
     ) -> Self {
         let wanted = scanner.as_ref().map(|s| s.emulator_id.clone()).or(emulator_id);
-        let emulator = wanted
-            .as_ref()
-            .and_then(|id| emulators.iter().find(|e| &e.id == id))
-            .or_else(|| emulators.first());
+        let emulator = wanted.as_ref().and_then(|id| emulators.iter().find(|e| &e.id == id)).or_else(|| emulators.first());
         let profile_id = scanner
             .as_ref()
             .map(|s| s.profile_id.clone())
@@ -134,11 +126,7 @@ impl RomFolderDialog {
         }
         // A folder named after its old target follows the new one.
         let name = self.scanner.as_ref().and_then(|s| {
-            let old = self
-                .emulators
-                .iter()
-                .find(|e| e.id == s.emulator_id)
-                .map(|e| default_name(e, e.profile(&s.profile_id)));
+            let old = self.emulators.iter().find(|e| e.id == s.emulator_id).map(|e| default_name(e, e.profile(&s.profile_id)));
             (old.as_deref() == Some(s.name.as_str())).then(|| self.emulator().map(|e| default_name(e, e.profile(&profile)))).flatten()
         });
         let args = UpsertRomScannerArgs {
@@ -290,7 +278,9 @@ impl Render for RomFolderDialog {
             .child(profile_select)
             .child(folder)
             .child(toggles)
-            .children((!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())));
+            .children(
+                (!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())),
+            );
         let footer = div()
             .flex()
             .gap(px(10.))
@@ -299,7 +289,11 @@ impl Render for RomFolderDialog {
                 "romf-save",
                 ButtonKind::Primary,
                 if self.saving {
-                    if self.auto_scan { "Scanning\u{2026}" } else { "Saving\u{2026}" }
+                    if self.auto_scan {
+                        "Scanning\u{2026}"
+                    } else {
+                        "Saving\u{2026}"
+                    }
                 } else if edit {
                     "Save"
                 } else {

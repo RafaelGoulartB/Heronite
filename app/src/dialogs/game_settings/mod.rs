@@ -16,9 +16,9 @@ use heronite_images::ImageRef;
 use heronite_metadata::{ArtKind, MetadataService};
 
 use super::art_images::{picture, DialogImages};
-use super::settings_panel::{GameFacts, SettingsPanel, Section, Target};
 use super::metadata_wizard::hub;
 use super::screenshot_art::ScreenshotArtDialog;
+use super::settings_panel::{GameFacts, Section, SettingsPanel, Target};
 use super::web_image::WebImageDialog;
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
@@ -173,14 +173,19 @@ impl GameSettingsDialog {
     }
 
     fn runner(&self) -> String {
-        if self.game.runner == "zoom" { "sideload".into() } else { self.game.runner.clone() }
+        if self.game.runner == "zoom" {
+            "sideload".into()
+        } else {
+            self.game.runner.clone()
+        }
     }
 
     /// Cover, kicker, title and the "store, installed, size" line.
     fn drawer_header(&mut self, on_close: impl Fn(&mut Window, &mut App) + 'static, cx: &mut Context<Self>) -> Div {
         let (chain, _) = self.art_chain(ArtKind::Cover);
         let key = chain.first().map(|r| format!("{r:?}")).unwrap_or_default();
-        let src = if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("gs-head:{key}"), chain, 104., 140.)) };
+        let src =
+            if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("gs-head:{key}"), chain, 104., 140.)) };
         let cover = picture(src).w(px(52.)).h(px(70.)).flex_none().rounded(px(10.)).border_1().border_color(theme::white_a(0.10));
         let mut meta = vec![self.game.source_label.to_string()];
         meta.push(if self.game.installed { "Installed".into() } else { "Not installed".into() });
@@ -265,9 +270,7 @@ impl Render for GameSettingsDialog {
 
         let dirty = self.read_form(cx) != self.initial;
         // "Use defaults" only where a reset exists: the custom images.
-        let can_reset = self.tab == Tab::Images
-            && self.busy.is_none()
-            && (self.art.cover_url.is_some() || self.art.hero_url.is_some());
+        let can_reset = self.tab == Tab::Images && self.busy.is_none() && (self.art.cover_url.is_some() || self.art.hero_url.is_some());
         let left = div().child(if self.tab == Tab::Images {
             action_button(
                 "gs-defaults",

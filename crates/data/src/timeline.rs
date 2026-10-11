@@ -46,13 +46,7 @@ fn parse_ms(text: &str) -> Option<i64> {
 }
 
 fn day_entry(days: &mut BTreeMap<NaiveDate, TimelineDay>, date: NaiveDate) -> &mut TimelineDay {
-    days.entry(date).or_insert_with(|| TimelineDay {
-        date,
-        played_secs: 0.,
-        sessions: 0,
-        first_start: None,
-        shots: Vec::new(),
-    })
+    days.entry(date).or_insert_with(|| TimelineDay { date, played_secs: 0., sessions: 0, first_start: None, shots: Vec::new() })
 }
 
 /// Groups sessions and screenshots into days, newest day first.
@@ -60,11 +54,7 @@ fn day_entry(days: &mut BTreeMap<NaiveDate, TimelineDay>, date: NaiveDate) -> &m
 /// Sessions shorter than [`MIN_SESSION_SECS`] and sessions with an unparseable
 /// start are ignored. `shots_taken_at_ms` holds the unix time of each
 /// screenshot in milliseconds; `None` entries are skipped.
-pub fn build_timeline<Tz: TimeZone>(
-    sessions: &[LocalGameSession],
-    shots_taken_at_ms: &[Option<f64>],
-    tz: &Tz,
-) -> Vec<TimelineDay> {
+pub fn build_timeline<Tz: TimeZone>(sessions: &[LocalGameSession], shots_taken_at_ms: &[Option<f64>], tz: &Tz) -> Vec<TimelineDay> {
     let mut days: BTreeMap<NaiveDate, TimelineDay> = BTreeMap::new();
     let mut windows = Vec::new();
     for session in sessions {
@@ -74,8 +64,7 @@ pub fn build_timeline<Tz: TimeZone>(
         }
         let Some(start_ms) = parse_ms(&session.started_at) else { continue };
         let Some(start) = tz.timestamp_millis_opt(start_ms).single() else { continue };
-        let end_ms = parse_ms(&session.ended_at)
-            .unwrap_or(start_ms + (elapsed * 1000.) as i64);
+        let end_ms = parse_ms(&session.ended_at).unwrap_or(start_ms + (elapsed * 1000.) as i64);
         let date = start.date_naive();
         let day = day_entry(&mut days, date);
         day.played_secs += elapsed;
@@ -90,10 +79,7 @@ pub fn build_timeline<Tz: TimeZone>(
     for (index, taken) in shots_taken_at_ms.iter().enumerate() {
         let Some(ms) = taken.filter(|t| t.is_finite()).map(|t| t as i64) else { continue };
         // The latest-starting matching session wins when windows overlap.
-        let session = windows
-            .iter()
-            .filter(|w| w.start_ms <= ms && ms <= w.end_ms + grace_ms)
-            .max_by_key(|w| w.start_ms);
+        let session = windows.iter().filter(|w| w.start_ms <= ms && ms <= w.end_ms + grace_ms).max_by_key(|w| w.start_ms);
         let Some(date) = session.map(|w| w.date).or_else(|| local_date(ms, tz)) else { continue };
         placed.push((ms, index, date));
     }

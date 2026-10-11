@@ -66,9 +66,7 @@ impl UiState {
             state.sort = v;
         }
         if let Some(obj) = value.get("facetFilters").and_then(Value::as_object) {
-            let text = |kind: FacetKind| {
-                obj.get(kind.as_str()).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned)
-            };
+            let text = |kind: FacetKind| obj.get(kind.as_str()).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned);
             state.facet_filters = FacetFilters {
                 series: text(FacetKind::Series),
                 developer: text(FacetKind::Developer),
@@ -81,11 +79,7 @@ impl UiState {
         if let Some(list) = value.get("collapsedGroups").and_then(Value::as_array) {
             state.collapsed_groups = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
         }
-        state.focused_game = value
-            .get("focusedGame")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned);
+        state.focused_game = value.get("focusedGame").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned);
         state.group_by_status = value.get("groupByStatus").and_then(Value::as_bool).unwrap_or(true);
         state.show_hidden = value.get("showHidden").and_then(Value::as_bool).unwrap_or(false);
         state.console_mode = value.get("consoleMode").and_then(Value::as_bool).unwrap_or(false);
@@ -178,7 +172,8 @@ mod tests {
         std::fs::create_dir_all(&paths.config).unwrap();
         std::fs::write(paths.ui_state(), "{not json").unwrap();
         assert_eq!(UiState::load(&paths), UiState::default());
-        std::fs::write(paths.ui_state(), r#"{"sort":"bogus","installFilter":7,"collapsedGroups":"x","facetFilters":{"genre":""}}"#).unwrap();
+        std::fs::write(paths.ui_state(), r#"{"sort":"bogus","installFilter":7,"collapsedGroups":"x","facetFilters":{"genre":""}}"#)
+            .unwrap();
         assert_eq!(UiState::load(&paths), UiState::default());
     }
 

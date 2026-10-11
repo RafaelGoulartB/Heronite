@@ -125,8 +125,7 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
 
 impl CollectionGame {
     pub(crate) fn build(input: BuildInputs<'_>) -> Self {
-        let BuildInputs { game, overrides, meta, metadata, art, timestamp, sessions, favourite, recent, hidden, statuses } =
-            input;
+        let BuildInputs { game, overrides, meta, metadata, art, timestamp, sessions, favourite, recent, hidden, statuses } = input;
         let title = metadata
             .as_deref()
             .and_then(|m| m.title.as_deref())
@@ -322,12 +321,7 @@ fn stamp_files(paths: &DataPaths) -> Vec<PathBuf> {
 }
 
 fn take_stamp(files: &[PathBuf]) -> FileStamp {
-    FileStamp(
-        files
-            .iter()
-            .map(|p| std::fs::metadata(p).ok().and_then(|m| Some((m.modified().ok()?, m.len()))))
-            .collect(),
-    )
+    FileStamp(files.iter().map(|p| std::fs::metadata(p).ok().and_then(|m| Some((m.modified().ok()?, m.len())))).collect())
 }
 
 /// The loaded Collection.
@@ -357,12 +351,7 @@ fn js_truthy(value: &Value) -> bool {
 
 fn cache_list(file: RawStore, key: &str) -> Vec<GameInfo> {
     // `CacheStore.get(key)` answers the fallback (empty) without `__timestamp.<key>`.
-    let stamped = file
-        .timestamp
-        .as_ref()
-        .and_then(|t| t.get(key))
-        .and_then(Value::as_str)
-        .is_some_and(|s| !s.is_empty());
+    let stamped = file.timestamp.as_ref().and_then(|t| t.get(key)).and_then(Value::as_str).is_some_and(|s| !s.is_empty());
     if !stamped {
         return Vec::new();
     }
@@ -428,19 +417,14 @@ impl Library {
                 rest,
             )
         });
-        let (config, sideload, nile, gog, mut gog_installed, overrides, art, timestamps, statuses_file, settings_file) =
-            rest?;
+        let (config, sideload, nile, gog, mut gog_installed, overrides, art, timestamps, statuses_file, settings_file) = rest?;
         let legendary = legendary?;
         let metadata_file = metadata_file?;
         let sessions_file = sessions_file?;
         let local_meta = local_meta?;
 
-        let zoom_enabled = config
-            .settings
-            .as_ref()
-            .and_then(|s| s.get("experimentalFeatures"))
-            .and_then(|e| e.get("zoomPlatform"))
-            .is_some_and(js_truthy);
+        let zoom_enabled =
+            config.settings.as_ref().and_then(|s| s.get("experimentalFeatures")).and_then(|e| e.get("zoomPlatform")).is_some_and(js_truthy);
 
         let mut gog_games = cache_list(gog, "games");
         apply_installed(&mut gog_games, std::mem::take(&mut gog_installed.installed));
@@ -595,12 +579,7 @@ pub(crate) mod tests_support {
             })
         });
         let meta = spec.status.clone().map(|s| {
-            Arc::new(LocalGameMeta {
-                app_name: app.into(),
-                runner: "sideload".into(),
-                completion_status_id: Some(s),
-                ..Default::default()
-            })
+            Arc::new(LocalGameMeta { app_name: app.into(), runner: "sideload".into(), completion_status_id: Some(s), ..Default::default() })
         });
         let timestamp = TimestampEntry {
             first_played: None,
@@ -684,10 +663,7 @@ mod tests {
         );
         // No __timestamp: Heroic's CacheStore answers empty.
         w(paths.nile_library(), r#"{"library":[{"runner":"nile","app_name":"n","title":"N","install":{}}]}"#);
-        w(
-            paths.gog_library(),
-            r#"{"games":[{"runner":"gog","app_name":"g","title":"G","install":{}}],"__timestamp":{"games":"x"}}"#,
-        );
+        w(paths.gog_library(), r#"{"games":[{"runner":"gog","app_name":"g","title":"G","install":{}}],"__timestamp":{"games":"x"}}"#);
         w(paths.gog_installed(), r#"{"installed":[{"appName":"g","install_path":"/games/g","platform":"linux"}]}"#);
         w(paths.store_config(), r#"{"games":{"hidden":[{"appName":"h","title":"Hidden"}],"favourites":[{"appName":"a","title":"A"}]}}"#);
         w(paths.game_overrides(), r#"{"overrides":{"a":{"title":"Custom A"}}}"#);

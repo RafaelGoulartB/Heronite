@@ -131,12 +131,7 @@ pub fn parse(src: &str) -> Vdf {
 pub fn library_paths(src: &str) -> Option<Vec<String>> {
     let doc = parse(src);
     let Vdf::Obj(folders) = doc.get("libraryfolders")? else { return None };
-    Some(
-        folders
-            .iter()
-            .filter_map(|(_, v)| v.get("path").and_then(Vdf::as_str).map(str::to_owned))
-            .collect(),
-    )
+    Some(folders.iter().filter_map(|(_, v)| v.get("path").and_then(Vdf::as_str).map(str::to_owned)).collect())
 }
 
 #[cfg(test)]
@@ -146,10 +141,7 @@ mod tests {
     #[test]
     fn parses_libraryfolders() {
         let src = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"/home/u/.local/share/Steam\"\n\t\t\"apps\"\n\t\t{\n\t\t\t\"1\"\t\t\"2\"\n\t\t}\n\t}\n\t\"1\"\n\t{\n\t\t\"path\"\t\t\"/data/SteamLibrary\"\n\t}\n}\n";
-        assert_eq!(
-            library_paths(src).unwrap(),
-            vec!["/home/u/.local/share/Steam".to_owned(), "/data/SteamLibrary".to_owned()]
-        );
+        assert_eq!(library_paths(src).unwrap(), vec!["/home/u/.local/share/Steam".to_owned(), "/data/SteamLibrary".to_owned()]);
         assert!(library_paths("\"other\" { }").is_none());
     }
 }

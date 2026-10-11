@@ -88,22 +88,13 @@ pub fn latest_version(data_paths: &DataPaths, legendary: &Legendary) -> String {
 
 fn failed(out: &crate::cmd::Output) -> OpResult {
     let why = out.error_lines();
-    OpResult {
-        ok: false,
-        aborted: false,
-        message: if why.is_empty() { format!("legendary exited with {:?}", out.code) } else { why },
-    }
+    OpResult { ok: false, aborted: false, message: if why.is_empty() { format!("legendary exited with {:?}", out.code) } else { why } }
 }
 
 /// `install`: first asks legendary for the download size (without `-y`, so it
 /// stops at the question), then installs (or updates) with `-y` reporting the
 /// progress as a percentage.
-pub fn install(
-    data_paths: &DataPaths,
-    legendary: &Legendary,
-    cancel: &std::sync::Arc<Cancel>,
-    on_percent: &dyn Fn(f32),
-) -> OpResult {
+pub fn install(data_paths: &DataPaths, legendary: &Legendary, cancel: &std::sync::Arc<Cancel>, on_percent: &dyn Fn(f32)) -> OpResult {
     static SIZE: OnceLock<Regex> = OnceLock::new();
     let size_re = SIZE.get_or_init(|| Regex::new(r"Download size: ([\d.]+) MiB").expect("valid regex"));
     let path = default_install_path(data_paths).to_string_lossy().into_owned();
@@ -231,11 +222,7 @@ mod tests {
     fn status_reads_the_install_file() {
         let (_d, data_paths) = fixture();
         assert_eq!(status(&data_paths), Status::default());
-        std::fs::write(
-            installed_file(&data_paths),
-            r#"{"version": "1.1.9", "install_path": "/x/eos_overlay", "managed": true}"#,
-        )
-        .unwrap();
+        std::fs::write(installed_file(&data_paths), r#"{"version": "1.1.9", "install_path": "/x/eos_overlay", "managed": true}"#).unwrap();
         let s = status(&data_paths);
         assert!(s.installed);
         assert_eq!(s.version.as_deref(), Some("1.1.9"));
@@ -276,10 +263,7 @@ fi"#;
         let r = install(&data_paths, &lg, &Cancel::new(), &|p| seen.lock().unwrap().push(p));
         assert!(r.ok, "{}", r.message);
         let path = default_install_path(&data_paths).to_string_lossy().into_owned();
-        assert_eq!(
-            calls(d.path()),
-            [format!("eos-overlay install --path {path}"), format!("eos-overlay install -y --path {path}")]
-        );
+        assert_eq!(calls(d.path()), [format!("eos-overlay install --path {path}"), format!("eos-overlay install -y --path {path}")]);
         assert_eq!(*seen.lock().unwrap(), [50.0f32]);
     }
 
@@ -306,12 +290,7 @@ fi"#;
         assert!(is_enabled(&lg, Some("/pfx")));
         assert_eq!(
             calls(d.path()),
-            [
-                "eos-overlay enable --prefix /pfx",
-                "eos-overlay disable",
-                "eos-overlay remove -y",
-                "eos-overlay info --prefix /pfx"
-            ]
+            ["eos-overlay enable --prefix /pfx", "eos-overlay disable", "eos-overlay remove -y", "eos-overlay info --prefix /pfx"]
         );
         let no = fake(d.path(), "echo '[cli] INFO: Overlay enabled: No'");
         assert!(!is_enabled(&no, None));

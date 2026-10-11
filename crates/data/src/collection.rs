@@ -78,13 +78,8 @@ pub enum FacetKind {
 }
 
 /// `FACET_KINDS`, in the order the filter menu lists them.
-pub const FACET_KINDS: [FacetKind; 5] = [
-    FacetKind::Series,
-    FacetKind::Developer,
-    FacetKind::Publisher,
-    FacetKind::Genre,
-    FacetKind::Platform,
-];
+pub const FACET_KINDS: [FacetKind; 5] =
+    [FacetKind::Series, FacetKind::Developer, FacetKind::Publisher, FacetKind::Genre, FacetKind::Platform];
 
 impl FacetKind {
     pub fn index(self) -> usize {
@@ -169,13 +164,8 @@ fn items(values: Vec<String>) -> Vec<FacetItem> {
 /// `gameFacets`: the Collection metadata wins, the store's own info fills the
 /// gaps (developer, genres).
 pub fn game_facets(game: &GameInfo, metadata: Option<&CollectionGameMetadata>) -> GameFacets {
-    let series: Vec<String> = metadata
-        .and_then(|m| m.series.as_deref())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .into_iter()
-        .collect();
+    let series: Vec<String> =
+        metadata.and_then(|m| m.series.as_deref()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).into_iter().collect();
     let developers = match metadata.filter(|m| !m.developers.is_empty()) {
         Some(m) => unique_names(m.developers.iter().map(String::as_str)),
         None => unique_names(split_names(game.developer.as_deref()).iter().map(String::as_str)),
@@ -254,10 +244,8 @@ pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
         }
     }
     let finish = |bucket: &HashMap<&str, (usize, &str)>| -> Vec<FacetOption> {
-        let mut out: Vec<FacetOption> = bucket
-            .values()
-            .map(|(count, value)| FacetOption { value: (*value).to_owned(), count: *count })
-            .collect();
+        let mut out: Vec<FacetOption> =
+            bucket.values().map(|(count, value)| FacetOption { value: (*value).to_owned(), count: *count }).collect();
         out.sort_by(|a, b| locale_cmp(&a.value, &b.value));
         out
     };
@@ -271,8 +259,7 @@ pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
 }
 
 /// Tag kinds of `collectionTags.ts`.
-pub const TAG_KINDS: [&str; 8] =
-    ["series", "developers", "publishers", "genres", "themes", "gameModes", "platforms", "features"];
+pub const TAG_KINDS: [&str; 8] = ["series", "developers", "publishers", "genres", "themes", "gameModes", "platforms", "features"];
 
 /// `collectTagOptions`: every known value per tag kind (for the tag editors),
 /// sorted; in [`TAG_KINDS`] order.
@@ -418,13 +405,7 @@ pub fn group_by_status(filtered: &[Game], statuses: &[CompletionStatus]) -> Vec<
         });
     }
     if !unknown.is_empty() {
-        groups.push(StatusGroup {
-            id: UNKNOWN_GROUP_ID.into(),
-            name: OTHER_GROUP_NAME.into(),
-            slug: None,
-            color: None,
-            games: unknown,
-        });
+        groups.push(StatusGroup { id: UNKNOWN_GROUP_ID.into(), name: OTHER_GROUP_NAME.into(), slug: None, color: None, games: unknown });
     }
     groups
 }
@@ -452,9 +433,8 @@ fn has_overlap(current_keys: &HashSet<String>, candidates: &[FacetItem]) -> bool
 /// `collectRelatedGames` with explicit series/developers of the current game
 /// (the Focus passes developers that may come from Steam details).
 pub fn related_games(current: &CollectionGame, series: &[String], developers: &[String], games: &[Game]) -> Vec<RelatedGroup> {
-    let keys = |values: &[String]| -> HashSet<String> {
-        values.iter().map(|v| v.trim()).filter(|v| !v.is_empty()).map(facet_key).collect()
-    };
+    let keys =
+        |values: &[String]| -> HashSet<String> { values.iter().map(|v| v.trim()).filter(|v| !v.is_empty()).map(facet_key).collect() };
     let series = keys(series);
     let developers = keys(developers);
     let mut series_items: Vec<Game> = Vec::new();
@@ -536,10 +516,20 @@ mod tests {
     #[test]
     fn sort_modes_follow_the_tie_breaks() {
         let games = vec![
-            g("a", "Zelda", |s| { s.minutes = 10; s.last_played = Some("2026-01-01T00:00:00.000Z".into()); }),
-            g("b", "alpha", |s| { s.minutes = 10; }),
-            g("c", "Beta", |s| { s.minutes = 300; s.last_played = Some("2026-05-01T00:00:00.000Z".into()); }),
-            g("d", "Delta", |s| { s.minutes = 0; }),
+            g("a", "Zelda", |s| {
+                s.minutes = 10;
+                s.last_played = Some("2026-01-01T00:00:00.000Z".into());
+            }),
+            g("b", "alpha", |s| {
+                s.minutes = 10;
+            }),
+            g("c", "Beta", |s| {
+                s.minutes = 300;
+                s.last_played = Some("2026-05-01T00:00:00.000Z".into());
+            }),
+            g("d", "Delta", |s| {
+                s.minutes = 0;
+            }),
         ];
         let titles = |sort| {
             let q = ViewQuery { sort, ..Default::default() };
@@ -555,9 +545,19 @@ mod tests {
     #[test]
     fn search_install_and_facet_filters_combine() {
         let games = vec![
-            g("a", "Half-Life", |s| { s.installed = true; s.developers = vec!["Valve".into()]; s.genres = vec!["Shooter".into()]; }),
-            g("b", "Portal", |s| { s.developers = vec!["Valve".into()]; s.genres = vec!["Puzzle".into()]; }),
-            g("c", "Ōkami", |s| { s.installed = true; s.developers = vec!["Clover".into()]; }),
+            g("a", "Half-Life", |s| {
+                s.installed = true;
+                s.developers = vec!["Valve".into()];
+                s.genres = vec!["Shooter".into()];
+            }),
+            g("b", "Portal", |s| {
+                s.developers = vec!["Valve".into()];
+                s.genres = vec!["Puzzle".into()];
+            }),
+            g("c", "Ōkami", |s| {
+                s.installed = true;
+                s.developers = vec!["Clover".into()];
+            }),
         ];
         let run = |q: ViewQuery| filter_games(&games, &q).iter().map(|g| g.app_name.clone()).collect::<Vec<_>>();
         assert_eq!(run(ViewQuery { search: "  PORT ".into(), ..Default::default() }), ["b"]);
@@ -606,8 +606,14 @@ mod tests {
     #[test]
     fn related_games_share_series_or_developer() {
         let games = vec![
-            g("cur", "Portal 2", |s| { s.series = Some("Portal".into()); s.developers = vec!["Valve".into()]; }),
-            g("p1", "portal", |s| { s.series = Some("PORTAL".into()); s.developers = vec!["Valve".into()]; }),
+            g("cur", "Portal 2", |s| {
+                s.series = Some("Portal".into());
+                s.developers = vec!["Valve".into()];
+            }),
+            g("p1", "portal", |s| {
+                s.series = Some("PORTAL".into());
+                s.developers = vec!["Valve".into()];
+            }),
             g("h1", "Half-Life", |s| s.developers = vec!["Valve".into()]),
             g("o", "Other", |s| s.developers = vec!["Someone".into()]),
         ];
@@ -633,10 +639,7 @@ mod tests {
 
     #[test]
     fn tag_options_are_unique_and_sorted() {
-        let games = vec![
-            g("a", "A", |s| s.genres = vec!["rpg".into(), "Action".into()]),
-            g("b", "B", |s| s.genres = vec!["RPG".into()]),
-        ];
+        let games = vec![g("a", "A", |s| s.genres = vec!["rpg".into(), "Action".into()]), g("b", "B", |s| s.genres = vec!["RPG".into()])];
         let tags = collect_tag_options(&games);
         let genres = &tags.iter().find(|(k, _)| *k == "genres").unwrap().1;
         assert_eq!(genres, &["Action", "rpg"]);

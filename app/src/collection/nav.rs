@@ -221,20 +221,24 @@ impl CollectionView {
                 };
                 let mut p = glass::glass_panel(theme::R_POPOVER).w(px(300.)).p(px(6.)).flex().flex_col().gap(px(2.));
                 // Where the games are, then what sets them up.
-                for (i, group) in [
-                    &[Page::Collection, Page::Downloads, Page::Statistics][..],
-                    &[Page::Epic, Page::WineManager, Page::Emulators][..],
-                ]
-                .into_iter()
-                .enumerate()
+                for (i, group) in
+                    [&[Page::Collection, Page::Downloads, Page::Statistics][..], &[Page::Epic, Page::WineManager, Page::Emulators][..]]
+                        .into_iter()
+                        .enumerate()
                 {
                     if i > 0 {
                         p = p.child(menu_separator());
                     }
                     for &page in group {
                         p = p.child(
-                            nav_row(SharedString::from(format!("nav-{page:?}")), page.icon(), page.title(), trailing(page), this.page == page)
-                                .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx))),
+                            nav_row(
+                                SharedString::from(format!("nav-{page:?}")),
+                                page.icon(),
+                                page.title(),
+                                trailing(page),
+                                this.page == page,
+                            )
+                            .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx))),
                         );
                     }
                 }
@@ -254,13 +258,12 @@ impl CollectionView {
                         nav_row("nav-Settings".into(), Icon::Settings, "Settings", trailing(Page::Settings), this.page == Page::Settings)
                             .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Settings, window, cx))),
                     )
-                    .child(
-                        nav_row("nav-palette".into(), Icon::FaSearch, "Command palette", Trailing::Key("Ctrl K"), false)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_menu = None;
-                                this.open_palette(window, cx);
-                            })),
-                    )
+                    .child(nav_row("nav-palette".into(), Icon::FaSearch, "Command palette", Trailing::Key("Ctrl K"), false).on_click(
+                        cx.listener(|this, _, window, cx| {
+                            this.open_menu = None;
+                            this.open_palette(window, cx);
+                        }),
+                    ))
                     .into_any_element()
             },
             cx,
@@ -475,15 +478,8 @@ impl CollectionView {
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
         }?;
-        let header = div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .h(theme::HEADER_H)
-            .px(px(12.))
-            .gap(px(10.))
-            .child(self.nav_dropdown(cx))
-            .child(
+        let header =
+            div().flex().flex_none().items_center().h(theme::HEADER_H).px(px(12.)).gap(px(10.)).child(self.nav_dropdown(cx)).child(
                 div()
                     .font_family(theme::FONT_HEADING)
                     .text_size(px(17.6))

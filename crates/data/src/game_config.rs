@@ -176,8 +176,7 @@ const INHERITED_KEYS: [&str; 24] = [
     "showMangohud",
     "targetExe",
 ];
-const INHERITED_KEYS_2: [&str; 5] =
-    ["useGameMode", "battlEyeRuntime", "eacRuntime", "beforeLaunchScriptPath", "afterLaunchScriptPath"];
+const INHERITED_KEYS_2: [&str; 5] = ["useGameMode", "battlEyeRuntime", "eacRuntime", "beforeLaunchScriptPath", "afterLaunchScriptPath"];
 // `heroniteSharedFolders` is Heronite's ("Folders visible to Proton").
 const INHERITED_KEYS_3: [&str; 4] = ["gamescope", "verboseLogs", "advertiseAvxForRosetta", "heroniteSharedFolders"];
 
@@ -250,21 +249,12 @@ pub fn game_overrides(paths: &DataPaths, app_name: &str) -> Settings {
 }
 
 /// `GameConfig.setSetting` for one or more keys of one game.
-pub fn set_game_settings(
-    paths: &DataPaths,
-    app_name: &str,
-    home: &str,
-    changes: &[(String, Value)],
-) -> Result<()> {
+pub fn set_game_settings(paths: &DataPaths, app_name: &str, home: &str, changes: &[(String, Value)]) -> Result<()> {
     if changes.is_empty() {
         return Ok(());
     }
     let path = paths.game_config(app_name);
-    let new_file_defaults = if path.exists() {
-        None
-    } else {
-        Some(default_game_settings(&load_global(paths, home), true, home))
-    };
+    let new_file_defaults = if path.exists() { None } else { Some(default_game_settings(&load_global(paths, home), true, home)) };
     json_store::update_value_indented(&path, INDENT_2, |doc| {
         let obj = doc.as_object_mut().expect("update_value gives an object or replaces it");
         if obj.is_empty() {
@@ -308,13 +298,7 @@ pub fn forget_emulator_args(paths: &DataPaths, app_name: &str, emulator_args: &s
 }
 
 /// [`set_game_settings`] for a single key.
-pub fn set_game_setting(
-    paths: &DataPaths,
-    app_name: &str,
-    home: &str,
-    key: &str,
-    value: Value,
-) -> Result<()> {
+pub fn set_game_setting(paths: &DataPaths, app_name: &str, home: &str, key: &str, value: Value) -> Result<()> {
     set_game_settings(paths, app_name, home, &[(key.to_owned(), value)])
 }
 

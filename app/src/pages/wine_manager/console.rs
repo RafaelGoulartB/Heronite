@@ -20,18 +20,28 @@ impl WineManagerPage {
     fn console_versions(&self) -> Vec<WineVersionInfo> {
         let kind = self.repo.kind();
         let q = self.console_query.to_lowercase();
-        self.releases.iter().filter(|r| r.kind == kind && r.downloadable()).filter(|r| q.is_empty() || r.version.to_lowercase().contains(&q)).cloned().collect()
+        self.releases
+            .iter()
+            .filter(|r| r.kind == kind && r.downloadable())
+            .filter(|r| q.is_empty() || r.version.to_lowercase().contains(&q))
+            .cloned()
+            .collect()
     }
 
     fn console_rows(&self) -> Vec<Row> {
         let mut rows = vec![
-            Row::toggle("steam", "Install Proton into Steam", self.download_to_steam).desc("New Proton builds also go to Steam's compatibility tools"),
+            Row::toggle("steam", "Install Proton into Steam", self.download_to_steam)
+                .desc("New Proton builds also go to Steam's compatibility tools"),
             Row::action("refresh", if self.manager.refreshing() { "Fetching releases\u{2026}" } else { "Refresh the release lists" })
                 .icon(Icon::Refresh)
                 .enabled(!self.manager.refreshing() && !self.offline),
         ];
         if !self.console_query.is_empty() {
-            rows.push(Row::action("clear-search", format!("Search: \u{201c}{}\u{201d}", self.console_query)).desc("A clears the search").icon(Icon::FaSearch));
+            rows.push(
+                Row::action("clear-search", format!("Search: \u{201c}{}\u{201d}", self.console_query))
+                    .desc("A clears the search")
+                    .icon(Icon::FaSearch),
+            );
         }
         rows.push(Row::header(self.repo.kind()));
         for r in self.console_versions() {
@@ -132,15 +142,13 @@ impl WineManagerPage {
                     .child(kit::clock()),
             )
             .child(div().px(u(46.)).pb(u(14.)).max_w(u(900.)).child(kit::body_text(self.repo.explanation())))
-            .child(
-                div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(
-                    div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(if self.loaded {
-                        list.flex_1().min_h_0().into_any_element()
-                    } else {
-                        kit::body_text("Reading the release lists\u{2026}").into_any_element()
-                    }),
-                ),
-            )
+            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(
+                div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(if self.loaded {
+                    list.flex_1().min_h_0().into_any_element()
+                } else {
+                    kit::body_text("Reading the release lists\u{2026}").into_any_element()
+                }),
+            ))
             .children(self.layer.view())
             .into_any_element()
     }

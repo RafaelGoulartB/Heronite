@@ -65,8 +65,20 @@ pub fn settings_for_log(merged: &Map<String, Value>, native: bool) -> Value {
     }
     if native {
         for k in [
-            "wineVersion", "winePrefix", "autoInstallDxvk", "autoInstallDxvkNvapi", "autoInstallVkd3d", "enableDXVKFpsLimit", "DXVKFpsCap", "battlEyeRuntime",
-            "eacRuntime", "enableEsync", "enableFsync", "enableWineWayland", "enableHDR", "enableWoW64",
+            "wineVersion",
+            "winePrefix",
+            "autoInstallDxvk",
+            "autoInstallDxvkNvapi",
+            "autoInstallVkd3d",
+            "enableDXVKFpsLimit",
+            "DXVKFpsCap",
+            "battlEyeRuntime",
+            "eacRuntime",
+            "enableEsync",
+            "enableFsync",
+            "enableWineWayland",
+            "enableHDR",
+            "enableWoW64",
         ] {
             s.remove(k);
         }
@@ -139,7 +151,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(data_paths.games_config_dir()).unwrap();
-        std::fs::write(data_paths.root.join("config.json"), r#"{"defaultSettings":{"disableLogs":false,"verboseLogs":true,"steamGridDbApiKey":"K"},"version":"v0"}"#).unwrap();
+        std::fs::write(
+            data_paths.root.join("config.json"),
+            r#"{"defaultSettings":{"disableLogs":false,"verboseLogs":true,"steamGridDbApiKey":"K"},"version":"v0"}"#,
+        )
+        .unwrap();
         std::fs::write(data_paths.game_config("quiet"), r#"{"quiet":{"verboseLogs":false},"version":"v0"}"#).unwrap();
         let (off, verbose, merged) = launch_log_switches(&data_paths, "loud");
         assert!(!off && verbose);
@@ -167,15 +183,16 @@ mod tests {
 
     #[test]
     fn command_lines_hide_secrets() {
-        let mut env = crate::plan::Command {
-            program: "legendary".into(),
-            args: vec!["launch".into(), "x y".into()],
-            ..Default::default()
-        };
+        let mut env = crate::plan::Command { program: "legendary".into(), args: vec!["launch".into(), "x y".into()], ..Default::default() };
         env.env.insert("WINEPREFIX".into(), "/p".into());
         env.env.insert("MY_TOKEN".into(), "abc".into());
         let line = command_line_for_log(&env);
-        assert!(line.contains("WINEPREFIX=/p") && line.contains("MY_TOKEN=\\<hidden\\>") || line.contains("MY_TOKEN='<hidden>'") || line.contains("MY_TOKEN=<hidden>"), "{line}");
+        assert!(
+            line.contains("WINEPREFIX=/p") && line.contains("MY_TOKEN=\\<hidden\\>")
+                || line.contains("MY_TOKEN='<hidden>'")
+                || line.contains("MY_TOKEN=<hidden>"),
+            "{line}"
+        );
         assert!(!line.contains("abc"));
         assert!(line.ends_with("legendary launch 'x y'"), "{line}");
     }

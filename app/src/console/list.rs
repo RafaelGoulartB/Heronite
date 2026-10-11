@@ -21,8 +21,17 @@ pub enum Value {
     /// Plain action ("›" on the right).
     Action,
     Toggle(bool),
-    Choice { options: Vec<SharedString>, index: usize },
-    Number { value: i64, min: i64, max: i64, step: i64, suffix: &'static str },
+    Choice {
+        options: Vec<SharedString>,
+        index: usize,
+    },
+    Number {
+        value: i64,
+        min: i64,
+        max: i64,
+        step: i64,
+        suffix: &'static str,
+    },
     /// Editable text shown on the right; A asks the owner to edit it.
     Text(SharedString),
     /// Read-only text on the right.
@@ -56,7 +65,15 @@ impl Row {
         let index = index.min(options.len().saturating_sub(1));
         Self::new(id, label, Value::Choice { options, index })
     }
-    pub fn number(id: impl Into<SharedString>, label: impl Into<SharedString>, value: i64, min: i64, max: i64, step: i64, suffix: &'static str) -> Self {
+    pub fn number(
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        value: i64,
+        min: i64,
+        max: i64,
+        step: i64,
+        suffix: &'static str,
+    ) -> Self {
         Self::new(id, label, Value::Number { value: value.clamp(min, max), min, max, step, suffix })
     }
     pub fn text(id: impl Into<SharedString>, label: impl Into<SharedString>, value: impl Into<SharedString>) -> Self {
@@ -285,16 +302,26 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
                 .min_w_0()
                 .py(u(10.))
                 .child(div().text_size(u(18.)).text_color(label_color).truncate().child(r.label.clone()))
-                .children(r.desc.clone().filter(|_| focused).map(|d| {
-                    div().text_size(u(13.)).line_height(u(18.)).text_color(Hsla { a: 0.7, ..label_color }).child(d)
-                })),
+                .children(
+                    r.desc
+                        .clone()
+                        .filter(|_| focused)
+                        .map(|d| div().text_size(u(13.)).line_height(u(18.)).text_color(Hsla { a: 0.7, ..label_color }).child(d)),
+                ),
         )
         .child(value)
 }
 
 /// A small console dialog: title, message lines, an optional error and the
 /// rows (confirmations).
-pub fn simple_dialog(nav: &mut ListNav, id: &'static str, title: impl Into<SharedString>, message: &str, error: Option<SharedString>, rows: &[Row]) -> AnyElement {
+pub fn simple_dialog(
+    nav: &mut ListNav,
+    id: &'static str,
+    title: impl Into<SharedString>,
+    message: &str,
+    error: Option<SharedString>,
+    rows: &[Row],
+) -> AnyElement {
     let mut body = div().flex().flex_col().gap(u(12.));
     for line in message.lines().filter(|l| !l.trim().is_empty()) {
         body = body.child(kit::body_text(line.to_string()));

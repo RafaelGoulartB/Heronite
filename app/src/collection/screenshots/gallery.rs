@@ -63,14 +63,7 @@ impl CollectionView {
                     })),
             );
         }
-        Some(
-            div()
-                .flex()
-                .flex_col()
-                .child(focus::h3("Screenshots"))
-                .child(focus::panel(true).child(row))
-                .into_any_element(),
-        )
+        Some(div().flex().flex_col().child(focus::h3("Screenshots")).child(focus::panel(true).child(row)).into_any_element())
     }
 
     pub(in crate::collection) fn shots_open_view(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -211,30 +204,24 @@ impl CollectionView {
             grid = grid.child(row);
         }
         if shown < total {
-            grid = grid.child(
-                div().flex().justify_center().my(px(5.6)).child(
-                    button(
-                        "shot-load-more",
-                        ButtonKind::Glass,
-                        format!("Load more ({} remaining)", total - shown),
-                    )
-                    .on_click(cx.listener(|this, _, _, cx| {
+            grid = grid.child(div().flex().justify_center().my(px(5.6)).child(
+                button("shot-load-more", ButtonKind::Glass, format!("Load more ({} remaining)", total - shown)).on_click(cx.listener(
+                    |this, _, _, cx| {
                         this.shots.gallery_count = (this.shots.gallery_count + GALLERY_PAGE).min(this.shots.items.len());
                         cx.notify();
-                    })),
-                ),
-            );
+                    },
+                )),
+            ));
         }
         grid
     }
 
     /// Title, count and close button.
     fn gallery_header(total: usize, cx: &mut Context<Self>) -> Div {
-        let close = icon_button("shot-gallery-close", Icon::Close, 36., 0.42, 0.72)
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.shots_close_gallery();
-                cx.notify();
-            }));
+        let close = icon_button("shot-gallery-close", Icon::Close, 36., 0.42, 0.72).on_click(cx.listener(|this, _, _, cx| {
+            this.shots_close_gallery();
+            cx.notify();
+        }));
         div()
             .flex()
             .items_center()
@@ -264,14 +251,7 @@ impl CollectionView {
 /// grows 4% on hover (no transform in GPUI, so the box is enlarged instead).
 pub fn thumb_tile(id: SharedString, src: Option<ImageSource>, hover_zoom: bool) -> Stateful<Div> {
     let group: SharedString = format!("{id}-g").into();
-    let mut tile = div()
-        .id(id)
-        .group(group.clone())
-        .relative()
-        .rounded(px(8.))
-        .overflow_hidden()
-        .bg(theme::black_a(0.35))
-        .cursor_pointer();
+    let mut tile = div().id(id).group(group.clone()).relative().rounded(px(8.)).overflow_hidden().bg(theme::black_a(0.35)).cursor_pointer();
     if let Some(src) = src {
         let mut holder = div().absolute().top_0().left_0().size_full();
         if hover_zoom {

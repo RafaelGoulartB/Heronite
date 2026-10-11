@@ -123,10 +123,8 @@ pub fn read_gpus() -> Vec<Gpu> {
     for card in cards {
         let dev = card.path().join("device");
         let (Some(vendor), Some(device)) = (hex_id(dev.join("vendor")), hex_id(dev.join("device"))) else { continue };
-        let driver = fs::read_link(dev.join("driver"))
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-            .unwrap_or_default();
+        let driver =
+            fs::read_link(dev.join("driver")).ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())).unwrap_or_default();
         let (vname, name) = ids
             .as_deref()
             .and_then(|t| pci_names(t, &vendor, &device))
@@ -181,10 +179,7 @@ mod tests {
     #[test]
     fn pci_ids_lookup() {
         let ids = "# comment\n1002  Advanced Micro Devices, Inc. [AMD/ATI]\n\t73bf  Navi 21 [Radeon RX 6800/6800 XT / 6900 XT]\n\t\t1002 0b36  subsystem\n\t73df  Navi 22\n10de  NVIDIA Corporation\n\t2684  AD102 [GeForce RTX 4090]\n";
-        assert_eq!(
-            pci_names(ids, "10de", "2684"),
-            Some(("NVIDIA Corporation".into(), "AD102 [GeForce RTX 4090]".into()))
-        );
+        assert_eq!(pci_names(ids, "10de", "2684"), Some(("NVIDIA Corporation".into(), "AD102 [GeForce RTX 4090]".into())));
         assert_eq!(pci_names(ids, "1002", "73df").map(|x| x.1).as_deref(), Some("Navi 22"));
         assert_eq!(pci_names(ids, "1002", "ffff"), None);
         assert_eq!(pci_names(ids, "8086", "0001"), None);

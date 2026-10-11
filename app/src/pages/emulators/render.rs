@@ -56,20 +56,22 @@ impl EmulatorsPage {
             .flex()
             .flex_wrap()
             .gap(px(8.))
-            .child(button("emus-detect", ButtonKind::Glass, "Detect emulators\u{2026}").on_click(cx.listener(
-                |this, _, window, cx| this.open_detect(window, cx),
-            )))
-            .child(button("emus-scan-folder", ButtonKind::Glass, "Scan a folder for emulators\u{2026}").on_click(
-                cx.listener(|this, _, window, cx| {
+            .child(
+                button("emus-detect", ButtonKind::Glass, "Detect emulators\u{2026}")
+                    .on_click(cx.listener(|this, _, window, cx| this.open_detect(window, cx))),
+            )
+            .child(button("emus-scan-folder", ButtonKind::Glass, "Scan a folder for emulators\u{2026}").on_click(cx.listener(
+                |this, _, window, cx| {
                     this.open_detect(window, cx);
                     if let Some(d) = this.open_dialog_as::<DetectEmulatorsDialog>() {
                         d.update(cx, |d, cx| d.pick_folder(window, cx));
                     }
-                }),
-            ))
-            .child(button("emus-add-folder", ButtonKind::Glass, "Add ROM folder").on_click(cx.listener(|this, _, window, cx| {
-                this.open_folder_dialog(None, None, window, cx)
-            })))
+                },
+            )))
+            .child(
+                button("emus-add-folder", ButtonKind::Glass, "Add ROM folder")
+                    .on_click(cx.listener(|this, _, window, cx| this.open_folder_dialog(None, None, window, cx))),
+            )
             .child(action_button(
                 "emus-scan-all",
                 ButtonKind::Glass,
@@ -113,10 +115,7 @@ impl EmulatorsPage {
 
     /// An emulator: its header, then "ROM folders" and one row per folder.
     pub(super) fn render_card(&self, s: &EmulatorSummary, cx: &mut Context<Self>) -> Div {
-        let mut card = card_box()
-            .child(self.render_emulator_header(s, cx))
-            .child(separator())
-            .child(self.render_folders_header(s, cx));
+        let mut card = card_box().child(self.render_emulator_header(s, cx)).child(separator()).child(self.render_folders_header(s, cx));
         if s.scanners.is_empty() {
             card = card.child(div().pb(px(14.)).child(meta_text("No ROM folders yet. Add one and its games are added to the Collection.")));
         }
@@ -141,7 +140,9 @@ impl EmulatorsPage {
         let mut platforms: Vec<String> = e
             .profiles
             .iter()
-            .map(|p| p.platform_name.clone().filter(|n| !n.is_empty() && !n.eq_ignore_ascii_case("other")).unwrap_or_else(|| p.name.clone()))
+            .map(|p| {
+                p.platform_name.clone().filter(|n| !n.is_empty() && !n.eq_ignore_ascii_case("other")).unwrap_or_else(|| p.name.clone())
+            })
             .collect();
         platforms.dedup();
         let extra = platforms.len().saturating_sub(8);
@@ -201,9 +202,14 @@ impl EmulatorsPage {
                     .child(div().text_size(px(13.)).text_color(theme::text_primary()).truncate().child(location))
                     .child(meta_text(format!("{} using it", plural(s.games, "game", "games"))))
                     .child(
-                        div().flex().flex_wrap().items_center().gap(px(6.)).mt(px(4.)).children(platforms.into_iter().map(tag_pill)).children(
-                            (extra > 0).then(|| tag_pill(format!("+{extra} more"))),
-                        ),
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap(px(6.))
+                            .mt(px(4.))
+                            .children(platforms.into_iter().map(tag_pill))
+                            .children((extra > 0).then(|| tag_pill(format!("+{extra} more")))),
                     ),
             )
             .child(actions)
@@ -219,9 +225,8 @@ impl EmulatorsPage {
             .py(px(10.))
             .child(div().text_size(px(12.)).text_color(theme::text_muted()).child("ROM folders"))
             .child(
-                button_sm(SharedString::from(format!("emu-addfolder-{id}")), ButtonKind::Glass, "Add ROM folder").on_click(cx.listener(
-                    move |this, _, window, cx| this.open_folder_dialog(Some(id.clone()), None, window, cx),
-                )),
+                button_sm(SharedString::from(format!("emu-addfolder-{id}")), ButtonKind::Glass, "Add ROM folder")
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_folder_dialog(Some(id.clone()), None, window, cx))),
             )
     }
 

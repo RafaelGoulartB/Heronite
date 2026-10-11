@@ -4,8 +4,8 @@
 pub mod cli;
 mod hub;
 pub mod notify;
-pub mod shortcuts;
 pub mod settings;
+pub mod shortcuts;
 pub mod signals;
 pub mod single_instance;
 pub mod tray;

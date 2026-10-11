@@ -41,7 +41,9 @@ pub fn init(
 
     let (tray_tx, tray_rx) = unbounded();
     let tray = (!settings.no_tray_icon && !crate::env::flag("HERONITE_NO_TRAY"))
-        .then(|| tray::spawn(data_paths.clone(), settings.dark_tray_icon, settings.exit_to_tray, settings.max_recent, false, tray_tx.clone()))
+        .then(|| {
+            tray::spawn(data_paths.clone(), settings.dark_tray_icon, settings.exit_to_tray, settings.max_recent, false, tray_tx.clone())
+        })
         .flatten();
     let fake_tray = crate::env::flag("HERONITE_DEBUG_FAKE_TRAY");
     let tray_alive = tray.is_some() || fake_tray;

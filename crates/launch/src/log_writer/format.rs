@@ -53,14 +53,8 @@ pub enum GameLogType {
 }
 
 impl GameLogType {
-    pub const ALL: [GameLogType; 6] = [
-        GameLogType::Launch,
-        GameLogType::Install,
-        GameLogType::Import,
-        GameLogType::Repair,
-        GameLogType::Update,
-        GameLogType::Setup,
-    ];
+    pub const ALL: [GameLogType; 6] =
+        [GameLogType::Launch, GameLogType::Install, GameLogType::Import, GameLogType::Repair, GameLogType::Update, GameLogType::Setup];
 
     pub fn file_stem(self) -> &'static str {
         match self {

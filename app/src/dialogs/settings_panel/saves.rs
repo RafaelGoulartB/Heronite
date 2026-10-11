@@ -6,14 +6,11 @@ use heronite_epic::saves::{self, SyncMode};
 use serde_json::Value;
 
 use super::parts::{column, heading, help, hint, rows};
-use super::{SettingsPanel, Notice, Section};
+use super::{Notice, Section, SettingsPanel};
 use crate::theme;
 
-pub const MODES: [(&str, SyncMode); 3] = [
-    ("Sync (download and upload)", SyncMode::Both),
-    ("Force Download", SyncMode::ForceDownload),
-    ("Force Upload", SyncMode::ForceUpload),
-];
+pub const MODES: [(&str, SyncMode); 3] =
+    [("Sync (download and upload)", SyncMode::Both), ("Force Download", SyncMode::ForceDownload), ("Force Upload", SyncMode::ForceUpload)];
 
 impl SettingsPanel {
     /// Heroic guesses the saves folder when the tab opens with none set.
@@ -44,7 +41,9 @@ impl SettingsPanel {
                         this.set("savesPath", Value::String(path), cx);
                     }
                     Ok(None) => {}
-                    Err(err) => this.notice = Some(Notice { text: format!("Could not detect the saves folder: {err:#}").into(), error: true }),
+                    Err(err) => {
+                        this.notice = Some(Notice { text: format!("Could not detect the saves folder: {err:#}").into(), error: true })
+                    }
                 }
                 cx.notify();
             })
@@ -89,9 +88,8 @@ impl SettingsPanel {
             return column().child(hint("This game does not support Cloud Saves."));
         }
         let has_path = !self.text("savesPath").is_empty();
-        let mut col = column().child(hint(
-            "Cloud Saves feature is in Beta, please backup your saves before syncing (in case something goes wrong)",
-        ));
+        let mut col =
+            column().child(hint("Cloud Saves feature is in Beta, please backup your saves before syncing (in case something goes wrong)"));
         if self.saves.detecting {
             return col.child(help("Trying to detect the correct save folder\u{2026}").px(px(6.)));
         }
@@ -130,14 +128,13 @@ impl SettingsPanel {
             },
         );
         let syncing = self.saves.syncing;
-        let sync = div()
-            .flex()
-            .items_end()
-            .gap(px(12.))
-            .child(div().flex_1().child(select))
-            .child(self.outline_button("saves-sync", if syncing { "Syncing" } else { "Sync" }, has_path && !syncing, cx, |this, _, cx| {
-                this.sync_saves(cx)
-            }));
+        let sync = div().flex().items_end().gap(px(12.)).child(div().flex_1().child(select)).child(self.outline_button(
+            "saves-sync",
+            if syncing { "Syncing" } else { "Sync" },
+            has_path && !syncing,
+            cx,
+            |this, _, cx| this.sync_saves(cx),
+        ));
         let mut sync_rows = rows().field_help(
             sync,
             vec![help("Manual Sync: Sync downloads and uploads what changed. Force Download and Force Upload ignore the version that is locally or on the cloud.")],

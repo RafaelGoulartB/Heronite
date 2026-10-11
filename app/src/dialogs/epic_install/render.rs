@@ -28,11 +28,15 @@ impl EpicInstallDialog {
         };
         let mut row = div().flex().flex_wrap().gap_x(px(28.)).gap_y(px(6.));
         if have {
-            row = row
-                .child(cell(Icon::Download, "Download Size", file_size(self.download_bytes())))
-                .child(cell(Icon::FaHardDrive, "Install Size", file_size(self.disk_bytes())));
+            row = row.child(cell(Icon::Download, "Download Size", file_size(self.download_bytes()))).child(cell(
+                Icon::FaHardDrive,
+                "Install Size",
+                file_size(self.disk_bytes()),
+            ));
         } else if let Some(err) = &self.info_error {
-            row = row.child(div().w_full().text_size(px(14.)).text_color(theme::danger_text()).child(err.lines().next().unwrap_or("").to_string()));
+            row = row.child(
+                div().w_full().text_size(px(14.)).text_color(theme::danger_text()).child(err.lines().next().unwrap_or("").to_string()),
+            );
         } else {
             row = row.child(
                 div()
@@ -50,7 +54,13 @@ impl EpicInstallDialog {
         let space = self.space.as_ref()?;
         let after = space.free as f64 - self.disk_bytes();
         let enough = self.info.is_none() || after >= 0.;
-        let mut line = div().text_size(px(13.)).text_color(theme::text_muted()).flex().flex_wrap().gap(px(4.)).child(format!("Space Available: {}", space.message));
+        let mut line = div()
+            .text_size(px(13.))
+            .text_color(theme::text_muted())
+            .flex()
+            .flex_wrap()
+            .gap(px(4.))
+            .child(format!("Space Available: {}", space.message));
         if self.info.is_some() && enough {
             line = line.child(format!(" - After Install: {}", file_size(after)));
         }
@@ -88,14 +98,12 @@ impl EpicInstallDialog {
             return Some(col);
         }
         let shared = self.shared_prefix;
-        col = col.child(
-            checkbox("epic-shared-prefix", shared, "Use shared Wine prefix").on_click(cx.listener(|this, _, window, cx| {
-                this.shared_prefix = !this.shared_prefix;
-                let value = if this.shared_prefix { this.shared_prefix_path.clone() } else { this.suggested_prefix.clone() };
-                this.prefix.update(cx, |s, cx| s.set_value(value, window, cx));
-                cx.notify();
-            })),
-        );
+        col = col.child(checkbox("epic-shared-prefix", shared, "Use shared Wine prefix").on_click(cx.listener(|this, _, window, cx| {
+            this.shared_prefix = !this.shared_prefix;
+            let value = if this.shared_prefix { this.shared_prefix_path.clone() } else { this.suggested_prefix.clone() };
+            this.prefix.update(cx, |s, cx| s.set_value(value, window, cx));
+            cx.notify();
+        })));
         if shared {
             col = col.child(meta_text("Only use this option if you know what you are doing. Sharing the same prefix for multiple games can create problems if their dependencies are incompatible."));
         }
@@ -118,7 +126,11 @@ impl EpicInstallDialog {
             self.default_wine.as_ref().and_then(|w| w.get("name")).and_then(Value::as_str).unwrap_or("").to_string()
         } else {
             self.wine_list.get(self.wine_pick).map(|w| w.name.clone()).unwrap_or_else(|| {
-                if self.wine_loaded { "No Wine or Proton found".into() } else { "Looking for Wine and Proton...".into() }
+                if self.wine_loaded {
+                    "No Wine or Proton found".into()
+                } else {
+                    "Looking for Wine and Proton...".into()
+                }
             })
         };
         let options: Vec<(SharedString, bool)> =
@@ -158,7 +170,13 @@ impl Render for EpicInstallDialog {
                 .flex()
                 .flex_col()
                 .gap(px(6.))
-                .child(div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child("This game is managed by a third-party application"))
+                .child(
+                    div()
+                        .text_size(px(15.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(theme::text_primary())
+                        .child("This game is managed by a third-party application"),
+                )
                 .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(header));
             if !detail.is_empty() {
                 notice = notice.child(meta_text(detail));
@@ -168,7 +186,11 @@ impl Render for EpicInstallDialog {
                     .flex_row()
                     .gap(px(12.))
                     .p(px(14.))
-                    .child(icon(if self.third_party.as_ref().is_some_and(Result::is_ok) { Icon::Check } else { Icon::Warning }, px(20.), theme::text_primary()))
+                    .child(icon(
+                        if self.third_party.as_ref().is_some_and(Result::is_ok) { Icon::Check } else { Icon::Warning },
+                        px(20.),
+                        theme::text_primary(),
+                    ))
                     .child(notice.flex_1().min_w_0()),
             );
         } else if importing {
@@ -265,10 +287,17 @@ impl Render for EpicInstallDialog {
             body = body.child(wine);
         }
 
-        let not_enough = self.third_party.is_none() && self.space.as_ref().is_some_and(|s| self.info.is_some() && (s.free as f64) < self.disk_bytes());
+        let not_enough =
+            self.third_party.is_none() && self.space.as_ref().is_some_and(|s| self.info.is_some() && (s.free as f64) < self.disk_bytes());
         let ready = self.can_install(cx);
         let primary = if importing {
-            action_button("epic-do-import", ButtonKind::Primary, "Import", !text_of(&self.import_path, cx).is_empty(), cx.listener(|this, _, _, cx| this.import(cx)))
+            action_button(
+                "epic-do-import",
+                ButtonKind::Primary,
+                "Import",
+                !text_of(&self.import_path, cx).is_empty(),
+                cx.listener(|this, _, _, cx| this.import(cx)),
+            )
         } else {
             action_button(
                 "epic-do-install",
@@ -278,10 +307,12 @@ impl Render for EpicInstallDialog {
                 cx.listener(|this, _, _, cx| this.install(cx)),
             )
         };
-        let switch = button("epic-switch-mode", ButtonKind::Glass, if importing { "Install" } else { "Import Game" }).on_click(cx.listener(|this, _, _, cx| {
-            this.mode = if this.mode == Mode::Install { Mode::Import } else { Mode::Install };
-            cx.notify();
-        }));
+        let switch = button("epic-switch-mode", ButtonKind::Glass, if importing { "Install" } else { "Import Game" }).on_click(
+            cx.listener(|this, _, _, cx| {
+                this.mode = if this.mode == Mode::Install { Mode::Import } else { Mode::Install };
+                cx.notify();
+            }),
+        );
         let footer = div().flex().gap(px(10.)).when(self.third_party.is_none(), |d| d.child(switch)).child(primary).into_any_element();
         let entity = cx.entity().downgrade();
         dialog(
@@ -295,4 +326,3 @@ impl Render for EpicInstallDialog {
         .into_any_element()
     }
 }
-

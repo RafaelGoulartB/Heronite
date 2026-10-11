@@ -37,7 +37,13 @@ pub(super) fn panel() -> Div {
         .bg(rgba(0x161b24d6))
         .border_1()
         .border_color(theme::white_a(0.08))
-        .shadow(vec![BoxShadow { color: theme::black_a(0.28), offset: point(px(0.), px(12.)), blur_radius: px(40.), spread_radius: px(0.), inset: false }])
+        .shadow(vec![BoxShadow {
+            color: theme::black_a(0.28),
+            offset: point(px(0.), px(12.)),
+            blur_radius: px(40.),
+            spread_radius: px(0.),
+            inset: false,
+        }])
 }
 
 /// Panel title row: title on the left, `right` (hint or action) on the right.
@@ -48,7 +54,14 @@ pub(super) fn panel_head(title: impl Into<SharedString>, right: impl IntoElement
         .justify_between()
         .gap(px(12.))
         .mb(px(14.))
-        .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(17.)).text_color(theme::text_primary()).child(title.into()))
+        .child(
+            div()
+                .font_family(theme::FONT_HEADING)
+                .font_weight(theme::W_BOLD)
+                .text_size(px(17.))
+                .text_color(theme::text_primary())
+                .child(title.into()),
+        )
         .child(right)
 }
 
@@ -126,14 +139,22 @@ impl StatsPage {
                     .font_weight(theme::W_BOLD)
                     .text_size(px(13.))
                     .when(on, |d| d.bg(theme::accent()).text_color(theme::on_accent()))
-                    .when(!on, |d| d.text_color(theme::text_muted()).cursor_pointer().hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary())))
+                    .when(!on, |d| {
+                        d.text_color(theme::text_muted())
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary()))
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| this.set_span(span, cx)))
                     .child(label),
             );
         }
         let all = self.period.span == Span::All;
         let label = match self.period.span {
-            Span::All => self.history.as_ref().and_then(|h| h.since).map_or_else(String::new, |d| format!("Since {} {}", month_name(d.month()), d.year())),
+            Span::All => self
+                .history
+                .as_ref()
+                .and_then(|h| h.since)
+                .map_or_else(String::new, |d| format!("Since {} {}", month_name(d.month()), d.year())),
             _ => self.period.label(),
         };
         let arrow = |id: &'static str, ic: Icon, enabled: bool| {
@@ -219,7 +240,13 @@ impl StatsPage {
                 .bg(rgba(0x161b24d6))
                 .border_1()
                 .border_color(theme::white_a(0.14))
-                .shadow(vec![BoxShadow { color: theme::black_a(0.35), offset: point(px(0.), px(10.)), blur_radius: px(30.), spread_radius: px(0.), inset: false }])
+                .shadow(vec![BoxShadow {
+                    color: theme::black_a(0.35),
+                    offset: point(px(0.), px(10.)),
+                    blur_radius: px(30.),
+                    spread_radius: px(0.),
+                    inset: false,
+                }])
                 .cursor_pointer()
                 .hover(|s| s.border_color(Hsla { a: 0.5, ..Hsla::from(theme::accent()) }))
                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -231,8 +258,20 @@ impl StatsPage {
                     div()
                         .flex()
                         .flex_col()
-                        .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(14.)).text_color(theme::text_primary()).child(title))
-                        .child(div().text_size(px(12.)).text_color(theme::text_muted()).child("7 stories \u{b7} Ctrl K \u{2192} Year in review")),
+                        .child(
+                            div()
+                                .font_family(theme::FONT_HEADING)
+                                .font_weight(theme::W_BOLD)
+                                .text_size(px(14.))
+                                .text_color(theme::text_primary())
+                                .child(title),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(12.))
+                                .text_color(theme::text_muted())
+                                .child("7 stories \u{b7} Ctrl K \u{2192} Year in review"),
+                        ),
                 )
                 .child(
                     div()
@@ -264,10 +303,26 @@ impl StatsPage {
         }
         // Darken the left (text side) and fade the bottom into the page.
         hero = hero
-            .child(div().absolute().top_0().bottom_0().left_0().w(relative(0.72)).bg(linear_gradient(90., linear_color_stop(ink(0.9), 0.), linear_color_stop(ink(0.16), 1.))))
-            .child(div().absolute().top_0().bottom_0().right_0().w(relative(0.28)).bg(linear_gradient(90., linear_color_stop(ink(0.16), 0.), linear_color_stop(ink(0.3), 1.))))
-            .child(div().absolute().left_0().right_0().bottom(px(118.)).h(px(144.)).bg(linear_gradient(180., linear_color_stop(ink(0.), 0.), linear_color_stop(ink(0.7), 1.))))
-            .child(div().absolute().left_0().right_0().bottom(px(-1.)).h(px(119.)).bg(linear_gradient(180., linear_color_stop(ink(0.7), 0.), linear_color_stop(ink(1.), 1.))));
+            .child(div().absolute().top_0().bottom_0().left_0().w(relative(0.72)).bg(linear_gradient(
+                90.,
+                linear_color_stop(ink(0.9), 0.),
+                linear_color_stop(ink(0.16), 1.),
+            )))
+            .child(div().absolute().top_0().bottom_0().right_0().w(relative(0.28)).bg(linear_gradient(
+                90.,
+                linear_color_stop(ink(0.16), 0.),
+                linear_color_stop(ink(0.3), 1.),
+            )))
+            .child(div().absolute().left_0().right_0().bottom(px(118.)).h(px(144.)).bg(linear_gradient(
+                180.,
+                linear_color_stop(ink(0.), 0.),
+                linear_color_stop(ink(0.7), 1.),
+            )))
+            .child(div().absolute().left_0().right_0().bottom(px(-1.)).h(px(119.)).bg(linear_gradient(
+                180.,
+                linear_color_stop(ink(0.7), 0.),
+                linear_color_stop(ink(1.), 1.),
+            )));
 
         let review = self.render_review_button(window, cx);
         let controls = div().flex().items_center().justify_between().gap(px(16.)).child(self.render_switch(cx)).children(review);
@@ -294,7 +349,15 @@ impl StatsPage {
                         .border_color(theme::white_a(0.08))
                         .text_size(px(12.))
                         .text_color(theme::text_muted())
-                        .child(div().w(px(24.)).h(px(32.)).rounded(px(6.)).overflow_hidden().bg(theme::white_a(0.06)).children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))))
+                        .child(
+                            div()
+                                .w(px(24.))
+                                .h(px(32.))
+                                .rounded(px(6.))
+                                .overflow_hidden()
+                                .bg(theme::white_a(0.06))
+                                .children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
+                        )
                         .child("Art:")
                         .child(div().font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(title))
                         .child(format!("\u{b7} your #1 game of {}", period_name(st))),
@@ -329,7 +392,11 @@ impl StatsPage {
         let over = st.period.end <= today();
         match (change_pct(st), st.prev_secs) {
             (Some(c), _) if c.abs() >= 1. && (over || c > 0.) => {
-                let (text, color) = if c > 0. { (format!("\u{25b2} +{c:.0}% vs {prev_name}"), theme::success()) } else { (format!("\u{25bc} {c:.0}% vs {prev_name}"), theme::danger_text()) };
+                let (text, color) = if c > 0. {
+                    (format!("\u{25b2} +{c:.0}% vs {prev_name}"), theme::success())
+                } else {
+                    (format!("\u{25bc} {c:.0}% vs {prev_name}"), theme::danger_text())
+                };
                 let tint: Hsla = color.into();
                 story = story.child(
                     div()
@@ -352,11 +419,19 @@ impl StatsPage {
             _ => {}
         }
         let sep = || div().size(px(4.)).rounded_full().bg(theme::white_a(0.35));
-        story = story.child(if all { fact(st.days_played.to_string(), "days played".into(), false) } else { fact(st.days_played.to_string(), format!("of {} days", st.days_elapsed), false) });
+        story = story.child(if all {
+            fact(st.days_played.to_string(), "days played".into(), false)
+        } else {
+            fact(st.days_played.to_string(), format!("of {} days", st.days_elapsed), false)
+        });
         if st.streak > 1 {
             story = story.child(sep()).child(fact(format!("{}-day", st.streak), "streak".into(), false));
         }
-        story = story.child(sep()).child(fact(heronite_data::stats::group_thousands(st.sessions as u64), if st.sessions == 1 { "session".into() } else { "sessions".into() }, false));
+        story = story.child(sep()).child(fact(
+            heronite_data::stats::group_thousands(st.sessions as u64),
+            if st.sessions == 1 { "session".into() } else { "sessions".into() },
+            false,
+        ));
         div().mt_auto().pb(px(30.)).child(eyebrow(eyebrow_text, 0.7)).child(number).child(story)
     }
 
@@ -369,9 +444,15 @@ impl StatsPage {
         let hero = self.render_hero(st.as_deref(), panel_w, col_w, window, cx);
         let body: Vec<AnyElement> = match (&self.history, &st) {
             (None, _) | (_, None) => vec![notice(Icon::BarChart, "Reading your play history\u{2026}", "")],
-            (Some(h), Some(_)) if h.is_empty() => vec![notice(Icon::BarChart, "No play time yet", "Play a game from the Collection and your statistics show up here.")],
+            (Some(h), Some(_)) if h.is_empty() => {
+                vec![notice(Icon::BarChart, "No play time yet", "Play a game from the Collection and your statistics show up here.")]
+            }
             (Some(_), Some(st)) if st.total_secs <= 0. => {
-                vec![notice(Icon::AccessTime, &format!("Nothing played in {}", self.period.label()), "Pick another period with the arrows above.")]
+                vec![notice(
+                    Icon::AccessTime,
+                    &format!("Nothing played in {}", self.period.label()),
+                    "Pick another period with the arrows above.",
+                )]
             }
             (Some(_), Some(st)) => self.render_sections(st, col_w, wide, window, cx),
         };
@@ -389,11 +470,16 @@ impl StatsPage {
                     .top(px(HERO_H))
                     .bottom_0()
                     .child(img(src).size_full().object_fit(ObjectFit::Cover).opacity(0.5))
-                    .child(div().absolute().left_0().right_0().top_0().h(px(330.)).bg(linear_gradient(180., linear_color_stop(ink(1.), 0.), linear_color_stop(ink(0.74), 1.))))
+                    .child(div().absolute().left_0().right_0().top_0().h(px(330.)).bg(linear_gradient(
+                        180.,
+                        linear_color_stop(ink(1.), 0.),
+                        linear_color_stop(ink(0.74), 1.),
+                    )))
                     .child(div().absolute().left_0().right_0().top(px(330.)).bottom_0().bg(ink(0.8))),
             );
         }
-        content = content.child(hero).child(div().relative().flex().flex_col().gap(px(GAP)).w(px(col_w)).mx_auto().pt(px(GAP)).children(body));
+        content =
+            content.child(hero).child(div().relative().flex().flex_col().gap(px(GAP)).w(px(col_w)).mx_auto().pt(px(GAP)).children(body));
         let tip = st.as_ref().and_then(|st| self.render_tip(st, window));
         div()
             .size_full()

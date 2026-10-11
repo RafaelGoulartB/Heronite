@@ -16,7 +16,12 @@ fn trimmed_or_none(value: &str) -> Option<String> {
     (!v.is_empty()).then(|| v.to_owned())
 }
 
-fn set_manual_array(target: &mut CollectionGameMetadata, field: &str, slot: fn(&mut CollectionGameMetadata) -> &mut Vec<String>, value: &Option<Vec<String>>) {
+fn set_manual_array(
+    target: &mut CollectionGameMetadata,
+    field: &str,
+    slot: fn(&mut CollectionGameMetadata) -> &mut Vec<String>,
+    value: &Option<Vec<String>>,
+) {
     if let Some(v) = value {
         *slot(target) = unique_names(v.iter().map(|s| Some(s.as_str())), 40);
         target.field_sources.insert(field.to_owned(), "manual".into());

@@ -5,12 +5,12 @@ use std::collections::HashSet;
 use gpui_kit::*;
 use heronite_data::DataPaths;
 use heronite_epic::cmd::{Cancel, Legendary};
+use heronite_epic::info;
 use heronite_epic::manager::{DmState, Event as DmEvent, Job, JobResult};
 use heronite_epic::ops::{self, LegendaryJob};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
 use heronite_epic::util::file_size;
-use heronite_epic::info;
 use serde_json::Value;
 
 use super::{library_entry, Downloads, DownloadsEvent, InstallRequest, QueueState};
@@ -67,11 +67,17 @@ impl Downloads {
                         self.reload_local(cx);
                         if element.kind == ElementKind::Install {
                             // Desktop / menu / Steam shortcuts from the General settings.
-                            crate::system::shortcuts::spawn_on_game_added(cx, &self.data_paths, "legendary", &element.params.app_name, |this, o, cx| {
-                                if let Some(m) = o.summary() {
-                                    this.toast(cx, m.text, m.error);
-                                }
-                            });
+                            crate::system::shortcuts::spawn_on_game_added(
+                                cx,
+                                &self.data_paths,
+                                "legendary",
+                                &element.params.app_name,
+                                |this, o, cx| {
+                                    if let Some(m) = o.summary() {
+                                        this.toast(cx, m.text, m.error);
+                                    }
+                                },
+                            );
                         }
                     }
                     Some(DmStatus::Error) => {
@@ -80,7 +86,15 @@ impl Downloads {
                         }
                         let why = error.unwrap_or_default();
                         let first = why.lines().next().unwrap_or("").to_string();
-                        self.toast(cx, format!("{title}: {} failed{}", verb.to_lowercase(), if first.is_empty() { String::new() } else { format!(" ({first})") }), true);
+                        self.toast(
+                            cx,
+                            format!(
+                                "{title}: {} failed{}",
+                                verb.to_lowercase(),
+                                if first.is_empty() { String::new() } else { format!(" ({first})") }
+                            ),
+                            true,
+                        );
                         if !crate::system::has_window(cx) {
                             crate::system::notify::send(title.clone(), format!("{verb} Failed"));
                         }
@@ -101,7 +115,12 @@ impl Downloads {
             let result = cx
                 .background_spawn(async move {
                     if req.wine_prefix.is_some() || req.wine_version.is_some() {
-                        ops::write_wine_config(&data_paths, &app_name, req.wine_prefix.as_deref().unwrap_or(""), req.wine_version.as_ref())?;
+                        ops::write_wine_config(
+                            &data_paths,
+                            &app_name,
+                            req.wine_prefix.as_deref().unwrap_or(""),
+                            req.wine_version.as_ref(),
+                        )?;
                     }
                     let base = InstallParams {
                         app_name: app_name.clone(),

@@ -43,10 +43,8 @@ impl CollectionView {
             ListItem::Header { group } => {
                 let g = &self.groups[group];
                 let gid = g.id.clone();
-                let header = list::group_header(g, false)
-                    .id(SharedString::from(format!("group-{gid}")))
-                    .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, _, cx| {
+                let header = list::group_header(g, false).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
+                    cx.listener(move |this, _, _, cx| {
                         this.ui.toggle_group(&gid);
                         this.save_ui();
                         if let Some(g) = this.groups.iter_mut().find(|g| g.id == gid) {
@@ -54,7 +52,8 @@ impl CollectionView {
                         }
                         this.rebuild_items();
                         cx.notify();
-                    }));
+                    }),
+                );
                 div().pl(px(13.6)).pr(px(16.)).child(header).into_any_element()
             }
             ListItem::Row { group, start } => {
@@ -143,10 +142,8 @@ impl CollectionView {
         if !self.groups[group].show_header {
             return None;
         }
-        let next_header = self.items[top.item_ix + 1..]
-            .iter()
-            .position(|it| matches!(it, ListItem::Header { .. }))
-            .map(|p| top.item_ix + 1 + p);
+        let next_header =
+            self.items[top.item_ix + 1..].iter().position(|it| matches!(it, ListItem::Header { .. })).map(|p| top.item_ix + 1 + p);
         let mut shift = 0.;
         if let Some(nh) = next_header {
             let vp = self.list_state.viewport_bounds();
@@ -165,9 +162,7 @@ impl CollectionView {
     pub(super) fn render_list_column(&mut self, list_w: f32, cx: &mut Context<Self>) -> Div {
         // The list's padding lives inside each row: GPUI clips list content to
         // the list bounds, and the selection ring sits 2px outside the cover.
-        let list_el = div()
-            .size_full()
-            .child(list(self.list_state.clone(), cx.processor(Self::render_item)).size_full());
+        let list_el = div().size_full().child(list(self.list_state.clone(), cx.processor(Self::render_item)).size_full());
         let wheel_layer = self.wheel_layer(cx);
         let list_scrollbar = crate::ui::scrollbar_draggable(
             "list-scrollbar",
@@ -193,12 +188,7 @@ impl CollectionView {
             })),
         );
         let sticky = self.sticky().map(|(g, shift)| {
-            div()
-                .absolute()
-                .top(px(shift))
-                .left(px(13.6))
-                .right(px(16.))
-                .child(list::group_header(&self.groups[g], true))
+            div().absolute().top(px(shift)).left(px(13.6)).right(px(16.)).child(list::group_header(&self.groups[g], true))
         });
         div()
             .relative()

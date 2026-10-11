@@ -98,17 +98,13 @@ pub fn resolve_binary(probe: &dyn Probe, preferred: Option<&str>) -> Option<Stri
 pub fn parse_config(yaml: &str, home: &str) -> (Option<String>, Option<String>, Option<String>) {
     let backup_path = expand_home(yaml_get(yaml, &["backup", "path"]), home);
     let format = yaml_get(yaml, &["backup", "format", "chosen"]).filter(|f| f == "zip" || f == "simple");
-    let compression = yaml_get(yaml, &["backup", "format", "zip", "compression"])
-        .filter(|c| matches!(c.as_str(), "none" | "deflate" | "bzip2" | "zstd"));
+    let compression =
+        yaml_get(yaml, &["backup", "format", "zip", "compression"]).filter(|c| matches!(c.as_str(), "none" | "deflate" | "bzip2" | "zstd"));
     (backup_path, format, compression)
 }
 
 /// `detectLudusavi`.
-pub fn detect_ludusavi(
-    runner: &dyn CommandRunner,
-    probe: &dyn Probe,
-    preferred: Option<&str>,
-) -> Option<LudusaviDetected> {
+pub fn detect_ludusavi(runner: &dyn CommandRunner, probe: &dyn Probe, preferred: Option<&str>) -> Option<LudusaviDetected> {
     let binary = resolve_binary(probe, preferred)?;
     let home = probe.home();
 
@@ -132,14 +128,7 @@ pub fn detect_ludusavi(
             Err(e) => log::error!("Failed to read Ludusavi config: {e}"),
         }
     }
-    Some(LudusaviDetected {
-        binary,
-        config_path: exists.then_some(config_path),
-        backup_path,
-        format,
-        compression,
-        version,
-    })
+    Some(LudusaviDetected { binary, config_path: exists.then_some(config_path), backup_path, format, compression, version })
 }
 
 #[cfg(test)]
@@ -149,7 +138,6 @@ mod tests {
     use heronite_launch::probe::FakeProbe;
 
     const YAML: &str = "runtime:\n  threads: ~\nbackup:\n  path: ~/Saves\n  ignoredGames:\n    - X\n  format:\n    chosen: zip\n    zip:\n      compression: zstd\n    compression:\n      deflate:\n        level: 6\nrestore:\n  path: /elsewhere\n";
-
 
     #[test]
     fn yaml_paths() {

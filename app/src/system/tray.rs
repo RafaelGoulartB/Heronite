@@ -63,7 +63,11 @@ pub fn icon_pixmaps(dark: bool) -> Vec<ksni::Icon> {
     [32u32, 64]
         .into_iter()
         .map(|size| {
-            let scaled = if rgba.width() == size { rgba.clone() } else { image::imageops::resize(&rgba, size, size, image::imageops::FilterType::Lanczos3) };
+            let scaled = if rgba.width() == size {
+                rgba.clone()
+            } else {
+                image::imageops::resize(&rgba, size, size, image::imageops::FilterType::Lanczos3)
+            };
             let mut data = Vec::with_capacity((size * size * 4) as usize);
             for p in scaled.pixels() {
                 data.extend_from_slice(&[p[3], p[0], p[1], p[2]]);

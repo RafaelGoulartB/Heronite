@@ -19,9 +19,8 @@ pub const STEAM_FULLY_INSTALLED: u64 = 4;
 
 /// Proton, runtimes and tools that appear as Steam apps but are not games.
 pub const SKIP_STEAM_APP_IDS: &[&str] = &[
-    "228980", "858280", "961940", "1070560", "1113280", "1161040", "1245040", "1391110", "1420170",
-    "1493710", "1580130", "1628350", "1826330", "1887720", "2180100", "2230260", "2348590",
-    "2805730", "3658110",
+    "228980", "858280", "961940", "1070560", "1113280", "1161040", "1245040", "1391110", "1420170", "1493710", "1580130", "1628350",
+    "1826330", "1887720", "2180100", "2230260", "2348590", "2805730", "3658110",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,24 +58,15 @@ impl SteamAction {
 
 /// `steam` (or `steam-runtime`) on `$PATH`.
 pub fn find_steam_binary(probe: &dyn Probe) -> Option<String> {
-    ["steam", "steam-runtime"]
-        .iter()
-        .find_map(|n| probe.which(n))
+    ["steam", "steam-runtime"].iter().find_map(|n| probe.which(n))
 }
 
 /// Opens `steam://install/<id>` or `steam://uninstall/<id>` in the Steam client.
-pub fn open_steam_client_uri(
-    spawner: &dyn Spawner,
-    probe: &dyn Probe,
-    action: SteamAction,
-    app_id: &str,
-) -> Result<(), String> {
+pub fn open_steam_client_uri(spawner: &dyn Spawner, probe: &dyn Probe, action: SteamAction, app_id: &str) -> Result<(), String> {
     if find_steam_binary(probe).is_none() {
         return Err("Steam client was not found".into());
     }
-    spawner
-        .open_uri(&steam_uri(action.as_str(), app_id))
-        .map_err(|e| e.to_string())
+    spawner.open_uri(&steam_uri(action.as_str(), app_id)).map_err(|e| e.to_string())
 }
 
 const ENV_BLOCK_EXACT: &[&str] = &[
@@ -118,12 +108,8 @@ pub fn is_blocked_protocol_env(key: &str) -> bool {
 }
 
 /// The cleaned environment used to run `xdg-open steam://...`.
-pub fn desktop_protocol_env(
-    env: impl IntoIterator<Item = (String, String)>,
-) -> Vec<(String, String)> {
-    env.into_iter()
-        .filter(|(k, _)| !is_blocked_protocol_env(k))
-        .collect()
+pub fn desktop_protocol_env(env: impl IntoIterator<Item = (String, String)>) -> Vec<(String, String)> {
+    env.into_iter().filter(|(k, _)| !is_blocked_protocol_env(k)).collect()
 }
 
 /// Where Steam lives on this machine.
@@ -139,15 +125,8 @@ pub struct SteamLocator {
 impl SteamLocator {
     pub fn detect(global: &GlobalSettings, probe: &dyn Probe) -> Self {
         let home = PathBuf::from(probe.home());
-        let steam_path = global
-            .default_steam_path()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".steam").join("steam"));
-        Self {
-            home,
-            steam_path,
-            system_roots: vec![PathBuf::from("/usr/share/steam")],
-        }
+        let steam_path = global.default_steam_path().map(PathBuf::from).unwrap_or_else(|| home.join(".steam").join("steam"));
+        Self { home, steam_path, system_roots: vec![PathBuf::from("/usr/share/steam")] }
     }
 
     /// `steamLibraryRoots`: system root, libraries from `libraryfolders.vdf`,
@@ -196,24 +175,10 @@ impl SteamLocator {
 
     /// Steam console logs that mention game processes.
     pub fn log_files(&self) -> Vec<PathBuf> {
-        const NAMES: [&str; 3] = [
-            "console_log.txt",
-            "console-linux.txt",
-            "console-windows.txt",
-        ];
-        let mut dirs: Vec<PathBuf> = self
-            .library_roots()
-            .into_iter()
-            .map(|r| r.join("logs"))
-            .collect();
+        const NAMES: [&str; 3] = ["console_log.txt", "console-linux.txt", "console-windows.txt"];
+        let mut dirs: Vec<PathBuf> = self.library_roots().into_iter().map(|r| r.join("logs")).collect();
         dirs.push(self.home.join(".steam").join("steam").join("logs"));
-        dirs.push(
-            self.home
-                .join(".local")
-                .join("share")
-                .join("Steam")
-                .join("logs"),
-        );
+        dirs.push(self.home.join(".local").join("share").join("Steam").join("logs"));
         let mut seen = HashSet::new();
         let mut out = Vec::new();
         for dir in dirs {
@@ -266,32 +231,18 @@ pub fn is_non_game_steam_app(name: &str, app_id: &str) -> bool {
 /// installed app without a name (Heroic behaves the same way).
 pub fn parse_app_manifest(text: &str, fallback_app_id: &str) -> SteamManifest {
     let Ok(doc) = Vdf::parse(text) else {
-        return SteamManifest {
-            app_id: fallback_app_id.into(),
-            name: String::new(),
-            fully_installed: true,
-        };
+        return SteamManifest { app_id: fallback_app_id.into(), name: String::new(), fully_installed: true };
     };
     let state = doc.get("AppState");
-    let app_id = state
-        .and_then(|s| s.str_of("appid"))
-        .filter(|s| !s.is_empty())
-        .unwrap_or(fallback_app_id)
-        .to_string();
+    let app_id = state.and_then(|s| s.str_of("appid")).filter(|s| !s.is_empty()).unwrap_or(fallback_app_id).to_string();
     let flags = match state.and_then(|s| s.str_of("StateFlags")) {
         Some(f) => f.trim().parse::<u64>().ok(),
         None => Some(STEAM_FULLY_INSTALLED),
     };
     SteamManifest {
         app_id,
-        name: state
-            .and_then(|s| s.str_of("name"))
-            .unwrap_or("")
-            .trim()
-            .to_string(),
-        fully_installed: flags
-            .map(|f| f & STEAM_FULLY_INSTALLED == STEAM_FULLY_INSTALLED)
-            .unwrap_or(false),
+        name: state.and_then(|s| s.str_of("name")).unwrap_or("").trim().to_string(),
+        fully_installed: flags.map(|f| f & STEAM_FULLY_INSTALLED == STEAM_FULLY_INSTALLED).unwrap_or(false),
     }
 }
 
@@ -304,17 +255,11 @@ pub fn read_manifests(locator: &SteamLocator) -> Vec<SteamManifest> {
         let Ok(rd) = fs::read_dir(&steamapps) else {
             continue;
         };
-        let mut names: Vec<String> = rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
+        let mut names: Vec<String> = rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         names.sort();
         for name in names {
             let lower = name.to_lowercase();
-            let Some(id) = lower
-                .strip_prefix("appmanifest_")
-                .and_then(|r| r.strip_suffix(".acf"))
-            else {
+            let Some(id) = lower.strip_prefix("appmanifest_").and_then(|r| r.strip_suffix(".acf")) else {
                 continue;
             };
             if id.is_empty() || !id.bytes().all(|b| b.is_ascii_digit()) {
@@ -332,24 +277,15 @@ pub fn read_manifests(locator: &SteamLocator) -> Vec<SteamManifest> {
 
 /// Ids of fully installed Steam apps (games, tools and runtimes alike).
 pub fn installed_app_ids(locator: &SteamLocator) -> HashSet<String> {
-    read_manifests(locator)
-        .into_iter()
-        .filter(|m| m.fully_installed)
-        .map(|m| m.app_id)
-        .collect()
+    read_manifests(locator).into_iter().filter(|m| m.fully_installed).map(|m| m.app_id).collect()
 }
 
 /// Installed Steam *games*, without Proton/runtimes/SDKs/soundtracks.
 pub fn list_installed_games(locator: &SteamLocator) -> Vec<SteamInstalledGame> {
     read_manifests(locator)
         .into_iter()
-        .filter(|m| {
-            m.fully_installed && !m.name.is_empty() && !is_non_game_steam_app(&m.name, &m.app_id)
-        })
-        .map(|m| SteamInstalledGame {
-            app_id: m.app_id,
-            name: m.name,
-        })
+        .filter(|m| m.fully_installed && !m.name.is_empty() && !is_non_game_steam_app(&m.name, &m.app_id))
+        .map(|m| SteamInstalledGame { app_id: m.app_id, name: m.name })
         .collect()
 }
 
@@ -361,9 +297,7 @@ pub fn is_steam_app_installed(locator: &SteamLocator, app_id: &str) -> bool {
 pub fn steam_cdn_covers(app_id: &str) -> (String, String) {
     (
         format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/header.jpg"),
-        format!(
-            "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900_2x.jpg"
-        ),
+        format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900_2x.jpg"),
     )
 }
 
@@ -390,18 +324,8 @@ mod tests {
         // Missing StateFlags defaults to installed; broken files too.
         assert!(parse_app_manifest("\"AppState\" { \"appid\" \"7\" }", "7").fully_installed);
         let broken = parse_app_manifest("\"AppState\" {", "9");
-        assert_eq!(
-            (
-                broken.app_id.as_str(),
-                broken.name.as_str(),
-                broken.fully_installed
-            ),
-            ("9", "", true)
-        );
-        assert_eq!(
-            parse_app_manifest(&acf("12", "  Spaced  ", "4"), "1").name,
-            "Spaced"
-        );
+        assert_eq!((broken.app_id.as_str(), broken.name.as_str(), broken.fully_installed), ("9", "", true));
+        assert_eq!(parse_app_manifest(&acf("12", "  Spaced  ", "4"), "1").name, "Spaced");
     }
 
     #[test]
@@ -409,14 +333,8 @@ mod tests {
         assert!(is_non_game_steam_app("Proton 9.0", "2805730"));
         assert!(is_non_game_steam_app("Proton Experimental", "1493710"));
         assert!(is_non_game_steam_app("Proton", "1"));
-        assert!(is_non_game_steam_app(
-            "Steam Linux Runtime 3.0 (sniper)",
-            "1628350"
-        ));
-        assert!(is_non_game_steam_app(
-            "Steamworks Common Redistributables",
-            "228980"
-        ));
+        assert!(is_non_game_steam_app("Steam Linux Runtime 3.0 (sniper)", "1628350"));
+        assert!(is_non_game_steam_app("Steamworks Common Redistributables", "228980"));
         assert!(is_non_game_steam_app("Portal Dedicated Server", "5"));
         assert!(is_non_game_steam_app("Some Game Soundtrack", "6"));
         assert!(is_non_game_steam_app("Source SDK Base 2013", "243730"));
@@ -464,49 +382,21 @@ mod tests {
                 extra.display()
             ),
         );
-        write(
-            &steam.join("steamapps/appmanifest_400.acf"),
-            &acf("400", "Portal", "4"),
-        );
-        write(
-            &steam.join("steamapps/appmanifest_1493710.acf"),
-            &acf("1493710", "Proton Experimental", "4"),
-        );
-        write(
-            &steam.join("steamapps/appmanifest_620.acf"),
-            &acf("620", "Portal 2", "1026"),
-        );
-        write(
-            &extra.join("steamapps/appmanifest_730.acf"),
-            &acf("730", "Counter-Strike 2", "4"),
-        );
-        write(
-            &extra.join("steamapps/appmanifest_400.acf"),
-            &acf("400", "Portal (dup)", "4"),
-        );
-        write(
-            &extra.join("steamapps/appmanifest_abc.acf"),
-            &acf("1", "ignored", "4"),
-        );
+        write(&steam.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
+        write(&steam.join("steamapps/appmanifest_1493710.acf"), &acf("1493710", "Proton Experimental", "4"));
+        write(&steam.join("steamapps/appmanifest_620.acf"), &acf("620", "Portal 2", "1026"));
+        write(&extra.join("steamapps/appmanifest_730.acf"), &acf("730", "Counter-Strike 2", "4"));
+        write(&extra.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal (dup)", "4"));
+        write(&extra.join("steamapps/appmanifest_abc.acf"), &acf("1", "ignored", "4"));
         write(&extra.join("steamapps/readme.txt"), "x");
 
-        let loc = SteamLocator {
-            home: home.clone(),
-            steam_path: steam.clone(),
-            system_roots: vec![],
-        };
+        let loc = SteamLocator { home: home.clone(), steam_path: steam.clone(), system_roots: vec![] };
         let roots = loc.library_roots();
         assert!(roots.contains(&steam) && roots.contains(&extra));
         assert!(!roots.iter().any(|r| r.ends_with("exist")));
 
         let ids = installed_app_ids(&loc);
-        assert_eq!(
-            ids,
-            ["400", "1493710", "730"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect()
-        );
+        assert_eq!(ids, ["400", "1493710", "730"].iter().map(|s| s.to_string()).collect());
         let games = list_installed_games(&loc);
         let names: Vec<_> = games.iter().map(|g| g.name.as_str()).collect();
         assert_eq!(names, ["Portal", "Counter-Strike 2"]);
@@ -544,33 +434,18 @@ mod tests {
         let with_steam = FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam");
         open_steam_client_uri(&spawner, &with_steam, SteamAction::Install, "400").unwrap();
         open_steam_client_uri(&spawner, &with_steam, SteamAction::Uninstall, "400").unwrap();
-        assert_eq!(
-            spawner.uris(),
-            ["steam://install/400", "steam://uninstall/400"]
-        );
-        let err = open_steam_client_uri(&spawner, &FakeProbe::new("/h"), SteamAction::Install, "1")
-            .unwrap_err();
+        assert_eq!(spawner.uris(), ["steam://install/400", "steam://uninstall/400"]);
+        let err = open_steam_client_uri(&spawner, &FakeProbe::new("/h"), SteamAction::Install, "1").unwrap_err();
         assert_eq!(err, "Steam client was not found");
-        assert_eq!(
-            spawner.uris().len(),
-            2,
-            "nothing is opened without a Steam client"
-        );
+        assert_eq!(spawner.uris().len(), 2, "nothing is opened without a Steam client");
         spawner.fail_next_uri("xdg-open: not found");
-        assert!(
-            open_steam_client_uri(&spawner, &with_steam, SteamAction::Install, "1")
-                .unwrap_err()
-                .contains("xdg-open")
-        );
+        assert!(open_steam_client_uri(&spawner, &with_steam, SteamAction::Install, "1").unwrap_err().contains("xdg-open"));
     }
 
     #[test]
     fn uri_building() {
         assert_eq!(steam_uri("rungameid", "400"), "steam://rungameid/400");
-        assert_eq!(
-            steam_uri(SteamAction::Uninstall.as_str(), "7"),
-            "steam://uninstall/7"
-        );
+        assert_eq!(steam_uri(SteamAction::Uninstall.as_str(), "7"), "steam://uninstall/7");
     }
 
     #[test]
@@ -578,16 +453,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
         write(&home.join(".local/share/Steam/logs/console_log.txt"), "x");
-        std::os::unix::fs::symlink(home.join(".local/share/Steam"), home.join(".steam_link"))
-            .unwrap();
+        std::os::unix::fs::symlink(home.join(".local/share/Steam"), home.join(".steam_link")).unwrap();
         fs::create_dir_all(home.join(".steam")).unwrap();
-        std::os::unix::fs::symlink(home.join(".local/share/Steam"), home.join(".steam/steam"))
-            .unwrap();
-        let loc = SteamLocator {
-            home: home.to_path_buf(),
-            steam_path: home.join(".steam/steam"),
-            system_roots: vec![],
-        };
+        std::os::unix::fs::symlink(home.join(".local/share/Steam"), home.join(".steam/steam")).unwrap();
+        let loc = SteamLocator { home: home.to_path_buf(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
         let files = loc.log_files();
         assert_eq!(files.len(), 1, "{files:?}");
     }

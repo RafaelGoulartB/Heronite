@@ -56,14 +56,13 @@ fn live_igdb() {
     assert!(svc.test_igdb_credentials().ok);
     let hits = svc.search_game_metadata("Portal 2");
     assert!(hits.iter().any(|h| h.id == "72"));
-    let c = svc
-        .gather_candidates(&MetadataApplyArgs {
-            app_name: "steam_620".into(),
-            runner: "sideload".into(),
-            title: "Portal 2".into(),
-            steam_app_id: Some("620".into()),
-            ..Default::default()
-        });
+    let c = svc.gather_candidates(&MetadataApplyArgs {
+        app_name: "steam_620".into(),
+        runner: "sideload".into(),
+        title: "Portal 2".into(),
+        steam_app_id: Some("620".into()),
+        ..Default::default()
+    });
     let igdb = c.iter().find(|c| c.source == "igdb").expect("igdb candidate by steam id");
     assert_eq!(igdb.metadata.igdb_id.map(|n| n.get()), Some(72.0));
     assert_eq!(igdb.metadata.steam_app_id.as_deref(), Some("620"));

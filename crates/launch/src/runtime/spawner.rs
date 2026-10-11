@@ -10,7 +10,6 @@ use crate::plan::Command;
 use crate::procs::{signal_tree, Procs, Sig, SystemProcs};
 use crate::steam::desktop_protocol_env;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ExitInfo {
     pub code: Option<i32>,
@@ -61,9 +60,7 @@ pub struct SystemSpawner {
 
 impl Default for SystemSpawner {
     fn default() -> Self {
-        Self {
-            procs: Arc::new(SystemProcs),
-        }
+        Self { procs: Arc::new(SystemProcs) }
     }
 }
 
@@ -126,10 +123,7 @@ impl ProcessHandle for SystemHandle {
                 return Ok(None);
             };
             if let Some(status) = child.try_wait()? {
-                self.exit = Some(ExitInfo {
-                    code: status.code(),
-                    signal: status.signal(),
-                });
+                self.exit = Some(ExitInfo { code: status.code(), signal: status.signal() });
             }
         }
         // Like Node's `close` event (which waits for the output pipe to
@@ -168,9 +162,7 @@ impl SystemSpawner {
     fn spawn_with(&self, cmd: &Command, sink: Sink) -> io::Result<Box<dyn ProcessHandle>> {
         use std::process::Stdio;
         let mut c = std::process::Command::new(&cmd.program);
-        c.args(&cmd.args)
-            .envs(&cmd.env)
-            .stdin(Stdio::null());
+        c.args(&cmd.args).envs(&cmd.env).stdin(Stdio::null());
         if let Some(dir) = cmd.cwd.as_deref().filter(|d| !d.is_empty()) {
             c.current_dir(dir);
         }
@@ -198,12 +190,7 @@ impl SystemSpawner {
         c.stdout(out).stderr(err);
         let child = c.spawn()?;
         let pid = child.id();
-        Ok(Box::new(SystemHandle {
-            child: Some(child),
-            pid,
-            exit: None,
-            procs: self.procs.clone(),
-        }))
+        Ok(Box::new(SystemHandle { child: Some(child), pid, exit: None, procs: self.procs.clone() }))
     }
 }
 
@@ -241,4 +228,3 @@ impl Spawner for SystemSpawner {
             .status();
     }
 }
-

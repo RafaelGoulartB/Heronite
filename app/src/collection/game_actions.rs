@@ -43,9 +43,13 @@ pub(super) enum GameAction {
     LocalUninstall,
     RemoveFromCollection,
     /// Desktop / application menu shortcuts (`add` = create them).
-    Shortcuts { add: bool },
+    Shortcuts {
+        add: bool,
+    },
     /// Non-Steam game shortcut in Steam (`add` = create it).
-    Steam { add: bool },
+    Steam {
+        add: bool,
+    },
     Epic(EpicAction),
 }
 
@@ -65,7 +69,13 @@ pub(super) struct GameActionItem {
 }
 
 impl GameActionItem {
-    pub fn new(action: GameAction, id: impl Into<SharedString>, label: impl Into<SharedString>, icon: Icon, keywords: &'static str) -> Self {
+    pub fn new(
+        action: GameAction,
+        id: impl Into<SharedString>,
+        label: impl Into<SharedString>,
+        icon: Icon,
+        keywords: &'static str,
+    ) -> Self {
         Self { action, id: id.into(), label: label.into(), icon, keywords, in_menu: true }
     }
 
@@ -126,7 +136,10 @@ impl CollectionView {
         if let Some(lib) = self.lib.clone() {
             for st in lib.statuses.iter().filter(|st| st.id != game.status_id) {
                 let label = format!("Status: {}", st.name);
-                v.push(GameActionItem::new(A::Status(st.id.clone()), format!("st-{}", st.id), label, Icon::Flag, "status mark set").palette_only());
+                v.push(
+                    GameActionItem::new(A::Status(st.id.clone()), format!("st-{}", st.id), label, Icon::Flag, "status mark set")
+                        .palette_only(),
+                );
             }
         }
         v
@@ -140,7 +153,9 @@ impl CollectionView {
             A::Primary => self.install_or_play(key, window, cx),
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
             A::Status(id) => self.set_status(key, id.clone(), cx),
-            A::Favourite => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_favourite(paths, &g.app_name, &g.title)),
+            A::Favourite => {
+                self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_favourite(paths, &g.app_name, &g.title))
+            }
             A::Hide => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_hidden(paths, &g.app_name, &g.title)),
             A::RemoveRecent => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::remove_recent(paths, &g.app_name)),
             A::OpenFolder => self.open_install_folder(key, cx),

@@ -37,12 +37,8 @@ impl DetectEnv for SystemEnv {
     }
 
     fn flatpak_installed(&self, id: &str) -> bool {
-        let Ok(mut child) = Command::new("flatpak")
-            .args(["info", id])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
+        let Ok(mut child) =
+            Command::new("flatpak").args(["info", id]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
         else {
             return false;
         };
@@ -50,9 +46,7 @@ impl DetectEnv for SystemEnv {
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => return status.success(),
-                Ok(None) if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(20))
-                }
+                Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
                 _ => {
                     let _ = child.kill();
                     let _ = child.wait();
@@ -68,11 +62,7 @@ impl DetectEnv for SystemEnv {
 
     fn read_dir(&self, dir: &str) -> Vec<String> {
         std::fs::read_dir(dir)
-            .map(|rd| {
-                rd.filter_map(|e| e.ok())
-                    .map(|e| e.file_name().to_string_lossy().into_owned())
-                    .collect()
-            })
+            .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect())
             .unwrap_or_default()
     }
 
@@ -107,30 +97,19 @@ pub fn retroarch_core_dirs(env: &dyn DetectEnv, install_dir: Option<&str>) -> Ve
 /// `findCorePath`.
 pub fn find_core_path(env: &dyn DetectEnv, core: &str, install_dir: Option<&str>) -> Option<String> {
     let file = core_file_name(core);
-    retroarch_core_dirs(env, install_dir)
-        .into_iter()
-        .map(|d| join(&d, &file))
-        .find(|full| env.exists(full))
+    retroarch_core_dirs(env, install_dir).into_iter().map(|d| join(&d, &file)).find(|full| env.exists(full))
 }
 
 /// `existingProfiles` / `attachDetectedCores`: the catalog profiles usable
 /// with this install (core-based ones only when the core file exists).
-pub fn existing_profiles(
-    env: &dyn DetectEnv,
-    definition_id: &str,
-    executable: &str,
-    launch_kind: &str,
-) -> Vec<DetectedEmulatorProfile> {
+pub fn existing_profiles(env: &dyn DetectEnv, definition_id: &str, executable: &str, launch_kind: &str) -> Vec<DetectedEmulatorProfile> {
     let Some(def) = emulator_definition(definition_id) else {
         return vec![];
     };
     let install_dir = (launch_kind != "flatpak").then(|| dirname(executable));
     let mut out = Vec::new();
     for p in &def.profiles {
-        let core_path = p
-            .core
-            .as_deref()
-            .and_then(|c| find_core_path(env, c, install_dir.as_deref()));
+        let core_path = p.core.as_deref().and_then(|c| find_core_path(env, c, install_dir.as_deref()));
         if p.core.is_some() && core_path.is_none() {
             continue;
         }
@@ -149,12 +128,7 @@ pub fn existing_profiles(
 /// with RetroArch cores resolved next to `executable`. When the definition
 /// has core-based profiles and some core is found, only those with a core are
 /// kept; when none is found they all stay (the user sets the core paths).
-pub fn profiles_for_definition(
-    env: &dyn DetectEnv,
-    definition_id: &str,
-    executable: &str,
-    launch_kind: &str,
-) -> Vec<UserEmulatorProfile> {
+pub fn profiles_for_definition(env: &dyn DetectEnv, definition_id: &str, executable: &str, launch_kind: &str) -> Vec<UserEmulatorProfile> {
     let mut profiles = store::default_profiles(definition_id, None);
     let Some(def) = emulator_definition(definition_id) else {
         return profiles;
@@ -162,11 +136,8 @@ pub fn profiles_for_definition(
     let install_dir = (launch_kind != "flatpak" && executable.contains('/')).then(|| dirname(executable));
     let mut any_core = false;
     for p in &mut profiles {
-        let core = p
-            .definition_profile_id
-            .as_deref()
-            .and_then(|pid| def.profiles.iter().find(|d| d.id == pid))
-            .and_then(|d| d.core.as_deref());
+        let core =
+            p.definition_profile_id.as_deref().and_then(|pid| def.profiles.iter().find(|d| d.id == pid)).and_then(|d| d.core.as_deref());
         if let Some(core) = core {
             p.core_path = find_core_path(env, core, install_dir.as_deref());
             any_core |= p.core_path.is_some();
@@ -199,11 +170,7 @@ pub fn detect_emulators(env: &dyn DetectEnv, existing: &[UserEmulator]) -> Vec<D
     found
 }
 
-fn detect_one(
-    env: &dyn DetectEnv,
-    def: &EmulatorDefinition,
-    existing: &[UserEmulator],
-) -> Option<DetectedEmulator> {
+fn detect_one(env: &dyn DetectEnv, def: &EmulatorDefinition, existing: &[UserEmulator]) -> Option<DetectedEmulator> {
     let mut executable: Option<String> = def.binaries.iter().find_map(|b| env.which(b));
     let mut launch_kind = "native";
     let mut flatpak_id: Option<String> = None;
@@ -262,22 +229,15 @@ pub fn list_core_paths(env: &dyn DetectEnv, install_dir: Option<&str>) -> Vec<St
 pub fn add_detected_emulators(paths: &DataPaths, env: &dyn DetectEnv) -> Result<Vec<UserEmulator>> {
     let current = store::list_user_emulators(paths)?;
     let detected = detect_emulators(env, &current);
-    heronite_data::json_store::update::<heronite_launch::emulators::EmulatorsFile, _>(
-        &paths.emulators(),
-        |file| {
-            apply_detected(&mut file.emulators, &current, &detected);
-            Ok(())
-        },
-    )?;
+    heronite_data::json_store::update::<heronite_launch::emulators::EmulatorsFile, _>(&paths.emulators(), |file| {
+        apply_detected(&mut file.emulators, &current, &detected);
+        Ok(())
+    })?;
     store::list_user_emulators(paths)
 }
 
 /// The pure part of `addDetectedEmulators`.
-pub fn apply_detected(
-    emulators: &mut Vec<UserEmulator>,
-    snapshot: &[UserEmulator],
-    detected: &[DetectedEmulator],
-) {
+pub fn apply_detected(emulators: &mut Vec<UserEmulator>, snapshot: &[UserEmulator], detected: &[DetectedEmulator]) {
     for item in detected {
         let existing = snapshot.iter().find(|e| {
             e.definition_id == item.definition_id
@@ -296,16 +256,8 @@ pub fn apply_detected(
                     name: p.name.clone(),
                     platform_id: p.platform_id.clone().or_else(|| cat.map(|c| c.platform_id.clone())),
                     platform_name: Some(p.platform_name.clone()),
-                    arguments: p
-                        .arguments
-                        .clone()
-                        .or_else(|| cat.map(|c| c.arguments.clone()))
-                        .unwrap_or_else(|| "{ImagePath}".into()),
-                    extensions: p
-                        .extensions
-                        .clone()
-                        .or_else(|| cat.map(|c| c.extensions.clone()))
-                        .unwrap_or_default(),
+                    arguments: p.arguments.clone().or_else(|| cat.map(|c| c.arguments.clone())).unwrap_or_else(|| "{ImagePath}".into()),
+                    extensions: p.extensions.clone().or_else(|| cat.map(|c| c.extensions.clone())).unwrap_or_default(),
                     core_path: p.core_path.clone(),
                     folder_indicator: cat.and_then(|c| c.folder_indicator.clone()),
                     playlist_extensions: cat.and_then(|c| c.playlist_extensions.clone()),
@@ -319,28 +271,13 @@ pub fn apply_detected(
                 let mut merged: Vec<UserEmulatorProfile> = ex
                     .profiles
                     .iter()
-                    .map(|profile| {
-                        match incoming
-                            .iter()
-                            .find(|i| i.definition_profile_id == profile.definition_profile_id)
-                        {
-                            Some(fresh) => UserEmulatorProfile {
-                                core_path: fresh.core_path.clone(),
-                                ..profile.clone()
-                            },
-                            None => profile.clone(),
-                        }
+                    .map(|profile| match incoming.iter().find(|i| i.definition_profile_id == profile.definition_profile_id) {
+                        Some(fresh) => UserEmulatorProfile { core_path: fresh.core_path.clone(), ..profile.clone() },
+                        None => profile.clone(),
                     })
                     .collect();
                 merged.extend(
-                    incoming
-                        .iter()
-                        .filter(|i| {
-                            !ex.profiles
-                                .iter()
-                                .any(|p| p.definition_profile_id == i.definition_profile_id)
-                        })
-                        .cloned(),
+                    incoming.iter().filter(|i| !ex.profiles.iter().any(|p| p.definition_profile_id == i.definition_profile_id)).cloned(),
                 );
                 merged
             }
@@ -351,10 +288,7 @@ pub fn apply_detected(
             UpsertUserEmulatorArgs {
                 id: existing.map(|e| e.id.clone()),
                 definition_id: item.definition_id.clone(),
-                name: existing
-                    .map(|e| e.name.clone())
-                    .filter(|n| !n.is_empty())
-                    .unwrap_or_else(|| item.name.clone()),
+                name: existing.map(|e| e.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| item.name.clone()),
                 executable: item.executable.clone(),
                 install_dir: None,
                 launch_kind: item.launch_kind.clone(),
@@ -406,11 +340,7 @@ mod tests {
         // RetroArch flatpak core: only SNES + PS1 cores exist.
         env.files.insert("/var/lib/flatpak/app/org.libretro.RetroArch/current/active/files/lib/libretro/snes9x_libretro.so".into());
         env.files.insert("/usr/lib/libretro/pcsx_rearmed_libretro.so".into());
-        let existing = vec![UserEmulator {
-            definition_id: "pcsx2".into(),
-            executable: "/usr/bin/pcsx2-qt".into(),
-            ..Default::default()
-        }];
+        let existing = vec![UserEmulator { definition_id: "pcsx2".into(), executable: "/usr/bin/pcsx2-qt".into(), ..Default::default() }];
         let found = detect_emulators(&env, &existing);
         let ids: Vec<_> = found.iter().map(|d| d.definition_id.as_str()).collect();
         assert_eq!(ids, ["dolphin", "pcsx2", "retroarch"]);
@@ -462,10 +392,7 @@ mod tests {
             "/usr/lib/libretro".into(),
             vec!["b_libretro.so".into(), "a_libretro.so".into(), "readme.txt".into(), "c_libretro.info".into()],
         );
-        assert_eq!(
-            list_core_paths(&env, None),
-            ["/usr/lib/libretro/a_libretro.so", "/usr/lib/libretro/b_libretro.so"]
-        );
+        assert_eq!(list_core_paths(&env, None), ["/usr/lib/libretro/a_libretro.so", "/usr/lib/libretro/b_libretro.so"]);
     }
 
     #[test]

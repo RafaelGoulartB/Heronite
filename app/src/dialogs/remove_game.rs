@@ -28,9 +28,7 @@ impl EventEmitter<DialogEvent> for RemoveGameDialog {}
 
 /// The confirmation text.
 pub fn confirm_message(title: &str) -> String {
-    format!(
-        "Remove {title} from Collection? This does not uninstall the game. Playtime, status, and Collection images for it are deleted."
-    )
+    format!("Remove {title} from Collection? This does not uninstall the game. Playtime, status, and Collection images for it are deleted.")
 }
 
 impl RemoveGameDialog {
@@ -65,8 +63,7 @@ impl RemoveGameDialog {
                     Ok(_) => cx.emit(DialogEvent::ChangedAndClose),
                     Err(message) => {
                         this.error = Some(
-                            if message.is_empty() { "Could not remove this game from Collection.".to_string() } else { message }
-                                .into(),
+                            if message.is_empty() { "Could not remove this game from Collection.".to_string() } else { message }.into(),
                         );
                         cx.notify();
                     }
@@ -83,7 +80,14 @@ impl Render for RemoveGameDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if crate::console::active() {
             let rows = self.console_rows();
-            return crate::console::list::simple_dialog(&mut self.console_list, "console-remove-game", TITLE, &confirm_message(&self.title), self.error.clone(), &rows);
+            return crate::console::list::simple_dialog(
+                &mut self.console_list,
+                "console-remove-game",
+                TITLE,
+                &confirm_message(&self.title),
+                self.error.clone(),
+                &rows,
+            );
         }
         let body = div()
             .flex()
@@ -115,7 +119,10 @@ impl Render for RemoveGameDialog {
 impl RemoveGameDialog {
     fn console_rows(&self) -> Vec<crate::console::list::Row> {
         use crate::console::list::Row;
-        vec![Row::action("cancel", "Cancel"), Row::action("remove", if self.working { "Removing\u{2026}" } else { "Remove" }).danger().enabled(!self.working)]
+        vec![
+            Row::action("cancel", "Cancel"),
+            Row::action("remove", if self.working { "Removing\u{2026}" } else { "Remove" }).danger().enabled(!self.working),
+        ]
     }
 }
 

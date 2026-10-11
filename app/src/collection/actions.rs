@@ -11,11 +11,7 @@ use super::{data, CollectionView};
 
 impl CollectionView {
     pub(super) fn dialog_ctx(&self) -> Option<crate::dialogs::DialogCtx> {
-        Some(crate::dialogs::DialogCtx {
-            data_paths: self.data_paths.clone(),
-            app: self.app_paths.clone(),
-            lib: self.lib.clone()?,
-        })
+        Some(crate::dialogs::DialogCtx { data_paths: self.data_paths.clone(), app: self.app_paths.clone(), lib: self.lib.clone()? })
     }
 
     /// Hosts `view` as the open dialog and reacts to its events.
@@ -56,9 +52,8 @@ impl CollectionView {
     pub(super) fn refresh_groups(&mut self) {
         let Some(lib) = self.lib.clone() else { return };
         let playing = &self.playing;
-        let groups = data::build_groups(&lib, &self.ui, &self.search, &|key| {
-            lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name))
-        });
+        let groups =
+            data::build_groups(&lib, &self.ui, &self.search, &|key| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name)));
         self.set_groups(groups);
         self.refresh_focus();
     }

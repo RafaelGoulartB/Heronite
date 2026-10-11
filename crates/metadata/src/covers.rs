@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{anyhow, Result};
 use heronite_data::json_store;
-use heronite_data::models::{GameInfo, StoreConfigFile, LocalGameMeta, LocalMetaFile};
+use heronite_data::models::{GameInfo, LocalGameMeta, LocalMetaFile, StoreConfigFile};
 use heronite_data::paths::DataPaths;
 use parking_lot::Mutex;
 use serde_json::Value;
@@ -37,10 +37,7 @@ fn steam_cdn(app_id: &str, file: &str) -> String {
 
 /// `steamCovers`.
 pub fn steam_covers(app_id: &str) -> Covers {
-    Covers {
-        art_square: Some(steam_cdn(app_id, "library_600x900_2x.jpg")),
-        art_cover: Some(steam_cdn(app_id, "header.jpg")),
-    }
+    Covers { art_square: Some(steam_cdn(app_id, "library_600x900_2x.jpg")), art_cover: Some(steam_cdn(app_id, "header.jpg")) }
 }
 
 /// `steamGridKey`: the SteamGridDB key from Heroic's settings. Keys that
@@ -98,8 +95,27 @@ pub fn score_steam_name(query: &str, name: &str) -> i32 {
 
 /// Words a store adds after a game's name for another edition of the same game.
 const EDITION_WORDS: &[&str] = &[
-    "goty", "game", "of", "the", "year", "edition", "definitive", "deluxe", "complete", "remastered", "enhanced",
-    "director", "directors", "s", "cut", "ultimate", "gold", "special", "anniversary", "standard", "digital",
+    "goty",
+    "game",
+    "of",
+    "the",
+    "year",
+    "edition",
+    "definitive",
+    "deluxe",
+    "complete",
+    "remastered",
+    "enhanced",
+    "director",
+    "directors",
+    "s",
+    "cut",
+    "ultimate",
+    "gold",
+    "special",
+    "anniversary",
+    "standard",
+    "digital",
 ];
 
 /// Strict [`score_steam_name`]: 100 for the same name, 95 for the same name
@@ -270,10 +286,8 @@ pub fn steamgrid_id_from_steam_app(http: &Http, api_key: &str, steam_app_id: &st
 }
 
 fn bottles_grid(http: &Http, title: &str) -> Option<String> {
-    let resp = http
-        .get(format!("{}/api/search/{}", http.endpoints.bottles_steamgrid, encode_uri_component(title)))
-        .timeout_secs(5)
-        .send_ok();
+    let resp =
+        http.get(format!("{}/api/search/{}", http.endpoints.bottles_steamgrid, encode_uri_component(title))).timeout_secs(5).send_ok();
     match resp {
         Ok(r) => {
             let text = r.text();

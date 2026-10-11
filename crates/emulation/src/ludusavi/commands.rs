@@ -35,10 +35,7 @@ pub struct BackupCommand<'a> {
 
 /// `ludusavi backup --force --api --no-cloud-sync [overrides] <game>`.
 pub fn backup_command(c: &BackupCommand) -> Vec<String> {
-    let mut cmd: Vec<String> = ["backup", "--force", "--api", "--no-cloud-sync"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut cmd: Vec<String> = ["backup", "--force", "--api", "--no-cloud-sync"].iter().map(|s| s.to_string()).collect();
     if !c.use_installed {
         cmd.extend(["--path".into(), c.configured_path.into()]);
         cmd.extend(["--format".into(), c.format.into()]);
@@ -78,20 +75,12 @@ pub fn best_find_match(payload: &Value) -> Option<String> {
 
 /// `overall.totalGames` of a backup reply.
 pub fn total_games(payload: &Value) -> u64 {
-    payload
-        .get("overall")
-        .and_then(|o| o.get("totalGames"))
-        .and_then(|v| v.as_u64().or_else(|| v.as_f64().map(|f| f as u64)))
-        .unwrap_or(0)
+    payload.get("overall").and_then(|o| o.get("totalGames")).and_then(|v| v.as_u64().or_else(|| v.as_f64().map(|f| f as u64))).unwrap_or(0)
 }
 
 /// `gameNamesFromPayload`.
 pub fn game_names(payload: &Value) -> Vec<String> {
-    payload
-        .get("games")
-        .and_then(Value::as_object)
-        .map(|g| g.keys().cloned().collect())
-        .unwrap_or_default()
+    payload.get("games").and_then(Value::as_object).map(|g| g.keys().cloned().collect()).unwrap_or_default()
 }
 
 /// `winePrefixForLudusavi`: the prefix itself or its `pfx` child, whichever
@@ -133,7 +122,21 @@ mod tests {
         });
         assert_eq!(
             c,
-            ["backup", "--force", "--api", "--no-cloud-sync", "--path", "/b", "--format", "zip", "--compression", "zstd", "--wine-prefix", "/pfx", "G"]
+            [
+                "backup",
+                "--force",
+                "--api",
+                "--no-cloud-sync",
+                "--path",
+                "/b",
+                "--format",
+                "zip",
+                "--compression",
+                "zstd",
+                "--wine-prefix",
+                "/pfx",
+                "G"
+            ]
         );
         let c = backup_command(&BackupCommand {
             use_installed: false,

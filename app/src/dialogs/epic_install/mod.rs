@@ -69,14 +69,7 @@ pub struct EpicInstallDialog {
 impl EventEmitter<DialogEvent> for EpicInstallDialog {}
 
 impl EpicInstallDialog {
-    pub fn new(
-        data_paths: DataPaths,
-        _app: AppPaths,
-        game: Value,
-        mode: Mode,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(data_paths: DataPaths, _app: AppPaths, game: Value, mode: Mode, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let app_name = game.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
         let title = game.get("title").and_then(Value::as_str).unwrap_or(&app_name).to_string();
         let home = std::env::var("HOME").unwrap_or_default();
@@ -94,11 +87,8 @@ impl EpicInstallDialog {
             .map(str::to_string)
             .unwrap_or_else(|| game_config::default_wine_prefix_dir(&home));
         let suggested_prefix = format!("{prefix_dir}/{}", remove_special_characters(&title));
-        let shared_prefix_path = global
-            .get("winePrefix")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .unwrap_or_else(|| game_config::shared_wine_prefix(&home));
+        let shared_prefix_path =
+            global.get("winePrefix").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| game_config::shared_wine_prefix(&home));
         let default_wine = global.get("wineVersion").filter(|v| v.get("bin").is_some()).cloned();
 
         let path = new_input(window, cx, &default_install, &default_install);
@@ -250,12 +240,7 @@ impl EpicInstallDialog {
 
     /// Tags of the required and chosen selective downloads.
     fn selected_tags(&self) -> Vec<String> {
-        self.sdl
-            .iter()
-            .filter(|(s, on)| s.required || *on)
-            .flat_map(|(s, _)| s.tags.iter().cloned())
-            .filter(|t| !t.is_empty())
-            .collect()
+        self.sdl.iter().filter(|(s, on)| s.required || *on).flat_map(|(s, _)| s.tags.iter().cloned()).filter(|t| !t.is_empty()).collect()
     }
 
     fn wine_selection(&self, cx: &App) -> (Option<String>, Option<Value>) {

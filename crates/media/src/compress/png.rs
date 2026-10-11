@@ -133,8 +133,7 @@ pub fn decode(path: &Path) -> Result<Decoded, String> {
     // Text after the image data is only known once the file is read.
     reader.finish().map_err(|e| e.to_string())?;
     let info = reader.info();
-    let mut text: Vec<(String, String)> =
-        info.uncompressed_latin1_text.iter().map(|t| (t.keyword.clone(), t.text.clone())).collect();
+    let mut text: Vec<(String, String)> = info.uncompressed_latin1_text.iter().map(|t| (t.keyword.clone(), t.text.clone())).collect();
     text.extend(info.compressed_latin1_text.iter().filter_map(|t| Some((t.keyword.clone(), t.get_text().ok()?))));
     text.extend(info.utf8_text.iter().filter_map(|t| Some((t.keyword.clone(), t.get_text().ok()?))));
     Ok(Decoded {

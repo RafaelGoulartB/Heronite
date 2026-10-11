@@ -19,10 +19,8 @@ impl LogPaths {
     /// `<data>/logs`, with the launcher's logs in `launcher/`.
     /// `HERONITE_LOG_DIR` overrides the folder.
     pub fn for_data(data_paths: &DataPaths) -> Self {
-        let base = std::env::var_os("HERONITE_LOG_DIR")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| data_paths.logs_dir());
+        let base =
+            std::env::var_os("HERONITE_LOG_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| data_paths.logs_dir());
         Self { launcher_dir: base.join("launcher"), base }
     }
 

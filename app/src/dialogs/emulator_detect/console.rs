@@ -35,10 +35,11 @@ impl DetectEmulatorsDialog {
     fn console_rows(&self) -> Vec<Row> {
         let busy = self.busy();
         let selected = self.selected_count();
-        let mut rows = vec![Row::action("folder", if self.folder_scanning.is_some() { "Searching\u{2026}" } else { "Scan a folder\u{2026}" })
-            .desc("Searches a folder you pick, for example your Emulation folder")
-            .icon(Icon::FolderOpen)
-            .enabled(!busy)];
+        let mut rows =
+            vec![Row::action("folder", if self.folder_scanning.is_some() { "Searching\u{2026}" } else { "Scan a folder\u{2026}" })
+                .desc("Searches a folder you pick, for example your Emulation folder")
+                .icon(Icon::FolderOpen)
+                .enabled(!busy)];
         if self.rows.iter().any(|r| !r.item.already_added) {
             rows.push(Row::action("all", "Select all").icon(Icon::Check));
             rows.push(Row::action("none", "Select none").icon(Icon::Close));
@@ -60,7 +61,10 @@ impl DetectEmulatorsDialog {
                 Row::toggle(id, r.item.name.clone(), r.selected).desc(desc)
             });
         }
-        rows.push(Row::action("add", if self.adding { "Adding\u{2026}".to_string() } else { format!("Add {selected} emulator(s)") }).enabled(selected > 0 && !busy));
+        rows.push(
+            Row::action("add", if self.adding { "Adding\u{2026}".to_string() } else { format!("Add {selected} emulator(s)") })
+                .enabled(selected > 0 && !busy),
+        );
         rows.push(Row::action("close", "Close"));
         rows
     }

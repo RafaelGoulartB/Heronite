@@ -90,9 +90,7 @@ pub fn merge_releases(
         }
     }
     for release in fetched {
-        let found = to_store
-            .iter()
-            .position(|o| o.version == release.version || o.version == format!("Proton-{}", release.version));
+        let found = to_store.iter().position(|o| o.version == release.version || o.version == format!("Proton-{}", release.version));
         match found {
             None => to_store.push(release),
             Some(i) if release.version.ends_with("-latest") => to_store[i] = release,
@@ -132,11 +130,7 @@ pub fn refresh(data_paths: &DataPaths, repos_to_fetch: &[Repository], count: usi
 
 /// Merges already fetched releases into the cache file.
 pub fn apply_fetched(data_paths: &DataPaths, fetched: Vec<WineVersionInfo>) -> Result<Vec<WineVersionInfo>> {
-    let merged = if has_key(data_paths) {
-        merge_releases(read_releases(data_paths), fetched, dir_exists)
-    } else {
-        fetched
-    };
+    let merged = if has_key(data_paths) { merge_releases(read_releases(data_paths), fetched, dir_exists) } else { fetched };
     write_releases(data_paths, &merged)?;
     Ok(merged)
 }
@@ -154,10 +148,7 @@ pub fn mark_installed(data_paths: &DataPaths, info: &WineVersionInfo) -> Result<
 /// Marks `version` as not installed (after a removal).
 pub fn mark_removed(data_paths: &DataPaths, version: &str) -> Result<()> {
     let mut list = read_releases(data_paths);
-    let r = list
-        .iter_mut()
-        .find(|r| r.version == version)
-        .ok_or_else(|| anyhow!("{version} is not in wine-downloader-info.json"))?;
+    let r = list.iter_mut().find(|r| r.version == version).ok_or_else(|| anyhow!("{version} is not in wine-downloader-info.json"))?;
     r.is_installed = Some(false);
     r.install_dir = Some(String::new());
     r.disksize = 0;
@@ -190,10 +181,8 @@ mod tests {
 
     #[test]
     fn merge_keeps_install_and_flags_update() {
-        let old = vec![
-            installed(rel("GE-Proton-latest", "2026-08-01", "sumA"), "/t/GE-Proton-latest"),
-            rel("GE-Proton11-5", "2026-08-01", "x"),
-        ];
+        let old =
+            vec![installed(rel("GE-Proton-latest", "2026-08-01", "sumA"), "/t/GE-Proton-latest"), rel("GE-Proton11-5", "2026-08-01", "x")];
         let fetched = vec![
             rel("GE-Proton-latest", "2026-09-01", "sumB"),
             rel("GE-Proton11-6", "2026-09-01", "sumB"),

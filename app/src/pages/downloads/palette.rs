@@ -16,13 +16,17 @@ impl PaletteCommands for DownloadsPage {
         let idle = current.is_none().then_some("Nothing is downloading");
         let what = current.clone().unwrap_or_default();
         let mut v = Vec::new();
-        v.push(match (current.is_some(), snap.state) {
-            (true, DmState::Running) | (false, _) => {
-                PageCommand::new("pause", "Pause downloads", what.clone(), Icon::Pause).keywords("hold queue epic").disabled(idle)
+        v.push(
+            match (current.is_some(), snap.state) {
+                (true, DmState::Running) | (false, _) => {
+                    PageCommand::new("pause", "Pause downloads", what.clone(), Icon::Pause).keywords("hold queue epic").disabled(idle)
+                }
+                (true, _) => {
+                    PageCommand::new("resume", "Resume downloads", what.clone(), Icon::PlayArrow).keywords("continue start queue epic")
+                }
             }
-            (true, _) => PageCommand::new("resume", "Resume downloads", what.clone(), Icon::PlayArrow).keywords("continue start queue epic"),
-        }
-        .stay());
+            .stay(),
+        );
         v.push(
             PageCommand::new("stop", "Stop the current download\u{2026}", what, Icon::Stop)
                 .keywords("cancel abort queue epic")

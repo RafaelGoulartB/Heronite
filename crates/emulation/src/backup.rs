@@ -17,8 +17,7 @@ use crate::pathutil::{join, resolve};
 use crate::settings_ext::{record_collection_backup, BackupRecord};
 
 /// File/folder names never copied (caches, tools, logs).
-pub const SKIP_NAMES: &[&str] =
-    &["images-cache", "tools", "store_cache", "screenshot-thumbnails", "steam-details", "logs"];
+pub const SKIP_NAMES: &[&str] = &["images-cache", "tools", "store_cache", "screenshot-thumbnails", "steam-details", "logs"];
 
 /// `CollectionBackupResult`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -40,10 +39,7 @@ struct Running;
 
 impl Running {
     fn acquire() -> Option<Self> {
-        RUNNING
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .ok()
-            .map(|_| Running)
+        RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).ok().map(|_| Running)
     }
 }
 
@@ -170,19 +166,13 @@ pub fn run_collection_backup(paths: &DataPaths, force: bool, now: DateTime<Local
     })();
     match outcome {
         Ok(()) => {
-            let _ = record_collection_backup(
-                paths,
-                &BackupRecord { at, path: Some(destination.clone()), error: None },
-            );
+            let _ = record_collection_backup(paths, &BackupRecord { at, path: Some(destination.clone()), error: None });
             log::info!("Collection backup saved to {destination}");
             CollectionBackupResult { ran: true, path: Some(destination), ..Default::default() }
         }
         Err(e) => {
             let message = format!("{e:#}");
-            let _ = record_collection_backup(
-                paths,
-                &BackupRecord { at, path: None, error: Some(message.clone()) },
-            );
+            let _ = record_collection_backup(paths, &BackupRecord { at, path: None, error: Some(message.clone()) });
             log::error!("Collection backup failed: {message}");
             CollectionBackupResult { error: Some(message), ..Default::default() }
         }
@@ -208,12 +198,7 @@ mod tests {
     }
 
     fn settings_with(folder: &str, interval: &str, last: Option<DateTime<Local>>) -> BackupSettings {
-        BackupSettings {
-            folder: folder.into(),
-            interval: interval.into(),
-            last_backup_at: last.map(iso_millis),
-            ..Default::default()
-        }
+        BackupSettings { folder: folder.into(), interval: interval.into(), last_backup_at: last.map(iso_millis), ..Default::default() }
     }
 
     #[test]

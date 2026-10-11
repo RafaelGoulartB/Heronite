@@ -43,7 +43,9 @@ impl SettingsPanel {
             );
         }
         list = list.child(div().py(px(10.)).child(self.outline_button("shared-folder-add", "Add folder", true, cx, |_, window, cx| {
-            choose_path(window, cx, true, "Choose a folder for Proton to see", |this: &mut Self, path, _, cx| this.add_shared_folder(path, cx));
+            choose_path(window, cx, true, "Choose a folder for Proton to see", |this: &mut Self, path, _, cx| {
+                this.add_shared_folder(path, cx)
+            });
         })));
         column()
             .child(heading("Folders visible to Proton"))

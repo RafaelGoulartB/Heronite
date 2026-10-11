@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use super::logic::{self, RunKind};
 use super::parts::{column, danger_text, heading, help, rows};
-use super::{SettingsPanel, Notice, Target};
+use super::{Notice, SettingsPanel, Target};
 use crate::ui::fields::choose_path;
 
 impl SettingsPanel {
@@ -163,20 +163,24 @@ impl SettingsPanel {
         let list = self.wine_list.clone().unwrap_or_default();
         let options = logic::wine_options(&list, &current);
         let selected = options.iter().position(|w| w.name == current.name).unwrap_or(0);
-        let shown = if loading && list.is_empty() {
-            "Loading\u{2026}".to_string()
-        } else {
-            logic::display_wine_name(&current.name)
-        };
+        let shown = if loading && list.is_empty() { "Loading\u{2026}".to_string() } else { logic::display_wine_name(&current.name) };
         let items: Vec<(SharedString, bool)> =
             options.iter().enumerate().map(|(i, w)| (SharedString::from(logic::display_wine_name(&w.name)), i == selected)).collect();
-        let field = self.select_row("wine-version", Some("Wine / Proton version"), shown, items, loading && list.is_empty(), cx, move |this, i, _, cx| {
-            let list = this.wine_list.clone().unwrap_or_default();
-            let options = logic::wine_options(&list, &this.wine_version());
-            if let Some(w) = options.get(i) {
-                this.set("wineVersion", logic::wine_to_value(w), cx);
-            }
-        });
+        let field = self.select_row(
+            "wine-version",
+            Some("Wine / Proton version"),
+            shown,
+            items,
+            loading && list.is_empty(),
+            cx,
+            move |this, i, _, cx| {
+                let list = this.wine_list.clone().unwrap_or_default();
+                let options = logic::wine_options(&list, &this.wine_version());
+                if let Some(w) = options.get(i) {
+                    this.set("wineVersion", logic::wine_to_value(w), cx);
+                }
+            },
+        );
         let mut col = column().gap(px(6.)).child(field);
         if !loading && list.is_empty() {
             col = col.child(danger_text("No Wine version was found, download one from the Wine Manager"));
@@ -197,7 +201,8 @@ impl SettingsPanel {
     fn tools_row(&mut self, cx: &mut Context<Self>) -> Div {
         let busy = self.tool_busy;
         let idle = busy.is_none();
-        let label = |name: &'static str, text: &'static str| if busy == Some(name) { format!("{text} (running)") } else { text.to_string() };
+        let label =
+            |name: &'static str, text: &'static str| if busy == Some(name) { format!("{text} (running)") } else { text.to_string() };
         div()
             .flex()
             .flex_col()
@@ -356,7 +361,11 @@ fn run_tool_blocking(paths: &heronite_data::DataPaths, home: &str, app: &str, to
     let built = build_tool_command(&ctx, &SystemProbe, &settings, tool)?;
     let c = &built.command;
     let mut cmd = std::process::Command::new(&c.program);
-    cmd.args(&c.args).envs(&c.env).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    cmd.args(&c.args)
+        .envs(&c.env)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     if let Some(dir) = c.cwd.as_deref().filter(|d| Path::new(d).is_dir()) {
         cmd.current_dir(dir);
     }

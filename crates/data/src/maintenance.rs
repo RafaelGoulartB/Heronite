@@ -43,8 +43,7 @@ fn tree_size(path: &Path) -> (usize, u64) {
 
 /// Size of what [`clear_caches`] would remove.
 pub fn cache_size(data_paths: &DataPaths, app: &AppPaths) -> ClearReport {
-    let (files, bytes) =
-        cache_targets(data_paths, app).iter().map(|p| tree_size(p)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+    let (files, bytes) = cache_targets(data_paths, app).iter().map(|p| tree_size(p)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
     ClearReport { files, bytes }
 }
 

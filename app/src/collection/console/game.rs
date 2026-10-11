@@ -50,8 +50,15 @@ impl CollectionView {
             ("Install", Icon::Download)
         };
         let mut rows = vec![Row::action("primary", label).icon(ic)];
-        if !playing && super::super::install_options::can_install_manually(g) && super::super::install_options::store_install_label(g).is_some() {
-            rows.push(Row::action("x:manual-install", "Install manually\u{2026}").icon(Icon::Edit).desc("Run an installer or pick the game's files"));
+        if !playing
+            && super::super::install_options::can_install_manually(g)
+            && super::super::install_options::store_install_label(g).is_some()
+        {
+            rows.push(
+                Row::action("x:manual-install", "Install manually\u{2026}")
+                    .icon(Icon::Edit)
+                    .desc("Run an installer or pick the game's files"),
+            );
         }
         if let Some(lib) = &self.lib {
             let names: Vec<SharedString> = lib.statuses.iter().map(|s| SharedString::from(s.name.clone())).collect();
@@ -63,7 +70,9 @@ impl CollectionView {
             rows.push(Row::action("settings", "Game settings").icon(Icon::Tune).desc("Wine / Proton, launch options, Gamescope\u{2026}"));
         }
         if !playing {
-            rows.push(Row::text("playtime", "Playtime", heronite_data::collection::playtime_label(g.playtime_minutes)).icon(Icon::AccessTime));
+            rows.push(
+                Row::text("playtime", "Playtime", heronite_data::collection::playtime_label(g.playtime_minutes)).icon(Icon::AccessTime),
+            );
         }
 
         // What the desktop context menu offers besides the above.
@@ -72,7 +81,9 @@ impl CollectionView {
         if g.installed && !steam_game && g.game.install.is_dlc != Some(true) {
             let (shortcuts, in_steam) = self.probe_shortcuts(g, cx);
             manage.push(Row::toggle("sys:shortcuts", "Desktop and menu shortcuts", shortcuts).icon(Icon::OpenInNew));
-            manage.push(Row::toggle("sys:steam", "In Steam", in_steam).icon(Icon::SportsEsports).desc("As a non-Steam game in your Steam library"));
+            manage.push(
+                Row::toggle("sys:steam", "In Steam", in_steam).icon(Icon::SportsEsports).desc("As a non-Steam game in your Steam library"),
+            );
         }
         manage.push(Row::action("x:ludusavi", "Back up saves (Ludusavi)").icon(Icon::Save));
         manage.push(Row::toggle("hidden", "Hidden", g.hidden).icon(Icon::VisibilityOff).desc("Hidden games stay out of the library"));
@@ -139,12 +150,17 @@ impl CollectionView {
                     .child(kit::kicker("Game"))
                     .child(kit::title(g.title.clone(), 52.))
                     .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(facts.join(" \u{b7} ")))
-                    .children(focus.as_ref().map(|f| f.meta_line.clone()).filter(|m| !m.is_empty()).map(|m| {
-                        div().text_size(u(14.)).text_color(theme::text_dim()).child(m)
-                    })),
+                    .children(
+                        focus
+                            .as_ref()
+                            .map(|f| f.meta_line.clone())
+                            .filter(|m| !m.is_empty())
+                            .map(|m| div().text_size(u(14.)).text_color(theme::text_dim()).child(m)),
+                    ),
             );
 
-        let mut about = div().id("console-game-about").flex().flex_col().gap(u(14.)).overflow_y_scroll().track_scroll(self.console.game.about.handle());
+        let mut about =
+            div().id("console-game-about").flex().flex_col().gap(u(14.)).overflow_y_scroll().track_scroll(self.console.game.about.handle());
         if let Some(f) = &focus {
             // Status, score and library live in the desktop left column, not in `details`.
             let head = [

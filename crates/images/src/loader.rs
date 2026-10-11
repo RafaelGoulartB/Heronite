@@ -216,14 +216,13 @@ fn worker(s: Arc<Shared>) {
             }
         };
 
-        let result: LoadResult = match catch_unwind(AssertUnwindSafe(|| {
-            crate::load(&req.chain, req.width, req.height, req.variant, &s.opts)
-        })) {
-            Ok(r) => r.map(Arc::new),
-            Err(p) => Err(ImageError::Panic(
-                p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default(),
-            )),
-        };
+        let result: LoadResult =
+            match catch_unwind(AssertUnwindSafe(|| crate::load(&req.chain, req.width, req.height, req.variant, &s.opts))) {
+                Ok(r) => r.map(Arc::new),
+                Err(p) => Err(ImageError::Panic(
+                    p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default(),
+                )),
+            };
 
         let waiters = s.state.lock().unwrap_or_else(|e| e.into_inner()).entries.remove(&key).map(|e| e.waiters).unwrap_or_default();
         let n = waiters.len();

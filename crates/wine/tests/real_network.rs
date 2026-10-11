@@ -22,13 +22,13 @@ fn refresh_install_remove_against_fixture() {
     assert!(out.releases.iter().any(|r| r.version == "Proton-CachyOS-latest"));
     assert!(out.errors.is_empty());
 
-    let info = store::read_releases(&data_paths)
-        .into_iter()
-        .find(|r| r.version == SMALL)
-        .expect("small build in cache");
+    let info = store::read_releases(&data_paths).into_iter().find(|r| r.version == SMALL).expect("small build in cache");
     let manager = WineManager::new(data_paths.clone());
     assert!(manager.start_install(info));
-    assert!(!manager.start_install(store::read_releases(&data_paths).into_iter().find(|r| r.version == SMALL).unwrap()), "no duplicate job");
+    assert!(
+        !manager.start_install(store::read_releases(&data_paths).into_iter().find(|r| r.version == SMALL).unwrap()),
+        "no duplicate job"
+    );
     let start = Instant::now();
     let mut last_print = Instant::now();
     let mut events = Vec::new();

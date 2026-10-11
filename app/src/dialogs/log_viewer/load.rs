@@ -67,10 +67,14 @@ impl LogViewer {
             Start::Game(app) => self
                 .entries
                 .iter()
-                .position(|e| e.app_name() == Some(app.as_str()) && matches!(e.source, LogSource::Game { ty: heronite_launch::log_writer::GameLogType::Launch, .. }))
+                .position(|e| {
+                    e.app_name() == Some(app.as_str())
+                        && matches!(e.source, LogSource::Game { ty: heronite_launch::log_writer::GameLogType::Launch, .. })
+                })
                 .or_else(|| self.entries.iter().position(|e| e.app_name() == Some(app.as_str()))),
         };
-        self.selected = by_path.or_else(|| if first_time { by_start() } else { None }).or(if self.entries.is_empty() { None } else { Some(0) });
+        self.selected =
+            by_path.or_else(|| if first_time { by_start() } else { None }).or(if self.entries.is_empty() { None } else { Some(0) });
         if by_path.is_none() {
             self.previous = false;
             self.window_bytes = FIRST_VIEW_BYTES;
@@ -198,7 +202,9 @@ impl LogViewer {
         let day = || {
             e.path
                 .file_name()
-                .map(|n| n.to_string_lossy().trim_start_matches("heronite-rs-").trim_end_matches(".log").trim_end_matches(".old").to_string())
+                .map(|n| {
+                    n.to_string_lossy().trim_start_matches("heronite-rs-").trim_end_matches(".log").trim_end_matches(".old").to_string()
+                })
                 .unwrap_or_default()
         };
         match &e.source {

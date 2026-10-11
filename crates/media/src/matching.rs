@@ -193,10 +193,7 @@ pub fn score_screenshot_folder(query: &str, folder: &str) -> i32 {
     }
     let q_compact = compact(q_src);
     let f_compact = compact(f_src);
-    if !q_compact.is_empty()
-        && !f_compact.is_empty()
-        && (f_compact.starts_with(&q_compact) || q_compact.starts_with(&f_compact))
-    {
+    if !q_compact.is_empty() && !f_compact.is_empty() && (f_compact.starts_with(&q_compact) || q_compact.starts_with(&f_compact)) {
         let (a, b) = (q_compact.len().min(f_compact.len()), q_compact.len().max(f_compact.len()));
         let ratio = a as f64 / b as f64;
         score = score.max(js_round(70.0 * ratio + 20.0));
@@ -242,11 +239,7 @@ pub fn pick_screenshot_folder<Q: AsRef<str>, F: AsRef<str>>(
             let f_nums = numbers(&f_tokens);
             let q_words: Vec<&str> = q_tokens.iter().copied().filter(|t| !is_number(t)).collect();
             let word_hits = q_words.iter().filter(|w| f_tokens.contains(w)).count();
-            if !q_nums.is_empty()
-                && same_set(&q_nums, &f_nums)
-                && !q_words.is_empty()
-                && word_hits as f64 / q_words.len() as f64 >= 0.5
-            {
+            if !q_nums.is_empty() && same_set(&q_nums, &f_nums) && !q_words.is_empty() && word_hits as f64 / q_words.len() as f64 >= 0.5 {
                 next = next.max(82);
             }
             score = score.max(next);
@@ -323,12 +316,8 @@ mod tests {
         assert_eq!(score_screenshot_folder("Game 2", "Game 3"), 0);
         assert!(pick(&["Death Stranding"], &["Death Stranding 2 - On the Beach"], None).is_none());
         assert_eq!(
-            pick(
-                &["Death Stranding 2: On the Beach"],
-                &["Death Stranding - Director's Cut", "Death Stranding 2 - On the Beach"],
-                None
-            )
-            .as_deref(),
+            pick(&["Death Stranding 2: On the Beach"], &["Death Stranding - Director's Cut", "Death Stranding 2 - On the Beach"], None)
+                .as_deref(),
             Some("Death Stranding 2 - On the Beach")
         );
         // Query without numbers against a folder with: penalized below the minimum.
@@ -390,14 +379,10 @@ mod tests {
     #[test]
     fn aliases_and_ties() {
         // Any query may match; first folder wins a tie (strict `>`).
-        assert_eq!(
-            pick(&["Wrong", "Elden Ring"], &["elden ring", "Elden-Ring"], None).as_deref(),
-            Some("elden ring")
-        );
+        assert_eq!(pick(&["Wrong", "Elden Ring"], &["elden ring", "Elden-Ring"], None).as_deref(), Some("elden ring"));
         // Best score wins over order.
         assert_eq!(
-            pick(&["Death Stranding"], &["Death Stranding - Director's Cut", "Death Stranding"], None)
-                .as_deref(),
+            pick(&["Death Stranding"], &["Death Stranding - Director's Cut", "Death Stranding"], None).as_deref(),
             Some("Death Stranding")
         );
         let no_queries: [&str; 0] = [];

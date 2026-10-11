@@ -78,10 +78,8 @@ impl SettingsPage {
                 this.advanced.busy = false;
                 match res {
                     Ok(r) => {
-                        this.advanced.notice = Some((
-                            format!("Cache cleared: {} file(s), {}.", r.files, maintenance::human_size(r.bytes)).into(),
-                            false,
-                        ));
+                        this.advanced.notice =
+                            Some((format!("Cache cleared: {} file(s), {}.", r.files, maintenance::human_size(r.bytes)).into(), false));
                         this.advanced.size = Some(ClearReport::default());
                         // The Epic library cache is rebuilt by its refresh.
                         cx.emit(PageEvent::LibraryChanged);
@@ -114,19 +112,35 @@ impl SettingsPage {
             row(
                 "Data folder",
                 Some("Library, settings, logins, Wine tools and logs."),
-                action_button("adv-open-config", ButtonKind::Glass, "Open", true, cx.listener(move |this, _, _, cx| this.open_dir(cfg.clone(), cx))),
+                action_button(
+                    "adv-open-config",
+                    ButtonKind::Glass,
+                    "Open",
+                    true,
+                    cx.listener(move |this, _, _, cx| this.open_dir(cfg.clone(), cx)),
+                ),
             )
             .into_any_element(),
             row(
                 "Logs folder",
-                Some(if logs.is_some() { "Logs of this app, the runners and your games." } else { "There is no logs folder yet: it appears when a game is launched." }),
+                Some(if logs.is_some() {
+                    "Logs of this app, the runners and your games."
+                } else {
+                    "There is no logs folder yet: it appears when a game is launched."
+                }),
                 logs_btn,
             )
             .into_any_element(),
             row(
                 "Settings folder",
                 Some("Where this app keeps its own data."),
-                action_button("adv-open-app", ButtonKind::Glass, "Open", true, cx.listener(move |this, _, _, cx| this.open_dir(app_cfg.clone(), cx))),
+                action_button(
+                    "adv-open-app",
+                    ButtonKind::Glass,
+                    "Open",
+                    true,
+                    cx.listener(move |this, _, _, cx| this.open_dir(app_cfg.clone(), cx)),
+                ),
             )
             .into_any_element(),
         ]);
@@ -142,11 +156,23 @@ impl SettingsPage {
                 .flex()
                 .items_center()
                 .gap(px(8.))
-                .child(action_button("adv-cache-cancel", ButtonKind::Ghost, "Cancel", true, cx.listener(|this, _, _, cx| {
-                    this.advanced.confirm = false;
-                    cx.notify();
-                })))
-                .child(action_button("adv-cache-yes", ButtonKind::Danger, "Yes, clear the cache", true, cx.listener(|this, _, _, cx| this.clear_cache(cx))))
+                .child(action_button(
+                    "adv-cache-cancel",
+                    ButtonKind::Ghost,
+                    "Cancel",
+                    true,
+                    cx.listener(|this, _, _, cx| {
+                        this.advanced.confirm = false;
+                        cx.notify();
+                    }),
+                ))
+                .child(action_button(
+                    "adv-cache-yes",
+                    ButtonKind::Danger,
+                    "Yes, clear the cache",
+                    true,
+                    cx.listener(|this, _, _, cx| this.clear_cache(cx)),
+                ))
                 .into_any_element()
         } else {
             action_button(
@@ -227,7 +253,12 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
         rows.push(Row::action("cache-no", "Keep the cache"));
         rows.push(Row::action("cache-yes", "Yes, clear the cache").danger());
     } else {
-        rows.push(Row::action("cache", if a.busy { "Clearing\u{2026}" } else { "Clear the cache" }).icon(Icon::DeleteOutline).desc(size_line).enabled(has_cache && !a.busy));
+        rows.push(
+            Row::action("cache", if a.busy { "Clearing\u{2026}" } else { "Clear the cache" })
+                .icon(Icon::DeleteOutline)
+                .desc(size_line)
+                .enabled(has_cache && !a.busy),
+        );
     }
     rows.push(Row::header("Settings"));
     rows.push(Row::action("copy", if a.copied { "Copied to the clipboard" } else { "Copy all settings" }).desc("API keys are left out"));
@@ -269,11 +300,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("heronite-settings-test-{}", std::process::id()));
         let data_paths = DataPaths::at(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("config.json"),
-            r#"{"defaultSettings":{"steamGridDbApiKey":"SECRET","maxWorkers":3},"version":"v0"}"#,
-        )
-        .unwrap();
+        std::fs::write(dir.join("config.json"), r#"{"defaultSettings":{"steamGridDbApiKey":"SECRET","maxWorkers":3},"version":"v0"}"#)
+            .unwrap();
         let json = settings_json(&data_paths, "/home/u");
         assert!(!json.contains("SECRET"));
         assert!(json.contains("<hidden>"));

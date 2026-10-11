@@ -123,24 +123,14 @@ pub(super) fn h3(text: impl Into<SharedString>) -> Div {
 pub fn panel(facts: bool) -> Div {
     let d = div().flex().flex_col().border_1();
     if facts {
-        d.pt(px(10.4))
-            .px(px(16.))
-            .pb(px(12.8))
-            .rounded(px(12.))
-            .bg(theme::rgb_a(18, 22, 28, 0.28))
-            .border_color(theme::white_a(0.1))
+        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::rgb_a(18, 22, 28, 0.28)).border_color(theme::white_a(0.1))
     } else {
-        d.py(px(15.2))
-            .px(px(16.8))
-            .rounded(px(10.))
-            .bg(theme::rgb_a(12, 14, 18, 0.42))
-            .border_color(theme::white_a(0.07))
+        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::rgb_a(12, 14, 18, 0.42)).border_color(theme::white_a(0.07))
     }
 }
 
 pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
-    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, left, screenshots, timeline, extras } =
-        props;
+    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, left, screenshots, timeline, extras } = props;
     let on_scroll: Rc<dyn Fn(&mut Window, &mut App)> = Rc::from(actions.on_scroll);
     let scrollbar = crate::ui::scrollbar_draggable(
         "focus-scrollbar",
@@ -174,11 +164,8 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
     // Wide: the title sits above a fixed left column and the scrolling
     // details, so the cover, "Screenshots" and "Details" start on one line.
     // Narrow: everything scrolls, the left block is a row under the title.
-    let (top, scrolled_header, left_col, left_row) = if lay.narrow {
-        (None, Some(header), None, Some(div().mb(px(24.)).child(left)))
-    } else {
-        (Some(header), None, Some(left), None)
-    };
+    let (top, scrolled_header, left_col, left_row) =
+        if lay.narrow { (None, Some(header), None, Some(div().mb(px(24.)).child(left))) } else { (Some(header), None, Some(left), None) };
 
     let on_scroll_wheel = on_scroll.clone();
     div()
@@ -264,9 +251,7 @@ fn header(vm: &FocusVm, title_size: f32) -> Div {
                 .text_color(white())
                 .child(vm.title.clone()),
         )
-        .when(!vm.meta_line.is_empty(), |d| {
-            d.child(div().text_size(px(13.)).text_color(theme::white_a(0.7)).child(vm.meta_line.clone()))
-        })
+        .when(!vm.meta_line.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::white_a(0.7)).child(vm.meta_line.clone())))
 }
 
 /// The blocks of the details, placed by [`body`].

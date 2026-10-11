@@ -8,8 +8,8 @@ use gpui_kit::*;
 use super::input::input_surface;
 use super::text::field_label;
 use crate::icons::Icon;
-use crate::ui::dropdown::{menu_item, menu_panel};
 use crate::theme;
+use crate::ui::dropdown::{menu_item, menu_panel};
 use crate::ui::icon;
 
 /// `SelectField`: label, 40px select and, when `open`, its menu of `options`
@@ -38,22 +38,15 @@ pub fn select_field<V: 'static>(
         .when(disabled, |d| d.opacity(0.5).cursor_not_allowed())
         .when(!disabled, |d| d.cursor_pointer().on_click(cx.listener(move |this, _, w, cx| on_toggle(this, w, cx))))
         .child(div().min_w_0().truncate().child(value.into()))
-        .child(div().absolute().right(px(14.)).top_0().bottom_0().flex().items_center().child(icon(Icon::ExpandMore, px(18.), theme::text_muted())));
-    let mut wrap = div()
-        .relative()
-        .flex()
-        .flex_col()
-        .children(label.map(|l| field_label(l.to_string())))
-        .child(select);
+        .child(div().absolute().right(px(14.)).top_0().bottom_0().flex().items_center().child(icon(
+            Icon::ExpandMore,
+            px(18.),
+            theme::text_muted(),
+        )));
+    let mut wrap = div().relative().flex().flex_col().children(label.map(|l| field_label(l.to_string()))).child(select);
     if open && !disabled {
         let on_pick = Rc::new(on_pick);
-        let mut list = div()
-            .id(SharedString::from(format!("{id}-list")))
-            .flex()
-            .flex_col()
-            .gap(px(2.))
-            .max_h(px(280.))
-            .overflow_y_scroll();
+        let mut list = div().id(SharedString::from(format!("{id}-list"))).flex().flex_col().gap(px(2.)).max_h(px(280.)).overflow_y_scroll();
         for (i, (text, selected)) in options.into_iter().enumerate() {
             let on_pick = on_pick.clone();
             list = list.child(

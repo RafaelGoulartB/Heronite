@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 use super::{ExitInfo, ProcessHandle, Spawner};
 use crate::plan::Command;
 
-
 /// Records everything instead of running it. Handles finish when told to.
 #[derive(Default)]
 pub struct FakeSpawner {
@@ -50,19 +49,13 @@ impl ProcessHandle for FakeHandle {
         let mut s = self.state.lock().unwrap();
         s.terminated = true;
         if self.exit_on_terminate {
-            s.exit = Some(ExitInfo {
-                code: None,
-                signal: Some(15),
-            });
+            s.exit = Some(ExitInfo { code: None, signal: Some(15) });
         }
     }
     fn kill(&mut self) {
         let mut s = self.state.lock().unwrap();
         s.killed = true;
-        s.exit = Some(ExitInfo {
-            code: None,
-            signal: Some(9),
-        });
+        s.exit = Some(ExitInfo { code: None, signal: Some(9) });
     }
 }
 
@@ -85,10 +78,7 @@ impl FakeSpawner {
     /// Makes the `index`-th spawned process exit.
     pub fn finish(&self, index: usize, code: i32) {
         if let Some(h) = self.handle(index) {
-            h.lock().unwrap().exit = Some(ExitInfo {
-                code: Some(code),
-                signal: None,
-            });
+            h.lock().unwrap().exit = Some(ExitInfo { code: Some(code), signal: None });
         }
     }
     pub fn fail_next_spawn(&self, message: &str) {
@@ -110,11 +100,7 @@ impl Spawner for FakeSpawner {
         s.spawned.push(cmd.clone());
         let st = Arc::new(Mutex::new(FakeHandleState::default()));
         s.handles.push(st.clone());
-        Ok(Box::new(FakeHandle {
-            pid,
-            state: st,
-            exit_on_terminate: true,
-        }))
+        Ok(Box::new(FakeHandle { pid, state: st, exit_on_terminate: true }))
     }
     fn open_uri(&self, uri: &str) -> io::Result<()> {
         let mut s = self.state.lock().unwrap();
@@ -125,11 +111,7 @@ impl Spawner for FakeSpawner {
         Ok(())
     }
     fn kill_pattern(&self, pattern: &str) {
-        self.state
-            .lock()
-            .unwrap()
-            .patterns
-            .push(pattern.to_string());
+        self.state.lock().unwrap().patterns.push(pattern.to_string());
     }
     fn make_executable(&self, _path: &str) -> io::Result<()> {
         Ok(())

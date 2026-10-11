@@ -57,10 +57,7 @@ impl Probe for SystemProbe {
             return is_executable_file(Path::new(name)).then(|| name.to_string());
         }
         let path = std::env::var_os("PATH")?;
-        std::env::split_paths(&path)
-            .map(|dir| dir.join(name))
-            .find(|p| is_executable_file(p))
-            .map(|p| p.to_string_lossy().into_owned())
+        std::env::split_paths(&path).map(|dir| dir.join(name)).find(|p| is_executable_file(p)).map(|p| p.to_string_lossy().into_owned())
     }
 
     fn env_var(&self, key: &str) -> Option<String> {
@@ -79,11 +76,7 @@ impl Probe for SystemProbe {
         // Same heuristic as Heroic (and Lutris): >= 3.12 documents `-F, --filter`.
         match std::process::Command::new(bin).arg("--help").output() {
             Ok(out) => {
-                let text = format!(
-                    "{}{}",
-                    String::from_utf8_lossy(&out.stdout),
-                    String::from_utf8_lossy(&out.stderr)
-                );
+                let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
                 !text.contains("-F, --filter")
             }
             Err(_) => false,
@@ -92,17 +85,12 @@ impl Probe for SystemProbe {
 }
 
 pub fn dirs_home() -> String {
-    std::env::var("HOME")
-        .ok()
-        .filter(|h| !h.is_empty())
-        .unwrap_or_else(|| "/".to_string())
+    std::env::var("HOME").ok().filter(|h| !h.is_empty()).unwrap_or_else(|| "/".to_string())
 }
 
 fn is_executable_file(p: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p)
-        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    std::fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
 }
 
 /// In-memory machine for tests (also handy for the app's own tests).
@@ -120,10 +108,7 @@ pub struct FakeProbe {
 
 impl FakeProbe {
     pub fn new(home: &str) -> Self {
-        Self {
-            home: home.to_string(),
-            ..Default::default()
-        }
+        Self { home: home.to_string(), ..Default::default() }
     }
     pub fn with_path(mut self, p: &str) -> Self {
         self.paths.insert(p.to_string());

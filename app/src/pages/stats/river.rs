@@ -61,7 +61,10 @@ impl Mono {
         let h = self.xs[i + 1] - self.xs[i];
         let t = (x - self.xs[i]) / h;
         let (t2, t3) = (t * t, t * t * t);
-        (2. * t3 - 3. * t2 + 1.) * self.ys[i] + (t3 - 2. * t2 + t) * h * self.m[i] + (-2. * t3 + 3. * t2) * self.ys[i + 1] + (t3 - t2) * h * self.m[i + 1]
+        (2. * t3 - 3. * t2 + 1.) * self.ys[i]
+            + (t3 - 2. * t2 + t) * h * self.m[i]
+            + (-2. * t3 + 3. * t2) * self.ys[i + 1]
+            + (t3 - t2) * h * self.m[i + 1]
     }
 }
 

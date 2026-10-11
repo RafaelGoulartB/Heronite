@@ -68,17 +68,7 @@ const fn p(
     platform_name: &'static str,
     ext: &'static [&'static str],
 ) -> P {
-    P {
-        id,
-        name,
-        platform_id,
-        platform_name,
-        ext,
-        cart: false,
-        core: None,
-        folder_indicator: None,
-        playlists: None,
-    }
+    P { id, name, platform_id, platform_name, ext, cart: false, core: None, folder_indicator: None, playlists: None }
 }
 
 impl P {
@@ -104,10 +94,7 @@ const fn ra(
     core: &'static str,
     ext: &'static [&'static str],
 ) -> P {
-    P {
-        core: Some(core),
-        ..p(id, name, platform_id, platform_name, ext)
-    }
+    P { core: Some(core), ..p(id, name, platform_id, platform_name, ext) }
 }
 
 struct D {
@@ -132,9 +119,7 @@ static TABLE: &[D] = &[
                 "Nintendo GameCube",
                 "nintendo_gamecube",
                 "Nintendo GameCube",
-                &[
-                    "elf", "dol", "gcm", "tgc", "ciso", "gcz", "iso", "wad", "rvz", "wia", "m3u",
-                ],
+                &["elf", "dol", "gcm", "tgc", "ciso", "gcz", "iso", "wad", "rvz", "wia", "m3u"],
             )
             .playlists(&["m3u"]),
             p(
@@ -142,9 +127,7 @@ static TABLE: &[D] = &[
                 "Nintendo Wii",
                 "nintendo_wii",
                 "Nintendo Wii",
-                &[
-                    "elf", "dol", "tgc", "wbfs", "ciso", "gcz", "iso", "wad", "rvz", "wia", "m3u",
-                ],
+                &["elf", "dol", "tgc", "wbfs", "ciso", "gcz", "iso", "wad", "rvz", "wia", "m3u"],
             )
             .playlists(&["m3u"]),
         ],
@@ -170,14 +153,8 @@ static TABLE: &[D] = &[
         website: Some("https://www.duckstation.org/"),
         binaries: &["duckstation-qt", "duckstation"],
         core_dir_hints: None,
-        profiles: &[p(
-            "ps1",
-            "PlayStation",
-            "sony_playstation",
-            "PlayStation",
-            &["iso", "bin", "img", "chd", "pbp", "ecm", "m3u", "cue"],
-        )
-        .playlists(&["cue", "m3u"])],
+        profiles: &[p("ps1", "PlayStation", "sony_playstation", "PlayStation", &["iso", "bin", "img", "chd", "pbp", "ecm", "m3u", "cue"])
+            .playlists(&["cue", "m3u"])],
     },
     D {
         id: "ppsspp",
@@ -185,13 +162,7 @@ static TABLE: &[D] = &[
         website: Some("https://www.ppsspp.org/"),
         binaries: &["PPSSPPSDL", "ppsspp", "ppsspp-sdl"],
         core_dir_hints: None,
-        profiles: &[p(
-            "psp",
-            "PlayStation Portable",
-            "sony_psp",
-            "PlayStation Portable",
-            &["iso", "cso", "pbp", "prx", "elf", "chd"],
-        )],
+        profiles: &[p("psp", "PlayStation Portable", "sony_psp", "PlayStation Portable", &["iso", "cso", "pbp", "prx", "elf", "chd"])],
     },
     D {
         id: "rpcs3",
@@ -199,14 +170,7 @@ static TABLE: &[D] = &[
         website: Some("https://rpcs3.net/"),
         binaries: &["rpcs3"],
         core_dir_hints: None,
-        profiles: &[p(
-            "ps3",
-            "PlayStation 3",
-            "sony_playstation3",
-            "PlayStation 3",
-            &["iso", "pkg"],
-        )
-        .indicator("EBOOT.BIN")],
+        profiles: &[p("ps3", "PlayStation 3", "sony_playstation3", "PlayStation 3", &["iso", "pkg"]).indicator("EBOOT.BIN")],
     },
     D {
         id: "cemu",
@@ -214,13 +178,7 @@ static TABLE: &[D] = &[
         website: Some("https://cemu.info/"),
         binaries: &["cemu", "Cemu"],
         core_dir_hints: None,
-        profiles: &[p(
-            "wiiu",
-            "Nintendo Wii U",
-            "nintendo_wiiu",
-            "Nintendo Wii U",
-            &["wud", "wux", "iso", "wad", "rpx", "elf"],
-        )],
+        profiles: &[p("wiiu", "Nintendo Wii U", "nintendo_wiiu", "Nintendo Wii U", &["wud", "wux", "iso", "wad", "rpx", "elf"])],
     },
     D {
         id: "ryujinx",
@@ -228,13 +186,7 @@ static TABLE: &[D] = &[
         website: Some("https://ryujinx.org/"),
         binaries: &["ryujinx", "Ryujinx"],
         core_dir_hints: None,
-        profiles: &[p(
-            "switch",
-            "Nintendo Switch",
-            "nintendo_switch",
-            "Nintendo Switch",
-            &["nsp", "xci", "nca", "nro", "nso"],
-        )],
+        profiles: &[p("switch", "Nintendo Switch", "nintendo_switch", "Nintendo Switch", &["nsp", "xci", "nca", "nro", "nso"])],
     },
     D {
         id: "xemu",
@@ -259,22 +211,8 @@ static TABLE: &[D] = &[
         binaries: &["mgba-qt", "mgba"],
         core_dir_hints: None,
         profiles: &[
-            p(
-                "gba",
-                "Game Boy Advance",
-                "nintendo_gameboyadvance",
-                "Game Boy Advance",
-                &["gba", "agb", "mb", "bin"],
-            )
-            .cart(),
-            p(
-                "gb",
-                "Game Boy / Color",
-                "nintendo_gameboy",
-                "Game Boy",
-                &["gb", "gbc", "sgb", "bin"],
-            )
-            .cart(),
+            p("gba", "Game Boy Advance", "nintendo_gameboyadvance", "Game Boy Advance", &["gba", "agb", "mb", "bin"]).cart(),
+            p("gb", "Game Boy / Color", "nintendo_gameboy", "Game Boy", &["gb", "gbc", "sgb", "bin"]).cart(),
         ],
     },
     D {
@@ -283,14 +221,8 @@ static TABLE: &[D] = &[
         website: Some("https://github.com/flyinghead/flycast"),
         binaries: &["flycast"],
         core_dir_hints: None,
-        profiles: &[p(
-            "dreamcast",
-            "Dreamcast",
-            "sega_dreamcast",
-            "Dreamcast",
-            &["gdi", "cdi", "chd", "cue", "iso", "m3u"],
-        )
-        .playlists(&["gdi", "cue", "m3u"])],
+        profiles: &[p("dreamcast", "Dreamcast", "sega_dreamcast", "Dreamcast", &["gdi", "cdi", "chd", "cue", "iso", "m3u"])
+            .playlists(&["gdi", "cue", "m3u"])],
     },
     D {
         id: "mame",
@@ -314,8 +246,7 @@ static TABLE: &[D] = &[
         website: Some("https://vita3k.org/"),
         binaries: &["Vita3K", "vita3k"],
         core_dir_hints: None,
-        profiles: &[p("vita", "PlayStation Vita", "sony_psvita", "PlayStation Vita", &["vpk"])
-            .indicator("eboot.bin")],
+        profiles: &[p("vita", "PlayStation Vita", "sony_psvita", "PlayStation Vita", &["vpk"]).indicator("eboot.bin")],
     },
     D {
         id: "shadps4",
@@ -323,8 +254,7 @@ static TABLE: &[D] = &[
         website: Some("https://shadps4.net/"),
         binaries: &["shadps4", "ShadPS4"],
         core_dir_hints: None,
-        profiles: &[p("ps4", "PlayStation 4", "sony_playstation4", "PlayStation 4", &["pkg"])
-            .indicator("eboot.bin")],
+        profiles: &[p("ps4", "PlayStation 4", "sony_playstation4", "PlayStation 4", &["pkg"]).indicator("eboot.bin")],
     },
     D {
         id: "azahar",
@@ -332,14 +262,7 @@ static TABLE: &[D] = &[
         website: Some("https://azahar-emu.org/"),
         binaries: &["azahar", "citra", "citra-qt"],
         core_dir_hints: None,
-        profiles: &[p(
-            "3ds",
-            "Nintendo 3DS",
-            "nintendo_3ds",
-            "Nintendo 3DS",
-            &["3ds", "3dsx", "cci", "cxi", "app", "cia"],
-        )
-        .cart()],
+        profiles: &[p("3ds", "Nintendo 3DS", "nintendo_3ds", "Nintendo 3DS", &["3ds", "3dsx", "cci", "cxi", "app", "cia"]).cart()],
     },
     D {
         id: "retroarch",
@@ -364,7 +287,14 @@ static TABLE: &[D] = &[
             ra("gg", "Game Gear", "sega_gamegear", "Game Gear", "genesis_plus_gx_libretro", &["gg", "bin"]).cart(),
             ra("saturn", "Saturn", "sega_saturn", "Sega Saturn", "mednafen_saturn_libretro", &["cue", "chd", "iso", "m3u"]),
             ra("dc", "Dreamcast", "sega_dreamcast", "Dreamcast", "flycast_libretro", &["gdi", "cdi", "chd", "cue", "m3u"]),
-            ra("ps1", "PlayStation", "sony_playstation", "PlayStation", "pcsx_rearmed_libretro", &["cue", "bin", "iso", "chd", "pbp", "m3u"]),
+            ra(
+                "ps1",
+                "PlayStation",
+                "sony_playstation",
+                "PlayStation",
+                "pcsx_rearmed_libretro",
+                &["cue", "bin", "iso", "chd", "pbp", "m3u"],
+            ),
             ra("psp", "PSP", "sony_psp", "PlayStation Portable", "ppsspp_libretro", &["iso", "cso", "pbp", "chd"]),
             ra("pce", "PC Engine", "nec_turbografx_16", "PC Engine", "mednafen_pce_fast_libretro", &["pce", "cue", "chd", "sgx"]).cart(),
             ra("ngp", "Neo Geo Pocket", "snk_neogeopocket", "Neo Geo Pocket", "mednafen_ngp_libretro", &["ngp", "ngc", "ngpc"]).cart(),
@@ -397,16 +327,13 @@ fn build() -> Vec<EmulatorDefinition> {
                 binaries: d.binaries.iter().map(|s| s.to_string()).collect(),
                 flatpak_id: launch.and_then(|l| l.flatpak_id).map(Into::into),
                 stop_pattern: launch.and_then(|l| l.stop_pattern).map(Into::into),
-                core_dir_hints: d
-                    .core_dir_hints
-                    .map(|h| h.iter().map(|s| s.to_string()).collect()),
+                core_dir_hints: d.core_dir_hints.map(|h| h.iter().map(|s| s.to_string()).collect()),
                 profiles: d
                     .profiles
                     .iter()
                     .map(|pr| {
                         let lp = launch_catalog::definition_profile(d.id, pr.id);
-                        let mut extensions: Vec<String> =
-                            pr.ext.iter().map(|s| s.to_string()).collect();
+                        let mut extensions: Vec<String> = pr.ext.iter().map(|s| s.to_string()).collect();
                         if pr.cart {
                             extensions.push("zip".into());
                             extensions.push("7z".into());
@@ -417,14 +344,10 @@ fn build() -> Vec<EmulatorDefinition> {
                             platform_id: pr.platform_id.into(),
                             platform_name: pr.platform_name.into(),
                             extensions,
-                            arguments: lp
-                                .map(|l| l.arguments.to_string())
-                                .unwrap_or_else(|| "{ImagePath}".into()),
+                            arguments: lp.map(|l| l.arguments.to_string()).unwrap_or_else(|| "{ImagePath}".into()),
                             core: pr.core.map(Into::into),
                             folder_indicator: pr.folder_indicator.map(Into::into),
-                            playlist_extensions: pr
-                                .playlists
-                                .map(|v| v.iter().map(|s| s.to_string()).collect()),
+                            playlist_extensions: pr.playlists.map(|v| v.iter().map(|s| s.to_string()).collect()),
                             working_dir: lp.and_then(|l| l.working_dir).map(Into::into),
                         }
                     })
@@ -446,24 +369,13 @@ pub fn emulator_definition(id: &str) -> Option<&'static EmulatorDefinition> {
 }
 
 /// `getDefinitionProfile`.
-pub fn definition_profile(
-    definition_id: &str,
-    profile_id: &str,
-) -> Option<&'static EmulatorDefinitionProfile> {
-    emulator_definition(definition_id)?
-        .profiles
-        .iter()
-        .find(|p| p.id == profile_id)
+pub fn definition_profile(definition_id: &str, profile_id: &str) -> Option<&'static EmulatorDefinitionProfile> {
+    emulator_definition(definition_id)?.profiles.iter().find(|p| p.id == profile_id)
 }
 
 /// `guessDefinitionId`: which catalog emulator a free-form name refers to.
 pub fn guess_definition_id(name: Option<&str>) -> String {
-    let normalized: String = name
-        .unwrap_or("")
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .collect();
+    let normalized: String = name.unwrap_or("").to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect();
     if normalized.is_empty() {
         return "custom".into();
     }
@@ -505,32 +417,20 @@ mod tests {
         assert_eq!(ra.arguments, "-L {CorePath} {ImagePath}");
         assert_eq!(ra.core.as_deref(), Some("snes9x_libretro"));
         assert_eq!(ra.extensions, ["sfc", "smc", "swc", "fig", "bs", "zip", "7z"]);
-        assert_eq!(
-            definition_profile("mame", "arcade").unwrap().working_dir.as_deref(),
-            Some("rom")
-        );
+        assert_eq!(definition_profile("mame", "arcade").unwrap().working_dir.as_deref(), Some("rom"));
         let d = emulator_definition("pcsx2").unwrap();
         assert_eq!(d.flatpak_id.as_deref(), Some("net.pcsx2.PCSX2"));
         assert_eq!(d.stop_pattern.as_deref(), Some("pcsx2"));
-        assert_eq!(
-            definition_profile("rpcs3", "ps3").unwrap().folder_indicator.as_deref(),
-            Some("EBOOT.BIN")
-        );
+        assert_eq!(definition_profile("rpcs3", "ps3").unwrap().folder_indicator.as_deref(), Some("EBOOT.BIN"));
         assert!(emulator_definition("custom").unwrap().flatpak_id.is_none());
     }
 
     #[test]
     fn every_profile_exists_in_the_launch_catalog() {
         for d in emulator_definitions() {
-            let l = launch_catalog::emulator_definition(&d.id)
-                .unwrap_or_else(|| panic!("{} missing in launch catalog", d.id));
+            let l = launch_catalog::emulator_definition(&d.id).unwrap_or_else(|| panic!("{} missing in launch catalog", d.id));
             for pr in &d.profiles {
-                assert!(
-                    l.profiles.iter().any(|lp| lp.id == pr.id),
-                    "{}:{} missing in launch catalog",
-                    d.id,
-                    pr.id
-                );
+                assert!(l.profiles.iter().any(|lp| lp.id == pr.id), "{}:{} missing in launch catalog", d.id, pr.id);
             }
         }
         assert_eq!(emulator_definitions().len(), 18);

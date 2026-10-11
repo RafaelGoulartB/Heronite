@@ -154,7 +154,11 @@ impl ScanRomsDialog {
         self.profile_open = false;
         let saved = self.state.scanners.iter().find(|s| s.emulator_id == emulator && s.profile_id == profile).cloned();
         self.scanner_id = saved.as_ref().map(|s| s.id.clone());
-        let dir = keep_dir.filter(|d| !d.is_empty()).map(str::to_string).or_else(|| saved.as_ref().map(|s| s.directory.clone())).unwrap_or_default();
+        let dir = keep_dir
+            .filter(|d| !d.is_empty())
+            .map(str::to_string)
+            .or_else(|| saved.as_ref().map(|s| s.directory.clone()))
+            .unwrap_or_default();
         self.pending_dir = Some(dir);
         self.scan_subfolders = saved.as_ref().map(|s| s.scan_subfolders).unwrap_or(true);
         self.merge_related = saved.as_ref().map(|s| s.merge_related_files).unwrap_or(true);
@@ -233,10 +237,9 @@ impl Render for ScanRomsDialog {
             .child(toggles)
             .child(div().flex().child(scan_button))
             .children(preview)
-            .children((!self.error.is_empty()).then(|| {
-                div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())
-            }))
-            ;
+            .children(
+                (!self.error.is_empty()).then(|| div().text_color(theme::danger_text()).text_size(px(13.33)).child(self.error.clone())),
+            );
 
         let footer = div()
             .flex()

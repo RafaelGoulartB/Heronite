@@ -38,8 +38,7 @@ impl Output {
     /// `ERROR:` / `CRITICAL:` lines of legendary's log, for messages.
     pub fn error_lines(&self) -> String {
         let all = format!("{}\n{}", self.stderr, self.stdout);
-        let lines: Vec<&str> =
-            all.lines().filter(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("Traceback")).collect();
+        let lines: Vec<&str> = all.lines().filter(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("Traceback")).collect();
         lines.join("\n")
     }
 }

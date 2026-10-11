@@ -98,12 +98,7 @@ pub fn plan(paths: &DataPaths, input: &UninstallInput) -> UninstallPlan {
 /// Deletes what was asked for, then marks the game not installed. Every
 /// target is checked again first; when one asked for is refused, nothing is
 /// deleted and the reason is the error.
-pub fn uninstall(
-    paths: &DataPaths,
-    input: &UninstallInput,
-    delete_files: bool,
-    delete_prefix: bool,
-) -> Result<UninstallOutcome> {
+pub fn uninstall(paths: &DataPaths, input: &UninstallInput, delete_files: bool, delete_prefix: bool) -> Result<UninstallOutcome> {
     let plan = plan(paths, input);
     let files = if delete_files {
         let t = plan.files.ok_or_else(|| anyhow::anyhow!("The install folder was not found on this computer"))?;
@@ -135,7 +130,8 @@ pub fn uninstall(
 /// minus trailing binary subfolders (`Game/Binaries/Win64/game.exe` gives
 /// `Game`, `Game/bin/x64/game.exe` gives `Game`).
 pub fn guess_game_folder(executable: &Path) -> Option<PathBuf> {
-    const BIN_DIRS: &[&str] = &["bin", "bin32", "bin64", "binaries", "x64", "x86", "x86_64", "win32", "win64", "windows", "linux", "release", "shipping"];
+    const BIN_DIRS: &[&str] =
+        &["bin", "bin32", "bin64", "binaries", "x64", "x86", "x86_64", "win32", "win64", "windows", "linux", "release", "shipping"];
     let mut dir = executable.parent()?.to_path_buf();
     while dir.file_name().is_some_and(|n| BIN_DIRS.contains(&n.to_string_lossy().to_lowercase().as_str())) {
         match dir.parent() {

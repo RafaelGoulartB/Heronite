@@ -130,10 +130,7 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 }
 
 fn extra_strings(extra: Option<&Value>, key: &str) -> Option<Vec<String>> {
-    extra?
-        .get(key)?
-        .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+    extra?.get(key)?.as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
 }
 
 fn extra_about<'a>(extra: Option<&'a Value>, key: &str) -> Option<&'a str> {
@@ -160,13 +157,9 @@ impl Details {
         let description = description_source.map(to_plain_text).unwrap_or_default();
 
         let metadata_description = metadata.and_then(|m| m.description.as_deref()).unwrap_or("");
-        let uses_steam_html = metadata
-            .map(|m| m.field_sources.get("description").map(String::as_str) == Some("steam"))
-            .unwrap_or(false)
+        let uses_steam_html = metadata.map(|m| m.field_sources.get("description").map(String::as_str) == Some("steam")).unwrap_or(false)
             || metadata_description.is_empty();
-        let description_html = steam
-            .filter(|s| uses_steam_html && !s.description_html.is_empty())
-            .map(|s| s.description_html.clone());
+        let description_html = steam.filter(|s| uses_steam_html && !s.description_html.is_empty()).map(|s| s.description_html.clone());
 
         let metadata_genres = metadata.filter(|m| !m.genres.is_empty()).map(|m| m.genres.clone());
         let genres: Vec<String> = metadata_genres
@@ -186,9 +179,7 @@ impl Details {
 
         let developer_text = non_empty(metadata.map(|m| m.developers.join(", ")).as_deref())
             .map(str::to_owned)
-            .or_else(|| {
-                non_empty(steam.map(|s| s.developers.join(", ")).as_deref()).map(str::to_owned)
-            })
+            .or_else(|| non_empty(steam.map(|s| s.developers.join(", ")).as_deref()).map(str::to_owned))
             .or_else(|| game.developer.clone());
         let developers = match metadata.map(|m| &m.developers).filter(|d| !d.is_empty()) {
             Some(d) => d.clone(),
@@ -199,9 +190,7 @@ impl Details {
         };
         let publisher_text = non_empty(metadata.map(|m| m.publishers.join(", ")).as_deref())
             .map(str::to_owned)
-            .or_else(|| {
-                non_empty(steam.map(|s| s.publishers.join(", ")).as_deref()).map(str::to_owned)
-            });
+            .or_else(|| non_empty(steam.map(|s| s.publishers.join(", ")).as_deref()).map(str::to_owned));
         let publishers = match metadata.map(|m| &m.publishers).filter(|d| !d.is_empty()) {
             Some(d) => d.clone(),
             None => match steam.map(|s| &s.publishers).filter(|d| !d.is_empty()) {
@@ -220,10 +209,7 @@ impl Details {
         };
         let platform = non_empty(platforms.first().map(String::as_str)).unwrap_or("PC").to_owned();
 
-        let series = metadata
-            .and_then(|m| m.series.as_deref())
-            .map(str::to_owned)
-            .filter(|s| !s.is_empty());
+        let series = metadata.and_then(|m| m.series.as_deref()).map(str::to_owned).filter(|s| !s.is_empty());
         let notes = non_empty(metadata.and_then(|m| m.notes.as_deref()))
             .or_else(|| non_empty(meta.and_then(|m| m.notes.as_deref())))
             .map(str::to_owned);
@@ -232,9 +218,7 @@ impl Details {
             .or_else(|| non_empty(game.install.install_path.as_deref()))
             .or_else(|| non_empty(game.folder_name.as_deref()))
             .map(str::to_owned);
-        let install_size = non_empty(game.install.install_size.as_deref())
-            .filter(|s| *s != "0")
-            .map(str::to_owned);
+        let install_size = non_empty(game.install.install_size.as_deref()).filter(|s| *s != "0").map(str::to_owned);
 
         Details {
             release_date,
@@ -277,12 +261,7 @@ pub fn focus_meta_line(release_date: Option<&str>, platform: &str, genres: &[Str
 /// Details of `game` for the Focus panel. Reads the Steam details cache only
 /// when the TS would fetch it: the game has no Collection metadata entry at
 /// all and has a Steam app id.
-pub fn focus_details(
-    paths: &DataPaths,
-    game: &CollectionGame,
-    language: &str,
-    wiki: Option<&WikiEntry>,
-) -> Details {
+pub fn focus_details(paths: &DataPaths, game: &CollectionGame, language: &str, wiki: Option<&WikiEntry>) -> Details {
     let steam = match (&game.metadata, &game.steam_app_id) {
         (None, Some(id)) => load_steam_details(paths, id, language),
         _ => None,
@@ -312,11 +291,7 @@ pub fn focus_data(library: &Library, game: &CollectionGame, wiki: &WikiCache) ->
     let locale = library.date_locale;
     FocusData {
         meta_line: details.meta_line(locale),
-        last_played: game
-            .last_played
-            .as_deref()
-            .map(|v| format_timestamp(v, locale))
-            .filter(|v| !v.is_empty()),
+        last_played: game.last_played.as_deref().map(|v| format_timestamp(v, locale)).filter(|v| !v.is_empty()),
         playtime: format_playtime_minutes(game.playtime_minutes),
         hltb: entry.and_then(|e| e.hltb).filter(HltbEntry::is_displayable),
         details,
@@ -409,7 +384,9 @@ mod tests {
 
     #[test]
     fn chains_fall_back_to_store_extra_and_game_info() {
-        let g = game(json!({"about": {"description": "<p>Hi&nbsp;there</p>", "shortDescription": ""}, "genres": ["Action", ""], "releaseDate": "2019-08-27"}));
+        let g = game(
+            json!({"about": {"description": "<p>Hi&nbsp;there</p>", "shortDescription": ""}, "genres": ["Action", ""], "releaseDate": "2019-08-27"}),
+        );
         let d = Details::compute(&g, None, None, None, None);
         assert_eq!(d.description, "Hi there");
         assert_eq!(d.genres, ["Action"]);
@@ -429,11 +406,7 @@ mod tests {
             ..Default::default()
         };
         md.field_sources.insert("description".into(), "igdb".into());
-        let steam = SteamDetails {
-            description_html: "<p>steam</p>".into(),
-            genres: vec!["Indie".into()],
-            ..Default::default()
-        };
+        let steam = SteamDetails { description_html: "<p>steam</p>".into(), genres: vec!["Indie".into()], ..Default::default() };
         let d = Details::compute(&g, None, Some(&md), Some(&steam), None);
         assert_eq!(d.description, "From IGDB");
         assert!(d.description_html.is_none());

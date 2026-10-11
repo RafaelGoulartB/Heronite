@@ -72,7 +72,15 @@ fn jpeg_cover_quadrants_survive_scaled_decode() {
     }
     // Wide source into a square: central crop
     let p2 = dir.path().join("w.jpg");
-    write_jpeg(&p2, 900, 300, |x, _| if x < 300 { [255, 0, 0] } else if x < 600 { [0, 255, 0] } else { [0, 0, 255] });
+    write_jpeg(&p2, 900, 300, |x, _| {
+        if x < 300 {
+            [255, 0, 0]
+        } else if x < 600 {
+            [0, 255, 0]
+        } else {
+            [0, 0, 255]
+        }
+    });
     let d = load_cover(&[ImageRef::File(p2)], 60, 60, &o).unwrap();
     for px in d.bgra.chunks(4) {
         assert!(px[1] > 235 && px[0] < 25 && px[2] < 25, "{px:?}");
@@ -87,7 +95,11 @@ fn thumb_cache_hit_and_invalidation() {
     let o = opts(dir.path());
     let chain = [ImageRef::File(p.clone())];
     let a = load_cover(&chain, 16, 16, &o).unwrap();
-    let thumbs = std::fs::read_dir(dir.path().join("thumbs")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".hit")).count();
+    let thumbs = std::fs::read_dir(dir.path().join("thumbs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".hit"))
+        .count();
     assert_eq!(thumbs, 1);
     // Delete the source content but keep size/mtime? Instead: serve from cache
     // by checking it is bit-identical and no extra file is written.
@@ -99,7 +111,11 @@ fn thumb_cache_hit_and_invalidation() {
     write_png(&p, 41, 40, |_, _| [200, 0, 0, 255]);
     let c = load_cover(&chain, 16, 16, &o).unwrap();
     assert_ne!(a, c);
-    let thumbs = std::fs::read_dir(dir.path().join("thumbs")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".hit")).count();
+    let thumbs = std::fs::read_dir(dir.path().join("thumbs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".hit"))
+        .count();
     assert_eq!(thumbs, 3);
 }
 
@@ -181,7 +197,11 @@ fn stage_and_glass_are_cached_separately() {
     let b = load_stage(&chain, 200, 100, 20.0, 1.2, &o).unwrap();
     assert_eq!(a, b);
     load_panel_glass(&chain, 200, 100, 20.0, 1.2, &o).unwrap();
-    let n = std::fs::read_dir(dir.path().join("thumbs")).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".hit")).count();
+    let n = std::fs::read_dir(dir.path().join("thumbs"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".hit"))
+        .count();
     assert_eq!(n, 2);
 }
 

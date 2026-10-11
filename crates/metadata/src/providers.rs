@@ -28,9 +28,8 @@ pub fn metadata_from_store_game(app_name: &str, runner: &str, game: &GameInfo) -
         }
         non_empty(v.as_str())
     };
-    let description = at(&["about", "shortDescription"])
-        .or_else(|| at(&["about", "description"]))
-        .or(non_empty(game.description.as_deref()));
+    let description =
+        at(&["about", "shortDescription"]).or_else(|| at(&["about", "description"])).or(non_empty(game.description.as_deref()));
     let genres: Vec<&str> = extra
         .and_then(|e| e.get("genres"))
         .and_then(Value::as_array)
@@ -44,12 +43,8 @@ pub fn metadata_from_store_game(app_name: &str, runner: &str, game: &GameInfo) -
     md.developers = unique_names12([game.developer.as_deref()]);
     md.genres = unique_names12(genres);
     md.websites = unique_names([at(&["storeUrl"])], 2);
-    md.cover_url = non_empty(game.art_square.as_deref())
-        .or(non_empty(game.art_cover.as_deref()))
-        .map(str::to_owned);
-    md.hero_url = non_empty(game.art_background.as_deref())
-        .or(non_empty(game.art_cover.as_deref()))
-        .map(str::to_owned);
+    md.cover_url = non_empty(game.art_square.as_deref()).or(non_empty(game.art_cover.as_deref())).map(str::to_owned);
+    md.hero_url = non_empty(game.art_background.as_deref()).or(non_empty(game.art_cover.as_deref())).map(str::to_owned);
     md
 }
 
@@ -142,12 +137,7 @@ pub fn usable_playnite_file(library_path: &Path, relative: Option<&str>, max_byt
 }
 
 /// `metadataFromPlayniteGame`.
-pub fn metadata_from_playnite_game(
-    app_name: &str,
-    runner: &str,
-    game: &PlayniteGame,
-    library_path: &Path,
-) -> CollectionGameMetadata {
+pub fn metadata_from_playnite_game(app_name: &str, runner: &str, game: &PlayniteGame, library_path: &Path) -> CollectionGameMetadata {
     let list = |v: &[String]| unique_names12(v.iter().map(|s| Some(s.as_str())));
     let mut md = blank_metadata(app_name, runner);
     md.title = Some(game.name.clone());
@@ -245,11 +235,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(paths.local_library()).unwrap();
-        std::fs::write(
-            paths.local_meta(),
-            r#"{"games":{"x":{"appName":"x","runner":"sideload","playniteId":"ABC-1","title":"X"}}}"#,
-        )
-        .unwrap();
+        std::fs::write(paths.local_meta(), r#"{"games":{"x":{"appName":"x","runner":"sideload","playniteId":"ABC-1","title":"X"}}}"#)
+            .unwrap();
         let src = One(PlayniteGame { id: "abc-1".into(), name: "Found".into(), ..Default::default() }, dir.path().into());
         let md = fetch_playnite_metadata(&paths, Some(&src), "x", "sideload").unwrap();
         assert_eq!(md.title.as_deref(), Some("Found"));

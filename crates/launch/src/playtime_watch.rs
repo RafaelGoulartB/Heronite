@@ -27,10 +27,7 @@ struct LogRegexes {
 fn regexes() -> &'static LogRegexes {
     static RE: OnceLock<LogRegexes> = OnceLock::new();
     RE.get_or_init(|| LogRegexes {
-        added: Regex::new(
-            r"(?i)Game process (?:added|updated)\s*:\s*AppID\s+(\d+).*ProcID\s+(\d+)",
-        )
-        .unwrap(),
+        added: Regex::new(r"(?i)Game process (?:added|updated)\s*:\s*AppID\s+(\d+).*ProcID\s+(\d+)").unwrap(),
         removed: Regex::new(r"(?i)Game process removed:\s*AppID\s+(\d+).*ProcID\s+(\d+)").unwrap(),
         removing: Regex::new(r"(?i)Removing process (\d+) for gameID (\d+)").unwrap(),
     })
@@ -41,10 +38,7 @@ fn matches_steam_app_id(captured: &str, steam_app_id: &str) -> bool {
     if captured == steam_app_id {
         return true;
     }
-    captured
-        .parse::<u64>()
-        .map(|n| (n % 4_294_967_296).to_string() == steam_app_id)
-        .unwrap_or(false)
+    captured.parse::<u64>().map(|n| (n % 4_294_967_296).to_string() == steam_app_id).unwrap_or(false)
 }
 
 /// `(added, removed)` pids mentioned for `steam_app_id` in a chunk of log text.
@@ -87,29 +81,16 @@ pub struct SteamWatch {
 
 /// Steam helper processes that are never the game.
 fn is_steam_helper(comm: &str) -> bool {
-    matches!(
-        comm.to_lowercase().as_str(),
-        "steam" | "steamwebhelper" | "steam-runtime"
-    )
+    matches!(comm.to_lowercase().as_str(), "steam" | "steamwebhelper" | "steam-runtime")
 }
 
 impl SteamWatch {
     pub fn new(app_id: &str) -> Self {
-        Self {
-            app_id: app_id.to_string(),
-            self_pid: std::process::id(),
-            pids: BTreeSet::new(),
-            started: false,
-        }
+        Self { app_id: app_id.to_string(), self_pid: std::process::id(), pids: BTreeSet::new(), started: false }
     }
 
     fn ignorable(&self, pid: u32, procs: &dyn Procs) -> bool {
-        pid == self.self_pid
-            || !procs.is_alive(pid)
-            || procs
-                .comm(pid)
-                .map(|c| is_steam_helper(&c))
-                .unwrap_or(false)
+        pid == self.self_pid || !procs.is_alive(pid) || procs.comm(pid).map(|c| is_steam_helper(&c)).unwrap_or(false)
     }
 
     /// Applies new log text. Returns the pids that were newly tracked.
@@ -171,18 +152,8 @@ impl LogTail {
     pub fn open(path: &Path) -> (Self, String) {
         let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         let start = size.saturating_sub(LOG_TAIL_BYTES);
-        let initial = if size > start {
-            read_range(path, start, size - start).unwrap_or_default()
-        } else {
-            String::new()
-        };
-        (
-            Self {
-                path: path.to_path_buf(),
-                offset: size,
-            },
-            initial,
-        )
+        let initial = if size > start { read_range(path, start, size - start).unwrap_or_default() } else { String::new() };
+        (Self { path: path.to_path_buf(), offset: size }, initial)
     }
 
     /// New text since the last call. A truncated/rotated file restarts at 0.
@@ -211,11 +182,7 @@ pub struct SteamWaitConfig {
 
 impl Default for SteamWaitConfig {
     fn default() -> Self {
-        Self {
-            start_timeout: Duration::from_secs(90),
-            poll_interval: Duration::from_millis(500),
-            resolve_interval: Duration::from_secs(2),
-        }
+        Self { start_timeout: Duration::from_secs(90), poll_interval: Duration::from_millis(500), resolve_interval: Duration::from_secs(2) }
     }
 }
 
@@ -249,10 +216,7 @@ pub fn wait_for_steam_session(
     let mut tails: HashMap<PathBuf, LogTail> = HashMap::new();
     let mut announced = false;
 
-    let attach = |watch: &mut SteamWatch,
-                  tails: &mut HashMap<PathBuf, LogTail>,
-                  files: Vec<PathBuf>|
-     -> Vec<u32> {
+    let attach = |watch: &mut SteamWatch, tails: &mut HashMap<PathBuf, LogTail>, files: Vec<PathBuf>| -> Vec<u32> {
         let mut new = Vec::new();
         for f in files {
             if tails.contains_key(&f) {
@@ -264,10 +228,7 @@ pub fn wait_for_steam_session(
         }
         new
     };
-    let sync = |watch: &SteamWatch,
-                new: &[u32],
-                announced: &mut bool,
-                on_first_pid: &mut dyn FnMut(u32)| {
+    let sync = |watch: &SteamWatch, new: &[u32], announced: &mut bool, on_first_pid: &mut dyn FnMut(u32)| {
         *shared.lock().unwrap() = watch.pids().clone();
         if !*announced {
             if let Some(pid) = new.first().or_else(|| watch.pids().iter().next()) {
@@ -343,8 +304,7 @@ mod tests {
         assert_eq!(added, vec![4242, 4243]);
         assert_eq!(removed, vec![4242, 4243]);
         // 64-bit ids (non-Steam shortcuts) reduce to their low 32 bits.
-        let (a, _) =
-            parse_steam_log_pids("Game process added : AppID 4294967696 x ProcID 5", "400");
+        let (a, _) = parse_steam_log_pids("Game process added : AppID 4294967696 x ProcID 5", "400");
         assert_eq!(a, vec![5]);
     }
 
@@ -375,12 +335,7 @@ mod tests {
         let (mut tail, initial) = LogTail::open(&p);
         assert_eq!(initial, "old line\n");
         assert_eq!(tail.read_new(), None);
-        fs::OpenOptions::new()
-            .append(true)
-            .open(&p)
-            .unwrap()
-            .write_all(b"new line\n")
-            .unwrap();
+        fs::OpenOptions::new().append(true).open(&p).unwrap().write_all(b"new line\n").unwrap();
         assert_eq!(tail.read_new().as_deref(), Some("new line\n"));
         fs::write(&p, "x\n").unwrap();
         assert_eq!(tail.read_new().as_deref(), Some("x\n"));
@@ -408,32 +363,17 @@ mod tests {
         let (p2, a2, s2, l2) = (procs.clone(), abort.clone(), shared.clone(), log.clone());
         let handle = std::thread::spawn(move || {
             let mut first = None;
-            let out = wait_for_steam_session(
-                "400",
-                &*p2,
-                &move || vec![l2.clone()],
-                &fast_cfg(),
-                &a2,
-                &Wake::default(),
-                &s2,
-                &mut |pid| first = Some(pid),
-            );
+            let out = wait_for_steam_session("400", &*p2, &move || vec![l2.clone()], &fast_cfg(), &a2, &Wake::default(), &s2, &mut |pid| {
+                first = Some(pid)
+            });
             (out, first)
         });
 
         std::thread::sleep(Duration::from_millis(60));
         procs.start(4242, "reaper", None);
-        fs::OpenOptions::new()
-            .append(true)
-            .open(&log)
-            .unwrap()
-            .write_all(b"Game process added : AppID 400 x ProcID 4242\n")
-            .unwrap();
+        fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 4242\n").unwrap();
         std::thread::sleep(Duration::from_millis(150));
-        assert_eq!(
-            shared.lock().unwrap().iter().copied().collect::<Vec<_>>(),
-            vec![4242]
-        );
+        assert_eq!(shared.lock().unwrap().iter().copied().collect::<Vec<_>>(), vec![4242]);
         procs.exit(4242);
         let (out, first) = handle.join().unwrap();
         assert_eq!(out, SteamWaitOutcome::Finished);
@@ -448,35 +388,15 @@ mod tests {
         let procs = FakeProcs::new();
         let abort = AtomicBool::new(false);
         let shared = Mutex::new(BTreeSet::new());
-        let cfg = SteamWaitConfig {
-            start_timeout: Duration::from_millis(80),
-            ..fast_cfg()
-        };
+        let cfg = SteamWaitConfig { start_timeout: Duration::from_millis(80), ..fast_cfg() };
         let l = log.clone();
-        let out = wait_for_steam_session(
-            "400",
-            &procs,
-            &move || vec![l.clone()],
-            &cfg,
-            &abort,
-            &Wake::default(),
-            &shared,
-            &mut |_| {},
-        );
+        let out = wait_for_steam_session("400", &procs, &move || vec![l.clone()], &cfg, &abort, &Wake::default(), &shared, &mut |_| {});
         assert_eq!(out, SteamWaitOutcome::NotStarted);
 
         abort.store(true, Ordering::SeqCst);
         let l = log.clone();
-        let out = wait_for_steam_session(
-            "400",
-            &procs,
-            &move || vec![l.clone()],
-            &fast_cfg(),
-            &abort,
-            &Wake::default(),
-            &shared,
-            &mut |_| {},
-        );
+        let out =
+            wait_for_steam_session("400", &procs, &move || vec![l.clone()], &fast_cfg(), &abort, &Wake::default(), &shared, &mut |_| {});
         assert_eq!(out, SteamWaitOutcome::Aborted);
     }
 }

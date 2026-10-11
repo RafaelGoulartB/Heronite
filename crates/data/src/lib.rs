@@ -14,8 +14,8 @@ pub mod art;
 pub mod collection;
 pub mod config_games;
 pub mod details_url;
-pub mod game_config;
 pub mod focus;
+pub mod game_config;
 pub mod heronite_ui_import;
 pub mod hltb;
 pub mod library;
@@ -34,9 +34,7 @@ pub mod timeline;
 pub mod ui_state;
 
 pub use art::{ArtContext, ImageRef};
-pub use collection::{
-    FacetFilters, FacetKind, InstallFilter, SortMode, StatusGroup, ViewQuery,
-};
+pub use collection::{FacetFilters, FacetKind, InstallFilter, SortMode, StatusGroup, ViewQuery};
 pub use library::{CollectionGame, Library};
 pub use num::JsNum;
 pub use paths::{AppPaths, DataPaths};

@@ -201,7 +201,12 @@ impl CollectionView {
 
     /// Hosts `view` over the current screen until it closes itself through
     /// `close_console_overlay`.
-    pub(super) fn open_console_overlay<V: console::PadTarget + Render>(&mut self, view: &Entity<V>, sub: Subscription, cx: &mut Context<Self>) {
+    pub(super) fn open_console_overlay<V: console::PadTarget + Render>(
+        &mut self,
+        view: &Entity<V>,
+        sub: Subscription,
+        cx: &mut Context<Self>,
+    ) {
         self.console.overlay = Some(Overlay::new(view));
         self.console.overlay_sub = Some(sub);
         cx.notify();
@@ -343,7 +348,11 @@ impl CollectionView {
 
     /// The focused game's hero art, sharp, sized to the window, and the
     /// art it is fading from.
-    fn console_art(&mut self, window: &Window, cx: &mut Context<Self>) -> (Option<std::sync::Arc<RenderImage>>, Option<(SharedString, std::sync::Arc<RenderImage>)>) {
+    fn console_art(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> (Option<std::sync::Arc<RenderImage>>, Option<(SharedString, std::sync::Arc<RenderImage>)>) {
         let Some(key) = self.console.art_key.clone() else {
             return (self.console.art_prev.clone(), self.console.art_cur.clone());
         };
@@ -431,14 +440,14 @@ impl CollectionView {
         };
         let on_page = self.page != Page::Collection;
         let hints = self.console_hints(cx);
-        let art_img = |i: std::sync::Arc<RenderImage>| img(ImageSource::Render(i)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
+        let art_img =
+            |i: std::sync::Arc<RenderImage>| img(ImageSource::Render(i)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
         let backdrop = div()
             .absolute()
             .inset_0()
             .when(!on_page, |d| {
-                d.children(art_prev.map(art_img)).children(art.map(|(k, i)| {
-                    motion::fade_in(SharedString::from(format!("console-art-{k}")), art_img(i), ART_FADE_MS)
-                }))
+                d.children(art_prev.map(art_img))
+                    .children(art.map(|(k, i)| motion::fade_in(SharedString::from(format!("console-art-{k}")), art_img(i), ART_FADE_MS)))
             })
             // Readable text on any art: dark from the left and the bottom.
             .child(div().absolute().inset_0().bg(linear_gradient(
@@ -460,7 +469,9 @@ impl CollectionView {
             .font_family(theme::FONT_BODY)
             .text_color(theme::text_primary())
             .child(backdrop)
-            .child(div().absolute().inset_0().flex().flex_col().child(div().flex_1().min_h_0().child(body)).child(div().flex_none().h(u(60.))))
+            .child(
+                div().absolute().inset_0().flex().flex_col().child(div().flex_1().min_h_0().child(body)).child(div().flex_none().h(u(60.))),
+            )
             .children(self.render_sidebar(cx))
             .children(self.console.overlay.as_ref().map(|o| o.view.clone()))
             .children(self.dialog.clone().map(|d| {

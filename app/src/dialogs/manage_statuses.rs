@@ -146,24 +146,25 @@ impl Render for ManageStatusesDialog {
                     .gap(px(8.))
                     .child(div().size(px(7.)).rounded_full().opacity(0.9).bg(theme::status_color(&row.status.slug)))
                     .child(field(&row.input))
-                    .child(icon_btn(SharedString::from(format!("st-up-{i}")), Icon::FaChevronUp, i > 0).on_click(
-                        cx.listener(move |this, _, w, cx| this.move_row(i, true, w, cx)),
-                    ))
-                    .child(icon_btn(SharedString::from(format!("st-down-{i}")), Icon::FaChevronDown, i + 1 < n).on_click(
-                        cx.listener(move |this, _, w, cx| this.move_row(i, false, w, cx)),
-                    ))
-                    .child(icon_btn(SharedString::from(format!("st-del-{i}")), Icon::FaTrash, n > 1).on_click(
-                        cx.listener(move |this, _, w, cx| this.delete(id.clone(), w, cx)),
-                    )),
+                    .child(
+                        icon_btn(SharedString::from(format!("st-up-{i}")), Icon::FaChevronUp, i > 0)
+                            .on_click(cx.listener(move |this, _, w, cx| this.move_row(i, true, w, cx))),
+                    )
+                    .child(
+                        icon_btn(SharedString::from(format!("st-down-{i}")), Icon::FaChevronDown, i + 1 < n)
+                            .on_click(cx.listener(move |this, _, w, cx| this.move_row(i, false, w, cx))),
+                    )
+                    .child(
+                        icon_btn(SharedString::from(format!("st-del-{i}")), Icon::FaTrash, n > 1)
+                            .on_click(cx.listener(move |this, _, w, cx| this.delete(id.clone(), w, cx))),
+                    ),
             );
         }
         let body = div()
             .flex()
             .flex_col()
             .gap(px(16.))
-            .child(help_text(
-                "Rename, reorder, or remove statuses. Games on a removed status move to another one.",
-            ))
+            .child(help_text("Rename, reorder, or remove statuses. Games on a removed status move to another one."))
             .child(list)
             .child(
                 div()

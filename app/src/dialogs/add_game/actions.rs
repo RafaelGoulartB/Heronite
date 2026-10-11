@@ -46,13 +46,8 @@ impl AddGameDialog {
             run_as: None,
             install: matches!(self.mode, Mode::Install(_)),
         };
-        let new_wine = (!self.is_edit() && platform == SideloadPlatform::Windows).then(|| {
-            (
-                text_of(&self.prefix, cx).trim().to_string(),
-                self.wine.as_ref().map(wine_to_value),
-                self.bottle.clone(),
-            )
-        });
+        let new_wine = (!self.is_edit() && platform == SideloadPlatform::Windows)
+            .then(|| (text_of(&self.prefix, cx).trim().to_string(), self.wine.as_ref().map(wine_to_value), self.bottle.clone()));
         let (paths, home, existing_run_as, is_edit) =
             (self.ctx.data_paths.clone(), self.home.clone(), self.existing_run_as.clone(), self.is_edit());
         self.saving = true;
@@ -96,7 +91,8 @@ impl AddGameDialog {
         }
         self.saving = true;
         self.error.clear();
-        let (paths, home, with_prefix) = (self.ctx.data_paths.clone(), self.home.clone(), self.remove_prefix_too && self.removable_prefix.is_some());
+        let (paths, home, with_prefix) =
+            (self.ctx.data_paths.clone(), self.home.clone(), self.remove_prefix_too && self.removable_prefix.is_some());
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
@@ -189,7 +185,11 @@ fn run_exe_blocking(paths: &heronite_data::DataPaths, home: &str, map: &Settings
     let built = build_tool_command(&ctx, &SystemProbe, &settings, &WineTool::RunExe(exe.to_string()))?;
     let c = &built.command;
     let mut cmd = std::process::Command::new(&c.program);
-    cmd.args(&c.args).envs(&c.env).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    cmd.args(&c.args)
+        .envs(&c.env)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     if let Some(dir) = c.cwd.as_deref().filter(|d| Path::new(d).is_dir()) {
         cmd.current_dir(dir);
     }

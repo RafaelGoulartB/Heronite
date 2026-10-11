@@ -1,9 +1,7 @@
 //! Finding a game's `GameInfo` and Collection metadata on disk.
 
 use heronite_data::json_store;
-use heronite_data::models::{
-    GameInfo, LocalGameMeta, LocalMetaFile, SideloadLibraryFile, StoreLibraryFile,
-};
+use heronite_data::models::{GameInfo, LocalGameMeta, LocalMetaFile, SideloadLibraryFile, StoreLibraryFile};
 use heronite_data::DataPaths;
 
 #[derive(Debug, Clone)]
@@ -19,12 +17,7 @@ pub fn load_game(paths: &DataPaths, app_name: &str) -> Option<LoadedGame> {
     let meta = metas.games.get(app_name).cloned();
     let runners: Vec<String> = match &meta {
         Some(m) => vec![m.runner.clone()],
-        None => vec![
-            "sideload".into(),
-            "legendary".into(),
-            "gog".into(),
-            "nile".into(),
-        ],
+        None => vec!["sideload".into(), "legendary".into(), "gog".into(), "nile".into()],
     };
     for runner in runners {
         if let Some(info) = find_in_library(paths, &runner, app_name) {
@@ -47,10 +40,7 @@ pub fn find_in_library(paths: &DataPaths, runner: &str, app_name: &str) -> Optio
                 _ => paths.nile_library(),
             };
             let lib: StoreLibraryFile = json_store::read(&path).ok()?;
-            lib.library
-                .into_iter()
-                .chain(lib.games)
-                .find(|g| g.app_name == app_name)
+            lib.library.into_iter().chain(lib.games).find(|g| g.app_name == app_name)
         }
         _ => None,
     }
@@ -65,11 +55,5 @@ pub fn plan_for_app(
     opts: &crate::plan::LaunchOptions,
 ) -> Option<crate::plan::LaunchPlan> {
     let game = load_game(&ctx.paths, app_name)?;
-    Some(crate::plan::build_plan(
-        ctx,
-        probe,
-        &game.info,
-        game.meta.as_ref(),
-        opts,
-    ))
+    Some(crate::plan::build_plan(ctx, probe, &game.info, game.meta.as_ref(), opts))
 }

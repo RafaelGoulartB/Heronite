@@ -165,11 +165,7 @@ pub fn start() -> Option<(PadThread, UnboundedReceiver<PadMsg>)> {
     let (tx, rx) = unbounded();
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
-    std::thread::Builder::new()
-        .name("gamepad".into())
-        .spawn(move || run(tx, flag))
-        .map_err(|e| log::warn!("gamepad thread: {e}"))
-        .ok()?;
+    std::thread::Builder::new().name("gamepad".into()).spawn(move || run(tx, flag)).map_err(|e| log::warn!("gamepad thread: {e}")).ok()?;
     Some((PadThread { stop }, rx))
 }
 

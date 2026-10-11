@@ -27,10 +27,7 @@ fn groups_and_filters_look_sane() {
     // nothing should end up in "Other".
     assert!(groups.iter().all(|g| !g.is_other()));
     // Group order follows the status sortOrder.
-    let orders: Vec<_> = groups
-        .iter()
-        .map(|g| lib.statuses.iter().position(|s| s.id == g.id).unwrap())
-        .collect();
+    let orders: Vec<_> = groups.iter().map(|g| lib.statuses.iter().position(|s| s.id == g.id).unwrap()).collect();
     assert!(orders.windows(2).all(|w| w[0] < w[1]));
 
     let installed = filter_games(&lib.games, &ViewQuery { install: InstallFilter::Installed, ..Default::default() });

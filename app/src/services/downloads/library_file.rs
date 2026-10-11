@@ -12,11 +12,7 @@ use super::{GameFlags, Stats};
 /// The library file's `GameInfo` of one game.
 pub fn library_entry(data_paths: &DataPaths, app_name: &str) -> Option<Value> {
     let doc = json_store::read_value(&data_paths.legendary_library()).ok()?;
-    doc.get("library")?
-        .as_array()?
-        .iter()
-        .find(|g| g.get("app_name").and_then(Value::as_str) == Some(app_name))
-        .cloned()
+    doc.get("library")?.as_array()?.iter().find(|g| g.get("app_name").and_then(Value::as_str) == Some(app_name)).cloned()
 }
 
 /// Owned (without DLC) and installed counts from the library file.

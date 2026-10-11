@@ -6,7 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::stats::{fmt_hours_short, fmt_secs, Span, Stats, TOP_N};
 
-use super::{compare_line, nice_axis, axis_label, series_color, StatsPage, DAY_PARTS, WEEKDAYS};
+use super::{axis_label, compare_line, nice_axis, series_color, StatsPage, DAY_PARTS, WEEKDAYS};
 use crate::console::kit::{self, u};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
@@ -56,7 +56,9 @@ impl StatsPage {
         let bars = st.buckets.iter().map(|b| {
             let mut bar = div().w_full().max_w(u(if n <= 12 { 40. } else { 22. })).flex().flex_col().rounded_t(u(5.)).overflow_hidden();
             let other = (b.secs - b.top.iter().sum::<f64>()).max(0.);
-            for (secs, color) in std::iter::once((other, theme::chart_other())).chain((0..TOP_N).rev().map(|r| (b.top[r], series_color(Some(r))))) {
+            for (secs, color) in
+                std::iter::once((other, theme::chart_other())).chain((0..TOP_N).rev().map(|r| (b.top[r], series_color(Some(r)))))
+            {
                 let px_h = (secs / top_secs) as f32 * h;
                 if px_h >= 0.5 {
                     bar = bar.child(div().w_full().h(u(px_h)).bg(color));
@@ -82,7 +84,11 @@ impl StatsPage {
                 .child(text)
         });
         let grid = (0..=lines).map(|i| {
-            div().absolute().left_0().right_0().bottom(u(h * i as f32 / lines as f32)).h(px(1.)).bg(theme::white_a(if i == 0 { 0.14 } else { 0.06 }))
+            div().absolute().left_0().right_0().bottom(u(h * i as f32 / lines as f32)).h(px(1.)).bg(theme::white_a(if i == 0 {
+                0.14
+            } else {
+                0.06
+            }))
         });
         let axis = (0..=lines).map(|i| {
             div()
@@ -104,12 +110,9 @@ impl StatsPage {
                 .child(self.game_title(g))
         }));
         panel("Activity")
-            .child(
-                div()
-                    .flex()
-                    .child(div().relative().flex_none().w(u(44.)).h(u(h)).children(axis))
-                    .child(div().relative().flex_1().h(u(h)).children(grid).child(div().absolute().inset_0().flex().items_end().children(bars))),
-            )
+            .child(div().flex().child(div().relative().flex_none().w(u(44.)).h(u(h)).children(axis)).child(
+                div().relative().flex_1().h(u(h)).children(grid).child(div().absolute().inset_0().flex().items_end().children(bars)),
+            ))
             .child(div().flex().pl(u(44.)).children(labels))
             .child(legend)
     }
@@ -138,14 +141,9 @@ impl StatsPage {
                             .min_w_0()
                             .gap(u(6.))
                             .child(div().text_size(u(17.)).truncate().child(self.game_title(g.game)))
-                            .child(
-                                div()
-                                    .h(u(6.))
-                                    .w_full()
-                                    .rounded_full()
-                                    .bg(theme::white_a(0.07))
-                                    .child(div().h_full().w(relative((g.secs / max) as f32)).rounded_full().bg(series_color(st.series_of(g.game)))),
-                            ),
+                            .child(div().h(u(6.)).w_full().rounded_full().bg(theme::white_a(0.07)).child(
+                                div().h_full().w(relative((g.secs / max) as f32)).rounded_full().bg(series_color(st.series_of(g.game))),
+                            )),
                     )
                     .child(
                         div()
@@ -159,7 +157,16 @@ impl StatsPage {
             );
         }
         if st.games.len() > limit {
-            p = p.child(div().flex().items_center().gap(u(8.)).text_size(u(14.)).text_color(theme::text_muted()).child(kit::glyph(Btn::Y)).child(format!("Show all {}", st.games.len())));
+            p = p.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(u(8.))
+                    .text_size(u(14.))
+                    .text_color(theme::text_muted())
+                    .child(kit::glyph(Btn::Y))
+                    .child(format!("Show all {}", st.games.len())),
+            );
         }
         p
     }
@@ -178,7 +185,11 @@ impl StatsPage {
                     .child(div().flex_none().w(u(40.)).text_size(u(13.)).text_color(theme::text_dim()).child(WEEKDAYS[d]))
                     .children(hours.iter().map(|v| {
                         let t = (*v / max_cell) as f32;
-                        div().flex_1().h(u(20.)).rounded(u(4.)).bg(if *v <= 0. { theme::white_a(0.05) } else { Hsla { a: 0.12 + 0.88 * t.powf(0.7), ..accent } })
+                        div().flex_1().h(u(20.)).rounded(u(4.)).bg(if *v <= 0. {
+                            theme::white_a(0.05)
+                        } else {
+                            Hsla { a: 0.12 + 0.88 * t.powf(0.7), ..accent }
+                        })
                     })),
             );
         }
@@ -217,9 +228,12 @@ impl StatsPage {
             .child(kit::clock());
         let body: AnyElement = match self.stats.clone() {
             None => kit::empty(Icon::BarChart, "Reading your play history\u{2026}", "").into_any_element(),
-            Some(st) if st.total_secs <= 0. => {
-                kit::empty(Icon::AccessTime, format!("Nothing played in {}", self.period.label()), "Pick another period with \u{25c0} \u{25b6}.").into_any_element()
-            }
+            Some(st) if st.total_secs <= 0. => kit::empty(
+                Icon::AccessTime,
+                format!("Nothing played in {}", self.period.label()),
+                "Pick another period with \u{25c0} \u{25b6}.",
+            )
+            .into_any_element(),
             Some(st) => {
                 let all = st.period.span == Span::All;
                 let (cmp, cmp_color) = compare_line(&st);
@@ -311,6 +325,11 @@ impl PadTarget for StatsPage {
         if self.review.is_some() {
             return vec![hint(Btn::LeftRight, "Story"), hint(Btn::B, "Close")];
         }
-        vec![hint(Btn::X, "Year in review"), hint(Btn::Bumpers, "Span"), hint(Btn::LeftRight, "Period"), hint(Btn::Y, if self.show_all { "Top games" } else { "All games" })]
+        vec![
+            hint(Btn::X, "Year in review"),
+            hint(Btn::Bumpers, "Span"),
+            hint(Btn::LeftRight, "Period"),
+            hint(Btn::Y, if self.show_all { "Top games" } else { "All games" }),
+        ]
     }
 }

@@ -7,9 +7,7 @@
 //! (seeds `platforms`) -- the same files and shapes Heronite writes.
 
 use anyhow::Result;
-use heronite_data::models::{
-    CollectionGameMetadata, LocalGameMeta, LocalGameRom, LocalMetaFile, MetadataFile,
-};
+use heronite_data::models::{CollectionGameMetadata, LocalGameMeta, LocalGameRom, LocalMetaFile, MetadataFile};
 use heronite_data::status::{inferred_status_id, load_statuses};
 use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Value};
@@ -18,9 +16,7 @@ use crate::pathutil::{dirname, normalize_key};
 use crate::scan::preview_rom_scan;
 use crate::sha1::sha1_hex;
 use crate::store::{self, resolve_template};
-use crate::types::{
-    RomScanArgs, RomScanImportArgs, RomScanImportResult, RomScanItem, UpsertRomScannerArgs,
-};
+use crate::types::{RomScanArgs, RomScanImportArgs, RomScanImportResult, RomScanItem, UpsertRomScannerArgs};
 
 /// `emuAppName`: `emu_` + first 16 hex chars of sha1(`emulatorId|profileId|key`).
 pub fn emu_app_name(emulator_id: &str, profile_id: &str, key: &str) -> String {
@@ -29,14 +25,8 @@ pub fn emu_app_name(emulator_id: &str, profile_id: &str, key: &str) -> String {
 }
 
 /// `findExisting`: the imported game that already owns one of these ROMs.
-fn find_existing<'a>(
-    metas: &'a LocalMetaFile,
-    emulator_id: &str,
-    profile_id: &str,
-    item: &RomScanItem,
-) -> Option<&'a LocalGameMeta> {
-    let keys: std::collections::HashSet<String> =
-        item.roms.iter().map(|r| normalize_key(&r.path)).collect();
+fn find_existing<'a>(metas: &'a LocalMetaFile, emulator_id: &str, profile_id: &str, item: &RomScanItem) -> Option<&'a LocalGameMeta> {
+    let keys: std::collections::HashSet<String> = item.roms.iter().map(|r| normalize_key(&r.path)).collect();
     metas.games.values().find(|meta| {
         if meta.emulator_id.as_deref() != Some(emulator_id) {
             return false;
@@ -46,10 +36,7 @@ fn find_existing<'a>(
                 return false;
             }
         }
-        meta.roms
-            .iter()
-            .flatten()
-            .any(|r| keys.contains(&normalize_key(&r.path)))
+        meta.roms.iter().flatten().any(|r| keys.contains(&normalize_key(&r.path)))
     })
 }
 
@@ -58,9 +45,7 @@ fn find_existing<'a>(
 /// replace art the game already has (Heronite wipes it on re-import).
 fn upsert_sideload_game(games: &mut Vec<Value>, game: Value) {
     let app = game["app_name"].as_str().unwrap_or_default().to_owned();
-    let existing = games
-        .iter_mut()
-        .find(|g| g.get("app_name").and_then(Value::as_str) == Some(app.as_str()));
+    let existing = games.iter_mut().find(|g| g.get("app_name").and_then(Value::as_str) == Some(app.as_str()));
     match existing {
         Some(current) => {
             let cur = current.as_object_mut().expect("game object");
@@ -96,14 +81,8 @@ fn seed_platforms(file: &mut MetadataFile, app_name: &str, platform_name: Option
 }
 
 /// `importScannedRoms`.
-pub fn import_scanned_roms(
-    paths: &DataPaths,
-    args: &RomScanImportArgs,
-) -> Result<RomScanImportResult> {
-    let mut result = RomScanImportResult {
-        scanner_id: args.scanner_id.clone().unwrap_or_default(),
-        ..Default::default()
-    };
+pub fn import_scanned_roms(paths: &DataPaths, args: &RomScanImportArgs) -> Result<RomScanImportResult> {
+    let mut result = RomScanImportResult { scanner_id: args.scanner_id.clone().unwrap_or_default(), ..Default::default() };
     let Some(emulator) = store::get_user_emulator(paths, &args.emulator_id)? else {
         result.errors.push("Emulator not found.".into());
         return Ok(result);
@@ -114,11 +93,7 @@ pub fn import_scanned_roms(
     };
     let template = resolve_template(&emulator, &profile);
     let native = emulator.launch_kind != "wine";
-    let installed_exe = if emulator.launch_kind == "flatpak" {
-        "flatpak".to_string()
-    } else {
-        emulator.executable.clone()
-    };
+    let installed_exe = if emulator.launch_kind == "flatpak" { "flatpak".to_string() } else { emulator.executable.clone() };
 
     let scanner = store::upsert_rom_scanner(
         paths,
@@ -135,11 +110,7 @@ pub fn import_scanned_roms(
     )?;
     result.scanner_id = scanner.id;
 
-    let selected: Vec<&RomScanItem> = args
-        .games
-        .iter()
-        .filter(|g| g.import && !g.roms.is_empty())
-        .collect();
+    let selected: Vec<&RomScanItem> = args.games.iter().filter(|g| g.import && !g.roms.is_empty()).collect();
     result.skipped = args.games.len() - selected.len();
     if selected.is_empty() {
         return Ok(result);
@@ -155,14 +126,11 @@ pub fn import_scanned_roms(
         let existing = find_existing(&metas, &emulator.id, &profile.id, item).cloned();
         let mut identity: Vec<String> = item.roms.iter().map(|r| normalize_key(&r.path)).collect();
         identity.sort();
-        let app_name = existing
-            .as_ref()
-            .map(|m| m.app_name.clone())
-            .unwrap_or_else(|| emu_app_name(&emulator.id, &profile.id, &identity.join("|")));
+        let app_name =
+            existing.as_ref().map(|m| m.app_name.clone()).unwrap_or_else(|| emu_app_name(&emulator.id, &profile.id, &identity.join("|")));
         let roms: Vec<LocalGameRom> = match &existing {
             Some(ex) => {
-                let incoming: Vec<String> =
-                    item.roms.iter().map(|r| normalize_key(&r.path)).collect();
+                let incoming: Vec<String> = item.roms.iter().map(|r| normalize_key(&r.path)).collect();
                 ex.roms
                     .iter()
                     .flatten()
@@ -177,22 +145,14 @@ pub fn import_scanned_roms(
         let title = if !item.title.is_empty() {
             item.title.clone()
         } else {
-            existing
-                .as_ref()
-                .map(|m| m.title.clone())
-                .filter(|t| !t.is_empty())
-                .unwrap_or_else(|| app_name.clone())
+            existing.as_ref().map(|m| m.title.clone()).filter(|t| !t.is_empty()).unwrap_or_else(|| app_name.clone())
         };
         // Start from the existing entry so selectedRomPath, saveStateKeys,
         // notes, ... survive a re-import.
         let mut meta = existing.clone().unwrap_or_default();
         meta.app_name = app_name.clone();
         meta.runner = "sideload".into();
-        meta.playnite_id = existing
-            .as_ref()
-            .map(|m| m.playnite_id.clone())
-            .filter(|p| !p.is_empty())
-            .unwrap_or_else(|| app_name.clone());
+        meta.playnite_id = existing.as_ref().map(|m| m.playnite_id.clone()).filter(|p| !p.is_empty()).unwrap_or_else(|| app_name.clone());
         meta.source = "emulator".into();
         meta.launch_kind = "emulator".into();
         meta.title = title.clone();
@@ -203,10 +163,7 @@ pub fn import_scanned_roms(
         meta.emulator_id = Some(emulator.id.clone());
         meta.emulator_profile_id = Some(profile.id.clone());
         meta.platform_id = template.platform_id.clone();
-        meta.completion_status_id = existing
-            .as_ref()
-            .and_then(|m| m.completion_status_id.clone())
-            .or_else(|| Some(not_played.clone()));
+        meta.completion_status_id = existing.as_ref().and_then(|m| m.completion_status_id.clone()).or_else(|| Some(not_played.clone()));
 
         let folder = match &first_rom {
             Some(r) => dirname(r),
@@ -240,9 +197,7 @@ pub fn import_scanned_roms(
 
     json_store::update_value(&paths.sideload_library(), |doc| {
         let obj = doc.as_object_mut().expect("object");
-        let games = obj
-            .entry("games")
-            .or_insert_with(|| Value::Array(vec![]));
+        let games = obj.entry("games").or_insert_with(|| Value::Array(vec![]));
         if !games.is_array() {
             *games = Value::Array(vec![]);
         }
@@ -266,11 +221,7 @@ pub fn import_scanned_roms(
         }
         Ok(())
     })?;
-    log::info!(
-        "ROM scan imported {}, updated {}",
-        result.imported,
-        result.updated
-    );
+    log::info!("ROM scan imported {}, updated {}", result.imported, result.updated);
     Ok(result)
 }
 
@@ -343,9 +294,7 @@ pub fn run_rom_scanners(paths: &DataPaths, only: Option<&str>) -> Result<AutoSca
         match scan_saved_folder(paths, &scanner) {
             Ok((n, errors)) => {
                 report.imported += n;
-                report
-                    .errors
-                    .extend(errors.into_iter().map(|e| format!("{}: {e}", scanner.name)));
+                report.errors.extend(errors.into_iter().map(|e| format!("{}: {e}", scanner.name)));
             }
             Err(e) => report.errors.push(format!("{}: {e:#}", scanner.name)),
         }
@@ -360,11 +309,7 @@ pub fn run_auto_rom_scanners(paths: &DataPaths) -> Result<usize> {
 }
 
 /// `setEmulatorLaunchRom`: remembers which ROM (disc) to launch.
-pub fn set_emulator_launch_rom(
-    paths: &DataPaths,
-    app_name: &str,
-    rom_path: &str,
-) -> Result<Option<LocalGameMeta>> {
+pub fn set_emulator_launch_rom(paths: &DataPaths, app_name: &str, rom_path: &str) -> Result<Option<LocalGameMeta>> {
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
         Ok(file.games.get_mut(app_name).map(|m| {
             m.selected_rom_path = Some(rom_path.to_string());
@@ -401,12 +346,9 @@ mod tests {
     }
 
     fn scan(paths: &DataPaths, e: &str, p: &str, dir: &str) -> Vec<RomScanItem> {
-        preview_rom_scan(
-            paths,
-            &RomScanArgs { emulator_id: e.into(), profile_id: p.into(), directory: dir.into(), ..Default::default() },
-        )
-        .unwrap()
-        .games
+        preview_rom_scan(paths, &RomScanArgs { emulator_id: e.into(), profile_id: p.into(), directory: dir.into(), ..Default::default() })
+            .unwrap()
+            .games
     }
 
     #[test]
@@ -518,7 +460,13 @@ mod tests {
         assert_eq!((r.imported, r.skipped), (1, 1));
         let r = import_scanned_roms(
             &paths,
-            &RomScanImportArgs { emulator_id: "nope".into(), profile_id: "x".into(), directory: dir.into(), games: vec![], ..Default::default() },
+            &RomScanImportArgs {
+                emulator_id: "nope".into(),
+                profile_id: "x".into(),
+                directory: dir.into(),
+                games: vec![],
+                ..Default::default()
+            },
         )
         .unwrap();
         assert_eq!(r.errors, ["Emulator not found."]);
@@ -540,7 +488,13 @@ mod tests {
         // Disabled scanners are skipped.
         store::upsert_rom_scanner(
             &paths,
-            UpsertRomScannerArgs { emulator_id: e, profile_id: p, directory: dir.into(), auto_scan_on_refresh: Some(false), ..Default::default() },
+            UpsertRomScannerArgs {
+                emulator_id: e,
+                profile_id: p,
+                directory: dir.into(),
+                auto_scan_on_refresh: Some(false),
+                ..Default::default()
+            },
         )
         .unwrap();
         write(roms.path().join("Delta.iso"), "x").unwrap();

@@ -34,25 +34,14 @@ pub fn locale_cmp_base(a: &str, b: &str) -> Ordering {
 /// `facetKey` of `collectionFacets.ts`: NFD, no combining marks, collapsed
 /// whitespace, trimmed, lower-cased.
 pub fn facet_key(value: &str) -> String {
-    let stripped: String = value
-        .nfd()
-        .filter(|c| !('\u{0300}'..='\u{036f}').contains(c))
-        .collect();
+    let stripped: String = value.nfd().filter(|c| !('\u{0300}'..='\u{036f}').contains(c)).collect();
     let collapsed = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
     collapsed.to_lowercase()
 }
 
 /// `splitNames`: comma separated list, trimmed, empty items dropped.
 pub fn split_names(value: Option<&str>) -> Vec<String> {
-    value
-        .map(|v| {
-            v.split(',')
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default()
+    value.map(|v| v.split(',').map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect()).unwrap_or_default()
 }
 
 /// `uniqueNames`: trims, drops empties, de-duplicates by [`facet_key`].
@@ -92,11 +81,7 @@ pub fn to_plain_text(value: &str) -> String {
         }
     }
     no_tags.push_str(rest);
-    no_tags
-        .replace("&nbsp;", " ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    no_tags.replace("&nbsp;", " ").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// `removeSpecialcharacters` of `backend/utils.ts` (key of the wiki cache).
@@ -144,9 +129,7 @@ impl DateLocale {
     }
 }
 
-const MONTHS: [&str; 12] = [
-    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
-];
+const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
 fn month_from_name(name: &str) -> Option<u32> {
     let lower = name.trim_end_matches('.').to_ascii_lowercase();
@@ -169,10 +152,7 @@ fn parse_calendar_date(value: &str) -> Option<(i32, u32, u32)> {
         return Some((y, m, d));
     }
     // "19 Sep, 2022" / "Apr 22, 2013"
-    let words: Vec<&str> = value
-        .split(|c: char| c == ',' || c.is_whitespace())
-        .filter(|w| !w.is_empty())
-        .collect();
+    let words: Vec<&str> = value.split(|c: char| c == ',' || c.is_whitespace()).filter(|w| !w.is_empty()).collect();
     if words.len() == 3 {
         let (day, month, year) = match (month_from_name(words[1]), month_from_name(words[0])) {
             (Some(m), _) => (words[0].parse::<u32>().ok()?, m, words[2].parse::<i32>().ok()?),
@@ -215,10 +195,7 @@ pub fn format_timestamp(value: &str, locale: DateLocale) -> String {
 pub fn sanitize_filename(input: &str) -> String {
     let mut s: String = input
         .chars()
-        .filter(|c| {
-            !matches!(c, '/' | '?' | '<' | '>' | '\\' | ':' | '*' | '|' | '"')
-                && !matches!(*c as u32, 0x00..=0x1f | 0x80..=0x9f)
-        })
+        .filter(|c| !matches!(c, '/' | '?' | '<' | '>' | '\\' | ':' | '*' | '|' | '"') && !matches!(*c as u32, 0x00..=0x1f | 0x80..=0x9f))
         .collect();
     if !s.is_empty() && s.chars().all(|c| c == '.') {
         s.clear();
@@ -248,10 +225,7 @@ mod tests {
     fn locale_compare_matches_icu_expectations() {
         let mut v = vec!["zeta", "Alpha", "alpha", "Ōkami", "okami", "10 Dead", "2 Dead", "A b", "Ab", "Ao"];
         v.sort_by(|a, b| locale_cmp(a, b));
-        assert_eq!(
-            v,
-            ["10 Dead", "2 Dead", "A b", "Ab", "alpha", "Alpha", "Ao", "okami", "Ōkami", "zeta"]
-        );
+        assert_eq!(v, ["10 Dead", "2 Dead", "A b", "Ab", "alpha", "Alpha", "Ao", "okami", "Ōkami", "zeta"]);
         assert_eq!(locale_cmp_base("Alpha", "alpha"), Ordering::Equal);
         assert_eq!(locale_cmp_base("Ōkami", "okami"), Ordering::Equal);
     }

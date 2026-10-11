@@ -3,10 +3,10 @@
 use gpui_kit::*;
 use heronite_launch::LaunchEvent;
 
+use super::hub;
 use super::launch::launch;
 use super::quit::{maybe_exit_idle, request_quit};
 use super::window::{close_window_keep_alive, has_window, show_window};
-use super::hub;
 use crate::system::cli::{Cli, LaunchRequest};
 use crate::system::single_instance::Message;
 use crate::system::tray::TrayCmd;

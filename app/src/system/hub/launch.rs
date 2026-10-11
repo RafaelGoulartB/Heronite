@@ -113,9 +113,6 @@ mod tests {
         let r = LaunchRequest { runner: Some("gog".into()), app_name: "123".into(), ..Default::default() };
         assert_eq!(candidate_keys(&r), vec!["gog_123"]);
         let r = LaunchRequest { runner: None, app_name: "Quail".into(), ..Default::default() };
-        assert_eq!(
-            candidate_keys(&r),
-            vec!["legendary_Quail", "gog_Quail", "nile_Quail", "sideload_Quail", "zoom_Quail"]
-        );
+        assert_eq!(candidate_keys(&r), vec!["legendary_Quail", "gog_Quail", "nile_Quail", "sideload_Quail", "zoom_Quail"]);
     }
 }

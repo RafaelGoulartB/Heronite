@@ -24,12 +24,18 @@ use crate::theme;
 
 /// Something a click asked for that needs a `Window` (handled from `render`).
 pub enum Request {
-    Install { key: String, import: bool },
+    Install {
+        key: String,
+        import: bool,
+    },
     Uninstall(String),
     Move(String),
     Verify(String),
     UpdatePrompt(String),
-    Message { title: String, text: String },
+    Message {
+        title: String,
+        text: String,
+    },
     OpenDownloads,
     /// Modify installation (DLCs).
     Modify(String),
@@ -98,11 +104,7 @@ pub(super) fn card_overlay(e: &CardEpic) -> Div {
                 .px(px(6.))
                 .pt(px(14.))
                 .pb(px(6.))
-                .bg(linear_gradient(
-                    180.,
-                    linear_color_stop(theme::black_a(0.), 0.),
-                    linear_color_stop(theme::black_a(0.78), 1.),
-                ))
+                .bg(linear_gradient(180., linear_color_stop(theme::black_a(0.), 0.), linear_color_stop(theme::black_a(0.78), 1.)))
                 .child(div().text_size(px(11.5)).font_weight(theme::W_BOLD).text_color(white()).child(e.label.clone()))
                 .child(progress_bar(e.percent, 3., theme::accent())),
         );
@@ -125,7 +127,6 @@ pub(super) fn card_overlay(e: &CardEpic) -> Div {
     }
     layer
 }
-
 
 impl CollectionView {
     /// The service, created and observed on first use.

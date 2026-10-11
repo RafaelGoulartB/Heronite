@@ -19,8 +19,7 @@ use serde_json::{json, Map, Value};
 use crate::http::Http;
 use crate::util::re;
 
-const USER_AGENT: &str =
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const TOKEN_TTL: Duration = Duration::from_secs(10 * 60);
 /// `new CacheStore('wikigameinfo', 60 * 24 * 30)`: 30 days.
 const CACHE_LIFESPAN_MINUTES: f64 = 60.0 * 24.0 * 30.0;
@@ -89,12 +88,7 @@ pub fn normalize_hltb_title(value: &str) -> String {
 
 /// `howLongToBeatSearchTerms`.
 pub fn search_terms(title: &str) -> Vec<String> {
-    title
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(str::to_owned)
-        .collect()
+    title.split(|c: char| !c.is_ascii_alphanumeric()).map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned).collect()
 }
 
 /// `pickHowLongToBeatSearchMatch`.
@@ -102,10 +96,7 @@ pub fn pick_search_match<'a>(title: &str, results: &'a [SearchHit]) -> Option<&'
     if results.is_empty() {
         return None;
     }
-    let games: Vec<&SearchHit> = results
-        .iter()
-        .filter(|i| i.game_type.as_deref().is_none_or(|t| t.is_empty() || t == "game"))
-        .collect();
+    let games: Vec<&SearchHit> = results.iter().filter(|i| i.game_type.as_deref().is_none_or(|t| t.is_empty() || t == "game")).collect();
     let pool: Vec<&SearchHit> = if games.is_empty() { results.iter().collect() } else { games };
     let needle = normalize_hltb_title(title);
     pool.iter()
@@ -185,7 +176,8 @@ impl HltbClient {
             return Ok(None);
         };
         let (hp_key, hp_val) = (text("hpKey"), text("hpVal"));
-        *self.token.lock() = Some(SearchToken { token: token.clone(), hp_key: hp_key.clone(), hp_val: hp_val.clone(), fetched_at: Instant::now() });
+        *self.token.lock() =
+            Some(SearchToken { token: token.clone(), hp_key: hp_key.clone(), hp_val: hp_val.clone(), fetched_at: Instant::now() });
         Ok(Some((token, hp_key, hp_val)))
     }
 
@@ -228,11 +220,8 @@ impl HltbClient {
             req = req.header("x-hp-key", k).header("x-hp-val", v);
         }
         let resp = req.send()?;
-        let hits = resp
-            .json::<Value>()
-            .ok()
-            .and_then(|v| v.get("data").cloned())
-            .and_then(|d| serde_json::from_value::<Vec<SearchHit>>(d).ok());
+        let hits =
+            resp.json::<Value>().ok().and_then(|v| v.get("data").cloned()).and_then(|d| serde_json::from_value::<Vec<SearchHit>>(d).ok());
         Ok((resp.status, hits))
     }
 
@@ -421,9 +410,9 @@ pub fn get_or_fetch_hltb(
     let file = paths.wiki_game_info();
 
     let doc = json_store::read_value(&file).unwrap_or(Value::Null);
-    let cached = cache_get(&doc, &key).cloned().or_else(|| {
-        (!fallback_key.is_empty() && fallback_key != key).then(|| cache_get(&doc, &fallback_key).cloned()).flatten()
-    });
+    let cached = cache_get(&doc, &key)
+        .cloned()
+        .or_else(|| (!fallback_key.is_empty() && fallback_key != key).then(|| cache_get(&doc, &fallback_key).cloned()).flatten());
 
     let hltb_of = |v: &Value| -> Option<HowLongToBeat> {
         v.get("howlongtobeat").filter(|h| h.is_object()).and_then(|h| serde_json::from_value(h.clone()).ok())

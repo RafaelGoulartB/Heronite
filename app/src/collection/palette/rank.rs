@@ -340,7 +340,8 @@ fn browse(entries: &[Entry], filter: Filter, recent: &[String]) -> Results {
     };
     let games: Vec<usize> = entries.iter().enumerate().filter(|(_, e)| e.kind == Kind::Game).map(|(i, _)| i).collect();
     let recent_games: Vec<usize> = {
-        let mut r: Vec<usize> = games.iter().copied().filter(|i| entries[*i].game.as_ref().is_some_and(|g| g.last_played.is_some())).collect();
+        let mut r: Vec<usize> =
+            games.iter().copied().filter(|i| entries[*i].game.as_ref().is_some_and(|g| g.last_played.is_some())).collect();
         r.sort_by(|a, b| {
             let lp = |i: &usize| entries[*i].game.as_ref().and_then(|g| g.last_played.clone());
             lp(b).cmp(&lp(a)).then(a.cmp(b))
@@ -389,16 +390,14 @@ pub fn actions_list(entries: &[Entry], query: &str, recent: &[String], caption: 
     let toks = tokens(&folded);
     let mut out = Results::default();
     if toks.is_empty() {
-        let all = |status: bool| entries.iter().enumerate().filter(|(_, e)| is_status(e) == status).map(|(i, _)| ItemRef::Entry(i)).collect();
+        let all =
+            |status: bool| entries.iter().enumerate().filter(|(_, e)| is_status(e) == status).map(|(i, _)| ItemRef::Entry(i)).collect();
         out.push(caption, all(false));
         out.push("Set status", all(true));
         return out;
     }
-    let mut hits: Vec<(i32, usize)> = entries
-        .iter()
-        .enumerate()
-        .filter_map(|(i, e)| score_entry(&toks, &e.haystack()).map(|s| (s + boost(e, recent), i)))
-        .collect();
+    let mut hits: Vec<(i32, usize)> =
+        entries.iter().enumerate().filter_map(|(i, e)| score_entry(&toks, &e.haystack()).map(|s| (s + boost(e, recent), i))).collect();
     hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     out.push(caption, hits.into_iter().map(|(_, i)| ItemRef::Entry(i)).collect());
     out
@@ -514,7 +513,10 @@ mod tests {
     #[test]
     fn disabled_items_rank_after_enabled_ones() {
         let mut e = corpus();
-        e.push(page_entry(Page::Downloads, &PageCommand::new("pause", "Pause downloads", "", Icon::Pause).disabled(Some("Nothing is downloading"))));
+        e.push(page_entry(
+            Page::Downloads,
+            &PageCommand::new("pause", "Pause downloads", "", Icon::Pause).disabled(Some("Nothing is downloading")),
+        ));
         e.push(page_entry(Page::Downloads, &PageCommand::new("pause2", "Pause downloads now", "", Icon::Pause)));
         let r = search(&e, "pause", Filter::Actions, &[]);
         assert_eq!(titles(&e, &r)[0], "Pause downloads now");

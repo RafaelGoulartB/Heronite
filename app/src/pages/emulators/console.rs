@@ -59,8 +59,12 @@ impl EmulatorsPage {
         let folders = self.total_folders();
         let mut rows = vec![
             Row::action("add", "Add emulator\u{2026}").desc("Pick one from the catalog or describe any program").icon(Icon::Add),
-            Row::action("detect", "Detect emulators on this PC").desc("Looks in PATH, Flatpak and the usual folders").icon(Icon::TravelExplore),
-            Row::action("scan-folder", "Scan a folder for emulators\u{2026}").desc("Searches a folder you pick, for example your Emulation folder").icon(Icon::FolderOpen),
+            Row::action("detect", "Detect emulators on this PC")
+                .desc("Looks in PATH, Flatpak and the usual folders")
+                .icon(Icon::TravelExplore),
+            Row::action("scan-folder", "Scan a folder for emulators\u{2026}")
+                .desc("Searches a folder you pick, for example your Emulation folder")
+                .icon(Icon::FolderOpen),
             Row::action("add-folder", "Add ROM folder").desc("Games found in it are added to the Collection").icon(Icon::Folder),
             Row::action("scan-all", if busy { "Scanning\u{2026}" } else { "Scan all ROM folders" })
                 .desc("Adds the games not imported yet from every saved folder")
@@ -75,7 +79,11 @@ impl EmulatorsPage {
             if !p.is_empty() {
                 desc.push_str(&format!("  \u{b7}  {p}"));
             }
-            rows.push(Row::info(format!("e:{}", e.id), "Emulator", location(s).rsplit('/').next().unwrap_or_default().to_string()).desc(desc).icon(Icon::Settings));
+            rows.push(
+                Row::info(format!("e:{}", e.id), "Emulator", location(s).rsplit('/').next().unwrap_or_default().to_string())
+                    .desc(desc)
+                    .icon(Icon::Settings),
+            );
             for sc in &s.scanners {
                 let missing = s.missing_folders.contains(&sc.directory);
                 let profile = e.profile(&sc.profile_id).map(profile_label).unwrap_or_else(|| "Unknown profile".into());
@@ -190,7 +198,17 @@ impl EmulatorsPage {
             .flex()
             .flex_col()
             .size_full()
-            .child(div().flex().flex_none().items_center().h(u(76.)).px(u(46.)).child(kit::wordmark("EMULATORS")).child(div().flex_1()).child(kit::clock()))
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .h(u(76.))
+                    .px(u(46.))
+                    .child(kit::wordmark("EMULATORS"))
+                    .child(div().flex_1())
+                    .child(kit::clock()),
+            )
             .child(
                 div()
                     .flex()

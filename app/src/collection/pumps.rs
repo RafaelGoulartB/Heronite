@@ -51,15 +51,12 @@ impl CollectionView {
     pub(super) fn spawn_disk_watch(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(2)).await;
-            let Ok(changed) = this.update(cx, |this, _| {
-                !this.refreshing && this.lib.as_ref().is_some_and(|l| l.changed_on_disk())
-            }) else {
+            let Ok(changed) = this.update(cx, |this, _| !this.refreshing && this.lib.as_ref().is_some_and(|l| l.changed_on_disk())) else {
                 break;
             };
-            if changed
-                && this.update(cx, |this, cx| this.reload(cx)).is_err() {
-                    break;
-                }
+            if changed && this.update(cx, |this, cx| this.reload(cx)).is_err() {
+                break;
+            }
         })
         .detach();
     }

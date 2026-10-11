@@ -149,10 +149,7 @@ fn credentials(paths: &DataPaths) -> Option<Credentials> {
 
 /// `isLoggedIn()`: `gog_store/config.json` `isLoggedIn`.
 pub fn gog_logged_in(paths: &DataPaths) -> bool {
-    json_store::read_value(&paths.gog_store("config"))
-        .ok()
-        .and_then(|d| d.get("isLoggedIn").and_then(Value::as_bool))
-        .unwrap_or(false)
+    json_store::read_value(&paths.gog_store("config")).ok().and_then(|d| d.get("isLoggedIn").and_then(Value::as_bool)).unwrap_or(false)
 }
 
 /// `GOGGame.getAchievements`: cache, then the gameplay API. Blocking
@@ -166,11 +163,7 @@ pub fn fetch_gog(paths: &DataPaths, http: &Http, gameplay_base: &str, product_id
     }
     let Some(creds) = credentials(paths) else { return Vec::new() };
     let url = format!("{gameplay_base}/clients/{product_id}/users/{}/achievements", creds.user_id);
-    let response = http
-        .get(url)
-        .header("Authorization", &format!("Bearer {}", creds.access_token))
-        .header("X-Gog-Lc", lang)
-        .send();
+    let response = http.get(url).header("Authorization", &format!("Bearer {}", creds.access_token)).header("X-Gog-Lc", lang).send();
     let items: Vec<Achievement> = match response {
         Ok(r) if r.ok() => match r.json::<Value>().ok().and_then(|v| serde_json::from_value(v.get("items")?.clone()).ok()) {
             Some(items) => items,
@@ -250,10 +243,7 @@ mod tests {
     #[test]
     fn credentials_need_an_unexpired_token() {
         let doc = json!({ GALAXY_CLIENT_ID: {"access_token":"t","user_id":"7","expires_in":3600,"loginTime":1000.0}});
-        assert_eq!(
-            parse_credentials(&doc, 2000.0),
-            Some(Credentials { user_id: "7".into(), access_token: "t".into() })
-        );
+        assert_eq!(parse_credentials(&doc, 2000.0), Some(Credentials { user_id: "7".into(), access_token: "t".into() }));
         assert_eq!(parse_credentials(&doc, 4600.0), None);
         assert_eq!(parse_credentials(&json!({}), 0.0), None);
         assert_eq!(parse_credentials(&json!({"x": {"user_id": "7"}}), 0.0), None);

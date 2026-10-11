@@ -42,7 +42,11 @@ pub(super) enum Act {
     /// Sort, filters and grouping of the Collection list.
     View(ViewCmd),
     /// A command of a page (`pages/commands.rs`).
-    PageCmd { page: Page, id: String, navigate: bool },
+    PageCmd {
+        page: Page,
+        id: String,
+        navigate: bool,
+    },
     SelectGame(String),
     /// An action of the game under the key (`game_actions.rs`).
     Game(String, GameAction),
@@ -189,15 +193,65 @@ pub(super) fn static_entries() -> Vec<Entry> {
         e.secondary = true;
         v.push(e);
     }
-    let action = |a: Act, id: &str, title: &str, sub: &str, icon: Icon, kw: &str| Entry::new(Kind::Action, a, format!("act:{id}"), title, sub, icon, kw);
-    v.push(action(Act::AddGame, "add-game", "Add game\u{2026}", "Sideload a program, browser game or ROM", Icon::Add, "new sideload import").shortcut("Ctrl N"));
-    v.push(action(Act::Refresh, "refresh", "Refresh library and scan ROMs", "Reload the library and import new ROMs", Icon::Refresh, "reload update rescan").shortcut("F5"));
-    v.push(action(Act::ScanRoms, "scan-roms", "Scan ROMs\u{2026}", "Add games from a ROM folder", Icon::FolderOpen, "emulation import folder"));
-    v.push(action(Act::EpicUpdates, "epic-updates", "Check for Epic updates", "Refresh the Epic library and look for updates", Icon::Update, "epic games legendary upgrade"));
+    let action = |a: Act, id: &str, title: &str, sub: &str, icon: Icon, kw: &str| {
+        Entry::new(Kind::Action, a, format!("act:{id}"), title, sub, icon, kw)
+    };
+    v.push(
+        action(Act::AddGame, "add-game", "Add game\u{2026}", "Sideload a program, browser game or ROM", Icon::Add, "new sideload import")
+            .shortcut("Ctrl N"),
+    );
+    v.push(
+        action(
+            Act::Refresh,
+            "refresh",
+            "Refresh library and scan ROMs",
+            "Reload the library and import new ROMs",
+            Icon::Refresh,
+            "reload update rescan",
+        )
+        .shortcut("F5"),
+    );
+    v.push(action(
+        Act::ScanRoms,
+        "scan-roms",
+        "Scan ROMs\u{2026}",
+        "Add games from a ROM folder",
+        Icon::FolderOpen,
+        "emulation import folder",
+    ));
+    v.push(action(
+        Act::EpicUpdates,
+        "epic-updates",
+        "Check for Epic updates",
+        "Refresh the Epic library and look for updates",
+        Icon::Update,
+        "epic games legendary upgrade",
+    ));
     v.push(action(Act::OpenLogs, "logs", "Open logs folder", "App, runner and game logs", Icon::Description, "log folder directory debug"));
-    v.push(action(Act::YearReview, "year-review", "Year in review", "Your year in games, as stories", Icon::BarChart, "wrapped recap retrospective statistics stats year summary"));
-    v.push(action(Act::ManageStatuses, "statuses", "Manage statuses\u{2026}", "Add, rename and order the statuses", Icon::Flag, "status playing beaten completed custom"));
-    v.push(action(Act::Console, "console", "Console mode", "Controller-first TV layout", Icon::Tv, "controller gamepad tv big picture couch"));
+    v.push(action(
+        Act::YearReview,
+        "year-review",
+        "Year in review",
+        "Your year in games, as stories",
+        Icon::BarChart,
+        "wrapped recap retrospective statistics stats year summary",
+    ));
+    v.push(action(
+        Act::ManageStatuses,
+        "statuses",
+        "Manage statuses\u{2026}",
+        "Add, rename and order the statuses",
+        Icon::Flag,
+        "status playing beaten completed custom",
+    ));
+    v.push(action(
+        Act::Console,
+        "console",
+        "Console mode",
+        "Controller-first TV layout",
+        Icon::Tv,
+        "controller gamepad tv big picture couch",
+    ));
     v.push(action(Act::Quit, "quit", "Quit", "Close Heronite", Icon::Logout, "exit close"));
     v
 }
@@ -216,9 +270,22 @@ fn facet_label(k: FacetKind) -> &'static str {
 /// filters) as commands, for the state in `ui`.
 pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions) -> Vec<Entry> {
     let mut v = Vec::new();
-    let cmd = |c: ViewCmd, id: String, title: &str, sub: &str, icon: Icon, kw: &str| Entry::new(Kind::Action, Act::View(c), id, title, sub, icon, kw);
-    for (mode, id, label) in [(SortMode::Title, "title", "title"), (SortMode::LastPlayed, "last-played", "last played"), (SortMode::Playtime, "playtime", "playtime")] {
-        let mut e = cmd(ViewCmd::Sort(mode), format!("view:sort:{id}"), &format!("Sort by {label}"), "Order of the Collection list", Icon::Tune, "order view list");
+    let cmd = |c: ViewCmd, id: String, title: &str, sub: &str, icon: Icon, kw: &str| {
+        Entry::new(Kind::Action, Act::View(c), id, title, sub, icon, kw)
+    };
+    for (mode, id, label) in [
+        (SortMode::Title, "title", "title"),
+        (SortMode::LastPlayed, "last-played", "last played"),
+        (SortMode::Playtime, "playtime", "playtime"),
+    ] {
+        let mut e = cmd(
+            ViewCmd::Sort(mode),
+            format!("view:sort:{id}"),
+            &format!("Sort by {label}"),
+            "Order of the Collection list",
+            Icon::Tune,
+            "order view list",
+        );
         if ui.sort == mode {
             e.disable("Current order");
         }
@@ -239,7 +306,14 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions) -> Vec<Entry> {
     v.push(cmd(ViewCmd::GroupByStatus, "view:group".into(), group, "Collection list", Icon::Flag, "view status groups sections"));
     let hidden = if ui.show_hidden { "Stop showing hidden games" } else { "Show hidden games" };
     v.push(cmd(ViewCmd::ShowHidden, "view:hidden".into(), hidden, "Collection list", Icon::Visibility, "view hidden unhide"));
-    let mut clear = cmd(ViewCmd::ClearFilters, "view:clear".into(), "Clear filters", "Series, developer, publisher, genre, platform", Icon::Close, "reset filters facets");
+    let mut clear = cmd(
+        ViewCmd::ClearFilters,
+        "view:clear".into(),
+        "Clear filters",
+        "Series, developer, publisher, genre, platform",
+        Icon::Close,
+        "reset filters facets",
+    );
     if !ui.facet_filters.is_active() {
         clear.disable("No filter is active");
     }
@@ -263,7 +337,15 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions) -> Vec<Entry> {
 /// A page's palette command.
 pub(super) fn page_entry(page: Page, c: &PageCommand) -> Entry {
     let act = Act::PageCmd { page, id: c.id.clone(), navigate: c.navigate };
-    let mut e = Entry::new(Kind::Action, act, format!("page:{page:?}:{}", c.id), &c.title, &c.subtitle, c.icon, &format!("{} {}", page.title(), c.keywords));
+    let mut e = Entry::new(
+        Kind::Action,
+        act,
+        format!("page:{page:?}:{}", c.id),
+        &c.title,
+        &c.subtitle,
+        c.icon,
+        &format!("{} {}", page.title(), c.keywords),
+    );
     if let Some(why) = &c.disabled {
         e.disable(why.clone());
     }
@@ -288,7 +370,8 @@ pub(super) struct GameRow<'a> {
 
 pub(super) fn game_entry(g: &GameRow) -> Entry {
     let sub = if g.playing { format!("{} \u{b7} Playing now", g.source) } else { format!("{} \u{b7} {}", g.source, g.playtime) };
-    let mut e = Entry::new(Kind::Game, Act::SelectGame(g.key.to_string()), format!("game:{}", g.key), g.title, &sub, Icon::SportsEsports, "");
+    let mut e =
+        Entry::new(Kind::Game, Act::SelectGame(g.key.to_string()), format!("game:{}", g.key), g.title, &sub, Icon::SportsEsports, "");
     if !g.store_title.is_empty() && g.store_title != g.title {
         e.f_alt = fold(g.store_title);
     }
@@ -325,7 +408,13 @@ pub(super) fn game_verbs(title: &str, bits: &GameBits) -> Vec<Entry> {
         v.push(mk(GameAction::Settings, "settings", format!("{title} settings"), "Wine, launch options, art\u{2026}", Icon::Tune));
     }
     if bits.has_folder {
-        v.push(mk(GameAction::OpenFolder, "folder", format!("Open {title} folder"), "Install folder in the file manager", Icon::FolderOpen));
+        v.push(mk(
+            GameAction::OpenFolder,
+            "folder",
+            format!("Open {title} folder"),
+            "Install folder in the file manager",
+            Icon::FolderOpen,
+        ));
     }
     v.push(if bits.favourite {
         mk(GameAction::Favourite, "fav", format!("Remove {title} from favourites"), "Favourites", Icon::Favorite)
@@ -338,7 +427,15 @@ pub(super) fn game_verbs(title: &str, bits: &GameBits) -> Vec<Entry> {
         mk(GameAction::Hide, "hide", format!("Hide {title}"), "Leave it out of the Collection", Icon::VisibilityOff)
     });
     v.push(mk(GameAction::Log, "log", format!("{title} log"), "Last launch log", Icon::Description));
-    let mut all = Entry::new(Kind::Game, Act::GameActions(bits.key.clone()), format!("game:{}:actions", bits.key), &format!("All actions for {title}\u{2026}"), "Status, uninstall, shortcuts\u{2026}", Icon::Menu, "");
+    let mut all = Entry::new(
+        Kind::Game,
+        Act::GameActions(bits.key.clone()),
+        format!("game:{}:actions", bits.key),
+        &format!("All actions for {title}\u{2026}"),
+        "Status, uninstall, shortcuts\u{2026}",
+        Icon::Menu,
+        "",
+    );
     all.game = Some(bits.clone());
     v.push(all);
     v
@@ -359,13 +456,29 @@ pub(super) fn action_entries(key: &str, game_title: &str, items: &[GameActionIte
         .map(|a| {
             // On the game's own list its name is the caption already.
             let sub = if context { game_title } else { "" };
-            let mut e = Entry::new(Kind::Action, Act::Game(key.to_string(), a.action.clone()), format!("game:{key}:{}", a.id), &a.label, sub, a.icon, a.keywords);
+            let mut e = Entry::new(
+                Kind::Action,
+                Act::Game(key.to_string(), a.action.clone()),
+                format!("game:{key}:{}", a.id),
+                &a.label,
+                sub,
+                a.icon,
+                a.keywords,
+            );
             e.context = context;
             e
         })
         .collect();
     if context {
-        let mut all = Entry::new(Kind::Action, Act::GameActions(key.to_string()), format!("game:{key}:actions"), "All actions\u{2026}", game_title, Icon::Menu, "menu more");
+        let mut all = Entry::new(
+            Kind::Action,
+            Act::GameActions(key.to_string()),
+            format!("game:{key}:actions"),
+            "All actions\u{2026}",
+            game_title,
+            Icon::Menu,
+            "menu more",
+        );
         all.context = true;
         v.push(all);
     }
@@ -405,7 +518,17 @@ mod tests {
         let sections = v.iter().filter(|e| matches!(e.act, Act::Section(_))).count();
         assert_eq!(sections, Section::ALL.len());
         assert!(v.iter().filter(|e| matches!(e.act, Act::Section(_))).all(|e| e.secondary));
-        for a in [Act::AddGame, Act::Refresh, Act::ScanRoms, Act::EpicUpdates, Act::OpenLogs, Act::YearReview, Act::ManageStatuses, Act::Console, Act::Quit] {
+        for a in [
+            Act::AddGame,
+            Act::Refresh,
+            Act::ScanRoms,
+            Act::EpicUpdates,
+            Act::OpenLogs,
+            Act::YearReview,
+            Act::ManageStatuses,
+            Act::Console,
+            Act::Quit,
+        ] {
             assert!(v.iter().any(|e| e.act == a && e.kind == Kind::Action), "{a:?}");
         }
     }
@@ -456,7 +579,15 @@ mod tests {
         let v = game_verbs("Control", &installed);
         assert_eq!(
             titles(&v),
-            ["Play Control", "Control settings", "Open Control folder", "Add Control to favourites", "Hide Control", "Control log", "All actions for Control\u{2026}"]
+            [
+                "Play Control",
+                "Control settings",
+                "Open Control folder",
+                "Add Control to favourites",
+                "Hide Control",
+                "Control log",
+                "All actions for Control\u{2026}"
+            ]
         );
         assert_eq!(v[0].act, Act::Game("k".into(), GameAction::Primary));
         assert_eq!(v[1].act, Act::Game("k".into(), GameAction::Settings));
@@ -494,7 +625,10 @@ mod tests {
 
     #[test]
     fn page_commands_carry_their_page_and_reason() {
-        let c = PageCommand::new("pause", "Pause downloads", "Control", Icon::Pause).keywords("hold").disabled(Some("Nothing is downloading")).stay();
+        let c = PageCommand::new("pause", "Pause downloads", "Control", Icon::Pause)
+            .keywords("hold")
+            .disabled(Some("Nothing is downloading"))
+            .stay();
         let e = page_entry(Page::Downloads, &c);
         assert_eq!(e.act, Act::PageCmd { page: Page::Downloads, id: "pause".into(), navigate: false });
         assert_eq!(e.id.as_ref(), "page:Downloads:pause");

@@ -52,8 +52,7 @@ fn login_helper() -> Option<std::path::PathBuf> {
             return Some(candidate);
         }
     }
-    std::env::var_os("PATH")
-        .and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.exists()))
+    std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.exists()))
 }
 
 impl EpicPage {
@@ -195,10 +194,8 @@ impl EpicPage {
 
     fn start_window_login(&mut self, cx: &mut Context<Self>) {
         let Some(helper) = login_helper() else {
-            self.notice = Some((
-                "The login window (heronite-epic-login) was not found next to the app. Use the browser method below.".into(),
-                true,
-            ));
+            self.notice =
+                Some(("The login window (heronite-epic-login) was not found next to the app. Use the browser method below.".into(), true));
             cx.notify();
             return;
         };
@@ -296,7 +293,14 @@ impl Render for EpicPage {
                             .flex_1()
                             .min_w_0()
                             .gap(px(4.))
-                            .child(div().font_family(theme::FONT_HEADING).text_size(px(20.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(account.name.clone()))
+                            .child(
+                                div()
+                                    .font_family(theme::FONT_HEADING)
+                                    .text_size(px(20.))
+                                    .font_weight(theme::W_BOLD)
+                                    .text_color(theme::text_primary())
+                                    .child(account.name.clone()),
+                            )
                             .child(div().flex().child(status_pill("Logged in to Epic Games", theme::success()))),
                     )
                     .child(button("epic-logout", ButtonKind::Glass, "Log out").on_click(cx.listener(|this, _, _, cx| {
@@ -313,7 +317,13 @@ impl Render for EpicPage {
                         .items_center()
                         .gap(px(8.))
                         .py(px(12.))
-                        .child(div().flex_1().min_w(px(240.)).text_size(px(13.)).child("Log out of Epic Games? Your installed games stay on disk."))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(240.))
+                                .text_size(px(13.))
+                                .child("Log out of Epic Games? Your installed games stay on disk."),
+                        )
                         .child(button("epic-logout-no", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_logout = false;
                             cx.notify();
@@ -335,9 +345,10 @@ impl Render for EpicPage {
             );
             let mut lib_actions = div().flex().items_center().gap(px(8.));
             if updates > 0 {
-                lib_actions = lib_actions.child(button("epic-update-all", ButtonKind::Glass, format!("Update all ({updates})")).on_click(
-                    cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.update_all(cx))),
-                ));
+                lib_actions = lib_actions.child(
+                    button("epic-update-all", ButtonKind::Glass, format!("Update all ({updates})"))
+                        .on_click(cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.update_all(cx)))),
+                );
             }
             lib_actions = lib_actions.child(action_button(
                 "epic-refresh",
@@ -367,7 +378,13 @@ impl Render for EpicPage {
                 action_button(
                     "epic-login-window",
                     ButtonKind::Primary,
-                    if self.window_open { "Waiting for the login window..." } else if logging_in { "Logging in..." } else { "Log in" },
+                    if self.window_open {
+                        "Waiting for the login window..."
+                    } else if logging_in {
+                        "Logging in..."
+                    } else {
+                        "Log in"
+                    },
                     !self.window_open && !logging_in,
                     cx.listener(|this, _, _, cx| this.start_window_login(cx)),
                 ),
@@ -387,36 +404,44 @@ impl Render for EpicPage {
                         cx.write_to_clipboard(ClipboardItem::new_string(BROWSER_LOGIN_URL.to_string()));
                     }))),
             );
-            let step2 = div()
-                .flex()
-                .flex_col()
-                .gap(px(10.))
-                .py(px(12.))
-                .child(div().text_size(px(14.)).child("2. Paste the code"))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(10.))
-                        .child(div().flex_1().min_w_0().child(crate::ui::fields::input_box(&self.code, false)))
-                        .child(action_button(
-                            "epic-login-code",
-                            ButtonKind::Primary,
-                            if logging_in { "Logging in..." } else { "Log in" },
-                            can_submit,
-                            cx.listener(|this, _, _, cx| this.submit_code(cx)),
-                        )),
-                );
+            let step2 = div().flex().flex_col().gap(px(10.)).py(px(12.)).child(div().text_size(px(14.)).child("2. Paste the code")).child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(div().flex_1().min_w_0().child(crate::ui::fields::input_box(&self.code, false)))
+                    .child(action_button(
+                        "epic-login-code",
+                        ButtonKind::Primary,
+                        if logging_in { "Logging in..." } else { "Log in" },
+                        can_submit,
+                        cx.listener(|this, _, _, cx| this.submit_code(cx)),
+                    )),
+            );
             column = column
                 .child(caption("Or log in with your browser"))
                 .child(card([step1.into_any_element(), step2.into_any_element()]))
                 .child(div().mt(px(8.)).mx(px(6.)).child(meta_text(BROWSER_LOGIN_URL)));
         }
         if let Some((text, error)) = self.notice.clone() {
-            column = column.child(div().mt(px(14.)).mx(px(6.)).text_size(px(13.)).text_color(if error { theme::danger_text() } else { theme::text_primary() }).child(text));
+            column = column.child(
+                div()
+                    .mt(px(14.))
+                    .mx(px(6.))
+                    .text_size(px(13.))
+                    .text_color(if error { theme::danger_text() } else { theme::text_primary() })
+                    .child(text),
+            );
         }
         if let Some(err) = last_error {
-            column = column.child(div().mt(px(10.)).mx(px(6.)).text_size(px(12.)).text_color(theme::danger_text()).child(err.lines().next().unwrap_or("").to_string()));
+            column = column.child(
+                div()
+                    .mt(px(10.))
+                    .mx(px(6.))
+                    .text_size(px(12.))
+                    .text_color(theme::danger_text())
+                    .child(err.lines().next().unwrap_or("").to_string()),
+            );
         }
         let eos = div()
             .child(caption("EOS Overlay"))

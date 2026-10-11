@@ -88,16 +88,19 @@ impl CollectionView {
     pub(super) fn open_install_folder(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         let paths = self.data_paths.clone();
-        self.open_external(move || {
-            let folders = game_folders(&paths, &game);
-            let dir = folders
-                .iter()
-                .find(|(k, _)| *k != FolderKind::Emulator)
-                .or(folders.first())
-                .map(|(_, d)| d.clone())
-                .ok_or_else(|| "The install folder was not found on this computer.".to_string())?;
-            xdg_open(&dir)
-        }, cx);
+        self.open_external(
+            move || {
+                let folders = game_folders(&paths, &game);
+                let dir = folders
+                    .iter()
+                    .find(|(k, _)| *k != FolderKind::Emulator)
+                    .or(folders.first())
+                    .map(|(_, d)| d.clone())
+                    .ok_or_else(|| "The install folder was not found on this computer.".to_string())?;
+                xdg_open(&dir)
+            },
+            cx,
+        );
     }
 
     /// Opens `dir` (a folder found by [`game_folders`]) in the file manager.

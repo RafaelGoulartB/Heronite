@@ -16,7 +16,7 @@ use super::advanced::{PairTable, ENV, WRAPPERS};
 use super::gamescope::{UPSCALE_METHODS, WINDOW_TYPES};
 use super::logic::{self, launcher_args_error, pairs};
 use super::saves::MODES;
-use super::{GlobalView, SettingsPanel, Section};
+use super::{GlobalView, Section, SettingsPanel};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row, Value as RowValue};
@@ -61,12 +61,19 @@ impl SettingsPanel {
     }
 
     fn c_text(&self, id: &'static str, label: &str, cx: &App) -> Item {
-        item(Row::text(SharedString::from(format!("x:{id}")), label.to_string(), self.input_text(id, cx)).icon(Icon::Edit), Act::Text(id, SharedString::from(label.to_string())))
+        item(
+            Row::text(SharedString::from(format!("x:{id}")), label.to_string(), self.input_text(id, cx)).icon(Icon::Edit),
+            Act::Text(id, SharedString::from(label.to_string())),
+        )
     }
 
     fn c_path(&self, id: &'static str, label: &str, dir: bool, cx: &App) -> Item {
         item(
-            Row::text(SharedString::from(format!("p:{id}")), label.to_string(), self.input_text(id, cx)).icon(if dir { Icon::FolderOpen } else { Icon::Description }),
+            Row::text(SharedString::from(format!("p:{id}")), label.to_string(), self.input_text(id, cx)).icon(if dir {
+                Icon::FolderOpen
+            } else {
+                Icon::Description
+            }),
             Act::Path(id, dir, SharedString::from(label.to_string())),
         )
     }
@@ -93,9 +100,13 @@ impl SettingsPanel {
             Section::General => match self.global_view {
                 GlobalView::General => self.c_general(cx),
                 GlobalView::Downloads => self.c_downloads(cx),
-                GlobalView::Advanced => vec![
-                    self.c_toggle("disableLogs", false, "Disable logs", Some("Most log writes stop (critical information is always logged)"), false),
-                ],
+                GlobalView::Advanced => vec![self.c_toggle(
+                    "disableLogs",
+                    false,
+                    "Disable logs",
+                    Some("Most log writes stop (critical information is always logged)"),
+                    false,
+                )],
             },
         };
         if let Some(n) = &self.notice {
@@ -126,7 +137,11 @@ impl SettingsPanel {
             }
         });
         if names.is_empty() {
-            v.push(Self::c_info("wine", "Wine / Proton version", if self.wine_list.is_none() { "Loading\u{2026}".to_string() } else { "None found".into() }));
+            v.push(Self::c_info(
+                "wine",
+                "Wine / Proton version",
+                if self.wine_list.is_none() { "Loading\u{2026}".to_string() } else { "None found".into() },
+            ));
         } else {
             v.push(item(Row::choice("c:wine", "Wine / Proton version", names, selected).icon(Icon::WineBar).desc(desc), Act::Choice(pick)));
         }
@@ -148,13 +163,31 @@ impl SettingsPanel {
             ));
         }
         if wine.kind != "proton" {
-            v.push(self.c_toggle("autoInstallVkd3d", false, "Auto install / update VKD3D", Some("Vulkan layer for DirectX 12 games (needs DXVK)"), !dxvk_on || busy));
+            v.push(self.c_toggle(
+                "autoInstallVkd3d",
+                false,
+                "Auto install / update VKD3D",
+                Some("Vulkan layer for DirectX 12 games (needs DXVK)"),
+                !dxvk_on || busy,
+            ));
         }
-        v.push(self.c_toggle("autoInstallDxvkNvapi", false, "Auto install / update DXVK-NVAPI", Some("Lets DLSS work on NVIDIA GPUs"), !dxvk_on || busy));
+        v.push(self.c_toggle(
+            "autoInstallDxvkNvapi",
+            false,
+            "Auto install / update DXVK-NVAPI",
+            Some("Lets DLSS work on NVIDIA GPUs"),
+            !dxvk_on || busy,
+        ));
         v.push(Self::c_header("Sync and compatibility"));
         v.push(self.c_toggle("enableEsync", false, "Esync", Some("Less wineserver overhead in CPU-heavy games"), false));
         v.push(self.c_toggle("enableFsync", false, "Fsync", Some("Less wineserver overhead on supported kernels"), false));
-        v.push(self.c_toggle("enableWineWayland", false, "Wine-Wayland (experimental)", Some("The Wine version needs to support it"), false));
+        v.push(self.c_toggle(
+            "enableWineWayland",
+            false,
+            "Wine-Wayland (experimental)",
+            Some("The Wine version needs to support it"),
+            false,
+        ));
         if self.flag("enableWineWayland", false) {
             v.push(self.c_toggle("enableHDR", false, "HDR", Some("The display and the game must support it"), false));
         }
@@ -163,17 +196,26 @@ impl SettingsPanel {
         if self.flag("enableFSR", false) {
             let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
             let opts = (1..=5).map(|n| SharedString::from(n.to_string())).collect();
-            v.push(item(Row::choice("c:sharp", "FSR sharpness", opts, (sharp - 1) as usize), Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx)))));
+            v.push(item(
+                Row::choice("c:sharp", "FSR sharpness", opts, (sharp - 1) as usize),
+                Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx))),
+            ));
         }
         if self.is_game() {
             v.push(Self::c_header("Tools"));
             let idle = self.tool_busy.is_none();
             v.push(Self::c_do("winecfg", "Winecfg", Icon::Tune, idle, |this, _, cx| this.run_tool("winecfg", WineTool::Winecfg, cx)));
-            v.push(Self::c_do("winetricks", "Winetricks", Icon::Build, idle, |this, _, cx| this.run_tool("winetricks", WineTool::Winetricks, cx)));
+            v.push(Self::c_do("winetricks", "Winetricks", Icon::Build, idle, |this, _, cx| {
+                this.run_tool("winetricks", WineTool::Winetricks, cx)
+            }));
             v.push(Self::c_do("runexe", "Run a program in the prefix\u{2026}", Icon::PlayArrow, idle, |this, window, cx| {
-                this.console_pick_file("Run a program in the prefix", vec!["exe".into(), "msi".into(), "bat".into()], window, cx, |this, path, cx| {
-                    this.run_tool("runexe", WineTool::RunExe(path), cx)
-                })
+                this.console_pick_file(
+                    "Run a program in the prefix",
+                    vec!["exe".into(), "msi".into(), "bat".into()],
+                    window,
+                    cx,
+                    |this, path, cx| this.run_tool("runexe", WineTool::RunExe(path), cx),
+                )
             }));
         }
         v
@@ -186,13 +228,31 @@ impl SettingsPanel {
         if !native {
             v.push(self.c_toggle("showFps", false, "Show FPS (DX9, 10 and 11)", None, false));
         }
-        v.push(self.c_toggle("showMangohud", false, "MangoHud", Some("FPS, temperatures and load overlay (needs MangoHud installed)"), false));
+        v.push(self.c_toggle(
+            "showMangohud",
+            false,
+            "MangoHud",
+            Some("FPS, temperatures and load overlay (needs MangoHud installed)"),
+            false,
+        ));
         v.push(self.c_toggle("useGameMode", false, "GameMode", Some("Feral GameMode system tweaks (needs GameMode installed)"), false));
         if !native && logic::offers_system_libs(&wine) {
-            v.push(self.c_toggle("preferSystemLibs", false, "Prefer system libraries", Some("Ignore the libraries shipped with this Wine build"), false));
+            v.push(self.c_toggle(
+                "preferSystemLibs",
+                false,
+                "Prefer system libraries",
+                Some("Ignore the libraries shipped with this Wine build"),
+                false,
+            ));
         }
         if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
-            v.push(self.c_toggle("nvidiaPrime", false, "Use the dedicated GPU", Some("NVIDIA Optimus / AMD switchable graphics; OpenGL and Vulkan games only"), false));
+            v.push(self.c_toggle(
+                "nvidiaPrime",
+                false,
+                "Use the dedicated GPU",
+                Some("NVIDIA Optimus / AMD switchable graphics; OpenGL and Vulkan games only"),
+                false,
+            ));
         }
         if native {
             let current = match self.settings.get("steamRuntime") {
@@ -211,7 +271,8 @@ impl SettingsPanel {
                 })),
             ));
         } else {
-            let note = |on: bool, installed: bool, name: &str| (on && !installed).then(|| format!("The {name} runtime is not installed yet"));
+            let note =
+                |on: bool, installed: bool, name: &str| (on && !installed).then(|| format!("The {name} runtime is not installed yet"));
             v.push(Self::c_header("Anti-cheat"));
             let be = note(self.flag("battlEyeRuntime", false), self.runtimes.0, "BattlEye");
             let eac = note(self.flag("eacRuntime", false), self.runtimes.1, "EAC");
@@ -230,7 +291,9 @@ impl SettingsPanel {
             ));
         }
         let label = if t.env { "Add an environment variable" } else { "Add a wrapper" };
-        v.push(Self::c_do(&format!("add-{}", t.id), label, Icon::Add, true, move |this, window, cx| this.console_pair_edit(t, None, window, cx)));
+        v.push(Self::c_do(&format!("add-{}", t.id), label, Icon::Add, true, move |this, window, cx| {
+            this.console_pair_edit(t, None, window, cx)
+        }));
         if t.env && !self.env_error.is_empty() {
             v.push(Self::c_info("env-error", "Problem", self.env_error.clone()));
         }
@@ -300,7 +363,9 @@ impl SettingsPanel {
                 Act::Choice(Rc::new(move |this, i, cx| this.set_gamescope(field, Value::String(table[i].0.into()), cx))),
             )
         };
-        let gs_toggle = |field: &'static str, label: &str| item(Row::toggle(SharedString::from(format!("g:{field}")), label.to_string(), self.gs_flag(field)), Act::GsToggle(field));
+        let gs_toggle = |field: &'static str, label: &str| {
+            item(Row::toggle(SharedString::from(format!("g:{field}")), label.to_string(), self.gs_flag(field)), Act::GsToggle(field))
+        };
         let mut v = vec![gs_toggle("enableUpscaling", "Upscaling")];
         if self.gs_flag("enableUpscaling") {
             v.push(gs_choice("c:gs-method", "upscaleMethod", "Upscale method", &UPSCALE_METHODS));
@@ -342,9 +407,13 @@ impl SettingsPanel {
                 cx.notify();
             })),
         ));
-        v.push(Self::c_do("sync", if self.saves.syncing { "Syncing\u{2026}" } else { "Sync now" }, Icon::CloudSync, has_path && !self.saves.syncing, |this, _, cx| {
-            this.sync_saves(cx)
-        }));
+        v.push(Self::c_do(
+            "sync",
+            if self.saves.syncing { "Syncing\u{2026}" } else { "Sync now" },
+            Icon::CloudSync,
+            has_path && !self.saves.syncing,
+            |this, _, cx| this.sync_saves(cx),
+        ));
         if let Some(lines) = &self.saves.output {
             for (i, l) in lines.iter().rev().take(4).enumerate() {
                 v.push(Self::c_info(&format!("out{i}"), "", l.clone()));
@@ -378,7 +447,13 @@ impl SettingsPanel {
             self.c_toggle("addStartMenuShortcuts", false, "Add games to the start menu automatically", None, false),
             self.c_toggle("addSteamShortcuts", false, "Add games to Steam automatically", None, false),
             Self::c_header("Wine and Proton"),
-            self.c_toggle("showValveProton", false, "Allow Valve Proton builds", Some("Custom forks (GE-Proton, Proton-CachyOS) are recommended"), false),
+            self.c_toggle(
+                "showValveProton",
+                false,
+                "Allow Valve Proton builds",
+                Some("Custom forks (GE-Proton, Proton-CachyOS) are recommended"),
+                false,
+            ),
             self.c_toggle("downloadProtonToSteam", false, "Download GE-Proton to Steam", None, false),
             Self::c_header("Custom Wine / Proton paths"),
         ];
@@ -414,7 +489,8 @@ impl SettingsPanel {
         vec![
             Self::c_header("Downloads"),
             item(
-                Row::choice("c:workers", "Download workers", opts, current.min(cores)).desc("More workers download faster but use more CPU, memory and disk"),
+                Row::choice("c:workers", "Download workers", opts, current.min(cores))
+                    .desc("More workers download faster but use more CPU, memory and disk"),
                 Act::Choice(Rc::new(|this, i, cx| this.set("maxWorkers", json!(i as i64), cx))),
             ),
             self.c_path("altLegendaryBin", "Alternative legendary binary", false, cx),
@@ -426,7 +502,14 @@ impl SettingsPanel {
 
     // ------------------------------------------------------------- editors
 
-    fn console_osk(&mut self, title: &str, initial: &str, window: &mut Window, cx: &mut Context<Self>, done: impl Fn(&mut Self, String, &mut Window, &mut Context<Self>) + 'static) {
+    fn console_osk(
+        &mut self,
+        title: &str,
+        initial: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        done: impl Fn(&mut Self, String, &mut Window, &mut Context<Self>) + 'static,
+    ) {
         let osk = cx.new(|_| Osk::new(title.to_string(), initial));
         let sub = cx.subscribe_in(&osk, window, move |this, _, ev: &OskEvent, window, cx| {
             this.console_layer.close();
@@ -438,7 +521,14 @@ impl SettingsPanel {
         self.console_layer.open(&osk, sub);
     }
 
-    fn console_pick_file(&mut self, title: &str, exts: Vec<String>, window: &mut Window, cx: &mut Context<Self>, done: impl Fn(&mut Self, String, &mut Context<Self>) + 'static) {
+    fn console_pick_file(
+        &mut self,
+        title: &str,
+        exts: Vec<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        done: impl Fn(&mut Self, String, &mut Context<Self>) + 'static,
+    ) {
         let browser = cx.new(|cx| Browser::new(title.to_string(), PickKind::File(exts), None, cx));
         let sub = cx.subscribe_in(&browser, window, move |this, _, ev: &BrowserEvent, _, cx| {
             this.console_layer.close();

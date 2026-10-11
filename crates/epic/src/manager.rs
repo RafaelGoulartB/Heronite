@@ -111,13 +111,7 @@ impl DownloadManager {
                 ephemeral,
                 job,
                 notify: Arc::new(notify),
-                inner: Mutex::new(Inner {
-                    state: DmState::Idle,
-                    queue,
-                    finished,
-                    current: None,
-                    worker: false,
-                }),
+                inner: Mutex::new(Inner { state: DmState::Idle, queue, finished, current: None, worker: false }),
             }),
         }
     }
@@ -153,10 +147,7 @@ impl DownloadManager {
     pub fn add(&self, element: DmElement) {
         {
             let mut g = self.shared.inner.lock();
-            let running_same = g
-                .current
-                .as_ref()
-                .is_some_and(|c| c.app_name == element.params.app_name);
+            let running_same = g.current.as_ref().is_some_and(|c| c.app_name == element.params.app_name);
             if running_same {
                 return;
             }
@@ -188,10 +179,7 @@ impl DownloadManager {
         }
         self.emit(Event::Changed);
         let me = self.clone();
-        std::thread::Builder::new()
-            .name("epic-downloads".into())
-            .spawn(move || me.worker_loop())
-            .expect("spawning the download worker");
+        std::thread::Builder::new().name("epic-downloads".into()).spawn(move || me.worker_loop()).expect("spawning the download worker");
     }
 
     fn worker_loop(&self) {
@@ -307,9 +295,7 @@ impl DownloadManager {
             let Some(first) = g.queue.first().cloned() else { return };
             let dlcs = first.params.install_dlcs.clone();
             g.queue.retain(|e| !dlcs.contains(&e.params.app_name));
-            let remove = remove_downloaded
-                .then(|| first.params.folder_name().map(|f| (first.params.path.clone(), f)))
-                .flatten();
+            let remove = remove_downloaded.then(|| first.params.folder_name().map(|f| (first.params.path.clone(), f))).flatten();
             match g.current.as_mut().filter(|c| c.app_name == first.params.app_name) {
                 Some(c) => {
                     c.remove_on_abort = remove;

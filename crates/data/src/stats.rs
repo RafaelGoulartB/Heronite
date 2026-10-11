@@ -97,7 +97,15 @@ impl Period {
                 let last = self.end - Duration::days(1);
                 let (a, b) = (self.start, last);
                 if a.year() != b.year() {
-                    format!("{} {}, {} \u{2013} {} {}, {}", month_short(a.month()), a.day(), a.year(), month_short(b.month()), b.day(), b.year())
+                    format!(
+                        "{} {}, {} \u{2013} {} {}, {}",
+                        month_short(a.month()),
+                        a.day(),
+                        a.year(),
+                        month_short(b.month()),
+                        b.day(),
+                        b.year()
+                    )
                 } else if a.month() != b.month() {
                     format!("{} {} \u{2013} {} {}, {}", month_short(a.month()), a.day(), month_short(b.month()), b.day(), b.year())
                 } else {
@@ -298,7 +306,9 @@ impl Stats {
     /// Days with play in `[start, end)` and the busiest of them.
     pub fn days_between(&self, start: NaiveDate, end: NaiveDate) -> (usize, Option<(NaiveDate, f64)>) {
         let days = self.days.iter().filter(|(d, _)| start <= *d && *d < end);
-        let (n, best) = days.fold((0, None::<(NaiveDate, f64)>), |(n, best), &(d, s)| (n + 1, if best.is_none_or(|b| s > b.1) { Some((d, s)) } else { best }));
+        let (n, best) = days.fold((0, None::<(NaiveDate, f64)>), |(n, best), &(d, s)| {
+            (n + 1, if best.is_none_or(|b| s > b.1) { Some((d, s)) } else { best })
+        });
         (n, best)
     }
 
@@ -612,7 +622,10 @@ mod tests {
         );
         assert_eq!(h.since, Some(day(2026, 9, 10)));
         let st = compute(&h, Period::of(Span::Month, day(2026, 10, 9)), day(2026, 10, 9));
-        assert_eq!(st.games.iter().map(|g| (g.game, g.secs, g.sessions, g.new)).collect::<Vec<_>>(), [(0, 10800., 2, false), (1, 5400., 1, true)]);
+        assert_eq!(
+            st.games.iter().map(|g| (g.game, g.secs, g.sessions, g.new)).collect::<Vec<_>>(),
+            [(0, 10800., 2, false), (1, 5400., 1, true)]
+        );
         assert_eq!(st.prev_secs, Some(1800.));
         assert_eq!(st.longest.unwrap().secs, 7200.);
         assert_eq!(st.busiest, Some((day(2026, 10, 1), 7200.)));
@@ -623,7 +636,7 @@ mod tests {
         let all = compute(&h, Period::of(Span::All, day(2026, 10, 9)), day(2026, 10, 9));
         assert_eq!(all.period.start, day(2026, 9, 10));
         assert_eq!(all.buckets.len(), 2); // Sep, Oct
-        // Lifetime totals beat the sessions: game 1 (1000 min) leads the list...
+                                          // Lifetime totals beat the sessions: game 1 (1000 min) leads the list...
         assert_eq!(all.games.iter().map(|g| (g.game, g.secs)).collect::<Vec<_>>(), [(1, 60000.), (0, 36000.)]);
         // ...but the chart colours go by session time, where game 0 leads.
         assert_eq!(all.series, [0, 1]);
@@ -634,7 +647,12 @@ mod tests {
 
     #[test]
     fn streak_break_days_and_games_per_bucket() {
-        let a = [s("2026-01-01T10:00:00Z", 3600.), s("2026-01-02T10:00:00Z", 3600.), s("2026-01-03T10:00:00Z", 600.), s("2026-01-20T10:00:00Z", 1200.)];
+        let a = [
+            s("2026-01-01T10:00:00Z", 3600.),
+            s("2026-01-02T10:00:00Z", 3600.),
+            s("2026-01-03T10:00:00Z", 600.),
+            s("2026-01-20T10:00:00Z", 1200.),
+        ];
         let b = [s("2026-01-03T12:00:00Z", 7200.), s("2026-02-05T12:00:00Z", 1800.)];
         let h = history_in(
             [

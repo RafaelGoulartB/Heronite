@@ -45,9 +45,7 @@ fn decode_entities(s: &str) -> String {
             "trade" => Some('™'),
             "reg" => Some('®'),
             "copy" => Some('©'),
-            _ if ent.starts_with("#x") || ent.starts_with("#X") => {
-                u32::from_str_radix(&ent[2..], 16).ok().and_then(char::from_u32)
-            }
+            _ if ent.starts_with("#x") || ent.starts_with("#X") => u32::from_str_radix(&ent[2..], 16).ok().and_then(char::from_u32),
             _ if ent.starts_with('#') => ent[1..].parse().ok().and_then(char::from_u32),
             _ => None,
         };
@@ -106,8 +104,7 @@ pub fn parse(html: &str) -> Vec<Block> {
         let mut merged: Vec<Span> = Vec::new();
         for s in spans.drain(..) {
             // `&nbsp;` is not collapsible: only ASCII whitespace collapses.
-            let text: String =
-                s.text.split(|c: char| c.is_ascii_whitespace()).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
+            let text: String = s.text.split(|c: char| c.is_ascii_whitespace()).filter(|w| !w.is_empty()).collect::<Vec<_>>().join(" ");
             let lead = s.text.starts_with(|c: char| c.is_ascii_whitespace());
             let trail = s.text.ends_with(|c: char| c.is_ascii_whitespace()) && !text.is_empty();
             let mut t = String::new();
@@ -153,12 +150,8 @@ pub fn parse(html: &str) -> Vec<Block> {
             let tag = &rest[lt + 1..lt + gt];
             rest = &rest[lt + gt + 1..];
             let closing = tag.starts_with('/');
-            let name: String = tag
-                .trim_start_matches('/')
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric())
-                .collect::<String>()
-                .to_ascii_lowercase();
+            let name: String =
+                tag.trim_start_matches('/').chars().take_while(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
             match (name.as_str(), closing) {
                 ("h1" | "h2" | "h3" | "h4" | "h5" | "h6", false) => {
                     flush(&mut blocks, &mut spans, &ctx);

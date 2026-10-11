@@ -120,11 +120,8 @@ fn touch_if_old(f: &std::fs::File) {
 
 pub fn write(dir: &Path, key: &ThumbKey, d: &Decoded, compress: bool) -> Result<()> {
     let comp = if compress { lz4_flex::block::compress(&d.bgra) } else { Vec::new() };
-    let (codec, payload): (u8, &[u8]) = if compress && comp.len() * 10 < d.bgra.len() * 9 {
-        (CODEC_LZ4, &comp)
-    } else {
-        (CODEC_RAW, &d.bgra)
-    };
+    let (codec, payload): (u8, &[u8]) =
+        if compress && comp.len() * 10 < d.bgra.len() * 9 { (CODEC_LZ4, &comp) } else { (CODEC_RAW, &d.bgra) };
     let mut buf = Vec::with_capacity(HEADER + payload.len());
     buf.extend_from_slice(MAGIC);
     buf.extend_from_slice(&d.width.to_le_bytes());
@@ -195,7 +192,13 @@ pub fn evict_lru(dir: &Path, max_bytes: u64) -> std::io::Result<EvictStats> {
     }
     if let Ok(rd) = std::fs::read_dir(dir.join("neg")) {
         for e in rd.flatten() {
-            let old = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|a| a > Duration::from_secs(30 * 86400)).unwrap_or(false);
+            let old = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .map(|a| a > Duration::from_secs(30 * 86400))
+                .unwrap_or(false);
             if old {
                 let _ = std::fs::remove_file(e.path());
             }

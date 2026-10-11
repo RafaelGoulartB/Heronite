@@ -2,8 +2,8 @@
 
 use gpui_kit::*;
 use heronite_epic::cmd::Legendary;
-use heronite_epic::user;
 use heronite_epic::library;
+use heronite_epic::user;
 
 use super::library_file::read_stats;
 use super::{Downloads, DownloadsEvent, Stats};

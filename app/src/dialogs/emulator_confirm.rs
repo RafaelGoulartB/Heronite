@@ -37,17 +37,12 @@ impl EventEmitter<DialogEvent> for EmulatorConfirmDialog {}
 pub fn remove_emulator_message(name: &str, games: usize, folders: usize) -> String {
     let mut text = format!("Remove {name}?");
     if folders > 0 {
-        text.push_str(&format!(
-            " Its {folders} ROM folder{} will be removed too.",
-            if folders == 1 { "" } else { "s" }
-        ));
+        text.push_str(&format!(" Its {folders} ROM folder{} will be removed too.", if folders == 1 { "" } else { "s" }));
     }
     match games {
         0 => {}
         1 => text.push_str(" 1 game uses it. It stays in your Collection and keeps the executable it was added with."),
-        n => text.push_str(&format!(
-            " {n} games use it. They stay in your Collection and keep the executable they were added with."
-        )),
+        n => text.push_str(&format!(" {n} games use it. They stay in your Collection and keep the executable they were added with.")),
     }
     text
 }

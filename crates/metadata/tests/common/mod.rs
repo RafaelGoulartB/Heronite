@@ -107,10 +107,7 @@ impl Server {
             duckduckgo: format!("{b}/ddg"),
             bing: format!("{b}/bing"),
             google: format!("{b}/google"),
-            steam_hero_urls: Some(vec![
-                format!("{b}/cdn/missing_hero.jpg"),
-                format!("{b}/cdn/hero.jpg"),
-            ]),
+            steam_hero_urls: Some(vec![format!("{b}/cdn/missing_hero.jpg"), format!("{b}/cdn/hero.jpg")]),
         }
     }
 }
@@ -139,14 +136,9 @@ fn serve(mut stream: TcpStream, handler: &dyn Fn(&Req) -> Resp, log: &Mutex<Vec<
     let mut lines = head.lines();
     let mut first = lines.next().unwrap_or("").split_whitespace();
     let (method, target) = (first.next().unwrap_or("").to_owned(), first.next().unwrap_or("").to_owned());
-    let headers: Vec<(String, String)> = lines
-        .filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned())))
-        .collect();
-    let len: usize = headers
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case("content-length"))
-        .and_then(|(_, v)| v.parse().ok())
-        .unwrap_or(0);
+    let headers: Vec<(String, String)> =
+        lines.filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned()))).collect();
+    let len: usize = headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.parse().ok()).unwrap_or(0);
     while buf.len() < head_end + len {
         let n = stream.read(&mut chunk)?;
         if n == 0 {

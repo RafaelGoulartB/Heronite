@@ -156,9 +156,7 @@ fn key(label: String, focused: bool, wide: f32, on: bool) -> Div {
         .rounded(u(12.))
         .text_size(u(19.))
         .when(focused, |d| d.relative().text_color(theme::console_on_focus()).font_weight(theme::W_BOLD).child(kit::focus_pill(12.)))
-        .when(!focused, |d| {
-            d.bg(if on { theme::accent_tint() } else { theme::white_a(0.07) }).text_color(theme::text_primary())
-        })
+        .when(!focused, |d| d.bg(if on { theme::accent_tint() } else { theme::white_a(0.07) }).text_color(theme::text_primary()))
         .child(div().relative().child(label))
 }
 
@@ -166,9 +164,9 @@ impl Render for Osk {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let mut grid = div().flex().flex_col().gap(u(8.));
         for (r, line) in ROWS.iter().enumerate() {
-            grid = grid.child(div().flex().gap(u(8.)).children(line.chars().enumerate().map(|(c, _)| {
-                key(self.key_at(r, c).to_string(), self.row == r && self.col == c, 56., false)
-            })));
+            grid = grid.child(div().flex().gap(u(8.)).children(
+                line.chars().enumerate().map(|(c, _)| key(self.key_at(r, c).to_string(), self.row == r && self.col == c, 56., false)),
+            ));
         }
         grid = grid.child(div().flex().gap(u(8.)).children(SPECIAL.iter().enumerate().map(|(i, label)| {
             let wide = if i == 1 { 300. } else { 110. };
@@ -186,29 +184,25 @@ impl Render for Osk {
             .text_size(u(20.))
             .text_color(theme::text_primary())
             .child(format!("{}\u{2502}", self.text));
-        div()
-            .absolute()
-            .inset_0()
-            .child(kit::scrim())
-            .child(
-                div().absolute().left_0().right_0().bottom(u(70.)).flex().justify_center().child(kit::panel_in(
-                    "osk-panel",
-                    div()
-                        .w(u(820.))
-                        .flex()
-                        .flex_col()
-                        .gap(u(16.))
-                        .p(u(24.))
-                        .rounded(u(24.))
-                        .bg(theme::console_sidebar())
-                        .border_1()
-                        .border_color(theme::white_a(0.1))
-                        .child(kit::title(self.title.clone(), 22.))
-                        .shadow(kit::shadow(0.5, 18., 48.))
-                        .child(field)
-                        .child(grid),
-                )),
-            )
+        div().absolute().inset_0().child(kit::scrim()).child(
+            div().absolute().left_0().right_0().bottom(u(70.)).flex().justify_center().child(kit::panel_in(
+                "osk-panel",
+                div()
+                    .w(u(820.))
+                    .flex()
+                    .flex_col()
+                    .gap(u(16.))
+                    .p(u(24.))
+                    .rounded(u(24.))
+                    .bg(theme::console_sidebar())
+                    .border_1()
+                    .border_color(theme::white_a(0.1))
+                    .child(kit::title(self.title.clone(), 22.))
+                    .shadow(kit::shadow(0.5, 18., 48.))
+                    .child(field)
+                    .child(grid),
+            )),
+        )
     }
 }
 

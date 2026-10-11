@@ -120,22 +120,15 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
         .child(seg(0x5b6ef5))
         .child(seg(0x43b35c))
         .children(marker.map(|m| {
-            div()
-                .absolute()
-                .top(px(-3.))
-                .left(relative(m))
-                .ml(px(-7.))
-                .w(px(14.))
-                .h(px(18.))
-                .rounded(px(6.))
-                .bg(rgb(0x1a1c20))
-                .shadow(vec![BoxShadow {
+            div().absolute().top(px(-3.)).left(relative(m)).ml(px(-7.)).w(px(14.)).h(px(18.)).rounded(px(6.)).bg(rgb(0x1a1c20)).shadow(
+                vec![BoxShadow {
                     color: theme::black_a(0.45),
                     offset: point(px(0.), px(1.)),
                     blur_radius: px(4.),
                     spread_radius: px(0.),
                     inset: false,
-                }])
+                }],
+            )
         }));
     let stat = |label: &'static str, v: Option<f32>| {
         div()
@@ -207,17 +200,10 @@ pub(super) fn related_panel(
                                 inset: false,
                             }])
                             .children(
-                                cover_for(&game.cover_key)
-                                    .map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover)),
+                                cover_for(&game.cover_key).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover)),
                             ),
                     )
-                    .child(
-                        div()
-                            .text_size(px(11.))
-                            .text_color(theme::white_a(0.82))
-                            .truncate()
-                            .child(game.title.clone()),
-                    ),
+                    .child(div().text_size(px(11.)).text_color(theme::white_a(0.82)).truncate().child(game.title.clone())),
             );
         }
         p = p.child(

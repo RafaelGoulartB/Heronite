@@ -25,8 +25,8 @@ use chrono::{Datelike, NaiveDateTime, Timelike};
 use std::path::{Path, PathBuf};
 
 pub use accelerator::{
-    hyprland_bind_expression, hyprland_unbind_expression, parse_accelerator, to_hyprland_binding, to_portal_trigger,
-    Accelerator, HyprlandBind, HyprlandBinding, MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER,
+    hyprland_bind_expression, hyprland_unbind_expression, parse_accelerator, to_hyprland_binding, to_portal_trigger, Accelerator,
+    HyprlandBind, HyprlandBinding, MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER,
 };
 
 #[cfg(target_os = "linux")]
@@ -131,11 +131,7 @@ pub fn capture_folder(game: &ActiveGame, root: &Path) -> PathBuf {
     }
     let title = sanitize_filename::sanitize(&game.title);
     let title = title.trim();
-    let name = if title.is_empty() {
-        sanitize_filename::sanitize(&game.app_name).trim().to_owned()
-    } else {
-        title.to_owned()
-    };
+    let name = if title.is_empty() { sanitize_filename::sanitize(&game.app_name).trim().to_owned() } else { title.to_owned() };
     root.join(if name.is_empty() { "Game" } else { &name })
 }
 
@@ -195,10 +191,21 @@ pub enum ShortcutBackend {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaptureEvent {
     /// `collectionScreenshotSaved`: a PNG was written.
-    Saved { app_name: String, runner: String, path: PathBuf },
-    Failed { error: String },
-    ShortcutRegistered { accelerator: String, backend: ShortcutBackend },
-    ShortcutError { error: String },
+    Saved {
+        app_name: String,
+        runner: String,
+        path: PathBuf,
+    },
+    Failed {
+        error: String,
+    },
+    ShortcutRegistered {
+        accelerator: String,
+        backend: ShortcutBackend,
+    },
+    ShortcutError {
+        error: String,
+    },
 }
 
 /// `CollectionScreenshotCaptureStatus`.
@@ -293,10 +300,7 @@ mod tests {
         std::fs::create_dir_all(root.join("Death Stranding - Director's Cut")).unwrap();
         std::fs::create_dir_all(root.join("1245620")).unwrap();
         // Matches an existing folder.
-        assert_eq!(
-            capture_folder(&game("Death Stranding"), root),
-            root.join("Death Stranding - Director's Cut")
-        );
+        assert_eq!(capture_folder(&game("Death Stranding"), root), root.join("Death Stranding - Director's Cut"));
         // Aliases and Steam ids too.
         let mut g = game("Something Else");
         g.steam_app_id = Some("1245620".into());

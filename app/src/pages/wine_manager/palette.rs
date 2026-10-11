@@ -52,8 +52,13 @@ impl PaletteCommands for WineManagerPage {
             .disabled(busy.then_some("Fetching releases already"))];
         for repo in Repository::LINUX {
             let kind = repo.kind();
-            let mut c = PageCommand::new(format!("install:{kind}"), format!("Install the latest {kind}"), "Newest build of this source", Icon::Download)
-                .keywords("proton wine runner download compatibility");
+            let mut c = PageCommand::new(
+                format!("install:{kind}"),
+                format!("Install the latest {kind}"),
+                "Newest build of this source",
+                Icon::Download,
+            )
+            .keywords("proton wine runner download compatibility");
             if let Some(p) = page.filter(|p| p.loaded) {
                 match p.latest(repo) {
                     Some(r) if r.installed() => c = c.disabled(Some(format!("{} is installed", r.version))),

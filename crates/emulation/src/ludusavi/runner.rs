@@ -36,19 +36,12 @@ impl Default for SystemRunner {
 
 impl CommandRunner for SystemRunner {
     fn run(&self, binary: &str, args: &[String]) -> Result<CommandOutput, String> {
-        let path = format!(
-            "{}:/usr/bin:/usr/local/bin",
-            std::env::var("PATH").unwrap_or_default()
-        );
+        let path = format!("{}:/usr/bin:/usr/local/bin", std::env::var("PATH").unwrap_or_default());
         // Guarded helper: own process group, told to stop if the app dies, and
         // the whole group is killed on timeout.
         let mut cmd = Command::new(binary);
         cmd.args(args).env("PATH", path);
-        let out = Run::new()
-            .timeout(self.timeout)
-            .grace(Duration::from_secs(2))
-            .run(&mut cmd)
-            .map_err(|e| e.to_string())?;
+        let out = Run::new().timeout(self.timeout).grace(Duration::from_secs(2)).run(&mut cmd).map_err(|e| e.to_string())?;
         if out.timed_out {
             return Err(format!("{binary} timed out after {}s", self.timeout.as_secs()));
         }

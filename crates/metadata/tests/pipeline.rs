@@ -279,12 +279,10 @@ fn bulk_job_reports_progress_skips_fetched_and_can_be_cancelled() {
     // Background job via start_bulk_metadata + cancel.
     let (tx, rx) = std::sync::mpsc::channel();
     let svc2 = svc.clone();
-    let first = svc.start_bulk_metadata(
-        BulkArgs { games: games.clone(), overwrite_existing: Some(true), ..Default::default() },
-        move |p| {
+    let first =
+        svc.start_bulk_metadata(BulkArgs { games: games.clone(), overwrite_existing: Some(true), ..Default::default() }, move |p| {
             let _ = tx.send(p.clone());
-        },
-    );
+        });
     assert_eq!(first.state, BulkState::Running);
     // Cancel as soon as the job reports its first game.
     let mut last = BulkProgress::default();
@@ -350,9 +348,7 @@ fn art_from_url_downloads_with_thumb_fallback_and_updates_art_json() {
     let game = lib.get("sideload_steam_620").unwrap();
     assert_eq!(game.art.as_ref().unwrap().hero_url.as_deref(), Some(url.as_str()));
 
-    let err = svc
-        .set_art_from_url("sideload", "steam_620", ArtKind::Cover, &format!("{base}/img/full.png"), None)
-        .unwrap_err();
+    let err = svc.set_art_from_url("sideload", "steam_620", ArtKind::Cover, &format!("{base}/img/full.png"), None).unwrap_err();
     assert!(err.to_string().starts_with("Could not download image"));
     let reset = svc.reset_art("sideload", "steam_620", ArtKind::Hero).unwrap();
     assert!(reset.hero_url.is_none());
@@ -370,10 +366,9 @@ fn metadata_art_downloads_when_enabled() {
     http_paths.igdb = format!("{}/igdb/v4", server_base.base);
     let svc = MetadataService::with_endpoints(paths.clone(), http_paths);
     let url = format!("{}/c.png", img.base);
-    let out = heronite_metadata::images::materialize_metadata_image(
-        &paths, &svc.http, "sideload", "steam_620", ArtKind::Cover, Some(&url), true,
-    )
-    .unwrap();
+    let out =
+        heronite_metadata::images::materialize_metadata_image(&paths, &svc.http, "sideload", "steam_620", ArtKind::Cover, Some(&url), true)
+            .unwrap();
     assert_eq!(out, "localart://metadata-art/sideload_steam_620/cover.png");
     assert!(paths.metadata_art_dir().join("sideload_steam_620/cover.png").exists());
 }
@@ -470,7 +465,9 @@ fn covers_use_steam_cdn_or_title_search() {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());
     let server = Server::start(|req| match req.path() {
-        "/community/actions/SearchApps/Plain%20Game" => Resp::raw_json(fixture("steam_searchapps_portal.json").replace("Portal 2", "Plain Game").replace("\"620\"", "\"4242\"")),
+        "/community/actions/SearchApps/Plain%20Game" => {
+            Resp::raw_json(fixture("steam_searchapps_portal.json").replace("Portal 2", "Plain Game").replace("\"620\"", "\"4242\""))
+        }
         "/steam/api/storesearch/" => Resp::json(json!({"items": []})),
         _ => Resp::status(404),
     });

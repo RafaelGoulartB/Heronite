@@ -45,34 +45,82 @@ impl DataPaths {
     }
 
     // Overlay (Collection) sidecar stores.
-    pub fn local_library(&self) -> PathBuf { self.j("local_library") }
-    pub fn local_meta(&self) -> PathBuf { self.j("local_library/library.json") }
-    pub fn sessions(&self) -> PathBuf { self.j("local_library/sessions.json") }
-    pub fn statuses(&self) -> PathBuf { self.j("local_library/statuses.json") }
-    pub fn collection_settings(&self) -> PathBuf { self.j("local_library/settings.json") }
-    pub fn metadata(&self) -> PathBuf { self.j("local_library/metadata.json") }
-    pub fn art(&self) -> PathBuf { self.j("local_library/art.json") }
-    pub fn art_dir(&self) -> PathBuf { self.j("local_library/art") }
-    pub fn heroes_dir(&self) -> PathBuf { self.j("local_library/heroes") }
-    pub fn metadata_art_dir(&self) -> PathBuf { self.j("local_library/metadata-art") }
-    pub fn steam_details_dir(&self) -> PathBuf { self.j("local_library/steam-details") }
-    pub fn emulators(&self) -> PathBuf { self.j("local_library/emulators.json") }
-    pub fn rom_scanners(&self) -> PathBuf { self.j("local_library/rom-scanners.json") }
-    pub fn screenshot_thumbnails_dir(&self) -> PathBuf { self.j("local_library/screenshot-thumbnails") }
-    pub fn ratings(&self) -> PathBuf { self.j("local_library/ratings.json") }
+    pub fn local_library(&self) -> PathBuf {
+        self.j("local_library")
+    }
+    pub fn local_meta(&self) -> PathBuf {
+        self.j("local_library/library.json")
+    }
+    pub fn sessions(&self) -> PathBuf {
+        self.j("local_library/sessions.json")
+    }
+    pub fn statuses(&self) -> PathBuf {
+        self.j("local_library/statuses.json")
+    }
+    pub fn collection_settings(&self) -> PathBuf {
+        self.j("local_library/settings.json")
+    }
+    pub fn metadata(&self) -> PathBuf {
+        self.j("local_library/metadata.json")
+    }
+    pub fn art(&self) -> PathBuf {
+        self.j("local_library/art.json")
+    }
+    pub fn art_dir(&self) -> PathBuf {
+        self.j("local_library/art")
+    }
+    pub fn heroes_dir(&self) -> PathBuf {
+        self.j("local_library/heroes")
+    }
+    pub fn metadata_art_dir(&self) -> PathBuf {
+        self.j("local_library/metadata-art")
+    }
+    pub fn steam_details_dir(&self) -> PathBuf {
+        self.j("local_library/steam-details")
+    }
+    pub fn emulators(&self) -> PathBuf {
+        self.j("local_library/emulators.json")
+    }
+    pub fn rom_scanners(&self) -> PathBuf {
+        self.j("local_library/rom-scanners.json")
+    }
+    pub fn screenshot_thumbnails_dir(&self) -> PathBuf {
+        self.j("local_library/screenshot-thumbnails")
+    }
+    pub fn ratings(&self) -> PathBuf {
+        self.j("local_library/ratings.json")
+    }
 
     // Core stores (Heroic's layout and formats).
-    pub fn sideload_library(&self) -> PathBuf { self.j("sideload_apps/library.json") }
-    pub fn legendary_library(&self) -> PathBuf { self.j("store_cache/legendary_library.json") }
-    pub fn gog_library(&self) -> PathBuf { self.j("store_cache/gog_library.json") }
-    pub fn nile_library(&self) -> PathBuf { self.j("store_cache/nile_library.json") }
-    pub fn timestamps(&self) -> PathBuf { self.j("store/timestamp.json") }
+    pub fn sideload_library(&self) -> PathBuf {
+        self.j("sideload_apps/library.json")
+    }
+    pub fn legendary_library(&self) -> PathBuf {
+        self.j("store_cache/legendary_library.json")
+    }
+    pub fn gog_library(&self) -> PathBuf {
+        self.j("store_cache/gog_library.json")
+    }
+    pub fn nile_library(&self) -> PathBuf {
+        self.j("store_cache/nile_library.json")
+    }
+    pub fn timestamps(&self) -> PathBuf {
+        self.j("store/timestamp.json")
+    }
     /// The electron-store style config (`settings`, `games`, `userInfo`...).
-    pub fn store_config(&self) -> PathBuf { self.j("store/config.json") }
+    pub fn store_config(&self) -> PathBuf {
+        self.j("store/config.json")
+    }
     /// The global settings (`defaultSettings`, 2-space JSON).
-    pub fn global_config(&self) -> PathBuf { self.j("config.json") }
-    pub fn download_manager(&self) -> PathBuf { self.j("store/download-manager.json") }
-    pub fn wine_downloader_info(&self) -> PathBuf { self.j("store/wine-downloader-info.json") }
+    pub fn global_config(&self) -> PathBuf {
+        self.j("config.json")
+    }
+    pub fn download_manager(&self) -> PathBuf {
+        self.j("store/download-manager.json")
+    }
+    pub fn wine_downloader_info(&self) -> PathBuf {
+        self.j("store/wine-downloader-info.json")
+    }
     /// `store_cache/<name>.json`.
     pub fn store_cache(&self, name: &str) -> PathBuf {
         self.j("store_cache").join(format!("{name}.json"))
@@ -81,14 +129,24 @@ impl DataPaths {
     pub fn gog_store(&self, name: &str) -> PathBuf {
         self.j("gog_store").join(format!("{name}.json"))
     }
-    pub fn games_config_dir(&self) -> PathBuf { self.j("GamesConfig") }
+    pub fn games_config_dir(&self) -> PathBuf {
+        self.j("GamesConfig")
+    }
     pub fn game_config(&self, app_name: &str) -> PathBuf {
         self.j("GamesConfig").join(format!("{app_name}.json"))
     }
-    pub fn zoom_library(&self) -> PathBuf { self.j("store_cache/zoom_library.json") }
-    pub fn gog_installed(&self) -> PathBuf { self.j("gog_store/installed.json") }
-    pub fn zoom_installed(&self) -> PathBuf { self.j("zoom_store/installed.json") }
-    pub fn game_overrides(&self) -> PathBuf { self.j("store/game-overrides.json") }
+    pub fn zoom_library(&self) -> PathBuf {
+        self.j("store_cache/zoom_library.json")
+    }
+    pub fn gog_installed(&self) -> PathBuf {
+        self.j("gog_store/installed.json")
+    }
+    pub fn zoom_installed(&self) -> PathBuf {
+        self.j("zoom_store/installed.json")
+    }
+    pub fn game_overrides(&self) -> PathBuf {
+        self.j("store/game-overrides.json")
+    }
     /// `{appId}.{lang}.json` (Steam language name, e.g. `english`).
     pub fn steam_details(&self, steam_app_id: &str, steam_language: &str) -> PathBuf {
         self.j("local_library/steam-details").join(format!("{steam_app_id}.{steam_language}.json"))
@@ -97,19 +155,37 @@ impl DataPaths {
     pub fn steam_hero(&self, steam_app_id: &str) -> PathBuf {
         self.j("local_library/heroes").join(format!("{steam_app_id}.jpg"))
     }
-    pub fn wiki_game_info(&self) -> PathBuf { self.j("store_cache/wikigameinfo.json") }
-    pub fn images_cache_dir(&self) -> PathBuf { self.j("images-cache") }
-    pub fn legendary_config_dir(&self) -> PathBuf { self.j("legendaryConfig/legendary") }
-    pub fn tools_dir(&self) -> PathBuf { self.j("tools") }
+    pub fn wiki_game_info(&self) -> PathBuf {
+        self.j("store_cache/wikigameinfo.json")
+    }
+    pub fn images_cache_dir(&self) -> PathBuf {
+        self.j("images-cache")
+    }
+    pub fn legendary_config_dir(&self) -> PathBuf {
+        self.j("legendaryConfig/legendary")
+    }
+    pub fn tools_dir(&self) -> PathBuf {
+        self.j("tools")
+    }
     /// The legendary binary this app runs (copied in by `migrate`).
-    pub fn legendary_bin(&self) -> PathBuf { self.j("tools/bin/legendary") }
-    pub fn known_fixes(&self) -> PathBuf { self.j("known_fixes.json") }
+    pub fn legendary_bin(&self) -> PathBuf {
+        self.j("tools/bin/legendary")
+    }
+    pub fn known_fixes(&self) -> PathBuf {
+        self.j("known_fixes.json")
+    }
     /// Icons of the `.desktop` shortcuts (`<appName>.(jpg|png)`).
-    pub fn icons_dir(&self) -> PathBuf { self.j("icons") }
+    pub fn icons_dir(&self) -> PathBuf {
+        self.j("icons")
+    }
     /// Launcher, runner and game logs.
-    pub fn logs_dir(&self) -> PathBuf { self.j("logs") }
+    pub fn logs_dir(&self) -> PathBuf {
+        self.j("logs")
+    }
     /// Copy of areweanticheatyet.com.
-    pub fn anticheat(&self) -> PathBuf { self.j("areweanticheatyet.json") }
+    pub fn anticheat(&self) -> PathBuf {
+        self.j("areweanticheatyet.json")
+    }
 
     /// Resolves a `localart://<kind>/<rest>` URL to a file, refusing traversal.
     /// `screenshots` URLs need the configured screenshot folder.
@@ -157,14 +233,24 @@ impl AppPaths {
         let base = data_paths.root.with_file_name(format!("{name}.heronite"));
         Self { config: base.join("config"), cache: base.join("cache") }
     }
-    pub fn ui_state(&self) -> PathBuf { self.config.join("ui-state.json") }
+    pub fn ui_state(&self) -> PathBuf {
+        self.config.join("ui-state.json")
+    }
     /// Appearance settings specific to this app (see `heronite_data::appearance`).
-    pub fn appearance(&self) -> PathBuf { self.config.join("appearance.json") }
+    pub fn appearance(&self) -> PathBuf {
+        self.config.join("appearance.json")
+    }
     /// Screenshot options specific to this app (see `heronite_data::screenshot_prefs`).
-    pub fn screenshot_prefs(&self) -> PathBuf { self.config.join("screenshots.json") }
+    pub fn screenshot_prefs(&self) -> PathBuf {
+        self.config.join("screenshots.json")
+    }
     /// Journal of an Epic install move in progress (see `heronite_epic::moves`).
-    pub fn epic_move_journal(&self) -> PathBuf { self.config.join("epic-move.json") }
-    pub fn thumbs_dir(&self) -> PathBuf { self.cache.join("thumbs") }
+    pub fn epic_move_journal(&self) -> PathBuf {
+        self.config.join("epic-move.json")
+    }
+    pub fn thumbs_dir(&self) -> PathBuf {
+        self.cache.join("thumbs")
+    }
 }
 
 pub fn percent_decode(s: &str) -> String {

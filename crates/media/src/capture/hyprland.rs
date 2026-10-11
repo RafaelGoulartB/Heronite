@@ -1,9 +1,7 @@
 //! Hyprland integration through `hyprctl`. Only the JSON parsing is unit-tested;
 //! the functions that run `hyprctl eval` change the compositor's state.
 
-use super::{
-    hyprland_bind_expression, hyprland_unbind_expression, HyprlandBind, HyprlandBinding, Monitor,
-};
+use super::{hyprland_bind_expression, hyprland_unbind_expression, HyprlandBind, HyprlandBinding, Monitor};
 use serde::Deserialize;
 use std::io::Read;
 use std::process::{Command, Stdio};

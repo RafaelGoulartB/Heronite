@@ -43,23 +43,13 @@ pub(super) fn run_steam(
             // Only now do we know the game is really running.
             let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
             control.set_playing();
-            shared.send(LaunchEvent::Running {
-                app_name: req.app_name.clone(),
-                pid,
-            });
+            shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid });
         },
     );
     match outcome {
-        SteamWaitOutcome::NotStarted => fail(
-            shared,
-            log,
-            req,
-            format!(
-                "Steam did not start {} within {}s",
-                req.title,
-                shared.cfg.steam.start_timeout.as_secs()
-            ),
-        ),
+        SteamWaitOutcome::NotStarted => {
+            fail(shared, log, req, format!("Steam did not start {} within {}s", req.title, shared.cfg.steam.start_timeout.as_secs()))
+        }
         SteamWaitOutcome::Finished | SteamWaitOutcome::Aborted => {
             log.info("Steam game finished");
             finish(shared, log, req, control, started_at, t0.elapsed(), None)

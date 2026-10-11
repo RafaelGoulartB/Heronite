@@ -22,7 +22,10 @@ use crate::ui::icon;
 #[derive(Clone, Debug)]
 pub(super) enum PaletteEvent {
     /// Run `act`; `id` goes to the history.
-    Run { act: Act, id: SharedString },
+    Run {
+        act: Act,
+        id: SharedString,
+    },
     /// List every action of this game (the host answers with
     /// [`PaletteView::show_game`]).
     OpenGame(String),
@@ -388,17 +391,20 @@ impl PaletteView {
 }
 
 fn hint(keys: Vec<&'static str>, label: &'static str) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.))
-        .child(div().flex().gap(px(3.)).children(keys.into_iter().map(kbd)))
-        .child(label)
+    div().flex().items_center().gap(px(6.)).child(div().flex().gap(px(3.)).children(keys.into_iter().map(kbd))).child(label)
 }
 
 impl Render for PaletteView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let mut list = div().id("palette-list").flex().flex_col().px(px(8.)).py(px(LIST_PAD)).max_h(px(LIST_MAX_H)).overflow_y_scroll().track_scroll(&self.scroll);
+        let mut list = div()
+            .id("palette-list")
+            .flex()
+            .flex_col()
+            .px(px(8.))
+            .py(px(LIST_PAD))
+            .max_h(px(LIST_MAX_H))
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll);
         if self.results.count() == 0 {
             list = list.child(
                 div()
@@ -443,7 +449,14 @@ impl Render for PaletteView {
             .border_color(theme::white_a(0.08))
             .child(icon(Icon::FaSearch, px(15.), theme::text_muted()))
             .children(self.crumb(cx))
-            .child(div().flex_1().min_w_0().text_size(px(15.)).text_color(theme::text_primary()).child(Input::new(&self.input).appearance(false)))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(15.))
+                    .text_color(theme::text_primary())
+                    .child(Input::new(&self.input).appearance(false)),
+            )
             .child(kbd("Esc"));
 
         let has_game = self.game.is_none() && self.selected_entry().is_some_and(|e| e.game_key().is_some());
@@ -493,11 +506,9 @@ impl Render for PaletteView {
 
         let panel = if theme::animations() {
             panel
-                .with_animation(
-                    "palette-open",
-                    Animation::new(Duration::from_millis(140)).with_easing(ease_out_quint()),
-                    |el, t| el.opacity(t).mt(px(-10. * (1. - t))),
-                )
+                .with_animation("palette-open", Animation::new(Duration::from_millis(140)).with_easing(ease_out_quint()), |el, t| {
+                    el.opacity(t).mt(px(-10. * (1. - t)))
+                })
                 .into_any_element()
         } else {
             panel.into_any_element()

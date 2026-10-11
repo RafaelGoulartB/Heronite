@@ -114,7 +114,11 @@ impl Default for Appearance {
 }
 
 fn clamp((lo, hi): (f32, f32), v: f32) -> f32 {
-    if v.is_finite() { v.clamp(lo, hi) } else { lo }
+    if v.is_finite() {
+        v.clamp(lo, hi)
+    } else {
+        lo
+    }
 }
 
 impl Appearance {
@@ -131,18 +135,10 @@ impl Appearance {
         let num = |k: &str, default: f32| value.get(k).and_then(Value::as_f64).map(|v| v as f32).unwrap_or(default);
         Self {
             collection_opacity: num("collectionOpacity", d.collection_opacity),
-            interface_mode: value
-                .get("interfaceMode")
-                .and_then(Value::as_str)
-                .and_then(InterfaceMode::parse)
-                .unwrap_or(d.interface_mode),
+            interface_mode: value.get("interfaceMode").and_then(Value::as_str).and_then(InterfaceMode::parse).unwrap_or(d.interface_mode),
             interface_opacity: num("interfaceOpacity", d.interface_opacity),
             interface_blur: num("interfaceBlur", d.interface_blur),
-            solid_tint: value
-                .get("interfaceSolidTint")
-                .and_then(Value::as_str)
-                .and_then(SolidTint::parse)
-                .unwrap_or(d.solid_tint),
+            solid_tint: value.get("interfaceSolidTint").and_then(Value::as_str).and_then(SolidTint::parse).unwrap_or(d.solid_tint),
         }
         .normalized()
     }

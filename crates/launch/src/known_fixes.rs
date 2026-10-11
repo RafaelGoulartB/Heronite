@@ -13,16 +13,14 @@ use crate::net::{Cancel, Net};
 
 pub const RELEASES_INFO_URL: &str =
     "https://raw.githubusercontent.com/Heroic-Games-Launcher/releases-info/refs/heads/main/release-data.json";
-pub const KNOWN_FIXES_URL: &str =
-    "https://raw.githubusercontent.com/Heroic-Games-Launcher/known-fixes/main/known_fixes.json";
+pub const KNOWN_FIXES_URL: &str = "https://raw.githubusercontent.com/Heroic-Games-Launcher/known-fixes/main/known_fixes.json";
 
 /// MD5 of `data` as lowercase hex (what `createMD5` gives; only used to compare
 /// with the published hash, not for security).
 pub fn md5_hex(data: &[u8]) -> String {
     const S: [u32; 64] = [
-        7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9,
-        14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15,
-        21, 6, 10, 15, 21,
+        7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 4, 11, 16, 23,
+        4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
     ];
     let k: Vec<u32> = (0..64).map(|i| ((i as f64 + 1.0).sin().abs() * 4294967296.0) as u32).collect();
     let (mut a0, mut b0, mut c0, mut d0) = (0x67452301u32, 0xefcdab89u32, 0x98badcfeu32, 0x10325476u32);
@@ -82,10 +80,7 @@ pub fn update_if_needed(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> Res
         format!("Failed download of Known Fixes data: {e}")
     })?;
     // A broken download must not replace a good file.
-    let valid = fs::read_to_string(&part)
-        .ok()
-        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .is_some_and(|v| v.is_object());
+    let valid = fs::read_to_string(&part).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).is_some_and(|v| v.is_object());
     if !valid {
         let _ = fs::remove_file(&part);
         return Err("Failed download of Known Fixes data: the file is not valid JSON".into());

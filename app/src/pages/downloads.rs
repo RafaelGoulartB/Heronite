@@ -132,21 +132,32 @@ impl Render for DownloadsPage {
                         .items_center()
                         .gap(px(8.))
                         .py(px(12.))
-                        .child(div().flex_1().min_w(px(240.)).text_size(px(13.)).text_color(theme::text_primary()).child("Stop the installation? Keep the downloaded files?"))
-                        .child(button_sm("dm-keep-running", ButtonKind::Ghost, "Keep installing").on_click(cx.listener(|this, _, _, cx| {
-                            this.confirm_stop = false;
-                            cx.notify();
-                        })))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(240.))
+                                .text_size(px(13.))
+                                .text_color(theme::text_primary())
+                                .child("Stop the installation? Keep the downloaded files?"),
+                        )
+                        .child(button_sm("dm-keep-running", ButtonKind::Ghost, "Keep installing").on_click(cx.listener(
+                            |this, _, _, cx| {
+                                this.confirm_stop = false;
+                                cx.notify();
+                            },
+                        )))
                         .child(button_sm("dm-stop-keep", ButtonKind::Glass, "Stop, keep files").on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_stop = false;
                             this.svc.update(cx, |s, _| s.cancel_current(false));
                             cx.notify();
                         })))
-                        .child(button_sm("dm-stop-delete", ButtonKind::Danger, "Stop, delete files").on_click(cx.listener(|this, _, _, cx| {
-                            this.confirm_stop = false;
-                            this.svc.update(cx, |s, _| s.cancel_current(true));
-                            cx.notify();
-                        }))),
+                        .child(button_sm("dm-stop-delete", ButtonKind::Danger, "Stop, delete files").on_click(cx.listener(
+                            |this, _, _, cx| {
+                                this.confirm_stop = false;
+                                this.svc.update(cx, |s, _| s.cancel_current(true));
+                                cx.notify();
+                            },
+                        ))),
                 );
             }
             column = column.child(caption("Downloading")).child(now);
@@ -155,7 +166,8 @@ impl Render for DownloadsPage {
         }
 
         let waiting: Vec<DmElement> = snap.queue.iter().skip(1).cloned().collect();
-        let mut queued = div().child(caption(if waiting.is_empty() { "Queued".to_string() } else { format!("Queued \u{b7} {}", waiting.len()) }));
+        let mut queued =
+            div().child(caption(if waiting.is_empty() { "Queued".to_string() } else { format!("Queued \u{b7} {}", waiting.len()) }));
         let last = waiting.len().saturating_sub(1);
         let mut rows: Vec<AnyElement> = Vec::new();
         for (i, el) in waiting.iter().enumerate() {
@@ -166,7 +178,14 @@ impl Render for DownloadsPage {
                 .flex()
                 .flex_col()
                 .gap(px(2.))
-                .child(div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).truncate().child(el.params.title()))
+                .child(
+                    div()
+                        .text_size(px(14.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(theme::text_primary())
+                        .truncate()
+                        .child(el.params.title()),
+                )
                 .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(meta_line(el)));
             let trailing = div()
                 .flex()
@@ -225,7 +244,14 @@ impl Render for DownloadsPage {
                         .flex()
                         .items_center()
                         .gap(px(8.))
-                        .child(div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).truncate().child(el.params.title()))
+                        .child(
+                            div()
+                                .text_size(px(14.))
+                                .font_weight(theme::W_BOLD)
+                                .text_color(theme::text_primary())
+                                .truncate()
+                                .child(el.params.title()),
+                        )
                         .children(pill),
                 )
                 .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(meta_line(&el)));
@@ -244,7 +270,8 @@ impl Render for DownloadsPage {
         if !rows.is_empty() {
             done = done.child(card(rows));
         } else if wide {
-            done = done.child(caption("Completed")).child(card([empty_row("Finished installs and updates show up here").into_any_element()]));
+            done =
+                done.child(caption("Completed")).child(card([empty_row("Finished installs and updates show up here").into_any_element()]));
         }
         column = column.child(columns(wide, [queued, done]));
 

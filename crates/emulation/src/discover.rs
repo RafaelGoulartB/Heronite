@@ -82,15 +82,12 @@ const RULES: &[Rule] = &[
 
 /// What may follow an alias in a file name token (`PPSSPPSDL`, `pcsx2-qt`,
 /// `shadPS4QtLauncher`).
-const SUFFIXES: &[&str] = &[
-    "qt", "sdl", "sdl2", "nogui", "emu", "gui", "qtlauncher", "launcher", "x64", "x8664", "linux",
-    "appimage", "nightly", "mgr",
-];
+const SUFFIXES: &[&str] =
+    &["qt", "sdl", "sdl2", "nogui", "emu", "gui", "qtlauncher", "launcher", "x64", "x8664", "linux", "appimage", "nightly", "mgr"];
 
 const NOT_EXECUTABLE_EXT: &[&str] = &[
-    "so", "txt", "json", "ini", "png", "jpg", "svg", "desktop", "log", "md", "zip", "7z", "gz", "xz",
-    "bz2", "tar", "dll", "yml", "yaml", "cfg", "conf", "bak", "sig", "sha256", "zsync", "pdb", "xml",
-    "ico", "pkg", "iso", "bin", "chd", "cue",
+    "so", "txt", "json", "ini", "png", "jpg", "svg", "desktop", "log", "md", "zip", "7z", "gz", "xz", "bz2", "tar", "dll", "yml", "yaml",
+    "cfg", "conf", "bak", "sig", "sha256", "zsync", "pdb", "xml", "ico", "pkg", "iso", "bin", "chd", "cue",
 ];
 
 fn matches_alias(token: &str, alias: &str) -> bool {
@@ -139,10 +136,44 @@ fn has_exec_bit(_: &std::fs::Metadata) -> bool {
 
 /// Directory names never entered (ROM, save and cache trees can be huge).
 const SKIP_DIRS: &[&str] = &[
-    "games", "roms", "rom", "saves", "save", "savestates", "states", "bios", "firmware", "pkg", "media",
-    "covers", "art", "screenshots", "shaders", "textures", "cache", "logs", "log", "dump", "dumps",
-    "node_modules", "squashfs-root", "mods", "cheats", "themes", "sysdata", "dev_hdd0", "steamapps",
-    "compatdata", "backups", "playlists", "thumbnails", "cores", "system", "assets", "icons", "locales",
+    "games",
+    "roms",
+    "rom",
+    "saves",
+    "save",
+    "savestates",
+    "states",
+    "bios",
+    "firmware",
+    "pkg",
+    "media",
+    "covers",
+    "art",
+    "screenshots",
+    "shaders",
+    "textures",
+    "cache",
+    "logs",
+    "log",
+    "dump",
+    "dumps",
+    "node_modules",
+    "squashfs-root",
+    "mods",
+    "cheats",
+    "themes",
+    "sysdata",
+    "dev_hdd0",
+    "steamapps",
+    "compatdata",
+    "backups",
+    "playlists",
+    "thumbnails",
+    "cores",
+    "system",
+    "assets",
+    "icons",
+    "locales",
 ];
 
 /// Limits of one walk (a folder full of games must not stall the UI worker).
@@ -251,12 +282,7 @@ fn consider(path: &Path, out: &mut Vec<Candidate>) {
     if !(appimage || exe || has_exec_bit(&meta)) {
         return;
     }
-    out.push(Candidate {
-        path: path.to_string_lossy().into_owned(),
-        definition_id: rule.definition,
-        name: rule.name,
-        wine: exe,
-    });
+    out.push(Candidate { path: path.to_string_lossy().into_owned(), definition_id: rule.definition, name: rule.name, wine: exe });
 }
 
 /// A folder to search with its label (shown as the result's source).
@@ -329,12 +355,7 @@ pub fn is_configured(existing: &[UserEmulator], executable: &str, flatpak_id: Op
         .any(|e| e.executable == executable || (!e.executable.is_empty() && canonical(&e.executable) == key))
 }
 
-fn detected_from(
-    env: &dyn DetectEnv,
-    c: &Candidate,
-    existing: &[UserEmulator],
-    source: &str,
-) -> Option<DetectedEmulator> {
+fn detected_from(env: &dyn DetectEnv, c: &Candidate, existing: &[UserEmulator], source: &str) -> Option<DetectedEmulator> {
     let launch_kind = if c.wine { "wine" } else { "native" };
     let profiles: Vec<DetectedEmulatorProfile> = match RULES.iter().find(|r| r.name == c.name).and_then(|r| r.custom) {
         Some(p) => vec![DetectedEmulatorProfile {
@@ -370,8 +391,7 @@ fn definition_order(id: &str) -> usize {
 /// Merges `extra` into `found` skipping executables already listed (same
 /// file, symlinks resolved) and orders the list by catalog, then name.
 fn merge(found: &mut Vec<DetectedEmulator>, extra: Vec<DetectedEmulator>) {
-    let mut seen: HashSet<String> =
-        found.iter().filter(|d| d.launch_kind != "flatpak").map(|d| canonical(&d.executable)).collect();
+    let mut seen: HashSet<String> = found.iter().filter(|d| d.launch_kind != "flatpak").map(|d| canonical(&d.executable)).collect();
     for d in extra {
         if d.launch_kind == "flatpak" || seen.insert(canonical(&d.executable)) {
             found.push(d);
@@ -393,11 +413,7 @@ pub fn discover_emulators(env: &dyn DetectEnv, existing: &[UserEmulator]) -> Vec
 }
 
 /// [`discover_emulators`] with explicit search folders.
-pub fn discover_in_roots(
-    env: &dyn DetectEnv,
-    existing: &[UserEmulator],
-    roots: &[SearchRoot],
-) -> Vec<DetectedEmulator> {
+pub fn discover_in_roots(env: &dyn DetectEnv, existing: &[UserEmulator], roots: &[SearchRoot]) -> Vec<DetectedEmulator> {
     let mut found = detect_emulators(env, existing);
     for d in &mut found {
         d.already_added = is_configured(existing, &d.executable, d.flatpak_id.as_deref());
@@ -417,10 +433,8 @@ pub fn discover_in_roots(
 pub fn discover_in_folder(env: &dyn DetectEnv, folder: &str, existing: &[UserEmulator]) -> Vec<DetectedEmulator> {
     let limits = WalkLimits { max_depth: 6, ..Default::default() };
     let mut found = Vec::new();
-    let extra: Vec<DetectedEmulator> = find_candidates(Path::new(folder), limits)
-        .iter()
-        .filter_map(|c| detected_from(env, c, existing, "chosen folder"))
-        .collect();
+    let extra: Vec<DetectedEmulator> =
+        find_candidates(Path::new(folder), limits).iter().filter_map(|c| detected_from(env, c, existing, "chosen folder")).collect();
     merge(&mut found, extra);
     found
 }
@@ -455,16 +469,8 @@ pub fn add_discovered(paths: &DataPaths, items: &[DetectedEmulator]) -> Result<V
                     name: p.name.clone(),
                     platform_id: p.platform_id.clone().or_else(|| cat.map(|c| c.platform_id.clone())),
                     platform_name: Some(p.platform_name.clone()),
-                    arguments: p
-                        .arguments
-                        .clone()
-                        .or_else(|| cat.map(|c| c.arguments.clone()))
-                        .unwrap_or_else(|| "{ImagePath}".into()),
-                    extensions: p
-                        .extensions
-                        .clone()
-                        .or_else(|| cat.map(|c| c.extensions.clone()))
-                        .unwrap_or_default(),
+                    arguments: p.arguments.clone().or_else(|| cat.map(|c| c.arguments.clone())).unwrap_or_else(|| "{ImagePath}".into()),
+                    extensions: p.extensions.clone().or_else(|| cat.map(|c| c.extensions.clone())).unwrap_or_default(),
                     core_path: p.core_path.clone(),
                     folder_indicator: cat.and_then(|c| c.folder_indicator.clone()),
                     playlist_extensions: cat.and_then(|c| c.playlist_extensions.clone()),
@@ -512,9 +518,7 @@ mod tests {
             Path::new(path).exists()
         }
         fn read_dir(&self, dir: &str) -> Vec<String> {
-            fs::read_dir(dir)
-                .map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
-                .unwrap_or_default()
+            fs::read_dir(dir).map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default()
         }
         fn home(&self) -> String {
             self.home.clone()
@@ -571,10 +575,8 @@ mod tests {
         touch(&r.join("PS2/games/pcsx2-demo.AppImage"), true);
         // Too deep.
         touch(&r.join("a/b/c/d/e/f/g/xemu-v1.AppImage"), true);
-        let mut names: Vec<String> = find_candidates(r, WalkLimits { max_depth: 4, ..Default::default() })
-            .iter()
-            .map(|c| basename(&c.path))
-            .collect();
+        let mut names: Vec<String> =
+            find_candidates(r, WalkLimits { max_depth: 4, ..Default::default() }).iter().map(|c| basename(&c.path)).collect();
         names.sort();
         assert_eq!(names, ["DuckStation.AppImage", "Ryujinx", "Shadps4-sdl.AppImage", "pcsx2-v2.8.2.AppImage"]);
     }
@@ -612,8 +614,7 @@ mod tests {
         }];
         let env = Env { home: home.clone() };
         let discover = |existing: &[UserEmulator]| {
-            let roots: Vec<SearchRoot> =
-                common_search_roots(&home, existing).into_iter().filter(|r| r.path.starts_with(&home)).collect();
+            let roots: Vec<SearchRoot> = common_search_roots(&home, existing).into_iter().filter(|r| r.path.starts_with(&home)).collect();
             discover_in_roots(&env, existing, &roots)
         };
         let found = discover(&existing);
@@ -650,10 +651,8 @@ mod tests {
         }];
         let roots = common_search_roots("/nowhere", &existing);
         assert!(roots.iter().any(|r| r.path == root.to_str().unwrap()));
-        let roots: Vec<SearchRoot> = common_search_roots("/nowhere", &existing)
-            .into_iter()
-            .filter(|r| r.path.starts_with(d.path().to_str().unwrap()))
-            .collect();
+        let roots: Vec<SearchRoot> =
+            common_search_roots("/nowhere", &existing).into_iter().filter(|r| r.path.starts_with(d.path().to_str().unwrap())).collect();
         let found = discover_in_roots(&Env { home: "/nowhere".into() }, &existing, &roots);
         // Sibling emulator folders (`.../PS1/emulator`) are searched too.
         let names: HashSet<_> = found.iter().map(|d| d.name.as_str()).collect();

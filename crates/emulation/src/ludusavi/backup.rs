@@ -10,8 +10,7 @@ use heronite_launch::settings::{load_game_settings, GlobalSettings};
 use serde::{Deserialize, Serialize};
 
 use super::commands::{
-    backup_command, best_find_match, find_commands, game_names, parse_json, total_games, wine_prefix_for_ludusavi,
-    BackupCommand,
+    backup_command, best_find_match, find_commands, game_names, parse_json, total_games, wine_prefix_for_ludusavi, BackupCommand,
 };
 use super::detect::detect_ludusavi;
 use super::runner::{CommandOutput, CommandRunner};
@@ -64,10 +63,7 @@ struct InFlight;
 
 impl InFlight {
     fn acquire() -> Option<Self> {
-        IN_FLIGHT
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .ok()
-            .map(|_| InFlight)
+        IN_FLIGHT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).ok().map(|_| InFlight)
     }
 }
 
@@ -85,10 +81,7 @@ pub struct LudusaviEnv<'a> {
 }
 
 fn record_error(paths: &DataPaths, error: &str) {
-    if let Err(e) = record_ludusavi_backup(
-        paths,
-        &LudusaviRecord { error: Some(error.to_string()), ..Default::default() },
-    ) {
+    if let Err(e) = record_ludusavi_backup(paths, &LudusaviRecord { error: Some(error.to_string()), ..Default::default() }) {
         log::error!("could not record Ludusavi error: {e:#}");
     }
 }
@@ -140,27 +133,17 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     }
     let preferred = Some(cfg.binary_path.as_str()).filter(|p| !p.is_empty());
     let detected = detect_ludusavi(env.runner, env.probe, preferred);
-    let binary = Some(cfg.binary_path.trim().to_string())
-        .filter(|b| !b.is_empty())
-        .or_else(|| detected.as_ref().map(|d| d.binary.clone()));
+    let binary = Some(cfg.binary_path.trim().to_string()).filter(|b| !b.is_empty()).or_else(|| detected.as_ref().map(|d| d.binary.clone()));
     let Some(binary) = binary.filter(|b| env.probe.exists(b)) else {
         let error = "Ludusavi was not found".to_string();
         record_error(env.paths, &error);
-        return Ok(LudusaviBackupResult {
-            skipped_reason: Some("not-found".into()),
-            error: Some(error),
-            ..Default::default()
-        });
+        return Ok(LudusaviBackupResult { skipped_reason: Some("not-found".into()), error: Some(error), ..Default::default() });
     };
 
     let use_installed = cfg.use_installed_config && detected.as_ref().is_some_and(|d| d.config_path.is_some());
     let configured = cfg.backup_path.trim().to_string();
     let detected_backup = detected.as_ref().and_then(|d| d.backup_path.clone());
-    let backup_root = if use_installed {
-        detected_backup
-    } else {
-        Some(configured.clone()).filter(|c| !c.is_empty()).or(detected_backup)
-    };
+    let backup_root = if use_installed { detected_backup } else { Some(configured.clone()).filter(|c| !c.is_empty()).or(detected_backup) };
     if !use_installed && configured.is_empty() {
         let error = "Set a Ludusavi backup folder in Collection settings".to_string();
         record_error(env.paths, &error);
@@ -202,11 +185,7 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     let stderr = result.stderr.trim().to_string();
 
     if result.code != 0 && total == 0 {
-        let error = if stderr.is_empty() {
-            format!("Ludusavi did not find saves for {}", game.title)
-        } else {
-            stderr
-        };
+        let error = if stderr.is_empty() { format!("Ludusavi did not find saves for {}", game.title) } else { stderr };
         record_error(env.paths, &error);
         log::error!("Ludusavi backup failed: {error}");
         return Ok(LudusaviBackupResult {
@@ -219,20 +198,9 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
 
     record_ludusavi_backup(
         env.paths,
-        &LudusaviRecord {
-            at: Some(iso_now()),
-            game: Some(game_name.clone()),
-            path: backup_path.clone(),
-            error: None,
-        },
+        &LudusaviRecord { at: Some(iso_now()), game: Some(game_name.clone()), path: backup_path.clone(), error: None },
     )?;
-    Ok(LudusaviBackupResult {
-        ran: true,
-        game_name: Some(game_name),
-        backup_path,
-        total_games: Some(total),
-        ..Default::default()
-    })
+    Ok(LudusaviBackupResult { ran: true, game_name: Some(game_name), backup_path, total_games: Some(total), ..Default::default() })
 }
 
 /// Arguments of `backupLudusaviAfterPlay`.
@@ -311,14 +279,13 @@ mod tests {
         let _l = guard_lock();
         let (_d, paths) = setup(ENABLED);
         let runner = Fake {
-            replies: vec![
-                ("backup".into(), out(r#"{"overall":{"totalGames":1},"games":{"Tony Hawk's Underground":{}}}"#, "", 0)),
-            ],
+            replies: vec![("backup".into(), out(r#"{"overall":{"totalGames":1},"games":{"Tony Hawk's Underground":{}}}"#, "", 0))],
             ..Default::default()
         };
         let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
         let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
-        let game = LudusaviGame { app_name: "g".into(), title: "Tony Hawks Underground".into(), runner: "sideload".into(), ..Default::default() };
+        let game =
+            LudusaviGame { app_name: "g".into(), title: "Tony Hawks Underground".into(), runner: "sideload".into(), ..Default::default() };
         let r = backup_for_game(&env, &game, BackupReason::Auto);
         assert!(r.ran, "{r:?}");
         assert_eq!(r.game_name.as_deref(), Some("Tony Hawk's Underground"));
@@ -373,14 +340,23 @@ mod tests {
         let runner = Fake {
             replies: vec![
                 ("find --api --steam-id 42".into(), out(r#"{"games":{"Real Name":{"score":1.0}}}"#, "", 0)),
-                ("backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd Real Name".into(), out("{}", "No info for these games:\n  - Real Name", 1)),
+                (
+                    "backup --force --api --no-cloud-sync --path /backups --format zip --compression zstd Real Name".into(),
+                    out("{}", "No info for these games:\n  - Real Name", 1),
+                ),
                 ("backup".into(), out("{}", "", 1)),
             ],
             ..Default::default()
         };
         let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
         let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
-        let game = LudusaviGame { app_name: "g".into(), title: "Title".into(), runner: "sideload".into(), steam_app_id: Some("42".into()), ..Default::default() };
+        let game = LudusaviGame {
+            app_name: "g".into(),
+            title: "Title".into(),
+            runner: "sideload".into(),
+            steam_app_id: Some("42".into()),
+            ..Default::default()
+        };
         let r = backup_for_game(&env, &game, BackupReason::Manual);
         assert!(!r.ran);
         assert_eq!(r.skipped_reason.as_deref(), Some("no-match"));
@@ -411,10 +387,8 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        let runner = Fake {
-            replies: vec![("backup".into(), out(r#"{"overall":{"totalGames":0},"games":{"G":{}}}"#, "", 0))],
-            ..Default::default()
-        };
+        let runner =
+            Fake { replies: vec![("backup".into(), out(r#"{"overall":{"totalGames":0},"games":{"G":{}}}"#, "", 0))], ..Default::default() };
         let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
         let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
         let short = AfterPlay { app_name: "g".into(), title: "G".into(), runner: "sideload".into(), elapsed_seconds: 4 };

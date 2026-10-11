@@ -149,12 +149,7 @@ fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Option<Stea
     }
     for lang in langs {
         let url = format!("{}/api/appdetails", http.endpoints.steam_store);
-        let resp = http
-            .get(url)
-            .query(&[("appids", steam_app_id), ("l", lang)])
-            .timeout_secs(20)
-            .send_ok()
-            .and_then(|r| r.json::<Value>());
+        let resp = http.get(url).query(&[("appids", steam_app_id), ("l", lang)]).timeout_secs(20).send_ok().and_then(|r| r.json::<Value>());
         match resp {
             Ok(body) => {
                 let payload = body.get(steam_app_id);
@@ -303,12 +298,7 @@ fn download_hero(http: &Http, url: &str, dest: &Path) -> bool {
 
 /// `cacheSteamHero`: `local_library/heroes/{appId}.jpg`, trying the Steam CDN
 /// hero URLs in order.
-pub fn cache_steam_hero(
-    paths: &DataPaths,
-    http: &Http,
-    state: &SteamState,
-    steam_app_id: &str,
-) -> Option<SteamHeroCacheResult> {
+pub fn cache_steam_hero(paths: &DataPaths, http: &Http, state: &SteamState, steam_app_id: &str) -> Option<SteamHeroCacheResult> {
     if steam_app_id.is_empty() {
         return None;
     }
@@ -329,11 +319,7 @@ pub fn cache_steam_hero(
     if dest.exists() {
         return Some(result(true));
     }
-    let urls: Vec<String> = http
-        .endpoints
-        .steam_hero_urls
-        .clone()
-        .unwrap_or_else(|| steam_hero_download_urls(steam_app_id).to_vec());
+    let urls: Vec<String> = http.endpoints.steam_hero_urls.clone().unwrap_or_else(|| steam_hero_download_urls(steam_app_id).to_vec());
     for url in urls {
         if download_hero(http, &url, &dest) {
             state.missing_heroes.lock().remove(steam_app_id);

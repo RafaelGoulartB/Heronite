@@ -37,10 +37,7 @@ fn current_backup(paths: &DataPaths) -> Result<BackupSettings> {
 }
 
 /// `setLudusaviSettings`; returns the effective settings.
-pub fn set_ludusavi_settings(
-    paths: &DataPaths,
-    patch: &LudusaviSettingsPatch,
-) -> Result<settings::EffectiveSettings> {
+pub fn set_ludusavi_settings(paths: &DataPaths, patch: &LudusaviSettingsPatch) -> Result<settings::EffectiveSettings> {
     let mut next = current_ludusavi(paths)?;
     if let Some(v) = patch.enabled {
         next.enabled = v;
@@ -158,11 +155,7 @@ mod tests {
         let l = settings::load(&paths).unwrap().ludusavi;
         assert_eq!(l.last_backup_game.as_deref(), Some("Tony Hawk's Underground"));
         assert_eq!(l.last_error.as_deref(), Some("boom"));
-        record_ludusavi_backup(
-            &paths,
-            &LudusaviRecord { at: Some("t2".into()), game: Some("G".into()), path: None, error: None },
-        )
-        .unwrap();
+        record_ludusavi_backup(&paths, &LudusaviRecord { at: Some("t2".into()), game: Some("G".into()), path: None, error: None }).unwrap();
         let l = settings::load(&paths).unwrap().ludusavi;
         assert_eq!(l.last_error, None);
         assert_eq!(l.last_backup_path, None);

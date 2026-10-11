@@ -47,7 +47,11 @@ impl RomFolderDialog {
                 .desc("With this on, saving also scans the folder right away and adds the games it finds."),
         );
         let label = if self.saving {
-            if self.auto_scan { "Scanning\u{2026}" } else { "Saving\u{2026}" }
+            if self.auto_scan {
+                "Scanning\u{2026}"
+            } else {
+                "Saving\u{2026}"
+            }
         } else if self.scanner.is_some() {
             "Save"
         } else {
@@ -59,9 +63,10 @@ impl RomFolderDialog {
 
     pub(super) fn render_console(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows(cx);
-        let mut body = div().flex().flex_col().flex_1().min_h_0().gap(u(12.)).child(kit::body_text(
-            "Games found in this folder are added to the Collection and launched with the chosen emulator profile.",
-        ));
+        let mut body =
+            div().flex().flex_col().flex_1().min_h_0().gap(u(12.)).child(kit::body_text(
+                "Games found in this folder are added to the Collection and launched with the chosen emulator profile.",
+            ));
         if !self.error.is_empty() {
             body = body.child(kit::body_text(self.error.clone()).text_color(theme::danger_text()));
         }
@@ -69,7 +74,11 @@ impl RomFolderDialog {
         div()
             .absolute()
             .inset_0()
-            .child(kit::modal(if self.scanner.is_some() { "Edit ROM folder" } else { "Add ROM folder" }, 760., body.child(list.flex_1().min_h_0())))
+            .child(kit::modal(
+                if self.scanner.is_some() { "Edit ROM folder" } else { "Add ROM folder" },
+                760.,
+                body.child(list.flex_1().min_h_0()),
+            ))
             .children(self.layer.view())
             .into_any_element()
     }
@@ -106,9 +115,17 @@ impl PadTarget for RomFolderDialog {
                     let current = text_of(&self.directory, cx);
                     let start = (!current.is_empty()).then(|| std::path::PathBuf::from(current));
                     let input = self.directory.clone();
-                    open_browser(&mut self.layer, "Choose the ROM folder", PickKind::Folder, start.as_deref(), window, cx, move |_: &mut Self, p, window, cx| {
-                        input.update(cx, |s, cx| s.set_value(p.display().to_string(), window, cx));
-                    });
+                    open_browser(
+                        &mut self.layer,
+                        "Choose the ROM folder",
+                        PickKind::Folder,
+                        start.as_deref(),
+                        window,
+                        cx,
+                        move |_: &mut Self, p, window, cx| {
+                            input.update(cx, |s, cx| s.set_value(p.display().to_string(), window, cx));
+                        },
+                    );
                 }
                 _ => {}
             },

@@ -81,12 +81,7 @@ pub fn is_steam_running(steam: &Path) -> bool {
         files.push(parent.join("steam.pid"));
     }
     files.push(steam.join("steam.pid"));
-    files.into_iter().any(|file| {
-        fs::read_to_string(&file)
-            .ok()
-            .and_then(|s| s.trim().parse::<i32>().ok())
-            .is_some_and(pid_alive)
-    })
+    files.into_iter().any(|file| fs::read_to_string(&file).ok().and_then(|s| s.trim().parse::<i32>().ok()).is_some_and(pid_alive))
 }
 
 fn pid_alive(pid: i32) -> bool {
@@ -147,8 +142,7 @@ fn write_doc(file: &Path, doc: &Document) -> Result<()> {
             return Err(e).with_context(|| format!("backing up {}", file.display()));
         }
     }
-    heronite_data::temps::write_atomic(file, &vdf::serialize(doc), None)
-        .with_context(|| format!("writing {}", file.display()))
+    heronite_data::temps::write_atomic(file, &vdf::serialize(doc), None).with_context(|| format!("writing {}", file.display()))
 }
 
 /// `checkIfShortcutObjectIsValid`: problems found (empty = valid).
@@ -235,9 +229,8 @@ pub struct ShortcutSpec {
 
 /// An entry laid out the way Steam writes its own.
 pub fn build_entry(title: &str, spec: &ShortcutSpec) -> Vec<Entry> {
-    let last_played = spec.last_play_time.unwrap_or_else(|| {
-        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as u32).unwrap_or(0)
-    });
+    let last_played =
+        spec.last_play_time.unwrap_or_else(|| SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as u32).unwrap_or(0));
     vec![
         int("appid", shortcut_appid(&spec.exe, title)),
         text("AppName", title),
@@ -393,7 +386,12 @@ pub fn add_game(steam: &Path, game: &GameId, spec: &ShortcutSpec, art: &ArtFiles
             let mut doc = read_doc(&file)?;
             let problems = validate(&doc);
             if !problems.is_empty() {
-                bail!("Can't add \"{}\" to Steam user \"{folder}\". \"{}\" is corrupted!\n{}", game.title, file.display(), problems.join("\n"));
+                bail!(
+                    "Can't add \"{}\" to Steam user \"{folder}\". \"{}\" is corrupted!\n{}",
+                    game.title,
+                    file.display(),
+                    problems.join("\n")
+                );
             }
             let shortcuts = shortcuts_mut(&mut doc).expect("validated");
             if find_entry(shortcuts, game).is_some() {
@@ -443,7 +441,12 @@ pub fn remove_game(steam: &Path, game: &GameId) -> Result<Report> {
             let mut doc = read_doc(&file)?;
             let problems = validate(&doc);
             if !problems.is_empty() {
-                bail!("Can't remove \"{}\" from Steam user \"{folder}\". \"{}\" is corrupted!\n{}", game.title, file.display(), problems.join("\n"));
+                bail!(
+                    "Can't remove \"{}\" from Steam user \"{folder}\". \"{}\" is corrupted!\n{}",
+                    game.title,
+                    file.display(),
+                    problems.join("\n")
+                );
             }
             let shortcuts = shortcuts_mut(&mut doc).expect("validated");
             let Some(index) = find_entry(shortcuts, game) else { return Ok(false) };
@@ -554,11 +557,8 @@ mod tests {
         // The next write overwrites it with the then-current content.
         remove_game(&steam, &game()).unwrap();
         assert_eq!(fs::read(&backup).unwrap(), with_game);
-        let names: Vec<String> = fs::read_dir(file.parent().unwrap())
-            .unwrap()
-            .flatten()
-            .map(|e| e.file_name().to_string_lossy().into_owned())
-            .collect();
+        let names: Vec<String> =
+            fs::read_dir(file.parent().unwrap()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
         assert!(names.iter().all(|n| !n.ends_with(".tmp")), "{names:?}");
     }
 
@@ -722,7 +722,10 @@ mod tests {
         // Removal treats it as already removed.
         assert!(remove_game(dir.path(), &game()).unwrap().users_done.is_empty());
         fs::create_dir_all(dir.path().join("userdata/0")).unwrap();
-        assert!(add_game(dir.path(), &game(), &spec(), &ArtFiles::default()).unwrap_err().to_string().contains("does not contain a valid user directory"));
+        assert!(add_game(dir.path(), &game(), &spec(), &ArtFiles::default())
+            .unwrap_err()
+            .to_string()
+            .contains("does not contain a valid user directory"));
     }
 
     #[test]

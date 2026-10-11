@@ -51,7 +51,11 @@ impl Message {
             Some(Value::Object(o)) => Some(LaunchRequest {
                 runner: o.get("runner").and_then(Value::as_str).map(str::to_string),
                 app_name: o.get("appName").and_then(Value::as_str)?.to_string(),
-                args: o.get("args").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default(),
+                args: o
+                    .get("args")
+                    .and_then(Value::as_array)
+                    .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+                    .unwrap_or_default(),
                 alt_exe: o.get("altExe").and_then(Value::as_str).map(str::to_string),
                 gui_false: o.get("guiFalse").and_then(Value::as_bool).unwrap_or(false),
             }),

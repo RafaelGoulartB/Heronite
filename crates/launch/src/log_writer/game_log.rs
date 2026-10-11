@@ -163,7 +163,10 @@ impl GameLog {
         if st.written + data.len() as u64 > MAX_LOG_BYTES {
             if !st.truncated {
                 st.truncated = true;
-                let note = format!("\n[log truncated: the size limit of {} MB was reached; the rest of the output is not stored]\n", MAX_LOG_BYTES / 1024 / 1024);
+                let note = format!(
+                    "\n[log truncated: the size limit of {} MB was reached; the rest of the output is not stored]\n",
+                    MAX_LOG_BYTES / 1024 / 1024
+                );
                 let _ = file.write_all(note.as_bytes());
             }
             return;

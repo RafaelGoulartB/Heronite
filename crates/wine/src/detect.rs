@@ -23,11 +23,7 @@ pub struct DetectEnv {
 
 impl DetectEnv {
     pub fn real() -> Self {
-        Self {
-            home: dirs::home_dir().unwrap_or_default(),
-            system_steam: Some(PathBuf::from("/usr/share/steam")),
-            system_wine: true,
-        }
+        Self { home: dirs::home_dir().unwrap_or_default(), system_steam: Some(PathBuf::from("/usr/share/steam")), system_wine: true }
     }
 }
 
@@ -161,13 +157,8 @@ pub fn steam_libraries(cfg: &WineConfig, env: &DetectEnv) -> Vec<String> {
 fn default_wine() -> Option<WineInstallation> {
     let path = std::env::var_os("PATH")?;
     let bin = std::env::split_paths(&path).map(|d| d.join("wine")).find(|p| p.is_file())?;
-    let out = Command::new(&bin)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
-        .filter(|o| o.status.success())?;
+    let out =
+        Command::new(&bin).arg("--version").stdin(Stdio::null()).stderr(Stdio::null()).output().ok().filter(|o| o.status.success())?;
     let name = String::from_utf8_lossy(&out.stdout).lines().next()?.trim().to_owned();
     if name.is_empty() {
         return None;

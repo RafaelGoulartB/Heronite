@@ -77,10 +77,7 @@ pub struct WikiEntry {
 
 impl WikiEntry {
     fn from_value(v: &Value) -> Self {
-        let hltb = v
-            .get("howlongtobeat")
-            .filter(|h| h.is_object())
-            .and_then(|h| serde_json::from_value(h.clone()).ok());
+        let hltb = v.get("howlongtobeat").filter(|h| h.is_object()).and_then(|h| serde_json::from_value(h.clone()).ok());
         let pcgw = v.get("pcgamingwiki").filter(|p| p.is_object());
         let pcgw_genres = pcgw
             .and_then(|p| p.get("genres"))

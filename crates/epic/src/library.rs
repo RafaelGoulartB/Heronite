@@ -87,9 +87,7 @@ pub fn game_info(app_name: &str, file: &Value, installed: Option<&Value>) -> Opt
     let infos = release_info.as_array()?;
     // `releaseInfo.every(info => info.platform?.every(p => Android | iOS))`
     let mobile_only = infos.iter().all(|i| {
-        i.get("platform")
-            .and_then(Value::as_array)
-            .is_some_and(|p| p.iter().all(|p| matches!(p.as_str(), Some("Android") | Some("iOS"))))
+        i.get("platform").and_then(Value::as_array).is_some_and(|p| p.iter().all(|p| matches!(p.as_str(), Some("Android") | Some("iOS"))))
     });
     if mobile_only {
         return None;
@@ -105,13 +103,10 @@ pub fn game_info(app_name: &str, file: &Value, installed: Option<&Value>) -> Opt
 
     let info = installed;
     let platform = info.and_then(|i| text(i, "platform"));
-    let save_folder = if platform.as_deref() == Some("Mac") {
-        attr(metadata, "CloudSaveFolder_MAC")
-    } else {
-        attr(metadata, "CloudSaveFolder")
-    }
-    .unwrap_or("")
-    .to_string();
+    let save_folder =
+        if platform.as_deref() == Some("Mac") { attr(metadata, "CloudSaveFolder_MAC") } else { attr(metadata, "CloudSaveFolder") }
+            .unwrap_or("")
+            .to_string();
     let install_folder = folder_name.map(str::to_string).unwrap_or_else(|| app_name.to_string());
 
     let game_box = key_image(metadata, &["DieselGameBox", "OfferImageWide"]);
@@ -146,10 +141,7 @@ pub fn game_info(app_name: &str, file: &Value, installed: Option<&Value>) -> Opt
     g.insert("app_name".into(), json!(app_name));
     g.insert("art_cover".into(), json!(art_cover.clone().or(art_square.clone()).unwrap_or_else(|| "fallback".into())));
     put(&mut g, "art_logo", logo.map(Value::String));
-    g.insert(
-        "art_square".into(),
-        json!(art_square.clone().or(game_box_store).or(art_cover).unwrap_or_else(|| "fallback".into())),
-    );
+    g.insert("art_square".into(), json!(art_square.clone().or(game_box_store).or(art_cover).unwrap_or_else(|| "fallback".into())));
     g.insert("cloud_save_enabled".into(), json!(!save_folder.is_empty()));
     put(&mut g, "developer", text(metadata, "developer").map(Value::String));
     g.insert("extra".into(), json!({"about": Value::Object(about), "reqs": [], "storeUrl": store_url}));

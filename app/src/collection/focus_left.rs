@@ -60,13 +60,7 @@ impl CollectionView {
             .child(self.facts_card(vm, cx));
 
         if lay.narrow {
-            return div()
-                .flex()
-                .items_start()
-                .gap(px(20.))
-                .child(cover)
-                .child(controls.flex_1().max_w(px(380.)))
-                .into_any_element();
+            return div().flex().items_start().gap(px(20.)).child(cover).child(controls.flex_1().max_w(px(380.))).into_any_element();
         }
         div().flex().flex_col().gap(px(16.)).w(px(lay.left_w)).child(cover).child(controls).into_any_element()
     }
@@ -313,9 +307,7 @@ impl CollectionView {
         let mut card = panel(true).pt(px(6.)).pb(px(6.));
         let n = rows.len();
         for (i, r) in rows.into_iter().enumerate() {
-            card = card.child(
-                div().when(i + 1 < n, |d| d.border_b_1().border_color(theme::white_a(0.08))).child(r),
-            );
+            card = card.child(div().when(i + 1 < n, |d| d.border_b_1().border_color(theme::white_a(0.08))).child(r));
         }
         card
     }

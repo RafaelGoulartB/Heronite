@@ -9,8 +9,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use serde::de::DeserializeOwned;
 
-pub const BROWSER_UA: &str =
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
+pub const BROWSER_UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
 pub const FIREFOX_UA: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0";
 
 /// Base URLs of every remote service.
@@ -151,12 +150,7 @@ impl<'a> Request<'a> {
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
         let content_type = header("content-type").unwrap_or_default();
         let content_length = header("content-length").and_then(|v| v.parse().ok());
-        let body = resp
-            .body_mut()
-            .with_config()
-            .limit(self.max_bytes)
-            .read_to_vec()
-            .map_err(|e| anyhow!("{}: {e}", self.url))?;
+        let body = resp.body_mut().with_config().limit(self.max_bytes).read_to_vec().map_err(|e| anyhow!("{}: {e}", self.url))?;
         Ok(Response { status, content_type, content_length, body })
     }
 

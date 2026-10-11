@@ -208,27 +208,19 @@ impl SettingsPage {
                     .child(kit::clock()),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .gap(u(40.))
-                    .px(u(46.))
-                    .pb(u(16.))
-                    .child(nav)
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .max_w(u(900.))
-                            .gap(u(6.))
-                            .child(kit::title(sec.label(), 34.))
-                            .child(div().pb(u(8.)).child(kit::body_text(sec.blurb())))
-                            .child(div().flex().flex_col().flex_1().min_h_0().child(body))
-                            .children(error),
-                    ),
+                div().flex().flex_1().min_h_0().gap(u(40.)).px(u(46.)).pb(u(16.)).child(nav).child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .max_w(u(900.))
+                        .gap(u(6.))
+                        .child(kit::title(sec.label(), 34.))
+                        .child(div().pb(u(8.)).child(kit::body_text(sec.blurb())))
+                        .child(div().flex().flex_col().flex_1().min_h_0().child(body))
+                        .children(error),
+                ),
             )
             .children(self.console.layer.view())
             .into_any_element()
@@ -327,7 +319,14 @@ impl PadTarget for SettingsPage {
 
 impl SettingsPage {
     /// Opens the on-screen keyboard; `done` gets the text.
-    pub(super) fn console_osk(&mut self, title: &str, initial: &str, window: &mut Window, cx: &mut Context<Self>, done: impl Fn(&mut Self, String, &mut Window, &mut Context<Self>) + 'static) {
+    pub(super) fn console_osk(
+        &mut self,
+        title: &str,
+        initial: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        done: impl Fn(&mut Self, String, &mut Window, &mut Context<Self>) + 'static,
+    ) {
         let osk = cx.new(|_| crate::console::osk::Osk::new(title.to_string(), initial));
         let sub = cx.subscribe_in(&osk, window, move |this, _, ev: &crate::console::osk::OskEvent, window, cx| {
             this.console.layer.close();

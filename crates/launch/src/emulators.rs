@@ -80,11 +80,7 @@ impl UserEmulator {
         self.profiles
             .iter()
             .find(|p| p.id == profile_id)
-            .or_else(|| {
-                self.profiles
-                    .iter()
-                    .find(|p| p.definition_profile_id.as_deref() == Some(profile_id))
-            })
+            .or_else(|| self.profiles.iter().find(|p| p.definition_profile_id.as_deref() == Some(profile_id)))
             .or_else(|| self.profiles.first())
     }
 }
@@ -97,26 +93,15 @@ pub struct ProfileTemplate {
     pub core_path: Option<String>,
 }
 
-pub fn resolve_profile_template(
-    emulator: &UserEmulator,
-    profile: &UserEmulatorProfile,
-) -> ProfileTemplate {
-    let catalog = profile
-        .definition_profile_id
-        .as_deref()
-        .and_then(|pid| definition_profile(&emulator.definition_id, pid));
+pub fn resolve_profile_template(emulator: &UserEmulator, profile: &UserEmulatorProfile) -> ProfileTemplate {
+    let catalog = profile.definition_profile_id.as_deref().and_then(|pid| definition_profile(&emulator.definition_id, pid));
     ProfileTemplate {
         arguments: if !profile.arguments.is_empty() {
             profile.arguments.clone()
         } else {
-            catalog
-                .map(|c| c.arguments.to_string())
-                .unwrap_or_else(|| "{ImagePath}".to_string())
+            catalog.map(|c| c.arguments.to_string()).unwrap_or_else(|| "{ImagePath}".to_string())
         },
-        working_dir: profile
-            .working_dir
-            .clone()
-            .or_else(|| catalog.and_then(|c| c.working_dir.map(str::to_string))),
+        working_dir: profile.working_dir.clone().or_else(|| catalog.and_then(|c| c.working_dir.map(str::to_string))),
         core_path: profile.core_path.clone(),
     }
 }
@@ -137,11 +122,7 @@ pub struct CatalogEmulator {
 }
 
 const fn p(id: &'static str, arguments: &'static str) -> CatalogProfile {
-    CatalogProfile {
-        id,
-        arguments,
-        working_dir: None,
-    }
+    CatalogProfile { id, arguments, working_dir: None }
 }
 
 const RA: &str = "-L {CorePath} {ImagePath}";
@@ -151,10 +132,7 @@ static CATALOG: &[CatalogEmulator] = &[
         id: "dolphin",
         flatpak_id: Some("org.DolphinEmu.dolphin-emu"),
         stop_pattern: Some("dolphin-emu"),
-        profiles: &[
-            p("gamecube", "--exec={ImagePath} --batch"),
-            p("wii", "--exec={ImagePath} --batch"),
-        ],
+        profiles: &[p("gamecube", "--exec={ImagePath} --batch"), p("wii", "--exec={ImagePath} --batch")],
     },
     CatalogEmulator {
         id: "pcsx2",
@@ -174,12 +152,7 @@ static CATALOG: &[CatalogEmulator] = &[
         stop_pattern: Some("PPSSPP"),
         profiles: &[p("psp", "{ImagePath}")],
     },
-    CatalogEmulator {
-        id: "rpcs3",
-        flatpak_id: Some("net.rpcs3.RPCS3"),
-        stop_pattern: Some("rpcs3"),
-        profiles: &[p("ps3", "{ImagePath}")],
-    },
+    CatalogEmulator { id: "rpcs3", flatpak_id: Some("net.rpcs3.RPCS3"), stop_pattern: Some("rpcs3"), profiles: &[p("ps3", "{ImagePath}")] },
     CatalogEmulator {
         id: "cemu",
         flatpak_id: Some("info.cemu.Cemu"),
@@ -220,11 +193,7 @@ static CATALOG: &[CatalogEmulator] = &[
         id: "mame",
         flatpak_id: Some("org.mamedev.MAME"),
         stop_pattern: Some("mame"),
-        profiles: &[CatalogProfile {
-            id: "arcade",
-            arguments: "{ImageNameNoExt}",
-            working_dir: Some("rom"),
-        }],
+        profiles: &[CatalogProfile { id: "arcade", arguments: "{ImageNameNoExt}", working_dir: Some("rom") }],
     },
     CatalogEmulator {
         id: "scummvm",
@@ -277,26 +246,15 @@ static CATALOG: &[CatalogEmulator] = &[
             p("mame", RA),
         ],
     },
-    CatalogEmulator {
-        id: "custom",
-        flatpak_id: None,
-        stop_pattern: None,
-        profiles: &[p("custom", "{ImagePath}")],
-    },
+    CatalogEmulator { id: "custom", flatpak_id: None, stop_pattern: None, profiles: &[p("custom", "{ImagePath}")] },
 ];
 
 pub fn emulator_definition(id: &str) -> Option<&'static CatalogEmulator> {
     CATALOG.iter().find(|d| d.id == id)
 }
 
-pub fn definition_profile(
-    definition_id: &str,
-    profile_id: &str,
-) -> Option<&'static CatalogProfile> {
-    emulator_definition(definition_id)?
-        .profiles
-        .iter()
-        .find(|p| p.id == profile_id)
+pub fn definition_profile(definition_id: &str, profile_id: &str) -> Option<&'static CatalogProfile> {
+    emulator_definition(definition_id)?.profiles.iter().find(|p| p.id == profile_id)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -346,12 +304,7 @@ fn node_extname(base: &str) -> &str {
     }
 }
 
-pub fn vars_for_rom(
-    rom_path: &str,
-    emulator_dir: Option<&str>,
-    core_path: Option<&str>,
-    name: &str,
-) -> LaunchVars {
+pub fn vars_for_rom(rom_path: &str, emulator_dir: Option<&str>, core_path: Option<&str>, name: &str) -> LaunchVars {
     let file = node_basename(rom_path);
     let ext = node_extname(&file);
     let emulator_dir = emulator_dir.map(str::to_string);
@@ -394,13 +347,8 @@ pub fn expand_argv(template: &str, vars: &LaunchVars) -> Vec<String> {
     if source.is_empty() {
         return Vec::new();
     }
-    let parts = shlex::split(source)
-        .unwrap_or_else(|| source.split_whitespace().map(str::to_string).collect());
-    parts
-        .into_iter()
-        .map(|p| expand_template(&p, vars))
-        .filter(|p| !p.is_empty())
-        .collect()
+    let parts = shlex::split(source).unwrap_or_else(|| source.split_whitespace().map(str::to_string).collect());
+    parts.into_iter().map(|p| expand_template(&p, vars)).filter(|p| !p.is_empty()).collect()
 }
 
 #[cfg(test)]
@@ -422,52 +370,23 @@ mod tests {
 
     #[test]
     fn expands_variables_like_heroic() {
-        let v = vars_for_rom(
-            "/roms/Mario Kart (USA).iso",
-            Some("/emu"),
-            Some("/cores/x.so"),
-            "Mario Kart",
-        );
+        let v = vars_for_rom("/roms/Mario Kart (USA).iso", Some("/emu"), Some("/cores/x.so"), "Mario Kart");
         assert_eq!(v.image_name_no_ext.as_deref(), Some("Mario Kart (USA)"));
         assert_eq!(
-            expand_argv(
-                "-L {CorePath} \"{ImagePath}\" --dir={ImageDir} {Missing}",
-                &v
-            ),
-            vec![
-                "-L",
-                "/cores/x.so",
-                "/roms/Mario Kart (USA).iso",
-                "--dir=/roms",
-                "{Missing}"
-            ]
+            expand_argv("-L {CorePath} \"{ImagePath}\" --dir={ImageDir} {Missing}", &v),
+            vec!["-L", "/cores/x.so", "/roms/Mario Kart (USA).iso", "--dir=/roms", "{Missing}"]
         );
         // Empty variables are left alone; parts that become empty are dropped.
         let none = vars_for_rom("/roms/a.iso", None, None, "A");
-        assert_eq!(
-            expand_argv("-L {CorePath} {ImagePath}", &none),
-            vec!["-L", "{CorePath}", "/roms/a.iso"]
-        );
+        assert_eq!(expand_argv("-L {CorePath} {ImagePath}", &none), vec!["-L", "{CorePath}", "/roms/a.iso"]);
         assert!(expand_argv("   ", &none).is_empty());
     }
 
     #[test]
     fn catalog_lookups() {
-        assert_eq!(
-            emulator_definition("pcsx2").unwrap().stop_pattern,
-            Some("pcsx2")
-        );
-        assert_eq!(
-            definition_profile("retroarch", "snes").unwrap().arguments,
-            RA
-        );
-        assert_eq!(
-            definition_profile("mame", "arcade").unwrap().working_dir,
-            Some("rom")
-        );
-        assert!(emulator_definition("custom")
-            .unwrap()
-            .stop_pattern
-            .is_none());
+        assert_eq!(emulator_definition("pcsx2").unwrap().stop_pattern, Some("pcsx2"));
+        assert_eq!(definition_profile("retroarch", "snes").unwrap().arguments, RA);
+        assert_eq!(definition_profile("mame", "arcade").unwrap().working_dir, Some("rom"));
+        assert!(emulator_definition("custom").unwrap().stop_pattern.is_none());
     }
 }

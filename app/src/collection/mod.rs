@@ -30,10 +30,10 @@ mod pumps;
 mod render_focus;
 mod screenshot_viewer;
 mod screenshots;
-mod sideload_uninstall;
 mod scroll;
-mod timeline;
+mod sideload_uninstall;
 mod system_glue;
+mod timeline;
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
@@ -47,7 +47,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::hltb::WikiCache;
 use heronite_data::ui_state::UiState;
-use heronite_data::{AppPaths, FacetKind, DataPaths, Library};
+use heronite_data::{AppPaths, DataPaths, FacetKind, Library};
 use heronite_images::ImageRef;
 
 use crate::images::ImageStore;
@@ -231,26 +231,19 @@ impl CollectionView {
 impl CollectionView {
     fn render_toast(&self) -> Option<Div> {
         self.toast.clone().map(|(text, error)| {
-            div()
-                .absolute()
-                .bottom(px(84.))
-                .left_0()
-                .right_0()
-                .flex()
-                .justify_center()
-                .child(
-                    div()
-                        .max_w(px(560.))
-                        .px(px(16.))
-                        .py(px(10.))
-                        .rounded(px(10.))
-                        .bg(theme::rgb_a(18, 22, 28, 0.94))
-                        .border_1()
-                        .border_color(if error { theme::danger().into() } else { theme::white_a(0.12) })
-                        .text_size(px(13.33))
-                        .text_color(theme::white_a(0.92))
-                        .child(text),
-                )
+            div().absolute().bottom(px(84.)).left_0().right_0().flex().justify_center().child(
+                div()
+                    .max_w(px(560.))
+                    .px(px(16.))
+                    .py(px(10.))
+                    .rounded(px(10.))
+                    .bg(theme::rgb_a(18, 22, 28, 0.94))
+                    .border_1()
+                    .border_color(if error { theme::danger().into() } else { theme::white_a(0.12) })
+                    .text_size(px(13.33))
+                    .text_color(theme::white_a(0.92))
+                    .child(text),
+            )
         })
     }
 
@@ -342,12 +335,7 @@ impl CollectionView {
             .when(!on_page, |root| {
                 root.child(
                     div().absolute().inset_0().flex().flex_col().child(header).child(
-                        div()
-                            .flex()
-                            .flex_1()
-                            .min_h_0()
-                            .child(list_column)
-                            .child(div().flex_1().min_w_0().h_full().child(focus_panel)),
+                        div().flex().flex_1().min_h_0().child(list_column).child(div().flex_1().min_w_0().h_full().child(focus_panel)),
                     ),
                 )
             })

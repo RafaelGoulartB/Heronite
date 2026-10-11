@@ -14,7 +14,7 @@ use heronite_launch::SystemProbe;
 use super::{block, Busy, GameSettingsDialog};
 use crate::dialogs::DialogEvent;
 use crate::theme;
-use crate::ui::controls::{action_button, card, help_text, row, caption, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, help_text, row, ButtonKind};
 use crate::ui::fields::{input_box, labeled, new_input, select_field};
 
 pub(super) struct LaunchState {
@@ -88,12 +88,7 @@ impl GameSettingsDialog {
     }
 
     pub(super) fn browse_executable(&mut self, cx: &mut Context<Self>) {
-        let rx = cx.prompt_for_paths(PathPromptOptions {
-            files: true,
-            directories: false,
-            multiple: false,
-            prompt: Some("Select".into()),
-        });
+        let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some("Select".into()) });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = rx.await else { return };
             let Some(path) = paths.into_iter().next() else { return };
@@ -116,7 +111,8 @@ impl GameSettingsDialog {
         self.error.clear();
         let (data_paths, game) = (self.ctx.data_paths.clone(), self.game.clone());
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { write_launch_options(&data_paths, &game, &exe, &run_as).map(|_| (exe, run_as)) }).await;
+            let res =
+                cx.background_spawn(async move { write_launch_options(&data_paths, &game, &exe, &run_as).map(|_| (exe, run_as)) }).await;
             this.update(cx, |this, cx| {
                 this.busy = None;
                 match res {
@@ -188,12 +184,9 @@ impl GameSettingsDialog {
             .when(!l.exists, |d| d.child(div().text_color(theme::danger_text()).child(" (file not found)")));
         let exe_row = block(labeled(
             "Executable",
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .child(div().flex_1().min_w_0().child(input_box(&l.executable, false)))
-                .child(action_button("gs-browse", ButtonKind::Glass, "Browse", !busy, cx.listener(|this, _, _, cx| this.browse_executable(cx)))),
+            div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(input_box(&l.executable, false))).child(
+                action_button("gs-browse", ButtonKind::Glass, "Browse", !busy, cx.listener(|this, _, _, cx| this.browse_executable(cx))),
+            ),
         ));
         let file = card([
             exe_row,
@@ -238,7 +231,11 @@ impl GameSettingsDialog {
 fn write_launch_options(paths: &DataPaths, game: &heronite_data::CollectionGame, executable: &str, run_as: &str) -> anyhow::Result<()> {
     let exe = {
         let t = executable.trim();
-        if t.is_empty() { game.game.install.executable.clone().unwrap_or_default() } else { t.to_string() }
+        if t.is_empty() {
+            game.game.install.executable.clone().unwrap_or_default()
+        } else {
+            t.to_string()
+        }
     };
     let mut new_meta = game.meta.as_deref().cloned();
     if let Some(m) = new_meta.as_mut() {

@@ -11,6 +11,7 @@
 //!   (it reloads the library), `DialogEvent::Close` to close.
 
 pub mod add_game;
+pub mod art_images;
 pub mod emulator_confirm;
 pub mod emulator_detect;
 pub mod emulator_edit;
@@ -18,23 +19,22 @@ pub mod epic_confirm;
 pub mod epic_import;
 pub mod epic_install;
 pub mod epic_modify;
+pub mod game_settings;
 pub mod launch_state;
 pub mod log_viewer;
 pub mod ludusavi_backup;
-pub mod pick_rom;
-pub mod art_images;
-pub mod game_settings;
-pub mod settings_panel;
 pub mod manage_statuses;
 pub mod metadata;
 pub mod metadata_wizard;
-pub mod screenshot_art;
-pub mod web_image;
+pub mod pick_rom;
 pub mod playtime;
 pub mod quit_confirm;
 pub mod remove_game;
 pub mod rom_folder;
 pub mod scan_roms;
+pub mod screenshot_art;
+pub mod settings_panel;
+pub mod web_image;
 
 use std::sync::Arc;
 

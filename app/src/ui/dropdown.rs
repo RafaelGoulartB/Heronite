@@ -11,12 +11,7 @@ use crate::ui::glass;
 /// context menu and select list. Paints the blurred art behind a translucent
 /// fill (see `ui::glass`).
 pub fn menu_panel(min_w: f32) -> Div {
-    glass::glass_menu_surface(theme::R_MENU)
-        .flex()
-        .flex_col()
-        .gap(px(2.))
-        .min_w(px(min_w))
-        .p(px(6.))
+    glass::glass_menu_surface(theme::R_MENU).flex().flex_col().gap(px(2.)).min_w(px(min_w)).p(px(6.))
 }
 
 /// One menu row: 14px, padding 7/10, radius 10, hover `rgba(255,255,255,.07)`;
@@ -68,12 +63,7 @@ pub fn dropdown(
 ) -> Stateful<Div> {
     let id: ElementId = id.into();
     let h1 = on_hover.clone();
-    let mut container = div()
-        .id(id.clone())
-        .relative()
-        .flex_none()
-        .on_hover(move |h, w, cx| h1(PART_BUTTON, *h, w, cx))
-        .child(button);
+    let mut container = div().id(id.clone()).relative().flex_none().on_hover(move |h, w, cx| h1(PART_BUTTON, *h, w, cx)).child(button);
     if let Some(menu) = menu {
         let h2 = on_hover.clone();
         let positioned = div()

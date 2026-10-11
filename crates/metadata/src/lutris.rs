@@ -69,12 +69,8 @@ pub fn fetch_lutris_metadata(
                     .send_ok()?;
                 let body: Value = resp.json()?;
                 let results: Vec<Value> = body.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
-                let best = pick_best_match(
-                    title,
-                    &results,
-                    |r| r.get("name").and_then(Value::as_str).unwrap_or("").to_owned(),
-                    MIN_MATCH_SCORE,
-                );
+                let best =
+                    pick_best_match(title, &results, |r| r.get("name").and_then(Value::as_str).unwrap_or("").to_owned(), MIN_MATCH_SCORE);
                 if let Some(found) = best.and_then(|b| s(b, "slug")) {
                     slug = Some(found.to_owned());
                     break;
@@ -82,11 +78,7 @@ pub fn fetch_lutris_metadata(
             }
         }
         let Some(slug) = slug else { return Ok(None) };
-        let detail: Value = http
-            .get(format!("{}/api/games/{slug}", http.endpoints.lutris))
-            .timeout_secs(15)
-            .send_ok()?
-            .json()?;
+        let detail: Value = http.get(format!("{}/api/games/{slug}", http.endpoints.lutris)).timeout_secs(15).send_ok()?.json()?;
         Ok(map_lutris_detail(app_name, runner, &slug, &detail))
     };
     match run() {

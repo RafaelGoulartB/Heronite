@@ -12,8 +12,7 @@ impl ScanRomsDialog {
     pub(super) fn render_emulator_row(&self, cx: &mut Context<Self>) -> Div {
         let emulators = &self.state.emulators;
         let emu_name = self.emulator().map(|e| e.name.clone()).unwrap_or_else(|| "No emulators yet".into());
-        let emu_opts: Vec<(SharedString, bool)> =
-            emulators.iter().map(|e| (e.name.clone().into(), e.id == self.emulator_id)).collect();
+        let emu_opts: Vec<(SharedString, bool)> = emulators.iter().map(|e| (e.name.clone().into(), e.id == self.emulator_id)).collect();
 
         let emu_select = select_field(
             "scan-emulator",
@@ -93,12 +92,7 @@ impl ScanRomsDialog {
         let profile_name = self.profile().map(profile_label).unwrap_or_default();
         let profile_opts: Vec<(SharedString, bool)> = self
             .emulator()
-            .map(|e| {
-                e.profiles
-                    .iter()
-                    .map(|p| (profile_label(p).into(), p.id == self.profile_id))
-                    .collect()
-            })
+            .map(|e| e.profiles.iter().map(|p| (profile_label(p).into(), p.id == self.profile_id)).collect())
             .unwrap_or_default();
 
         select_field(
@@ -124,53 +118,40 @@ impl ScanRomsDialog {
     }
 
     pub(super) fn render_folder(&self, dir_value: &str, cx: &mut Context<Self>) -> Div {
-        path_field(
-            "scan-folder-pick",
-            Some("ROM folder"),
-            &self.directory,
-            !dir_value.is_empty(),
-            false,
-            {
-                let has = !dir_value.is_empty();
-                cx.listener(move |this, _, window, cx| {
-                    if has {
-                        this.directory.update(cx, |s, cx| s.set_value("", window, cx));
+        path_field("scan-folder-pick", Some("ROM folder"), &self.directory, !dir_value.is_empty(), false, {
+            let has = !dir_value.is_empty();
+            cx.listener(move |this, _, window, cx| {
+                if has {
+                    this.directory.update(cx, |s, cx| s.set_value("", window, cx));
+                    this.preview = None;
+                    cx.notify();
+                } else {
+                    choose_path(window, cx, true, "ROM folder", |this: &mut Self, p, window, cx| {
+                        this.directory.update(cx, |s, cx| s.set_value(p, window, cx));
                         this.preview = None;
                         cx.notify();
-                    } else {
-                        choose_path(window, cx, true, "ROM folder", |this: &mut Self, p, window, cx| {
-                            this.directory.update(cx, |s, cx| s.set_value(p, window, cx));
-                            this.preview = None;
-                            cx.notify();
-                        });
-                    }
-                })
-            },
-        )
+                    });
+                }
+            })
+        })
     }
 
     pub(super) fn render_toggles(&self, cx: &mut Context<Self>) -> Div {
         panel()
-            .child(checkbox("scan-subfolders", self.scan_subfolders, "Include subfolders").on_click(cx.listener(
+            .child(checkbox("scan-subfolders", self.scan_subfolders, "Include subfolders").on_click(cx.listener(|this, _, _, cx| {
+                this.scan_subfolders = !this.scan_subfolders;
+                cx.notify();
+            })))
+            .child(checkbox("scan-merge", self.merge_related, "Merge discs into one game").on_click(cx.listener(|this, _, _, cx| {
+                this.merge_related = !this.merge_related;
+                cx.notify();
+            })))
+            .child(checkbox("scan-auto", self.auto_scan, "Scan this folder when Collection refreshes").on_click(cx.listener(
                 |this, _, _, cx| {
-                    this.scan_subfolders = !this.scan_subfolders;
+                    this.auto_scan = !this.auto_scan;
                     cx.notify();
                 },
             )))
-            .child(checkbox("scan-merge", self.merge_related, "Merge discs into one game").on_click(cx.listener(
-                |this, _, _, cx| {
-                    this.merge_related = !this.merge_related;
-                    cx.notify();
-                },
-            )))
-            .child(
-                checkbox("scan-auto", self.auto_scan, "Scan this folder when Collection refreshes").on_click(
-                    cx.listener(|this, _, _, cx| {
-                        this.auto_scan = !this.auto_scan;
-                        cx.notify();
-                    }),
-                ),
-            )
     }
 
     pub(super) fn render_preview(&self, cx: &mut Context<Self>) -> Option<Div> {
@@ -196,14 +177,12 @@ impl ScanRomsDialog {
                         .rounded(px(theme::R_ITEM))
                         .when(imported, |d| d.opacity(0.6))
                         .when(!imported, |d| {
-                            d.cursor_pointer().hover(|s| s.bg(theme::menu_item_hover())).on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    if let Some(g) = this.preview.as_mut().and_then(|p| p.games.get_mut(i)) {
-                                        g.import = !g.import;
-                                    }
-                                    cx.notify();
-                                },
-                            ))
+                            d.cursor_pointer().hover(|s| s.bg(theme::menu_item_hover())).on_click(cx.listener(move |this, _, _, cx| {
+                                if let Some(g) = this.preview.as_mut().and_then(|p| p.games.get_mut(i)) {
+                                    g.import = !g.import;
+                                }
+                                cx.notify();
+                            }))
                         })
                         .child(mini_checkbox(SharedString::from(format!("scan-cb-{i}")), g.import, imported))
                         .child(
@@ -211,7 +190,13 @@ impl ScanRomsDialog {
                                 .flex()
                                 .flex_col()
                                 .min_w_0()
-                                .child(div().font_weight(theme::W_BOLD).text_size(px(14.)).text_color(theme::text_primary()).child(g.title.clone()))
+                                .child(
+                                    div()
+                                        .font_weight(theme::W_BOLD)
+                                        .text_size(px(14.))
+                                        .text_color(theme::text_primary())
+                                        .child(g.title.clone()),
+                                )
                                 .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(sub)),
                         ),
                 );
@@ -230,18 +215,14 @@ impl ScanRomsDialog {
                             div()
                                 .flex()
                                 .gap(px(8.))
-                                .child(button("scan-all", ButtonKind::Glass, "Select all").on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.toggle_all(true);
-                                        cx.notify();
-                                    },
-                                )))
-                                .child(button("scan-none", ButtonKind::Glass, "Select none").on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.toggle_all(false);
-                                        cx.notify();
-                                    },
-                                ))),
+                                .child(button("scan-all", ButtonKind::Glass, "Select all").on_click(cx.listener(|this, _, _, cx| {
+                                    this.toggle_all(true);
+                                    cx.notify();
+                                })))
+                                .child(button("scan-none", ButtonKind::Glass, "Select none").on_click(cx.listener(|this, _, _, cx| {
+                                    this.toggle_all(false);
+                                    cx.notify();
+                                }))),
                         ),
                 )
                 .child(crate::ui::controls::card_box().py(px(6.)).child(list))

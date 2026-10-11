@@ -201,11 +201,8 @@ impl CollectionView {
         }
         let (paths, runner, app_name) = (self.data_paths.clone(), game.runner.clone(), game.app_name.clone());
         cx.spawn(async move |this, cx| {
-            let items = cx
-                .background_spawn(async move {
-                    load_achievements(&paths, &Http::new(Endpoints::default()), &runner, &app_name)
-                })
-                .await;
+            let items =
+                cx.background_spawn(async move { load_achievements(&paths, &Http::new(Endpoints::default()), &runner, &app_name) }).await;
             this.update(cx, |this, cx| {
                 if this.extras.ach_key.as_ref() == Some(&key) {
                     this.extras.ach = items;
@@ -345,15 +342,8 @@ impl CollectionView {
             for row in rows.iter_mut().filter(|r| !r.image_url.is_empty()) {
                 let url = row.image_url.clone();
                 let id: SharedString = format!("ach:{url}:{pw}x{ph}").into();
-                let chain = if url.starts_with("http") {
-                    ImageRef::Url(url)
-                } else {
-                    ImageRef::File(std::path::PathBuf::from(url))
-                };
-                row.image = self
-                    .images
-                    .get_or_request(&id, || vec![chain], pw, ph, Variant::Cover, 30)
-                    .map(ImageSource::Render);
+                let chain = if url.starts_with("http") { ImageRef::Url(url) } else { ImageRef::File(std::path::PathBuf::from(url)) };
+                row.image = self.images.get_or_request(&id, || vec![chain], pw, ph, Variant::Cover, 30).map(ImageSource::Render);
             }
             extras.top = Some(achievements::view(unlocked, total, rows));
         }

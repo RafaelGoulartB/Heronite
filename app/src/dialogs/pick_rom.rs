@@ -26,15 +26,8 @@ pub struct PickRomDialog {
 impl EventEmitter<DialogEvent> for PickRomDialog {}
 
 impl PickRomDialog {
-    pub fn new(
-        title: String,
-        roms: Vec<(String, String)>,
-        selected_path: Option<String>,
-        on_play: Rc<dyn Fn(String, &mut App)>,
-    ) -> Self {
-        let selected = selected_path
-            .filter(|p| roms.iter().any(|(_, rp)| rp == p))
-            .or_else(|| roms.first().map(|(_, p)| p.clone()));
+    pub fn new(title: String, roms: Vec<(String, String)>, selected_path: Option<String>, on_play: Rc<dyn Fn(String, &mut App)>) -> Self {
+        let selected = selected_path.filter(|p| roms.iter().any(|(_, rp)| rp == p)).or_else(|| roms.first().map(|(_, p)| p.clone()));
         let mut this = Self { title, roms, selected, on_play, console_list: Default::default() };
         this.console_focus_selected();
         this

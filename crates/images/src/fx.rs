@@ -35,11 +35,7 @@ pub fn saturate(buf: &mut [u8], s: f32, bgra: bool) {
     ];
     // 16.16 fixed point
     let f = |v: f64| (v * 65536.0).round() as i32;
-    let mi = [
-        [f(m[0][0]), f(m[0][1]), f(m[0][2])],
-        [f(m[1][0]), f(m[1][1]), f(m[1][2])],
-        [f(m[2][0]), f(m[2][1]), f(m[2][2])],
-    ];
+    let mi = [[f(m[0][0]), f(m[0][1]), f(m[0][2])], [f(m[1][0]), f(m[1][1]), f(m[1][2])], [f(m[2][0]), f(m[2][1]), f(m[2][2])]];
     let (ri, bi) = if bgra { (2, 0) } else { (0, 2) };
     for p in buf.as_chunks_mut::<4>().0 {
         let (r, g, b) = (p[ri] as i32, p[1] as i32, p[bi] as i32);
@@ -65,15 +61,9 @@ pub fn box_radii(sigma: f32, n: usize) -> Vec<usize> {
     }
     let wl = wl.max(1);
     let wu = wl + 2;
-    let m_ideal = (12.0 * sigma * sigma
-        - nf * (wl * wl) as f64
-        - 4.0 * nf * wl as f64
-        - 3.0 * nf)
-        / (-4.0 * wl as f64 - 4.0);
+    let m_ideal = (12.0 * sigma * sigma - nf * (wl * wl) as f64 - 4.0 * nf * wl as f64 - 3.0 * nf) / (-4.0 * wl as f64 - 4.0);
     let m = m_ideal.round() as i64;
-    (0..n as i64)
-        .map(|i| (if i < m { wl } else { wu } as usize - 1) / 2)
-        .collect()
+    (0..n as i64).map(|i| (if i < m { wl } else { wu } as usize - 1) / 2).collect()
 }
 
 #[inline(always)]
@@ -181,7 +171,13 @@ mod tests {
         for sigma in [2.0f32, 5.0, 10.0, 20.0, 40.0] {
             let radii = box_radii(sigma, 3);
             // variance of a box of width n is (n^2-1)/12
-            let var: f64 = radii.iter().map(|&r| { let n = (2 * r + 1) as f64; (n * n - 1.0) / 12.0 }).sum();
+            let var: f64 = radii
+                .iter()
+                .map(|&r| {
+                    let n = (2 * r + 1) as f64;
+                    (n * n - 1.0) / 12.0
+                })
+                .sum();
             let got = var.sqrt();
             assert!((got - sigma as f64).abs() / (sigma as f64) < (0.08f64).max(0.5 / sigma as f64), "sigma {sigma} -> {got}");
         }

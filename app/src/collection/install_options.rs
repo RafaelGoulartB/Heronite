@@ -63,9 +63,8 @@ pub(super) enum WayKind {
 }
 
 fn prefill(game: &CollectionGame) -> Prefill {
-    let pick = |a: &Option<String>, b: Option<&String>| {
-        a.clone().filter(|s| !s.trim().is_empty()).or_else(|| b.cloned()).unwrap_or_default()
-    };
+    let pick =
+        |a: &Option<String>, b: Option<&String>| a.clone().filter(|s| !s.trim().is_empty()).or_else(|| b.cloned()).unwrap_or_default();
     let art = game.art.as_deref();
     Prefill {
         app_name: (game.runner == "sideload").then(|| game.app_name.clone()),
@@ -108,7 +107,13 @@ impl CollectionView {
             ways.push(Way { id: "store", icon: Icon::Download, label, desc: "Default for this game", kind: WayKind::Store });
         }
         if self.epic_can_import(game, cx) {
-            ways.push(Way { id: "import", icon: Icon::FolderOpen, label: "Import game", desc: "Use a copy already installed by Epic", kind: WayKind::EpicImport });
+            ways.push(Way {
+                id: "import",
+                icon: Icon::FolderOpen,
+                label: "Import game",
+                desc: "Use a copy already installed by Epic",
+                kind: WayKind::EpicImport,
+            });
         }
         if can_install_manually(game) {
             ways.push(Way {
@@ -125,7 +130,11 @@ impl CollectionView {
     /// The other ways as game actions (the palette; the context menu shows
     /// them in the Install flyout). The store's own install is the main
     /// action already.
-    pub(super) fn install_way_actions(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<super::game_actions::GameActionItem> {
+    pub(super) fn install_way_actions(
+        &mut self,
+        game: &CollectionGame,
+        cx: &mut Context<Self>,
+    ) -> Vec<super::game_actions::GameActionItem> {
         use super::game_actions::{GameAction, GameActionItem};
         // Without the flyout, Epic's "Import game" is a menu row of its own.
         if !has_more_ways(game) {
@@ -134,7 +143,9 @@ impl CollectionView {
         self.install_ways(game, cx)
             .into_iter()
             .filter(|w| !matches!(w.kind, WayKind::Store))
-            .map(|w| GameActionItem::new(GameAction::InstallWay(w.kind), format!("way-{}", w.id), w.label, w.icon, "install").palette_only())
+            .map(|w| {
+                GameActionItem::new(GameAction::InstallWay(w.kind), format!("way-{}", w.id), w.label, w.icon, "install").palette_only()
+            })
             .collect()
     }
 
@@ -214,11 +225,9 @@ impl CollectionView {
                 .top_0()
                 .left_0()
                 .child(
-                    deferred(
-                        anchored().position(point(px(0.), px(0.))).child(
-                            div().id("focus-install-catcher").w(px(20000.)).h(px(20000.)).occlude().on_mouse_down(MouseButton::Left, close),
-                        ),
-                    )
+                    deferred(anchored().position(point(px(0.), px(0.))).child(
+                        div().id("focus-install-catcher").w(px(20000.)).h(px(20000.)).occlude().on_mouse_down(MouseButton::Left, close),
+                    ))
                     .with_priority(20),
                 )
                 .child(

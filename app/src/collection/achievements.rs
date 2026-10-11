@@ -59,19 +59,9 @@ pub fn view(unlocked: usize, total: usize, rows: Vec<Row>) -> AnyElement {
         );
     }
     panel(false)
-        .child(
-            h3("Achievements")
-                .flex()
-                .justify_between()
-                .gap(px(12.8))
-                .child(
-                    div()
-                        .text_size(px(13.6))
-                        .font_weight(theme::W_500)
-                        .text_color(theme::white_a(0.62))
-                        .child(format!("{unlocked}/{total}")),
-                ),
-        )
+        .child(h3("Achievements").flex().justify_between().gap(px(12.8)).child(
+            div().text_size(px(13.6)).font_weight(theme::W_500).text_color(theme::white_a(0.62)).child(format!("{unlocked}/{total}")),
+        ))
         .child(list)
         .into_any_element()
 }

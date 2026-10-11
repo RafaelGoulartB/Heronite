@@ -10,8 +10,8 @@ use super::logic::*;
 use super::picker::{ImagePicker, PickerEvent, Slot};
 use super::{text_of, AddGameDialog};
 use crate::dialogs::art_images::{chain_for_url, picture};
-use crate::theme;
 use crate::icons::Icon;
+use crate::theme;
 use crate::ui::fields::{choose_path, path_field};
 use crate::ui::icon;
 

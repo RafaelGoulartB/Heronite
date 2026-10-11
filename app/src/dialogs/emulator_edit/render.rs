@@ -22,8 +22,7 @@ impl EmulatorEditDialog {
             let defs: Vec<_> = emulator_definitions().iter().filter(|d| d.id != "custom").collect();
             options.extend(defs.iter().map(|d| (SharedString::from(d.name.clone()), d.id == self.definition_id)));
             let current = emulator_definition(&self.definition_id).map(|d| d.name.clone()).unwrap_or_default();
-            let ids: Vec<String> =
-                std::iter::once("custom".to_string()).chain(defs.iter().map(|d| d.id.clone())).collect();
+            let ids: Vec<String> = std::iter::once("custom".to_string()).chain(defs.iter().map(|d| d.id.clone())).collect();
             body = body
                 .child(meta_text(
                     "Pick an emulator from the catalog to start with its platforms and arguments, or Custom to describe any program.",
@@ -191,19 +190,15 @@ impl EmulatorEditDialog {
                     .flex_none()
                     .gap(px(8.))
                     .child(
-                        button(
-                            SharedString::from(format!("prof-edit-{i}")),
-                            ButtonKind::Glass,
-                            if open { "Done" } else { "Edit" },
-                        )
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            if this.open_profile == Some(i) {
-                                this.close_form(cx);
-                                cx.notify();
-                            } else {
-                                this.edit_profile(i, window, cx);
-                            }
-                        })),
+                        button(SharedString::from(format!("prof-edit-{i}")), ButtonKind::Glass, if open { "Done" } else { "Edit" })
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                if this.open_profile == Some(i) {
+                                    this.close_form(cx);
+                                    cx.notify();
+                                } else {
+                                    this.edit_profile(i, window, cx);
+                                }
+                            })),
                     )
                     .child(action_button(
                         SharedString::from(format!("prof-rm-{i}")),

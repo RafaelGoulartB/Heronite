@@ -56,7 +56,8 @@ impl AddGameDialog {
         self.shared_prefix = on;
         if on {
             let shared = game_config::shared_wine_prefix(&self.home);
-            let prefix = self.global.get("winePrefix").and_then(Value::as_str).filter(|p| !p.is_empty()).map(str::to_string).unwrap_or(shared);
+            let prefix =
+                self.global.get("winePrefix").and_then(Value::as_str).filter(|p| !p.is_empty()).map(str::to_string).unwrap_or(shared);
             self.prefix.update(cx, |s, cx| s.set_value(prefix, window, cx));
             if self.global.get("wineVersion").is_some() {
                 self.wine = Some(wine_of(&self.global));
@@ -95,7 +96,10 @@ impl AddGameDialog {
         // replaced too: one with the same name, else the first.
         let missing = self.wine.as_ref().is_some_and(|w| !list.iter().any(|l| l.bin == w.bin));
         if self.wine.is_none() || missing {
-            let same_name = self.wine.as_ref().and_then(|w| list.iter().find(|l| l.name.replace(' ', "-").eq_ignore_ascii_case(&w.name.replace(' ', "-"))));
+            let same_name = self
+                .wine
+                .as_ref()
+                .and_then(|w| list.iter().find(|l| l.name.replace(' ', "-").eq_ignore_ascii_case(&w.name.replace(' ', "-"))));
             self.wine = same_name.or(list.first()).cloned();
         }
         self.wine_list = Some(list);

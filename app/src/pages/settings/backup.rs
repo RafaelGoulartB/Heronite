@@ -25,12 +25,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(
-        _ctx: &PageCtx,
-        s: &EffectiveSettings,
-        window: &mut Window,
-        cx: &mut Context<SettingsPage>,
-    ) -> Self {
+    pub fn new(_ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
         let folder = new_input(window, cx, &s.backup.folder, "");
         on_commit(&folder, window, cx, |d: &mut SettingsPage, value, _, cx| {
             if value != d.settings.backup.folder {
@@ -105,8 +100,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let message = b.message.clone();
     let error = b.error.clone();
     let stored_error = d.settings.backup.last_error.clone().filter(|_| message.is_empty() && error.is_empty());
-    let options: Vec<(SharedString, bool)> =
-        INTERVALS.iter().map(|(v, l)| ((*l).into(), *v == b.interval)).collect();
+    let options: Vec<(SharedString, bool)> = INTERVALS.iter().map(|(v, l)| ((*l).into(), *v == b.interval)).collect();
 
     let has = !folder_value.is_empty();
     let folder = path_field(
@@ -200,7 +194,12 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     rows
 }
 
-pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+pub(super) fn console_apply(
+    d: &mut SettingsPage,
+    outcome: crate::console::list::Outcome,
+    window: &mut Window,
+    cx: &mut Context<SettingsPage>,
+) {
     use crate::console::list::{Outcome, Value};
     match outcome {
         Outcome::Activate(id) => match id.as_ref() {

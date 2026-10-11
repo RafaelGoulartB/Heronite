@@ -37,13 +37,22 @@ impl EpicInstallDialog {
                 (None, None) => "Getting the download and install size\u{2026}".into(),
             };
             rows.push(Row::info("sizes", "Size", sizes).icon(Icon::FaHardDrive));
-            rows.push(Row::text("path", "Install folder", text_of(&self.path, cx)).icon(Icon::FolderOpen).desc(
-                self.space.as_ref().map(|s| format!("Free space: {}{}", s.message, if s.writable { "" } else { " (may not be writable)" })).unwrap_or_default(),
-            ));
+            rows.push(
+                Row::text("path", "Install folder", text_of(&self.path, cx)).icon(Icon::FolderOpen).desc(
+                    self.space
+                        .as_ref()
+                        .map(|s| format!("Free space: {}{}", s.message, if s.writable { "" } else { " (may not be writable)" }))
+                        .unwrap_or_default(),
+                ),
+            );
             if !self.sdl.is_empty() {
                 rows.push(Row::header("Components"));
                 for (i, (sdl, on)) in self.sdl.iter().enumerate() {
-                    rows.push(Row::toggle(SharedString::from(format!("sdl{i}")), sdl.name.clone(), sdl.required || *on).enabled(!sdl.required).desc(sdl.description.clone()));
+                    rows.push(
+                        Row::toggle(SharedString::from(format!("sdl{i}")), sdl.name.clone(), sdl.required || *on)
+                            .enabled(!sdl.required)
+                            .desc(sdl.description.clone()),
+                    );
                 }
             }
             if !self.dlcs.is_empty() {
@@ -54,15 +63,26 @@ impl EpicInstallDialog {
                 }
             }
         } else {
-            rows.push(Row::text("import-path", "Game folder", text_of(&self.import_path, cx)).icon(Icon::FolderOpen).desc("The folder that holds the installed game files"));
+            rows.push(
+                Row::text("import-path", "Game folder", text_of(&self.import_path, cx))
+                    .icon(Icon::FolderOpen)
+                    .desc("The folder that holds the installed game files"),
+            );
         }
         if self.linux_windows_game() {
             rows.push(Row::header("Wine"));
-            rows.push(Row::toggle("shared", "Use the shared Wine prefix", self.shared_prefix).desc("Only if you know what you are doing: games can break each other's dependencies"));
+            rows.push(
+                Row::toggle("shared", "Use the shared Wine prefix", self.shared_prefix)
+                    .desc("Only if you know what you are doing: games can break each other's dependencies"),
+            );
             if !self.shared_prefix {
                 rows.push(Row::text("prefix", "Wine prefix", text_of(&self.prefix, cx)).icon(Icon::FolderOpen));
                 if self.wine_list.is_empty() {
-                    rows.push(Row::info("wine", "Wine version", if self.wine_loaded { "No Wine or Proton found" } else { "Looking for Wine and Proton\u{2026}" }));
+                    rows.push(Row::info(
+                        "wine",
+                        "Wine version",
+                        if self.wine_loaded { "No Wine or Proton found" } else { "Looking for Wine and Proton\u{2026}" },
+                    ));
                 } else {
                     let names = self.wine_list.iter().map(|w| SharedString::from(w.name.clone())).collect();
                     rows.push(Row::choice("wine", "Wine version", names, self.wine_pick).icon(Icon::WineBar));
@@ -109,9 +129,37 @@ impl EpicInstallDialog {
             .bg(theme::console_bg())
             .flex()
             .flex_col()
-            .child(div().flex().flex_none().items_center().h(u(76.)).px(u(46.)).child(kit::wordmark("EPIC GAMES")).child(div().flex_1()).child(kit::clock()))
-            .child(div().flex().flex_col().gap(u(4.)).px(u(46.)).pb(u(16.)).child(kit::kicker(kicker)).child(kit::title(self.title.clone(), 40.)))
-            .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(76.)).child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list.flex_1().min_h_0())))
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .h(u(76.))
+                    .px(u(46.))
+                    .child(kit::wordmark("EPIC GAMES"))
+                    .child(div().flex_1())
+                    .child(kit::clock()),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(u(4.))
+                    .px(u(46.))
+                    .pb(u(16.))
+                    .child(kit::kicker(kicker))
+                    .child(kit::title(self.title.clone(), 40.)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .px(u(46.))
+                    .pb(u(76.))
+                    .child(div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(list.flex_1().min_h_0())),
+            )
             .children(self.layer.view())
             .into_any_element()
     }

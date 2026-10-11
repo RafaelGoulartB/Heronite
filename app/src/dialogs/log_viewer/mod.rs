@@ -156,7 +156,6 @@ impl Render for LogViewer {
     }
 }
 
-
 pub struct LogViewerDialog {
     title: String,
     viewer: Entity<LogViewer>,

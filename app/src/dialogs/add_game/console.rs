@@ -84,10 +84,18 @@ impl AddGameDialog {
         if self.confirm_remove {
             let mut rows = Vec::new();
             if self.removable_prefix.is_some() {
-                rows.push(Row::toggle("remove-prefix", "Also delete the Wine prefix", self.remove_prefix_too).desc("Saves and settings inside the prefix will be lost."));
+                rows.push(
+                    Row::toggle("remove-prefix", "Also delete the Wine prefix", self.remove_prefix_too)
+                        .desc("Saves and settings inside the prefix will be lost."),
+                );
             }
             rows.push(Row::action("back", "Back").enabled(!self.saving));
-            rows.push(Row::action("remove-yes", if self.saving { "Removing\u{2026}" } else { "Remove game" }).icon(Icon::DeleteForever).danger().enabled(!self.saving));
+            rows.push(
+                Row::action("remove-yes", if self.saving { "Removing\u{2026}" } else { "Remove game" })
+                    .icon(Icon::DeleteForever)
+                    .danger()
+                    .enabled(!self.saving),
+            );
             return rows;
         }
 
@@ -106,7 +114,10 @@ impl AddGameDialog {
         ];
         if self.platform == SideloadPlatform::Browser {
             rows.push(Row::text("url", "Game URL", text_of(&self.url, cx).trim()).icon(Icon::OpenInNew));
-            rows.push(Row::text("ua", "Custom user agent", text_of(&self.user_agent, cx).trim()).desc("Optional. Used only by this browser game."));
+            rows.push(
+                Row::text("ua", "Custom user agent", text_of(&self.user_agent, cx).trim())
+                    .desc("Optional. Used only by this browser game."),
+            );
             rows.push(Row::toggle("fullscreen", "Launch fullscreen", self.fullscreen).desc("Press F11 to exit."));
         } else {
             let exe = text_of(&self.exe, cx);
@@ -126,8 +137,16 @@ impl AddGameDialog {
                 .desc("Looks the title up on Steam, SteamGridDB and Bottles' mirror and fills the empty art.")
                 .enabled(!finding && !title.trim().is_empty()),
         );
-        rows.push(Row::text("art-square", "Cover art", art_label(&text_of(&self.square, cx))).icon(Icon::GridView).desc("Tall image of the game. Search the web, choose a file or type an address."));
-        rows.push(Row::text("art-hero", "Background art", art_label(&text_of(&self.hero, cx))).icon(Icon::GridView).desc("Optional wide background. The cover is used when empty."));
+        rows.push(
+            Row::text("art-square", "Cover art", art_label(&text_of(&self.square, cx)))
+                .icon(Icon::GridView)
+                .desc("Tall image of the game. Search the web, choose a file or type an address."),
+        );
+        rows.push(
+            Row::text("art-hero", "Background art", art_label(&text_of(&self.hero, cx)))
+                .icon(Icon::GridView)
+                .desc("Optional wide background. The cover is used when empty."),
+        );
 
         if self.platform == SideloadPlatform::Windows && !edit {
             rows.push(Row::header("Wine"));
@@ -135,11 +154,19 @@ impl AddGameDialog {
             if self.global.get("wineVersion").is_some() {
                 share_label = format!("Use shared Wine prefix ({})", display_wine_name(&wine_of(&self.global).name));
             }
-            rows.push(Row::toggle("shared", share_label, self.shared_prefix).desc("Only if you know what you are doing: games sharing a prefix can break each other's dependencies."));
+            rows.push(
+                Row::toggle("shared", share_label, self.shared_prefix)
+                    .desc("Only if you know what you are doing: games sharing a prefix can break each other's dependencies."),
+            );
             if self.wine.as_ref().is_some_and(|w| w.kind == "crossover") {
                 rows.push(Row::info("crossover", "CrossOver", "Choose the bottle in Game settings"));
             } else {
-                rows.push(Row::text("prefix", "Wine prefix", short_path(text_of(&self.prefix, cx).trim())).icon(Icon::FolderOpen).desc(text_of(&self.prefix, cx)).enabled(!self.shared_prefix));
+                rows.push(
+                    Row::text("prefix", "Wine prefix", short_path(text_of(&self.prefix, cx).trim()))
+                        .icon(Icon::FolderOpen)
+                        .desc(text_of(&self.prefix, cx))
+                        .enabled(!self.shared_prefix),
+                );
             }
             match &self.wine_list {
                 None => rows.push(Row::info("wine-wait", "Wine version", "Loading\u{2026}")),
@@ -150,8 +177,13 @@ impl AddGameDialog {
                     let options = self.wine_choices();
                     let index = options.iter().position(|w| self.wine.as_ref().is_some_and(|c| c.name == w.name)).unwrap_or(0);
                     rows.push(
-                        Row::choice("wine", "Wine version", options.iter().map(|w| SharedString::from(display_wine_name(&w.name))).collect(), index)
-                            .enabled(!self.shared_prefix),
+                        Row::choice(
+                            "wine",
+                            "Wine version",
+                            options.iter().map(|w| SharedString::from(display_wine_name(&w.name))).collect(),
+                            index,
+                        )
+                        .enabled(!self.shared_prefix),
                     );
                 }
             }
@@ -205,7 +237,11 @@ impl AddGameDialog {
 
     fn console_art(&self, url: &str, w: f32, h: f32, empty: &'static str, cx: &mut Context<Self>) -> Div {
         let chain = chain_for_url(&self.ctx.data_paths, None, url.trim());
-        let src = if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("cag:{url}"), chain, f32::from(u(w)), f32::from(u(h)))) };
+        let src = if chain.is_empty() {
+            None
+        } else {
+            self.images.update(cx, |im, _| im.get(&format!("cag:{url}"), chain, f32::from(u(w)), f32::from(u(h))))
+        };
         let none = src.is_none();
         div()
             .relative()
@@ -257,7 +293,13 @@ impl AddGameDialog {
             left = left.child(kit::body_text(note));
         }
         left = left.child(self.console_list.render("console-add-game", &rows, !self.layer.is_open()).flex_1().min_h_0());
-        left = left.child(div().min_h(u(24.)).text_size(u(15.)).line_height(u(22.)).children(self.console_status(cx).map(|(t, c)| div().text_color(c).child(t))));
+        left = left.child(
+            div()
+                .min_h(u(24.))
+                .text_size(u(15.))
+                .line_height(u(22.))
+                .children(self.console_status(cx).map(|(t, c)| div().text_color(c).child(t))),
+        );
 
         let right = div()
             .flex()

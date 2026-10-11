@@ -46,11 +46,8 @@ impl StatsPage {
     /// Games of bucket `b`, the top five with their colours plus Other.
     fn bucket_rows(&self, st: &Stats, b: usize) -> Vec<Row> {
         let Some(games) = st.bucket_games.get(b) else { return Vec::new() };
-        let mut rows: Vec<Row> = games
-            .iter()
-            .take(5)
-            .map(|&(g, secs)| row(Some(series_color(st.series_of(g))), self.game_title(g), fmt_secs(secs)))
-            .collect();
+        let mut rows: Vec<Row> =
+            games.iter().take(5).map(|&(g, secs)| row(Some(series_color(st.series_of(g))), self.game_title(g), fmt_secs(secs))).collect();
         let rest: f64 = games.iter().skip(5).map(|(_, s)| s).sum();
         if rest >= 60. {
             rows.push(row(Some(theme::chart_other()), format!("{} more", plural(games.len() - 5, "game", "games")), fmt_secs(rest)));
@@ -76,7 +73,15 @@ impl StatsPage {
             },
             Hover::Day(d) => {
                 let secs = st.day_secs(d);
-                Body { title: day_label(d), rows: vec![row(None, if secs > 0. { "Played" } else { "No play" }, if secs > 0. { fmt_secs(secs) } else { String::new() })], note: None }
+                Body {
+                    title: day_label(d),
+                    rows: vec![row(
+                        None,
+                        if secs > 0. { "Played" } else { "No play" },
+                        if secs > 0. { fmt_secs(secs) } else { String::new() },
+                    )],
+                    note: None,
+                }
             }
             Hover::Slot(slot) => {
                 let (title, secs) = if slot < TOP_N {
@@ -101,7 +106,16 @@ impl StatsPage {
                     rows.push(row(None, "Last played", short_date(l.date())));
                 }
                 if let Some(status) = status {
-                    rows.push(row(Some(theme::status_color(&lib.statuses.iter().find(|x| x.id == game.status_id).map_or(String::new(), |x| x.slug.clone())).into()), "Status", status));
+                    rows.push(row(
+                        Some(
+                            theme::status_color(
+                                &lib.statuses.iter().find(|x| x.id == game.status_id).map_or(String::new(), |x| x.slug.clone()),
+                            )
+                            .into(),
+                        ),
+                        "Status",
+                        status,
+                    ));
                 }
                 Body { title: game.title.clone(), rows, note: None }
             }
@@ -112,7 +126,11 @@ impl StatsPage {
             Hover::Source(i) => {
                 let (name, secs) = self.derived.sources.get(i)?;
                 let share = secs / st.total_secs.max(1.) * 100.;
-                Body { title: (*name).to_string(), rows: vec![row(None, "Time", fmt_secs(*secs)), row(None, "Share", format!("{share:.0}%"))], note: None }
+                Body {
+                    title: (*name).to_string(),
+                    rows: vec![row(None, "Time", fmt_secs(*secs)), row(None, "Share", format!("{share:.0}%"))],
+                    note: None,
+                }
             }
             Hover::Part(i) => {
                 let (name, range) = DAY_PARTS[i];
@@ -161,9 +179,23 @@ impl StatsPage {
             .bg(rgba(0x0e1117f5))
             .border_1()
             .border_color(theme::white_a(0.14))
-            .shadow(vec![BoxShadow { color: theme::black_a(0.6), offset: point(px(0.), px(14.)), blur_radius: px(40.), spread_radius: px(0.), inset: false }])
+            .shadow(vec![BoxShadow {
+                color: theme::black_a(0.6),
+                offset: point(px(0.), px(14.)),
+                blur_radius: px(40.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
             .font_family(theme::FONT_BODY)
-            .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(13.)).text_color(theme::text_primary()).mb(px(2.)).child(body.title))
+            .child(
+                div()
+                    .font_family(theme::FONT_HEADING)
+                    .font_weight(theme::W_BOLD)
+                    .text_size(px(13.))
+                    .text_color(theme::text_primary())
+                    .mb(px(2.))
+                    .child(body.title),
+            )
             .children(rows)
             .children(body.note.map(|n| div().mt(px(2.)).text_size(px(12.)).text_color(theme::text_dim()).child(n)));
         Some(

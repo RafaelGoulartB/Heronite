@@ -25,8 +25,7 @@ fn load_all(data_paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Load
     let t = Instant::now();
     let lib = Library::load_with(data_paths, include_hidden)?;
     let wiki = WikiCache::load(data_paths);
-    let shots = (!lib.settings.screenshots.folder.is_empty())
-        .then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
+    let shots = (!lib.settings.screenshots.folder.is_empty()).then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
     let ctx = ArtContext::new(data_paths, shots.as_deref());
     let mut covers = HashMap::new();
     let mut stages = HashMap::new();

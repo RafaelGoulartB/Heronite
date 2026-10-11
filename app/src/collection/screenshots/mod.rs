@@ -319,8 +319,8 @@ pub(super) fn load_full(path: &Path, bx: (u32, u32)) -> Result<((u32, u32), Deco
     let (tw, th) = (((sw as f64 * s).round() as u32).max(1), ((sh as f64 * s).round() as u32).max(1));
     let mut opts = heronite_images::Opts::new(PathBuf::new(), None);
     opts.allow_network = false;
-    let d = heronite_images::load_cover(&[heronite_images::ImageRef::File(path.to_path_buf())], tw, th, &opts)
-        .map_err(|e| e.to_string())?;
+    let d =
+        heronite_images::load_cover(&[heronite_images::ImageRef::File(path.to_path_buf())], tw, th, &opts).map_err(|e| e.to_string())?;
     Ok(((sw, sh), d))
 }
 

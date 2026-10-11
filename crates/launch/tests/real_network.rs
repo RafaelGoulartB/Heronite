@@ -8,9 +8,8 @@ use heronite_launch::runtimes::{self, Runtime};
 use heronite_launch::tools::{self, Tool, Updated};
 
 fn ls(dir: &std::path::Path) -> Vec<String> {
-    let mut v: Vec<String> = std::fs::read_dir(dir)
-        .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
-        .unwrap_or_default();
+    let mut v: Vec<String> =
+        std::fs::read_dir(dir).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
     v.sort();
     v
 }

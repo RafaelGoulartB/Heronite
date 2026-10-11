@@ -4,14 +4,14 @@
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::settings::{self, default_field_priority, EffectiveSettings, METADATA_FIELDS};
 use heronite_data::models::MetadataSettings;
+use heronite_data::settings::{self, default_field_priority, EffectiveSettings, METADATA_FIELDS};
 
 use super::SettingsPage;
 use crate::dialogs::metadata::field_label as metadata_field_label;
 use crate::dialogs::metadata_wizard::hub;
-use crate::pages::PageCtx;
 use crate::icons::Icon;
+use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, card_box, toggle_row, ButtonKind};
 use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit, select_field};
@@ -28,13 +28,8 @@ pub struct State {
 
 // "playnite" stays in the saved priorities (kept from Heronite's data) but is
 // not offered: nothing feeds that source here.
-const SOURCES: [(&str, &str); 5] = [
-    ("auto", "Auto (IGDB first)"),
-    ("igdb", "IGDB"),
-    ("steam", "Steam"),
-    ("store", "Store"),
-    ("lutris", "Lutris"),
-];
+const SOURCES: [(&str, &str); 5] =
+    [("auto", "Auto (IGDB first)"), ("igdb", "IGDB"), ("steam", "Steam"), ("store", "Store"), ("lutris", "Lutris")];
 
 impl State {
     pub fn new(_ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
@@ -113,9 +108,11 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let (auto_fill, download) = (m.auto_fill_missing, m.download_images);
     let testing = d.metadata.testing;
 
-    let creds = card_box().py(px(12.)).gap(px(12.)).child(labeled("Twitch / IGDB Client ID", input_box(&d.metadata.client_id, false))).child(
-        labeled("Twitch / IGDB Client Secret", input_box(&d.metadata.secret, false)),
-    );
+    let creds = card_box()
+        .py(px(12.))
+        .gap(px(12.))
+        .child(labeled("Twitch / IGDB Client ID", input_box(&d.metadata.client_id, false)))
+        .child(labeled("Twitch / IGDB Client Secret", input_box(&d.metadata.secret, false)));
     let actions = div()
         .flex()
         .items_center()
@@ -176,8 +173,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             let current = preferred_source(d, field);
             let label = SOURCES.iter().find(|(v, _)| *v == current).map(|(_, l)| *l).unwrap_or("Auto (IGDB first)");
             let is_open = d.metadata.open_select == Some(field);
-            let options: Vec<(SharedString, bool)> =
-                SOURCES.iter().map(|(v, l)| (SharedString::from(*l), *v == current)).collect();
+            let options: Vec<(SharedString, bool)> = SOURCES.iter().map(|(v, l)| (SharedString::from(*l), *v == current)).collect();
             grid = grid.child(div().w(px(200.)).child(select_field(
                 &format!("md-prio-{field}"),
                 Some(metadata_field_label(field)),
@@ -217,9 +213,12 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let secret = d.metadata.secret.read(cx).value().to_string();
     let mut rows = vec![
         Row::header("Twitch / IGDB API"),
-        Row::text("client-id", "Client ID", d.metadata.client_id.read(cx).value().to_string()).desc("Create a Twitch app to get IGDB keys: dev.twitch.tv/console"),
+        Row::text("client-id", "Client ID", d.metadata.client_id.read(cx).value().to_string())
+            .desc("Create a Twitch app to get IGDB keys: dev.twitch.tv/console"),
         Row::text("secret", "Client secret", "\u{2022}".repeat(secret.chars().count().min(24))),
-        Row::action("test", if d.metadata.testing { "Testing\u{2026}" } else { "Test IGDB" }).enabled(!d.metadata.testing).desc(d.metadata.ok_message.clone().unwrap_or_default()),
+        Row::action("test", if d.metadata.testing { "Testing\u{2026}" } else { "Test IGDB" })
+            .enabled(!d.metadata.testing)
+            .desc(d.metadata.ok_message.clone().unwrap_or_default()),
         Row::header("Images and fields"),
         Row::toggle("autofill", "Fill missing metadata in the background", m.auto_fill_missing),
         Row::toggle("download", "Copy covers to disk", m.download_images).desc("Off keeps the CDN addresses instead"),
@@ -228,12 +227,22 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     for field in METADATA_FIELDS {
         let current = preferred_source(d, field);
         let i = SOURCES.iter().position(|(v, _)| *v == current).unwrap_or(0);
-        rows.push(Row::choice(SharedString::from(format!("prio:{field}")), metadata_field_label(field), SOURCES.iter().map(|(_, l)| SharedString::from(*l)).collect(), i));
+        rows.push(Row::choice(
+            SharedString::from(format!("prio:{field}")),
+            metadata_field_label(field),
+            SOURCES.iter().map(|(_, l)| SharedString::from(*l)).collect(),
+            i,
+        ));
     }
     rows
 }
 
-pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+pub(super) fn console_apply(
+    d: &mut SettingsPage,
+    outcome: crate::console::list::Outcome,
+    window: &mut Window,
+    cx: &mut Context<SettingsPage>,
+) {
     use crate::console::list::{Outcome, Value};
     match outcome {
         Outcome::Activate(id) => match id.as_ref() {

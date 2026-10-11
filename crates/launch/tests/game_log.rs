@@ -13,9 +13,7 @@ use heronite_data::DataPaths;
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::procs::{Procs, SystemProcs};
 use heronite_launch::steam::SteamLocator;
-use heronite_launch::{
-    Command, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, SystemSpawner,
-};
+use heronite_launch::{Command, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, SystemSpawner};
 
 struct Rig {
     _dir: tempfile::TempDir,
@@ -29,11 +27,7 @@ fn rig(config_json: &str) -> Rig {
     let paths = DataPaths::at(dir.path().join("heroic"));
     fs::create_dir_all(paths.games_config_dir()).unwrap();
     fs::write(paths.root.join("config.json"), config_json).unwrap();
-    let steam = SteamLocator {
-        home: dir.path().join("home"),
-        steam_path: dir.path().join("home/.steam/steam"),
-        system_roots: vec![],
-    };
+    let steam = SteamLocator { home: dir.path().join("home"), steam_path: dir.path().join("home/.steam/steam"), system_roots: vec![] };
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
     let cfg = LauncherConfig {
@@ -62,9 +56,7 @@ fn sh(script: &str) -> LaunchPlan {
 }
 
 fn run(r: &Rig, app: &str, plan: LaunchPlan) {
-    r.launcher
-        .launch(LaunchRequest { app_name: app.into(), runner: "sideload".into(), title: format!("{app} title"), plan })
-        .unwrap();
+    r.launcher.launch(LaunchRequest { app_name: app.into(), runner: "sideload".into(), title: format!("{app} title"), plan }).unwrap();
     loop {
         match r.rx.recv_timeout(Duration::from_secs(10)).expect("event") {
             LaunchEvent::Exited { .. } | LaunchEvent::Error { .. } => return,

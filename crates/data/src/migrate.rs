@@ -393,7 +393,8 @@ mod tests {
         assert_eq!(report.rewritten, 2);
         // Heroic's folder is left as it was; no staging folder remains.
         assert!(fs::read_to_string(heroic.join("config.json")).unwrap().contains(&*heroic.to_string_lossy()));
-        let leftovers: Vec<_> = fs::read_dir(root.parent().unwrap()).unwrap().flatten().filter(|e| e.file_name() != "heronite-rs").collect();
+        let leftovers: Vec<_> =
+            fs::read_dir(root.parent().unwrap()).unwrap().flatten().filter(|e| e.file_name() != "heronite-rs").collect();
         assert!(leftovers.is_empty(), "{leftovers:?}");
     }
 

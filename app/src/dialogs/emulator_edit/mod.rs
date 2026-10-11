@@ -11,9 +11,9 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::DataPaths;
+use heronite_emulation::catalog::emulator_definition;
 use heronite_emulation::detect::profiles_for_definition;
 use heronite_emulation::store::{insert_user_emulator, replace_user_emulator};
-use heronite_emulation::catalog::emulator_definition;
 use heronite_emulation::{list_rom_scanners, DetectedEmulator, RomScanner, SystemEnv};
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
@@ -75,16 +75,9 @@ impl EmulatorEditDialog {
     /// Adds a new emulator (`existing` = `None`) or edits one.
     pub fn new(paths: DataPaths, existing: Option<UserEmulator>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let create = existing.is_none();
-        let base = existing.unwrap_or_else(|| UserEmulator {
-            definition_id: "custom".into(),
-            launch_kind: "native".into(),
-            ..Default::default()
-        });
-        let profiles = if create {
-            heronite_emulation::store::default_profiles("custom", None)
-        } else {
-            base.profiles.clone()
-        };
+        let base =
+            existing.unwrap_or_else(|| UserEmulator { definition_id: "custom".into(), launch_kind: "native".into(), ..Default::default() });
+        let profiles = if create { heronite_emulation::store::default_profiles("custom", None) } else { base.profiles.clone() };
         let mut this = Self {
             paths: paths.clone(),
             create,
@@ -183,12 +176,7 @@ impl EmulatorEditDialog {
         if !self.create || self.definition_id == "custom" || !text_of(&self.executable, cx).is_empty() {
             return;
         }
-        let pick = self
-            .detected
-            .iter()
-            .filter(|d| d.definition_id == self.definition_id)
-            .min_by_key(|d| d.already_added)
-            .cloned();
+        let pick = self.detected.iter().filter(|d| d.definition_id == self.definition_id).min_by_key(|d| d.already_added).cloned();
         if let Some(d) = pick {
             self.launch_kind = d.launch_kind.clone();
             if d.launch_kind == "flatpak" {

@@ -56,12 +56,7 @@ fn random_bytes() -> [u8; 16] {
     let mut out = [0u8; 16];
     for half in out.as_chunks_mut::<8>().0 {
         let mut h = RandomState::new().build_hasher();
-        h.write_u128(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0),
-        );
+        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
         half.copy_from_slice(&h.finish().to_be_bytes());
     }
     out
@@ -244,7 +239,11 @@ fn apply_local_meta(paths: &DataPaths, spec: &SideloadSpec) -> Result<()> {
             meta.source = "manual".into();
         }
         meta.launch_kind = if !executable.is_empty() {
-            if meta.launch_kind == "emulator" && !spec.install { "emulator".into() } else { "executable".into() }
+            if meta.launch_kind == "emulator" && !spec.install {
+                "emulator".into()
+            } else {
+                "executable".into()
+            }
         } else if meta.launch_kind.is_empty() {
             "unavailable".into()
         } else {
@@ -279,9 +278,7 @@ pub fn save_game(paths: &DataPaths, spec: &SideloadSpec) -> Result<SaveOutcome> 
             *games = Value::Array(Vec::new());
         }
         let list = games.as_array_mut().expect("array");
-        let index = list
-            .iter()
-            .position(|g| g.get("app_name").and_then(Value::as_str) == Some(spec.app_name.as_str()));
+        let index = list.iter().position(|g| g.get("app_name").and_then(Value::as_str) == Some(spec.app_name.as_str()));
         match index {
             Some(i) => {
                 if let Some(cur) = list[i].as_object_mut() {
@@ -467,8 +464,19 @@ mod tests {
         assert_eq!(
             keys,
             [
-                "runner", "app_name", "title", "install", "folder_name", "art_cover", "is_installed", "art_square",
-                "canRunOffline", "browserUrl", "customUserAgent", "launchFullScreen", "is_linux_native"
+                "runner",
+                "app_name",
+                "title",
+                "install",
+                "folder_name",
+                "art_cover",
+                "is_installed",
+                "art_square",
+                "canRunOffline",
+                "browserUrl",
+                "customUserAgent",
+                "launchFullScreen",
+                "is_linux_native"
             ]
         );
         assert_eq!(g["install"], json!({"executable": "/g/My Game/game.exe", "platform": "Windows", "is_dlc": false}));

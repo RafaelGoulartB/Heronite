@@ -42,21 +42,9 @@ pub fn card(
     // `box-shadow: 0 0 0 2px <ring>, 0 10px 24px rgba(0,0,0,.42)` — the ring
     // is drawn as a 2px border just outside the cover.
     let shadow = if ring.is_some() {
-        BoxShadow {
-            color: theme::black_a(0.42),
-            offset: point(px(0.), px(10.)),
-            blur_radius: px(24.),
-            spread_radius: px(0.),
-            inset: false,
-        }
+        BoxShadow { color: theme::black_a(0.42), offset: point(px(0.), px(10.)), blur_radius: px(24.), spread_radius: px(0.), inset: false }
     } else {
-        BoxShadow {
-            color: theme::black_a(0.38),
-            offset: point(px(0.), px(8.)),
-            blur_radius: px(20.),
-            spread_radius: px(0.),
-            inset: false,
-        }
+        BoxShadow { color: theme::black_a(0.38), offset: point(px(0.), px(8.)), blur_radius: px(20.), spread_radius: px(0.), inset: false }
     };
 
     let grey = (s.grey_uninstalled && !vm.installed || vm.hidden) && !s.hovered;
@@ -98,11 +86,7 @@ pub fn card(
         .flex()
         .justify_end()
         .p(px(5.6))
-        .bg(linear_gradient(
-            180.,
-            linear_color_stop(theme::black_a(0.), 0.),
-            linear_color_stop(theme::black_a(0.55), 1.),
-        ))
+        .bg(linear_gradient(180., linear_color_stop(theme::black_a(0.), 0.), linear_color_stop(theme::black_a(0.55), 1.)))
         .child(
             div()
                 .id(SharedString::from(format!("play-{}", vm.key)))
@@ -140,12 +124,7 @@ pub fn card(
                 .shadow(vec![shadow])
                 .bg(theme::rgb_a(255, 255, 255, 0.03))
                 .child(
-                    div()
-                        .size_full()
-                        .rounded(px(6.))
-                        .overflow_hidden()
-                        .when(vm.hidden && !s.hovered, |d| d.opacity(0.62))
-                        .child(cover_img),
+                    div().size_full().rounded(px(6.)).overflow_hidden().when(vm.hidden && !s.hovered, |d| d.opacity(0.62)).child(cover_img),
                 )
                 .children(s.epic.as_ref().map(super::epic::card_overlay))
                 .children(vm.hidden.then(hidden_badge))
@@ -160,9 +139,7 @@ pub fn card(
                         .border_2()
                         .border_color(color)
                 }))
-                .when(show_bar, |d| {
-                    d.child(div().absolute().inset_0().rounded(px(6.)).overflow_hidden().child(bar))
-                }),
+                .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(6.)).overflow_hidden().child(bar))),
         )
         .child(playtime_label(vm))
         .into_any_element()
@@ -201,13 +178,11 @@ fn playtime_label(vm: &CardVm) -> Div {
         // MUI's 1.5rem SvgIcon size wins over the 14px rule in Heronite.
         .child(icon(Icon::AccessTime, px(24.), theme::white_a(0.72 * 0.78)))
         .when(vm.playing, |d| {
-            d.child(
-                div().size(px(6.)).rounded_full().bg(theme::success()).with_animation(
-                    ElementId::Name(format!("live-{}", vm.key).into()),
-                    Animation::new(Duration::from_millis(1600)).repeat().with_easing(ease_in_out),
-                    |el, t| el.opacity(0.4 + 0.6 * (1. - (2. * t - 1.).abs())),
-                ),
-            )
+            d.child(div().size(px(6.)).rounded_full().bg(theme::success()).with_animation(
+                ElementId::Name(format!("live-{}", vm.key).into()),
+                Animation::new(Duration::from_millis(1600)).repeat().with_easing(ease_in_out),
+                |el, t| el.opacity(0.4 + 0.6 * (1. - (2. * t - 1.).abs())),
+            ))
         })
         .child(vm.playtime.clone())
 }

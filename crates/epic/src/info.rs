@@ -152,17 +152,10 @@ pub fn parse_sdl(doc: &Value) -> Vec<Sdl> {
 const API: &str = "https://heroic.legendary.gl/v1";
 
 fn get_text(url: &str) -> Result<(String, bool)> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(20)))
-        .http_status_as_error(false)
-        .build()
-        .into();
+    let agent: ureq::Agent =
+        ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(20))).http_status_as_error(false).build().into();
     let mut resp = agent.get(url).call().map_err(|e| anyhow!("{url}: {e}"))?;
-    let is_json = resp
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.starts_with("application/json"));
+    let is_json = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("application/json"));
     if !resp.status().is_success() {
         bail!("{url}: HTTP {}", resp.status());
     }

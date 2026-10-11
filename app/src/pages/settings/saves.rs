@@ -10,8 +10,8 @@ use heronite_launch::SystemProbe;
 
 use super::backup::format_time;
 use super::SettingsPage;
-use crate::pages::PageCtx;
 use crate::icons::Icon;
+use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{caption, card, card_box, help_text, toggle_row};
 use crate::ui::fields::{choose_path, meta_text, new_input, on_commit, path_field, select_field};
@@ -32,12 +32,7 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(
-        _ctx: &PageCtx,
-        s: &EffectiveSettings,
-        window: &mut Window,
-        cx: &mut Context<SettingsPage>,
-    ) -> Self {
+    pub fn new(_ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
         let binary = new_input(window, cx, &s.ludusavi.binary_path, "");
         let folder = new_input(window, cx, &s.ludusavi.backup_path, "");
         on_commit(&binary, window, cx, |d: &mut SettingsPage, v, window, cx| {
@@ -174,9 +169,8 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             }
         }),
     );
-    let label_of = |table: &[(&'static str, &'static str)], v: &str| {
-        table.iter().find(|(k, _)| *k == v).map(|(_, l)| *l).unwrap_or("").to_string()
-    };
+    let label_of =
+        |table: &[(&'static str, &'static str)], v: &str| table.iter().find(|(k, _)| *k == v).map(|(_, l)| *l).unwrap_or("").to_string();
     let format = select_field(
         "ludusavi-format",
         Some("Backup format"),
@@ -301,7 +295,9 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let mut rows = vec![
         Row::header("Save backups (Ludusavi)"),
         Row::toggle("lu-enabled", "Back up saves when a game closes", l.enabled).desc(found),
-        Row::toggle("lu-config", "Use Ludusavi's own settings", l.use_installed_config).enabled(config_known).desc("Path, zip and compression come from Ludusavi's configuration"),
+        Row::toggle("lu-config", "Use Ludusavi's own settings", l.use_installed_config)
+            .enabled(config_known)
+            .desc("Path, zip and compression come from Ludusavi's configuration"),
     ];
     if !locked {
         rows.push(Row::text("lu-binary", "Ludusavi program", d.saves.binary.read(cx).value().to_string()).icon(Icon::Description));
@@ -309,7 +305,10 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         let fi = FORMATS.iter().position(|(k, _)| *k == l.format).unwrap_or(0);
         rows.push(Row::choice("lu-format", "Backup format", FORMATS.iter().map(|(_, x)| SharedString::from(*x)).collect(), fi));
         let ci = COMPRESSIONS.iter().position(|(k, _)| *k == l.compression).unwrap_or(0);
-        rows.push(Row::choice("lu-compression", "Compression", COMPRESSIONS.iter().map(|(_, x)| SharedString::from(*x)).collect(), ci).enabled(l.format == "zip"));
+        rows.push(
+            Row::choice("lu-compression", "Compression", COMPRESSIONS.iter().map(|(_, x)| SharedString::from(*x)).collect(), ci)
+                .enabled(l.format == "zip"),
+        );
     }
     if let Some(e) = &l.last_error {
         rows.push(Row::info("lu-error", e.clone(), "").danger());
@@ -318,7 +317,12 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     rows
 }
 
-pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+pub(super) fn console_apply(
+    d: &mut SettingsPage,
+    outcome: crate::console::list::Outcome,
+    window: &mut Window,
+    cx: &mut Context<SettingsPage>,
+) {
     use crate::console::browser::PickKind;
     use crate::console::list::{Outcome, Value};
     match &outcome {

@@ -65,12 +65,10 @@ impl AddGameDialog {
         if let Some(w) = self.global.get("wineVersion").map(|_| wine_of(&self.global)) {
             share_label = format!("Use shared Wine prefix ({})", display_wine_name(&w.name));
         }
-        col = col.child(
-            checkbox("ag-shared", shared, share_label).on_click(cx.listener(|this, _, window, cx| {
-                let on = !this.shared_prefix;
-                this.set_shared_prefix(on, window, cx);
-            })),
-        );
+        col = col.child(checkbox("ag-shared", shared, share_label).on_click(cx.listener(|this, _, window, cx| {
+            let on = !this.shared_prefix;
+            this.set_shared_prefix(on, window, cx);
+        })));
         if shared {
             col = col.child(
                 panel().child(meta_text(
@@ -138,7 +136,12 @@ impl AddGameDialog {
             },
         ));
         if none_found {
-            col = col.child(div().text_size(px(13.33)).text_color(theme::danger_text()).child("No Wine version was found, download one from the Wine Manager"));
+            col = col.child(
+                div()
+                    .text_size(px(13.33))
+                    .text_color(theme::danger_text())
+                    .child("No Wine version was found, download one from the Wine Manager"),
+            );
         }
         col
     }
@@ -176,17 +179,17 @@ impl AddGameDialog {
         if let Some(note) = self.top_note() {
             right = right.child(panel().child(div().text_size(px(14.)).line_height(px(20.)).text_color(white()).child(note)));
         }
-        right = right.child(
-            div()
-                .flex()
-                .flex_col()
-                .child(field_label("Game/App Title"))
-                .child(input_box(&self.title, false)),
-        );
+        right = right.child(div().flex().flex_col().child(field_label("Game/App Title")).child(input_box(&self.title, false)));
 
         let finding = self.finding;
         right = right
-            .child(self.art_field("ag-square", "Square Art (paste an URL, pick a file or click the image to search the web)", &self.square, Slot::Square, cx))
+            .child(self.art_field(
+                "ag-square",
+                "Square Art (paste an URL, pick a file or click the image to search the web)",
+                &self.square,
+                Slot::Square,
+                cx,
+            ))
             .child(self.art_field("ag-hero", "Cover/Hero Art (optional, wide background)", &self.hero, Slot::Cover, cx))
             .child(
                 div()
@@ -274,12 +277,12 @@ impl AddGameDialog {
         )));
         if let Some(prefix) = &self.removable_prefix {
             col = col
-                .child(
-                    checkbox("ag-remove-prefix", self.remove_prefix_too, "Also delete the Wine prefix").on_click(cx.listener(|this, _, _, cx| {
+                .child(checkbox("ag-remove-prefix", self.remove_prefix_too, "Also delete the Wine prefix").on_click(cx.listener(
+                    |this, _, _, cx| {
                         this.remove_prefix_too = !this.remove_prefix_too;
                         cx.notify();
-                    })),
-                )
+                    },
+                )))
                 .child(meta_text(format!("{prefix}  (saves and settings inside it will be lost)")));
         }
         if !self.error.is_empty() {

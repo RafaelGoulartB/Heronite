@@ -146,13 +146,8 @@ fn render_preview(source: &Path) -> Result<Decoded, ThumbError> {
         let mut opts = Opts::new(PathBuf::new(), None);
         opts.allow_network = false;
         opts.filter = Filter::Lanczos3;
-        return heronite_images::load_cover(
-            &[ImageRef::File(source.to_path_buf())],
-            THUMB_WIDTH,
-            THUMB_HEIGHT,
-            &opts,
-        )
-        .map_err(|e| ThumbError::Image(e.to_string()));
+        return heronite_images::load_cover(&[ImageRef::File(source.to_path_buf())], THUMB_WIDTH, THUMB_HEIGHT, &opts)
+            .map_err(|e| ThumbError::Image(e.to_string()));
     }
     // Not enlarged: center-crop to what fits.
     let mut img = image::open(source).map_err(|e| ThumbError::Image(e.to_string()))?.to_rgb8();
@@ -470,10 +465,7 @@ mod tests {
     #[test]
     fn key_matches_the_electron_derivation() {
         // node: sha256("/a/b.png" + "\0" + "320x180q60")
-        assert_eq!(
-            cache_key(Path::new("/a/b.png")),
-            "4773d2a4aa1a4d6e2e6caea2b9e19019a1277ae88436d30ec4d021b6c3c11779"
-        );
+        assert_eq!(cache_key(Path::new("/a/b.png")), "4773d2a4aa1a4d6e2e6caea2b9e19019a1277ae88436d30ec4d021b6c3c11779");
     }
 
     #[test]
@@ -481,7 +473,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("shot.png");
         // 960x360 (wider than 16:9): red left, green middle band, blue right.
-        write_png(&src, 960, 360, |x, _| if x < 150 { [255, 0, 0] } else if x < 810 { [0, 255, 0] } else { [0, 0, 255] });
+        write_png(&src, 960, 360, |x, _| {
+            if x < 150 {
+                [255, 0, 0]
+            } else if x < 810 {
+                [0, 255, 0]
+            } else {
+                [0, 0, 255]
+            }
+        });
         let cache = ThumbnailCache::new(dir.path().join("cache"), 50.0);
         let d = cache.thumbnail(&src).unwrap();
         assert_eq!((d.width, d.height), (320, 180));

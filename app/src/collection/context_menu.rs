@@ -47,7 +47,11 @@ fn paper() -> Div {
 /// row is inset by the menu padding, so step over it plus a small gap.
 pub(super) fn place_flyout(fly: Div, left: bool) -> Div {
     let offset = px(PAPER_PAD + 4.);
-    if left { fly.right(relative(1.)).mr(offset) } else { fly.left(relative(1.)).ml(offset) }
+    if left {
+        fly.right(relative(1.)).mr(offset)
+    } else {
+        fly.left(relative(1.)).ml(offset)
+    }
 }
 
 impl CollectionView {
@@ -140,9 +144,7 @@ impl CollectionView {
                         .py(px(8.))
                         .child(div().size(px(10.)).rounded_full().bg(theme::status_color(&st.slug)))
                         .child(st.name.clone())
-                        .when(st.id == current, |d| {
-                            d.child(div().flex_1()).child(icon(Icon::Check, px(18.), theme::accent()))
-                        })
+                        .when(st.id == current, |d| d.child(div().flex_1()).child(icon(Icon::Check, px(18.), theme::accent())))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.set_status(&k, id.clone(), cx);
                             this.close_context_menu(cx);

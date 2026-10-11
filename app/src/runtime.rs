@@ -6,13 +6,12 @@ use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use heronite_data::{CollectionGame, DataPaths};
-use heronite_launch::steam::{open_steam_client_uri, SteamAction, SteamLocator};
 use heronite_launch::net::SystemNet;
 use heronite_launch::prepare::CloudSync;
 use heronite_launch::runtime::PrepServices;
+use heronite_launch::steam::{open_steam_client_uri, SteamAction, SteamLocator};
 use heronite_launch::{
-    build_plan, LaunchEvent, LaunchOptions, LaunchPlan, LaunchRequest, Launcher, PlanContext, SystemProbe,
-    SystemSpawner,
+    build_plan, LaunchEvent, LaunchOptions, LaunchPlan, LaunchRequest, Launcher, PlanContext, SystemProbe, SystemSpawner,
 };
 
 /// Cloud saves around a launch go through legendary (the Epic crate depends on
@@ -119,9 +118,7 @@ impl GameRuntime {
         let ctx = PlanContext::load(&self.paths);
         if game.launch_kind.as_deref() == Some("emulator") {
             let wanted = rom.clone().or_else(|| game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()));
-            if let Some(state) =
-                heronite_emulation::PendingLaunchStates::global().take(&game.app_name, wanted.as_deref())
-            {
+            if let Some(state) = heronite_emulation::PendingLaunchStates::global().take(&game.app_name, wanted.as_deref()) {
                 opts.state_args = state.args;
                 opts.state_replaces_image = state.replaces_image;
             }

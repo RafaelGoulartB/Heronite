@@ -21,8 +21,7 @@ use heronite_launch::runtime::PrepServices;
 use heronite_launch::settings::{GameSettings, GlobalSettings};
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::{
-    build_plan_with_settings, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, SystemProbe,
-    SystemSpawner,
+    build_plan_with_settings, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, SystemProbe, SystemSpawner,
 };
 use serde_json::json;
 
@@ -147,12 +146,7 @@ fn run_with(r: &Rig, epic: Option<Arc<dyn EpicSetup>>) -> (Vec<LaunchEvent>, Vec
         launcher.set_epic_setup(epic);
     }
     launcher
-        .launch(LaunchRequest {
-            app_name: "Calluna".into(),
-            runner: "legendary".into(),
-            title: "Control".into(),
-            plan: r.plan.clone(),
-        })
+        .launch(LaunchRequest { app_name: "Calluna".into(), runner: "legendary".into(), title: "Control".into(), plan: r.plan.clone() })
         .unwrap();
     let mut events = Vec::new();
     loop {
@@ -179,7 +173,11 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
         .iter()
         .map(|l| {
             if l.starts_with("cloud") {
-                if l.contains("--skip-upload") { "saves-down" } else { "saves-up" }
+                if l.contains("--skip-upload") {
+                    "saves-down"
+                } else {
+                    "saves-up"
+                }
             } else if l.starts_with("wine wineboot") {
                 "prefix"
             } else if l.starts_with("wine reg add HKEY_CLASSES_ROOT") {
@@ -195,11 +193,7 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
             }
         })
         .collect();
-    assert_eq!(
-        kinds,
-        ["saves-down", "prefix", "wineserver", "epic-setup", "override", "game", "saves-up"],
-        "{log:#?}"
-    );
+    assert_eq!(kinds, ["saves-down", "prefix", "wineserver", "epic-setup", "override", "game", "saves-up"], "{log:#?}");
     // The prefix remembers the game, so the setup does not run again.
     assert_eq!(fs::read_to_string(r.root.join("pfx/installed_games")).unwrap(), r#"["Calluna"]"#);
     assert_eq!(log[0], "cloud Calluna --skip-upload /saves/Control".to_string());
@@ -277,10 +271,7 @@ fn the_first_launch_in_a_prefix_runs_prerequisites_and_fixes_once() {
     assert!(at("com.epicgames.launcher") < at(&format!("{}/Redist/setup.exe /q /norestart", game_dir.display())));
     assert!(at("Redist/setup.exe") < at(&format!("{}/Fix/vc.exe", game_dir.display())));
     assert!(at("Fix/vc.exe") < at("DllOverrides"), "fixes come before DXVK: {wine:#?}");
-    assert_eq!(
-        fs::read_to_string(r.root.join("pfx/installed_games")).unwrap(),
-        r#"["Calluna"]"#
-    );
+    assert_eq!(fs::read_to_string(r.root.join("pfx/installed_games")).unwrap(), r#"["Calluna"]"#);
     let messages: Vec<String> = events
         .iter()
         .filter_map(|e| match e {

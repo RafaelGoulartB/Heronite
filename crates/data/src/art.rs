@@ -144,12 +144,10 @@ pub fn card_cover(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> 
         steam_cover.as_deref(),
         steam_header.as_deref(),
     ];
-    let candidates = [
-        game.art.as_deref().and_then(|a| a.cover_url.as_deref()),
-        game.metadata.as_deref().and_then(|m| m.cover_url.as_deref()),
-    ]
-    .into_iter()
-    .chain(defaults.into_iter().filter(|v| v.is_some_and(|v| !v.is_empty() && !is_managed_art(v))));
+    let candidates =
+        [game.art.as_deref().and_then(|a| a.cover_url.as_deref()), game.metadata.as_deref().and_then(|m| m.cover_url.as_deref())]
+            .into_iter()
+            .chain(defaults.into_iter().filter(|v| v.is_some_and(|v| !v.is_empty() && !is_managed_art(v))));
 
     let mut chain = Vec::new();
     for value in candidates.flatten().filter(|v| !v.is_empty()) {
@@ -187,10 +185,7 @@ pub fn stage_art(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> {
     let info = &game.game;
     let mut chain = Vec::new();
 
-    let managed = [
-        game.art.as_deref().and_then(|a| a.hero_url.as_deref()),
-        game.metadata.as_deref().and_then(|m| m.hero_url.as_deref()),
-    ];
+    let managed = [game.art.as_deref().and_then(|a| a.hero_url.as_deref()), game.metadata.as_deref().and_then(|m| m.hero_url.as_deref())];
     for value in managed.into_iter().flatten().filter(|v| !v.is_empty()) {
         if let Some(item) = ctx.resolve(value) {
             push_unique(&mut chain, item);
@@ -274,10 +269,7 @@ mod tests {
             info.art_square = Some("localart://art/other.png".into());
             info.art_cover = Some("https://cdn/c.jpg".into());
         });
-        assert_eq!(
-            card_cover(&ctx, &g),
-            vec![ImageRef::Url("https://cdn/c.jpg".into()), ImageRef::Fallback]
-        );
+        assert_eq!(card_cover(&ctx, &g), vec![ImageRef::Url("https://cdn/c.jpg".into()), ImageRef::Fallback]);
         let bare = game_with("y", "sideload", |_, _, _, _, _| {});
         assert_eq!(card_cover(&ctx, &bare), vec![ImageRef::Fallback]);
     }

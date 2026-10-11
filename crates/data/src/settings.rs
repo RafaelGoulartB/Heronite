@@ -13,8 +13,7 @@ use serde_json::json;
 
 use crate::json_store;
 use crate::models::{
-    BackgroundSettings, BackupSettings, CollectionSettingsFile, StoreConfigFile,
-    LudusaviSettings, MetadataSettings, ScreenshotsSettings,
+    BackgroundSettings, BackupSettings, CollectionSettingsFile, LudusaviSettings, MetadataSettings, ScreenshotsSettings, StoreConfigFile,
 };
 use crate::num::{js_round, JsNum};
 use crate::paths::DataPaths;
@@ -140,9 +139,7 @@ impl EffectiveSettings {
                 folder: screenshots.folder.trim().to_owned(),
                 cache_limit_mb: JsNum(as_screenshot_cache_limit(Some(screenshots.cache_limit_mb.get()))),
                 capture_enabled: screenshots.capture_enabled,
-                capture_accelerator: non_empty_trimmed(&screenshots.capture_accelerator)
-                    .unwrap_or(DEFAULT_CAPTURE_ACCELERATOR)
-                    .to_owned(),
+                capture_accelerator: non_empty_trimmed(&screenshots.capture_accelerator).unwrap_or(DEFAULT_CAPTURE_ACCELERATOR).to_owned(),
                 extra: Default::default(),
             },
             cover_aspect: CoverAspect::parse(&metadata.cover_aspect),
@@ -332,9 +329,7 @@ pub fn save_screenshots(
             folder: folder.trim().to_owned(),
             cache_limit_mb: JsNum(as_screenshot_cache_limit(Some(cache_limit_mb))),
             capture_enabled,
-            capture_accelerator: non_empty_trimmed(capture_accelerator)
-                .unwrap_or(DEFAULT_CAPTURE_ACCELERATOR)
-                .to_owned(),
+            capture_accelerator: non_empty_trimmed(capture_accelerator).unwrap_or(DEFAULT_CAPTURE_ACCELERATOR).to_owned(),
             extra: Default::default(),
         });
         Ok(())
@@ -346,11 +341,7 @@ pub fn save_screenshots(
 pub fn save_backup(paths: &DataPaths, folder: &str, interval: &str) -> Result<EffectiveSettings> {
     let current = load(paths)?.backup;
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
-        file.backup = Some(BackupSettings {
-            folder: folder.trim().to_owned(),
-            interval: interval.to_owned(),
-            ..current
-        });
+        file.backup = Some(BackupSettings { folder: folder.trim().to_owned(), interval: interval.to_owned(), ..current });
         Ok(())
     })?;
     load(paths)
@@ -443,12 +434,7 @@ mod tests {
             "{\n\t\"zzz\": {\"keep\": 1},\n\t\"greyUninstalledGames\": true,\n\t\"background\": {\"enabled\": true, \"blur\": 4, \"dimming\": 10, \"saturation\": 96, \"scrim\": 100}\n}",
         )
         .unwrap();
-        let s = save_ui(
-            &paths,
-            Some(false),
-            Some(&PartialBackground { blur: Some(8.0), ..Default::default() }),
-        )
-        .unwrap();
+        let s = save_ui(&paths, Some(false), Some(&PartialBackground { blur: Some(8.0), ..Default::default() })).unwrap();
         assert!(!s.grey_uninstalled_games);
         assert_eq!(s.background.blur.get(), 8.0);
         assert_eq!(s.background.dimming.get(), 10.0);
@@ -483,7 +469,10 @@ mod tests {
     fn reads_real_settings() {
         let Some(root) = std::env::var_os("HERONITE_FIXTURE") else { return };
         let s = load(&DataPaths::at(root)).unwrap();
-        eprintln!("theme={} language={} grey={} bg={:?} shots={:?}", s.theme, s.language, s.grey_uninstalled_games, s.background, s.screenshots.folder);
+        eprintln!(
+            "theme={} language={} grey={} bg={:?} shots={:?}",
+            s.theme, s.language, s.grey_uninstalled_games, s.background, s.screenshots.folder
+        );
         assert!(!s.grey_uninstalled_games);
         assert_eq!(s.background.blur.get(), 4.0);
         assert_eq!(s.theme, "nord-dark");

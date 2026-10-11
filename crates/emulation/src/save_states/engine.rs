@@ -9,19 +9,14 @@ use heronite_launch::emulators::UserEmulator;
 use regex::Regex;
 
 use super::layouts::{
-    child_dirs, dolphin_user_dir, duckstation_data_dirs, mgba_config_path, pcsx2_data_dirs, ppsspp_state_dir,
-    retroarch_append_config, retroarch_config_dir, retroarch_core_name, rpcs3_states_root,
+    child_dirs, dolphin_user_dir, duckstation_data_dirs, mgba_config_path, pcsx2_data_dirs, ppsspp_state_dir, retroarch_append_config,
+    retroarch_config_dir, retroarch_core_name, rpcs3_states_root,
 };
 use super::{s, LaunchStateArgs, ParsedState, SaveStateKind};
 use crate::catalog::guess_definition_id;
-use crate::disc_id::{
-    read_nintendo_disc_id, read_playstation_serial, read_ps3_title_id, read_psp_disc_id,
-    serial_from_game_list_cache,
-};
+use crate::disc_id::{read_nintendo_disc_id, read_playstation_serial, read_ps3_title_id, read_psp_disc_id, serial_from_game_list_cache};
 use crate::pathutil::{base_no_ext, basename, dirname, join, unique};
-use crate::sysfiles::{
-    find_embedded_png, read_zip_entry, resolve_configured_dir, HostEnv, Ini,
-};
+use crate::sysfiles::{find_embedded_png, read_zip_entry, resolve_configured_dir, HostEnv, Ini};
 
 #[derive(Debug, Clone, Default)]
 pub struct EngineContext {
@@ -102,24 +97,16 @@ impl Engine {
                 .into_iter()
                 .map(|data| {
                     let ini = Ini::read(&data.join("inis").join("PCSX2.ini"));
-                    resolve_configured_dir(
-                        ini.as_ref().and_then(|i| i.get("Folders", "Savestates")),
-                        &s(&data),
-                        &env.home,
-                    )
-                    .unwrap_or_else(|| s(&data.join("sstates")))
+                    resolve_configured_dir(ini.as_ref().and_then(|i| i.get("Folders", "Savestates")), &s(&data), &env.home)
+                        .unwrap_or_else(|| s(&data.join("sstates")))
                 })
                 .collect(),
             Engine::DuckStation => duckstation_data_dirs(env, ctx)
                 .into_iter()
                 .map(|data| {
                     let ini = Ini::read(&data.join("settings.ini"));
-                    resolve_configured_dir(
-                        ini.as_ref().and_then(|i| i.get("Folders", "SaveStates")),
-                        &s(&data),
-                        &env.home,
-                    )
-                    .unwrap_or_else(|| s(&data.join("savestates")))
+                    resolve_configured_dir(ini.as_ref().and_then(|i| i.get("Folders", "SaveStates")), &s(&data), &env.home)
+                        .unwrap_or_else(|| s(&data.join("savestates")))
                 })
                 .collect(),
             Engine::Ppsspp => vec![s(&ppsspp_state_dir(env, ctx))],
@@ -128,15 +115,11 @@ impl Engine {
                 let config_dir = retroarch_config_dir(env, ctx);
                 let cfg_dir = s(&config_dir);
                 let cfg = Ini::read(&config_dir.join("retroarch.cfg"));
-                let configured = cfg
-                    .as_ref()
-                    .and_then(|c| c.get("", "savestate_directory"))
-                    .map(|v| match v.strip_prefix(':') {
-                        Some(rest) => format!("{cfg_dir}{rest}"),
-                        None => v.to_string(),
-                    });
-                let root = resolve_configured_dir(configured.as_deref(), &cfg_dir, &env.home)
-                    .unwrap_or_else(|| join(&cfg_dir, "states"));
+                let configured = cfg.as_ref().and_then(|c| c.get("", "savestate_directory")).map(|v| match v.strip_prefix(':') {
+                    Some(rest) => format!("{cfg_dir}{rest}"),
+                    None => v.to_string(),
+                });
+                let root = resolve_configured_dir(configured.as_deref(), &cfg_dir, &env.home).unwrap_or_else(|| join(&cfg_dir, "states"));
                 if let Some(core) = retroarch_core_name(env, ctx) {
                     if Path::new(&root).join(&core).exists() {
                         return vec![root.clone(), join(&root, &core)];
@@ -148,11 +131,8 @@ impl Engine {
             }
             Engine::Mgba => {
                 let ini = Ini::read(&mgba_config_path(env, ctx));
-                let configured = resolve_configured_dir(
-                    ini.as_ref().and_then(|i| i.get("ports.qt", "savestatePath")),
-                    &dirname(rom),
-                    &env.home,
-                );
+                let configured =
+                    resolve_configured_dir(ini.as_ref().and_then(|i| i.get("ports.qt", "savestatePath")), &dirname(rom), &env.home);
                 unique([configured, Some(dirname(rom))])
             }
             Engine::Rpcs3 => {
@@ -205,22 +185,14 @@ impl Engine {
         match self {
             Engine::Pcsx2 => {
                 let c = re(&PCSX2, r"(?i)^(.+?) \([0-9a-f]{8}\)\.(\d{2}|resume)\.p2s$").captures(file_name)?;
-                Some(if c[2].eq_ignore_ascii_case("resume") {
-                    resume(&c[1])
-                } else {
-                    slot(&c[1], c[2].parse().ok()?)
-                })
+                Some(if c[2].eq_ignore_ascii_case("resume") { resume(&c[1]) } else { slot(&c[1], c[2].parse().ok()?) })
             }
             Engine::DuckStation => {
                 let c = re(&DUCK, r"(?i)^(.+)_(\d+|resume)\.sav$").captures(file_name)?;
                 if &c[1] == "savestate" {
                     return None;
                 }
-                Some(if c[2].eq_ignore_ascii_case("resume") {
-                    resume(&c[1])
-                } else {
-                    slot(&c[1], c[2].parse().ok()?)
-                })
+                Some(if c[2].eq_ignore_ascii_case("resume") { resume(&c[1]) } else { slot(&c[1], c[2].parse().ok()?) })
             }
             Engine::Ppsspp => {
                 let c = re(&PSP, r"(?i)^([A-Z0-9]+)_[\d.]+_(\d+)\.ppst$").captures(file_name)?;
@@ -258,31 +230,19 @@ impl Engine {
         slot: Option<u32>,
     ) -> Result<LaunchStateArgs> {
         Ok(match self {
-            Engine::Pcsx2 | Engine::DuckStation => LaunchStateArgs {
-                args: vec!["-statefile".into(), path.into()],
-                replaces_image: false,
-            },
+            Engine::Pcsx2 | Engine::DuckStation => LaunchStateArgs { args: vec!["-statefile".into(), path.into()], replaces_image: false },
             Engine::Ppsspp => LaunchStateArgs { args: vec![format!("--state={path}")], replaces_image: false },
-            Engine::Dolphin => LaunchStateArgs {
-                args: vec!["--save_state".into(), path.into()],
-                replaces_image: false,
-            },
+            Engine::Dolphin => LaunchStateArgs { args: vec!["--save_state".into(), path.into()], replaces_image: false },
             Engine::RetroArch => {
                 if kind == SaveStateKind::Resume {
                     let cfg = retroarch_append_config(env, ctx, true)?;
                     LaunchStateArgs { args: vec![format!("--appendconfig={cfg}")], replaces_image: false }
                 } else {
-                    LaunchStateArgs {
-                        args: vec!["-e".into(), slot.unwrap_or(0).to_string()],
-                        replaces_image: false,
-                    }
+                    LaunchStateArgs { args: vec!["-e".into(), slot.unwrap_or(0).to_string()], replaces_image: false }
                 }
             }
             Engine::Mgba => LaunchStateArgs { args: vec!["-t".into(), path.into()], replaces_image: false },
-            Engine::Rpcs3 => LaunchStateArgs {
-                args: vec!["--savestate".into(), path.into()],
-                replaces_image: true,
-            },
+            Engine::Rpcs3 => LaunchStateArgs { args: vec!["--savestate".into(), path.into()], replaces_image: true },
         })
     }
 
@@ -345,10 +305,7 @@ mod tests {
         assert_eq!(p(Engine::RetroArch, "Zelda.state.png"), None);
         assert_eq!(p(Engine::Mgba, "Pokemon.ss0"), Some(resume("Pokemon")));
         assert_eq!(p(Engine::Mgba, "Pokemon.ss4"), Some(slot("Pokemon", 4)));
-        assert_eq!(
-            p(Engine::Rpcs3, "BCUS98114_2024-01-01.SAVESTAT.zst").map(|s| s.key),
-            Some("BCUS98114".to_string())
-        );
+        assert_eq!(p(Engine::Rpcs3, "BCUS98114_2024-01-01.SAVESTAT.zst").map(|s| s.key), Some("BCUS98114".to_string()));
         assert_eq!(p(Engine::Rpcs3, "notes.txt"), None);
     }
 
@@ -386,10 +343,7 @@ mod tests {
         assert_eq!(Engine::Pcsx2.state_dirs(&env, &ctx(), "/r/a.iso", &[]), ["/data/states"]);
         // Flatpak PCSX2.
         let fp = EngineContext { flatpak_id: Some("net.pcsx2.PCSX2".into()), ..ctx() };
-        assert_eq!(
-            Engine::Pcsx2.state_dirs(&env, &fp, "/r/a.iso", &[]),
-            [s(&home.join(".var/app/net.pcsx2.PCSX2/config/PCSX2/sstates"))]
-        );
+        assert_eq!(Engine::Pcsx2.state_dirs(&env, &fp, "/r/a.iso", &[]), [s(&home.join(".var/app/net.pcsx2.PCSX2/config/PCSX2/sstates"))]);
         // Portable AppImage dir.
         let portable = d.path().join("portable");
         fs::create_dir_all(&portable).unwrap();
@@ -397,40 +351,22 @@ mod tests {
         let pc = EngineContext { executable: Some(s(&portable.join("pcsx2.AppImage"))), ..ctx() };
         assert_eq!(Engine::Pcsx2.state_dirs(&env, &pc, "/r/a.iso", &[]), [s(&portable.join("sstates"))]);
         // PPSSPP / Dolphin / RPCS3 / mGBA.
-        assert_eq!(
-            Engine::Ppsspp.state_dirs(&env, &ctx(), "", &[]),
-            [s(&home.join(".config/ppsspp/PSP/PPSSPP_STATE"))]
-        );
-        assert_eq!(
-            Engine::Dolphin.state_dirs(&env, &ctx(), "", &[]),
-            [s(&home.join(".local/share/dolphin-emu/StateSaves"))]
-        );
+        assert_eq!(Engine::Ppsspp.state_dirs(&env, &ctx(), "", &[]), [s(&home.join(".config/ppsspp/PSP/PPSSPP_STATE"))]);
+        assert_eq!(Engine::Dolphin.state_dirs(&env, &ctx(), "", &[]), [s(&home.join(".local/share/dolphin-emu/StateSaves"))]);
         fs::create_dir_all(home.join(".dolphin-emu")).unwrap();
-        assert_eq!(
-            Engine::Dolphin.state_dirs(&env, &ctx(), "", &[]),
-            [s(&home.join(".dolphin-emu/StateSaves"))]
-        );
+        assert_eq!(Engine::Dolphin.state_dirs(&env, &ctx(), "", &[]), [s(&home.join(".dolphin-emu/StateSaves"))]);
         assert_eq!(
             Engine::Rpcs3.state_dirs(&env, &ctx(), "", &["BCUS98114".into()]),
             [s(&home.join(".config/rpcs3/savestates/BCUS98114"))]
         );
-        assert_eq!(
-            Engine::Mgba.state_dirs(&env, &ctx(), "/roms/gba/p.gba", &[]),
-            ["/roms/gba"]
-        );
+        assert_eq!(Engine::Mgba.state_dirs(&env, &ctx(), "/roms/gba/p.gba", &[]), ["/roms/gba"]);
         fs::create_dir_all(home.join(".config/mgba")).unwrap();
         fs::write(home.join(".config/mgba/config.ini"), "[ports.qt]\nsavestatePath=states\n").unwrap();
-        assert_eq!(
-            Engine::Mgba.state_dirs(&env, &ctx(), "/roms/gba/p.gba", &[]),
-            ["/roms/gba/states", "/roms/gba"]
-        );
+        assert_eq!(Engine::Mgba.state_dirs(&env, &ctx(), "/roms/gba/p.gba", &[]), ["/roms/gba/states", "/roms/gba"]);
         // DuckStation: only existing candidate roots.
         assert!(Engine::DuckStation.state_dirs(&env, &ctx(), "", &[]).is_empty());
         fs::create_dir_all(home.join(".local/share/duckstation")).unwrap();
-        assert_eq!(
-            Engine::DuckStation.state_dirs(&env, &ctx(), "", &[]),
-            [s(&home.join(".local/share/duckstation/savestates"))]
-        );
+        assert_eq!(Engine::DuckStation.state_dirs(&env, &ctx(), "", &[]), [s(&home.join(".local/share/duckstation/savestates"))]);
     }
 
     #[test]
@@ -445,15 +381,9 @@ mod tests {
         fs::create_dir_all(cfg.join("cores")).unwrap();
         fs::write(cfg.join("cores/snes9x_libretro.info"), "corename = \"Snes9x\"\n").unwrap();
         fs::write(cfg.join("retroarch.cfg"), "savestate_auto_load = \"true\"\n").unwrap();
-        let rc = EngineContext {
-            core_path: Some(s(&cfg.join("cores/snes9x_libretro.so"))),
-            ..ctx()
-        };
+        let rc = EngineContext { core_path: Some(s(&cfg.join("cores/snes9x_libretro.so"))), ..ctx() };
         let states = s(&cfg.join("states"));
-        assert_eq!(
-            Engine::RetroArch.state_dirs(&env, &rc, "/r/z.sfc", &[]),
-            [states.clone(), format!("{states}/Snes9x")]
-        );
+        assert_eq!(Engine::RetroArch.state_dirs(&env, &rc, "/r/z.sfc", &[]), [states.clone(), format!("{states}/Snes9x")]);
         // Without a core: root plus every child folder.
         assert_eq!(
             Engine::RetroArch.state_dirs(&env, &ctx(), "/r/z.sfc", &[]),

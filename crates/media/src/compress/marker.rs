@@ -117,12 +117,8 @@ mod tests {
     #[test]
     fn foreign_packets_are_not_ours() {
         assert_eq!(parse_xmp("<x:xmpmeta><rdf:Description SourceSize=\"1\"/></x:xmpmeta>"), None);
-        let other_size = to_xmp(
-            &Marker { compression: LOSSLESS_WEBP.into(), source_name: "a.png".into(), source_size: 1 },
-            "x",
-            &[],
-        )
-        .replace("SourceSize=\"1\"", "SourceSize=\"one\"");
+        let other_size = to_xmp(&Marker { compression: LOSSLESS_WEBP.into(), source_name: "a.png".into(), source_size: 1 }, "x", &[])
+            .replace("SourceSize=\"1\"", "SourceSize=\"one\"");
         assert_eq!(parse_xmp(&other_size), None);
     }
 }

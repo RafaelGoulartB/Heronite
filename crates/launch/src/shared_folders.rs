@@ -71,9 +71,7 @@ pub fn map_drive_letters(prefix: &str, folders: &[String]) -> Vec<(char, String)
             continue;
         }
         let taken = |letter: char| std::fs::symlink_metadata(dir.join(format!("{letter}:"))).is_ok();
-        let mapped = ('a'..='y').any(|l| {
-            std::fs::read_link(dir.join(format!("{l}:"))).is_ok_and(|t| t == Path::new(folder))
-        });
+        let mapped = ('a'..='y').any(|l| std::fs::read_link(dir.join(format!("{l}:"))).is_ok_and(|t| t == Path::new(folder)));
         if mapped {
             continue;
         }

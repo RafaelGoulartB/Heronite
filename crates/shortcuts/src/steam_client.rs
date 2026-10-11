@@ -106,13 +106,7 @@ impl SteamClient {
         });
         ws.send_text(&request.to_string())?;
         loop {
-            let text = ws.read_message().map_err(|e| {
-                if is_timeout(&e) {
-                    anyhow!("Timed out waiting for the Steam client")
-                } else {
-                    e
-                }
-            })?;
+            let text = ws.read_message().map_err(|e| if is_timeout(&e) { anyhow!("Timed out waiting for the Steam client") } else { e })?;
             let response: Value = serde_json::from_str(&text).context("the Steam client sent invalid JSON")?;
             if response.get("id").and_then(Value::as_i64) != Some(1) {
                 continue;
@@ -231,8 +225,7 @@ fn appid_of(v: &Value) -> Option<u32> {
 }
 
 fn is_timeout(e: &anyhow::Error) -> bool {
-    e.downcast_ref::<std::io::Error>()
-        .is_some_and(|e| matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut))
+    e.downcast_ref::<std::io::Error>().is_some_and(|e| matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut))
 }
 
 fn connect(addr: &str, timeout: Duration) -> Result<TcpStream> {
@@ -493,7 +486,9 @@ pub(crate) mod testing {
                     // An unrelated event first: the client must wait for id 1.
                     writer.write_all(&server_frame(br#"{"method":"Runtime.consoleAPICalled"}"#)).unwrap();
                     let response = match value.get("throw").and_then(Value::as_str) {
-                        Some(msg) => json!({"id": 1, "result": {"result": {}, "exceptionDetails": {"text": "Uncaught", "exception": {"description": msg}}}}),
+                        Some(msg) => {
+                            json!({"id": 1, "result": {"result": {}, "exceptionDetails": {"text": "Uncaught", "exception": {"description": msg}}}})
+                        }
                         None => json!({"id": 1, "result": {"result": {"type": "object", "value": value}}}),
                     };
                     writer.write_all(&server_frame(response.to_string().as_bytes())).unwrap();
@@ -511,7 +506,8 @@ mod tests {
 
     #[test]
     fn base64_matches_the_rfc_vectors() {
-        let cases = [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")];
+        let cases =
+            [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")];
         for (raw, enc) in cases {
             assert_eq!(base64(raw.as_bytes()), enc);
         }

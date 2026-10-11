@@ -18,18 +18,13 @@ impl AssetSource for Assets {
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        Ok(Self::iter()
-            .filter(|p| p.starts_with(path))
-            .map(|p| SharedString::from(p.into_owned()))
-            .collect())
+        Ok(Self::iter().filter(|p| p.starts_with(path)).map(|p| SharedString::from(p.into_owned())).collect())
     }
 }
 
 pub fn load_fonts(cx: &mut App) {
-    let fonts: Vec<Cow<'static, [u8]>> = Assets::iter()
-        .filter(|p| p.starts_with("fonts/"))
-        .filter_map(|p| Assets::get(&p).map(|f| f.data))
-        .collect();
+    let fonts: Vec<Cow<'static, [u8]>> =
+        Assets::iter().filter(|p| p.starts_with("fonts/")).filter_map(|p| Assets::get(&p).map(|f| f.data)).collect();
     if let Err(err) = cx.text_system().add_fonts(fonts) {
         log::error!("loading fonts: {err:#}");
     }

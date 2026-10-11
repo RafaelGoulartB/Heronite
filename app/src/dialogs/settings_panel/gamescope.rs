@@ -68,14 +68,33 @@ impl SettingsPanel {
         let mut up = rows().child(self.gs_toggle("gs-upscaling", "enableUpscaling", "Enables Upscaling", None, cx));
         if self.gs_flag("enableUpscaling") {
             up = up
-                .field_help(self.gs_select("gs-method", "upscaleMethod", "Upscale Method", &UPSCALE_METHODS, cx), vec![help("The upscaling method gamescope should use.")])
+                .field_help(
+                    self.gs_select("gs-method", "upscaleMethod", "Upscale Method", &UPSCALE_METHODS, cx),
+                    vec![help("The upscaling method gamescope should use.")],
+                )
                 .field(pair(
-                    self.gs_input("gs.gameWidth", "Game Width", "The width resolution used by the game. A 16:9 aspect ratio is assumed by gamescope."),
-                    self.gs_input("gs.gameHeight", "Game Height", "The height resolution used by the game. A 16:9 aspect ratio is assumed by gamescope."),
+                    self.gs_input(
+                        "gs.gameWidth",
+                        "Game Width",
+                        "The width resolution used by the game. A 16:9 aspect ratio is assumed by gamescope.",
+                    ),
+                    self.gs_input(
+                        "gs.gameHeight",
+                        "Game Height",
+                        "The height resolution used by the game. A 16:9 aspect ratio is assumed by gamescope.",
+                    ),
                 ))
                 .field(pair(
-                    self.gs_input("gs.upscaleWidth", "Upscale Width", "The width resolution used by gamescope. A 16:9 aspect ratio is assumed."),
-                    self.gs_input("gs.upscaleHeight", "Upscale Height", "The height resolution used by gamescope. A 16:9 aspect ratio is assumed."),
+                    self.gs_input(
+                        "gs.upscaleWidth",
+                        "Upscale Width",
+                        "The width resolution used by gamescope. A 16:9 aspect ratio is assumed.",
+                    ),
+                    self.gs_input(
+                        "gs.upscaleHeight",
+                        "Upscale Height",
+                        "The height resolution used by gamescope. A 16:9 aspect ratio is assumed.",
+                    ),
                 ))
                 .field(self.gs_select("gs-window", "windowType", "Window Type", &WINDOW_TYPES, cx));
         }

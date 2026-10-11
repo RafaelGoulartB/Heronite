@@ -101,12 +101,7 @@ fn copy_dll(from: &Path, to: &Path) {
 }
 
 /// `DXVK.installRemove` for one tool in the prefix of `settings`.
-pub fn install_remove(
-    env: &Env,
-    settings: &GameSettings,
-    tool: Tool,
-    action: Action,
-) -> Result<Outcome, String> {
+pub fn install_remove(env: &Env, settings: &GameSettings, tool: Tool, action: Action) -> Result<Outcome, String> {
     if settings.wine_version.bin.contains("toolkit") {
         // It would break Apple's implementation.
         return Ok(Outcome::Skipped("Game Porting Toolkit prefix".into()));
@@ -368,10 +363,7 @@ mod tests {
         let fx = fixture(Tool::DxvkNvapi);
         let rec = Recorder(RefCell::new(vec![]));
         assert_eq!(nvngx_dir(&FakeProbe::new("/h")), None);
-        assert_eq!(
-            nvngx_dir(&FakeProbe::new("/h").with_path("/usr/lib/nvidia/wine/nvngx.dll")).as_deref(),
-            Some("/usr/lib/nvidia/wine")
-        );
+        assert_eq!(nvngx_dir(&FakeProbe::new("/h").with_path("/usr/lib/nvidia/wine/nvngx.dll")).as_deref(), Some("/usr/lib/nvidia/wine"));
         run(&fx, Tool::DxvkNvapi, Action::Install, &rec, &FakeProbe::new("/h"), &FakeNet::offline()).unwrap();
         assert!(rec.0.borrow().iter().all(|c| c[2] != r"HKEY_LOCAL_MACHINE\SOFTWARE\NVIDIA Corporation\Global\NGXCore"));
     }

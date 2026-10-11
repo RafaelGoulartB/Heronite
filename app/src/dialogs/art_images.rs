@@ -54,7 +54,6 @@ impl DialogImages {
         let key: SharedString = format!("{id}:{pw}x{ph}").into();
         self.store.get_or_request(&key, || chain, pw, ph, Variant::Cover, 100).map(ImageSource::Render)
     }
-
 }
 
 /// Chain for a stored image URL (`http(s)`, `localart://`, `file:`, path).

@@ -95,7 +95,11 @@ impl Downloads {
                             }
                             None => {
                                 let n = this.updates.len();
-                                let msg = if n > 0 { format!("Epic library refreshed - {n} update(s) available") } else { "Epic library refreshed".to_string() };
+                                let msg = if n > 0 {
+                                    format!("Epic library refreshed - {n} update(s) available")
+                                } else {
+                                    "Epic library refreshed".to_string()
+                                };
                                 if quiet {
                                     log::info!("epic: {msg}");
                                 } else {
@@ -175,12 +179,8 @@ impl Downloads {
     /// metered connection. `only`: just that game.
     fn queue_auto_updates(&mut self, only: Option<String>, cx: &mut Context<Self>) {
         let data_paths = self.data_paths.clone();
-        let apps: Vec<String> = self
-            .updates
-            .iter()
-            .filter(|a| only.as_ref().is_none_or(|o| o == *a) && !self.auto_failed.contains(*a))
-            .cloned()
-            .collect();
+        let apps: Vec<String> =
+            self.updates.iter().filter(|a| only.as_ref().is_none_or(|o| o == *a) && !self.auto_failed.contains(*a)).cloned().collect();
         if apps.is_empty() {
             return;
         }
@@ -190,12 +190,16 @@ impl Downloads {
             let (plan, entries) = cx
                 .background_spawn(async move {
                     let home = ops::home();
-                    let enabled = game_config::load_global(&data_paths, &home).get("autoUpdateGames").and_then(Value::as_bool).unwrap_or(false);
+                    let enabled =
+                        game_config::load_global(&data_paths, &home).get("autoUpdateGames").and_then(Value::as_bool).unwrap_or(false);
                     let candidates: Vec<autoupdate::Candidate> = apps
                         .iter()
                         .map(|app| autoupdate::Candidate {
                             app_name: app.clone(),
-                            ignored: game_config::load_game(&data_paths, app, &home).get("ignoreGameUpdates").and_then(Value::as_bool).unwrap_or(false),
+                            ignored: game_config::load_game(&data_paths, app, &home)
+                                .get("ignoreGameUpdates")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
                             queued: queued.contains(app),
                             playing: playing.contains(app),
                         })

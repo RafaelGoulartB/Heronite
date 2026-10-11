@@ -88,14 +88,7 @@ pub struct BackgroundSettings {
 
 impl Default for BackgroundSettings {
     fn default() -> Self {
-        Self {
-            enabled: true,
-            blur: JsNum(6.0),
-            dimming: JsNum(14.0),
-            saturation: JsNum(94.0),
-            scrim: JsNum(100.0),
-            extra: Extra::new(),
-        }
+        Self { enabled: true, blur: JsNum(6.0), dimming: JsNum(14.0), saturation: JsNum(94.0), scrim: JsNum(100.0), extra: Extra::new() }
     }
 }
 
@@ -153,4 +146,3 @@ pub struct MetadataSettings {
     #[serde(flatten)]
     pub extra: Extra,
 }
-

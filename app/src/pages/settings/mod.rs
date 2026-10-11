@@ -312,15 +312,7 @@ impl SettingsPage {
                     ),
             );
         for (group, sections) in Section::GROUPS {
-            col = col.child(
-                div()
-                    .px(px(12.))
-                    .pt(px(12.))
-                    .pb(px(5.))
-                    .text_size(px(12.))
-                    .text_color(theme::text_muted())
-                    .child(group),
-            );
+            col = col.child(div().px(px(12.)).pt(px(12.)).pb(px(5.)).text_size(px(12.)).text_color(theme::text_muted()).child(group));
             for s in sections.iter().copied() {
                 let active = self.section == s;
                 col = col.child(
@@ -372,26 +364,12 @@ impl Render for SettingsPage {
         }
         let section = self.section;
         let body = self.render_body(window, cx);
-        let title = div()
-            .flex()
-            .flex_col()
-            .gap(px(4.))
-            .pr(px(48.))
-            .child(page_heading(section.label()))
-            .child(help_text(section.blurb()));
+        let title = div().flex().flex_col().gap(px(4.)).pr(px(48.)).child(page_heading(section.label())).child(help_text(section.blurb()));
         // The log viewer wants the width; the forms read better narrow.
         let max_w = if section == Section::Logs { px(1400.) } else { px(880.) };
         let column = div().flex().flex_col().w_full().max_w(max_w).mx_auto().gap(px(14.)).child(title).child(body);
-        let content = div()
-            .id("page-settings")
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .overflow_y_scroll()
-            .px(px(36.))
-            .pt(px(26.))
-            .pb(px(32.))
-            .child(column);
+        let content =
+            div().id("page-settings").flex_1().min_w_0().h_full().overflow_y_scroll().px(px(36.)).pt(px(26.)).pb(px(32.)).child(column);
         let close = close_button("settings-close")
             .absolute()
             .top(px(20.))
