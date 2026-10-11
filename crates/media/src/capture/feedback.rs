@@ -8,7 +8,7 @@ pub fn show_osd(message: &str, value: &str) -> bool {
     if !is_hyprland_session() {
         return false;
     }
-    let payload = serde_json::json!({ "icon": "", "message": message, "value": value, "duration": 2000 });
+    let payload = serde_json::json!({ "icon": "\u{F0100}", "message": message, "value": value, "duration": 2000 });
     Command::new("omarchy-shell")
         .args(["osd", "show", &payload.to_string()])
         .stdin(Stdio::null())
