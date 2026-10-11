@@ -4,7 +4,7 @@
 //!
 //! Conventions (see `docs/UI-CONVENTIONS.md`):
 //! - Build the chrome with `crate::ui::dialog::dialog` and controls from
-//!   `crate::ui::controls`; match `docs/reference/dialogs/*.png`.
+//!   `crate::ui::controls`.
 //! - Do I/O off the UI thread (`cx.background_spawn`) and write shared files
 //!   only through `heronite_data` / backend crates.
 //! - Emit `DialogEvent::Changed` after writing data the Collection shows

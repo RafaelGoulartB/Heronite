@@ -2,8 +2,9 @@
 //! Playnite providers, the per-field merge, details editing, custom art,
 //! Steam details/hero caches, covers, web image search and HowLongToBeat.
 //!
-//! Port of `HeroicGamesLauncher/src/local-library/{metadata,art,heroes,covers,
-//! steam-details,web-images}` and the HLTB part of
+//! Port of Heronite's `src/local-library/{metadata,art,heroes,covers,
+//! steam-details,web-images}`
+//! (<https://github.com/RafaelGoulartB/HeroicGamesLauncher>) and the HLTB part of
 //! `src/backend/wiki_game_info`. Every write goes through
 //! `heronite_data::json_store` (or an atomic file write for images and the
 //! Steam details cache) into the data folder, in the formats Heronite used.

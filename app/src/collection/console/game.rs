@@ -1,5 +1,5 @@
 //! Console game page (A on a cover): the game large over its art
-//! (`o2-2.jpg` header: cover, kicker, title, facts), the actions as console
+//! (header: cover, kicker, title, facts), the actions as console
 //! rows on the left (Play / Install / Stop, Status ◀ ▶, Favourite, Game
 //! settings, Hidden...) and what the desktop focus panel shows on the right
 //! (the description scrolls with the right stick).

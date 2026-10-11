@@ -1,5 +1,5 @@
 //! The console menu (Start / Menu, or B on a top screen): a full-height
-//! sidebar over the dimmed screen (`o2-0.jpg`) with every page, Add game,
+//! sidebar over the dimmed screen with every page, Add game,
 //! Settings and the way back to desktop mode.
 
 use gpui_kit::prelude::*;

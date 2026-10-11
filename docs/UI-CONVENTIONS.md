@@ -1,12 +1,10 @@
 # UI conventions (app/)
 
-The Collection screen (list, cards, header bar, focus panel, stage) must look
-like Heronite's Collection: reference captures in `docs/reference/`, sources in
-`../HeroicGamesLauncher/src/frontend/screens/LocalLibrary/**`. Everything that
-floats over or replaces it (menus, dropdowns, context menus, dialogs, drawers,
-pages, settings) follows the **Glass design system** below
-(`docs/design/propostas-v1-telas/o1-*.jpg` are the visual target; never edit
-`docs/design/`).
+The Collection screen (list, cards, header bar, focus panel, stage) keeps the
+look of the Electron Heronite Collection
+([`src/frontend/screens/LocalLibrary`](https://github.com/RafaelGoulartB/HeroicGamesLauncher/tree/master/src/frontend/screens/LocalLibrary)).
+Everything that floats over or replaces it (menus, dropdowns, context menus,
+dialogs, drawers, pages, settings) follows the **Glass design system** below.
 
 ## Stack
 - GPUI through `gpui-kit = 0.7.1` (`use gpui_kit::*; use gpui_kit::prelude::*;`).
@@ -60,8 +58,8 @@ pages, settings) follows the **Glass design system** below
 
 ## Glass design system (menus, dialogs, pages, settings)
 
-Spec: `docs/agents/glass-common.md`. Everything below keeps its old name/signature
-where one existed, so a caller picks the new look automatically.
+Everything below keeps its old name/signature where one existed, so a caller
+picks the new look automatically.
 
 **Backdrop.** GPUI has no backdrop-filter. `CollectionView::glass_image`
 (collection/mod.rs) asks the image pipeline for `Variant::Glass` of the selected
@@ -175,7 +173,7 @@ game keeps its colour in every block of the page. Hovering a bar / heatmap cell 
 `HERONITE_DEBUG_PAGE=stats:week|month|year|all` opens it on a span.
 
 **Console mode** (`app/src/console/`, shell in `collection/console/`): an extra controller-first TV mode
-(proposal "2 · Console", `docs/design/propostas-v1-telas/o2-*.jpg`), entered from ☰ › Console mode or the palette,
+entered from ☰ › Console mode or the palette,
 remembered across restarts (`ui-state.json` `consoleMode`). The desktop look must not change: every page and dialog
 keeps its desktop render and, when `crate::console::active()`, returns its console layout instead
 (`render_console`, usually in a child module `console.rs`) and implements `console::PadTarget` (`on_pad` + `hints`).
@@ -222,10 +220,12 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
   `heronite_images::*` in `background_spawn` and wrap with
   `RenderImage::new(smallvec![image::Frame::new(decoded.into_image_buffer())])`.
 - Icons: SVGs in `app/assets/icons` (MUI/FontAwesome names). Add new ones by
-  extracting from `../HeroicGamesLauncher/node_modules/@mui/icons-material/esm/<Name>.js`
-  and register them in `icons.rs`.
+  taking the path of `<Name>` from the
+  [`@mui/icons-material`](https://github.com/mui/material-ui/tree/master/packages/mui-icons-material)
+  package, register them in `icons.rs` and list the source in
+  `THIRD-PARTY-NOTICES.md` when it is a new one.
 - Text is English (Heronite's `en` locale strings in
-  `../HeroicGamesLauncher/public/locales/en/translation.json`).
+  [`public/locales/en/translation.json`](https://github.com/RafaelGoulartB/HeroicGamesLauncher/blob/master/public/locales/en/translation.json)).
 
 ## Verifying visually (mandatory for UI work)
 - Build: `cargo build -p heronite`.

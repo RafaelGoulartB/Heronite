@@ -1,7 +1,6 @@
-//! Console mode: a controller-first TV interface (design proposal
-//! "2 · Console", `docs/design/propostas-v1-telas/o2-*.jpg`). It is an
-//! extra mode: the desktop UI does not change. While it is on, the
-//! Collection draws the console shell (`collection/console/`) and every
+//! Console mode: a controller-first TV interface. It is an extra mode: the
+//! desktop UI does not change. While it is on, the Collection draws the
+//! console shell (`collection/console/`) and every
 //! page / dialog renders its console layout (`render_console`) and takes
 //! [`Pad`] presses through [`PadTarget`].
 //!

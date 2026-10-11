@@ -16,7 +16,7 @@ into Heroic's folder are rewritten. Heroic's files are only read. The
 UI state and cache folders of the old name (`heronite-rs`) are renamed.
 
 `docs/CODE-STYLE.md` has the code rules; `docs/UI-CONVENTIONS.md` the look of
-the UI; `PROGRESSO.md` the status and decisions (in Portuguese).
+the UI.
 
 ## Crates
 
@@ -97,5 +97,5 @@ calls them from `cx.background_spawn` or worker threads.
   (a copy of a data folder).
 - `cargo test --workspace` and `cargo clippy --workspace --all-targets` must
   both be clean.
-- UI checks use `scripts/shot.sh` on a fixture copy (see `PROGRESSO.md`,
-  "Como testar visualmente").
+- UI checks use `scripts/shot.sh` on a fixture copy (see "Verifying visually"
+  in `docs/UI-CONVENTIONS.md`).

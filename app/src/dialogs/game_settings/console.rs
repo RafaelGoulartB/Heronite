@@ -1,4 +1,4 @@
-//! Game settings in console mode (`o2-2.jpg`): full screen, the game's art
+//! Game settings in console mode: full screen, the game's art
 //! on top with its cover and title, tabs on LB / RB, one focused row at a
 //! time. The Heroic tabs are the settings panel's console rows; Launch,
 //! Details and Images have their own rows here.

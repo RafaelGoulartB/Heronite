@@ -1,4 +1,4 @@
-//! Settings in console mode (`o2-1.jpg`): the groups on LB / RB, the
+//! Settings in console mode: the groups on LB / RB, the
 //! group's sections on the left, the focused section's rows on the right
 //! (◀ ▶ move between the two columns when a row has no value to change).
 //! General, Downloads, Advanced and the Game defaults are the Heroic

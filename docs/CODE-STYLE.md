@@ -44,8 +44,9 @@ Remove:
   `// Buttons`).
 - Change history: "was X", "moved from Y", "the old dialog is gone",
   "legacy name". Git keeps the history.
-- References to design mockups and agent briefs (`o1-1.jpg`, "OPTION 1",
-  `docs/agents/*.md`). `docs/UI-CONVENTIONS.md` links the design once.
+- References to design mockups, briefs or other files that are not in the
+  repository (`o1-1.jpg`, "OPTION 1"). `docs/UI-CONVENTIONS.md` describes the
+  design.
 - Commented-out code.
 
 Long `// ------` section rulers are for long files that cannot be split. In
