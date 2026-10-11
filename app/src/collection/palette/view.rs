@@ -1,4 +1,8 @@
 //! The palette overlay: input, grouped results, footer.
+//!
+//! Two levels: the main list, and the actions of one game (→ or Ctrl Enter
+//! on a game, its chevron, or "All actions"). Esc, or Backspace in the empty
+//! box, goes back to the main list with its text as it was.
 
 use std::rc::Rc;
 use std::time::Duration;
@@ -7,7 +11,7 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::rank::{search, Filter, ItemRef, Results};
+use super::rank::{actions_list, search, Filter, ItemRef, Results};
 use super::sources::{Act, Entry};
 use crate::icons::Icon;
 use crate::theme;
@@ -17,7 +21,11 @@ use crate::ui::icon;
 
 #[derive(Clone, Debug)]
 pub(super) enum PaletteEvent {
-    Run(Act),
+    /// Run `act`; `id` goes to the history.
+    Run { act: Act, id: SharedString },
+    /// List every action of this game (the host answers with
+    /// [`PaletteView::show_game`]).
+    OpenGame(String),
     Close,
 }
 
@@ -28,9 +36,22 @@ const LIST_PAD: f32 = 6.;
 const LIST_MAX_H: f32 = 9. * ROW_H + CAPTION_H;
 const PANEL_W: f32 = 620.;
 const TOP: f32 = 90.;
+const ROOT_PLACEHOLDER: &str = "Type a command, page or game\u{2026}";
+
+/// The second level: one game's actions.
+struct GameLevel {
+    title: SharedString,
+    entries: Rc<Vec<Entry>>,
+    /// The main list as it was, restored by [`PaletteView::back`].
+    root_query: String,
+    root_selected: usize,
+}
 
 pub(super) struct PaletteView {
     entries: Rc<Vec<Entry>>,
+    /// Ids run lately, most recent first.
+    recent: Rc<Vec<String>>,
+    game: Option<GameLevel>,
     input: Entity<InputState>,
     query: String,
     filter: Filter,
@@ -43,10 +64,10 @@ pub(super) struct PaletteView {
 impl EventEmitter<PaletteEvent> for PaletteView {}
 
 impl PaletteView {
-    pub fn new(entries: Rc<Vec<Entry>>, query: &str, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(entries: Rc<Vec<Entry>>, recent: Rc<Vec<String>>, query: &str, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| {
             let mut s = InputState::new(window, cx);
-            s.set_placeholder("Type a command, page or game\u{2026}", window, cx);
+            s.set_placeholder(ROOT_PLACEHOLDER, window, cx);
             s.set_value(query.to_string(), window, cx);
             s
         });
@@ -62,6 +83,8 @@ impl PaletteView {
         input.update(cx, |s, cx| s.focus(window, cx));
         let mut this = Self {
             entries,
+            recent,
+            game: None,
             input,
             query: query.to_string(),
             filter: Filter::All,
@@ -70,22 +93,34 @@ impl PaletteView {
             scroll: ScrollHandle::new(),
             _sub: sub,
         };
-        this.results = search(&this.entries, &this.query, this.filter);
+        this.results = this.rank();
         this
     }
 
+    fn rank(&self) -> Results {
+        match &self.game {
+            Some(g) => actions_list(&g.entries, &self.query, &self.recent, &g.title),
+            None => search(&self.entries, &self.query, self.filter, &self.recent),
+        }
+    }
+
     fn recompute(&mut self, cx: &mut Context<Self>) {
-        self.results = search(&self.entries, &self.query, self.filter);
+        self.results = self.rank();
         self.selected = 0;
         self.scroll.set_offset(point(px(0.), px(0.)));
         cx.notify();
     }
 
     fn entry(&self, r: ItemRef) -> &Entry {
-        match r {
-            ItemRef::Entry(i) => &self.entries[i],
-            ItemRef::Verb(i) => &self.results.verbs[i],
+        match (r, &self.game) {
+            (ItemRef::Entry(i), Some(g)) => &g.entries[i],
+            (ItemRef::Entry(i), None) => &self.entries[i],
+            (ItemRef::Verb(i), _) => &self.results.verbs[i],
         }
+    }
+
+    fn selected_entry(&self) -> Option<&Entry> {
+        self.results.items().nth(self.selected).map(|i| self.entry(i))
     }
 
     /// Top and bottom of the selected row inside the list content (a group's
@@ -140,7 +175,11 @@ impl PaletteView {
         cx.notify();
     }
 
+    /// Next / previous filter (the main list only).
     pub(super) fn cycle_filter(&mut self, back: bool, cx: &mut Context<Self>) {
+        if self.game.is_some() {
+            return;
+        }
         self.filter = if back { self.filter.prev() } else { self.filter.next() };
         self.recompute(cx);
     }
@@ -152,11 +191,64 @@ impl PaletteView {
         }
     }
 
-    /// Runs the selected item.
+    /// Runs the selected item. A disabled one only tells why (it is shown).
     pub fn activate(&mut self, cx: &mut Context<Self>) {
-        let Some(item) = self.results.items().nth(self.selected) else { return };
-        let act = self.entry(item).act.clone();
-        cx.emit(PaletteEvent::Run(act));
+        let Some(e) = self.selected_entry() else { return };
+        if e.disabled.is_some() {
+            return;
+        }
+        let ev = match &e.act {
+            Act::GameActions(key) => PaletteEvent::OpenGame(key.clone()),
+            act => PaletteEvent::Run { act: act.clone(), id: e.id.clone() },
+        };
+        cx.emit(ev);
+    }
+
+    /// Asks for the actions of the selected game (or of the game the
+    /// selected verb is about). Returns whether there was one.
+    pub fn open_selected_game(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.game.is_some() {
+            return false;
+        }
+        let Some(key) = self.selected_entry().and_then(|e| e.game_key()).map(str::to_string) else { return false };
+        cx.emit(PaletteEvent::OpenGame(key));
+        true
+    }
+
+    /// The second level, for the game `title` (entries from `action_entries`).
+    pub fn show_game(&mut self, title: SharedString, entries: Vec<Entry>, window: &mut Window, cx: &mut Context<Self>) {
+        let root_query = std::mem::take(&mut self.query);
+        let root_selected = if self.game.is_some() { 0 } else { self.selected };
+        let placeholder = format!("Search the actions of {title}\u{2026}");
+        self.game = Some(GameLevel { title, entries: Rc::new(entries), root_query, root_selected });
+        self.input.update(cx, |s, cx| {
+            s.set_value(String::new(), window, cx);
+            s.set_placeholder(placeholder, window, cx);
+        });
+        self.recompute(cx);
+    }
+
+    /// Back to the main list from a game's actions; `false` when on it.
+    pub fn back(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(g) = self.game.take() else { return false };
+        self.query = g.root_query.clone();
+        self.input.update(cx, |s, cx| {
+            s.set_value(g.root_query, window, cx);
+            s.set_placeholder(ROOT_PLACEHOLDER, window, cx);
+        });
+        self.results = self.rank();
+        self.selected = g.root_selected.min(self.results.count().saturating_sub(1));
+        self.reveal_selected();
+        cx.notify();
+        true
+    }
+
+    pub fn in_game(&self) -> bool {
+        self.game.is_some()
+    }
+
+    pub fn query_is_empty(&self) -> bool {
+        self.query.is_empty()
     }
 
     /// Currently listed titles (tests and debugging).
@@ -168,6 +260,33 @@ impl PaletteView {
     fn row(&self, n: usize, item: ItemRef, cx: &mut Context<Self>) -> Stateful<Div> {
         let e = self.entry(item);
         let sel = n == self.selected;
+        let off = e.disabled.is_some();
+        // A game of the main list opens its actions from the chevron too.
+        let chevron = (self.game.is_none() && matches!(e.act, Act::SelectGame(_))).then(|| {
+            div()
+                .id(SharedString::from(format!("pal-more-{n}")))
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(24.))
+                .rounded(px(6.))
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::white_a(0.1)))
+                .child(icon(Icon::ChevronRight, px(16.), if sel { theme::text_primary() } else { theme::text_dim() }))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.selected = n;
+                    this.open_selected_game(cx);
+                }))
+        });
+        let icon_color = if off {
+            theme::text_dim()
+        } else if sel {
+            theme::accent()
+        } else {
+            theme::text_muted()
+        };
         div()
             .id(SharedString::from(format!("pal-row-{n}")))
             .relative()
@@ -178,8 +297,8 @@ impl PaletteView {
             .h(px(ROW_H))
             .px(px(12.))
             .rounded(px(theme::R_ITEM))
-            .cursor_pointer()
-            .when(sel, |d| d.bg(theme::accent_tint()))
+            .when(!off, |d| d.cursor_pointer())
+            .when(sel, |d| d.bg(if off { theme::menu_item_hover() } else { theme::accent_tint() }))
             .when(!sel, |d| d.hover(|s| s.bg(theme::menu_item_hover())))
             .on_mouse_move(cx.listener(move |this, _, _, cx| {
                 if this.selected != n {
@@ -191,13 +310,30 @@ impl PaletteView {
                 this.selected = n;
                 this.activate(cx);
             }))
-            .when(sel, |d| {
+            .when(sel && !off, |d| {
                 d.child(div().absolute().left(px(0.)).top(px(8.)).bottom(px(8.)).w(px(2.)).rounded_full().bg(theme::accent()))
             })
-            .child(icon(e.icon, px(16.), if sel { theme::accent() } else { theme::text_muted() }))
-            .child(div().flex_none().max_w(px(340.)).truncate().text_size(px(14.)).text_color(theme::text_primary()).child(e.title.clone()))
-            .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(theme::text_dim()).child(e.subtitle.clone()))
+            .child(icon(e.icon, px(16.), icon_color))
+            .child(
+                div()
+                    .flex_none()
+                    .max_w(px(340.))
+                    .truncate()
+                    .text_size(px(14.))
+                    .text_color(if off { theme::text_dim() } else { theme::text_primary() })
+                    .child(e.title.clone()),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(px(12.))
+                    .text_color(if off { theme::text_muted() } else { theme::text_dim() })
+                    .child(e.disabled.clone().unwrap_or_else(|| e.subtitle.clone())),
+            )
             .children(e.shortcut.map(kbd))
+            .children(chevron)
     }
 
     fn filter_pills(&self, cx: &mut Context<Self>) -> Div {
@@ -220,6 +356,34 @@ impl PaletteView {
             );
         }
         bar
+    }
+
+    /// The game whose actions are listed, before the input; a click goes back.
+    fn crumb(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let g = self.game.as_ref()?;
+        Some(
+            div()
+                .id("pal-crumb")
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(4.))
+                .max_w(px(220.))
+                .pl(px(10.))
+                .pr(px(6.))
+                .py(px(3.))
+                .rounded_full()
+                .cursor_pointer()
+                .bg(theme::accent_tint())
+                .hover(|s| s.bg(theme::menu_item_hover()))
+                .text_size(px(12.5))
+                .text_color(theme::text_primary())
+                .child(div().min_w_0().truncate().child(g.title.clone()))
+                .child(icon(Icon::ChevronRight, px(14.), theme::text_muted()))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.back(window, cx);
+                })),
+        )
     }
 }
 
@@ -278,10 +442,12 @@ impl Render for PaletteView {
             .border_b_1()
             .border_color(theme::white_a(0.08))
             .child(icon(Icon::FaSearch, px(15.), theme::text_muted()))
+            .children(self.crumb(cx))
             .child(div().flex_1().min_w_0().text_size(px(15.)).text_color(theme::text_primary()).child(Input::new(&self.input).appearance(false)))
             .child(kbd("Esc"));
 
-        let footer = div()
+        let has_game = self.game.is_none() && self.selected_entry().is_some_and(|e| e.game_key().is_some());
+        let mut footer = div()
             .flex()
             .flex_none()
             .items_center()
@@ -293,10 +459,16 @@ impl Render for PaletteView {
             .text_size(px(12.))
             .text_color(theme::text_dim())
             .child(hint(vec!["\u{2191}", "\u{2193}"], "move"))
-            .child(hint(vec!["\u{21b5}"], "open"))
-            .child(hint(vec!["Tab"], "filter by type"))
-            .child(div().flex_1())
-            .child(self.filter_pills(cx));
+            .child(hint(vec!["\u{21b5}"], if self.game.is_some() { "run" } else { "open" }));
+        footer = if self.game.is_some() {
+            footer.child(hint(vec!["Esc"], "back")).child(div().flex_1())
+        } else {
+            footer
+                .when(has_game, |f| f.child(hint(vec!["\u{2192}"], "actions")))
+                .child(hint(vec!["Tab"], "filter"))
+                .child(div().flex_1())
+                .child(self.filter_pills(cx))
+        };
 
         let panel = glass_panel(theme::R_POPOVER)
             .id("palette")

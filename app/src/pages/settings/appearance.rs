@@ -579,3 +579,69 @@ pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list:
         _ => {}
     }
 }
+
+/// Command palette toggles of this section (see `settings/palette.rs`):
+/// from the page when it exists, else from what the Collection loaded.
+pub(super) fn palette_commands(d: Option<&SettingsPage>, loaded: Option<&EffectiveSettings>) -> Vec<crate::pages::commands::PageCommand> {
+    use crate::icons::Icon;
+    use crate::pages::commands::PageCommand;
+    let settings = d.map(|d| &d.settings).or(loaded);
+    let ui = d.map(|d| d.appearance.ui).unwrap_or_else(theme::appearance);
+    let mut v = Vec::new();
+    if let Some(bg) = d.map(|d| d.appearance.enabled).or(settings.map(|s| s.background.enabled)) {
+        v.push(if bg {
+            PageCommand::new("bg", "Turn off the background artwork", "The selected game's art behind the Collection", Icon::VisibilityOff)
+        } else {
+            PageCommand::new("bg", "Use the game artwork as background", "The selected game's art behind the Collection", Icon::Visibility)
+        }
+        .keywords("appearance stage wallpaper picture backdrop"));
+    }
+    v.push(match ui.interface_mode {
+        InterfaceMode::Transparent => PageCommand::new("mode", "Switch the interface to Solid", "Opaque panels in a solid colour", Icon::Tune),
+        InterfaceMode::Solid => PageCommand::new("mode", "Switch the interface to Transparent", "Glass panels over the game artwork", Icon::Tune),
+    }
+    .keywords("appearance glass opaque panels menus dialogs theme"));
+    for t in SolidTint::ALL {
+        let current = ui.interface_mode == InterfaceMode::Solid && ui.solid_tint == t;
+        v.push(
+            PageCommand::new(format!("tint:{}", t.as_str()), format!("Solid interface: {}", t.label()), "Panels in this colour", Icon::Tune)
+                .keywords("appearance colour color tint theme")
+                .disabled(current.then_some("In use")),
+        );
+    }
+    if let Some(grey) = settings.map(|s| s.grey_uninstalled_games) {
+        v.push(
+            PageCommand::new("grey", if grey { "Show uninstalled games in colour" } else { "Show uninstalled games in grey" }, "Covers of the Collection", Icon::GridView)
+                .keywords("appearance covers greyscale gray"),
+        );
+    }
+    v
+}
+
+/// Runs a toggle of [`palette_commands`]; `false` when `id` is not one.
+pub(super) fn run_palette(d: &mut SettingsPage, id: &str, cx: &mut Context<SettingsPage>) -> bool {
+    match id {
+        "bg" => {
+            d.appearance.enabled = !d.appearance.enabled;
+            save_background(d, cx);
+        }
+        "mode" => {
+            d.appearance.ui.interface_mode = match d.appearance.ui.interface_mode {
+                InterfaceMode::Transparent => InterfaceMode::Solid,
+                InterfaceMode::Solid => InterfaceMode::Transparent,
+            };
+            apply_interface(d, true, cx);
+        }
+        "grey" => {
+            let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !d.settings.grey_uninstalled_games);
+            d.saved(res, cx);
+        }
+        _ => {
+            let Some(t) = id.strip_prefix("tint:").and_then(SolidTint::parse) else { return false };
+            d.appearance.ui.interface_mode = InterfaceMode::Solid;
+            d.appearance.ui.solid_tint = t;
+            apply_interface(d, true, cx);
+        }
+    }
+    true
+}

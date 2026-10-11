@@ -10,6 +10,7 @@
 //! (use a fixture dir!) for screenshots.
 
 mod console;
+mod palette;
 mod render;
 
 use std::collections::HashMap;
@@ -46,6 +47,8 @@ pub struct WineManagerPage {
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
     console_query: String,
+    /// Palette command waiting for the release list (see `palette.rs`).
+    palette_pending: Option<String>,
 }
 
 impl EventEmitter<PageEvent> for WineManagerPage {}
@@ -89,6 +92,7 @@ impl WineManagerPage {
             console_list: Default::default(),
             layer: Default::default(),
             console_query: String::new(),
+            palette_pending: None,
         };
         let auto_install = debug.split(',').find_map(|t| t.strip_prefix("install=")).map(str::to_owned);
         this.init(debug_has("progress"), debug_has("confirm"), auto_install, cx);
@@ -140,6 +144,7 @@ impl WineManagerPage {
                 if !this.offline && (this.releases.is_empty() || stale) {
                     this.manager.start_refresh(Repository::LINUX.to_vec());
                 }
+                this.run_palette_pending(cx);
                 cx.notify();
             })
             .ok();
@@ -236,6 +241,7 @@ impl WineManagerPage {
             let releases = cx.background_spawn(async move { heronite_wine::store::read_releases(&data_paths) }).await;
             this.update(cx, |this, cx| {
                 this.releases = releases;
+                this.run_palette_pending(cx);
                 cx.notify();
             })
             .ok();

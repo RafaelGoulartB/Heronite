@@ -5,14 +5,21 @@
 //! * This file is the glue with [`CollectionView`]: opening and closing, the
 //!   keys (palette navigation while open, global shortcuts while closed) and
 //!   running what was chosen through the existing code paths.
+//! * What it offers comes from the app's own lists, so new features show up
+//!   without touching the palette: a game's actions from `game_actions.rs`
+//!   (the context menu's list), the pages' commands from
+//!   `pages/commands.rs`, the View menu from the Collection's state.
+//! * Items run are kept (ids, most recent first) in the UI state: they fill
+//!   the "Recent" group and rank first inside their tier.
 //! * Keys are taken with a keystroke interceptor, i.e. before any input
-//!   (search box, palette box) sees them, so Ctrl K, Ctrl 1..5, Ctrl `,`,
-//!   Ctrl N and F5 work wherever the focus is, and the arrows, Tab, Enter and
-//!   Esc drive the list while the palette is open.
+//!   (search box, palette box) sees them, so Ctrl K, Ctrl 1..6, Ctrl `,`,
+//!   Ctrl N and F5 work wherever the focus is (not over a dialog, also a
+//!   page's own), and the arrows, Tab, Enter and Esc drive the list while
+//!   the palette is open.
 //!
 //! Debug: `HERONITE_DEBUG_PALETTE=<query>` opens it with that query (`-` for
 //! none); `HERONITE_DEBUG_PALETTE=<query>@pages|actions|games` also picks the
-//! filter.
+//! filter, and `HERONITE_DEBUG_PALETTE_KEYS=down,right,...` feeds it keys.
 
 mod matching;
 mod rank;
@@ -23,11 +30,15 @@ use std::rc::Rc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::collection::collect_facet_options;
 
-use self::sources::{Act, GameRow};
+use self::sources::{Act, GameRow, ViewCmd};
 use self::view::{PaletteEvent, PaletteView};
 use super::CollectionView;
 use crate::pages::Page;
+
+/// Items kept in the palette's history.
+const HISTORY: usize = 20;
 
 /// Palette state of the Collection.
 #[derive(Default)]
@@ -63,8 +74,14 @@ impl CollectionView {
         self.open_palette_with("", window, cx);
     }
 
+    /// A dialog (the Collection's or the shown page's own) or the screenshot
+    /// viewer is up.
+    fn modal_open(&self, cx: &App) -> bool {
+        self.dialog.is_some() || self.shots.is_open() || self.page_modal(cx)
+    }
+
     fn open_palette_with(&mut self, query: &str, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<PaletteView>> {
-        if self.dialog.is_some() || self.shots.is_open() {
+        if self.modal_open(cx) {
             return None;
         }
         if let Some(v) = self.palette.view.clone() {
@@ -72,8 +89,9 @@ impl CollectionView {
         }
         self.open_menu = None;
         self.context_menu = None;
-        let entries = Rc::new(self.palette_entries());
-        let view = cx.new(|cx| PaletteView::new(entries, query, window, cx));
+        let entries = Rc::new(self.palette_entries(cx));
+        let recent = Rc::new(self.ui.palette_recent.clone());
+        let view = cx.new(|cx| PaletteView::new(entries, recent, query, window, cx));
         self.palette.sub = Some(cx.subscribe_in(&view, window, Self::on_palette_event));
         self.palette.view = Some(view.clone());
         cx.notify();
@@ -88,36 +106,70 @@ impl CollectionView {
         }
     }
 
-    fn on_palette_event(&mut self, _: &Entity<PaletteView>, ev: &PaletteEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_palette_event(&mut self, view: &Entity<PaletteView>, ev: &PaletteEvent, window: &mut Window, cx: &mut Context<Self>) {
         match ev {
             PaletteEvent::Close => self.close_palette(window, cx),
-            PaletteEvent::Run(act) => {
+            PaletteEvent::Run { act, id } => {
+                self.remember_palette_item(id);
                 self.close_palette(window, cx);
                 self.run_palette_act(act.clone(), window, cx);
+            }
+            PaletteEvent::OpenGame(key) => {
+                let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
+                let items = self.game_actions(&game, cx);
+                let entries = sources::action_entries(key, &game.title, &items, false);
+                view.update(cx, |p, cx| p.show_game(game.title.clone().into(), entries, window, cx));
             }
         }
     }
 
-    /// Pages, actions and the games of the library as they are now.
-    fn palette_entries(&self) -> Vec<sources::Entry> {
+    /// Puts `id` first in the history (saved with the UI state).
+    fn remember_palette_item(&mut self, id: &str) {
+        let recent = &mut self.ui.palette_recent;
+        recent.retain(|r| r != id);
+        recent.insert(0, id.to_string());
+        recent.truncate(HISTORY);
+        self.save_ui();
+    }
+
+    /// Everything the palette offers now: pages and global actions, the
+    /// selected game's actions, the View menu, the pages' commands and the
+    /// games of the library.
+    fn palette_entries(&mut self, cx: &mut Context<Self>) -> Vec<sources::Entry> {
         let mut v = sources::static_entries();
-        if let Some(lib) = &self.lib {
-            let mut games: Vec<_> = lib.games.iter().collect();
-            games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower).then(a.key.cmp(&b.key)));
-            v.reserve(games.len());
-            for g in games {
-                let playtime = heronite_data::collection::playtime_label(g.playtime_minutes);
-                v.push(sources::game_entry(&GameRow {
-                    key: &g.key,
-                    title: &g.title,
-                    store_title: &g.game.title,
-                    source: g.source_label,
-                    playtime: &playtime,
-                    installed: g.installed,
-                    has_folder: g.details.install_path.is_some(),
-                    last_played: g.last_played.as_deref(),
-                }));
+        let signed_in = crate::services::downloads_started(cx).map(|s| s.read(cx).account().logged_in);
+        if let Some(e) = v.iter_mut().find(|e| e.act == Act::EpicUpdates) {
+            if signed_in == Some(false) {
+                e.disable("Sign in to Epic Games first");
             }
+        }
+        // The game selected in the Collection: its actions, by name.
+        let selected = self.selected.clone().filter(|_| self.page == Page::Collection);
+        if let Some(game) = selected.and_then(|k| self.lib.as_ref().and_then(|l| l.get(&k)).cloned()) {
+            let items = self.game_actions(&game, cx);
+            v.extend(sources::action_entries(&game.key, &game.title, &items, true));
+        }
+        v.extend(self.page_commands(cx).iter().map(|(page, c)| sources::page_entry(*page, c)));
+        let Some(lib) = self.lib.clone() else { return v };
+        v.extend(sources::view_entries(&self.ui, &collect_facet_options(&lib.games)));
+        let mut games: Vec<_> = lib.games.iter().collect();
+        games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower).then(a.key.cmp(&b.key)));
+        v.reserve(games.len());
+        for g in games {
+            let playtime = heronite_data::collection::playtime_label(g.playtime_minutes);
+            v.push(sources::game_entry(&GameRow {
+                key: &g.key,
+                title: &g.title,
+                store_title: &g.game.title,
+                source: g.source_label,
+                playtime: &playtime,
+                installed: g.installed,
+                has_folder: g.details.install_path.is_some(),
+                playing: self.playing.contains_key(&g.app_name),
+                favourite: g.favourite,
+                hidden: g.hidden,
+                last_played: g.last_played.as_deref(),
+            }));
         }
         v
     }
@@ -136,12 +188,26 @@ impl CollectionView {
                 self.close_palette(window, cx);
                 return true;
             }
+            if ctrl && key == "enter" {
+                view.update(cx, |p, cx| p.open_selected_game(cx));
+                return true;
+            }
             let plain = !m.control && !m.alt && !m.platform;
             if !plain {
                 return false;
             }
             match key {
-                "escape" => self.close_palette(window, cx),
+                "escape" => {
+                    if !view.update(cx, |p, cx| p.back(window, cx)) {
+                        self.close_palette(window, cx);
+                    }
+                }
+                // In the empty box of a game's actions: back to the main list.
+                "backspace" if view.read(cx).in_game() && view.read(cx).query_is_empty() => {
+                    view.update(cx, |p, cx| p.back(window, cx));
+                }
+                // On a game: its actions (else the input moves its caret).
+                "right" => return view.update(cx, |p, cx| p.open_selected_game(cx)),
                 "up" => view.update(cx, |p, cx| p.move_selection(-1, cx)),
                 "down" => view.update(cx, |p, cx| p.move_selection(1, cx)),
                 "pageup" => view.update(cx, |p, cx| p.move_selection(-8, cx)),
@@ -156,7 +222,7 @@ impl CollectionView {
             return true;
         }
         // Closed: global shortcuts, unless something modal is up.
-        if self.dialog.is_some() || self.shots.is_open() {
+        if self.modal_open(cx) {
             return false;
         }
         if ctrl {
@@ -190,10 +256,7 @@ impl CollectionView {
     fn run_palette_act(&mut self, act: Act, window: &mut Window, cx: &mut Context<Self>) {
         match act {
             Act::Go(page) => self.navigate(page, window, cx),
-            Act::Section(section) => {
-                crate::pages::settings::request_section(section, cx);
-                self.navigate(Page::Settings, window, cx);
-            }
+            Act::Section(section) => self.open_settings_section(section, window, cx),
             Act::AddGame => {
                 self.open_add_game(window, cx);
             }
@@ -215,30 +278,50 @@ impl CollectionView {
                     self.show_toast("There is no logs folder yet: it appears when a game is launched", true, cx);
                 }
             }
-            // The quit question needs the window: ask once this update ended.
             Act::Console => self.set_console(true, window, cx),
             Act::YearReview => self.open_year_review(window, cx),
+            Act::ManageStatuses => self.open_manage_statuses(window, cx),
+            // The quit question needs the window: ask once this update ended.
             Act::Quit => cx.defer(crate::system::request_quit),
+            Act::View(cmd) => self.run_view_cmd(cmd, window, cx),
+            Act::PageCmd { page, id, navigate } => self.run_page_command(page, &id, navigate, window, cx),
             Act::SelectGame(key) => self.palette_select(&key, window, cx),
-            Act::PlayGame(key) => {
+            Act::Game(key, action) => {
                 self.palette_select(&key, window, cx);
-                self.primary_action(&key, cx);
-                cx.notify();
+                self.run_game_action(&key, &action, window, cx);
             }
-            Act::GameSettings(key) => {
-                self.palette_select(&key, window, cx);
-                let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(&key)).cloned()) else { return };
-                let tab = crate::dialogs::game_settings::Tab::settings_start(&g);
-                let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
-                self.open_dialog(view, cx);
-            }
-            Act::OpenFolder(key) => {
-                let Some(path) = self.lib.as_ref().and_then(|l| l.get(&key)).and_then(|g| g.details.install_path.clone()) else { return };
-                let dir = std::path::Path::new(&path);
-                let target = if dir.is_file() { dir.parent().unwrap_or(dir) } else { dir };
-                self.open_in_file_manager(target, cx);
-            }
+            // The view handles it (second level); nothing to run here.
+            Act::GameActions(_) => {}
         }
+    }
+
+    /// The View menu's controls, shown on the Collection.
+    fn run_view_cmd(&mut self, cmd: ViewCmd, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != Page::Collection {
+            self.navigate(Page::Collection, window, cx);
+        }
+        match cmd {
+            ViewCmd::Sort(mode) => {
+                self.ui.sort = mode;
+                self.save_ui();
+                self.refresh_groups();
+            }
+            ViewCmd::Show(filter) => self.set_install_filter(filter, cx),
+            ViewCmd::GroupByStatus => {
+                self.ui.group_by_status = !self.ui.group_by_status;
+                self.save_ui();
+                self.refresh_groups();
+            }
+            ViewCmd::ShowHidden => self.set_show_hidden(!self.ui.show_hidden, cx),
+            ViewCmd::ClearFilters => {
+                self.ui.clear_facets();
+                self.save_ui();
+                self.refresh_groups();
+            }
+            ViewCmd::Facet(kind, value) => self.toggle_facet(kind.as_str(), &value),
+        }
+        self.reveal_selected();
+        cx.notify();
     }
 
     fn open_in_file_manager(&mut self, dir: &std::path::Path, cx: &mut Context<Self>) {
@@ -262,7 +345,7 @@ impl CollectionView {
     /// Called from `render`: opens the palette the debug hook asks for and
     /// drops it when a dialog came up (e.g. the quit question).
     pub(super) fn drive_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.palette.view.is_some() && (self.dialog.is_some() || self.shots.is_open()) {
+        if self.palette.view.is_some() && self.modal_open(cx) {
             self.close_palette(window, cx);
         }
         if self.palette.debug_done || self.lib.is_none() {
@@ -282,13 +365,16 @@ impl CollectionView {
             for _ in 0..n {
                 view.update(cx, |p, cx| p.cycle_filter(false, cx));
             }
-            // `HERONITE_DEBUG_PALETTE_KEYS=down,down,tab`: keys fed to the palette.
+            // `HERONITE_DEBUG_PALETTE_KEYS=down,down,tab`: keys fed to the
+            // palette, once its events are subscribed (the next cycle).
             if let Some(keys) = crate::env::value("HERONITE_DEBUG_PALETTE_KEYS") {
-                for k in keys.split(',').filter(|k| !k.is_empty()) {
-                    if let Ok(ks) = Keystroke::parse(k) {
-                        self.palette_key(&ks, window, cx);
+                cx.defer_in(window, move |this, window, cx| {
+                    for k in keys.split(',').filter(|k| !k.is_empty()) {
+                        if let Ok(ks) = Keystroke::parse(k) {
+                            this.palette_key(&ks, window, cx);
+                        }
                     }
-                }
+                });
             }
         }
     }

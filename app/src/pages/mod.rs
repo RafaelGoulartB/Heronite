@@ -7,6 +7,7 @@
 //! UI thread, shared files only through the backend crates. Lay the content
 //! out with [`sheet`] so pages share the chrome, width and padding.
 
+pub mod commands;
 pub mod downloads;
 pub mod emulators;
 pub mod epic;

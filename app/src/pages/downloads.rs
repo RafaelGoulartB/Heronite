@@ -2,6 +2,7 @@
 //! (reorder / remove) and the history, backed by the Epic download manager.
 
 mod console;
+mod palette;
 
 use chrono::{Local, TimeZone};
 use gpui_kit::prelude::*;

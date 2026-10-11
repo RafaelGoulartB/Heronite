@@ -7,6 +7,7 @@ use gpui_kit::*;
 use super::header::Menu;
 use super::CollectionView;
 use crate::icons::Icon;
+use crate::pages::commands::{CommandCtx, PageCommand, PaletteCommands};
 use crate::pages::{self, Page, PageCtx, PageEvent};
 use crate::theme;
 use crate::ui::dropdown::{menu_separator, Align};
@@ -341,6 +342,69 @@ impl CollectionView {
                 self.pages.hooks.insert(Page::Settings, crate::console::PadHook::new(&v));
                 self.pages.settings = Some(v.into());
             }
+        }
+    }
+
+    /// Palette commands of every page, also of the ones not shown yet
+    /// (`pages/commands.rs`).
+    pub(super) fn page_commands(&self, cx: &App) -> Vec<(Page, PageCommand)> {
+        fn list<P: PaletteCommands>(page: Page, view: &Option<AnyView>, ctx: &CommandCtx, cx: &App, out: &mut Vec<(Page, PageCommand)>) {
+            let entity = view.clone().and_then(|v| v.downcast::<P>().ok());
+            out.extend(P::palette_commands(entity.as_ref().map(|e| e.read(cx)), ctx, cx).into_iter().map(|c| (page, c)));
+        }
+        let ctx = CommandCtx { settings: self.lib.as_ref().map(|l| &l.settings) };
+        let p = &self.pages;
+        let mut out = Vec::new();
+        list::<pages::downloads::DownloadsPage>(Page::Downloads, &p.downloads, &ctx, cx, &mut out);
+        list::<pages::wine_manager::WineManagerPage>(Page::WineManager, &p.wine, &ctx, cx, &mut out);
+        list::<pages::epic::EpicPage>(Page::Epic, &p.epic, &ctx, cx, &mut out);
+        list::<pages::emulators::EmulatorsPage>(Page::Emulators, &p.emulators, &ctx, cx, &mut out);
+        list::<pages::stats::StatsPage>(Page::Statistics, &p.stats, &ctx, cx, &mut out);
+        list::<pages::settings::SettingsPage>(Page::Settings, &p.settings, &ctx, cx, &mut out);
+        out
+    }
+
+    /// Runs a page's palette command, showing the page first when the
+    /// command asks for it (and creating it in any case).
+    pub(super) fn run_page_command(&mut self, page: Page, id: &str, navigate: bool, window: &mut Window, cx: &mut Context<Self>) {
+        fn run<P: PaletteCommands>(view: &Option<AnyView>, id: &str, window: &mut Window, cx: &mut App) {
+            if let Some(e) = view.clone().and_then(|v| v.downcast::<P>().ok()) {
+                e.update(cx, |p, cx| p.run_palette_command(id, window, cx));
+            }
+        }
+        if navigate {
+            self.navigate(page, window, cx);
+        } else {
+            self.ensure_page(page, window, cx);
+        }
+        let p = &self.pages;
+        match page {
+            Page::Collection => {}
+            Page::Downloads => run::<pages::downloads::DownloadsPage>(&p.downloads, id, window, cx),
+            Page::WineManager => run::<pages::wine_manager::WineManagerPage>(&p.wine, id, window, cx),
+            Page::Epic => run::<pages::epic::EpicPage>(&p.epic, id, window, cx),
+            Page::Emulators => run::<pages::emulators::EmulatorsPage>(&p.emulators, id, window, cx),
+            Page::Statistics => run::<pages::stats::StatsPage>(&p.stats, id, window, cx),
+            Page::Settings => run::<pages::settings::SettingsPage>(&p.settings, id, window, cx),
+        }
+        cx.notify();
+    }
+
+    /// The page shown has a dialog of its own open (the global shortcuts
+    /// and the palette wait for it).
+    pub(super) fn page_modal(&self, cx: &App) -> bool {
+        fn modal<P: PaletteCommands>(view: &Option<AnyView>, cx: &App) -> bool {
+            view.clone().and_then(|v| v.downcast::<P>().ok()).is_some_and(|e| e.read(cx).page_modal())
+        }
+        let p = &self.pages;
+        match self.page {
+            Page::Collection => false,
+            Page::Downloads => modal::<pages::downloads::DownloadsPage>(&p.downloads, cx),
+            Page::WineManager => modal::<pages::wine_manager::WineManagerPage>(&p.wine, cx),
+            Page::Epic => modal::<pages::epic::EpicPage>(&p.epic, cx),
+            Page::Emulators => modal::<pages::emulators::EmulatorsPage>(&p.emulators, cx),
+            Page::Statistics => modal::<pages::stats::StatsPage>(&p.stats, cx),
+            Page::Settings => modal::<pages::settings::SettingsPage>(&p.settings, cx),
         }
     }
 

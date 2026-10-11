@@ -141,7 +141,7 @@ impl CollectionView {
         cx.notify();
     }
 
-    fn set_install_filter(&mut self, f: InstallFilter, cx: &mut Context<Self>) {
+    pub(super) fn set_install_filter(&mut self, f: InstallFilter, cx: &mut Context<Self>) {
         self.ui.install_filter = f;
         self.save_ui();
         self.refresh_groups();

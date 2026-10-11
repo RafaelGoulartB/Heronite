@@ -6,6 +6,7 @@ use gpui_kit::*;
 use heronite_data::status::{set_game_status, SetStatusExtras};
 use heronite_data::{CollectionGame, Library};
 
+use super::game_actions::GameActionItem;
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
@@ -95,10 +96,11 @@ impl CollectionView {
         let mut menu = paper().min_w(px(240.));
         menu = menu.child(Self::status_row(&lib, &game, &key, status_open, flyout_left, cx));
         menu = menu.child(self.primary_row(&game, &key, playing, install_open, flyout_left, cx));
-        menu = Self::game_items(menu, &game, &key, cx);
-        menu = self.extras_context_items(menu, &game, cx);
-        menu = self.epic_context_items(menu, &game, cx);
-        menu = self.system_context_items(menu, &game, cx);
+        // Everything else comes from the game's action list (shared with the
+        // command palette, see `game_actions.rs`).
+        for a in self.game_actions(&game, cx).into_iter().filter(|a| a.in_menu) {
+            menu = menu.child(Self::action_row(&key, a, cx));
+        }
         Some(Self::menu_backdrop(menu, position, cx))
     }
 
@@ -199,124 +201,20 @@ impl CollectionView {
         wrap
     }
 
-    /// Favourite / folder / settings / metadata / hide / log items.
-    fn game_items(mut menu: Div, game: &CollectionGame, key: &SharedString, cx: &mut Context<Self>) -> Div {
-        let k = key.clone();
-        menu = menu.child(
-            item("cm-fav")
-                .on_hover(cx.listener(|this, h: &bool, _, cx| {
-                    if *h {
-                        if let Some(m) = this.context_menu.as_mut() {
-                            m.status_open = false;
-                            m.install_open = false;
-                        }
-                        cx.notify();
-                    }
-                }))
-                .child(icon(if game.favourite { Icon::Favorite } else { Icon::FavoriteBorder }, px(18.), theme::text_muted()))
-                .child(if game.favourite { "Remove from favourites" } else { "Add to favourites" })
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
-                        if let Err(err) = heronite_data::config_games::toggle_favourite(&this.data_paths, &g.app_name, &g.title) {
-                            this.show_toast(format!("{err:#}"), true, cx);
-                        }
-                        this.reload(cx);
-                    }
-                    this.close_context_menu(cx);
-                })),
-        );
-
-        if game.installed {
-            let k = key.clone();
-            menu = menu.child(
-                item("cm-folder")
-                    .child(icon(Icon::FolderOpen, px(18.), theme::text_muted()))
-                    .child("Open install folder")
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.open_install_folder(&k, cx);
-                        this.close_context_menu(cx);
-                    })),
-            );
-        }
-
-        if game.installed {
-            let k = key.clone();
-            menu = menu.child(
-                item("cm-settings")
-                    .child(icon(Icon::Tune, px(18.), theme::text_muted()))
-                    .child("Settings")
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let (Some(ctx), Some(g)) = (this.dialog_ctx(), this.lib.as_ref().and_then(|l| l.get(&k)).cloned()) else { return };
-                        let tab = crate::dialogs::game_settings::Tab::settings_start(&g);
-                        let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
-                        this.open_dialog(view, cx);
-                    })),
-            );
-        }
-
-        // Edit game (sideloaded programs and browser games; not Steam/emulated entries).
-        if game.runner == "sideload" && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
-            let k = key.clone();
-            menu = menu.child(
-                item("cm-edit-game")
-                    .child(icon(Icon::Edit, px(18.), theme::text_muted()))
-                    .child("Edit game")
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.open_edit_game(&k, window, cx);
-                    })),
-            );
-        }
-
-        let k = key.clone();
-        menu = menu.child(
-            item("cm-metadata")
-                .child(icon(Icon::TravelExplore, px(18.), theme::text_muted()))
-                .child("Collection metadata")
-                .on_click(cx.listener(move |this, _, window, cx| this.open_metadata_for(&k, window, cx))),
-        );
-
-        let k = key.clone();
-        menu = menu.child(
-            item("cm-hide")
-                .child(icon(if game.hidden { Icon::Visibility } else { Icon::VisibilityOff }, px(18.), theme::text_muted()))
-                .child(if game.hidden { "Unhide" } else { "Hide" })
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
-                        if let Err(err) = heronite_data::config_games::toggle_hidden(&this.data_paths, &g.app_name, &g.title) {
-                            this.show_toast(format!("{err:#}"), true, cx);
-                        }
-                        this.reload(cx);
-                    }
-                    this.close_context_menu(cx);
-                })),
-        );
-
-        if game.recent {
-            let k = key.clone();
-            menu = menu.child(
-                item("cm-recent")
-                    .child(icon(Icon::History, px(18.), theme::text_muted()))
-                    .child("Remove from recent")
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
-                            if let Err(err) = heronite_data::config_games::remove_recent(&this.data_paths, &g.app_name) {
-                                this.show_toast(format!("{err:#}"), true, cx);
-                            }
-                            this.reload(cx);
-                        }
-                        this.close_context_menu(cx);
-                    })),
-            );
-        }
-
-        let k = key.clone();
-        menu = menu.child(
-            item("cm-log")
-                .child(icon(Icon::Description, px(18.), theme::text_muted()))
-                .child("View log")
-                .on_click(cx.listener(move |this, _, _, cx| this.open_game_log(&k, cx))),
-        );
-        menu
+    /// One plain row: hovering it folds the flyouts, a click runs the action.
+    fn action_row(key: &SharedString, a: GameActionItem, cx: &mut Context<Self>) -> Stateful<Div> {
+        let (k, action) = (key.clone(), a.action);
+        item(SharedString::from(format!("cm-{}", a.id)))
+            .on_hover(cx.listener(|this, h: &bool, _, cx| {
+                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open)) {
+                    m.status_open = false;
+                    m.install_open = false;
+                    cx.notify();
+                }
+            }))
+            .child(icon(a.icon, px(18.), theme::text_muted()))
+            .child(a.label)
+            .on_click(cx.listener(move |this, _, window, cx| this.run_game_action(&k, &action, window, cx)))
     }
 
     /// Full-window click catcher that closes the menu, with `menu` anchored at `position`.

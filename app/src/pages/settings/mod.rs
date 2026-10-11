@@ -26,6 +26,7 @@ mod console;
 mod library;
 pub mod logs;
 mod metadata;
+mod palette;
 mod saves;
 mod screenshots;
 mod section;

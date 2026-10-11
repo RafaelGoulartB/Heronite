@@ -12,7 +12,7 @@ const TIER_PREFIX: i32 = 900;
 /// A word of the text starts with the token.
 pub(super) const TIER_WORD: i32 = 800;
 /// The token appears inside a word.
-const TIER_SUBSTR: i32 = 600;
+pub(super) const TIER_SUBSTR: i32 = 600;
 /// The token's letters appear in order (e.g. "wnmg" -> "wine manager").
 const TIER_FUZZY: i32 = 100;
 

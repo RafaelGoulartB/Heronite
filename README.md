@@ -44,7 +44,7 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 ## Your library, organized
 
 - **Collection:** one screen for every game. Covers are grouped by status (Playing, On Going, Plan to Play, Not Played, or your own), and the selected game's art fills the background. The details panel shows screenshots, How Long To Beat times, ProtonDB tier and anti-cheat status, achievements, your rating, the last save backup, and a timeline of every day you played.
-- **Command palette:** press <kbd>Ctrl</kbd> <kbd>K</kbd> to jump to any page, run any action, or find a game and play it, open its settings or its folder. Pages also have direct shortcuts (<kbd>Ctrl</kbd> <kbd>1</kbd> to <kbd>6</kbd>, <kbd>Ctrl</kbd> <kbd>,</kbd>, <kbd>Ctrl</kbd> <kbd>N</kbd>).
+- **Command palette:** press <kbd>Ctrl</kbd> <kbd>K</kbd> to jump to any page or settings section, run any action, or find a game and play it, open its settings or its folder. Press <kbd>→</kbd> on a game to see everything its right-click menu offers (status, favourites, uninstall, shortcuts, Epic tools…). The palette also covers the pages (pause downloads, install the latest Proton, sign in to Epic, add an emulator), the Collection's sort and filters, and appearance toggles. With a game selected, its actions come first, and items you used recently rise to the top. Pages also have direct shortcuts (<kbd>Ctrl</kbd> <kbd>1</kbd> to <kbd>6</kbd>, <kbd>Ctrl</kbd> <kbd>,</kbd>, <kbd>Ctrl</kbd> <kbd>N</kbd>).
 - **Add any game:** add a native Linux program, a Windows program (run through Wine/Proton), a browser game, or a ROM. Covers and backgrounds can come from IGDB, Steam, Lutris, a web image search, or one of your own screenshots.
 
 <table>

@@ -2,6 +2,7 @@
 //! code), account, library refresh and importing an installed game.
 
 mod console;
+mod palette;
 
 use std::process::{Command, Stdio};
 

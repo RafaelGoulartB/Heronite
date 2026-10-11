@@ -131,19 +131,6 @@ fn confirm_spec(job: &Job, plan: &UninstallPlan) -> Confirm {
 }
 
 impl CollectionView {
-    pub(super) fn sideload_uninstall_item(&mut self, menu: Div, game: &CollectionGame, tracking: bool, cx: &mut Context<Self>) -> Div {
-        if tracking || !can_uninstall_local(game) {
-            return menu;
-        }
-        let k = game.key.clone();
-        menu.child(
-            super::context_menu::item("cm-local-uninstall")
-                .child(crate::ui::icon(crate::icons::Icon::DeleteForever, px(18.), crate::theme::text_muted()))
-                .child("Uninstall")
-                .on_click(cx.listener(move |this, _, window, cx| this.open_sideload_uninstall(&k, window, cx))),
-        )
-    }
-
     /// Checks what can be deleted (off the UI thread), then asks.
     pub(super) fn open_sideload_uninstall(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.context_menu = None;

@@ -19,7 +19,7 @@ use heronite_images::{ImageRef, Variant};
 use heronite_metadata::achievements::{load_achievements, Achievement};
 use heronite_metadata::{Endpoints, Http};
 
-use super::context_menu::item;
+use super::game_actions::{GameAction, GameActionItem};
 use super::{achievements, focus, CollectionView};
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog};
 use crate::dialogs::ludusavi_backup::LudusaviBackupDialog;
@@ -27,7 +27,6 @@ use crate::dialogs::playtime::PlaytimeDialog;
 use crate::dialogs::remove_game::RemoveGameDialog;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::icon;
 
 /// Message of the error dialog Heronite shows when Steam is missing
 /// (`collection.steam.clientMissing*`).
@@ -229,49 +228,30 @@ impl CollectionView {
         }
     }
 
-    /// Details, Edit playtime, Backup save (Ludusavi) and Remove from
-    /// Collection (the order of `CollectionCard`'s menu).
-    pub(super) fn extras_context_items(&mut self, mut menu: Div, game: &CollectionGame, cx: &mut Context<Self>) -> Div {
-        let key = game.key.clone();
+    /// Details, Edit playtime, Backup save (Ludusavi), Uninstall and Remove
+    /// from Collection (the order of `CollectionCard`'s menu).
+    pub(super) fn extras_actions(&self, game: &CollectionGame) -> Vec<GameActionItem> {
+        use GameAction as A;
+        let item = GameActionItem::new;
         let tracking = self.playing.contains_key(&game.app_name);
-        let row = |id: &'static str, ic: Icon, label: &'static str| {
-            item(id).child(icon(ic, px(18.), crate::theme::text_muted())).child(label)
-        };
-
+        let mut v = Vec::new();
         if details_url(game).is_some() {
-            let k = key.clone();
-            menu = menu.child(row("cm-details", Icon::OpenInNew, "Details").on_click(cx.listener(move |this, _, _, cx| {
-                this.context_menu = None;
-                this.open_details(&k, cx);
-                cx.notify();
-            })));
+            v.push(item(A::Details, "details", "Details", Icon::OpenInNew, "store page website browser"));
         }
         if !tracking {
-            let k = key.clone();
-            menu = menu.child(row("cm-playtime", Icon::AccessTime, "Edit playtime").on_click(cx.listener(
-                move |this, _, window, cx| this.open_edit_playtime(&k, window, cx),
-            )));
+            v.push(item(A::EditPlaytime, "playtime", "Edit playtime", Icon::AccessTime, "hours time played"));
         }
-        let k = key.clone();
-        menu = menu.child(
-            row("cm-ludusavi", Icon::Save, "Backup save (Ludusavi)").on_click(cx.listener(move |this, _, _, cx| {
-                this.open_ludusavi_backup(&k, cx);
-            })),
-        );
+        v.push(item(A::Ludusavi, "ludusavi", "Backup save (Ludusavi)", Icon::Save, "saves backup"));
         if game.steam_launch_id.is_some() && game.installed && !tracking {
-            let k = key.clone();
-            menu = menu.child(row("cm-steam-uninstall", Icon::DeleteForever, "Uninstall").on_click(cx.listener(
-                move |this, _, window, cx| this.open_steam_uninstall(&k, window, cx),
-            )));
+            v.push(item(A::SteamUninstall, "steam-uninstall", "Uninstall", Icon::DeleteForever, "remove delete steam"));
         }
-        menu = self.sideload_uninstall_item(menu, game, tracking, cx);
+        if !tracking && super::sideload_uninstall::can_uninstall_local(game) {
+            v.push(item(A::LocalUninstall, "local-uninstall", "Uninstall", Icon::DeleteForever, "remove delete files prefix"));
+        }
         if game.runner == "sideload" && !tracking {
-            let k = key.clone();
-            menu = menu.child(row("cm-remove-collection", Icon::DeleteForever, "Remove from Collection").on_click(
-                cx.listener(move |this, _, _, cx| this.open_remove_game(&k, cx)),
-            ));
+            v.push(item(A::RemoveFromCollection, "remove-collection", "Remove from Collection", Icon::DeleteForever, "delete entry"));
         }
-        menu
+        v
     }
 
     pub(super) fn open_edit_playtime(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {

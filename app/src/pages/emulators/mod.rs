@@ -13,6 +13,7 @@ mod actions;
 mod console;
 mod debug;
 mod dialogs;
+mod palette;
 mod render;
 
 use std::time::SystemTime;
@@ -49,6 +50,8 @@ pub struct EmulatorsPage {
     debug: Option<String>,
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
+    /// Palette command waiting for the first load (see `palette.rs`).
+    palette_pending: Option<String>,
 }
 
 impl EventEmitter<PageEvent> for EmulatorsPage {}
@@ -83,6 +86,7 @@ impl EmulatorsPage {
             debug: crate::env::value("HERONITE_DEBUG_EMU_PAGE"),
             console_list: Default::default(),
             layer: Default::default(),
+            palette_pending: None,
         };
         this.reload(cx);
         // The Collection refresh and the scan dialogs write the same files:
@@ -143,6 +147,11 @@ impl Render for EmulatorsPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.debug.is_some() && self.loaded {
             self.run_debug(window, cx);
+        }
+        if self.loaded {
+            if let Some(id) = self.palette_pending.take() {
+                self.run_command(&id, window, cx);
+            }
         }
         if crate::console::active() {
             return self.render_console(window, cx);

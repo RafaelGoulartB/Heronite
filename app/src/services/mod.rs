@@ -14,6 +14,12 @@ pub use downloads::Downloads;
 struct DownloadsGlobal(Entity<Downloads>);
 impl Global for DownloadsGlobal {}
 
+/// The Epic service when something started it already (read-only callers
+/// that must not start it, e.g. the command palette's listing).
+pub fn downloads_started(cx: &App) -> Option<Entity<Downloads>> {
+    cx.try_global::<DownloadsGlobal>().map(|g| g.0.clone())
+}
+
 /// The Epic service: download queue, account, library refresh and game
 /// operations (see [`Downloads`]).
 pub fn downloads(cx: &mut App) -> Entity<Downloads> {

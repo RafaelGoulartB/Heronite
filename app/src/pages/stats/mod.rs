@@ -12,6 +12,7 @@
 mod console;
 mod desktop;
 mod months;
+mod palette;
 mod review;
 mod river;
 mod sections;

@@ -1,4 +1,5 @@
-//! Epic items of the focus panel footer and of the context menu.
+//! Epic items of the focus panel footer and of the game actions (context
+//! menu, palette).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -6,17 +7,14 @@ use heronite_data::CollectionGame;
 use heronite_epic::queue::ElementKind;
 use serde_json::Value;
 
-use super::{app_of, FocusEpic, Request};
-use crate::collection::{context_menu, CollectionView};
+use super::{app_of, EpicAction, FocusEpic, Request};
+use crate::collection::game_actions::{GameAction, GameActionItem};
+use crate::collection::CollectionView;
 use crate::icons::Icon;
 use crate::services::downloads::{EosGame, QueueState};
 use crate::services::widgets::{fmt_percent, progress_bar};
 use crate::theme;
 use crate::ui::icon;
-
-fn menu_row(id: impl Into<ElementId>, ic: Icon, label: &str) -> Stateful<Div> {
-    context_menu::item(id).child(icon(ic, px(18.), theme::text_muted())).child(label.to_string())
-}
 
 fn round_btn(id: impl Into<ElementId>, ic: Icon) -> Stateful<Div> {
     div()
@@ -149,17 +147,17 @@ impl CollectionView {
     }
 
 
-    /// Appends the Epic items to the context menu of `game`.
-    pub(in crate::collection) fn epic_context_items(&mut self, mut menu: Div, game: &CollectionGame, cx: &mut Context<Self>) -> Div {
+    /// The Epic actions `game` offers now (none for other runners).
+    pub(in crate::collection) fn epic_actions(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<GameActionItem> {
+        let mut v = Vec::new();
         if game.runner != "legendary" {
-            return menu;
+            return v;
         }
         let svc = self.epic_service(cx);
         let (busy, queued, update) = {
             let s = svc.read(cx);
             (s.busy_of(&game.app_name).is_some(), s.queued(&game.app_name).is_some(), s.has_update(&game.app_name))
         };
-        let key = game.key.clone();
         let cloud = game
             .game
             .rest
@@ -169,48 +167,33 @@ impl CollectionView {
         // The Collection's game model leaves these out; the service read them from the library file.
         let flags = svc.read(cx).game_flags(&game.app_name);
         let (third_party, has_dlcs) = (flags.third_party, flags.has_dlcs);
-        let add = |menu: Div, id: &str, ic: Icon, label: &str, req: Box<dyn Fn(&str) -> Option<Request>>, cx: &mut Context<Self>| {
-            let k = key.clone();
-            menu.child(menu_row(SharedString::from(format!("cm-epic-{id}")), ic, label).on_click(cx.listener(move |this, _, _, cx| {
-                this.context_menu = None;
-                match req(&k) {
-                    Some(r) => this.epic.pending = Some(r),
-                    None => this.epic_direct(&k, cx),
-                }
-                cx.notify();
-            })))
+        let item = |a: EpicAction, id: &str, ic: Icon, label: &str, kw: &'static str| {
+            GameActionItem::new(GameAction::Epic(a), format!("epic-{id}"), label.to_string(), ic, kw)
         };
         if queued {
-            menu = add(menu, "downloads", Icon::Downloading, "Show in Downloads", Box::new(|_| Some(Request::OpenDownloads)), cx);
+            v.push(item(EpicAction::ShowInDownloads, "downloads", Icon::Downloading, "Show in Downloads", "queue progress"));
         }
         // EA app / Ubisoft Connect keep their games: legendary cannot import,
         // update, verify or move them (Heroic hides these too).
         if !game.installed {
             // Otherwise it is in the Install submenu (`install_options`).
             if !third_party && !crate::collection::install_options::has_more_ways(game) {
-                menu = add(
-                    menu,
-                    "import",
-                    Icon::FolderOpen,
-                    "Import game",
-                    Box::new(|k| Some(Request::Install { key: k.to_string(), import: true })),
-                    cx,
-                );
+                v.push(item(EpicAction::Import, "import", Icon::FolderOpen, "Import game", "existing installed copy"));
             }
-            return menu;
+            return v;
         }
         if busy || queued {
-            return menu;
+            return v;
         }
         if !third_party {
             if update {
-                menu = add(menu, "update", Icon::Update, "Update", Box::new(|_| None), cx);
+                v.push(item(EpicAction::Update, "update", Icon::Update, "Update", "upgrade patch"));
             }
-            menu = add(menu, "verify", Icon::Build, "Verify and repair", Box::new(|k| Some(Request::Verify(k.to_string()))), cx);
-            menu = add(menu, "move", Icon::Folder, "Move install", Box::new(|k| Some(Request::Move(k.to_string()))), cx);
+            v.push(item(EpicAction::Verify, "verify", Icon::Build, "Verify and repair", "check fix integrity"));
+            v.push(item(EpicAction::Move, "move", Icon::Folder, "Move install", "relocate folder disk"));
         }
         if has_dlcs && !third_party {
-            menu = add(menu, "modify", Icon::Tune, "Modify installation", Box::new(|k| Some(Request::Modify(k.to_string()))), cx);
+            v.push(item(EpicAction::Modify, "modify", Icon::Tune, "Modify installation", "dlc content"));
         }
         // The overlay is enabled per Wine prefix on Linux only.
         if cfg!(target_os = "linux") && !third_party {
@@ -219,12 +202,37 @@ impl CollectionView {
             let state = svc.read(cx).eos_game(&game.app_name);
             if let Some(state @ (EosGame::Enabled | EosGame::Disabled)) = state {
                 let label = if state == EosGame::Enabled { "Disable EOS Overlay" } else { "Enable EOS Overlay" };
-                menu = add(menu, "eos", Icon::Fullscreen, label, Box::new(|k| Some(Request::EosToggle(k.to_string()))), cx);
+                v.push(item(EpicAction::Eos, "eos", Icon::Fullscreen, label, "epic online services overlay"));
             }
         }
         if cloud {
-            menu = add(menu, "sync", Icon::CloudSync, "Cloud saves sync", Box::new(|_| None), cx);
+            v.push(item(EpicAction::Sync, "sync", Icon::CloudSync, "Cloud saves sync", "upload download saves"));
         }
-        add(menu, "uninstall", Icon::DeleteForever, "Uninstall", Box::new(|k| Some(Request::Uninstall(k.to_string()))), cx)
+        v.push(item(EpicAction::Uninstall, "uninstall", Icon::DeleteForever, "Uninstall", "remove delete"));
+        v
+    }
+
+    pub(in crate::collection) fn run_epic_action(&mut self, key: &str, action: EpicAction, cx: &mut Context<Self>) {
+        let k = key.to_string();
+        self.epic.pending = match action {
+            EpicAction::ShowInDownloads => Some(Request::OpenDownloads),
+            EpicAction::Import => Some(Request::Install { key: k, import: true }),
+            EpicAction::Verify => Some(Request::Verify(k)),
+            EpicAction::Move => Some(Request::Move(k)),
+            EpicAction::Modify => Some(Request::Modify(k)),
+            EpicAction::Eos => Some(Request::EosToggle(k)),
+            EpicAction::Uninstall => Some(Request::Uninstall(k)),
+            EpicAction::Update => {
+                self.epic_update(key, cx);
+                None
+            }
+            EpicAction::Sync => {
+                let Some(game) = self.epic_game(key) else { return };
+                let (app, title) = (game.app_name.clone(), game.title.clone());
+                self.epic_service(cx).update(cx, |s, cx| s.sync_saves(&app, &title, cx));
+                None
+            }
+        };
+        cx.notify();
     }
 }

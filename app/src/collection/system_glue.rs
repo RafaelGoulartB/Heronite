@@ -9,13 +9,12 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::CollectionGame;
 
-use super::context_menu::item;
+use super::game_actions::{GameAction, GameActionItem};
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::system::candidate_keys;
 use crate::system::cli::LaunchRequest;
 use crate::system::shortcuts as sc;
-use crate::ui::icon;
 
 impl CollectionView {
     /// Selects the game and presses its primary button (play, or the install
@@ -109,50 +108,52 @@ impl Global for MenuProbes {}
 
 impl CollectionView {
     /// "Add/Remove shortcuts" and "Add to / Remove from Steam" for installed
-    /// games (Heroic's context menu). One block, called from `context_menu.rs`.
-    pub(super) fn system_context_items(&mut self, mut menu: Div, game: &CollectionGame, cx: &mut Context<Self>) -> Div {
+    /// games (Heroic's context menu).
+    pub(super) fn system_actions(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<GameActionItem> {
         if !game.installed || matches!(game.launch_kind.as_deref(), Some("steam-uri")) || game.game.install.is_dlc == Some(true) {
-            return menu;
+            return Vec::new();
         }
         let (has_shortcuts, in_steam) = self.probe_shortcuts(game, cx);
-        let (runner, app) = (game.runner.clone(), game.app_name.clone());
-        let key = game.key.clone();
+        vec![
+            GameActionItem::new(
+                GameAction::Shortcuts { add: !has_shortcuts },
+                "shortcuts",
+                if has_shortcuts { "Remove shortcuts" } else { "Add shortcuts" },
+                Icon::OpenInNew,
+                "desktop application menu launcher",
+            ),
+            GameActionItem::new(
+                GameAction::Steam { add: !in_steam },
+                "steam",
+                if in_steam { "Remove from Steam" } else { "Add to Steam" },
+                Icon::SportsEsports,
+                "non-steam shortcut big picture",
+            ),
+        ]
+    }
 
-        let (r, a, k) = (runner.clone(), app.clone(), key.clone());
-        menu = menu.child(
-            item("cm-shortcuts")
-                .child(icon(Icon::OpenInNew, px(18.), crate::theme::text_muted()))
-                .child(if has_shortcuts { "Remove shortcuts" } else { "Add shortcuts" })
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.context_menu = None;
-                    let (r, a, k) = (r.clone(), a.clone(), k.clone());
-                    this.system_op(k, cx, move |data_paths| {
-                        if has_shortcuts {
-                            sc::remove_shortcuts(data_paths, &r, &a)
-                        } else {
-                            sc::add_shortcuts(data_paths, &r, &a)
-                        }
-                    });
-                })),
-        );
+    pub(super) fn run_shortcuts(&mut self, key: &str, add: bool, cx: &mut Context<Self>) {
+        let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
+        let (r, a) = (game.runner.clone(), game.app_name.clone());
+        self.system_op(key.to_string(), cx, move |data_paths| {
+            if add {
+                sc::add_shortcuts(data_paths, &r, &a)
+            } else {
+                sc::remove_shortcuts(data_paths, &r, &a)
+            }
+        });
+    }
 
-        let (r, a, k) = (runner, app, key);
-        menu.child(
-            item("cm-steam")
-                .child(icon(Icon::SportsEsports, px(18.), crate::theme::text_muted()))
-                .child(if in_steam { "Remove from Steam" } else { "Add to Steam" })
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.context_menu = None;
-                    let (r, a, k) = (r.clone(), a.clone(), k.clone());
-                    this.system_op(k, cx, move |data_paths| {
-                        if in_steam {
-                            sc::remove_from_steam(data_paths, &r, &a)
-                        } else {
-                            sc::add_to_steam(data_paths, &r, &a)
-                        }
-                    });
-                })),
-        )
+    pub(super) fn run_steam_shortcut(&mut self, key: &str, add: bool, cx: &mut Context<Self>) {
+        let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
+        let (r, a) = (game.runner.clone(), game.app_name.clone());
+        self.system_op(key.to_string(), cx, move |data_paths| {
+            if add {
+                sc::add_to_steam(data_paths, &r, &a)
+            } else {
+                sc::remove_from_steam(data_paths, &r, &a)
+            }
+        });
     }
 
     /// Cached `(shortcuts exist, added to Steam)`; starts a refresh when the

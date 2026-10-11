@@ -14,6 +14,7 @@ mod epic;
 mod extras;
 mod focus;
 mod focus_left;
+mod game_actions;
 mod game_facts;
 mod header;
 mod html;

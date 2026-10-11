@@ -55,6 +55,12 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   creation. Open a section from code with `CollectionView::open_settings_section` (or `pages::settings::request_section`
   + navigate); add new sections to `Section` (label, icon, blurb, palette `keywords`, `parse`). Emulators and ROM
   folders are NOT a Settings section: they live on the ☰ Emulators page.
+- Command palette (Ctrl K, `app/src/collection/palette/`): it reads the app's own lists, so a new feature reaches it
+  without palette code. A game action goes in `collection/game_actions.rs` (`GameAction`, listed by
+  `CollectionView::game_actions`, run by `run_game_action`): the card's context menu draws the same list. A page action
+  goes in the page's `palette.rs` (`pages::commands::PaletteCommands`: list it, even before the page exists, from the
+  services or `CommandCtx`; run it; say when the page has a dialog open with `page_modal`). Something that cannot run
+  now is listed with `disabled(Some(reason))`, not left out.
 
 ## Glass design system (menus, dialogs, pages, settings)
 

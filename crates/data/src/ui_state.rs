@@ -34,6 +34,8 @@ pub struct UiState {
     pub show_hidden: bool,
     /// The app was left in console mode (it reopens in it).
     pub console_mode: bool,
+    /// Ids of the command palette items run lately, most recent first.
+    pub palette_recent: Vec<String>,
 }
 
 impl Default for UiState {
@@ -48,6 +50,7 @@ impl Default for UiState {
             group_by_status: true,
             show_hidden: false,
             console_mode: false,
+            palette_recent: Vec::new(),
         }
     }
 }
@@ -86,6 +89,9 @@ impl UiState {
         state.group_by_status = value.get("groupByStatus").and_then(Value::as_bool).unwrap_or(true);
         state.show_hidden = value.get("showHidden").and_then(Value::as_bool).unwrap_or(false);
         state.console_mode = value.get("consoleMode").and_then(Value::as_bool).unwrap_or(false);
+        if let Some(list) = value.get("paletteRecent").and_then(Value::as_array) {
+            state.palette_recent = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
+        }
         state
     }
 
@@ -107,6 +113,7 @@ impl UiState {
             "groupByStatus": self.group_by_status,
             "showHidden": self.show_hidden,
             "consoleMode": self.console_mode,
+            "paletteRecent": self.palette_recent,
         })
     }
 
@@ -187,6 +194,7 @@ mod tests {
             group_by_status: false,
             show_hidden: true,
             console_mode: true,
+            palette_recent: vec!["go:downloads".into(), "game:sideload_steam_400:primary".into()],
             ..Default::default()
         };
         state.toggle_facet(FacetKind::Genre, "RPG");

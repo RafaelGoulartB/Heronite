@@ -39,6 +39,22 @@ pub enum Request {
     EosToggle(String),
 }
 
+/// The Epic items of a game's actions (context menu and palette).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum EpicAction {
+    ShowInDownloads,
+    Import,
+    Update,
+    Verify,
+    Move,
+    Modify,
+    /// Enable / disable the EOS Overlay.
+    Eos,
+    /// Cloud saves sync.
+    Sync,
+    Uninstall,
+}
+
 #[derive(Default)]
 pub(super) struct EpicState {
     service: Option<Entity<Downloads>>,

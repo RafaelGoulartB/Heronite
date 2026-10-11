@@ -55,8 +55,8 @@ struct Way {
     kind: WayKind,
 }
 
-#[derive(Clone, Copy)]
-enum WayKind {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum WayKind {
     Store,
     EpicImport,
     Manual,
@@ -122,7 +122,23 @@ impl CollectionView {
         ways
     }
 
-    fn run_way(&mut self, key: &str, kind: WayKind, window: &mut Window, cx: &mut Context<Self>) {
+    /// The other ways as game actions (the palette; the context menu shows
+    /// them in the Install flyout). The store's own install is the main
+    /// action already.
+    pub(super) fn install_way_actions(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<super::game_actions::GameActionItem> {
+        use super::game_actions::{GameAction, GameActionItem};
+        // Without the flyout, Epic's "Import game" is a menu row of its own.
+        if !has_more_ways(game) {
+            return Vec::new();
+        }
+        self.install_ways(game, cx)
+            .into_iter()
+            .filter(|w| !matches!(w.kind, WayKind::Store))
+            .map(|w| GameActionItem::new(GameAction::InstallWay(w.kind), format!("way-{}", w.id), w.label, w.icon, "install").palette_only())
+            .collect()
+    }
+
+    pub(super) fn run_way(&mut self, key: &str, kind: WayKind, window: &mut Window, cx: &mut Context<Self>) {
         self.facts.install_menu_open = false;
         self.context_menu = None;
         match kind {
