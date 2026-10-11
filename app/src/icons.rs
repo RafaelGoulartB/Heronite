@@ -134,9 +134,9 @@ impl Icon {
             CloudSync => "icons/cloud-sync.svg",
             Update => "icons/update.svg",
             Memory => "icons/memory.svg",
-            PlayCircle => "icons/play-icon.svg",
-            InstallCircle => "icons/down-icon.svg",
-            StopCircle => "icons/stop-icon-alt.svg",
+            PlayCircle => "icons/play-circle.svg",
+            InstallCircle => "icons/install-circle.svg",
+            StopCircle => "icons/stop-circle.svg",
         }
     }
 }

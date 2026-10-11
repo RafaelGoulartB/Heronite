@@ -37,9 +37,12 @@ https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
   <a href="docs/CODE-STYLE.md">Code style</a>
 </p>
 
+> [!NOTE]
+> **Windows support is coming soon.** Heronite runs on Linux today, and a Windows version is on the way.
+
 Heronite puts your Steam, Epic Games, emulated, native Linux, and Windows games into one Collection. You can sort them by your own statuses, fill in their metadata and art, and launch them through Wine/Proton or an emulator. Each session is recorded, so you can see how much you played and which screenshots you took.
 
-Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, CPU, and disk](#light-on-your-pc). **Linux only**: Wine/Proton, gamescope, Ludusavi, the system tray, and desktop shortcuts all depend on Linux integrations.
+Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, CPU, and disk](#light-on-your-pc). On Linux it builds on Wine/Proton, gamescope, Ludusavi, the system tray, and desktop shortcuts.
 
 ## Your library, organized
 
