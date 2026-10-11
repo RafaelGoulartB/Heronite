@@ -176,4 +176,4 @@ cargo build --release -p heronite -p heronite-epic-login
 
 Copyright (C) 2026 [Rafael Goulart](https://www.linkedin.com/in/rafael-goulartb/)
 
-This program is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License v3.0](LICENSE) as published by the Free Software Foundation. It is distributed WITHOUT ANY WARRANTY; see the license for details. Heronite builds on the [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher), which is also licensed under the GPL-3.0.
+This program is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License v3.0](LICENSE) as published by the Free Software Foundation. Heronite builds on the [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher), which is also licensed under the GPL-3.0.
