@@ -126,8 +126,6 @@ A controller-first layout for the couch or a TV. It covers the whole app: the li
   </tr>
 </table>
 
-<sub>Captured from the running app on Linux (Hyprland) with a real library. Click an image to view it at full resolution.</sub>
-
 ## Light on your PC
 
 A game launcher should get out of the way when the game starts. Heronite is a single native process that draws its UI on the GPU, with no bundled browser engine. A web engine is only used by the Epic login window, which is a separate small program started when you log in. Slow work like scanning, metadata, image decoding, and compression runs on background threads. When the app sits idle, it does no work.
