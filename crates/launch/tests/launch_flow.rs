@@ -25,6 +25,8 @@ use heronite_launch::{
 };
 use serde_json::json;
 
+/// A fake binary. Scripts log with `printf '%s\n'`, not `echo`: where `/bin/sh` is
+/// dash (Ubuntu), `echo` reads escapes, and `\c` in a registry key ends the line.
 fn script(path: &Path, body: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -68,7 +70,7 @@ fn rig_with(skip_version_check: bool, known_fixes: Option<serde_json::Value>) ->
     script(
         &wine,
         &format!(
-            r#"echo "wine $* prefix=$WINEPREFIX" >> "{log}"
+            r#"printf '%s\n' "wine $* prefix=$WINEPREFIX" >> "{log}"
 if [ "$1" = wineboot ] && [ "$2" = --init ]; then
   mkdir -p "$WINEPREFIX/drive_c/windows/system32" "$WINEPREFIX/drive_c/windows/syswow64" "$WINEPREFIX/dosdevices"
   touch "$WINEPREFIX/system.reg" "$WINEPREFIX/user.reg" "$WINEPREFIX/userdef.reg" "$WINEPREFIX/.update-timestamp"
@@ -76,10 +78,10 @@ fi"#,
             log = log.display()
         ),
     );
-    script(&root.join("w/bin/wineserver"), &format!("echo \"wineserver $*\" >> \"{}\"", log.display()));
+    script(&root.join("w/bin/wineserver"), &format!("printf '%s\\n' \"wineserver $*\" >> \"{}\"", log.display()));
     // Fake legendary: logs its arguments (the game "runs" for a moment).
     let legendary = root.join("lg/legendary");
-    script(&legendary, &format!("echo \"legendary $*\" >> \"{}\"; sleep 0.2", log.display()));
+    script(&legendary, &format!("printf '%s\\n' \"legendary $*\" >> \"{}\"; sleep 0.2", log.display()));
 
     // An installed DXVK release.
     let release = paths.tools_dir().join("dxvk/dxvk-9");
