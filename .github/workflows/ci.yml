@@ -13,6 +13,10 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # No debug info in CI: faster builds and a smaller cache. Backtraces still
+  # name the functions.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
   check:
@@ -26,6 +30,10 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Pull requests read main's cache but do not save their own, so the
+          # 10 GB cache quota is not filled with short-lived entries.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
