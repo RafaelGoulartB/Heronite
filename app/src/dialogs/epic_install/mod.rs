@@ -12,7 +12,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::game_config;
-use heronite_data::{AppPaths, HeroicPaths};
+use heronite_data::{AppPaths, DataPaths};
 use heronite_epic::cmd::Legendary;
 use heronite_epic::disk::{self, DiskSpace};
 use heronite_epic::info::{self, Dlc, InstallInfo, Sdl};
@@ -32,7 +32,7 @@ pub enum Mode {
 }
 
 pub struct EpicInstallDialog {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     game: Value,
     app_name: String,
     title: String,
@@ -70,7 +70,7 @@ impl EventEmitter<DialogEvent> for EpicInstallDialog {}
 
 impl EpicInstallDialog {
     pub fn new(
-        heroic: HeroicPaths,
+        data_paths: DataPaths,
         _app: AppPaths,
         game: Value,
         mode: Mode,
@@ -80,13 +80,13 @@ impl EpicInstallDialog {
         let app_name = game.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
         let title = game.get("title").and_then(Value::as_str).unwrap_or(&app_name).to_string();
         let home = std::env::var("HOME").unwrap_or_default();
-        let global = game_config::load_global(&heroic, &home);
+        let global = game_config::load_global(&data_paths, &home);
         let default_install = global
             .get("defaultInstallPath")
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
             .map(|s| s.replace('\'', ""))
-            .unwrap_or_else(|| format!("{home}/Games/Heroic"));
+            .unwrap_or_else(|| game_config::default_install_dir(&home));
         let prefix_dir = global
             .get("defaultWinePrefixDir")
             .and_then(Value::as_str)
@@ -109,7 +109,7 @@ impl EpicInstallDialog {
         // legendary can neither download nor import these games.
         let mode = if third_party.is_some() { Mode::Install } else { mode };
         let mut this = Self {
-            heroic,
+            data_paths,
             game,
             app_name,
             title,
@@ -142,7 +142,7 @@ impl EpicInstallDialog {
             return this;
         }
         // A warm cache (6 hours) shows the sizes at once; a statvfs is cheap.
-        let cached = heronite_epic::cache_store::CacheStore::install_info(&this.heroic)
+        let cached = heronite_epic::cache_store::CacheStore::install_info(&this.data_paths)
             .get(&this.app_name)
             .filter(|c| c.get("manifest").is_some_and(|m| !m.is_null()));
         match cached {
@@ -168,12 +168,12 @@ impl EpicInstallDialog {
     }
 
     fn load_info(&mut self, cx: &mut Context<Self>) {
-        let (heroic, app, platform) = (self.heroic.clone(), self.app_name.clone(), self.platform.clone());
+        let (data_paths, app, platform) = (self.data_paths.clone(), self.app_name.clone(), self.platform.clone());
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&heroic)?;
-                    info::install_info(&heroic, &lg, &app, &platform)
+                    let lg = Legendary::locate(&data_paths)?;
+                    info::install_info(&data_paths, &lg, &app, &platform)
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -191,9 +191,9 @@ impl EpicInstallDialog {
 
     /// Selective downloads come from a web API: they must not hold the sizes back.
     fn load_sdl(&mut self, cx: &mut Context<Self>) {
-        let (heroic, app) = (self.heroic.clone(), self.app_name.clone());
+        let (data_paths, app) = (self.data_paths.clone(), self.app_name.clone());
         cx.spawn(async move |this, cx| {
-            let sdl = cx.background_spawn(async move { info::game_sdl(&heroic, &app) }).await;
+            let sdl = cx.background_spawn(async move { info::game_sdl(&data_paths, &app) }).await;
             this.update(cx, |this, cx| {
                 this.sdl = sdl.into_iter().map(|s| (s, false)).collect();
                 cx.notify();
@@ -207,9 +207,9 @@ impl EpicInstallDialog {
         if !cfg!(target_os = "linux") {
             return;
         }
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let list = cx.background_spawn(async move { heronite_wine::list_installations(&heroic) }).await;
+            let list = cx.background_spawn(async move { heronite_wine::list_installations(&data_paths) }).await;
             this.update(cx, |this, cx| {
                 let default_name = this.default_wine.as_ref().and_then(|w| w.get("name")).and_then(Value::as_str).map(str::to_string);
                 this.wine_pick = default_name.and_then(|n| list.iter().position(|w| w.name == n)).unwrap_or(0);

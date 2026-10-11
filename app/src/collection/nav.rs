@@ -64,14 +64,14 @@ fn month_meta(lib: &heronite_data::Library) -> String {
 
 /// Default Wine/Proton name (`config.json` > `defaultSettings.wineVersion`)
 /// and the number of configured emulators.
-fn read_nav_meta(heroic: &heronite_data::HeroicPaths) -> (Option<String>, Option<usize>) {
-    let wine = std::fs::read_to_string(heroic.config())
+fn read_nav_meta(data_paths: &heronite_data::DataPaths) -> (Option<String>, Option<usize>) {
+    let wine = std::fs::read_to_string(data_paths.store_config())
         .ok()
         .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
         .and_then(|v| v.pointer("/defaultSettings/wineVersion/name").and_then(|n| n.as_str()).map(str::to_owned))
-        .map(|n| crate::dialogs::heroic_settings::logic::display_wine_name(&n))
-        .or_else(|| Some(crate::dialogs::heroic_settings::logic::default_wine().name));
-    let emulators = heronite_emulation::store::list_user_emulators(heroic).ok().map(|l| l.len());
+        .map(|n| crate::dialogs::settings_panel::logic::display_wine_name(&n))
+        .or_else(|| Some(crate::dialogs::settings_panel::logic::default_wine().name));
+    let emulators = heronite_emulation::store::list_user_emulators(data_paths).ok().map(|l| l.len());
     (wine, emulators)
 }
 
@@ -159,12 +159,12 @@ impl CollectionView {
             return;
         }
         meta.loading = true;
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         let lib = self.lib.clone();
         cx.spawn(async move |this, cx| {
             let (wine, emulators, month) = cx
                 .background_spawn(async move {
-                    let (wine, emulators) = read_nav_meta(&heroic);
+                    let (wine, emulators) = read_nav_meta(&data_paths);
                     (wine, emulators, lib.map(|l| month_meta(&l)))
                 })
                 .await;
@@ -275,7 +275,7 @@ impl CollectionView {
     }
 
     fn page_ctx(&self) -> PageCtx {
-        PageCtx { heroic: self.heroic.clone(), app: self.app_paths.clone() }
+        PageCtx { data_paths: self.data_paths.clone(), app: self.app_paths.clone() }
     }
 
     fn ensure_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {

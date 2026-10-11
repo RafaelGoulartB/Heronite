@@ -7,7 +7,7 @@ use anyhow::Result;
 use serde_json::{json, Map, Value};
 
 use crate::json_store;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 
 /// `Math.floor(minutes / 60)`, `minutes % 60`: what the dialog's two fields
 /// start with.
@@ -32,7 +32,7 @@ pub fn clamp_number(value: &str, max: Option<u64>) -> u64 {
 }
 
 /// `getPlaytimeMinutes`.
-pub fn get_playtime_minutes(paths: &HeroicPaths, app_name: &str) -> u64 {
+pub fn get_playtime_minutes(paths: &DataPaths, app_name: &str) -> u64 {
     json_store::read_value(&paths.timestamps())
         .ok()
         .and_then(|doc| doc.get(app_name)?.get("totalPlayed")?.as_f64())
@@ -43,7 +43,7 @@ pub fn get_playtime_minutes(paths: &HeroicPaths, app_name: &str) -> u64 {
 /// `setPlaytimeMinutes`: replaces `totalPlayed` with `round(minutes)` (never
 /// negative). `firstPlayed` / `lastPlayed` keep their value, or become `""`
 /// when the game had no entry (the TS writes empty strings).
-pub fn set_playtime_minutes(paths: &HeroicPaths, app_name: &str, minutes: f64) -> Result<()> {
+pub fn set_playtime_minutes(paths: &DataPaths, app_name: &str, minutes: f64) -> Result<()> {
     let total = if minutes.is_finite() { minutes.round().max(0.0) as i64 } else { 0 };
     json_store::update_value(&paths.timestamps(), |root| {
         if !root.is_object() {
@@ -76,9 +76,9 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn setup(content: Option<&str>) -> (tempfile::TempDir, HeroicPaths) {
+    fn setup(content: Option<&str>) -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         if let Some(c) = content {
             fs::create_dir_all(paths.timestamps().parent().unwrap()).unwrap();
             fs::write(paths.timestamps(), c).unwrap();

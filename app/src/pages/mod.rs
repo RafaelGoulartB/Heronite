@@ -16,7 +16,7 @@ pub mod wine_manager;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::{AppPaths, HeroicPaths};
+use heronite_data::{AppPaths, DataPaths};
 
 use crate::icons::Icon;
 use crate::theme;
@@ -80,7 +80,7 @@ impl Page {
 /// Paths every page needs.
 #[derive(Clone)]
 pub struct PageCtx {
-    pub heroic: HeroicPaths,
+    pub data_paths: DataPaths,
     pub app: AppPaths,
 }
 

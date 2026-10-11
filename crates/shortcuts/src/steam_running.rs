@@ -293,7 +293,7 @@ mod tests {
         let steam = steam_dir(dir.path());
         let fake = start(Box::new(|expr| {
             if expr.contains("allApps") {
-                json!([{"appid": 3_000_000_001u64, "appName": "Cool Game", "exe": "", "launchOptions": "\"heroic://launch/legendary/Quail\""}])
+                json!([{"appid": 3_000_000_001u64, "appName": "Cool Game", "exe": "", "launchOptions": "\"heronite-rs://launch/legendary/Quail\""}])
             } else {
                 json!(true)
             }

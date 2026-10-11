@@ -6,9 +6,9 @@ use serde_json::Value;
 
 use super::logic;
 use super::parts::{column, heading, help, rows};
-use super::HeroicSettingsPanel;
+use super::SettingsPanel;
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     pub(super) fn other_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let native = self.native();
         let wine = self.wine_version();
@@ -67,7 +67,7 @@ impl HeroicSettingsPanel {
         }
         if !native {
             let note = |on: bool, installed: bool, name: &'static str| {
-                (on && !installed).then(|| format!("The {name} runtime is not installed yet. Heroic downloads it when you enable it there."))
+                (on && !installed).then(|| format!("The {name} runtime is not installed yet. It is downloaded before the next launch."))
             };
             let be = note(self.flag("battlEyeRuntime", false), self.runtimes.0, "BattlEye");
             let eac = note(self.flag("eacRuntime", false), self.runtimes.1, "EAC");

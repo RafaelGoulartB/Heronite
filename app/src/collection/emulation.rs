@@ -24,7 +24,7 @@ const STARTUP_SCAN_DELAY: Duration = Duration::from_secs(4);
 
 /// Brings `is_installed` of the local games (Steam, executables, ROMs) in
 /// line with the disk. Blocking. Returns whether something changed.
-fn refresh_install_states(paths: &heronite_data::HeroicPaths) -> bool {
+fn refresh_install_states(paths: &heronite_data::DataPaths) -> bool {
     match heronite_launch::install_state::refresh_local_install_states(paths, &heronite_launch::SystemProbe) {
         Ok(report) => report.changed(),
         Err(e) => {
@@ -41,7 +41,7 @@ struct Listing {
     rows: Vec<StateRow>,
 }
 
-fn list_states(paths: &heronite_data::HeroicPaths, app_name: &str, rom: Option<&str>) -> Result<Listing, String> {
+fn list_states(paths: &heronite_data::DataPaths, app_name: &str, rom: Option<&str>) -> Result<Listing, String> {
     let list = list_emulator_save_states(paths, &HostEnv::system(), app_name, rom, true).map_err(|e| format!("{e:#}"))?;
     let rows = list
         .states
@@ -116,7 +116,7 @@ impl CollectionView {
     /// otherwise launch.
     fn emu_continue(&mut self, key: String, rom: Option<String>, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(&key)).cloned() else { return };
-        let paths = self.heroic.clone();
+        let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let (app, r) = (game.app_name.clone(), rom.clone());
             let listing = cx
@@ -172,7 +172,7 @@ impl CollectionView {
     /// Sets the one-shot launch state, then launches.
     fn emu_play_state(&mut self, key: String, rom: Option<String>, state: Option<String>, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(&key)).cloned() else { return };
-        let paths = self.heroic.clone();
+        let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let (app, r) = (game.app_name.clone(), rom.clone());
             let res = cx
@@ -219,7 +219,7 @@ impl CollectionView {
             return;
         }
         self.refreshing = true;
-        let paths = self.heroic.clone();
+        let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
@@ -268,7 +268,7 @@ impl CollectionView {
         if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             return;
         }
-        let paths = self.heroic.clone();
+        let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let p = paths.clone();
             if cx.background_spawn(async move { refresh_install_states(&p) }).await {
@@ -280,7 +280,7 @@ impl CollectionView {
         })
         .detach();
         let (tx, rx) = futures::channel::oneshot::channel();
-        heronite_emulation::jobs::spawn_idle_jobs(self.heroic.clone(), heronite_emulation::jobs::IDLE_DELAY, move |report| {
+        heronite_emulation::jobs::spawn_idle_jobs(self.data_paths.clone(), heronite_emulation::jobs::IDLE_DELAY, move |report| {
             let _ = tx.send(report);
         });
         cx.spawn(async move |this, cx| {
@@ -342,7 +342,7 @@ impl CollectionView {
                     .collect();
                 Ok(Listing { emulator: "PCSX2".into(), rom: None, rows })
             } else {
-                list_states(&self.heroic, &game.app_name, None)
+                list_states(&self.data_paths, &game.app_name, None)
             };
             match listing {
                 Ok(l) => self.open_launch_state(&game, l, cx),

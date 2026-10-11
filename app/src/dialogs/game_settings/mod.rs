@@ -16,7 +16,7 @@ use heronite_images::ImageRef;
 use heronite_metadata::{ArtKind, MetadataService};
 
 use super::art_images::{picture, DialogImages};
-use super::heroic_settings::{GameFacts, HeroicSettingsPanel, Section, Target};
+use super::settings_panel::{GameFacts, SettingsPanel, Section, Target};
 use super::metadata_wizard::hub;
 use super::screenshot_art::ScreenshotArtDialog;
 use super::web_image::WebImageDialog;
@@ -32,7 +32,7 @@ pub enum Tab {
     Images,
     Details,
     Launch,
-    /// Heroic's game settings (`heroic_settings`).
+    /// Heroic's game settings (`settings_panel`).
     Wine,
     Other,
     Advanced,
@@ -79,7 +79,7 @@ impl Tab {
 
     /// The tab Heroic opens first for this game (its Wine or Other tab), or
     /// Images when the game has no Heroic settings.
-    pub fn heroic_start(game: &Game) -> Tab {
+    pub fn settings_start(game: &Game) -> Tab {
         GameFacts::of(game).start_section().map(Tab::of_section).unwrap_or(Tab::Images)
     }
 }
@@ -113,7 +113,7 @@ pub struct GameSettingsDialog {
     initial: Form,
     launch: Option<LaunchState>,
     /// Heroic settings: the view and the tabs this game has.
-    heroic: Option<(Entity<HeroicSettingsPanel>, Vec<Section>)>,
+    panel: Option<(Entity<SettingsPanel>, Vec<Section>)>,
     /// Console mode: focused row and the open keyboard / picker.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
@@ -133,15 +133,15 @@ impl GameSettingsDialog {
         let launch = Self::build_launch(&game, window, cx);
         let facts = GameFacts::of(&game);
         let sections = facts.sections();
-        let heroic = (!sections.is_empty()).then(|| {
+        let panel = (!sections.is_empty()).then(|| {
             let start = tab.section().filter(|s| sections.contains(s)).unwrap_or(sections[0]);
-            let panel = cx.new(|cx| HeroicSettingsPanel::new(ctx.heroic.clone(), Target::Game(facts), start, window, cx));
+            let panel = cx.new(|cx| SettingsPanel::new(ctx.data_paths.clone(), Target::Game(facts), start, window, cx));
             cx.observe(&panel, |_, _, cx| cx.notify()).detach();
             (panel, sections)
         });
         let tab = match tab {
             Tab::Launch if launch.is_none() => Tab::Images,
-            t if t.section().is_some_and(|s| !heroic.as_ref().is_some_and(|(_, secs)| secs.contains(&s))) => Tab::Images,
+            t if t.section().is_some_and(|s| !panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s))) => Tab::Images,
             t => t,
         };
 
@@ -159,7 +159,7 @@ impl GameSettingsDialog {
             details,
             initial,
             launch,
-            heroic,
+            panel,
             game,
             ctx,
             console_list: Default::default(),
@@ -224,11 +224,11 @@ impl Render for GameSettingsDialog {
         if self.launch.is_some() {
             items.push((Tab::Launch, Tab::Launch.label()));
         }
-        if let Some((_, sections)) = &self.heroic {
+        if let Some((_, sections)) = &self.panel {
             items.extend(sections.iter().map(|s| (Tab::of_section(*s), s.label())));
         }
         let entity = cx.entity().downgrade();
-        let panel = self.heroic.as_ref().map(|(p, _)| p.clone());
+        let panel = self.panel.as_ref().map(|(p, _)| p.clone());
         let tab_bar = tabs("gs", &items, self.tab, move |t, window, cx| {
             if let (Some(section), Some(panel)) = (t.section(), panel.as_ref()) {
                 panel.update(cx, |p, cx| p.set_section(section, window, cx));
@@ -244,7 +244,7 @@ impl Render for GameSettingsDialog {
             Tab::Images => self.images_tab(cx),
             Tab::Details => self.details_tab(),
             Tab::Launch => self.launch_tab(cx),
-            _ => match &self.heroic {
+            _ => match &self.panel {
                 Some((panel, _)) => div().child(panel.clone()),
                 None => div(),
             },

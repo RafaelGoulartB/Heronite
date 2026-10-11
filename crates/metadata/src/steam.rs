@@ -11,7 +11,7 @@ use anyhow::Result;
 use heronite_data::art::{steam_hero_download_urls, steam_library_cover, steam_library_hero};
 use heronite_data::focus::steam_language;
 use heronite_data::models::CollectionGameMetadata;
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -175,7 +175,7 @@ fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Option<Stea
 /// `local_library/steam-details/{appId}.{language}.json`; failures are
 /// remembered for 30 minutes. `language` is a Heroic code (`pt-BR`, `en`...).
 pub fn get_steam_app_details(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     http: &Http,
     state: &SteamState,
     steam_app_id: &str,
@@ -257,7 +257,7 @@ pub fn metadata_from_details(app_name: &str, runner: &str, steam_app_id: &str, d
 }
 
 pub fn fetch_steam_metadata(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     http: &Http,
     state: &SteamState,
     app_name: &str,
@@ -304,7 +304,7 @@ fn download_hero(http: &Http, url: &str, dest: &Path) -> bool {
 /// `cacheSteamHero`: `local_library/heroes/{appId}.jpg`, trying the Steam CDN
 /// hero URLs in order.
 pub fn cache_steam_hero(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     http: &Http,
     state: &SteamState,
     steam_app_id: &str,
@@ -345,7 +345,7 @@ pub fn cache_steam_hero(
 }
 
 /// `warmSteamHeroes`: caches the missing heroes with two workers.
-pub fn warm_steam_heroes(paths: &HeroicPaths, http: &Http, state: &SteamState, ids: &[String]) {
+pub fn warm_steam_heroes(paths: &DataPaths, http: &Http, state: &SteamState, ids: &[String]) {
     let mut seen = HashSet::new();
     let needed: Vec<&String> = ids
         .iter()

@@ -14,10 +14,10 @@ use serde_json::{json, Value};
 
 use super::logic::{self, RunKind};
 use super::parts::{column, danger_text, heading, help, rows};
-use super::{HeroicSettingsPanel, Notice, Target};
+use super::{SettingsPanel, Notice, Target};
 use crate::ui::fields::choose_path;
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     pub(super) fn native(&self) -> bool {
         matches!(&self.target, Target::Game(f) if f.run_kind == RunKind::Native)
     }
@@ -190,7 +190,7 @@ impl HeroicSettingsPanel {
             ));
         }
         col.child(help(&format!("Wine Path: {}", current.bin))).child(help(
-            "Heroic searches for versions of Wine, Proton, and CrossOver in: ~/.config/heroic/tools/wine, ~/.config/heroic/tools/proton, ~/.steam/root/compatibilitytools.d, ~/.steam/steamapps/common, ~/.local/share/lutris/runners/wine, ~/.var/app/com.valvesoftware.Steam (Steam Flatpak) and /usr/share/steam. For other places, use a symbolic link to one of these folders.",
+            "Heronite searches for versions of Wine, Proton, and CrossOver in: ~/.local/share/heronite/tools/wine, ~/.local/share/heronite/tools/proton, ~/.steam/root/compatibilitytools.d, ~/.steam/steamapps/common, ~/.local/share/lutris/runners/wine, ~/.var/app/com.valvesoftware.Steam (Steam Flatpak) and /usr/share/steam. For other places, use a symbolic link to one of these folders.",
         ))
     }
 
@@ -281,7 +281,7 @@ fn outcome_text(tool: Tool, outcome: &dxvk::Outcome) -> String {
     }
 }
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     /// After the switch `key` was saved as `on`: installs (or removes) the tool
     /// in the prefix on a background thread, like Heroic's `toggleDXVK` & co.
     /// Nothing happens when Heroic would not do it either (Proton, GPTK...).
@@ -347,7 +347,7 @@ impl HeroicSettingsPanel {
 }
 
 /// Builds and runs a tool, waiting for it to exit. Never called by tests.
-fn run_tool_blocking(paths: &heronite_data::HeroicPaths, home: &str, app: &str, tool: &WineTool) -> Result<String, String> {
+fn run_tool_blocking(paths: &heronite_data::DataPaths, home: &str, app: &str, tool: &WineTool) -> Result<String, String> {
     let map = heronite_data::game_config::load_game(paths, app, home);
     let settings = GameSettings::from_map(&map, home);
     let ctx = PlanContext::load(paths);

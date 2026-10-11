@@ -39,8 +39,8 @@ fn start() -> Start {
 impl SettingsPage {
     pub(super) fn logs_section(&mut self, cx: &mut Context<Self>) -> AnyElement {
         if self.logs.viewer.is_none() {
-            let heroic = self.ctx.heroic.clone();
-            let viewer = cx.new(|cx| LogViewer::new(heroic, Scope::All, start(), true, None, cx));
+            let data_paths = self.ctx.data_paths.clone();
+            let viewer = cx.new(|cx| LogViewer::new(data_paths, Scope::All, start(), true, None, cx));
             self.logs.viewer = Some(viewer);
         }
         self.logs.viewer.clone().expect("created above").into_any_element()
@@ -58,8 +58,8 @@ impl SettingsPage {
     /// The viewer, created on first use (console mode).
     pub(super) fn logs_viewer(&mut self, cx: &mut Context<Self>) -> Entity<LogViewer> {
         if self.logs.viewer.is_none() {
-            let heroic = self.ctx.heroic.clone();
-            self.logs.viewer = Some(cx.new(|cx| LogViewer::new(heroic, Scope::All, start(), true, None, cx)));
+            let data_paths = self.ctx.data_paths.clone();
+            self.logs.viewer = Some(cx.new(|cx| LogViewer::new(data_paths, Scope::All, start(), true, None, cx)));
         }
         self.logs.viewer.clone().expect("created above")
     }

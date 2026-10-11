@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use parking_lot::Mutex;
 
 use crate::cmd::Cancel;
@@ -71,7 +71,7 @@ struct Inner {
 }
 
 struct Shared {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     /// In-memory only (debug fakes): never reads or writes download-manager.json.
     ephemeral: bool,
     job: Arc<dyn Job>,
@@ -86,19 +86,19 @@ pub struct DownloadManager {
 
 impl DownloadManager {
     /// Loads the persisted queue. Nothing runs until [`start`](Self::start).
-    pub fn new(heroic: HeroicPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
-        let file = queue::load(&heroic);
-        Self::with_state(heroic, job, notify, file.queue, file.finished, false)
+    pub fn new(data_paths: DataPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
+        let file = queue::load(&data_paths);
+        Self::with_state(data_paths, job, notify, file.queue, file.finished, false)
     }
 
     /// A queue that lives only in memory (screenshots / debug fakes): it
     /// neither loads nor saves `store/download-manager.json`.
-    pub fn new_ephemeral(heroic: HeroicPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
-        Self::with_state(heroic, job, notify, Vec::new(), Vec::new(), true)
+    pub fn new_ephemeral(data_paths: DataPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
+        Self::with_state(data_paths, job, notify, Vec::new(), Vec::new(), true)
     }
 
     fn with_state(
-        heroic: HeroicPaths,
+        data_paths: DataPaths,
         job: Arc<dyn Job>,
         notify: impl Fn(Event) + Send + Sync + 'static,
         queue: Vec<DmElement>,
@@ -107,7 +107,7 @@ impl DownloadManager {
     ) -> Self {
         Self {
             shared: Arc::new(Shared {
-                heroic,
+                data_paths,
                 ephemeral,
                 job,
                 notify: Arc::new(notify),
@@ -139,7 +139,7 @@ impl DownloadManager {
         if self.shared.ephemeral {
             return;
         }
-        if let Err(err) = queue::save(&self.shared.heroic, &g.queue, &g.finished) {
+        if let Err(err) = queue::save(&self.shared.data_paths, &g.queue, &g.finished) {
             log::error!("saving the download queue: {err:#}");
         }
     }
@@ -471,7 +471,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (tx, rx) = mpsc::channel();
         let tx = Mutex::new(tx);
-        let m = DownloadManager::new(HeroicPaths::at(dir.path()), job, move |e| {
+        let m = DownloadManager::new(DataPaths::at(dir.path()), job, move |e| {
             let _ = tx.lock().send(e);
         });
         (m, rx, dir)
@@ -504,8 +504,8 @@ mod tests {
         let events: Vec<Event> = rx.try_iter().collect();
         assert!(events.iter().any(|e| matches!(e, Event::Progress { app_name, .. } if app_name == "a")));
         assert!(events.iter().any(|e| matches!(e, Event::Finished { error: Some(m), .. } if m == "boom")));
-        // Persisted in the file Heronite reads.
-        let file = queue::load(&HeroicPaths::at(dir.path()));
+        // Persisted in the queue file.
+        let file = queue::load(&DataPaths::at(dir.path()));
         assert_eq!(file.finished.len(), 3);
         assert!(file.queue.is_empty());
     }
@@ -598,10 +598,10 @@ mod tests {
     #[test]
     fn a_persisted_queue_is_loaded_but_not_started() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
-        queue::save(&heroic, &[el("a")], &[]).unwrap();
+        let data_paths = DataPaths::at(dir.path());
+        queue::save(&data_paths, &[el("a")], &[]).unwrap();
         let job = FakeJob::new(&[], &[]);
-        let m = DownloadManager::new(heroic, job.clone(), |_| {});
+        let m = DownloadManager::new(data_paths, job.clone(), |_| {});
         assert_eq!(m.snapshot().queue.len(), 1);
         assert_eq!(m.snapshot().state, DmState::Idle);
         assert_eq!(job.started.load(Ordering::SeqCst), 0);
@@ -626,13 +626,13 @@ mod tests {
         }
         assert!(m.is_idle(), "the worker went away");
         // What the next start loads: nothing finished, both elements still queued, a first.
-        let file = queue::load(&HeroicPaths::at(dir.path()));
+        let file = queue::load(&DataPaths::at(dir.path()));
         assert!(file.finished.is_empty());
         let names: Vec<_> = file.queue.iter().map(|e| e.params.app_name.as_str()).collect();
         assert_eq!(names, ["a", "b"]);
         // And it resumes: a new manager on the same folder runs them.
         let job2 = FakeJob::new(&[], &[]);
-        let m2 = DownloadManager::new(HeroicPaths::at(dir.path()), job2.clone(), |_| {});
+        let m2 = DownloadManager::new(DataPaths::at(dir.path()), job2.clone(), |_| {});
         m2.start();
         wait_until(&m2, "both done", |s| s.finished.len() == 2);
         assert_eq!(*job2.runs.lock(), ["a", "b"]);

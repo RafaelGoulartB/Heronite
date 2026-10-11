@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::channel::mpsc::UnboundedSender;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::{MenuItem, StandardItem};
 
@@ -74,7 +74,7 @@ pub fn icon_pixmaps(dark: bool) -> Vec<ksni::Icon> {
 }
 
 pub struct HeroniteTray {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     dark: bool,
     exit_to_tray: bool,
     max_recent: usize,
@@ -111,7 +111,7 @@ impl ksni::Tray for HeroniteTray {
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let open = self.window_open.load(Ordering::Relaxed);
-        let recent = recent_games(&self.heroic, self.max_recent);
+        let recent = recent_games(&self.data_paths, self.max_recent);
         menu_rows(&recent, open)
             .into_iter()
             .map(|row| match row {
@@ -176,7 +176,7 @@ impl TrayHandle {
 /// tray support) or D-Bus is unavailable: the caller then behaves as if the
 /// tray did not exist, so the app can never end up with no window and no icon.
 pub fn spawn(
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     dark: bool,
     exit_to_tray: bool,
     max_recent: usize,
@@ -184,7 +184,7 @@ pub fn spawn(
     tx: UnboundedSender<TrayCmd>,
 ) -> Option<TrayHandle> {
     let window_open = Arc::new(AtomicBool::new(window_open));
-    let tray = HeroniteTray { heroic, dark, exit_to_tray, max_recent, window_open: window_open.clone(), tx };
+    let tray = HeroniteTray { data_paths, dark, exit_to_tray, max_recent, window_open: window_open.clone(), tx };
     match tray.spawn() {
         Ok(handle) => Some(TrayHandle { handle, window_open }),
         Err(e) => {

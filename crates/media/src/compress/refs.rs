@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use heronite_data::paths::percent_decode;
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use serde_json::Value;
 
 const SCHEME: &str = "localart://screenshots/";
@@ -14,12 +14,12 @@ const SCHEME: &str = "localart://screenshots/";
 /// Points the art references to `renamed` files (`from` -> `to`, both under
 /// the captures `root`) at their new names. Writes `art.json` only when
 /// something changed; returns how many references were updated.
-pub fn rewrite_art_refs(heroic: &HeroicPaths, root: &Path, renamed: &[(PathBuf, PathBuf)]) -> Result<usize, String> {
+pub fn rewrite_art_refs(data_paths: &DataPaths, root: &Path, renamed: &[(PathBuf, PathBuf)]) -> Result<usize, String> {
     if renamed.is_empty() {
         return Ok(0);
     }
     let map: HashMap<&Path, &Path> = renamed.iter().map(|(f, t)| (f.as_path(), t.as_path())).collect();
-    let path = heroic.art();
+    let path = data_paths.art();
     let mut doc = json_store::read_value(&path).map_err(|e| format!("{e:#}"))?;
     if rewrite(&mut doc, root, &map) == 0 {
         return Ok(0);
@@ -69,10 +69,10 @@ mod tests {
     #[test]
     fn updates_screenshot_urls_and_paths_only() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
+        let data_paths = DataPaths::at(dir.path());
         let root = Path::new("/caps");
         json_store::write(
-            &heroic.art(),
+            &data_paths.art(),
             &json!({"games": {
                 "sideload:a": {"heroUrl": "localart://screenshots/Elden%20Ring/a%20b.png?v=2", "coverUrl": "localart://screenshots/Elden%20Ring/c.png"},
                 "sideload:b": {"heroUrl": "/caps/Elden Ring/d.PNG", "coverUrl": "localart://art/x.png"}
@@ -84,12 +84,12 @@ mod tests {
             (PathBuf::from("/caps/Elden Ring/c.png"), PathBuf::from("/caps/Elden Ring/c-2.webp")),
             (PathBuf::from("/caps/Elden Ring/d.PNG"), PathBuf::from("/caps/Elden Ring/d.webp")),
         ];
-        assert_eq!(rewrite_art_refs(&heroic, root, &renamed).unwrap(), 3);
-        let doc = json_store::read_value(&heroic.art()).unwrap();
+        assert_eq!(rewrite_art_refs(&data_paths, root, &renamed).unwrap(), 3);
+        let doc = json_store::read_value(&data_paths.art()).unwrap();
         assert_eq!(doc["games"]["sideload:a"]["heroUrl"], "localart://screenshots/Elden%20Ring/a%20b.webp?v=2");
         assert_eq!(doc["games"]["sideload:a"]["coverUrl"], "localart://screenshots/Elden%20Ring/c-2.webp");
         assert_eq!(doc["games"]["sideload:b"]["heroUrl"], "/caps/Elden Ring/d.webp");
         assert_eq!(doc["games"]["sideload:b"]["coverUrl"], "localart://art/x.png");
-        assert_eq!(rewrite_art_refs(&heroic, root, &renamed).unwrap(), 0);
+        assert_eq!(rewrite_art_refs(&data_paths, root, &renamed).unwrap(), 0);
     }
 }

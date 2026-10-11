@@ -1,4 +1,4 @@
-//! Runtimes Heroic downloads from Lutris into `<heroic>/tools/runtimes`: umu,
+//! Runtimes downloaded from Lutris into `<data>/tools/runtimes`: umu,
 //! the EAC and the BattlEye runtimes (port of `backend/wine/runtimes`).
 //! Each lives in `runtimes/<name>/` with a `current_version` file holding the
 //! `created_at` of the release that was installed.
@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::Value;
 
 use crate::net::{extract_tar, Cancel, Net, CANCELLED};
@@ -40,7 +40,7 @@ impl Runtime {
     }
 }
 
-pub fn runtimes_dir(paths: &HeroicPaths) -> PathBuf {
+pub fn runtimes_dir(paths: &DataPaths) -> PathBuf {
     paths.tools_dir().join("runtimes")
 }
 
@@ -63,7 +63,7 @@ fn find_entry(list: &Value, runtime: Runtime) -> Option<Entry> {
 /// newest release. When the list cannot be fetched (offline) an existing
 /// folder counts as installed, so a missing connection never forces a
 /// download loop.
-pub fn is_installed(paths: &HeroicPaths, net: &dyn Net, runtime: Runtime) -> bool {
+pub fn is_installed(paths: &DataPaths, net: &dyn Net, runtime: Runtime) -> bool {
     let dir = runtimes_dir(paths).join(runtime.name());
     if !dir.is_dir() {
         return false;
@@ -78,13 +78,13 @@ pub fn is_installed(paths: &HeroicPaths, net: &dyn Net, runtime: Runtime) -> boo
 }
 
 /// Whether the runtime has to be downloaded now.
-pub fn needs_download(paths: &HeroicPaths, net: &dyn Net, runtime: Runtime) -> bool {
+pub fn needs_download(paths: &DataPaths, net: &dyn Net, runtime: Runtime) -> bool {
     net.is_online() && !is_installed(paths, net, runtime)
 }
 
 /// `download`: fetches Lutris' archive and replaces `runtimes/<name>`. The old
 /// folder stays until the new one is fully extracted.
-pub fn download(paths: &HeroicPaths, net: &dyn Net, runtime: Runtime, cancel: Cancel) -> Result<(), String> {
+pub fn download(paths: &DataPaths, net: &dyn Net, runtime: Runtime, cancel: Cancel) -> Result<(), String> {
     let list = net.get_json(RUNTIMES_URL).map_err(|e| format!("could not fetch the runtime list: {e}"))?;
     let entry = find_entry(&list, runtime)
         .filter(|e| !e.url.is_empty())
@@ -122,7 +122,7 @@ pub fn download(paths: &HeroicPaths, net: &dyn Net, runtime: Runtime, cancel: Ca
 }
 
 /// Where umu's script lives once downloaded.
-pub fn umu_script(paths: &HeroicPaths) -> PathBuf {
+pub fn umu_script(paths: &DataPaths) -> PathBuf {
     runtimes_dir(paths).join("umu/umu_run.py")
 }
 
@@ -144,7 +144,7 @@ mod tests {
     #[test]
     fn downloads_and_marks_the_version() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("h"));
+        let paths = DataPaths::at(dir.path().join("h"));
         let tar = tarball(dir.path(), Some("eac"), &[("v2/lib64/x.so", "so")]);
         let net = FakeNet::online().with_json(RUNTIMES_URL, list("2024-01-01T00:00:00Z")).with_file("http://x/eac.tar.xz", tar);
         assert!(!is_installed(&paths, &net, Runtime::Eac));
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn a_newer_release_is_detected_but_offline_never_forces_a_download() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("h"));
+        let paths = DataPaths::at(dir.path().join("h"));
         let rt = runtimes_dir(&paths).join("umu");
         fs::create_dir_all(&rt).unwrap();
         fs::write(rt.join("current_version"), "old").unwrap();
@@ -176,7 +176,7 @@ mod tests {
     #[test]
     fn unknown_runtimes_and_failures_are_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("h"));
+        let paths = DataPaths::at(dir.path().join("h"));
         let net = FakeNet::online().with_json(RUNTIMES_URL, list("t"));
         assert!(download(&paths, &net, Runtime::BattlEye, &|| false).unwrap_err().contains("BattlEye"));
         // Listed, but the archive is not served.

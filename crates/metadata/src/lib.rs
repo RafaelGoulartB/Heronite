@@ -6,8 +6,7 @@
 //! steam-details,web-images}` and the HLTB part of
 //! `src/backend/wiki_game_info`. Every write goes through
 //! `heronite_data::json_store` (or an atomic file write for images and the
-//! Steam details cache) into the same files Heronite uses, so both apps keep
-//! working on one `~/.config/heroic`.
+//! Steam details cache) into the data folder, in the formats Heronite used.
 //!
 //! Everything is blocking (`ureq`); call from worker threads.
 

@@ -7,7 +7,7 @@ use heronite_data::sideload::SideloadPlatform;
 use super::logic::*;
 use super::picker::Slot;
 use super::{text_of, AddGameDialog, Select};
-use crate::dialogs::heroic_settings::logic::{default_wine, display_wine_name, wine_of, wine_options};
+use crate::dialogs::settings_panel::logic::{default_wine, display_wine_name, wine_of, wine_options};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, checkbox, ButtonKind};

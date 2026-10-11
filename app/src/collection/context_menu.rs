@@ -76,7 +76,7 @@ impl CollectionView {
             title: Some(game.title.clone()),
             playnite_id: game.meta.as_ref().map(|m| m.playnite_id.clone()),
         };
-        if let Err(err) = set_game_status(&self.heroic, &game.app_name, &status_id, &extras) {
+        if let Err(err) = set_game_status(&self.data_paths, &game.app_name, &status_id, &extras) {
             self.show_toast(format!("Could not change status: {err:#}"), true, cx);
         }
         self.reload(cx);
@@ -217,7 +217,7 @@ impl CollectionView {
                 .child(if game.favourite { "Remove from favourites" } else { "Add to favourites" })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
-                        if let Err(err) = heronite_data::config_games::toggle_favourite(&this.heroic, &g.app_name, &g.title) {
+                        if let Err(err) = heronite_data::config_games::toggle_favourite(&this.data_paths, &g.app_name, &g.title) {
                             this.show_toast(format!("{err:#}"), true, cx);
                         }
                         this.reload(cx);
@@ -247,7 +247,7 @@ impl CollectionView {
                     .child("Settings")
                     .on_click(cx.listener(move |this, _, window, cx| {
                         let (Some(ctx), Some(g)) = (this.dialog_ctx(), this.lib.as_ref().and_then(|l| l.get(&k)).cloned()) else { return };
-                        let tab = crate::dialogs::game_settings::Tab::heroic_start(&g);
+                        let tab = crate::dialogs::game_settings::Tab::settings_start(&g);
                         let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
                         this.open_dialog(view, cx);
                     })),
@@ -282,7 +282,7 @@ impl CollectionView {
                 .child(if game.hidden { "Unhide" } else { "Hide" })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
-                        if let Err(err) = heronite_data::config_games::toggle_hidden(&this.heroic, &g.app_name, &g.title) {
+                        if let Err(err) = heronite_data::config_games::toggle_hidden(&this.data_paths, &g.app_name, &g.title) {
                             this.show_toast(format!("{err:#}"), true, cx);
                         }
                         this.reload(cx);
@@ -299,7 +299,7 @@ impl CollectionView {
                     .child("Remove from recent")
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if let Some(g) = this.lib.as_ref().and_then(|l| l.get(&k)).cloned() {
-                            if let Err(err) = heronite_data::config_games::remove_recent(&this.heroic, &g.app_name) {
+                            if let Err(err) = heronite_data::config_games::remove_recent(&this.data_paths, &g.app_name) {
                                 this.show_toast(format!("{err:#}"), true, cx);
                             }
                             this.reload(cx);

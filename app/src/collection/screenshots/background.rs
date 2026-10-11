@@ -47,7 +47,7 @@ impl CollectionView {
             return;
         }
         self.shots.started = true;
-        let cache = ThumbnailCache::new(self.heroic.screenshot_thumbnails_dir(), settings.cache_limit_mb.get());
+        let cache = ThumbnailCache::new(self.data_paths.screenshot_thumbnails_dir(), settings.cache_limit_mb.get());
         let (tx, mut rx) = unbounded::<Msg>();
         let queue = Arc::new(Queue { items: Mutex::new(VecDeque::new()), cv: Condvar::new() });
         for n in 0..2 {

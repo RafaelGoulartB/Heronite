@@ -1,11 +1,11 @@
-//! Reading and writing electron-store JSON files compatibly with Heronite.
+//! Reading and writing the electron-store JSON files of the data folder.
 //!
 //! electron-store serializes with `JSON.stringify(value, undefined, '\t')`:
 //! tab indentation and no trailing newline. Writes here produce the same
 //! bytes so diffs stay clean, go through a temp file + rename so a crash or a
 //! concurrent reader never sees a partial file, and always re-read the file
 //! first (read-modify-write) so fields this app does not model, or changes
-//! Heronite made since the last load, survive.
+//! made since the last load, survive.
 
 use std::collections::HashMap;
 use std::fs;
@@ -88,9 +88,9 @@ pub fn sweep_stale_temps(dirs: &[PathBuf]) -> usize {
 }
 
 /// [`sweep_stale_temps`] over the folders where this app writes JSON stores:
-/// the Heroic config folder and its store subfolders, and our own config.
-pub fn sweep_stale_temps_for(heroic: &crate::paths::HeroicPaths, app: &crate::paths::AppPaths) -> usize {
-    let r = &heroic.root;
+/// the data folder and its store subfolders, and our own config.
+pub fn sweep_stale_temps_for(data_paths: &crate::paths::DataPaths, app: &crate::paths::AppPaths) -> usize {
+    let r = &data_paths.root;
     let mut dirs = vec![r.clone(), app.config.clone()];
     for sub in [
         "local_library",
@@ -226,15 +226,15 @@ mod tests {
     #[test]
     fn sweep_covers_the_store_folders() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = crate::paths::HeroicPaths::at(dir.path().join("heroic"));
+        let data_paths = crate::paths::DataPaths::at(dir.path().join("heroic"));
         let app = crate::paths::AppPaths { config: dir.path().join("app"), cache: dir.path().join("cache") };
-        for d in [heroic.root.join("store"), heroic.root.join("local_library"), app.config.clone()] {
+        for d in [data_paths.root.join("store"), data_paths.root.join("local_library"), app.config.clone()] {
             fs::create_dir_all(&d).unwrap();
             fs::write(d.join(".s.json.heronite-rs-4194999.tmp"), "x").unwrap();
             fs::write(d.join("keep.json"), "{}").unwrap();
         }
-        assert_eq!(sweep_stale_temps_for(&heroic, &app), 3);
-        assert!(heroic.root.join("store/keep.json").exists());
+        assert_eq!(sweep_stale_temps_for(&data_paths, &app), 3);
+        assert!(data_paths.root.join("store/keep.json").exists());
     }
 
     #[test]

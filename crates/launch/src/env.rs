@@ -117,7 +117,7 @@ fn deprecated_ge_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(GE|Wine|Proton)-(Proton[7-8]|[4-7].*-GE|GE-4.[0-9]*)").unwrap())
 }
 
-/// `setupWineEnvVars`. `runtime_dir` is `<heroic>/tools/runtimes`.
+/// `setupWineEnvVars`. `runtime_dir` is `<data>/tools/runtimes`.
 pub fn setup_wine_env_vars(
     s: &GameSettings,
     game_id: &str,

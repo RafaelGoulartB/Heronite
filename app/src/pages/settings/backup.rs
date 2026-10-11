@@ -1,4 +1,4 @@
-//! Settings → Backups, second card: scheduled copy of the Heroic config folder.
+//! Settings → Backups, second card: scheduled copy of the data folder.
 
 use chrono::{DateTime, Local, Utc};
 use gpui_kit::component::input::InputState;
@@ -54,7 +54,7 @@ pub fn format_time(iso: &str) -> String {
 fn persist(d: &mut SettingsPage, folder: Option<String>, interval: Option<String>, cx: &mut Context<SettingsPage>) {
     let folder = folder.unwrap_or_else(|| d.settings.backup.folder.clone());
     let interval = interval.unwrap_or_else(|| d.backup.interval.clone());
-    let res = settings::save_backup(&d.ctx.heroic, &folder, &interval);
+    let res = settings::save_backup(&d.ctx.data_paths, &folder, &interval);
     d.saved(res, cx);
 }
 
@@ -67,7 +67,7 @@ fn backup_now(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     d.backup.running = true;
     d.backup.error.clear();
     d.backup.message.clear();
-    let paths = d.ctx.heroic.clone();
+    let paths = d.ctx.data_paths.clone();
     cx.notify();
     cx.spawn(async move |this, cx| {
         let p = paths.clone();
@@ -163,9 +163,9 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     div()
         .flex()
         .flex_col()
-        .child(caption("Heroic config backup"))
+        .child(caption("Data folder backup"))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
-            "Copies Heroic config (Collection, playtime, statuses, Local games, logins) into the folder below. Installed games are not included. Cache and Wine tools are skipped. A dated folder is created when Heroic Local opens, if the schedule is due.",
+            "Copies the data folder (Collection, playtime, statuses, Local games, logins) into the folder below. Installed games are not included. Cache and Wine tools are skipped. A dated folder is created when Heronite opens, if the schedule is due.",
         )))
         .child(setup)
         .child(action)

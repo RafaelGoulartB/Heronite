@@ -1,13 +1,13 @@
 //! Plans and recording against a copy of real Heronite data.
 //!
-//! Point `HERONITE_FIXTURE` at a copy of `~/.config/heroic` (default
+//! Point `HERONITE_FIXTURE` at a copy of the data folder (default
 //! `/tmp/heronite-fixture`). Plan building only reads; the recording test
 //! works on a temporary copy. Run with `-- --nocapture` to see the plans.
 
 use std::path::{Path, PathBuf};
 
 use heronite_data::models::{GameInfo, LocalGameMeta, LocalMetaFile, SideloadLibraryFile};
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use heronite_launch::library::{find_in_library, load_game};
 use heronite_launch::record::{record_play, PlayRecord};
 use heronite_launch::settings::GlobalSettings;
@@ -28,10 +28,10 @@ fn fixture() -> Option<PathBuf> {
 /// The fixture has no `config.json` (Heroic's global settings); borrow the
 /// real one, read-only, so Wine/Proton defaults resolve like on this machine.
 fn context(root: &Path) -> PlanContext {
-    let paths = HeroicPaths::at(root);
+    let paths = DataPaths::at(root);
     let mut ctx = PlanContext::load(&paths);
     if ctx.global.defaults.is_empty() {
-        ctx.global = GlobalSettings::load(&HeroicPaths::detect());
+        ctx.global = GlobalSettings::load(&DataPaths::detect());
     }
     ctx
 }
@@ -61,7 +61,7 @@ struct Row {
 
 fn installed_plans(root: &Path) -> Vec<Row> {
     let ctx = context(root);
-    let paths = HeroicPaths::at(root);
+    let paths = DataPaths::at(root);
     let probe = SystemProbe;
     let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
     let sideload: SideloadLibraryFile = json_store::read(&paths.sideload_library()).unwrap();
@@ -238,7 +238,7 @@ fn installed_games_get_sensible_plans() {
 fn uninstalled_games_report_why() {
     let Some(root) = fixture() else { return };
     let ctx = context(&root);
-    let paths = HeroicPaths::at(&root);
+    let paths = DataPaths::at(&root);
     // Playnite import without executable.
     let g = load_game(&paths, "playnite_febe19c4-f651-4f6a-8caa-e74151b2be8c").unwrap();
     let plan = build_plan(
@@ -299,10 +299,10 @@ fn recording_into_a_copy_of_real_data_keeps_everything_else() {
     for sub in ["store", "local_library"] {
         copy_dir(&root.join(sub), &tmp.path().join(sub));
     }
-    let paths = HeroicPaths::at(tmp.path());
+    let paths = DataPaths::at(tmp.path());
     let before_ts = json_store::read_value(&paths.timestamps()).unwrap();
     let before_sessions = json_store::read_value(&paths.sessions()).unwrap();
-    let before_cfg = json_store::read_value(&paths.config()).unwrap();
+    let before_cfg = json_store::read_value(&paths.store_config()).unwrap();
 
     let start = chrono::Utc::now() - chrono::Duration::minutes(75);
     let end = start + chrono::Duration::minutes(75) - chrono::Duration::milliseconds(1);
@@ -345,7 +345,7 @@ fn recording_into_a_copy_of_real_data_keeps_everything_else() {
         }
     }
 
-    let cfg = json_store::read_value(&paths.config()).unwrap();
+    let cfg = json_store::read_value(&paths.store_config()).unwrap();
     assert_eq!(
         cfg["games"]["recent"][0],
         serde_json::json!({"appName": "steam_400", "title": "Portal"})

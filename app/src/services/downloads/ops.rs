@@ -7,7 +7,7 @@ use futures::channel::mpsc::{unbounded, UnboundedSender};
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::game_config;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_epic::cmd::{Cancel, Legendary};
 use heronite_epic::ops::{self, OpResult, RepairUpdate};
 use heronite_epic::saves;
@@ -20,8 +20,8 @@ enum OpMsg {
     Done(OpResult),
 }
 
-fn locate(heroic: &HeroicPaths) -> Result<Legendary, OpResult> {
-    Legendary::locate(heroic).map_err(|e| OpResult { ok: false, aborted: false, message: format!("{e:#}") })
+fn locate(data_paths: &DataPaths) -> Result<Legendary, OpResult> {
+    Legendary::locate(data_paths).map_err(|e| OpResult { ok: false, aborted: false, message: format!("{e:#}") })
 }
 
 impl Downloads {
@@ -31,7 +31,7 @@ impl Downloads {
         label: &str,
         cancellable: bool,
         cx: &mut Context<Self>,
-        work: impl FnOnce(&HeroicPaths, &Legendary, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
+        work: impl FnOnce(&DataPaths, &Legendary, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
     ) {
         self.run_op_then(app_name, label, cancellable, cx, work, |_, _, _| {});
     }
@@ -44,7 +44,7 @@ impl Downloads {
         label: &str,
         cancellable: bool,
         cx: &mut Context<Self>,
-        work: impl FnOnce(&HeroicPaths, &Legendary, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
+        work: impl FnOnce(&DataPaths, &Legendary, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
         then: impl FnOnce(&mut Self, &OpResult, &mut Context<Self>) + 'static,
     ) {
         let mut then = Some(then);
@@ -59,16 +59,16 @@ impl Downloads {
         );
         cx.notify();
         let (tx, mut rx) = unbounded::<OpMsg>();
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         let c = cancel.unwrap_or_else(Cancel::new);
         std::thread::Builder::new()
             .name("epic-op".into())
             .spawn(move || {
-                let result = match locate(&heroic) {
+                let result = match locate(&data_paths) {
                     Err(r) => r,
                     Ok(lg) => {
                         let progress_tx: UnboundedSender<OpMsg> = tx.clone();
-                        work(&heroic, &lg, &c, &move |p| {
+                        work(&data_paths, &lg, &c, &move |p| {
                             let _ = progress_tx.unbounded_send(OpMsg::Percent(p));
                         })
                     }
@@ -120,8 +120,8 @@ impl Downloads {
     /// Verify and repair (`legendary repair`).
     pub fn verify(&mut self, app_name: &str, cx: &mut Context<Self>) {
         let app = app_name.to_string();
-        self.run_op(app_name, "Verifying", true, cx, move |heroic, lg, cancel, report| {
-            ops::repair(heroic, lg, &app, cancel, |u| match u {
+        self.run_op(app_name, "Verifying", true, cx, move |data_paths, lg, cancel, report| {
+            ops::repair(data_paths, lg, &app, cancel, |u| match u {
                 RepairUpdate::Verifying(p) => report(Some(p as f32)),
                 RepairUpdate::Downloading(p) => report(Some(p.percent as f32)),
             })
@@ -131,18 +131,18 @@ impl Downloads {
     /// Uninstall; optionally removes the Wine prefix and the game settings.
     pub fn uninstall(&mut self, app_name: &str, remove_prefix: bool, remove_settings: bool, cx: &mut Context<Self>) {
         let app = app_name.to_string();
-        self.run_op(app_name, "Uninstalling", false, cx, move |heroic, lg, _, _| {
+        self.run_op(app_name, "Uninstalling", false, cx, move |data_paths, lg, _, _| {
             // The prefix is looked up before the settings are deleted.
             let prefix_to_remove = remove_prefix;
-            let r = ops::uninstall(heroic, lg, &app);
+            let r = ops::uninstall(data_paths, lg, &app);
             if r.ok {
                 if prefix_to_remove {
-                    if let Err(err) = ops::remove_prefix(heroic, &app) {
+                    if let Err(err) = ops::remove_prefix(data_paths, &app) {
                         log::warn!("removing the prefix of {app}: {err:#}");
                     }
                 }
                 if remove_settings {
-                    ops::remove_settings_and_logs(heroic, &app);
+                    ops::remove_settings_and_logs(data_paths, &app);
                 }
             }
             r
@@ -153,29 +153,25 @@ impl Downloads {
     /// `heronite_epic::moves`). `true` when one is being finished: the game shows
     /// as busy and the download queue starts when it is done.
     pub(super) fn resume_interrupted_move(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(journal) = heronite_epic::moves::pending_move(&self.heroic) else { return false };
+        let Some(journal) = heronite_epic::moves::pending_move(&self.data_paths) else { return false };
         self.run_op_then(
             &journal.app_name,
             "Moving",
             false,
             cx,
-            |heroic, lg, _, _| {
-                heronite_epic::moves::resume_interrupted_move(heroic, lg)
+            |data_paths, lg, _, _| {
+                heronite_epic::moves::resume_interrupted_move(data_paths, lg)
                     .unwrap_or_else(|| OpResult { ok: true, aborted: false, message: "The interrupted move was already finished".into() })
             },
-            |this, _, _| {
-                if !heronite_epic::autoupdate::heronite_running() {
-                    this.manager.start();
-                }
-            },
+            |this, _, _| this.manager.start(),
         );
         true
     }
 
     pub fn move_install(&mut self, app_name: &str, install_path: &str, new_parent: &str, cx: &mut Context<Self>) {
         let (app, from, to) = (app_name.to_string(), install_path.to_string(), new_parent.to_string());
-        self.run_op(app_name, "Moving", false, cx, move |heroic, lg, _, _| {
-            let r = ops::move_install(heroic, lg, &app, &from, &to);
+        self.run_op(app_name, "Moving", false, cx, move |data_paths, lg, _, _| {
+            let r = ops::move_install(data_paths, lg, &app, &from, &to);
             if r.ok {
                 OpResult { ok: true, aborted: false, message: "Game moved".into() }
             } else {
@@ -194,10 +190,10 @@ impl Downloads {
         cx: &mut Context<Self>,
     ) {
         let (app, folder, platform) = (app_name.to_string(), folder.to_string(), platform.to_string());
-        self.run_op(app_name, "Importing", false, cx, move |heroic, lg, _, _| {
-            let r = ops::import_game(heroic, lg, &app, &folder, &platform);
+        self.run_op(app_name, "Importing", false, cx, move |data_paths, lg, _, _| {
+            let r = ops::import_game(data_paths, lg, &app, &folder, &platform);
             if r.ok && (wine_prefix.is_some() || wine_version.is_some()) {
-                if let Err(err) = ops::write_wine_config(heroic, &app, wine_prefix.as_deref().unwrap_or(""), wine_version.as_ref()) {
+                if let Err(err) = ops::write_wine_config(data_paths, &app, wine_prefix.as_deref().unwrap_or(""), wine_version.as_ref()) {
                     log::warn!("writing the Wine settings of {app}: {err:#}");
                 }
             }
@@ -210,14 +206,14 @@ impl Downloads {
     pub fn sync_saves(&mut self, app_name: &str, title: &str, cx: &mut Context<Self>) {
         let (app, title_owned) = (app_name.to_string(), title.to_string());
         let (tx, mut rx) = unbounded::<Result<String, String>>();
-        self.run_op(app_name, "Syncing saves", false, cx, move |heroic, _, _, _| {
-            let configured = game_config::load_game(heroic, &app, &ops::home())
+        self.run_op(app_name, "Syncing saves", false, cx, move |data_paths, _, _, _| {
+            let configured = game_config::load_game(data_paths, &app, &ops::home())
                 .get("savesPath")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
             let path = if configured.is_empty() {
-                match saves::detect_path(heroic, &app) {
+                match saves::detect_path(data_paths, &app) {
                     Ok(Some(p)) => p,
                     Ok(None) => return OpResult { ok: false, aborted: false, message: "The save folder could not be detected; set it in the game settings".into() },
                     Err(err) => return OpResult { ok: false, aborted: false, message: format!("{err:#}") },
@@ -225,7 +221,7 @@ impl Downloads {
             } else {
                 configured
             };
-            match saves::sync(heroic, &app, &path, saves::SyncMode::Both) {
+            match saves::sync(data_paths, &app, &path, saves::SyncMode::Both) {
                 Ok(text) => {
                     let _ = tx.unbounded_send(Ok(text));
                     OpResult { ok: true, aborted: false, message: "Cloud saves synced".into() }

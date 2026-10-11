@@ -3,13 +3,13 @@ use crate::emulators::{UserEmulator, UserEmulatorProfile};
 use crate::probe::FakeProbe;
 use crate::settings::{GameSettings, GlobalSettings};
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalGameRom};
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::{json, Value};
 
 const UMU: &str = "/hr/tools/runtimes/umu/umu_run.py";
 
 fn ctx(global: Value) -> PlanContext {
-    let mut c = PlanContext::load(&HeroicPaths::at("/hr"));
+    let mut c = PlanContext::load(&DataPaths::at("/hr"));
     c.global = GlobalSettings::from_defaults(global.as_object().cloned().unwrap_or_default());
     c
 }

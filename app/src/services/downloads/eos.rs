@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_epic::cmd::Legendary;
 use heronite_epic::eos_overlay::{self, PrefixFolder};
 use heronite_epic::ops::OpResult;
@@ -36,9 +36,9 @@ impl EosEntry {
 struct EosStamp([Option<SystemTime>; 3]);
 
 impl EosStamp {
-    fn read(heroic: &HeroicPaths, app_name: &str, registry: Option<&Path>) -> Self {
+    fn read(data_paths: &DataPaths, app_name: &str, registry: Option<&Path>) -> Self {
         let mtime = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
-        Self([mtime(&heroic.game_config(app_name)), mtime(&heroic.config()), registry.and_then(mtime)])
+        Self([mtime(&data_paths.game_config(app_name)), mtime(&data_paths.store_config()), registry.and_then(mtime)])
     }
 }
 
@@ -50,13 +50,13 @@ impl Downloads {
     /// Reads the overlay state; `check` also looks up the latest version
     /// (which may ask legendary, so it only runs when the page is open).
     pub fn eos_reload(&mut self, check: bool, cx: &mut Context<Self>) {
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let (status, latest) = cx
                 .background_spawn(async move {
-                    let status = eos_overlay::status(&heroic);
+                    let status = eos_overlay::status(&data_paths);
                     let latest = if check && status.installed {
-                        Legendary::locate(&heroic).map(|lg| eos_overlay::latest_version(&heroic, &lg)).unwrap_or_default()
+                        Legendary::locate(&data_paths).map(|lg| eos_overlay::latest_version(&data_paths, &lg)).unwrap_or_default()
                     } else {
                         String::new()
                     };
@@ -85,13 +85,13 @@ impl Downloads {
         }
         self.eos.checking = true;
         cx.notify();
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let latest = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&heroic).ok()?;
-                    eos_overlay::update_info(&heroic, &lg);
-                    Some(eos_overlay::latest_version(&heroic, &lg))
+                    let lg = Legendary::locate(&data_paths).ok()?;
+                    eos_overlay::update_info(&data_paths, &lg);
+                    Some(eos_overlay::latest_version(&data_paths, &lg))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -118,7 +118,7 @@ impl Downloads {
             label,
             true,
             cx,
-            |heroic, lg, cancel, report| eos_overlay::install(heroic, lg, cancel, &|p| report(Some(p))),
+            |data_paths, lg, cancel, report| eos_overlay::install(data_paths, lg, cancel, &|p| report(Some(p))),
             move |this, r, cx| {
                 this.eos_reload(true, cx);
                 if r.ok {
@@ -158,31 +158,31 @@ impl Downloads {
     /// old state stays on screen meanwhile.
     pub fn eos_load_game(&mut self, app_name: &str, cx: &mut Context<Self>) {
         if let Some(e) = self.eos_games.get_mut(app_name) {
-            if e.loading || e.stamp.as_ref() == Some(&EosStamp::read(&self.heroic, app_name, e.registry.as_deref())) {
+            if e.loading || e.stamp.as_ref() == Some(&EosStamp::read(&self.data_paths, app_name, e.registry.as_deref())) {
                 return;
             }
             e.loading = true;
         } else {
             self.eos_games.insert(app_name.to_string(), EosEntry { loading: true, ..EosEntry::set(EosGame::Loading) });
         }
-        let (heroic, app) = (self.heroic.clone(), app_name.to_string());
+        let (data_paths, app) = (self.data_paths.clone(), app_name.to_string());
         cx.spawn(async move |this, cx| {
             let (state, registry, stamp) = cx
                 .background_spawn({
                     let app = app.clone();
                     async move {
-                        let folder = eos_overlay::prefix_folder(&heroic, &app);
+                        let folder = eos_overlay::prefix_folder(&data_paths, &app);
                         let registry = match &folder {
                             PrefixFolder::Valid(prefix) => Some(Path::new(prefix).join("user.reg")),
                             _ => None,
                         };
                         // Before asking legendary: a change while it runs is seen next time.
-                        let stamp = EosStamp::read(&heroic, &app, registry.as_deref());
+                        let stamp = EosStamp::read(&data_paths, &app, registry.as_deref());
                         let state = match folder {
                             PrefixFolder::NotApplicable => EosGame::Unavailable,
                             PrefixFolder::Invalid => EosGame::Disabled,
                             PrefixFolder::Valid(prefix) => {
-                                let enabled = Legendary::locate(&heroic).map(|lg| eos_overlay::is_enabled(&lg, Some(&prefix))).unwrap_or(false);
+                                let enabled = Legendary::locate(&data_paths).map(|lg| eos_overlay::is_enabled(&lg, Some(&prefix))).unwrap_or(false);
                                 if enabled { EosGame::Enabled } else { EosGame::Disabled }
                             }
                         };
@@ -215,7 +215,7 @@ impl Downloads {
     /// whether to install it first ([`DownloadsEvent::EosNotInstalled`]).
     fn eos_enable_game(&mut self, app_name: &str, cx: &mut Context<Self>) {
         // It may have been installed by Heronite since the page last looked.
-        self.eos.installed = eos_overlay::status(&self.heroic).installed;
+        self.eos.installed = eos_overlay::status(&self.data_paths).installed;
         if !self.eos.installed {
             self.emit(cx, DownloadsEvent::EosNotInstalled { app_name: app_name.to_string() });
             return;
@@ -238,8 +238,8 @@ impl Downloads {
             label,
             false,
             cx,
-            move |heroic, lg, _, _| {
-                let prefix = match eos_overlay::prefix_folder(heroic, &app_for_work) {
+            move |data_paths, lg, _, _| {
+                let prefix = match eos_overlay::prefix_folder(data_paths, &app_for_work) {
                     PrefixFolder::Valid(p) => Some(p),
                     PrefixFolder::NotApplicable => None,
                     // Nothing to enable / disable without a prefix (Heroic returns quietly).
@@ -271,26 +271,26 @@ impl Downloads {
 
 #[cfg(test)]
 mod tests {
-    use super::{EosStamp, HeroicPaths};
+    use super::{EosStamp, DataPaths};
     use std::time::{Duration, SystemTime};
 
     #[test]
     fn eos_stamp_changes_with_settings_and_prefix_registry() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
+        let data_paths = DataPaths::at(dir.path());
         let reg = dir.path().join("pfx/user.reg");
         std::fs::create_dir_all(reg.parent().unwrap()).unwrap();
         std::fs::write(&reg, "WINE REGISTRY Version 2\n").unwrap();
-        let before = EosStamp::read(&heroic, "Game", Some(&reg));
-        assert_eq!(before, EosStamp::read(&heroic, "Game", Some(&reg)));
+        let before = EosStamp::read(&data_paths, "Game", Some(&reg));
+        assert_eq!(before, EosStamp::read(&data_paths, "Game", Some(&reg)));
 
         let later = SystemTime::now() + Duration::from_secs(5);
         std::fs::File::options().write(true).open(&reg).unwrap().set_modified(later).unwrap();
-        let touched = EosStamp::read(&heroic, "Game", Some(&reg));
+        let touched = EosStamp::read(&data_paths, "Game", Some(&reg));
         assert_ne!(before, touched);
 
-        std::fs::create_dir_all(heroic.games_config_dir()).unwrap();
-        std::fs::write(heroic.game_config("Game"), "{}").unwrap();
-        assert_ne!(touched, EosStamp::read(&heroic, "Game", Some(&reg)));
+        std::fs::create_dir_all(data_paths.games_config_dir()).unwrap();
+        std::fs::write(data_paths.game_config("Game"), "{}").unwrap();
+        assert_ne!(touched, EosStamp::read(&data_paths, "Game", Some(&reg)));
     }
 }

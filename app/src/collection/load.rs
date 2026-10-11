@@ -7,8 +7,7 @@ use std::time::Instant;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::hltb::WikiCache;
-use heronite_data::ui_state::UiState;
-use heronite_data::{art, AppPaths, ArtContext, HeroicPaths, Library};
+use heronite_data::{art, ArtContext, DataPaths, Library};
 use heronite_images::ImageRef;
 
 use super::{stage, CollectionView};
@@ -22,13 +21,13 @@ struct Loaded {
     stages: HashMap<SharedString, Vec<ImageRef>>,
 }
 
-fn load_all(heroic: &HeroicPaths, include_hidden: bool) -> anyhow::Result<Loaded> {
+fn load_all(data_paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Loaded> {
     let t = Instant::now();
-    let lib = Library::load_with(heroic, include_hidden)?;
-    let wiki = WikiCache::load(heroic);
+    let lib = Library::load_with(data_paths, include_hidden)?;
+    let wiki = WikiCache::load(data_paths);
     let shots = (!lib.settings.screenshots.folder.is_empty())
         .then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
-    let ctx = ArtContext::new(heroic, shots.as_deref());
+    let ctx = ArtContext::new(data_paths, shots.as_deref());
     let mut covers = HashMap::new();
     let mut stages = HashMap::new();
     for g in &lib.games {
@@ -40,24 +39,12 @@ fn load_all(heroic: &HeroicPaths, include_hidden: bool) -> anyhow::Result<Loaded
     Ok(Loaded { lib, wiki, covers, stages })
 }
 
-/// The saved UI state; the first run starts where Heronite left off.
-pub(super) fn load_ui_state(heroic: &HeroicPaths, app_paths: &AppPaths) -> UiState {
-    if app_paths.ui_state().exists() {
-        return UiState::load(app_paths);
-    }
-    let ui = heronite_data::heronite_ui_import::import(heroic).unwrap_or_default();
-    if let Err(err) = ui.save(app_paths) {
-        log::warn!("saving imported ui state: {err:#}");
-    }
-    ui
-}
-
 impl CollectionView {
     pub(super) fn spawn_load(&self, cx: &mut Context<Self>) {
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         let include_hidden = self.ui.show_hidden;
         cx.spawn(async move |this, cx| {
-            let loaded = cx.background_spawn(async move { load_all(&heroic, include_hidden) }).await;
+            let loaded = cx.background_spawn(async move { load_all(&data_paths, include_hidden) }).await;
             this.update(cx, |this, cx| {
                 this.refreshing = false;
                 match loaded {

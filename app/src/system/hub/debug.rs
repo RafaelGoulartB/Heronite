@@ -112,20 +112,20 @@ fn fake_session(cx: &mut App, spec: &str) {
         return;
     };
     let state = hub(cx);
-    let heroic = {
+    let data_paths = {
         let mut s = state.0.borrow_mut();
         if s.exit_when_idle {
             // A headless launch (`--launch` with FAKE_LAUNCH) would otherwise
             // exit before the fake session even starts.
             s.running.entry(app_name.clone()).or_insert(None);
         }
-        s.heroic.clone()
+        s.data_paths.clone()
     };
     cx.spawn(async move |cx| {
         cx.background_executor().timer(Duration::from_millis(delay)).await;
         let found = cx
             .background_spawn(async move {
-                Library::load(&heroic).ok().and_then(|lib| lib.games.iter().find(|g| g.app_name == app_name).cloned())
+                Library::load(&data_paths).ok().and_then(|lib| lib.games.iter().find(|g| g.app_name == app_name).cloned())
             })
             .await;
         let Some(game) = found else {

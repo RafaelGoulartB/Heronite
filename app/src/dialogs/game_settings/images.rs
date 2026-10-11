@@ -23,9 +23,9 @@ impl GameSettingsDialog {
     /// The cover and background chains the game shows without a custom image.
     pub(super) fn default_art(ctx: &DialogCtx, game: &Game) -> (Vec<ImageRef>, Vec<ImageRef>) {
         let shots = ctx.lib.settings.screenshots_folder().map(|p| p.to_path_buf());
-        let art_ctx = ArtContext::new(&ctx.heroic, shots.as_deref());
-        let old_cover = game.art.as_deref().and_then(|a| a.cover_url.clone()).map(|u| chain_for_url(&ctx.heroic, shots.as_deref(), &u)).unwrap_or_default();
-        let old_hero = game.art.as_deref().and_then(|a| a.hero_url.clone()).map(|u| chain_for_url(&ctx.heroic, shots.as_deref(), &u)).unwrap_or_default();
+        let art_ctx = ArtContext::new(&ctx.data_paths, shots.as_deref());
+        let old_cover = game.art.as_deref().and_then(|a| a.cover_url.clone()).map(|u| chain_for_url(&ctx.data_paths, shots.as_deref(), &u)).unwrap_or_default();
+        let old_hero = game.art.as_deref().and_then(|a| a.hero_url.clone()).map(|u| chain_for_url(&ctx.data_paths, shots.as_deref(), &u)).unwrap_or_default();
         let default_cover: Vec<ImageRef> =
             crate::images::to_chain(&art::card_cover(&art_ctx, game)).into_iter().filter(|r| !old_cover.contains(r)).collect();
         let default_hero: Vec<ImageRef> =
@@ -157,7 +157,7 @@ impl GameSettingsDialog {
         let is_cover = kind == ArtKind::Cover;
         let custom_url = if is_cover { self.art.cover_url.clone() } else { self.art.hero_url.clone() };
         let shots = self.ctx.lib.settings.screenshots_folder().map(|p| p.to_path_buf());
-        let mut chain = custom_url.as_deref().map(|u| chain_for_url(&self.ctx.heroic, shots.as_deref(), u)).unwrap_or_default();
+        let mut chain = custom_url.as_deref().map(|u| chain_for_url(&self.ctx.data_paths, shots.as_deref(), u)).unwrap_or_default();
         chain.extend(if is_cover { self.default_cover.clone() } else { self.default_hero.clone() });
         (chain, custom_url)
     }

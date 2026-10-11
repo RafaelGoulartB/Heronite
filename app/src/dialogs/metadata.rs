@@ -251,7 +251,7 @@ impl MetadataDialog {
     fn choice_tile(&mut self, field: &'static str, id: String, label: String, value: String, selected: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let is_image = field == "cover" || field == "hero";
         let detail: AnyElement = if is_image {
-            let chain = chain_for_url(&self.ctx.heroic, self.ctx.lib.settings.screenshots_folder(), &value);
+            let chain = chain_for_url(&self.ctx.data_paths, self.ctx.lib.settings.screenshots_folder(), &value);
             if chain.is_empty() {
                 div()
                     .text_size(px(12.))

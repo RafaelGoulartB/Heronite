@@ -35,7 +35,7 @@ enum Field {
 
 impl GameSettingsDialog {
     fn console_tabs(&self) -> Vec<Tab> {
-        let mut t: Vec<Tab> = self.heroic.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default();
+        let mut t: Vec<Tab> = self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default();
         if self.launch.is_some() {
             t.push(Tab::Launch);
         }
@@ -47,7 +47,7 @@ impl GameSettingsDialog {
     fn console_set_tab(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
         self.tab = tab;
         self.console_list.reset();
-        if let (Some(section), Some((panel, _))) = (tab.section(), self.heroic.as_ref()) {
+        if let (Some(section), Some((panel, _))) = (tab.section(), self.panel.as_ref()) {
             panel.update(cx, |p, cx| {
                 p.set_section(section, window, cx);
                 p.console_reset();
@@ -231,7 +231,7 @@ impl GameSettingsDialog {
                     ),
             );
 
-        let body: AnyElement = match (self.tab.section(), &self.heroic) {
+        let body: AnyElement = match (self.tab.section(), &self.panel) {
             (Some(_), Some((panel, _))) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
             _ => {
                 let rows = self.console_rows(cx);
@@ -285,7 +285,7 @@ impl PadTarget for GameSettingsDialog {
             _ => {}
         }
         if self.tab.section().is_some() {
-            if let Some((panel, _)) = self.heroic.clone() {
+            if let Some((panel, _)) = self.panel.clone() {
                 return panel.update(cx, |p, cx| p.on_pad(pad, window, cx));
             }
             return false;
@@ -329,7 +329,7 @@ impl PadTarget for GameSettingsDialog {
             return h;
         }
         if self.tab.section().is_some() {
-            if let Some((panel, _)) = &self.heroic {
+            if let Some((panel, _)) = &self.panel {
                 let mut h = panel.read(cx).hints(cx);
                 h.push(hint(Btn::Bumpers, "Tabs"));
                 h.push(hint(Btn::B, "Done"));

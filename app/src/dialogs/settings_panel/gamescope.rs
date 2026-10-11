@@ -5,7 +5,7 @@ use gpui_kit::*;
 use serde_json::Value;
 
 use super::parts::{column, danger_text, heading, help, rows};
-use super::HeroicSettingsPanel;
+use super::SettingsPanel;
 use crate::ui::controls::toggle_row;
 use crate::ui::fields::{field_label, input_box};
 
@@ -17,7 +17,7 @@ pub(super) const UPSCALE_METHODS: [(&str, &str); 4] = [
 ];
 pub(super) const WINDOW_TYPES: [(&str, &str); 3] = [("fullscreen", "Fullscreen"), ("borderless", "Borderless"), ("windowed", "Windowed")];
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     pub(super) fn gs_flag(&self, field: &str) -> bool {
         matches!(self.gamescope().get(field), Some(Value::Bool(true)))
     }

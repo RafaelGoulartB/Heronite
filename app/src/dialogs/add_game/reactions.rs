@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::logic::*;
 use super::{text_of, AddGameDialog};
-use crate::dialogs::heroic_settings::logic::wine_of;
+use crate::dialogs::settings_panel::logic::wine_of;
 
 impl AddGameDialog {
     pub(super) fn title_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -71,7 +71,7 @@ impl AddGameDialog {
     }
 
     pub(super) fn load_wine_list(&mut self, cx: &mut Context<Self>) {
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         // Debug captures only keep the first frames: load in place there.
         if crate::env::flag("HERONITE_DEBUG_DIALOG") {
             let list = heronite_wine::list_installations(&paths);

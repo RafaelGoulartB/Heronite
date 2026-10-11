@@ -11,7 +11,7 @@ use heronite_data::models::{
     CollectionGameMetadata, LocalGameMeta, LocalGameRom, LocalMetaFile, MetadataFile,
 };
 use heronite_data::status::{inferred_status_id, load_statuses};
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Value};
 
 use crate::pathutil::{dirname, normalize_key};
@@ -97,7 +97,7 @@ fn seed_platforms(file: &mut MetadataFile, app_name: &str, platform_name: Option
 
 /// `importScannedRoms`.
 pub fn import_scanned_roms(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     args: &RomScanImportArgs,
 ) -> Result<RomScanImportResult> {
     let mut result = RomScanImportResult {
@@ -287,7 +287,7 @@ pub struct AutoScanReport {
 }
 
 /// Scans one saved folder and imports the games not imported yet.
-pub fn scan_saved_folder(paths: &HeroicPaths, scanner: &crate::types::RomScanner) -> Result<(usize, Vec<String>)> {
+pub fn scan_saved_folder(paths: &DataPaths, scanner: &crate::types::RomScanner) -> Result<(usize, Vec<String>)> {
     let preview = preview_rom_scan(
         paths,
         &RomScanArgs {
@@ -331,7 +331,7 @@ pub fn scan_saved_folder(paths: &HeroicPaths, scanner: &crate::types::RomScanner
 /// `runAutoRomScanners` with a report: every scanner with `autoScanOnRefresh`
 /// (or, with `only`, exactly that scanner whatever its flag) imports the games
 /// not imported yet. A folder that fails does not stop the others.
-pub fn run_rom_scanners(paths: &HeroicPaths, only: Option<&str>) -> Result<AutoScanReport> {
+pub fn run_rom_scanners(paths: &DataPaths, only: Option<&str>) -> Result<AutoScanReport> {
     let mut report = AutoScanReport::default();
     for scanner in store::list_rom_scanners(paths)? {
         match only {
@@ -355,13 +355,13 @@ pub fn run_rom_scanners(paths: &HeroicPaths, only: Option<&str>) -> Result<AutoS
 
 /// `runAutoRomScanners`: for every scanner with `autoScanOnRefresh`, imports
 /// the games not imported yet. Returns the number of newly imported games.
-pub fn run_auto_rom_scanners(paths: &HeroicPaths) -> Result<usize> {
+pub fn run_auto_rom_scanners(paths: &DataPaths) -> Result<usize> {
     Ok(run_rom_scanners(paths, None)?.imported)
 }
 
 /// `setEmulatorLaunchRom`: remembers which ROM (disc) to launch.
 pub fn set_emulator_launch_rom(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     app_name: &str,
     rom_path: &str,
 ) -> Result<Option<LocalGameMeta>> {
@@ -379,9 +379,9 @@ mod tests {
     use crate::types::UpsertUserEmulatorArgs;
     use std::fs::{create_dir_all, write};
 
-    fn setup() -> (tempfile::TempDir, HeroicPaths, tempfile::TempDir, String, String) {
-        let heroic = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(heroic.path());
+    fn setup() -> (tempfile::TempDir, DataPaths, tempfile::TempDir, String, String) {
+        let data_dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(data_dir.path());
         let roms = tempfile::tempdir().unwrap();
         create_dir_all(roms.path().join("Sub")).unwrap();
         write(roms.path().join("Alpha (USA).iso"), "x").unwrap();
@@ -397,10 +397,10 @@ mod tests {
             },
         )
         .unwrap();
-        (heroic, paths, roms, e.id, e.profiles[0].id.clone())
+        (data_dir, paths, roms, e.id, e.profiles[0].id.clone())
     }
 
-    fn scan(paths: &HeroicPaths, e: &str, p: &str, dir: &str) -> Vec<RomScanItem> {
+    fn scan(paths: &DataPaths, e: &str, p: &str, dir: &str) -> Vec<RomScanItem> {
         preview_rom_scan(
             paths,
             &RomScanArgs { emulator_id: e.into(), profile_id: p.into(), directory: dir.into(), ..Default::default() },

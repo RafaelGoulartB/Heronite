@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
 use heronite_data::models::LocalMetaFile;
-use heronite_data::{json_store, settings, HeroicPaths};
+use heronite_data::{json_store, settings, DataPaths};
 use heronite_launch::probe::Probe;
 use heronite_launch::settings::{load_game_settings, GlobalSettings};
 use serde::{Deserialize, Serialize};
@@ -79,12 +79,12 @@ impl Drop for InFlight {
 
 /// Everything the flow reads from or runs on the machine.
 pub struct LudusaviEnv<'a> {
-    pub paths: &'a HeroicPaths,
+    pub paths: &'a DataPaths,
     pub runner: &'a dyn CommandRunner,
     pub probe: &'a dyn Probe,
 }
 
-fn record_error(paths: &HeroicPaths, error: &str) {
+fn record_error(paths: &DataPaths, error: &str) {
     if let Err(e) = record_ludusavi_backup(
         paths,
         &LudusaviRecord { error: Some(error.to_string()), ..Default::default() },
@@ -296,9 +296,9 @@ mod tests {
         L.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn setup(settings_json: &str) -> (tempfile::TempDir, HeroicPaths) {
+    fn setup(settings_json: &str) -> (tempfile::TempDir, DataPaths) {
         let d = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(d.path());
+        let paths = DataPaths::at(d.path());
         std::fs::create_dir_all(paths.local_library()).unwrap();
         std::fs::write(paths.collection_settings(), settings_json).unwrap();
         (d, paths)

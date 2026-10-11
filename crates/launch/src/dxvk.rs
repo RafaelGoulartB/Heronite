@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use crate::net::{Cancel, Net};
 use crate::probe::Probe;
@@ -40,7 +40,7 @@ pub enum Outcome {
 }
 
 pub struct Env<'a> {
-    pub paths: &'a HeroicPaths,
+    pub paths: &'a DataPaths,
     pub net: &'a dyn Net,
     pub probe: &'a dyn Probe,
     pub runner: &'a dyn WineRunner,
@@ -246,7 +246,7 @@ mod tests {
 
     struct Fixture {
         _dir: tempfile::TempDir,
-        paths: HeroicPaths,
+        paths: DataPaths,
         prefix: PathBuf,
         settings: GameSettings,
     }
@@ -254,7 +254,7 @@ mod tests {
     /// A Wine prefix and an installed `dxvk-1.0` with 32/64-bit DLLs.
     fn fixture(tool: Tool) -> Fixture {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let prefix = dir.path().join("pfx");
         for d in ["drive_c/windows/system32", "drive_c/windows/syswow64"] {
             fs::create_dir_all(prefix.join(d)).unwrap();

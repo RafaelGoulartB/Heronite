@@ -9,7 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::library::CollectionGame;
-use crate::paths::{percent_decode, HeroicPaths};
+use crate::paths::{percent_decode, DataPaths};
 
 /// One candidate image.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -55,13 +55,13 @@ pub fn steam_hero_download_urls(steam_app_id: &str) -> [String; 5] {
 /// What local files and the screenshots folder resolve against.
 #[derive(Debug, Clone, Copy)]
 pub struct ArtContext<'a> {
-    pub paths: &'a HeroicPaths,
+    pub paths: &'a DataPaths,
     /// `settings.screenshots.folder`, for `localart://screenshots/...`.
     pub screenshots_folder: Option<&'a Path>,
 }
 
 impl<'a> ArtContext<'a> {
-    pub fn new(paths: &'a HeroicPaths, screenshots_folder: Option<&'a Path>) -> Self {
+    pub fn new(paths: &'a DataPaths, screenshots_folder: Option<&'a Path>) -> Self {
         Self { paths, screenshots_folder }
     }
 
@@ -227,9 +227,9 @@ mod tests {
     use crate::library::Library;
     use std::fs;
 
-    fn setup() -> (tempfile::TempDir, HeroicPaths) {
+    fn setup() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         fs::create_dir_all(paths.art_dir().join("sideload_x")).unwrap();
         fs::create_dir_all(paths.heroes_dir()).unwrap();
         fs::create_dir_all(paths.metadata_art_dir()).unwrap();
@@ -330,7 +330,7 @@ mod tests {
     #[test]
     fn real_covers_resolve() {
         let Some(root) = std::env::var_os("HERONITE_FIXTURE") else { return };
-        let paths = HeroicPaths::at(root);
+        let paths = DataPaths::at(root);
         let lib = Library::load(&paths).unwrap();
         let ctx = ArtContext::new(&paths, lib.settings.screenshots_folder());
         let mut with_custom_hero = 0;

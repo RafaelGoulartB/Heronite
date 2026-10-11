@@ -7,7 +7,7 @@ use anyhow::Result;
 use serde_json::{json, Value};
 
 use crate::json_store;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 
 fn list_mut<'a>(doc: &'a mut Value, key: &str) -> &'a mut Vec<Value> {
     if !doc.is_object() {
@@ -43,8 +43,8 @@ fn contains(path: &std::path::Path, key: &str, app_name: &str) -> Result<bool> {
 
 /// `addGameToFavourites`: any previous entry is dropped and the game is
 /// appended.
-pub fn add_favourite(paths: &HeroicPaths, app_name: &str, title: &str) -> Result<()> {
-    json_store::update_value(&paths.config(), |doc| {
+pub fn add_favourite(paths: &DataPaths, app_name: &str, title: &str) -> Result<()> {
+    json_store::update_value(&paths.store_config(), |doc| {
         let list = list_mut(doc, "favourites");
         list.retain(|v| !is_entry(v, app_name));
         list.push(json!({ "appName": app_name, "title": title }));
@@ -53,8 +53,8 @@ pub fn add_favourite(paths: &HeroicPaths, app_name: &str, title: &str) -> Result
 }
 
 /// `removeGameFromFavourites`.
-pub fn remove_favourite(paths: &HeroicPaths, app_name: &str) -> Result<()> {
-    json_store::update_value(&paths.config(), |doc| {
+pub fn remove_favourite(paths: &DataPaths, app_name: &str) -> Result<()> {
+    json_store::update_value(&paths.store_config(), |doc| {
         list_mut(doc, "favourites").retain(|v| !is_entry(v, app_name));
         Ok(())
     })
@@ -62,8 +62,8 @@ pub fn remove_favourite(paths: &HeroicPaths, app_name: &str) -> Result<()> {
 
 /// Toggles the favourite flag against what is on disk now (not a stale view);
 /// returns the new state.
-pub fn toggle_favourite(paths: &HeroicPaths, app_name: &str, title: &str) -> Result<bool> {
-    if contains(&paths.config(), "favourites", app_name)? {
+pub fn toggle_favourite(paths: &DataPaths, app_name: &str, title: &str) -> Result<bool> {
+    if contains(&paths.store_config(), "favourites", app_name)? {
         remove_favourite(paths, app_name)?;
         Ok(false)
     } else {
@@ -73,8 +73,8 @@ pub fn toggle_favourite(paths: &HeroicPaths, app_name: &str, title: &str) -> Res
 }
 
 /// `hideGame`: appended once (Heroic would allow duplicates, harmless to avoid).
-pub fn hide_game(paths: &HeroicPaths, app_name: &str, title: &str) -> Result<()> {
-    json_store::update_value(&paths.config(), |doc| {
+pub fn hide_game(paths: &DataPaths, app_name: &str, title: &str) -> Result<()> {
+    json_store::update_value(&paths.store_config(), |doc| {
         let list = list_mut(doc, "hidden");
         if !list.iter().any(|v| is_entry(v, app_name)) {
             list.push(json!({ "appName": app_name, "title": title }));
@@ -84,16 +84,16 @@ pub fn hide_game(paths: &HeroicPaths, app_name: &str, title: &str) -> Result<()>
 }
 
 /// `unhideGame`.
-pub fn unhide_game(paths: &HeroicPaths, app_name: &str) -> Result<()> {
-    json_store::update_value(&paths.config(), |doc| {
+pub fn unhide_game(paths: &DataPaths, app_name: &str) -> Result<()> {
+    json_store::update_value(&paths.store_config(), |doc| {
         list_mut(doc, "hidden").retain(|v| !is_entry(v, app_name));
         Ok(())
     })
 }
 
 /// Toggles hidden; returns the new state.
-pub fn toggle_hidden(paths: &HeroicPaths, app_name: &str, title: &str) -> Result<bool> {
-    if contains(&paths.config(), "hidden", app_name)? {
+pub fn toggle_hidden(paths: &DataPaths, app_name: &str, title: &str) -> Result<bool> {
+    if contains(&paths.store_config(), "hidden", app_name)? {
         unhide_game(paths, app_name)?;
         Ok(false)
     } else {
@@ -104,8 +104,8 @@ pub fn toggle_hidden(paths: &HeroicPaths, app_name: &str, title: &str) -> Result
 
 /// The `{ appName, title }` entries of `games.<key>` (`favourites`, `hidden`
 /// or `recent`) as stored, in order. Missing file or key: empty.
-pub fn list_entries(paths: &HeroicPaths, key: &str) -> Vec<(String, String)> {
-    let doc = json_store::read_value(&paths.config()).unwrap_or(Value::Null);
+pub fn list_entries(paths: &DataPaths, key: &str) -> Vec<(String, String)> {
+    let doc = json_store::read_value(&paths.store_config()).unwrap_or(Value::Null);
     doc.get("games")
         .and_then(|g| g.get(key))
         .and_then(Value::as_array)
@@ -122,8 +122,8 @@ pub fn list_entries(paths: &HeroicPaths, key: &str) -> Vec<(String, String)> {
 }
 
 /// Empties `games.<key>`; returns how many entries were dropped.
-pub fn clear_list(paths: &HeroicPaths, key: &str) -> Result<usize> {
-    json_store::update_value(&paths.config(), |doc| {
+pub fn clear_list(paths: &DataPaths, key: &str) -> Result<usize> {
+    json_store::update_value(&paths.store_config(), |doc| {
         let list = list_mut(doc, key);
         let n = list.len();
         list.clear();
@@ -132,8 +132,8 @@ pub fn clear_list(paths: &HeroicPaths, key: &str) -> Result<usize> {
 }
 
 /// "Remove from recent".
-pub fn remove_recent(paths: &HeroicPaths, app_name: &str) -> Result<()> {
-    json_store::update_value(&paths.config(), |doc| {
+pub fn remove_recent(paths: &DataPaths, app_name: &str) -> Result<()> {
+    json_store::update_value(&paths.store_config(), |doc| {
         list_mut(doc, "recent").retain(|v| !is_entry(v, app_name));
         Ok(())
     })
@@ -144,11 +144,11 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn setup(content: &str) -> (tempfile::TempDir, HeroicPaths) {
+    fn setup(content: &str) -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
-        fs::create_dir_all(paths.config().parent().unwrap()).unwrap();
-        fs::write(paths.config(), content).unwrap();
+        let paths = DataPaths::at(dir.path());
+        fs::create_dir_all(paths.store_config().parent().unwrap()).unwrap();
+        fs::write(paths.store_config(), content).unwrap();
         (dir, paths)
     }
 
@@ -160,7 +160,7 @@ mod tests {
         assert!(toggle_favourite(&paths, "a", "Game A").unwrap());
         assert!(toggle_favourite(&paths, "b", "Game B").unwrap());
         add_favourite(&paths, "a", "Game A!").unwrap();
-        let v = json_store::read_value(&paths.config()).unwrap();
+        let v = json_store::read_value(&paths.store_config()).unwrap();
         let favs = v["games"]["favourites"].as_array().unwrap();
         assert_eq!(favs.len(), 2);
         // re-adding moves it to the end with the new title
@@ -169,11 +169,11 @@ mod tests {
 
         assert!(toggle_hidden(&paths, "h", "Hidden").unwrap());
         hide_game(&paths, "h", "Hidden").unwrap();
-        let v = json_store::read_value(&paths.config()).unwrap();
+        let v = json_store::read_value(&paths.store_config()).unwrap();
         assert_eq!(v["games"]["hidden"].as_array().unwrap().len(), 1);
         assert!(!toggle_hidden(&paths, "h", "Hidden").unwrap());
         remove_recent(&paths, "r").unwrap();
-        let v = json_store::read_value(&paths.config()).unwrap();
+        let v = json_store::read_value(&paths.store_config()).unwrap();
         assert!(v["games"]["hidden"].as_array().unwrap().is_empty());
         assert!(v["games"]["recent"].as_array().unwrap().is_empty());
         // untouched keys survive, in their order
@@ -185,9 +185,9 @@ mod tests {
     #[test]
     fn missing_config_is_created() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         assert!(toggle_favourite(&paths, "a", "A").unwrap());
-        let v = json_store::read_value(&paths.config()).unwrap();
+        let v = json_store::read_value(&paths.store_config()).unwrap();
         assert_eq!(v["games"]["favourites"][0]["appName"], "a");
     }
 

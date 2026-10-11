@@ -1,4 +1,4 @@
-//! Typed views of the JSON files shared with Heronite.
+//! Typed views of the JSON files in the data folder.
 //!
 //! Conventions (keep them when adding fields):
 //! - `#[serde(rename_all = "camelCase")]`, matching the TypeScript types in
@@ -9,11 +9,11 @@
 //!   does not model survive a read-modify-write.
 //! - Numbers use [`JsNum`] so integers are written without `.0`.
 
-mod heroic;
+mod stores;
 mod overlay;
 mod settings;
 
-pub use heroic::*;
+pub use stores::*;
 pub use overlay::*;
 pub use settings::*;
 

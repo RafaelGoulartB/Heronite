@@ -1,7 +1,6 @@
-//! Screenshot options that belong to this app only, kept in
-//! `AppPaths::screenshot_prefs()`: Heronite rewrites the whole `screenshots`
-//! object of `local_library/settings.json`, so a key added there would not
-//! survive a save from the other app.
+//! Screenshot options added by this app, kept in
+//! `AppPaths::screenshot_prefs()` next to the UI state rather than in the
+//! `screenshots` object of `local_library/settings.json` (Heronite's shape).
 //!
 //! - `compressLossless`: convert PNG captures to lossless WebP in the
 //!   background (see `heronite_media::compress`).
@@ -43,7 +42,7 @@ mod tests {
     #[test]
     fn round_trip_and_lenient_load() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = AppPaths::for_heroic(&crate::HeroicPaths::at(dir.path().join("heroic")));
+        let paths = AppPaths::for_data(&crate::DataPaths::at(dir.path().join("heroic")));
         assert_eq!(ScreenshotPrefs::load(&paths), ScreenshotPrefs::default());
         std::fs::create_dir_all(paths.screenshot_prefs().parent().unwrap()).unwrap();
         std::fs::write(paths.screenshot_prefs(), r#"{"compressLossless": "yes", "other": 1}"#).unwrap();

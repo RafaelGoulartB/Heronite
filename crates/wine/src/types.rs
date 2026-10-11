@@ -1,4 +1,4 @@
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -74,7 +74,7 @@ pub enum Progress {
     Unzipping,
 }
 
-/// The few Heroic global settings the manager reads (`config.json` ->
+/// The few global settings the manager reads (`config.json` ->
 /// `defaultSettings`).
 #[derive(Clone, Debug, Default)]
 pub struct WineConfig {
@@ -85,16 +85,16 @@ pub struct WineConfig {
 }
 
 impl WineConfig {
-    /// Reads `<heroic>/config.json` (`defaultSettings`), falling back to the
+    /// Reads `<data>/config.json` (`defaultSettings`), falling back to the
     /// `store/config.json` copy; missing keys get Heroic's defaults.
-    pub fn load(heroic: &HeroicPaths) -> Self {
+    pub fn load(data_paths: &DataPaths) -> Self {
         let mut cfg = Self::default();
-        let from_default = json_store::read_value(&heroic.root.join("config.json"))
+        let from_default = json_store::read_value(&data_paths.global_config())
             .ok()
             .and_then(|v| v.get("defaultSettings").cloned());
         let doc = match from_default {
             Some(v) if v.is_object() => Some(v),
-            _ => json_store::read_value(&heroic.config()).ok().filter(Value::is_object),
+            _ => json_store::read_value(&data_paths.store_config()).ok().filter(Value::is_object),
         };
         if let Some(Value::Object(m)) = doc {
             if let Some(s) = m.get("defaultSteamPath").and_then(Value::as_str) {
@@ -119,10 +119,10 @@ impl WineConfig {
     /// Writes `downloadProtonToSteam` like Heroic's `writeConfig('default')`:
     /// `config.json` (`defaultSettings`, 2-space JSON) and, when present, the
     /// copy in `store/config.json` (`settings`, electron-store format).
-    pub fn set_download_proton_to_steam(heroic: &HeroicPaths, value: bool) -> anyhow::Result<()> {
+    pub fn set_download_proton_to_steam(data_paths: &DataPaths, value: bool) -> anyhow::Result<()> {
         // Heroic's config.json is `JSON.stringify(config, null, 2)`; the store
         // helper adds the path lock, a unique temp file and the fsync.
-        json_store::update_value_indented(&heroic.root.join("config.json"), json_store::INDENT_2, |doc| {
+        json_store::update_value_indented(&data_paths.global_config(), json_store::INDENT_2, |doc| {
             if !doc.is_object() {
                 *doc = Value::Object(Map::new());
             }
@@ -137,8 +137,8 @@ impl WineConfig {
             Ok(())
         })?;
 
-        if heroic.config().exists() {
-            json_store::update_value(&heroic.config(), |doc| {
+        if data_paths.store_config().exists() {
+            json_store::update_value(&data_paths.store_config(), |doc| {
                 if let Some(m) = doc.get_mut("settings").and_then(Value::as_object_mut) {
                     m.insert("downloadProtonToSteam".into(), Value::Bool(value));
                 }
@@ -156,8 +156,8 @@ mod tests {
     #[test]
     fn config_roundtrip_and_download_to_steam_write() {
         let tmp = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(tmp.path());
-        assert!(!WineConfig::load(&heroic).download_proton_to_steam);
+        let data_paths = DataPaths::at(tmp.path());
+        assert!(!WineConfig::load(&data_paths).download_proton_to_steam);
         std::fs::write(
             tmp.path().join("config.json"),
             "{\n  \"defaultSettings\": {\n    \"defaultSteamPath\": \"/s/steam\",\n    \"customWinePaths\": [\"/w/bin/wine\"],\n    \"showValveProton\": true,\n    \"other\": 1\n  },\n  \"version\": \"v0\"\n}",
@@ -165,13 +165,13 @@ mod tests {
         .unwrap();
         std::fs::create_dir_all(tmp.path().join("store")).unwrap();
         std::fs::write(tmp.path().join("store/config.json"), "{\n\t\"settings\": {\n\t\t\"a\": 1\n\t},\n\t\"theme\": \"x\"\n}").unwrap();
-        let cfg = WineConfig::load(&heroic);
+        let cfg = WineConfig::load(&data_paths);
         assert_eq!(cfg.default_steam_path, "/s/steam");
         assert_eq!(cfg.custom_wine_paths, ["/w/bin/wine"]);
         assert!(cfg.show_valve_proton && !cfg.download_proton_to_steam);
 
-        WineConfig::set_download_proton_to_steam(&heroic, true).unwrap();
-        assert!(WineConfig::load(&heroic).download_proton_to_steam);
+        WineConfig::set_download_proton_to_steam(&data_paths, true).unwrap();
+        assert!(WineConfig::load(&data_paths).download_proton_to_steam);
         let text = std::fs::read_to_string(tmp.path().join("config.json")).unwrap();
         assert!(text.contains("\n    \"other\": 1,"), "{text}");
         assert!(text.contains("\"version\": \"v0\""));
@@ -189,8 +189,8 @@ mod tests {
     #[test]
     fn download_to_steam_creates_a_missing_config_with_two_space_indent() {
         let tmp = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(tmp.path());
-        WineConfig::set_download_proton_to_steam(&heroic, true).unwrap();
+        let data_paths = DataPaths::at(tmp.path());
+        WineConfig::set_download_proton_to_steam(&data_paths, true).unwrap();
         let text = std::fs::read_to_string(tmp.path().join("config.json")).unwrap();
         assert_eq!(text, "{\n  \"defaultSettings\": {\n    \"downloadProtonToSteam\": true\n  }\n}");
     }

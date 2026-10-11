@@ -81,8 +81,8 @@ impl SettingsPage {
             rows.push(self.entry_row(format!("lib-fav-{i}"), title, app, "Remove", cx, move |this, cx| {
                 let app = app_name.clone();
                 this.library_job(
-                    Box::new(move |heroic, _| {
-                        config_games::remove_favourite(heroic, &app)?;
+                    Box::new(move |data_paths, _| {
+                        config_games::remove_favourite(data_paths, &app)?;
                         Ok(String::new())
                     }),
                     cx,

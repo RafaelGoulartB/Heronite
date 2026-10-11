@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::sideload_uninstall::{guess_game_folder, plan, uninstall, UninstallInput, UninstallPlan};
-use heronite_data::{CollectionGame, HeroicPaths, Library};
+use heronite_data::{CollectionGame, DataPaths, Library};
 use heronite_launch::native::{effective_platform, Platform};
 use heronite_launch::SystemProbe;
 
@@ -154,7 +154,7 @@ impl CollectionView {
             return;
         }
         let job = job_for(&lib, &game);
-        let paths = self.heroic.clone();
+        let paths = self.data_paths.clone();
         cx.spawn_in(window, async move |this, cx| {
             let (job, plan) = cx
                 .background_spawn(async move {
@@ -194,7 +194,7 @@ impl CollectionView {
     }
 
     fn run_sideload_uninstall(&mut self, job: Job, delete_files: bool, delete_prefix: bool, cx: &mut Context<Self>) {
-        let paths: HeroicPaths = self.heroic.clone();
+        let paths: DataPaths = self.data_paths.clone();
         let title = job.title.clone();
         cx.spawn(async move |this, cx| {
             let result = cx

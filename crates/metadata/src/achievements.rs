@@ -5,16 +5,13 @@
 //! `gameplay.gog.com` with the logged-in user's token. Every other store
 //! answers an empty list.
 //!
-//! The token comes from `gog_store/auth.json`, the file `gogdl auth` keeps.
-//! This module never refreshes or writes it (that could log Heroic out): an
-//! expired token simply means no fresh achievements until Heroic/Heronite
-//! renews it.
-
-use std::path::Path;
+//! The token comes from `gog_store/auth.json` (the file `gogdl auth` keeps,
+//! brought over by the Heroic migration). This app has no GOG login and never
+//! refreshes it: an expired token simply means no fresh achievements.
 
 use anyhow::Result;
 use heronite_data::json_store;
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -91,19 +88,19 @@ pub fn panel_rows(items: &[Achievement]) -> (usize, Vec<&Achievement>) {
 
 // Cache (`store_cache/gog_achievements.json`)
 
-fn cache_path(paths: &HeroicPaths) -> std::path::PathBuf {
-    paths.root.join("store_cache").join("gog_achievements.json")
+fn cache_path(paths: &DataPaths) -> std::path::PathBuf {
+    paths.store_cache("gog_achievements")
 }
 
 /// `achievementStore.get(id)`: the cached list, whatever its age.
-pub fn read_cache(paths: &HeroicPaths, product_id: &str) -> Option<Vec<Achievement>> {
+pub fn read_cache(paths: &DataPaths, product_id: &str) -> Option<Vec<Achievement>> {
     let doc = json_store::read_value(&cache_path(paths)).ok()?;
     serde_json::from_value(doc.get(product_id)?.clone()).ok()
 }
 
 /// `achievementStore.set(id, items)`: value plus `__timestamp.<id>` (a JS
 /// `Date()` string, nested under `__timestamp` by electron-store's dot paths).
-pub fn write_cache(paths: &HeroicPaths, product_id: &str, items: &[Achievement]) -> Result<()> {
+pub fn write_cache(paths: &DataPaths, product_id: &str, items: &[Achievement]) -> Result<()> {
     json_store::update_value(&cache_path(paths), |doc| {
         let obj = doc.as_object_mut().expect("object");
         obj.insert(product_id.to_string(), serde_json::to_value(items)?);
@@ -144,15 +141,15 @@ pub fn parse_credentials(doc: &Value, now: f64) -> Option<Credentials> {
     Some(Credentials { user_id, access_token })
 }
 
-fn credentials(heroic_root: &Path) -> Option<Credentials> {
-    let doc = json_store::read_value(&heroic_root.join("gog_store").join("auth.json")).ok()?;
+fn credentials(paths: &DataPaths) -> Option<Credentials> {
+    let doc = json_store::read_value(&paths.gog_store("auth")).ok()?;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_secs_f64();
     parse_credentials(&doc, now)
 }
 
 /// `isLoggedIn()`: `gog_store/config.json` `isLoggedIn`.
-pub fn gog_logged_in(paths: &HeroicPaths) -> bool {
-    json_store::read_value(&paths.root.join("gog_store").join("config.json"))
+pub fn gog_logged_in(paths: &DataPaths) -> bool {
+    json_store::read_value(&paths.gog_store("config"))
         .ok()
         .and_then(|d| d.get("isLoggedIn").and_then(Value::as_bool))
         .unwrap_or(false)
@@ -160,14 +157,14 @@ pub fn gog_logged_in(paths: &HeroicPaths) -> bool {
 
 /// `GOGGame.getAchievements`: cache, then the gameplay API. Blocking
 /// (network): call from a worker thread. Failures give an empty list.
-pub fn fetch_gog(paths: &HeroicPaths, http: &Http, gameplay_base: &str, product_id: &str, lang: &str) -> Vec<Achievement> {
+pub fn fetch_gog(paths: &DataPaths, http: &Http, gameplay_base: &str, product_id: &str, lang: &str) -> Vec<Achievement> {
     if let Some(cached) = read_cache(paths, product_id) {
         return cached;
     }
     if !gog_logged_in(paths) {
         return Vec::new();
     }
-    let Some(creds) = credentials(&paths.root) else { return Vec::new() };
+    let Some(creds) = credentials(paths) else { return Vec::new() };
     let url = format!("{gameplay_base}/clients/{product_id}/users/{}/achievements", creds.user_id);
     let response = http
         .get(url)
@@ -195,7 +192,7 @@ pub fn fetch_gog(paths: &HeroicPaths, http: &Http, gameplay_base: &str, product_
 }
 
 /// `getAchievements(appName, runner)`: only GOG has them.
-pub fn load_achievements(paths: &HeroicPaths, http: &Http, runner: &str, app_name: &str) -> Vec<Achievement> {
+pub fn load_achievements(paths: &DataPaths, http: &Http, runner: &str, app_name: &str) -> Vec<Achievement> {
     if runner != "gog" {
         return Vec::new();
     }
@@ -265,7 +262,7 @@ mod tests {
     #[test]
     fn cache_round_trip_uses_nested_timestamp() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(dir.path().join("store_cache")).unwrap();
         assert!(read_cache(&paths, "1").is_none());
         write_cache(&paths, "1", &[item("a", true, true)]).unwrap();

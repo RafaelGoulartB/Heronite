@@ -90,7 +90,7 @@ impl ScanRomsDialog {
         let mut this = this;
         // Screenshots: the hidden window does not repaint late results.
         if crate::env::flag("HERONITE_DEBUG_SYNC") {
-            if let Ok(state) = get_emulation_state(&this.ctx.heroic, &SystemEnv, false) {
+            if let Ok(state) = get_emulation_state(&this.ctx.data_paths, &SystemEnv, false) {
                 this.state = state;
                 this.apply_initial(cx);
             }
@@ -103,7 +103,7 @@ impl ScanRomsDialog {
     /// Reloads the emulation state in the background. `first` applies the
     /// initial selection.
     fn reload(&self, detect: bool, first: bool, cx: &mut Context<Self>) {
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let state = cx.background_spawn(async move { get_emulation_state(&paths, &SystemEnv, detect) }).await;
             this.update(cx, |this, cx| {

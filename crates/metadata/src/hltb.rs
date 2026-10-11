@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use heronite_data::json_store;
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use heronite_data::text::remove_special_characters;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -406,7 +406,7 @@ pub struct HltbLookup {
 /// `title` is the Collection title (`collectionGameTitle`), `store_title` the
 /// Heroic one (second cache key).
 pub fn get_or_fetch_hltb(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     http: &Http,
     client: &HltbClient,
     title: &str,
@@ -472,7 +472,7 @@ pub fn get_or_fetch_hltb(
 }
 
 /// `wikiGameInfoStore.delete(key)`: drops a cached title (forces a refetch).
-pub fn forget_cached_title(paths: &HeroicPaths, title: &str) -> Result<()> {
+pub fn forget_cached_title(paths: &DataPaths, title: &str) -> Result<()> {
     let key = remove_special_characters(title.trim());
     json_store::update_value(&paths.wiki_game_info(), |doc| {
         dot_delete(doc, &key);
@@ -564,7 +564,7 @@ mod tests {
     #[test]
     fn cached_hltb_is_served_and_new_entries_use_the_cache_format() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(paths.wiki_game_info().parent().unwrap()).unwrap();
         let stamp = js_date_string();
         let existing = json!({

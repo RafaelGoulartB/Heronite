@@ -7,7 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::models::{LocalGameMeta, LocalMetaFile};
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use heronite_launch::native::{detect_executable_kind, effective_platform, ExecutableKind, Platform};
 use heronite_launch::SystemProbe;
 
@@ -114,9 +114,9 @@ impl GameSettingsDialog {
         let run_as = l.run_as.clone();
         self.busy = Some(Busy::Launch);
         self.error.clear();
-        let (heroic, game) = (self.ctx.heroic.clone(), self.game.clone());
+        let (data_paths, game) = (self.ctx.data_paths.clone(), self.game.clone());
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { write_launch_options(&heroic, &game, &exe, &run_as).map(|_| (exe, run_as)) }).await;
+            let res = cx.background_spawn(async move { write_launch_options(&data_paths, &game, &exe, &run_as).map(|_| (exe, run_as)) }).await;
             this.update(cx, |this, cx| {
                 this.busy = None;
                 match res {
@@ -235,7 +235,7 @@ impl GameSettingsDialog {
 
 /// Port of `setLocalLaunchOptions`: overlay meta (`runAs`, executable) and the
 /// sideload entry (platform, executable, folder).
-fn write_launch_options(paths: &HeroicPaths, game: &heronite_data::CollectionGame, executable: &str, run_as: &str) -> anyhow::Result<()> {
+fn write_launch_options(paths: &DataPaths, game: &heronite_data::CollectionGame, executable: &str, run_as: &str) -> anyhow::Result<()> {
     let exe = {
         let t = executable.trim();
         if t.is_empty() { game.game.install.executable.clone().unwrap_or_default() } else { t.to_string() }

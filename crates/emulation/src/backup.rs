@@ -1,6 +1,6 @@
-//! Scheduled backup of the Heroic config folder (port of
-//! `local-library/backup.ts`): a filtered copy to `heroic-YYYY-MM-DD` inside
-//! the configured folder when due (daily/weekly/monthly).
+//! Scheduled backup of the data folder (port of Heronite's
+//! `local-library/backup.ts`): a filtered copy to `heronite-YYYY-MM-DD`
+//! inside the configured folder when due (daily/weekly/monthly).
 
 use std::fs;
 use std::path::Path;
@@ -9,46 +9,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Datelike, Local};
 use heronite_data::models::BackupSettings;
-use heronite_data::{settings, HeroicPaths};
+use heronite_data::{settings, DataPaths};
 use serde::{Deserialize, Serialize};
 
 use crate::iso::iso_millis;
 use crate::pathutil::{join, resolve};
 use crate::settings_ext::{record_collection_backup, BackupRecord};
 
-/// File/folder names never copied (caches, locks, tools, logs...).
-pub const SKIP_NAMES: &[&str] = &[
-    "Cache",
-    "Code Cache",
-    "GPUCache",
-    "DawnWebGPUCache",
-    "DawnGraphiteCache",
-    "Partitions",
-    "images-cache",
-    "tools",
-    "store_cache",
-    "Session Storage",
-    "Service Worker",
-    "Shared Dictionary",
-    "WebStorage",
-    "Crashpad",
-    "blob_storage",
-    "Dictionaries",
-    "Local Extension Settings",
-    "IndexedDB",
-    "Network Persistent State",
-    "TransportSecurity",
-    "Cookies",
-    "Cookies-journal",
-    "Preferences",
-    "SingletonLock",
-    "SingletonCookie",
-    "SingletonSocket",
-    "lockfile",
-    "screenshot-thumbnails",
-    "steam-details",
-    "logs",
-];
+/// File/folder names never copied (caches, tools, logs).
+pub const SKIP_NAMES: &[&str] =
+    &["images-cache", "tools", "store_cache", "screenshot-thumbnails", "steam-details", "logs"];
 
 /// `CollectionBackupResult`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -122,7 +92,7 @@ pub fn assert_safe_destination(source_root: &str, destination: &str) -> Result<(
     let source = resolve(source_root);
     let dest = resolve(destination);
     if dest == source || dest.starts_with(&format!("{source}/")) {
-        return Err(anyhow!("Backup folder cannot be inside the Heroic config directory"));
+        return Err(anyhow!("Backup folder cannot be inside the data folder"));
     }
     Ok(())
 }
@@ -153,21 +123,21 @@ fn copy_tree(root: &Path, src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-/// `copyHeroicConfig`: copies `source` (Heroic's config folder) to
-/// `destination`, skipping [`SKIP_NAMES`].
+/// Copies `source` (the data folder) to `destination`, skipping
+/// [`SKIP_NAMES`].
 pub fn copy_config(source: &Path, destination: &Path) -> Result<()> {
     if !source.exists() {
-        return Err(anyhow!("Heroic config folder was not found"));
+        return Err(anyhow!("Data folder was not found"));
     }
     assert_safe_destination(&source.to_string_lossy(), &destination.to_string_lossy())?;
     fs::create_dir_all(destination)?;
     copy_tree(source, source, destination)
 }
 
-/// `runCollectionBackup`: copies `paths.root` (the Heroic config folder) to
-/// `<folder>/heroic-YYYY-MM-DD` when `force` or due, and records the outcome
-/// in `settings.json`.
-pub fn run_collection_backup(paths: &HeroicPaths, force: bool, now: DateTime<Local>) -> CollectionBackupResult {
+/// `runCollectionBackup`: copies `paths.root` (the data folder) to
+/// `<folder>/heronite-YYYY-MM-DD` when `force` or due, and records the
+/// outcome in `settings.json`.
+pub fn run_collection_backup(paths: &DataPaths, force: bool, now: DateTime<Local>) -> CollectionBackupResult {
     let backup = match settings::load(paths) {
         Ok(s) => s.backup,
         Err(e) => return CollectionBackupResult { error: Some(format!("{e:#}")), ..Default::default() },
@@ -185,7 +155,7 @@ pub fn run_collection_backup(paths: &HeroicPaths, force: bool, now: DateTime<Loc
     };
 
     let at = iso_millis(now);
-    let destination = join(&folder, &format!("heroic-{}", local_date_key(now)));
+    let destination = join(&folder, &format!("heronite-{}", local_date_key(now)));
     let outcome = (|| -> Result<()> {
         // Checked first (Heronite removes the old copy before checking).
         assert_safe_destination(&paths.root.to_string_lossy(), &folder)?;
@@ -220,7 +190,7 @@ pub fn run_collection_backup(paths: &HeroicPaths, force: bool, now: DateTime<Loc
 }
 
 /// `maybeRunScheduledBackup`.
-pub fn maybe_run_scheduled_backup(paths: &HeroicPaths) -> CollectionBackupResult {
+pub fn maybe_run_scheduled_backup(paths: &DataPaths) -> CollectionBackupResult {
     let r = run_collection_backup(paths, false, Local::now());
     if let Some(e) = &r.error {
         log::error!("Scheduled Collection backup failed: {e}");
@@ -272,8 +242,8 @@ mod tests {
         let root = Path::new("/h");
         assert!(should_copy(root, Path::new("/h")));
         assert!(should_copy(root, Path::new("/h/store/config.json")));
-        assert!(!should_copy(root, Path::new("/h/Cache")));
-        assert!(!should_copy(root, Path::new("/h/Partitions/x/Cookies")));
+        assert!(!should_copy(root, Path::new("/h/tools/proton")));
+        assert!(!should_copy(root, Path::new("/h/store_cache/x.json")));
         assert!(!should_copy(root, Path::new("/h/local_library/screenshot-thumbnails/a.jpg")));
         assert!(!should_copy(root, Path::new("/h/logs/x.log")));
         assert!(should_copy(root, Path::new("/h/local_library/art/logs-ok.png")));
@@ -294,14 +264,13 @@ mod tests {
         L.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn fake_heroic(root: &Path) {
+    fn fake_data_paths(root: &Path) {
         for (p, c) in [
             ("store/config.json", "{}"),
             ("local_library/library.json", "{\"games\":{}}"),
             ("local_library/screenshot-thumbnails/t.jpg", "x"),
             ("store_cache/legendary_library.json", "{}"),
             ("tools/wine/bin", "x"),
-            ("Cache/data", "x"),
             ("logs/a.log", "x"),
             ("GamesConfig/g.json", "{}"),
         ] {
@@ -317,21 +286,20 @@ mod tests {
     fn copies_filtered_tree_and_records_status() {
         let _s = serial();
         let dir = tempfile::tempdir().unwrap();
-        let heroic = dir.path().join("heroic");
+        let data_dir = dir.path().join("data");
         let dest_root = dir.path().join("backups");
-        fake_heroic(&heroic);
-        let paths = HeroicPaths::at(&heroic);
+        fake_data_paths(&data_dir);
+        let paths = DataPaths::at(&data_dir);
         settings::save_backup(&paths, dest_root.to_str().unwrap(), "daily").unwrap();
         let now = at(2026, 10, 7, 12);
 
         let r = run_collection_backup(&paths, false, now);
         assert!(r.ran, "{r:?}");
-        let expected = dest_root.join("heroic-2026-10-07");
+        let expected = dest_root.join("heronite-2026-10-07");
         assert_eq!(r.path.as_deref(), expected.to_str());
         assert!(expected.join("store/config.json").exists());
         assert!(expected.join("local_library/library.json").exists());
         assert!(expected.join("GamesConfig/g.json").exists());
-        assert!(!expected.join("Cache").exists());
         assert!(!expected.join("logs").exists());
         assert!(!expected.join("tools").exists());
         assert!(!expected.join("store_cache").exists());
@@ -357,16 +325,16 @@ mod tests {
     fn errors_are_recorded_and_unsafe_folders_refused() {
         let _s = serial();
         let dir = tempfile::tempdir().unwrap();
-        let heroic = dir.path().join("heroic");
-        fake_heroic(&heroic);
-        let paths = HeroicPaths::at(&heroic);
+        let data_dir = dir.path().join("data");
+        fake_data_paths(&data_dir);
+        let paths = DataPaths::at(&data_dir);
         // Disabled.
         assert_eq!(run_collection_backup(&paths, true, Local::now()).skipped_reason.as_deref(), Some("disabled"));
-        // Folder inside the config dir.
-        settings::save_backup(&paths, heroic.join("inside").to_str().unwrap(), "daily").unwrap();
+        // Folder inside the data folder.
+        settings::save_backup(&paths, data_dir.join("inside").to_str().unwrap(), "daily").unwrap();
         let r = run_collection_backup(&paths, true, Local::now());
-        assert_eq!(r.error.as_deref(), Some("Backup folder cannot be inside the Heroic config directory"));
-        assert!(!heroic.join("inside").exists());
+        assert_eq!(r.error.as_deref(), Some("Backup folder cannot be inside the data folder"));
+        assert!(!data_dir.join("inside").exists());
         let b = settings::load(&paths).unwrap().backup;
         assert_eq!(b.last_error.as_deref(), r.error.as_deref());
         // A file instead of a folder.
@@ -375,8 +343,8 @@ mod tests {
         settings::save_backup(&paths, file.to_str().unwrap(), "daily").unwrap();
         let r = run_collection_backup(&paths, true, Local::now());
         assert_eq!(r.error.as_deref(), Some("Backup path is not a folder"));
-        // Missing config folder.
+        // Missing data folder.
         let err = copy_config(&dir.path().join("nothing"), &dir.path().join("out")).unwrap_err();
-        assert_eq!(err.to_string(), "Heroic config folder was not found");
+        assert_eq!(err.to_string(), "Data folder was not found");
     }
 }

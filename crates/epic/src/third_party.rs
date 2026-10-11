@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use heronite_data::{json_store, temps, HeroicPaths};
+use heronite_data::{json_store, temps, DataPaths};
 use serde_json::{json, Value};
 
 use crate::cmd::Cancel;
@@ -68,26 +68,26 @@ pub fn managed_by(game_info: &Value) -> Option<Result<Provider, String>> {
     Some(Provider::from_name(name).ok_or_else(|| name.to_string()))
 }
 
-pub fn installed_file(heroic: &HeroicPaths) -> PathBuf {
-    heroic.legendary_config_dir().join("third-party-installed.json")
+pub fn installed_file(data_paths: &DataPaths) -> PathBuf {
+    data_paths.legendary_config_dir().join("third-party-installed.json")
 }
 
-pub fn redist_dir(heroic: &HeroicPaths) -> PathBuf {
-    heroic.tools_dir().join("redist").join("legendary")
+pub fn redist_dir(data_paths: &DataPaths) -> PathBuf {
+    data_paths.tools_dir().join("redist").join("legendary")
 }
 
 /// `[appName, platform]` pairs; a missing or broken file is empty (Heroic
 /// only warns).
-fn read_pairs(heroic: &HeroicPaths) -> Vec<(String, String)> {
-    let Ok(Value::Array(items)) = json_store::read_value(&installed_file(heroic)) else { return Vec::new() };
+fn read_pairs(data_paths: &DataPaths) -> Vec<(String, String)> {
+    let Ok(Value::Array(items)) = json_store::read_value(&installed_file(data_paths)) else { return Vec::new() };
     items
         .iter()
         .filter_map(|i| Some((i.get(0)?.as_str()?.to_string(), i.get(1).and_then(Value::as_str).unwrap_or_default().to_string())))
         .collect()
 }
 
-fn write_pairs(heroic: &HeroicPaths, pairs: &[(String, String)]) -> Result<()> {
-    let file = installed_file(heroic);
+fn write_pairs(data_paths: &DataPaths, pairs: &[(String, String)]) -> Result<()> {
+    let file = installed_file(data_paths);
     if let Some(dir) = file.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -95,35 +95,35 @@ fn write_pairs(heroic: &HeroicPaths, pairs: &[(String, String)]) -> Result<()> {
     temps::write_atomic(&file, value.to_string().as_bytes(), None).with_context(|| format!("writing {}", file.display()))
 }
 
-pub fn is_installed(heroic: &HeroicPaths, app_name: &str) -> bool {
-    read_pairs(heroic).iter().any(|(a, _)| a == app_name)
+pub fn is_installed(data_paths: &DataPaths, app_name: &str) -> bool {
+    read_pairs(data_paths).iter().any(|(a, _)| a == app_name)
 }
 
 /// `addInstalledGame` (without Heroic's duplicate entry on a second install).
-pub fn add_installed(heroic: &HeroicPaths, app_name: &str, platform: &str) -> Result<()> {
-    let mut pairs = read_pairs(heroic);
+pub fn add_installed(data_paths: &DataPaths, app_name: &str, platform: &str) -> Result<()> {
+    let mut pairs = read_pairs(data_paths);
     pairs.retain(|(a, _)| a != app_name);
     pairs.push((app_name.to_string(), platform.to_string()));
-    write_pairs(heroic, &pairs)
+    write_pairs(data_paths, &pairs)
 }
 
 /// `removeInstalledGame`; `false` when the game was not there (Heroic's
 /// `splice(-1, 1)` would drop the last game instead).
-pub fn remove_installed(heroic: &HeroicPaths, app_name: &str) -> Result<bool> {
-    let mut pairs = read_pairs(heroic);
+pub fn remove_installed(data_paths: &DataPaths, app_name: &str) -> Result<bool> {
+    let mut pairs = read_pairs(data_paths);
     let before = pairs.len();
     pairs.retain(|(a, _)| a != app_name);
     if pairs.len() == before {
         return Ok(false);
     }
-    write_pairs(heroic, &pairs)?;
+    write_pairs(data_paths, &pairs)?;
     Ok(true)
 }
 
 /// The installer of `provider`, downloaded once (into `<file>.part`, renamed
 /// when complete). `on_progress` gets the download progress.
-pub fn ensure_installer(heroic: &HeroicPaths, provider: Provider, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<PathBuf> {
-    let dir = redist_dir(heroic);
+pub fn ensure_installer(data_paths: &DataPaths, provider: Provider, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<PathBuf> {
+    let dir = redist_dir(data_paths);
     let dest = dir.join(provider.installer_file());
     if dest.is_file() {
         return Ok(dest);
@@ -206,10 +206,10 @@ mod tests {
     use super::*;
     use std::net::TcpListener;
 
-    fn heroic() -> (tempfile::TempDir, HeroicPaths) {
+    fn data_paths() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
-        (dir, heroic)
+        let data_paths = DataPaths::at(dir.path());
+        (dir, data_paths)
     }
 
     #[test]
@@ -226,28 +226,28 @@ mod tests {
 
     #[test]
     fn installed_list_is_written_like_json_stringify() {
-        let (_d, heroic) = heroic();
-        assert!(!is_installed(&heroic, "Anchovy"));
-        add_installed(&heroic, "Anchovy", "Windows").unwrap();
-        add_installed(&heroic, "MtMassive", "Windows").unwrap();
-        add_installed(&heroic, "Anchovy", "Windows").unwrap();
-        assert_eq!(fs::read_to_string(installed_file(&heroic)).unwrap(), r#"[["MtMassive","Windows"],["Anchovy","Windows"]]"#);
-        assert!(is_installed(&heroic, "Anchovy"));
+        let (_d, data_paths) = data_paths();
+        assert!(!is_installed(&data_paths, "Anchovy"));
+        add_installed(&data_paths, "Anchovy", "Windows").unwrap();
+        add_installed(&data_paths, "MtMassive", "Windows").unwrap();
+        add_installed(&data_paths, "Anchovy", "Windows").unwrap();
+        assert_eq!(fs::read_to_string(installed_file(&data_paths)).unwrap(), r#"[["MtMassive","Windows"],["Anchovy","Windows"]]"#);
+        assert!(is_installed(&data_paths, "Anchovy"));
         // The library sees them as installed.
-        let games = crate::library::installed_games(&heroic);
+        let games = crate::library::installed_games(&data_paths);
         assert_eq!(games["Anchovy"], json!({"app_name": "Anchovy", "platform": "Windows"}));
 
-        assert!(!remove_installed(&heroic, "Other").unwrap());
-        assert!(remove_installed(&heroic, "MtMassive").unwrap());
-        assert_eq!(fs::read_to_string(installed_file(&heroic)).unwrap(), r#"[["Anchovy","Windows"]]"#);
+        assert!(!remove_installed(&data_paths, "Other").unwrap());
+        assert!(remove_installed(&data_paths, "MtMassive").unwrap());
+        assert_eq!(fs::read_to_string(installed_file(&data_paths)).unwrap(), r#"[["Anchovy","Windows"]]"#);
     }
 
     #[test]
     fn a_present_installer_is_not_downloaded_again() {
-        let (_d, heroic) = heroic();
-        fs::create_dir_all(redist_dir(&heroic)).unwrap();
-        fs::write(redist_dir(&heroic).join("EAappInstaller.exe"), "MZ").unwrap();
-        let path = ensure_installer(&heroic, Provider::Ea, &Cancel::new(), &mut |_| panic!("no download")).unwrap();
+        let (_d, data_paths) = data_paths();
+        fs::create_dir_all(redist_dir(&data_paths)).unwrap();
+        fs::write(redist_dir(&data_paths).join("EAappInstaller.exe"), "MZ").unwrap();
+        let path = ensure_installer(&data_paths, Provider::Ea, &Cancel::new(), &mut |_| panic!("no download")).unwrap();
         assert_eq!(fs::read(path).unwrap(), b"MZ");
     }
 

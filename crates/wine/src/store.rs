@@ -1,11 +1,11 @@
-//! `store/wine-downloader-info.json`: the release cache shared with Heroic
-//! (`wineDownloaderInfoStore`, key `wine-releases`). Port of
+//! `store/wine-downloader-info.json`: the release cache (Heroic's
+//! `wineDownloaderInfoStore`, key `wine-releases`). Port of
 //! `updateWineVersionInfos` and the store updates of install/remove.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use serde_json::Value;
 
 use crate::repos::{self, Repository};
@@ -13,14 +13,14 @@ use crate::types::WineVersionInfo;
 
 const KEY: &str = "wine-releases";
 
-pub fn store_path(heroic: &HeroicPaths) -> PathBuf {
-    heroic.root.join("store/wine-downloader-info.json")
+pub fn store_path(data_paths: &DataPaths) -> PathBuf {
+    data_paths.wine_downloader_info()
 }
 
 /// Cached releases (empty when the file or key is missing). Entries that do
 /// not parse are skipped.
-pub fn read_releases(heroic: &HeroicPaths) -> Vec<WineVersionInfo> {
-    read_from(&store_path(heroic))
+pub fn read_releases(data_paths: &DataPaths) -> Vec<WineVersionInfo> {
+    read_from(&store_path(data_paths))
 }
 
 fn read_from(path: &Path) -> Vec<WineVersionInfo> {
@@ -31,13 +31,13 @@ fn read_from(path: &Path) -> Vec<WineVersionInfo> {
         .unwrap_or_default()
 }
 
-fn has_key(heroic: &HeroicPaths) -> bool {
-    json_store::read_value(&store_path(heroic)).is_ok_and(|v| v.get(KEY).is_some())
+fn has_key(data_paths: &DataPaths) -> bool {
+    json_store::read_value(&store_path(data_paths)).is_ok_and(|v| v.get(KEY).is_some())
 }
 
-fn write_releases(heroic: &HeroicPaths, list: &[WineVersionInfo]) -> Result<()> {
+fn write_releases(data_paths: &DataPaths, list: &[WineVersionInfo]) -> Result<()> {
     let value = serde_json::to_value(list)?;
-    json_store::update_value(&store_path(heroic), |doc| {
+    json_store::update_value(&store_path(data_paths), |doc| {
         doc[KEY] = value;
         Ok(())
     })
@@ -112,7 +112,7 @@ pub struct RefreshOutcome {
 
 /// Fetches `repos` from GitHub and merges them into the cache. The cache is
 /// left untouched when every repository failed. Blocking (network).
-pub fn refresh(heroic: &HeroicPaths, repos_to_fetch: &[Repository], count: usize) -> Result<RefreshOutcome> {
+pub fn refresh(data_paths: &DataPaths, repos_to_fetch: &[Repository], count: usize) -> Result<RefreshOutcome> {
     let mut fetched = Vec::new();
     let mut errors = Vec::new();
     for repo in repos_to_fetch {
@@ -127,33 +127,33 @@ pub fn refresh(heroic: &HeroicPaths, repos_to_fetch: &[Repository], count: usize
     if fetched.is_empty() && !errors.is_empty() {
         return Err(anyhow!(errors.join("\n")));
     }
-    Ok(RefreshOutcome { releases: apply_fetched(heroic, fetched)?, errors })
+    Ok(RefreshOutcome { releases: apply_fetched(data_paths, fetched)?, errors })
 }
 
 /// Merges already fetched releases into the cache file.
-pub fn apply_fetched(heroic: &HeroicPaths, fetched: Vec<WineVersionInfo>) -> Result<Vec<WineVersionInfo>> {
-    let merged = if has_key(heroic) {
-        merge_releases(read_releases(heroic), fetched, dir_exists)
+pub fn apply_fetched(data_paths: &DataPaths, fetched: Vec<WineVersionInfo>) -> Result<Vec<WineVersionInfo>> {
+    let merged = if has_key(data_paths) {
+        merge_releases(read_releases(data_paths), fetched, dir_exists)
     } else {
         fetched
     };
-    write_releases(heroic, &merged)?;
+    write_releases(data_paths, &merged)?;
     Ok(merged)
 }
 
 /// Replaces the cached entry of `info.version` (after an install/update).
-pub fn mark_installed(heroic: &HeroicPaths, info: &WineVersionInfo) -> Result<()> {
-    let mut list = read_releases(heroic);
+pub fn mark_installed(data_paths: &DataPaths, info: &WineVersionInfo) -> Result<()> {
+    let mut list = read_releases(data_paths);
     match list.iter().position(|r| r.version == info.version) {
         Some(i) => list[i] = info.clone(),
         None => list.push(info.clone()),
     }
-    write_releases(heroic, &list)
+    write_releases(data_paths, &list)
 }
 
 /// Marks `version` as not installed (after a removal).
-pub fn mark_removed(heroic: &HeroicPaths, version: &str) -> Result<()> {
-    let mut list = read_releases(heroic);
+pub fn mark_removed(data_paths: &DataPaths, version: &str) -> Result<()> {
+    let mut list = read_releases(data_paths);
     let r = list
         .iter_mut()
         .find(|r| r.version == version)
@@ -162,7 +162,7 @@ pub fn mark_removed(heroic: &HeroicPaths, version: &str) -> Result<()> {
     r.install_dir = Some(String::new());
     r.disksize = 0;
     r.has_update = Some(false);
-    write_releases(heroic, &list)
+    write_releases(data_paths, &list)
 }
 
 #[cfg(test)]
@@ -239,15 +239,15 @@ mod tests {
     #[test]
     fn cache_roundtrip_format_and_unknown_fields() {
         let tmp = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(tmp.path());
-        let path = store_path(&heroic);
+        let data_paths = DataPaths::at(tmp.path());
+        let path = store_path(&data_paths);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(
             &path,
             "{\n\t\"wine-releases\": [\n\t\t{\n\t\t\t\"version\": \"GE-Proton11-6\",\n\t\t\t\"type\": \"GE-Proton\",\n\t\t\t\"date\": \"2026-08-28\",\n\t\t\t\"disksize\": 0,\n\t\t\t\"future\": 1\n\t\t}\n\t],\n\t\"other\": true\n}",
         )
         .unwrap();
-        let before = read_releases(&heroic);
+        let before = read_releases(&data_paths);
         assert_eq!(before.len(), 1);
         assert_eq!(before[0].extra.get("future"), Some(&Value::from(1)));
         assert!(!before[0].installed());
@@ -256,24 +256,24 @@ mod tests {
         inst.is_installed = Some(true);
         inst.install_dir = Some("/tools/proton/GE-Proton11-6".into());
         inst.disksize = 42;
-        mark_installed(&heroic, &inst).unwrap();
+        mark_installed(&data_paths, &inst).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("\n\t\t\t\"isInstalled\": true"), "{text}");
         assert!(text.contains("\"other\": true") && text.contains("\"future\": 1"));
         assert!(!text.ends_with('\n'));
-        assert!(read_releases(&heroic)[0].installed());
+        assert!(read_releases(&data_paths)[0].installed());
 
-        mark_removed(&heroic, "GE-Proton11-6").unwrap();
-        let after = &read_releases(&heroic)[0];
+        mark_removed(&data_paths, "GE-Proton11-6").unwrap();
+        let after = &read_releases(&data_paths)[0];
         assert!(!after.installed());
         assert_eq!(after.install_dir.as_deref(), Some(""));
         assert_eq!(after.has_update, Some(false));
-        assert!(mark_removed(&heroic, "nope").is_err());
+        assert!(mark_removed(&data_paths, "nope").is_err());
     }
 
     #[test]
     fn reads_real_cache_if_present() {
-        let real = HeroicPaths::detect();
+        let real = DataPaths::detect();
         let list = read_releases(&real);
         if list.is_empty() {
             return;

@@ -5,7 +5,7 @@
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use crate::backup::{maybe_run_scheduled_backup, CollectionBackupResult};
 use crate::import::run_auto_rom_scanners;
@@ -23,7 +23,7 @@ pub struct IdleReport {
 /// Runs the jobs now (blocking): `autoScanRomFolders()` then
 /// `maybeRunScheduledBackup()`. The caller refreshes the library when
 /// `roms_imported > 0`.
-pub fn run_idle_jobs(paths: &HeroicPaths) -> IdleReport {
+pub fn run_idle_jobs(paths: &DataPaths) -> IdleReport {
     let mut report = IdleReport::default();
     match run_auto_rom_scanners(paths) {
         Ok(n) => report.roms_imported = n,
@@ -38,7 +38,7 @@ pub fn run_idle_jobs(paths: &HeroicPaths) -> IdleReport {
 
 /// Runs the jobs on a background thread after `delay` (use [`IDLE_DELAY`]).
 pub fn spawn_idle_jobs(
-    paths: HeroicPaths,
+    paths: DataPaths,
     delay: Duration,
     on_done: impl FnOnce(IdleReport) + Send + 'static,
 ) -> JoinHandle<()> {
@@ -55,8 +55,8 @@ mod tests {
 
     #[test]
     fn idle_jobs_scan_and_report_backup_state() {
-        let heroic = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(heroic.path());
+        let data_dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(data_dir.path());
         let roms = tempfile::tempdir().unwrap();
         std::fs::write(roms.path().join("A.iso"), "x").unwrap();
         let e = crate::store::upsert_user_emulator(

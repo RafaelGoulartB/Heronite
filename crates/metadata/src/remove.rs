@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 use heronite_data::models::{LocalMetaFile, SessionsFile};
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use heronite_data::text::sanitize_filename;
 use heronite_data::{config_games, json_store};
 use serde_json::Value;
@@ -96,7 +96,7 @@ pub struct RemoveOutcome {
 
 /// `removeCollectionGame` + the renderer follow-up (hidden, favourites).
 pub fn remove_collection_game(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     shortcuts: &ShortcutDirs,
     app_name: &str,
     runner: &str,
@@ -167,7 +167,7 @@ mod tests {
 
     struct Env {
         _dir: tempfile::TempDir,
-        paths: HeroicPaths,
+        paths: DataPaths,
         shortcuts: ShortcutDirs,
     }
 
@@ -178,7 +178,7 @@ mod tests {
 
     fn env() -> Env {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let home = dir.path().join("home");
         let shortcuts = ShortcutDirs { desktop: home.join("Desktop"), applications: home.join(".local/share/applications") };
         write(
@@ -203,7 +203,7 @@ mod tests {
         write(&paths.art(), json!({"games":{"sideload:a":{"coverUrl":"https://x/y.png"}}}));
         write(&paths.timestamps(), json!({"a":{"firstPlayed":"","lastPlayed":"","totalPlayed":3},"b":{"totalPlayed":1}}));
         write(
-            &paths.config(),
+            &paths.store_config(),
             json!({"games":{
                 "recent":[{"appName":"a","title":"A"},{"appName":"b","title":"B"}],
                 "favourites":[{"appName":"a","title":"A"}],
@@ -244,7 +244,7 @@ mod tests {
         assert!(!e.paths.metadata_art_dir().join("sideload_a").exists());
         let ts = json_store::read_value(&e.paths.timestamps()).unwrap();
         assert!(ts.get("a").is_none() && ts.get("b").is_some());
-        let cfg = json_store::read_value(&e.paths.config()).unwrap();
+        let cfg = json_store::read_value(&e.paths.store_config()).unwrap();
         assert_eq!(cfg["games"]["recent"].as_array().unwrap().len(), 1);
         assert_eq!(cfg["games"]["favourites"].as_array().unwrap().len(), 0);
         assert_eq!(cfg["games"]["hidden"].as_array().unwrap().len(), 1);

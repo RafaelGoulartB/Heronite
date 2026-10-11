@@ -84,7 +84,7 @@ impl CollectionView {
     pub(super) fn sync_facts(&mut self, cx: &mut Context<Self>) {
         if self.facts.ratings.is_none() && !self.facts.ratings_loading {
             self.facts.ratings_loading = true;
-            let paths = self.heroic.clone();
+            let paths = self.data_paths.clone();
             cx.spawn(async move |this, cx| {
                 let map = cx.background_spawn(async move { ratings::load(&paths) }).await;
                 this.update(cx, |this, cx| {
@@ -120,7 +120,7 @@ impl CollectionView {
     }
 
     fn load_facts(&mut self, key: SharedString, game: Arc<CollectionGame>, cx: &mut Context<Self>) {
-        let paths = self.heroic.clone();
+        let paths = self.data_paths.clone();
         let cache = self.app_paths.cache.join("protondb");
         let emulated = game.launch_kind.as_deref() == Some("emulator");
         // The game's own Steam id, else the one the metadata found.
@@ -212,7 +212,7 @@ impl CollectionView {
             Some(s) => map.insert(key.to_string(), s),
             None => map.remove(key),
         };
-        let (paths, key) = (self.heroic.clone(), key.to_string());
+        let (paths, key) = (self.data_paths.clone(), key.to_string());
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { ratings::set_rating(&paths, &key, stars) }).await;
             if let Err(err) = res {

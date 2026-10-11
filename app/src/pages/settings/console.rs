@@ -12,8 +12,8 @@ use super::{about, advanced, appearance, library, logs, metadata, saves, screens
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
-use crate::dialogs::heroic_settings::logic::Section as HSection;
-use crate::dialogs::heroic_settings::{GlobalView, HeroicSettingsPanel, Target};
+use crate::dialogs::settings_panel::logic::Section as HSection;
+use crate::dialogs::settings_panel::{GlobalView, SettingsPanel, Target};
 use crate::icons::Icon;
 use crate::theme;
 
@@ -91,7 +91,7 @@ impl SettingsPage {
     }
 
     /// The panel shown by `sec`, set to the right view / tab.
-    fn console_panel(&mut self, sec: CSec, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<HeroicSettingsPanel>> {
+    fn console_panel(&mut self, sec: CSec, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<SettingsPanel>> {
         match sec {
             CSec::Panel(s) => {
                 let view = s.global_view().unwrap_or(GlobalView::General);
@@ -101,8 +101,8 @@ impl SettingsPage {
             }
             CSec::Defaults(h) => {
                 if self.defaults.is_none() {
-                    let heroic = self.ctx.heroic.clone();
-                    let panel = cx.new(|cx| HeroicSettingsPanel::new(heroic, Target::Defaults, h, window, cx));
+                    let data_paths = self.ctx.data_paths.clone();
+                    let panel = cx.new(|cx| SettingsPanel::new(data_paths, Target::Defaults, h, window, cx));
                     cx.observe(&panel, |_, _, cx| cx.notify()).detach();
                     self.defaults = Some(panel);
                 }

@@ -1,11 +1,11 @@
-//! Epic games through the `legendary` CLI bundled with Heroic/Heronite
-//! (port of `LegendaryGame.launch` and `getWineFlags`).
+//! Epic games through the `legendary` CLI (port of Heroic's
+//! `LegendaryGame.launch` and `getWineFlags`).
 
 use heronite_data::models::GameInfo;
 use serde_json::Value;
 
 use crate::env::{
-    build_wrappers, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env,
+    build_wrappers, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env,
 };
 use crate::plan::{Command, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
 use crate::probe::Probe;
@@ -24,20 +24,7 @@ pub fn legendary_candidates(ctx: &PlanContext, probe: &dyn Probe) -> Vec<String>
     if let Some(p) = ctx.global.alt_legendary_bin() {
         out.push(p);
     }
-    let arch = match std::env::consts::ARCH {
-        "aarch64" => "arm64",
-        _ => "x64",
-    };
-    let home = probe.home();
-    let rel = format!("resources/app.asar.unpacked/build/bin/{arch}/linux/legendary");
-    for base in [
-        join(&home, ".local/opt/Heronite"),
-        "/opt/Heronite".into(),
-        "/opt/Heroic".into(),
-        "/usr/lib/heroic".into(),
-    ] {
-        out.push(join(&base, &rel));
-    }
+    out.push(ctx.paths.legendary_bin().to_string_lossy().into_owned());
     out
 }
 
@@ -281,13 +268,13 @@ mod tests {
     use crate::plan::{build_plan_with_settings, LaunchPlan};
     use crate::probe::FakeProbe;
     use heronite_data::models::InstallInfo;
-    use heronite_data::HeroicPaths;
+    use heronite_data::DataPaths;
     use serde_json::json;
 
     const UMU: &str = "/hr/tools/runtimes/umu/umu_run.py";
 
     fn ctx() -> PlanContext {
-        let mut c = PlanContext::load(&HeroicPaths::at("/hr"));
+        let mut c = PlanContext::load(&DataPaths::at("/hr"));
         c.ui_language = Some("en".into());
         c.known_fixes =
             Some(json!({"epic": {"Calluna": {"envVariables": {"FOO": "bar", "FLAG": true}}}}));
@@ -609,20 +596,13 @@ mod tests {
     #[test]
     fn legendary_binary_lookup_order() {
         let c = ctx();
-        let home_bin = legendary_candidates(&c, &FakeProbe::new("/home/u"))
-            .into_iter()
-            .find(|p| p.starts_with("/home/u"))
-            .unwrap();
-        assert!(
-            home_bin.contains(".local/opt/Heronite/resources/app.asar.unpacked/build/bin/"),
-            "{home_bin}"
-        );
+        assert_eq!(legendary_candidates(&c, &FakeProbe::new("/home/u")), ["/hr/tools/bin/legendary"]);
         let probe = FakeProbe::new("/home/u")
-            .with_path(&home_bin)
+            .with_path("/hr/tools/bin/legendary")
             .with_bin("legendary", "/usr/bin/legendary");
         assert_eq!(
             find_legendary(&c, &probe).as_deref(),
-            Some(home_bin.as_str())
+            Some("/hr/tools/bin/legendary")
         );
         let probe = FakeProbe::new("/home/u").with_bin("legendary", "/usr/bin/legendary");
         assert_eq!(

@@ -3,7 +3,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::HeroicSettingsPanel;
+use super::SettingsPanel;
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, toggle_row, ButtonKind};
 use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_field};
@@ -79,7 +79,7 @@ impl Rows {
     }
 }
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     /// A settings row: label, explanation and a switch. `disabled` shows it
     /// dimmed and inert.
     pub(super) fn toggle_row(

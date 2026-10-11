@@ -2,7 +2,7 @@
 //! Left: the sections grouped under captions (App, Games, Collection, Help);
 //! right: the content.
 //!
-//! - General / Downloads / Advanced: one `HeroicSettingsPanel` bound to the
+//! - General / Downloads / Advanced: one `SettingsPanel` bound to the
 //!   global `config.json` (`defaultSettings`), switching its view.
 //! - Game defaults: a second panel (Wine / Other / Advanced / Gamescope
 //!   defaults new games inherit).
@@ -39,8 +39,8 @@ use heronite_data::settings::{self as store, EffectiveSettings};
 use heronite_images::ImageRef;
 
 use super::{Page, PageCtx, PageEvent};
-use crate::dialogs::heroic_settings::logic::{Section as HSection, DEFAULT_SECTIONS};
-use crate::dialogs::heroic_settings::{GlobalView, HeroicSettingsPanel, Target};
+use crate::dialogs::settings_panel::logic::{Section as HSection, DEFAULT_SECTIONS};
+use crate::dialogs::settings_panel::{GlobalView, SettingsPanel, Target};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{close_button, help_text, nav_pill, page_heading, tabs};
@@ -88,8 +88,8 @@ pub struct SettingsPage {
     backup: backup::State,
     saves: saves::State,
     section: Section,
-    global: Option<Entity<HeroicSettingsPanel>>,
-    defaults: Option<Entity<HeroicSettingsPanel>>,
+    global: Option<Entity<SettingsPanel>>,
+    defaults: Option<Entity<SettingsPanel>>,
     defaults_section: HSection,
     library: library::State,
     advanced: advanced::State,
@@ -116,7 +116,7 @@ impl SettingsPage {
         let (settings, chain) = match cx.has_global::<Offer>().then(|| cx.remove_global::<Offer>()) {
             Some(o) => (o.settings, o.chain),
             // The Collection has not loaded its library yet: read the file.
-            None => (store::load(&ctx.heroic).unwrap_or_default(), Vec::new()),
+            None => (store::load(&ctx.data_paths).unwrap_or_default(), Vec::new()),
         };
         let appearance = appearance::State::new(&ctx, &settings, chain, window, cx);
         let screenshots = screenshots::State::new(&ctx, &settings, window, cx);
@@ -185,9 +185,9 @@ impl SettingsPage {
         self.library.reload(&self.ctx, cx);
         self.logs.refresh(cx);
         // Ludusavi's "last backup" lines change while a game runs.
-        let heroic = self.ctx.heroic.clone();
+        let data_paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            if let Ok(fresh) = cx.background_spawn(async move { store::load(&heroic) }).await {
+            if let Ok(fresh) = cx.background_spawn(async move { store::load(&data_paths) }).await {
                 this.update(cx, |this, cx| {
                     this.settings = fresh;
                     cx.notify();
@@ -238,10 +238,10 @@ impl SettingsPage {
         }
     }
 
-    fn panel_for(&mut self, view: GlobalView, window: &mut Window, cx: &mut Context<Self>) -> Entity<HeroicSettingsPanel> {
+    fn panel_for(&mut self, view: GlobalView, window: &mut Window, cx: &mut Context<Self>) -> Entity<SettingsPanel> {
         if self.global.is_none() {
-            let heroic = self.ctx.heroic.clone();
-            let panel = cx.new(|cx| HeroicSettingsPanel::new_global(heroic, view, window, cx));
+            let data_paths = self.ctx.data_paths.clone();
+            let panel = cx.new(|cx| SettingsPanel::new_global(data_paths, view, window, cx));
             cx.observe(&panel, |_, _, cx| cx.notify()).detach();
             self.global = Some(panel);
         }
@@ -251,8 +251,8 @@ impl SettingsPage {
     fn defaults_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let section = self.defaults_section;
         if self.defaults.is_none() {
-            let heroic = self.ctx.heroic.clone();
-            let panel = cx.new(|cx| HeroicSettingsPanel::new(heroic, Target::Defaults, section, window, cx));
+            let data_paths = self.ctx.data_paths.clone();
+            let panel = cx.new(|cx| SettingsPanel::new(data_paths, Target::Defaults, section, window, cx));
             cx.observe(&panel, |_, _, cx| cx.notify()).detach();
             self.defaults = Some(panel);
         }

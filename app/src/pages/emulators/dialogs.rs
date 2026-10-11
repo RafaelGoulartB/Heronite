@@ -83,20 +83,20 @@ impl EmulatorsPage {
     }
 
     pub(super) fn open_add_emulator(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         let view = cx.new(|cx| EmulatorEditDialog::new(paths, None, window, cx));
         self.open_dialog(view, window, cx);
     }
 
     pub(super) fn open_edit_emulator(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(e) = self.summaries.iter().find(|s| s.emulator.id == id).map(|s| s.emulator.clone()) else { return };
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         let view = cx.new(|cx| EmulatorEditDialog::new(paths, Some(e), window, cx));
         self.open_dialog(view, window, cx);
     }
 
     pub(super) fn open_detect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         let view = cx.new(|cx| DetectEmulatorsDialog::new(paths, cx));
         self.open_dialog(view, window, cx);
     }
@@ -113,7 +113,7 @@ impl EmulatorsPage {
             cx.notify();
             return;
         }
-        let (paths, emulators) = (self.ctx.heroic.clone(), self.emulators());
+        let (paths, emulators) = (self.ctx.data_paths.clone(), self.emulators());
         let view = cx.new(|cx| RomFolderDialog::new(paths, emulators, emulator_id, scanner, window, cx));
         self.open_dialog(view, window, cx);
     }
@@ -123,7 +123,7 @@ impl EmulatorsPage {
         self.confirm_notice = Some(format!("Removed {}.", s.emulator.name));
         let view = cx.new(|_| {
             EmulatorConfirmDialog::remove_emulator(
-                self.ctx.heroic.clone(),
+                self.ctx.data_paths.clone(),
                 s.emulator.id.clone(),
                 &s.emulator.name,
                 s.games,
@@ -135,7 +135,7 @@ impl EmulatorsPage {
 
     pub(super) fn confirm_remove_folder(&mut self, scanner: &RomScanner, window: &mut Window, cx: &mut Context<Self>) {
         self.confirm_notice = Some(format!("Removed ROM folder {}.", scanner.directory));
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         let (id, dir) = (scanner.id.clone(), scanner.directory.clone());
         let view = cx.new(|_| EmulatorConfirmDialog::remove_scanner(paths, id, &dir));
         self.open_dialog(view, window, cx);

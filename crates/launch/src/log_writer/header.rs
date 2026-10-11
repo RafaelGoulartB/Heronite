@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::{Map, Value};
 
 use super::GameLog;
@@ -10,9 +10,9 @@ use super::GameLog;
 /// Whether launches of `app_name` are logged, from the global
 /// `disableLogs` and the per-game `verboseLogs` (default on). Returns the
 /// merged settings too, for the header.
-pub fn launch_log_switches(heroic: &HeroicPaths, app_name: &str) -> (bool, bool, Map<String, Value>) {
-    let global = crate::settings::GlobalSettings::load(heroic);
-    let merged = merged_settings(heroic, app_name, &global);
+pub fn launch_log_switches(data_paths: &DataPaths, app_name: &str) -> (bool, bool, Map<String, Value>) {
+    let global = crate::settings::GlobalSettings::load(data_paths);
+    let merged = merged_settings(data_paths, app_name, &global);
     let disabled_globally = truthy(global.defaults.get("disableLogs"));
     let verbose = merged.get("verboseLogs").map(|v| truthy(Some(v))).unwrap_or(true);
     (disabled_globally, verbose, merged)
@@ -29,9 +29,9 @@ fn truthy(v: Option<&Value>) -> bool {
 
 /// Global defaults overlaid with the game's section (like Heroic's
 /// `GameConfig.getSettings()`).
-pub fn merged_settings(heroic: &HeroicPaths, app_name: &str, global: &crate::settings::GlobalSettings) -> Map<String, Value> {
+pub fn merged_settings(data_paths: &DataPaths, app_name: &str, global: &crate::settings::GlobalSettings) -> Map<String, Value> {
     let mut merged = global.defaults.clone();
-    let file = heronite_data::json_store::read_value(&heroic.game_config(app_name)).unwrap_or(Value::Null);
+    let file = heronite_data::json_store::read_value(&data_paths.game_config(app_name)).unwrap_or(Value::Null);
     if let Some(Value::Object(section)) = file.get(app_name) {
         for (k, v) in section {
             merged.insert(k.clone(), v.clone());
@@ -137,18 +137,18 @@ mod tests {
     #[test]
     fn switches_follow_global_disable_and_game_verbose() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
-        std::fs::create_dir_all(heroic.games_config_dir()).unwrap();
-        std::fs::write(heroic.root.join("config.json"), r#"{"defaultSettings":{"disableLogs":false,"verboseLogs":true,"steamGridDbApiKey":"K"},"version":"v0"}"#).unwrap();
-        std::fs::write(heroic.game_config("quiet"), r#"{"quiet":{"verboseLogs":false},"version":"v0"}"#).unwrap();
-        let (off, verbose, merged) = launch_log_switches(&heroic, "loud");
+        let data_paths = DataPaths::at(dir.path());
+        std::fs::create_dir_all(data_paths.games_config_dir()).unwrap();
+        std::fs::write(data_paths.root.join("config.json"), r#"{"defaultSettings":{"disableLogs":false,"verboseLogs":true,"steamGridDbApiKey":"K"},"version":"v0"}"#).unwrap();
+        std::fs::write(data_paths.game_config("quiet"), r#"{"quiet":{"verboseLogs":false},"version":"v0"}"#).unwrap();
+        let (off, verbose, merged) = launch_log_switches(&data_paths, "loud");
         assert!(!off && verbose);
         let shown = settings_for_log(&merged, true).to_string();
         assert!(!shown.contains("\"K\"") && shown.contains("<hidden>"), "{shown}");
-        let (_, verbose, _) = launch_log_switches(&heroic, "quiet");
+        let (_, verbose, _) = launch_log_switches(&data_paths, "quiet");
         assert!(!verbose);
-        std::fs::write(heroic.root.join("config.json"), r#"{"defaultSettings":{"disableLogs":true},"version":"v0"}"#).unwrap();
-        let (off, verbose, _) = launch_log_switches(&heroic, "anything");
+        std::fs::write(data_paths.root.join("config.json"), r#"{"defaultSettings":{"disableLogs":true},"version":"v0"}"#).unwrap();
+        let (off, verbose, _) = launch_log_switches(&data_paths, "anything");
         assert!(off, "disableLogs wins");
         assert!(verbose, "verboseLogs defaults to on like Heroic's defaults");
     }

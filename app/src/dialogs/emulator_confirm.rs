@@ -6,7 +6,7 @@ mod console;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_emulation::{remove_rom_scanner, remove_user_emulator};
 
 use super::DialogEvent;
@@ -22,7 +22,7 @@ pub enum ConfirmAction {
 }
 
 pub struct EmulatorConfirmDialog {
-    paths: HeroicPaths,
+    paths: DataPaths,
     action: ConfirmAction,
     title: String,
     message: String,
@@ -53,7 +53,7 @@ pub fn remove_emulator_message(name: &str, games: usize, folders: usize) -> Stri
 }
 
 impl EmulatorConfirmDialog {
-    pub fn remove_emulator(paths: HeroicPaths, id: String, name: &str, games: usize, folders: usize) -> Self {
+    pub fn remove_emulator(paths: DataPaths, id: String, name: &str, games: usize, folders: usize) -> Self {
         Self {
             paths,
             action: ConfirmAction::RemoveEmulator { id },
@@ -65,7 +65,7 @@ impl EmulatorConfirmDialog {
         }
     }
 
-    pub fn remove_scanner(paths: HeroicPaths, id: String, directory: &str) -> Self {
+    pub fn remove_scanner(paths: DataPaths, id: String, directory: &str) -> Self {
         Self {
             paths,
             action: ConfirmAction::RemoveScanner { id },

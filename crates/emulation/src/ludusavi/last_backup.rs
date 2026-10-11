@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use super::detect::{parse_config, yaml_get};
 
@@ -28,7 +28,7 @@ pub struct LastBackup {
 
 /// Looks up the backup folder of a game by title, then by Steam app id.
 /// `None` when Ludusavi is off, has no backup root, or has no such game.
-pub fn last_backup(paths: &HeroicPaths, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
+pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
     let settings = heronite_data::settings::load(paths).ok()?.ludusavi;
     if !settings.enabled {
         return None;

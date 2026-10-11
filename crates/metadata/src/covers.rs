@@ -7,15 +7,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{anyhow, Result};
 use heronite_data::json_store;
-use heronite_data::models::{GameInfo, HeroicConfigFile, LocalGameMeta, LocalMetaFile};
-use heronite_data::paths::HeroicPaths;
+use heronite_data::models::{GameInfo, StoreConfigFile, LocalGameMeta, LocalMetaFile};
+use heronite_data::paths::DataPaths;
 use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::http::Http;
 use crate::util::{encode_uri_component, normalize_title, re};
 
-const SGDB_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeroicGamesLauncher/2.0";
+const SGDB_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Heronite/0.1";
 const ENCRYPTED_PREFIX: &str = "sgdb:v1:";
 
 /// `art_square` / `art_cover` of a game.
@@ -46,14 +46,14 @@ pub fn steam_covers(app_id: &str) -> Covers {
 /// `steamGridKey`: the SteamGridDB key from Heroic's settings. Keys that
 /// Heroic encrypted with Electron's `safeStorage` (`sgdb:v1:` prefix) cannot
 /// be decrypted outside Electron; those give `None`.
-pub fn steamgrid_api_key(paths: &HeroicPaths) -> Option<String> {
-    let config: HeroicConfigFile = json_store::read(&paths.config()).ok()?;
+pub fn steamgrid_api_key(paths: &DataPaths) -> Option<String> {
+    let config: StoreConfigFile = json_store::read(&paths.store_config()).ok()?;
     let key = config.settings?.get("steamGridDbApiKey")?.as_str()?.to_owned();
     if key.is_empty() {
         return None;
     }
     if key.starts_with(ENCRYPTED_PREFIX) {
-        log::info!("SteamGridDB API key is encrypted by Heroic (safeStorage); pass the key explicitly to use it");
+        log::info!("SteamGridDB API key is encrypted (Electron safeStorage); enter it again to use it");
         return None;
     }
     Some(key)
@@ -341,7 +341,7 @@ pub fn fetch_covers_for_game(http: &Http, api_key: Option<&str>, meta: &LocalGam
 /// writes them into `sideload_apps/library.json` (read-modify-write per
 /// game, other fields untouched). Returns how many games got covers. The
 /// caller should refresh the Heroic library afterwards.
-pub fn refresh_missing_local_covers(paths: &HeroicPaths, http: &Http) -> Result<usize> {
+pub fn refresh_missing_local_covers(paths: &DataPaths, http: &Http) -> Result<usize> {
     static RUNNING: Mutex<bool> = Mutex::new(false);
     {
         let mut running = RUNNING.lock();
@@ -444,13 +444,13 @@ mod tests {
     #[test]
     fn steamgrid_key_ignores_encrypted_values() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
-        std::fs::create_dir_all(paths.config().parent().unwrap()).unwrap();
-        std::fs::write(paths.config(), r#"{"settings":{"steamGridDbApiKey":"abc"}}"#).unwrap();
+        let paths = DataPaths::at(dir.path());
+        std::fs::create_dir_all(paths.store_config().parent().unwrap()).unwrap();
+        std::fs::write(paths.store_config(), r#"{"settings":{"steamGridDbApiKey":"abc"}}"#).unwrap();
         assert_eq!(steamgrid_api_key(&paths).as_deref(), Some("abc"));
-        std::fs::write(paths.config(), r#"{"settings":{"steamGridDbApiKey":"sgdb:v1:AAAA"}}"#).unwrap();
+        std::fs::write(paths.store_config(), r#"{"settings":{"steamGridDbApiKey":"sgdb:v1:AAAA"}}"#).unwrap();
         assert_eq!(steamgrid_api_key(&paths), None);
-        std::fs::write(paths.config(), r#"{"settings":{"steamGridDbApiKey":""}}"#).unwrap();
+        std::fs::write(paths.store_config(), r#"{"settings":{"steamGridDbApiKey":""}}"#).unwrap();
         assert_eq!(steamgrid_api_key(&paths), None);
     }
 }

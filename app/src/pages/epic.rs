@@ -79,8 +79,8 @@ impl EpicPage {
         // Screenshots: `HERONITE_DEBUG_EPIC_PAGE=import|logout|eos-remove`.
         match debug.as_deref() {
             Some("import") => {
-                let heroic = this.ctx.heroic.clone();
-                let picker = cx.new(|cx| EpicImportPicker::new(heroic, window, cx));
+                let data_paths = this.ctx.data_paths.clone();
+                let picker = cx.new(|cx| EpicImportPicker::new(data_paths, window, cx));
                 this.open_dialog(picker, window, cx);
             }
             Some("logout") => this.confirm_logout = true,
@@ -100,8 +100,8 @@ impl EpicPage {
                 // The import picker hands over the chosen game.
                 if let Ok(picker) = view.clone().into_any().downcast::<EpicImportPicker>() {
                     if let Some(game) = picker.update(cx, |p, _| p.picked.take()) {
-                        let (heroic, app) = (this.ctx.heroic.clone(), this.ctx.app.clone());
-                        let dlg = cx.new(|cx| EpicInstallDialog::new(heroic, app, game, Mode::Import, window, cx));
+                        let (data_paths, app) = (this.ctx.data_paths.clone(), this.ctx.app.clone());
+                        let dlg = cx.new(|cx| EpicInstallDialog::new(data_paths, app, game, Mode::Import, window, cx));
                         this.open_dialog(dlg, window, cx);
                     }
                 }
@@ -344,8 +344,8 @@ impl Render for EpicPage {
                     "Import an installed game",
                     Some("Add a game that is already on this PC without downloading it again."),
                     button("epic-import", ButtonKind::Glass, "Import game").on_click(cx.listener(|this, _, window, cx| {
-                        let heroic = this.ctx.heroic.clone();
-                        let picker = cx.new(|cx| EpicImportPicker::new(heroic, window, cx));
+                        let data_paths = this.ctx.data_paths.clone();
+                        let picker = cx.new(|cx| EpicImportPicker::new(data_paths, window, cx));
                         this.open_dialog(picker, window, cx);
                     })),
                 )
@@ -355,7 +355,7 @@ impl Render for EpicPage {
         } else {
             let login = row(
                 "Log in with Epic Games",
-                Some("Your login is handled by legendary, the same way Heroic does it."),
+                Some("Your login is handled by legendary."),
                 action_button(
                     "epic-login-window",
                     ButtonKind::Primary,
@@ -413,7 +413,7 @@ impl Render for EpicPage {
         let eos = div()
             .child(caption("EOS Overlay"))
             .child(self.eos_panel(cx))
-            .child(div().mt(px(18.)).mx(px(6.)).child(meta_text("Games are installed, updated and verified with legendary. Files are shared with Heroic and Heronite.")));
+            .child(div().mt(px(18.)).mx(px(6.)).child(meta_text("Games are installed, updated and verified with legendary.")));
         // Wide: the account on the left, the EOS Overlay on the right.
         let wide = content_width(window) >= 1000.;
 

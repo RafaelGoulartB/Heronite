@@ -276,10 +276,10 @@ mod tests {
     #[test]
     fn socket_name_depends_on_the_data_folder() {
         let rt = Path::new("/run/user/1000");
-        let a = socket_path_in(rt, Path::new("/home/u/.config/heroic"));
+        let a = socket_path_in(rt, Path::new("/home/u/.local/share/heronite-rs"));
         let b = socket_path_in(rt, Path::new("/tmp/heronite-fixture-system"));
         assert_ne!(a, b);
-        assert_eq!(a, socket_path_in(rt, Path::new("/home/u/.config/heroic")));
+        assert_eq!(a, socket_path_in(rt, Path::new("/home/u/.local/share/heronite-rs")));
         assert!(a.to_string_lossy().starts_with("/run/user/1000/heronite-rs-"));
     }
 

@@ -84,7 +84,7 @@ drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
 from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
 (default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum.
 These live in this app's `appearance.json` (`AppPaths::appearance()`, next to
-`ui-state.json`; `heronite_data::appearance::Appearance`), NOT in ~/.config/heroic.
+`ui-state.json`; `heronite_data::appearance::Appearance`), NOT in the data folder.
 At runtime `theme::appearance()/set_appearance()` (a process-wide value) feeds
 `theme::{glass_fill, glass_fill_solid, glass_art_dim, page_backdrop,
 glass_blur_px, glass_shows_art}`; never hard-code those numbers. The glass
@@ -121,7 +121,7 @@ rows that act get `focus_left::clickable` (pointer + faint highlight). Folder ro
 imported fields (`open_links::game_folders`): Steam games → the folder of their `appmanifest`; emulated games → "Emulator
 Folder" + "ROM Folder"; others → the stored path only when it exists (Playnite's Windows paths are dropped). ProtonDB needs a
 Steam id: the game's, the metadata's, else a strict Steam search by title (`covers::steam_app_id_exact`, same name or name +
-edition words, cached in `~/.cache/heronite-rs/protondb/titles.json`); emulated games have no "On Linux" row.
+edition words, cached in `~/.cache/heronite/protondb/titles.json`); emulated games have no "On Linux" row.
 
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
@@ -152,7 +152,7 @@ slots (build the header with `kicker`, `dialog_title`, `close_button`).
 
 **Game settings drawer** (`dialogs/game_settings/`): the first `drawer` caller. Tabs are
 segmented pills in the header slot; each tab is a stack of `caption` + `card`. The Heroic
-panels (`dialogs/heroic_settings`) build their cards with `parts::rows()` (`.child(toggle_row)`,
+panels (`dialogs/settings_panel`) build their cards with `parts::rows()` (`.child(toggle_row)`,
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →
 Game defaults can host them too.
 
@@ -209,14 +209,14 @@ are missing. Take a first capture to wake the window, wait a second, then take
 the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DROPDOWN=nav|view|facets`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
-`~/.config/heroic/images-cache` into the fixture or no art appears at all.
+`~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
 
 ## Rules
 - No I/O on the UI thread except tiny reads; use `cx.background_spawn` and
   update the entity when done. Never block render.
-- Shared files (`~/.config/heroic`) are written only through
+- Data folder files (`~/.local/share/heronite`) are written only through
   `heronite_data::json_store` or the backend crates (`crates/*`), which keep
-  the electron-store format Heronite reads.
+  the electron-store format.
 - Images: request through `CollectionView::cover` / `ImageStore` (worker
   threads, LRU of GPU textures). For one-off rasters use
   `heronite_images::*` in `background_spawn` and wrap with
@@ -239,6 +239,6 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section).
 - Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).
 - Anything that WRITES data must be exercised only against a copy:
-  `HERONITE_HEROIC_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`
-  (copy `/tmp/heronite-fixture`, which mirrors `~/.config/heroic` JSON).
+  `HERONITE_DATA_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`
+  (copy `/tmp/heronite-fixture`, which mirrors the data folder's JSON).
 - Never launch games, emulators, Steam or Ludusavi backups for real.

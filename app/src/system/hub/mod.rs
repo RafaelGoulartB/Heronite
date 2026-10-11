@@ -36,7 +36,7 @@ use std::time::SystemTime;
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::LaunchEvent;
 
 use super::settings::SysSettings;
@@ -62,7 +62,7 @@ struct MainWindow {
 }
 
 struct State {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     runtime: Arc<GameRuntime>,
     window: Option<MainWindow>,
     /// The open Collection's channel for launch events.
@@ -92,12 +92,12 @@ impl State {
 
     /// Settings, re-read only when the file changed (a `stat` per call).
     fn settings(&mut self) -> SysSettings {
-        let stamp = heronite_data::game_config::global_config_path(&self.heroic)
+        let stamp = self.data_paths.global_config()
             .metadata()
             .and_then(|m| m.modified())
             .ok();
         if stamp != self.settings_stamp {
-            self.settings = SysSettings::load(&self.heroic);
+            self.settings = SysSettings::load(&self.data_paths);
             self.settings_stamp = stamp;
         }
         self.settings
@@ -114,9 +114,9 @@ fn hub(cx: &App) -> Hub {
 
 /// Called by `CollectionView::new`: the shared runtime plus a fresh stream of
 /// launch events (games already running are announced first).
-pub fn attach_runtime(heroic: &HeroicPaths, cx: &mut App) -> (Arc<GameRuntime>, UnboundedReceiver<LaunchEvent>) {
+pub fn attach_runtime(data_paths: &DataPaths, cx: &mut App) -> (Arc<GameRuntime>, UnboundedReceiver<LaunchEvent>) {
     let Some(hub) = cx.try_global::<Hub>().cloned() else {
-        let (runtime, rx) = GameRuntime::new(heroic.clone());
+        let (runtime, rx) = GameRuntime::new(data_paths.clone());
         return (Arc::new(runtime), rx);
     };
     let (tx, rx) = unbounded();

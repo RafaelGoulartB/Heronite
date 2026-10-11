@@ -6,8 +6,8 @@ use gpui_kit::*;
 use serde_json::Value;
 
 use super::parts::{column, heading, help, rows, Rows};
-use super::{HeroicSettingsPanel, Section, Target};
-use heronite_data::HeroicPaths;
+use super::{SettingsPanel, Section, Target};
+use heronite_data::DataPaths;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::fields::choose_path;
@@ -23,9 +23,9 @@ pub enum GlobalView {
     Advanced,
 }
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     /// A panel bound to the global settings showing `view`.
-    pub fn new_global(paths: HeroicPaths, view: GlobalView, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new_global(paths: DataPaths, view: GlobalView, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut this = Self::new(paths, Target::Defaults, Section::General, window, cx);
         this.global_view = view;
         this
@@ -58,7 +58,7 @@ impl HeroicSettingsPanel {
             )
             .field_help(
                 self.path_row("altLegendaryBin", Some("Choose an Alternative Legendary Binary"), false, "Select Legendary Binary", true, cx),
-                vec![help("Leave it empty to use the built-in Legendary binary.")],
+                vec![help("Leave it empty to use the one in the data folder (tools/bin/legendary).")],
             );
         let toggles = rows()
             .child(self.toggle_row(
@@ -75,7 +75,7 @@ impl HeroicSettingsPanel {
                 "autoUpdateGames",
                 false,
                 "Automatically update games",
-                Some("Saved in the shared Heroic settings and honoured by Heronite. This app lists updates in the Epic page and the Downloads page, but does not install them on its own."),
+                Some("Updates are queued in the background when they are found, except offline, on a metered connection or while the game is running."),
                 false,
                 cx,
             ));
@@ -90,20 +90,11 @@ impl HeroicSettingsPanel {
                 "disableLogs",
                 false,
                 "Disable Logs",
-                Some("Toggle this switch ON to disable most of the writes to log files (critical information is always logged). Make sure to turn OFF this setting before reporting any issue. Saved in the shared Heroic settings (Heronite); this app only logs to the terminal."),
-                false,
-                cx,
-            ))
-            .child(self.toggle_row(
-                "disable-gog-presence",
-                "disableGOGPresence",
-                false,
-                "Disable GOG Galaxy presence",
-                Some("Shared setting honoured by Heronite."),
+                Some("Toggle this switch ON to disable most of the writes to log files (critical information is always logged). Make sure to turn OFF this setting before reporting any issue."),
                 false,
                 cx,
             ));
-        column().child(heading("Logging and presence")).child(r.card())
+        column().child(heading("Logging")).child(r.card())
     }
 
     fn general_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -112,7 +103,7 @@ impl HeroicSettingsPanel {
             .field(self.path_row("defaultWinePrefixDir", Some("Set Folder for new Wine Prefixes"), true, "Select a Folder for new Wine Prefixes", false, cx))
             .field_help(
                 self.path_row("defaultSteamPath", Some("Default Steam path"), true, "Steam path.", false, cx),
-                vec![help("This path lets Heroic determine what version of Proton Steam uses, for adding non-Steam games to Steam.")],
+                vec![help("This path lets Heronite determine what version of Proton Steam uses, for adding non-Steam games to Steam.")],
             );
         let launch = rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, "Minimize after game launch", None, false, cx));
         let wine = rows()
@@ -130,7 +121,7 @@ impl HeroicSettingsPanel {
                 "downloadProtonToSteam",
                 false,
                 "Download GE-Proton to Steam directory",
-                Some("When enabled, GE-Proton will be downloaded directly to the Steam compatibility tools directory instead of the default Heroic path. It will use the Steam path set in the 'Default Steam path' setting above."),
+                Some("When enabled, GE-Proton will be downloaded directly to the Steam compatibility tools directory instead of the tools folder. It will use the Steam path set in the 'Default Steam path' setting above."),
                 false,
                 cx,
             ));

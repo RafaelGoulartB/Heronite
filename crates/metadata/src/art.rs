@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Result};
 use heronite_data::json_store;
 use heronite_data::models::{ArtFile, CollectionGameArt};
-use heronite_data::paths::{percent_decode, HeroicPaths};
+use heronite_data::paths::{percent_decode, DataPaths};
 
 use crate::http::Http;
 use crate::types::ArtKind;
@@ -22,7 +22,7 @@ pub fn art_key(runner: &str, app_name: &str) -> String {
 }
 
 /// `fileFromUrl`: the existing file behind a `localart:` or `file:` URL.
-fn file_from_url(paths: &HeroicPaths, url: Option<&str>) -> Option<PathBuf> {
+fn file_from_url(paths: &DataPaths, url: Option<&str>) -> Option<PathBuf> {
     let url = url.filter(|u| !u.is_empty())?;
     if url.starts_with("localart:") {
         return paths.resolve_localart(url, None).filter(|p| p.exists());
@@ -35,7 +35,7 @@ fn file_from_url(paths: &HeroicPaths, url: Option<&str>) -> Option<PathBuf> {
 
 /// `displayUrl`: `localart://art/...` for a file inside the art folder, else
 /// the bare file name under it.
-fn display_url(paths: &HeroicPaths, file: &Path) -> String {
+fn display_url(paths: &DataPaths, file: &Path) -> String {
     let root = paths.art_dir();
     match file.strip_prefix(&root) {
         Ok(rel) if !rel.as_os_str().is_empty() => {
@@ -47,11 +47,11 @@ fn display_url(paths: &HeroicPaths, file: &Path) -> String {
     }
 }
 
-fn is_managed(paths: &HeroicPaths, file: &Path) -> bool {
+fn is_managed(paths: &DataPaths, file: &Path) -> bool {
     file.starts_with(paths.art_dir())
 }
 
-fn remove_managed(paths: &HeroicPaths, url: Option<&str>) {
+fn remove_managed(paths: &DataPaths, url: Option<&str>) {
     let Some(file) = file_from_url(paths, url) else { return };
     if !is_managed(paths, &file) || !file.exists() {
         return;
@@ -62,7 +62,7 @@ fn remove_managed(paths: &HeroicPaths, url: Option<&str>) {
 }
 
 /// `hydrate`: keeps only art whose file exists, with normalized URLs.
-fn hydrate(paths: &HeroicPaths, art: Option<&CollectionGameArt>) -> CollectionGameArt {
+fn hydrate(paths: &DataPaths, art: Option<&CollectionGameArt>) -> CollectionGameArt {
     let mut next = CollectionGameArt::default();
     let Some(art) = art else { return next };
     if let Some(p) = file_from_url(paths, art.cover_url.as_deref()).filter(|p| p.exists()) {
@@ -75,20 +75,20 @@ fn hydrate(paths: &HeroicPaths, art: Option<&CollectionGameArt>) -> CollectionGa
 }
 
 /// `getAllCollectionArt`.
-pub fn get_all_collection_art(paths: &HeroicPaths) -> Result<indexmap::IndexMap<String, CollectionGameArt>> {
+pub fn get_all_collection_art(paths: &DataPaths) -> Result<indexmap::IndexMap<String, CollectionGameArt>> {
     let file: ArtFile = json_store::read(&paths.art())?;
     Ok(file.games.iter().map(|(k, a)| (k.clone(), hydrate(paths, Some(a)))).collect())
 }
 
 /// `getCollectionGameArt`.
-pub fn get_collection_game_art(paths: &HeroicPaths, runner: &str, app_name: &str) -> Result<CollectionGameArt> {
+pub fn get_collection_game_art(paths: &DataPaths, runner: &str, app_name: &str) -> Result<CollectionGameArt> {
     let file: ArtFile = json_store::read(&paths.art())?;
     Ok(hydrate(paths, file.games.get(&art_key(runner, app_name))))
 }
 
 /// `writeArt`: stores `art` (hydrated) or drops the entry when it is empty.
 /// Fields of the entry this crate does not model are kept.
-fn write_art(paths: &HeroicPaths, runner: &str, app_name: &str, art: &CollectionGameArt) -> Result<CollectionGameArt> {
+fn write_art(paths: &DataPaths, runner: &str, app_name: &str, art: &CollectionGameArt) -> Result<CollectionGameArt> {
     let key = art_key(runner, app_name);
     let cleaned = hydrate(paths, Some(art));
     json_store::update::<ArtFile, _>(&paths.art(), |file| {
@@ -106,13 +106,13 @@ fn write_art(paths: &HeroicPaths, runner: &str, app_name: &str, art: &Collection
     Ok(cleaned)
 }
 
-fn dest_file(paths: &HeroicPaths, runner: &str, app_name: &str, kind: ArtKind, ext: &str) -> Result<PathBuf> {
+fn dest_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, ext: &str) -> Result<PathBuf> {
     let dir = paths.art_dir().join(folder_name(runner, app_name));
     fs::create_dir_all(&dir)?;
     Ok(dir.join(format!("{}-{}.{ext}", kind.as_str(), now_ms())))
 }
 
-fn apply_art_file(paths: &HeroicPaths, runner: &str, app_name: &str, kind: ArtKind, dest: &Path) -> Result<CollectionGameArt> {
+fn apply_art_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, dest: &Path) -> Result<CollectionGameArt> {
     let mut current = get_collection_game_art(paths, runner, app_name)?;
     match kind {
         ArtKind::Cover => {
@@ -131,7 +131,7 @@ fn apply_art_file(paths: &HeroicPaths, runner: &str, app_name: &str, kind: ArtKi
 /// `local_library/art/<runner_app>/<kind>-<ms>.<ext>` and points `art.json`
 /// at it, deleting the previous managed file of that kind.
 pub fn set_collection_game_art(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     runner: &str,
     app_name: &str,
     kind: ArtKind,
@@ -202,7 +202,7 @@ fn download_image_bytes(http: &Http, url: &str) -> Result<(Vec<u8>, String)> {
 /// `setCollectionGameArtFromUrl`: downloads `image_url` (then `thumb_url` as a
 /// fallback) and applies it like [`set_collection_game_art`].
 pub fn set_collection_game_art_from_url(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     http: &Http,
     runner: &str,
     app_name: &str,
@@ -228,7 +228,7 @@ pub fn set_collection_game_art_from_url(
 }
 
 /// `clearCollectionGameArt`: reset one kind to the default art.
-pub fn clear_collection_game_art(paths: &HeroicPaths, runner: &str, app_name: &str, kind: ArtKind) -> Result<CollectionGameArt> {
+pub fn clear_collection_game_art(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind) -> Result<CollectionGameArt> {
     let mut current = get_collection_game_art(paths, runner, app_name)?;
     match kind {
         ArtKind::Cover => {
@@ -244,7 +244,7 @@ pub fn clear_collection_game_art(paths: &HeroicPaths, runner: &str, app_name: &s
 }
 
 /// `removeAllCollectionGameArt`.
-pub fn remove_all_collection_game_art(paths: &HeroicPaths, runner: &str, app_name: &str) -> Result<()> {
+pub fn remove_all_collection_game_art(paths: &DataPaths, runner: &str, app_name: &str) -> Result<()> {
     clear_collection_game_art(paths, runner, app_name, ArtKind::Cover)?;
     clear_collection_game_art(paths, runner, app_name, ArtKind::Hero)?;
     Ok(())
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn set_replace_and_reset_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("cfg"));
+        let paths = DataPaths::at(dir.path().join("cfg"));
         // Heronite already wrote an entry with a field we do not model.
         fs::create_dir_all(paths.local_library()).unwrap();
         fs::write(paths.art(), "{\n\t\"games\": {\n\t\t\"sideload:other\": {\n\t\t\t\"heroUrl\": \"x\"\n\t\t}\n\t},\n\t\"future\": 1\n}").unwrap();
@@ -310,7 +310,7 @@ mod tests {
     #[test]
     fn rejects_bad_sources() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         let txt = dir.path().join("a.txt");
         fs::write(&txt, "x").unwrap();
         let e = set_collection_game_art(&paths, "sideload", "a", ArtKind::Cover, txt.to_str().unwrap()).unwrap_err();
@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn hydrate_drops_missing_files() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         fs::create_dir_all(paths.local_library()).unwrap();
         fs::write(paths.art(), r#"{"games":{"sideload:a":{"coverUrl":"localart://art/gone/cover-1.png"}}}"#).unwrap();
         assert_eq!(get_collection_game_art(&paths, "sideload", "a").unwrap().cover_url, None);

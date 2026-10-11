@@ -90,8 +90,8 @@ impl EpicPage {
             "refresh" => self.svc.update(cx, |s, cx| s.refresh_library(cx)),
             "update-all" => self.svc.update(cx, |s, cx| s.update_all(cx)),
             "import" => {
-                let heroic = self.ctx.heroic.clone();
-                let picker = cx.new(|cx| super::EpicImportPicker::new(heroic, window, cx));
+                let data_paths = self.ctx.data_paths.clone();
+                let picker = cx.new(|cx| super::EpicImportPicker::new(data_paths, window, cx));
                 self.open_dialog(picker, window, cx);
             }
             "logout" => self.confirm("Log out of Epic Games?", "Your installed games stay on disk.", "Log out", cx, |this, cx| {

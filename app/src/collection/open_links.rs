@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use gpui_kit::*;
-use heronite_data::{CollectionGame, HeroicPaths};
+use heronite_data::{CollectionGame, DataPaths};
 use heronite_launch::settings::GlobalSettings;
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::SystemProbe;
@@ -40,7 +40,7 @@ impl FolderKind {
 /// emulator's folder and the ROM's. Steam games: the folder Steam installed
 /// them in. Others: the stored install path. Paths imported from Playnite are
 /// often Windows paths (`C:\...`) that do not exist here; those are left out.
-pub(super) fn game_folders(paths: &HeroicPaths, game: &CollectionGame) -> Vec<(FolderKind, PathBuf)> {
+pub(super) fn game_folders(paths: &DataPaths, game: &CollectionGame) -> Vec<(FolderKind, PathBuf)> {
     let meta = game.meta.as_deref();
     if game.launch_kind.as_deref() == Some("emulator") {
         let emulator = [meta.and_then(|m| m.remapped_executable.as_deref()), game.game.install.executable.as_deref()]
@@ -87,7 +87,7 @@ impl CollectionView {
     /// install folder": the ROM's folder for emulated games).
     pub(super) fn open_install_folder(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
-        let paths = self.heroic.clone();
+        let paths = self.data_paths.clone();
         self.open_external(move || {
             let folders = game_folders(&paths, &game);
             let dir = folders

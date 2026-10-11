@@ -14,7 +14,7 @@ impl ScanRomsDialog {
     pub(super) fn detect(&mut self, cx: &mut Context<Self>) {
         self.detecting = true;
         self.error.clear();
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { add_detected_emulators(&paths, &SystemEnv) }).await;
             this.update(cx, |this, cx| {
@@ -48,7 +48,7 @@ impl ScanRomsDialog {
             .filter(|e| !e.is_empty())
             .collect();
         let args = text_of(&self.custom_args, cx);
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         self.loading = true;
         self.error.clear();
         cx.spawn(async move |this, cx| {
@@ -116,7 +116,7 @@ impl ScanRomsDialog {
             scan_subfolders: Some(self.scan_subfolders),
             merge_related_files: Some(self.merge_related),
         };
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         self.loading = true;
         self.error.clear();
         cx.spawn(async move |this, cx| {
@@ -154,7 +154,7 @@ impl ScanRomsDialog {
             auto_scan_on_refresh: Some(self.auto_scan),
             games: preview.games,
         };
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         self.loading = true;
         self.error.clear();
         cx.spawn(async move |this, cx| {

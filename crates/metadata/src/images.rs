@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 
 use crate::http::Http;
 use crate::types::ArtKind;
@@ -13,7 +13,7 @@ use crate::util::{folder_name, local_art_url, sniff_image_ext, ALLOWED_EXT};
 const MAX_IMAGE_BYTES: u64 = 2 * 1024 * 1024;
 
 /// `removeMetadataArt`.
-pub fn remove_metadata_art(paths: &HeroicPaths, runner: &str, app_name: &str) {
+pub fn remove_metadata_art(paths: &DataPaths, runner: &str, app_name: &str) {
     let dir = paths.metadata_art_dir().join(folder_name(runner, app_name));
     if !dir.exists() {
         return;
@@ -23,7 +23,7 @@ pub fn remove_metadata_art(paths: &HeroicPaths, runner: &str, app_name: &str) {
     }
 }
 
-fn dest_file(paths: &HeroicPaths, runner: &str, app_name: &str, kind: ArtKind, ext: &str) -> std::io::Result<PathBuf> {
+fn dest_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, ext: &str) -> std::io::Result<PathBuf> {
     let dir = paths.metadata_art_dir().join(folder_name(runner, app_name));
     fs::create_dir_all(&dir)?;
     Ok(dir.join(format!("{}.{ext}", kind.as_str())))
@@ -57,7 +57,7 @@ fn write_atomic(dest: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// - a remote URL is downloaded the same way when `download` is set (max
 ///   2 MB), and kept as the URL when not or when the download fails.
 pub fn materialize_metadata_image(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     http: &Http,
     runner: &str,
     app_name: &str,
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn local_files_are_copied_and_remote_urls_kept() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("cfg"));
+        let paths = DataPaths::at(dir.path().join("cfg"));
         let http = Http::default();
         let src = dir.path().join("a.JPEG");
         fs::write(&src, b"fake").unwrap();

@@ -24,7 +24,7 @@ pub mod ludusavi_backup;
 pub mod pick_rom;
 pub mod art_images;
 pub mod game_settings;
-pub mod heroic_settings;
+pub mod settings_panel;
 pub mod manage_statuses;
 pub mod metadata;
 pub mod metadata_wizard;
@@ -40,7 +40,7 @@ use std::sync::Arc;
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::*;
-use heronite_data::{AppPaths, HeroicPaths, Library};
+use heronite_data::{AppPaths, DataPaths, Library};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DialogEvent {
@@ -54,7 +54,7 @@ pub enum DialogEvent {
 /// What every dialog may need.
 #[derive(Clone)]
 pub struct DialogCtx {
-    pub heroic: HeroicPaths,
+    pub data_paths: DataPaths,
     pub app: AppPaths,
     pub lib: Arc<Library>,
 }

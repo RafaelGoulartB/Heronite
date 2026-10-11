@@ -229,13 +229,13 @@ impl CollectionView {
             Outcome::Changed(id, Value::Toggle(on)) if id.starts_with("sys:") => {
                 let (runner, app) = (g.runner.clone(), g.app_name.clone());
                 let steam = id.as_ref() == "sys:steam";
-                self.system_op(g.key.clone(), cx, move |heroic| {
+                self.system_op(g.key.clone(), cx, move |data_paths| {
                     use crate::system::shortcuts as sc;
                     match (steam, on) {
-                        (false, true) => sc::add_shortcuts(heroic, &runner, &app),
-                        (false, false) => sc::remove_shortcuts(heroic, &runner, &app),
-                        (true, true) => sc::add_to_steam(heroic, &runner, &app),
-                        (true, false) => sc::remove_from_steam(heroic, &runner, &app),
+                        (false, true) => sc::add_shortcuts(data_paths, &runner, &app),
+                        (false, false) => sc::remove_shortcuts(data_paths, &runner, &app),
+                        (true, true) => sc::add_to_steam(data_paths, &runner, &app),
+                        (true, false) => sc::remove_from_steam(data_paths, &runner, &app),
                     }
                 });
             }
@@ -252,7 +252,7 @@ impl CollectionView {
                 "settings" => self.console_game_settings(key, window, cx),
                 "playtime" => self.console_edit_playtime(key, window, cx),
                 "recent" => {
-                    if let Err(err) = heronite_data::config_games::remove_recent(&self.heroic, &g.app_name) {
+                    if let Err(err) = heronite_data::config_games::remove_recent(&self.data_paths, &g.app_name) {
                         self.show_toast(format!("{err:#}"), true, cx);
                     }
                     self.reload(cx);
@@ -266,13 +266,13 @@ impl CollectionView {
                     }
                 }
                 ("favourite", _) => {
-                    if let Err(err) = heronite_data::config_games::toggle_favourite(&self.heroic, &g.app_name, &g.title) {
+                    if let Err(err) = heronite_data::config_games::toggle_favourite(&self.data_paths, &g.app_name, &g.title) {
                         self.show_toast(format!("{err:#}"), true, cx);
                     }
                     self.reload(cx);
                 }
                 ("hidden", _) => {
-                    if let Err(err) = heronite_data::config_games::toggle_hidden(&self.heroic, &g.app_name, &g.title) {
+                    if let Err(err) = heronite_data::config_games::toggle_hidden(&self.data_paths, &g.app_name, &g.title) {
                         self.show_toast(format!("{err:#}"), true, cx);
                     }
                     self.reload(cx);

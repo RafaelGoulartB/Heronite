@@ -47,7 +47,7 @@ impl CollectionView {
         .detach();
     }
 
-    /// Heronite may write the same files: reload when they change.
+    /// Background jobs and external edits write the same files: reload when they change.
     pub(super) fn spawn_disk_watch(&self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(2)).await;

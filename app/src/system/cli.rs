@@ -4,17 +4,17 @@
 //!
 //! * `heronite-rs --launch <runner>_<appName>`, `--launch <runner> <appName>`,
 //!   `--launch <appName>` (also `--launch=...`),
-//! * `heroic://launch/<appName>`, `heroic://launch/<runner>/<appName>`,
-//!   `heroic://launch?appName=..&runner=..[&arg=..][&altExe=..][&gui=false]`,
-//! * the same paths with our own scheme `heronite-rs://`.
+//! * `heronite-rs://launch/<appName>`, `heronite-rs://launch/<runner>/<appName>`,
+//!   `heronite-rs://launch?appName=..&runner=..[&arg=..][&altExe=..][&gui=false]`
+//!   (Heroic's URL forms under this app's own scheme; `heroic://` stays Heroic's).
 //!
 //! `--no-gui` (Heroic's flag) means "do not show the window".
 
 /// Runners Heroic's protocol accepts; we also know `zoom`.
 pub const RUNNERS: [&str; 5] = ["legendary", "gog", "nile", "sideload", "zoom"];
 
-/// Schemes we handle.
-pub const SCHEMES: [&str; 2] = ["heronite-rs", "heroic"];
+/// The URL scheme we handle.
+pub const SCHEME: &str = "heronite-rs";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LaunchRequest {
@@ -29,7 +29,7 @@ pub struct LaunchRequest {
     pub gui_false: bool,
 }
 
-/// What a `heroic://` URL asks for.
+/// What a `heronite-rs://` URL asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UrlAction {
     Launch(LaunchRequest),
@@ -48,12 +48,12 @@ pub struct Cli {
 }
 
 pub const HELP: &str = "\
-heronite-rs - game Collection (shares data with Heroic/Heronite)
+heronite-rs - game Collection
 
 Usage:
   heronite-rs                         open the Collection
   heronite-rs --launch <runner>_<app> launch a game (also: --launch <runner> <app>, --launch <app>)
-  heronite-rs [--no-gui] <url>        launch from heronite-rs://launch?appName=..&runner=.. (or heroic://launch/...)
+  heronite-rs [--no-gui] <url>        launch from heronite-rs://launch?appName=..&runner=..
   --no-gui                            do not show the window (the process exits when the game ends)
   -h, --help                          this text
 ";
@@ -83,11 +83,11 @@ fn gui_false(v: &str) -> bool {
     matches!(v, "false" | "0" | "no")
 }
 
-/// Parses `heroic://...` / `heronite-rs://...`; `None` for other strings and
+/// Parses `heronite-rs://...`; `None` for other strings, other schemes and
 /// unknown hosts.
 pub fn parse_url(url: &str) -> Option<UrlAction> {
     let (scheme, rest) = url.split_once("://")?;
-    if !SCHEMES.contains(&scheme.to_ascii_lowercase().as_str()) {
+    if !scheme.eq_ignore_ascii_case(SCHEME) {
         return None;
     }
     let rest = rest.split('#').next().unwrap_or(rest);
@@ -244,13 +244,13 @@ mod tests {
             Some(UrlAction::Launch(r)) => r,
             other => panic!("{u}: {other:?}"),
         };
-        assert_eq!(l("heroic://launch/Quail"), req(None, "Quail"));
-        assert_eq!(l("heroic://launch/legendary/Quail"), req(Some("legendary"), "Quail"));
+        assert_eq!(l("heronite-rs://launch/Quail"), req(None, "Quail"));
+        assert_eq!(l("heronite-rs://launch/legendary/Quail"), req(Some("legendary"), "Quail"));
         assert_eq!(l("heronite-rs://launch/gog/123"), req(Some("gog"), "123"));
-        assert_eq!(l("HEROIC://launch/gog/123/"), req(Some("gog"), "123"));
+        assert_eq!(l("HERONITE-RS://launch/gog/123/"), req(Some("gog"), "123"));
         // unknown runner is ignored (findGame searches all runners)
-        assert_eq!(l("heroic://launch/steam/123"), req(None, "123"));
-        assert_eq!(l("heroic://launch/My%20Game"), req(None, "My Game"));
+        assert_eq!(l("heronite-rs://launch/steam/123"), req(None, "123"));
+        assert_eq!(l("heronite-rs://launch/My%20Game"), req(None, "My Game"));
     }
 
     #[test]
@@ -259,31 +259,32 @@ mod tests {
             Some(UrlAction::Launch(r)) => r,
             other => panic!("{u}: {other:?}"),
         };
-        assert_eq!(l("heroic://launch?appName=Quail&runner=legendary"), req(Some("legendary"), "Quail"));
-        assert_eq!(l("heroic://launch/?appName=Quail&runner=nile"), req(Some("nile"), "Quail"));
+        assert_eq!(l("heronite-rs://launch?appName=Quail&runner=legendary"), req(Some("legendary"), "Quail"));
+        assert_eq!(l("heronite-rs://launch/?appName=Quail&runner=nile"), req(Some("nile"), "Quail"));
         let r = l("heronite-rs://launch?appName=Quail&runner=sideload&arg=--fast&arg=a%20b&altExe=%2Fgames%2Fx.exe&gui=false");
         assert_eq!(r.runner.as_deref(), Some("sideload"));
         assert_eq!(r.args, vec!["--fast", "a b"]);
         assert_eq!(r.alt_exe.as_deref(), Some("/games/x.exe"));
         assert!(r.gui_false);
         // gui=0 / gui=no
-        assert!(l("heroic://launch?appName=a&gui=0").gui_false);
-        assert!(l("heroic://launch?appName=a&gui=no").gui_false);
-        assert!(!l("heroic://launch?appName=a&gui=true").gui_false);
+        assert!(l("heronite-rs://launch?appName=a&gui=0").gui_false);
+        assert!(l("heronite-rs://launch?appName=a&gui=no").gui_false);
+        assert!(!l("heronite-rs://launch?appName=a&gui=true").gui_false);
         // relative altExe is refused
-        assert!(l("heroic://launch?appName=a&altExe=x.exe").alt_exe.is_none());
+        assert!(l("heronite-rs://launch?appName=a&altExe=x.exe").alt_exe.is_none());
         // fragment is ignored
-        assert_eq!(l("heroic://launch?appName=a#frag").app_name, "a");
+        assert_eq!(l("heronite-rs://launch?appName=a#frag").app_name, "a");
     }
 
     #[test]
     fn url_rejections() {
-        assert_eq!(parse_url("heroic://ping"), Some(UrlAction::Ping));
-        assert_eq!(parse_url("heroic://ping?x=1"), Some(UrlAction::Ping));
-        assert_eq!(parse_url("heroic://launch"), None, "no appName");
-        assert_eq!(parse_url("heroic://launch?runner=gog"), None);
-        assert_eq!(parse_url("heroic://other/thing"), None);
+        assert_eq!(parse_url("heronite-rs://ping"), Some(UrlAction::Ping));
+        assert_eq!(parse_url("heronite-rs://ping?x=1"), Some(UrlAction::Ping));
+        assert_eq!(parse_url("heronite-rs://launch"), None, "no appName");
+        assert_eq!(parse_url("heronite-rs://launch?runner=gog"), None);
+        assert_eq!(parse_url("heronite-rs://other/thing"), None);
         assert_eq!(parse_url("https://launch/x"), None);
+        assert_eq!(parse_url("heroic://launch/Quail"), None, "Heroic's own links are not ours");
         assert_eq!(parse_url("not a url"), None);
     }
 
@@ -293,10 +294,10 @@ mod tests {
         assert_eq!(c.launch, Some(req(Some("legendary"), "Quail")));
         assert!(c.no_gui);
         // gui=false in the URL hides the window even without the flag
-        let c = p(&["heroic://launch/Quail?gui=false"]);
+        let c = p(&["heronite-rs://launch/Quail?gui=false"]);
         assert!(c.hide_window(false));
         // Electron-style leftovers are ignored
-        let c = p(&["--no-sandbox", "heroic://launch/gog/1"]);
+        let c = p(&["--no-sandbox", "heronite-rs://launch/gog/1"]);
         assert_eq!(c.launch, Some(req(Some("gog"), "1")));
     }
 }

@@ -42,9 +42,9 @@ pub(super) fn launch(cx: &mut App, req: LaunchRequest, hide: bool, close_visible
 }
 
 fn launch_headless(cx: &mut App, req: LaunchRequest) {
-    let heroic = hub(cx).0.borrow().heroic.clone();
+    let data_paths = hub(cx).0.borrow().data_paths.clone();
     cx.spawn(async move |cx| {
-        let (h, r) = (heroic, req.clone());
+        let (h, r) = (data_paths, req.clone());
         let found = cx
             .background_spawn(async move {
                 Library::load(&h).map(|lib| find_game(&lib, &r)).map_err(|e| format!("could not read the library: {e:#}"))

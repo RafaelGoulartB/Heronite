@@ -10,7 +10,7 @@ mod render;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_emulation::detect::profiles_for_definition;
 use heronite_emulation::store::{insert_user_emulator, replace_user_emulator};
 use heronite_emulation::catalog::emulator_definition;
@@ -43,7 +43,7 @@ struct ProfileForm {
 }
 
 pub struct EmulatorEditDialog {
-    paths: HeroicPaths,
+    paths: DataPaths,
     create: bool,
     base: UserEmulator,
     definition_id: String,
@@ -73,7 +73,7 @@ impl EventEmitter<DialogEvent> for EmulatorEditDialog {}
 
 impl EmulatorEditDialog {
     /// Adds a new emulator (`existing` = `None`) or edits one.
-    pub fn new(paths: HeroicPaths, existing: Option<UserEmulator>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(paths: DataPaths, existing: Option<UserEmulator>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let create = existing.is_none();
         let base = existing.unwrap_or_else(|| UserEmulator {
             definition_id: "custom".into(),

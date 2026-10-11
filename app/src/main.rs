@@ -19,7 +19,20 @@ use gpui_kit::*;
 fn main() {
     let started = Instant::now();
     tune_allocator();
+    // Before anything (the logger included) creates the data folder.
+    let migration = migrate_from_heroic();
     env_logger_init();
+    match migration {
+        heronite_data::migrate::Outcome::Migrated(r) => log::info!(
+            "copied the Heroic setup into the data folder: {} files, {} MB, {} files with rewritten paths, legendary from {:?}",
+            r.files,
+            r.bytes / 1_000_000,
+            r.rewritten,
+            r.legendary
+        ),
+        heronite_data::migrate::Outcome::Fresh => log::info!("new data folder (no Heroic setup to copy)"),
+        heronite_data::migrate::Outcome::NotNeeded => {}
+    }
 
     let cli = system::cli::parse(std::env::args().skip(1));
     if cli.help {
@@ -51,9 +64,9 @@ fn main() {
     let signals = system::signals::spawn();
     // Temp files of writes cut short by a crash or kill (only ours, by name).
     std::thread::spawn(|| {
-        let heroic = heronite_data::HeroicPaths::detect();
-        let app = heronite_data::AppPaths::for_heroic(&heroic);
-        heronite_shortcuts::sweep_stale_temps_at_startup(&heroic, &app);
+        let data_paths = heronite_data::DataPaths::detect();
+        let app = heronite_data::AppPaths::for_data(&data_paths);
+        heronite_shortcuts::sweep_stale_temps_at_startup(&data_paths, &app);
     });
 
     gpui_kit::application()
@@ -72,6 +85,23 @@ fn main() {
     let code = system::exit_code();
     if code != 0 {
         std::process::exit(code);
+    }
+}
+
+/// First start: copies an existing Heroic setup into the data folder (see
+/// `heronite_data::migrate`). A failure leaves no data folder behind, so
+/// the app stops instead of starting empty and retries on the next start.
+fn migrate_from_heroic() -> heronite_data::migrate::Outcome {
+    let data_paths = heronite_data::DataPaths::detect();
+    let app = heronite_data::AppPaths::for_data(&data_paths);
+    match heronite_data::migrate::run_if_needed(&data_paths, &app) {
+        Ok(outcome) => outcome,
+        Err(err) => {
+            let text = format!("Could not copy the Heroic data into {}: {err:#}", data_paths.root.display());
+            eprintln!("heronite-rs: {text}");
+            system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(5));
+            std::process::exit(1);
+        }
     }
 }
 
@@ -94,7 +124,7 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
     if env::flag("HERONITE_NO_SINGLE_INSTANCE") {
         return primary(None, None);
     }
-    let socket = socket_path(&heronite_data::HeroicPaths::detect().root);
+    let socket = socket_path(&heronite_data::DataPaths::detect().root);
     let msg = Message { launch: cli.launch.clone(), no_gui: cli.no_gui };
     for _ in 0..2 {
         match forward(&socket, &msg) {
@@ -193,12 +223,12 @@ fn env_logger_init() {
         Ok("trace") => log::LevelFilter::Trace,
         _ => log::LevelFilter::Info,
     };
-    let heroic = heronite_data::HeroicPaths::detect();
-    let disabled = heronite_launch::settings::GlobalSettings::load(&heroic)
+    let data_paths = heronite_data::DataPaths::detect();
+    let disabled = heronite_launch::settings::GlobalSettings::load(&data_paths)
         .defaults
         .get("disableLogs")
         .is_some_and(|v| v.as_bool().unwrap_or(false));
-    let file = heronite_launch::log_writer::LauncherLogger::open(heronite_launch::log_writer::LogPaths::for_heroic(&heroic), disabled);
+    let file = heronite_launch::log_writer::LauncherLogger::open(heronite_launch::log_writer::LogPaths::for_data(&data_paths), disabled);
     if !disabled {
         file.note(&format!("============= Heronite (Rust) {} started (pid {}) =============", env!("CARGO_PKG_VERSION"), std::process::id()));
     }

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use parking_lot::Mutex;
 
 use crate::install::{self, InstallError};
@@ -62,7 +62,7 @@ struct State {
 }
 
 struct Inner {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     state: Mutex<State>,
     revision: AtomicU64,
 }
@@ -74,12 +74,12 @@ pub struct WineManager {
 }
 
 impl WineManager {
-    pub fn new(heroic: HeroicPaths) -> Self {
-        Self { inner: Arc::new(Inner { heroic, state: Mutex::new(State::default()), revision: AtomicU64::new(0) }) }
+    pub fn new(data_paths: DataPaths) -> Self {
+        Self { inner: Arc::new(Inner { data_paths, state: Mutex::new(State::default()), revision: AtomicU64::new(0) }) }
     }
 
-    pub fn heroic(&self) -> &HeroicPaths {
-        &self.inner.heroic
+    pub fn data_paths(&self) -> &DataPaths {
+        &self.inner.data_paths
     }
 
     /// Bumped on every state change (progress included).
@@ -153,9 +153,9 @@ impl WineManager {
         std::thread::Builder::new()
             .name(format!("wine-install-{}", info.version))
             .spawn(move || {
-                let cfg = WineConfig::load(&this.inner.heroic);
+                let cfg = WineConfig::load(&this.inner.data_paths);
                 let version = info.version.clone();
-                let result = install::install_version(&this.inner.heroic, &cfg, &info, &cancel, &mut |p| {
+                let result = install::install_version(&this.inner.data_paths, &cfg, &info, &cancel, &mut |p| {
                     let phase = match p {
                         Progress::Downloading { percentage, downloaded, total, speed, eta_secs } => {
                             JobPhase::Downloading { percentage, downloaded, total, speed, eta_secs }
@@ -187,7 +187,7 @@ impl WineManager {
             .name(format!("wine-remove-{}", info.version))
             .spawn(move || {
                 let version = info.version.clone();
-                let event = match install::remove_version(&this.inner.heroic, &info) {
+                let event = match install::remove_version(&this.inner.data_paths, &info) {
                     Ok(()) => JobEvent::Removed { version: version.clone() },
                     Err(e) => JobEvent::Failed { version: version.clone(), message: format!("{e:#}") },
                 };
@@ -211,7 +211,7 @@ impl WineManager {
         std::thread::Builder::new()
             .name("wine-refresh".into())
             .spawn(move || {
-                let event = match store::refresh(&this.inner.heroic, &repos, 50) {
+                let event = match store::refresh(&this.inner.data_paths, &repos, 50) {
                     Ok(o) => JobEvent::Refreshed { errors: o.errors },
                     Err(e) => JobEvent::RefreshFailed { message: format!("{e:#}") },
                 };

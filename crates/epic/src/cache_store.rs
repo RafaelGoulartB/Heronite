@@ -3,40 +3,40 @@
 
 use anyhow::Result;
 use heronite_data::json_store;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::{Map, Value};
 
 use crate::util::{js_date_now, parse_js_date};
 
 pub struct CacheStore<'a> {
-    heroic: &'a HeroicPaths,
+    data_paths: &'a DataPaths,
     name: &'static str,
     /// Minutes; `None` never expires.
     lifespan: Option<u64>,
 }
 
 impl<'a> CacheStore<'a> {
-    pub fn new(heroic: &'a HeroicPaths, name: &'static str, lifespan_minutes: Option<u64>) -> Self {
-        Self { heroic, name, lifespan: lifespan_minutes }
+    pub fn new(data_paths: &'a DataPaths, name: &'static str, lifespan_minutes: Option<u64>) -> Self {
+        Self { data_paths, name, lifespan: lifespan_minutes }
     }
 
     /// `installStore` (6 hours).
-    pub fn install_info(heroic: &'a HeroicPaths) -> Self {
-        Self::new(heroic, "legendary_install_info", Some(60 * 6))
+    pub fn install_info(data_paths: &'a DataPaths) -> Self {
+        Self::new(data_paths, "legendary_install_info", Some(60 * 6))
     }
 
     /// `libraryStore` (never expires).
-    pub fn library(heroic: &'a HeroicPaths) -> Self {
-        Self::new(heroic, "legendary_library", None)
+    pub fn library(data_paths: &'a DataPaths) -> Self {
+        Self::new(data_paths, "legendary_library", None)
     }
 
     /// `gamesOverrideStore` (7 days).
-    pub fn games_override(heroic: &'a HeroicPaths) -> Self {
-        Self::new(heroic, "legendary_games_override", Some(60 * 24 * 7))
+    pub fn games_override(data_paths: &'a DataPaths) -> Self {
+        Self::new(data_paths, "legendary_games_override", Some(60 * 24 * 7))
     }
 
     pub fn path(&self) -> std::path::PathBuf {
-        self.heroic.root.join("store_cache").join(format!("{}.json", self.name))
+        self.data_paths.store_cache(self.name)
     }
 
     pub fn get(&self, key: &str) -> Option<Value> {
@@ -101,8 +101,8 @@ mod tests {
     #[test]
     fn values_expire_after_the_lifespan() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
-        let store = CacheStore::install_info(&heroic);
+        let data_paths = DataPaths::at(dir.path());
+        let store = CacheStore::install_info(&data_paths);
         assert!(store.get("a").is_none());
         store.set("a", json!({"manifest": {"download_size": 5}})).unwrap();
         assert_eq!(store.get("a").unwrap()["manifest"]["download_size"], 5);
@@ -117,8 +117,8 @@ mod tests {
     #[test]
     fn library_store_never_expires() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
-        let store = CacheStore::library(&heroic);
+        let data_paths = DataPaths::at(dir.path());
+        let store = CacheStore::library(&data_paths);
         store.set("library", json!([1])).unwrap();
         assert!(store.get_at("library", now_secs() + 3650 * 86400).is_some());
     }

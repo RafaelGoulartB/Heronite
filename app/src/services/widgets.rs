@@ -3,7 +3,7 @@
 use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::{AppPaths, HeroicPaths};
+use heronite_data::{AppPaths, DataPaths};
 use heronite_images::{ImageRef, Variant};
 
 use crate::images::ImageStore;
@@ -45,8 +45,8 @@ pub struct Covers {
 impl Covers {
     /// `access` finds the `Covers` inside the owner so the background loader
     /// can hand finished images over.
-    pub fn new<V: 'static>(heroic: &HeroicPaths, app: &AppPaths, cx: &mut Context<V>, access: fn(&mut V) -> &mut Covers) -> Self {
-        let (store, mut rx) = ImageStore::new(heroic.images_cache_dir(), app);
+    pub fn new<V: 'static>(data_paths: &DataPaths, app: &AppPaths, cx: &mut Context<V>, access: fn(&mut V) -> &mut Covers) -> Self {
+        let (store, mut rx) = ImageStore::new(data_paths.images_cache_dir(), app);
         cx.spawn(async move |this, cx| {
             while let Some(first) = rx.next().await {
                 let mut batch = vec![first];

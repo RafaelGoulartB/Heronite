@@ -88,7 +88,7 @@ pub struct StatsPage {
     history: Option<Arc<History>>,
     /// Screenshots of every played game (index into the library), oldest first.
     shots: Option<Arc<HashMap<usize, Vec<Shot>>>>,
-    /// The Collection's 320×180 screenshot previews (shared with Heronite).
+    /// The Collection's 320×180 screenshot previews.
     thumb_cache: Option<ThumbnailCache>,
     /// Preview of each screenshot shown so far (`None` while it is made).
     thumbs: HashMap<PathBuf, Option<PathBuf>>,
@@ -170,7 +170,7 @@ fn list_shots(folder: &Path, games: Vec<(usize, GameQuery)>) -> HashMap<usize, V
 impl StatsPage {
     pub fn new(_ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let ctx = _ctx;
-        let covers = Covers::new(&ctx.heroic, &ctx.app, cx, |this: &mut Self| &mut this.covers);
+        let covers = Covers::new(&ctx.data_paths, &ctx.app, cx, |this: &mut Self| &mut this.covers);
         let page = crate::env::value("HERONITE_DEBUG_PAGE").unwrap_or_default();
         let mut parts = page.split(':').skip(1);
         let span = match parts.next() {

@@ -7,7 +7,7 @@ mod console;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_emulation::{run_rom_scanners, upsert_rom_scanner, RomScanner, UpsertRomScannerArgs};
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
@@ -30,7 +30,7 @@ pub struct SaveOutcome {
 }
 
 pub struct RomFolderDialog {
-    paths: HeroicPaths,
+    paths: DataPaths,
     scanner: Option<RomScanner>,
     emulators: Vec<UserEmulator>,
     emulator_id: String,
@@ -64,7 +64,7 @@ impl RomFolderDialog {
     /// `scanner` = `Some` edits that folder; otherwise a new one for
     /// `emulator_id` (or the first emulator).
     pub fn new(
-        paths: HeroicPaths,
+        paths: DataPaths,
         emulators: Vec<UserEmulator>,
         emulator_id: Option<String>,
         scanner: Option<RomScanner>,

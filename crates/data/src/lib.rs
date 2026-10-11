@@ -1,4 +1,4 @@
-//! Data layer shared with Heronite: same files under `~/.config/heroic`.
+//! Data layer: the files of the data folder (`~/.local/share/heronite`).
 
 pub mod json_store;
 pub mod models;
@@ -20,6 +20,7 @@ pub mod heronite_ui_import;
 pub mod hltb;
 pub mod library;
 pub mod maintenance;
+pub mod migrate;
 pub mod playtime;
 pub mod ratings;
 pub mod screenshot_prefs;
@@ -38,12 +39,12 @@ pub use collection::{
 };
 pub use library::{CollectionGame, Library};
 pub use num::JsNum;
-pub use paths::{AppPaths, HeroicPaths};
+pub use paths::{AppPaths, DataPaths};
 
 #[cfg(test)]
 mod roundtrip_tests {
     //! Run with `HERONITE_FIXTURE=/tmp/heronite-fixture cargo test -p heronite-data`
-    //! against a copy of real `~/.config/heroic` data.
+    //! against a copy of a real data folder.
     use crate::json_store;
     use crate::models::*;
     use serde::{de::DeserializeOwned, Serialize};
@@ -74,7 +75,7 @@ mod roundtrip_tests {
         check::<MetadataFile>(&root, "local_library/metadata.json");
         check::<ArtFile>(&root, "local_library/art.json");
         check::<TimestampFile>(&root, "store/timestamp.json");
-        check::<HeroicConfigFile>(&root, "store/config.json");
+        check::<StoreConfigFile>(&root, "store/config.json");
         check::<SideloadLibraryFile>(&root, "sideload_apps/library.json");
     }
 }

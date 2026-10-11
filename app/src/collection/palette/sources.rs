@@ -99,7 +99,7 @@ fn section_help(s: Section) -> &'static str {
         Section::Library => "Hidden games, favourites, recent games",
         Section::Metadata => "IGDB keys, covers, field sources",
         Section::Screenshots => "Folder, capture shortcut, preview cache",
-        Section::Backups => "Ludusavi saves and Heroic config backup",
+        Section::Backups => "Ludusavi saves and data folder backup",
         Section::Logs => "Logs of this app and your games",
         Section::About => "Version, data folders, system",
     }
@@ -134,7 +134,7 @@ pub(super) fn static_entries() -> Vec<Entry> {
     v.push(action(Act::Refresh, "Refresh library and scan ROMs", "Reload the library and import new ROMs", Icon::Refresh, Some("F5"), "reload update rescan"));
     v.push(action(Act::ScanRoms, "Scan ROMs\u{2026}", "Add games from a ROM folder", Icon::FolderOpen, None, "emulation import folder"));
     v.push(action(Act::EpicUpdates, "Check for Epic updates", "Refresh the Epic library and look for updates", Icon::Update, None, "epic games legendary upgrade"));
-    v.push(action(Act::OpenLogs, "Open logs folder", "Heroic and game logs", Icon::Description, None, "log folder directory debug"));
+    v.push(action(Act::OpenLogs, "Open logs folder", "App, runner and game logs", Icon::Description, None, "log folder directory debug"));
     v.push(action(Act::YearReview, "Year in review", "Your year in games, as stories", Icon::BarChart, None, "wrapped recap retrospective statistics stats year summary"));
     v.push(action(Act::Console, "Console mode", "Controller-first TV layout", Icon::Tv, None, "controller gamepad tv big picture couch"));
     v.push(action(Act::Quit, "Quit", "Close Heronite", Icon::Logout, None, "exit close"));

@@ -1,10 +1,19 @@
 # Architecture
 
 HeroniteRust is a GPUI rewrite of the Heronite launcher (a Heroic Games
-Launcher fork). It reads and writes **the same files** as Heroic/Heronite in
-`~/.config/heroic`, in the same electron-store format, so both apps can be
-used side by side. Settings that only this app has live in
-`~/.config/heronite-rs/` (`AppPaths`).
+Launcher fork). It is a separate app with its own data folder,
+`~/.local/share/heronite/` (`DataPaths`; `HERONITE_DATA_DIR` overrides
+it). The folder keeps Heroic's layout and electron-store formats, but nothing
+in it is shared with Heroic or Heronite, and this app never reads or writes
+Heroic's folders. UI state lives in `~/.config/heronite/` and caches in
+`~/.cache/heronite/` (`AppPaths`).
+
+On the first start, when the data folder does not exist yet,
+`heronite_data::migrate` copies an existing Heroic setup into it once:
+`~/.config/heroic` (minus Chromium's files), Heroic's game logs and the
+legendary binary of the Heronite install (to `tools/bin/legendary`). Paths
+into Heroic's folder are rewritten. Heroic's files are only read. The
+UI state and cache folders of the old name (`heronite-rs`) are renamed.
 
 `docs/CODE-STYLE.md` has the code rules; `docs/UI-CONVENTIONS.md` the look of
 the UI; `PROGRESSO.md` the status and decisions (in Portuguese).
@@ -13,7 +22,7 @@ the UI; `PROGRESSO.md` the status and decisions (in Portuguese).
 
 ```
 app (bin heronite-rs) ── GPUI UI, desktop integration
- ├─ heronite-data       files under ~/.config/heroic, paths, safe writes, processes
+ ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
  ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
  ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
  ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
@@ -29,7 +38,7 @@ epic-login (bin)        WebKit window for the Epic login (keeps a web engine out
 Library crates never depend on GPUI. Their functions are blocking; the app
 calls them from `cx.background_spawn` or worker threads.
 
-- **heronite-data:** the base. `paths` (`HeroicPaths`, `AppPaths`),
+- **heronite-data:** the base. `paths` (`DataPaths`, `AppPaths`), `migrate`,
   `json_store` (electron-store read-modify-write: tab indent, atomic write,
   unknown keys kept), `temps` (atomic writes and the startup `.tmp` sweep),
   `proc` (`guard` and `Run`: helper processes die with the app), and one
@@ -85,7 +94,7 @@ calls them from `cx.background_spawn` or worker threads.
 ## Tests
 - Unit tests sit next to the code. Integration tests are in
   `crates/*/tests`, and some need `HERONITE_FIXTURE=/tmp/heronite-fixture`
-  (a copy of a Heroic config).
+  (a copy of a data folder).
 - `cargo test --workspace` and `cargo clippy --workspace --all-targets` must
   both be clean.
 - UI checks use `scripts/shot.sh` on a fixture copy (see `PROGRESSO.md`,

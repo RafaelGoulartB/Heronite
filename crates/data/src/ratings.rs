@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::json_store;
 use crate::models::Extra;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 
 /// `ratings.json`. Values stay raw JSON so an odd entry never blocks the
 /// others; they are clamped on read.
@@ -31,7 +31,7 @@ fn clamp(value: &Value) -> u8 {
 
 /// All ratings by game key, each `1..=5`. A missing or broken file gives an
 /// empty map; zeros are dropped.
-pub fn load(paths: &HeroicPaths) -> HashMap<String, u8> {
+pub fn load(paths: &DataPaths) -> HashMap<String, u8> {
     let file: RatingsFile = json_store::read(&paths.ratings()).unwrap_or_default();
     file.ratings
         .into_iter()
@@ -42,7 +42,7 @@ pub fn load(paths: &HeroicPaths) -> HashMap<String, u8> {
 
 /// Sets the rating of a game. `None` or `Some(0)` removes it; other values
 /// are clamped to `1..=5`.
-pub fn set_rating(paths: &HeroicPaths, key: &str, stars: Option<u8>) -> Result<()> {
+pub fn set_rating(paths: &DataPaths, key: &str, stars: Option<u8>) -> Result<()> {
     json_store::update::<RatingsFile, _>(&paths.ratings(), |file| {
         match stars.filter(|s| *s > 0) {
             Some(s) => {
@@ -60,9 +60,9 @@ pub fn set_rating(paths: &HeroicPaths, key: &str, stars: Option<u8>) -> Result<(
 mod tests {
     use super::*;
 
-    fn paths() -> (tempfile::TempDir, HeroicPaths) {
+    fn paths() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         (dir, paths)
     }
 

@@ -6,7 +6,7 @@ use heronite_epic::saves::{self, SyncMode};
 use serde_json::Value;
 
 use super::parts::{column, heading, help, hint, rows};
-use super::{HeroicSettingsPanel, Notice, Section};
+use super::{SettingsPanel, Notice, Section};
 use crate::theme;
 
 pub const MODES: [(&str, SyncMode); 3] = [
@@ -15,7 +15,7 @@ pub const MODES: [(&str, SyncMode); 3] = [
     ("Force Upload", SyncMode::ForceUpload),
 ];
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     /// Heroic guesses the saves folder when the tab opens with none set.
     pub(super) fn maybe_detect_saves(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.section != Section::Saves || self.saves.detect_tried || !self.is_game() {
@@ -110,7 +110,7 @@ impl HeroicSettingsPanel {
             self.path_row("savesPath", Some("Saves folder"), true, "Choose the saves directory", true, cx),
             vec![
                 div().child(retry),
-                help("Heroic tries to guess the right save folder and this will work on the majority of cases. In case the folder is wrong, use the box above to change it."),
+                help("Heronite tries to guess the right save folder and this will work on the majority of cases. In case the folder is wrong, use the box above to change it."),
                 help("In case you change the prefix folder for Wine or Proton, check the path again since Proton uses a different prefix (/pfx) and username (steamuser): clear the path and click retry."),
             ],
         );

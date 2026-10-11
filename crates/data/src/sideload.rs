@@ -1,7 +1,7 @@
 //! Adding, editing and removing sideloaded ("Local") games: what Heroic's
 //! `SideloadDialog` + `SideloadLibraryManager.addNewApp` write, plus the
 //! Heronite overlay hook (`applySideloadAppToLocalMeta` and
-//! `syncLocalExecutablePlatform`) so both apps see the same files.
+//! `syncLocalExecutablePlatform`).
 //!
 //! * `sideload_apps/library.json` (`games`): the `GameInfo` entry, tab-indented
 //!   electron-store file, read-modify-write of the raw document (unknown keys
@@ -28,7 +28,7 @@ use serde_json::{json, Map, Value};
 use crate::game_config;
 use crate::json_store;
 use crate::models::LocalMetaFile;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 
 /// `short-uuid` default alphabet (`flickrBase58`).
 const SHORT_ALPHABET: &[u8; 58] = b"123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -212,7 +212,7 @@ fn looks_like_steam_binary(path: &str) -> bool {
 
 /// `applySideloadAppToLocalMeta`: keeps the overlay meta of the game in line
 /// with the sideload entry (the executable is what the Collection launches).
-fn apply_local_meta(paths: &HeroicPaths, spec: &SideloadSpec) -> Result<()> {
+fn apply_local_meta(paths: &DataPaths, spec: &SideloadSpec) -> Result<()> {
     let executable = spec.executable.trim().to_string();
     // Decide before touching the file: a skipped game must not even rewrite it.
     let current: LocalMetaFile = json_store::read(&paths.local_meta())?;
@@ -270,7 +270,7 @@ fn apply_local_meta(paths: &HeroicPaths, spec: &SideloadSpec) -> Result<()> {
 
 /// `SideloadLibraryManager.addNewApp` + the overlay hooks: adds the game, or
 /// edits it when `app_name` exists.
-pub fn save_game(paths: &HeroicPaths, spec: &SideloadSpec) -> Result<SaveOutcome> {
+pub fn save_game(paths: &DataPaths, spec: &SideloadSpec) -> Result<SaveOutcome> {
     let game = build_game(spec);
     let (added, written) = json_store::update_value(&paths.sideload_library(), |doc| {
         let obj = doc.as_object_mut().expect("update_value gives an object");
@@ -306,7 +306,7 @@ pub fn save_game(paths: &HeroicPaths, spec: &SideloadSpec) -> Result<SaveOutcome
 /// prefix, Wine version and CrossOver bottle, over the defaults Heroic writes
 /// for a new game file. `wine_version` is the chosen `WineInstallation`.
 pub fn init_game_config(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     home: &str,
     app_name: &str,
     wine_prefix: &str,
@@ -325,7 +325,7 @@ pub fn init_game_config(
 }
 
 /// `GameInfo` of a sideloaded game from the raw library file.
-pub fn find_game(paths: &HeroicPaths, app_name: &str) -> Result<Option<Value>> {
+pub fn find_game(paths: &DataPaths, app_name: &str) -> Result<Option<Value>> {
     let doc = json_store::read_value(&paths.sideload_library())?;
     Ok(doc
         .get("games")
@@ -368,7 +368,7 @@ pub fn check_prefix_removable(prefix: &Path, protected: &[PathBuf], home: &Path)
 /// Deletes the Wine prefix of a game (Heroic's `removePrefix`). Never touches
 /// the shared prefix, the default install/prefix folders or anything that
 /// does not look like a prefix.
-pub fn remove_prefix(paths: &HeroicPaths, app_name: &str, home: &str) -> PrefixOutcome {
+pub fn remove_prefix(paths: &DataPaths, app_name: &str, home: &str) -> PrefixOutcome {
     let settings = game_config::load_game(paths, app_name, home);
     let global = game_config::load_global(paths, home);
     let Some(prefix) = settings.get("winePrefix").and_then(Value::as_str).filter(|p| !p.is_empty()) else {
@@ -400,9 +400,9 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn setup() -> (tempfile::TempDir, HeroicPaths) {
+    fn setup() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         (dir, paths)
     }
 
@@ -651,14 +651,14 @@ mod tests {
     fn prefix_removal_follows_heroics_sanity_checks() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
-        let pfx = home.join("Games/Heroic/Prefixes/My Game");
+        let pfx = home.join("Games/Heronite/Prefixes/My Game");
         fs::create_dir_all(pfx.join("drive_c")).unwrap();
-        let shared = home.join("Games/Heroic/Prefixes/shared");
+        let shared = home.join("Games/Heronite/Prefixes/shared");
         fs::create_dir_all(shared.join("drive_c")).unwrap();
-        let junk = home.join("Games/Heroic/Prefixes/junk");
+        let junk = home.join("Games/Heronite/Prefixes/junk");
         fs::create_dir_all(&junk).unwrap();
         fs::write(junk.join("notes.txt"), "x").unwrap();
-        let protected = vec![shared.clone(), home.join("Games/Heroic")];
+        let protected = vec![shared.clone(), home.join("Games/Heronite")];
         assert!(check_prefix_removable(&pfx, &protected, &home).is_ok());
         assert!(check_prefix_removable(&shared, &protected, &home).unwrap_err().contains("shared or default"));
         assert!(check_prefix_removable(&junk, &protected, &home).unwrap_err().contains("drive_c/pfx"));
@@ -675,15 +675,15 @@ mod tests {
     fn remove_prefix_reads_the_games_own_prefix() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
-        let paths = HeroicPaths::at(tmp.path().join("cfg"));
+        let paths = DataPaths::at(tmp.path().join("cfg"));
         fs::create_dir_all(paths.games_config_dir()).unwrap();
-        let pfx = home.join("Games/Heroic/Prefixes/G");
+        let pfx = home.join("Games/Heronite/Prefixes/G");
         fs::create_dir_all(pfx.join("pfx")).unwrap();
         init_game_config(&paths, home.to_str().unwrap(), "g", pfx.to_str().unwrap(), None, "").unwrap();
         assert_eq!(remove_prefix(&paths, "g", home.to_str().unwrap()), PrefixOutcome::Removed(pfx.clone()));
         assert!(!pfx.exists());
         // The shared prefix is never removed.
-        let shared = home.join("Games/Heroic/Prefixes/shared");
+        let shared = home.join("Games/Heronite/Prefixes/shared");
         fs::create_dir_all(shared.join("drive_c")).unwrap();
         init_game_config(&paths, home.to_str().unwrap(), "s", shared.to_str().unwrap(), None, "").unwrap();
         assert!(matches!(remove_prefix(&paths, "s", home.to_str().unwrap()), PrefixOutcome::Skipped(_)));

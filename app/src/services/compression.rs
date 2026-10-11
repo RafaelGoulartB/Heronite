@@ -24,7 +24,7 @@ use futures::channel::mpsc::{unbounded, UnboundedSender};
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::screenshot_prefs::ScreenshotPrefs;
-use heronite_data::{AppPaths, HeroicPaths};
+use heronite_data::{AppPaths, DataPaths};
 use heronite_media::compress::{self, FolderUsage, Outcome};
 use heronite_media::ThumbnailCache;
 
@@ -89,7 +89,7 @@ struct Run {
 }
 
 pub struct Compression {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     app: AppPaths,
     prefs: ScreenshotPrefs,
     /// Games the launcher runs (`app_name`).
@@ -112,13 +112,13 @@ struct CompressionGlobal(Entity<Compression>);
 impl Global for CompressionGlobal {}
 
 /// Creates the service (once) and schedules the first run when it is on.
-pub fn init(cx: &mut App, heroic: HeroicPaths) -> Entity<Compression> {
+pub fn init(cx: &mut App, data_paths: DataPaths) -> Entity<Compression> {
     if let Some(g) = cx.try_global::<CompressionGlobal>() {
         return g.0.clone();
     }
-    let app = AppPaths::for_heroic(&heroic);
+    let app = AppPaths::for_data(&data_paths);
     let prefs = ScreenshotPrefs::load(&app);
-    let entity = cx.new(|cx| Compression::new(heroic, app, prefs, cx));
+    let entity = cx.new(|cx| Compression::new(data_paths, app, prefs, cx));
     cx.set_global(CompressionGlobal(entity.clone()));
     if prefs.compress_lossless {
         entity.update(cx, |c, cx| c.schedule(AFTER_START, cx));
@@ -139,13 +139,13 @@ pub fn shutdown(cx: &App) {
 }
 
 impl Compression {
-    fn new(heroic: HeroicPaths, app: AppPaths, prefs: ScreenshotPrefs, cx: &mut Context<Self>) -> Self {
+    fn new(data_paths: DataPaths, app: AppPaths, prefs: ScreenshotPrefs, cx: &mut Context<Self>) -> Self {
         let (runs, rx) = channel::<Run>();
         let (tx, mut reports) = unbounded::<Report>();
-        let worker_heroic = heroic.clone();
+        let worker_data_paths = data_paths.clone();
         let spawned = std::thread::Builder::new()
             .name("screenshot-compress".into())
-            .spawn(move || worker(rx, tx, worker_heroic));
+            .spawn(move || worker(rx, tx, worker_data_paths));
         if let Err(e) = spawned {
             log::error!("could not start the screenshot compression thread: {e}");
         }
@@ -163,7 +163,7 @@ impl Compression {
         .detach();
         let phase = if prefs.compress_lossless { Phase::Waiting } else { Phase::Off };
         Self {
-            heroic,
+            data_paths,
             app,
             prefs,
             games: HashSet::new(),
@@ -268,9 +268,9 @@ impl Compression {
         if !self.enabled() || self.game_running() {
             return;
         }
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let settings = cx.background_spawn(async move { heronite_data::settings::load(&heroic) }).await;
+            let settings = cx.background_spawn(async move { heronite_data::settings::load(&data_paths) }).await;
             let folder = settings.ok().and_then(|s| s.screenshots_folder().map(Path::to_path_buf));
             this.update(cx, |c, cx| c.send_run(folder, cx)).ok();
         })
@@ -312,11 +312,11 @@ impl Compression {
 
     /// Measures the folder in the background (settings page, end of a run).
     pub fn refresh_usage(&mut self, cx: &mut Context<Self>) {
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         self.usage_task = Some(cx.spawn(async move |this, cx| {
             let usage = cx
                 .background_spawn(async move {
-                    let settings = heronite_data::settings::load(&heroic).ok()?;
+                    let settings = heronite_data::settings::load(&data_paths).ok()?;
                     let folder = settings.screenshots_folder()?.to_path_buf();
                     folder.is_dir().then(|| compress::usage(&folder))
                 })
@@ -387,9 +387,9 @@ impl Compression {
 }
 
 /// The worker thread: one run at a time, each over a fresh listing.
-fn worker(runs: Receiver<Run>, reports: UnboundedSender<Report>, heroic: HeroicPaths) {
+fn worker(runs: Receiver<Run>, reports: UnboundedSender<Report>, data_paths: DataPaths) {
     lower_priority();
-    let cache = ThumbnailCache::new(heroic.screenshot_thumbnails_dir(), 0.0);
+    let cache = ThumbnailCache::new(data_paths.screenshot_thumbnails_dir(), 0.0);
     // Files that failed this session are not retried until the next start.
     let mut failed: HashSet<PathBuf> = HashSet::new();
     while let Ok(mut run) = runs.recv() {
@@ -439,10 +439,10 @@ fn worker(runs: Receiver<Run>, reports: UnboundedSender<Report>, heroic: HeroicP
             }
             done += 1;
             if renamed.len() >= REFS_BATCH {
-                update_refs(&heroic, &run.folder, &mut renamed, &send);
+                update_refs(&data_paths, &run.folder, &mut renamed, &send);
             }
         }
-        update_refs(&heroic, &run.folder, &mut renamed, &send);
+        update_refs(&data_paths, &run.folder, &mut renamed, &send);
         log::info!("screenshot compression {}: {done} of {total} handled", if cancelled { "stopped" } else { "finished" });
         if !send(Report::Finished { run: id, left: total - done, cancelled }) {
             return;
@@ -451,8 +451,8 @@ fn worker(runs: Receiver<Run>, reports: UnboundedSender<Report>, heroic: HeroicP
     }
 }
 
-fn update_refs(heroic: &HeroicPaths, root: &Path, renamed: &mut Vec<(PathBuf, PathBuf)>, send: &impl Fn(Report) -> bool) {
-    match compress::rewrite_art_refs(heroic, root, renamed) {
+fn update_refs(data_paths: &DataPaths, root: &Path, renamed: &mut Vec<(PathBuf, PathBuf)>, send: &impl Fn(Report) -> bool) {
+    match compress::rewrite_art_refs(data_paths, root, renamed) {
         Ok(0) => {}
         Ok(n) => {
             log::info!("{n} cover/background reference(s) follow converted captures");

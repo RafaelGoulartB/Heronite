@@ -26,7 +26,7 @@ impl CollectionView {
             if id.as_ref() == "save" {
                 let s = sheet.read(cx);
                 let minutes = s.number("hours") * 60 + s.number("minutes");
-                if let Err(err) = set_playtime_minutes(&this.heroic, &app_name, minutes as f64) {
+                if let Err(err) = set_playtime_minutes(&this.data_paths, &app_name, minutes as f64) {
                     this.show_toast(format!("Could not save the playtime: {err:#}"), true, cx);
                 }
                 this.close_console_overlay(cx);
@@ -38,7 +38,7 @@ impl CollectionView {
 
     pub(super) fn console_game_settings(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) {
         let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
-        let tab = crate::dialogs::game_settings::Tab::heroic_start(&g);
+        let tab = crate::dialogs::game_settings::Tab::settings_start(&g);
         let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
         self.open_dialog(view, cx);
     }

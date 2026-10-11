@@ -32,8 +32,8 @@ impl CollectionView {
     pub(super) fn epic_open_modify(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
         let info = Self::epic_game_info(&game);
-        let heroic = self.heroic.clone();
-        let view = cx.new(|cx| EpicModifyDialog::new(heroic, info, cx));
+        let data_paths = self.data_paths.clone();
+        let view = cx.new(|cx| EpicModifyDialog::new(data_paths, info, cx));
         self.open_dialog(view, cx);
     }
 
@@ -64,9 +64,9 @@ impl CollectionView {
     pub(super) fn epic_open_install(&mut self, key: &str, import: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
         let info = Self::epic_game_info(&game);
-        let (heroic, app) = (self.heroic.clone(), self.app_paths.clone());
+        let (data_paths, app) = (self.data_paths.clone(), self.app_paths.clone());
         let mode = if import { Mode::Import } else { Mode::Install };
-        let view = cx.new(|cx| EpicInstallDialog::new(heroic, app, info, mode, window, cx));
+        let view = cx.new(|cx| EpicInstallDialog::new(data_paths, app, info, mode, window, cx));
         self.open_dialog(view, cx);
     }
 
@@ -89,8 +89,8 @@ impl CollectionView {
             return;
         }
         let home = std::env::var("HOME").unwrap_or_default();
-        let settings = game_config::load_game(&self.heroic, &game.app_name, &home);
-        let global = game_config::load_global(&self.heroic, &home);
+        let settings = game_config::load_game(&self.data_paths, &game.app_name, &home);
+        let global = game_config::load_global(&self.data_paths, &home);
         let prefix = settings.get("winePrefix").and_then(Value::as_str).unwrap_or_default().to_string();
         let default_prefix = global.get("winePrefix").and_then(Value::as_str).unwrap_or_default().to_string();
         let windows = game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("windows"));

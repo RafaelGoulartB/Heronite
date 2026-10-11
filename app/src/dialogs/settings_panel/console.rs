@@ -16,7 +16,7 @@ use super::advanced::{PairTable, ENV, WRAPPERS};
 use super::gamescope::{UPSCALE_METHODS, WINDOW_TYPES};
 use super::logic::{self, launcher_args_error, pairs};
 use super::saves::MODES;
-use super::{GlobalView, HeroicSettingsPanel, Section};
+use super::{GlobalView, SettingsPanel, Section};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row, Value as RowValue};
@@ -25,8 +25,8 @@ use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 
-type Pick = Rc<dyn Fn(&mut HeroicSettingsPanel, usize, &mut Context<HeroicSettingsPanel>)>;
-type Run = Rc<dyn Fn(&mut HeroicSettingsPanel, &mut Window, &mut Context<HeroicSettingsPanel>)>;
+type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
+type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel>)>;
 
 /// What a row does.
 #[derive(Clone)]
@@ -51,7 +51,7 @@ fn item(row: Row, act: Act) -> Item {
     Item { row, act }
 }
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     fn c_toggle(&self, key: &'static str, default: bool, label: &str, desc: Option<&str>, disabled: bool) -> Item {
         let mut r = Row::toggle(SharedString::from(format!("t:{key}")), label.to_string(), self.flag(key, default)).enabled(!disabled);
         if let Some(d) = desc {
@@ -95,7 +95,6 @@ impl HeroicSettingsPanel {
                 GlobalView::Downloads => self.c_downloads(cx),
                 GlobalView::Advanced => vec![
                     self.c_toggle("disableLogs", false, "Disable logs", Some("Most log writes stop (critical information is always logged)"), false),
-                    self.c_toggle("disableGOGPresence", false, "Disable GOG Galaxy presence", None, false),
                 ],
             },
         };
@@ -255,7 +254,7 @@ impl HeroicSettingsPanel {
         }
         if !sideload {
             let mut it = self.c_text("language", "Preferred language code", cx);
-            it.row = it.row.desc("Like \u{201c}fr\u{201d} or \u{201c}pt-BR\u{201d}; empty uses Heroic's language");
+            it.row = it.row.desc("Like \u{201c}fr\u{201d} or \u{201c}pt-BR\u{201d}; empty uses the app's language");
             v.push(it);
         }
         v.push(Self::c_header("Launch"));
@@ -526,7 +525,7 @@ impl HeroicSettingsPanel {
     }
 }
 
-impl PadTarget for HeroicSettingsPanel {
+impl PadTarget for SettingsPanel {
     fn on_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.console_layer.pad(pad, window, cx) {
             cx.notify();

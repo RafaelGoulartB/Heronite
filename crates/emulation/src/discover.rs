@@ -10,7 +10,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use crate::catalog::{emulator_definition, emulator_definitions};
@@ -429,7 +429,7 @@ pub fn discover_in_folder(env: &dyn DetectEnv, folder: &str, existing: &[UserEmu
 /// profiles. Ones already configured (re-checked against the store) are
 /// skipped; a repeated name gets the file name appended. Returns the
 /// emulators added.
-pub fn add_discovered(paths: &HeroicPaths, items: &[DetectedEmulator]) -> Result<Vec<UserEmulator>> {
+pub fn add_discovered(paths: &DataPaths, items: &[DetectedEmulator]) -> Result<Vec<UserEmulator>> {
     let mut added = Vec::new();
     for item in items {
         let current = store::list_user_emulators(paths)?;
@@ -667,7 +667,7 @@ mod tests {
     #[test]
     fn add_discovered_registers_several_and_skips_configured() {
         let h = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(h.path());
+        let paths = DataPaths::at(h.path());
         let d = tempfile::tempdir().unwrap();
         touch(&d.path().join("a/pcsx2-v2.8.AppImage"), true);
         touch(&d.path().join("b/pcsx2-v2.7.AppImage"), true);

@@ -65,7 +65,7 @@ impl PlaytimeDialog {
     fn save(&mut self, cx: &mut Context<Self>) {
         let (h, m) = self.values(cx);
         let total = h * 60 + m;
-        match set_playtime_minutes(&self.ctx.heroic, &self.app_name, total as f64) {
+        match set_playtime_minutes(&self.ctx.data_paths, &self.app_name, total as f64) {
             Ok(()) => cx.emit(DialogEvent::ChangedAndClose),
             Err(err) => {
                 self.error = Some(format!("Could not save the playtime: {err:#}").into());

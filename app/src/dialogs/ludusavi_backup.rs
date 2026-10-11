@@ -70,7 +70,7 @@ impl LudusaviBackupDialog {
     /// Starts the backup right away on a worker thread.
     pub fn new(ctx: DialogCtx, game: LudusaviGame, runner: Arc<dyn CommandRunner>, cx: &mut Context<Self>) -> Self {
         let title = game.title.clone();
-        let paths = ctx.heroic.clone();
+        let paths = ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_spawn(async move {

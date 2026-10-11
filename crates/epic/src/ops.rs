@@ -6,7 +6,7 @@ use std::path::Path;
 
 use anyhow::{bail, Result};
 use heronite_data::game_config;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::{json, Value};
 
 use crate::cmd::{Cancel, Legendary, Output};
@@ -25,8 +25,8 @@ pub struct DownloadSettings {
 }
 
 impl DownloadSettings {
-    pub fn load(heroic: &HeroicPaths) -> Self {
-        let g = game_config::load_global(heroic, &home());
+    pub fn load(data_paths: &DataPaths) -> Self {
+        let g = game_config::load_global(data_paths, &home());
         Self {
             max_workers: g.get("maxWorkers").and_then(Value::as_u64).unwrap_or(0) as u32,
             no_https: g.get("downloadNoHttps").and_then(Value::as_bool).unwrap_or(false),
@@ -81,7 +81,7 @@ pub fn update_args(verb: &str, app_name: &str, dl: &DownloadSettings) -> Vec<Str
 
 /// Port of `LegendaryGame.install` / `update` as a download-manager job.
 pub struct LegendaryJob {
-    pub heroic: HeroicPaths,
+    pub data_paths: DataPaths,
     pub legendary: Legendary,
 }
 
@@ -97,10 +97,10 @@ impl LegendaryJob {
         // Heroic scales progress by the manifest's download size. An update only
         // fetches the changed files, so there legendary's own percent is used.
         let total = match el.kind {
-            ElementKind::Install => install_info(&self.heroic, &self.legendary, &p.app_name, platform).map(|i| i.download_size()).ok(),
+            ElementKind::Install => install_info(&self.data_paths, &self.legendary, &p.app_name, platform).map(|i| i.download_size()).ok(),
             ElementKind::Update => None,
         };
-        let dl = DownloadSettings::load(&self.heroic);
+        let dl = DownloadSettings::load(&self.data_paths);
         let mut args = match el.kind {
             ElementKind::Install => install_args(&p.app_name, platform, &p.path, &p.sdl_list, &dl),
             ElementKind::Update => update_args("update", &p.app_name, &dl),
@@ -117,7 +117,7 @@ impl LegendaryJob {
             Err(err) => JobResult::error(format!("{err:#}")),
             Ok(out) if out.aborted => JobResult::abort(),
             Ok(out) if out.success() => {
-                if let Err(err) = library::write_library(&self.heroic) {
+                if let Err(err) = library::write_library(&self.data_paths) {
                     log::warn!("rebuilding the library: {err:#}");
                 }
                 JobResult::done()
@@ -132,17 +132,17 @@ impl LegendaryJob {
     /// `installEA` / `installUbisoft` on Linux: fetch the store's installer
     /// (run in the prefix at the first launch) and mark the game installed.
     fn run_third_party(&self, el: &DmElement, provider: Provider, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
-        if let Err(err) = third_party::ensure_installer(&self.heroic, provider, cancel, on_progress) {
+        if let Err(err) = third_party::ensure_installer(&self.data_paths, provider, cancel, on_progress) {
             if cancel.is_requested() {
                 return JobResult::abort();
             }
             return JobResult::error(format!("Could not download the {} installer: {err:#}", provider.label()));
         }
         let platform = if el.params.platform_to_install.is_empty() { "Windows" } else { el.params.platform_to_install.as_str() };
-        if let Err(err) = third_party::add_installed(&self.heroic, &el.params.app_name, platform) {
+        if let Err(err) = third_party::add_installed(&self.data_paths, &el.params.app_name, platform) {
             return JobResult::error(format!("{err:#}"));
         }
-        if let Err(err) = library::write_library(&self.heroic) {
+        if let Err(err) = library::write_library(&self.data_paths) {
             log::warn!("rebuilding the library: {err:#}");
         }
         JobResult::done()
@@ -196,7 +196,7 @@ pub enum RepairUpdate {
 
 /// `repair`: verify the files and download what is missing or corrupted.
 pub fn repair(
-    heroic: &HeroicPaths,
+    data_paths: &DataPaths,
     legendary: &Legendary,
     app_name: &str,
     cancel: &Cancel,
@@ -204,7 +204,7 @@ pub fn repair(
 ) -> OpResult {
     // Repairs download only what is broken: legendary's own percent is used.
     let mut parser = ProgressParser::new(None);
-    let args = update_args("repair", app_name, &DownloadSettings::load(heroic));
+    let args = update_args("repair", app_name, &DownloadSettings::load(data_paths));
     let out = legendary.run_streaming(&args, &[], cancel, |line| {
         if let Some(p) = verification_percent(line) {
             on_update(RepairUpdate::Verifying(p));
@@ -216,7 +216,7 @@ pub fn repair(
         Err(err) => OpResult::err(format!("{err:#}")),
         Ok(out) if out.aborted => OpResult { ok: false, aborted: true, message: "Cancelled".into() },
         Ok(out) if out.success() => {
-            let _ = library::write_library(heroic);
+            let _ = library::write_library(data_paths);
             OpResult::ok("Finished repairing")
         }
         Ok(out) => OpResult::err(out.error_lines()),
@@ -227,11 +227,11 @@ pub fn repair(
 /// caller removes the prefix / settings afterwards if the user asked for it.
 /// An EA app / Ubisoft Connect game only leaves `third-party-installed.json`
 /// (the game itself lives inside the prefix, with its store app).
-pub fn uninstall(heroic: &HeroicPaths, legendary: &Legendary, app_name: &str) -> OpResult {
-    if third_party::is_installed(heroic, app_name) {
-        return match third_party::remove_installed(heroic, app_name) {
+pub fn uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> OpResult {
+    if third_party::is_installed(data_paths, app_name) {
+        return match third_party::remove_installed(data_paths, app_name) {
             Ok(_) => {
-                let _ = library::write_library(heroic);
+                let _ = library::write_library(data_paths);
                 OpResult::ok("Uninstalled")
             }
             Err(err) => OpResult::err(format!("{err:#}")),
@@ -240,7 +240,7 @@ pub fn uninstall(heroic: &HeroicPaths, legendary: &Legendary, app_name: &str) ->
     match legendary.run(&["uninstall", app_name, "-y"], &[]) {
         Err(err) => OpResult::err(format!("{err:#}")),
         Ok(out) if out.success() => {
-            let _ = library::write_library(heroic);
+            let _ = library::write_library(data_paths);
             OpResult::ok("Uninstalled")
         }
         Ok(out) => OpResult::err(out.error_lines()),
@@ -248,11 +248,11 @@ pub fn uninstall(heroic: &HeroicPaths, legendary: &Legendary, app_name: &str) ->
 }
 
 /// `forceUninstall`: forget the install in `installed.json` but keep the files.
-pub fn force_uninstall(heroic: &HeroicPaths, legendary: &Legendary, app_name: &str) -> OpResult {
+pub fn force_uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> OpResult {
     match legendary.run(&["uninstall", app_name, "-y", "--keep-files"], &[]) {
         Err(err) => OpResult::err(format!("{err:#}")),
         Ok(out) if out.success() => {
-            let _ = library::write_library(heroic);
+            let _ = library::write_library(data_paths);
             OpResult::ok("Removed from the installed games")
         }
         Ok(out) => OpResult::err(out.error_lines()),
@@ -261,7 +261,7 @@ pub fn force_uninstall(heroic: &HeroicPaths, legendary: &Legendary, app_name: &s
 
 /// `importGame`: tells legendary an existing folder is the install of a game.
 pub fn import_game(
-    heroic: &HeroicPaths,
+    data_paths: &DataPaths,
     legendary: &Legendary,
     app_name: &str,
     folder: &str,
@@ -276,7 +276,7 @@ pub fn import_game(
         Ok(out) => {
             let errors: Vec<&str> = out.stderr.lines().filter(|l| l.contains("ERROR:")).collect();
             if out.success() && errors.is_empty() {
-                let _ = library::write_library(heroic);
+                let _ = library::write_library(data_paths);
                 OpResult::ok("Game imported")
             } else {
                 OpResult::err(if errors.is_empty() { out.error_lines() } else { errors.join("\n") })
@@ -289,20 +289,20 @@ pub fn import_game(
 /// `new_parent` and tells legendary where it is now (resumable, see
 /// [`crate::moves`]).
 pub fn move_install(
-    heroic: &HeroicPaths,
+    data_paths: &DataPaths,
     legendary: &Legendary,
     app_name: &str,
     install_path: &str,
     new_parent: &str,
 ) -> OpResult {
-    crate::moves::move_install(heroic, legendary, app_name, install_path, new_parent)
+    crate::moves::move_install(data_paths, legendary, app_name, install_path, new_parent)
 }
 
 /// `removePrefix`: deletes the game's Wine prefix, with Heroic's sanity checks.
-pub fn remove_prefix(heroic: &HeroicPaths, app_name: &str) -> Result<bool> {
+pub fn remove_prefix(data_paths: &DataPaths, app_name: &str) -> Result<bool> {
     let home = home();
-    let settings = game_config::load_game(heroic, app_name, &home);
-    let global = game_config::load_global(heroic, &home);
+    let settings = game_config::load_game(data_paths, app_name, &home);
+    let global = game_config::load_global(data_paths, &home);
     let prefix = settings.get("winePrefix").and_then(Value::as_str).unwrap_or_default().to_string();
     if prefix.is_empty() || !Path::new(&prefix).exists() {
         return Ok(false);
@@ -324,9 +324,9 @@ pub fn remove_prefix(heroic: &HeroicPaths, app_name: &str) -> Result<bool> {
 }
 
 /// `removeSettingsAndLogs`.
-pub fn remove_settings_and_logs(heroic: &HeroicPaths, app_name: &str) {
+pub fn remove_settings_and_logs(data_paths: &DataPaths, app_name: &str) {
     for ext in [".json", ".log", "-lastPlay.log"] {
-        let f = heroic.games_config_dir().join(format!("{app_name}{ext}"));
+        let f = data_paths.games_config_dir().join(format!("{app_name}{ext}"));
         if f.exists() {
             let _ = std::fs::remove_file(f);
         }
@@ -336,7 +336,7 @@ pub fn remove_settings_and_logs(heroic: &HeroicPaths, app_name: &str) {
 /// Writes the Wine settings picked in the install dialog (Heroic's
 /// `writeConfig` at install time on Linux).
 pub fn write_wine_config(
-    heroic: &HeroicPaths,
+    data_paths: &DataPaths,
     app_name: &str,
     wine_prefix: &str,
     wine_version: Option<&Value>,
@@ -352,7 +352,7 @@ pub fn write_wine_config(
         changes.push(("wineVersion".into(), v.clone()));
         changes.push(("wineCrossoverBottle".into(), json!("")));
     }
-    game_config::set_game_settings(heroic, app_name, &home(), &changes)
+    game_config::set_game_settings(data_paths, app_name, &home(), &changes)
 }
 
 /// Removes `<path>/<folder_name>` (the partial download of a cancelled
@@ -383,8 +383,8 @@ impl JobResult {
 }
 
 /// Convenience: errors if legendary is not logged in.
-pub fn ensure_logged_in(heroic: &HeroicPaths) -> Result<()> {
-    if !crate::user::is_logged_in(heroic) {
+pub fn ensure_logged_in(data_paths: &DataPaths) -> Result<()> {
+    if !crate::user::is_logged_in(data_paths) {
         bail!("Log in to your Epic account first");
     }
     Ok(())
@@ -419,11 +419,11 @@ mod tests {
         assert_eq!(update_args("repair", "A", &dl()), ["repair", "A", "-y", "--skip-sdl"]);
     }
 
-    fn job(dir: &Path, body: &str) -> (LegendaryJob, HeroicPaths) {
-        let heroic = HeroicPaths::at(dir.join("h"));
-        std::fs::create_dir_all(heroic.legendary_config_dir()).unwrap();
+    fn job(dir: &Path, body: &str) -> (LegendaryJob, DataPaths) {
+        let data_paths = DataPaths::at(dir.join("h"));
+        std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
         let lg = fake(dir, body);
-        (LegendaryJob { heroic: heroic.clone(), legendary: Legendary::with_bin(lg.bin, heroic.legendary_config_dir()) }, heroic)
+        (LegendaryJob { data_paths: data_paths.clone(), legendary: Legendary::with_bin(lg.bin, data_paths.legendary_config_dir()) }, data_paths)
     }
 
     fn element(kind: ElementKind) -> DmElement {
@@ -450,7 +450,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let info = r#"{"manifest": {"download_size": 209715200, "disk_size": 1}}"#;
         let body = format!("if [ \"$1\" = info ]; then echo '{info}'; else {REPORT}; fi");
-        let (job, heroic) = job(dir.path(), &body);
+        let (job, data_paths) = job(dir.path(), &body);
         let mut seen = Vec::new();
         let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |p| seen.push(p));
         assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
@@ -460,7 +460,7 @@ mod tests {
         assert_eq!(c[0], "info Calluna --json --platform Windows");
         assert_eq!(c[1], "install Calluna --platform Windows --base-path /games --skip-dlcs -y --skip-sdl");
         // The library file was rebuilt (empty metadata folder -> no games).
-        assert!(heroic.legendary_library().exists());
+        assert!(data_paths.legendary_library().exists());
     }
 
     #[test]
@@ -489,9 +489,9 @@ mod tests {
     #[test]
     fn ea_and_ubisoft_games_install_and_uninstall_without_legendary() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, heroic) = job(dir.path(), "echo called >&2; exit 1");
+        let (job, data_paths) = job(dir.path(), "echo called >&2; exit 1");
         // The installer is already there: nothing to download.
-        let redist = third_party::redist_dir(&heroic);
+        let redist = third_party::redist_dir(&data_paths);
         std::fs::create_dir_all(&redist).unwrap();
         std::fs::write(redist.join("UbisoftConnectInstaller.exe"), "MZ").unwrap();
         let mut el = element(ElementKind::Install);
@@ -500,13 +500,13 @@ mod tests {
         el.params.game_info = json!({"title": "Rayman Legends", "thirdPartyManagedApp": "UbisoftConnect"});
         let r = job.run(&el, &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
-        assert!(third_party::is_installed(&heroic, "Anchovy"));
+        assert!(third_party::is_installed(&data_paths, "Anchovy"));
         assert!(calls(dir.path()).is_empty(), "legendary must not run");
-        assert!(heroic.legendary_library().exists());
+        assert!(data_paths.legendary_library().exists());
 
-        let r = uninstall(&heroic, &job.legendary, "Anchovy");
+        let r = uninstall(&data_paths, &job.legendary, "Anchovy");
         assert!(r.ok, "{}", r.message);
-        assert!(!third_party::is_installed(&heroic, "Anchovy"));
+        assert!(!third_party::is_installed(&data_paths, "Anchovy"));
         assert!(calls(dir.path()).is_empty(), "legendary must not run");
     }
 
@@ -539,13 +539,13 @@ mod tests {
     #[test]
     fn uninstall_import_and_force_uninstall_commands() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, heroic) = job(dir.path(), "true");
-        assert!(uninstall(&heroic, &job.legendary, "Calluna").ok);
-        assert!(force_uninstall(&heroic, &job.legendary, "Calluna").ok);
+        let (job, data_paths) = job(dir.path(), "true");
+        assert!(uninstall(&data_paths, &job.legendary, "Calluna").ok);
+        assert!(force_uninstall(&data_paths, &job.legendary, "Calluna").ok);
         let game_dir = dir.path().join("game");
         std::fs::create_dir_all(&game_dir).unwrap();
-        assert!(import_game(&heroic, &job.legendary, "Calluna", game_dir.to_str().unwrap(), "Windows").ok);
-        assert!(!import_game(&heroic, &job.legendary, "Calluna", "/nonexistent-dir", "Windows").ok);
+        assert!(import_game(&data_paths, &job.legendary, "Calluna", game_dir.to_str().unwrap(), "Windows").ok);
+        assert!(!import_game(&data_paths, &job.legendary, "Calluna", "/nonexistent-dir", "Windows").ok);
         let c = calls(dir.path());
         assert_eq!(c[0], "uninstall Calluna -y");
         assert_eq!(c[1], "uninstall Calluna -y --keep-files");
@@ -555,8 +555,8 @@ mod tests {
     #[test]
     fn import_errors_come_from_stderr() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, heroic) = job(dir.path(), "echo '[cli] ERROR: Game is not in the library' >&2");
-        let r = import_game(&heroic, &job.legendary, "x", dir.path().to_str().unwrap(), "Windows");
+        let (job, data_paths) = job(dir.path(), "echo '[cli] ERROR: Game is not in the library' >&2");
+        let r = import_game(&data_paths, &job.legendary, "x", dir.path().to_str().unwrap(), "Windows");
         assert!(!r.ok);
         assert!(r.message.contains("not in the library"));
     }
@@ -568,9 +568,9 @@ mod tests {
             "if [ \"$1\" = info ]; then echo '{{\"manifest\": {{\"download_size\": 1}}}}'; else \
              echo '[cli] INFO: Verification progress: 1/2 (50.0%) [10 MiB/s]' >&2; {REPORT}; fi"
         );
-        let (job, heroic) = job(dir.path(), &body);
+        let (job, data_paths) = job(dir.path(), &body);
         let mut updates = Vec::new();
-        let r = repair(&heroic, &job.legendary, "Calluna", &Cancel::new(), |u| updates.push(u));
+        let r = repair(&data_paths, &job.legendary, "Calluna", &Cancel::new(), |u| updates.push(u));
         assert!(r.ok, "{}", r.message);
         assert_eq!(updates[0], RepairUpdate::Verifying(50.));
         assert!(matches!(updates[1], RepairUpdate::Downloading(_)));
@@ -579,48 +579,48 @@ mod tests {
     #[test]
     fn move_install_moves_the_folder_and_updates_legendary() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, heroic) = job(dir.path(), "true");
+        let (job, data_paths) = job(dir.path(), "true");
         let src = dir.path().join("old/Control");
         std::fs::create_dir_all(src.join("sub")).unwrap();
         std::fs::write(src.join("sub/a.txt"), "x").unwrap();
         let new_parent = dir.path().join("new");
-        let r = move_install(&heroic, &job.legendary, "Calluna", src.to_str().unwrap(), new_parent.to_str().unwrap());
+        let r = move_install(&data_paths, &job.legendary, "Calluna", src.to_str().unwrap(), new_parent.to_str().unwrap());
         assert!(r.ok, "{}", r.message);
         assert!(new_parent.join("Control/sub/a.txt").exists());
         assert!(!src.exists());
         assert_eq!(calls(dir.path())[0], format!("move Calluna {} --skip-move", new_parent.display()));
         // Into itself, and onto a non-empty destination: refused.
-        let again = move_install(&heroic, &job.legendary, "Calluna", new_parent.join("Control").to_str().unwrap(), new_parent.join("Control/x").to_str().unwrap());
+        let again = move_install(&data_paths, &job.legendary, "Calluna", new_parent.join("Control").to_str().unwrap(), new_parent.join("Control/x").to_str().unwrap());
         assert!(!again.ok);
         let clash = dir.path().join("clash/Control");
         std::fs::create_dir_all(&clash).unwrap();
         std::fs::write(clash.join("f"), "x").unwrap();
-        let r = move_install(&heroic, &job.legendary, "Calluna", new_parent.join("Control").to_str().unwrap(), dir.path().join("clash").to_str().unwrap());
+        let r = move_install(&data_paths, &job.legendary, "Calluna", new_parent.join("Control").to_str().unwrap(), dir.path().join("clash").to_str().unwrap());
         assert!(!r.ok && r.message.contains("not empty"));
     }
 
     #[test]
     fn prefix_removal_has_sanity_checks() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
+        let data_paths = DataPaths::at(dir.path().join("h"));
         let prefix = dir.path().join("pfx");
         std::fs::create_dir_all(prefix.join("drive_c")).unwrap();
-        game_config::set_game_setting(&heroic, "A", &home(), "winePrefix", json!(prefix.to_str().unwrap())).unwrap();
-        assert!(remove_prefix(&heroic, "A").unwrap());
+        game_config::set_game_setting(&data_paths, "A", &home(), "winePrefix", json!(prefix.to_str().unwrap())).unwrap();
+        assert!(remove_prefix(&data_paths, "A").unwrap());
         assert!(!prefix.exists());
         // A folder without drive_c/pfx is left alone.
         let other = dir.path().join("other");
         std::fs::create_dir_all(&other).unwrap();
         std::fs::write(other.join("file"), "x").unwrap();
-        game_config::set_game_setting(&heroic, "B", &home(), "winePrefix", json!(other.to_str().unwrap())).unwrap();
-        assert!(!remove_prefix(&heroic, "B").unwrap());
+        game_config::set_game_setting(&data_paths, "B", &home(), "winePrefix", json!(other.to_str().unwrap())).unwrap();
+        assert!(!remove_prefix(&data_paths, "B").unwrap());
         assert!(other.exists());
         // The default install path is never deleted (a temp one: never touch real folders in tests).
         let default_install = dir.path().join("Games/Heroic");
         std::fs::create_dir_all(default_install.join("drive_c")).unwrap();
-        game_config::set_global_setting(&heroic, &home(), "defaultInstallPath", json!(default_install.to_str().unwrap())).unwrap();
-        game_config::set_game_setting(&heroic, "C", &home(), "winePrefix", json!(default_install.to_str().unwrap())).unwrap();
-        assert!(!remove_prefix(&heroic, "C").unwrap());
+        game_config::set_global_setting(&data_paths, &home(), "defaultInstallPath", json!(default_install.to_str().unwrap())).unwrap();
+        game_config::set_game_setting(&data_paths, "C", &home(), "winePrefix", json!(default_install.to_str().unwrap())).unwrap();
+        assert!(!remove_prefix(&data_paths, "C").unwrap());
         assert!(default_install.exists());
     }
 
@@ -639,14 +639,14 @@ mod tests {
     #[test]
     fn wine_choices_are_written_to_the_game_config() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
+        let data_paths = DataPaths::at(dir.path().join("h"));
         let wine = json!({"bin": "/p/proton", "name": "GE", "type": "proton"});
-        write_wine_config(&heroic, "Calluna", "/pfx/Control", Some(&wine)).unwrap();
-        let s = game_config::game_overrides(&heroic, "Calluna");
+        write_wine_config(&data_paths, "Calluna", "/pfx/Control", Some(&wine)).unwrap();
+        let s = game_config::game_overrides(&data_paths, "Calluna");
         assert_eq!(s["winePrefix"], "/pfx/Control");
         assert_eq!(s["wineVersion"]["name"], "GE");
         assert_eq!(s["wineCrossoverBottle"], "");
-        let raw = std::fs::read_to_string(heroic.game_config("Calluna")).unwrap();
+        let raw = std::fs::read_to_string(data_paths.game_config("Calluna")).unwrap();
         assert!(raw.contains("\n  \"Calluna\""), "2-space indent expected");
     }
 }

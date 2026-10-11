@@ -10,7 +10,7 @@ mod render;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::ui_state::UiState;
-use heronite_data::{config_games, game_config, AppPaths, HeroicPaths};
+use heronite_data::{config_games, game_config, AppPaths, DataPaths};
 use serde_json::json;
 
 use super::SettingsPage;
@@ -34,8 +34,8 @@ struct Snapshot {
 /// Heroic: `maxRecentGames` defaults to 5 (and 0 means "use the default").
 const DEFAULT_MAX_RECENT: i64 = 5;
 
-fn read_snapshot(heroic: &HeroicPaths, app: &AppPaths, home: &str) -> Snapshot {
-    let settings = game_config::load_global(heroic, home);
+fn read_snapshot(data_paths: &DataPaths, app: &AppPaths, home: &str) -> Snapshot {
+    let settings = game_config::load_global(data_paths, home);
     let max_recent = settings
         .get("maxRecentGames")
         .and_then(|v| v.as_i64())
@@ -44,9 +44,9 @@ fn read_snapshot(heroic: &HeroicPaths, app: &AppPaths, home: &str) -> Snapshot {
         .min(10);
     Snapshot {
         show_hidden: UiState::load(app).show_hidden,
-        hidden: config_games::list_entries(heroic, "hidden"),
-        favourites: config_games::list_entries(heroic, "favourites"),
-        recent: config_games::list_entries(heroic, "recent"),
+        hidden: config_games::list_entries(data_paths, "hidden"),
+        favourites: config_games::list_entries(data_paths, "favourites"),
+        recent: config_games::list_entries(data_paths, "recent"),
         max_recent,
     }
 }
@@ -68,7 +68,7 @@ impl State {
     pub(super) fn new(ctx: &PageCtx) -> Self {
         // Debug captures only keep the first frames: read in place there.
         let snap = if crate::env::value("HERONITE_DEBUG_PAGE").is_some() {
-            read_snapshot(&ctx.heroic, &ctx.app, &home())
+            read_snapshot(&ctx.data_paths, &ctx.app, &home())
         } else {
             Snapshot { max_recent: DEFAULT_MAX_RECENT, ..Default::default() }
         };
@@ -85,9 +85,9 @@ impl State {
 
     /// Re-reads the lists off the UI thread.
     pub(super) fn reload(&mut self, ctx: &PageCtx, cx: &mut Context<SettingsPage>) {
-        let (heroic, app) = (ctx.heroic.clone(), ctx.app.clone());
+        let (data_paths, app) = (ctx.data_paths.clone(), ctx.app.clone());
         cx.spawn(async move |this, cx| {
-            let snap = cx.background_spawn(async move { read_snapshot(&heroic, &app, &home()) }).await;
+            let snap = cx.background_spawn(async move { read_snapshot(&data_paths, &app, &home()) }).await;
             this.update(cx, |this, cx| {
                 this.library.snap = snap;
                 this.library.hidden_pg.clamp(this.library.snap.hidden.len());
@@ -100,7 +100,7 @@ impl State {
     }
 }
 
-type Job = Box<dyn FnOnce(&HeroicPaths, &str) -> anyhow::Result<String> + Send>;
+type Job = Box<dyn FnOnce(&DataPaths, &str) -> anyhow::Result<String> + Send>;
 
 impl SettingsPage {
     /// Runs a write off the UI thread; on success shows its message, reloads
@@ -110,9 +110,9 @@ impl SettingsPage {
             return;
         }
         self.library.busy = true;
-        let heroic = self.ctx.heroic.clone();
+        let data_paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { job(&heroic, &home()) }).await;
+            let res = cx.background_spawn(async move { job(&data_paths, &home()) }).await;
             this.update(cx, |this, cx| {
                 this.library.busy = false;
                 match res {
@@ -133,8 +133,8 @@ impl SettingsPage {
 
     pub(super) fn library_clear(&mut self, key: &'static str, cx: &mut Context<Self>) {
         self.library_job(
-            Box::new(move |heroic, _| {
-                let n = config_games::clear_list(heroic, key)?;
+            Box::new(move |data_paths, _| {
+                let n = config_games::clear_list(data_paths, key)?;
                 Ok(match key {
                     "hidden" => format!("{n} game(s) unhidden."),
                     "favourites" => format!("{n} favourite(s) removed."),
@@ -147,8 +147,8 @@ impl SettingsPage {
 
     pub(super) fn library_unhide(&mut self, app: String, cx: &mut Context<Self>) {
         self.library_job(
-            Box::new(move |heroic, _| {
-                config_games::unhide_game(heroic, &app)?;
+            Box::new(move |data_paths, _| {
+                config_games::unhide_game(data_paths, &app)?;
                 Ok(String::new())
             }),
             cx,
@@ -164,8 +164,8 @@ impl SettingsPage {
     pub(super) fn set_max_recent(&mut self, n: i64, cx: &mut Context<Self>) {
         self.library.snap.max_recent = n;
         self.library_job(
-            Box::new(move |heroic, home| {
-                game_config::set_global_setting(heroic, home, "maxRecentGames", json!(n))?;
+            Box::new(move |data_paths, home| {
+                game_config::set_global_setting(data_paths, home, "maxRecentGames", json!(n))?;
                 Ok(String::new())
             }),
             cx,
@@ -226,39 +226,39 @@ pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list:
 
 #[cfg(test)]
 mod tests {
-    use super::{game_config, json, read_snapshot, AppPaths, HeroicPaths, UiState};
+    use super::{game_config, json, read_snapshot, AppPaths, DataPaths, UiState};
 
     #[test]
     fn snapshot_reads_lists_flag_and_max_recent() {
         let dir = std::env::temp_dir().join(format!("heronite-lib-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let heroic = HeroicPaths::at(dir.join("heroic"));
+        let data_paths = DataPaths::at(dir.join("heroic"));
         let app = AppPaths { config: dir.join("cfg"), cache: dir.join("cache") };
-        std::fs::create_dir_all(heroic.config().parent().unwrap()).unwrap();
+        std::fs::create_dir_all(data_paths.store_config().parent().unwrap()).unwrap();
         std::fs::write(
-            heroic.config(),
+            data_paths.store_config(),
             r#"{"games":{"hidden":[{"appName":"h","title":"H"}],"favourites":[{"appName":"f","title":"F"}],"recent":[]}}"#,
         )
         .unwrap();
         // Nothing saved yet: Heroic's default of 5 recent games, flag off.
-        let snap = read_snapshot(&heroic, &app, "/home/u");
+        let snap = read_snapshot(&data_paths, &app, "/home/u");
         assert_eq!(snap.hidden, [("h".to_string(), "H".to_string())]);
         assert_eq!(snap.favourites.len(), 1);
         assert!(snap.recent.is_empty());
         assert_eq!(snap.max_recent, 5);
         assert!(!snap.show_hidden);
 
-        game_config::set_global_setting(&heroic, "/home/u", "maxRecentGames", json!(8)).unwrap();
+        game_config::set_global_setting(&data_paths, "/home/u", "maxRecentGames", json!(8)).unwrap();
         let ui = UiState { show_hidden: true, ..Default::default() };
         ui.save(&app).unwrap();
-        let snap = read_snapshot(&heroic, &app, "/home/u");
+        let snap = read_snapshot(&data_paths, &app, "/home/u");
         assert_eq!(snap.max_recent, 8);
         assert!(snap.show_hidden);
         // 0 ("use the default") and out-of-range values are clamped like the select.
-        game_config::set_global_setting(&heroic, "/home/u", "maxRecentGames", json!(0)).unwrap();
-        assert_eq!(read_snapshot(&heroic, &app, "/home/u").max_recent, 5);
-        game_config::set_global_setting(&heroic, "/home/u", "maxRecentGames", json!(40)).unwrap();
-        assert_eq!(read_snapshot(&heroic, &app, "/home/u").max_recent, 10);
+        game_config::set_global_setting(&data_paths, "/home/u", "maxRecentGames", json!(0)).unwrap();
+        assert_eq!(read_snapshot(&data_paths, &app, "/home/u").max_recent, 5);
+        game_config::set_global_setting(&data_paths, "/home/u", "maxRecentGames", json!(40)).unwrap();
+        assert_eq!(read_snapshot(&data_paths, &app, "/home/u").max_recent, 10);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

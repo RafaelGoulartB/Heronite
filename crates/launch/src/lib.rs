@@ -1,11 +1,11 @@
-//! Launching games and tracking playtime, compatible with Heronite's data.
+//! Launching games and tracking playtime.
 //!
 //! * [`plan`]: pure `LaunchPlan` building (Steam URI, native, Wine/Proton/umu,
 //!   emulators, legendary).
 //! * [`runtime`]: the [`runtime::Launcher`] that executes plans through a
 //!   [`runtime::Spawner`], tracks the game and emits [`runtime::LaunchEvent`]s.
-//! * [`record`]: session / playtime / recent-games writes, byte-compatible
-//!   with Heronite.
+//! * [`record`]: session / playtime / recent-games writes, in Heronite's
+//!   formats.
 //! * [`steam`]: `steam://` URIs and installed-app detection.
 
 pub mod dxvk;

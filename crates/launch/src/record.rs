@@ -21,7 +21,7 @@ use anyhow::Result;
 use chrono::{DateTime, SecondsFormat, Utc};
 use heronite_data::json_store;
 use heronite_data::models::{LocalGameSession, SessionsFile, MAX_SESSIONS_PER_GAME};
-use heronite_data::{HeroicPaths, JsNum};
+use heronite_data::{DataPaths, JsNum};
 use serde_json::{json, Map, Value};
 
 /// Sessions shorter than this are not stored (playtime is still counted).
@@ -64,7 +64,7 @@ fn entry_mut<'a>(root: &'a mut Value, app_name: &str) -> &'a mut Map<String, Val
 }
 
 /// Launch-time bookkeeping: `firstPlayed` if the game has no entry yet.
-pub fn mark_started(paths: &HeroicPaths, app_name: &str, started_at: DateTime<Utc>) -> Result<()> {
+pub fn mark_started(paths: &DataPaths, app_name: &str, started_at: DateTime<Utc>) -> Result<()> {
     json_store::update_value(&paths.timestamps(), |root| {
         let exists = root
             .as_object()
@@ -78,7 +78,7 @@ pub fn mark_started(paths: &HeroicPaths, app_name: &str, started_at: DateTime<Ut
 }
 
 /// Updates `lastPlayed` / `totalPlayed` in `store/timestamp.json`.
-pub fn update_timestamps(paths: &HeroicPaths, rec: &PlayRecord) -> Result<i64> {
+pub fn update_timestamps(paths: &DataPaths, rec: &PlayRecord) -> Result<i64> {
     update_timestamps_with_base(paths, rec, &mut None)
 }
 
@@ -86,7 +86,7 @@ pub fn update_timestamps(paths: &HeroicPaths, rec: &PlayRecord) -> Result<i64> {
 /// the stored total before the session. `base` is read from the file the
 /// first time (`None`) and then kept by the caller, so repeating the call with
 /// a longer session overwrites the previous result instead of adding to it.
-fn update_timestamps_with_base(paths: &HeroicPaths, rec: &PlayRecord, base: &mut Option<f64>) -> Result<i64> {
+fn update_timestamps_with_base(paths: &DataPaths, rec: &PlayRecord, base: &mut Option<f64>) -> Result<i64> {
     let known = *base;
     let (total, used) = json_store::update_value(&paths.timestamps(), |root| {
         let entry = entry_mut(root, &rec.app_name);
@@ -105,7 +105,7 @@ fn update_timestamps_with_base(paths: &HeroicPaths, rec: &PlayRecord, base: &mut
 }
 
 /// `mergeLocalSessions`: append, drop duplicates, keep the newest 200.
-pub fn add_session(paths: &HeroicPaths, app_name: &str, session: LocalGameSession) -> Result<bool> {
+pub fn add_session(paths: &DataPaths, app_name: &str, session: LocalGameSession) -> Result<bool> {
     json_store::update::<SessionsFile, _>(&paths.sessions(), |doc| {
         let list = doc.sessions.entry(app_name.to_string()).or_default();
         let key = |s: &LocalGameSession| format!("{}:{}", s.started_at, s.elapsed_seconds.get());
@@ -125,7 +125,7 @@ pub fn add_session(paths: &HeroicPaths, app_name: &str, session: LocalGameSessio
 /// Stores a running (or just ended) session: the entry with the same
 /// `startedAt` from this app is updated in place, otherwise it is added.
 /// Returns whether the file changed.
-pub fn upsert_session(paths: &HeroicPaths, app_name: &str, session: LocalGameSession) -> Result<bool> {
+pub fn upsert_session(paths: &DataPaths, app_name: &str, session: LocalGameSession) -> Result<bool> {
     json_store::update::<SessionsFile, _>(&paths.sessions(), |doc| {
         let list = doc.sessions.entry(app_name.to_string()).or_default();
         if let Some(existing) = list.iter_mut().find(|s| s.source == session.source && s.started_at == session.started_at) {
@@ -151,8 +151,8 @@ pub fn upsert_session(paths: &HeroicPaths, app_name: &str, session: LocalGameSes
 }
 
 /// `addRecentGame`: the game goes to the front of `games.recent`.
-pub fn add_recent_game(paths: &HeroicPaths, app_name: &str, title: &str) -> Result<()> {
-    json_store::update_value(&paths.config(), |root| {
+pub fn add_recent_game(paths: &DataPaths, app_name: &str, title: &str) -> Result<()> {
+    json_store::update_value(&paths.store_config(), |root| {
         if !root.is_object() {
             *root = Value::Object(Map::new());
         }
@@ -184,7 +184,7 @@ pub fn add_recent_game(paths: &HeroicPaths, app_name: &str, title: &str) -> Resu
 }
 
 /// Everything Heronite does after a game exits.
-pub fn record_play(paths: &HeroicPaths, rec: &PlayRecord, min_session_seconds: i64) -> Result<RecordOutcome> {
+pub fn record_play(paths: &DataPaths, rec: &PlayRecord, min_session_seconds: i64) -> Result<RecordOutcome> {
     Checkpointer::default().write(paths, rec, min_session_seconds)
 }
 
@@ -204,7 +204,7 @@ pub struct Checkpointer {
 impl Checkpointer {
     /// `rec.ended_at` is "now" for a checkpoint and the real end for the last
     /// write. Sessions under `min_session_seconds` only touch the timestamps.
-    pub fn write(&mut self, paths: &HeroicPaths, rec: &PlayRecord, min_session_seconds: i64) -> Result<RecordOutcome> {
+    pub fn write(&mut self, paths: &DataPaths, rec: &PlayRecord, min_session_seconds: i64) -> Result<RecordOutcome> {
         let total = update_timestamps_with_base(paths, rec, &mut self.base_total)?;
         let elapsed = (rec.ended_at - rec.started_at).num_milliseconds().div_euclid(1000);
         let mut session_recorded = false;
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn first_play_creates_files_in_electron_store_format() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         mark_started(&paths, "g1", t(0)).unwrap();
         assert_eq!(
             read(&paths.timestamps()),
@@ -286,7 +286,7 @@ mod tests {
             sessions["sessions"]["g1"][0],
             json!({"startedAt":"2026-10-07T12:00:00.000Z","endedAt":"2026-10-07T12:01:30.500Z","elapsedSeconds":90,"source":"heroic"})
         );
-        let cfg: Value = serde_json::from_str(&read(&paths.config())).unwrap();
+        let cfg: Value = serde_json::from_str(&read(&paths.store_config())).unwrap();
         assert_eq!(
             cfg["games"]["recent"],
             json!([{"appName":"g1","title":"Game One"}])
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn total_played_accumulates_fractional_minutes_then_floors() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(paths.timestamps().parent().unwrap()).unwrap();
         std::fs::write(
             paths.timestamps(),
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn short_sessions_only_touch_timestamps_and_recent() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         let rec = PlayRecord {
             app_name: "g1".into(),
             title: "x".into(),
@@ -331,13 +331,13 @@ mod tests {
         assert_eq!(out.elapsed_seconds, 4);
         assert!(!out.session_recorded);
         assert!(!paths.sessions().exists());
-        assert!(paths.timestamps().exists() && paths.config().exists());
+        assert!(paths.timestamps().exists() && paths.store_config().exists());
     }
 
     #[test]
     fn sessions_dedupe_and_cap_at_200_newest_first() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         let mk = |i: i64| PlayRecord {
             app_name: "g1".into(),
             title: "x".into(),
@@ -363,15 +363,15 @@ mod tests {
     #[test]
     fn recent_moves_to_front_without_duplicates_and_keeps_other_config() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
-        std::fs::create_dir_all(paths.config().parent().unwrap()).unwrap();
+        let paths = DataPaths::at(dir.path());
+        std::fs::create_dir_all(paths.store_config().parent().unwrap()).unwrap();
         std::fs::write(
-            paths.config(),
+            paths.store_config(),
             r#"{"language":"en","games":{"recent":[{"appName":"a","title":"A"},{"title":"orphan"},{"appName":"b","title":"B"}],"hidden":[{"appName":"h","title":"H"}]}}"#,
         )
         .unwrap();
         add_recent_game(&paths, "b", "B2").unwrap();
-        let v: Value = serde_json::from_str(&read(&paths.config())).unwrap();
+        let v: Value = serde_json::from_str(&read(&paths.store_config())).unwrap();
         assert_eq!(
             v["games"]["recent"],
             json!([{"appName":"b","title":"B2"},{"appName":"a","title":"A"}])
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn checkpoints_never_double_count() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         let original = r#"{"g1":{"firstPlayed":"2025-01-01T00:00:00.000Z","totalPlayed":100}}"#;
         std::fs::create_dir_all(paths.timestamps().parent().unwrap()).unwrap();
         std::fs::write(paths.timestamps(), original).unwrap();
@@ -406,12 +406,12 @@ mod tests {
         assert_eq!(doc.sessions["g1"][0].elapsed_seconds.get(), 400.0);
         assert_eq!(doc.sessions["g1"][0].ended_at, iso(t(400_000)));
         // The recent list got the game once.
-        let cfg: Value = serde_json::from_str(&read(&paths.config())).unwrap();
+        let cfg: Value = serde_json::from_str(&read(&paths.store_config())).unwrap();
         assert_eq!(cfg["games"]["recent"], json!([{"appName":"g1","title":"G"}]));
 
         // The same totals as a single write at the end of the session.
         let dir2 = tempfile::tempdir().unwrap();
-        let p2 = HeroicPaths::at(dir2.path());
+        let p2 = DataPaths::at(dir2.path());
         std::fs::create_dir_all(p2.timestamps().parent().unwrap()).unwrap();
         std::fs::write(p2.timestamps(), original).unwrap();
         assert_eq!(record_play(&p2, &at(400_000), 5).unwrap().total_played_minutes, 106);
@@ -420,7 +420,7 @@ mod tests {
     #[test]
     fn a_crash_after_a_checkpoint_keeps_what_was_written() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         let rec = PlayRecord { app_name: "g1".into(), title: "G".into(), started_at: t(0), ended_at: t(130_000) };
         // First run: one checkpoint, then the process dies (no final write).
         Checkpointer::default().write(&paths, &rec, 5).unwrap();
@@ -435,7 +435,7 @@ mod tests {
     #[test]
     fn sessions_under_the_minimum_are_not_stored_by_checkpoints_either() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         let rec = PlayRecord { app_name: "g1".into(), title: "G".into(), started_at: t(0), ended_at: t(3_000) };
         let out = Checkpointer::default().write(&paths, &rec, 5).unwrap();
         assert!(!out.session_recorded);

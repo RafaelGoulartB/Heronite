@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use crate::first_launch::EpicSetup;
 use crate::plan::LaunchPlan;
@@ -44,7 +44,7 @@ pub struct Launcher {
 
 impl Launcher {
     pub fn new(
-        paths: HeroicPaths,
+        paths: DataPaths,
         steam: SteamLocator,
         spawner: Arc<dyn Spawner>,
         procs: Arc<dyn Procs>,
@@ -102,7 +102,7 @@ impl Launcher {
     }
 
     /// Real processes, default timings.
-    pub fn system(paths: HeroicPaths, steam: SteamLocator, events: Sender<LaunchEvent>) -> Self {
+    pub fn system(paths: DataPaths, steam: SteamLocator, events: Sender<LaunchEvent>) -> Self {
         let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
         Self::new(
             paths,

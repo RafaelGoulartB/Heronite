@@ -104,7 +104,7 @@ impl AddGameDialog {
     }
 
     pub(super) fn art_box(&self, id: &'static str, slot: Slot, url: &str, w: f32, h: f32, cx: &mut Context<Self>) -> Stateful<Div> {
-        let chain: Vec<ImageRef> = chain_for_url(&self.ctx.heroic, None, url.trim());
+        let chain: Vec<ImageRef> = chain_for_url(&self.ctx.data_paths, None, url.trim());
         let src = if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("ag-{id}:{url}"), chain, w, h)) };
         let empty = src.is_none();
         div()

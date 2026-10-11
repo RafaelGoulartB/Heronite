@@ -50,12 +50,12 @@ pub use sysfiles::HostEnv;
 pub use types::*;
 
 use anyhow::Result;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 /// `getEmulationState`: catalog (without `custom`), the user's emulators and
 /// scanners, and (when `refresh_detect`) what is installed on this machine.
 pub fn get_emulation_state(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     env: &dyn DetectEnv,
     refresh_detect: bool,
 ) -> Result<EmulationState> {

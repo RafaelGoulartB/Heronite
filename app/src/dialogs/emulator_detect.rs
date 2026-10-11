@@ -7,7 +7,7 @@ mod console;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_emulation::discover::{add_discovered, discover_emulators, discover_in_folder};
 use heronite_emulation::{list_user_emulators, DetectedEmulator, SystemEnv};
 
@@ -24,7 +24,7 @@ struct Row {
 }
 
 pub struct DetectEmulatorsDialog {
-    paths: HeroicPaths,
+    paths: DataPaths,
     rows: Vec<Row>,
     /// The automatic search is running.
     scanning: bool,
@@ -55,7 +55,7 @@ fn merge_rows(rows: &mut Vec<Row>, items: Vec<DetectedEmulator>) {
 }
 
 impl DetectEmulatorsDialog {
-    pub fn new(paths: HeroicPaths, cx: &mut Context<Self>) -> Self {
+    pub fn new(paths: DataPaths, cx: &mut Context<Self>) -> Self {
         let p = paths.clone();
         let find = move || {
             let existing = list_user_emulators(&p)?;

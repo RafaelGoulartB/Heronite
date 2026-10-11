@@ -5,7 +5,7 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::json_store;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::Value;
 
 use super::DialogEvent;
@@ -33,7 +33,7 @@ fn title_of(g: &Value) -> String {
 }
 
 impl EpicImportPicker {
-    pub fn new(heroic: HeroicPaths, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(data_paths: DataPaths, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let filter = new_input(window, cx, "", "Search your Epic games");
         cx.subscribe_in(&filter, window, |_, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::Change) {
@@ -44,7 +44,7 @@ impl EpicImportPicker {
         cx.spawn(async move |this, cx| {
             let games = cx
                 .background_spawn(async move {
-                    let doc = json_store::read_value(&heroic.legendary_library()).unwrap_or(Value::Null);
+                    let doc = json_store::read_value(&data_paths.legendary_library()).unwrap_or(Value::Null);
                     let mut list: Vec<Value> = doc
                         .get("library")
                         .and_then(Value::as_array)

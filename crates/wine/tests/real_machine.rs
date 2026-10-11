@@ -1,16 +1,16 @@
-//! Read-only check against the machine's real Heroic/Steam folders. Skipped
+//! Read-only check against the machine's real data and Steam folders. Skipped
 //! when they do not exist (CI). Never writes.
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 #[test]
 fn real_machine_detection() {
-    let heroic = HeroicPaths::detect();
-    if !heroic.tools_dir().join("proton").exists() {
-        eprintln!("skipped: no real Heroic tools folder");
+    let data_paths = DataPaths::detect();
+    if !data_paths.tools_dir().join("proton").exists() {
+        eprintln!("skipped: no real tools folder");
         return;
     }
-    let list = heronite_wine::list_installations(&heroic);
+    let list = heronite_wine::list_installations(&data_paths);
     for w in &list {
         eprintln!("{:8} {:32} {}", w.kind, w.name, w.bin);
     }

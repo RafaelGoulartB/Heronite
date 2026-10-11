@@ -1,4 +1,4 @@
-//! Read-only checks against the user's real data: a copy of `~/.config/heroic`
+//! Read-only checks against the user's real data: a copy of the data folder
 //! (`HERONITE_FIXTURE`, default `/tmp/heronite-fixture`), their ROM folders and
 //! emulator config files. Writes only go to temp directories. Run with
 //! `cargo test -p heronite-emulation --test real_data -- --nocapture`.
@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use heronite_data::models::LocalMetaFile;
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use heronite_emulation::detect::{detect_emulators, SystemEnv};
 use heronite_emulation::disc_id::{read_playstation_serial, serial_from_game_list_cache};
 use heronite_emulation::import::emu_app_name;
@@ -29,7 +29,7 @@ fn fixture() -> Option<PathBuf> {
 }
 
 /// Copies only the JSON the tests touch into a temp dir (never writes the fixture).
-fn temp_copy(fixture: &Path) -> (tempfile::TempDir, HeroicPaths) {
+fn temp_copy(fixture: &Path) -> (tempfile::TempDir, DataPaths) {
     let dir = tempfile::tempdir().unwrap();
     for rel in [
         "local_library/emulators.json",
@@ -47,7 +47,7 @@ fn temp_copy(fixture: &Path) -> (tempfile::TempDir, HeroicPaths) {
             std::fs::copy(from, to).unwrap();
         }
     }
-    let paths = HeroicPaths::at(dir.path());
+    let paths = DataPaths::at(dir.path());
     (dir, paths)
 }
 
@@ -169,7 +169,7 @@ fn scan_preview_of_the_real_rom_folders() {
 #[test]
 fn disc_ids_and_save_states_of_the_real_library() {
     let Some(fx) = fixture() else { return };
-    let paths = HeroicPaths::at(&fx); // read-only use
+    let paths = DataPaths::at(&fx); // read-only use
     let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
     let env = HostEnv::system();
     let cache = env.home.join(".config/PCSX2/cache/gamelist.cache");
@@ -255,7 +255,7 @@ fn config_backup_of_a_copy_of_the_fixture() {
         }
     }
     copy(&fx, src.path());
-    let paths = HeroicPaths::at(src.path());
+    let paths = DataPaths::at(src.path());
     let out = tempfile::tempdir().unwrap();
     heronite_data::settings::save_backup(&paths, out.path().to_str().unwrap(), "weekly").unwrap();
     // The fixture's last backup is recent, so a weekly run is not due...
@@ -318,7 +318,7 @@ fn real_save_state_dirs_per_engine() {
 #[test]
 fn discovery_finds_real_appimages() {
     let Some(fx) = fixture() else { return };
-    let paths = HeroicPaths::at(&fx);
+    let paths = DataPaths::at(&fx);
     let existing = store::list_user_emulators(&paths).unwrap();
     let Some(cfg) = existing.iter().find(|e| e.executable.starts_with("/data/Games/Emulation/")) else {
         eprintln!("no configured emulator under /data/Games/Emulation; skipping");
@@ -342,7 +342,7 @@ fn discovery_finds_real_appimages() {
 #[test]
 fn discovery_on_this_pc_is_quick() {
     let Some(fx) = fixture() else { return };
-    let existing = store::list_user_emulators(&HeroicPaths::at(&fx)).unwrap();
+    let existing = store::list_user_emulators(&DataPaths::at(&fx)).unwrap();
     let t = std::time::Instant::now();
     let found = heronite_emulation::discover::discover_emulators(&heronite_emulation::SystemEnv, &existing);
     eprintln!("discovery took {:?}", t.elapsed());

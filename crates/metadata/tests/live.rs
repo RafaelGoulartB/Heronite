@@ -3,7 +3,7 @@
 //! `HERONITE_FIXTURE` (credentials are read from its `settings.json` and never
 //! printed). Writes go to a tempdir.
 
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use heronite_metadata::*;
 
 fn enabled() -> bool {
@@ -12,7 +12,7 @@ fn enabled() -> bool {
 
 fn service() -> (tempfile::TempDir, MetadataService) {
     let dir = tempfile::tempdir().unwrap();
-    let paths = HeroicPaths::at(dir.path());
+    let paths = DataPaths::at(dir.path());
     if let Some(root) = std::env::var_os("HERONITE_FIXTURE") {
         let src = std::path::Path::new(&root).join("local_library/settings.json");
         std::fs::create_dir_all(paths.local_library()).unwrap();

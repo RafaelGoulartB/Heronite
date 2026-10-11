@@ -91,7 +91,7 @@ impl ManageStatusesDialog {
         }
         let mut st = row.status.clone();
         st.name = name;
-        let res = status::upsert_status(&self.ctx.heroic, st);
+        let res = status::upsert_status(&self.ctx.data_paths, st);
         self.apply(res, window, cx);
     }
 
@@ -100,7 +100,7 @@ impl ManageStatusesDialog {
         let Some(other) = other.filter(|o| *o < self.rows.len()) else { return };
         let mut ids: Vec<String> = self.rows.iter().map(|r| r.status.id.clone()).collect();
         ids.swap(index, other);
-        let res = status::reorder_statuses(&self.ctx.heroic, &ids);
+        let res = status::reorder_statuses(&self.ctx.data_paths, &ids);
         self.apply(res, window, cx);
     }
 
@@ -108,7 +108,7 @@ impl ManageStatusesDialog {
         if self.rows.len() <= 1 {
             return;
         }
-        let res = status::delete_status(&self.ctx.heroic, &id);
+        let res = status::delete_status(&self.ctx.data_paths, &id);
         self.apply(res, window, cx);
     }
 
@@ -119,7 +119,7 @@ impl ManageStatusesDialog {
         }
         let current: Vec<CompletionStatus> = self.rows.iter().map(|r| r.status.clone()).collect();
         let st = status::new_custom_status(&name, &current);
-        let res = status::upsert_status(&self.ctx.heroic, st);
+        let res = status::upsert_status(&self.ctx.data_paths, st);
         self.new_name.update(cx, |s, cx| s.set_value("", window, cx));
         self.apply(res, window, cx);
     }

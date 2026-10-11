@@ -3,13 +3,13 @@
 # switches), threads and memory over a quiet window. Opens the app on
 # Hyprland workspace 7 (silently) against a fixture and closes only the
 # process it started.
-#   usage: scripts/idle-cost.sh <binary> <heroic_fixture_dir> [settle_s] [measure_s]
+#   usage: scripts/idle-cost.sh <binary> <data_fixture_dir> [settle_s] [measure_s]
 #   env:   IDLE_ENV="VAR=value ..." extra environment (e.g. HERONITE_DEBUG_START_HIDDEN=1)
 set -euo pipefail
 BIN=$1; DIR=$2; SETTLE=${3:-12}; MEASURE=${4:-60}
 LOG=$(mktemp /tmp/heronite-idle-XXXX.log)
 BASE="HERONITE_NO_ANIMATIONS=1 HERONITE_NO_SINGLE_INSTANCE=1 HERONITE_NO_TRAY=1 HERONITE_DISABLE_IDLE_JOBS=1 HERONITE_WINE_OFFLINE=1 HERONITE_DEBUG_FAKE_LAUNCH=1"
-hyprctl eval "hl.exec_cmd(\"env $BASE ${IDLE_ENV:-} HERONITE_HEROIC_DIR=$DIR $BIN > $LOG 2>&1\", { workspace = \"7 silent\" })" >/dev/null
+hyprctl eval "hl.exec_cmd(\"env $BASE ${IDLE_ENV:-} HERONITE_DATA_DIR=$DIR $BIN > $LOG 2>&1\", { workspace = \"7 silent\" })" >/dev/null
 P=""
 for _ in $(seq 1 100); do P=$(pgrep -nf "^$BIN" || true); [ -n "$P" ] && break; sleep 0.1; done
 [ -z "$P" ] && { echo "no pid"; cat "$LOG"; exit 1; }

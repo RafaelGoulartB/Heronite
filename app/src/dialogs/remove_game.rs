@@ -44,7 +44,7 @@ impl RemoveGameDialog {
         }
         self.working = true;
         self.error = None;
-        let (paths, app_name, runner) = (self.ctx.heroic.clone(), self.app_name.clone(), self.runner.clone());
+        let (paths, app_name, runner) = (self.ctx.data_paths.clone(), self.app_name.clone(), self.runner.clone());
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_spawn(async move {

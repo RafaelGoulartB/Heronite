@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::maintenance::{self, ClearReport};
-use heronite_data::{game_config, HeroicPaths};
+use heronite_data::{game_config, DataPaths};
 
 use super::SettingsPage;
 use crate::pages::{PageCtx, PageEvent};
@@ -25,9 +25,9 @@ pub struct State {
 
 impl State {
     pub fn measure(&mut self, ctx: &PageCtx, cx: &mut Context<SettingsPage>) {
-        let (heroic, app) = (ctx.heroic.clone(), ctx.app.clone());
+        let (data_paths, app) = (ctx.data_paths.clone(), ctx.app.clone());
         cx.spawn(async move |this, cx| {
-            let size = cx.background_spawn(async move { maintenance::cache_size(&heroic, &app) }).await;
+            let size = cx.background_spawn(async move { maintenance::cache_size(&data_paths, &app) }).await;
             this.update(cx, |this, cx| {
                 this.advanced.size = Some(size);
                 cx.notify();
@@ -39,8 +39,8 @@ impl State {
 }
 
 /// Heroic's log folder (`~/.local/state/Heroic/logs`), when it exists.
-pub fn logs_dir(heroic: &HeroicPaths) -> Option<PathBuf> {
-    let dir = heronite_launch::log_writer::LogPaths::for_heroic(heroic).base;
+pub fn logs_dir(data_paths: &DataPaths) -> Option<PathBuf> {
+    let dir = heronite_launch::log_writer::LogPaths::for_data(data_paths).base;
     dir.is_dir().then_some(dir)
 }
 
@@ -49,8 +49,8 @@ pub fn open_folder(dir: &Path) -> std::io::Result<()> {
 }
 
 /// The global settings as pretty JSON for the clipboard, API keys redacted.
-pub fn settings_json(heroic: &HeroicPaths, home: &str) -> String {
-    let mut settings = game_config::load_global(heroic, home);
+pub fn settings_json(data_paths: &DataPaths, home: &str) -> String {
+    let mut settings = game_config::load_global(data_paths, home);
     for (k, v) in settings.iter_mut() {
         if k.to_ascii_lowercase().contains("apikey") && v.as_str().is_some_and(|s| !s.is_empty()) {
             *v = serde_json::Value::String("<hidden>".into());
@@ -71,9 +71,9 @@ impl SettingsPage {
     pub(super) fn clear_cache(&mut self, cx: &mut Context<Self>) {
         self.advanced.confirm = false;
         self.advanced.busy = true;
-        let (heroic, app) = (self.ctx.heroic.clone(), self.ctx.app.clone());
+        let (data_paths, app) = (self.ctx.data_paths.clone(), self.ctx.app.clone());
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { maintenance::clear_caches(&heroic, &app) }).await;
+            let res = cx.background_spawn(async move { maintenance::clear_caches(&data_paths, &app) }).await;
             this.update(cx, |this, cx| {
                 this.advanced.busy = false;
                 match res {
@@ -96,10 +96,10 @@ impl SettingsPage {
     }
 
     pub(super) fn advanced_extras(&mut self, cx: &mut Context<Self>) -> Div {
-        let heroic = self.ctx.heroic.clone();
-        let logs = logs_dir(&heroic);
+        let data_paths = self.ctx.data_paths.clone();
+        let logs = logs_dir(&data_paths);
 
-        let (cfg, app_cfg) = (heroic.root.clone(), self.ctx.app.config.clone());
+        let (cfg, app_cfg) = (data_paths.root.clone(), self.ctx.app.config.clone());
         let logs_btn = match logs.clone() {
             Some(dir) => action_button(
                 "adv-open-logs",
@@ -112,19 +112,19 @@ impl SettingsPage {
         };
         let folders = card([
             row(
-                "Config folder",
-                Some("Shared with Heroic and Heronite."),
+                "Data folder",
+                Some("Library, settings, logins, Wine tools and logs."),
                 action_button("adv-open-config", ButtonKind::Glass, "Open", true, cx.listener(move |this, _, _, cx| this.open_dir(cfg.clone(), cx))),
             )
             .into_any_element(),
             row(
                 "Logs folder",
-                Some(if logs.is_some() { "Logs of this app, Heroic and your games." } else { "There is no logs folder yet: it appears when a game is launched." }),
+                Some(if logs.is_some() { "Logs of this app, the runners and your games." } else { "There is no logs folder yet: it appears when a game is launched." }),
                 logs_btn,
             )
             .into_any_element(),
             row(
-                "App data folder",
+                "Settings folder",
                 Some("Where this app keeps its own data."),
                 action_button("adv-open-app", ButtonKind::Glass, "Open", true, cx.listener(move |this, _, _, cx| this.open_dir(app_cfg.clone(), cx))),
             )
@@ -180,7 +180,7 @@ impl SettingsPage {
                 if copied { "Copied to clipboard!" } else { "Copy to clipboard" },
                 true,
                 cx.listener(|this, _, _, cx| {
-                    let text = settings_json(&this.ctx.heroic, &std::env::var("HOME").unwrap_or_default());
+                    let text = settings_json(&this.ctx.data_paths, &std::env::var("HOME").unwrap_or_default());
                     cx.write_to_clipboard(ClipboardItem::new_string(text));
                     this.advanced.copied = true;
                     cx.notify();
@@ -218,9 +218,9 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
     let has_cache = a.size.is_some_and(|r| r.files > 0);
     let mut rows = vec![
         Row::header("Folders"),
-        Row::action("open-config", "Open the config folder").icon(Icon::FolderOpen).desc("Shared with Heroic and Heronite"),
-        Row::action("open-logs", "Open the logs folder").icon(Icon::FolderOpen).enabled(logs_dir(&p.ctx.heroic).is_some()),
-        Row::action("open-app", "Open the app data folder").icon(Icon::FolderOpen),
+        Row::action("open-config", "Open the data folder").icon(Icon::FolderOpen).desc("Library, settings, logins, Wine tools and logs"),
+        Row::action("open-logs", "Open the logs folder").icon(Icon::FolderOpen).enabled(logs_dir(&p.ctx.data_paths).is_some()),
+        Row::action("open-app", "Open the settings folder").icon(Icon::FolderOpen),
         Row::header("Cache"),
     ];
     if a.confirm {
@@ -240,9 +240,9 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
 pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list::Outcome, cx: &mut Context<SettingsPage>) {
     let crate::console::list::Outcome::Activate(id) = outcome else { return };
     match id.as_ref() {
-        "open-config" => p.open_dir(p.ctx.heroic.root.clone(), cx),
+        "open-config" => p.open_dir(p.ctx.data_paths.root.clone(), cx),
         "open-logs" => {
-            if let Some(dir) = logs_dir(&p.ctx.heroic) {
+            if let Some(dir) = logs_dir(&p.ctx.data_paths) {
                 p.open_dir(dir, cx);
             }
         }
@@ -251,7 +251,7 @@ pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list:
         "cache-no" => p.advanced.confirm = false,
         "cache-yes" => p.clear_cache(cx),
         "copy" => {
-            let text = settings_json(&p.ctx.heroic, &std::env::var("HOME").unwrap_or_default());
+            let text = settings_json(&p.ctx.data_paths, &std::env::var("HOME").unwrap_or_default());
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             p.advanced.copied = true;
         }
@@ -262,19 +262,19 @@ pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list:
 
 #[cfg(test)]
 mod tests {
-    use super::{settings_json, HeroicPaths};
+    use super::{settings_json, DataPaths};
 
     #[test]
     fn settings_copy_hides_api_keys() {
         let dir = std::env::temp_dir().join(format!("heronite-settings-test-{}", std::process::id()));
-        let heroic = HeroicPaths::at(&dir);
+        let data_paths = DataPaths::at(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("config.json"),
             r#"{"defaultSettings":{"steamGridDbApiKey":"SECRET","maxWorkers":3},"version":"v0"}"#,
         )
         .unwrap();
-        let json = settings_json(&heroic, "/home/u");
+        let json = settings_json(&data_paths, "/home/u");
         assert!(!json.contains("SECRET"));
         assert!(json.contains("<hidden>"));
         assert!(json.contains("\"maxWorkers\": 3"));

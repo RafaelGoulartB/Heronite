@@ -5,14 +5,14 @@
 //! and `HERONITE_CAPTURES` (default: the folder from its `settings.json`) the
 //! captures folder. Nothing is ever written next to the originals.
 
-use heronite_data::{HeroicPaths, Library};
+use heronite_data::{DataPaths, Library};
 use heronite_media::list::{list_screenshots, GameQuery};
 use heronite_media::thumbnails::{cache_key, ThumbnailCache};
 use std::path::{Path, PathBuf};
 
-fn fixture() -> Option<HeroicPaths> {
+fn fixture() -> Option<DataPaths> {
     let root = std::env::var_os("HERONITE_FIXTURE").map(PathBuf::from).unwrap_or_else(|| "/tmp/heronite-fixture".into());
-    root.is_dir().then(|| HeroicPaths::at(root))
+    root.is_dir().then(|| DataPaths::at(root))
 }
 
 fn captures(lib: &Library) -> Option<PathBuf> {
@@ -62,7 +62,7 @@ fn fixture_games_against_the_real_captures_folder() {
 /// The real Electron cache names must be derivable from their sidecars.
 #[test]
 fn cache_key_agrees_with_the_real_heronite_cache() {
-    let dir = dirs_config().join("heroic/local_library/screenshot-thumbnails");
+    let dir = DataPaths::detect().screenshot_thumbnails_dir();
     let Ok(rd) = std::fs::read_dir(&dir) else { return eprintln!("no real thumbnail cache; skipped") };
     let (mut checked, mut bad) = (0, 0);
     for e in rd.flatten() {
@@ -80,16 +80,11 @@ fn cache_key_agrees_with_the_real_heronite_cache() {
     assert!(checked == 0 || bad == 0, "{bad}/{checked} keys differ from Heronite's");
 }
 
-fn dirs_config() -> PathBuf {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap()).join(".config"))
-}
 
 /// Our previews of real screenshots (written to a tempdir) look like Heronite's.
 #[test]
 fn previews_resemble_the_real_electron_ones() {
-    let real_cache = dirs_config().join("heroic/local_library/screenshot-thumbnails");
+    let real_cache = DataPaths::detect().screenshot_thumbnails_dir();
     let Ok(rd) = std::fs::read_dir(&real_cache) else { return eprintln!("no real thumbnail cache; skipped") };
     let tmp = tempfile::tempdir().unwrap();
     let ours = ThumbnailCache::new(tmp.path().join("cache"), 50.0);

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Builds heronite-rs in release mode and installs it for the current user,
-# next to (not replacing) the Electron Heronite.
+# Builds heronite-rs in release mode and installs it for the current user.
+# It is a separate app from Heroic/Heronite with its own data folder
+# (~/.local/share/heronite); the first start copies an existing Heroic setup.
 #   binary   ~/.local/opt/heronite-rs/heronite-rs
 #   launcher ~/.local/bin/heronite-rs
 #   desktop  ~/.local/share/applications/com.heronite.rs.desktop
@@ -33,7 +34,7 @@ cat > "$APP_DIR/com.heronite.rs.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Heronite (Rust)
-Comment=Game Collection (shares data with Heronite)
+Comment=Game Collection
 Exec=$PREFIX/heronite-rs %U
 Icon=$ICON_NAME
 Terminal=false
@@ -42,7 +43,7 @@ MimeType=x-scheme-handler/heronite-rs;
 StartupWMClass=com.heronite.rs
 DESKTOP
 
-# heronite-rs:// links (not heroic://, which stays with Heronite).
+# heronite-rs:// links (heroic:// stays with Heroic).
 command -v xdg-mime >/dev/null && xdg-mime default com.heronite.rs.desktop x-scheme-handler/heronite-rs >/dev/null 2>&1 || true
 command -v update-desktop-database >/dev/null && update-desktop-database "$APP_DIR" >/dev/null 2>&1 || true
 echo "Installed heronite-rs to $PREFIX"

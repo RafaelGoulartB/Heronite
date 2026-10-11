@@ -28,7 +28,7 @@ use heronite_wine::WineInstallation;
 use serde_json::Value;
 
 use super::art_images::DialogImages;
-use super::heroic_settings::logic::wine_of;
+use super::settings_panel::logic::wine_of;
 use super::{DialogCtx, DialogEvent};
 use crate::ui::controls::{action_button, button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
@@ -121,7 +121,7 @@ fn extra_str(g: &GameInfo, key: &str) -> String {
 impl AddGameDialog {
     pub fn new(ctx: DialogCtx, mode: Mode, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
-        let global = game_config::load_global(&ctx.heroic, &home);
+        let global = game_config::load_global(&ctx.data_paths, &home);
         let edited: Option<Game> = match &mode {
             Mode::Edit(app) => ctx.lib.games.iter().find(|g| &g.app_name == app && g.runner == "sideload").cloned(),
             Mode::Add | Mode::Install(_) => None,
@@ -166,8 +166,10 @@ impl AddGameDialog {
             if platform != SideloadPlatform::Windows {
                 return None;
             }
-            let prefix = game_config::load_game(&ctx.heroic, &app_name, &home).get("winePrefix")?.as_str()?.to_string();
-            (!prefix.is_empty() && Path::new(&prefix).exists() && prefix != game_config::shared_wine_prefix(&home)).then_some(prefix)
+            let prefix = game_config::load_game(&ctx.data_paths, &app_name, &home).get("winePrefix")?.as_str()?.to_string();
+            let shared = global.get("winePrefix").and_then(Value::as_str).filter(|p| !p.is_empty());
+            let is_shared = prefix == game_config::shared_wine_prefix(&home) || Some(prefix.as_str()) == shared;
+            (!prefix.is_empty() && Path::new(&prefix).exists() && !is_shared).then_some(prefix)
         });
 
         let prefix_dir = global.get("defaultWinePrefixDir").and_then(Value::as_str).unwrap_or("").to_string();
@@ -373,7 +375,7 @@ impl Render for AddGameDialog {
                 id: "add-game".into(),
                 title: title.into(),
                 width: 860f32.min(vw * 0.96),
-                height: super::heroic_settings::debug_dialog_height(),
+                height: super::settings_panel::debug_dialog_height(),
             },
             body.into_any_element(),
             Some(footer.into_any_element()),

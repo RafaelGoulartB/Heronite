@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use gpui_kit::*;
 use heronite_data::game_config;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_epic::autoupdate;
 use heronite_epic::cmd::Legendary;
 use heronite_epic::library;
@@ -26,8 +26,8 @@ fn periodic_interval() -> Duration {
 }
 
 /// `(checkForUpdatesOnStartup, autoUpdateGames)` from the global config.
-fn update_settings(heroic: &HeroicPaths) -> (bool, bool) {
-    let global = game_config::load_global(heroic, &ops::home());
+fn update_settings(data_paths: &DataPaths) -> (bool, bool) {
+    let global = game_config::load_global(data_paths, &ops::home());
     let flag = |key: &str, default: bool| global.get(key).and_then(Value::as_bool).unwrap_or(default);
     (flag("checkForUpdatesOnStartup", true), flag("autoUpdateGames", false))
 }
@@ -37,24 +37,19 @@ impl Downloads {
     /// little later, then periodically while the app lives.
     pub(super) fn spawn_idle_jobs(&mut self, cx: &mut Context<Self>) {
         let manager = self.manager.clone();
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         // An install move cut short by a quit / kill is finished first; the
         // queue starts after it (two legendary runs would both write installed.json).
         let move_first = self.resume_interrupted_move(cx);
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_secs(5)).await;
-            // Heronite resumes the same persisted queue on its own start;
-            // two legendary processes on one game would fight, so leave
-            // it to Heronite while it is open (resume from Downloads).
-            if autoupdate::heronite_running() {
-                log::info!("Heronite is running: not resuming the download queue automatically");
-            } else if !move_first {
+            if !move_first {
                 manager.start();
             }
             cx.background_executor().timer(Duration::from_secs(15)).await;
             let mut first = true;
             loop {
-                let h = heroic.clone();
+                let h = data_paths.clone();
                 let (on_startup, auto) = cx.background_spawn(async move { update_settings(&h) }).await;
                 // The startup check is what `checkForUpdatesOnStartup` asks
                 // for (Heroic checks game updates then regardless); the
@@ -77,14 +72,14 @@ impl Downloads {
         self.refreshing = true;
         self.last_error = None;
         cx.notify();
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         let quiet = std::mem::take(&mut self.quiet_refresh);
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&heroic)?;
-                    let r = library::refresh(&heroic, &lg)?;
-                    anyhow::Ok((r, library::updates_available(&heroic), read_stats(&heroic)))
+                    let lg = Legendary::locate(&data_paths)?;
+                    let r = library::refresh(&data_paths, &lg)?;
+                    anyhow::Ok((r, library::updates_available(&data_paths), read_stats(&data_paths)))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -132,7 +127,7 @@ impl Downloads {
             if self.queued(&app).is_some() {
                 continue;
             }
-            if let Some(info) = library_entry(&self.heroic, &app) {
+            if let Some(info) = library_entry(&self.data_paths, &app) {
                 self.queue_update(info, cx);
             }
         }
@@ -176,10 +171,10 @@ impl Downloads {
 
     /// `autoUpdateGames`: queues the updates found, except for games that
     /// ignore updates (`ignoreGameUpdates` in their settings) and games being
-    /// played (those wait for their exit); not at all while Heronite runs,
-    /// offline or on a metered connection. `only`: just that game.
+    /// played (those wait for their exit); not at all offline or on a
+    /// metered connection. `only`: just that game.
     fn queue_auto_updates(&mut self, only: Option<String>, cx: &mut Context<Self>) {
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         let apps: Vec<String> = self
             .updates
             .iter()
@@ -195,12 +190,12 @@ impl Downloads {
             let (plan, entries) = cx
                 .background_spawn(async move {
                     let home = ops::home();
-                    let enabled = game_config::load_global(&heroic, &home).get("autoUpdateGames").and_then(Value::as_bool).unwrap_or(false);
+                    let enabled = game_config::load_global(&data_paths, &home).get("autoUpdateGames").and_then(Value::as_bool).unwrap_or(false);
                     let candidates: Vec<autoupdate::Candidate> = apps
                         .iter()
                         .map(|app| autoupdate::Candidate {
                             app_name: app.clone(),
-                            ignored: game_config::load_game(&heroic, app, &home).get("ignoreGameUpdates").and_then(Value::as_bool).unwrap_or(false),
+                            ignored: game_config::load_game(&data_paths, app, &home).get("ignoreGameUpdates").and_then(Value::as_bool).unwrap_or(false),
                             queued: queued.contains(app),
                             playing: playing.contains(app),
                         })
@@ -208,7 +203,6 @@ impl Downloads {
                     let gates = if enabled {
                         autoupdate::Gates {
                             enabled,
-                            heronite_running: autoupdate::heronite_running(),
                             offline: !heronite_launch::net::Net::is_online(&heronite_launch::net::SystemNet),
                             metered: autoupdate::connection_metered(),
                         }
@@ -216,7 +210,7 @@ impl Downloads {
                         autoupdate::Gates::default()
                     };
                     let plan = autoupdate::plan(&gates, &candidates);
-                    let entries: Vec<Value> = plan.queue.iter().filter_map(|app| library_entry(&heroic, app)).collect();
+                    let entries: Vec<Value> = plan.queue.iter().filter_map(|app| library_entry(&data_paths, app)).collect();
                     (plan, entries)
                 })
                 .await;

@@ -1,7 +1,7 @@
 //! This app's own UI state, kept in `AppPaths::ui_state()`.
 //!
-//! It mirrors what Heronite keeps in Chromium's localStorage (so the two apps
-//! cannot share it): `collection_install_filter`, `collection_facet_filter`,
+//! It mirrors what Heronite kept in Chromium's localStorage (imported once by
+//! `migrate`): `collection_install_filter`, `collection_facet_filter`,
 //! `collection_sort`, `collection_sidebar_hidden`, `collection_collapsed_groups`,
 //! `collection_focused_game`. Loading is as lenient as the `readX` helpers of
 //! `index.tsx`: anything missing or invalid falls back to its default.

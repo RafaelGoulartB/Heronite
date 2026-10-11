@@ -1,4 +1,4 @@
-//! Log viewer: a pane that lists the logs (this app, Heroic, runners, every
+//! Log viewer: a pane that lists the logs (this app, runners, every
 //! game) and shows one of them, plus a dialog that hosts the pane for a single
 //! game ("View log" in the game's context menu). Settings → Logs embeds the
 //! same pane with the full list.
@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::log_reader::LogEntry;
 
 use super::{DialogCtx, DialogEvent};
@@ -56,7 +56,7 @@ struct Content {
 }
 
 pub struct LogViewer {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     scope: Scope,
     start: Start,
     show_list: bool,
@@ -99,7 +99,7 @@ fn mono_family(cx: &App) -> SharedString {
 }
 
 impl LogViewer {
-    pub fn new(heroic: HeroicPaths, scope: Scope, start: Start, show_list: bool, height: Option<f32>, cx: &mut Context<Self>) -> Self {
+    pub fn new(data_paths: DataPaths, scope: Scope, start: Start, show_list: bool, height: Option<f32>, cx: &mut Context<Self>) -> Self {
         let list_state = ListState::new(0, ListAlignment::Top, px(400.));
         let weak = cx.entity().downgrade();
         list_state.set_scroll_handler(move |_, _, cx| {
@@ -108,7 +108,7 @@ impl LogViewer {
             }
         });
         let mut this = Self {
-            heroic,
+            data_paths,
             scope,
             start,
             show_list,
@@ -166,9 +166,9 @@ impl EventEmitter<DialogEvent> for LogViewerDialog {}
 
 impl LogViewerDialog {
     pub fn new(ctx: DialogCtx, app_name: String, title: String, cx: &mut Context<Self>) -> Self {
-        let heroic = ctx.heroic.clone();
+        let data_paths = ctx.data_paths.clone();
         let start = Start::Game(app_name.clone());
-        let viewer = cx.new(|cx| LogViewer::new(heroic, Scope::Game(app_name), start, true, Some(500.), cx));
+        let viewer = cx.new(|cx| LogViewer::new(data_paths, Scope::Game(app_name), start, true, Some(500.), cx));
         Self { title, viewer }
     }
 }

@@ -43,7 +43,7 @@ impl State {
         });
         let cache = screenshots_global(cx)
             .map(|g| g.cache)
-            .unwrap_or_else(|| ThumbnailCache::new(ctx.heroic.screenshot_thumbnails_dir(), s.screenshots.cache_limit_mb.get()));
+            .unwrap_or_else(|| ThumbnailCache::new(ctx.data_paths.screenshot_thumbnails_dir(), s.screenshots.cache_limit_mb.get()));
         let compression = compression::get(cx);
         if let Some(c) = &compression {
             cx.observe(c, |_, _, cx| cx.notify()).detach();
@@ -210,7 +210,7 @@ fn save(
     let limit = limit.unwrap_or(cur.cache_limit_mb.get());
     d.screenshots.message = None;
     let res = settings::save_screenshots(
-        &d.ctx.heroic,
+        &d.ctx.data_paths,
         &folder.unwrap_or(cur.folder),
         limit,
         enabled.unwrap_or(cur.capture_enabled),

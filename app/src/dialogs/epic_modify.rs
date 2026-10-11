@@ -6,7 +6,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_epic::cmd::Legendary;
 use heronite_epic::info::{self, Dlc};
 use heronite_epic::manager::DmState;
@@ -33,7 +33,7 @@ struct Row {
 }
 
 pub struct EpicModifyDialog {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     svc: Entity<Downloads>,
     app_name: String,
     title: String,
@@ -53,7 +53,7 @@ impl EventEmitter<DialogEvent> for EpicModifyDialog {}
 
 impl EpicModifyDialog {
     /// `game` is the `GameInfo` of the installed base game.
-    pub fn new(heroic: HeroicPaths, game: Value, cx: &mut Context<Self>) -> Self {
+    pub fn new(data_paths: DataPaths, game: Value, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
         let mut subs = vec![cx.observe(&svc, |_, _, cx| cx.notify())];
         // An install or uninstall that finished changes what is installed.
@@ -65,7 +65,7 @@ impl EpicModifyDialog {
         let text = |ptr: &str| game.pointer(ptr).and_then(Value::as_str).unwrap_or_default().to_string();
         let app_name = text("/app_name");
         let mut this = Self {
-            heroic,
+            data_paths,
             svc,
             title: text("/title"),
             platform: Some(text("/install/platform")).filter(|p| !p.is_empty()).unwrap_or_else(|| "Windows".into()),
@@ -84,13 +84,13 @@ impl EpicModifyDialog {
 
     /// The DLC list from `legendary info`, then each DLC's library entry and size.
     fn load(&mut self, cx: &mut Context<Self>) {
-        let (heroic, app, platform) = (self.heroic.clone(), self.app_name.clone(), self.platform.clone());
+        let (data_paths, app, platform) = (self.data_paths.clone(), self.app_name.clone(), self.platform.clone());
         cx.spawn(async move |this, cx| {
             let first = {
-                let (heroic, app, platform) = (heroic.clone(), app.clone(), platform.clone());
+                let (data_paths, app, platform) = (data_paths.clone(), app.clone(), platform.clone());
                 cx.background_spawn(async move {
-                    let lg = Legendary::locate(&heroic)?;
-                    info::install_info(&heroic, &lg, &app, &platform)
+                    let lg = Legendary::locate(&data_paths)?;
+                    info::install_info(&data_paths, &lg, &app, &platform)
                 })
                 .await
             };
@@ -114,13 +114,13 @@ impl EpicModifyDialog {
             .ok();
             // Like Heroic, one DLC after the other.
             for dlc in dlcs {
-                let (heroic, platform) = (heroic.clone(), platform.clone());
+                let (data_paths, platform) = (data_paths.clone(), platform.clone());
                 let name = dlc.app_name.clone();
                 let (entry, size) = cx
                     .background_spawn(async move {
-                        let entry = library_entry(&heroic, &name);
-                        let size = Legendary::locate(&heroic)
-                            .and_then(|lg| info::install_info(&heroic, &lg, &name, &platform))
+                        let entry = library_entry(&data_paths, &name);
+                        let size = Legendary::locate(&data_paths)
+                            .and_then(|lg| info::install_info(&data_paths, &lg, &name, &platform))
                             .map(|i| i.download_size())
                             .unwrap_or(0.);
                         (entry, size)
@@ -146,7 +146,7 @@ impl EpicModifyDialog {
 
     /// Reads which DLCs are installed again after the library changed.
     fn reload_installed(&mut self, cx: &mut Context<Self>) {
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         let names: Vec<String> = self.rows.iter().map(|r| r.dlc.app_name.clone()).collect();
         cx.spawn(async move |this, cx| {
             let states = cx
@@ -154,7 +154,7 @@ impl EpicModifyDialog {
                     names
                         .into_iter()
                         .map(|n| {
-                            let entry = library_entry(&heroic, &n);
+                            let entry = library_entry(&data_paths, &n);
                             let installed = entry.as_ref().and_then(|e| e.get("is_installed")).and_then(Value::as_bool).unwrap_or(false);
                             (n, entry, installed)
                         })

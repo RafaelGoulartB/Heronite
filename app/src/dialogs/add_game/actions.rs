@@ -14,7 +14,7 @@ use serde_json::json;
 
 use super::logic::*;
 use super::{text_of, AddGameDialog, Mode};
-use crate::dialogs::heroic_settings::logic::wine_to_value;
+use crate::dialogs::settings_panel::logic::wine_to_value;
 use crate::dialogs::DialogEvent;
 
 impl AddGameDialog {
@@ -54,7 +54,7 @@ impl AddGameDialog {
             )
         });
         let (paths, home, existing_run_as, is_edit) =
-            (self.ctx.heroic.clone(), self.home.clone(), self.existing_run_as.clone(), self.is_edit());
+            (self.ctx.data_paths.clone(), self.home.clone(), self.existing_run_as.clone(), self.is_edit());
         self.saving = true;
         self.error.clear();
         cx.spawn(async move |this, cx| {
@@ -96,7 +96,7 @@ impl AddGameDialog {
         }
         self.saving = true;
         self.error.clear();
-        let (paths, home, with_prefix) = (self.ctx.heroic.clone(), self.home.clone(), self.remove_prefix_too && self.removable_prefix.is_some());
+        let (paths, home, with_prefix) = (self.ctx.data_paths.clone(), self.home.clone(), self.remove_prefix_too && self.removable_prefix.is_some());
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
@@ -139,12 +139,12 @@ impl AddGameDialog {
         self.installer_running = true;
         self.notice.clear();
         self.error.clear();
-        let mut map = game_config::load_game(&self.ctx.heroic, &self.app_name, &self.home);
+        let mut map = game_config::load_game(&self.ctx.data_paths, &self.app_name, &self.home);
         map.insert("winePrefix".into(), json!(text_of(&self.prefix, cx).trim()));
         if let Some(w) = &self.wine {
             map.insert("wineVersion".into(), wine_to_value(w));
         }
-        let (paths, home) = (self.ctx.heroic.clone(), self.home.clone());
+        let (paths, home) = (self.ctx.data_paths.clone(), self.home.clone());
         let (tx, rx) = oneshot::channel();
         std::thread::spawn(move || {
             let _ = tx.send(run_exe_blocking(&paths, &home, &map, &exe));
@@ -168,7 +168,7 @@ impl AddGameDialog {
 
 /// Adding a game also creates its shortcuts when Heroic's settings ask for
 /// them (`addDesktopShortcuts`, `addStartMenuShortcuts`, `addSteamShortcuts`).
-fn after_added(paths: &heronite_data::HeroicPaths, spec: &SideloadSpec) {
+fn after_added(paths: &heronite_data::DataPaths, spec: &SideloadSpec) {
     let outcome = crate::system::shortcuts::on_game_added(paths, "sideload", &spec.app_name);
     for m in outcome.messages {
         if m.error {
@@ -181,7 +181,7 @@ fn after_added(paths: &heronite_data::HeroicPaths, spec: &SideloadSpec) {
 
 /// Builds and runs "Run EXE on prefix" for a game that has no files yet and
 /// waits for it. Never called by tests.
-fn run_exe_blocking(paths: &heronite_data::HeroicPaths, home: &str, map: &Settings, exe: &str) -> Result<String, String> {
+fn run_exe_blocking(paths: &heronite_data::DataPaths, home: &str, map: &Settings, exe: &str) -> Result<String, String> {
     let settings = GameSettings::from_map(map, home);
     let ctx = PlanContext::load(paths);
     // A new prefix is created first so shared folders get their drive letters.

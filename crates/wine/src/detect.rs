@@ -6,12 +6,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use crate::types::{WineConfig, WineInstallation};
 use crate::vdf;
 
-/// Where detection looks outside the Heroic folder; injectable for tests.
+/// Where detection looks outside the data folder; injectable for tests.
 #[derive(Debug, Clone)]
 pub struct DetectEnv {
     pub home: PathBuf,
@@ -33,12 +33,12 @@ impl DetectEnv {
 
 /// Every Wine/Proton the game settings may pick (Heroic's `getWineList` on
 /// Linux), in Heroic's order. Blocking (scans folders): call off the UI thread.
-pub fn list_installations(heroic: &HeroicPaths) -> Vec<WineInstallation> {
-    list_installations_with(heroic, &WineConfig::load(heroic), &DetectEnv::real())
+pub fn list_installations(data_paths: &DataPaths) -> Vec<WineInstallation> {
+    list_installations_with(data_paths, &WineConfig::load(data_paths), &DetectEnv::real())
 }
 
-pub fn list_installations_with(heroic: &HeroicPaths, cfg: &WineConfig, env: &DetectEnv) -> Vec<WineInstallation> {
-    let tools = heroic.tools_dir();
+pub fn list_installations_with(data_paths: &DataPaths, cfg: &WineConfig, env: &DetectEnv) -> Vec<WineInstallation> {
+    let tools = data_paths.tools_dir();
 
     // tools/wine/<version>/bin/wine and Lutris runners.
     let mut alt_wine = Vec::new();
@@ -203,7 +203,7 @@ mod tests {
         let home = tmp.path().join("home");
         let steam = home.join(".local/share/Steam");
         let lib2 = tmp.path().join("SteamLibrary");
-        let heroic = HeroicPaths::at(&root);
+        let data_paths = DataPaths::at(&root);
 
         touch(&root.join("tools/proton/GE-Proton-latest/proton"));
         fs::create_dir_all(root.join("tools/proton/empty-dir")).unwrap();
@@ -230,7 +230,7 @@ mod tests {
             custom_wine_paths: vec!["/opt/w/bin/wine".into(), "/opt/p/proton".into()],
             ..Default::default()
         };
-        let list = list_installations_with(&heroic, &cfg, &env(&home));
+        let list = list_installations_with(&data_paths, &cfg, &env(&home));
         let names: Vec<_> = list.iter().map(|w| w.name.as_str()).collect();
         assert_eq!(
             names,
@@ -254,15 +254,15 @@ mod tests {
         assert!(w.lib32.is_none());
 
         cfg.show_valve_proton = true;
-        let list = list_installations_with(&heroic, &cfg, &env(&home));
+        let list = list_installations_with(&data_paths, &cfg, &env(&home));
         assert!(list.iter().any(|w| w.name == "Proton 9.0"));
     }
 
     #[test]
     fn empty_folders_give_empty_list() {
         let tmp = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(tmp.path().join("nothing"));
+        let data_paths = DataPaths::at(tmp.path().join("nothing"));
         let cfg = WineConfig { default_steam_path: "/nonexistent-steam".into(), ..Default::default() };
-        assert!(list_installations_with(&heroic, &cfg, &env(tmp.path())).is_empty());
+        assert!(list_installations_with(&data_paths, &cfg, &env(tmp.path())).is_empty());
     }
 }

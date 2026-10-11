@@ -27,7 +27,7 @@ pub struct TimestampEntry {
 // store/config.json  (Heroic core; only the parts Collection uses)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HeroicConfigFile {
+pub struct StoreConfigFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

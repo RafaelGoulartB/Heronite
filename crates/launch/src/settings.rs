@@ -2,7 +2,7 @@
 //! `defaultSettings`) overlaid with `GamesConfig/<appName>.json[<appName>]`,
 //! like `GameConfigV0.getSettings()`.
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::{Map, Value};
 
 use crate::probe::Probe;
@@ -170,7 +170,7 @@ impl GameSettings {
         };
         let mut wine_prefix = text(m.get("winePrefix"));
         if wine_prefix.is_empty() {
-            wine_prefix = format!("{home}/Games/Heroic/Prefixes/default");
+            wine_prefix = format!("{}/default", heronite_data::game_config::default_wine_prefix_dir(home));
         } else if wine_prefix.contains('~') {
             wine_prefix = wine_prefix.replacen('~', home, 1);
         }
@@ -237,8 +237,8 @@ pub struct GlobalSettings {
 
 impl GlobalSettings {
     /// A missing or unreadable file gives empty defaults.
-    pub fn load(paths: &HeroicPaths) -> Self {
-        let path = paths.root.join("config.json");
+    pub fn load(paths: &DataPaths) -> Self {
+        let path = paths.global_config();
         let value = heronite_data::json_store::read_value(&path).unwrap_or(Value::Null);
         let defaults = match value.get("defaultSettings") {
             Some(Value::Object(o)) => o.clone(),
@@ -275,7 +275,7 @@ impl GlobalSettings {
 /// Reads `GamesConfig/<appName>.json` (the section named after the game) and
 /// merges it over the global defaults.
 pub fn load_game_settings(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     app_name: &str,
     global: &GlobalSettings,
     probe: &dyn Probe,
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn game_section_overrides_global_defaults() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(paths.games_config_dir()).unwrap();
         std::fs::write(
             paths.root.join("config.json"),

@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::Result;
 use heronite_data::models::{LocalGameMeta, LocalMetaFile};
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use heronite_launch::emulators::EmulatorsFile;
 use heronite_launch::plan::pick_rom_path;
 use heronite_launch::probe::SystemProbe;
@@ -28,7 +28,7 @@ pub(super) struct Resolved {
     emulator_name: String,
 }
 
-pub(super) fn resolve(paths: &HeroicPaths, app_name: &str, rom_path: Option<&str>) -> Result<Option<Resolved>> {
+pub(super) fn resolve(paths: &DataPaths, app_name: &str, rom_path: Option<&str>) -> Result<Option<Resolved>> {
     let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let Some(meta) = metas.games.get(app_name).cloned() else {
         return Ok(None);
@@ -143,7 +143,7 @@ pub(super) fn rom_keys_for(r: &Resolved, env: &HostEnv) -> Vec<String> {
 /// `listEmulatorSaveStates`: the newest states of the game's ROM (at most
 /// [`MAX_STATES`]); thumbnails are loaded when `with_thumbnails`.
 pub fn list_emulator_save_states(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     env: &HostEnv,
     app_name: &str,
     rom_path: Option<&str>,
@@ -181,7 +181,7 @@ pub fn list_emulator_save_states(
 /// states for images whose ID cannot be read (CHD, CSO, GCZ...). Returns the
 /// learned key.
 pub fn remember_save_state_key(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     env: &HostEnv,
     app_name: &str,
     rom_path: Option<&str>,
@@ -232,8 +232,8 @@ mod tests {
     #[test]
     fn lists_states_end_to_end_for_pcsx2() {
         use crate::types::UpsertUserEmulatorArgs;
-        let heroic = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(heroic.path());
+        let data_dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(data_dir.path());
         let sandbox = tempfile::tempdir().unwrap();
         let home = sandbox.path().join("home");
         let env = HostEnv::sandbox(&home, sandbox.path().join("tmp"));
@@ -355,8 +355,8 @@ mod tests {
     #[test]
     fn learns_key_when_the_rom_is_unreadable() {
         use crate::types::UpsertUserEmulatorArgs;
-        let heroic = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(heroic.path());
+        let data_dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(data_dir.path());
         let sandbox = tempfile::tempdir().unwrap();
         let home = sandbox.path().join("home");
         let env = HostEnv::sandbox(&home, sandbox.path().join("tmp"));

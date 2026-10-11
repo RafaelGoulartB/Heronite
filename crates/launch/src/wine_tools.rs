@@ -210,7 +210,7 @@ fn winetricks(
     let script = winetricks_path(ctx);
     if !probe.exists(&script) {
         return Err(format!(
-            "winetricks was not found at {script}. Heroic downloads it the first time it is used"
+            "winetricks was not found at {script}. It is downloaded with the Wine tools updates"
         ));
     }
     let wine_dir = node_dirname(&wine_version.bin);
@@ -253,11 +253,11 @@ mod tests {
     use crate::probe::FakeProbe;
     use crate::settings::{GlobalSettings, WineVersion};
     use crate::emulators::EmulatorsFile;
-    use heronite_data::HeroicPaths;
+    use heronite_data::DataPaths;
 
     fn ctx() -> PlanContext {
         PlanContext {
-            paths: HeroicPaths::at("/cfg/heroic"),
+            paths: DataPaths::at("/cfg/heroic"),
             global: GlobalSettings::default(),
             emulators: EmulatorsFile::default(),
             ui_language: None,

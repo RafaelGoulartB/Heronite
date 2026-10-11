@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::json_store;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 
 /// Status as written in the file (`Supported`, `Running`, `Planned`,
 /// `Broken`, `Denied`) and the anti-cheat systems the game uses.
@@ -45,7 +45,7 @@ fn normalize(s: &str) -> String {
 
 /// Finds the game by Steam app id first, then by normalized title. A missing
 /// or unreadable file gives `None`.
-pub fn lookup(paths: &HeroicPaths, steam_app_id: Option<&str>, title: &str) -> Option<AntiCheatInfo> {
+pub fn lookup(paths: &DataPaths, steam_app_id: Option<&str>, title: &str) -> Option<AntiCheatInfo> {
     let entries: Vec<Entry> = json_store::read(&paths.anticheat()).ok()?;
     let steam_app_id = steam_app_id.map(str::trim).filter(|id| !id.is_empty());
     if let Some(id) = steam_app_id {
@@ -78,9 +78,9 @@ mod tests {
         {"name":"Mystery"}
     ]"#;
 
-    fn paths_with(content: Option<&str>) -> (tempfile::TempDir, HeroicPaths) {
+    fn paths_with(content: Option<&str>) -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         if let Some(c) = content {
             std::fs::write(paths.anticheat(), c).unwrap();
         }

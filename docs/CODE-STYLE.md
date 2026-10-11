@@ -26,9 +26,10 @@ look of the UI; `docs/ARCHITECTURE.md` the map of crates and modules.
 ## Comments
 Comments explain what the code cannot say by itself. Keep:
 - **Why:** reasons, constraints, trade-offs, and what breaks if this changes.
-- **Compatibility with Heroic/Heronite:** file formats, key names, and
-  behaviour we copy on purpose. Name the Heroic function when it helps
-  (`Heroic's getDefaultWinePrefix`).
+- **Origin in Heroic/Heronite:** file formats, key names, and behaviour we
+  copy on purpose. Name the Heroic function when it helps
+  (`Heroic's getDefaultWinePrefix`). The data is this app's own: never write
+  comments (or code) that assume Heroic shares or reads it.
 - **Invariants and safety:** `// SAFETY:`, lock and borrow rules, threads, and
   "no I/O in render".
 - **Units, ranges and special values** of fields and parameters when the type

@@ -1,6 +1,6 @@
-//! Writes against a tempdir copy of real Heroic data. Run with
+//! Writes against a tempdir copy of real data. Run with
 //! `HERONITE_FIXTURE=/tmp/heronite-fixture cargo test -p heronite-metadata`
-//! (skipped when unset). The real `~/.config/heroic` is never touched.
+//! (skipped when unset). The real data folder is never touched.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use heronite_data::json_store;
 use heronite_data::library::Library;
 use heronite_data::models::{ArtFile, MetadataFile};
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use heronite_metadata::*;
 use serde_json::Value;
 
@@ -27,7 +27,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 /// A private copy of the fixture, or `None` when `HERONITE_FIXTURE` is unset.
-fn copy_fixture() -> Option<(tempfile::TempDir, HeroicPaths)> {
+fn copy_fixture() -> Option<(tempfile::TempDir, DataPaths)> {
     let root = PathBuf::from(std::env::var_os("HERONITE_FIXTURE")?);
     let dir = tempfile::tempdir().unwrap();
     // Everything but the (large) image folders; art files are recreated by the tests.
@@ -47,11 +47,11 @@ fn copy_fixture() -> Option<(tempfile::TempDir, HeroicPaths)> {
             copy_dir(&entry.path(), &dir.path().join(&name));
         }
     }
-    let paths = HeroicPaths::at(dir.path());
+    let paths = DataPaths::at(dir.path());
     Some((dir, paths))
 }
 
-fn offline_service(paths: &HeroicPaths) -> MetadataService {
+fn offline_service(paths: &DataPaths) -> MetadataService {
     // Nothing listens on port 9: every request fails fast.
     let mut e = Endpoints::default();
     for url in [&mut e.twitch_token, &mut e.igdb, &mut e.steam_store, &mut e.steam_community, &mut e.lutris] {

@@ -4,7 +4,7 @@ use heronite_data::json_store;
 use heronite_data::models::{
     GameInfo, LocalGameMeta, LocalMetaFile, SideloadLibraryFile, StoreLibraryFile,
 };
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 #[derive(Debug, Clone)]
 pub struct LoadedGame {
@@ -14,7 +14,7 @@ pub struct LoadedGame {
 
 /// Looks `app_name` up in the Collection metadata, then in the library of the
 /// runner it names (sideload first when there is no metadata).
-pub fn load_game(paths: &HeroicPaths, app_name: &str) -> Option<LoadedGame> {
+pub fn load_game(paths: &DataPaths, app_name: &str) -> Option<LoadedGame> {
     let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap_or_default();
     let meta = metas.games.get(app_name).cloned();
     let runners: Vec<String> = match &meta {
@@ -34,7 +34,7 @@ pub fn load_game(paths: &HeroicPaths, app_name: &str) -> Option<LoadedGame> {
     None
 }
 
-pub fn find_in_library(paths: &HeroicPaths, runner: &str, app_name: &str) -> Option<GameInfo> {
+pub fn find_in_library(paths: &DataPaths, runner: &str, app_name: &str) -> Option<GameInfo> {
     match runner {
         "sideload" => {
             let lib: SideloadLibraryFile = json_store::read(&paths.sideload_library()).ok()?;

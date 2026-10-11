@@ -1,5 +1,5 @@
 //! Running the `legendary` CLI the way Heroic's `callRunner` does:
-//! `LEGENDARY_CONFIG_PATH` points at Heroic's own config folder, arguments are
+//! `LEGENDARY_CONFIG_PATH` points at the data folder's legendary config, arguments are
 //! passed as-is and output (stdout and stderr) is captured, or streamed line by
 //! line for long operations that can be cancelled.
 
@@ -8,14 +8,14 @@ use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
 use heronite_data::proc::Run;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::{legendary::find_legendary, PlanContext, SystemProbe};
 
 /// The legendary binary and the config folder it works on.
 #[derive(Debug, Clone)]
 pub struct Legendary {
     pub bin: PathBuf,
-    /// `<heroic>/legendaryConfig/legendary`.
+    /// `<data>/legendaryConfig/legendary`.
     pub config_dir: PathBuf,
 }
 
@@ -47,12 +47,12 @@ impl Output {
 pub use heronite_data::proc::Cancel;
 
 impl Legendary {
-    /// Finds the binary like Heronite does (`altLegendaryBin`, the bundled one,
+    /// Finds the binary (`altLegendaryBin`, `<data>/tools/bin/legendary`,
     /// `$PATH`; `HERONITE_LEGENDARY_BIN` overrides all).
-    pub fn locate(heroic: &HeroicPaths) -> Result<Self> {
-        let ctx = PlanContext::load(heroic);
+    pub fn locate(data_paths: &DataPaths) -> Result<Self> {
+        let ctx = PlanContext::load(data_paths);
         let bin = find_legendary(&ctx, &SystemProbe).ok_or_else(|| anyhow!("The legendary binary was not found"))?;
-        Ok(Self { bin: PathBuf::from(bin), config_dir: heroic.legendary_config_dir() })
+        Ok(Self { bin: PathBuf::from(bin), config_dir: data_paths.legendary_config_dir() })
     }
 
     pub fn with_bin(bin: impl Into<PathBuf>, config_dir: impl Into<PathBuf>) -> Self {

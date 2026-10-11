@@ -7,7 +7,7 @@
 //!   or solid, with the panel opacity, the blur and the solid tint.
 //!
 //! The on/off, blur, darkening... of the Collection background itself stay in
-//! Heronite's `local_library/settings.json` (`background`), shared by both apps.
+//! `local_library/settings.json` (`background`).
 //! Loading is lenient: anything missing or invalid gives the default, numbers
 //! are clamped.
 

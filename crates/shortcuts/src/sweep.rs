@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use heronite_data::temps;
-use heronite_data::{game_config, json_store, AppPaths, HeroicPaths};
+use heronite_data::{game_config, json_store, AppPaths, DataPaths};
 
 use crate::desktop::Roots;
 use crate::steam::clean_steam_path;
@@ -25,17 +25,17 @@ pub struct Targets {
 
 /// Call once at startup, on a background thread. Returns how many files were
 /// removed.
-pub fn sweep_stale_temps_at_startup(heroic: &HeroicPaths, app: &AppPaths) -> usize {
+pub fn sweep_stale_temps_at_startup(data_paths: &DataPaths, app: &AppPaths) -> usize {
     let roots = Roots::detect();
     let home = dirs::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
     let steam = std::env::var_os("HERONITE_STEAM_DIR").map(PathBuf::from).or_else(|| {
-        let g = game_config::load_global(heroic, &home);
+        let g = game_config::load_global(data_paths, &home);
         let raw = g.get("defaultSteamPath").and_then(|v| v.as_str()).unwrap_or_default().to_string();
         (!raw.is_empty()).then(|| clean_steam_path(&raw))
     });
     let mut shortcut_dirs = vec![roots.applications];
     shortcut_dirs.extend(roots.desktop);
-    let removed = json_store::sweep_stale_temps_for(heroic, app) + sweep(&Targets { json_dirs: vec![], shortcut_dirs, steam });
+    let removed = json_store::sweep_stale_temps_for(data_paths, app) + sweep(&Targets { json_dirs: vec![], shortcut_dirs, steam });
     if removed > 0 {
         log::info!("removed {removed} stale temp file(s) left by an interrupted run");
     }

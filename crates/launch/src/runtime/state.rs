@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use chrono::Utc;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use super::{LaunchEvent, LauncherConfig, PrepServices, Spawner, SystemInfoFn};
 use crate::first_launch::EpicSetup;
@@ -68,7 +68,7 @@ pub(super) struct Shared {
     pub(super) system_info: Mutex<Option<SystemInfoFn>>,
     pub(super) services: Mutex<PrepServices>,
     pub(super) epic: Mutex<Option<Arc<dyn EpicSetup>>>,
-    pub(super) paths: HeroicPaths,
+    pub(super) paths: DataPaths,
     pub(super) spawner: Arc<dyn Spawner>,
     pub(super) procs: Arc<dyn Procs>,
     pub(super) steam: SteamLocator,

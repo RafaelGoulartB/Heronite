@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context};
 use heronite_data::proc::Run;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use sha2::{Digest, Sha512};
 
 use crate::repos;
@@ -46,8 +46,8 @@ impl From<anyhow::Error> for InstallError {
 /// `tools/wine`, GPTK in `tools/game-porting-toolkit`, Proton in
 /// `tools/proton` or Steam's `compatibilitytools.d` when
 /// `downloadProtonToSteam` is on and the Steam path is valid.
-pub fn install_dir_for(heroic: &HeroicPaths, cfg: &WineConfig, info: &WineVersionInfo) -> PathBuf {
-    let tools = heroic.tools_dir();
+pub fn install_dir_for(data_paths: &DataPaths, cfg: &WineConfig, info: &WineVersionInfo) -> PathBuf {
+    let tools = data_paths.tools_dir();
     if info.kind.contains("Wine") {
         return tools.join("wine");
     }
@@ -60,7 +60,7 @@ pub fn install_dir_for(heroic: &HeroicPaths, cfg: &WineConfig, info: &WineVersio
             return steam.join("compatibilitytools.d");
         }
         log::warn!(
-            "Configured Steam path (\"{}\") does not appear to be valid, installing into Heroic tools path instead",
+            "Configured Steam path (\"{}\") does not appear to be valid, installing into the tools folder instead",
             cfg.default_steam_path
         );
     }
@@ -69,16 +69,16 @@ pub fn install_dir_for(heroic: &HeroicPaths, cfg: &WineConfig, info: &WineVersio
 
 /// Full install into `install_dir` and update of the release cache. Blocking.
 pub fn install_version(
-    heroic: &HeroicPaths,
+    data_paths: &DataPaths,
     cfg: &WineConfig,
     info: &WineVersionInfo,
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<WineVersionInfo, InstallError> {
-    let install_dir = install_dir_for(heroic, cfg, info);
+    let install_dir = install_dir_for(data_paths, cfg, info);
     let overwrite = info.has_update();
     let updated = install_into(info, &install_dir, overwrite, cancel, on_progress)?;
-    store::mark_installed(heroic, &updated).map_err(InstallError::from)?;
+    store::mark_installed(data_paths, &updated).map_err(InstallError::from)?;
     Ok(updated)
 }
 
@@ -317,22 +317,22 @@ pub fn folder_size(dir: &Path) -> u64 {
 
 /// Only folders directly inside Heroic's tools folders or a Steam
 /// `compatibilitytools.d` may be deleted by the manager.
-pub fn is_managed_dir(heroic: &HeroicPaths, path: &Path) -> bool {
+pub fn is_managed_dir(data_paths: &DataPaths, path: &Path) -> bool {
     let Some(parent) = path.parent() else { return false };
     if path.file_name().is_none() {
         return false;
     }
-    let tools = heroic.tools_dir();
+    let tools = data_paths.tools_dir();
     ["wine", "proton", "game-porting-toolkit"].iter().any(|d| parent == tools.join(d))
         || parent.file_name().is_some_and(|n| n == "compatibilitytools.d")
 }
 
 /// Deletes the build and marks it as not installed. Blocking.
-pub fn remove_version(heroic: &HeroicPaths, info: &WineVersionInfo) -> anyhow::Result<()> {
+pub fn remove_version(data_paths: &DataPaths, info: &WineVersionInfo) -> anyhow::Result<()> {
     if let Some(dir) = info.install_dir.as_deref().filter(|d| !d.is_empty()) {
         let path = Path::new(dir);
         if path.exists() {
-            if !is_managed_dir(heroic, path) {
+            if !is_managed_dir(data_paths, path) {
                 return Err(anyhow!("Refusing to delete {dir}: it is not inside a Wine/Proton tools folder"));
             }
             if let Err(e) = fs::remove_dir_all(path) {
@@ -340,7 +340,7 @@ pub fn remove_version(heroic: &HeroicPaths, info: &WineVersionInfo) -> anyhow::R
             }
         }
     }
-    store::mark_removed(heroic, &info.version)
+    store::mark_removed(data_paths, &info.version)
 }
 
 #[cfg(test)]
@@ -524,26 +524,26 @@ mod tests {
     #[test]
     fn install_dir_selection() {
         let tmp = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(tmp.path().join("h"));
+        let data_paths = DataPaths::at(tmp.path().join("h"));
         let steam = tmp.path().join("steam");
         fs::create_dir_all(&steam).unwrap();
         let mut cfg = WineConfig { default_steam_path: steam.to_string_lossy().into_owned(), ..Default::default() };
         let ge = WineVersionInfo { version: "GE-Proton9-1".into(), kind: "GE-Proton".into(), ..Default::default() };
         let lutris = WineVersionInfo { kind: "Wine-Lutris".into(), ..ge.clone() };
-        assert_eq!(install_dir_for(&heroic, &cfg, &ge), heroic.tools_dir().join("proton"));
-        assert_eq!(install_dir_for(&heroic, &cfg, &lutris), heroic.tools_dir().join("wine"));
+        assert_eq!(install_dir_for(&data_paths, &cfg, &ge), data_paths.tools_dir().join("proton"));
+        assert_eq!(install_dir_for(&data_paths, &cfg, &lutris), data_paths.tools_dir().join("wine"));
         cfg.download_proton_to_steam = true;
         // invalid steam path (no steam.sh) falls back to the tools folder
-        assert_eq!(install_dir_for(&heroic, &cfg, &ge), heroic.tools_dir().join("proton"));
+        assert_eq!(install_dir_for(&data_paths, &cfg, &ge), data_paths.tools_dir().join("proton"));
         fs::write(steam.join("steam.sh"), "").unwrap();
-        assert_eq!(install_dir_for(&heroic, &cfg, &ge), steam.join("compatibilitytools.d"));
+        assert_eq!(install_dir_for(&data_paths, &cfg, &ge), steam.join("compatibilitytools.d"));
     }
 
     #[test]
     fn remove_deletes_only_managed_dirs_and_updates_cache() {
         let tmp = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(tmp.path().join("h"));
-        let dir = heroic.tools_dir().join("proton/GE-Proton9-1");
+        let data_paths = DataPaths::at(tmp.path().join("h"));
+        let dir = data_paths.tools_dir().join("proton/GE-Proton9-1");
         fs::create_dir_all(dir.join("files")).unwrap();
         fs::write(dir.join("proton"), "x").unwrap();
         let info = WineVersionInfo {
@@ -554,18 +554,18 @@ mod tests {
             disksize: 5,
             ..Default::default()
         };
-        store::mark_installed(&heroic, &info).unwrap();
-        remove_version(&heroic, &info).unwrap();
+        store::mark_installed(&data_paths, &info).unwrap();
+        remove_version(&data_paths, &info).unwrap();
         assert!(!dir.exists());
-        assert!(!store::read_releases(&heroic)[0].installed());
+        assert!(!store::read_releases(&data_paths)[0].installed());
 
         let outside = tmp.path().join("precious");
         fs::create_dir_all(&outside).unwrap();
         let bad = WineVersionInfo { install_dir: Some(outside.to_string_lossy().into_owned()), ..info.clone() };
-        assert!(remove_version(&heroic, &bad).is_err());
+        assert!(remove_version(&data_paths, &bad).is_err());
         assert!(outside.exists());
-        assert!(!is_managed_dir(&heroic, Path::new("/")));
-        assert!(!is_managed_dir(&heroic, &heroic.tools_dir().join("proton")));
-        assert!(is_managed_dir(&heroic, Path::new("/home/u/.local/share/Steam/compatibilitytools.d/X")));
+        assert!(!is_managed_dir(&data_paths, Path::new("/")));
+        assert!(!is_managed_dir(&data_paths, &data_paths.tools_dir().join("proton")));
+        assert!(is_managed_dir(&data_paths, Path::new("/home/u/.local/share/Steam/compatibilitytools.d/X")));
     }
 }

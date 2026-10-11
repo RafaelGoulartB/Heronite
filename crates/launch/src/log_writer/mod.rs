@@ -1,8 +1,7 @@
 //! Heroic-compatible log files (`src/backend/logger/**` of Heroic).
 //!
-//! * Where: `$XDG_STATE_HOME/Heroic/logs` (`~/.local/state/Heroic/logs`), the
-//!   folder Heroic and Heronite write to, so both apps' viewers see the same
-//!   files. A game's log is `games/<appName>_<runner>/launch.log`; the
+//! * Where: `<data>/logs` (see [`LogPaths`]). A game's log is
+//!   `games/<appName>_<runner>/launch.log`; the
 //!   previous run is kept as `launch.log.old`.
 //! * How: [`GameLog`] mirrors Heroic's `LogWriter`. The first write of a run
 //!   renames the existing file to `.old` (overwriting an older one) and
@@ -31,4 +30,4 @@ pub use header::{
     command_line_for_log, launch_log_switches, merged_settings, settings_for_log, write_disabled_notice, write_launch_header, HeaderInfo,
 };
 pub use launcher_log::{prune_launcher_logs, LauncherLogger, KEEP_LAUNCHER_LOGS, MAX_LAUNCHER_LOG_BYTES};
-pub use paths::{heroic_default_base, old_path, LogPaths};
+pub use paths::{old_path, LogPaths};

@@ -1,8 +1,8 @@
 //! Settings → Appearance: two independent groups plus the covers.
 //!
 //! - Collection background (the selected game's art behind the Collection):
-//!   on/off, blur, darkening, colour intensity, edge shading live in Heronite's
-//!   `local_library/settings.json` (`background`, shared with Heronite); its
+//!   on/off, blur, darkening, colour intensity, edge shading live in
+//!   `local_library/settings.json` (`background`); its
 //!   Opacity lives in this app's `appearance.json` (`collectionOpacity`).
 //! - Interface background (menus, dialogs, pages, palette...): Transparent
 //!   (glass) or Solid, opacity, blur, solid tint; all in `appearance.json`
@@ -127,7 +127,7 @@ impl State {
             preview_chain,
             preview: None,
             preview_task: None,
-            opts: Opts::new(ctx.heroic.images_cache_dir(), Some(ctx.app.thumbs_dir())),
+            opts: Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir())),
             aspect_open: false,
         };
         this.preview_task = None;
@@ -196,7 +196,7 @@ fn save_background(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
         saturation: Some(a.saturation as f64),
         scrim: Some(a.scrim as f64),
     };
-    let res = settings::save_ui(&d.ctx.heroic, None, Some(&patch));
+    let res = settings::save_ui(&d.ctx.data_paths, None, Some(&patch));
     d.saved(res, cx);
 }
 
@@ -361,7 +361,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             d.appearance.aspect_open = false;
             let mut patch = d.settings.metadata.clone();
             patch.cover_aspect = ASPECTS[i].0.as_str().to_string();
-            let res = settings::save_metadata(&d.ctx.heroic, &patch);
+            let res = settings::save_metadata(&d.ctx.data_paths, &patch);
             d.saved(res, cx);
         },
     );
@@ -403,7 +403,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             .into_any_element(),
         toggle_row("grey-uninstalled", "Show uninstalled games in grey", None, grey)
             .on_click(cx.listener(move |d, _, _, cx| {
-                let res = settings::save_grey_uninstalled(&d.ctx.heroic, !grey);
+                let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);
                 d.saved(res, cx);
             }))
             .into_any_element(),
@@ -519,7 +519,7 @@ pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list:
                 save_background(d, cx);
             }
             "grey" => {
-                let res = settings::save_grey_uninstalled(&d.ctx.heroic, on);
+                let res = settings::save_grey_uninstalled(&d.ctx.data_paths, on);
                 d.saved(res, cx);
             }
             _ => {}
@@ -538,7 +538,7 @@ pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list:
             "aspect" => {
                 let mut patch = d.settings.metadata.clone();
                 patch.cover_aspect = ASPECTS[index].0.as_str().to_string();
-                let res = settings::save_metadata(&d.ctx.heroic, &patch);
+                let res = settings::save_metadata(&d.ctx.data_paths, &patch);
                 d.saved(res, cx);
             }
             _ => {}

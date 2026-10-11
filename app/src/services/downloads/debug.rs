@@ -19,7 +19,7 @@ impl Downloads {
     pub(super) fn debug_op(&mut self, op: &str, cx: &mut Context<Self>) {
         let parts: Vec<&str> = op.split(':').collect();
         let app = parts.get(1).copied().unwrap_or_default().to_string();
-        let install_path = library_entry(&self.heroic, &app)
+        let install_path = library_entry(&self.data_paths, &app)
             .and_then(|g| g.pointer("/install/install_path").and_then(Value::as_str).map(str::to_string))
             .unwrap_or_default();
         match parts.first().copied() {
@@ -30,7 +30,7 @@ impl Downloads {
             Some("sync") => self.sync_saves(&app, &app, cx),
             Some("install-dlc") => {
                 // `install-dlc:<dlcApp>:<base folder>`
-                if let Some(info) = library_entry(&self.heroic, &app) {
+                if let Some(info) = library_entry(&self.data_paths, &app) {
                     self.install_dlc(info, parts.get(2).copied().unwrap_or_default(), "Windows", Some("2 GiB".into()), cx);
                 }
             }
@@ -51,7 +51,7 @@ impl Downloads {
     /// `HERONITE_DEBUG_QUEUE_INSTALL=<appName>`: queues an install of that game
     /// into `$HERONITE_DEBUG_INSTALL_DIR` the way the install dialog would.
     pub(super) fn debug_queue_install(&mut self, app_name: &str, cx: &mut Context<Self>) {
-        let Some(game_info) = library_entry(&self.heroic, app_name) else {
+        let Some(game_info) = library_entry(&self.data_paths, app_name) else {
             log::warn!("debug install: {app_name} is not in the Epic library");
             return;
         };
@@ -76,7 +76,7 @@ impl Downloads {
     /// `HERONITE_DEBUG_FAKE_DOWNLOAD=<appName>`: a queue with a fake running
     /// install (no legendary), one waiting and one finished, for screenshots.
     pub(super) fn seed_fake(&mut self, app_name: &str) {
-        let games = json_store::read_value(&self.heroic.legendary_library()).unwrap_or(Value::Null);
+        let games = json_store::read_value(&self.data_paths.legendary_library()).unwrap_or(Value::Null);
         let list: Vec<Value> = games.get("library").and_then(Value::as_array).cloned().unwrap_or_default();
         let find = |app: &str| list.iter().find(|g| g.get("app_name").and_then(Value::as_str) == Some(app)).cloned();
         let mut chosen: Vec<Value> = Vec::new();

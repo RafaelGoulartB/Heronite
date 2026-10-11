@@ -6,7 +6,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use heronite_data::models::LocalMetaFile;
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use heronite_launch::emulators::UserEmulator;
 
 use crate::detect::DetectEnv;
@@ -70,7 +70,7 @@ pub fn emulator_health(env: &dyn DetectEnv, emulator: &UserEmulator) -> Health {
 }
 
 /// Games per emulator id (`local_library/library.json` metas).
-pub fn count_games_by_emulator(paths: &HeroicPaths) -> Result<HashMap<String, usize>> {
+pub fn count_games_by_emulator(paths: &DataPaths) -> Result<HashMap<String, usize>> {
     let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let mut counts: HashMap<String, usize> = HashMap::new();
     for meta in metas.games.values() {
@@ -92,7 +92,7 @@ pub struct EmulatorSummary {
 }
 
 /// Everything the manager page shows.
-pub fn overview(paths: &HeroicPaths, env: &dyn DetectEnv) -> Result<Vec<EmulatorSummary>> {
+pub fn overview(paths: &DataPaths, env: &dyn DetectEnv) -> Result<Vec<EmulatorSummary>> {
     let emulators = store::list_user_emulators(paths)?;
     let scanners = store::list_rom_scanners(paths)?;
     let counts = count_games_by_emulator(paths)?;
@@ -117,7 +117,7 @@ pub fn overview(paths: &HeroicPaths, env: &dyn DetectEnv) -> Result<Vec<Emulator
 
 /// Scanners that point at an emulator that no longer exists (left behind by
 /// hand edits; `remove_user_emulator` removes its own).
-pub fn orphan_scanners(paths: &HeroicPaths) -> Result<Vec<RomScanner>> {
+pub fn orphan_scanners(paths: &DataPaths) -> Result<Vec<RomScanner>> {
     let emulators = store::list_user_emulators(paths)?;
     Ok(store::list_rom_scanners(paths)?
         .into_iter()
@@ -131,7 +131,7 @@ pub fn scanners_using_profile(scanners: &[RomScanner], emulator_id: &str, profil
 }
 
 /// Modification stamps of the files the manager shows (cheap change check).
-pub fn data_stamp(paths: &HeroicPaths) -> Vec<Option<std::time::SystemTime>> {
+pub fn data_stamp(paths: &DataPaths) -> Vec<Option<std::time::SystemTime>> {
     [paths.emulators(), paths.rom_scanners(), paths.local_meta()]
         .iter()
         .map(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn overview_counts_games_and_groups_folders() {
         let h = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(h.path());
+        let paths = DataPaths::at(h.path());
         let a = store::upsert_user_emulator(
             &paths,
             UpsertUserEmulatorArgs {

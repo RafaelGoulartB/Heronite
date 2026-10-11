@@ -1,6 +1,6 @@
 //! The EOS Overlay through `legendary eos-overlay ...` (port of
 //! `legendary/eos_overlay/eos_overlay.ts`). The overlay is installed into
-//! `<heroic>/tools/eos_overlay`; on Linux it is enabled per Wine prefix.
+//! `<data>/tools/eos_overlay`; on Linux it is enabled per Wine prefix.
 //! legendary keeps its state in `overlay_install.json` and
 //! `overlay_version.json` of its config folder; they are only read here.
 
@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use heronite_data::game_config;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use regex::Regex;
 use serde_json::Value;
 
@@ -19,17 +19,17 @@ use crate::progress::ProgressParser;
 /// `eosOverlayAppName`: the id Heroic gives the overlay in its status maps.
 pub const APP_NAME: &str = "98bc04bc842e4906993fd6d6644ffb8d";
 
-fn installed_file(heroic: &HeroicPaths) -> PathBuf {
-    heroic.legendary_config_dir().join("overlay_install.json")
+fn installed_file(data_paths: &DataPaths) -> PathBuf {
+    data_paths.legendary_config_dir().join("overlay_install.json")
 }
 
-fn version_file(heroic: &HeroicPaths) -> PathBuf {
-    heroic.legendary_config_dir().join("overlay_version.json")
+fn version_file(data_paths: &DataPaths) -> PathBuf {
+    data_paths.legendary_config_dir().join("overlay_version.json")
 }
 
 /// Where the overlay is installed by default (`toolsPath/eos_overlay`).
-pub fn default_install_path(heroic: &HeroicPaths) -> PathBuf {
-    heroic.tools_dir().join("eos_overlay")
+pub fn default_install_path(data_paths: &DataPaths) -> PathBuf {
+    data_paths.tools_dir().join("eos_overlay")
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -40,15 +40,15 @@ pub struct Status {
 }
 
 /// `getStatus`.
-pub fn status(heroic: &HeroicPaths) -> Status {
-    let file = installed_file(heroic);
+pub fn status(data_paths: &DataPaths) -> Status {
+    let file = installed_file(data_paths);
     if !file.exists() {
         return Status::default();
     }
     let doc: Value = std::fs::read_to_string(&file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null);
     let text = |k: &str| doc.get(k).and_then(Value::as_str).map(str::to_string);
     let install_path = text("install_path");
-    if install_path.as_deref().is_some_and(|p| Path::new(p) != default_install_path(heroic)) {
+    if install_path.as_deref().is_some_and(|p| Path::new(p) != default_install_path(data_paths)) {
         log::warn!("EOS Overlay is not installed in default location, permission issues might arise");
     }
     Status { installed: true, version: text("version"), install_path }
@@ -56,8 +56,8 @@ pub fn status(heroic: &HeroicPaths) -> Status {
 
 /// `updateInfo`: `legendary status` refreshes `overlay_version.json` (it does
 /// nothing without the overlay installed).
-pub fn update_info(heroic: &HeroicPaths, legendary: &Legendary) {
-    if !status(heroic).installed {
+pub fn update_info(data_paths: &DataPaths, legendary: &Legendary) {
+    if !status(data_paths).installed {
         return;
     }
     if let Err(err) = legendary.run(&["status"], &[]) {
@@ -67,13 +67,13 @@ pub fn update_info(heroic: &HeroicPaths, legendary: &Legendary) {
 
 /// `getLatestVersion`: the build version from `overlay_version.json`
 /// (refreshing it first when the file does not exist). Empty when unknown.
-pub fn latest_version(heroic: &HeroicPaths, legendary: &Legendary) -> String {
-    let file = version_file(heroic);
+pub fn latest_version(data_paths: &DataPaths, legendary: &Legendary) -> String {
+    let file = version_file(data_paths);
     if !file.exists() {
-        if !status(heroic).installed {
+        if !status(data_paths).installed {
             return String::new();
         }
-        update_info(heroic, legendary);
+        update_info(data_paths, legendary);
         if !file.exists() {
             log::error!("EOS Overlay information not found after manual update. User is probably not logged in anymore");
             return String::new();
@@ -99,14 +99,14 @@ fn failed(out: &crate::cmd::Output) -> OpResult {
 /// stops at the question), then installs (or updates) with `-y` reporting the
 /// progress as a percentage.
 pub fn install(
-    heroic: &HeroicPaths,
+    data_paths: &DataPaths,
     legendary: &Legendary,
     cancel: &std::sync::Arc<Cancel>,
     on_percent: &dyn Fn(f32),
 ) -> OpResult {
     static SIZE: OnceLock<Regex> = OnceLock::new();
     let size_re = SIZE.get_or_init(|| Regex::new(r"Download size: ([\d.]+) MiB").expect("valid regex"));
-    let path = default_install_path(heroic).to_string_lossy().into_owned();
+    let path = default_install_path(data_paths).to_string_lossy().into_owned();
 
     let probe = Cancel::new();
     let mut download_size = 0.0f64;
@@ -199,11 +199,11 @@ pub enum PrefixFolder {
 }
 
 /// `getWinePrefixFolder`: `pfx` inside a Proton prefix, checked for `user.reg`.
-pub fn prefix_folder(heroic: &HeroicPaths, app_name: &str) -> PrefixFolder {
+pub fn prefix_folder(data_paths: &DataPaths, app_name: &str) -> PrefixFolder {
     if !cfg!(target_os = "linux") || app_name.is_empty() {
         return PrefixFolder::NotApplicable;
     }
-    let settings = game_config::load_game(heroic, app_name, &home());
+    let settings = game_config::load_game(data_paths, app_name, &home());
     let prefix = settings.get("winePrefix").and_then(Value::as_str).unwrap_or_default();
     let proton = settings.get("wineVersion").and_then(|w| w.get("type")).and_then(Value::as_str) == Some("proton");
     let folder = if proton { Path::new(prefix).join("pfx") } else { PathBuf::from(prefix) };
@@ -220,23 +220,23 @@ mod tests {
     use crate::cmd::testing::{calls, fake};
     use std::sync::Arc;
 
-    fn fixture() -> (tempfile::TempDir, HeroicPaths) {
+    fn fixture() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
-        std::fs::create_dir_all(heroic.legendary_config_dir()).unwrap();
-        (dir, heroic)
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
+        (dir, data_paths)
     }
 
     #[test]
     fn status_reads_the_install_file() {
-        let (_d, heroic) = fixture();
-        assert_eq!(status(&heroic), Status::default());
+        let (_d, data_paths) = fixture();
+        assert_eq!(status(&data_paths), Status::default());
         std::fs::write(
-            installed_file(&heroic),
+            installed_file(&data_paths),
             r#"{"version": "1.1.9", "install_path": "/x/eos_overlay", "managed": true}"#,
         )
         .unwrap();
-        let s = status(&heroic);
+        let s = status(&data_paths);
         assert!(s.installed);
         assert_eq!(s.version.as_deref(), Some("1.1.9"));
         assert_eq!(s.install_path.as_deref(), Some("/x/eos_overlay"));
@@ -244,23 +244,23 @@ mod tests {
 
     #[test]
     fn latest_version_comes_from_the_version_file() {
-        let (d, heroic) = fixture();
+        let (d, data_paths) = fixture();
         let lg = fake(d.path(), "true");
         // Not installed: nothing to ask.
-        assert_eq!(latest_version(&heroic, &lg), "");
+        assert_eq!(latest_version(&data_paths, &lg), "");
         assert!(calls(d.path()).is_empty());
-        std::fs::write(installed_file(&heroic), r#"{"version": "1"}"#).unwrap();
+        std::fs::write(installed_file(&data_paths), r#"{"version": "1"}"#).unwrap();
         // Installed but no version file: `legendary status` is asked (and a
         // missing file afterwards means unknown).
-        assert_eq!(latest_version(&heroic, &lg), "");
+        assert_eq!(latest_version(&data_paths, &lg), "");
         assert_eq!(calls(d.path()), ["status"]);
-        std::fs::write(version_file(&heroic), r#"{"data": {"buildVersion": "1.2.0"}}"#).unwrap();
-        assert_eq!(latest_version(&heroic, &lg), "1.2.0");
+        std::fs::write(version_file(&data_paths), r#"{"data": {"buildVersion": "1.2.0"}}"#).unwrap();
+        assert_eq!(latest_version(&data_paths, &lg), "1.2.0");
     }
 
     #[test]
     fn install_asks_the_size_first_then_installs_with_progress() {
-        let (d, heroic) = fixture();
+        let (d, data_paths) = fixture();
         let body = r#"
 if [ "$3" = "-y" ]; then
   printf '[DLManager] INFO: = Progress: 50.00%% (1/2), Running for 00:00:01, ETA: 00:00:01\n'
@@ -273,9 +273,9 @@ else
 fi"#;
         let lg = fake(d.path(), body);
         let seen = std::sync::Mutex::new(Vec::new());
-        let r = install(&heroic, &lg, &Cancel::new(), &|p| seen.lock().unwrap().push(p));
+        let r = install(&data_paths, &lg, &Cancel::new(), &|p| seen.lock().unwrap().push(p));
         assert!(r.ok, "{}", r.message);
-        let path = default_install_path(&heroic).to_string_lossy().into_owned();
+        let path = default_install_path(&data_paths).to_string_lossy().into_owned();
         assert_eq!(
             calls(d.path()),
             [format!("eos-overlay install --path {path}"), format!("eos-overlay install -y --path {path}")]
@@ -285,14 +285,14 @@ fi"#;
 
     #[test]
     fn install_can_be_cancelled_and_reports_errors() {
-        let (d, heroic) = fixture();
+        let (d, data_paths) = fixture();
         let lg = fake(d.path(), "echo 'Download size: 1.00 MiB'; echo '[cli] ERROR: boom' >&2; exit 1");
-        let r = install(&heroic, &lg, &Cancel::new(), &|_| {});
+        let r = install(&data_paths, &lg, &Cancel::new(), &|_| {});
         assert!(!r.ok && r.message.contains("boom"), "{}", r.message);
 
         let cancel: Arc<Cancel> = Cancel::new();
         cancel.request();
-        let r = install(&heroic, &lg, &cancel, &|_| {});
+        let r = install(&data_paths, &lg, &cancel, &|_| {});
         assert!(r.aborted);
     }
 
@@ -324,22 +324,22 @@ fi"#;
         if !cfg!(target_os = "linux") {
             return;
         }
-        let (d, heroic) = fixture();
+        let (d, data_paths) = fixture();
         let write = |settings: serde_json::Value| {
-            std::fs::create_dir_all(heroic.games_config_dir()).unwrap();
-            std::fs::write(heroic.game_config("g"), serde_json::json!({ "g": settings }).to_string()).unwrap();
+            std::fs::create_dir_all(data_paths.games_config_dir()).unwrap();
+            std::fs::write(data_paths.game_config("g"), serde_json::json!({ "g": settings }).to_string()).unwrap();
         };
         let prefix = d.path().join("pfx");
         write(serde_json::json!({"winePrefix": prefix.to_str().unwrap(), "wineVersion": {"type": "wine"}}));
-        assert_eq!(prefix_folder(&heroic, "g"), PrefixFolder::Invalid);
+        assert_eq!(prefix_folder(&data_paths, "g"), PrefixFolder::Invalid);
         std::fs::create_dir_all(&prefix).unwrap();
         std::fs::write(prefix.join("user.reg"), "").unwrap();
-        assert_eq!(prefix_folder(&heroic, "g"), PrefixFolder::Valid(prefix.to_string_lossy().into_owned()));
+        assert_eq!(prefix_folder(&data_paths, "g"), PrefixFolder::Valid(prefix.to_string_lossy().into_owned()));
         write(serde_json::json!({"winePrefix": prefix.to_str().unwrap(), "wineVersion": {"type": "proton"}}));
-        assert_eq!(prefix_folder(&heroic, "g"), PrefixFolder::Invalid);
+        assert_eq!(prefix_folder(&data_paths, "g"), PrefixFolder::Invalid);
         std::fs::create_dir_all(prefix.join("pfx")).unwrap();
         std::fs::write(prefix.join("pfx/user.reg"), "").unwrap();
-        assert_eq!(prefix_folder(&heroic, "g"), PrefixFolder::Valid(prefix.join("pfx").to_string_lossy().into_owned()));
-        assert_eq!(prefix_folder(&heroic, ""), PrefixFolder::NotApplicable);
+        assert_eq!(prefix_folder(&data_paths, "g"), PrefixFolder::Valid(prefix.join("pfx").to_string_lossy().into_owned()));
+        assert_eq!(prefix_folder(&data_paths, ""), PrefixFolder::NotApplicable);
     }
 }

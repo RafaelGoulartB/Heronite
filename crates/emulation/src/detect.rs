@@ -6,7 +6,7 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 use heronite_launch::probe::{Probe, SystemProbe};
 
@@ -259,7 +259,7 @@ pub fn list_core_paths(env: &dyn DetectEnv, install_dir: Option<&str>) -> Vec<St
 /// `addDetectedEmulators`: registers every detected emulator that is not
 /// yet known (and refreshes the core paths of known ones). Returns the full
 /// emulator list.
-pub fn add_detected_emulators(paths: &HeroicPaths, env: &dyn DetectEnv) -> Result<Vec<UserEmulator>> {
+pub fn add_detected_emulators(paths: &DataPaths, env: &dyn DetectEnv) -> Result<Vec<UserEmulator>> {
     let current = store::list_user_emulators(paths)?;
     let detected = detect_emulators(env, &current);
     heronite_data::json_store::update::<heronite_launch::emulators::EmulatorsFile, _>(
@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn add_detected_registers_new_and_refreshes_existing() {
         let d = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(d.path());
+        let paths = DataPaths::at(d.path());
         let mut env = Fake::default();
         env.bins.insert("pcsx2-qt".into(), "/usr/bin/pcsx2-qt".into());
         env.bins.insert("retroarch".into(), "/opt/ra/retroarch".into());

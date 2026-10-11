@@ -11,15 +11,15 @@ use std::sync::Arc;
 use common::{fixture, png, Req, Resp, Server};
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use heronite_metadata::*;
 use serde_json::{json, Value};
 
 /// Minimal Heroic config with one sideloaded Steam game, its overlay entry,
 /// IGDB credentials and an unrelated metadata record carrying a field this
 /// crate does not model.
-fn make_root(dir: &Path) -> HeroicPaths {
-    let paths = HeroicPaths::at(dir);
+fn make_root(dir: &Path) -> DataPaths {
+    let paths = DataPaths::at(dir);
     let w = |p: std::path::PathBuf, v: Value| {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         json_store::write(&p, &v).unwrap();

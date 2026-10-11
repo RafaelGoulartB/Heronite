@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Result};
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -83,8 +83,8 @@ impl InstallInfo {
 
 /// `getInstallInfo`: the cached info (6 hours) or `legendary info`, retried a
 /// few times when the manifest is missing.
-pub fn install_info(heroic: &HeroicPaths, legendary: &Legendary, app_name: &str, platform: &str) -> Result<InstallInfo> {
-    let cache = CacheStore::install_info(heroic);
+pub fn install_info(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, platform: &str) -> Result<InstallInfo> {
+    let cache = CacheStore::install_info(data_paths);
     if let Some(cached) = cache.get(app_name).filter(|c| c.get("manifest").is_some_and(|m| !m.is_null())) {
         log::debug!("Using cached install info for {app_name}");
         return Ok(InstallInfo(cached));
@@ -170,8 +170,8 @@ fn get_text(url: &str) -> Result<(String, bool)> {
 }
 
 /// `getGameOverride`: `game_overrides` of the legendary API, cached 7 days.
-pub fn game_override(heroic: &HeroicPaths) -> Result<Value> {
-    let cache = CacheStore::games_override(heroic);
+pub fn game_override(data_paths: &DataPaths) -> Result<Value> {
+    let cache = CacheStore::games_override(data_paths);
     if let Some(v) = cache.get("gamesOverride") {
         return Ok(v);
     }
@@ -186,8 +186,8 @@ pub fn game_override(heroic: &HeroicPaths) -> Result<Value> {
 
 /// SDL components of a game, when the API's `sdl_config` lists it. Failures
 /// give an empty list (the install then just uses the defaults).
-pub fn game_sdl(heroic: &HeroicPaths, app_name: &str) -> Vec<Sdl> {
-    let has_sdl = game_override(heroic)
+pub fn game_sdl(data_paths: &DataPaths, app_name: &str) -> Vec<Sdl> {
+    let has_sdl = game_override(data_paths)
         .ok()
         .and_then(|o| o.get("sdl_config").and_then(|c| c.get(app_name)).cloned())
         .is_some_and(|v| !v.is_null());
@@ -248,12 +248,12 @@ mod tests {
     #[test]
     fn info_is_fetched_once_and_cached() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
+        let data_paths = DataPaths::at(dir.path().join("h"));
         let body = format!("echo '{}'", sample());
         let lg = fake(dir.path(), &body);
-        let a = install_info(&heroic, &lg, "Calluna", "Windows").unwrap();
+        let a = install_info(&data_paths, &lg, "Calluna", "Windows").unwrap();
         assert_eq!(a.download_size(), 27783660544.);
-        let b = install_info(&heroic, &lg, "Calluna", "Windows").unwrap();
+        let b = install_info(&data_paths, &lg, "Calluna", "Windows").unwrap();
         assert_eq!(b.disk_size(), 45010292103.);
         assert_eq!(calls(dir.path()), ["info Calluna --json --platform Windows"]);
     }
@@ -261,9 +261,9 @@ mod tests {
     #[test]
     fn missing_manifest_is_an_error_after_retries() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
+        let data_paths = DataPaths::at(dir.path().join("h"));
         let lg = fake(dir.path(), "echo '{\"game\": {}}'; echo 'ERROR: not owned' >&2");
-        let err = install_info(&heroic, &lg, "x", "Windows").unwrap_err().to_string();
+        let err = install_info(&data_paths, &lg, "x", "Windows").unwrap_err().to_string();
         assert!(err.contains("not owned"), "{err}");
         assert_eq!(calls(dir.path()).len(), 3);
     }

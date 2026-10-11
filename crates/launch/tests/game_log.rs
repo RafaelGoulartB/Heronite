@@ -9,7 +9,7 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::Duration;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::procs::{Procs, SystemProcs};
 use heronite_launch::steam::SteamLocator;
@@ -19,14 +19,14 @@ use heronite_launch::{
 
 struct Rig {
     _dir: tempfile::TempDir,
-    paths: HeroicPaths,
+    paths: DataPaths,
     launcher: Launcher,
     rx: Receiver<LaunchEvent>,
 }
 
 fn rig(config_json: &str) -> Rig {
     let dir = tempfile::tempdir().unwrap();
-    let paths = HeroicPaths::at(dir.path().join("heroic"));
+    let paths = DataPaths::at(dir.path().join("heroic"));
     fs::create_dir_all(paths.games_config_dir()).unwrap();
     fs::write(paths.root.join("config.json"), config_json).unwrap();
     let steam = SteamLocator {

@@ -1,5 +1,5 @@
 //! Finding and reading log files for the log viewer: which logs exist (the
-//! launcher's, Heroic's, runners', every game's) and the last part of a file
+//! launcher's, runners', every game's) and the last part of a file
 //! without reading all of it (logs of a chatty game reach hundreds of MB).
 
 use std::fs::File;
@@ -7,7 +7,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use crate::log_writer::{old_path, GameLogType, LogPaths};
 
@@ -16,8 +16,6 @@ use crate::log_writer::{old_path, GameLogType, LogPaths};
 pub enum LogSource {
     /// This app (`heronite-rs-<date>.log`).
     Launcher,
-    /// `heroic.log`, written by Heroic / Heronite.
-    Heroic,
     /// `runners/<runner>.log`.
     Runner(String),
     /// `games/<appName>_<runner>/<type>.log`.
@@ -69,9 +67,9 @@ pub fn split_game_dir(name: &str) -> Option<(&str, &str)> {
     (!app.is_empty() && !runner.is_empty()).then_some((app, runner))
 }
 
-/// Every log that exists: launcher logs newest first, `heroic.log`, runners
+/// Every log that exists: launcher logs newest first, runners
 /// by name, then games (and legacy per-game logs) newest first.
-pub fn list_logs(paths: &LogPaths, heroic: &HeroicPaths) -> Vec<LogEntry> {
+pub fn list_logs(paths: &LogPaths, data_paths: &DataPaths) -> Vec<LogEntry> {
     let mut out = Vec::new();
 
     // Launcher: one file per day.
@@ -85,8 +83,6 @@ pub fn list_logs(paths: &LogPaths, heroic: &HeroicPaths) -> Vec<LogEntry> {
         .collect();
     launcher.sort_by(|a, b| b.path.cmp(&a.path));
     out.extend(launcher);
-
-    out.extend(entry(LogSource::Heroic, paths.heroic_log()));
 
     let mut runners: Vec<LogEntry> = read_dir_files(&paths.base.join("runners"))
         .into_iter()
@@ -117,7 +113,7 @@ pub fn list_logs(paths: &LogPaths, heroic: &HeroicPaths) -> Vec<LogEntry> {
             }
         }
     }
-    for file in read_dir_files(&heroic.games_config_dir()) {
+    for file in read_dir_files(&data_paths.games_config_dir()) {
         let fname = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let Some(app) = fname.strip_suffix("-lastPlay.log") else { continue };
         games.extend(entry(LogSource::Legacy { app_name: app.into() }, file));
@@ -128,8 +124,8 @@ pub fn list_logs(paths: &LogPaths, heroic: &HeroicPaths) -> Vec<LogEntry> {
 }
 
 /// The logs of one game (any runner, any type).
-pub fn game_logs(paths: &LogPaths, heroic: &HeroicPaths, app_name: &str) -> Vec<LogEntry> {
-    list_logs(paths, heroic).into_iter().filter(|e| e.app_name() == Some(app_name)).collect()
+pub fn game_logs(paths: &LogPaths, data_paths: &DataPaths, app_name: &str) -> Vec<LogEntry> {
+    list_logs(paths, data_paths).into_iter().filter(|e| e.app_name() == Some(app_name)).collect()
 }
 
 fn read_dir_files(dir: &Path) -> Vec<PathBuf> {
@@ -274,12 +270,11 @@ mod tests {
     #[test]
     fn lists_launcher_runner_game_and_legacy_logs() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("heroic"));
+        let data_paths = DataPaths::at(dir.path().join("data"));
         let paths = LogPaths { base: dir.path().join("logs"), launcher_dir: dir.path().join("launcher") };
         write(&paths.launcher_dir.join("heronite-rs-2026-10-07.log"), "old day");
         write(&paths.launcher_dir.join("heronite-rs-2026-10-08.log"), "today");
         write(&paths.launcher_dir.join("notes.txt"), "ignored");
-        write(&paths.heroic_log(), "heroic");
         write(&paths.runner("legendary"), "lg");
         write(&paths.game("playnite_ab-cd", "sideload", GameLogType::Launch), "launch");
         write(&old_path(&paths.game("playnite_ab-cd", "sideload", GameLogType::Launch)), "previous");
@@ -287,30 +282,29 @@ mod tests {
         // Only the rotated file is left.
         write(&old_path(&paths.game("Lonely", "gog", GameLogType::Launch)), "only old");
         write(&paths.base.join("games/weird/launch.log"), "no runner");
-        write(&heroic.games_config_dir().join("emu_1-lastPlay.log"), "legacy");
-        write(&heroic.games_config_dir().join("emu_1.json"), "{}");
+        write(&data_paths.games_config_dir().join("emu_1-lastPlay.log"), "legacy");
+        write(&data_paths.games_config_dir().join("emu_1.json"), "{}");
 
-        let all = list_logs(&paths, &heroic);
+        let all = list_logs(&paths, &data_paths);
         let kinds: Vec<String> = all
             .iter()
             .map(|e| match &e.source {
                 LogSource::Launcher => format!("launcher:{}", e.path.file_name().unwrap().to_string_lossy()),
-                LogSource::Heroic => "heroic".into(),
                 LogSource::Runner(r) => format!("runner:{r}"),
                 LogSource::Game { app_name, runner, ty } => format!("game:{app_name}:{runner}:{}", ty.file_stem()),
                 LogSource::Legacy { app_name } => format!("legacy:{app_name}"),
             })
             .collect();
-        assert_eq!(&kinds[..4], ["launcher:heronite-rs-2026-10-08.log", "launcher:heronite-rs-2026-10-07.log", "heroic", "runner:legendary"]);
+        assert_eq!(&kinds[..3], ["launcher:heronite-rs-2026-10-08.log", "launcher:heronite-rs-2026-10-07.log", "runner:legendary"]);
         for want in ["game:playnite_ab-cd:sideload:launch", "game:Calluna:legendary:install", "game:Lonely:gog:launch", "legacy:emu_1"] {
             assert!(kinds.iter().any(|k| k == want), "{want} in {kinds:?}");
         }
-        assert_eq!(kinds.len(), 8, "{kinds:?}");
+        assert_eq!(kinds.len(), 7, "{kinds:?}");
         let pl = all.iter().find(|e| e.app_name() == Some("playnite_ab-cd")).unwrap();
         assert!(pl.previous.is_some());
         let lonely = all.iter().find(|e| e.app_name() == Some("Lonely")).unwrap();
         assert!(lonely.path.to_string_lossy().ends_with(".old") && lonely.previous.is_none());
-        assert_eq!(game_logs(&paths, &heroic, "Calluna").len(), 1);
+        assert_eq!(game_logs(&paths, &data_paths, "Calluna").len(), 1);
         assert_eq!(split_game_dir("steam_1245620_sideload"), Some(("steam_1245620", "sideload")));
         assert_eq!(split_game_dir("nounderscore"), None);
     }

@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use super::listing::{collect_states, resolve, rom_keys_for};
 use crate::sysfiles::HostEnv;
@@ -88,7 +88,7 @@ impl PendingLaunchStates {
 /// without it, emulators that auto-load a state get "start fresh" arguments.
 /// Returns `false` when the state no longer exists.
 pub fn set_pending_launch_state(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     env: &HostEnv,
     pending: &PendingLaunchStates,
     app_name: &str,

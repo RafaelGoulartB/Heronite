@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::json_store;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 use crate::text::remove_special_characters;
 
 /// `HeroicHowLongToBeatEntry`, hours.
@@ -112,7 +112,7 @@ pub struct WikiCache {
 }
 
 impl WikiCache {
-    pub fn load(paths: &HeroicPaths) -> Self {
+    pub fn load(paths: &DataPaths) -> Self {
         let entries = match json_store::read_value(&paths.wiki_game_info()) {
             Ok(Value::Object(map)) => map,
             _ => Map::new(),
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn real_cache_loads() {
         let Some(root) = std::env::var_os("HERONITE_FIXTURE") else { return };
-        let c = WikiCache::load(&HeroicPaths::at(root));
+        let c = WikiCache::load(&DataPaths::at(root));
         eprintln!("wiki entries: {}", c.len());
         assert!(c.hltb("Control", "Control").is_some() || !c.is_empty());
     }

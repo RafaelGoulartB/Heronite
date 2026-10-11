@@ -1,13 +1,12 @@
 //! Keeping `known_fixes.json` up to date (port of `known_fixes/utils.ts`):
 //! Heroic compares the MD5 of the local file with `knownFixesSha` of its
 //! releases-info document and downloads the latest file from the
-//! `known-fixes` repository when they differ. The file is shared with
-//! Heroic/Heronite and has the same format.
+//! `known-fixes` repository when they differ. Same format as Heroic's file.
 
 use std::fs;
 use std::path::Path;
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::Value;
 
 use crate::net::{Cancel, Net};
@@ -65,19 +64,19 @@ pub fn file_md5(path: &Path) -> String {
 /// `downloadFileIfNeeded`: downloads the latest `known_fixes.json` unless
 /// the local file already has the published hash. `Ok(true)` when it was
 /// replaced.
-pub fn update_if_needed(paths: &HeroicPaths, net: &dyn Net, cancel: Cancel) -> Result<bool, String> {
+pub fn update_if_needed(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> Result<bool, String> {
     if !net.is_online() {
         return Ok(false);
     }
     let release = net.get_json(RELEASES_INFO_URL)?;
     let latest = release.get("knownFixesSha").and_then(Value::as_str).unwrap_or_default();
-    let target = paths.root.join("known_fixes.json");
+    let target = paths.known_fixes();
     if !latest.is_empty() && file_md5(&target) == latest {
         log::debug!("Known Fixes data did not change. Skipping.");
         return Ok(false);
     }
     log::debug!("Known Fixes data changed. Downloading latest file.");
-    let part = paths.root.join("known_fixes.json.part");
+    let part = target.with_extension("json.part");
     net.download(KNOWN_FIXES_URL, &part, cancel).map_err(|e| {
         let _ = fs::remove_file(&part);
         format!("Failed download of Known Fixes data: {e}")
@@ -113,9 +112,9 @@ mod tests {
         assert_eq!(md5_hex("b".repeat(56).as_bytes()).len(), 32);
     }
 
-    fn fixture() -> (tempfile::TempDir, HeroicPaths) {
+    fn fixture() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         fs::create_dir_all(&paths.root).unwrap();
         (dir, paths)
     }

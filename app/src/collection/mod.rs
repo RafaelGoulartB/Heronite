@@ -46,7 +46,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::hltb::WikiCache;
 use heronite_data::ui_state::UiState;
-use heronite_data::{AppPaths, FacetKind, HeroicPaths, Library};
+use heronite_data::{AppPaths, FacetKind, DataPaths, Library};
 use heronite_images::ImageRef;
 
 use crate::images::ImageStore;
@@ -59,7 +59,7 @@ use vm::{FocusVm, GroupVm, ListItem};
 pub struct CollectionView {
     started: Instant,
     first_frame_logged: bool,
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     app_paths: AppPaths,
     lib: Option<Arc<Library>>,
     wiki: Arc<WikiCache>,
@@ -136,15 +136,15 @@ impl CollectionView {
                 view.update(cx, |_, cx| cx.notify());
             }
         });
-        let heroic = HeroicPaths::detect();
-        let app_paths = AppPaths::for_heroic(&heroic);
-        let ui = load::load_ui_state(&heroic, &app_paths);
+        let data_paths = DataPaths::detect();
+        let app_paths = AppPaths::for_data(&data_paths);
+        let ui = UiState::load(&app_paths);
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
-        let (images, image_rx) = ImageStore::new(heroic.images_cache_dir(), &app_paths);
+        let (images, image_rx) = ImageStore::new(data_paths.images_cache_dir(), &app_paths);
         Self::spawn_image_pump(image_rx, cx);
 
-        let (runtime, events) = crate::system::attach_runtime(&heroic, cx);
+        let (runtime, events) = crate::system::attach_runtime(&data_paths, cx);
         Self::spawn_launch_events(events, cx);
 
         // Results of the post-game work (toasts, saved captures).
@@ -160,7 +160,7 @@ impl CollectionView {
         let mut this = Self {
             started,
             first_frame_logged: false,
-            heroic,
+            data_paths,
             app_paths,
             lib: None,
             wiki: Arc::new(WikiCache::default()),

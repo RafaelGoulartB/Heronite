@@ -5,7 +5,7 @@
 use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_images::{ImageRef, Variant};
 
 use super::DialogCtx;
@@ -18,7 +18,7 @@ pub struct DialogImages {
 
 impl DialogImages {
     pub fn new(ctx: &DialogCtx, cx: &mut Context<Self>) -> Self {
-        let (store, mut rx) = ImageStore::new(ctx.heroic.images_cache_dir(), &ctx.app);
+        let (store, mut rx) = ImageStore::new(ctx.data_paths.images_cache_dir(), &ctx.app);
         cx.spawn(async move |this, cx| {
             while let Some(first) = rx.next().await {
                 let mut batch = vec![first];
@@ -58,7 +58,7 @@ impl DialogImages {
 }
 
 /// Chain for a stored image URL (`http(s)`, `localart://`, `file:`, path).
-pub fn chain_for_url(heroic: &HeroicPaths, screenshots: Option<&std::path::Path>, url: &str) -> Vec<ImageRef> {
+pub fn chain_for_url(data_paths: &DataPaths, screenshots: Option<&std::path::Path>, url: &str) -> Vec<ImageRef> {
     if url.is_empty() {
         return Vec::new();
     }
@@ -66,7 +66,7 @@ pub fn chain_for_url(heroic: &HeroicPaths, screenshots: Option<&std::path::Path>
         return vec![ImageRef::Url(url.to_string())];
     }
     let path = if url.starts_with("localart:") {
-        heroic.resolve_localart(url, screenshots)
+        data_paths.resolve_localart(url, screenshots)
     } else if let Some(rest) = url.strip_prefix("file://") {
         Some(std::path::PathBuf::from(heronite_data::paths::percent_decode(rest)))
     } else if let Some(rest) = url.strip_prefix("file:") {

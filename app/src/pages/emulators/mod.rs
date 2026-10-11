@@ -87,7 +87,7 @@ impl EmulatorsPage {
         this.reload(cx);
         // The Collection refresh and the scan dialogs write the same files:
         // pick the changes up (a few stat calls every 2 seconds).
-        let paths = this.ctx.heroic.clone();
+        let paths = this.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
             let p = paths.clone();
@@ -102,7 +102,7 @@ impl EmulatorsPage {
     }
 
     fn reload(&self, cx: &mut Context<Self>) {
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let (res, stamp) = cx
                 .background_spawn(async move {

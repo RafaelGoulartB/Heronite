@@ -1,6 +1,6 @@
 //! What plan building reads (`PlanContext`) and per-launch inputs (`LaunchOptions`).
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::Value;
 
 use crate::emulators::EmulatorsFile;
@@ -9,22 +9,22 @@ use crate::settings::GlobalSettings;
 /// Everything read from disk that plan building needs.
 #[derive(Debug, Clone)]
 pub struct PlanContext {
-    pub paths: HeroicPaths,
+    pub paths: DataPaths,
     pub global: GlobalSettings,
     pub emulators: EmulatorsFile,
     /// `language` from `store/config.json` (legendary's `--language`).
     pub ui_language: Option<String>,
-    /// `<heroic>/known_fixes.json`, if downloaded.
+    /// `<data>/known_fixes.json`, if downloaded.
     pub known_fixes: Option<Value>,
     /// `store_cache/umu.json` (cached umu ids), if present.
     pub umu_ids: Option<Value>,
 }
 
 impl PlanContext {
-    pub fn load(paths: &HeroicPaths) -> Self {
+    pub fn load(paths: &DataPaths) -> Self {
         use heronite_data::json_store::read_value;
         let opt = |p: std::path::PathBuf| read_value(&p).ok().filter(|v| !v.is_null());
-        let config = opt(paths.config());
+        let config = opt(paths.store_config());
         Self {
             paths: paths.clone(),
             global: GlobalSettings::load(paths),
@@ -35,8 +35,8 @@ impl PlanContext {
                 .and_then(Value::as_str)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
-            known_fixes: opt(paths.root.join("known_fixes.json")),
-            umu_ids: opt(paths.root.join("store_cache/umu.json")),
+            known_fixes: opt(paths.known_fixes()),
+            umu_ids: opt(paths.store_cache("umu")),
         }
     }
 

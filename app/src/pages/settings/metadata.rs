@@ -26,8 +26,8 @@ pub struct State {
     open_select: Option<&'static str>,
 }
 
-// "playnite" stays in the saved priorities (Heronite reads them) but is not
-// offered: nothing feeds that source here.
+// "playnite" stays in the saved priorities (kept from Heronite's data) but is
+// not offered: nothing feeds that source here.
 const SOURCES: [(&str, &str); 5] = [
     ("auto", "Auto (IGDB first)"),
     ("igdb", "IGDB"),
@@ -63,7 +63,7 @@ fn persist(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, edit: impl FnOn
     let mut m = d.settings.metadata.clone();
     edit(&mut m);
     d.metadata.ok_message = None;
-    let res = settings::save_metadata(&d.ctx.heroic, &m);
+    let res = settings::save_metadata(&d.ctx.data_paths, &m);
     d.saved(res, cx);
 }
 

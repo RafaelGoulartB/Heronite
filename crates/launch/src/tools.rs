@@ -1,8 +1,8 @@
-//! The compatibility tools Heroic keeps in `<heroic>/tools`: DXVK, VKD3D-Proton,
+//! The compatibility tools in `<data>/tools`: DXVK, VKD3D-Proton,
 //! DXVK-NVAPI and winetricks (port of `installOrUpdateTool`, `DXVK.getLatest`
 //! and `Winetricks.download` in `backend/tools/index.ts`).
 //!
-//! Layout (the same one Heroic/Heronite write, shared by both apps):
+//! Layout (Heroic's):
 //! `tools/<tool>/<release>/...` plus `tools/<tool>/latest_<tool>` holding the
 //! name of the newest release folder.
 
@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use regex::Regex;
 use serde_json::Value;
 
@@ -112,23 +112,23 @@ pub fn detect_vulkan() -> Vulkan {
         .unwrap_or(Vulkan::Modern)
 }
 
-pub fn tool_dir(paths: &HeroicPaths, tool: Tool) -> PathBuf {
+pub fn tool_dir(paths: &DataPaths, tool: Tool) -> PathBuf {
     paths.tools_dir().join(tool.name())
 }
 
-fn latest_file(paths: &HeroicPaths, tool: Tool) -> PathBuf {
+fn latest_file(paths: &DataPaths, tool: Tool) -> PathBuf {
     tool_dir(paths, tool).join(format!("latest_{}", tool.name()))
 }
 
 /// Release folder the `latest_<tool>` file points to, when it exists.
-pub fn installed_version(paths: &HeroicPaths, tool: Tool) -> Option<String> {
+pub fn installed_version(paths: &DataPaths, tool: Tool) -> Option<String> {
     let text = fs::read_to_string(latest_file(paths, tool)).ok()?;
     let version = text.lines().next()?.trim().to_string();
     (is_safe_name(&version) && tool_dir(paths, tool).join(&version).is_dir()).then_some(version)
 }
 
 /// Folder of the newest installed release.
-pub fn installed_dir(paths: &HeroicPaths, tool: Tool) -> Option<PathBuf> {
+pub fn installed_dir(paths: &DataPaths, tool: Tool) -> Option<PathBuf> {
     installed_version(paths, tool).map(|v| tool_dir(paths, tool).join(v))
 }
 
@@ -152,7 +152,7 @@ fn release_name(asset: &str) -> String {
 /// that is renamed when complete, so an interruption never leaves a broken
 /// release behind.
 pub fn install_or_update(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     net: &dyn Net,
     tool: Tool,
     vulkan: Vulkan,
@@ -208,7 +208,7 @@ pub fn install_or_update(
 
 /// Makes sure some release of `tool` is installed (downloads when none is).
 pub fn ensure(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     net: &dyn Net,
     tool: Tool,
     vulkan: Vulkan,
@@ -239,7 +239,7 @@ const WINETRICKS_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
 
 /// `Winetricks.download`: refreshes `tools/winetricks` when it is missing or
 /// older than a week. Returns whether a download happened.
-pub fn download_winetricks(paths: &HeroicPaths, net: &dyn Net, cancel: Cancel) -> Result<bool, String> {
+pub fn download_winetricks(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> Result<bool, String> {
     use std::os::unix::fs::PermissionsExt;
     let target = paths.tools_dir().join("winetricks");
     let fresh = fs::metadata(&target)
@@ -267,7 +267,7 @@ pub fn download_winetricks(paths: &HeroicPaths, net: &dyn Net, cancel: Cancel) -
 
 /// What `DXVK.getLatest()` plus `Winetricks.download()` do at startup: update
 /// every tool, reporting each failure but never stopping at the first.
-pub fn update_all(paths: &HeroicPaths, net: &dyn Net, cancel: Cancel, report: &dyn Fn(&str)) {
+pub fn update_all(paths: &DataPaths, net: &dyn Net, cancel: Cancel, report: &dyn Fn(&str)) {
     if !net.is_online() {
         log::info!("offline, skipping the tools update");
         return;
@@ -295,7 +295,7 @@ const CHECK_INTERVAL: Duration = Duration::from_secs(12 * 3600);
 /// [`update_all`] at most twice a day (a stamp file in `tools/`), so frequent
 /// restarts do not hit GitHub's rate limit each time. Heroic checks on every
 /// start; the result is the same, only later.
-pub fn update_all_if_due(paths: &HeroicPaths, net: &dyn Net, cancel: Cancel, report: &dyn Fn(&str)) -> bool {
+pub fn update_all_if_due(paths: &DataPaths, net: &dyn Net, cancel: Cancel, report: &dyn Fn(&str)) -> bool {
     let stamp = paths.tools_dir().join(CHECK_STAMP);
     let due = fs::metadata(&stamp)
         .and_then(|m| m.modified())
@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn installs_a_release_in_heroics_layout() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let tar = tarball(dir.path(), Some("dxvk-9.9"), &[("x64/d3d11.dll", "64"), ("x32/d3d11.dll", "32")]);
         let net = FakeNet::online()
             .with_json(Tool::Dxvk.release_url(Vulkan::Modern), release("dxvk-9.9.tar.gz", "http://x/dxvk-9.9.tar.gz"))
@@ -389,7 +389,7 @@ mod tests {
     #[test]
     fn nvapi_archives_are_not_stripped() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let tar = tarball(dir.path(), None, &[("x64/nvapi64.dll", "n"), ("x32/nvapi.dll", "n")]);
         let net = FakeNet::online()
             .with_json(Tool::DxvkNvapi.release_url(Vulkan::Modern), release("dxvk-nvapi-v1.tar.gz", "http://x/n.tar.gz"))
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn a_failed_download_leaves_the_installed_release_alone() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let tools = paths.tools_dir().join("vkd3d");
         fs::create_dir_all(tools.join("vkd3d-proton-1")).unwrap();
         fs::write(tools.join("latest_vkd3d"), "vkd3d-proton-1\n").unwrap();
@@ -415,7 +415,7 @@ mod tests {
     #[test]
     fn ensure_downloads_only_when_missing_and_online() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let offline = FakeNet::offline();
         assert!(ensure(&paths, &offline, Tool::Dxvk, Vulkan::Modern, &|| false).unwrap_err().contains("internet"));
         assert!(offline.requests().is_empty());
@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn latest_pointing_to_a_missing_folder_counts_as_missing() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let tools = paths.tools_dir().join("dxvk");
         fs::create_dir_all(&tools).unwrap();
         fs::write(tools.join("latest_dxvk"), "../escape").unwrap();
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn the_startup_update_runs_at_most_twice_a_day() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         // Nothing is served: every tool fails, which is logged, never fatal.
         let net = FakeNet::online();
         assert!(update_all_if_due(&paths, &net, &|| false, &|_| {}));
@@ -463,7 +463,7 @@ mod tests {
     fn winetricks_is_refreshed_weekly() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let net = FakeNet::online().with_file(WINETRICKS_URL, b"#!/bin/sh\n".to_vec());
         assert!(download_winetricks(&paths, &net, &|| false).unwrap());
         let file = paths.tools_dir().join("winetricks");

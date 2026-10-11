@@ -19,7 +19,7 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::dialogs::art_images::{chain_for_url, picture};
-use crate::dialogs::heroic_settings::logic::{default_wine, display_wine_name, wine_of, wine_options};
+use crate::dialogs::settings_panel::logic::{default_wine, display_wine_name, wine_of, wine_options};
 use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
 use crate::theme;
@@ -204,7 +204,7 @@ impl AddGameDialog {
     }
 
     fn console_art(&self, url: &str, w: f32, h: f32, empty: &'static str, cx: &mut Context<Self>) -> Div {
-        let chain = chain_for_url(&self.ctx.heroic, None, url.trim());
+        let chain = chain_for_url(&self.ctx.data_paths, None, url.trim());
         let src = if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("cag:{url}"), chain, f32::from(u(w)), f32::from(u(h)))) };
         let none = src.is_none();
         div()

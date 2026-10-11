@@ -61,7 +61,7 @@ fn stamp_path(ctx: &PageCtx) -> std::path::PathBuf {
 
 impl WineManagerPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let manager = WineManager::new(ctx.heroic.clone());
+        let manager = WineManager::new(ctx.data_paths.clone());
         let search = fields::new_input(window, cx, "", "Search versions...");
         cx.subscribe_in(&search, window, |this, state, ev: &InputEvent, _window, cx| {
             if matches!(ev, InputEvent::Change) {
@@ -111,13 +111,13 @@ impl WineManagerPage {
 
     /// Reads the cache off the UI thread and decides whether to refresh.
     fn init(&mut self, fake_progress: bool, fake_confirm: bool, auto_install: Option<String>, cx: &mut Context<Self>) {
-        let heroic = self.ctx.heroic.clone();
+        let data_paths = self.ctx.data_paths.clone();
         let stamp = stamp_path(&self.ctx);
         cx.spawn(async move |this, cx| {
             let (releases, cfg, age) = cx
                 .background_spawn(async move {
-                    let releases = heronite_wine::store::read_releases(&heroic);
-                    let cfg = WineConfig::load(&heroic);
+                    let releases = heronite_wine::store::read_releases(&data_paths);
+                    let cfg = WineConfig::load(&data_paths);
                     let fetched = std::fs::read_to_string(&stamp).ok().and_then(|s| s.trim().parse::<u64>().ok());
                     (releases, cfg, fetched.map(|t| now_secs().saturating_sub(t)))
                 })
@@ -231,9 +231,9 @@ impl WineManagerPage {
     }
 
     fn reload(&mut self, cx: &mut Context<Self>) {
-        let heroic = self.ctx.heroic.clone();
+        let data_paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let releases = cx.background_spawn(async move { heronite_wine::store::read_releases(&heroic) }).await;
+            let releases = cx.background_spawn(async move { heronite_wine::store::read_releases(&data_paths) }).await;
             this.update(cx, |this, cx| {
                 this.releases = releases;
                 cx.notify();
@@ -259,10 +259,10 @@ impl WineManagerPage {
 
     fn set_download_to_steam(&mut self, value: bool, cx: &mut Context<Self>) {
         self.download_to_steam = value;
-        let heroic = self.ctx.heroic.clone();
+        let data_paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx
-                .background_spawn(async move { WineConfig::set_download_proton_to_steam(&heroic, value) })
+                .background_spawn(async move { WineConfig::set_download_proton_to_steam(&data_paths, value) })
                 .await;
             if let Err(e) = res {
                 this.update(cx, |this, cx| {

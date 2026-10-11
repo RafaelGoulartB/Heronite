@@ -8,13 +8,13 @@ use heronite_launch::shared_folders::{parse, KEY};
 use serde_json::Value;
 
 use super::parts::{column, heading, help, rows};
-use super::HeroicSettingsPanel;
+use super::SettingsPanel;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     pub(super) fn shared_folders_section(&mut self, cx: &mut Context<Self>) -> Div {
         let folders = parse(self.settings.get(KEY));
         let mut list = rows();

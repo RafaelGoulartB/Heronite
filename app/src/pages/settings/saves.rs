@@ -93,7 +93,7 @@ fn detect_with(preferred: String, window: &mut Window, cx: &mut Context<Settings
 }
 
 fn save(d: &mut SettingsPage, patch: LudusaviSettingsPatch, cx: &mut Context<SettingsPage>) {
-    let res = set_ludusavi_settings(&d.ctx.heroic, &patch);
+    let res = set_ludusavi_settings(&d.ctx.data_paths, &patch);
     d.saved(res, cx);
 }
 
@@ -272,7 +272,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .flex_col()
         .child(caption("Save backups (Ludusavi)"))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
-            "When enabled, Heroic Local backs up the game save with Ludusavi after you close a game. Right-click a Collection card to back up that game now.",
+            "When enabled, Heronite backs up the game save with Ludusavi after you close a game. Right-click a Collection card to back up that game now.",
         )))
         .child(enable)
         .child(div().mt(px(10.)).child(callout))

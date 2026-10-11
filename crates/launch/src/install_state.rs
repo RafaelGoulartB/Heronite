@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile};
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use serde_json::Value;
 
 use crate::plan::{emulator_executable, PlanContext};
@@ -175,7 +175,7 @@ fn launch_kind_for_local_exe(existing: &str) -> &'static str {
 /// of every sideloaded game with Collection metadata (a game uninstalled
 /// from Steam, a moved executable, a missing ROM...) and adds the Steam games
 /// installed since the last run. Blocking file I/O.
-pub fn refresh_local_install_states(paths: &HeroicPaths, probe: &dyn Probe) -> anyhow::Result<RefreshReport> {
+pub fn refresh_local_install_states(paths: &DataPaths, probe: &dyn Probe) -> anyhow::Result<RefreshReport> {
     let ctx = PlanContext::load(paths);
     let locator = SteamLocator::detect(&ctx.global, probe);
     let installed_steam = installed_app_ids(&locator);
@@ -277,10 +277,10 @@ mod tests {
     use super::*;
     use crate::probe::FakeProbe;
     use heronite_data::models::LocalGameRom;
-    use heronite_data::HeroicPaths;
+    use heronite_data::DataPaths;
 
     fn ctx() -> PlanContext {
-        let mut c = PlanContext::load(&HeroicPaths::at("/nonexistent-heroic-root"));
+        let mut c = PlanContext::load(&DataPaths::at("/nonexistent-heroic-root"));
         c.emulators.emulators.push(crate::emulators::UserEmulator {
             id: "e1".into(),
             definition_id: "custom".into(),
@@ -436,7 +436,7 @@ mod tests {
             "\"AppState\"\n{\n\t\"appid\"\t\t\"620\"\n\t\"name\"\t\t\"Portal 2\"\n\t\"StateFlags\"\t\t\"4\"\n}\n",
         )
         .unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         std::fs::create_dir_all(paths.sideload_library().parent().unwrap()).unwrap();
         std::fs::write(
             paths.sideload_library(),

@@ -16,7 +16,7 @@ use std::time::{Duration, SystemTime};
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_emulation::ludusavi::{
     backup_after_play, notification, AfterPlay, CommandRunner, LudusaviBackupResult, LudusaviEnv, SystemRunner,
 };
@@ -45,7 +45,7 @@ pub enum SessionEvent {
 }
 
 pub struct Session {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     runtime: Arc<GameRuntime>,
     capture: Option<CaptureService>,
     capture_cfg: Option<CaptureConfig>,
@@ -59,11 +59,11 @@ struct SessionGlobal(Entity<Session>);
 impl Global for SessionGlobal {}
 
 /// Creates the service (once). Called by the hub with the shared runtime.
-pub fn init(cx: &mut App, heroic: HeroicPaths, runtime: Arc<GameRuntime>) -> Entity<Session> {
+pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) -> Entity<Session> {
     if let Some(g) = cx.try_global::<SessionGlobal>() {
         return g.0.clone();
     }
-    let entity = cx.new(|_| Session { heroic, runtime, capture: None, capture_cfg: None, capture_games: HashMap::new() });
+    let entity = cx.new(|_| Session { data_paths, runtime, capture: None, capture_cfg: None, capture_games: HashMap::new() });
     cx.set_global(SessionGlobal(entity.clone()));
     entity
 }
@@ -143,9 +143,9 @@ impl Session {
         let Some(info) = self.runtime.session_info(app_name) else { return };
         let started_at = SystemTime::now();
         self.capture_games.insert(info.app_name.clone(), info.runner.clone());
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let settings = cx.background_spawn(async move { heronite_data::settings::load(&heroic) }).await;
+            let settings = cx.background_spawn(async move { heronite_data::settings::load(&data_paths) }).await;
             this.update(cx, |this, cx| {
                 // The game may have ended while the settings were read.
                 if !this.capture_games.contains_key(&info.app_name) {
@@ -183,7 +183,7 @@ impl Session {
     /// desktop notification (backup saved always; failures when no window).
     fn game_ended(&mut self, app_name: &str, elapsed: Duration, cx: &mut Context<Self>) {
         let Some(info) = self.runtime.take_session(app_name) else { return };
-        let paths = self.heroic.clone();
+        let paths = self.data_paths.clone();
         PENDING.fetch_add(1, Ordering::SeqCst);
         cx.spawn(async move |this, cx| {
             let notice = cx
@@ -222,7 +222,7 @@ pub struct Notice {
 
 /// Blocking: everything that follows a finished session.
 pub fn after_play(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     info: &SessionInfo,
     elapsed: Duration,
     runner: &dyn CommandRunner,
@@ -277,7 +277,7 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
-    use heronite_data::HeroicPaths;
+    use heronite_data::DataPaths;
     use heronite_emulation::ludusavi::{CommandOutput, CommandRunner};
     use heronite_launch::probe::FakeProbe;
 
@@ -316,9 +316,9 @@ mod tests {
         }
     }
 
-    fn data_dir(settings: &str) -> (tempfile::TempDir, HeroicPaths) {
+    fn data_dir(settings: &str) -> (tempfile::TempDir, DataPaths) {
         let d = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(d.path());
+        let paths = DataPaths::at(d.path());
         std::fs::create_dir_all(paths.local_library()).unwrap();
         std::fs::write(paths.collection_settings(), settings).unwrap();
         (d, paths)

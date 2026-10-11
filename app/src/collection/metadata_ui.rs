@@ -19,7 +19,7 @@ impl CollectionView {
     /// Creates the metadata hub (service, bulk job, idle fill) and wires its
     /// events. Called once from `CollectionView::new`.
     pub(super) fn init_metadata(&self, window: &mut Window, cx: &mut Context<Self>) {
-        let hub_entity = cx.new(|cx| MetadataHub::new(self.heroic.clone(), cx));
+        let hub_entity = cx.new(|cx| MetadataHub::new(self.data_paths.clone(), cx));
         cx.set_global(HubGlobal(hub_entity.clone()));
         cx.subscribe_in(&hub_entity, window, |this, _, ev: &HubEvent, window, cx| match ev {
             HubEvent::DataChanged => this.reload(cx),

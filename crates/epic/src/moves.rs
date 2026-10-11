@@ -14,7 +14,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use heronite_data::{json_store, proc, AppPaths, HeroicPaths};
+use heronite_data::{json_store, proc, AppPaths, DataPaths};
 use serde::{Deserialize, Serialize};
 
 use crate::cache_store::CacheStore;
@@ -71,8 +71,8 @@ impl Tools {
     }
 }
 
-pub fn journal_path(heroic: &HeroicPaths) -> PathBuf {
-    AppPaths::for_heroic(heroic).epic_move_journal()
+pub fn journal_path(data_paths: &DataPaths) -> PathBuf {
+    AppPaths::for_data(data_paths).epic_move_journal()
 }
 
 fn read_journal(file: &Path) -> Option<MoveJournal> {
@@ -99,8 +99,8 @@ fn clear_journal(file: &Path) {
 
 /// The interrupted move to finish, if any. A journal that makes no sense is
 /// deleted (it is never acted on).
-pub fn pending_move(heroic: &HeroicPaths) -> Option<MoveJournal> {
-    let file = journal_path(heroic);
+pub fn pending_move(data_paths: &DataPaths) -> Option<MoveJournal> {
+    let file = journal_path(data_paths);
     let journal = read_journal(&file)?;
     if let Err(why) = validate(&journal) {
         log::warn!("dropping an invalid move journal: {why}");
@@ -169,12 +169,12 @@ pub fn decide(j: &MoveJournal) -> Decision {
 
 /// `moveOnUnix` + `changeGameInstallPath`: moves the install folder into
 /// `new_parent` and tells legendary where it is now.
-pub fn move_install(heroic: &HeroicPaths, legendary: &Legendary, app_name: &str, install_path: &str, new_parent: &str) -> OpResult {
-    move_install_with(heroic, legendary, &Tools::detect(), app_name, install_path, new_parent)
+pub fn move_install(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, install_path: &str, new_parent: &str) -> OpResult {
+    move_install_with(data_paths, legendary, &Tools::detect(), app_name, install_path, new_parent)
 }
 
 pub fn move_install_with(
-    heroic: &HeroicPaths,
+    data_paths: &DataPaths,
     legendary: &Legendary,
     tools: &Tools,
     app_name: &str,
@@ -206,7 +206,7 @@ pub fn move_install_with(
 
     // A journal of the same move: this is a retry, finish it. Another pending
     // move has to finish first (unless it turns out to be a dead one).
-    let file = journal_path(heroic);
+    let file = journal_path(data_paths);
     let mut resuming = false;
     if let Some(old) = read_journal(&file) {
         if old.app_name == journal.app_name && old.source == journal.source && old.destination == journal.destination {
@@ -234,26 +234,26 @@ pub fn move_install_with(
     if let Err(err) = write_journal(&file, &journal) {
         return OpResult::err(format!("Could not write the move journal: {err:#}"));
     }
-    run_copy_and_record(heroic, legendary, tools, &journal, merge)
+    run_copy_and_record(data_paths, legendary, tools, &journal, merge)
 }
 
 /// The copy phase and what follows it.
-fn run_copy_and_record(heroic: &HeroicPaths, legendary: &Legendary, tools: &Tools, j: &MoveJournal, merge: bool) -> OpResult {
+fn run_copy_and_record(data_paths: &DataPaths, legendary: &Legendary, tools: &Tools, j: &MoveJournal, merge: bool) -> OpResult {
     let (source, destination) = (Path::new(&j.source), Path::new(&j.destination));
     if let Err(message) = move_dir(tools, source, destination, merge) {
         if !has_files(destination) {
             // Nothing moved: the failure left the game where it was.
             remove_empty_tree(destination);
-            clear_journal(&journal_path(heroic));
+            clear_journal(&journal_path(data_paths));
         }
         return OpResult::err(message);
     }
-    finish_move(heroic, legendary, j)
+    finish_move(data_paths, legendary, j)
 }
 
 /// Every file is in the new folder: drop the old one and record the path.
-fn finish_move(heroic: &HeroicPaths, legendary: &Legendary, j: &MoveJournal) -> OpResult {
-    let file = journal_path(heroic);
+fn finish_move(data_paths: &DataPaths, legendary: &Legendary, j: &MoveJournal) -> OpResult {
+    let file = journal_path(data_paths);
     let source = Path::new(&j.source);
     let recording = MoveJournal { phase: Phase::Recording, ..j.clone() };
     if let Err(err) = write_journal(&file, &recording) {
@@ -272,7 +272,7 @@ fn finish_move(heroic: &HeroicPaths, legendary: &Legendary, j: &MoveJournal) -> 
     match legendary.run(&args, &[]) {
         Err(err) => OpResult::err(format!("{err:#}")),
         Ok(out) if out.success() => {
-            let _ = library::write_library(heroic);
+            let _ = library::write_library(data_paths);
             clear_journal(&file);
             OpResult::ok(j.destination.clone())
         }
@@ -283,14 +283,14 @@ fn finish_move(heroic: &HeroicPaths, legendary: &Legendary, j: &MoveJournal) -> 
 /// Finishes the move an earlier run was interrupted in. `None`: no move was
 /// pending. Blocking; run it like the other Epic operations so legendary is
 /// not used at the same time by the download queue.
-pub fn resume_interrupted_move(heroic: &HeroicPaths, legendary: &Legendary) -> Option<OpResult> {
-    resume_interrupted_move_with(heroic, legendary, &Tools::detect())
+pub fn resume_interrupted_move(data_paths: &DataPaths, legendary: &Legendary) -> Option<OpResult> {
+    resume_interrupted_move_with(data_paths, legendary, &Tools::detect())
 }
 
-pub fn resume_interrupted_move_with(heroic: &HeroicPaths, legendary: &Legendary, tools: &Tools) -> Option<OpResult> {
-    let j = pending_move(heroic)?;
-    let file = journal_path(heroic);
-    let title = game_title(heroic, &j.app_name).unwrap_or_else(|| j.app_name.clone());
+pub fn resume_interrupted_move_with(data_paths: &DataPaths, legendary: &Legendary, tools: &Tools) -> Option<OpResult> {
+    let j = pending_move(data_paths)?;
+    let file = journal_path(data_paths);
+    let title = game_title(data_paths, &j.app_name).unwrap_or_else(|| j.app_name.clone());
     let decision = decide(&j);
     log::info!("resuming the interrupted move of {} ({:?}, {decision:?})", j.app_name, j.phase);
     let result = match decision {
@@ -306,14 +306,14 @@ pub fn resume_interrupted_move_with(heroic: &HeroicPaths, legendary: &Legendary,
                 j.source, j.destination
             )));
         }
-        Decision::FinishCopy => run_copy_and_record(heroic, legendary, tools, &j, true),
-        Decision::Record => finish_move(heroic, legendary, &j),
+        Decision::FinishCopy => run_copy_and_record(data_paths, legendary, tools, &j, true),
+        Decision::Record => finish_move(data_paths, legendary, &j),
     };
     Some(if result.ok { OpResult::ok(format!("Finished moving {title}")) } else { result })
 }
 
-fn game_title(heroic: &HeroicPaths, app_name: &str) -> Option<String> {
-    let library = CacheStore::library(heroic).get("library")?;
+fn game_title(data_paths: &DataPaths, app_name: &str) -> Option<String> {
+    let library = CacheStore::library(data_paths).get("library")?;
     library
         .as_array()?
         .iter()
@@ -362,7 +362,7 @@ mod tests {
 
     struct Fx {
         dir: tempfile::TempDir,
-        heroic: HeroicPaths,
+        data_paths: DataPaths,
         lg: Legendary,
         source: PathBuf,
         parent: PathBuf,
@@ -371,15 +371,15 @@ mod tests {
     impl Fx {
         fn new(legendary_body: &str) -> Self {
             let dir = tempfile::tempdir().unwrap();
-            let heroic = HeroicPaths::at(dir.path().join("h"));
-            fs::create_dir_all(heroic.legendary_config_dir()).unwrap();
+            let data_paths = DataPaths::at(dir.path().join("h"));
+            fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
             let lg = fake(dir.path(), legendary_body);
             let source = dir.path().join("old/Control");
             fs::create_dir_all(source.join("sub")).unwrap();
             fs::write(source.join("a.txt"), "a").unwrap();
             fs::write(source.join("sub/b.txt"), "b").unwrap();
             let parent = dir.path().join("new");
-            Self { dir, heroic, lg, source, parent }
+            Self { dir, data_paths, lg, source, parent }
         }
 
         fn dest(&self) -> PathBuf {
@@ -387,15 +387,15 @@ mod tests {
         }
 
         fn journal(&self) -> Option<MoveJournal> {
-            read_journal(&journal_path(&self.heroic))
+            read_journal(&journal_path(&self.data_paths))
         }
 
         fn mv(&self, tools: &Tools) -> OpResult {
-            move_install_with(&self.heroic, &self.lg, tools, "Calluna", self.source.to_str().unwrap(), self.parent.to_str().unwrap())
+            move_install_with(&self.data_paths, &self.lg, tools, "Calluna", self.source.to_str().unwrap(), self.parent.to_str().unwrap())
         }
 
         fn resume(&self, tools: &Tools) -> Option<OpResult> {
-            resume_interrupted_move_with(&self.heroic, &self.lg, tools)
+            resume_interrupted_move_with(&self.data_paths, &self.lg, tools)
         }
 
         fn legendary_moves(&self) -> usize {
@@ -440,7 +440,7 @@ mod tests {
     fn the_journal_is_written_before_the_first_file_moves_and_names_the_phase() {
         // The fake rsync reads the journal while it runs.
         let fx = Fx::new("true");
-        let journal = journal_path(&fx.heroic);
+        let journal = journal_path(&fx.data_paths);
         let tools = fx.fake_rsync(
             "rsync-peek",
             &format!("cp \"{}\" \"{}\"; exit 20", journal.display(), fx.dir.path().join("peek.json").display()),
@@ -453,8 +453,8 @@ mod tests {
         assert_eq!(peek.source, fx.source.to_string_lossy());
         assert_eq!(peek.destination, fx.dest().to_string_lossy());
         assert_eq!(peek.new_parent, fx.parent.to_string_lossy());
-        // The journal lives outside the Heroic folder.
-        assert!(!journal.starts_with(&fx.heroic.root));
+        // The journal lives outside the data folder.
+        assert!(!journal.starts_with(&fx.data_paths.root));
     }
 
     #[test]
@@ -540,7 +540,7 @@ mod tests {
             new_parent: fx.parent.to_string_lossy().into(),
             phase: Phase::Copying,
         };
-        write_journal(&journal_path(&fx.heroic), &j).unwrap();
+        write_journal(&journal_path(&fx.data_paths), &j).unwrap();
         assert_eq!(decide(&j), Decision::NeverStarted);
         let r = fx.resume(&fx.complete_rsync()).unwrap();
         assert!(r.ok && r.message.contains("never started"), "{}", r.message);
@@ -560,7 +560,7 @@ mod tests {
             new_parent: fx.dir.path().join("also-gone").to_string_lossy().into(),
             phase: Phase::Copying,
         };
-        write_journal(&journal_path(&fx.heroic), &j).unwrap();
+        write_journal(&journal_path(&fx.data_paths), &j).unwrap();
         let r = fx.resume(&NO_RSYNC).unwrap();
         assert!(!r.ok && r.message.contains("neither"), "{}", r.message);
         assert!(fx.journal().is_none());
@@ -583,13 +583,13 @@ mod tests {
                 new_parent: parent.into(),
                 phase: Phase::Recording,
             };
-            write_journal(&journal_path(&fx.heroic), &j).unwrap();
+            write_journal(&journal_path(&fx.data_paths), &j).unwrap();
             assert!(fx.resume(&NO_RSYNC).is_none(), "{source}");
             assert!(fx.journal().is_none());
         }
         assert!(fx.source.join("a.txt").exists());
         // Garbage in the file is ignored too.
-        fs::write(journal_path(&fx.heroic), "{not json").unwrap();
+        fs::write(journal_path(&fx.data_paths), "{not json").unwrap();
         assert!(fx.resume(&NO_RSYNC).is_none());
     }
 
@@ -600,14 +600,14 @@ mod tests {
         let other = fx.dir.path().join("other/Hades");
         fs::create_dir_all(&other).unwrap();
         fs::write(other.join("f"), "x").unwrap();
-        let r = move_install_with(&fx.heroic, &fx.lg, &NO_RSYNC, "Other", other.to_str().unwrap(), fx.dir.path().join("n2").to_str().unwrap());
+        let r = move_install_with(&fx.data_paths, &fx.lg, &NO_RSYNC, "Other", other.to_str().unwrap(), fx.dir.path().join("n2").to_str().unwrap());
         assert!(!r.ok && r.message.contains("Calluna"), "{}", r.message);
         assert!(other.join("f").exists());
 
         // Once the first move is gone for good, its journal no longer blocks.
         fs::remove_dir_all(&fx.source).unwrap();
         fs::remove_dir_all(fx.dest()).unwrap();
-        let r = move_install_with(&fx.heroic, &fx.lg, &NO_RSYNC, "Other", other.to_str().unwrap(), fx.dir.path().join("n2").to_str().unwrap());
+        let r = move_install_with(&fx.data_paths, &fx.lg, &NO_RSYNC, "Other", other.to_str().unwrap(), fx.dir.path().join("n2").to_str().unwrap());
         assert!(r.ok, "{}", r.message);
     }
 
@@ -647,8 +647,8 @@ mod tests {
 
     #[test]
     fn app_paths_of_a_fixture_never_point_at_the_real_config() {
-        let heroic = HeroicPaths::at("/tmp/heronite-fixture-x");
-        let app = AppPaths::for_heroic(&heroic);
-        assert_eq!(app.epic_move_journal(), PathBuf::from("/tmp/heronite-fixture-x.heronite-rs/config/epic-move.json"));
+        let data_paths = DataPaths::at("/tmp/heronite-fixture-x");
+        let app = AppPaths::for_data(&data_paths);
+        assert_eq!(app.epic_move_journal(), PathBuf::from("/tmp/heronite-fixture-x.heronite/config/epic-move.json"));
     }
 }

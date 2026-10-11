@@ -4,7 +4,7 @@ use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, LocalMetaFile};
 use heronite_data::num::JsNum;
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 
 use crate::store::{as_runner, current_or_blank, upsert_game_metadata};
 use crate::types::{DetailsPatch, DetailsResult};
@@ -27,7 +27,7 @@ fn set_manual_array(target: &mut CollectionGameMetadata, field: &str, slot: fn(&
 /// the fields present in the patch change; edited fields get the `manual`
 /// source so later fetches keep them. `title`/`notes` are also mirrored into
 /// the overlay's `LocalGameMeta` when the game has one.
-pub fn update_collection_game_details(paths: &HeroicPaths, patch: &DetailsPatch) -> Result<DetailsResult> {
+pub fn update_collection_game_details(paths: &DataPaths, patch: &DetailsPatch) -> Result<DetailsResult> {
     let runner = as_runner(&patch.runner).to_owned();
     let mut next = current_or_blank(paths, &runner, &patch.app_name)?;
     next.app_name = patch.app_name.clone();
@@ -83,7 +83,7 @@ pub fn update_collection_game_details(paths: &HeroicPaths, patch: &DetailsPatch)
 }
 
 /// `syncLocalGameMeta`.
-fn sync_local_game_meta(paths: &HeroicPaths, patch: &DetailsPatch) -> Result<Option<heronite_data::models::LocalGameMeta>> {
+fn sync_local_game_meta(paths: &DataPaths, patch: &DetailsPatch) -> Result<Option<heronite_data::models::LocalGameMeta>> {
     let current: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let Some(existing) = current.games.get(&patch.app_name) else { return Ok(None) };
     if patch.title.is_none() && patch.notes.is_none() {
@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn patch_semantics_and_manual_sources() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(paths.local_library()).unwrap();
         std::fs::write(
             paths.local_meta(),
@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn games_without_overlay_meta_only_get_metadata() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         let r = update_collection_game_details(&paths, &patch(|p| p.notes = Some("hello".into()))).unwrap();
         assert_eq!(r.metadata.notes.as_deref(), Some("hello"));
         assert!(r.meta.is_none());

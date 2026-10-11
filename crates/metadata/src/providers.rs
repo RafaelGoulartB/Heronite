@@ -8,7 +8,7 @@ use std::time::SystemTime;
 
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, GameInfo, LocalMetaFile};
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use parking_lot::Mutex;
 use serde_json::Value;
 
@@ -87,7 +87,7 @@ impl StoreLibraries {
     }
 
     /// The Heroic `GameInfo` of `app_name` in the store of `runner`.
-    pub fn find(&self, paths: &HeroicPaths, runner: &str, app_name: &str) -> Option<GameInfo> {
+    pub fn find(&self, paths: &DataPaths, runner: &str, app_name: &str) -> Option<GameInfo> {
         let (file, key) = match runner {
             "legendary" => (paths.legendary_library(), "library"),
             "gog" => (paths.gog_library(), "games"),
@@ -169,7 +169,7 @@ pub fn metadata_from_playnite_game(
 /// `fetchPlayniteMetadata`: the game's `playniteId` comes from the overlay
 /// (`local_library/library.json`), the data from the Playnite dump.
 pub fn fetch_playnite_metadata(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     source: Option<&dyn PlayniteSource>,
     app_name: &str,
     runner: &str,
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn playnite_candidate_needs_overlay_playnite_id() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(paths.local_library()).unwrap();
         std::fs::write(
             paths.local_meta(),

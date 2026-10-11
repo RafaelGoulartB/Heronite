@@ -27,7 +27,7 @@ use crate::collection::{game_facets, GameFacets};
 use crate::focus::Details;
 use crate::json_store;
 use crate::models::*;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 use crate::settings::EffectiveSettings;
 use crate::status::{resolve_status_id, sorted_or_default};
 use crate::text::DateLocale;
@@ -300,7 +300,7 @@ struct RawStore {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FileStamp(Vec<Option<(SystemTime, u64)>>);
 
-fn stamp_files(paths: &HeroicPaths) -> Vec<PathBuf> {
+fn stamp_files(paths: &DataPaths) -> Vec<PathBuf> {
     vec![
         paths.sideload_library(),
         paths.legendary_library(),
@@ -317,7 +317,7 @@ fn stamp_files(paths: &HeroicPaths) -> Vec<PathBuf> {
         paths.collection_settings(),
         paths.sessions(),
         paths.timestamps(),
-        paths.config(),
+        paths.store_config(),
     ]
 }
 
@@ -332,7 +332,7 @@ fn take_stamp(files: &[PathBuf]) -> FileStamp {
 
 /// The loaded Collection.
 pub struct Library {
-    pub paths: HeroicPaths,
+    pub paths: DataPaths,
     /// In screen order (sideload, Epic, GOG, Amazon, Zoom), not sorted.
     pub games: Vec<Arc<CollectionGame>>,
     /// Display order (`sortOrder`, then name).
@@ -389,14 +389,14 @@ fn arcs<T>(map: indexmap::IndexMap<String, T>) -> HashMap<String, Arc<T>> {
 
 impl Library {
     /// Reads every store and builds the Collection list (hidden games left out).
-    pub fn load(paths: &HeroicPaths) -> Result<Library> {
+    pub fn load(paths: &DataPaths) -> Result<Library> {
         Self::load_with(paths, false)
     }
 
     /// Like [`Library::load`]; with `include_hidden` the games hidden in
     /// Heroic stay in the list, flagged [`CollectionGame::hidden`] ("Show
     /// hidden games").
-    pub fn load_with(paths: &HeroicPaths, include_hidden: bool) -> Result<Library> {
+    pub fn load_with(paths: &DataPaths, include_hidden: bool) -> Result<Library> {
         let files = stamp_files(paths);
         let stamp = take_stamp(&files);
 
@@ -408,7 +408,7 @@ impl Library {
             let sessions_file = scope.spawn(|| json_store::read::<SessionsFile>(&paths.sessions()));
             let local_meta = scope.spawn(|| json_store::read::<LocalMetaFile>(&paths.local_meta()));
             let rest = (|| -> Result<_> {
-                let config: HeroicConfigFile = json_store::read(&paths.config())?;
+                let config: StoreConfigFile = json_store::read(&paths.store_config())?;
                 let sideload: RawStore = json_store::read(&paths.sideload_library())?;
                 let nile: RawStore = json_store::read(&paths.nile_library())?;
                 let gog: RawStore = json_store::read(&paths.gog_library())?;
@@ -631,8 +631,8 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    fn fixture() -> Option<HeroicPaths> {
-        std::env::var_os("HERONITE_FIXTURE").map(HeroicPaths::at)
+    fn fixture() -> Option<DataPaths> {
+        std::env::var_os("HERONITE_FIXTURE").map(DataPaths::at)
     }
 
     fn copy_tree(from: &Path, to: &Path) {
@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn empty_directory_loads_an_empty_library() {
         let dir = tempfile::tempdir().unwrap();
-        let lib = Library::load(&HeroicPaths::at(dir.path())).unwrap();
+        let lib = Library::load(&DataPaths::at(dir.path())).unwrap();
         assert!(lib.games.is_empty());
         assert_eq!(lib.statuses.len(), 9);
         assert!(!lib.changed_on_disk());
@@ -664,7 +664,7 @@ mod tests {
     #[test]
     fn small_library_rules() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         let w = |p: PathBuf, s: &str| {
             fs::create_dir_all(p.parent().unwrap()).unwrap();
             fs::write(p, s).unwrap();
@@ -689,7 +689,7 @@ mod tests {
             r#"{"games":[{"runner":"gog","app_name":"g","title":"G","install":{}}],"__timestamp":{"games":"x"}}"#,
         );
         w(paths.gog_installed(), r#"{"installed":[{"appName":"g","install_path":"/games/g","platform":"linux"}]}"#);
-        w(paths.config(), r#"{"games":{"hidden":[{"appName":"h","title":"Hidden"}],"favourites":[{"appName":"a","title":"A"}]}}"#);
+        w(paths.store_config(), r#"{"games":{"hidden":[{"appName":"h","title":"Hidden"}],"favourites":[{"appName":"a","title":"A"}]}}"#);
         w(paths.game_overrides(), r#"{"overrides":{"a":{"title":"Custom A"}}}"#);
         let lib = Library::load(&paths).unwrap();
         let keys: Vec<_> = lib.games.iter().map(|g| g.key.as_str()).collect();
@@ -709,24 +709,24 @@ mod tests {
         let keys: Vec<_> = with_hidden.games.iter().map(|g| (g.key.as_str(), g.hidden)).collect();
         assert_eq!(keys, [("sideload_a", false), ("sideload_h", true), ("legendary_a", false), ("gog_g", false)]);
         assert!(!lib.changed_on_disk());
-        w(paths.config(), r#"{"games":{"hidden":[]}}"#);
+        w(paths.store_config(), r#"{"games":{"hidden":[]}}"#);
         assert!(lib.changed_on_disk());
     }
 
     #[test]
     fn zoom_needs_the_experimental_flag() {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
-        fs::create_dir_all(paths.config().parent().unwrap()).unwrap();
+        let paths = DataPaths::at(dir.path());
+        fs::create_dir_all(paths.store_config().parent().unwrap()).unwrap();
         fs::create_dir_all(paths.zoom_library().parent().unwrap()).unwrap();
         fs::write(
             paths.zoom_library(),
             r#"{"games":[{"runner":"zoom","app_name":"z","title":"Z","install":{}}],"__timestamp":{"games":"x"}}"#,
         )
         .unwrap();
-        fs::write(paths.config(), r#"{"settings":{}}"#).unwrap();
+        fs::write(paths.store_config(), r#"{"settings":{}}"#).unwrap();
         assert!(Library::load(&paths).unwrap().games.is_empty());
-        fs::write(paths.config(), r#"{"settings":{"experimentalFeatures":{"zoomPlatform":true}}}"#).unwrap();
+        fs::write(paths.store_config(), r#"{"settings":{"experimentalFeatures":{"zoomPlatform":true}}}"#).unwrap();
         let lib = Library::load(&paths).unwrap();
         assert_eq!(lib.games.len(), 1);
         assert_eq!(lib.games[0].metadata_key(), "sideload:z");
@@ -749,7 +749,7 @@ mod tests {
         // Expected by hand from the files: sideload + non-DLC Epic, minus hidden.
         let sideload: SideloadLibraryFile = json_store::read(&paths.sideload_library()).unwrap();
         let epic: StoreLibraryFile = json_store::read(&paths.legendary_library()).unwrap();
-        let cfg: HeroicConfigFile = json_store::read(&paths.config()).unwrap();
+        let cfg: StoreConfigFile = json_store::read(&paths.store_config()).unwrap();
         let hidden: HashSet<_> = cfg.games.unwrap().hidden.into_iter().map(|g| g.app_name).collect();
         let expected = sideload
             .games
@@ -790,7 +790,7 @@ mod tests {
         let Some(paths) = fixture() else { return };
         let dir = tempfile::tempdir().unwrap();
         copy_tree(&paths.root, dir.path());
-        let copy = HeroicPaths::at(dir.path());
+        let copy = DataPaths::at(dir.path());
         let lib = Library::load(&copy).unwrap();
         assert!(!lib.changed_on_disk());
         crate::status::set_game_status(&copy, "steam_400", "beaten", &Default::default()).unwrap();

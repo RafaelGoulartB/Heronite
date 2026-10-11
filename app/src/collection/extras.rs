@@ -196,11 +196,11 @@ impl CollectionView {
             return;
         }
         // The cache is a small local file: show it right away, no flicker.
-        if let Some(cached) = heronite_metadata::achievements::read_cache(&self.heroic, &game.app_name) {
+        if let Some(cached) = heronite_metadata::achievements::read_cache(&self.data_paths, &game.app_name) {
             self.extras.ach = cached;
             return;
         }
-        let (paths, runner, app_name) = (self.heroic.clone(), game.runner.clone(), game.app_name.clone());
+        let (paths, runner, app_name) = (self.data_paths.clone(), game.runner.clone(), game.app_name.clone());
         cx.spawn(async move |this, cx| {
             let items = cx
                 .background_spawn(async move {

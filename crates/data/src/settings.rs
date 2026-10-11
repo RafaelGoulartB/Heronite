@@ -13,11 +13,11 @@ use serde_json::json;
 
 use crate::json_store;
 use crate::models::{
-    BackgroundSettings, BackupSettings, CollectionSettingsFile, HeroicConfigFile,
+    BackgroundSettings, BackupSettings, CollectionSettingsFile, StoreConfigFile,
     LudusaviSettings, MetadataSettings, ScreenshotsSettings,
 };
 use crate::num::{js_round, JsNum};
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 
 pub const DEFAULT_SCREENSHOT_CACHE_LIMIT_MB: f64 = 500.0;
 const MIN_SCREENSHOT_CACHE_LIMIT_MB: f64 = 50.0;
@@ -119,12 +119,12 @@ pub struct EffectiveSettings {
 
 impl Default for EffectiveSettings {
     fn default() -> Self {
-        Self::from_files(&CollectionSettingsFile::default(), &HeroicConfigFile::default())
+        Self::from_files(&CollectionSettingsFile::default(), &StoreConfigFile::default())
     }
 }
 
 impl EffectiveSettings {
-    pub fn from_files(file: &CollectionSettingsFile, config: &HeroicConfigFile) -> Self {
+    pub fn from_files(file: &CollectionSettingsFile, config: &StoreConfigFile) -> Self {
         let backup = file.backup.clone().unwrap_or_else(fallback_backup);
         let interval = match backup.interval.as_str() {
             "daily" | "weekly" | "monthly" => backup.interval.clone(),
@@ -205,10 +205,10 @@ fn fallback_ludusavi() -> LudusaviSettings {
     }
 }
 
-/// Reads `settings.json` + the Heroic config and applies defaults.
-pub fn load(paths: &HeroicPaths) -> Result<EffectiveSettings> {
+/// Reads `settings.json` + the store config and applies defaults.
+pub fn load(paths: &DataPaths) -> Result<EffectiveSettings> {
     let file: CollectionSettingsFile = json_store::read(&paths.collection_settings())?;
-    let config: HeroicConfigFile = json_store::read(&paths.config()).unwrap_or_default();
+    let config: StoreConfigFile = json_store::read(&paths.store_config()).unwrap_or_default();
     Ok(EffectiveSettings::from_files(&file, &config))
 }
 
@@ -295,7 +295,7 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
 
 /// `setCollectionUiSettings`.
 pub fn save_ui(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     grey_uninstalled_games: Option<bool>,
     background: Option<&PartialBackground>,
 ) -> Result<EffectiveSettings> {
@@ -321,7 +321,7 @@ pub fn save_ui(
 
 /// `setCollectionScreenshotsSettings`.
 pub fn save_screenshots(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     folder: &str,
     cache_limit_mb: f64,
     capture_enabled: bool,
@@ -343,7 +343,7 @@ pub fn save_screenshots(
 }
 
 /// `setCollectionBackupSettings`.
-pub fn save_backup(paths: &HeroicPaths, folder: &str, interval: &str) -> Result<EffectiveSettings> {
+pub fn save_backup(paths: &DataPaths, folder: &str, interval: &str) -> Result<EffectiveSettings> {
     let current = load(paths)?.backup;
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
         file.backup = Some(BackupSettings {
@@ -358,7 +358,7 @@ pub fn save_backup(paths: &HeroicPaths, folder: &str, interval: &str) -> Result<
 
 /// `setCollectionMetadataSettings`: `patch` replaces the metadata section after
 /// normalisation; `field_priority` entries are merged over the current ones.
-pub fn save_metadata(paths: &HeroicPaths, patch: &MetadataSettings) -> Result<EffectiveSettings> {
+pub fn save_metadata(paths: &DataPaths, patch: &MetadataSettings) -> Result<EffectiveSettings> {
     let current = load(paths)?.metadata;
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
         let mut merged = patch.clone();
@@ -374,14 +374,14 @@ pub fn save_metadata(paths: &HeroicPaths, patch: &MetadataSettings) -> Result<Ef
 }
 
 /// Saves just the grey-uninstalled flag (the toggle in the settings dialog).
-pub fn save_grey_uninstalled(paths: &HeroicPaths, grey: bool) -> Result<EffectiveSettings> {
+pub fn save_grey_uninstalled(paths: &DataPaths, grey: bool) -> Result<EffectiveSettings> {
     save_ui(paths, Some(grey), None)
 }
 
 /// Heroic's `allTilesInColor` toggle (`store/config.json`), written like
 /// `configStore.set('allTilesInColor', value)`.
-pub fn save_all_tiles_in_color(paths: &HeroicPaths, value: bool) -> Result<()> {
-    json_store::update_value(&paths.config(), |doc| {
+pub fn save_all_tiles_in_color(paths: &DataPaths, value: bool) -> Result<()> {
+    json_store::update_value(&paths.store_config(), |doc| {
         doc["allTilesInColor"] = json!(value);
         Ok(())
     })
@@ -391,9 +391,9 @@ pub fn save_all_tiles_in_color(paths: &HeroicPaths, value: bool) -> Result<()> {
 mod tests {
     use super::*;
 
-    fn temp() -> (tempfile::TempDir, HeroicPaths) {
+    fn temp() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         (dir, paths)
     }
 
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn reads_real_settings() {
         let Some(root) = std::env::var_os("HERONITE_FIXTURE") else { return };
-        let s = load(&HeroicPaths::at(root)).unwrap();
+        let s = load(&DataPaths::at(root)).unwrap();
         eprintln!("theme={} language={} grey={} bg={:?} shots={:?}", s.theme, s.language, s.grey_uninstalled_games, s.background, s.screenshots.folder);
         assert!(!s.grey_uninstalled_games);
         assert_eq!(s.background.blur.get(), 4.0);

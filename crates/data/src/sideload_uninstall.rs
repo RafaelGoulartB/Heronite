@@ -17,7 +17,7 @@ use serde_json::Value;
 
 use crate::game_config;
 use crate::json_store;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 use crate::sideload::check_prefix_removable;
 
 /// A folder the uninstall would delete, or the reason it will not.
@@ -62,7 +62,7 @@ pub struct UninstallInput<'a> {
     pub others: &'a [PathBuf],
 }
 
-pub fn plan(paths: &HeroicPaths, input: &UninstallInput) -> UninstallPlan {
+pub fn plan(paths: &DataPaths, input: &UninstallInput) -> UninstallPlan {
     let home = Path::new(input.home);
     let global = game_config::load_global(paths, input.home);
     let text = |k: &str| global.get(k).and_then(Value::as_str).unwrap_or("").to_string();
@@ -99,7 +99,7 @@ pub fn plan(paths: &HeroicPaths, input: &UninstallInput) -> UninstallPlan {
 /// target is checked again first; when one asked for is refused, nothing is
 /// deleted and the reason is the error.
 pub fn uninstall(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     input: &UninstallInput,
     delete_files: bool,
     delete_prefix: bool,
@@ -148,7 +148,7 @@ pub fn guess_game_folder(executable: &Path) -> Option<PathBuf> {
 
 /// Sets `is_installed: false` on the sideload entry (the rest is kept, so
 /// "Edit game" can point it at a new executable later).
-pub fn mark_uninstalled(paths: &HeroicPaths, app_name: &str) -> Result<()> {
+pub fn mark_uninstalled(paths: &DataPaths, app_name: &str) -> Result<()> {
     json_store::update_value(&paths.sideload_library(), |doc| {
         let list = doc.get_mut("games").and_then(Value::as_array_mut);
         let entry = list.and_then(|l| l.iter_mut().find(|g| g.get("app_name").and_then(Value::as_str) == Some(app_name)));
@@ -164,13 +164,13 @@ pub fn mark_uninstalled(paths: &HeroicPaths, app_name: &str) -> Result<()> {
 
 /// The prefix the game's own settings point at (the default one when it has
 /// none, which [`plan`] then refuses).
-fn own_prefix(paths: &HeroicPaths, app_name: &str, home: &str) -> Option<PathBuf> {
+fn own_prefix(paths: &DataPaths, app_name: &str, home: &str) -> Option<PathBuf> {
     let settings = game_config::load_game(paths, app_name, home);
     settings.get("winePrefix").and_then(Value::as_str).filter(|p| !p.trim().is_empty()).map(PathBuf::from)
 }
 
 /// `winePrefix` set in the config file of every other game.
-fn other_game_prefixes(paths: &HeroicPaths, app_name: &str, home: &str) -> Vec<PathBuf> {
+fn other_game_prefixes(paths: &DataPaths, app_name: &str, home: &str) -> Vec<PathBuf> {
     let Ok(dir) = std::fs::read_dir(paths.games_config_dir()) else { return Vec::new() };
     let mut out = Vec::new();
     for entry in dir.flatten() {
@@ -232,7 +232,7 @@ fn folder_blocked(folder: &Path, taken: &[PathBuf], others: &[PathBuf], home: &P
         return Some(format!("Won't delete {shown}: it is a Steam library"));
     }
     if taken.iter().any(|p| inside(p, folder)) {
-        return Some(format!("Won't delete {shown}: it is or holds a default Heroic folder or another game's prefix"));
+        return Some(format!("Won't delete {shown}: it is or holds a default folder or another game's prefix"));
     }
     if others.iter().any(|p| inside(p, folder)) {
         return Some(format!("Won't delete {shown}: another game is installed in it"));
@@ -276,13 +276,13 @@ mod tests {
 
     struct Env {
         _dir: tempfile::TempDir,
-        paths: HeroicPaths,
+        paths: DataPaths,
         home: PathBuf,
     }
 
     fn env() -> Env {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        let paths = DataPaths::at(dir.path().join("heroic"));
         let home = dir.path().join("home");
         fs::create_dir_all(home.join("Games")).unwrap();
         let lib = json!({"games": [
@@ -385,9 +385,9 @@ mod tests {
         fs::create_dir_all(lib.join("steamapps")).unwrap();
         assert!(blocked(&lib, &[]).is_some());
 
-        let heroic = e.mkdir("Games/Heroic");
-        assert!(blocked(&heroic, &[]).is_some(), "default install path");
-        assert!(e.plan(Some(&e.mkdir("Games/Heroic/A")), &[]).files.unwrap().removable());
+        let default_install = e.mkdir("Games/Heronite");
+        assert!(blocked(&default_install, &[]).is_some(), "default install path");
+        assert!(e.plan(Some(&e.mkdir("Games/Heronite/A")), &[]).files.unwrap().removable());
 
         let pack = e.mkdir("Games/Pack");
         let other = e.mkdir("Games/Pack/Other").join("other.exe");

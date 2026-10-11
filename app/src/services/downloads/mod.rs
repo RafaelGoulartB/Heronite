@@ -24,7 +24,7 @@ use std::sync::Arc;
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_epic::manager::{DownloadManager, Event as DmEvent, Job, Snapshot};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::DmElement;
@@ -39,7 +39,7 @@ pub use library_file::library_entry;
 pub use types::*;
 
 pub struct Downloads {
-    heroic: HeroicPaths,
+    data_paths: DataPaths,
     manager: DownloadManager,
     snapshot: Snapshot,
     progress: HashMap<String, Progress>,
@@ -71,23 +71,23 @@ pub struct Downloads {
 impl EventEmitter<DownloadsEvent> for Downloads {}
 
 impl Downloads {
-    pub fn new(heroic: HeroicPaths, cx: &mut Context<Self>) -> Self {
+    pub fn new(data_paths: DataPaths, cx: &mut Context<Self>) -> Self {
         let (tx, mut rx) = unbounded::<DmEvent>();
         let fake = crate::env::value("HERONITE_DEBUG_FAKE_DOWNLOAD");
         let job: Arc<dyn Job> = if fake.is_some() {
             Arc::new(debug::FakeJob)
         } else {
             // legendary is located when the first element runs.
-            Arc::new(LazyJob { heroic: heroic.clone() })
+            Arc::new(LazyJob { data_paths: data_paths.clone() })
         };
         let notify = move |ev| {
             let _ = tx.unbounded_send(ev);
         };
         // The fake queue must never reach download-manager.json.
         let manager = if fake.is_some() {
-            DownloadManager::new_ephemeral(heroic.clone(), job, notify)
+            DownloadManager::new_ephemeral(data_paths.clone(), job, notify)
         } else {
-            DownloadManager::new(heroic.clone(), job, notify)
+            DownloadManager::new(data_paths.clone(), job, notify)
         };
         cx.spawn(async move |this, cx| {
             while let Some(ev) = rx.next().await {
@@ -100,7 +100,7 @@ impl Downloads {
 
         let snapshot = manager.snapshot();
         let mut this = Self {
-            heroic,
+            data_paths,
             manager,
             snapshot,
             progress: HashMap::new(),
@@ -187,12 +187,12 @@ impl Downloads {
 
     /// Account, stats and updates from files on disk.
     pub fn reload_local(&mut self, cx: &mut Context<Self>) {
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let (info, updates, stats) = cx
                 .background_spawn(async move {
-                    let info = user::sync_user_info(&heroic).ok().flatten();
-                    (info, library::updates_available(&heroic), library_file::read_stats(&heroic))
+                    let info = user::sync_user_info(&data_paths).ok().flatten();
+                    (info, library::updates_available(&data_paths), library_file::read_stats(&data_paths))
                 })
                 .await;
             this.update(cx, |this, cx| {

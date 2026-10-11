@@ -22,9 +22,9 @@ pub const TRANSPARENT_LOGO_PNG: [u8; 68] = [
     0x60, 0x82,
 ];
 
-/// URL schemes whose `launch` links identify a shortcut as this game's: ours
-/// and Heroic's (a shortcut created by Heroic for the same game counts).
-const SCHEMES: [&str; 2] = ["heronite-rs", "heroic"];
+/// URL scheme whose `launch` links identify a shortcut as this game's.
+/// Shortcuts made by Heroic (`heroic://`) are Heroic's and left alone.
+const SCHEME: &str = "heronite-rs";
 
 // Ids (steam-rom-manager's generate-app-id)
 
@@ -174,9 +174,9 @@ pub fn validate(doc: &Document) -> Vec<String> {
     errors
 }
 
-/// Folders (under the application menu folder) of the `.desktop` wrappers
-/// added through `steam://addnonsteamgame`: ours and Heroic's.
-pub const WRAPPER_DIRS: [&str; 2] = ["heronite-rs-steam-shortcuts", "heroic-steam-shortcuts"];
+/// Folder (under the application menu folder) of the `.desktop` wrappers
+/// added through `steam://addnonsteamgame`.
+pub const WRAPPER_DIR: &str = "heronite-rs-steam-shortcuts";
 
 /// `<runner>-<appName>.desktop`, Heroic's `steamShortcutWrapperPath` name.
 pub fn wrapper_file_name(game: &GameId) -> String {
@@ -187,23 +187,17 @@ pub fn wrapper_file_name(game: &GameId) -> String {
 /// the executable or shortcut path.
 pub fn matches_shortcut(exe: &str, shortcut_path: &str, launch_options: &str, game: &GameId) -> bool {
     let name = wrapper_file_name(game);
-    let wrapper = WRAPPER_DIRS.iter().any(|dir| {
-        let tail = format!("{dir}/{name}");
-        exe.contains(&tail) || shortcut_path.contains(&tail)
-    });
-    wrapper || matches_game(launch_options, game)
+    let tail = format!("{WRAPPER_DIR}/{name}");
+    exe.contains(&tail) || shortcut_path.contains(&tail) || matches_game(launch_options, game)
 }
 
-/// Does a shortcut point at `game`? Matches the launch links of this app and
-/// of Heroic (`appName=X&runner=Y`, `launch/X"`, `launch/Y/X"`).
+/// Does a shortcut point at `game`? Matches this app's launch links in
+/// Heroic's forms (`appName=X&runner=Y`, `launch/X"`, `launch/Y/X"`).
 pub fn matches_game(launch_options: &str, game: &GameId) -> bool {
-    SCHEMES.iter().any(|scheme| {
-        let launch = format!("{scheme}://launch");
-        launch_options.contains(&launch)
-            && (launch_options.contains(&format!("appName={}&runner={}", game.app_name, game.runner))
-                || launch_options.contains(&format!("launch/{}\"", game.app_name))
-                || launch_options.contains(&format!("launch/{}/{}\"", game.runner, game.app_name)))
-    })
+    launch_options.contains(&format!("{SCHEME}://launch"))
+        && (launch_options.contains(&format!("appName={}&runner={}", game.app_name, game.runner))
+            || launch_options.contains(&format!("launch/{}\"", game.app_name))
+            || launch_options.contains(&format!("launch/{}/{}\"", game.runner, game.app_name)))
 }
 
 fn find_entry(shortcuts: &[Entry], game: &GameId) -> Option<usize> {
@@ -597,9 +591,9 @@ mod tests {
     fn launch_option_matching() {
         let g = game();
         assert!(matches_game("--no-gui \"heronite-rs://launch?appName=Quail&runner=legendary\"", &g));
-        assert!(matches_game("--no-gui --no-sandbox \"heroic://launch?appName=Quail&runner=legendary\"", &g));
-        assert!(matches_game("\"heroic://launch/Quail\"", &g));
-        assert!(matches_game("\"heroic://launch/legendary/Quail\"", &g));
+        assert!(matches_game("\"heronite-rs://launch/Quail\"", &g));
+        assert!(matches_game("\"heronite-rs://launch/legendary/Quail\"", &g));
+        assert!(!matches_game("--no-gui --no-sandbox \"heroic://launch?appName=Quail&runner=legendary\"", &g), "Heroic's shortcut");
         assert!(!matches_game("--no-gui \"heronite-rs://launch?appName=QuailX&runner=legendary\"", &g));
         assert!(!matches_game("--no-gui \"heronite-rs://launch?appName=Quail&runner=gog\"", &g));
         assert!(!matches_game("something else Quail legendary", &g));
@@ -611,10 +605,10 @@ mod tests {
         let ours = "/home/u/.local/share/applications/heronite-rs-steam-shortcuts/legendary-Quail.desktop";
         let heroics = "/home/u/.local/share/applications/heroic-steam-shortcuts/legendary-Quail.desktop";
         assert!(matches_shortcut("", ours, "", &g));
-        assert!(matches_shortcut(&format!("\"{heroics}\""), "", "", &g));
+        assert!(!matches_shortcut(&format!("\"{heroics}\""), "", "", &g), "Heroic's wrapper");
         assert!(!matches_shortcut("", "/x/heronite-rs-steam-shortcuts/legendary-QuailX.desktop", "", &g));
         assert!(!matches_shortcut("", "/x/other/legendary-Quail.desktop", "", &g));
-        assert!(matches_shortcut("", "", "\"heroic://launch/Quail\"", &g));
+        assert!(matches_shortcut("", "", "\"heronite-rs://launch/Quail\"", &g));
     }
 
     #[test]

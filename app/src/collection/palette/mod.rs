@@ -208,7 +208,7 @@ impl CollectionView {
                 }
             }
             Act::OpenLogs => {
-                let dir = heronite_launch::log_writer::LogPaths::for_heroic(&self.heroic).base;
+                let dir = heronite_launch::log_writer::LogPaths::for_data(&self.data_paths).base;
                 if dir.is_dir() {
                     self.open_in_file_manager(&dir, cx);
                 } else {
@@ -228,7 +228,7 @@ impl CollectionView {
             Act::GameSettings(key) => {
                 self.palette_select(&key, window, cx);
                 let (Some(ctx), Some(g)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(&key)).cloned()) else { return };
-                let tab = crate::dialogs::game_settings::Tab::heroic_start(&g);
+                let tab = crate::dialogs::game_settings::Tab::settings_start(&g);
                 let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
                 self.open_dialog(view, cx);
             }

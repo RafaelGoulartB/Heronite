@@ -47,7 +47,7 @@ impl ScreenshotArtDialog {
     pub fn new(ctx: DialogCtx, game: Game, kind: ArtKind, cx: &mut Context<Self>) -> Self {
         let service = hub(cx).read(cx).service.clone();
         let settings = &ctx.lib.settings;
-        let cache = ThumbnailCache::new(ctx.heroic.screenshot_thumbnails_dir(), settings.screenshots.cache_limit_mb.get());
+        let cache = ThumbnailCache::new(ctx.data_paths.screenshot_thumbnails_dir(), settings.screenshots.cache_limit_mb.get());
         let folder = settings.screenshots_folder().map(|p| p.to_path_buf());
         let query = GameQuery::from_game(&game);
         let runner = if game.runner == "zoom" { "sideload".to_string() } else { game.runner.clone() };

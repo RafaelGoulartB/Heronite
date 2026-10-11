@@ -16,7 +16,7 @@
 
 use std::time::{Duration, Instant};
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use crate::dxvk::{self, Action, WineRunner};
 use crate::net::{Net, CANCELLED};
@@ -66,7 +66,7 @@ pub enum Flow {
 
 /// What preparing a launch can use.
 pub struct Prep<'a> {
-    pub paths: &'a HeroicPaths,
+    pub paths: &'a DataPaths,
     pub probe: &'a dyn Probe,
     pub net: &'a dyn Net,
     pub spawner: &'a dyn Spawner,
@@ -332,14 +332,14 @@ pub(crate) mod tests {
 
     struct Fx {
         dir: tempfile::TempDir,
-        paths: HeroicPaths,
+        paths: DataPaths,
         spawner: InstantSpawner,
     }
 
     impl Fx {
         fn new() -> Self {
             let dir = tempfile::tempdir().unwrap();
-            let paths = HeroicPaths::at(dir.path().join("heroic"));
+            let paths = DataPaths::at(dir.path().join("heroic"));
             Self { dir, paths, spawner: InstantSpawner::default() }
         }
     }

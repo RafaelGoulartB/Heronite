@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_epic::cmd::{Cancel, Legendary};
 use heronite_epic::manager::{DmState, Event as DmEvent, Job, JobResult};
 use heronite_epic::ops::{self, LegendaryJob};
@@ -67,7 +67,7 @@ impl Downloads {
                         self.reload_local(cx);
                         if element.kind == ElementKind::Install {
                             // Desktop / menu / Steam shortcuts from the General settings.
-                            crate::system::shortcuts::spawn_on_game_added(cx, &self.heroic, "legendary", &element.params.app_name, |this, o, cx| {
+                            crate::system::shortcuts::spawn_on_game_added(cx, &self.data_paths, "legendary", &element.params.app_name, |this, o, cx| {
                                 if let Some(m) = o.summary() {
                                     this.toast(cx, m.text, m.error);
                                 }
@@ -95,13 +95,13 @@ impl Downloads {
     /// Queues an install (and its DLCs) the way Heroic's `install` handler does.
     pub fn queue_install(&mut self, req: InstallRequest, cx: &mut Context<Self>) {
         let manager = self.manager.clone();
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         let app_name = req.game_info.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_spawn(async move {
                     if req.wine_prefix.is_some() || req.wine_version.is_some() {
-                        ops::write_wine_config(&heroic, &app_name, req.wine_prefix.as_deref().unwrap_or(""), req.wine_version.as_ref())?;
+                        ops::write_wine_config(&data_paths, &app_name, req.wine_prefix.as_deref().unwrap_or(""), req.wine_version.as_ref())?;
                     }
                     let base = InstallParams {
                         app_name: app_name.clone(),
@@ -118,7 +118,7 @@ impl Downloads {
                     manager.add(DmElement::new(ElementKind::Install, base.clone()));
                     for dlc in &req.dlcs {
                         // The queue lists the DLC under its own title and cover.
-                        let game_info = library_entry(&heroic, dlc).unwrap_or_else(|| base.game_info.clone());
+                        let game_info = library_entry(&data_paths, dlc).unwrap_or_else(|| base.game_info.clone());
                         manager.add(DmElement::new(
                             ElementKind::Install,
                             InstallParams { app_name: dlc.clone(), install_dlcs: Vec::new(), game_info, size: None, ..base.clone() },
@@ -139,14 +139,14 @@ impl Downloads {
     /// `updateGame`: queues an update of an installed game.
     pub fn queue_update(&mut self, game_info: Value, cx: &mut Context<Self>) {
         let manager = self.manager.clone();
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         let app = game_info.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
         let path = game_info.pointer("/install/install_path").and_then(Value::as_str).unwrap_or_default().to_string();
         let platform = game_info.pointer("/install/platform").and_then(Value::as_str).unwrap_or("Windows").to_string();
         cx.background_spawn(async move {
-            let size = Legendary::locate(&heroic)
+            let size = Legendary::locate(&data_paths)
                 .ok()
-                .and_then(|lg| info::install_info(&heroic, &lg, &app, &platform).ok())
+                .and_then(|lg| info::install_info(&data_paths, &lg, &app, &platform).ok())
                 .map(|i| file_size(i.download_size()));
             manager.add(DmElement::new(
                 ElementKind::Update,
@@ -217,13 +217,13 @@ impl Downloads {
 /// Locates legendary when the first element runs (cheap to create, and picks
 /// up an `altLegendaryBin` changed in the settings).
 pub(super) struct LazyJob {
-    pub(super) heroic: HeroicPaths,
+    pub(super) data_paths: DataPaths,
 }
 
 impl Job for LazyJob {
     fn run(&self, element: &DmElement, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
-        match Legendary::locate(&self.heroic) {
-            Ok(legendary) => LegendaryJob { heroic: self.heroic.clone(), legendary }.run(element, cancel, on_progress),
+        match Legendary::locate(&self.data_paths) {
+            Ok(legendary) => LegendaryJob { data_paths: self.data_paths.clone(), legendary }.run(element, cancel, on_progress),
             Err(err) => JobResult { status: DmStatus::Error, error: Some(format!("{err:#}")) },
         }
     }

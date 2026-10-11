@@ -2,10 +2,10 @@
 //! `HERONITE_FIXTURE=/tmp/heronite-fixture cargo test -p heronite-data`
 
 use heronite_data::collection::*;
-use heronite_data::{art, HeroicPaths, Library};
+use heronite_data::{art, DataPaths, Library};
 
-fn fixture() -> Option<HeroicPaths> {
-    std::env::var_os("HERONITE_FIXTURE").map(HeroicPaths::at)
+fn fixture() -> Option<DataPaths> {
+    std::env::var_os("HERONITE_FIXTURE").map(DataPaths::at)
 }
 
 #[test]

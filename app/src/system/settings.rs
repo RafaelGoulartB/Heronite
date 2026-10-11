@@ -1,8 +1,8 @@
-//! The Heroic global settings the desktop integration reads
+//! The global settings the desktop integration reads
 //! (`config.json` -> `defaultSettings`).
 
 use heronite_data::game_config::{load_global, Settings};
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -35,16 +35,16 @@ impl SysSettings {
         }
     }
 
-    pub fn load(heroic: &HeroicPaths) -> Self {
+    pub fn load(data_paths: &DataPaths) -> Self {
         let home = dirs::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default();
-        Self::from_map(&load_global(heroic, &home))
+        Self::from_map(&load_global(data_paths, &home))
     }
 }
 
 /// `games.recent` of `store/config.json` (most recent first), limited to
 /// `limit`: `(appName, title)`.
-pub fn recent_games(heroic: &HeroicPaths, limit: usize) -> Vec<(String, String)> {
-    let doc = heronite_data::json_store::read_value(&heroic.config()).unwrap_or(Value::Null);
+pub fn recent_games(data_paths: &DataPaths, limit: usize) -> Vec<(String, String)> {
+    let doc = heronite_data::json_store::read_value(&data_paths.store_config()).unwrap_or(Value::Null);
     doc.get("games")
         .and_then(|g| g.get("recent"))
         .and_then(Value::as_array)
@@ -87,15 +87,15 @@ mod tests {
     #[test]
     fn recent_games_are_read_in_order_and_limited() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
+        let data_paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(dir.path().join("store")).unwrap();
         std::fs::write(
-            heroic.config(),
+            data_paths.store_config(),
             r#"{"games":{"recent":[{"appName":"a","title":"A"},{"appName":"b"},{"title":"no app"},{"appName":"c","title":"C"}]}}"#,
         )
         .unwrap();
-        assert_eq!(recent_games(&heroic, 5), vec![("a".into(), "A".into()), ("b".into(), "b".into()), ("c".into(), "C".into())]);
-        assert_eq!(recent_games(&heroic, 1).len(), 1);
-        assert!(recent_games(&HeroicPaths::at(dir.path().join("none")), 5).is_empty());
+        assert_eq!(recent_games(&data_paths, 5), vec![("a".into(), "A".into()), ("b".into(), "b".into()), ("c".into(), "C".into())]);
+        assert_eq!(recent_games(&data_paths, 1).len(), 1);
+        assert!(recent_games(&DataPaths::at(dir.path().join("none")), 5).is_empty());
     }
 }

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use heronite_data::models::{GameInfo, InstallInfo};
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::first_launch::{EpicSetup, Prerequisite};
 use heronite_launch::net::FakeNet;
 use heronite_launch::plan::{LaunchOptions, PlanContext};
@@ -45,7 +45,7 @@ impl CloudSync for LoggingCloud {
 struct Rig {
     root: PathBuf,
     _dir: tempfile::TempDir,
-    paths: HeroicPaths,
+    paths: DataPaths,
     plan: LaunchPlan,
     log: PathBuf,
 }
@@ -58,7 +58,7 @@ fn rig(skip_version_check: bool) -> Rig {
 fn rig_with(skip_version_check: bool, known_fixes: Option<serde_json::Value>) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().to_path_buf();
-    let paths = HeroicPaths::at(root.join("heroic"));
+    let paths = DataPaths::at(root.join("heroic"));
     let log = root.join("calls.log");
     let prefix = root.join("pfx");
     let install = root.join("games/Control");

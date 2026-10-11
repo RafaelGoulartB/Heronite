@@ -8,7 +8,6 @@ use super::SettingsPage;
 use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, row, ButtonKind};
-use crate::ui::fields::meta_text;
 
 #[derive(Default)]
 pub struct State {
@@ -21,8 +20,8 @@ pub struct State {
 }
 
 /// `legendary --version` first line, from the bundled/alternative binary.
-fn legendary_version(heroic: &heronite_data::HeroicPaths) -> Option<String> {
-    let lg = heronite_epic::cmd::Legendary::locate(heroic).ok()?;
+fn legendary_version(data_paths: &heronite_data::DataPaths) -> Option<String> {
+    let lg = heronite_epic::cmd::Legendary::locate(data_paths).ok()?;
     let out = lg.run(&["--version"], &[]).ok()?;
     let line = out.stdout.lines().find(|l| !l.trim().is_empty())?.trim().to_string();
     Some(line)
@@ -34,12 +33,12 @@ impl State {
             return;
         }
         self.loaded = true;
-        let heroic = ctx.heroic.clone();
+        let data_paths = ctx.data_paths.clone();
         let work = move || {
             let system = sysinfo::gather();
-            let installs = heronite_wine::list_installations(&heroic);
+            let installs = heronite_wine::list_installations(&data_paths);
             let proton = installs.iter().filter(|w| w.kind == "proton").count();
-            (system, legendary_version(&heroic), installs.len(), proton)
+            (system, legendary_version(&data_paths), installs.len(), proton)
         };
         // Debug captures only keep the first frames: gather in place there.
         if crate::env::value("HERONITE_DEBUG_PAGE").is_some() {
@@ -80,7 +79,7 @@ impl State {
             out.push(format!("Session: {}", s.session));
         }
         out.push(format!("Legendary: {}", self.legendary.as_deref().unwrap_or("not found")));
-        out.push(format!("Config folder: {}", ctx.heroic.root.display()));
+        out.push(format!("Data folder: {}", ctx.data_paths.root.display()));
         out.join("\n")
     }
 }
@@ -105,8 +104,8 @@ impl SettingsPage {
                     _ => "...".into(),
                 },
             ),
-            info_row("Config folder", self.ctx.heroic.root.display().to_string()),
-            info_row("App data folder", self.ctx.app.config.display().to_string()),
+            info_row("Data folder", self.ctx.data_paths.root.display().to_string()),
+            info_row("Settings folder", self.ctx.app.config.display().to_string()),
             info_row("Cache folder", self.ctx.app.cache.display().to_string()),
         ]);
 
@@ -115,7 +114,6 @@ impl SettingsPage {
             .flex_col()
             .child(caption("Heronite"))
             .child(app)
-            .child(div().mx(px(6.)).mt(px(8.)).child(meta_text("The config folder is shared with Heroic and Heronite, so both can be used during the transition.")))
             .child(caption("System"));
         if s.os.is_empty() {
             col = col.child(card([empty_line("Reading system information...")]));
@@ -186,7 +184,7 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
                 _ => "\u{2026}".into(),
             },
         ),
-        Row::info("i:config", "Config folder", p.ctx.heroic.root.display().to_string()),
+        Row::info("i:config", "Data folder", p.ctx.data_paths.root.display().to_string()),
         Row::header("System"),
     ];
     if s.os.is_empty() {

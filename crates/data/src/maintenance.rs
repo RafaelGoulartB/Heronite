@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-use crate::paths::{AppPaths, HeroicPaths};
+use crate::paths::{AppPaths, DataPaths};
 
 /// What a clear touched.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -21,13 +21,12 @@ pub struct ClearReport {
     pub bytes: u64,
 }
 
-/// Single files cleared inside `store_cache/`.
-const CACHE_FILES: [&str; 4] =
-    ["wikigameinfo.json", "legendary_library.json", "legendary_gameinfo.json", "legendary_install_info.json"];
+/// Single files cleared inside `store_cache/` (without `.json`).
+const CACHE_FILES: [&str; 4] = ["wikigameinfo", "legendary_library", "legendary_gameinfo", "legendary_install_info"];
 
 /// The files and folders [`clear_caches`] removes.
-pub fn cache_targets(heroic: &HeroicPaths, app: &AppPaths) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = CACHE_FILES.iter().map(|f| heroic.root.join("store_cache").join(f)).collect();
+pub fn cache_targets(data_paths: &DataPaths, app: &AppPaths) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = CACHE_FILES.iter().map(|f| data_paths.store_cache(f)).collect();
     out.push(app.thumbs_dir());
     out
 }
@@ -43,16 +42,16 @@ fn tree_size(path: &Path) -> (usize, u64) {
 }
 
 /// Size of what [`clear_caches`] would remove.
-pub fn cache_size(heroic: &HeroicPaths, app: &AppPaths) -> ClearReport {
+pub fn cache_size(data_paths: &DataPaths, app: &AppPaths) -> ClearReport {
     let (files, bytes) =
-        cache_targets(heroic, app).iter().map(|p| tree_size(p)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
+        cache_targets(data_paths, app).iter().map(|p| tree_size(p)).fold((0, 0), |a, b| (a.0 + b.0, a.1 + b.1));
     ClearReport { files, bytes }
 }
 
 /// Removes the caches listed by [`cache_targets`]; missing ones are skipped.
-pub fn clear_caches(heroic: &HeroicPaths, app: &AppPaths) -> Result<ClearReport> {
+pub fn clear_caches(data_paths: &DataPaths, app: &AppPaths) -> Result<ClearReport> {
     let mut report = ClearReport::default();
-    for target in cache_targets(heroic, app) {
+    for target in cache_targets(data_paths, app) {
         let (files, bytes) = tree_size(&target);
         if files == 0 {
             continue;
@@ -93,9 +92,9 @@ mod tests {
     #[test]
     fn clears_only_the_rebuildable_caches() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("heroic"));
+        let data_paths = DataPaths::at(dir.path().join("heroic"));
         let app = AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") };
-        let cache = heroic.root.join("store_cache");
+        let cache = data_paths.root.join("store_cache");
         fs::create_dir_all(&cache).unwrap();
         for (f, body) in [
             ("wikigameinfo.json", "{}"),
@@ -108,13 +107,13 @@ mod tests {
         }
         fs::create_dir_all(app.thumbs_dir().join("ab")).unwrap();
         fs::write(app.thumbs_dir().join("ab/x"), [0u8; 100]).unwrap();
-        fs::create_dir_all(heroic.root.join("GamesConfig")).unwrap();
-        fs::write(heroic.root.join("GamesConfig/g.json"), "{}").unwrap();
+        fs::create_dir_all(data_paths.root.join("GamesConfig")).unwrap();
+        fs::write(data_paths.root.join("GamesConfig/g.json"), "{}").unwrap();
 
-        let before = cache_size(&heroic, &app);
+        let before = cache_size(&data_paths, &app);
         assert_eq!(before.files, 4);
         assert_eq!(before.bytes, 2 + 14 + 2 + 100);
-        let report = clear_caches(&heroic, &app).unwrap();
+        let report = clear_caches(&data_paths, &app).unwrap();
         assert_eq!(report, before);
         assert!(!cache.join("wikigameinfo.json").exists());
         assert!(!cache.join("legendary_library.json").exists());
@@ -122,9 +121,9 @@ mod tests {
         // Kept: GOG cache, the Epic override list, game settings.
         assert!(cache.join("gog_library.json").exists());
         assert!(cache.join("legendary_games_override.json").exists());
-        assert!(heroic.root.join("GamesConfig/g.json").exists());
+        assert!(data_paths.root.join("GamesConfig/g.json").exists());
         // Second run: nothing left.
-        assert_eq!(clear_caches(&heroic, &app).unwrap(), ClearReport::default());
+        assert_eq!(clear_caches(&data_paths, &app).unwrap(), ClearReport::default());
     }
 
     #[test]

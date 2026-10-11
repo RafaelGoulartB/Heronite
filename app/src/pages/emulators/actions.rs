@@ -9,7 +9,7 @@ use crate::pages::PageEvent;
 
 impl EmulatorsPage {
     pub(super) fn duplicate(&mut self, id: &str, cx: &mut Context<Self>) {
-        let (paths, id) = (self.ctx.heroic.clone(), id.to_string());
+        let (paths, id) = (self.ctx.data_paths.clone(), id.to_string());
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { duplicate_user_emulator(&paths, &id) }).await;
             this.update(cx, |this, cx| {
@@ -33,7 +33,7 @@ impl EmulatorsPage {
         }
         self.busy = Some(label.into());
         self.notice = None;
-        let paths = self.ctx.heroic.clone();
+        let paths = self.ctx.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let report = cx
                 .background_spawn(async move {

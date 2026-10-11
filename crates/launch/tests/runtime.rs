@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use heronite_data::models::SessionsFile;
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::procs::{FakeProcs, Procs, SystemProcs};
 use heronite_launch::net::FakeNet;
@@ -39,7 +39,7 @@ fn fast_cfg() -> LauncherConfig {
 
 struct Rig {
     _dir: tempfile::TempDir,
-    paths: HeroicPaths,
+    paths: DataPaths,
     launcher: Launcher,
     rx: Receiver<LaunchEvent>,
     spawner: Arc<FakeSpawner>,
@@ -48,7 +48,7 @@ struct Rig {
 
 fn rig() -> Rig {
     let dir = tempfile::tempdir().unwrap();
-    let paths = HeroicPaths::at(dir.path().join("heroic"));
+    let paths = DataPaths::at(dir.path().join("heroic"));
     let home = dir.path().join("home");
     let steam = SteamLocator {
         home: home.clone(),
@@ -169,7 +169,7 @@ fn full_lifecycle_records_everything_like_heronite() {
     let ts: serde_json::Value = json_store::read_value(&r.paths.timestamps()).unwrap();
     assert_eq!(ts["g1"]["totalPlayed"], 0);
     assert!(ts["g1"]["lastPlayed"].is_string());
-    let cfg: serde_json::Value = json_store::read_value(&r.paths.config()).unwrap();
+    let cfg: serde_json::Value = json_store::read_value(&r.paths.store_config()).unwrap();
     assert_eq!(
         cfg["games"]["recent"][0],
         serde_json::json!({"appName": "g1", "title": "g1 title"})
@@ -421,12 +421,12 @@ fn steam_that_never_starts_the_game_is_an_error_without_recording() {
 
 fn real_rig() -> (
     tempfile::TempDir,
-    HeroicPaths,
+    DataPaths,
     Launcher,
     Receiver<LaunchEvent>,
 ) {
     let dir = tempfile::tempdir().unwrap();
-    let paths = HeroicPaths::at(dir.path().join("heroic"));
+    let paths = DataPaths::at(dir.path().join("heroic"));
     let steam = SteamLocator {
         home: dir.path().join("home"),
         steam_path: dir.path().join("home/.steam/steam"),
@@ -717,7 +717,7 @@ fn stopping_while_preparing_ends_the_launch_without_a_session() {
 // Playtime checkpoints
 // ---------------------------------------------------------------------------
 
-fn sessions_of(paths: &HeroicPaths, app: &str) -> Vec<heronite_data::models::LocalGameSession> {
+fn sessions_of(paths: &DataPaths, app: &str) -> Vec<heronite_data::models::LocalGameSession> {
     let doc: SessionsFile = json_store::read(&paths.sessions()).unwrap();
     doc.sessions.get(app).cloned().unwrap_or_default()
 }

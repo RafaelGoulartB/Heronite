@@ -12,7 +12,7 @@ use anyhow::Result;
 use crate::json_store;
 use crate::models::{CompletionStatus, LocalGameMeta, LocalMetaFile, StatusesFile};
 use crate::num::JsNum;
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 use crate::text::locale_cmp;
 
 /// Slug id of the group collecting games whose status id is unknown.
@@ -139,7 +139,7 @@ pub fn sort_statuses(statuses: &mut [CompletionStatus]) {
 
 /// The statuses in display order. An empty file yields the defaults
 /// (Heronite writes them on first read; this does not touch the disk).
-pub fn load_statuses(paths: &HeroicPaths) -> Result<Vec<CompletionStatus>> {
+pub fn load_statuses(paths: &DataPaths) -> Result<Vec<CompletionStatus>> {
     let file: StatusesFile = json_store::read(&paths.statuses())?;
     Ok(sorted_or_default(file.statuses))
 }
@@ -244,35 +244,35 @@ pub enum StatusMergeDecision {
 
 /// `decideStatusMerge`.
 pub fn decide_status_merge(
-    heroic_status: Option<&str>,
+    local_status: Option<&str>,
     last_playnite_status: Option<&str>,
     playnite_status: Option<&str>,
     from_playnite: &str,
     statuses: &[CompletionStatus],
 ) -> (String, StatusMergeDecision) {
-    let Some(heroic) = heroic_status.filter(|s| !s.is_empty()) else {
+    let Some(local) = local_status.filter(|s| !s.is_empty()) else {
         return (from_playnite.to_owned(), StatusMergeDecision::TakePlaynite);
     };
     if playnite_status == last_playnite_status {
-        return (heroic.to_owned(), StatusMergeDecision::Unchanged);
+        return (local.to_owned(), StatusMergeDecision::Unchanged);
     }
     let last_imported = last_playnite_status
         .filter(|s| !s.is_empty())
         .map(|s| status_id_for_playnite(Some(s), statuses));
-    if last_imported.as_deref() == Some(heroic) {
-        let decision = if from_playnite == heroic {
+    if last_imported.as_deref() == Some(local) {
+        let decision = if from_playnite == local {
             StatusMergeDecision::Unchanged
         } else {
             StatusMergeDecision::TakePlaynite
         };
         return (from_playnite.to_owned(), decision);
     }
-    let decision = if from_playnite == heroic {
+    let decision = if from_playnite == local {
         StatusMergeDecision::Unchanged
     } else {
         StatusMergeDecision::Conflict
     };
-    (heroic.to_owned(), decision)
+    (local.to_owned(), decision)
 }
 
 /// Extra data for [`set_game_status`] when the game has no overlay entry yet.
@@ -289,7 +289,7 @@ pub struct SetStatusExtras {
 /// a minimal one, exactly like Heronite: `playniteId = heroic_<appName>`,
 /// `source = other`, `launchKind = unavailable`. Returns the stored entry.
 pub fn set_game_status(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     app_name: &str,
     status_id: &str,
     extras: &SetStatusExtras,
@@ -323,7 +323,7 @@ pub fn set_game_status(
 
 /// `upsertCompletionStatus`: replaces the status with the same id or appends.
 /// Returns the new list in display order.
-pub fn upsert_status(paths: &HeroicPaths, status: CompletionStatus) -> Result<Vec<CompletionStatus>> {
+pub fn upsert_status(paths: &DataPaths, status: CompletionStatus) -> Result<Vec<CompletionStatus>> {
     json_store::update::<StatusesFile, _>(&paths.statuses(), |file| {
         let mut statuses = sorted_or_default(std::mem::take(&mut file.statuses));
         match statuses.iter().position(|s| s.id == status.id) {
@@ -357,7 +357,7 @@ pub fn new_custom_status(name: &str, statuses: &[CompletionStatus]) -> Completio
 }
 
 /// Renames the status `id`. `None` when it does not exist.
-pub fn rename_status(paths: &HeroicPaths, id: &str, name: &str) -> Result<Option<Vec<CompletionStatus>>> {
+pub fn rename_status(paths: &DataPaths, id: &str, name: &str) -> Result<Option<Vec<CompletionStatus>>> {
     let current = load_statuses(paths)?;
     let Some(mut status) = current.into_iter().find(|s| s.id == id) else {
         return Ok(None);
@@ -368,7 +368,7 @@ pub fn rename_status(paths: &HeroicPaths, id: &str, name: &str) -> Result<Option
 
 /// `deleteCompletionStatus`: the last status cannot be deleted; games using
 /// the deleted one move to "not-played" (or the first other status).
-pub fn delete_status(paths: &HeroicPaths, id: &str) -> Result<Vec<CompletionStatus>> {
+pub fn delete_status(paths: &DataPaths, id: &str) -> Result<Vec<CompletionStatus>> {
     enum Outcome {
         Unchanged(Vec<CompletionStatus>),
         Deleted { statuses: Vec<CompletionStatus>, fallback: String },
@@ -410,7 +410,7 @@ pub fn delete_status(paths: &HeroicPaths, id: &str) -> Result<Vec<CompletionStat
 
 /// `reorderCompletionStatuses`: `ids` first (in that order), then the rest in
 /// their current order; `sortOrder` renumbered 10, 20, 30...
-pub fn reorder_statuses(paths: &HeroicPaths, ids: &[String]) -> Result<Vec<CompletionStatus>> {
+pub fn reorder_statuses(paths: &DataPaths, ids: &[String]) -> Result<Vec<CompletionStatus>> {
     json_store::update::<StatusesFile, _>(&paths.statuses(), |file| {
         let statuses = sorted_or_default(std::mem::take(&mut file.statuses));
         let mut next: Vec<CompletionStatus> = Vec::with_capacity(statuses.len());
@@ -495,9 +495,9 @@ mod tests {
         assert_eq!((id.as_str(), d), ("beaten", StatusMergeDecision::Conflict));
     }
 
-    fn temp_paths() -> (tempfile::TempDir, HeroicPaths) {
+    fn temp_paths() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         fs::create_dir_all(paths.local_library()).unwrap();
         (dir, paths)
     }
@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn real_statuses_sort_like_heronite() {
         let Some(root) = std::env::var_os("HERONITE_FIXTURE") else { return };
-        let list = load_statuses(&HeroicPaths::at(root)).unwrap();
+        let list = load_statuses(&DataPaths::at(root)).unwrap();
         let names: Vec<_> = list.iter().map(|s| s.name.as_str()).collect();
         eprintln!("statuses: {names:?}");
         assert!(list.windows(2).all(|w| w[0].sort_order.get() <= w[1].sort_order.get()));

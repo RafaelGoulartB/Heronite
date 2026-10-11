@@ -26,7 +26,7 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::game_config::{self, Settings};
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_wine::WineInstallation;
 use serde_json::{json, Value};
 
@@ -103,8 +103,8 @@ pub struct SavesState {
     pub output: Option<Vec<String>>,
 }
 
-pub struct HeroicSettingsPanel {
-    pub(super) paths: HeroicPaths,
+pub struct SettingsPanel {
+    pub(super) paths: DataPaths,
     pub(super) home: String,
     pub(super) target: Target,
     pub(super) section: Section,
@@ -137,8 +137,8 @@ pub struct HeroicSettingsPanel {
     _subs: Vec<Subscription>,
 }
 
-impl HeroicSettingsPanel {
-    pub fn new(paths: HeroicPaths, target: Target, section: Section, window: &mut Window, cx: &mut Context<Self>) -> Self {
+impl SettingsPanel {
+    pub fn new(paths: DataPaths, target: Target, section: Section, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
         let settings = match &target {
             Target::Game(f) => game_config::load_game(&paths, &f.app_name, &home),
@@ -430,7 +430,7 @@ pub(super) fn value_text(v: Option<&Value>) -> String {
     }
 }
 
-impl Render for HeroicSettingsPanel {
+impl Render for SettingsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if crate::console::active() {
             return self.render_console(window, cx);

@@ -1,9 +1,10 @@
 //! Screenshot preview cache. Port of `src/local-library/screenshots/thumbnails.ts`.
 //!
-//! Compatible with the Electron app's cache: previews are 320x180 quality-60
-//! JPEGs named `<sha256(sourcePath + "\0320x180q60")>.jpg`, each with a
-//! `<name>.jpg.json` sidecar `{"sourcePath": "..."}`, so both apps can share
-//! `local_library/screenshot-thumbnails` and its LRU budget (`cacheLimitMb`).
+//! Same cache format as the Electron app (so a migrated cache stays valid):
+//! previews are 320x180 quality-60 JPEGs named
+//! `<sha256(sourcePath + "\0320x180q60")>.jpg`, each with a `<name>.jpg.json`
+//! sidecar `{"sourcePath": "..."}`, in `local_library/screenshot-thumbnails`
+//! under an LRU budget (`cacheLimitMb`).
 //!
 //! * `cover` semantics like sharp's `fit: 'cover', withoutEnlargement: true`:
 //!   sources of at least 320x180 are scaled (Lanczos3, via
@@ -174,7 +175,7 @@ fn encode_jpeg(d: &Decoded) -> Result<Vec<u8>, ThumbError> {
 }
 
 impl ThumbnailCache {
-    /// `root` is typically `HeroicPaths::screenshot_thumbnails_dir()`.
+    /// `root` is typically `DataPaths::screenshot_thumbnails_dir()`.
     pub fn new(root: impl Into<PathBuf>, limit_mb: f64) -> Self {
         Self {
             inner: Arc::new(Inner {

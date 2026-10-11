@@ -1,9 +1,9 @@
 //! Epic account (port of `LegendaryUser`): `legendary auth`, and the
-//! `userInfo` Heroic keeps in `store/config.json`.
+//! `userInfo` kept in `store/config.json` (Heroic's `configStore` shape).
 
 use anyhow::{bail, Result};
 use heronite_data::json_store;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -26,13 +26,13 @@ pub const BROWSER_LOGIN_URL: &str = "https://legendary.gl/epiclogin";
 /// User agent Heroic's webview uses for the Epic login.
 pub const LOGIN_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EpicGamesLauncher";
 
-fn user_json(heroic: &HeroicPaths) -> std::path::PathBuf {
-    heroic.legendary_config_dir().join("user.json")
+fn user_json(data_paths: &DataPaths) -> std::path::PathBuf {
+    data_paths.legendary_config_dir().join("user.json")
 }
 
 /// `LegendaryUser.isLoggedIn`.
-pub fn is_logged_in(heroic: &HeroicPaths) -> bool {
-    user_json(heroic).exists()
+pub fn is_logged_in(data_paths: &DataPaths) -> bool {
+    user_json(data_paths).exists()
 }
 
 fn os_user() -> String {
@@ -41,25 +41,25 @@ fn os_user() -> String {
 
 /// Account name and id from legendary's `user.json` (tokens are never read
 /// into anything that could be shown).
-pub fn read_user_info(heroic: &HeroicPaths) -> Option<UserInfo> {
-    let doc = json_store::read_value(&user_json(heroic)).ok()?;
+pub fn read_user_info(data_paths: &DataPaths) -> Option<UserInfo> {
+    let doc = json_store::read_value(&user_json(data_paths)).ok()?;
     let text = |k: &str| doc.get(k).and_then(Value::as_str).map(str::to_string);
     Some(UserInfo { account_id: text("account_id")?, display_name: text("displayName").unwrap_or_default(), user: os_user() })
 }
 
 /// `getUserInfo`: reads the account and mirrors it into `configStore.userInfo`
-/// (removing it when logged out), so Heronite shows the same login state.
-pub fn sync_user_info(heroic: &HeroicPaths) -> Result<Option<UserInfo>> {
-    if !is_logged_in(heroic) {
-        remove_stored_user_info(heroic)?;
+/// (removing it when logged out).
+pub fn sync_user_info(data_paths: &DataPaths) -> Result<Option<UserInfo>> {
+    if !is_logged_in(data_paths) {
+        remove_stored_user_info(data_paths)?;
         return Ok(None);
     }
-    let Some(info) = read_user_info(heroic) else { return Ok(None) };
+    let Some(info) = read_user_info(data_paths) else { return Ok(None) };
     let value = serde_json::to_value(&info)?;
-    // Do not touch the file (and its mtime) when Heronite already has it right.
-    let stored = json_store::read_value(&heroic.config()).ok().and_then(|d| d.get("userInfo").cloned());
+    // Do not touch the file (and its mtime) when it is already right.
+    let stored = json_store::read_value(&data_paths.store_config()).ok().and_then(|d| d.get("userInfo").cloned());
     if stored.as_ref() != Some(&value) {
-        json_store::update_value(&heroic.config(), |doc| {
+        json_store::update_value(&data_paths.store_config(), |doc| {
             let obj = doc.as_object_mut().expect("object");
             obj.insert("userInfo".into(), value);
             Ok(())
@@ -68,11 +68,11 @@ pub fn sync_user_info(heroic: &HeroicPaths) -> Result<Option<UserInfo>> {
     Ok(Some(info))
 }
 
-fn remove_stored_user_info(heroic: &HeroicPaths) -> Result<()> {
-    if !heroic.config().exists() {
+fn remove_stored_user_info(data_paths: &DataPaths) -> Result<()> {
+    if !data_paths.store_config().exists() {
         return Ok(());
     }
-    json_store::update_value(&heroic.config(), |doc| {
+    json_store::update_value(&data_paths.store_config(), |doc| {
         if let Some(obj) = doc.as_object_mut() {
             obj.shift_remove("userInfo");
         }
@@ -110,7 +110,7 @@ pub fn extract_code(input: &str) -> Option<String> {
 }
 
 /// `legendary auth --code`; on success mirrors the account into the config.
-pub fn login(heroic: &HeroicPaths, legendary: &Legendary, input: &str) -> Result<UserInfo> {
+pub fn login(data_paths: &DataPaths, legendary: &Legendary, input: &str) -> Result<UserInfo> {
     let Some(code) = extract_code(input) else { bail!("That does not look like an authorization code") };
     if code.len() < 30 {
         bail!("That does not look like an authorization code");
@@ -120,29 +120,29 @@ pub fn login(heroic: &HeroicPaths, legendary: &Legendary, input: &str) -> Result
         let why = out.error_lines();
         bail!("Failed to login with Legendary{}", if why.is_empty() { String::new() } else { format!(": {why}") });
     }
-    match sync_user_info(heroic)? {
+    match sync_user_info(data_paths)? {
         Some(info) => Ok(info),
         None => bail!("Logged in, but the account information could not be read"),
     }
 }
 
 /// `legendary auth --delete`, then forget the account and the cached library.
-pub fn logout(heroic: &HeroicPaths, legendary: &Legendary) -> Result<()> {
+pub fn logout(data_paths: &DataPaths, legendary: &Legendary) -> Result<()> {
     let out = legendary.run(&["auth", "--delete"], &[])?;
     if !out.success() {
         bail!("Failed to logout: {}", out.error_lines());
     }
-    remove_stored_user_info(heroic)?;
-    clear_caches(heroic, legendary);
+    remove_stored_user_info(data_paths)?;
+    clear_caches(data_paths, legendary);
     Ok(())
 }
 
 /// `clearCache('legendary')`.
-pub fn clear_caches(heroic: &HeroicPaths, legendary: &Legendary) {
+pub fn clear_caches(data_paths: &DataPaths, legendary: &Legendary) {
     for store in [
-        CacheStore::install_info(heroic),
-        CacheStore::library(heroic),
-        CacheStore::new(heroic, "legendary_gameinfo", Some(60 * 6)),
+        CacheStore::install_info(data_paths),
+        CacheStore::library(data_paths),
+        CacheStore::new(data_paths, "legendary_gameinfo", Some(60 * 6)),
     ] {
         if store.path().exists() {
             if let Err(err) = store.clear() {
@@ -175,10 +175,10 @@ mod tests {
         assert_eq!(extract_code(""), None);
     }
 
-    fn setup_user(heroic: &HeroicPaths) {
-        std::fs::create_dir_all(heroic.legendary_config_dir()).unwrap();
+    fn setup_user(data_paths: &DataPaths) {
+        std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
         std::fs::write(
-            user_json(heroic),
+            user_json(data_paths),
             json!({"displayName": "Player One", "account_id": "abc123", "access_token": "SECRET", "refresh_token": "SECRET2"}).to_string(),
         )
         .unwrap();
@@ -187,49 +187,49 @@ mod tests {
     #[test]
     fn user_info_is_mirrored_into_the_config_store() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
+        let data_paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(dir.path().join("store")).unwrap();
-        std::fs::write(heroic.config(), "{\n\t\"language\": \"en\"\n}").unwrap();
-        assert!(sync_user_info(&heroic).unwrap().is_none());
-        setup_user(&heroic);
-        let info = sync_user_info(&heroic).unwrap().unwrap();
+        std::fs::write(data_paths.store_config(), "{\n\t\"language\": \"en\"\n}").unwrap();
+        assert!(sync_user_info(&data_paths).unwrap().is_none());
+        setup_user(&data_paths);
+        let info = sync_user_info(&data_paths).unwrap().unwrap();
         assert_eq!((info.account_id.as_str(), info.display_name.as_str()), ("abc123", "Player One"));
-        let stored = json_store::read_value(&heroic.config()).unwrap();
+        let stored = json_store::read_value(&data_paths.store_config()).unwrap();
         assert_eq!(stored["language"], "en");
         assert_eq!(stored["userInfo"]["displayName"], "Player One");
         assert_eq!(stored["userInfo"]["account_id"], "abc123");
         assert!(stored["userInfo"].get("access_token").is_none());
         // Logging out of legendary removes it again.
-        std::fs::remove_file(user_json(&heroic)).unwrap();
-        assert!(sync_user_info(&heroic).unwrap().is_none());
-        assert!(json_store::read_value(&heroic.config()).unwrap().get("userInfo").is_none());
+        std::fs::remove_file(user_json(&data_paths)).unwrap();
+        assert!(sync_user_info(&data_paths).unwrap().is_none());
+        assert!(json_store::read_value(&data_paths.store_config()).unwrap().get("userInfo").is_none());
     }
 
     #[test]
     fn login_runs_auth_with_the_code() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
+        let data_paths = DataPaths::at(dir.path().join("h"));
         let mut lg = fake(dir.path(), "true");
-        lg.config_dir = heroic.legendary_config_dir();
+        lg.config_dir = data_paths.legendary_config_dir();
         // The fake "logs in" by writing user.json.
         let body = format!(
             "mkdir -p \"{cfg}\"; echo '{{\"displayName\":\"P\",\"account_id\":\"id1\"}}' > \"{cfg}/user.json\"",
-            cfg = heroic.legendary_config_dir().display()
+            cfg = data_paths.legendary_config_dir().display()
         );
         let lg = fake(dir.path(), &body);
-        let lg = Legendary::with_bin(lg.bin, heroic.legendary_config_dir());
-        let info = login(&heroic, &lg, CODE).unwrap();
+        let lg = Legendary::with_bin(lg.bin, data_paths.legendary_config_dir());
+        let info = login(&data_paths, &lg, CODE).unwrap();
         assert_eq!(info.display_name, "P");
         assert_eq!(calls(dir.path()), [format!("auth --code {CODE}")]);
-        assert!(login(&heroic, &lg, "short").is_err());
+        assert!(login(&data_paths, &lg, "short").is_err());
     }
 
     #[test]
     fn failed_logins_are_reported() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
+        let data_paths = DataPaths::at(dir.path().join("h"));
         let lg = fake(dir.path(), "echo '[cli] ERROR: Logging in with code failed' >&2; exit 1");
-        let err = login(&heroic, &lg, CODE).unwrap_err().to_string();
+        let err = login(&data_paths, &lg, CODE).unwrap_err().to_string();
         assert!(err.contains("Failed to login"), "{err}");
     }
 }

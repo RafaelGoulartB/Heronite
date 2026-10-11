@@ -53,7 +53,7 @@ fn main() {
     let (tw, th) = (flag(&mut args, "--tw", 250), flag(&mut args, "--th", 375));
     let threads = flag(&mut args, "--threads", 3) as usize;
     let keep = if let Some(i) = args.iter().position(|a| a == "--keep") { args.remove(i); true } else { false };
-    let cache: PathBuf = args.first().map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap()).join(".config/heroic/images-cache"));
+    let cache: PathBuf = args.first().map(PathBuf::from).unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap()).join(".local/share/heronite/images-cache"));
     let n: usize = args.get(1).map(|s| s.parse().unwrap()).unwrap_or(100);
 
     // Pick portrait JPEG covers and landscape heroes by header dims only.

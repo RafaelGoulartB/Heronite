@@ -17,15 +17,15 @@ impl Downloads {
         self.logging_in = true;
         self.last_error = None;
         cx.notify();
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&heroic)?;
-                    let info = user::login(&heroic, &lg, &input)?;
+                    let lg = Legendary::locate(&data_paths)?;
+                    let info = user::login(&data_paths, &lg, &input)?;
                     // Heroic refreshes the library right after logging in.
-                    let refresh = library::refresh(&heroic, &lg);
-                    anyhow::Ok((info, refresh.ok(), library::updates_available(&heroic), read_stats(&heroic)))
+                    let refresh = library::refresh(&data_paths, &lg);
+                    anyhow::Ok((info, refresh.ok(), library::updates_available(&data_paths), read_stats(&data_paths)))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -53,12 +53,12 @@ impl Downloads {
     }
 
     pub fn logout(&mut self, cx: &mut Context<Self>) {
-        let heroic = self.heroic.clone();
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&heroic)?;
-                    user::logout(&heroic, &lg)
+                    let lg = Legendary::locate(&data_paths)?;
+                    user::logout(&data_paths, &lg)
                 })
                 .await;
             this.update(cx, |this, cx| {

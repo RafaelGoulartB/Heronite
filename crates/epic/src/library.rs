@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use heronite_data::json_store;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::{json, Map, Value};
 
 use crate::cache_store::CacheStore;
@@ -15,14 +15,14 @@ use crate::cmd::Legendary;
 use crate::user;
 use crate::util::{epic_store_url, file_size};
 
-pub fn metadata_dir(heroic: &HeroicPaths) -> PathBuf {
-    heroic.legendary_config_dir().join("metadata")
+pub fn metadata_dir(data_paths: &DataPaths) -> PathBuf {
+    data_paths.legendary_config_dir().join("metadata")
 }
 
 /// `installed.json` plus `third-party-installed.json` (read only), by app name.
-pub fn installed_games(heroic: &HeroicPaths) -> BTreeMap<String, Value> {
+pub fn installed_games(data_paths: &DataPaths) -> BTreeMap<String, Value> {
     let mut out = BTreeMap::new();
-    let dir = heroic.legendary_config_dir();
+    let dir = data_paths.legendary_config_dir();
     if let Ok(Value::Object(map)) = json_store::read_value(&dir.join("installed.json")) {
         for (k, v) in map {
             out.insert(k, v);
@@ -185,9 +185,9 @@ pub fn game_info(app_name: &str, file: &Value, installed: Option<&Value>) -> Opt
 }
 
 /// Every game of the account in Heroic's `GameInfo` format.
-pub fn build_library(heroic: &HeroicPaths) -> Vec<Value> {
-    let installed = installed_games(heroic);
-    let mut names: Vec<String> = std::fs::read_dir(metadata_dir(heroic))
+pub fn build_library(data_paths: &DataPaths) -> Vec<Value> {
+    let installed = installed_games(data_paths);
+    let mut names: Vec<String> = std::fs::read_dir(metadata_dir(data_paths))
         .map(|d| {
             d.filter_map(|e| e.ok())
                 .filter_map(|e| e.file_name().to_str().map(str::to_string))
@@ -198,7 +198,7 @@ pub fn build_library(heroic: &HeroicPaths) -> Vec<Value> {
     names.sort();
     let mut out = Vec::with_capacity(names.len());
     for app in names {
-        let path = metadata_dir(heroic).join(format!("{app}.json"));
+        let path = metadata_dir(data_paths).join(format!("{app}.json"));
         match json_store::read_value(&path) {
             Ok(file) => {
                 if let Some(game) = game_info(&app, &file, installed.get(&app)) {
@@ -213,10 +213,10 @@ pub fn build_library(heroic: &HeroicPaths) -> Vec<Value> {
 
 /// Rebuilds `store_cache/legendary_library.json` from legendary's files (no
 /// network). Returns the number of games.
-pub fn write_library(heroic: &HeroicPaths) -> Result<usize> {
-    let games = build_library(heroic);
+pub fn write_library(data_paths: &DataPaths) -> Result<usize> {
+    let games = build_library(data_paths);
     let n = games.len();
-    CacheStore::library(heroic).set("library", Value::Array(games))?;
+    CacheStore::library(data_paths).set("library", Value::Array(games))?;
     Ok(n)
 }
 
@@ -229,8 +229,8 @@ pub struct RefreshResult {
 }
 
 /// `refresh`: `legendary list --third-party`, then rebuild the library file.
-pub fn refresh(heroic: &HeroicPaths, legendary: &Legendary) -> Result<RefreshResult> {
-    if !user::is_logged_in(heroic) {
+pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshResult> {
+    if !user::is_logged_in(data_paths) {
         return Ok(RefreshResult::default());
     }
     log::info!("Refreshing Epic Games...");
@@ -246,7 +246,7 @@ pub fn refresh(heroic: &HeroicPaths, legendary: &Legendary) -> Result<RefreshRes
     if let Some(e) = &list_error {
         log::error!("Failed to refresh library: {e}");
     }
-    let games = write_library(heroic)?;
+    let games = write_library(data_paths)?;
     log::info!("Game list updated, got {games} games & DLCs");
     Ok(RefreshResult { games, list_error })
 }
@@ -254,8 +254,8 @@ pub fn refresh(heroic: &HeroicPaths, legendary: &Legendary) -> Result<RefreshRes
 /// App names whose installed version differs from the latest one in
 /// `assets.json` (`listUpdateableGames` after `list` has refreshed it). Local
 /// only; `assets.json` is as fresh as the last refresh.
-pub fn updates_available(heroic: &HeroicPaths) -> Vec<String> {
-    let dir = heroic.legendary_config_dir();
+pub fn updates_available(data_paths: &DataPaths) -> Vec<String> {
+    let dir = data_paths.legendary_config_dir();
     let installed = json_store::read_value(&dir.join("installed.json")).unwrap_or(Value::Null);
     let assets = json_store::read_value(&dir.join("assets.json")).unwrap_or(Value::Null);
     let (Some(installed), Some(assets)) = (installed.as_object(), assets.as_object()) else { return Vec::new() };
@@ -369,8 +369,8 @@ mod tests {
         assert_eq!(g["folder_name"], "d");
     }
 
-    fn setup(heroic: &HeroicPaths) {
-        let dir = heroic.legendary_config_dir();
+    fn setup(data_paths: &DataPaths) {
+        let dir = data_paths.legendary_config_dir();
         std::fs::create_dir_all(dir.join("metadata")).unwrap();
         std::fs::write(dir.join("metadata/Calluna.json"), meta(json!({})).to_string()).unwrap();
         std::fs::write(dir.join("metadata/ue1.json"), meta(json!({"namespace": "ue"})).to_string()).unwrap();
@@ -386,10 +386,10 @@ mod tests {
     #[test]
     fn library_file_is_written_like_the_cache_store() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
-        setup(&heroic);
-        assert_eq!(write_library(&heroic).unwrap(), 1);
-        let raw = std::fs::read_to_string(heroic.legendary_library()).unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        assert_eq!(write_library(&data_paths).unwrap(), 1);
+        let raw = std::fs::read_to_string(data_paths.legendary_library()).unwrap();
         assert!(raw.starts_with("{\n\t\"library\": ["), "{raw}");
         let doc: Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(doc["library"][0]["app_name"], "Calluna");
@@ -400,40 +400,40 @@ mod tests {
     #[test]
     fn updates_compare_installed_and_assets() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
-        setup(&heroic);
-        let cfg = heroic.legendary_config_dir();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let cfg = data_paths.legendary_config_dir();
         std::fs::write(cfg.join("assets.json"), json!({"Windows": [{"app_name": "Calluna", "build_version": "1.1"}, {"app_name": "Other", "build_version": "9"}], "Mac": [{"app_name": "Calluna", "build_version": "7"}]}).to_string()).unwrap();
-        assert_eq!(updates_available(&heroic), ["Calluna"]);
+        assert_eq!(updates_available(&data_paths), ["Calluna"]);
         std::fs::write(cfg.join("assets.json"), json!({"Windows": [{"app_name": "Calluna", "build_version": "1.0"}]}).to_string()).unwrap();
-        assert!(updates_available(&heroic).is_empty());
+        assert!(updates_available(&data_paths).is_empty());
     }
 
     #[test]
     fn refresh_runs_list_then_rebuilds_even_when_list_fails() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path().join("h"));
-        setup(&heroic);
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
         let lg = fake(dir.path(), "echo 'ERROR: offline' >&2; exit 1");
-        let r = refresh(&heroic, &lg).unwrap();
+        let r = refresh(&data_paths, &lg).unwrap();
         assert_eq!(r.games, 1);
         assert!(r.list_error.unwrap().contains("offline"));
         assert_eq!(crate::cmd::testing::calls(dir.path()), ["list --third-party"]);
         // Logged out: nothing runs.
-        std::fs::remove_file(heroic.legendary_config_dir().join("user.json")).unwrap();
-        assert_eq!(refresh(&heroic, &lg).unwrap().games, 0);
+        std::fs::remove_file(data_paths.legendary_config_dir().join("user.json")).unwrap();
+        assert_eq!(refresh(&data_paths, &lg).unwrap().games, 0);
         assert_eq!(crate::cmd::testing::calls(dir.path()).len(), 1);
     }
 
     /// Compares the rebuilt library with the file Heronite wrote. Read-only:
-    /// `HERONITE_EPIC_REAL=~/.config/heroic cargo test -p heronite-epic real_library -- --nocapture`
+    /// `HERONITE_EPIC_REAL=~/.local/share/heronite cargo test -p heronite-epic real_library -- --nocapture`
     #[test]
     fn real_library_matches_heronites_cache() {
         let Some(root) = std::env::var_os("HERONITE_EPIC_REAL") else { return };
-        let heroic = HeroicPaths::at(root);
-        let cached = json_store::read_value(&heroic.legendary_library()).unwrap();
+        let data_paths = DataPaths::at(root);
+        let cached = json_store::read_value(&data_paths.legendary_library()).unwrap();
         let cached = cached["library"].as_array().expect("library array").clone();
-        let built = build_library(&heroic);
+        let built = build_library(&data_paths);
         assert_eq!(built.len(), cached.len(), "game count");
         let by_name = |list: &[Value]| -> BTreeMap<String, Value> {
             list.iter().map(|g| (g["app_name"].as_str().unwrap().to_string(), g.clone())).collect()

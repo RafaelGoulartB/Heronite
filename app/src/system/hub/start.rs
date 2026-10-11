@@ -9,7 +9,7 @@ use std::time::Instant;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use futures::StreamExt;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 
 use super::debug::debug_hooks;
 use super::events::{on_event, on_message, on_tray_cmd};
@@ -32,16 +32,16 @@ pub fn init(
     messages: Option<UnboundedReceiver<Message>>,
     signals: Option<UnboundedReceiver<i32>>,
 ) {
-    let heroic = HeroicPaths::detect();
-    let settings = SysSettings::load(&heroic);
-    let (runtime, events) = GameRuntime::new(heroic.clone());
+    let data_paths = DataPaths::detect();
+    let settings = SysSettings::load(&data_paths);
+    let (runtime, events) = GameRuntime::new(data_paths.clone());
     let runtime = Arc::new(runtime);
     // Post-game work (backup, capture session) runs here, with or without a window.
-    crate::services::session::init(cx, heroic.clone(), runtime.clone());
+    crate::services::session::init(cx, data_paths.clone(), runtime.clone());
 
     let (tray_tx, tray_rx) = unbounded();
     let tray = (!settings.no_tray_icon && !crate::env::flag("HERONITE_NO_TRAY"))
-        .then(|| tray::spawn(heroic.clone(), settings.dark_tray_icon, settings.exit_to_tray, settings.max_recent, false, tray_tx.clone()))
+        .then(|| tray::spawn(data_paths.clone(), settings.dark_tray_icon, settings.exit_to_tray, settings.max_recent, false, tray_tx.clone()))
         .flatten();
     let fake_tray = crate::env::flag("HERONITE_DEBUG_FAKE_TRAY");
     let tray_alive = tray.is_some() || fake_tray;
@@ -54,7 +54,7 @@ pub fn init(
     let unreachable = !want_window && !tray_alive && cli.launch.is_none() && !debug_hidden;
 
     cx.set_global(Hub(Rc::new(RefCell::new(State {
-        heroic: heroic.clone(),
+        data_paths: data_paths.clone(),
         runtime,
         window: None,
         subscriber: None,
@@ -66,7 +66,7 @@ pub fn init(
         quitting: false,
         fake_launch: crate::env::flag("HERONITE_DEBUG_FAKE_LAUNCH"),
         settings,
-        settings_stamp: heronite_data::game_config::global_config_path(&heroic).metadata().and_then(|m| m.modified()).ok(),
+        settings_stamp: data_paths.global_config().metadata().and_then(|m| m.modified()).ok(),
     }))));
     STARTED.with(|s| s.set(Some(started)));
 
@@ -115,7 +115,7 @@ pub fn init(
     // one-shot launch has no use for them.
     if !hub(cx).0.borrow().exit_when_idle {
         crate::services::downloads(cx);
-        crate::services::compression::init(cx, heroic.clone());
+        crate::services::compression::init(cx, data_paths.clone());
     }
 
     if want_window || unreachable {

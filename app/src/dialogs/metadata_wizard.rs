@@ -9,7 +9,7 @@ use futures::channel::mpsc::{unbounded, UnboundedSender};
 use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, BulkState, MetadataService};
 
 use super::{DialogCtx, DialogEvent};
@@ -43,8 +43,8 @@ pub fn hub(cx: &App) -> Entity<MetadataHub> {
 }
 
 impl MetadataHub {
-    pub fn new(heroic: HeroicPaths, cx: &mut Context<Self>) -> Self {
-        let service = Arc::new(MetadataService::new(heroic));
+    pub fn new(data_paths: DataPaths, cx: &mut Context<Self>) -> Self {
+        let service = Arc::new(MetadataService::new(data_paths));
         let (tx, mut rx) = unbounded::<BulkProgress>();
         cx.spawn(async move |this, cx| {
             while let Some(p) = rx.next().await {

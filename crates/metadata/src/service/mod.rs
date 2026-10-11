@@ -16,7 +16,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, LocalMetaFile, MetadataSettings};
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use heronite_data::settings;
 use indexmap::IndexMap;
 use parking_lot::{Mutex, RwLock};
@@ -40,7 +40,7 @@ use crate::util::now_iso;
 use crate::{covers, web_images};
 
 pub struct MetadataService {
-    pub paths: HeroicPaths,
+    pub paths: DataPaths,
     pub http: Http,
     igdb: Igdb,
     steam: SteamState,
@@ -54,12 +54,12 @@ pub struct MetadataService {
 }
 
 impl MetadataService {
-    pub fn new(paths: HeroicPaths) -> Self {
+    pub fn new(paths: DataPaths) -> Self {
         Self::with_endpoints(paths, Endpoints::default())
     }
 
     /// Custom base URLs (tests point them at a local server).
-    pub fn with_endpoints(paths: HeroicPaths, endpoints: Endpoints) -> Self {
+    pub fn with_endpoints(paths: DataPaths, endpoints: Endpoints) -> Self {
         Self {
             paths,
             http: Http::new(endpoints),

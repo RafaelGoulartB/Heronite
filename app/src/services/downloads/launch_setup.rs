@@ -1,6 +1,6 @@
 //! The Epic side of the first launch of a game (prerequisites, EOS overlay).
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_epic::cmd::Legendary;
 use heronite_epic::eos_overlay;
 use heronite_epic::info;
@@ -8,7 +8,7 @@ use heronite_epic::info;
 /// What the first launch of an Epic game in a prefix asks legendary for
 /// (the launcher crate cannot depend on the Epic crate): the game's
 /// prerequisites and the EOS overlay of the prefix.
-pub struct EpicLaunchSetup(pub HeroicPaths);
+pub struct EpicLaunchSetup(pub DataPaths);
 
 impl heronite_launch::first_launch::EpicSetup for EpicLaunchSetup {
     fn prerequisites(&self, app_name: &str, platform: &str) -> Result<Option<heronite_launch::first_launch::Prerequisite>, String> {

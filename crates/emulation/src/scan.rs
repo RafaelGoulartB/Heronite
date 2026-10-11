@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 use anyhow::Result;
 use heronite_data::models::{LocalGameRom, LocalMetaFile};
 use heronite_data::text::locale_cmp;
-use heronite_data::{json_store, HeroicPaths};
+use heronite_data::{json_store, DataPaths};
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 use regex::Regex;
 
@@ -288,7 +288,7 @@ pub fn scan_rom_directory(
 
 /// `previewRomScan`: looks up the emulator/profile and what is already
 /// imported on disk.
-pub fn preview_rom_scan(paths: &HeroicPaths, args: &RomScanArgs) -> Result<RomScanPreview> {
+pub fn preview_rom_scan(paths: &DataPaths, args: &RomScanArgs) -> Result<RomScanPreview> {
     let blank = |emulator_name: &str, profile_name: &str, error: &str| RomScanPreview {
         scanner_id: None,
         emulator_id: args.emulator_id.clone(),
@@ -457,7 +457,7 @@ mod tests {
     #[test]
     fn preview_without_emulator_has_error() {
         let d = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(d.path());
+        let paths = DataPaths::at(d.path());
         let r = preview_rom_scan(
             &paths,
             &RomScanArgs { emulator_id: "x".into(), profile_id: "y".into(), directory: "/r".into(), ..Default::default() },

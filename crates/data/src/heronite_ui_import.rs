@@ -1,5 +1,6 @@
-//! One-time import of Heronite's Collection UI state, which lives in
-//! Chromium's localStorage (LevelDB under `<heroic>/Local Storage/leveldb`).
+//! Import of Heronite's Collection UI state during the Heroic migration
+//! (`migrate`). It lives in Chromium's localStorage (LevelDB under
+//! `<heroic>/Local Storage/leveldb`).
 //!
 //! Keys look like `_file://\0\x01collection_install_filter`; values start
 //! with an encoding byte (`0x01` Latin-1, `0x00` UTF-16LE). The DB is copied
@@ -12,7 +13,6 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
 use crate::ui_state::UiState;
-use crate::HeroicPaths;
 
 const KEYS: [&str; 6] = [
     "collection_install_filter",
@@ -70,8 +70,8 @@ pub fn read_local_storage(leveldb_dir: &Path) -> Result<HashMap<String, String>>
 
 /// Builds a [`UiState`] from Heronite's localStorage, or `None` when there is
 /// nothing to import.
-pub fn import(paths: &HeroicPaths) -> Option<UiState> {
-    let dir = paths.root.join("Local Storage").join("leveldb");
+pub fn import(heroic_root: &Path) -> Option<UiState> {
+    let dir = heroic_root.join("Local Storage").join("leveldb");
     let map = match read_local_storage(&dir) {
         Ok(m) if !m.is_empty() => m,
         Ok(_) => return None,
@@ -106,8 +106,7 @@ mod tests {
     #[test]
     fn imports_real_heronite_state_when_available() {
         let Some(home) = dirs::config_dir() else { return };
-        let paths = HeroicPaths::at(home.join("heroic"));
-        if let Some(state) = import(&paths) {
+        if let Some(state) = import(&home.join("heroic")) {
             eprintln!("{:?}", state.to_value());
         }
     }

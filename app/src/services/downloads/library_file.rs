@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use heronite_data::json_store;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde_json::Value;
 
 use super::{GameFlags, Stats};
 
 /// The library file's `GameInfo` of one game.
-pub fn library_entry(heroic: &HeroicPaths, app_name: &str) -> Option<Value> {
-    let doc = json_store::read_value(&heroic.legendary_library()).ok()?;
+pub fn library_entry(data_paths: &DataPaths, app_name: &str) -> Option<Value> {
+    let doc = json_store::read_value(&data_paths.legendary_library()).ok()?;
     doc.get("library")?
         .as_array()?
         .iter()
@@ -20,8 +20,8 @@ pub fn library_entry(heroic: &HeroicPaths, app_name: &str) -> Option<Value> {
 }
 
 /// Owned (without DLC) and installed counts from the library file.
-pub(super) fn read_stats(heroic: &HeroicPaths) -> Stats {
-    let doc = json_store::read_value(&heroic.legendary_library()).unwrap_or(Value::Null);
+pub(super) fn read_stats(data_paths: &DataPaths) -> Stats {
+    let doc = json_store::read_value(&data_paths.legendary_library()).unwrap_or(Value::Null);
     let list = doc.get("library").and_then(Value::as_array).cloned().unwrap_or_default();
     let mut stats = Stats::default();
     let mut flags = HashMap::new();

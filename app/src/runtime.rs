@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
-use heronite_data::{CollectionGame, HeroicPaths};
+use heronite_data::{CollectionGame, DataPaths};
 use heronite_launch::steam::{open_steam_client_uri, SteamAction, SteamLocator};
 use heronite_launch::net::SystemNet;
 use heronite_launch::prepare::CloudSync;
@@ -17,7 +17,7 @@ use heronite_launch::{
 
 /// Cloud saves around a launch go through legendary (the Epic crate depends on
 /// the launch crate, so the launcher gets this through a trait).
-struct EpicCloudSaves(HeroicPaths);
+struct EpicCloudSaves(DataPaths);
 
 impl CloudSync for EpicCloudSaves {
     fn sync(&self, app_name: &str, saves_path: &str, flag: &str) -> Result<String, String> {
@@ -45,12 +45,12 @@ pub struct SessionInfo {
 
 pub struct GameRuntime {
     launcher: Launcher,
-    paths: HeroicPaths,
+    paths: DataPaths,
     sessions: Mutex<HashMap<String, SessionInfo>>,
 }
 
 impl GameRuntime {
-    pub fn new(paths: HeroicPaths) -> (Self, UnboundedReceiver<LaunchEvent>) {
+    pub fn new(paths: DataPaths) -> (Self, UnboundedReceiver<LaunchEvent>) {
         let (tx, rx) = std::sync::mpsc::channel();
         let (ftx, frx) = unbounded();
         std::thread::Builder::new()
@@ -202,7 +202,7 @@ fn session_info(game: &CollectionGame, rom: Option<String>) -> SessionInfo {
 /// slow (downloads, wine commands): call it from a thread. `progress` gets the
 /// steps ("Downloading DXVK..."). Not run by tests.
 pub fn toggle_tool_blocking(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     settings: &heronite_launch::settings::GameSettings,
     tool: heronite_launch::tools::Tool,
     action: heronite_launch::dxvk::Action,
@@ -228,7 +228,7 @@ pub fn toggle_tool_blocking(
 /// first launch that needs them finds them. Off with
 /// `HERONITE_DISABLE_IDLE_JOBS` (tests against real data) or
 /// `HERONITE_DISABLE_TOOLS_UPDATE` (only this).
-fn spawn_tools_update(paths: HeroicPaths) {
+fn spawn_tools_update(paths: DataPaths) {
     if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") || crate::env::flag("HERONITE_DISABLE_TOOLS_UPDATE") {
         return;
     }

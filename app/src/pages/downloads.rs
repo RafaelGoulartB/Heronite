@@ -34,7 +34,7 @@ impl DownloadsPage {
     pub fn new(ctx: PageCtx, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
-        let covers = Covers::new(&ctx.heroic, &ctx.app, cx, |this: &mut Self| &mut this.covers);
+        let covers = Covers::new(&ctx.data_paths, &ctx.app, cx, |this: &mut Self| &mut this.covers);
         Self { ctx, svc, covers, confirm_stop: false, console_list: Default::default(), layer: Default::default() }
     }
 }

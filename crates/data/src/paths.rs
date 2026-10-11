@@ -1,25 +1,39 @@
-//! Locations of the Heroic/Heronite data this app shares.
+//! Locations of this app's data.
 //!
-//! Heronite (the Electron fork) and this app read and write the same files,
-//! so both can be used during the transition.
+//! The data folder keeps the layout and the JSON formats of Heroic's config
+//! folder (this app grew out of a Heroic fork), but it is this app's own:
+//! nothing here is shared with Heroic or Heronite. `migrate` copies an
+//! existing Heroic folder in once.
 
 use std::path::{Path, PathBuf};
 
+/// Folder name of this app under the XDG base directories.
+pub const APP_DIR: &str = "heronite";
+
 #[derive(Debug, Clone)]
-pub struct HeroicPaths {
-    /// `~/.config/heroic` on Linux, `%APPDATA%\heroic` on Windows.
+pub struct DataPaths {
+    /// `~/.local/share/heronite` on Linux.
     pub root: PathBuf,
 }
 
-impl HeroicPaths {
-    /// Resolves the Heroic config folder. `HERONITE_HEROIC_DIR` overrides it
-    /// (used by tests and for pointing at a copy of real data).
+impl DataPaths {
+    /// The data folder. `HERONITE_DATA_DIR` overrides it (used by tests and
+    /// for pointing at a copy of real data).
     pub fn detect() -> Self {
-        if let Some(dir) = std::env::var_os("HERONITE_HEROIC_DIR") {
+        if let Some(dir) = std::env::var_os("HERONITE_DATA_DIR") {
             return Self { root: PathBuf::from(dir) };
         }
-        let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
-        Self { root: base.join("heroic") }
+        Self { root: Self::default_root().unwrap_or_else(|| PathBuf::from(APP_DIR)) }
+    }
+
+    /// `$XDG_DATA_HOME/heronite`.
+    pub fn default_root() -> Option<PathBuf> {
+        dirs::data_dir().map(|d| d.join(APP_DIR))
+    }
+
+    /// Whether this is the real data folder (not a fixture or a copy).
+    pub fn is_default(&self) -> bool {
+        Self::default_root().as_deref() == Some(self.root.as_path())
     }
 
     pub fn at(root: impl Into<PathBuf>) -> Self {
@@ -47,13 +61,26 @@ impl HeroicPaths {
     pub fn screenshot_thumbnails_dir(&self) -> PathBuf { self.j("local_library/screenshot-thumbnails") }
     pub fn ratings(&self) -> PathBuf { self.j("local_library/ratings.json") }
 
-    // Heroic core stores.
+    // Core stores (Heroic's layout and formats).
     pub fn sideload_library(&self) -> PathBuf { self.j("sideload_apps/library.json") }
     pub fn legendary_library(&self) -> PathBuf { self.j("store_cache/legendary_library.json") }
     pub fn gog_library(&self) -> PathBuf { self.j("store_cache/gog_library.json") }
     pub fn nile_library(&self) -> PathBuf { self.j("store_cache/nile_library.json") }
     pub fn timestamps(&self) -> PathBuf { self.j("store/timestamp.json") }
-    pub fn config(&self) -> PathBuf { self.j("store/config.json") }
+    /// The electron-store style config (`settings`, `games`, `userInfo`...).
+    pub fn store_config(&self) -> PathBuf { self.j("store/config.json") }
+    /// The global settings (`defaultSettings`, 2-space JSON).
+    pub fn global_config(&self) -> PathBuf { self.j("config.json") }
+    pub fn download_manager(&self) -> PathBuf { self.j("store/download-manager.json") }
+    pub fn wine_downloader_info(&self) -> PathBuf { self.j("store/wine-downloader-info.json") }
+    /// `store_cache/<name>.json`.
+    pub fn store_cache(&self, name: &str) -> PathBuf {
+        self.j("store_cache").join(format!("{name}.json"))
+    }
+    /// `gog_store/<name>.json`.
+    pub fn gog_store(&self, name: &str) -> PathBuf {
+        self.j("gog_store").join(format!("{name}.json"))
+    }
     pub fn games_config_dir(&self) -> PathBuf { self.j("GamesConfig") }
     pub fn game_config(&self, app_name: &str) -> PathBuf {
         self.j("GamesConfig").join(format!("{app_name}.json"))
@@ -74,7 +101,14 @@ impl HeroicPaths {
     pub fn images_cache_dir(&self) -> PathBuf { self.j("images-cache") }
     pub fn legendary_config_dir(&self) -> PathBuf { self.j("legendaryConfig/legendary") }
     pub fn tools_dir(&self) -> PathBuf { self.j("tools") }
-    /// Heroic's copy of areweanticheatyet.com.
+    /// The legendary binary this app runs (copied in by `migrate`).
+    pub fn legendary_bin(&self) -> PathBuf { self.j("tools/bin/legendary") }
+    pub fn known_fixes(&self) -> PathBuf { self.j("known_fixes.json") }
+    /// Icons of the `.desktop` shortcuts (`<appName>.(jpg|png)`).
+    pub fn icons_dir(&self) -> PathBuf { self.j("icons") }
+    /// Launcher, runner and game logs.
+    pub fn logs_dir(&self) -> PathBuf { self.j("logs") }
+    /// Copy of areweanticheatyet.com.
     pub fn anticheat(&self) -> PathBuf { self.j("areweanticheatyet.json") }
 
     /// Resolves a `localart://<kind>/<rest>` URL to a file, refusing traversal.
@@ -98,8 +132,7 @@ impl HeroicPaths {
     }
 }
 
-/// Own state of this app that Heronite does not know about (UI state that
-/// Heronite keeps in Chromium localStorage, caches of resized images).
+/// UI state and caches of this app, next to the data folder.
 #[derive(Debug, Clone)]
 pub struct AppPaths {
     pub config: PathBuf,
@@ -108,21 +141,20 @@ pub struct AppPaths {
 
 impl AppPaths {
     pub fn detect() -> Self {
-        let config = dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("heronite-rs");
-        let cache = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join("heronite-rs");
+        let config = dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR);
+        let cache = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR);
         Self { config, cache }
     }
-    /// The app state that belongs to a Heroic folder: the real one for the
-    /// default `<config>/heroic`, otherwise (fixtures, `HERONITE_HEROIC_DIR`,
-    /// tests) a sibling `<folder>.heronite-rs/` so state that points into a
-    /// copy never leaks into the real config.
-    pub fn for_heroic(heroic: &HeroicPaths) -> Self {
-        let default = dirs::config_dir().map(|c| c.join("heroic"));
-        if default.as_deref() == Some(heroic.root.as_path()) {
+    /// The app state that belongs to a data folder: the real one for the
+    /// default folder, otherwise (fixtures, `HERONITE_DATA_DIR`, tests) a
+    /// sibling `<folder>.heronite/` so state that points into a copy
+    /// never leaks into the real config.
+    pub fn for_data(data_paths: &DataPaths) -> Self {
+        if data_paths.is_default() {
             return Self::detect();
         }
-        let name = heroic.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "heroic".into());
-        let base = heroic.root.with_file_name(format!("{name}.heronite-rs"));
+        let name = data_paths.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "data".into());
+        let base = data_paths.root.with_file_name(format!("{name}.heronite"));
         Self { config: base.join("config"), cache: base.join("cache") }
     }
     pub fn ui_state(&self) -> PathBuf { self.config.join("ui-state.json") }
@@ -159,7 +191,7 @@ mod tests {
 
     #[test]
     fn localart_resolves_and_blocks_traversal() {
-        let p = HeroicPaths::at("/cfg");
+        let p = DataPaths::at("/cfg");
         assert_eq!(
             p.resolve_localart("localart://art/sideload_x/hero-1.png", None).unwrap(),
             PathBuf::from("/cfg/local_library/art/sideload_x/hero-1.png")

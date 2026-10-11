@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use heronite_data::models::{BackupSettings, CollectionSettingsFile, LudusaviSettings};
-use heronite_data::{json_store, settings, HeroicPaths};
+use heronite_data::{json_store, settings, DataPaths};
 
 /// `Partial<LudusaviSettings>` of the settings dialog.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -28,17 +28,17 @@ pub struct LudusaviSettingsPatch {
     pub compression: Option<String>,
 }
 
-fn current_ludusavi(paths: &HeroicPaths) -> Result<LudusaviSettings> {
+fn current_ludusavi(paths: &DataPaths) -> Result<LudusaviSettings> {
     Ok(settings::load(paths)?.ludusavi)
 }
 
-fn current_backup(paths: &HeroicPaths) -> Result<BackupSettings> {
+fn current_backup(paths: &DataPaths) -> Result<BackupSettings> {
     Ok(settings::load(paths)?.backup)
 }
 
 /// `setLudusaviSettings`; returns the effective settings.
 pub fn set_ludusavi_settings(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     patch: &LudusaviSettingsPatch,
 ) -> Result<settings::EffectiveSettings> {
     let mut next = current_ludusavi(paths)?;
@@ -78,7 +78,7 @@ pub struct LudusaviRecord {
 
 /// `recordLudusaviBackup`: an error keeps the previous success fields and sets
 /// `lastError`; a success replaces them and clears `lastError`.
-pub fn record_ludusavi_backup(paths: &HeroicPaths, rec: &LudusaviRecord) -> Result<()> {
+pub fn record_ludusavi_backup(paths: &DataPaths, rec: &LudusaviRecord) -> Result<()> {
     let mut next = current_ludusavi(paths)?;
     if rec.error.is_none() {
         next.last_backup_at = rec.at.clone();
@@ -101,7 +101,7 @@ pub struct BackupRecord {
 }
 
 /// `recordCollectionBackup`.
-pub fn record_collection_backup(paths: &HeroicPaths, rec: &BackupRecord) -> Result<()> {
+pub fn record_collection_backup(paths: &DataPaths, rec: &BackupRecord) -> Result<()> {
     let mut next = current_backup(paths)?;
     if rec.error.is_none() {
         next.last_backup_at = Some(rec.at.clone());
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn ludusavi_settings_patch_and_records() {
         let d = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(d.path());
+        let paths = DataPaths::at(d.path());
         std::fs::create_dir_all(paths.local_library()).unwrap();
         std::fs::write(
             paths.collection_settings(),
@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn backup_records_keep_last_success_on_error() {
         let d = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(d.path());
+        let paths = DataPaths::at(d.path());
         settings::save_backup(&paths, "/b", "daily").unwrap();
         record_collection_backup(&paths, &BackupRecord { at: "t1".into(), path: Some("/b/heroic-x".into()), error: None }).unwrap();
         record_collection_backup(&paths, &BackupRecord { at: "t2".into(), path: None, error: Some("bad".into()) }).unwrap();

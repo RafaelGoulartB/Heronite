@@ -1,8 +1,7 @@
 //! Automatic game updates (`autoUpdateGames`): which of the updates found may
 //! be queued right now. Port of Heroic's `autoUpdate` (skip games that ignore
 //! updates), plus the conditions Heroic does not look at: a game being played
-//! is updated after it exits, nothing is downloaded while Heronite (which
-//! shares the download queue file) is running, offline, or on a metered
+//! is updated after it exits, nothing is downloaded offline or on a metered
 //! connection.
 //!
 //! Everything here is pure except the two probes at the bottom.
@@ -27,8 +26,6 @@ pub struct Candidate {
 pub struct Gates {
     /// `autoUpdateGames`.
     pub enabled: bool,
-    /// Heronite (Electron) is running: it resumes the same persisted queue.
-    pub heronite_running: bool,
     pub offline: bool,
     pub metered: bool,
 }
@@ -37,7 +34,6 @@ pub struct Gates {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Block {
     Disabled,
-    HeroniteRunning,
     Offline,
     Metered,
 }
@@ -46,7 +42,6 @@ impl Block {
     pub fn describe(self) -> &'static str {
         match self {
             Block::Disabled => "automatic updates are off",
-            Block::HeroniteRunning => "Heronite is running",
             Block::Offline => "offline",
             Block::Metered => "the connection is metered",
         }
@@ -68,8 +63,6 @@ pub struct Plan {
 pub fn plan(gates: &Gates, candidates: &[Candidate]) -> Plan {
     let blocked = if !gates.enabled {
         Some(Block::Disabled)
-    } else if gates.heronite_running {
-        Some(Block::HeroniteRunning)
     } else if gates.offline {
         Some(Block::Offline)
     } else if gates.metered {
@@ -93,15 +86,6 @@ pub fn plan(gates: &Gates, candidates: &[Candidate]) -> Plan {
         }
     }
     plan
-}
-
-/// Whether Heronite/Heroic (Electron, process name `heroic`) is running.
-pub fn heronite_running() -> bool {
-    let Ok(dir) = std::fs::read_dir("/proc") else { return false };
-    dir.flatten().any(|e| {
-        e.file_name().to_str().is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
-            && std::fs::read_to_string(e.path().join("comm")).is_ok_and(|c| c.trim() == "heroic")
-    })
 }
 
 /// `NMMetered` values 1 (yes) and 3 (guess yes) as `busctl` prints them
@@ -194,8 +178,7 @@ mod tests {
         let list = [c("a")];
         for (gates, why) in [
             (Gates::default(), Block::Disabled),
-            (Gates { enabled: true, heronite_running: true, offline: true, metered: true }, Block::HeroniteRunning),
-            (Gates { enabled: true, offline: true, metered: true, ..Default::default() }, Block::Offline),
+            (Gates { enabled: true, offline: true, metered: true }, Block::Offline),
             (Gates { enabled: true, metered: true, ..Default::default() }, Block::Metered),
         ] {
             let p = plan(&gates, &list);

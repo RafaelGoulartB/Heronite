@@ -6,7 +6,7 @@ use gpui_kit::*;
 
 use super::logic::{self, launcher_args_error, pairs, pairs_to_value};
 use super::parts::{column, danger_text, heading, help, rows};
-use super::HeroicSettingsPanel;
+use super::SettingsPanel;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, ButtonKind};
@@ -47,7 +47,7 @@ pub(super) const WRAPPERS: PairTable = PairTable {
     env: false,
 };
 
-impl HeroicSettingsPanel {
+impl SettingsPanel {
     pub(super) fn advanced_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let sideload = self.facts().is_some_and(|f| f.is_sideload());
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
@@ -67,7 +67,7 @@ impl HeroicSettingsPanel {
         if !sideload {
             general = general.field_help(
                 self.text_row("language", Some("Prefered Language (Language Code)"), None),
-                vec![help("Leave blank to use Heroic's language. Not all games support this configuration, some have in-game language setting. Valid language codes are game-dependant.")],
+                vec![help("Leave blank to use the app's language. Not all games support this configuration, some have in-game language setting. Valid language codes are game-dependant.")],
             );
         }
         col = col.child(heading("General")).child(general.card());

@@ -13,7 +13,7 @@ use crate::collection::format_playtime_minutes;
 use crate::hltb::{HltbEntry, WikiCache, WikiEntry};
 use crate::library::{CollectionGame, Library};
 use crate::models::{CollectionGameMetadata, GameInfo, LocalGameMeta};
-use crate::paths::HeroicPaths;
+use crate::paths::DataPaths;
 use crate::text::{format_timestamp, split_names, to_plain_text, DateLocale};
 
 /// `local_library/steam-details/{appId}.{lang}.json` (the `CollectionSteamDetails`
@@ -88,7 +88,7 @@ pub fn steam_language(language: &str) -> &'static str {
 
 /// Reads a cached Steam details file regardless of its age (Heronite refetches
 /// after 30 days, this crate never goes to the network).
-pub fn load_steam_details(paths: &HeroicPaths, steam_app_id: &str, language: &str) -> Option<SteamDetails> {
+pub fn load_steam_details(paths: &DataPaths, steam_app_id: &str, language: &str) -> Option<SteamDetails> {
     let lang = steam_language(language);
     let bytes = std::fs::read(paths.steam_details(steam_app_id, lang)).ok()?;
     serde_json::from_slice(&bytes).ok()
@@ -278,7 +278,7 @@ pub fn focus_meta_line(release_date: Option<&str>, platform: &str, genres: &[Str
 /// when the TS would fetch it: the game has no Collection metadata entry at
 /// all and has a Steam app id.
 pub fn focus_details(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     game: &CollectionGame,
     language: &str,
     wiki: Option<&WikiEntry>,
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn real_focus_data() {
         let Some(root) = std::env::var_os("HERONITE_FIXTURE") else { return };
-        let lib = Library::load(&HeroicPaths::at(root)).unwrap();
+        let lib = Library::load(&DataPaths::at(root)).unwrap();
         let wiki = lib.wiki_cache();
         let mut with_hltb = 0;
         let mut with_steam_html = 0;
@@ -364,7 +364,7 @@ mod tests {
     fn steam_details_are_used_only_for_games_without_metadata() {
         use crate::library::tests_support::game_with;
         let dir = tempfile::tempdir().unwrap();
-        let paths = HeroicPaths::at(dir.path());
+        let paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(paths.steam_details("400", "english").parent().unwrap()).unwrap();
         std::fs::write(
             paths.steam_details("400", "english"),

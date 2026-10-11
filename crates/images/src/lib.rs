@@ -96,9 +96,9 @@ impl std::hash::Hash for Variant {
 /// Pipeline configuration. Cheap to clone.
 #[derive(Debug, Clone)]
 pub struct Opts {
-    /// Heronite/Heroic shared HTTP cache (`~/.config/heroic/images-cache`).
+    /// HTTP cache of the data folder (`<data>/images-cache`).
     pub images_cache_dir: PathBuf,
-    /// Resized-image cache (`~/.cache/heronite-rs/thumbs`); `None` disables it.
+    /// Resized-image cache (`~/.cache/heronite/thumbs`); `None` disables it.
     pub thumbs_dir: Option<PathBuf>,
     /// Allow downloading URLs that are not in `images_cache_dir`.
     pub allow_network: bool,

@@ -126,11 +126,11 @@ impl CollectionView {
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.context_menu = None;
                     let (r, a, k) = (r.clone(), a.clone(), k.clone());
-                    this.system_op(k, cx, move |heroic| {
+                    this.system_op(k, cx, move |data_paths| {
                         if has_shortcuts {
-                            sc::remove_shortcuts(heroic, &r, &a)
+                            sc::remove_shortcuts(data_paths, &r, &a)
                         } else {
-                            sc::add_shortcuts(heroic, &r, &a)
+                            sc::add_shortcuts(data_paths, &r, &a)
                         }
                     });
                 })),
@@ -144,11 +144,11 @@ impl CollectionView {
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.context_menu = None;
                     let (r, a, k) = (r.clone(), a.clone(), k.clone());
-                    this.system_op(k, cx, move |heroic| {
+                    this.system_op(k, cx, move |data_paths| {
                         if in_steam {
-                            sc::remove_from_steam(heroic, &r, &a)
+                            sc::remove_from_steam(data_paths, &r, &a)
                         } else {
-                            sc::add_to_steam(heroic, &r, &a)
+                            sc::add_to_steam(data_paths, &r, &a)
                         }
                     });
                 })),
@@ -167,12 +167,12 @@ impl CollectionView {
         let (shortcuts, steam, pending, stale) = current.unwrap_or((false, false, false, true));
         if stale && !pending {
             cx.default_global::<MenuProbes>().0.insert(key.clone(), Probe { shortcuts, steam, at: Instant::now(), pending: true });
-            let heroic = self.heroic.clone();
+            let data_paths = self.data_paths.clone();
             let (runner, app) = (game.runner.clone(), game.app_name.clone());
             cx.spawn(async move |this, cx| {
                 let probed = cx
                     .background_spawn(async move {
-                        (sc::shortcuts_exist(&heroic, &runner, &app), sc::is_added_to_steam(&heroic, &runner, &app))
+                        (sc::shortcuts_exist(&data_paths, &runner, &app), sc::is_added_to_steam(&data_paths, &runner, &app))
                     })
                     .await;
                 this.update(cx, |_, cx| {
@@ -191,10 +191,10 @@ impl CollectionView {
 
     /// Runs a shortcuts operation in the background, shows its result as a
     /// toast and forgets the cached menu state.
-    pub(super) fn system_op(&mut self, key: String, cx: &mut Context<Self>, op: impl FnOnce(&heronite_data::HeroicPaths) -> sc::Outcome + Send + 'static) {
-        let heroic = self.heroic.clone();
+    pub(super) fn system_op(&mut self, key: String, cx: &mut Context<Self>, op: impl FnOnce(&heronite_data::DataPaths) -> sc::Outcome + Send + 'static) {
+        let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let outcome = cx.background_spawn(async move { op(&heroic) }).await;
+            let outcome = cx.background_spawn(async move { op(&data_paths) }).await;
             this.update(cx, |this, cx| {
                 cx.default_global::<MenuProbes>().0.remove(&key);
                 if let Some(m) = outcome.summary() {

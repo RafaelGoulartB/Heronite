@@ -315,7 +315,7 @@ mod tests {
     use crate::prepare::tests::InstantSpawner;
     use crate::probe::FakeProbe;
     use crate::settings::WineVersion;
-    use heronite_data::HeroicPaths;
+    use heronite_data::DataPaths;
     use std::sync::Mutex;
 
     struct FakeEpic {
@@ -350,7 +350,7 @@ mod tests {
 
     struct Fx {
         _dir: tempfile::TempDir,
-        paths: HeroicPaths,
+        paths: DataPaths,
         spawner: InstantSpawner,
         prefix: String,
     }
@@ -358,7 +358,7 @@ mod tests {
     impl Fx {
         fn new() -> Self {
             let dir = tempfile::tempdir().unwrap();
-            let paths = HeroicPaths::at(dir.path().join("heroic"));
+            let paths = DataPaths::at(dir.path().join("heroic"));
             let prefix = dir.path().join("pfx");
             std::fs::create_dir_all(&prefix).unwrap();
             Self { _dir: dir, paths, spawner: InstantSpawner::default(), prefix: prefix.to_string_lossy().into_owned() }

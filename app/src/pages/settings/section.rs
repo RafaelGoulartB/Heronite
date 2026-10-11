@@ -1,7 +1,7 @@
 //! The sections of the Settings page: labels, navigation groups, palette
 //! keywords and the `HERONITE_DEBUG_PAGE` names.
 
-use crate::dialogs::heroic_settings::GlobalView;
+use crate::dialogs::settings_panel::GlobalView;
 use crate::icons::Icon;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -78,7 +78,7 @@ impl Section {
     /// Short description under the section title.
     pub(super) fn blurb(self) -> &'static str {
         match self {
-            Section::General => "Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically in the shared Heroic settings.",
+            Section::General => "Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically.",
             Section::Appearance => "Two independent looks: the artwork behind the Collection, and the background of menus, dialogs and pages (glass or solid).",
             Section::Advanced => "Logs, folders and cache.",
             Section::GameDefaults => "Values new games start with. Settings of an installed game are changed from its own Settings.",
@@ -86,8 +86,8 @@ impl Section {
             Section::Library => "What the Collection shows: hidden games, favourites and recent games.",
             Section::Metadata => "Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags.",
             Section::Screenshots => "Where your captures live, the in-game shortcut and the preview cache of the gallery.",
-            Section::Backups => "Save backups with Ludusavi after you close a game, and a scheduled copy of the Heroic configuration.",
-            Section::Logs => "The logs of this app, Heroic and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs).",
+            Section::Backups => "Save backups with Ludusavi after you close a game, and a scheduled copy of the data folder.",
+            Section::Logs => "The logs of this app, the runners and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs).",
             Section::About => "This app, its data folders and the system it runs on.",
         }
     }

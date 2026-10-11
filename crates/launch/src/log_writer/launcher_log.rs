@@ -119,7 +119,7 @@ pub fn prune_launcher_logs(dir: &Path, keep: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use heronite_data::HeroicPaths;
+    use heronite_data::DataPaths;
 
     #[test]
     fn launcher_log_appends_prunes_and_respects_disable() {
@@ -137,7 +137,7 @@ mod tests {
         let text = std::fs::read_to_string(&today).unwrap();
         assert!(text.contains("[INFO]:    [launch::runtime]: hello\n"), "{text}");
         assert!(text.contains("[ERROR]:   [wgpu]:") && text.contains("bad"));
-        let kept = crate::log_reader::list_logs(&paths, &HeroicPaths::at(dir.path().join("h"))).len();
+        let kept = crate::log_reader::list_logs(&paths, &DataPaths::at(dir.path().join("h"))).len();
         assert_eq!(kept, KEEP_LAUNCHER_LOGS);
         assert!(paths.launcher_dir.join("keep-me.txt").exists());
         assert!(!paths.launcher_dir.join("heronite-rs-2020-01-01.log").exists());

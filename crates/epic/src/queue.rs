@@ -1,9 +1,9 @@
-//! `store/download-manager.json` in Heroic's `DMQueueElement` format, so the
-//! queue and the history are shared with Heronite.
+//! `store/download-manager.json` in Heroic's `DMQueueElement` format: the
+//! persisted queue and the download history.
 
 use anyhow::Result;
 use heronite_data::json_store;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -123,12 +123,12 @@ pub struct DmFile {
     pub extra: Map<String, Value>,
 }
 
-pub fn path(heroic: &HeroicPaths) -> std::path::PathBuf {
-    heroic.root.join("store").join("download-manager.json")
+pub fn path(data_paths: &DataPaths) -> std::path::PathBuf {
+    data_paths.download_manager()
 }
 
-pub fn load(heroic: &HeroicPaths) -> DmFile {
-    match json_store::read::<DmFile>(&path(heroic)) {
+pub fn load(data_paths: &DataPaths) -> DmFile {
+    match json_store::read::<DmFile>(&path(data_paths)) {
         Ok(f) => f,
         Err(err) => {
             log::warn!("reading download manager: {err:#}");
@@ -138,8 +138,8 @@ pub fn load(heroic: &HeroicPaths) -> DmFile {
 }
 
 /// Replaces the queue and the history, keeping every other key of the file.
-pub fn save(heroic: &HeroicPaths, queue: &[DmElement], finished: &[DmElement]) -> Result<()> {
-    json_store::update::<DmFile, _>(&path(heroic), |f| {
+pub fn save(data_paths: &DataPaths, queue: &[DmElement], finished: &[DmElement]) -> Result<()> {
+    json_store::update::<DmFile, _>(&path(data_paths), |f| {
         f.queue = queue.to_vec();
         f.finished = finished.to_vec();
         Ok(())
@@ -180,16 +180,16 @@ mod tests {
     #[test]
     fn file_keeps_unknown_keys_and_uses_tabs() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
+        let data_paths = DataPaths::at(dir.path());
         std::fs::create_dir_all(dir.path().join("store")).unwrap();
-        std::fs::write(path(&heroic), json!({"finished": [heronite_entry()], "queue": [], "future": {"a": 1}}).to_string()).unwrap();
-        let f = load(&heroic);
+        std::fs::write(path(&data_paths), json!({"finished": [heronite_entry()], "queue": [], "future": {"a": 1}}).to_string()).unwrap();
+        let f = load(&data_paths);
         assert_eq!(f.finished.len(), 1);
         let mut queued = f.finished[0].clone();
         queued.status = None;
         queued.params.app_name = "Other".into();
-        save(&heroic, &[queued], &f.finished).unwrap();
-        let raw = std::fs::read_to_string(path(&heroic)).unwrap();
+        save(&data_paths, &[queued], &f.finished).unwrap();
+        let raw = std::fs::read_to_string(path(&data_paths)).unwrap();
         assert!(raw.starts_with("{\n\t\"finished\": ["), "{raw}");
         let doc: Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(doc["future"]["a"], 1);
@@ -200,10 +200,10 @@ mod tests {
     #[test]
     fn missing_or_odd_files_are_empty() {
         let dir = tempfile::tempdir().unwrap();
-        let heroic = HeroicPaths::at(dir.path());
-        assert!(load(&heroic).queue.is_empty());
+        let data_paths = DataPaths::at(dir.path());
+        assert!(load(&data_paths).queue.is_empty());
         std::fs::create_dir_all(dir.path().join("store")).unwrap();
-        std::fs::write(path(&heroic), "{}").unwrap();
-        assert!(load(&heroic).finished.is_empty());
+        std::fs::write(path(&data_paths), "{}").unwrap();
+        assert!(load(&data_paths).finished.is_empty());
     }
 }

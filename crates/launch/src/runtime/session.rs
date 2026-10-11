@@ -122,7 +122,7 @@ pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<
 /// settings in use. Honours `disableLogs` and `verboseLogs`.
 fn open_game_log(shared: &Shared, req: &LaunchRequest) -> Arc<GameLog> {
     let (disabled_globally, verbose, merged) = log_writer::launch_log_switches(&shared.paths, &req.app_name);
-    let path = LogPaths::for_heroic(&shared.paths).game(&req.app_name, &req.runner, GameLogType::Launch);
+    let path = LogPaths::for_data(&shared.paths).game(&req.app_name, &req.runner, GameLogType::Launch);
     let log = GameLog::new(path, disabled_globally || !verbose);
     if !verbose {
         log_writer::write_disabled_notice(&log);

@@ -12,7 +12,7 @@ use super::{data, CollectionView};
 impl CollectionView {
     pub(super) fn dialog_ctx(&self) -> Option<crate::dialogs::DialogCtx> {
         Some(crate::dialogs::DialogCtx {
-            heroic: self.heroic.clone(),
+            data_paths: self.data_paths.clone(),
             app: self.app_paths.clone(),
             lib: self.lib.clone()?,
         })
@@ -136,7 +136,7 @@ impl CollectionView {
     pub(super) fn toggle_favourite(&mut self, cx: &mut Context<Self>) {
         let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
         let Some(game) = lib.get(&key) else { return };
-        if let Err(err) = heronite_data::config_games::toggle_favourite(&self.heroic, &game.app_name, &game.title) {
+        if let Err(err) = heronite_data::config_games::toggle_favourite(&self.data_paths, &game.app_name, &game.title) {
             self.show_toast(format!("Could not update favourites: {err:#}"), true, cx);
         }
         self.reload(cx);

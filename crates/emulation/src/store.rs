@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use heronite_data::json_store;
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::emulators::{EmulatorsFile, UserEmulator, UserEmulatorProfile};
 use uuid::Uuid;
 
@@ -14,17 +14,17 @@ pub fn new_id() -> String {
     Uuid::new_v4().to_string()
 }
 
-pub fn list_user_emulators(paths: &HeroicPaths) -> Result<Vec<UserEmulator>> {
+pub fn list_user_emulators(paths: &DataPaths) -> Result<Vec<UserEmulator>> {
     let f: EmulatorsFile = json_store::read(&paths.emulators())?;
     Ok(f.emulators)
 }
 
-pub fn get_user_emulator(paths: &HeroicPaths, id: &str) -> Result<Option<UserEmulator>> {
+pub fn get_user_emulator(paths: &DataPaths, id: &str) -> Result<Option<UserEmulator>> {
     Ok(list_user_emulators(paths)?.into_iter().find(|e| e.id == id))
 }
 
 pub fn find_user_emulator_by_playnite_id(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     playnite_id: &str,
 ) -> Result<Option<UserEmulator>> {
     Ok(list_user_emulators(paths)?
@@ -33,7 +33,7 @@ pub fn find_user_emulator_by_playnite_id(
 }
 
 pub fn find_user_emulator_by_definition(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     definition_id: &str,
 ) -> Result<Option<UserEmulator>> {
     Ok(list_user_emulators(paths)?
@@ -167,7 +167,7 @@ pub fn upsert_emulator_in(
 
 /// `upsertUserEmulator` (`UpsertUserEmulatorArgs` of the UI).
 pub fn upsert_user_emulator(
-    paths: &HeroicPaths,
+    paths: &DataPaths,
     args: UpsertUserEmulatorArgs,
 ) -> Result<UserEmulator> {
     json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
@@ -177,7 +177,7 @@ pub fn upsert_user_emulator(
 
 /// `removeUserEmulator`: also drops the scanners that used it. Returns the
 /// remaining emulators.
-pub fn remove_user_emulator(paths: &HeroicPaths, id: &str) -> Result<Vec<UserEmulator>> {
+pub fn remove_user_emulator(paths: &DataPaths, id: &str) -> Result<Vec<UserEmulator>> {
     let remaining = json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
         f.emulators.retain(|e| e.id != id);
         Ok(f.emulators.clone())
@@ -193,7 +193,7 @@ pub fn remove_user_emulator(paths: &HeroicPaths, id: &str) -> Result<Vec<UserEmu
 /// several emulators of the same kind can coexist). A missing or colliding id
 /// is replaced by a fresh one; an empty profile list gets the defaults of its
 /// definition.
-pub fn insert_user_emulator(paths: &HeroicPaths, emulator: UserEmulator) -> Result<UserEmulator> {
+pub fn insert_user_emulator(paths: &DataPaths, emulator: UserEmulator) -> Result<UserEmulator> {
     json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
         let mut next = emulator;
         if next.id.is_empty() || f.emulators.iter().any(|e| e.id == next.id) {
@@ -214,7 +214,7 @@ pub fn insert_user_emulator(paths: &HeroicPaths, emulator: UserEmulator) -> Resu
 
 /// Replaces the emulator with the same id (fields this app does not model
 /// live in `extra` and are kept as given). Errors when it does not exist.
-pub fn replace_user_emulator(paths: &HeroicPaths, emulator: UserEmulator) -> Result<UserEmulator> {
+pub fn replace_user_emulator(paths: &DataPaths, emulator: UserEmulator) -> Result<UserEmulator> {
     json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
         let Some(i) = f.emulators.iter().position(|e| e.id == emulator.id) else {
             anyhow::bail!("Emulator not found.");
@@ -235,7 +235,7 @@ pub fn replace_user_emulator(paths: &HeroicPaths, emulator: UserEmulator) -> Res
 
 /// Copies an emulator ("<name> copy", new id, no Playnite link, ROM folders
 /// are not copied).
-pub fn duplicate_user_emulator(paths: &HeroicPaths, id: &str) -> Result<UserEmulator> {
+pub fn duplicate_user_emulator(paths: &DataPaths, id: &str) -> Result<UserEmulator> {
     let Some(mut copy) = get_user_emulator(paths, id)? else {
         anyhow::bail!("Emulator not found.");
     };
@@ -308,17 +308,17 @@ pub fn resolve_template(emulator: &UserEmulator, profile: &UserEmulatorProfile) 
     }
 }
 
-pub fn list_rom_scanners(paths: &HeroicPaths) -> Result<Vec<RomScanner>> {
+pub fn list_rom_scanners(paths: &DataPaths) -> Result<Vec<RomScanner>> {
     let f: RomScannersFile = json_store::read(&paths.rom_scanners())?;
     Ok(f.scanners)
 }
 
-pub fn get_rom_scanner(paths: &HeroicPaths, id: &str) -> Result<Option<RomScanner>> {
+pub fn get_rom_scanner(paths: &DataPaths, id: &str) -> Result<Option<RomScanner>> {
     Ok(list_rom_scanners(paths)?.into_iter().find(|s| s.id == id))
 }
 
 /// `upsertRomScanner`.
-pub fn upsert_rom_scanner(paths: &HeroicPaths, args: UpsertRomScannerArgs) -> Result<RomScanner> {
+pub fn upsert_rom_scanner(paths: &DataPaths, args: UpsertRomScannerArgs) -> Result<RomScanner> {
     let emulator = get_user_emulator(paths, &args.emulator_id)?;
     json_store::update::<RomScannersFile, _>(&paths.rom_scanners(), |f| {
         let existing = args
@@ -381,7 +381,7 @@ pub fn upsert_rom_scanner(paths: &HeroicPaths, args: UpsertRomScannerArgs) -> Re
 }
 
 /// `removeRomScanner`; returns the remaining scanners.
-pub fn remove_rom_scanner(paths: &HeroicPaths, id: &str) -> Result<Vec<RomScanner>> {
+pub fn remove_rom_scanner(paths: &DataPaths, id: &str) -> Result<Vec<RomScanner>> {
     json_store::update::<RomScannersFile, _>(&paths.rom_scanners(), |f| {
         f.scanners.retain(|s| s.id != id);
         Ok(f.scanners.clone())
@@ -392,9 +392,9 @@ pub fn remove_rom_scanner(paths: &HeroicPaths, id: &str) -> Result<Vec<RomScanne
 mod tests {
     use super::*;
 
-    fn temp() -> (tempfile::TempDir, HeroicPaths) {
+    fn temp() -> (tempfile::TempDir, DataPaths) {
         let d = tempfile::tempdir().unwrap();
-        let p = HeroicPaths::at(d.path());
+        let p = DataPaths::at(d.path());
         (d, p)
     }
 

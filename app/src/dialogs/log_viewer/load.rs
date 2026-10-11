@@ -7,20 +7,20 @@ use std::sync::Arc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::{HeroicPaths, Library};
+use heronite_data::{DataPaths, Library};
 use heronite_launch::log_reader::{display_lines, list_logs, read_tail, LogEntry, LogSource};
 use heronite_launch::log_writer::LogPaths;
 
 use super::{Content, LogViewer, Scope, Start, FIRST_VIEW_BYTES, MAX_VIEW_BYTES};
 
 /// Everything found on disk (run off the UI thread).
-fn collect(heroic: &HeroicPaths, scope: &Scope) -> (Vec<LogEntry>, HashMap<String, String>) {
-    let paths = LogPaths::for_heroic(heroic);
-    let mut entries = list_logs(&paths, heroic);
+fn collect(data_paths: &DataPaths, scope: &Scope) -> (Vec<LogEntry>, HashMap<String, String>) {
+    let paths = LogPaths::for_data(data_paths);
+    let mut entries = list_logs(&paths, data_paths);
     if let Scope::Game(app) = scope {
         entries.retain(|e| e.app_name() == Some(app.as_str()));
     }
-    let titles = match Library::load_with(heroic, true) {
+    let titles = match Library::load_with(data_paths, true) {
         Ok(lib) => lib.games.iter().map(|g| (g.app_name.clone(), g.title.clone())).collect(),
         Err(_) => HashMap::new(),
     };
@@ -42,13 +42,13 @@ impl LogViewer {
     pub(super) fn reload_entries(&mut self, cx: &mut Context<Self>) {
         self.busy = true;
         if read_in_place() {
-            let (entries, titles) = collect(&self.heroic, &self.scope);
+            let (entries, titles) = collect(&self.data_paths, &self.scope);
             self.apply_entries(entries, titles, cx);
             return;
         }
-        let (heroic, scope) = (self.heroic.clone(), self.scope.clone());
+        let (data_paths, scope) = (self.data_paths.clone(), self.scope.clone());
         cx.spawn(async move |this, cx| {
-            let (entries, titles) = cx.background_spawn(async move { collect(&heroic, &scope) }).await;
+            let (entries, titles) = cx.background_spawn(async move { collect(&data_paths, &scope) }).await;
             this.update(cx, |this, cx| this.apply_entries(entries, titles, cx)).ok();
         })
         .detach();
@@ -203,17 +203,15 @@ impl LogViewer {
         };
         match &e.source {
             LogSource::Launcher => ("Heronite (this app)".into(), day()),
-            LogSource::Heroic => ("Heroic / Heronite".into(), "heroic.log".into()),
             LogSource::Runner(r) => (format!("{r} runner"), format!("runners/{r}.log")),
             LogSource::Game { app_name, runner, ty } => (title(app_name), format!("{} - {runner}", ty.label())),
-            LogSource::Legacy { app_name } => (title(app_name), "Older Heroic log".into()),
+            LogSource::Legacy { app_name } => (title(app_name), "Older log".into()),
         }
     }
 
     pub(super) fn group_of(e: &LogEntry) -> (u8, &'static str) {
         match e.source {
             LogSource::Launcher => (0, "This app"),
-            LogSource::Heroic => (1, "Heroic / Heronite"),
             LogSource::Runner(_) => (2, "Runners"),
             LogSource::Game { .. } | LogSource::Legacy { .. } => (3, "Games"),
         }

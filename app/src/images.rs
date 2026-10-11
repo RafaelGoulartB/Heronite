@@ -203,10 +203,10 @@ impl ImageStore {
 mod tests {
     use super::*;
     use futures::StreamExt;
-    use heronite_data::HeroicPaths;
+    use heronite_data::DataPaths;
 
     fn store(dir: &std::path::Path) -> (ImageStore, UnboundedReceiver<Loaded>) {
-        ImageStore::new(dir.join("images-cache"), &AppPaths::for_heroic(&HeroicPaths::at(dir)))
+        ImageStore::new(dir.join("images-cache"), &AppPaths::for_data(&DataPaths::at(dir)))
     }
 
     /// A missing file: the load fails, which is enough to see where results go.

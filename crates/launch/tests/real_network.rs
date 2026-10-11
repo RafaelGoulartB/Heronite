@@ -2,7 +2,7 @@
 //! a temporary Heroic folder only. Run with
 //! `cargo test -p heronite-launch --test real_network -- --ignored --nocapture`.
 
-use heronite_data::HeroicPaths;
+use heronite_data::DataPaths;
 use heronite_launch::net::SystemNet;
 use heronite_launch::runtimes::{self, Runtime};
 use heronite_launch::tools::{self, Tool, Updated};
@@ -19,7 +19,7 @@ fn ls(dir: &std::path::Path) -> Vec<String> {
 #[ignore = "downloads from the internet"]
 fn tools_and_runtimes_land_in_heroics_layout() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = HeroicPaths::at(dir.path().join("heroic"));
+    let paths = DataPaths::at(dir.path().join("heroic"));
     let net = SystemNet;
     let vulkan = tools::detect_vulkan();
     println!("vulkan: {vulkan:?}");
@@ -46,7 +46,7 @@ fn tools_and_runtimes_land_in_heroics_layout() {
 #[ignore = "downloads from the internet"]
 fn the_startup_update_installs_every_tool_once() {
     let dir = tempfile::tempdir().unwrap();
-    let paths = HeroicPaths::at(dir.path().join("heroic"));
+    let paths = DataPaths::at(dir.path().join("heroic"));
     let said = std::sync::Mutex::new(Vec::new());
     tools::update_all(&paths, &SystemNet, &|| false, &|m| said.lock().unwrap().push(m.to_string()));
     for tool in Tool::ALL {

@@ -6,14 +6,14 @@ use std::fs;
 
 use common::{Resp, Server};
 use heronite_data::json_store;
-use heronite_data::paths::HeroicPaths;
+use heronite_data::paths::DataPaths;
 use heronite_metadata::achievements::*;
 use heronite_metadata::{Endpoints, Http};
 use serde_json::{json, Value};
 
-fn root(logged_in: bool, token_age_s: f64) -> (tempfile::TempDir, HeroicPaths) {
+fn root(logged_in: bool, token_age_s: f64) -> (tempfile::TempDir, DataPaths) {
     let dir = tempfile::tempdir().unwrap();
-    let paths = HeroicPaths::at(dir.path());
+    let paths = DataPaths::at(dir.path());
     fs::create_dir_all(dir.path().join("store_cache")).unwrap();
     fs::create_dir_all(dir.path().join("gog_store")).unwrap();
     json_store::write(&dir.path().join("gog_store/config.json"), &json!({ "isLoggedIn": logged_in })).unwrap();
