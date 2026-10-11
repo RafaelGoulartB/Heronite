@@ -54,6 +54,7 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 
 ## Install, configure, and play
 
+- **Steam:** installed Steam games are added to the Collection automatically, and their play time is tracked.
 - **Epic Games:** log in, install, update, repair, move, and uninstall games, manage DLC, and sync cloud saves. Downloads run through a queue you can reorder.
 - **Wine and Proton:** each Windows game gets Heroic's full settings (Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, launch options, environment variables). The Wine Manager downloads and updates GE-Proton and Proton-CachyOS.
 - **Emulators:** detect installed emulators (PATH, Flatpak, AppImages) or add your own with profiles and RetroArch cores. Scan ROM folders to import games, with multi-disc games merged into one entry, and continue from a save state.
