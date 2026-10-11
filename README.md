@@ -41,15 +41,10 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 - **Command palette:** press <kbd>Ctrl</kbd> <kbd>K</kbd> to jump to any page, run any action, or find a game and play it, open its settings or its folder. Pages also have direct shortcuts (<kbd>Ctrl</kbd> <kbd>1</kbd> to <kbd>6</kbd>, <kbd>Ctrl</kbd> <kbd>,</kbd>, <kbd>Ctrl</kbd> <kbd>N</kbd>).
 - **Add any game:** add a native Linux program, a Windows program (run through Wine/Proton), a browser game, or a ROM. Covers and backgrounds can come from IGDB, Steam, Lutris, a web image search, or one of your own screenshots.
 
-<p align="center">
-  <a href="assets/screenshots/collection.webp"><img src="assets/screenshots/collection.webp" width="100%" alt="Collection with games grouped by status and ELDEN RING selected, showing screenshots, overview, How Long To Beat times, details, and the play timeline over the game's art" /></a>
-  <br /><sub><b>Collection</b></sub>
-</p>
-
 <table>
   <tr>
+    <td width="50%" align="center"><a href="assets/screenshots/collection.webp"><img src="assets/screenshots/collection.webp" width="100%" alt="Collection with games grouped by status and ELDEN RING selected, showing screenshots, overview, How Long To Beat times, details, and the play timeline over the game's art" /></a><br /><sub><b>Collection</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/command-palette.webp"><img src="assets/screenshots/command-palette.webp" width="100%" alt="Command palette searching for 'contr', listing matching games and the play, settings, and open folder actions for Control" /></a><br /><sub><b>Command palette</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/add-game.webp"><img src="assets/screenshots/add-game.webp" width="100%" alt="Add game dialog with title, cover and background art, platform, Wine prefix, Wine version, and executable" /></a><br /><sub><b>Add a game</b></sub></td>
   </tr>
 </table>
 
@@ -60,15 +55,10 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 - **Wine and Proton:** each Windows game gets Heroic's full settings (Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, launch options, environment variables). The Wine Manager downloads and updates GE-Proton and Proton-CachyOS.
 - **Emulators:** detect installed emulators (PATH, Flatpak, AppImages) or add your own with profiles and RetroArch cores. Scan ROM folders to import games, with multi-disc games merged into one entry, and continue from a save state.
 
-<p align="center">
-  <a href="assets/screenshots/game-settings.webp"><img src="assets/screenshots/game-settings.webp" width="100%" alt="Game settings drawer for Control on the Wine tab, with the Proton version, prefix, DXVK-NVAPI, Esync, Fsync, and Winecfg and Winetricks buttons" /></a>
-  <br /><sub><b>Game settings</b></sub>
-</p>
-
 <table>
   <tr>
+    <td width="50%" align="center"><a href="assets/screenshots/game-settings.webp"><img src="assets/screenshots/game-settings.webp" width="100%" alt="Game settings drawer for Control on the Wine tab, with the Proton version, prefix, DXVK-NVAPI, Esync, Fsync, and Winecfg and Winetricks buttons" /></a><br /><sub><b>Game settings</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/wine-manager.webp"><img src="assets/screenshots/wine-manager.webp" width="100%" alt="Wine Manager listing Proton-CachyOS builds with release dates, sizes, and install buttons" /></a><br /><sub><b>Wine Manager</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/emulators.webp"><img src="assets/screenshots/emulators.webp" width="100%" alt="Emulators page with PCSX2 and RPCS3, their health, the games using them, and their ROM folders" /></a><br /><sub><b>Emulators</b></sub></td>
   </tr>
 </table>
 
@@ -78,15 +68,10 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 - **Year in review:** your year told as seven full-screen stories: the big number, your number one game, the top five, your habits, your records, and a summary card you can copy.
 - **Sessions and screenshots:** each launch is recorded as a session. Screenshots taken in game with a shortcut are matched to the game and its timeline, and can be compressed to lossless WebP in the background.
 
-<p align="center">
-  <a href="assets/screenshots/statistics.webp"><img src="assets/screenshots/statistics.webp" width="100%" alt="Statistics for October 2026 with total time played, a day-by-day chart per game, and the top eight games" /></a>
-  <br /><sub><b>Statistics</b></sub>
-</p>
-
 <table>
   <tr>
+    <td width="50%" align="center"><a href="assets/screenshots/statistics.webp"><img src="assets/screenshots/statistics.webp" width="100%" alt="Statistics for October 2026 with total time played, a day-by-day chart per game, and the top eight games" /></a><br /><sub><b>Statistics</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/year-in-review.webp"><img src="assets/screenshots/year-in-review.webp" width="100%" alt="Year in review intro story: Your 2026 in games, with days, games, and sessions next to a wall of covers" /></a><br /><sub><b>Year in review</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/year-in-review-wrap.webp"><img src="assets/screenshots/year-in-review-wrap.webp" width="100%" alt="Year in review closing story with screenshot count, games beaten, and a summary card of hours played and top games" /></a><br /><sub><b>Year in review summary</b></sub></td>
   </tr>
 </table>
 
@@ -94,15 +79,10 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 
 A controller-first layout for the couch or a TV. It covers the whole app: the library, game pages, downloads, the Wine Manager, Epic, emulators, statistics, and settings. You can use a gamepad or the keyboard, and an on-screen keyboard is available for text fields. Turn it on from the palette (**Console mode**); Heronite remembers it on the next start. The desktop layout does not change.
 
-<p align="center">
-  <a href="assets/screenshots/console-home.webp"><img src="assets/screenshots/console-home.webp" width="100%" alt="Console home with ELDEN RING large over its art and a Continue playing shelf of covers" /></a>
-  <br /><sub><b>Home</b></sub>
-</p>
-
 <table>
   <tr>
+    <td width="50%" align="center"><a href="assets/screenshots/console-home.webp"><img src="assets/screenshots/console-home.webp" width="100%" alt="Console home with ELDEN RING large over its art and a Continue playing shelf of covers" /></a><br /><sub><b>Home</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/console-game.webp"><img src="assets/screenshots/console-game.webp" width="100%" alt="Console game page for ELDEN RING with Play, Status, Favourite, Game settings, Playtime, and Ludusavi backup rows next to its details" /></a><br /><sub><b>Game page</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/console-library.webp"><img src="assets/screenshots/console-library.webp" width="100%" alt="Console library grid of 207 games with Show, Sort, Status, and Search filters" /></a><br /><sub><b>Library</b></sub></td>
   </tr>
 </table>
 
@@ -112,15 +92,10 @@ A controller-first layout for the couch or a TV. It covers the whole app: the li
 - **Screenshots:** set the capture folder and the in-game shortcut, compress captures without quality loss, and limit the preview cache.
 - **Backups:** back up saves with Ludusavi after each game closes (or manually from the game's menu), and schedule copies of the whole data folder.
 
-<p align="center">
-  <a href="assets/screenshots/appearance.webp"><img src="assets/screenshots/appearance.webp" width="100%" alt="Appearance settings with a live preview of the Collection background, its sliders, glass panel options, and cover aspect" /></a>
-  <br /><sub><b>Appearance</b></sub>
-</p>
-
 <table>
   <tr>
+    <td width="50%" align="center"><a href="assets/screenshots/appearance.webp"><img src="assets/screenshots/appearance.webp" width="100%" alt="Appearance settings with a live preview of the Collection background, its sliders, glass panel options, and cover aspect" /></a><br /><sub><b>Appearance</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/screenshots.webp"><img src="assets/screenshots/screenshots.webp" width="100%" alt="Screenshots settings with the capture folder and space used, lossless compression, the in-game capture shortcut, and the preview cache" /></a><br /><sub><b>Screenshots</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/backups.webp"><img src="assets/screenshots/backups.webp" width="100%" alt="Backups settings with Ludusavi save backups after a game closes and a weekly data folder backup" /></a><br /><sub><b>Backups</b></sub></td>
   </tr>
 </table>
 
