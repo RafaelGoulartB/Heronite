@@ -4,6 +4,7 @@ Thanks for helping! Bug reports, ideas, and pull requests are all welcome.
 
 - **Questions and ideas:** start a thread in [Discussions](https://github.com/RafaelGoulartB/Heronite/discussions).
 - **Bugs and feature requests:** open an [issue](https://github.com/RafaelGoulartB/Heronite/issues/new/choose) with one of the templates.
+- **Security problems:** report them privately, as described in [SECURITY.md](SECURITY.md).
 
 ## Build
 
@@ -31,6 +32,7 @@ Point `HERONITE_DATA_DIR` at a copy of a data folder to try changes without touc
 ## Commits and pull requests
 
 - Write commit messages in the [Conventional Commits](https://www.conventionalcommits.org/) style used in the history, such as `feat(stats): …`, `fix(epic): …`, or `docs(readme): …`.
+  The release notes are built from them ([`cliff.toml`](cliff.toml)): `feat`, `fix`, `perf`, `ui`, and `docs` commits are listed; `refactor`, `style`, `test`, `ci`, `build`, and `chore` are not. Write the message for the person reading the release notes.
 - Keep a pull request to one change, and say how you tested it. For UI changes, add a screenshot or a short video.
 - New third-party files (icons, fonts, images) need an entry in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) and a GPL-compatible license.
 

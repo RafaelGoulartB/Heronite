@@ -6,3 +6,6 @@ contact_links:
   - name: Ideas and discussion
     url: https://github.com/RafaelGoulartB/Heronite/discussions/categories/ideas
     about: Talk about ideas before opening a feature request.
+  - name: Report a security vulnerability
+    url: https://github.com/RafaelGoulartB/Heronite/security/advisories/new
+    about: Report it privately; please do not open a public issue.

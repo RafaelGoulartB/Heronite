@@ -92,6 +92,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.version.outputs.tag }}
+          # The release notes read the history back to the previous tag.
+          fetch-depth: 0
       - name: System packages
         run: scripts/ci-deps.sh
       - uses: dtolnay/rust-toolchain@stable
@@ -114,8 +116,24 @@ jobs:
         with:
           name: Heronite-AppImage
           path: dist/*
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+      - name: Release notes
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          # cliff.toml groups the commits since the previous tag by type
+          # (feat, fix, perf...). The first release has no previous tag, so it
+          # gets a short note instead of the whole development history.
+          if [[ $(git tag --list 'v*' | wc -l) -le 1 ]]; then
+            printf 'First public release of Heronite. See the [README](https://github.com/RafaelGoulartB/Heronite#readme) for what it can do.\n' > notes.md
+          else
+            git cliff --latest --strip all > notes.md
+          fi
+          cat notes.md
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
-        run: gh release create "$TAG" dist/* --title "Heronite $TAG" --generate-notes
+        run: gh release create "$TAG" dist/* --title "Heronite $TAG" --notes-file notes.md
