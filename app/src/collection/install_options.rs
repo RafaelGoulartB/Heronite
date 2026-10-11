@@ -10,7 +10,8 @@
 //! A sideloaded entry (Steam / Playnite imports, local games) is installed
 //! into that same entry, so it keeps its playtime and status. A game of
 //! another store gets a new local entry. A game without a store install
-//! (no Steam id, not Epic) opens the manual install from "Install" itself.
+//! (no Steam id, not Epic: emulated games, browser games...) opens the manual
+//! install from "Install" itself.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -34,12 +35,10 @@ pub(super) fn store_install_label(game: &CollectionGame) -> Option<&'static str>
     }
 }
 
-/// The game can be installed from files (not a ROM, a web page or a DLC).
+/// The game can be installed from files: every game that is not installed
+/// (an emulated one becomes an executable game), except a DLC.
 pub(super) fn can_install_manually(game: &CollectionGame) -> bool {
-    !game.installed
-        && game.game.install.is_dlc != Some(true)
-        && game.launch_kind.as_deref() != Some("emulator")
-        && !game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("browser"))
+    !game.installed && game.game.install.is_dlc != Some(true)
 }
 
 /// "Install" has other ways next to it: the arrow / submenu are shown.

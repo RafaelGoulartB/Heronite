@@ -123,6 +123,9 @@ pub struct SideloadSpec {
     /// `runAs` for the overlay meta: `Some("linux" | "windows" | "auto")`
     /// sets it, `None` leaves it as it is.
     pub run_as: Option<String>,
+    /// "Install manually" into this entry: it becomes an executable game,
+    /// even when it was an emulated one (an edit keeps the emulator).
+    pub install: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -222,9 +225,16 @@ fn apply_local_meta(paths: &HeroicPaths, spec: &SideloadSpec) -> Result<()> {
             return Ok(());
         }
     }
+    // Installing into an emulated entry: the emulator's arguments go away.
+    let emulator_args = existing
+        .filter(|e| spec.install && !executable.is_empty() && e.launch_kind == "emulator")
+        .map(|e| e.launcher_args.clone().unwrap_or_default());
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
         let existing = file.games.get(&spec.app_name).cloned();
         let mut meta = existing.clone().unwrap_or_default();
+        if emulator_args.is_some() {
+            meta.launcher_args = None;
+        }
         meta.app_name = spec.app_name.clone();
         meta.runner = "sideload".into();
         if meta.playnite_id.is_empty() {
@@ -234,7 +244,7 @@ fn apply_local_meta(paths: &HeroicPaths, spec: &SideloadSpec) -> Result<()> {
             meta.source = "manual".into();
         }
         meta.launch_kind = if !executable.is_empty() {
-            if meta.launch_kind == "emulator" { "emulator".into() } else { "executable".into() }
+            if meta.launch_kind == "emulator" && !spec.install { "emulator".into() } else { "executable".into() }
         } else if meta.launch_kind.is_empty() {
             "unavailable".into()
         } else {
@@ -251,7 +261,11 @@ fn apply_local_meta(paths: &HeroicPaths, spec: &SideloadSpec) -> Result<()> {
         }
         file.games.insert(spec.app_name.clone(), meta);
         Ok(())
-    })
+    })?;
+    match emulator_args {
+        Some(args) => game_config::forget_emulator_args(paths, &spec.app_name, &args),
+        None => Ok(()),
+    }
 }
 
 /// `SideloadLibraryManager.addNewApp` + the overlay hooks: adds the game, or
@@ -404,6 +418,7 @@ mod tests {
             custom_user_agent: String::new(),
             launch_full_screen: false,
             run_as: None,
+            install: false,
         }
     }
 
@@ -571,6 +586,29 @@ mod tests {
         assert_eq!(m["zz"], 1);
         assert_eq!(m["runAs"], "linux");
         assert_eq!(m["title"], "My Game");
+    }
+
+    #[test]
+    fn installing_an_emulated_game_makes_it_an_executable_game() {
+        let (_d, paths) = setup();
+        fs::create_dir_all(paths.local_meta().parent().unwrap()).unwrap();
+        fs::write(
+            paths.local_meta(),
+            "{\n\t\"games\": {\n\t\t\"g\": {\n\t\t\t\"appName\": \"g\",\n\t\t\t\"runner\": \"sideload\",\n\t\t\t\"source\": \"emulator\",\n\t\t\t\"launchKind\": \"emulator\",\n\t\t\t\"launcherArgs\": \"-batch {ImagePath}\",\n\t\t\t\"title\": \"Old\"\n\t\t}\n\t}\n}",
+        )
+        .unwrap();
+        fs::create_dir_all(paths.game_config("g").parent().unwrap()).unwrap();
+        fs::write(paths.game_config("g"), r#"{"g": {"launcherArgs": "-batch {ImagePath}", "showFps": true}, "version": "v0"}"#).unwrap();
+        let mut s = spec("g", "/g/game.exe", SideloadPlatform::Windows);
+        s.install = true;
+        save_game(&paths, &s).unwrap();
+        let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        assert_eq!(metas.games["g"].launch_kind, "executable");
+        assert_eq!(metas.games["g"].remapped_executable.as_deref(), Some("/g/game.exe"));
+        assert_eq!(metas.games["g"].launcher_args, None);
+        let config = json_store::read_value(&paths.game_config("g")).unwrap();
+        assert_eq!(config["g"]["launcherArgs"], "");
+        assert_eq!(config["g"]["showFps"], true);
     }
 
     #[test]

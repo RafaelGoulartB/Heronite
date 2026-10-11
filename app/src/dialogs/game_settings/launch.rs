@@ -243,19 +243,25 @@ fn write_launch_options(paths: &HeroicPaths, game: &heronite_data::CollectionGam
     let mut new_meta = game.meta.as_deref().cloned();
     if let Some(m) = new_meta.as_mut() {
         m.run_as = Some(run_as.to_string());
+        // An emulated game that now runs a program: drop the emulator's arguments.
+        let emulator_args = (!exe.is_empty() && m.launch_kind == "emulator").then(|| m.launcher_args.take().unwrap_or_default());
         if !exe.is_empty() {
             m.remapped_executable = Some(exe.clone());
             m.launch_kind = "executable".into();
         }
-        let (ra, re, lk) = (m.run_as.clone(), m.remapped_executable.clone(), m.launch_kind.clone());
+        let (ra, re, lk, la) = (m.run_as.clone(), m.remapped_executable.clone(), m.launch_kind.clone(), m.launcher_args.clone());
         json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |f| {
             if let Some(e) = f.games.get_mut(&game.app_name) {
                 e.run_as = ra;
                 e.remapped_executable = re;
                 e.launch_kind = lk;
+                e.launcher_args = la;
             }
             Ok(())
         })?;
+        if let Some(args) = emulator_args {
+            heronite_data::game_config::forget_emulator_args(paths, &game.app_name, &args)?;
+        }
     }
     let mut info = (*game.game).clone();
     info.install.executable = Some(exe.clone());

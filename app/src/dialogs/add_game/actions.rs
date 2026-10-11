@@ -44,6 +44,7 @@ impl AddGameDialog {
             custom_user_agent: if browser { text_of(&self.user_agent, cx).trim().to_string() } else { String::new() },
             launch_full_screen: browser && self.fullscreen,
             run_as: None,
+            install: matches!(self.mode, Mode::Install(_)),
         };
         let new_wine = (!self.is_edit() && platform == SideloadPlatform::Windows).then(|| {
             (

@@ -289,6 +289,26 @@ pub fn set_game_settings(
     })
 }
 
+/// An emulated game that became an executable game: the emulator's
+/// arguments the import copied into the game's `launcherArgs` (`-batch
+/// "{InstallDir}/game.cue"`...) would be passed to the new program. Clears
+/// them when they are still `emulator_args`; arguments the user changed stay.
+pub fn forget_emulator_args(paths: &HeroicPaths, app_name: &str, emulator_args: &str) -> Result<()> {
+    let path = paths.game_config(app_name);
+    if emulator_args.trim().is_empty() || !path.exists() {
+        return Ok(());
+    }
+    if read_game_section(paths, app_name).1.get("launcherArgs").and_then(Value::as_str) != Some(emulator_args) {
+        return Ok(());
+    }
+    json_store::update_value_indented(&path, INDENT_2, |doc| {
+        if let Some(Value::Object(section)) = doc.get_mut(app_name) {
+            section.insert("launcherArgs".into(), Value::String(String::new()));
+        }
+        Ok(())
+    })
+}
+
 /// [`set_game_settings`] for a single key.
 pub fn set_game_setting(
     paths: &HeroicPaths,
