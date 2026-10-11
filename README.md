@@ -31,7 +31,7 @@
 
 Heronite puts your Steam, Epic Games, emulated, native Linux, and Windows games into one Collection. You can sort them by your own statuses, fill in their metadata and art, and launch them through Wine/Proton or an emulator. Each session is recorded, so you can see how much you played and which screenshots you took.
 
-Heronite is a native Rust rewrite (GPUI, GPU rendered) of Heronite, a [Heroic Games Launcher](https://heroicgameslauncher.com/) fork. It uses Heroic's data formats, but it is a standalone app with its own data folder. **Linux only**: Wine/Proton, gamescope, Ludusavi, the system tray, and desktop shortcuts all depend on Linux integrations.
+Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, CPU, and disk](#light-on-your-pc). **Linux only**: Wine/Proton, gamescope, Ludusavi, the system tray, and desktop shortcuts all depend on Linux integrations.
 
 ## Your library, organized
 
@@ -127,6 +127,18 @@ A controller-first layout for the couch or a TV. It covers the whole app: the li
 </table>
 
 <sub>Captured from the running app on Linux (Hyprland) with a real library. Click an image to view it at full resolution.</sub>
+
+## Light on your PC
+
+A game launcher should get out of the way when the game starts. Heronite is a single native process that draws its UI on the GPU, with no bundled browser engine. A web engine is only used by the Epic login window, which is a separate small program started when you log in. Slow work like scanning, metadata, image decoding, and compression runs on background threads. When the app sits idle, it does no work.
+
+| | Heronite |
+|---|---|
+| Memory while idle | **~195 MB** in a single process |
+| CPU while idle | **0.0%** (no CPU time used over 60 s) |
+| Install size | **47 MB** (app + Epic login helper) |
+| Start to library on screen | **~335 ms** median |
+
 
 ## Your data
 
