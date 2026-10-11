@@ -67,7 +67,7 @@ impl State {
     fn report(&self, ctx: &PageCtx) -> String {
         let s = &self.system;
         let mut out = vec![
-            format!("Heronite (Rust) {}", env!("CARGO_PKG_VERSION")),
+            format!("Heronite {}", env!("CARGO_PKG_VERSION")),
             format!("OS: {} (kernel {})", s.os, s.kernel),
             format!("CPU: {} ({} threads)", s.cpu, s.cores),
             format!("Memory: {}", sysinfo::human_memory(s.memory_kb)),
@@ -95,7 +95,7 @@ impl SettingsPage {
         let a = &self.about;
         let s = &a.system;
         let app = card([
-            info_row("Version", format!("{} (Rust rewrite)", env!("CARGO_PKG_VERSION"))),
+            info_row("Version", format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
             info_row("Legendary", a.legendary.clone().unwrap_or_else(|| if a.loaded && a.wine_count.is_some() { "not found".into() } else { "...".into() })),
             info_row(
                 "Wine / Proton found",
@@ -174,7 +174,7 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
     let s = &a.system;
     let mut rows = vec![
         Row::header("Heronite"),
-        Row::info("i:version", "Version", format!("{} (Rust rewrite)", env!("CARGO_PKG_VERSION"))),
+        Row::info("i:version", "Version", format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
         Row::info("i:legendary", "Legendary", a.legendary.clone().unwrap_or_else(|| "\u{2026}".into())),
         Row::info(
             "i:wine",

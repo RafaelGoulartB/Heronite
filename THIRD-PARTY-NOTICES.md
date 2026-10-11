@@ -7,9 +7,7 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 - **Project:** [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher)
 - **Copyright:** the Heroic Games Launcher contributors
 - **License:** GPL-3.0 ([`LICENSE`](LICENSE))
-- **Used in Heronite:** parts of the code are ported from Heroic. This includes the Epic Games integration through legendary, the Wine Manager, game settings, Steam shortcuts, and the data formats Heronite reads and writes. Heronite also embeds some of Heroic's image files:
-  - `app/assets/tray/icon-dark.png` and `app/assets/tray/icon-light.png` (tray icon)
-  - `app/assets/icons/down-icon.svg`, `play-icon.svg`, and `stop-icon-alt.svg`
+- **Used in Heronite:** parts of the code are ported from Heroic. This includes the Epic Games integration through legendary, the Wine Manager, game settings, Steam shortcuts, and the data formats Heronite reads and writes.
 
 ## Fonts
 

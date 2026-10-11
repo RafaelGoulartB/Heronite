@@ -106,6 +106,11 @@ fn configured_steam_path(data_paths: &DataPaths) -> PathBuf {
 
 /// The executable shortcuts point at.
 fn own_exe() -> PathBuf {
+    // In an AppImage the executable lives in a mount that is gone after the
+    // app quits; the AppImage file itself is what shortcuts must start.
+    if let Some(appimage) = std::env::var_os("APPIMAGE").filter(|p| !p.is_empty()) {
+        return PathBuf::from(appimage);
+    }
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("heronite-rs"));
     // A replaced binary shows up as ".../heronite-rs (deleted)".
     let s = exe.to_string_lossy();

@@ -224,6 +224,13 @@ impl EpicPage {
                             this.svc.update(cx, |s, cx| s.login(code, cx));
                         }
                     }
+                    // 127: the loader could not start it (WebKitGTK 4.1 is missing).
+                    Ok(o) if o.status.code() == Some(127) => {
+                        this.notice = Some((
+                            "The login window needs WebKitGTK 4.1, which is not installed. Use the browser method below.".into(),
+                            true,
+                        ))
+                    }
                     Ok(_) => {} // window closed by the user
                     Err(err) => this.notice = Some((format!("Could not open the login window: {err}").into(), true)),
                 }

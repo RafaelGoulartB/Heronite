@@ -13,6 +13,12 @@
   <a href="LICENSE">
     <img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPL_v3-2B8CA8.svg" />
   </a>
+  <a href="https://github.com/RafaelGoulartB/Heronite/actions/workflows/ci.yml">
+    <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/RafaelGoulartB/Heronite/ci.yml?branch=main&label=CI&color=2B8CA8" />
+  </a>
+  <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/RafaelGoulartB/Heronite?color=2B8CA8&label=release" />
+  </a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-2B8CA8.svg?logo=rust&logoColor=white" />
   <img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-2B8CA8.svg?logo=linux&logoColor=white" />
   <img alt="GitHub Pull Requests" src="https://img.shields.io/github/issues-pr/RafaelGoulartB/Heronite?color=2B8CA8" />
@@ -119,7 +125,18 @@ On first start, if that folder does not exist yet, Heronite copies an existing H
 
 Online features need connectivity: metadata and art (IGDB, Steam, Lutris, How Long To Beat, ProtonDB), Epic Games, and Wine/Proton downloads. For IGDB, add your own Twitch client ID and secret in **Settings > Metadata**.
 
-## Run locally
+## Download
+
+Download `Heronite-<version>-x86_64.AppImage` from the [latest release](https://github.com/RafaelGoulartB/Heronite/releases/latest), make it executable, and run it:
+
+```bash
+chmod +x Heronite-*-x86_64.AppImage
+./Heronite-*-x86_64.AppImage
+```
+
+The AppImage runs on distributions with glibc 2.35 or newer (Ubuntu 22.04, Fedora 36, Debian 12, Arch, and later) and needs a Vulkan-capable GPU driver. The Epic login window uses the system's WebKitGTK 4.1 (`webkit2gtk-4.1`); without it, log in through the browser instead.
+
+## Run from source
 
 You need a stable Rust toolchain, `clang` and `lld` (used as the linker, see `.cargo/config.toml`), a Vulkan-capable GPU driver, and GTK/WebKitGTK for the Epic login window. Optional tools: [legendary](https://github.com/derrod/legendary) for Epic Games and [Ludusavi](https://github.com/mtkennerly/ludusavi) for save backups.
 
@@ -137,13 +154,12 @@ scripts/install.sh
 The app is a Cargo workspace. `app/` is the GPUI binary (`heronite-rs`): the Collection screen, dialogs, ☰ pages, and console mode. The `crates/` folder holds the GPUI-free libraries: data files and Heroic migration, launching and playtime, Epic (legendary), emulation, metadata, screenshots and images, Wine/Proton, and shortcuts. A separate small binary handles the Epic login window, which keeps a web engine out of the main app.
 
 ```bash
-cargo fmt --all
 cargo clippy --workspace --all-targets
 cargo test --workspace
 cargo build --release -p heronite -p heronite-epic-login
 ```
 
-`HERONITE_DEBUG_*` environment variables open a page, dialog, or menu at startup, for screenshots and tests without clicking. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the crates and patterns, [CODE-STYLE.md](docs/CODE-STYLE.md) for the code rules, and [UI-CONVENTIONS.md](docs/UI-CONVENTIONS.md) for the look of the UI. Issues and pull requests are welcome.
+`HERONITE_DEBUG_*` environment variables open a page, dialog, or menu at startup, for screenshots and tests without clicking. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the crates and patterns, [CODE-STYLE.md](docs/CODE-STYLE.md) for the code rules, and [UI-CONVENTIONS.md](docs/UI-CONVENTIONS.md) for the look of the UI. [CI](.github/workflows/ci.yml) runs clippy and the tests on every push and pull request. To release, merge a pull request labelled `release:patch`, `release:minor`, or `release:major`, or run the [release workflow](.github/workflows/release.yml) from the Actions tab. It bumps the version in `Cargo.toml` (`scripts/bump-version.py`), tags it, builds the AppImage (`scripts/appimage.sh`), and publishes a GitHub release. Issues and pull requests are welcome.
 
 ## License
 

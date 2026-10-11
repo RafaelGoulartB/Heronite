@@ -12,7 +12,7 @@ PREFIX="${HERONITE_RS_PREFIX:-$HOME/.local/opt/heronite-rs}"
 BIN_DIR="$HOME/.local/bin"
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/256x256/apps"
-ICON_SRC="$ROOT/../assets/heroic-local.png"
+ICON_SRC="$ROOT/packaging/linux/com.heronite.rs.png"
 
 cd "$ROOT"
 cargo build --release -p heronite -p heronite-epic-login
@@ -33,7 +33,7 @@ fi
 cat > "$APP_DIR/com.heronite.rs.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Heronite (Rust)
+Name=Heronite
 Comment=Game Collection
 Exec=$PREFIX/heronite-rs %U
 Icon=$ICON_NAME

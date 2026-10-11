@@ -230,7 +230,7 @@ fn env_logger_init() {
         .is_some_and(|v| v.as_bool().unwrap_or(false));
     let file = heronite_launch::log_writer::LauncherLogger::open(heronite_launch::log_writer::LogPaths::for_data(&data_paths), disabled);
     if !disabled {
-        file.note(&format!("============= Heronite (Rust) {} started (pid {}) =============", env!("CARGO_PKG_VERSION"), std::process::id()));
+        file.note(&format!("============= Heronite {} started (pid {}) =============", env!("CARGO_PKG_VERSION"), std::process::id()));
     }
     let _ = log::set_boxed_logger(Box::new(L { level, file: Some(file) })).map(|_| log::set_max_level(level));
     if !disabled {

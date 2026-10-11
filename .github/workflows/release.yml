@@ -1,0 +1,121 @@
+name: Release
+
+# A release starts in one of three ways:
+# - a pull request merged into main with a `release:patch`, `release:minor` or
+#   `release:major` label: the version in Cargo.toml is bumped, committed to
+#   main and tagged;
+# - "Run workflow" in the Actions tab, picking the bump (for work pushed
+#   straight to main);
+# - pushing a `vX.Y.Z` tag by hand (Cargo.toml must already have X.Y.Z).
+# Then the AppImage is built from the tag and published as a GitHub release.
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-24.04
+    # Merged pull requests only, and only with a release label.
+    if: >-
+      github.event_name != 'pull_request_target' || (
+        github.event.pull_request.merged == true && (
+          contains(github.event.pull_request.labels.*.name, 'release:patch') ||
+          contains(github.event.pull_request.labels.*.name, 'release:minor') ||
+          contains(github.event.pull_request.labels.*.name, 'release:major')))
+    outputs:
+      tag: ${{ steps.out.outputs.tag }}
+    steps:
+      # Always main (or the pushed tag), never the pull request's own code.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref || 'main' }}
+          fetch-depth: 0
+      - name: Bump, commit and tag
+        if: github.event_name != 'push'
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          INPUT_BUMP: ${{ inputs.bump }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            BUMP="$INPUT_BUMP"
+          elif grep -q '"release:major"' <<<"$LABELS"; then BUMP=major
+          elif grep -q '"release:minor"' <<<"$LABELS"; then BUMP=minor
+          else BUMP=patch
+          fi
+          VERSION=$(scripts/bump-version.py "$BUMP")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): v$VERSION"
+          git tag "v$VERSION"
+          git push origin HEAD:main "v$VERSION"
+          echo "TAG=v$VERSION" >> "$GITHUB_ENV"
+      - name: Check the pushed tag
+        if: github.event_name == 'push'
+        run: |
+          CARGO=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [[ "v$CARGO" != "$GITHUB_REF_NAME" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match Cargo.toml version $CARGO"
+            exit 1
+          fi
+          echo "TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+      - id: out
+        run: echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  appimage:
+    name: AppImage (x86_64)
+    needs: version
+    # The oldest supported Ubuntu: the AppImage runs on systems with this
+    # glibc (2.35) or newer.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - name: System packages
+        run: scripts/ci-deps.sh
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked -p heronite -p heronite-epic-login
+      - name: appimagetool
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          sudo chmod +x /usr/local/bin/appimagetool
+      - name: Package
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          OUT=$(scripts/appimage.sh "${TAG#v}" | tail -1)
+          (cd dist && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Heronite-AppImage
+          path: dist/*
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: gh release create "$TAG" dist/* --title "Heronite $TAG" --generate-notes
