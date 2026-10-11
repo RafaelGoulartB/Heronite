@@ -7,7 +7,7 @@
   <a href="docs/ARCHITECTURE.md">
     <img alt="Documentation" src="https://img.shields.io/badge/documentation-yes-2B8CA8.svg" />
   </a>
-  <a href="https://github.com/RafaelGoulartB/game-launcher/graphs/commit-activity">
+  <a href="https://github.com/RafaelGoulartB/Heronite/graphs/commit-activity">
     <img alt="Maintenance" src="https://img.shields.io/badge/Maintained%3F-yes-2B8CA8.svg" />
   </a>
   <a href="LICENSE">
@@ -15,8 +15,8 @@
   </a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-2B8CA8.svg?logo=rust&logoColor=white" />
   <img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-2B8CA8.svg?logo=linux&logoColor=white" />
-  <img alt="GitHub Pull Requests" src="https://img.shields.io/github/issues-pr/RafaelGoulartB/game-launcher?color=2B8CA8" />
-  <img alt="GitHub repository size" src="https://img.shields.io/github/repo-size/RafaelGoulartB/game-launcher?color=2B8CA8" />
+  <img alt="GitHub Pull Requests" src="https://img.shields.io/github/issues-pr/RafaelGoulartB/Heronite?color=2B8CA8" />
+  <img alt="GitHub repository size" src="https://img.shields.io/github/repo-size/RafaelGoulartB/Heronite?color=2B8CA8" />
 </p>
 
 <p align="center">
