@@ -25,14 +25,6 @@ impl CollectionView {
     pub(super) fn cover_h(&self) -> f32 {
         theme::CARD_W * self.cover_aspect
     }
-    /// Like [`Self::cover`] but never requests nor refreshes it: covers
-    /// scrolled out of view must not push the visible ones out of the cache.
-    pub(super) fn cover_peek(&self, key: &SharedString, w: f32, h: f32, scale: f32) -> Option<ImageSource> {
-        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
-        let id: SharedString = format!("c:{key}:{pw}x{ph}").into();
-        self.images.peek(&id).map(ImageSource::Render)
-    }
-
     /// Cover texture for `key` at `w`×`h` logical px (requested on demand).
     pub(super) fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
         let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);

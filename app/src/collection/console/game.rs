@@ -12,14 +12,20 @@ use super::super::vm::DetailValue;
 use super::super::CollectionView;
 use crate::console::kit::{self, u};
 use crate::console::list::{ListNav, Outcome, Row, Value};
+use crate::console::motion::{Axis, Glide};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 
-#[derive(Default)]
 pub(super) struct GameNav {
     list: ListNav,
-    about: ScrollHandle,
+    about: Glide,
+}
+
+impl Default for GameNav {
+    fn default() -> Self {
+        Self { list: ListNav::default(), about: Glide::new(Axis::Y) }
+    }
 }
 
 fn detail_text(v: &DetailValue) -> String {
@@ -138,7 +144,7 @@ impl CollectionView {
                     })),
             );
 
-        let mut about = div().id("console-game-about").flex().flex_col().gap(u(14.)).overflow_y_scroll().track_scroll(&self.console.game.about);
+        let mut about = div().id("console-game-about").flex().flex_col().gap(u(14.)).overflow_y_scroll().track_scroll(self.console.game.about.handle());
         if let Some(f) = &focus {
             // Status, score and library live in the desktop left column, not in `details`.
             let head = [
@@ -178,6 +184,7 @@ impl CollectionView {
             .flex_col()
             .size_full()
             .child(header)
+            .child(self.console.game.about.driver())
             .child(
                 div()
                     .flex()
@@ -207,12 +214,8 @@ impl CollectionView {
     pub(super) fn game_pad(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return false };
         if matches!(pad, Pad::ScrollUp | Pad::ScrollDown) {
-            let h = &self.console.game.about;
-            let off = h.offset();
-            let step = u(120.);
-            let y = if pad == Pad::ScrollDown { off.y - step } else { off.y + step };
-            let max = h.max_offset().y;
-            h.set_offset(point(off.x, y.clamp(-max, px(0.))));
+            let step = f32::from(u(120.));
+            self.console.game.about.by(if pad == Pad::ScrollDown { step } else { -step });
             return true;
         }
         if pad == Pad::X {

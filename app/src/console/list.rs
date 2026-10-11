@@ -10,6 +10,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use super::kit::{self, u};
+use super::motion::{Axis, Glide, Goal};
 use super::Pad;
 use crate::icons::Icon;
 use crate::theme;
@@ -106,13 +107,15 @@ pub enum Outcome {
 
 pub struct ListNav {
     pub focus: usize,
-    scroll: ScrollHandle,
+    glide: Glide,
     reveal: bool,
+    /// Drawn once (the first reveal jumps instead of gliding).
+    shown: bool,
 }
 
 impl Default for ListNav {
     fn default() -> Self {
-        Self { focus: 0, scroll: ScrollHandle::new(), reveal: true }
+        Self { focus: 0, glide: Glide::new(Axis::Y), reveal: true, shown: false }
     }
 }
 
@@ -138,7 +141,7 @@ impl ListNav {
     pub fn reset(&mut self) {
         self.focus = 0;
         self.reveal = true;
-        self.scroll.set_offset(point(px(0.), px(0.)));
+        self.glide.reset();
     }
 
     fn step(&mut self, rows: &[Row], down: bool, by: usize) -> bool {
@@ -223,13 +226,20 @@ impl ListNav {
         self.clamp(rows);
         if self.reveal && active {
             self.reveal = false;
-            self.scroll.scroll_to_item(self.focus);
+            // A little of the rows around the focus stays in sight.
+            let goal = Goal::Reveal { ix: self.focus, margin: 34. };
+            if self.shown {
+                self.glide.go(goal);
+            } else {
+                self.glide.jump(goal);
+            }
         }
-        let mut list = div().id(id).flex().flex_col().gap(u(4.)).overflow_y_scroll().track_scroll(&self.scroll);
+        self.shown = true;
+        let mut list = div().id(id).flex().flex_col().gap(u(4.)).overflow_y_scroll().track_scroll(self.glide.handle());
         for (i, r) in rows.iter().enumerate() {
             list = list.child(render_row(r, active && i == self.focus));
         }
-        list
+        list.child(self.glide.driver())
     }
 }
 

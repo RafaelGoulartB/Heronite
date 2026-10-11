@@ -108,12 +108,6 @@ impl ImageStore {
         None
     }
 
-    /// The texture if it is ready, without requesting it or marking it
-    /// recently used (for things drawn off screen).
-    pub fn peek(&self, id: &SharedString) -> Option<Arc<RenderImage>> {
-        self.ready.get(id).map(|(img, _)| img.clone())
-    }
-
     pub fn on_loaded(&mut self, (id, generation, res): Loaded) {
         log::debug!("image loaded {id}: {}", if res.is_ok() { "ok" } else { "err" });
         if self.pending.get(&id) != Some(&generation) {

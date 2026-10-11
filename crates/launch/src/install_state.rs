@@ -1,14 +1,16 @@
-//! Which local games count as installed (port of the pure parts of
-//! `install-state.ts`). The caller applies the results to
+//! Which local games count as installed (port of `install-state.ts`):
+//! the pure rules, and [`refresh_local_install_states`] that applies them to
 //! `sideload_apps/library.json`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta};
+use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile};
+use heronite_data::{json_store, HeroicPaths};
+use serde_json::Value;
 
 use crate::plan::{emulator_executable, PlanContext};
 use crate::probe::Probe;
-use crate::steam::{steam_cdn_covers, SteamInstalledGame};
+use crate::steam::{find_steam_binary, installed_app_ids, list_installed_games, steam_cdn_covers, SteamInstalledGame, SteamLocator};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallState {
@@ -147,6 +149,127 @@ pub fn steam_sideload_entry(
         ..Default::default()
     };
     (info, meta)
+}
+
+/// What [`refresh_local_install_states`] changed.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct RefreshReport {
+    /// Games whose `is_installed` / executable changed.
+    pub updated: usize,
+    /// Steam games installed outside the Collection, added to it.
+    pub added: usize,
+}
+
+impl RefreshReport {
+    pub fn changed(&self) -> bool {
+        self.updated > 0 || self.added > 0
+    }
+}
+
+/// `launchKindForLocalExe`.
+fn launch_kind_for_local_exe(existing: &str) -> &'static str {
+    if existing == "emulator" { "emulator" } else { "executable" }
+}
+
+/// `refreshLocalInstallStates`: recomputes `is_installed` and the executable
+/// of every sideloaded game with Collection metadata (a game uninstalled
+/// from Steam, a moved executable, a missing ROM...) and adds the Steam games
+/// installed since the last run. Blocking file I/O.
+pub fn refresh_local_install_states(paths: &HeroicPaths, probe: &dyn Probe) -> anyhow::Result<RefreshReport> {
+    let ctx = PlanContext::load(paths);
+    let locator = SteamLocator::detect(&ctx.global, probe);
+    let installed_steam = installed_app_ids(&locator);
+    let steam_bin = find_steam_binary(probe);
+    let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
+    let doc = json_store::read_value(&paths.sideload_library())?;
+    let entries: Vec<GameInfo> = doc
+        .get("games")
+        .and_then(Value::as_array)
+        .map(|l| l.iter().filter_map(|g| serde_json::from_value(g.clone()).ok()).collect())
+        .unwrap_or_default();
+
+    let mut states: HashMap<String, InstallState> = HashMap::new();
+    // `syncMetaExecutable`: the executable that was found goes to the meta.
+    let mut meta_exes: HashMap<String, String> = HashMap::new();
+    for game in &entries {
+        let Some(meta) = metas.games.get(&game.app_name) else { continue };
+        let next = next_install_state(&ctx, probe, game, meta, &installed_steam, steam_bin.as_deref());
+        if !next.executable.is_empty()
+            && Some(next.executable.as_str()) != meta.remapped_executable.as_deref()
+            && meta.launch_kind != "steam-uri"
+        {
+            meta_exes.insert(game.app_name.clone(), next.executable.clone());
+        }
+        if next.is_installed != game.is_installed || next.executable != game.install.executable.as_deref().unwrap_or("") {
+            states.insert(game.app_name.clone(), next);
+        }
+    }
+
+    let mut known: HashSet<String> = metas.games.values().filter_map(|m| m.steam_app_id.clone()).collect();
+    for game in &entries {
+        if let Some(id) = game.app_name.strip_prefix("steam_").filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())) {
+            known.insert(id.to_string());
+        }
+    }
+    let mut new_steam = Vec::new();
+    let installed_games = list_installed_games(&locator);
+    if installed_games.iter().any(|g| !known.contains(&g.app_id)) {
+        let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
+        let not_played = heronite_data::status::inferred_status_id(0., &statuses);
+        for g in installed_games {
+            if known.insert(g.app_id.clone()) {
+                new_steam.push(steam_sideload_entry(&g, steam_bin.as_deref(), &not_played));
+            }
+        }
+    }
+
+    if !meta_exes.is_empty() || !new_steam.is_empty() {
+        json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
+            for (app, exe) in &meta_exes {
+                if let Some(m) = file.games.get_mut(app) {
+                    m.launch_kind = launch_kind_for_local_exe(&m.launch_kind).into();
+                    m.remapped_executable = Some(exe.clone());
+                }
+            }
+            for (_, meta) in &new_steam {
+                file.games.entry(meta.app_name.clone()).or_insert_with(|| meta.clone());
+            }
+            Ok(())
+        })?;
+    }
+    let report = RefreshReport { updated: states.len(), added: new_steam.len() };
+    if !report.changed() {
+        return Ok(report);
+    }
+    json_store::update_value(&paths.sideload_library(), |doc| {
+        let obj = doc.as_object_mut().expect("update_value gives an object");
+        let games = obj.entry("games").or_insert_with(|| Value::Array(Vec::new()));
+        if !games.is_array() {
+            *games = Value::Array(Vec::new());
+        }
+        let list = games.as_array_mut().expect("array");
+        for g in list.iter_mut() {
+            let Some(state) = g.get("app_name").and_then(Value::as_str).and_then(|a| states.get(a)) else { continue };
+            let Some(entry) = g.as_object_mut() else { continue };
+            entry.insert("is_installed".into(), Value::Bool(state.is_installed));
+            let install = entry.entry("install").or_insert_with(|| Value::Object(Default::default()));
+            if !install.is_object() {
+                *install = Value::Object(Default::default());
+            }
+            install["executable"] = Value::String(state.executable.clone());
+        }
+        for (info, _) in &new_steam {
+            list.push(serde_json::to_value(info)?);
+        }
+        Ok(())
+    })?;
+    if report.updated > 0 {
+        log::info!("Updated install state for {} local game(s)", report.updated);
+    }
+    if report.added > 0 {
+        log::info!("Added {} installed Steam game(s) to the local library", report.added);
+    }
+    Ok(report)
 }
 
 #[cfg(test)]
@@ -300,5 +423,47 @@ mod tests {
         assert_eq!(info.rest["canRunOffline"], false);
         assert_eq!(meta.launcher_args.as_deref(), Some("steam://rungameid/400"));
         assert_eq!(meta.launch_kind, "steam-uri");
+    }
+
+    #[test]
+    fn refresh_follows_steam_uninstalls_and_installs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let steamapps = home.join(".steam/steam/steamapps");
+        std::fs::create_dir_all(&steamapps).unwrap();
+        std::fs::write(
+            steamapps.join("appmanifest_620.acf"),
+            "\"AppState\"\n{\n\t\"appid\"\t\t\"620\"\n\t\"name\"\t\t\"Portal 2\"\n\t\"StateFlags\"\t\t\"4\"\n}\n",
+        )
+        .unwrap();
+        let paths = HeroicPaths::at(dir.path().join("heroic"));
+        std::fs::create_dir_all(paths.sideload_library().parent().unwrap()).unwrap();
+        std::fs::write(
+            paths.sideload_library(),
+            r#"{"games": [{"runner": "sideload", "app_name": "steam_400", "title": "Portal", "is_installed": true, "install": {"executable": "steam", "platform": "linux"}, "zz": 1}]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(paths.local_meta().parent().unwrap()).unwrap();
+        std::fs::write(
+            paths.local_meta(),
+            r#"{"games": {"steam_400": {"appName": "steam_400", "runner": "sideload", "launchKind": "steam-uri", "steamAppId": "400", "title": "Portal"}}}"#,
+        )
+        .unwrap();
+        let probe = FakeProbe::new(home.to_str().unwrap());
+
+        let report = refresh_local_install_states(&paths, &probe).unwrap();
+        assert_eq!(report, RefreshReport { updated: 1, added: 1 });
+        let doc = json_store::read_value(&paths.sideload_library()).unwrap();
+        let games = doc["games"].as_array().unwrap();
+        assert_eq!(games[0]["is_installed"], false);
+        assert_eq!(games[0]["install"]["executable"], "");
+        assert_eq!(games[0]["zz"], 1);
+        assert_eq!(games[1]["app_name"], "steam_620");
+        assert_eq!(games[1]["is_installed"], true);
+        let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        assert_eq!(metas.games["steam_620"].launch_kind, "steam-uri");
+
+        // Nothing changed since: the files are left alone.
+        assert!(!refresh_local_install_states(&paths, &probe).unwrap().changed());
     }
 }

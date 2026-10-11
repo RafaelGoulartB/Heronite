@@ -189,6 +189,11 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `Outcome` tells the owner what happened; `simple_dialog` for confirmations), `console::sheet::Sheet`,
   `console::osk::Osk` (on-screen keyboard; never use text inputs in console layouts), `console::browser::Browser`
   (folder / file picker; the portal file chooser cannot be driven by a controller).
+- Motion (`console::motion`): scroll areas that follow the focus use a `Glide` (`go(Goal::Reveal{..})` / `Start` /
+  `by(px)`, its `driver()` as the last child of the area) instead of `scroll_to_item`, so they glide on a spring;
+  `row_base` focus pills pop in on every press; covers lift with `motion::spring`; screens, pages, dialogs, the menu
+  and panels (`kit::panel_in`, `kit::scrim`) fade / slide in with `motion::enter` (new id = replay). Only moving
+  things request frames; `HERONITE_NO_ANIMATIONS=1` jumps instead. Off-screen covers are empty boxes of the same size.
 - Layout: top bar = `kit::wordmark` + LB/RB `kit::tabs` + `kit::clock`, content padded `u(46.)`, lists about `u(900.)`
   wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
 - Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page) starts in console mode without saving it;

@@ -6,11 +6,13 @@
 //! window height ([`set_scale`] runs once per frame), so a TV reads like the
 //! mock-up.
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use super::motion;
 use super::{Btn, Hint};
 use crate::icons::Icon;
 use crate::theme;
@@ -18,10 +20,17 @@ use crate::ui::icon;
 
 static SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
 
-/// Scales the design to the window: `height / 800`, between 1 and 2.
+thread_local! {
+    /// Focus pills drawn this frame (keeps their animation ids apart).
+    static PILLS: Cell<u32> = const { Cell::new(0) };
+}
+
+/// Scales the design to the window: `height / 800`, between 1 and 2. Runs
+/// once at the start of every console frame.
 pub fn set_scale(window: &Window) {
     let h = f32::from(window.viewport_size().height);
     SCALE.store((h / 800.).clamp(1., 2.).to_bits(), Ordering::Relaxed);
+    PILLS.with(|c| c.set(0));
 }
 
 pub fn scale() -> f32 {
@@ -31,25 +40,6 @@ pub fn scale() -> f32 {
 /// A design size (px at 1280×800) for this window.
 pub fn u(v: f32) -> Pixels {
     px(v * scale())
-}
-
-/// Puts child `ix` of a scroll area at its top, from the child positions of
-/// the last frame (GPUI's `scroll_to_top_of_item` misplaces it once the
-/// area has scrolled). `false` before the first layout: try next frame.
-pub fn scroll_to_top(handle: &ScrollHandle, ix: usize) -> bool {
-    if ix == 0 {
-        handle.set_offset(point(handle.offset().x, px(0.)));
-        return true;
-    }
-    match (handle.bounds_for_item(0), handle.bounds_for_item(ix)) {
-        (Some(first), Some(item)) => {
-            let max = handle.max_offset().y;
-            let y = (item.top() - first.top()).min(max);
-            handle.set_offset(point(handle.offset().x, -y));
-            true
-        }
-        _ => false,
-    }
 }
 
 /// Soft drop shadow (`y` and `blur` in design px).
@@ -158,17 +148,45 @@ pub fn hint_bar(hints: &[Hint]) -> Div {
         }))
 }
 
+/// The light focus pill behind a row. It pops in (grows from a little
+/// inset, fading up) when the focus arrives and on every press, so moving
+/// and changing values both answer at once.
+pub fn focus_pill(radius: f32) -> AnyElement {
+    let n = PILLS.with(|c| {
+        let n = c.get();
+        c.set(n + 1);
+        n
+    });
+    let edge = -2.;
+    let pill = div()
+        .absolute()
+        .top(px(edge))
+        .bottom(px(edge))
+        .left(px(edge))
+        .right(px(edge))
+        .rounded(u(radius))
+        .bg(theme::console_focus())
+        .border_2()
+        .border_color(theme::white_a(0.55))
+        .shadow(shadow(0.45, 8., 24.));
+    if !motion::on() {
+        return pill.into_any_element();
+    }
+    let id = SharedString::from(format!("pill-{n}-{}", motion::press_epoch()));
+    pill.with_animation(id, Animation::new(std::time::Duration::from_millis(200)).with_easing(ease_out_quint()), move |d, t| {
+        let inset = px(edge) + u(4.) * (1. - t);
+        d.opacity(0.55 + 0.45 * t).top(inset).bottom(inset).left(inset).right(inset)
+    })
+    .into_any_element()
+}
+
 /// Base of a focusable row: transparent, or the light pill when focused.
 pub fn row_base(focused: bool) -> Div {
-    let d = div().flex().items_center().gap(u(16.)).min_h(u(56.)).px(u(22.)).rounded(u(14.));
+    let d = div().relative().flex().items_center().gap(u(16.)).min_h(u(56.)).px(u(22.)).rounded(u(14.)).border_2().border_color(transparent_black());
     if focused {
-        d.bg(theme::console_focus())
-            .text_color(theme::console_on_focus())
-            .border_2()
-            .border_color(theme::white_a(0.55))
-            .shadow(shadow(0.45, 8., 24.))
+        d.text_color(theme::console_on_focus()).child(focus_pill(14.))
     } else {
-        d.text_color(theme::text_primary()).border_2().border_color(transparent_black())
+        d.text_color(theme::text_primary())
     }
 }
 
@@ -221,7 +239,8 @@ pub fn choice(value: impl Into<SharedString>, focused: bool, can_left: bool, can
         .child(arrow(Icon::ChevronRight, can_right))
 }
 
-/// Tabs switched with LB / RB; the active one is white and underlined.
+/// Tabs switched with LB / RB; the active one is white and underlined
+/// (the underline grows in from the centre while the old one shrinks).
 pub fn tabs(items: &[SharedString], active: usize) -> Div {
     div()
         .flex()
@@ -230,20 +249,20 @@ pub fn tabs(items: &[SharedString], active: usize) -> Div {
         .child(glyph(Btn::LB))
         .children(items.iter().enumerate().map(|(i, t)| {
             let on = i == active;
-            div()
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap(u(4.))
-                .child(
+            let label = t.clone();
+            let id = SharedString::from(format!("tab-{label}"));
+            motion::spring(id, div().flex().flex_col().items_center().gap(u(4.)), motion::SOFT, on, move |d, k| {
+                let k = k.clamp(0., 1.);
+                d.child(
                     div()
                         .text_size(u(17.))
-                        .text_color(if on { white() } else { theme::text_muted().into() })
+                        .text_color(motion::mix(theme::text_muted(), white(), k))
                         .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
                         .whitespace_nowrap()
-                        .child(t.clone()),
+                        .child(label),
                 )
-                .child(div().h(u(3.)).w(u(28.)).rounded_full().bg(if on { white() } else { transparent_black() }))
+                .child(div().h(u(3.)).w(u(28. * k)).rounded_full().bg(white()).opacity(k))
+            })
         }))
         .child(glyph(Btn::RB))
 }
@@ -276,9 +295,14 @@ pub fn badge(text: impl Into<SharedString>, color: Rgba) -> Div {
         .child(text.into())
 }
 
-/// Full-window dim behind an overlay.
-pub fn scrim() -> Div {
-    div().absolute().inset_0().bg(theme::black_a(0.62))
+/// Full-window dim behind an overlay (fades in).
+pub fn scrim() -> AnyElement {
+    motion::fade_in("scrim", div().absolute().inset_0().bg(theme::black_a(0.62)), 180)
+}
+
+/// A centred panel's entrance: fades in while rising into place.
+pub fn panel_in(id: &'static str, panel: Div) -> AnyElement {
+    motion::enter(id, panel.relative(), 260, 0., 18.)
 }
 
 /// Centred empty state.
@@ -298,7 +322,8 @@ pub fn empty(ic: Icon, title_text: impl Into<SharedString>, body: impl Into<Shar
 /// Centred modal panel over a dim (sheets, console dialogs).
 pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElement) -> Div {
     div().absolute().inset_0().child(scrim()).child(
-        div().absolute().inset_0().flex().items_center().justify_center().pb(u(60.)).child(
+        div().absolute().inset_0().flex().items_center().justify_center().pb(u(60.)).child(panel_in(
+            "modal-panel",
             div()
                 .w(u(width))
                 .max_w(relative(0.94))
@@ -311,9 +336,10 @@ pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElemen
                 .bg(theme::console_sidebar())
                 .border_1()
                 .border_color(theme::white_a(0.1))
+                .shadow(shadow(0.5, 18., 48.))
                 .child(title(heading, 26.))
                 .child(div().flex().flex_col().flex_1().min_h_0().gap(u(14.)).child(body)),
-        ),
+        )),
     )
 }
 

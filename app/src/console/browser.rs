@@ -194,7 +194,8 @@ impl Render for Browser {
             self.nav.render("console-browser", &rows, true).flex_1().min_h_0().into_any_element()
         };
         div().absolute().inset_0().child(kit::scrim()).child(
-            div().absolute().inset_0().flex().justify_center().py(u(40.)).child(
+            div().absolute().inset_0().flex().justify_center().py(u(40.)).child(kit::panel_in(
+                "browser-panel",
                 div()
                     .w(u(860.))
                     .flex()
@@ -207,8 +208,9 @@ impl Render for Browser {
                     .border_color(theme::white_a(0.1))
                     .child(kit::title(self.title.clone(), 24.))
                     .child(div().text_size(u(14.)).text_color(theme::text_muted()).truncate().child(self.dir.display().to_string()))
+                    .shadow(kit::shadow(0.5, 18., 48.))
                     .child(div().flex().flex_col().flex_1().min_h_0().child(body)),
-            ),
+            )),
         )
     }
 }

@@ -20,9 +20,13 @@ use heronite_images::Variant;
 use super::CollectionView;
 use crate::console::input::{self, PadMsg};
 use crate::console::kit::{self, u};
+use crate::console::motion;
 use crate::console::{self, hint, Btn, Hint, Overlay, Pad};
 use crate::pages::Page;
 use crate::theme;
+
+/// Cross-fade of the background art.
+const ART_FADE_MS: u64 = 520;
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub(super) enum Screen {
@@ -54,6 +58,11 @@ pub(super) struct ConsoleUi {
     /// Where the art is heading (set at once; `art_key` follows it).
     art_want: Option<SharedString>,
     art_task: Option<Task<()>>,
+    /// The art on screen and the one it fades from (dropped once the fade
+    /// is over).
+    art_cur: Option<(SharedString, std::sync::Arc<RenderImage>)>,
+    art_prev: Option<std::sync::Arc<RenderImage>>,
+    art_fade: Option<Task<()>>,
     ticker: Option<Task<()>>,
     script_started: bool,
 }
@@ -207,6 +216,9 @@ impl CollectionView {
     /// Routes one press.
     pub(super) fn console_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) {
         cx.notify();
+        if !matches!(pad, Pad::ScrollUp | Pad::ScrollDown) {
+            motion::press();
+        }
         if self.dialog.is_some() {
             let used = self.dialog_hook.clone().is_some_and(|h| h.pad(pad, window, cx));
             if !used && pad == Pad::B {
@@ -329,9 +341,12 @@ impl CollectionView {
         }));
     }
 
-    /// The focused game's hero art, sharp, sized to the window.
-    fn console_art(&mut self, window: &Window) -> Option<ImageSource> {
-        let key = self.console.art_key.clone()?;
+    /// The focused game's hero art, sharp, sized to the window, and the
+    /// art it is fading from.
+    fn console_art(&mut self, window: &Window, cx: &mut Context<Self>) -> (Option<std::sync::Arc<RenderImage>>, Option<(SharedString, std::sync::Arc<RenderImage>)>) {
+        let Some(key) = self.console.art_key.clone() else {
+            return (self.console.art_prev.clone(), self.console.art_cur.clone());
+        };
         let scale = window.scale_factor();
         let size = window.viewport_size();
         // Under the gradients a smaller texture looks the same and keeps the
@@ -350,9 +365,24 @@ impl CollectionView {
             1000,
         );
         if let Some(img) = ready {
+            let same = self.console.art_cur.as_ref().is_some_and(|(k, _)| *k == key);
+            if !same {
+                // Cross-fade: the old art stays under the new one until it
+                // is fully in.
+                self.console.art_prev = self.console.art_cur.take().map(|(_, i)| i);
+                self.console.art_fade = Some(cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(std::time::Duration::from_millis(ART_FADE_MS + 100)).await;
+                    this.update(cx, |this, cx| {
+                        this.console.art_prev = None;
+                        cx.notify();
+                    })
+                    .ok();
+                }));
+            }
+            self.console.art_cur = Some((key.clone(), img.clone()));
             self.shown_stage = Some((key, img));
         }
-        self.shown_stage.as_ref().map(|(_, img)| ImageSource::Render(img.clone()))
+        (self.console.art_prev.clone(), self.console.art_cur.clone())
     }
 
     /// Top bar: wordmark, LB/RB tabs, clock.
@@ -376,25 +406,40 @@ impl CollectionView {
     pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         kit::set_scale(window);
         self.console_script(window, cx);
-        let art = self.console_art(window);
+        let (art_prev, art) = self.console_art(window, cx);
         let body: AnyElement = if self.page != Page::Collection {
             match self.render_page_view() {
-                Some(view) => view,
+                // Pages rise in.
+                Some(view) => motion::enter(
+                    SharedString::from(format!("console-page-{}", self.page.title())),
+                    div().relative().size_full().child(view),
+                    300,
+                    0.,
+                    22.,
+                ),
                 None => div().into_any_element(),
             }
         } else {
             match self.console.screen.clone() {
                 Screen::Home => self.render_console_home(window, cx),
                 Screen::Library => self.render_console_library(window, cx),
-                Screen::Game(key) => self.render_console_game(&key, window, cx),
+                Screen::Game(key) => {
+                    let page = self.render_console_game(&key, window, cx);
+                    motion::enter(SharedString::from(format!("console-game-{key}")), div().relative().size_full().child(page), 320, 0., 26.)
+                }
             }
         };
         let on_page = self.page != Page::Collection;
         let hints = self.console_hints(cx);
+        let art_img = |i: std::sync::Arc<RenderImage>| img(ImageSource::Render(i)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
         let backdrop = div()
             .absolute()
             .inset_0()
-            .when_some(art.filter(|_| !on_page), |d, src| d.child(img(src).size_full().object_fit(ObjectFit::Cover)))
+            .when(!on_page, |d| {
+                d.children(art_prev.map(art_img)).children(art.map(|(k, i)| {
+                    motion::fade_in(SharedString::from(format!("console-art-{k}")), art_img(i), ART_FADE_MS)
+                }))
+            })
             // Readable text on any art: dark from the left and the bottom.
             .child(div().absolute().inset_0().bg(linear_gradient(
                 90.,
@@ -418,7 +463,10 @@ impl CollectionView {
             .child(div().absolute().inset_0().flex().flex_col().child(div().flex_1().min_h_0().child(body)).child(div().flex_none().h(u(60.))))
             .children(self.render_sidebar(cx))
             .children(self.console.overlay.as_ref().map(|o| o.view.clone()))
-            .children(self.dialog.clone())
+            .children(self.dialog.clone().map(|d| {
+                let id = SharedString::from(format!("console-dialog-{}", d.entity_id()));
+                motion::layer_in(id, d, 240, 12.)
+            }))
             .children(self.render_toast())
             // Above the overlays: the hints of whatever has the focus.
             .child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(theme::console_bg())))

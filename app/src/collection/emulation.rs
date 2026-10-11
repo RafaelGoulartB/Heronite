@@ -22,6 +22,18 @@ use crate::dialogs::scan_roms::{ScanInitial, ScanRomsDialog};
 /// How long after start the Collection scans the saved ROM folders.
 const STARTUP_SCAN_DELAY: Duration = Duration::from_secs(4);
 
+/// Brings `is_installed` of the local games (Steam, executables, ROMs) in
+/// line with the disk. Blocking. Returns whether something changed.
+fn refresh_install_states(paths: &heronite_data::HeroicPaths) -> bool {
+    match heronite_launch::install_state::refresh_local_install_states(paths, &heronite_launch::SystemProbe) {
+        Ok(report) => report.changed(),
+        Err(e) => {
+            log::warn!("refreshing install states: {e:#}");
+            false
+        }
+    }
+}
+
 /// Result of listing a game's save states in the background.
 struct Listing {
     emulator: String,
@@ -197,8 +209,9 @@ impl CollectionView {
         }
     }
 
-    /// The refresh button: scans the saved ROM folders (`autoScanOnRefresh`
-    /// ones) off the UI thread, then reloads the library; the spinner runs
+    /// The refresh button: updates the install states (a game uninstalled
+    /// from Steam), scans the saved ROM folders (`autoScanOnRefresh` ones)
+    /// off the UI thread, then reloads the library; the spinner runs
     /// for both. Like Heronite's `handleRefreshAll`: new games are added, none
     /// are ever removed.
     pub(super) fn refresh_all(&mut self, cx: &mut Context<Self>) {
@@ -208,7 +221,12 @@ impl CollectionView {
         self.refreshing = true;
         let paths = self.heroic.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { run_rom_scanners(&paths, None) }).await;
+            let res = cx
+                .background_spawn(async move {
+                    refresh_install_states(&paths);
+                    run_rom_scanners(&paths, None)
+                })
+                .await;
             this.update(cx, |this, cx| {
                 // `reload` skips when a reload is in flight.
                 this.refreshing = false;
@@ -240,9 +258,11 @@ impl CollectionView {
         }
     }
 
-    /// ROM auto-scan and the scheduled config backup, 90 s after start (the
-    /// idle jobs), plus a ROM scan a few seconds after the Collection opens so
-    /// new games show up without pressing refresh.
+    /// The install states of local games right away (a game uninstalled
+    /// from Steam while the app was closed), the ROM auto-scan and the
+    /// scheduled config backup 90 s after start (the idle jobs), plus a ROM
+    /// scan a few seconds after the Collection opens so new games show up
+    /// without pressing refresh.
     /// `HERONITE_DISABLE_IDLE_JOBS=1` turns both off (tests against real data).
     pub(super) fn start_idle_jobs(&self, cx: &mut Context<Self>) {
         if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
@@ -250,6 +270,10 @@ impl CollectionView {
         }
         let paths = self.heroic.clone();
         cx.spawn(async move |this, cx| {
+            let p = paths.clone();
+            if cx.background_spawn(async move { refresh_install_states(&p) }).await {
+                this.update(cx, |this, cx| this.reload(cx)).ok();
+            }
             cx.background_executor().timer(STARTUP_SCAN_DELAY).await;
             let res = cx.background_spawn(async move { run_rom_scanners(&paths, None) }).await;
             this.update(cx, |this, cx| this.after_rom_scan(res, true, cx)).ok();

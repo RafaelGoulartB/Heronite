@@ -14,6 +14,7 @@ pub mod input;
 pub mod layers;
 pub mod kit;
 pub mod list;
+pub mod motion;
 pub mod osk;
 pub mod registry;
 pub mod sheet;

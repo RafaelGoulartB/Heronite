@@ -155,13 +155,11 @@ fn key(label: String, focused: bool, wide: f32, on: bool) -> Div {
         .h(u(52.))
         .rounded(u(12.))
         .text_size(u(19.))
-        .when(focused, |d| {
-            d.bg(theme::console_focus()).text_color(theme::console_on_focus()).font_weight(theme::W_BOLD).shadow(kit::shadow(0.5, 6., 18.))
-        })
+        .when(focused, |d| d.relative().text_color(theme::console_on_focus()).font_weight(theme::W_BOLD).child(kit::focus_pill(12.)))
         .when(!focused, |d| {
             d.bg(if on { theme::accent_tint() } else { theme::white_a(0.07) }).text_color(theme::text_primary())
         })
-        .child(label)
+        .child(div().relative().child(label))
 }
 
 impl Render for Osk {
@@ -193,7 +191,8 @@ impl Render for Osk {
             .inset_0()
             .child(kit::scrim())
             .child(
-                div().absolute().left_0().right_0().bottom(u(70.)).flex().justify_center().child(
+                div().absolute().left_0().right_0().bottom(u(70.)).flex().justify_center().child(kit::panel_in(
+                    "osk-panel",
                     div()
                         .w(u(820.))
                         .flex()
@@ -205,9 +204,10 @@ impl Render for Osk {
                         .border_1()
                         .border_color(theme::white_a(0.1))
                         .child(kit::title(self.title.clone(), 22.))
+                        .shadow(kit::shadow(0.5, 18., 48.))
                         .child(field)
                         .child(grid),
-                ),
+                )),
             )
     }
 }

@@ -8,6 +8,7 @@ use gpui_kit::*;
 use super::super::CollectionView;
 use super::Screen;
 use crate::console::kit::{self, u};
+use crate::console::motion;
 use crate::console::Pad;
 use crate::icons::Icon;
 use crate::pages::Page;
@@ -132,7 +133,8 @@ impl CollectionView {
                 .absolute()
                 .inset_0()
                 .child(kit::scrim())
-                .child(
+                .child(motion::enter(
+                    "console-sidebar",
                     div()
                         .absolute()
                         .top_0()
@@ -146,9 +148,13 @@ impl CollectionView {
                         .bg(theme::console_sidebar())
                         .border_r_1()
                         .border_color(theme::white_a(0.08))
+                        .shadow(kit::shadow(0.5, 0., 40.))
                         .child(div().px(u(18.)).pb(u(26.)).child(kit::wordmark("HERONITE")))
                         .child(list),
-                )
+                    280,
+                    -40.,
+                    0.,
+                ))
                 .into_any_element(),
         )
     }

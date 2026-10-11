@@ -80,7 +80,8 @@ impl Render for Sheet {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let list = self.nav.render("console-sheet", &self.rows, true);
         div().absolute().inset_0().child(kit::scrim()).child(
-            div().absolute().inset_0().flex().items_center().justify_center().child(
+            div().absolute().inset_0().flex().items_center().justify_center().child(kit::panel_in(
+                "sheet-panel",
                 div()
                     .w(u(640.))
                     .max_h(u(620.))
@@ -94,8 +95,9 @@ impl Render for Sheet {
                     .border_color(theme::white_a(0.1))
                     .child(kit::title(self.title.clone(), 26.))
                     .children(self.message.clone().map(kit::body_text))
+                    .shadow(kit::shadow(0.5, 18., 48.))
                     .child(list.min_h_0()),
-            ),
+            )),
         )
     }
 }
