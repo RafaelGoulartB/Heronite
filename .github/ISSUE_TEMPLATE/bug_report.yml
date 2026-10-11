@@ -1,0 +1,58 @@
+name: Bug report
+description: Something does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting! Please search the existing issues first.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. See …
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: System information
+      description: In Heronite, open **Settings › About** and click **Copy to clipboard**, then paste it here. It includes the Heronite version, distribution, CPU, GPU, and memory.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install Heronite?
+      options:
+        - AppImage from the GitHub releases
+        - Built from source
+        - Other (tell us below)
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game and store (if it is about a game)
+      placeholder: e.g. Control (Epic), Elden Ring (Steam), a PS2 ROM with PCSX2
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste the relevant part from **Settings › Logs** (or **View log** in a game's menu). The files are in `~/.local/share/heronite/logs/`.
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, videos, or other details.
