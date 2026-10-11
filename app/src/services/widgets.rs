@@ -91,6 +91,35 @@ impl Covers {
         self.store.get_or_request(&id, || chain.to_vec(), pw, ph, Variant::Cover, 100).map(ImageSource::Render)
     }
 
+    /// Wide art (stage chain) cropped to `w`x`h`, like `object-fit: cover`.
+    pub fn get_art(&mut self, key: &str, chain: &[ImageRef], w: f32, h: f32, scale: f32) -> Option<ImageSource> {
+        if chain.is_empty() {
+            return None;
+        }
+        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
+        let id: SharedString = format!("a:{key}:{pw}x{ph}").into();
+        self.store.get_or_request(&id, || chain.to_vec(), pw, ph, Variant::Cover, 90).map(ImageSource::Render)
+    }
+
+    /// Blurred art for a full-size background (`w`x`h` logical px; the
+    /// pipeline renders it small and the GPU scales it up).
+    pub fn get_blurred(&mut self, key: &str, chain: &[ImageRef], w: f32, h: f32, blur_px: f32, saturation: f32) -> Option<ImageSource> {
+        if chain.is_empty() {
+            return None;
+        }
+        let (pw, ph) = (w.round().max(1.) as u32, h.round().max(1.) as u32);
+        let id: SharedString = format!("b:{key}:{pw}x{ph}").into();
+        self.store.get_or_request(&id, || chain.to_vec(), pw, ph, Variant::Stage { blur_px, saturation }, 80).map(ImageSource::Render)
+    }
+
+    /// An image file (a screenshot) cropped to `w`x`h`.
+    pub fn get_file(&mut self, path: &std::path::Path, w: f32, h: f32, scale: f32) -> Option<ImageSource> {
+        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
+        let id: SharedString = format!("f:{}:{pw}x{ph}", path.display()).into();
+        let chain = || vec![ImageRef::File(path.to_path_buf())];
+        self.store.get_or_request(&id, chain, pw, ph, Variant::Cover, 70).map(ImageSource::Render)
+    }
+
     pub fn drop_evicted(&mut self, window: &mut Window) {
         self.store.drop_evicted(window);
     }

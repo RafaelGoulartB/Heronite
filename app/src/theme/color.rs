@@ -46,17 +46,33 @@ pub fn console_btn_x() -> Rgba { rgb(0x6cb6ff) }
 pub fn console_btn_y() -> Rgba { rgb(0xf5cd5b) }
 
 /// Statistics charts: one colour per top game (most played first); the rest
-/// share [`chart_other`].
+/// share [`chart_other`]. Order and steps checked for colour-blind
+/// separation on the dark glass (`#161b24`); keep them in this order.
 pub fn chart_series(i: usize) -> Rgba {
     match i {
-        0 => rgb(0xa5dceb),
-        1 => rgb(0xc6a9ee),
-        2 => rgb(0x94e8b0),
-        3 => rgb(0xf2cd85),
-        _ => rgb(0xf09f8f),
+        0 => rgb(0x3987e5),
+        1 => rgb(0xd95926),
+        2 => rgb(0x199e70),
+        3 => rgb(0xc98500),
+        4 => rgb(0xd55181),
+        _ => rgb(0x9085e9),
     }
 }
 pub fn chart_other() -> Hsla { white_a(0.22) }
+
+/// Sequential blue ramp of the statistics heatmaps (`t` 0..=1, more = brighter).
+pub fn chart_ramp(t: f32) -> Rgba {
+    const RAMP: [u32; 10] = [0x0d366b, 0x104281, 0x184f95, 0x1c5cab, 0x256abf, 0x2a78d6, 0x3987e5, 0x5598e7, 0x6da7ec, 0x86b6ef];
+    let i = (t.clamp(0., 1.) * (RAMP.len() - 1) as f32).round() as usize;
+    rgb(RAMP[i])
+}
+/// Card fill under the river (also the line drawn between its bands).
+pub fn river_gap() -> Rgba { rgb(0x121721) }
+/// Empty heatmap cell.
+pub fn chart_empty() -> Hsla { white_a(0.05) }
+/// Background of the Statistics page and the Year in review (the hero art
+/// fades into it).
+pub fn stats_page_bg() -> Rgba { rgb(0x07090c) }
 
 /// Status colours (`statusColors.ts`).
 pub fn status_color(slug: &str) -> Rgba {

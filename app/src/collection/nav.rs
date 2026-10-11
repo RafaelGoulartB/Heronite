@@ -357,7 +357,16 @@ impl CollectionView {
     pub(super) fn offer_stats_data(&self, cx: &mut Context<Self>) {
         let (Some(lib), Some(view)) = (self.lib.clone(), self.pages.stats.clone()) else { return };
         let Ok(view) = view.downcast::<pages::stats::StatsPage>() else { return };
-        view.update(cx, |p, cx| p.set_library(lib, &self.cover_chains, cx));
+        view.update(cx, |p, cx| p.set_library(lib, &self.cover_chains, &self.stage_chains, cx));
+    }
+
+    /// Shows the Statistics page with the Year in review of this year.
+    pub(super) fn open_year_review(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigate(Page::Statistics, window, cx);
+        let Some(view) = self.pages.stats.clone() else { return };
+        let Ok(view) = view.downcast::<pages::stats::StatsPage>() else { return };
+        let year = chrono::Datelike::year(&chrono::Local::now().date_naive());
+        view.update(cx, |p, cx| p.open_review(year, cx));
     }
 
     fn on_page_event<E>(&mut self, _: &Entity<E>, ev: &PageEvent, window: &mut Window, cx: &mut Context<Self>) {

@@ -17,8 +17,8 @@ use crate::models::LocalGameSession;
 
 /// Shorter sessions are failed launches, not play.
 pub const MIN_SESSION_SECS: f64 = 120.;
-/// Games with their own colour in the activity chart; the rest are "Other".
-pub const TOP_N: usize = 5;
+/// Games with their own colour in the charts; the rest are "Other".
+pub const TOP_N: usize = 6;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Span {
@@ -209,8 +209,23 @@ pub struct GameStat {
     pub secs: f64,
     pub sessions: usize,
     pub last: Option<NaiveDateTime>,
+    /// First session inside the period.
+    pub first: Option<NaiveDateTime>,
+    /// First day the game was ever played (may predate the period).
+    pub first_played: Option<NaiveDate>,
     /// First played inside the period.
     pub new: bool,
+}
+
+/// The longest stretch without play between two days with play.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Break {
+    /// Last day played before the break.
+    pub last: NaiveDate,
+    /// First day played after it.
+    pub back: NaiveDate,
+    /// Days without play in between.
+    pub days: usize,
 }
 
 /// One bar of the activity chart: a day (week, month) or a month (year, all
@@ -254,6 +269,15 @@ pub struct Stats {
     pub weekend_secs: f64,
     pub longest: Option<Played>,
     pub busiest: Option<(NaiveDate, f64)>,
+    /// Seconds of each day with play, oldest first.
+    pub days: Vec<(NaiveDate, f64)>,
+    /// First and last day of [`Stats::streak`].
+    pub streak_range: Option<(NaiveDate, NaiveDate)>,
+    /// Most played game during the streak.
+    pub streak_game: Option<usize>,
+    pub longest_break: Option<Break>,
+    /// For each bucket, every game played in it, most played first.
+    pub bucket_games: Vec<Vec<(usize, f64)>>,
 }
 
 impl Stats {
@@ -264,6 +288,23 @@ impl Stats {
 
     pub fn new_games(&self) -> usize {
         self.games.iter().filter(|g| g.new).count()
+    }
+
+    /// Seconds played on `day`.
+    pub fn day_secs(&self, day: NaiveDate) -> f64 {
+        self.days.binary_search_by(|(d, _)| d.cmp(&day)).map_or(0., |i| self.days[i].1)
+    }
+
+    /// Days with play in `[start, end)` and the busiest of them.
+    pub fn days_between(&self, start: NaiveDate, end: NaiveDate) -> (usize, Option<(NaiveDate, f64)>) {
+        let days = self.days.iter().filter(|(d, _)| start <= *d && *d < end);
+        let (n, best) = days.fold((0, None::<(NaiveDate, f64)>), |(n, best), &(d, s)| (n + 1, if best.is_none_or(|b| s > b.1) { Some((d, s)) } else { best }));
+        (n, best)
+    }
+
+    /// Statistics of the game at `game` (index into the history input).
+    pub fn game(&self, game: usize) -> Option<&GameStat> {
+        self.games.iter().find(|g| g.game == game)
     }
 
     pub fn avg_session_secs(&self) -> f64 {
@@ -334,7 +375,7 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
     let mut weekend_secs = 0.;
     for x in h.pieces.iter().filter(|x| period.contains(x.at.date())) {
         let secs = x.secs as f64;
-        let g = per_game.entry(x.game as usize).or_insert_with(|| GameStat { game: x.game as usize, secs: 0., sessions: 0, last: None, new: false });
+        let g = per_game.entry(x.game as usize).or_insert_with(|| GameStat::empty(x.game as usize));
         g.secs += secs;
         *per_day.entry(x.at.date()).or_default() += secs;
         let wd = x.at.weekday().num_days_from_monday() as usize;
@@ -351,6 +392,7 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
         if let Some(g) = per_game.get_mut(&s.game) {
             g.sessions += 1;
             g.last = g.last.max(Some(s.start));
+            g.first = Some(g.first.map_or(s.start, |f| f.min(s.start)));
         }
         if longest.is_none_or(|l| s.secs > l.secs) {
             longest = Some(*s);
@@ -360,13 +402,14 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
         // Lifetime totals also hold the time before sessions were recorded.
         for (game, &life) in h.lifetime_secs.iter().enumerate() {
             if life > 0. {
-                let g = per_game.entry(game).or_insert_with(|| GameStat { game, secs: 0., sessions: 0, last: None, new: false });
+                let g = per_game.entry(game).or_insert_with(|| GameStat::empty(game));
                 g.secs = g.secs.max(life);
             }
         }
     }
     for g in per_game.values_mut() {
-        g.new = period.span != Span::All && h.first_day.get(g.game).copied().flatten().is_some_and(|d| period.contains(d));
+        g.first_played = h.first_day.get(g.game).copied().flatten();
+        g.new = period.span != Span::All && g.first_played.is_some_and(|d| period.contains(d));
     }
     let mut games: Vec<GameStat> = per_game.into_values().filter(|g| g.secs > 0.).collect();
     games.sort_by(|a, b| b.secs.total_cmp(&a.secs).then(a.game.cmp(&b.game)));
@@ -384,6 +427,7 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
         .into_iter()
         .map(|(start, end)| Bucket { start, end, secs: 0., top: [0.; TOP_N], future: start > today })
         .collect();
+    let mut by_bucket: Vec<HashMap<usize, f64>> = vec![HashMap::new(); buckets.len()];
     for x in h.pieces.iter().filter(|x| period.contains(x.at.date())) {
         let day = x.at.date();
         let i = buckets.partition_point(|b| b.end <= day);
@@ -392,20 +436,42 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
             if let Some(t) = top.iter().position(|&g| g == x.game as usize) {
                 b.top[t] += x.secs as f64;
             }
+            *by_bucket[i].entry(x.game as usize).or_default() += x.secs as f64;
         }
     }
+    let bucket_games = by_bucket.into_iter().map(ranked).collect();
 
     let mut days: Vec<NaiveDate> = per_day.keys().copied().collect();
     days.sort();
     let (mut streak, mut run) = (0, 0);
+    let mut streak_range = None;
+    let mut longest_break: Option<Break> = None;
     for (i, d) in days.iter().enumerate() {
         run = if i > 0 && days[i - 1] + Duration::days(1) == *d { run + 1 } else { 1 };
-        streak = streak.max(run);
+        if run > streak {
+            streak = run;
+            streak_range = Some((days[i + 1 - run], *d));
+        }
+        if i > 0 {
+            let gap = (*d - days[i - 1]).num_days() as usize - 1;
+            if gap > 0 && longest_break.is_none_or(|b| gap > b.days) {
+                longest_break = Some(Break { last: days[i - 1], back: *d, days: gap });
+            }
+        }
     }
+    let streak_game = streak_range.and_then(|(a, b)| {
+        let mut per: HashMap<usize, f64> = HashMap::new();
+        for x in h.pieces.iter().filter(|x| (a..=b).contains(&x.at.date())) {
+            *per.entry(x.game as usize).or_default() += x.secs as f64;
+        }
+        ranked(per).first().map(|(g, _)| *g)
+    });
     let busiest = per_day.iter().max_by(|a, b| a.1.total_cmp(b.1).then(b.0.cmp(a.0))).map(|(d, s)| (*d, *s));
     let elapsed_end = period.end.min(today + Duration::days(1));
     let days_elapsed = (elapsed_end - period.start).num_days().max(0) as usize;
     let total_secs = games.iter().map(|g| g.secs).sum();
+    let mut days: Vec<(NaiveDate, f64)> = per_day.into_iter().collect();
+    days.sort_by_key(|(d, _)| *d);
     Stats {
         period,
         total_secs,
@@ -422,6 +488,24 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
         weekend_secs,
         longest,
         busiest,
+        days,
+        streak_range,
+        streak_game,
+        longest_break,
+        bucket_games,
+    }
+}
+
+/// Games by seconds, most first (ties by index).
+fn ranked(per: HashMap<usize, f64>) -> Vec<(usize, f64)> {
+    let mut v: Vec<(usize, f64)> = per.into_iter().filter(|(_, s)| *s > 0.).collect();
+    v.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    v
+}
+
+impl GameStat {
+    fn empty(game: usize) -> Self {
+        GameStat { game, secs: 0., sessions: 0, last: None, first: None, first_played: None, new: false }
     }
 }
 
@@ -543,9 +627,40 @@ mod tests {
         assert_eq!(all.games.iter().map(|g| (g.game, g.secs)).collect::<Vec<_>>(), [(1, 60000.), (0, 36000.)]);
         // ...but the chart colours go by session time, where game 0 leads.
         assert_eq!(all.series, [0, 1]);
-        assert_eq!(all.buckets[1].top, [10800., 5400., 0., 0., 0.]);
+        assert_eq!(all.buckets[1].top, [10800., 5400., 0., 0., 0., 0.]);
         assert!(all.games.iter().all(|g| !g.new));
         assert_eq!(all.prev_secs, None);
+    }
+
+    #[test]
+    fn streak_break_days_and_games_per_bucket() {
+        let a = [s("2026-01-01T10:00:00Z", 3600.), s("2026-01-02T10:00:00Z", 3600.), s("2026-01-03T10:00:00Z", 600.), s("2026-01-20T10:00:00Z", 1200.)];
+        let b = [s("2026-01-03T12:00:00Z", 7200.), s("2026-02-05T12:00:00Z", 1800.)];
+        let h = history_in(
+            [
+                GameInput { sessions: &a, lifetime_minutes: 0, first_played: None },
+                GameInput { sessions: &b, lifetime_minutes: 0, first_played: Some("2025-06-01T00:00:00Z") },
+            ],
+            &utc(),
+        );
+        let st = compute(&h, Period::of(Span::Year, day(2026, 3, 1)), day(2026, 3, 1));
+        assert_eq!(st.streak, 3);
+        assert_eq!(st.streak_range, Some((day(2026, 1, 1), day(2026, 1, 3))));
+        // Jan 1–3: game 0 has 2h10m, game 1 has 2h.
+        assert_eq!(st.streak_game, Some(0));
+        // Jan 3 -> Jan 20 is 16 days off; Jan 20 -> Feb 5 is 15.
+        assert_eq!(st.longest_break, Some(Break { last: day(2026, 1, 3), back: day(2026, 1, 20), days: 16 }));
+        assert_eq!(st.days.len(), 5);
+        assert_eq!(st.day_secs(day(2026, 1, 3)), 7800.);
+        assert_eq!(st.day_secs(day(2026, 1, 4)), 0.);
+        assert_eq!(st.days_between(day(2026, 1, 1), day(2026, 2, 1)), (4, Some((day(2026, 1, 3), 7800.))));
+        assert_eq!(st.bucket_games[0], [(0, 9000.), (1, 7200.)]);
+        assert_eq!(st.bucket_games[1], [(1, 1800.)]);
+        assert!(st.bucket_games[2].is_empty());
+        let g1 = st.game(1).unwrap();
+        assert_eq!(g1.first.map(|f| f.date()), Some(day(2026, 1, 3)));
+        assert_eq!(g1.first_played, Some(day(2025, 6, 1)));
+        assert!(!g1.new && st.game(0).unwrap().new);
     }
 
     #[test]

@@ -264,6 +264,20 @@ impl StatsPage {
 
 impl PadTarget for StatsPage {
     fn on_pad(&mut self, pad: Pad, _: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.review.is_some() {
+            match pad {
+                Pad::Left => self.review_key("left", cx),
+                Pad::Right | Pad::A => self.review_key("right", cx),
+                Pad::B => self.review_key("escape", cx),
+                _ => false,
+            };
+            return true;
+        }
+        if pad == Pad::X {
+            let year = self.review_year();
+            self.open_review(year, cx);
+            return true;
+        }
         let span_ix = SPANS.iter().position(|s| *s == self.period.span).unwrap_or(1);
         match pad {
             Pad::LB => self.set_span(SPANS[(span_ix + SPANS.len() - 1) % SPANS.len()], cx),
@@ -294,6 +308,9 @@ impl PadTarget for StatsPage {
     }
 
     fn hints(&self, _: &App) -> Vec<Hint> {
-        vec![hint(Btn::Bumpers, "Span"), hint(Btn::LeftRight, "Period"), hint(Btn::Y, if self.show_all { "Top games" } else { "All games" })]
+        if self.review.is_some() {
+            return vec![hint(Btn::LeftRight, "Story"), hint(Btn::B, "Close")];
+        }
+        vec![hint(Btn::X, "Year in review"), hint(Btn::Bumpers, "Span"), hint(Btn::LeftRight, "Period"), hint(Btn::Y, if self.show_all { "Top games" } else { "All games" })]
     }
 }
