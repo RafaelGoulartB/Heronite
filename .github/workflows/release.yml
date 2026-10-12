@@ -124,8 +124,7 @@ jobs:
       - name: Package
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
-          TAG: ${{ needs.version.outputs.tag }}
-        run: scripts/appimage.sh "${TAG#v}"
+        run: scripts/appimage.sh
       - name: System packages
         env:
           TAG: ${{ needs.version.outputs.tag }}
@@ -155,10 +154,16 @@ jobs:
           # cliff.toml groups the commits since the previous tag by type
           # (feat, fix, perf...). The first release has no previous tag, so it
           # gets a short note instead of the whole development history.
+          # A short guide to the assets goes first: the .minisig and .zsync
+          # files sit next to the downloads but are only for the updaters.
+          cat > notes.md <<'EOF'
+          **Download:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). Or the package for your system: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora, openSUSE), `.pkg.tar.zst` (Arch, CachyOS). The `.minisig` and `.zsync` files are for the updaters; you do not need them.
+
+          EOF
           if [[ $(git tag --list 'v*' | wc -l) -le 1 ]]; then
-            printf 'First public release of Heronite. See the [README](https://github.com/RafaelGoulartB/Heronite#readme) for what it can do.\n' > notes.md
+            printf 'First public release of Heronite. See the [README](https://github.com/RafaelGoulartB/Heronite#readme) for what it can do.\n' >> notes.md
           else
-            git cliff --latest --strip all > notes.md
+            git cliff --latest --strip all >> notes.md
           fi
           cat notes.md
       - name: Publish release

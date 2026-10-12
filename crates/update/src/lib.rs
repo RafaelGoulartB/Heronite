@@ -1,10 +1,9 @@
 //! Self-update of the AppImage.
 //!
 //! The release workflow publishes, for every tag, `Heronite-<arch>.AppImage`
-//! (plus a copy named after the version) and `<file>.minisig`, a minisign
-//! signature made with the key whose public half is [`PUBLIC_KEY`]. Its
-//! trusted comment carries `version:<X.Y.Z>`, so an older signed build cannot
-//! be served as a newer release.
+//! and `<file>.minisig`, a minisign signature made with the key whose public
+//! half is [`PUBLIC_KEY`]. Its trusted comment carries `version:<X.Y.Z>`, so
+//! an older signed build cannot be served as a newer release.
 //!
 //! - [`release`]: asks GitHub for the latest release (conditional request with
 //!   the last ETag) and picks the assets for this architecture.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Signs the AppImages and system packages (.deb, .rpm, .pkg.tar.zst) in a
-# folder for the in-app updater and writes their checksums: <file>.minisig
-# (minisign, trusted comment "version:<v> file:<name>", which the app checks
-# against the release it installs) and <file>.sha256.
+# folder for the in-app updater: <file>.minisig (minisign, trusted comment
+# "version:<v> file:<name>", which the app checks against the release it
+# installs). No .sha256 files: GitHub shows the SHA-256 of every release asset.
 # The signatures are then verified with the public key built into the app
 # (crates/update/src/lib.rs), so a secret that does not match it fails here
 # instead of in every user's updater.
@@ -31,6 +31,5 @@ for f in "${files[@]}"; do
   name=$(basename "$f")
   minisign -S -s "$KEY" -m "$f" -x "$f.minisig" -t "version:$VERSION file:$name"
   minisign -V -P "$PUBLIC_KEY" -m "$f" -x "$f.minisig" -q
-  (cd "$(dirname "$f")" && sha256sum "$name" > "$name.sha256")
   echo "signed $name"
 done

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Packs the release binaries into dist/Heronite-x86_64.AppImage (the name the
-# in-app updater and AppImageUpdate look for in the latest release), a copy
-# named after the version (dist/Heronite-<version>-x86_64.AppImage) and
-# dist/Heronite-x86_64.AppImage.zsync.
+# in-app updater and AppImageUpdate look for in the latest release) and
+# dist/Heronite-x86_64.AppImage.zsync. The name carries no version, so the
+# README and every release link to the same file.
 # Only the two binaries go in: the libraries they link (libudev, libxcb,
 # libxkbcommon) and the ones loaded at run time (Vulkan, Wayland, fontconfig)
 # come from the system, like any desktop app. The Epic login window also uses
@@ -10,7 +10,7 @@
 # The AppImage carries update information, so AppImageUpdate-based tools
 # (Gear Lever, AppImageLauncher) update it from the .zsync of the latest
 # release, downloading only the changed blocks.
-#   usage: scripts/appimage.sh [version]
+#   usage: scripts/appimage.sh
 #   env:   APPIMAGETOOL=path to appimagetool (default: on PATH)
 #          BIN=folder of the binaries (default: target/release)
 #          UPDATE_INFO=update information to embed ("" = none)
@@ -18,7 +18,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-VERSION=${1:-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)}
 TOOL=${APPIMAGETOOL:-appimagetool}
 [[ $TOOL == */* ]] && TOOL=$(realpath "$TOOL")
 BIN=${BIN:-target/release}
@@ -52,7 +51,6 @@ APPRUN
 chmod 755 "$APPDIR/AppRun"
 
 mkdir -p dist
-VERSIONED=Heronite-$VERSION-$ARCH.AppImage
 # Only this build in dist/: sign-release.sh signs every AppImage there.
 rm -f dist/Heronite-*
 # appimagetool writes the .zsync into its working folder, which its AppRun
@@ -62,6 +60,4 @@ if [[ -n $UPDATE_INFO && ! -f dist/$NAME.zsync ]]; then
   echo "appimage.sh: appimagetool made no $NAME.zsync (is zsyncmake installed?)" >&2
   exit 1
 fi
-cp "dist/$NAME" "dist/$VERSIONED"
 echo "dist/$NAME"
-echo "dist/$VERSIONED"
