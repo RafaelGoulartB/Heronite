@@ -15,6 +15,7 @@ use crate::icons::Icon;
 use crate::system::candidate_keys;
 use crate::system::cli::LaunchRequest;
 use crate::system::shortcuts as sc;
+use heronite_i18n::tr;
 
 impl CollectionView {
     /// Selects the game and presses its primary button (play, or the install
@@ -36,7 +37,7 @@ impl CollectionView {
     fn system_launch_now(&mut self, req: LaunchRequest, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = candidate_keys(&req).iter().find_map(|k| lib.get(k)).cloned() else {
-            self.show_toast(format!("Could not find the game {} in the library", req.app_name), true, cx);
+            self.show_toast(tr!("Could not find the game {name} in the library", name = req.app_name), true, cx);
             return;
         };
         if self.page != crate::pages::Page::Collection {
@@ -46,7 +47,7 @@ impl CollectionView {
         self.reveal_selected();
         cx.notify();
         if self.playing.contains_key(&game.app_name) {
-            self.show_toast(format!("{} is already running", game.title), false, cx);
+            self.show_toast(tr!("{title} is already running", title = game.title), false, cx);
             return;
         }
         if crate::env::flag("HERONITE_DEBUG_FAKE_LAUNCH") {
@@ -118,16 +119,16 @@ impl CollectionView {
             GameActionItem::new(
                 GameAction::Shortcuts { add: !has_shortcuts },
                 "shortcuts",
-                if has_shortcuts { "Remove shortcuts" } else { "Add shortcuts" },
+                if has_shortcuts { tr!("Remove shortcuts") } else { tr!("Add shortcuts") },
                 Icon::OpenInNew,
-                "desktop application menu launcher",
+                "desktop application menu launcher atalho atalhos area de trabalho aplicativos menu",
             ),
             GameActionItem::new(
                 GameAction::Steam { add: !in_steam },
                 "steam",
-                if in_steam { "Remove from Steam" } else { "Add to Steam" },
+                if in_steam { tr!("Remove from Steam") } else { tr!("Add to Steam") },
                 Icon::SportsEsports,
-                "non-steam shortcut big picture",
+                "non-steam shortcut big picture atalho adicionar remover",
             ),
         ]
     }

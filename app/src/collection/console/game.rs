@@ -16,6 +16,7 @@ use crate::console::motion::{Axis, Glide};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
+use heronite_i18n::tr;
 
 pub(super) struct GameNav {
     list: ListNav,
@@ -43,11 +44,11 @@ impl CollectionView {
     fn game_rows(&mut self, g: &CollectionGame, cx: &mut Context<Self>) -> Vec<Row> {
         let playing = self.playing.contains_key(&g.app_name);
         let (label, ic) = if playing {
-            ("Stop", Icon::Stop)
+            (tr!("Stop"), Icon::Stop)
         } else if g.installed {
-            ("Play", Icon::PlayArrow)
+            (tr!("Play"), Icon::PlayArrow)
         } else {
-            ("Install", Icon::Download)
+            (tr!("Install"), Icon::Download)
         };
         let mut rows = vec![Row::action("primary", label).icon(ic)];
         if !playing
@@ -55,23 +56,29 @@ impl CollectionView {
             && super::super::install_options::store_install_label(g).is_some()
         {
             rows.push(
-                Row::action("x:manual-install", "Install manually\u{2026}")
+                Row::action("x:manual-install", tr!("Install manually\u{2026}"))
                     .icon(Icon::Edit)
-                    .desc("Run an installer or pick the game's files"),
+                    .desc(tr!("Run an installer or pick the game's files")),
             );
         }
         if let Some(lib) = &self.lib {
-            let names: Vec<SharedString> = lib.statuses.iter().map(|s| SharedString::from(s.name.clone())).collect();
+            let names: Vec<SharedString> =
+                lib.statuses.iter().map(|s| SharedString::from(heronite_data::status::status_label(&s.name).to_string())).collect();
             let index = lib.statuses.iter().position(|s| s.id == g.status_id).unwrap_or(0);
-            rows.push(Row::choice("status", "Status", names, index).icon(Icon::Flag));
+            rows.push(Row::choice("status", tr!("Status"), names, index).icon(Icon::Flag));
         }
-        rows.push(Row::toggle("favourite", "Favourite", g.favourite).icon(Icon::Favorite));
+        rows.push(Row::toggle("favourite", tr!("Favourite"), g.favourite).icon(Icon::Favorite));
         if g.installed {
-            rows.push(Row::action("settings", "Game settings").icon(Icon::Tune).desc("Wine / Proton, launch options, Gamescope\u{2026}"));
+            rows.push(
+                Row::action("settings", tr!("Game settings"))
+                    .icon(Icon::Tune)
+                    .desc(tr!("Wine / Proton, launch options, Gamescope\u{2026}")),
+            );
         }
         if !playing {
             rows.push(
-                Row::text("playtime", "Playtime", heronite_data::collection::playtime_label(g.playtime_minutes)).icon(Icon::AccessTime),
+                Row::text("playtime", tr!("Playtime"), heronite_data::collection::playtime_label(g.playtime_minutes))
+                    .icon(Icon::AccessTime),
             );
         }
 
@@ -80,36 +87,40 @@ impl CollectionView {
         let steam_game = matches!(g.launch_kind.as_deref(), Some("steam-uri"));
         if g.installed && !steam_game && g.game.install.is_dlc != Some(true) {
             let (shortcuts, in_steam) = self.probe_shortcuts(g, cx);
-            manage.push(Row::toggle("sys:shortcuts", "Desktop and menu shortcuts", shortcuts).icon(Icon::OpenInNew));
+            manage.push(Row::toggle("sys:shortcuts", tr!("Desktop and menu shortcuts"), shortcuts).icon(Icon::OpenInNew));
             manage.push(
-                Row::toggle("sys:steam", "In Steam", in_steam).icon(Icon::SportsEsports).desc("As a non-Steam game in your Steam library"),
+                Row::toggle("sys:steam", tr!("In Steam"), in_steam)
+                    .icon(Icon::SportsEsports)
+                    .desc(tr!("As a non-Steam game in your Steam library")),
             );
         }
-        manage.push(Row::action("x:ludusavi", "Back up saves (Ludusavi)").icon(Icon::Save));
-        manage.push(Row::toggle("hidden", "Hidden", g.hidden).icon(Icon::VisibilityOff).desc("Hidden games stay out of the library"));
+        manage.push(Row::action("x:ludusavi", tr!("Back up saves (Ludusavi)")).icon(Icon::Save));
+        manage.push(
+            Row::toggle("hidden", tr!("Hidden"), g.hidden).icon(Icon::VisibilityOff).desc(tr!("Hidden games stay out of the library")),
+        );
         if g.recent {
-            manage.push(Row::action("recent", "Remove from recent").icon(Icon::History));
+            manage.push(Row::action("recent", tr!("Remove from recent")).icon(Icon::History));
         }
         if g.runner == "sideload" && !playing && !matches!(g.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
-            manage.push(Row::action("x:edit", "Edit game").icon(Icon::Edit));
+            manage.push(Row::action("x:edit", tr!("Edit game")).icon(Icon::Edit));
         }
         if g.steam_launch_id.is_some() && g.installed && !playing {
-            manage.push(Row::action("x:steam-uninstall", "Uninstall\u{2026}").icon(Icon::DeleteForever).danger());
+            manage.push(Row::action("x:steam-uninstall", tr!("Uninstall\u{2026}")).icon(Icon::DeleteForever).danger());
         }
         if !playing && super::super::sideload_uninstall::can_uninstall_local(g) {
-            manage.push(Row::action("x:local-uninstall", "Uninstall\u{2026}").icon(Icon::DeleteForever).danger());
+            manage.push(Row::action("x:local-uninstall", tr!("Uninstall\u{2026}")).icon(Icon::DeleteForever).danger());
         }
         if g.runner == "sideload" && !playing {
-            manage.push(Row::action("x:remove", "Remove from Collection\u{2026}").icon(Icon::DeleteForever).danger());
+            manage.push(Row::action("x:remove", tr!("Remove from Collection\u{2026}")).icon(Icon::DeleteForever).danger());
         }
-        rows.push(Row::header("Manage"));
+        rows.push(Row::header(tr!("Manage")));
         rows.extend(manage);
         rows
     }
 
     pub(super) fn render_console_game(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else {
-            return kit::empty(Icon::Warning, "This game is gone", "Press B to go back.").into_any_element();
+            return kit::empty(Icon::Warning, tr!("This game is gone"), tr!("Press B to go back.")).into_any_element();
         };
         self.console_focus_game(Some(key.clone()), cx);
         let rows = self.game_rows(&g, cx);
@@ -119,9 +130,9 @@ impl CollectionView {
         let cover = self.cover(key, cw * s, ch * s, window.scale_factor(), 300);
         let focus = self.focus.clone().filter(|f| f.key == *key);
 
-        let mut facts = vec![g.source_label.to_string(), if g.installed { "Installed".into() } else { "Not installed".into() }];
+        let mut facts = vec![g.source_label.to_string(), if g.installed { tr!("Installed").into() } else { tr!("Not installed").into() }];
         if g.playtime_minutes > 0 {
-            facts.push(format!("{} played", heronite_data::collection::format_playtime_minutes(g.playtime_minutes)));
+            facts.push(tr!("{time} played", time = heronite_data::collection::format_playtime_minutes(g.playtime_minutes)));
         }
         let header = div()
             .flex()
@@ -147,7 +158,7 @@ impl CollectionView {
                     .flex_col()
                     .gap(u(6.))
                     .min_w_0()
-                    .child(kit::kicker("Game"))
+                    .child(kit::kicker(tr!("Game")))
                     .child(kit::title(g.title.clone(), 52.))
                     .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(facts.join(" \u{b7} ")))
                     .children(
@@ -164,9 +175,9 @@ impl CollectionView {
         if let Some(f) = &focus {
             // Status, score and library live in the desktop left column, not in `details`.
             let head = [
-                f.status.as_ref().map(|s| (SharedString::from("Status"), s.name.to_string())),
-                f.score.as_ref().map(|s| (SharedString::from("Score"), s.to_string())),
-                Some((SharedString::from("Library"), f.library.to_string())),
+                f.status.as_ref().map(|s| (SharedString::from(tr!("Status")), s.name.to_string())),
+                f.score.as_ref().map(|s| (SharedString::from(tr!("Score")), s.to_string())),
+                Some((SharedString::from(tr!("Library")), f.library.to_string())),
             ];
             let rows = head.into_iter().flatten().chain(f.details.iter().map(|d| (d.label.clone(), detail_text(&d.value))));
             let facts = div().flex().flex_col().gap(u(8.)).children(rows.map(|(label, value)| {
@@ -185,9 +196,9 @@ impl CollectionView {
                         .gap(u(24.))
                         .text_size(u(14.))
                         .text_color(theme::text_muted())
-                        .child(format!("Main story {}", fmt(h.main)))
-                        .child(format!("Main + extras {}", fmt(h.extra)))
-                        .child(format!("Completionist {}", fmt(h.complete))),
+                        .child(tr!("Main story {hours}", hours = fmt(h.main)))
+                        .child(tr!("Main + extras {hours}", hours = fmt(h.extra)))
+                        .child(tr!("Completionist {hours}", hours = fmt(h.complete))),
                 );
             }
             if let Some(o) = &f.overview {
@@ -302,7 +313,13 @@ impl CollectionView {
     }
 
     pub(super) fn game_hints(&self, key: &SharedString) -> Vec<Hint> {
-        let primary = self.lib.as_ref().and_then(|l| l.get(key)).map(|g| self.primary_label(g)).unwrap_or("Play");
-        vec![hint(Btn::A, "Select"), hint(Btn::LeftRight, "Change"), hint(Btn::X, primary), hint(Btn::B, "Back"), hint(Btn::Start, "Menu")]
+        let primary = self.lib.as_ref().and_then(|l| l.get(key)).map(|g| self.primary_label(g)).unwrap_or(tr!("Play"));
+        vec![
+            hint(Btn::A, tr!("Select")),
+            hint(Btn::LeftRight, tr!("Change")),
+            hint(Btn::X, primary),
+            hint(Btn::B, tr!("Back")),
+            hint(Btn::Start, tr!("Menu")),
+        ]
     }
 }

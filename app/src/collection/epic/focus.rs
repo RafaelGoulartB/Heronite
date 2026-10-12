@@ -4,7 +4,6 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::CollectionGame;
-use heronite_epic::queue::ElementKind;
 use serde_json::Value;
 
 use super::{app_of, EpicAction, FocusEpic, Request};
@@ -15,6 +14,7 @@ use crate::services::downloads::{EosGame, QueueState};
 use crate::services::widgets::{fmt_percent, progress_bar};
 use crate::theme;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 fn round_btn(id: impl Into<ElementId>, ic: Icon) -> Stateful<Div> {
     div()
@@ -52,20 +52,19 @@ impl CollectionView {
                     },
                     b.percent,
                 ),
-                (None, Some(QueueState::Waiting)) => ("Queued".to_string(), None),
+                (None, Some(QueueState::Waiting)) => (tr!("Queued").to_string(), None),
                 (None, Some(state)) => {
-                    let verb = if kind == Some(ElementKind::Update) { "Updating" } else { "Installing" };
-                    let verb = if state == QueueState::Paused { "Paused" } else { verb };
+                    let verb = super::queue_verb(kind, state == QueueState::Paused);
                     match &progress {
-                        Some(p) => (
-                            format!(
-                                "{verb} {} - {:.1} MiB/s{}",
-                                fmt_percent(p.percent),
-                                p.down_speed,
-                                if p.eta.is_empty() { String::new() } else { format!(" - ETA {}", p.eta) }
-                            ),
-                            Some(p.percent as f32),
-                        ),
+                        Some(p) => {
+                            let (percent, speed) = (fmt_percent(p.percent), heronite_i18n::decimal(p.down_speed, 1));
+                            let text = if p.eta.is_empty() {
+                                tr!("{verb} {percent} - {speed} MiB/s", verb, percent, speed)
+                            } else {
+                                tr!("{verb} {percent} - {speed} MiB/s - ETA {eta}", verb, percent, speed, eta = p.eta.as_str())
+                            };
+                            (text, Some(p.percent as f32))
+                        }
                         None => (format!("{verb}..."), None),
                     }
                 }
@@ -131,7 +130,7 @@ impl CollectionView {
                 .font_weight(theme::W_BOLD)
                 .text_size(px(15.2))
                 .child(icon(Icon::Update, px(19.2), rgb(0x161616)))
-                .child("Update")
+                .child(tr!("Update"))
                 .on_click(cx.listener(move |this, _, _, cx| this.epic_update(&format!("legendary_{app}"), cx)))
                 .into_any_element();
             return Some(FocusEpic { element: el, replaces_play: false });
@@ -158,14 +157,26 @@ impl CollectionView {
             GameActionItem::new(GameAction::Epic(a), format!("epic-{id}"), label.to_string(), ic, kw)
         };
         if queued {
-            v.push(item(EpicAction::ShowInDownloads, "downloads", Icon::Downloading, "Show in Downloads", "queue progress"));
+            v.push(item(
+                EpicAction::ShowInDownloads,
+                "downloads",
+                Icon::Downloading,
+                tr!("Show in Downloads"),
+                "queue progress fila progresso downloads",
+            ));
         }
         // EA app / Ubisoft Connect keep their games: legendary cannot import,
         // update, verify or move them (Heroic hides these too).
         if !game.installed {
             // Otherwise it is in the Install submenu (`install_options`).
             if !third_party && !crate::collection::install_options::has_more_ways(game) {
-                v.push(item(EpicAction::Import, "import", Icon::FolderOpen, "Import game", "existing installed copy"));
+                v.push(item(
+                    EpicAction::Import,
+                    "import",
+                    Icon::FolderOpen,
+                    tr!("Import game"),
+                    "existing installed copy importar jogo copia instalada",
+                ));
             }
             return v;
         }
@@ -174,13 +185,19 @@ impl CollectionView {
         }
         if !third_party {
             if update {
-                v.push(item(EpicAction::Update, "update", Icon::Update, "Update", "upgrade patch"));
+                v.push(item(EpicAction::Update, "update", Icon::Update, tr!("Update"), "upgrade patch atualizar atualizacao"));
             }
-            v.push(item(EpicAction::Verify, "verify", Icon::Build, "Verify and repair", "check fix integrity"));
-            v.push(item(EpicAction::Move, "move", Icon::Folder, "Move install", "relocate folder disk"));
+            v.push(item(
+                EpicAction::Verify,
+                "verify",
+                Icon::Build,
+                tr!("Verify and repair"),
+                "check fix integrity verificar reparar integridade",
+            ));
+            v.push(item(EpicAction::Move, "move", Icon::Folder, tr!("Move install"), "relocate folder disk mover instalacao pasta disco"));
         }
         if has_dlcs && !third_party {
-            v.push(item(EpicAction::Modify, "modify", Icon::Tune, "Modify installation", "dlc content"));
+            v.push(item(EpicAction::Modify, "modify", Icon::Tune, tr!("Modify installation"), "dlc content modificar instalacao conteudo"));
         }
         // The overlay is enabled per Wine prefix on Linux only.
         if cfg!(target_os = "linux") && !third_party {
@@ -188,14 +205,26 @@ impl CollectionView {
             svc.update(cx, |s, cx| s.eos_load_game(&app, cx));
             let state = svc.read(cx).eos_game(&game.app_name);
             if let Some(state @ (EosGame::Enabled | EosGame::Disabled)) = state {
-                let label = if state == EosGame::Enabled { "Disable EOS Overlay" } else { "Enable EOS Overlay" };
-                v.push(item(EpicAction::Eos, "eos", Icon::Fullscreen, label, "epic online services overlay"));
+                let label = if state == EosGame::Enabled { tr!("Disable EOS Overlay") } else { tr!("Enable EOS Overlay") };
+                v.push(item(EpicAction::Eos, "eos", Icon::Fullscreen, label, "epic online services overlay sobreposicao ativar desativar"));
             }
         }
         if cloud {
-            v.push(item(EpicAction::Sync, "sync", Icon::CloudSync, "Cloud saves sync", "upload download saves"));
+            v.push(item(
+                EpicAction::Sync,
+                "sync",
+                Icon::CloudSync,
+                tr!("Cloud saves sync"),
+                "upload download saves sincronizar nuvem salvamentos",
+            ));
         }
-        v.push(item(EpicAction::Uninstall, "uninstall", Icon::DeleteForever, "Uninstall", "remove delete"));
+        v.push(item(
+            EpicAction::Uninstall,
+            "uninstall",
+            Icon::DeleteForever,
+            tr!("Uninstall"),
+            "remove delete desinstalar remover excluir",
+        ));
         v
     }
 

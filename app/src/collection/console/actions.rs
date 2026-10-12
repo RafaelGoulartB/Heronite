@@ -8,6 +8,7 @@ use heronite_data::playtime::{set_playtime_minutes, split_minutes};
 use super::super::CollectionView;
 use crate::console::list::Row;
 use crate::console::sheet::{Sheet, SheetEvent};
+use heronite_i18n::tr;
 
 impl CollectionView {
     /// Hours and minutes with ◀ ▶, then Save.
@@ -15,11 +16,11 @@ impl CollectionView {
         let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         let (h, m) = split_minutes(g.playtime_minutes);
         let rows = vec![
-            Row::number("hours", "Hours", h as i64, 0, 99_999, 1, " h"),
-            Row::number("minutes", "Minutes", m as i64, 0, 59, 1, " min"),
-            Row::action("save", "Save"),
+            Row::number("hours", tr!("Hours"), h as i64, 0, 99_999, 1, " h"),
+            Row::number("minutes", tr!("Minutes"), m as i64, 0, 59, 1, " min"),
+            Row::action("save", tr!("Save")),
         ];
-        let sheet = cx.new(|_| Sheet::new(format!("Playtime \u{b7} {}", g.title), None, rows));
+        let sheet = cx.new(|_| Sheet::new(tr!("Playtime \u{b7} {title}", title = g.title), None, rows));
         let app_name = g.app_name.clone();
         let sub = cx.subscribe(&sheet, move |this, sheet, ev: &SheetEvent, cx| {
             let SheetEvent::Activate(id) = ev;
@@ -27,7 +28,7 @@ impl CollectionView {
                 let s = sheet.read(cx);
                 let minutes = s.number("hours") * 60 + s.number("minutes");
                 if let Err(err) = set_playtime_minutes(&this.data_paths, &app_name, minutes as f64) {
-                    this.show_toast(format!("Could not save the playtime: {err:#}"), true, cx);
+                    this.show_toast(tr!("Could not save the playtime: {err}", err = format!("{err:#}")), true, cx);
                 }
                 this.close_console_overlay(cx);
                 this.reload(cx);

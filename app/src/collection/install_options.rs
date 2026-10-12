@@ -23,13 +23,14 @@ use crate::dialogs::add_game::{Mode, Prefill};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 /// What "Install" does today for `game`, if its store can install it.
 pub(super) fn store_install_label(game: &CollectionGame) -> Option<&'static str> {
     if game.runner == "legendary" {
-        Some("Install with Epic Games")
+        Some(tr!("Install with Epic Games"))
     } else if game.steam_app_id.as_deref().is_some_and(|id| !id.is_empty()) {
-        Some("Install with Steam")
+        Some(tr!("Install with Steam"))
     } else {
         None
     }
@@ -104,14 +105,14 @@ impl CollectionView {
     fn install_ways(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<Way> {
         let mut ways = Vec::new();
         if let Some(label) = store_install_label(game) {
-            ways.push(Way { id: "store", icon: Icon::Download, label, desc: "Default for this game", kind: WayKind::Store });
+            ways.push(Way { id: "store", icon: Icon::Download, label, desc: tr!("Default for this game"), kind: WayKind::Store });
         }
         if self.epic_can_import(game, cx) {
             ways.push(Way {
                 id: "import",
                 icon: Icon::FolderOpen,
-                label: "Import game",
-                desc: "Use a copy already installed by Epic",
+                label: tr!("Import game"),
+                desc: tr!("Use a copy already installed by Epic"),
                 kind: WayKind::EpicImport,
             });
         }
@@ -119,8 +120,8 @@ impl CollectionView {
             ways.push(Way {
                 id: "manual",
                 icon: Icon::Edit,
-                label: "Install manually\u{2026}",
-                desc: "Run an installer or pick the game's files",
+                label: tr!("Install manually\u{2026}"),
+                desc: tr!("Run an installer or pick the game's files"),
                 kind: WayKind::Manual,
             });
         }
@@ -144,7 +145,8 @@ impl CollectionView {
             .into_iter()
             .filter(|w| !matches!(w.kind, WayKind::Store))
             .map(|w| {
-                GameActionItem::new(GameAction::InstallWay(w.kind), format!("way-{}", w.id), w.label, w.icon, "install").palette_only()
+                GameActionItem::new(GameAction::InstallWay(w.kind), format!("way-{}", w.id), w.label, w.icon, "install instalar baixar")
+                    .palette_only()
             })
             .collect()
     }

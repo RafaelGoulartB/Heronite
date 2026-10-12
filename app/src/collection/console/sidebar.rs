@@ -14,6 +14,7 @@ use crate::icons::Icon;
 use crate::pages::Page;
 use crate::theme;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Item {
@@ -34,8 +35,8 @@ impl Item {
     fn label(self) -> &'static str {
         match self {
             Item::Go(p) => p.title(),
-            Item::AddGame => "Add game",
-            Item::Desktop => "Desktop mode",
+            Item::AddGame => tr!("Add game"),
+            Item::Desktop => tr!("Desktop mode"),
             Item::Separator => "",
         }
     }
@@ -106,7 +107,7 @@ impl CollectionView {
 
     pub(super) fn render_sidebar(&self, cx: &App) -> Option<AnyElement> {
         let focused = self.console.sidebar?;
-        let downloads = crate::services::try_downloads(cx).map(|s| super::super::nav::downloads_meta(Some(s.read(cx))));
+        let downloads = crate::services::try_downloads(cx).and_then(|s| super::super::nav::downloads_meta(Some(s.read(cx))));
         let mut list = div().flex().flex_col().gap(u(6.));
         for (i, item) in ITEMS.iter().enumerate() {
             if *item == Item::Separator {
@@ -123,7 +124,7 @@ impl CollectionView {
                 theme::text_primary().into()
             };
             let badge = match item {
-                Item::Go(Page::Downloads) => downloads.clone().filter(|d| d != "Idle"),
+                Item::Go(Page::Downloads) => downloads.clone(),
                 _ => None,
             };
             list = list.child(

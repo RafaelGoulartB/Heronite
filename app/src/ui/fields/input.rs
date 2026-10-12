@@ -9,6 +9,7 @@ use super::text::{field_label, labeled};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 /// The glass input surface shared by inputs, textareas, selects and the tag
 /// field: height by the caller, radius 12, dark fill, 1px border, 14px text.
@@ -149,7 +150,7 @@ pub fn path_field(
         .text_size(px(13.))
         .text_color(if disabled { theme::text_dim() } else { theme::accent() })
         .when(!disabled, |d| d.cursor_pointer().hover(|s| s.text_color(theme::accent_overlay())).on_click(on_icon))
-        .child(if has_value { "Clear" } else { "Browse" })
+        .child(if has_value { tr!("Clear") } else { tr!("Browse") })
         .into_any_element();
     div().flex().flex_col().children(label.map(|l| field_label(l.to_string()))).child(field_row(
         input,

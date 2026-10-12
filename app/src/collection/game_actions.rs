@@ -19,6 +19,7 @@ use super::epic::EpicAction;
 use super::install_options::WayKind;
 use super::CollectionView;
 use crate::icons::Icon;
+use heronite_i18n::tr;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum GameAction {
@@ -95,11 +96,11 @@ impl CollectionView {
         let mut v = Vec::new();
 
         let (label, ic, kw) = if playing {
-            ("Stop", Icon::Stop, "quit close kill end exit")
+            (tr!("Stop"), Icon::Stop, "quit close kill end exit parar fechar encerrar sair")
         } else if game.installed {
-            ("Play", Icon::PlayArrow, "launch run start")
+            (tr!("Play"), Icon::PlayArrow, "launch run start jogar iniciar executar")
         } else {
-            ("Install", Icon::Download, "download get setup")
+            (tr!("Install"), Icon::Download, "download get setup instalar baixar")
         };
         v.push(item(A::Primary, "primary", label, ic, kw).palette_only());
         if !playing {
@@ -107,38 +108,86 @@ impl CollectionView {
         }
 
         v.push(if game.favourite {
-            item(A::Favourite, "fav", "Remove from favourites", Icon::Favorite, "unfavourite unfavorite star")
+            item(
+                A::Favourite,
+                "fav",
+                tr!("Remove from favourites"),
+                Icon::Favorite,
+                "unfavourite unfavorite star desfavoritar favorito estrela",
+            )
         } else {
-            item(A::Favourite, "fav", "Add to favourites", Icon::FavoriteBorder, "favourite favorite star like")
+            item(
+                A::Favourite,
+                "fav",
+                tr!("Add to favourites"),
+                Icon::FavoriteBorder,
+                "favourite favorite star like favoritar favorito estrela curtir",
+            )
         });
         if game.installed {
-            v.push(item(A::OpenFolder, "folder", "Open install folder", Icon::FolderOpen, "directory files browse"));
-            v.push(item(A::Settings, "settings", "Settings", Icon::Tune, "config configure options wine proton launch"));
+            v.push(item(
+                A::OpenFolder,
+                "folder",
+                tr!("Open install folder"),
+                Icon::FolderOpen,
+                "directory files browse pasta diretorio arquivos abrir",
+            ));
+            v.push(item(
+                A::Settings,
+                "settings",
+                tr!("Settings"),
+                Icon::Tune,
+                "config configure options wine proton launch configuracoes opcoes ajustes",
+            ));
         }
         // Sideloaded programs and browser games; not Steam/emulated entries.
         if game.runner == "sideload" && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
-            v.push(item(A::EditGame, "edit-game", "Edit game", Icon::Edit, "change executable path"));
+            v.push(item(
+                A::EditGame,
+                "edit-game",
+                tr!("Edit game"),
+                Icon::Edit,
+                "change executable path editar alterar executavel caminho",
+            ));
         }
-        v.push(item(A::Metadata, "metadata", "Collection metadata", Icon::TravelExplore, "igdb cover art genre description"));
+        v.push(item(
+            A::Metadata,
+            "metadata",
+            tr!("Collection metadata"),
+            Icon::TravelExplore,
+            "igdb cover art genre description metadados capa arte genero descricao",
+        ));
         v.push(if game.hidden {
-            item(A::Hide, "hide", "Unhide", Icon::Visibility, "show")
+            item(A::Hide, "hide", tr!("Unhide"), Icon::Visibility, "show reexibir mostrar exibir")
         } else {
-            item(A::Hide, "hide", "Hide", Icon::VisibilityOff, "conceal")
+            item(A::Hide, "hide", tr!("Hide"), Icon::VisibilityOff, "conceal ocultar esconder")
         });
         if game.recent {
-            v.push(item(A::RemoveRecent, "recent", "Remove from recent", Icon::History, "history forget"));
+            v.push(item(
+                A::RemoveRecent,
+                "recent",
+                tr!("Remove from recent"),
+                Icon::History,
+                "history forget recentes historico esquecer remover",
+            ));
         }
-        v.push(item(A::Log, "log", "View log", Icon::Description, "logs debug output"));
+        v.push(item(A::Log, "log", tr!("View log"), Icon::Description, "logs debug output ver registro depuracao saida"));
         v.extend(self.extras_actions(game));
         v.extend(self.epic_actions(game, cx));
         v.extend(self.system_actions(game, cx));
 
         if let Some(lib) = self.lib.clone() {
             for st in lib.statuses.iter().filter(|st| st.id != game.status_id) {
-                let label = format!("Status: {}", st.name);
+                let label = tr!("Status: {name}", name = heronite_data::status::status_label(&st.name));
                 v.push(
-                    GameActionItem::new(A::Status(st.id.clone()), format!("st-{}", st.id), label, Icon::Flag, "status mark set")
-                        .palette_only(),
+                    GameActionItem::new(
+                        A::Status(st.id.clone()),
+                        format!("st-{}", st.id),
+                        label,
+                        Icon::Flag,
+                        "status mark set marcar definir estado",
+                    )
+                    .palette_only(),
                 );
             }
         }

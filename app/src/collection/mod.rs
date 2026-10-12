@@ -127,6 +127,9 @@ pub struct CollectionView {
     palette: palette::Host,
     /// Console mode state (`console/`).
     console: console::ConsoleUi,
+    /// Language the precomputed view models and the search placeholder were
+    /// built in.
+    lang: heronite_i18n::Lang,
 }
 
 impl CollectionView {
@@ -219,6 +222,7 @@ impl CollectionView {
             pages: nav::Pages::default(),
             palette: palette::Host::new(window, cx),
             console: Default::default(),
+            lang: heronite_i18n::current(),
         };
         window.focus(&this.focus_handle, cx);
         this.console_init(window, cx);
@@ -251,6 +255,18 @@ impl CollectionView {
                     .child(text),
             )
         })
+    }
+
+    /// Rebuilds what was precomputed in another language after a switch.
+    fn sync_language(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let lang = heronite_i18n::current();
+        if self.lang == lang {
+            return;
+        }
+        self.lang = lang;
+        self.refresh_groups();
+        self.pages.language_changed();
+        self.search_input.update(cx, |s, cx| s.set_placeholder(heronite_i18n::tr!("Search games"), window, cx));
     }
 
     fn on_key_down(&mut self, ev: &KeyDownEvent, cx: &mut Context<Self>) {
@@ -293,6 +309,7 @@ impl CollectionView {
         self.open_pending_debug_dialog(window, cx);
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);
+        self.sync_language(window, cx);
         self.sync_facts(cx);
         self.sync_shots(window, cx);
         self.drive_palette(window, cx);

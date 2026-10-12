@@ -13,6 +13,7 @@ use crate::collection::CollectionView;
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog, Toggle};
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::epic_modify::EpicModifyDialog;
+use heronite_i18n::tr;
 
 impl CollectionView {
     /// Context-menu actions that need no dialog (the row id tells which).
@@ -39,9 +40,12 @@ impl CollectionView {
 
     /// `enable()` of the EOS overlay without the overlay: offers to install it.
     pub(super) fn epic_open_eos_install(&mut self, app_name: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let mut spec =
-            Confirm::new("epic-eos-install", "Overlay not installed", "The EOS Overlay is not installed. Do you want to install it now?");
-        spec.confirm = Some("Install".into());
+        let mut spec = Confirm::new(
+            "epic-eos-install",
+            tr!("Overlay not installed"),
+            tr!("The EOS Overlay is not installed. Do you want to install it now?"),
+        );
+        spec.confirm = Some(tr!("Install").into());
         let app = app_name.to_string();
         let view = cx.new(|cx| {
             EpicConfirmDialog::new(
@@ -67,22 +71,23 @@ impl CollectionView {
         self.open_dialog(view, cx);
     }
 
-    pub(super) fn epic_busy_guard(&mut self, cx: &mut Context<Self>, what: &str) -> bool {
+    /// Whether a download is running; then `message` is shown as an error toast.
+    pub(super) fn epic_busy_guard(&mut self, cx: &mut Context<Self>, message: &str) -> bool {
         let svc = self.epic_service(cx);
         let downloading = svc.read(cx).snapshot().state == heronite_epic::manager::DmState::Running;
         if downloading {
-            self.show_toast(format!("{what} is not possible while an Epic game is being installed."), true, cx);
+            self.show_toast(message.to_string(), true, cx);
         }
         downloading
     }
 
     pub(super) fn epic_open_uninstall(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
-        if self.epic_busy_guard(cx, "Uninstalling") {
+        if self.epic_busy_guard(cx, tr!("Uninstalling is not possible while an Epic game is being installed.")) {
             return;
         }
         if self.playing.contains_key(&game.app_name) {
-            self.show_toast(format!("{} is running. Close the game to uninstall it.", game.title), true, cx);
+            self.show_toast(tr!("{title} is running. Close the game to uninstall it.", title = game.title), true, cx);
             return;
         }
         let home = std::env::var("HOME").unwrap_or_default();
@@ -91,28 +96,28 @@ impl CollectionView {
         let prefix = settings.get("winePrefix").and_then(Value::as_str).unwrap_or_default().to_string();
         let default_prefix = global.get("winePrefix").and_then(Value::as_str).unwrap_or_default().to_string();
         let windows = game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("windows"));
-        let mut spec = Confirm::new("epic-uninstall", "Uninstall", format!("Do you want to uninstall \"{}\"?", game.title));
+        let mut spec = Confirm::new("epic-uninstall", tr!("Uninstall"), tr!("Do you want to uninstall \"{title}\"?", title = game.title));
         if windows && cfg!(target_os = "linux") && !prefix.is_empty() {
             let protect = prefix == default_prefix;
             spec.toggles.push(Toggle {
-                label: format!("Remove prefix: {prefix}"),
+                label: tr!("Remove prefix: {prefix}", prefix),
                 value: false,
                 disabled: protect,
                 note: Some(if protect {
-                    "The Wine prefix for this game is the default prefix. If you really want to delete it, you have to do it manually."
+                    tr!("The Wine prefix for this game is the default prefix. If you really want to delete it, you have to do it manually.")
                         .into()
                 } else {
-                    "Note: This can't be undone and will also remove not backed up save files.".into()
+                    tr!("Note: This can't be undone and will also remove not backed up save files.").into()
                 }),
             });
         }
         spec.toggles.push(Toggle {
-            label: "Erase settings and remove log".into(),
+            label: tr!("Erase settings and remove log").into(),
             value: false,
             disabled: false,
-            note: Some("Note: This can't be undone. Any modified settings will be forgotten and log will be deleted.".into()),
+            note: Some(tr!("Note: This can't be undone. Any modified settings will be forgotten and log will be deleted.").into()),
         });
-        spec.confirm = Some("Uninstall".into());
+        spec.confirm = Some(tr!("Uninstall").into());
         spec.danger = true;
         let has_prefix_toggle = spec.toggles.len() == 2;
         let app = game.app_name.clone();
@@ -135,15 +140,18 @@ impl CollectionView {
 
     pub(super) fn epic_open_move(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
-        if self.epic_busy_guard(cx, "Moving a game") {
+        if self.epic_busy_guard(cx, tr!("Moving a game is not possible while an Epic game is being installed.")) {
             return;
         }
         let Some(current) = game.game.install.install_path.clone() else { return };
-        let mut spec =
-            Confirm::new("epic-move", "Move Game Installation", format!("{}\nThis can take a long time, are you sure?", game.title));
+        let mut spec = Confirm::new(
+            "epic-move",
+            tr!("Move Game Installation"),
+            tr!("{title}\nThis can take a long time, are you sure?", title = game.title),
+        );
         let parent = std::path::Path::new(&current).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        spec.path = Some(("Choose where you want to move".into(), parent, "Choose where you want to move".into()));
-        spec.confirm = Some("Move".into());
+        spec.path = Some((tr!("Choose where you want to move").into(), parent, tr!("Choose where you want to move").into()));
+        spec.confirm = Some(tr!("Move").into());
         let app = game.app_name.clone();
         let view = cx.new(|cx| {
             EpicConfirmDialog::new(
@@ -162,15 +170,15 @@ impl CollectionView {
 
     pub(super) fn epic_open_verify(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
-        if self.epic_busy_guard(cx, "Verifying a game") {
+        if self.epic_busy_guard(cx, tr!("Verifying a game is not possible while an Epic game is being installed.")) {
             return;
         }
         let mut spec = Confirm::new(
             "epic-verify",
-            "Verify and Repair",
-            format!("{}\nDo you want to try to repair this game? This can take a long time.", game.title),
+            tr!("Verify and Repair"),
+            tr!("{title}\nDo you want to try to repair this game? This can take a long time.", title = game.title),
         );
-        spec.confirm = Some("Verify".into());
+        spec.confirm = Some(tr!("Verify").into());
         let app = game.app_name.clone();
         let view = cx.new(|cx| {
             EpicConfirmDialog::new(
@@ -189,15 +197,18 @@ impl CollectionView {
 
     pub(super) fn epic_open_update_prompt(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
-        let mut spec =
-            Confirm::new("epic-update", "Game Needs Update", format!("{}\nThis game has an update, apply update now?", game.title));
-        spec.confirm = Some("Update".into());
+        let mut spec = Confirm::new(
+            "epic-update",
+            tr!("Game Needs Update"),
+            tr!("{title}\nThis game has an update, apply update now?", title = game.title),
+        );
+        spec.confirm = Some(tr!("Update").into());
         let weak = cx.entity().downgrade();
         let k = key.to_string();
         let k2 = key.to_string();
         let weak2 = weak.clone();
         spec.secondary = Some((
-            "Play anyway".into(),
+            tr!("Play anyway").into(),
             Rc::new(move |cx| {
                 weak2
                     .update(cx, |this, cx| {

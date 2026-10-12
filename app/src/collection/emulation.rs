@@ -16,6 +16,7 @@ use super::CollectionView;
 use crate::dialogs::launch_state::{LaunchStateDialog, StateRow, ThumbRaw};
 use crate::dialogs::pick_rom::PickRomDialog;
 use crate::dialogs::scan_roms::{ScanInitial, ScanRomsDialog};
+use heronite_i18n::{tr, trn};
 
 /// How long after start the Collection scans the saved ROM folders.
 const STARTUP_SCAN_DELAY: Duration = Duration::from_secs(4);
@@ -178,7 +179,7 @@ impl CollectionView {
                     Ok(true) => this.launch_emulated(&game.key, rom, cx),
                     // The state vanished between listing and launch: show what is left.
                     Ok(false) => this.emu_continue(game.key.clone(), rom, cx),
-                    Err(e) => this.show_toast(format!("Could not set the save state: {e:#}"), true, cx),
+                    Err(e) => this.show_toast(tr!("Could not set the save state: {err}", err = format!("{e:#}")), true, cx),
                 }
                 cx.notify();
             })
@@ -234,7 +235,7 @@ impl CollectionView {
                     log::warn!("ROM scan: {e}");
                 }
                 if report.imported > 0 {
-                    self.show_toast(format!("Added {} new game(s)", report.imported), false, cx);
+                    self.show_toast(trn!(report.imported, "Added {n} new game", "Added {n} new games"), false, cx);
                     if reload {
                         self.reload(cx);
                     }
@@ -273,7 +274,15 @@ impl CollectionView {
             let Ok(report) = rx.await else { return };
             this.update(cx, |this, cx| {
                 if report.roms_imported > 0 {
-                    this.show_toast(format!("Added {} new game(s) from saved ROM folders.", report.roms_imported), false, cx);
+                    this.show_toast(
+                        trn!(
+                            report.roms_imported,
+                            "Added {n} new game from saved ROM folders.",
+                            "Added {n} new games from saved ROM folders."
+                        ),
+                        false,
+                        cx,
+                    );
                     this.reload(cx);
                 }
                 if let Some(e) = report.rom_scan_error.or(report.backup.error) {

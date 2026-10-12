@@ -12,6 +12,7 @@ use crate::pages::{self, Page, PageCtx, PageEvent};
 use crate::theme;
 use crate::ui::dropdown::{menu_separator, Align};
 use crate::ui::{glass, icon};
+use heronite_i18n::{tr, trn};
 
 /// Lazily created page views.
 #[derive(Default)]
@@ -29,6 +30,11 @@ pub struct Pages {
 }
 
 impl Pages {
+    /// Reads the ☰ menu facts again (their text is built in the language of the moment).
+    pub(super) fn language_changed(&mut self) {
+        self.meta.loaded_at = None;
+    }
+
     pub(super) fn hook(&self, page: Page) -> Option<crate::console::PadHook> {
         self.hooks.get(&page).cloned()
     }
@@ -57,9 +63,9 @@ fn month_meta(lib: &heronite_data::Library) -> String {
     let today = chrono::Local::now().date_naive();
     let secs = stats::compute(&history, stats::Period::of(stats::Span::Month, today), today).total_secs;
     if secs > 0. {
-        format!("{} this month", stats::fmt_secs(secs))
+        tr!("{time} this month", time = stats::fmt_secs(secs))
     } else {
-        "Nothing this month".into()
+        tr!("Nothing this month").into()
     }
 }
 
@@ -76,24 +82,20 @@ fn read_nav_meta(data_paths: &heronite_data::DataPaths) -> (Option<String>, Opti
     (wine, emulators)
 }
 
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
-}
-
-/// "1 active · 42%", "Paused · 42%", "3 queued" or "Idle".
-pub(super) fn downloads_meta(svc: Option<&crate::services::downloads::Downloads>) -> String {
+/// "1 active · 42%", "Paused · 42%", "3 queued"; `None` while idle.
+pub(super) fn downloads_meta(svc: Option<&crate::services::downloads::Downloads>) -> Option<String> {
     use heronite_epic::manager::DmState;
-    let Some(svc) = svc else { return "Idle".into() };
-    let snap = svc.snapshot();
+    let snap = svc?.snapshot();
     if snap.queue.is_empty() {
-        return "Idle".into();
+        return None;
     }
     let percent = snap.current.as_ref().and_then(|(_, p)| p.as_ref()).map(|p| format!(" \u{b7} {}%", p.percent.round() as u32));
-    match snap.state {
-        DmState::Running => format!("{} active{}", snap.queue.len(), percent.unwrap_or_default()),
-        DmState::Paused => format!("Paused{}", percent.unwrap_or_default()),
-        DmState::Idle => format!("{} queued", snap.queue.len()),
-    }
+    let percent = percent.unwrap_or_default();
+    Some(match snap.state {
+        DmState::Running => tr!("{n} active{percent}", n = snap.queue.len(), percent),
+        DmState::Paused => tr!("Paused{percent}", percent),
+        DmState::Idle => tr!("{n} queued", n = snap.queue.len()),
+    })
 }
 
 /// "Update 0.1.4" / "Updating 42%" / "Restart to update" while an app
@@ -104,10 +106,12 @@ fn update_meta(cx: &App) -> Option<String> {
     let u = updater.read(cx);
     let version = &u.release()?.version;
     match u.phase() {
-        Phase::Available if !u.skipped() => Some(format!("Update {version}")),
-        Phase::Downloading(p) => Some(p.percent().map_or_else(|| "Updating".into(), |p| format!("Updating {}%", p.round() as u32))),
-        Phase::Installing => Some("Installing update".into()),
-        Phase::Ready => Some("Restart to update".into()),
+        Phase::Available if !u.skipped() => Some(tr!("Update {version}", version)),
+        Phase::Downloading(p) => {
+            Some(p.percent().map_or_else(|| tr!("Updating").into(), |p| tr!("Updating {percent}%", percent = p.round() as u32)))
+        }
+        Phase::Installing => Some(tr!("Installing update").into()),
+        Phase::Ready => Some(tr!("Restart to update").into()),
         _ => None,
     }
 }
@@ -217,21 +221,21 @@ impl CollectionView {
                 let svc = crate::services::try_downloads(cx);
                 let svc = svc.as_ref().map(|s| s.read(cx));
                 let signed_in = svc.is_some_and(|s| s.account().logged_in);
-                let downloads = downloads_meta(svc);
+                let downloading = downloads_meta(svc);
+                let downloads = downloading.clone().unwrap_or_else(|| tr!("Idle").to_string());
                 let meta = &this.pages.meta;
                 let pending = || "\u{2026}".to_string();
                 let emulators = match meta.emulators {
-                    Some(0) => "None".to_string(),
-                    Some(n) => plural(n, "emulator", "emulators"),
+                    Some(0) => tr!("None").to_string(),
+                    Some(n) => trn!(n, "{n} emulator", "{n} emulators"),
                     None => pending(),
                 };
-                let downloading = downloads != "Idle";
                 let update = update_meta(cx);
                 let trailing = |page: Page| match page {
-                    Page::Collection => Trailing::Meta(plural(games, "game", "games"), false),
-                    Page::Downloads => Trailing::Meta(downloads.clone(), downloading),
+                    Page::Collection => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
+                    Page::Downloads => Trailing::Meta(downloads.clone(), downloading.is_some()),
                     Page::Statistics => Trailing::Meta(meta.month.clone().unwrap_or_else(pending), false),
-                    Page::Epic => Trailing::Meta(if signed_in { "Signed in".into() } else { "Not signed in".into() }, false),
+                    Page::Epic => Trailing::Meta(if signed_in { tr!("Signed in").into() } else { tr!("Not signed in").into() }, false),
                     Page::WineManager => Trailing::Meta(meta.wine.clone().unwrap_or_else(pending), false),
                     Page::Emulators => Trailing::Meta(emulators.clone(), false),
                     Page::Settings => match &update {
@@ -264,21 +268,33 @@ impl CollectionView {
                 }
                 p.child(menu_separator())
                     .child(
-                        nav_row("nav-add-game".into(), Icon::Add, "Add game", Trailing::Meta("Sideload or ROM".into(), false), false)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_add_game(window, cx);
-                            })),
+                        nav_row(
+                            "nav-add-game".into(),
+                            Icon::Add,
+                            tr!("Add game"),
+                            Trailing::Meta(tr!("Sideload or ROM").into(), false),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_add_game(window, cx);
+                        })),
                     )
                     .child(
-                        nav_row("nav-console".into(), Icon::Tv, "Console mode", Trailing::None, false)
+                        nav_row("nav-console".into(), Icon::Tv, tr!("Console mode"), Trailing::None, false)
                             .on_click(cx.listener(|this, _, window, cx| this.set_console(true, window, cx))),
                     )
                     .child(menu_separator())
                     .child(
-                        nav_row("nav-Settings".into(), Icon::Settings, "Settings", trailing(Page::Settings), this.page == Page::Settings)
-                            .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Settings, window, cx))),
+                        nav_row(
+                            "nav-Settings".into(),
+                            Icon::Settings,
+                            tr!("Settings"),
+                            trailing(Page::Settings),
+                            this.page == Page::Settings,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Settings, window, cx))),
                     )
-                    .child(nav_row("nav-palette".into(), Icon::FaSearch, "Command palette", Trailing::Key("Ctrl K"), false).on_click(
+                    .child(nav_row("nav-palette".into(), Icon::FaSearch, tr!("Command palette"), Trailing::Key("Ctrl K"), false).on_click(
                         cx.listener(|this, _, window, cx| {
                             this.open_menu = None;
                             this.open_palette(window, cx);
@@ -525,14 +541,10 @@ impl CollectionView {
 
 #[cfg(test)]
 mod tests {
-    use super::{downloads_meta, plural};
+    use super::downloads_meta;
 
     #[test]
-    fn tile_meta_texts() {
-        assert_eq!(plural(1, "emulator", "emulators"), "1 emulator");
-        assert_eq!(plural(6, "emulator", "emulators"), "6 emulators");
-        assert_eq!(plural(207, "game", "games"), "207 games");
-        // No download service yet: nothing is queued.
-        assert_eq!(downloads_meta(None), "Idle");
+    fn nothing_is_queued_without_the_download_service() {
+        assert_eq!(downloads_meta(None), None);
     }
 }

@@ -24,6 +24,7 @@ use crate::console::motion;
 use crate::console::{self, hint, Btn, Hint, Overlay, Pad};
 use crate::pages::Page;
 use crate::theme;
+use heronite_i18n::tr;
 
 /// Cross-fade of the background art.
 const ART_FADE_MS: u64 = 520;
@@ -140,13 +141,13 @@ impl CollectionView {
                             PadMsg::Press(_) => {}
                             PadMsg::Connected(name, plugged) => {
                                 if plugged {
-                                    this.show_toast(format!("Controller connected: {name}"), false, cx);
+                                    this.show_toast(tr!("Controller connected: {name}", name), false, cx);
                                 }
                                 this.console.controller = Some(name);
                             }
                             PadMsg::Disconnected => {
                                 this.console.controller = None;
-                                this.show_toast("Controller disconnected", true, cx);
+                                this.show_toast(tr!("Controller disconnected"), true, cx);
                             }
                         }
                     })
@@ -297,20 +298,20 @@ impl CollectionView {
     /// Hints of whatever takes the presses now.
     fn console_hints(&self, cx: &App) -> Vec<Hint> {
         if self.dialog.is_some() {
-            return self.dialog_hook.as_ref().map(|h| h.hints(cx)).unwrap_or_else(|| vec![hint(Btn::B, "Close")]);
+            return self.dialog_hook.as_ref().map(|h| h.hints(cx)).unwrap_or_else(|| vec![hint(Btn::B, tr!("Close"))]);
         }
         if let Some(o) = &self.console.overlay {
             return o.hook.hints(cx);
         }
         if self.console.sidebar.is_some() {
-            return vec![hint(Btn::A, "Select"), hint(Btn::B, "Back")];
+            return vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Back"))];
         }
         if self.page != Page::Collection {
             let mut h = self.pages.hook(self.page).map(|h| h.hints(cx)).unwrap_or_default();
             if !h.iter().any(|h| h.btn == Btn::B) {
-                h.push(hint(Btn::B, "Back"));
+                h.push(hint(Btn::B, tr!("Back")));
             }
-            h.push(hint(Btn::Start, "Menu"));
+            h.push(hint(Btn::Start, tr!("Menu")));
             return h;
         }
         match &self.console.screen {

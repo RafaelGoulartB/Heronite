@@ -21,6 +21,7 @@ use crate::pages::Page;
 use crate::services::downloads::{Downloads, DownloadsEvent, QueueState};
 use crate::services::widgets::{fmt_percent, progress_bar};
 use crate::theme;
+use heronite_i18n::tr;
 
 /// Something a click asked for that needs a `Window` (handled from `render`).
 pub enum Request {
@@ -84,6 +85,17 @@ pub(super) struct FocusEpic {
     pub replaces_play: bool,
 }
 
+/// What a queued game is doing: "Installing", "Updating" or "Paused".
+fn queue_verb(kind: Option<ElementKind>, paused: bool) -> &'static str {
+    if paused {
+        tr!("Paused")
+    } else if kind == Some(ElementKind::Update) {
+        tr!("Updating")
+    } else {
+        tr!("Installing")
+    }
+}
+
 fn app_of(key: &str) -> Option<&str> {
     key.strip_prefix("legendary_")
 }
@@ -122,7 +134,7 @@ pub(super) fn card_overlay(e: &CardEpic) -> Div {
                 .text_color(rgb(0x161616))
                 .text_size(px(10.5))
                 .font_weight(theme::W_BOLD)
-                .child("UPDATE"),
+                .child(tr!("UPDATE")),
         );
     }
     layer
@@ -240,14 +252,14 @@ impl CollectionView {
         }
         if let Some(state) = svc.queue_state(app) {
             let kind = svc.queued(app).map(|(_, e)| e.kind);
-            let verb = if kind == Some(ElementKind::Update) { "Updating" } else { "Installing" };
+            let verb = queue_verb(kind, false);
             let p = svc.progress_of(app).map(|p| p.percent as f32);
             let label = match (state, p) {
                 (QueueState::Downloading, Some(p)) => format!("{verb} {}", fmt_percent(p as f64)),
                 (QueueState::Downloading, None) => format!("{verb}..."),
-                (QueueState::Paused, Some(p)) => format!("Paused {}", fmt_percent(p as f64)),
-                (QueueState::Paused, None) => "Paused".into(),
-                (QueueState::Waiting, _) => "Queued".into(),
+                (QueueState::Paused, Some(p)) => format!("{} {}", queue_verb(kind, true), fmt_percent(p as f64)),
+                (QueueState::Paused, None) => queue_verb(kind, true).into(),
+                (QueueState::Waiting, _) => tr!("Queued").into(),
             };
             return Some(CardEpic { label: label.into(), percent: p, update: false });
         }

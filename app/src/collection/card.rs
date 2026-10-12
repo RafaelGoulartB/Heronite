@@ -10,6 +10,7 @@ use super::vm::CardVm;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 pub(super) struct CardState<'a> {
     pub vm: &'a CardVm,
@@ -183,7 +184,7 @@ fn hidden_badge() -> Div {
         .font_weight(theme::W_BOLD)
         .text_color(theme::white_a(0.9))
         .child(icon(Icon::VisibilityOff, px(11.), theme::white_a(0.9)))
-        .child("Hidden")
+        .child(tr!("Hidden"))
 }
 
 fn playtime_label(vm: &CardVm) -> Div {

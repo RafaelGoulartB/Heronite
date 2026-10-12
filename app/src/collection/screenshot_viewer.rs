@@ -13,6 +13,7 @@ use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{button, ButtonKind};
+use heronite_i18n::tr;
 
 const MIN_ZOOM: f32 = 1.;
 const MAX_ZOOM: f32 = 5.;
@@ -177,7 +178,7 @@ impl CollectionView {
                         this.shots.error = None;
                     }
                     Err(err) => {
-                        this.shots.error = Some(format!("Could not delete the screenshot: {err}").into());
+                        this.shots.error = Some(tr!("Could not delete the screenshot: {err}", err).into());
                     }
                 }
                 cx.notify();
@@ -459,17 +460,19 @@ impl CollectionView {
                     .bg(theme::background())
                     .text_color(rgb(0xcaf3fd))
                     .text_size(px(16.))
-                    .child(format!("Move “{name}” to the trash?"))
+                    .child(tr!("Move “{name}” to the trash?", name))
                     .child(
                         div()
                             .flex()
                             .justify_end()
                             .gap(px(12.))
-                            .child(button("shot-confirm-cancel", ButtonKind::Glass, "Cancel").on_click(cx.listener(|this, _, _, cx| {
-                                this.shots.confirm = None;
-                                cx.notify();
-                            })))
-                            .child(button("shot-confirm-ok", ButtonKind::Primary, "Move to trash").on_click(cx.listener(
+                            .child(button("shot-confirm-cancel", ButtonKind::Glass, tr!("Cancel")).on_click(cx.listener(
+                                |this, _, _, cx| {
+                                    this.shots.confirm = None;
+                                    cx.notify();
+                                },
+                            )))
+                            .child(button("shot-confirm-ok", ButtonKind::Primary, tr!("Move to trash")).on_click(cx.listener(
                                 |this, _, _, cx| {
                                     this.shots_delete(cx);
                                 },

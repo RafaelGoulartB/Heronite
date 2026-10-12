@@ -10,6 +10,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{button, ButtonKind};
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 impl CollectionView {
     /// "Screenshots" section of the focus panel (none without screenshots).
@@ -63,7 +64,7 @@ impl CollectionView {
                     })),
             );
         }
-        Some(div().flex().flex_col().child(focus::h3("Screenshots")).child(focus::panel(true).child(row)).into_any_element())
+        Some(div().flex().flex_col().child(focus::h3(tr!("Screenshots"))).child(focus::panel(true).child(row)).into_any_element())
     }
 
     pub(in crate::collection) fn shots_open_view(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {
@@ -205,7 +206,7 @@ impl CollectionView {
         }
         if shown < total {
             grid = grid.child(div().flex().justify_center().my(px(5.6)).child(
-                button("shot-load-more", ButtonKind::Glass, format!("Load more ({} remaining)", total - shown)).on_click(cx.listener(
+                button("shot-load-more", ButtonKind::Glass, tr!("Load more ({n} remaining)", n = total - shown)).on_click(cx.listener(
                     |this, _, _, cx| {
                         this.shots.gallery_count = (this.shots.gallery_count + GALLERY_PAGE).min(this.shots.items.len());
                         cx.notify();
@@ -239,7 +240,7 @@ impl CollectionView {
                             .font_weight(theme::W_BOLD)
                             .text_color(white())
                             .font_family(theme::FONT_BODY)
-                            .child("Screenshots"),
+                            .child(tr!("Screenshots")),
                     )
                     .child(div().text_size(px(13.6)).text_color(theme::white_a(0.62)).child(total.to_string())),
             )

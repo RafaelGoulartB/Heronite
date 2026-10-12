@@ -10,6 +10,7 @@ use crate::collection::vm::{DetailRow, DetailValue, HltbVm, RelatedGroupVm};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{chip, icon};
+use heronite_i18n::tr;
 
 pub(super) fn details_panel(
     rows: &[DetailRow],
@@ -159,9 +160,9 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
         div()
             .flex()
             .gap(px(8.8))
-            .child(stat("Main Story", h.main))
-            .child(stat("Main + Extras", h.extra))
-            .child(stat("Completionist", h.complete)),
+            .child(stat(tr!("Main Story"), h.main))
+            .child(stat(tr!("Main + Extras"), h.extra))
+            .child(stat(tr!("Completionist"), h.complete)),
     )
 }
 
@@ -170,7 +171,7 @@ pub(super) fn related_panel(
     cover_for: &CoverFor,
     on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
 ) -> Div {
-    let mut p = panel(false).child(h3("Related games"));
+    let mut p = panel(false).child(h3(tr!("Related games")));
     for (gi, g) in groups.iter().enumerate() {
         let mut row = div().flex().gap(px(11.2)).pb(px(4.));
         for game in &g.games {

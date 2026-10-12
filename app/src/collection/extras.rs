@@ -27,16 +27,13 @@ use crate::dialogs::playtime::PlaytimeDialog;
 use crate::dialogs::remove_game::RemoveGameDialog;
 use crate::icons::Icon;
 use crate::theme;
-
-/// Message of the error dialog Heronite shows when Steam is missing
-/// (`collection.steam.clientMissing*`).
-const STEAM_MISSING_TITLE: &str = "Steam not found";
-const STEAM_MISSING_TEXT: &str = "Steam was not found. Install or launch the Steam client, then try again.";
+use heronite_i18n::tr;
 
 /// Text of the Steam uninstall confirmation (`collection.steam.uninstallHelp`).
 fn steam_uninstall_message(title: &str) -> String {
-    format!(
-        "This opens Steam to uninstall \"{title}\". The game stays in Collection; Heronite marks it uninstalled after Steam finishes and you refresh."
+    tr!(
+        "This opens Steam to uninstall \"{title}\". The game stays in Collection; Heronite marks it uninstalled after Steam finishes and you refresh.",
+        title
     )
 }
 
@@ -74,7 +71,12 @@ impl CollectionView {
     /// search in step with the open flyout.
     pub(super) fn sync_extras(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if std::mem::take(&mut self.extras.steam_missing) {
-            let spec = Confirm::new("steam-missing", STEAM_MISSING_TITLE, STEAM_MISSING_TEXT);
+            // Heronite's `collection.steam.clientMissing*` message.
+            let spec = Confirm::new(
+                "steam-missing",
+                tr!("Steam not found"),
+                tr!("Steam was not found. Install or launch the Steam client, then try again."),
+            );
             let view = cx.new(|cx| EpicConfirmDialog::new(spec, |_, _| {}, window, cx));
             self.open_dialog(view, cx);
         }
@@ -95,7 +97,7 @@ impl CollectionView {
             (Some(kind), _) => {
                 let input = cx.new(|cx| {
                     let mut s = InputState::new(window, cx);
-                    s.set_placeholder("Filter list", window, cx);
+                    s.set_placeholder(tr!("Filter list"), window, cx);
                     s
                 });
                 let sub = cx.subscribe_in(&input, window, |_, _, ev: &InputEvent, _, cx| {
@@ -233,20 +235,50 @@ impl CollectionView {
         let tracking = self.playing.contains_key(&game.app_name);
         let mut v = Vec::new();
         if details_url(game).is_some() {
-            v.push(item(A::Details, "details", "Details", Icon::OpenInNew, "store page website browser"));
+            v.push(item(
+                A::Details,
+                "details",
+                tr!("Details"),
+                Icon::OpenInNew,
+                "store page website browser loja pagina site navegador detalhes",
+            ));
         }
         if !tracking {
-            v.push(item(A::EditPlaytime, "playtime", "Edit playtime", Icon::AccessTime, "hours time played"));
+            v.push(item(
+                A::EditPlaytime,
+                "playtime",
+                tr!("Edit playtime"),
+                Icon::AccessTime,
+                "hours time played editar tempo horas jogado",
+            ));
         }
-        v.push(item(A::Ludusavi, "ludusavi", "Backup save (Ludusavi)", Icon::Save, "saves backup"));
+        v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save (Ludusavi)"), Icon::Save, "saves backup salvamentos jogos salvos"));
         if game.steam_launch_id.is_some() && game.installed && !tracking {
-            v.push(item(A::SteamUninstall, "steam-uninstall", "Uninstall", Icon::DeleteForever, "remove delete steam"));
+            v.push(item(
+                A::SteamUninstall,
+                "steam-uninstall",
+                tr!("Uninstall"),
+                Icon::DeleteForever,
+                "remove delete steam desinstalar remover excluir",
+            ));
         }
         if !tracking && super::sideload_uninstall::can_uninstall_local(game) {
-            v.push(item(A::LocalUninstall, "local-uninstall", "Uninstall", Icon::DeleteForever, "remove delete files prefix"));
+            v.push(item(
+                A::LocalUninstall,
+                "local-uninstall",
+                tr!("Uninstall"),
+                Icon::DeleteForever,
+                "remove delete files prefix desinstalar remover excluir arquivos prefixo",
+            ));
         }
         if game.runner == "sideload" && !tracking {
-            v.push(item(A::RemoveFromCollection, "remove-collection", "Remove from Collection", Icon::DeleteForever, "delete entry"));
+            v.push(item(
+                A::RemoveFromCollection,
+                "remove-collection",
+                tr!("Remove from Collection"),
+                Icon::DeleteForever,
+                "delete entry remover excluir entrada coleção colecao",
+            ));
         }
         v
     }
@@ -262,8 +294,8 @@ impl CollectionView {
     pub(super) fn open_steam_uninstall(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         let Some(app_id) = game.steam_launch_id.clone() else { return };
-        let mut spec = Confirm::new("steam-uninstall", "Uninstall", steam_uninstall_message(&game.title));
-        spec.confirm = Some("Yes".into());
+        let mut spec = Confirm::new("steam-uninstall", tr!("Uninstall"), steam_uninstall_message(&game.title));
+        spec.confirm = Some(tr!("Yes").into());
         let weak = cx.entity().downgrade();
         let view = cx.new(|cx| {
             EpicConfirmDialog::new(
@@ -321,10 +353,10 @@ impl CollectionView {
                     .spawn()
                     .and_then(|mut child| std::thread::Builder::new().spawn(move || child.wait()).map(|_| ()))
                 {
-                    self.show_toast(format!("Could not open {url}: {err}"), true, cx);
+                    self.show_toast(tr!("Could not open {url}: {err}", url, err = err.to_string()), true, cx);
                 }
             }
-            None => self.show_toast("No store page is known for this game.", false, cx),
+            None => self.show_toast(tr!("No store page is known for this game."), false, cx),
         }
     }
 
