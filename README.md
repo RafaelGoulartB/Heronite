@@ -134,7 +134,7 @@ Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has 
 
 | System | File | Install |
 |---|---|---|
-| Any distribution | `Heronite-x86_64.AppImage` | `chmod +x Heronite-x86_64.AppImage && ./Heronite-x86_64.AppImage` |
+| Any distribution (**recommended**) | `Heronite-x86_64.AppImage` | `chmod +x Heronite-x86_64.AppImage && ./Heronite-x86_64.AppImage` |
 | Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `heronite_<version>-1_amd64.deb` | `sudo apt install ./heronite_*_amd64.deb` |
 | Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
 | Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
@@ -147,14 +147,6 @@ Each release also has a copy of the AppImage named after its version.
 - **AppImage:** the update is downloaded next to the AppImage and swapped in place, so menu entries and game shortcuts keep working. Keep the AppImage in a folder you can write to (for example `~/Applications`). You can also let it install updates automatically. Tools that use AppImageUpdate (Gear Lever, AppImageLauncher) can update it too, downloading only the changed parts.
 
 Either way, the new version runs after **Restart now** or the next time you open Heronite.
-
-To check a download by hand, use the `.minisig` file next to it in the release and the public key `RWSE2jZR7ZDsOydCTZOZivDlm7+0a3fALyFTGewUjbVbWGb6V4A2CALD`:
-
-```bash
-minisign -Vm Heronite-x86_64.AppImage -P RWSE2jZR7ZDsOydCTZOZivDlm7+0a3fALyFTGewUjbVbWGb6V4A2CALD
-```
-
-Heronite runs on distributions with glibc 2.35 or newer (Ubuntu 22.04, Fedora 36, Debian 12, Arch, and later) and needs a Vulkan-capable GPU driver. The Epic login window uses the system's WebKitGTK 4.1 (`webkit2gtk-4.1`); without it, log in through the browser instead.
 
 ## Run from source
 
