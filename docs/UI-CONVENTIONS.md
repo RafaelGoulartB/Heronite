@@ -230,8 +230,15 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
   [`@mui/icons-material`](https://github.com/mui/material-ui/tree/master/packages/mui-icons-material)
   package, register them in `icons.rs` and list the source in
   `THIRD-PARTY-NOTICES.md` when it is a new one.
-- Text is English (Heronite's `en` locale strings in
-  [`public/locales/en/translation.json`](https://github.com/RafaelGoulartB/HeroicGamesLauncher/blob/master/public/locales/en/translation.json)).
+- Text is written in English (Heronite's `en` locale strings in
+  [`public/locales/en/translation.json`](https://github.com/RafaelGoulartB/HeroicGamesLauncher/blob/master/public/locales/en/translation.json))
+  and every user-visible string goes through `heronite_i18n`: `tr!("Play")`,
+  `tr!("{n} of {total}", n, total)`, `trn!(count, "{n} game", "{n} games")`,
+  `n_!` for constant tables. Never build a sentence from fragments
+  (word order differs); never translate ids, keys or values that are saved or
+  parsed. Add the Portuguese to `crates/i18n/locales/pt-BR/<area>.json`;
+  `cargo test -p heronite-i18n` fails on a missing or unused key. Portuguese
+  runs ~25% longer than English: leave room in buttons and pills.
 
 ## Verifying visually (mandatory for UI work)
 - Build: `cargo build -p heronite`.

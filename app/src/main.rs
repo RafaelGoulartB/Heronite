@@ -5,6 +5,7 @@ mod dialogs;
 mod env;
 mod icons;
 mod images;
+mod language;
 mod pages;
 mod runtime;
 mod services;
@@ -19,9 +20,13 @@ use gpui_kit::*;
 fn main() {
     let started = Instant::now();
     tune_allocator();
+    // First, so even the migration's error is in the user's language (only
+    // reads a file).
+    language::init(&heronite_data::AppPaths::for_data(&heronite_data::DataPaths::detect()));
     // Before anything (the logger included) creates the data folder.
     let migration = migrate_from_heroic();
     env_logger_init();
+    log::info!("interface language: {}", heronite_i18n::current().code());
     match migration {
         heronite_data::migrate::Outcome::Migrated(r) => log::info!(
             "copied the Heroic setup into the data folder: {} files, {} MB, {} files with rewritten paths, legendary from {:?}",

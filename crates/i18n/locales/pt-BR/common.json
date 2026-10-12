@@ -36,5 +36,8 @@
   "weekday|Thu": "Qui",
   "weekday|Fri": "Sex",
   "weekday|Sat": "Sáb",
-  "weekday|Sun": "Dom"
+  "weekday|Sun": "Dom",
+  "Language": "Idioma",
+  "Interface language": "Idioma da interface",
+  "System default ({language})": "Padrão do sistema ({language})"
 }

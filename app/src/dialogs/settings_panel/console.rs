@@ -24,6 +24,7 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use heronite_i18n::tr;
 
 type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
 type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel>)>;
@@ -430,7 +431,18 @@ impl SettingsPanel {
     fn c_general(&self, cx: &App) -> Vec<Item> {
         let no_tray = self.flag("noTrayIcon", false);
         let exit_to_tray = self.flag("exitToTray", false);
+        let app_paths = heronite_data::AppPaths::for_data(&self.paths);
+        let (choices, names, selected) = super::general::language_options(&app_paths);
         let mut v = vec![
+            Self::c_header(tr!("Language")),
+            item(
+                Row::choice("c:language", tr!("Interface language"), names, selected).icon(Icon::Language),
+                Act::Choice(Rc::new(move |_, i, cx| {
+                    if let Some(&p) = choices.get(i) {
+                        crate::language::choose(&app_paths, p, cx);
+                    }
+                })),
+            ),
             Self::c_header("Folders"),
             self.c_path("defaultInstallPath", "Default install folder", true, cx),
             self.c_path("defaultWinePrefixDir", "Folder for new Wine prefixes", true, cx),

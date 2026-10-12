@@ -109,6 +109,15 @@ fn hub(cx: &App) -> Hub {
     cx.global::<Hub>().clone()
 }
 
+/// Rebuilds the tray menu (its labels follow the interface language).
+pub fn refresh_tray(cx: &App) {
+    if let Some(hub) = cx.try_global::<Hub>() {
+        if let Some(tray) = &hub.0.borrow().tray {
+            tray.refresh();
+        }
+    }
+}
+
 /// Called by `CollectionView::new`: the shared runtime plus a fresh stream of
 /// launch events (games already running are announced first).
 pub fn attach_runtime(data_paths: &DataPaths, cx: &mut App) -> (Arc<GameRuntime>, UnboundedReceiver<LaunchEvent>) {

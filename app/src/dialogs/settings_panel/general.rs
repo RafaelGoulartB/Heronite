@@ -11,7 +11,8 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
-use heronite_data::DataPaths;
+use heronite_data::{AppPaths, DataPaths};
+use heronite_i18n::{tr, Lang, Preference};
 
 /// What the global ("General") panel shows. The Settings page hosts one
 /// panel and switches between these; the Game defaults use the other tabs.
@@ -147,6 +148,8 @@ impl SettingsPanel {
                 cx,
             ));
         column()
+            .child(heading(tr!("Language")))
+            .child(rows().field(self.language_field(cx)).card())
             .child(heading("Folders"))
             .child(folders.card())
             .child(heading("Launching"))
@@ -196,6 +199,20 @@ impl SettingsPanel {
                 cx,
             ))
             .child(self.toggle_row("shortcuts-steam", "addSteamShortcuts", false, "Add games to Steam automatically", None, false, cx))
+    }
+
+    /// Interface language: the system's (English when it is not one we
+    /// have) or a fixed one. Applies at once.
+    fn language_field(&self, cx: &mut Context<Self>) -> Div {
+        let app_paths = AppPaths::for_data(&self.paths);
+        let (choices, names, selected) = language_options(&app_paths);
+        let items = names.iter().enumerate().map(|(i, n)| (n.clone(), i == selected)).collect();
+        let shown = names[selected].to_string();
+        div().child(self.select_row("language", Some(tr!("Interface language")), shown, items, false, cx, move |_, i, _, cx| {
+            if let Some(&p) = choices.get(i) {
+                crate::language::choose(&app_paths, p, cx);
+            }
+        }))
     }
 
     fn max_workers_field(&self, cx: &mut Context<Self>) -> Div {
@@ -267,4 +284,20 @@ impl SettingsPanel {
             .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
             .unwrap_or_default()
     }
+}
+
+/// The language choices (system first), their names and the saved one.
+pub(super) fn language_options(app_paths: &AppPaths) -> (Vec<Preference>, Vec<SharedString>, usize) {
+    let pref = heronite_data::language::load(app_paths);
+    let mut choices = vec![Preference::System];
+    choices.extend(Lang::ALL.map(Preference::Fixed));
+    let names = choices
+        .iter()
+        .map(|&p| match p {
+            Preference::System => tr!("System default ({language})", language = heronite_i18n::system_lang().native_name()).into(),
+            Preference::Fixed(l) => l.native_name().into(),
+        })
+        .collect();
+    let selected = choices.iter().position(|&p| p == pref).unwrap_or(0);
+    (choices, names, selected)
 }
