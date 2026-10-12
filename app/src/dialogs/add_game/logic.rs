@@ -5,6 +5,7 @@ use std::path::Path;
 
 use heronite_data::sideload::SideloadPlatform;
 use heronite_data::text::remove_special_characters;
+use heronite_i18n::tr;
 use heronite_launch::native::{detect_executable_kind, ExecutableKind};
 use heronite_launch::Probe;
 
@@ -100,16 +101,41 @@ pub fn run_as_for(chosen: SideloadPlatform, detected: Option<SideloadPlatform>, 
     }
 }
 
-/// Why the form cannot be saved yet (empty when it can).
-pub fn missing_field(title: &str, platform: SideloadPlatform, executable: &str, url: &str) -> Option<&'static str> {
+/// What the form still needs before it can be saved.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Missing {
+    Title,
+    Url,
+    Executable,
+}
+
+pub fn missing(title: &str, platform: SideloadPlatform, executable: &str, url: &str) -> Option<Missing> {
     if title.trim().is_empty() {
-        return Some("Add a title");
+        return Some(Missing::Title);
     }
     match platform {
-        SideloadPlatform::Browser if url.trim().is_empty() => Some("Add the game URL"),
-        SideloadPlatform::Linux | SideloadPlatform::Windows if executable.trim().is_empty() => Some("Select the executable"),
+        SideloadPlatform::Browser if url.trim().is_empty() => Some(Missing::Url),
+        SideloadPlatform::Linux | SideloadPlatform::Windows if executable.trim().is_empty() => Some(Missing::Executable),
         _ => None,
     }
+}
+
+/// Why the form cannot be saved yet (empty when it can).
+pub fn missing_field(title: &str, platform: SideloadPlatform, executable: &str, url: &str) -> Option<&'static str> {
+    missing(title, platform, executable, url).map(|m| match m {
+        Missing::Title => tr!("Add a title"),
+        Missing::Url => tr!("Add the game URL"),
+        Missing::Executable => tr!("Select the executable"),
+    })
+}
+
+/// [`missing_field`] as a sentence for the status line.
+pub fn missing_hint(title: &str, platform: SideloadPlatform, executable: &str, url: &str) -> Option<&'static str> {
+    missing(title, platform, executable, url).map(|m| match m {
+        Missing::Title => tr!("Add a title to continue."),
+        Missing::Url => tr!("Add the game URL to continue."),
+        Missing::Executable => tr!("Select the executable to continue."),
+    })
 }
 
 /// Parent folder shown as "Install folder" (Heroic's `folder_name`).
@@ -125,7 +151,7 @@ pub fn platform_label(p: SideloadPlatform) -> &'static str {
     match p {
         SideloadPlatform::Linux => "Linux",
         SideloadPlatform::Windows => "Windows",
-        SideloadPlatform::Browser => "Browser",
+        SideloadPlatform::Browser => tr!("Browser"),
     }
 }
 
@@ -207,9 +233,9 @@ mod tests {
     #[test]
     fn form_needs_title_and_what_to_run() {
         use SideloadPlatform::*;
-        assert_eq!(missing_field(" ", Linux, "/x", ""), Some("Add a title"));
-        assert_eq!(missing_field("G", Windows, " ", ""), Some("Select the executable"));
-        assert_eq!(missing_field("G", Browser, "", ""), Some("Add the game URL"));
+        assert_eq!(missing_field(" ", Linux, "/x", ""), Some(tr!("Add a title")));
+        assert_eq!(missing_field("G", Windows, " ", ""), Some(tr!("Select the executable")));
+        assert_eq!(missing_field("G", Browser, "", ""), Some(tr!("Add the game URL")));
         assert_eq!(missing_field("G", Browser, "", "x.com"), None);
         assert_eq!(missing_field("G", Linux, "/x", ""), None);
     }

@@ -10,6 +10,7 @@ use anyhow::{anyhow, Result};
 use chrono::{DateTime, Datelike, Local};
 use heronite_data::models::BackupSettings;
 use heronite_data::{settings, DataPaths};
+use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 use crate::iso::iso_millis;
@@ -130,6 +131,17 @@ pub fn copy_config(source: &Path, destination: &Path) -> Result<()> {
     copy_tree(source, source, destination)
 }
 
+/// The user-facing text of one of this module's own errors (the copy recorded
+/// in `settings.json` stays in English).
+fn localized_error(message: &str) -> String {
+    match message {
+        "Backup folder cannot be inside the data folder" => tr!("Backup folder cannot be inside the data folder").to_string(),
+        "Data folder was not found" => tr!("Data folder was not found").to_string(),
+        "Backup path is not a folder" => tr!("Backup path is not a folder").to_string(),
+        other => other.to_string(),
+    }
+}
+
 /// `runCollectionBackup`: copies `paths.root` (the data folder) to
 /// `<folder>/heronite-YYYY-MM-DD` when `force` or due, and records the
 /// outcome in `settings.json`.
@@ -174,7 +186,7 @@ pub fn run_collection_backup(paths: &DataPaths, force: bool, now: DateTime<Local
             let message = format!("{e:#}");
             let _ = record_collection_backup(paths, &BackupRecord { at, path: None, error: Some(message.clone()) });
             log::error!("Collection backup failed: {message}");
-            CollectionBackupResult { error: Some(message), ..Default::default() }
+            CollectionBackupResult { error: Some(localized_error(&message)), ..Default::default() }
         }
     }
 }

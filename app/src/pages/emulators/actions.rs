@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use heronite_emulation::{duplicate_user_emulator, run_rom_scanners, AutoScanReport};
+use heronite_i18n::{tr, trn};
 
 use super::{scan_notice, EmulatorsPage, Notice};
 use crate::pages::PageEvent;
@@ -14,7 +15,7 @@ impl EmulatorsPage {
             let res = cx.background_spawn(async move { duplicate_user_emulator(&paths, &id) }).await;
             this.update(cx, |this, cx| {
                 match res {
-                    Ok(e) => this.notice = Some(Notice { lines: vec![format!("Created {}.", e.name)], error: false }),
+                    Ok(e) => this.notice = Some(Notice { lines: vec![tr!("Created {name}.", name = e.name)], error: false }),
                     Err(e) => this.notice = Some(Notice { lines: vec![format!("{e:#}")], error: true }),
                 }
                 this.reload(cx);
@@ -55,7 +56,7 @@ impl EmulatorsPage {
                 this.busy = None;
                 let notice = scan_notice(&report);
                 if report.imported > 0 {
-                    this.toast(format!("Added {} new game(s)", report.imported), false, cx);
+                    this.toast(trn!(report.imported, "Added {n} new game", "Added {n} new games"), false, cx);
                     cx.emit(PageEvent::LibraryChanged);
                 }
                 this.notice = Some(notice);
@@ -70,6 +71,6 @@ impl EmulatorsPage {
 
     pub(super) fn scan_all(&mut self, cx: &mut Context<Self>) {
         let ids = self.summaries.iter().flat_map(|s| s.scanners.iter().map(|x| x.id.clone())).collect();
-        self.scan(ids, "Scanning all ROM folders\u{2026}", cx);
+        self.scan(ids, tr!("Scanning all ROM folders\u{2026}"), cx);
     }
 }

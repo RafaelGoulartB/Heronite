@@ -7,6 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::game_config::{self, Settings};
 use heronite_data::sideload::{self, PrefixOutcome, SideloadPlatform, SideloadSpec};
+use heronite_i18n::tr;
 use heronite_launch::settings::GameSettings;
 use heronite_launch::wine_tools::{build_tool_command, WineTool};
 use heronite_launch::{PlanContext, SystemProbe};
@@ -74,7 +75,7 @@ impl AddGameDialog {
                 this.saving = false;
                 match res {
                     Ok(()) => cx.emit(DialogEvent::ChangedAndClose),
-                    Err(err) => this.error = format!("Could not save the game: {err:#}"),
+                    Err(err) => this.error = tr!("Could not save the game: {error}", error = format!("{err:#}")),
                 }
                 cx.notify();
             })
@@ -116,7 +117,7 @@ impl AddGameDialog {
                         }
                         cx.emit(DialogEvent::ChangedAndClose);
                     }
-                    Err(err) => this.error = format!("Could not remove the game: {err:#}"),
+                    Err(err) => this.error = tr!("Could not remove the game: {error}", error = format!("{err:#}")),
                 }
                 cx.notify();
             })
@@ -146,7 +147,7 @@ impl AddGameDialog {
             let _ = tx.send(run_exe_blocking(&paths, &home, &map, &exe));
         });
         cx.spawn(async move |this, cx| {
-            let res = rx.await.unwrap_or_else(|_| Err("The installer was interrupted".into()));
+            let res = rx.await.unwrap_or_else(|_| Err(tr!("The installer was interrupted").into()));
             this.update(cx, |this, cx| {
                 this.installer_running = false;
                 match res {
@@ -193,9 +194,10 @@ fn run_exe_blocking(paths: &heronite_data::DataPaths, home: &str, map: &Settings
     if let Some(dir) = c.cwd.as_deref().filter(|d| Path::new(d).is_dir()) {
         cmd.current_dir(dir);
     }
-    let mut child = cmd.spawn().map_err(|e| format!("Could not start {}: {e}", c.program))?;
+    let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
     let status = child.wait().map_err(|e| format!("{}: {e}", c.program))?;
-    let mut text = if status.success() { "The program finished.".to_string() } else { format!("The program exited with {status}.") };
+    let mut text =
+        if status.success() { tr!("The program finished.").to_string() } else { tr!("The program exited with {status}.", status) };
     for n in built.notes {
         text.push_str(&format!(" {n}."));
     }

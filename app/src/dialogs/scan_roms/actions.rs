@@ -5,6 +5,7 @@ use heronite_emulation::{
     add_detected_emulators, import_scanned_roms, preview_rom_scan, upsert_user_emulator, RomScanArgs, RomScanImportArgs, SystemEnv,
     UpsertUserEmulatorArgs,
 };
+use heronite_i18n::tr;
 use heronite_launch::emulators::UserEmulatorProfile;
 
 use super::{text_of, ScanInitial, ScanRomsDialog};
@@ -23,7 +24,7 @@ impl ScanRomsDialog {
                     Ok(list) => {
                         this.reload(true, false, cx);
                         if list.is_empty() {
-                            this.error = "No emulators were found on PATH or Flatpak. Add one manually.".into();
+                            this.error = tr!("No emulators were found on PATH or Flatpak. Add one manually.").into();
                         }
                     }
                     Err(err) => this.error = format!("{err:#}"),

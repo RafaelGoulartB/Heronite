@@ -8,6 +8,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::DataPaths;
 use heronite_emulation::{remove_rom_scanner, remove_user_emulator};
+use heronite_i18n::{tr, trn};
 
 use super::DialogEvent;
 use crate::theme;
@@ -35,14 +36,18 @@ impl EventEmitter<DialogEvent> for EmulatorConfirmDialog {}
 
 /// Text of the emulator removal confirmation.
 pub fn remove_emulator_message(name: &str, games: usize, folders: usize) -> String {
-    let mut text = format!("Remove {name}?");
+    let mut text = tr!("Remove {name}?", name);
     if folders > 0 {
-        text.push_str(&format!(" Its {folders} ROM folder{} will be removed too.", if folders == 1 { "" } else { "s" }));
+        text.push(' ');
+        text.push_str(&trn!(folders, "Its {n} ROM folder will be removed too.", "Its {n} ROM folders will be removed too."));
     }
-    match games {
-        0 => {}
-        1 => text.push_str(" 1 game uses it. It stays in your Collection and keeps the executable it was added with."),
-        n => text.push_str(&format!(" {n} games use it. They stay in your Collection and keep the executable they were added with.")),
+    if games > 0 {
+        text.push(' ');
+        text.push_str(&trn!(
+            games,
+            "{n} game uses it. It stays in your Collection and keeps the executable it was added with.",
+            "{n} games use it. They stay in your Collection and keep the executable they were added with."
+        ));
     }
     text
 }
@@ -52,7 +57,7 @@ impl EmulatorConfirmDialog {
         Self {
             paths,
             action: ConfirmAction::RemoveEmulator { id },
-            title: "Remove emulator".into(),
+            title: tr!("Remove emulator").into(),
             message: remove_emulator_message(name, games, folders),
             working: false,
             error: None,
@@ -64,8 +69,8 @@ impl EmulatorConfirmDialog {
         Self {
             paths,
             action: ConfirmAction::RemoveScanner { id },
-            title: "Remove ROM folder".into(),
-            message: format!("Stop scanning {directory}? Games already added stay in the Collection."),
+            title: tr!("Remove ROM folder").into(),
+            message: tr!("Stop scanning {directory}? Games already added stay in the Collection.", directory),
             working: false,
             error: None,
             console_list: Default::default(),
@@ -123,9 +128,11 @@ impl Render for EmulatorConfirmDialog {
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(button("emu-confirm-no", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(
-                button("emu-confirm-yes", ButtonKind::Danger, if self.working { "Removing\u{2026}" } else { "Remove" })
+                button("emu-confirm-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+            )
+            .child(
+                button("emu-confirm-yes", ButtonKind::Danger, if self.working { tr!("Removing\u{2026}") } else { tr!("Remove") })
                     .on_click(cx.listener(|this, _, _, cx| this.confirm(cx))),
             );
         let entity = cx.entity().downgrade();

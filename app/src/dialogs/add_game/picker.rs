@@ -10,6 +10,7 @@ use std::time::Duration;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::{MetadataService, WebImage};
 
@@ -122,7 +123,7 @@ impl ImagePicker {
                 }
                 this.loading = false;
                 match res {
-                    Ok(list) if list.is_empty() => this.error = "No images found. Try another search.".into(),
+                    Ok(list) if list.is_empty() => this.error = tr!("No images found. Try another search.").into(),
                     Ok(list) => this.results = list,
                     Err(err) => this.error = format!("{err:#}"),
                 }
@@ -157,7 +158,7 @@ impl Render for ImagePicker {
             .child(action_button(
                 "ag-pick-search",
                 ButtonKind::Glass,
-                "Search",
+                tr!("Search"),
                 !self.loading,
                 cx.listener(|this, _, _, cx| this.search(cx)),
             ))
@@ -180,7 +181,7 @@ impl Render for ImagePicker {
                         Animation::new(Duration::from_secs(1)).repeat(),
                         |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
                     ))
-                    .child("Searching\u{2026}"),
+                    .child(tr!("Searching\u{2026}")),
             );
         } else {
             let shown = self.results.len().min(self.visible);
@@ -221,15 +222,16 @@ impl Render for ImagePicker {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(div().text_size(px(16.)).text_color(white()).child(format!(
-                "Pick an image from the web for the {}. It is used as a link; nothing is downloaded.",
-                if self.slot == Slot::Square { "cover (square art)" } else { "background (cover/hero art)" }
-            )))
+            .child(div().text_size(px(16.)).text_color(white()).child(if self.slot == Slot::Square {
+                tr!("Pick an image from the web for the cover (square art). It is used as a link; nothing is downloaded.")
+            } else {
+                tr!("Pick an image from the web for the background (cover/hero art). It is used as a link; nothing is downloaded.")
+            }))
             .child(toolbar)
             .child(grid);
         if !self.loading && self.visible < self.results.len() {
             body = body.child(div().flex().justify_center().child(
-                button("ag-pick-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                button("ag-pick-more", ButtonKind::Glass, tr!("Load more")).min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
                     this.visible += PAGE_SIZE;
                     cx.notify();
                 })),
@@ -245,21 +247,21 @@ impl Render for ImagePicker {
             .child(action_button(
                 "ag-pick-cancel",
                 ButtonKind::Ghost,
-                "Cancel",
+                tr!("Cancel"),
                 true,
                 cx.listener(|_, _, _, cx| cx.emit(PickerEvent::Close)),
             ))
             .child(action_button(
                 "ag-pick-select",
                 ButtonKind::Primary,
-                "Select",
+                tr!("Select"),
                 self.selected.is_some() && !self.loading,
                 cx.listener(|this, _, _, cx| this.pick(None, cx)),
             ));
         let entity = cx.entity().downgrade();
         let vw = f32::from(window.viewport_size().width);
         dialog(
-            DialogProps { id: "add-game-picker".into(), title: "Search images".into(), width: 960f32.min(vw * 0.96), height: None },
+            DialogProps { id: "add-game-picker".into(), title: tr!("Search images").into(), width: 960f32.min(vw * 0.96), height: None },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {

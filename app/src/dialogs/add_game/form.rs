@@ -3,6 +3,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::sideload::SideloadPlatform;
+use heronite_i18n::tr;
 
 use super::logic::*;
 use super::picker::Slot;
@@ -26,7 +27,7 @@ impl AddGameDialog {
             PLATFORMS.iter().map(|p| (SharedString::from(platform_label(*p)), *p == self.platform)).collect();
         select_field(
             "ag-platform",
-            Some("Platform"),
+            Some(tr!("Platform")),
             platform_label(self.platform),
             false,
             self.open_select == Some(Select::Platform),
@@ -55,15 +56,15 @@ impl AddGameDialog {
                 cx.notify();
             }))
             .child(icon(if open { Icon::FaChevronUp } else { Icon::FaChevronDown }, px(12.), crate::theme::text_primary()))
-            .child("Show Wine settings");
+            .child(tr!("Show Wine settings"));
         let mut col = crate::ui::controls::card_box().gap(px(12.)).py(px(12.)).child(header);
         if !open {
             return col;
         }
         let shared = self.shared_prefix;
-        let mut share_label = "Use shared Wine prefix".to_string();
+        let mut share_label = tr!("Use shared Wine prefix").to_string();
         if let Some(w) = self.global.get("wineVersion").map(|_| wine_of(&self.global)) {
-            share_label = format!("Use shared Wine prefix ({})", display_wine_name(&w.name));
+            share_label = tr!("Use shared Wine prefix ({name})", name = display_wine_name(&w.name));
         }
         col = col.child(checkbox("ag-shared", shared, share_label).on_click(cx.listener(|this, _, window, cx| {
             let on = !this.shared_prefix;
@@ -71,18 +72,18 @@ impl AddGameDialog {
         })));
         if shared {
             col = col.child(
-                panel().child(meta_text(
-                    "Only use this option if you know what you are doing. Sharing the same prefix for multiple games can create problems if their dependencies are incompatible.",
-                )),
+                panel().child(meta_text(tr!(
+                    "Only use this option if you know what you are doing. Sharing the same prefix for multiple games can create problems if their dependencies are incompatible."
+                ))),
             );
         }
         if self.wine.as_ref().is_some_and(|w| w.kind == "crossover") {
-            col = col.child(meta_text("CrossOver bottles are chosen in Game settings after the game is added."));
+            col = col.child(meta_text(tr!("CrossOver bottles are chosen in Game settings after the game is added.")));
         } else {
             let has = !text_of(&self.prefix, cx).is_empty();
             col = col.child(path_field(
                 "ag-prefix-pick",
-                Some("WinePrefix"),
+                Some(tr!("WinePrefix")),
                 &self.prefix,
                 has,
                 shared,
@@ -90,7 +91,7 @@ impl AddGameDialog {
                     if has {
                         this.prefix.update(cx, |s, cx| s.set_value("", window, cx));
                     } else {
-                        choose_path(window, cx, true, "Select WinePrefix Folder", |this: &mut Self, path, window, cx| {
+                        choose_path(window, cx, true, tr!("Select WinePrefix Folder"), |this: &mut Self, path, window, cx| {
                             this.prefix.update(cx, |s, cx| s.set_value(path, window, cx));
                         });
                     }
@@ -103,9 +104,9 @@ impl AddGameDialog {
         let options = wine_options(list.as_deref().unwrap_or(&[]), &current);
         let none_found = list.as_ref().is_some_and(|l| l.is_empty()) && self.wine.is_none();
         let shown = if loading {
-            "Loading\u{2026}".to_string()
+            tr!("Loading\u{2026}").to_string()
         } else if self.wine.is_none() {
-            "No Wine version found".to_string()
+            tr!("No Wine version found").to_string()
         } else {
             display_wine_name(&current.name)
         };
@@ -115,7 +116,7 @@ impl AddGameDialog {
             .collect();
         col = col.child(select_field(
             "ag-wine",
-            Some("Wine Version"),
+            Some(tr!("Wine Version")),
             shown,
             shared || loading || options.is_empty() || none_found,
             self.open_select == Some(Select::Wine),
@@ -140,7 +141,7 @@ impl AddGameDialog {
                 div()
                     .text_size(px(13.33))
                     .text_color(theme::danger_text())
-                    .child("No Wine version was found, download one from the Wine Manager"),
+                    .child(tr!("No Wine version was found, download one from the Wine Manager")),
             );
         }
         col
@@ -170,7 +171,7 @@ impl AddGameDialog {
                             .text_size(px(14.))
                             .font_weight(theme::W_BOLD)
                             .text_color(crate::theme::text_primary())
-                            .child(if title.trim().is_empty() { "Title".to_string() } else { title.clone() }),
+                            .child(if title.trim().is_empty() { tr!("Title").to_string() } else { title.clone() }),
                     )
                     .child(meta_text(platform_label(self.platform))),
             );
@@ -179,18 +180,18 @@ impl AddGameDialog {
         if let Some(note) = self.top_note() {
             right = right.child(panel().child(div().text_size(px(14.)).line_height(px(20.)).text_color(white()).child(note)));
         }
-        right = right.child(div().flex().flex_col().child(field_label("Game/App Title")).child(input_box(&self.title, false)));
+        right = right.child(div().flex().flex_col().child(field_label(tr!("Game/App Title"))).child(input_box(&self.title, false)));
 
         let finding = self.finding;
         right = right
             .child(self.art_field(
                 "ag-square",
-                "Square Art (paste an URL, pick a file or click the image to search the web)",
+                tr!("Square Art (paste an URL, pick a file or click the image to search the web)"),
                 &self.square,
                 Slot::Square,
                 cx,
             ))
-            .child(self.art_field("ag-hero", "Cover/Hero Art (optional, wide background)", &self.hero, Slot::Cover, cx))
+            .child(self.art_field("ag-hero", tr!("Cover/Hero Art (optional, wide background)"), &self.hero, Slot::Cover, cx))
             .child(
                 div()
                     .flex()
@@ -200,21 +201,21 @@ impl AddGameDialog {
                     .child(action_button(
                         "ag-find-art",
                         ButtonKind::Glass,
-                        if finding { "Searching\u{2026}" } else { "Find art for this title" },
+                        if finding { tr!("Searching\u{2026}") } else { tr!("Find art for this title") },
                         !finding && !title.trim().is_empty(),
                         cx.listener(|this, _, window, cx| this.find_art(window, cx)),
                     ))
                     .child(action_button(
                         "ag-search-square",
                         ButtonKind::Glass,
-                        "Search the web: cover",
+                        tr!("Search the web: cover"),
                         true,
                         cx.listener(|this, _, window, cx| this.open_picker(Slot::Square, window, cx)),
                     ))
                     .child(action_button(
                         "ag-search-hero",
                         ButtonKind::Glass,
-                        "Search the web: background",
+                        tr!("Search the web: background"),
                         true,
                         cx.listener(|this, _, window, cx| this.open_picker(Slot::Cover, window, cx)),
                     )),
@@ -228,9 +229,9 @@ impl AddGameDialog {
 
         if self.platform == SideloadPlatform::Browser {
             right = right
-                .child(labeled("BrowserURL", input_box(&self.url, false)))
-                .child(labeled("Custom User Agent", input_box(&self.user_agent, false)))
-                .child(crate::ui::controls::card([checkbox("ag-fullscreen", self.fullscreen, "Launch Fullscreen (F11 to exit)")
+                .child(labeled(tr!("BrowserURL"), input_box(&self.url, false)))
+                .child(labeled(tr!("Custom User Agent"), input_box(&self.user_agent, false)))
+                .child(crate::ui::controls::card([checkbox("ag-fullscreen", self.fullscreen, tr!("Launch Fullscreen (F11 to exit)"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.fullscreen = !this.fullscreen;
                         cx.notify();
@@ -241,7 +242,7 @@ impl AddGameDialog {
             let has = !exe.is_empty();
             right = right.child(path_field(
                 "ag-exe-pick",
-                Some("Select Executable"),
+                Some(tr!("Select Executable")),
                 &self.exe,
                 has,
                 false,
@@ -249,14 +250,14 @@ impl AddGameDialog {
                     if has {
                         this.exe.update(cx, |s, cx| s.set_value("", window, cx));
                     } else {
-                        choose_path(window, cx, false, "Select Executable", |this: &mut Self, path, window, cx| {
+                        choose_path(window, cx, false, tr!("Select Executable"), |this: &mut Self, path, window, cx| {
                             this.exe.update(cx, |s, cx| s.set_value(path, window, cx));
                         });
                     }
                 }),
             ));
             if let Some(folder) = install_folder(&exe) {
-                right = right.child(meta_text(format!("Install folder: {folder}")));
+                right = right.child(meta_text(tr!("Install folder: {folder}", folder)));
             }
         }
 
@@ -271,19 +272,19 @@ impl AddGameDialog {
 
     pub(super) fn remove_confirmation(&self, cx: &mut Context<Self>) -> Div {
         let title = text_of(&self.title, cx);
-        let mut col = div().flex().flex_col().gap(px(16.)).child(div().text_size(px(14.)).line_height(px(20.)).text_color(crate::theme::text_primary()).child(format!(
-            "Remove {} from your library? The game's files are not deleted. Its playtime, status, notes, images and Collection data are removed, and so are its shortcuts.",
-            if title.trim().is_empty() { "this game" } else { title.trim() }
+        let mut col = div().flex().flex_col().gap(px(16.)).child(div().text_size(px(14.)).line_height(px(20.)).text_color(crate::theme::text_primary()).child(tr!(
+            "Remove {title} from your library? The game's files are not deleted. Its playtime, status, notes, images and Collection data are removed, and so are its shortcuts.",
+            title = if title.trim().is_empty() { tr!("this game") } else { title.trim() }
         )));
         if let Some(prefix) = &self.removable_prefix {
             col = col
-                .child(checkbox("ag-remove-prefix", self.remove_prefix_too, "Also delete the Wine prefix").on_click(cx.listener(
+                .child(checkbox("ag-remove-prefix", self.remove_prefix_too, tr!("Also delete the Wine prefix")).on_click(cx.listener(
                     |this, _, _, cx| {
                         this.remove_prefix_too = !this.remove_prefix_too;
                         cx.notify();
                     },
                 )))
-                .child(meta_text(format!("{prefix}  (saves and settings inside it will be lost)")));
+                .child(meta_text(tr!("{prefix}  (saves and settings inside it will be lost)", prefix)));
         }
         if !self.error.is_empty() {
             col = col.child(div().text_size(px(14.)).text_color(theme::danger_text()).child(self.error.clone()));

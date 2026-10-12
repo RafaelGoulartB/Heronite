@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::super::DialogEvent;
 use super::EmulatorConfirmDialog;
@@ -14,8 +15,8 @@ use crate::theme;
 impl EmulatorConfirmDialog {
     fn console_rows(&self) -> Vec<Row> {
         vec![
-            Row::action("cancel", "Cancel"),
-            Row::action("confirm", if self.working { "Removing\u{2026}" } else { "Remove" }).danger().enabled(!self.working),
+            Row::action("cancel", tr!("Cancel")),
+            Row::action("confirm", if self.working { tr!("Removing\u{2026}") } else { tr!("Remove") }).danger().enabled(!self.working),
         ]
     }
 
@@ -47,6 +48,6 @@ impl PadTarget for EmulatorConfirmDialog {
     }
 
     fn hints(&self, _: &App) -> Vec<Hint> {
-        vec![hint(Btn::A, "Select"), hint(Btn::B, "Cancel")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Cancel"))]
     }
 }

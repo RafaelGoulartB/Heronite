@@ -5,6 +5,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::{tr, trn};
 
 use super::{profile_label, text_of, ScanRomsDialog};
 use crate::console::browser::PickKind;
@@ -37,61 +38,65 @@ impl ScanRomsDialog {
 
         let mut rows = Vec::new();
         rows.push(if names.is_empty() {
-            Row::choice("emulator", "Emulator", vec!["No emulators yet".into()], 0).enabled(false)
+            Row::choice("emulator", tr!("Emulator"), vec![tr!("No emulators yet").into()], 0).enabled(false)
         } else {
-            Row::choice("emulator", "Emulator", names, emu_index)
+            Row::choice("emulator", tr!("Emulator"), names, emu_index)
         });
         rows.push(if profiles.is_empty() {
-            Row::choice("profile", "Platform / profile", vec!["\u{2014}".into()], 0).enabled(false)
+            Row::choice("profile", tr!("Platform / profile"), vec!["\u{2014}".into()], 0).enabled(false)
         } else {
-            Row::choice("profile", "Platform / profile", profiles, profile_index)
+            Row::choice("profile", tr!("Platform / profile"), profiles, profile_index)
         });
-        rows.push(Row::text("dir", "ROM folder", dir.clone()).icon(Icon::FolderOpen));
-        rows.push(Row::toggle("sub", "Include subfolders", self.scan_subfolders));
-        rows.push(Row::toggle("merge", "Merge discs into one game", self.merge_related));
-        rows.push(Row::toggle("auto", "Scan this folder when the Collection refreshes", self.auto_scan));
+        rows.push(Row::text("dir", tr!("ROM folder"), dir.clone()).icon(Icon::FolderOpen));
+        rows.push(Row::toggle("sub", tr!("Include subfolders"), self.scan_subfolders));
+        rows.push(Row::toggle("merge", tr!("Merge discs into one game"), self.merge_related));
+        rows.push(Row::toggle("auto", tr!("Scan this folder when the Collection refreshes"), self.auto_scan));
         let can_scan = !self.emulator_id.is_empty() && !dir.is_empty() && !busy;
         rows.push(
-            Row::action("scan", if busy && self.preview.is_none() { "Scanning\u{2026}" } else { "Scan folder" })
+            Row::action("scan", if busy && self.preview.is_none() { tr!("Scanning\u{2026}") } else { tr!("Scan folder") })
                 .icon(Icon::Refresh)
                 .enabled(can_scan),
         );
         let missing = self.state.detected.iter().filter(|d| !d.already_added).count();
-        let detect = Row::action("detect", if self.detecting { "Detecting\u{2026}" } else { "Detect emulators on this PC" })
+        let detect = Row::action("detect", if self.detecting { tr!("Detecting\u{2026}") } else { tr!("Detect emulators on this PC") })
             .icon(Icon::TravelExplore)
             .enabled(!self.detecting);
-        rows.push(if missing > 0 { detect.desc(format!("{missing} emulator(s) found on this PC.")) } else { detect });
+        rows.push(if missing > 0 {
+            detect.desc(trn!(missing, "{n} emulator found on this PC.", "{n} emulators found on this PC."))
+        } else {
+            detect
+        });
 
         if let Some(p) = &self.preview {
-            rows.push(Row::header(format!("{} game(s) found", p.games.len())));
-            rows.push(Row::action("all", "Select all").icon(Icon::Check));
-            rows.push(Row::action("none", "Select none").icon(Icon::Close));
+            rows.push(Row::header(trn!(p.games.len(), "{n} game found", "{n} games found")));
+            rows.push(Row::action("all", tr!("Select all")).icon(Icon::Check));
+            rows.push(Row::action("none", tr!("Select none")).icon(Icon::Close));
             for (i, g) in p.games.iter().enumerate() {
                 let sub = if g.already_imported {
-                    "Already in the Collection".to_string()
+                    tr!("Already in the Collection").to_string()
                 } else if g.roms.len() > 1 {
-                    format!("{} discs", g.roms.len())
+                    trn!(g.roms.len(), "{n} disc", "{n} discs")
                 } else {
                     g.roms.first().map(|r| r.path.clone()).unwrap_or_default()
                 };
                 let id = format!("g:{i}");
                 rows.push(if g.already_imported {
-                    Row::info(id, g.title.clone(), "In the Collection").desc(sub)
+                    Row::info(id, g.title.clone(), tr!("In the Collection")).desc(sub)
                 } else {
                     Row::toggle(id, g.title.clone(), g.import).desc(sub)
                 });
             }
             let n = self.selected_games();
-            rows.push(Row::action("import", format!("Add {n} to the Collection")).icon(Icon::Add).enabled(n > 0 && !busy));
+            rows.push(Row::action("import", tr!("Add {n} to the Collection", n)).icon(Icon::Add).enabled(n > 0 && !busy));
         }
         rows
     }
 
     pub(super) fn render_console(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows(cx);
-        let mut body = div().flex().flex_col().flex_1().min_h_0().gap(u(8.)).child(kit::body_text(
-            "Pick an emulator, its platform profile and the folder with the ROMs. The Collection scans that folder and adds the games.",
-        ));
+        let mut body = div().flex().flex_col().flex_1().min_h_0().gap(u(8.)).child(kit::body_text(tr!(
+            "Pick an emulator, its platform profile and the folder with the ROMs. The Collection scans that folder and adds the games."
+        )));
         if !self.error.is_empty() {
             body = body.child(kit::body_text(self.error.clone()).text_color(theme::danger_text()));
         }
@@ -99,7 +104,7 @@ impl ScanRomsDialog {
         div()
             .absolute()
             .inset_0()
-            .child(kit::modal("Add emulated games", 820., body.child(list.flex_1().min_h_0())))
+            .child(kit::modal(tr!("Add emulated games"), 820., body.child(list.flex_1().min_h_0())))
             .children(self.layer.view())
             .into_any_element()
     }
@@ -153,7 +158,7 @@ impl PadTarget for ScanRomsDialog {
                     let input = self.directory.clone();
                     open_browser(
                         &mut self.layer,
-                        "Choose the ROM folder",
+                        tr!("Choose the ROM folder"),
                         PickKind::Folder,
                         start.as_deref(),
                         window,
@@ -182,12 +187,12 @@ impl PadTarget for ScanRomsDialog {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        let mut h = vec![hint(Btn::A, "Select"), hint(Btn::LeftRight, "Change")];
+        let mut h = vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change"))];
         let n = self.selected_games();
         if self.preview.is_some() && n > 0 && !self.loading {
-            h.push(hint(Btn::Y, format!("Add {n}")));
+            h.push(hint(Btn::Y, tr!("Add {n}", n)));
         }
-        h.push(hint(Btn::B, "Close"));
+        h.push(hint(Btn::B, tr!("Close")));
         h
     }
 }

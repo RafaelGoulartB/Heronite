@@ -4,6 +4,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::models::GameInfo;
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 
 use super::logic::*;
@@ -35,7 +36,7 @@ impl AddGameDialog {
     }
 
     fn choose_art_file(&mut self, slot: Slot, window: &mut Window, cx: &mut Context<Self>) {
-        choose_path(window, cx, false, "Select Image", move |this: &mut Self, path, window, cx| {
+        choose_path(window, cx, false, tr!("Select Image"), move |this: &mut Self, path, window, cx| {
             let input = if slot == Slot::Square { this.square.clone() } else { this.hero.clone() };
             input.update(cx, |s, cx| s.set_value(file_url(&path), window, cx));
         });
@@ -94,7 +95,8 @@ impl AddGameDialog {
                 };
                 let a = fill(&this.square, found.art_square.clone(), window, cx);
                 let b = fill(&this.hero, found.art_cover.clone(), window, cx);
-                this.notice = if a || b { "Art found. You can change it below.".into() } else { "No art found for this title.".into() };
+                this.notice =
+                    if a || b { tr!("Art found. You can change it below.").into() } else { tr!("No art found for this title.").into() };
                 cx.notify();
             })
             .ok();
@@ -134,7 +136,7 @@ impl AddGameDialog {
                         .text_size(px(13.))
                         .text_color(theme::text_muted())
                         .child(icon(Icon::FaSearch, px(18.), theme::text_muted()))
-                        .child(if slot == Slot::Square { "Cover" } else { "Background" }),
+                        .child(if slot == Slot::Square { tr!("Cover") } else { tr!("Background") }),
                 )
             })
     }

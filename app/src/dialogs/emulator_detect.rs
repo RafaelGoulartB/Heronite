@@ -10,6 +10,7 @@ use gpui_kit::*;
 use heronite_data::DataPaths;
 use heronite_emulation::discover::{add_discovered, discover_emulators, discover_in_folder};
 use heronite_emulation::{list_user_emulators, DetectedEmulator, SystemEnv};
+use heronite_i18n::{tr, trn};
 
 use super::DialogEvent;
 use crate::theme;
@@ -100,7 +101,7 @@ impl DetectEmulatorsDialog {
 
     /// Opens the folder chooser; the folder picked is searched for emulators.
     pub fn pick_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        choose_path(window, cx, true, "Folder with emulators", |this: &mut Self, p, _, cx| this.scan_folder(p, cx));
+        choose_path(window, cx, true, tr!("Folder with emulators"), |this: &mut Self, p, _, cx| this.scan_folder(p, cx));
     }
 
     fn scan_folder(&mut self, folder: String, cx: &mut Context<Self>) {
@@ -121,7 +122,7 @@ impl DetectEmulatorsDialog {
                         let before = this.rows.len();
                         merge_rows(&mut this.rows, items);
                         if this.rows.len() == before {
-                            this.error = format!("No new emulators found in {folder}.");
+                            this.error = tr!("No new emulators found in {folder}.", folder);
                         }
                         this.folders_done.push(folder);
                     }
@@ -172,7 +173,38 @@ fn profiles_summary(item: &DetectedEmulator) -> String {
     if names.len() <= 4 {
         names.join(" \u{b7} ")
     } else {
-        format!("{} \u{b7} +{} more", names[..4].join(" \u{b7} "), names.len() - 4)
+        format!("{} \u{b7} {}", names[..4].join(" \u{b7} "), tr!("+{n} more", n = names.len() - 4))
+    }
+}
+
+fn source_label(source: &str) -> String {
+    match source {
+        "chosen folder" => tr!("chosen folder").to_string(),
+        "next to a configured emulator" => tr!("next to a configured emulator").to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn add_label(adding: bool, selected: usize) -> String {
+    if adding {
+        tr!("Adding\u{2026}").to_string()
+    } else {
+        trn!(selected, "Add {n} emulator", "Add {n} emulators")
+    }
+}
+
+impl DetectEmulatorsDialog {
+    fn status_text(&self) -> String {
+        if self.scanning {
+            tr!("Looking in PATH, Flatpak and the usual folders\u{2026}").to_string()
+        } else if let Some(folder) = &self.folder_scanning {
+            tr!("Searching {folder}\u{2026}", folder)
+        } else if self.rows.is_empty() {
+            tr!("No emulators found automatically. Scan a folder that contains them (for example your Emulation folder).").to_string()
+        } else {
+            let (found, pending) = (self.rows.len(), self.rows.iter().filter(|r| !r.item.already_added).count());
+            tr!("{found} found, {pending} not added yet.", found, pending)
+        }
     }
 }
 
@@ -228,7 +260,11 @@ impl Render for DetectEmulatorsDialog {
                                             .text_color(theme::text_primary())
                                             .child(r.item.name.clone()),
                                     )
-                                    .child(crate::pages::tag_pill(if added { "Already added".to_string() } else { r.item.source.clone() })),
+                                    .child(crate::pages::tag_pill(if added {
+                                        tr!("Already added").to_string()
+                                    } else {
+                                        source_label(&r.item.source)
+                                    })),
                             )
                             .child(div().text_size(px(12.)).text_color(theme::text_muted()).truncate().child(loc))
                             .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(profiles_summary(&r.item))),
@@ -236,21 +272,13 @@ impl Render for DetectEmulatorsDialog {
             );
         }
 
-        let status = if self.scanning {
-            "Looking in PATH, Flatpak and the usual folders\u{2026}".to_string()
-        } else if let Some(f) = &self.folder_scanning {
-            format!("Searching {f}\u{2026}")
-        } else if self.rows.is_empty() {
-            "No emulators found automatically. Scan a folder that contains them (for example your Emulation folder).".to_string()
-        } else {
-            format!("{} found, {} not added yet.", self.rows.len(), self.rows.iter().filter(|r| !r.item.already_added).count())
-        };
+        let status = self.status_text();
 
         let body = div()
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(paragraph("Emulators found on this PC. Tick the ones to add; each starts with the platforms of its catalog entry."))
+            .child(paragraph(tr!("Emulators found on this PC. Tick the ones to add; each starts with the platforms of its catalog entry.")))
             .child(
                 div()
                     .flex()
@@ -259,17 +287,17 @@ impl Render for DetectEmulatorsDialog {
                     .child(action_button(
                         "detect-folder",
                         ButtonKind::Glass,
-                        if self.folder_scanning.is_some() { "Searching\u{2026}" } else { "Scan a folder\u{2026}" },
+                        if self.folder_scanning.is_some() { tr!("Searching\u{2026}") } else { tr!("Scan a folder\u{2026}") },
                         !busy,
                         cx.listener(|this, _, window, cx| this.pick_folder(window, cx)),
                     ))
-                    .child(button("detect-all", ButtonKind::Glass, "Select all").on_click(cx.listener(|this, _, _, cx| {
+                    .child(button("detect-all", ButtonKind::Glass, tr!("Select all")).on_click(cx.listener(|this, _, _, cx| {
                         for r in this.rows.iter_mut().filter(|r| !r.item.already_added) {
                             r.selected = true;
                         }
                         cx.notify();
                     })))
-                    .child(button("detect-none", ButtonKind::Glass, "Select none").on_click(cx.listener(|this, _, _, cx| {
+                    .child(button("detect-none", ButtonKind::Glass, tr!("Select none")).on_click(cx.listener(|this, _, _, cx| {
                         for r in &mut this.rows {
                             r.selected = false;
                         }
@@ -285,11 +313,11 @@ impl Render for DetectEmulatorsDialog {
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(button("detect-close", ButtonKind::Ghost, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .child(button("detect-close", ButtonKind::Ghost, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "detect-add",
                 ButtonKind::Primary,
-                if self.adding { "Adding\u{2026}".to_string() } else { format!("Add {selected} emulator(s)") },
+                add_label(self.adding, selected),
                 selected > 0 && !busy,
                 cx.listener(|this, _, _, cx| this.add(cx)),
             ))
@@ -298,7 +326,7 @@ impl Render for DetectEmulatorsDialog {
         dialog(
             DialogProps {
                 id: "detect-emulators".into(),
-                title: "Detect emulators".into(),
+                title: tr!("Detect emulators").into(),
                 width: 720f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
                 height: None,
             },

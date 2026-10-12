@@ -9,6 +9,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_emulation::{get_emulation_state, EmulationState, RomScanPreview, SystemEnv};
+use heronite_i18n::{tr, trn};
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use super::{text_of, DialogCtx, DialogEvent};
@@ -182,7 +183,7 @@ pub(crate) fn profile_label(p: &UserEmulatorProfile) -> String {
     let platform = p.platform_name.as_deref().map(str::trim).unwrap_or("");
     let name = p.name.trim();
     if name.is_empty() {
-        return if platform.is_empty() || platform.eq_ignore_ascii_case("other") { "Profile".into() } else { platform.into() };
+        return if platform.is_empty() || platform.eq_ignore_ascii_case("other") { tr!("Profile").into() } else { platform.into() };
     }
     if platform.is_empty() || platform.eq_ignore_ascii_case("other") || platform.eq_ignore_ascii_case(name) {
         name.into()
@@ -216,7 +217,7 @@ impl Render for ScanRomsDialog {
         let scan_button = action_button(
             "scan-run",
             ButtonKind::Glass,
-            if busy && self.preview.is_none() { "Scanning…" } else { "Scan folder" },
+            if busy && self.preview.is_none() { tr!("Scanning…") } else { tr!("Scan folder") },
             can_scan,
             cx.listener(|this, _, _, cx| this.scan(cx)),
         );
@@ -226,11 +227,11 @@ impl Render for ScanRomsDialog {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(paragraph(
-                "Pick an emulator, its platform profile, and the folder with ROMs. Collection scans that folder and adds the games.",
-            ))
+            .child(paragraph(tr!(
+                "Pick an emulator, its platform profile, and the folder with ROMs. Collection scans that folder and adds the games."
+            )))
             .child(row)
-            .children((missing > 0).then(|| meta_text(format!("{missing} emulator(s) found on this PC."))))
+            .children((missing > 0).then(|| meta_text(trn!(missing, "{n} emulator found on this PC.", "{n} emulators found on this PC."))))
             .children(custom)
             .child(profile_select)
             .child(folder)
@@ -244,11 +245,11 @@ impl Render for ScanRomsDialog {
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(button("scan-close", ButtonKind::Ghost, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .child(button("scan-close", ButtonKind::Ghost, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "scan-import",
                 ButtonKind::Primary,
-                format!("Add {selected_count} to Collection"),
+                tr!("Add {n} to Collection", n = selected_count),
                 self.preview.is_some() && selected_count > 0 && !busy,
                 cx.listener(|this, _, _, cx| this.import(cx)),
             ))
@@ -257,7 +258,7 @@ impl Render for ScanRomsDialog {
         dialog(
             DialogProps {
                 id: "scan-roms".into(),
-                title: "Add emulated games".into(),
+                title: tr!("Add emulated games").into(),
                 width: 720f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
                 height: None,
             },

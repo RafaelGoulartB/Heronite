@@ -15,6 +15,7 @@ use heronite_emulation::catalog::emulator_definition;
 use heronite_emulation::detect::profiles_for_definition;
 use heronite_emulation::store::{insert_user_emulator, replace_user_emulator};
 use heronite_emulation::{list_rom_scanners, DetectedEmulator, RomScanner, SystemEnv};
+use heronite_i18n::{n_, tr};
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use super::{text_of, DialogEvent};
@@ -22,8 +23,8 @@ use crate::theme;
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::new_input;
 
-const KINDS: [(&str, &str); 3] = [("native", "Native (Linux)"), ("flatpak", "Flatpak"), ("wine", "Windows program (Wine)")];
-const WORKING_DIRS: [(&str, &str); 3] = [("", "Default"), ("emulator", "Emulator folder"), ("rom", "ROM folder")];
+const KINDS: [(&str, &str); 3] = [("native", n_!("Native (Linux)")), ("flatpak", "Flatpak"), ("wine", n_!("Windows program (Wine)"))];
+const WORKING_DIRS: [(&str, &str); 3] = [("", n_!("Default")), ("emulator", n_!("Emulator folder")), ("rom", n_!("ROM folder"))];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Menu {
@@ -86,7 +87,7 @@ impl EmulatorEditDialog {
             profiles,
             scanners: vec![],
             detected: vec![],
-            name: new_input(window, cx, &base.name, "Name"),
+            name: new_input(window, cx, &base.name, tr!("Name")),
             executable: new_input(window, cx, if base.launch_kind == "flatpak" { "" } else { &base.executable }, ""),
             install_dir: new_input(window, cx, base.install_dir.as_deref().unwrap_or(""), ""),
             flatpak_id: new_input(window, cx, base.flatpak_id.as_deref().unwrap_or(""), "org.example.Emulator"),
@@ -230,7 +231,7 @@ impl EmulatorEditDialog {
         if self.launch_kind == "flatpak" {
             let id = text_of(&self.flatpak_id, cx);
             if id.is_empty() {
-                self.error = "Enter the Flatpak application id (for example org.DolphinEmu.dolphin-emu).".into();
+                self.error = tr!("Enter the Flatpak application id (for example org.DolphinEmu.dolphin-emu).").into();
                 cx.notify();
                 return;
             }
@@ -239,7 +240,7 @@ impl EmulatorEditDialog {
         } else {
             let exe = text_of(&self.executable, cx);
             if exe.is_empty() {
-                self.error = "Choose the emulator's executable.".into();
+                self.error = tr!("Choose the emulator's executable.").into();
                 cx.notify();
                 return;
             }
@@ -249,7 +250,7 @@ impl EmulatorEditDialog {
         let dir = text_of(&self.install_dir, cx);
         emulator.install_dir = (!dir.is_empty()).then_some(dir);
         if let Some(bad) = self.profiles.iter().find(|p| p.name.trim().is_empty()) {
-            self.error = format!("Every profile needs a name ({}).", bad.platform_name.clone().unwrap_or_default());
+            self.error = tr!("Every profile needs a name ({platform}).", platform = bad.platform_name.clone().unwrap_or_default());
             cx.notify();
             return;
         }
@@ -305,7 +306,7 @@ impl Render for EmulatorEditDialog {
         dialog(
             DialogProps {
                 id: "emulator-edit".into(),
-                title: if self.create { "Add emulator" } else { "Edit emulator" }.into(),
+                title: if self.create { tr!("Add emulator") } else { tr!("Edit emulator") }.into(),
                 width: 720f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
                 height: None,
             },

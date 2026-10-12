@@ -23,6 +23,7 @@ use heronite_data::collection::Game;
 use heronite_data::game_config::{self, Settings};
 use heronite_data::models::GameInfo;
 use heronite_data::sideload::{self, SideloadPlatform};
+use heronite_i18n::tr;
 use heronite_launch::SystemProbe;
 use heronite_wine::WineInstallation;
 use serde_json::Value;
@@ -176,12 +177,12 @@ impl AddGameDialog {
         let suggested = suggested_prefix(&prefix_dir, &title, &app_name);
 
         let mut subs = Vec::new();
-        let title_in = new_input(window, cx, &title, "Add a title to your Game/App");
-        let square_in = new_input(window, cx, &square, "Paste an URL of an Image or select one from your computer");
-        let hero_in = new_input(window, cx, &hero, "Paste an URL of an Image or select one from your computer");
-        let exe_in = new_input(window, cx, &exe, "Select Executable");
-        let url_in = new_input(window, cx, &url, "Paste the Game URL here");
-        let ua_in = new_input(window, cx, &ua, "Write a custom user agent here to be used on this browser app/game");
+        let title_in = new_input(window, cx, &title, tr!("Add a title to your Game/App"));
+        let square_in = new_input(window, cx, &square, tr!("Paste an URL of an Image or select one from your computer"));
+        let hero_in = new_input(window, cx, &hero, tr!("Paste an URL of an Image or select one from your computer"));
+        let exe_in = new_input(window, cx, &exe, tr!("Select Executable"));
+        let url_in = new_input(window, cx, &url, tr!("Paste the Game URL here"));
+        let ua_in = new_input(window, cx, &ua, tr!("Write a custom user agent here to be used on this browser app/game"));
         let prefix_in = new_input(window, cx, &suggested, "");
 
         subs.push(cx.subscribe_in(&title_in, window, |this, input, ev: &InputEvent, window, cx| match ev {
@@ -274,17 +275,21 @@ impl AddGameDialog {
     /// installing.
     fn top_note(&self) -> Option<&'static str> {
         match self.mode {
-            Mode::Add => Some("Important! Are you adding a game from Epic, GOG or Amazon? Do NOT use this feature for that. Log into the store from the menu, look for the game in your library and use Install / Import instead."),
+            Mode::Add => Some(tr!(
+                "Important! Are you adding a game from Epic, GOG or Amazon? Do NOT use this feature for that. Log into the store from the menu, look for the game in your library and use Install / Import instead."
+            )),
             Mode::Edit(_) => None,
-            Mode::Install(_) => Some("Install this game without its store: use Run Installer First to run its setup program in the prefix below, then select the installed game's executable. Or select the executable of a copy you already have."),
+            Mode::Install(_) => Some(tr!(
+                "Install this game without its store: use Run Installer First to run its setup program in the prefix below, then select the installed game's executable. Or select the executable of a copy you already have."
+            )),
         }
     }
 
     fn dialog_title(&self) -> &'static str {
         match self.mode {
-            Mode::Add => "Add game",
-            Mode::Edit(_) => "Edit game",
-            Mode::Install(_) => "Install game",
+            Mode::Add => tr!("Add game"),
+            Mode::Edit(_) => tr!("Edit game"),
+            Mode::Install(_) => tr!("Install game"),
         }
     }
 }
@@ -306,7 +311,7 @@ impl Render for AddGameDialog {
                 .child(action_button(
                     "ag-remove-back",
                     ButtonKind::Ghost,
-                    "Back",
+                    tr!("Back"),
                     !self.saving,
                     cx.listener(|this, _, _, cx| {
                         this.confirm_remove = false;
@@ -317,24 +322,24 @@ impl Render for AddGameDialog {
                 .child(action_button(
                     "ag-remove-yes",
                     ButtonKind::Danger,
-                    if self.saving { "Removing\u{2026}" } else { "Remove game" },
+                    if self.saving { tr!("Removing\u{2026}") } else { tr!("Remove game") },
                     !self.saving,
                     cx.listener(|this, _, _, cx| this.remove(cx)),
                 ));
-            ("Remove game", self.remove_confirmation(cx), footer)
+            (tr!("Remove game"), self.remove_confirmation(cx), footer)
         } else {
             let can_save = !self.saving && !self.installer_running;
             let finish_label = match (edit, self.saving) {
-                (false, false) => "Finish",
-                (true, false) => "Save",
-                (_, true) => "Saving\u{2026}",
+                (false, false) => tr!("Finish"),
+                (true, false) => tr!("Save"),
+                (_, true) => tr!("Saving\u{2026}"),
             };
             let mut footer = div().flex().items_center().w_full().gap(px(16.));
             if edit {
                 footer = footer.child(action_button(
                     "ag-remove",
                     ButtonKind::Glass,
-                    "Remove game",
+                    tr!("Remove game"),
                     can_save,
                     cx.listener(|this, _, _, cx| {
                         this.confirm_remove = true;
@@ -348,7 +353,7 @@ impl Render for AddGameDialog {
             footer = footer.child(action_button(
                 "ag-cancel",
                 ButtonKind::Ghost,
-                "Cancel",
+                tr!("Cancel"),
                 !self.saving,
                 cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)),
             ));
@@ -357,10 +362,12 @@ impl Render for AddGameDialog {
                 footer = footer.child(action_button(
                     "ag-run-installer",
                     ButtonKind::Glass,
-                    if self.installer_running { "Running Setup" } else { "Run Installer First" },
+                    if self.installer_running { tr!("Running Setup") } else { tr!("Run Installer First") },
                     can_run,
                     cx.listener(|_, _, window, cx| {
-                        choose_path(window, cx, false, "Select EXE to Run", |this: &mut Self, path, _, cx| this.run_installer(path, cx));
+                        choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                            this.run_installer(path, cx)
+                        });
                     }),
                 ));
             }

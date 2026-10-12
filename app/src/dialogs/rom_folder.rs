@@ -9,6 +9,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::DataPaths;
 use heronite_emulation::{run_rom_scanners, upsert_rom_scanner, RomScanner, UpsertRomScannerArgs};
+use heronite_i18n::tr;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use super::scan_roms::profile_label;
@@ -115,12 +116,12 @@ impl RomFolderDialog {
         }
         let directory = text_of(&self.directory, cx);
         let Some(profile) = self.profile().map(|p| p.id.clone()) else {
-            self.error = "Add an emulator first.".into();
+            self.error = tr!("Add an emulator first.").into();
             cx.notify();
             return;
         };
         if directory.is_empty() {
-            self.error = "Choose the folder with the ROMs.".into();
+            self.error = tr!("Choose the folder with the ROMs.").into();
             cx.notify();
             return;
         }
@@ -182,7 +183,7 @@ impl Render for RomFolderDialog {
         let edit = self.scanner.is_some();
         let dir_value = text_of(&self.directory, cx);
         let has_dir = !dir_value.is_empty();
-        let emu_name = self.emulator().map(|e| e.name.clone()).unwrap_or_else(|| "No emulators yet".into());
+        let emu_name = self.emulator().map(|e| e.name.clone()).unwrap_or_else(|| tr!("No emulators yet").into());
         let emu_opts: Vec<(SharedString, bool)> =
             self.emulators.iter().map(|e| (e.name.clone().into(), e.id == self.emulator_id)).collect();
         let profile_name = self.profile().map(profile_label).unwrap_or_default();
@@ -193,7 +194,7 @@ impl Render for RomFolderDialog {
 
         let emu_select = select_field(
             "romf-emulator",
-            Some("Emulator"),
+            Some(tr!("Emulator")),
             emu_name,
             self.emulators.is_empty(),
             self.emu_open,
@@ -215,7 +216,7 @@ impl Render for RomFolderDialog {
         );
         let profile_select = select_field(
             "romf-profile",
-            Some("Platform / profile"),
+            Some(tr!("Platform / profile")),
             profile_name,
             profile_opts.is_empty(),
             self.profile_open,
@@ -236,7 +237,7 @@ impl Render for RomFolderDialog {
         );
         let folder = path_field(
             "romf-folder-pick",
-            Some("ROM folder"),
+            Some(tr!("ROM folder")),
             &self.directory,
             has_dir,
             false,
@@ -245,7 +246,7 @@ impl Render for RomFolderDialog {
                     this.directory.update(cx, |s, cx| s.set_value("", window, cx));
                     cx.notify();
                 } else {
-                    choose_path(window, cx, true, "ROM folder", |this: &mut Self, p, window, cx| {
+                    choose_path(window, cx, true, tr!("ROM folder"), |this: &mut Self, p, window, cx| {
                         this.directory.update(cx, |s, cx| s.set_value(p, window, cx));
                         cx.notify();
                     });
@@ -253,27 +254,27 @@ impl Render for RomFolderDialog {
             }),
         );
         let toggles = panel()
-            .child(checkbox("romf-subfolders", self.scan_subfolders, "Include subfolders").on_click(cx.listener(|this, _, _, cx| {
+            .child(checkbox("romf-subfolders", self.scan_subfolders, tr!("Include subfolders")).on_click(cx.listener(|this, _, _, cx| {
                 this.scan_subfolders = !this.scan_subfolders;
                 cx.notify();
             })))
-            .child(checkbox("romf-merge", self.merge_related, "Merge discs into one game").on_click(cx.listener(|this, _, _, cx| {
+            .child(checkbox("romf-merge", self.merge_related, tr!("Merge discs into one game")).on_click(cx.listener(|this, _, _, cx| {
                 this.merge_related = !this.merge_related;
                 cx.notify();
             })))
-            .child(checkbox("romf-auto", self.auto_scan, "Scan this folder when Collection refreshes").on_click(cx.listener(
+            .child(checkbox("romf-auto", self.auto_scan, tr!("Scan this folder when Collection refreshes")).on_click(cx.listener(
                 |this, _, _, cx| {
                     this.auto_scan = !this.auto_scan;
                     cx.notify();
                 },
             )))
-            .child(meta_text("With this on, saving also scans the folder right away and adds the games it finds."));
+            .child(meta_text(tr!("With this on, saving also scans the folder right away and adds the games it finds.")));
 
         let body = div()
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(paragraph("Games found in this folder are added to the Collection and launched with the chosen emulator profile."))
+            .child(paragraph(tr!("Games found in this folder are added to the Collection and launched with the chosen emulator profile.")))
             .child(emu_select)
             .child(profile_select)
             .child(folder)
@@ -284,20 +285,20 @@ impl Render for RomFolderDialog {
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(button("romf-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .child(button("romf-cancel", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "romf-save",
                 ButtonKind::Primary,
                 if self.saving {
                     if self.auto_scan {
-                        "Scanning\u{2026}"
+                        tr!("Scanning\u{2026}")
                     } else {
-                        "Saving\u{2026}"
+                        tr!("Saving\u{2026}")
                     }
                 } else if edit {
-                    "Save"
+                    tr!("Save")
                 } else {
-                    "Add ROM folder"
+                    tr!("Add ROM folder")
                 },
                 !self.saving && !self.emulators.is_empty(),
                 cx.listener(|this, _, _, cx| this.save(cx)),
@@ -307,7 +308,7 @@ impl Render for RomFolderDialog {
         dialog(
             DialogProps {
                 id: "rom-folder".into(),
-                title: if edit { "Edit ROM folder" } else { "Add ROM folder" }.into(),
+                title: if edit { tr!("Edit ROM folder") } else { tr!("Add ROM folder") }.into(),
                 width: 640f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
                 height: None,
             },

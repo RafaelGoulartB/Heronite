@@ -4,6 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 
 use super::{ImagePicker, PickerEvent, Slot, PAGE_SIZE};
@@ -31,7 +32,7 @@ impl ImagePicker {
 
     fn open_search_keyboard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let current = self.query.read(cx).value().to_string();
-        let osk = cx.new(|_| Osk::new("Search images", &current));
+        let osk = cx.new(|_| Osk::new(tr!("Search images"), &current));
         let sub = cx.subscribe_in(&osk, window, |this, _, ev: &OskEvent, window, cx| {
             if let OskEvent::Done(text) = ev {
                 let text = text.clone();
@@ -48,14 +49,14 @@ impl ImagePicker {
         let (cols, tw, th) = self.console_grid();
         let cursor = self.console_cursor();
         let shown = self.results.len().min(self.visible);
-        let what = if self.slot == Slot::Square { "cover" } else { "background" };
+        let heading = if self.slot == Slot::Square { tr!("Pick the cover art") } else { tr!("Pick the background art") };
 
         let mut grid = div().id("console-ag-grid").flex().flex_col().gap(u(14.)).overflow_y_scroll().track_scroll(&self.scroll);
         if self.loading {
-            grid = grid.child(kit::empty(Icon::FaSearch, "Searching\u{2026}", "Looking for images on the web."));
+            grid = grid.child(kit::empty(Icon::FaSearch, tr!("Searching\u{2026}"), tr!("Looking for images on the web.")));
         } else if shown == 0 {
-            let msg = if self.error.is_empty() { "Press Y to type a search." } else { self.error.as_str() };
-            grid = grid.child(kit::empty(Icon::FaSearch, "No images", msg.to_string()));
+            let msg = if self.error.is_empty() { tr!("Press Y to type a search.") } else { self.error.as_str() };
+            grid = grid.child(kit::empty(Icon::FaSearch, tr!("No images"), msg.to_string()));
         } else {
             let mut i = 0;
             while i < shown {
@@ -87,7 +88,7 @@ impl ImagePicker {
                 i += cols;
             }
             if self.visible < self.results.len() {
-                grid = grid.child(kit::body_text("X shows more results."));
+                grid = grid.child(kit::body_text(tr!("X shows more results.")));
             }
             // Keep the cursor's row in view: the grid is a column of rows.
             self.scroll.scroll_to_item(cursor / cols);
@@ -109,7 +110,7 @@ impl ImagePicker {
                     .gap(u(36.))
                     .h(u(76.))
                     .px(u(46.))
-                    .child(kit::wordmark("SEARCH IMAGES"))
+                    .child(kit::wordmark(tr!("SEARCH IMAGES")))
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
@@ -120,8 +121,8 @@ impl ImagePicker {
                     .gap(u(4.))
                     .px(u(46.))
                     .pb(u(14.))
-                    .child(kit::title(format!("Pick the {what} art"), 28.))
-                    .child(kit::body_text(format!("Search: {query}. The image is used as a link; nothing is downloaded."))),
+                    .child(kit::title(heading, 28.))
+                    .child(kit::body_text(tr!("Search: {query}. The image is used as a link; nothing is downloaded.", query))),
             )
             .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(grid.flex_1().min_h_0()))
             .children(self.layer.view())
@@ -175,11 +176,11 @@ impl PadTarget for ImagePicker {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        let mut h = vec![hint(Btn::A, "Use image"), hint(Btn::Y, "Search")];
+        let mut h = vec![hint(Btn::A, tr!("Use image")), hint(Btn::Y, tr!("Search"))];
         if self.visible < self.results.len() {
-            h.push(hint(Btn::X, "More"));
+            h.push(hint(Btn::X, tr!("More")));
         }
-        h.push(hint(Btn::B, "Back"));
+        h.push(hint(Btn::B, tr!("Back")));
         h
     }
 }
