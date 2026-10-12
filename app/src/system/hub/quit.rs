@@ -1,5 +1,7 @@
 //! Quit requests (with the confirmation) and the graceful quit.
 
+use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
@@ -93,6 +95,48 @@ pub fn keep_in_tray(cx: &mut App) {
     });
 }
 
+/// The updated AppImage to start once the app has quit.
+static RELAUNCH: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// What a restart would leave behind now: a running game or post-game work
+/// (`None` = the app can restart).
+pub fn restart_blocker(cx: &App) -> Option<String> {
+    cx.try_global::<super::Hub>()?;
+    let (titles, busy) = pending_work(cx);
+    match titles.as_slice() {
+        [] if busy => Some("Saving after your game".into()),
+        [] => None,
+        [one] => Some(format!("{one} is running")),
+        _ => Some(format!("{} games are running", titles.len())),
+    }
+}
+
+/// Quits gracefully and starts `appimage` (the installed update) at the end.
+/// Refused while a game runs or post-game work is in flight.
+pub fn restart_into(appimage: PathBuf, cx: &mut App) {
+    if hub(cx).0.borrow().quitting {
+        return;
+    }
+    if let Some(why) = restart_blocker(cx) {
+        log::warn!("restart for the update refused: {why}");
+        return;
+    }
+    log::info!("restarting into {}", appimage.display());
+    *RELAUNCH.lock().unwrap_or_else(|e| e.into_inner()) = Some(appimage);
+    graceful_quit(cx);
+}
+
+/// Starts the updated AppImage if a restart asked for it. Called last, once
+/// the single-instance socket is gone, so the new process becomes the
+/// instance (and by the quit watchdog).
+pub fn relaunch_if_requested() {
+    let Some(path) = RELAUNCH.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+    match heronite_update::relaunch::relaunch(&path) {
+        Ok(pid) => log::info!("started {} (pid {pid})", path.display()),
+        Err(e) => log::error!("could not start {}: {e}", path.display()),
+    }
+}
+
 /// How long the Epic queue gets to stop its process after the pause request.
 const EPIC_STOP_WAIT: Duration = Duration::from_secs(5);
 /// A quit that has not finished by then is forced (a stuck step).
@@ -131,6 +175,7 @@ pub(super) fn graceful_quit(cx: &mut App) {
     let _ = std::thread::Builder::new().name("quit-watchdog".into()).spawn(|| {
         std::thread::sleep(QUIT_WATCHDOG);
         log::error!("the quit did not finish in {QUIT_WATCHDOG:?}: exiting");
+        relaunch_if_requested();
         std::process::exit(0);
     });
     cx.spawn(async move |cx| {

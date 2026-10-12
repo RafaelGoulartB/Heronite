@@ -1,0 +1,22 @@
+[package]
+name = "heronite-update"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Self-update of the Heronite AppImage: GitHub release check, signed download and in-place swap"
+
+[dependencies]
+heronite-data = { path = "../data" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+log.workspace = true
+libc = "0.2"
+minisign-verify = "0.2"
+ureq = "3"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

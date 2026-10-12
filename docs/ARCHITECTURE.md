@@ -31,7 +31,9 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
  │                      lossless PNG → WebP compression              → data, images
  ├─ heronite-wine       Wine/Proton manager                          → data
- └─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf       → data
+ ├─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf       → data
+ └─ heronite-update     app updates: release check, signed download,
+                        AppImage swap / package install, relaunch   → data
 epic-login (bin)        WebKit window for the Epic login (keeps a web engine out of the app)
 ```
 
@@ -63,7 +65,7 @@ calls them from `cx.background_spawn` or worker threads.
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the Epic service), `session` (post-game work), `compression` (background lossless compression of the captures), `widgets` |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the Epic service), `session` (post-game work), `compression` (background lossless compression of the captures), `update/` (app updates: checks, download, restart), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `collection/` | the main screen (`CollectionView`): list, header, focus panel, stage, context menu, command palette, screenshots, and the glue to dialogs and services |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
@@ -89,7 +91,21 @@ calls them from `cx.background_spawn` or worker threads.
 - **Safe shutdown.** `system/hub/quit.rs` is the single quit path (window,
   tray, signals): checkpoint playtime, pause the Epic queue, release the
   socket and the tray, then end the loop. Games are separate process groups
-  and keep running.
+  and keep running. "Restart now" after an update goes through the same path
+  (`restart_into`, refused while a game runs) and `main` starts the new
+  AppImage once the socket is gone.
+- **App updates.** `heronite_update` reads the latest GitHub release and
+  checks every download against its minisign signature (key in
+  `crates/update/src/lib.rs`, trusted comment `version:<X.Y.Z>`). From an
+  AppImage (`$APPIMAGE`) it downloads `Heronite-x86_64.AppImage` next to the
+  running one and renames it over the old file: the running app keeps the old
+  inode, and nothing is written into it. From our .deb / .rpm / Arch package
+  (marker `/usr/share/heronite/package-format`, written by
+  `scripts/packages.sh` from `packaging/nfpm.yaml`) it downloads the package
+  of the same format and runs apt-get / dnf / pacman through `pkexec`. Any
+  other build only checks when asked. The release workflow signs with the
+  `MINISIGN_SECRET_KEY` secret and checks the result against the key in the
+  code.
 
 ## Tests
 - Unit tests sit next to the code. Integration tests are in

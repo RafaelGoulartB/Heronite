@@ -126,18 +126,35 @@ Everything stays on your machine, in Heroic-compatible files: library, Collectio
 
 On first start, if that folder does not exist yet, Heronite copies an existing Heroic setup into it **once**. It only reads Heroic's files and never writes to Heroic's folders, so both apps can stay installed.
 
-Online features need connectivity: metadata and art (IGDB, Steam, Lutris, How Long To Beat, ProtonDB), Epic Games, and Wine/Proton downloads. For IGDB, add your own Twitch client ID and secret in **Settings > Metadata**.
+Online features need connectivity: metadata and art (IGDB, Steam, Lutris, How Long To Beat, ProtonDB), Epic Games, Wine/Proton downloads, and the app's update check (Heronite asks GitHub for the latest release at start and every 6 hours; switch it off in **Settings > About**). For IGDB, add your own Twitch client ID and secret in **Settings > Metadata**.
 
 ## Download
 
-Download `Heronite-<version>-x86_64.AppImage` from the [latest release](https://github.com/RafaelGoulartB/Heronite/releases/latest), make it executable, and run it:
+Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has an AppImage that runs anywhere, and packages for Debian/Ubuntu, Fedora/openSUSE, and Arch. Pick one:
+
+| System | File | Install |
+|---|---|---|
+| Any distribution | `Heronite-x86_64.AppImage` | `chmod +x Heronite-x86_64.AppImage && ./Heronite-x86_64.AppImage` |
+| Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `heronite_<version>-1_amd64.deb` | `sudo apt install ./heronite_*_amd64.deb` |
+| Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
+| Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
+
+Each release also has a copy of the AppImage named after its version.
+
+**Updates.** When a new version is out, a card offers it, or you can check in **Settings > About**. Every download is checked against Heronite's signing key before anything is installed.
+
+- **Packages:** Heronite downloads the new package and installs it with apt, dnf, or pacman, which asks for your password. If no password prompt can open, Heronite shows the command to run in a terminal. The packages are not in any distribution repository, so `apt upgrade` and similar commands do not update them.
+- **AppImage:** the update is downloaded next to the AppImage and swapped in place, so menu entries and game shortcuts keep working. Keep the AppImage in a folder you can write to (for example `~/Applications`). You can also let it install updates automatically. Tools that use AppImageUpdate (Gear Lever, AppImageLauncher) can update it too, downloading only the changed parts.
+
+Either way, the new version runs after **Restart now** or the next time you open Heronite.
+
+To check a download by hand, use the `.minisig` file next to it in the release and the public key `RWSE2jZR7ZDsOydCTZOZivDlm7+0a3fALyFTGewUjbVbWGb6V4A2CALD`:
 
 ```bash
-chmod +x Heronite-*-x86_64.AppImage
-./Heronite-*-x86_64.AppImage
+minisign -Vm Heronite-x86_64.AppImage -P RWSE2jZR7ZDsOydCTZOZivDlm7+0a3fALyFTGewUjbVbWGb6V4A2CALD
 ```
 
-The AppImage runs on distributions with glibc 2.35 or newer (Ubuntu 22.04, Fedora 36, Debian 12, Arch, and later) and needs a Vulkan-capable GPU driver. The Epic login window uses the system's WebKitGTK 4.1 (`webkit2gtk-4.1`); without it, log in through the browser instead.
+Heronite runs on distributions with glibc 2.35 or newer (Ubuntu 22.04, Fedora 36, Debian 12, Arch, and later) and needs a Vulkan-capable GPU driver. The Epic login window uses the system's WebKitGTK 4.1 (`webkit2gtk-4.1`); without it, log in through the browser instead.
 
 ## Run from source
 
@@ -163,7 +180,7 @@ cargo test --workspace
 cargo build --release -p heronite -p heronite-epic-login
 ```
 
-`HERONITE_DEBUG_*` environment variables open a page, dialog, or menu at startup, for screenshots and tests without clicking. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the crates and patterns, [CODE-STYLE.md](docs/CODE-STYLE.md) for the code rules, and [UI-CONVENTIONS.md](docs/UI-CONVENTIONS.md) for the look of the UI. [CI](.github/workflows/ci.yml) checks the formatting (`rustfmt.toml`) and runs clippy and the tests on every push and pull request. To release, merge a pull request labelled `release:patch`, `release:minor`, or `release:major`, or run the [release workflow](.github/workflows/release.yml) from the Actions tab. It bumps the version in `Cargo.toml` (`scripts/bump-version.py`), tags it, builds the AppImage (`scripts/appimage.sh`), and publishes a GitHub release. Issues and pull requests are welcome.
+`HERONITE_DEBUG_*` environment variables open a page, dialog, or menu at startup, for screenshots and tests without clicking. See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the crates and patterns, [CODE-STYLE.md](docs/CODE-STYLE.md) for the code rules, and [UI-CONVENTIONS.md](docs/UI-CONVENTIONS.md) for the look of the UI. [CI](.github/workflows/ci.yml) checks the formatting (`rustfmt.toml`) and runs clippy and the tests on every push and pull request. To release, merge a pull request labelled `release:patch`, `release:minor`, or `release:major`, or run the [release workflow](.github/workflows/release.yml) from the Actions tab. It bumps the version in `Cargo.toml` (`scripts/bump-version.py`), tags it, builds the AppImage (`scripts/appimage.sh`) and the .deb, .rpm, and Arch packages (`scripts/packages.sh`, nfpm), installs the packages on clean containers (`scripts/package-smoke.sh`), signs everything (`scripts/sign-release.sh`, with the minisign secret key in the `MINISIGN_SECRET_KEY` repository secret), and publishes a GitHub release. Issues and pull requests are welcome.
 
 ## License
 

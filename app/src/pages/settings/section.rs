@@ -88,7 +88,7 @@ impl Section {
             Section::Screenshots => "Where your captures live, the in-game shortcut and the preview cache of the gallery.",
             Section::Backups => "Save backups with Ludusavi after you close a game, and a scheduled copy of the data folder.",
             Section::Logs => "The logs of this app, the runners and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs).",
-            Section::About => "This app, its data folders and the system it runs on.",
+            Section::About => "Updates, this app's data folders and the system it runs on.",
         }
     }
 
@@ -105,7 +105,7 @@ impl Section {
             Section::Screenshots => "capture shortcut hotkey folder thumbnails cache gallery",
             Section::Backups => "ludusavi saves backup config copy schedule zip compression",
             Section::Logs => "log viewer debug",
-            Section::About => "version system info",
+            Section::About => "version system info update upgrade new release changelog",
         }
     }
 

@@ -1,0 +1,118 @@
+# System packages (.deb, .rpm, Arch .pkg.tar.zst) built by scripts/packages.sh
+# from the release binaries (https://nfpm.goreleaser.com). The binaries are
+# built on Ubuntu 22.04, so glibc 2.35 is the floor everywhere.
+# scripts/packages.sh fills in ${VERSION}, ${BIN} (binaries folder) and
+# ${MARKERS} (folder holding package-format-{deb,rpm,arch}, see
+# Package::MARKER in crates/update).
+name: heronite
+arch: amd64
+platform: linux
+version: ${VERSION}
+release: 1
+section: games
+priority: optional
+maintainer: RafaGoulartB <rafagoulartb@gmail.com>
+description: |-
+  Native game launcher for Linux.
+  Every game you own in one Collection: Epic Games (through legendary),
+  sideloaded and Steam games, and emulated ROMs, launched with Wine, Proton
+  or natively.
+vendor: Heronite
+homepage: https://github.com/RafaelGoulartB/Heronite
+license: GPL-3.0-only
+
+contents:
+  - src: ${BIN}/heronite-rs
+    dst: /usr/bin/heronite-rs
+    file_info: { mode: 0755 }
+  # Found next to heronite-rs by the Epic page.
+  - src: ${BIN}/heronite-epic-login
+    dst: /usr/bin/heronite-epic-login
+    file_info: { mode: 0755 }
+  - src: packaging/linux/com.heronite.rs.desktop
+    dst: /usr/share/applications/com.heronite.rs.desktop
+  - src: packaging/linux/com.heronite.rs.png
+    dst: /usr/share/icons/hicolor/256x256/apps/com.heronite.rs.png
+  - src: packaging/linux/com.heronite.rs.metainfo.xml
+    dst: /usr/share/metainfo/com.heronite.rs.metainfo.xml
+  - src: LICENSE
+    dst: /usr/share/doc/heronite/LICENSE
+  - src: THIRD-PARTY-NOTICES.md
+    dst: /usr/share/doc/heronite/THIRD-PARTY-NOTICES.md
+  - src: licenses
+    dst: /usr/share/doc/heronite/licenses
+    type: tree
+  - src: LICENSE
+    dst: /usr/share/licenses/heronite/LICENSE
+    packager: archlinux
+  # Tells the app how it was installed, so updates go through the package
+  # manager.
+  - src: ${MARKERS}/package-format-deb
+    dst: /usr/share/heronite/package-format
+    packager: deb
+  - src: ${MARKERS}/package-format-rpm
+    dst: /usr/share/heronite/package-format
+    packager: rpm
+  - src: ${MARKERS}/package-format-arch
+    dst: /usr/share/heronite/package-format
+    packager: archlinux
+
+# Linked: libudev, libxcb, libxkbcommon(-x11). Loaded at run time: Vulkan,
+# Wayland, fontconfig. The Epic login window links WebKitGTK 4.1; without it
+# the app offers the browser login, so it is only recommended.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.35)
+      - libgcc-s1
+      - libudev1
+      - libxcb1
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      - libvulkan1
+      - libwayland-client0
+      - libfontconfig1
+    recommends:
+      - libwebkit2gtk-4.1-0
+      - mesa-vulkan-drivers | vulkan-icd
+      - xdg-utils
+      - pkexec | policykit-1
+  rpm:
+    depends:
+      - glibc >= 2.35
+      - systemd-libs
+      - libxcb
+      - libxkbcommon
+      - libxkbcommon-x11
+      - vulkan-loader
+      - libwayland-client
+      - fontconfig
+    recommends:
+      - webkit2gtk4.1
+      - mesa-vulkan-drivers
+      - xdg-utils
+      - polkit
+  archlinux:
+    depends:
+      - glibc
+      - gcc-libs
+      - systemd-libs
+      - libxcb
+      - libxkbcommon
+      - libxkbcommon-x11
+      - vulkan-icd-loader
+      - wayland
+      - fontconfig
+    recommends:
+      - "webkit2gtk-4.1: Epic Games login window"
+      - "vulkan-driver: GPU rendering"
+      - "xdg-utils: open links and folders"
+      - "polkit: install updates from the app"
+
+rpm:
+  group: Amusements/Games
+  compression: zstd
+deb:
+  compression: zstd
+archlinux:
+  packager: RafaGoulartB <rafagoulartb@gmail.com>

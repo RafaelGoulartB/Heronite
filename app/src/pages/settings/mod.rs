@@ -12,7 +12,8 @@
 //!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
 //!   `screenshots.rs`, `saves.rs` + `backup.rs`). Any write ends in
 //!   [`SettingsPage::saved`].
-//! - About: version, folders and system information (`about.rs`).
+//! - About: updates (`updates.rs`), version, folders and system information
+//!   (`about.rs`).
 //!
 //! Emulators and ROM folders are not here: they live on the ☰ Emulators page.
 //!
@@ -31,6 +32,7 @@ mod saves;
 mod screenshots;
 mod section;
 pub mod sysinfo;
+mod updates;
 
 pub use section::Section;
 
@@ -144,6 +146,9 @@ impl SettingsPage {
             defaults_section,
         };
         this.on_section_shown(window, cx);
+        if let Some(updater) = crate::services::update::get(cx) {
+            cx.observe(&updater, |_, _, cx| cx.notify()).detach();
+        }
         // After the Collection subscribed to this page's events.
         if crate::env::value("HERONITE_DEBUG_SETTINGS_ACTION").is_some() {
             cx.spawn(async move |this, cx| {

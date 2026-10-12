@@ -4,6 +4,7 @@
 pub mod compression;
 pub mod downloads;
 pub mod session;
+pub mod update;
 pub mod widgets;
 
 use gpui_kit::*;
