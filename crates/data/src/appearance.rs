@@ -12,6 +12,7 @@
 //! are clamped.
 
 use anyhow::Result;
+use heronite_i18n::tr;
 use serde_json::{json, Value};
 
 use crate::json_store;
@@ -69,10 +70,10 @@ impl SolidTint {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Slate => "Slate",
-            Self::Graphite => "Graphite",
-            Self::Midnight => "Midnight",
-            Self::Plum => "Plum",
+            Self::Slate => tr!("Slate"),
+            Self::Graphite => tr!("Graphite"),
+            Self::Midnight => tr!("Midnight"),
+            Self::Plum => tr!("Plum"),
         }
     }
     pub fn parse(s: &str) -> Option<Self> {

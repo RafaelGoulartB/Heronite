@@ -27,6 +27,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::stats::{self, fmt_hours_short, fmt_secs, month_short, GameInput, History, Period, Span, Stats, TOP_N};
 use heronite_data::Library;
+use heronite_i18n::{n_, tr};
 use heronite_images::ImageRef;
 use heronite_media::{list_screenshots, GameQuery, ThumbnailCache};
 
@@ -35,9 +36,59 @@ use crate::console::motion::{Axis, Glide};
 use crate::services::widgets::Covers;
 use crate::theme;
 
-const WEEKDAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const WEEKDAYS_LONG: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-const DAY_PARTS: [(&str, &str); 4] = [("Night", "0–6h"), ("Morning", "6–12h"), ("Afternoon", "12–18h"), ("Evening", "18–24h")];
+const WEEKDAYS_PLURAL: [&str; 7] =
+    [n_!("Mondays"), n_!("Tuesdays"), n_!("Wednesdays"), n_!("Thursdays"), n_!("Fridays"), n_!("Saturdays"), n_!("Sundays")];
+const WEEKDAYS_ON: [&str; 7] = [
+    n_!("on Mondays"),
+    n_!("on Tuesdays"),
+    n_!("on Wednesdays"),
+    n_!("on Thursdays"),
+    n_!("on Fridays"),
+    n_!("on Saturdays"),
+    n_!("on Sundays"),
+];
+const DAY_PARTS: [(&str, &str); 4] =
+    [(n_!("Night"), "0–6h"), (n_!("Morning"), "6–12h"), (n_!("Afternoon"), "12–18h"), (n_!("Evening"), "18–24h")];
+
+/// "Mon" (Monday = 0).
+fn weekday(d: usize) -> &'static str {
+    heronite_i18n::weekday_short(d as u32)
+}
+
+/// "Monday" (Monday = 0).
+fn weekday_long(d: usize) -> &'static str {
+    heronite_i18n::weekday_name(d as u32)
+}
+
+/// "Mondays" (Monday = 0).
+fn weekday_plural(d: usize) -> &'static str {
+    heronite_i18n::tr(WEEKDAYS_PLURAL[d % 7])
+}
+
+/// "on Mondays" (Monday = 0).
+fn weekday_on(d: usize) -> &'static str {
+    heronite_i18n::tr(WEEKDAYS_ON[d % 7])
+}
+
+/// Name and hours of part of the day (0 = night).
+fn day_part(i: usize) -> (&'static str, &'static str) {
+    let (name, range) = DAY_PARTS[i];
+    (heronite_i18n::tr(name), range)
+}
+
+/// A name in the middle of a sentence (Portuguese writes weekdays and months
+/// in lower case).
+fn in_text(name: &str) -> String {
+    match heronite_i18n::current() {
+        heronite_i18n::Lang::En => name.to_string(),
+        heronite_i18n::Lang::PtBr => name.to_lowercase(),
+    }
+}
+
+/// "October 2026".
+fn month_year(d: NaiveDate) -> String {
+    tr!("{month} {year}", month = stats::month_name(d.month()), year = d.year())
+}
 
 /// An in-game screenshot of a game (its capture folder matched by title).
 #[derive(Clone, Debug)]
@@ -471,28 +522,33 @@ fn derive(st: &Stats, lib: &Library, shots: Option<&HashMap<usize, Vec<Shot>>>) 
 // ---------------------------------------------------------------- texts
 
 fn day_label(d: NaiveDate) -> String {
-    let wd = WEEKDAYS[d.weekday().num_days_from_monday() as usize];
+    let wd = weekday(d.weekday().num_days_from_monday() as usize);
     if d.year() == today().year() {
-        format!("{wd}, {} {}", month_short(d.month()), d.day())
+        tr!("{weekday}, {month} {day}", weekday = wd, month = month_short(d.month()), day = d.day())
     } else {
-        format!("{wd}, {} {}, {}", month_short(d.month()), d.day(), d.year())
+        tr!("{weekday}, {month} {day}, {year}", weekday = wd, month = month_short(d.month()), day = d.day(), year = d.year())
     }
 }
 
 /// "Mar 14".
 fn short_date(d: NaiveDate) -> String {
-    format!("{} {}", month_short(d.month()), d.day())
+    tr!("{month} {day}", month = month_short(d.month()), day = d.day())
+}
+
+/// "Mar 14, 2025".
+fn full_date(d: NaiveDate) -> String {
+    tr!("{month} {day}, {year}", month = month_short(d.month()), day = d.day(), year = d.year())
 }
 
 /// "today", "yesterday", "3 days ago", "Oct 2", "Oct 2, 2025".
 fn when_label(at: NaiveDateTime) -> String {
     let (d, today) = (at.date(), today());
     match (today - d).num_days() {
-        0 => "today".into(),
-        1 => "yesterday".into(),
-        n @ 2..=6 => format!("{n} days ago"),
+        0 => tr!("today").into(),
+        1 => tr!("yesterday").into(),
+        n @ 2..=6 => tr!("{n} days ago", n),
         _ if d.year() == today.year() => short_date(d),
-        _ => format!("{} {}, {}", month_short(d.month()), d.day(), d.year()),
+        _ => full_date(d),
     }
 }
 
@@ -500,12 +556,8 @@ fn bucket_label(span: Span, start: NaiveDate, end: NaiveDate) -> String {
     match span {
         Span::Week | Span::Month => day_label(start),
         _ if (end - start).num_days() > 31 => start.year().to_string(),
-        _ => format!("{} {}", stats::month_name(start.month()), start.year()),
+        _ => month_year(start),
     }
-}
-
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
 }
 
 fn capitalised(s: &str) -> String {
@@ -518,23 +570,23 @@ fn capitalised(s: &str) -> String {
 fn compare_line(st: &Stats) -> (String, Option<Rgba>) {
     let Some(prev) = st.prev_secs else {
         let recorded: f64 = st.heat.iter().flatten().sum();
-        return (format!("{} in recorded sessions", fmt_hours_short(recorded)), None);
+        return (tr!("{time} in recorded sessions", time = fmt_hours_short(recorded)), None);
     };
     let name = st.period.prev().map(|p| p.short_name()).unwrap_or_default();
     let over = st.period.end <= today();
     if prev <= 0. {
-        (format!("Nothing played in {name}"), None)
+        (tr!("Nothing played in {name}", name), None)
     } else if over {
         let change = (st.total_secs / prev - 1.) * 100.;
         if change.abs() < 1. {
-            (format!("Same as {name}"), None)
+            (tr!("Same as {name}", name), None)
         } else if change > 0. {
-            (format!("\u{25b2} {change:.0}% vs {name}"), Some(theme::success()))
+            (tr!("\u{25b2} {pct}% vs {name}", pct = format!("{change:.0}"), name), Some(theme::success()))
         } else {
-            (format!("\u{25bc} {:.0}% vs {name}", -change), Some(theme::danger_text()))
+            (tr!("\u{25bc} {pct}% vs {name}", pct = format!("{:.0}", -change), name), Some(theme::danger_text()))
         }
     } else {
-        (format!("{}: {}", capitalised(&name), fmt_secs(prev)), None)
+        (tr!("{name}: {time}", name = capitalised(&name), time = fmt_secs(prev)), None)
     }
 }
 
@@ -556,11 +608,11 @@ fn axis_label(h: f64) -> String {
     if h == 0. {
         "0".into()
     } else if h < 1. {
-        format!("{}m", (h * 60.).round())
+        tr!("{m}m", m = (h * 60.).round())
     } else if h.fract() == 0. {
-        format!("{h}h")
+        tr!("{h}h", h)
     } else {
-        format!("{h:.1}h")
+        tr!("{h}h", h = heronite_i18n::decimal(h, 1))
     }
 }
 
@@ -575,7 +627,7 @@ fn series_color(slot: Option<usize>) -> Hsla {
 /// Hours with the minutes only below 100 h ("711h", "62h 11m").
 fn hours_text(secs: f64) -> String {
     if secs >= 100. * 3600. {
-        format!("{}h", (secs / 3600.).floor() as u64)
+        tr!("{h}h", h = (secs / 3600.).floor() as u64)
     } else {
         fmt_secs(secs)
     }

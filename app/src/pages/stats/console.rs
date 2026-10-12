@@ -5,8 +5,9 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::stats::{fmt_hours_short, fmt_secs, Span, Stats, TOP_N};
+use heronite_i18n::{tr, trc};
 
-use super::{axis_label, compare_line, nice_axis, series_color, StatsPage, DAY_PARTS, WEEKDAYS};
+use super::{axis_label, compare_line, day_part, nice_axis, series_color, weekday, StatsPage};
 use crate::console::kit::{self, u};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
@@ -69,7 +70,7 @@ impl StatsPage {
         let labels = st.buckets.iter().map(|b| {
             let current = b.start <= today && today < b.end;
             let text = match st.period.span {
-                Span::Week => super::WEEKDAYS[chrono::Datelike::weekday(&b.start).num_days_from_monday() as usize].to_string(),
+                Span::Week => weekday(chrono::Datelike::weekday(&b.start).num_days_from_monday() as usize).to_string(),
                 Span::Month => chrono::Datelike::day(&b.start).to_string(),
                 _ if (b.end - b.start).num_days() > 31 => chrono::Datelike::year(&b.start).to_string(),
                 _ => heronite_data::stats::month_short(chrono::Datelike::month(&b.start)).to_string(),
@@ -109,7 +110,7 @@ impl StatsPage {
                 .child(div().size(u(10.)).rounded_full().bg(series_color(Some(r))))
                 .child(self.game_title(g))
         }));
-        panel("Activity")
+        panel(tr!("Activity"))
             .child(div().flex().child(div().relative().flex_none().w(u(44.)).h(u(h)).children(axis)).child(
                 div().relative().flex_1().h(u(h)).children(grid).child(div().absolute().inset_0().flex().items_end().children(bars)),
             ))
@@ -123,7 +124,7 @@ impl StatsPage {
         let total = st.total_secs.max(1.);
         let limit = if self.show_all { st.games.len() } else { 6 };
         let s = kit::scale();
-        let mut p = panel("Most played");
+        let mut p = panel(tr!("Most played"));
         for g in st.games.iter().take(limit) {
             let Some(key) = self.game_key(g.game) else { continue };
             let cover = self.chains.get(&key).and_then(|c| self.covers.get_chain(&key, c, 40. * s, 54. * s, scale));
@@ -165,7 +166,7 @@ impl StatsPage {
                     .text_size(u(14.))
                     .text_color(theme::text_muted())
                     .child(kit::glyph(Btn::Y))
-                    .child(format!("Show all {}", st.games.len())),
+                    .child(tr!("Show all {n}", n = st.games.len())),
             );
         }
         p
@@ -182,7 +183,7 @@ impl StatsPage {
                     .flex()
                     .items_center()
                     .gap(u(4.))
-                    .child(div().flex_none().w(u(40.)).text_size(u(13.)).text_color(theme::text_dim()).child(WEEKDAYS[d]))
+                    .child(div().flex_none().w(u(40.)).text_size(u(13.)).text_color(theme::text_dim()).child(weekday(d)))
                     .children(hours.iter().map(|v| {
                         let t = (*v / max_cell) as f32;
                         div().flex_1().h(u(20.)).rounded(u(4.)).bg(if *v <= 0. {
@@ -193,7 +194,8 @@ impl StatsPage {
                     })),
             );
         }
-        let parts = div().flex().gap(u(16.)).children(DAY_PARTS.iter().enumerate().map(|(i, (name, range))| {
+        let parts = div().flex().gap(u(16.)).children((0..4).map(|i| {
+            let (name, range) = day_part(i);
             let share = if in_sessions > 0. { st.day_parts[i] / in_sessions } else { 0. };
             div()
                 .flex()
@@ -203,15 +205,15 @@ impl StatsPage {
                 .child(div().text_size(u(14.)).text_color(theme::text_muted()).child(format!("{name} {range}")))
                 .child(kit::title(format!("{:.0}%", share * 100.), 24.))
         }));
-        panel("When you play").child(heat).child(parts)
+        panel(tr!("When you play")).child(heat).child(parts)
     }
 
     pub(super) fn render_console(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> AnyElement {
         self.covers.drop_evicted(window);
         let span_ix = SPANS.iter().position(|s| *s == self.period.span).unwrap_or(1);
-        let tabs: Vec<SharedString> = ["Week", "Month", "Year", "All time"].into_iter().map(Into::into).collect();
+        let tabs: Vec<SharedString> = [tr!("Week"), tr!("Month"), tr!("Year"), tr!("All time")].into_iter().map(Into::into).collect();
         let label = match self.period.span {
-            Span::All => "All time".to_string(),
+            Span::All => tr!("All time").to_string(),
             _ => self.period.label(),
         };
         let top = div()
@@ -221,37 +223,48 @@ impl StatsPage {
             .gap(u(36.))
             .h(u(76.))
             .px(u(46.))
-            .child(kit::wordmark("STATISTICS"))
+            .child(kit::wordmark(tr!("STATISTICS")))
             .child(kit::tabs(&tabs, span_ix))
             .child(div().flex_1())
             .child(kit::choice(label, false, self.can_prev(), self.can_next()))
             .child(kit::clock());
         let body: AnyElement = match self.stats.clone() {
-            None => kit::empty(Icon::BarChart, "Reading your play history\u{2026}", "").into_any_element(),
+            None => kit::empty(Icon::BarChart, tr!("Reading your play history\u{2026}"), "").into_any_element(),
             Some(st) if st.total_secs <= 0. => kit::empty(
                 Icon::AccessTime,
-                format!("Nothing played in {}", self.period.label()),
-                "Pick another period with \u{25c0} \u{25b6}.",
+                tr!("Nothing played in {name}", name = self.period.label()),
+                tr!("Pick another period with \u{25c0} \u{25b6}."),
             )
             .into_any_element(),
             Some(st) => {
                 let all = st.period.span == Span::All;
                 let (cmp, cmp_color) = compare_line(&st);
+                let new = match st.new_games() {
+                    1 => tr!("{n} new", n = 1),
+                    n => trc!("plural", "{n} new", n),
+                };
+                let sessions_n = heronite_data::stats::group_thousands(st.sessions as u64);
+                let sessions = if st.sessions == 1 { tr!("{n} session", n = sessions_n) } else { tr!("{n} sessions", n = sessions_n) };
                 let kpis = div()
                     .flex()
                     .gap(u(16.))
-                    .child(tile("Time played", if all { fmt_hours_short(st.total_secs) } else { fmt_secs(st.total_secs) }, cmp, cmp_color))
                     .child(tile(
-                        "Days played",
+                        tr!("Time played"),
+                        if all { fmt_hours_short(st.total_secs) } else { fmt_secs(st.total_secs) },
+                        cmp,
+                        cmp_color,
+                    ))
+                    .child(tile(
+                        tr!("Days played"),
                         if all { st.days_played.to_string() } else { format!("{} / {}", st.days_played, st.days_elapsed) },
-                        if st.streak > 1 { format!("Longest streak: {} days", st.streak) } else { "No streak yet".into() },
+                        if st.streak > 1 { tr!("Longest streak: {days} days", days = st.streak) } else { tr!("No streak yet").into() },
                         None,
                     ))
-                    .child(tile("Games", st.games.len().to_string(), format!("{} new", st.new_games()), None))
+                    .child(tile(tr!("Games"), st.games.len().to_string(), new, None))
                     .child(tile(
-                        "Typical session",
+                        tr!("Typical session"),
                         if st.sessions > 0 { fmt_secs(st.avg_session_secs()) } else { "\u{2014}".into() },
-                        format!("{} sessions", heronite_data::stats::group_thousands(st.sessions as u64)),
+                        sessions,
                         None,
                     ));
                 let chart = self.console_chart(&st);
@@ -323,13 +336,13 @@ impl PadTarget for StatsPage {
 
     fn hints(&self, _: &App) -> Vec<Hint> {
         if self.review.is_some() {
-            return vec![hint(Btn::LeftRight, "Story"), hint(Btn::B, "Close")];
+            return vec![hint(Btn::LeftRight, tr!("Story")), hint(Btn::B, tr!("Close"))];
         }
         vec![
-            hint(Btn::X, "Year in review"),
-            hint(Btn::Bumpers, "Span"),
-            hint(Btn::LeftRight, "Period"),
-            hint(Btn::Y, if self.show_all { "Top games" } else { "All games" }),
+            hint(Btn::X, tr!("Year in review")),
+            hint(Btn::Bumpers, tr!("Span")),
+            hint(Btn::LeftRight, tr!("Period")),
+            hint(Btn::Y, if self.show_all { tr!("Top games") } else { tr!("All games") }),
         ]
     }
 }

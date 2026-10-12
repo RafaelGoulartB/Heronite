@@ -8,6 +8,7 @@
 use std::cmp::Ordering;
 
 use anyhow::Result;
+use heronite_i18n::n_;
 
 use crate::json_store;
 use crate::models::{CompletionStatus, LocalGameMeta, LocalMetaFile, StatusesFile};
@@ -63,16 +64,28 @@ fn status(id: &str, name: &str, slug: &str, order: i64) -> CompletionStatus {
 /// app's own order.
 pub fn default_statuses() -> Vec<CompletionStatus> {
     vec![
-        status("beaten", "Beaten", "beaten", 10),
-        status("playing", "Playing", "playing", 20),
-        status("endless", "On Going", "endless", 30),
-        status("plan-to-play", "Plan to Play", "plan-to-play", 40),
-        status("played", "Played", "played", 50),
-        status("on-hold", "On Hold", "on-hold", 60),
-        status("not-played", "Not Played", "not-played", 70),
-        status("completed", "Completed", "completed", 80),
-        status("abandoned", "Abandoned", "abandoned", 90),
+        status("beaten", n_!("Beaten"), "beaten", 10),
+        status("playing", n_!("Playing"), "playing", 20),
+        status("endless", n_!("On Going"), "endless", 30),
+        status("plan-to-play", n_!("Plan to Play"), "plan-to-play", 40),
+        status("played", n_!("Played"), "played", 50),
+        status("on-hold", n_!("On Hold"), "on-hold", 60),
+        status("not-played", n_!("Not Played"), "not-played", 70),
+        status("completed", n_!("Completed"), "completed", 80),
+        status("abandoned", n_!("Abandoned"), "abandoned", 90),
     ]
+}
+
+/// A status name as shown: the default ones follow the interface language,
+/// the ones the user typed stay as they are.
+pub fn status_label(name: &str) -> &str {
+    const DEFAULT_NAMES: [&str; 9] =
+        ["Beaten", "Playing", "On Going", "Plan to Play", "Played", "On Hold", "Not Played", "Completed", "Abandoned"];
+    if DEFAULT_NAMES.contains(&name) {
+        heronite_i18n::tr(name)
+    } else {
+        name
+    }
 }
 
 /// `normalizeStatusName`.

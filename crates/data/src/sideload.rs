@@ -23,6 +23,7 @@ use std::hash::{BuildHasher, Hasher};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use heronite_i18n::tr;
 use serde_json::{json, Map, Value};
 
 use crate::game_config;
@@ -344,19 +345,19 @@ pub enum PrefixOutcome {
 /// parents and the filesystem root.
 pub fn check_prefix_removable(prefix: &Path, protected: &[PathBuf], home: &Path) -> Result<(), String> {
     if !prefix.exists() {
-        return Err(format!("Prefix folder {} doesn't exist", prefix.display()));
+        return Err(tr!("Prefix folder {path} doesn't exist", path = prefix.display()));
     }
     if prefix.parent().is_none() || home.starts_with(prefix) {
-        return Err(format!("Won't delete {}: it contains your home folder", prefix.display()));
+        return Err(tr!("Won't delete {path}: it contains your home folder", path = prefix.display()));
     }
     if protected.iter().any(|p| !p.as_os_str().is_empty() && p == prefix) {
-        return Err(format!("Can't delete {}: it is a shared or default folder", prefix.display()));
+        return Err(tr!("Can't delete {path}: it is a shared or default folder", path = prefix.display()));
     }
     let non_empty = std::fs::read_dir(prefix).map(|mut d| d.next().is_some()).unwrap_or(false);
     if non_empty && !prefix.join("drive_c").exists() && !prefix.join("pfx").exists() {
-        return Err(format!(
-            "Can't delete {}: it has no drive_c/pfx folder. If this is the right prefix, delete it by hand",
-            prefix.display()
+        return Err(tr!(
+            "Can't delete {path}: it has no drive_c/pfx folder. If this is the right prefix, delete it by hand",
+            path = prefix.display()
         ));
     }
     Ok(())
@@ -369,7 +370,7 @@ pub fn remove_prefix(paths: &DataPaths, app_name: &str, home: &str) -> PrefixOut
     let settings = game_config::load_game(paths, app_name, home);
     let global = game_config::load_global(paths, home);
     let Some(prefix) = settings.get("winePrefix").and_then(Value::as_str).filter(|p| !p.is_empty()) else {
-        return PrefixOutcome::Skipped("The game has no Wine prefix".into());
+        return PrefixOutcome::Skipped(tr!("The game has no Wine prefix").into());
     };
     let text = |k: &str| global.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     let protected: Vec<PathBuf> = [
@@ -388,7 +389,7 @@ pub fn remove_prefix(paths: &DataPaths, app_name: &str, home: &str) -> PrefixOut
     }
     match std::fs::remove_dir_all(&prefix) {
         Ok(()) => PrefixOutcome::Removed(prefix),
-        Err(e) => PrefixOutcome::Skipped(format!("Could not delete {}: {e}", prefix.display())),
+        Err(e) => PrefixOutcome::Skipped(tr!("Could not delete {path}: {e}", path = prefix.display(), e)),
     }
 }
 

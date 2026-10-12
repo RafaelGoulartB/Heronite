@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Timelike};
+use heronite_i18n::tr;
 
 use crate::models::LocalGameSession;
 
@@ -37,15 +38,15 @@ pub struct Period {
     pub end: NaiveDate,
 }
 
-const MONTHS: [&str; 12] =
-    ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+pub use heronite_i18n::{month_name, month_short};
 
-pub fn month_name(month: u32) -> &'static str {
-    MONTHS[(month as usize).clamp(1, 12) - 1]
-}
-
-pub fn month_short(month: u32) -> &'static str {
-    &month_name(month)[..3]
+/// The month name in the middle of a sentence (Portuguese writes it in
+/// lower case).
+pub fn month_in_sentence(month: u32) -> String {
+    match heronite_i18n::current() {
+        heronite_i18n::Lang::En => month_name(month).to_string(),
+        heronite_i18n::Lang::PtBr => month_name(month).to_lowercase(),
+    }
 }
 
 fn first_of_month(y: i32, m: u32) -> NaiveDate {
@@ -90,31 +91,38 @@ impl Period {
         self.start <= day && day < self.end
     }
 
-    /// "Oct 6 – 12, 2026", "October 2026", "2026", "All time".
+    /// "Oct 6 \u{2013} 12, 2026", "October 2026", "2026", "All time".
     pub fn label(&self) -> String {
         match self.span {
             Span::Week => {
                 let last = self.end - Duration::days(1);
                 let (a, b) = (self.start, last);
                 if a.year() != b.year() {
-                    format!(
-                        "{} {}, {} \u{2013} {} {}, {}",
-                        month_short(a.month()),
-                        a.day(),
-                        a.year(),
-                        month_short(b.month()),
-                        b.day(),
-                        b.year()
+                    tr!(
+                        "{m1} {d1}, {y1} \u{2013} {m2} {d2}, {y2}",
+                        m1 = month_short(a.month()),
+                        d1 = a.day(),
+                        y1 = a.year(),
+                        m2 = month_short(b.month()),
+                        d2 = b.day(),
+                        y2 = b.year()
                     )
                 } else if a.month() != b.month() {
-                    format!("{} {} \u{2013} {} {}, {}", month_short(a.month()), a.day(), month_short(b.month()), b.day(), b.year())
+                    tr!(
+                        "{m1} {d1} \u{2013} {m2} {d2}, {y}",
+                        m1 = month_short(a.month()),
+                        d1 = a.day(),
+                        m2 = month_short(b.month()),
+                        d2 = b.day(),
+                        y = b.year()
+                    )
                 } else {
-                    format!("{} {} \u{2013} {}, {}", month_short(a.month()), a.day(), b.day(), b.year())
+                    tr!("{m} {d1} \u{2013} {d2}, {y}", m = month_short(a.month()), d1 = a.day(), d2 = b.day(), y = b.year())
                 }
             }
-            Span::Month => format!("{} {}", month_name(self.start.month()), self.start.year()),
+            Span::Month => tr!("{month} {year}", month = month_name(self.start.month()), year = self.start.year()),
             Span::Year => self.start.year().to_string(),
-            Span::All => "All time".into(),
+            Span::All => tr!("All time").into(),
         }
     }
 
@@ -122,8 +130,8 @@ impl Period {
     /// "September", "2025").
     pub fn short_name(&self) -> String {
         match self.span {
-            Span::Week => "previous week".into(),
-            Span::Month => month_name(self.start.month()).into(),
+            Span::Week => tr!("previous week").into(),
+            Span::Month => month_in_sentence(self.start.month()),
             Span::Year => self.start.year().to_string(),
             Span::All => String::new(),
         }
@@ -524,17 +532,9 @@ pub fn fmt_secs(secs: f64) -> String {
     crate::collection::format_playtime_minutes((secs / 60.).round().max(0.) as u64)
 }
 
-/// "1,409".
+/// "1,409" (or "1.409").
 pub fn group_thousands(n: u64) -> String {
-    let s = n.to_string();
-    let mut out = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if i > 0 && (s.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
+    heronite_i18n::grouped(n as i64)
 }
 
 /// Rounded hours for big totals: "1,402h" from 100 h up.

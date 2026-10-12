@@ -80,7 +80,7 @@ pub fn human_size(bytes: u64) -> String {
     if u == 0 {
         format!("{bytes} B")
     } else {
-        format!("{v:.1} {}", UNITS[u])
+        format!("{} {}", heronite_i18n::decimal(v, 1), UNITS[u])
     }
 }
 
