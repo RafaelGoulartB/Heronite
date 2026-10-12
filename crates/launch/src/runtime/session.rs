@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
+use heronite_i18n::tr;
 
 use super::process::run_process;
 use super::state::{Control, Shared};
@@ -12,6 +13,7 @@ use super::steam::run_steam;
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
 use crate::log_writer::{self, GameLog, GameLogType, HeaderInfo, LogPaths};
 use crate::plan::LaunchPlan;
+use crate::prepare::Notice;
 use crate::record::PlayRecord;
 
 pub(super) fn finish(
@@ -42,7 +44,10 @@ pub(super) fn finish(
             Ok(o) => outcome = Some(o),
             Err(e) => {
                 log::error!("recording session of {}: {e:#}", req.app_name);
-                shared.send(LaunchEvent::Error { app_name: req.app_name.clone(), message: format!("could not record playtime: {e:#}") });
+                shared.send(LaunchEvent::Error {
+                    app_name: req.app_name.clone(),
+                    message: tr!("could not record playtime: {error}", error = format!("{e:#}")),
+                });
             }
         }
     }
@@ -50,12 +55,12 @@ pub(super) fn finish(
     shared.send(LaunchEvent::Exited { app_name: req.app_name.clone(), elapsed, exit, record: outcome });
 }
 
-pub(super) fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, message: String) {
-    log.error(&format!("Launch aborted: {message}"));
+pub(super) fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, notice: Notice) {
+    log.error(&format!("Launch aborted: {}", notice.log));
     log.close();
     shared.sessions.lock().unwrap().remove(&req.app_name);
-    log::error!("{}: {message}", req.app_name);
-    shared.send(LaunchEvent::Error { app_name: req.app_name.clone(), message });
+    log::error!("{}: {}", req.app_name, notice.log);
+    shared.send(LaunchEvent::Error { app_name: req.app_name.clone(), message: notice.message });
 }
 
 /// Marks the session's ledger finished however the session thread ends (also
@@ -94,7 +99,7 @@ pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<
     let log = open_game_log(&shared, &req);
     match &req.plan {
         LaunchPlan::SteamUri { app_id, uri } => run_steam(&shared, &log, &req, &control, app_id, uri, started_at, t0),
-        LaunchPlan::Unavailable(r) => fail(&shared, &log, &req, r.clone()),
+        LaunchPlan::Unavailable(r) => fail(&shared, &log, &req, Notice::warn(r.clone(), r.clone())),
         other => {
             let process = other.process().expect("process plan").clone();
             run_process(&shared, &log, &req, &control, &process, started_at, t0);

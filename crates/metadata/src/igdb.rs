@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Result};
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::num::JsNum;
+use heronite_i18n::tr;
 use parking_lot::Mutex;
 use serde::Deserialize;
 
@@ -227,7 +228,7 @@ impl Igdb {
 
     fn twitch_token(&self, http: &Http, creds: &IgdbCredentials, force: bool) -> Result<String> {
         if !creds.configured() {
-            return Err(anyhow!("IGDB credentials are not configured"));
+            return Err(anyhow!(tr!("IGDB credentials are not configured")));
         }
         {
             let guard = self.token.lock();
@@ -255,7 +256,7 @@ impl Igdb {
             expires_in: Option<f64>,
         }
         let tok: Tok = resp.json()?;
-        let access = tok.access_token.filter(|a| !a.is_empty()).ok_or_else(|| anyhow!("Twitch did not return an IGDB token"))?;
+        let access = tok.access_token.filter(|a| !a.is_empty()).ok_or_else(|| anyhow!(tr!("Twitch did not return an IGDB token")))?;
         *self.token.lock() = Some(Token {
             access: access.clone(),
             client_id: creds.client_id.clone(),

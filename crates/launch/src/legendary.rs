@@ -2,6 +2,7 @@
 //! `LegendaryGame.launch` and `getWineFlags`).
 
 use heronite_data::models::GameInfo;
+use heronite_i18n::tr;
 use serde_json::Value;
 
 use crate::env::{build_wrappers, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
@@ -74,17 +75,17 @@ fn flag(rest: &heronite_data::models::Extra, key: &str) -> bool {
 pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &GameSettings, opts: &LaunchOptions) -> LaunchPlan {
     let app = game.app_name.as_str();
     if !game.is_installed {
-        return LaunchPlan::Unavailable("This Epic game is not installed".into());
+        return LaunchPlan::Unavailable(tr!("This Epic game is not installed").into());
     }
     let install_path = game.install.install_path.as_deref().unwrap_or("");
     // EA app / Ubisoft Connect games live inside the prefix, with their store
     // app; legendary only opens them through it (`--origin` / `--ubisoft`).
     let third_party = game.rest.get("thirdPartyManagedApp").and_then(Value::as_str).is_some_and(|s| !s.is_empty());
     if !third_party && (install_path.is_empty() || !probe.exists(install_path)) {
-        return LaunchPlan::Unavailable(format!("Install folder not found: {install_path}"));
+        return LaunchPlan::Unavailable(tr!("Install folder not found: {install_path}", install_path));
     }
     let Some(legendary) = find_legendary(ctx, probe) else {
-        return LaunchPlan::Unavailable("The legendary binary was not found".into());
+        return LaunchPlan::Unavailable(tr!("The legendary binary was not found").into());
     };
 
     // Epic games on Linux always run through Wine/Proton.
@@ -97,7 +98,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     // umu goes into the wrapper list so legendary starts the game through it.
     let wp = build_wrappers(s, probe, wine.umu.as_deref());
     if let Some(err) = wp.error {
-        return LaunchPlan::Unavailable(format!("Launch aborted: {err}"));
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
     let wrappers = wp.wrappers;
     let wrapper_joined = shlex::try_join(wrappers.iter().map(String::as_str)).unwrap_or_else(|_| wrappers.join(" "));

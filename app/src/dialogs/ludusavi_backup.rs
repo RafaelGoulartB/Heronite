@@ -8,6 +8,7 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_emulation::ludusavi::{backup_for_game, BackupReason, CommandRunner, LudusaviBackupResult, LudusaviEnv, LudusaviGame};
+use heronite_i18n::tr;
 use heronite_launch::SystemProbe;
 
 use super::{DialogCtx, DialogEvent};
@@ -16,8 +17,9 @@ use crate::ui::controls::{button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::paragraph;
 
-pub const TITLE: &str = "Ludusavi save backup";
-pub const RUNNING: &str = "Backing up saves with Ludusavi…";
+fn title() -> &'static str {
+    tr!("Ludusavi save backup")
+}
 
 /// What the dialog says when the backup finished.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +38,7 @@ pub enum Outcome {
 /// Port of the branches of `handleLudusaviBackup`.
 pub fn describe(result: &LudusaviBackupResult, title: &str) -> Outcome {
     if result.skipped_reason.as_deref() == Some("already-running") {
-        return Outcome::Message("Ludusavi is already backing up a save. Wait a moment and try again.".into());
+        return Outcome::Message(tr!("Ludusavi is already backing up a save. Wait a moment and try again.").into());
     }
     if let (Some(error), false) = (&result.error, result.ran) {
         return if result.skipped_reason.as_deref() == Some("no-match") {
@@ -47,8 +49,10 @@ pub fn describe(result: &LudusaviBackupResult, title: &str) -> Outcome {
     }
     let name = result.game_name.as_deref().filter(|n| !n.is_empty()).unwrap_or(title);
     match result.backup_path.as_deref().filter(|p| !p.is_empty()) {
-        Some(path) => Outcome::Done { message: format!("Saved a Ludusavi backup for {name} in {path}."), path: Some(path.to_string()) },
-        None => Outcome::Done { message: format!("Saved a Ludusavi backup for {name}."), path: None },
+        Some(path) => {
+            Outcome::Done { message: tr!("Saved a Ludusavi backup for {name} in {path}.", name, path), path: Some(path.to_string()) }
+        }
+        None => Outcome::Done { message: tr!("Saved a Ludusavi backup for {name}.", name), path: None },
     }
 }
 
@@ -103,28 +107,29 @@ fn show_in_folder(path: &str) {
 impl Render for LudusaviBackupDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (text, is_error, path) = match &self.outcome {
-            Outcome::Running => (RUNNING.to_string(), false, None),
+            Outcome::Running => (tr!("Backing up saves with Ludusavi…").to_string(), false, None),
             Outcome::Message(m) => (m.clone(), false, None),
             Outcome::Error(m) => (m.clone(), true, None),
             Outcome::Done { message, path } => (message.clone(), false, path.clone()),
         };
         if crate::console::active() {
-            let rows = vec![crate::console::list::Row::action("close", "Close")];
+            let rows = vec![crate::console::list::Row::action("close", tr!("Close"))];
             let error = is_error.then(|| SharedString::from(text.clone()));
             let message = if is_error { String::new() } else { text };
-            return crate::console::list::simple_dialog(&mut self.console_list, "console-ludusavi", TITLE, &message, error, &rows);
+            return crate::console::list::simple_dialog(&mut self.console_list, "console-ludusavi", title(), &message, error, &rows);
         }
         let body = div().flex().flex_col().child(paragraph(text).when(is_error, |d| d.text_color(theme::danger_text())));
         let mut footer = div().flex().gap(px(10.));
         if let Some(path) = path {
-            footer =
-                footer.child(button("ludusavi-show", ButtonKind::Glass, "Show in folder").on_click(move |_, _, _| show_in_folder(&path)));
+            footer = footer
+                .child(button("ludusavi-show", ButtonKind::Glass, tr!("Show in folder")).on_click(move |_, _, _| show_in_folder(&path)));
         }
-        footer = footer
-            .child(button("ludusavi-close", ButtonKind::Primary, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
+        footer = footer.child(
+            button("ludusavi-close", ButtonKind::Primary, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+        );
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "ludusavi-backup".into(), title: TITLE.into(), width: 560., height: None },
+            DialogProps { id: "ludusavi-backup".into(), title: title().into(), width: 560., height: None },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
@@ -145,7 +150,7 @@ impl crate::console::PadTarget for LudusaviBackupDialog {
     }
 
     fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
-        vec![crate::console::hint(crate::console::Btn::A, "Close")]
+        vec![crate::console::hint(crate::console::Btn::A, tr!("Close"))]
     }
 }
 

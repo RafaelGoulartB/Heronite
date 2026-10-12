@@ -7,6 +7,7 @@ use std::time::SystemTime;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::maintenance::human_size;
+use heronite_i18n::tr;
 use heronite_launch::log_reader::LogEntry;
 
 use super::LogViewer;
@@ -36,7 +37,11 @@ impl LogViewer {
         let mut col = div().flex().flex_col().gap(px(2.)).p(px(6.));
         let mut last_group = None;
         if self.entries.is_empty() {
-            col = col.child(div().p(px(8.)).child(meta_text(if self.entries_loaded { "No logs yet." } else { "Looking for logs..." })));
+            col = col.child(div().p(px(8.)).child(meta_text(if self.entries_loaded {
+                tr!("No logs yet.")
+            } else {
+                tr!("Looking for logs...")
+            })));
         }
         for (i, e) in self.entries.iter().enumerate() {
             let (g, header) = Self::group_of(e);
@@ -136,13 +141,13 @@ impl LogViewer {
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .child(if name.is_empty() { "Logs".to_string() } else { name }),
+                .child(if name.is_empty() { tr!("Logs").to_string() } else { name }),
         );
         if has_previous {
             let this = cx.entity();
             bar = bar.child(crate::ui::controls::tabs(
                 "log-run",
-                &[(false, "Latest"), (true, "Previous run")],
+                &[(false, tr!("Latest")), (true, tr!("Previous run"))],
                 showing_previous,
                 move |previous, _, cx| {
                     this.update(cx, |this, cx| this.set_previous(previous, cx));
@@ -152,18 +157,18 @@ impl LogViewer {
         let has_path = path.is_some();
         let (p1, p2) = (path.clone(), path.clone());
         bar = bar
-            .child(action_button("log-refresh", ButtonKind::Glass, "Refresh", true, cx.listener(|this, _, _, cx| this.refresh(cx))))
+            .child(action_button("log-refresh", ButtonKind::Glass, tr!("Refresh"), true, cx.listener(|this, _, _, cx| this.refresh(cx))))
             .child(action_button(
                 "log-copy",
                 ButtonKind::Glass,
-                if self.copied { "Copied!" } else { "Copy" },
+                if self.copied { tr!("Copied!") } else { tr!("Copy") },
                 has_path && !self.content.lines.is_empty(),
                 cx.listener(|this, _, _, cx| this.copy(cx)),
             ))
             .child(action_button(
                 "log-folder",
                 ButtonKind::Glass,
-                "Open folder",
+                tr!("Open folder"),
                 has_path,
                 cx.listener(move |this, _, _, cx| {
                     if let Some(dir) = p1.as_deref().and_then(Path::parent) {
@@ -174,7 +179,7 @@ impl LogViewer {
             .child(action_button(
                 "log-open",
                 ButtonKind::Glass,
-                "Open file",
+                tr!("Open file"),
                 has_path,
                 cx.listener(move |this, _, _, cx| {
                     if let Some(file) = p2.clone() {
@@ -192,10 +197,13 @@ impl LogViewer {
             info.push_str(&p.display().to_string());
         }
         if !c.lines.is_empty() || c.total > 0 {
-            info.push_str(&format!("  \u{b7}  {}", human_size(c.total)));
-            if c.skipped > 0 {
-                info.push_str(&format!(", showing the last {}", human_size(c.total - c.skipped)));
-            }
+            let total = human_size(c.total);
+            let size = if c.skipped > 0 {
+                tr!("{total}, showing the last {shown}", total, shown = human_size(c.total - c.skipped))
+            } else {
+                total
+            };
+            info.push_str(&format!("  \u{b7}  {size}"));
             if let Some(t) = entry.and_then(|e| e.modified) {
                 if !showing_previous {
                     info.push_str(&format!("  \u{b7}  {}", when(t)));
@@ -213,11 +221,11 @@ impl LogViewer {
             div().p(px(12.)).text_color(theme::danger_text()).child(err).into_any_element()
         } else if lines.is_empty() {
             let text = if self.busy {
-                "Reading..."
+                tr!("Reading...")
             } else if self.selected.is_none() {
-                "Nothing to show. Logs appear here after a game is launched."
+                tr!("Nothing to show. Logs appear here after a game is launched.")
             } else {
-                "This log is empty."
+                tr!("This log is empty.")
             };
             div().p(px(12.)).child(meta_text(text)).into_any_element()
         } else {
@@ -281,12 +289,12 @@ impl LogViewer {
             footer = footer.child(action_button(
                 "log-earlier",
                 ButtonKind::Glass,
-                "Load earlier",
+                tr!("Load earlier"),
                 true,
                 cx.listener(|this, _, _, cx| this.load_earlier(cx)),
             ));
         } else if c.skipped > 0 {
-            footer = footer.child(meta_text("Only the end of this big log is shown here. Use Open file to see all of it."));
+            footer = footer.child(meta_text(tr!("Only the end of this big log is shown here. Use Open file to see all of it.")));
         }
         if let Some(n) = self.notice.clone() {
             footer = footer.child(div().text_size(px(13.)).text_color(theme::danger_text()).child(n));

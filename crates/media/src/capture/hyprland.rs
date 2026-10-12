@@ -2,6 +2,7 @@
 //! the functions that run `hyprctl eval` change the compositor's state.
 
 use super::{hyprland_bind_expression, hyprland_unbind_expression, HyprlandBind, HyprlandBinding, Monitor};
+use heronite_i18n::tr;
 use serde::Deserialize;
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -78,11 +79,11 @@ pub fn register(binding: &HyprlandBinding, accelerator: &str, pid: u32) -> Resul
         current = binds()?;
     }
     if current.iter().any(|b| b.is_same_trigger(binding)) {
-        return Err(format!("The shortcut {accelerator} is already in use"));
+        return Err(tr!("The shortcut {accelerator} is already in use", accelerator));
     }
     eval(&hyprland_bind_expression(binding, pid))?;
     if !binds()?.iter().any(|b| b.is_ours(binding)) {
-        return Err("Hyprland did not retain the shortcut".into());
+        return Err(tr!("Hyprland did not retain the shortcut").into());
     }
     Ok(())
 }

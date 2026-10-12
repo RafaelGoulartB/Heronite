@@ -8,6 +8,7 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::{DataPaths, Library};
+use heronite_i18n::tr;
 use heronite_launch::log_reader::{display_lines, list_logs, read_tail, LogEntry, LogSource};
 use heronite_launch::log_writer::LogPaths;
 
@@ -28,7 +29,7 @@ fn collect(data_paths: &DataPaths, scope: &Scope) -> (Vec<LogEntry>, HashMap<Str
 }
 
 fn read_content(path: &Path, bytes: u64) -> Result<Content, String> {
-    let tail = read_tail(path, bytes).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    let tail = read_tail(path, bytes).map_err(|e| tr!("Could not read {path}: {error}", path = path.display(), error = e))?;
     let lines = display_lines(&tail.text).into_iter().map(SharedString::from).collect();
     Ok(Content { path: path.to_path_buf(), lines: Arc::new(lines), total: tail.total, skipped: tail.skipped })
 }
@@ -191,7 +192,7 @@ impl LogViewer {
     pub(super) fn open(&mut self, target: PathBuf, cx: &mut Context<Self>) {
         self.notice = match Command::new("xdg-open").arg(&target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
             Ok(_) => None,
-            Err(e) => Some(format!("Could not open {}: {e}", target.display()).into()),
+            Err(e) => Some(tr!("Could not open {path}: {error}", path = target.display(), error = e).into()),
         };
         cx.notify();
     }
@@ -208,18 +209,18 @@ impl LogViewer {
                 .unwrap_or_default()
         };
         match &e.source {
-            LogSource::Launcher => ("Heronite (this app)".into(), day()),
-            LogSource::Runner(r) => (format!("{r} runner"), format!("runners/{r}.log")),
+            LogSource::Launcher => (tr!("Heronite (this app)").into(), day()),
+            LogSource::Runner(r) => (tr!("{runner} runner", runner = r), format!("runners/{r}.log")),
             LogSource::Game { app_name, runner, ty } => (title(app_name), format!("{} - {runner}", ty.label())),
-            LogSource::Legacy { app_name } => (title(app_name), "Older log".into()),
+            LogSource::Legacy { app_name } => (title(app_name), tr!("Older log").into()),
         }
     }
 
     pub(super) fn group_of(e: &LogEntry) -> (u8, &'static str) {
         match e.source {
-            LogSource::Launcher => (0, "This app"),
-            LogSource::Runner(_) => (2, "Runners"),
-            LogSource::Game { .. } | LogSource::Legacy { .. } => (3, "Games"),
+            LogSource::Launcher => (0, tr!("This app")),
+            LogSource::Runner(_) => (2, tr!("Runners")),
+            LogSource::Game { .. } | LogSource::Legacy { .. } => (3, tr!("Games")),
         }
     }
 }

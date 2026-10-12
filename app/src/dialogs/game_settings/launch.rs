@@ -8,6 +8,7 @@ use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::models::{LocalGameMeta, LocalMetaFile};
 use heronite_data::{json_store, DataPaths};
+use heronite_i18n::tr;
 use heronite_launch::native::{detect_executable_kind, effective_platform, ExecutableKind, Platform};
 use heronite_launch::SystemProbe;
 
@@ -88,7 +89,8 @@ impl GameSettingsDialog {
     }
 
     pub(super) fn browse_executable(&mut self, cx: &mut Context<Self>) {
-        let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some("Select".into()) });
+        let rx =
+            cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some(tr!("Select").into()) });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = rx.await else { return };
             let Some(path) = paths.into_iter().next() else { return };
@@ -140,17 +142,18 @@ impl GameSettingsDialog {
         let exe_empty = l.executable.read(cx).value().trim().is_empty();
         let busy = self.busy.is_some();
         let detected = match l.detected {
-            ExecutableKind::Linux => "Linux program (ELF, script or AppImage)",
-            ExecutableKind::Windows => "Windows program",
-            ExecutableKind::Unknown => "Unknown file type",
+            ExecutableKind::Linux => tr!("Linux program (ELF, script or AppImage)"),
+            ExecutableKind::Windows => tr!("Windows program"),
+            ExecutableKind::Unknown => tr!("Unknown file type"),
         };
-        let effective = if l.effective == Platform::Linux { "Runs natively on Linux" } else { "Runs through Wine/Proton" };
-        let run_as = [("auto", "Automatic (from the file)"), ("linux", "Linux native"), ("windows", "Windows (Wine/Proton)")];
+        let effective = if l.effective == Platform::Linux { tr!("Runs natively on Linux") } else { tr!("Runs through Wine/Proton") };
+        let run_as =
+            [("auto", tr!("Automatic (from the file)")), ("linux", tr!("Linux native")), ("windows", tr!("Windows (Wine/Proton)"))];
         let current_label = run_as.iter().find(|(v, _)| *v == l.run_as).map(|(_, t)| *t).unwrap_or_default();
         let options: Vec<(SharedString, bool)> = run_as.iter().map(|(v, t)| ((*t).into(), *v == l.run_as)).collect();
         let select = select_field(
             "gs-runas",
-            Some("Run as"),
+            Some(tr!("Run as")),
             current_label,
             false,
             l.run_as_open,
@@ -181,17 +184,23 @@ impl GameSettingsDialog {
             .text_size(px(13.))
             .text_color(theme::text_muted())
             .child(detected)
-            .when(!l.exists, |d| d.child(div().text_color(theme::danger_text()).child(" (file not found)")));
+            .when(!l.exists, |d| d.child(div().text_color(theme::danger_text()).child(tr!(" (file not found)"))));
         let exe_row = block(labeled(
-            "Executable",
+            tr!("Executable"),
             div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(input_box(&l.executable, false))).child(
-                action_button("gs-browse", ButtonKind::Glass, "Browse", !busy, cx.listener(|this, _, _, cx| this.browse_executable(cx))),
+                action_button(
+                    "gs-browse",
+                    ButtonKind::Glass,
+                    tr!("Browse"),
+                    !busy,
+                    cx.listener(|this, _, _, cx| this.browse_executable(cx)),
+                ),
             ),
         ));
         let file = card([
             exe_row,
-            row("Detected", None, detected_value).into_any_element(),
-            row("Current", None, div().text_size(px(13.)).text_color(theme::text_muted()).child(effective)).into_any_element(),
+            row(tr!("Detected"), None, detected_value).into_any_element(),
+            row(tr!("Current"), None, div().text_size(px(13.)).text_color(theme::text_muted()).child(effective)).into_any_element(),
         ]);
         let how = card([block(select)]);
         div()
@@ -199,14 +208,14 @@ impl GameSettingsDialog {
             .flex_col()
             .gap(px(6.))
             .child(
-                help_text(
-                    "Linux programs (ELF binaries, shell scripts, AppImages) run directly; Windows programs run through Wine/Proton. Automatic decides from the file.",
-                )
+                help_text(tr!(
+                    "Linux programs (ELF binaries, shell scripts, AppImages) run directly; Windows programs run through Wine/Proton. Automatic decides from the file."
+                ))
                 .px(px(6.)),
             )
-            .child(caption("Program"))
+            .child(caption(tr!("Program")))
             .child(file)
-            .child(caption("How to run it"))
+            .child(caption(tr!("How to run it")))
             .child(how)
             .child(
                 div()
@@ -217,11 +226,11 @@ impl GameSettingsDialog {
                     .child(action_button(
                         "gs-launch-save",
                         ButtonKind::Primary,
-                        if self.busy == Some(Busy::Launch) { "Saving\u{2026}" } else { "Save" },
+                        if self.busy == Some(Busy::Launch) { tr!("Saving…") } else { tr!("Save") },
                         !busy && dirty && !exe_empty,
                         cx.listener(|this, _, _, cx| this.save_launch(cx)),
                     ))
-                    .when(saved, |d| d.child(div().text_size(px(13.)).text_color(theme::success()).child("Saved"))),
+                    .when(saved, |d| d.child(div().text_size(px(13.)).text_color(theme::success()).child(tr!("Saved")))),
             )
     }
 }

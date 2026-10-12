@@ -6,9 +6,10 @@ mod console;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Datelike, Local, Utc};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::{month_short, tr, trn};
 
 use super::pick_rom::radio;
 use super::DialogEvent;
@@ -77,22 +78,34 @@ impl EventEmitter<DialogEvent> for LaunchStateDialog {}
 
 fn relative(dt: DateTime<Utc>) -> String {
     let secs = (Utc::now() - dt).num_seconds().max(0);
-    let units =
-        [(365 * 24 * 3600, "year"), (30 * 24 * 3600, "month"), (7 * 24 * 3600, "week"), (24 * 3600, "day"), (3600, "hour"), (60, "minute")];
-    for (size, name) in units {
-        if secs >= size {
-            let n = secs / size;
-            return format!("{n} {name}{} ago", if n == 1 { "" } else { "s" });
-        }
+    let n = |size: i64| secs / size;
+    match secs {
+        s if s >= 365 * 24 * 3600 => trn!(n(365 * 24 * 3600), "{n} year ago", "{n} years ago"),
+        s if s >= 30 * 24 * 3600 => trn!(n(30 * 24 * 3600), "{n} month ago", "{n} months ago"),
+        s if s >= 7 * 24 * 3600 => trn!(n(7 * 24 * 3600), "{n} week ago", "{n} weeks ago"),
+        s if s >= 24 * 3600 => trn!(n(24 * 3600), "{n} day ago", "{n} days ago"),
+        s if s >= 3600 => trn!(n(3600), "{n} hour ago", "{n} hours ago"),
+        s if s >= 60 => trn!(n(60), "{n} minute ago", "{n} minutes ago"),
+        _ => tr!("just now").into(),
     }
-    "just now".into()
+}
+
+/// `Oct 12, 2026, 3:04 PM` / `12 de Out de 2026, 15:04`.
+fn local_time(dt: DateTime<Local>) -> String {
+    let clock = match heronite_i18n::current() {
+        heronite_i18n::Lang::En => "%-I:%M %p",
+        heronite_i18n::Lang::PtBr => "%H:%M",
+    };
+    let (month, day, year) = (month_short(dt.month()), dt.day(), dt.year());
+    let time = dt.format(clock).to_string();
+    tr!("{month} {day}, {year}, {time}", month, day, year, time)
 }
 
 fn describe(iso: &str) -> String {
     match DateTime::parse_from_rfc3339(iso) {
         Ok(dt) => {
             let utc = dt.with_timezone(&Utc);
-            format!("{} · {}", relative(utc), utc.with_timezone(&Local).format("%b %-d, %Y, %-I:%M %p"))
+            format!("{} · {}", relative(utc), local_time(utc.with_timezone(&Local)))
         }
         Err(_) => iso.to_string(),
     }
@@ -104,11 +117,11 @@ impl LaunchStateDialog {
             .into_iter()
             .map(|s| Row {
                 label: if s.resume {
-                    "Resume point".into()
+                    tr!("Resume point").into()
                 } else {
                     match s.slot {
-                        Some(n) => format!("Slot {n}"),
-                        None => "Save state".into(),
+                        Some(n) => tr!("Slot {n}", n),
+                        None => tr!("Save state").into(),
                     }
                 },
                 glyph: s.slot.map(|n| n.to_string()).unwrap_or_else(|| "•".into()),
@@ -120,6 +133,16 @@ impl LaunchStateDialog {
             .collect();
         let selected = if rows.is_empty() { None } else { Some(0) };
         Self { title, emulator, rows, selected, on_play, console_scroll: ScrollHandle::new() }
+    }
+
+    fn intro(&self) -> String {
+        let title = &self.title;
+        if self.emulator.is_empty() {
+            tr!("The emulator has save states for {title}. Continue from one or start from the beginning.", title)
+        } else {
+            let emulator = &self.emulator;
+            tr!("{emulator} has save states for {title}. Continue from one or start from the beginning.", emulator, title)
+        }
     }
 
     fn play(&self, cx: &mut App) {
@@ -210,31 +233,24 @@ impl Render for LaunchStateDialog {
                         .flex()
                         .flex_col()
                         .min_w_0()
-                        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child("Start from the beginning"))
+                        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Start from the beginning")))
                         .child(
                             div()
                                 .text_size(px(12.))
                                 .text_color(theme::text_dim())
-                                .child("Boot the game normally. In-game saves on memory cards are kept."),
+                                .child(tr!("Boot the game normally. In-game saves on memory cards are kept.")),
                         ),
                 ),
         );
-        let body = div()
-            .flex()
-            .flex_col()
-            .gap(px(12.))
-            .child(paragraph(format!(
-                "{} has save states for {}. Continue from one or start from the beginning.",
-                if self.emulator.is_empty() { "The emulator" } else { &self.emulator },
-                self.title
-            )))
-            .child(list);
+        let body = div().flex().flex_col().gap(px(12.)).child(paragraph(self.intro())).child(list);
         let footer = div()
             .flex()
             .gap(px(16.))
-            .child(button("state-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(
-                button("state-play", ButtonKind::Glass, if fresh_on { "Start" } else { "Continue" })
+                button("state-cancel", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+            )
+            .child(
+                button("state-play", ButtonKind::Glass, if fresh_on { tr!("Start") } else { tr!("Continue") })
                     .on_click(cx.listener(|this, _, _, cx| this.play(cx))),
             )
             .into_any_element();
@@ -242,7 +258,7 @@ impl Render for LaunchStateDialog {
         dialog(
             DialogProps {
                 id: "launch-state".into(),
-                title: "How do you want to play?".into(),
+                title: tr!("How do you want to play?").into(),
                 width: 560f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
                 height: None,
             },

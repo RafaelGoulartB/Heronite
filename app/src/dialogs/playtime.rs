@@ -7,6 +7,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::format_playtime_minutes;
 use heronite_data::playtime::{clamp_number, set_playtime_minutes, split_minutes};
+use heronite_i18n::tr;
 
 use super::{DialogCtx, DialogEvent};
 use crate::ui::controls::{button, ButtonKind};
@@ -68,7 +69,7 @@ impl PlaytimeDialog {
         match set_playtime_minutes(&self.ctx.data_paths, &self.app_name, total as f64) {
             Ok(()) => cx.emit(DialogEvent::ChangedAndClose),
             Err(err) => {
-                self.error = Some(format!("Could not save the playtime: {err:#}").into());
+                self.error = Some(tr!("Could not save the playtime: {error}", error = format!("{err:#}")).into());
                 cx.notify();
             }
         }
@@ -85,8 +86,8 @@ impl Render for PlaytimeDialog {
             .flex()
             .flex_col()
             .gap(px(16.))
-            .child(paragraph(format!("Set the total time played for {}. New sessions keep adding to this value.", self.title)))
-            .child(div().flex().gap(px(16.)).child(field("Hours", &self.hours)).child(field("Minutes", &self.minutes)))
+            .child(paragraph(tr!("Set the total time played for {title}. New sessions keep adding to this value.", title = &self.title)))
+            .child(div().flex().gap(px(16.)).child(field(tr!("Hours"), &self.hours)).child(field(tr!("Minutes"), &self.minutes)))
             .child(
                 div()
                     .text_size(px(18.))
@@ -98,11 +99,14 @@ impl Render for PlaytimeDialog {
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(button("playtime-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
-            .child(button("playtime-save", ButtonKind::Primary, "Save").on_click(cx.listener(|this, _, _, cx| this.save(cx))));
+            .child(
+                button("playtime-cancel", ButtonKind::Ghost, tr!("Cancel"))
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+            )
+            .child(button("playtime-save", ButtonKind::Primary, tr!("Save")).on_click(cx.listener(|this, _, _, cx| this.save(cx))));
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "playtime".into(), title: "Edit playtime".into(), width: 460., height: None },
+            DialogProps { id: "playtime".into(), title: tr!("Edit playtime").into(), width: 460., height: None },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {

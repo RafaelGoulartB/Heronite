@@ -17,6 +17,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
+use heronite_i18n::tr;
 use serde_json::{json, Value};
 
 /// Created in the Steam folder so the next Steam start exposes the interface.
@@ -97,8 +98,8 @@ impl SteamClient {
     /// `evalInSteamClient`: `Runtime.evaluate` awaiting the promise and
     /// returning the value.
     pub fn eval(&self, expression: &str) -> Result<Value> {
-        let path = self.socket_path().context("The Steam client debugging interface is not available")?;
-        let mut ws = WebSocket::connect(&self.addr, &path, EVAL_TIMEOUT).context("Connection to the Steam client failed")?;
+        let path = self.socket_path().context(tr!("The Steam client debugging interface is not available"))?;
+        let mut ws = WebSocket::connect(&self.addr, &path, EVAL_TIMEOUT).context(tr!("Connection to the Steam client failed"))?;
         let request = json!({
             "id": 1,
             "method": "Runtime.evaluate",
@@ -106,7 +107,8 @@ impl SteamClient {
         });
         ws.send_text(&request.to_string())?;
         loop {
-            let text = ws.read_message().map_err(|e| if is_timeout(&e) { anyhow!("Timed out waiting for the Steam client") } else { e })?;
+            let text =
+                ws.read_message().map_err(|e| if is_timeout(&e) { anyhow!(tr!("Timed out waiting for the Steam client")) } else { e })?;
             let response: Value = serde_json::from_str(&text).context("the Steam client sent invalid JSON")?;
             if response.get("id").and_then(Value::as_i64) != Some(1) {
                 continue;
@@ -153,7 +155,7 @@ impl SteamClient {
       return shortcuts
     })()"#,
         )?;
-        let list = value.as_array().ok_or_else(|| anyhow!("Could not get the shortcut list from the Steam client"))?;
+        let list = value.as_array().ok_or_else(|| anyhow!(tr!("Could not get the shortcut list from the Steam client")))?;
         let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
         Ok(list
             .iter()
@@ -388,7 +390,7 @@ impl WebSocket {
                 payload.iter_mut().enumerate().for_each(|(i, b)| *b ^= mask[i % 4]);
             }
             match opcode {
-                0x8 => bail!("The Steam client closed the connection"),
+                0x8 => bail!(tr!("The Steam client closed the connection")),
                 0x9 => self.send_frame(0xA, &payload)?,
                 0xA => {}
                 _ => {

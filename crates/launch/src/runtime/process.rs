@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use heronite_i18n::tr;
 
 use super::session::{fail, finish};
 use super::state::{Control, Shared};
@@ -65,9 +66,9 @@ pub(super) fn run_process(
     let services = shared.services.lock().unwrap().clone();
     let status = |n: Notice| {
         if n.warning {
-            log.warning(&n.message);
+            log.warning(&n.log);
         } else {
-            log.info(&n.message);
+            log.info(&n.log);
         }
         shared.send(LaunchEvent::Status { app_name: req.app_name.clone(), message: n.message, warning: n.warning })
     };
@@ -88,7 +89,7 @@ pub(super) fn run_process(
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
     if !plan.pre_commands.is_empty() {
-        status(Notice::info("Preparing prefix..."));
+        status(Notice::info("Preparing prefix...", tr!("Preparing prefix...")));
     }
     for cmd in &plan.pre_commands {
         if control.kill.load(Ordering::SeqCst) || !run_to_completion(shared, control, cmd, Some(log)) {
@@ -122,7 +123,12 @@ pub(super) fn run_process(
     log.info("Game Output:");
     let mut handle = match shared.spawner.spawn_logged(&plan.command, Some(log.clone())) {
         Ok(h) => h,
-        Err(e) => return fail(shared, log, req, format!("could not start {}: {e}", plan.command.program)),
+        Err(e) => {
+            let program = &plan.command.program;
+            let notice =
+                Notice::warn(format!("could not start {program}: {e}"), tr!("could not start {program}: {error}", program, error = e));
+            return fail(shared, log, req, notice);
+        }
     };
     control.pid.store(handle.pid(), Ordering::SeqCst);
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);

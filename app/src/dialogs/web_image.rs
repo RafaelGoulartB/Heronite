@@ -9,6 +9,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameArt;
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::{ArtKind, MetadataService, WebImage};
 
@@ -115,7 +116,7 @@ impl WebImageDialog {
                 match res {
                     Ok(list) => {
                         if list.is_empty() {
-                            this.error = "No images found. Try another search.".into();
+                            this.error = tr!("No images found. Try another search.").into();
                         }
                         this.results = list;
                     }
@@ -162,7 +163,7 @@ impl WebImageDialog {
 impl Render for WebImageDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
-        let kind_label = if self.kind == ArtKind::Cover { "Cover" } else { "Background" };
+        let kind_label = if self.kind == ArtKind::Cover { tr!("Cover") } else { tr!("Background") };
         let (tw, th) = if self.kind == ArtKind::Cover { (120., 180.) } else { (240., 90.) };
 
         let toolbar = div()
@@ -173,12 +174,12 @@ impl Render for WebImageDialog {
             .child(action_button(
                 "wi-search",
                 ButtonKind::Glass,
-                "Search",
+                tr!("Search"),
                 !self.loading && !self.saving,
                 cx.listener(|this, _, _, cx| this.search(cx)),
             ))
             .child(search_box(&self.query))
-            .child(checkbox("wi-transparent", self.transparent, "Transparent").on_click(cx.listener(|this, _, _, cx| {
+            .child(checkbox("wi-transparent", self.transparent, tr!("Transparent")).on_click(cx.listener(|this, _, _, cx| {
                 if !this.loading && !this.saving {
                     this.transparent = !this.transparent;
                     this.search(cx);
@@ -201,7 +202,7 @@ impl Render for WebImageDialog {
                         Animation::new(Duration::from_secs(1)).repeat(),
                         |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
                     ))
-                    .child("Searching\u{2026}"),
+                    .child(tr!("Searching…")),
             );
         } else {
             let shown = self.results.len().min(self.visible);
@@ -242,12 +243,15 @@ impl Render for WebImageDialog {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(help_text(format!("Pick an image from the web. Collection saves it like a file you selected yourself. {kind_label}")))
+            .child(help_text(tr!(
+                "Pick an image from the web. Collection saves it like a file you selected yourself. {kind_label}",
+                kind_label
+            )))
             .child(toolbar)
             .child(grid);
         if !self.loading && self.visible < self.results.len() {
             body = body.child(div().flex().justify_center().child(
-                button("wi-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                button("wi-more", ButtonKind::Glass, tr!("Load more")).min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
                     this.visible += PAGE_SIZE;
                     cx.notify();
                 })),
@@ -272,21 +276,26 @@ impl Render for WebImageDialog {
             .child(action_button(
                 "wi-cancel",
                 ButtonKind::Ghost,
-                "Cancel",
+                tr!("Cancel"),
                 !self.saving,
                 cx.listener(|_, _, _, cx| cx.emit(ArtEvent::Close)),
             ))
             .child(action_button(
                 "wi-select",
                 ButtonKind::Primary,
-                if self.saving { "Downloading\u{2026}" } else { "Select" },
+                if self.saving { tr!("Downloading…") } else { tr!("Select") },
                 self.selected.is_some() && !self.loading && !self.saving,
                 cx.listener(|this, _, _, cx| this.confirm(None, cx)),
             ));
         let entity = cx.entity().downgrade();
         let vw = f32::from(window.viewport_size().width);
         dialog(
-            DialogProps { id: "collection-web-image".into(), title: "Search images".into(), width: 960f32.min(vw * 0.96), height: None },
+            DialogProps {
+                id: "collection-web-image".into(),
+                title: tr!("Search images").into(),
+                width: 960f32.min(vw * 0.96),
+                height: None,
+            },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {

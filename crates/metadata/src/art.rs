@@ -8,6 +8,7 @@ use anyhow::{anyhow, bail, Result};
 use heronite_data::json_store;
 use heronite_data::models::{ArtFile, CollectionGameArt};
 use heronite_data::paths::{percent_decode, DataPaths};
+use heronite_i18n::tr;
 
 use crate::http::Http;
 use crate::types::ArtKind;
@@ -142,13 +143,13 @@ pub fn set_collection_game_art(
     } else {
         Some(PathBuf::from(source_path))
     }
-    .ok_or_else(|| anyhow!("Image not found: {source_path}"))?;
+    .ok_or_else(|| anyhow!(tr!("Image not found: {path}", path = source_path)))?;
     let ext = normalize_ext(&resolved.extension().map(|e| e.to_string_lossy().into_owned()).unwrap_or_default());
     if !ALLOWED_EXT.contains(&ext.as_str()) {
-        bail!("Unsupported image type: {}", if ext.is_empty() { "unknown" } else { &ext });
+        bail!(tr!("Unsupported image type: {kind}", kind = if ext.is_empty() { tr!("unknown") } else { &ext }));
     }
     if !resolved.exists() {
-        bail!("Image not found: {}", resolved.display());
+        bail!(tr!("Image not found: {path}", path = resolved.display()));
     }
     let dest = dest_file(paths, runner, app_name, kind, &ext)?;
     fs::copy(&resolved, &dest)?;
@@ -173,7 +174,7 @@ fn ext_from_url(url: &str, content_type: &str) -> String {
 
 fn download_image_bytes(http: &Http, url: &str) -> Result<(Vec<u8>, String)> {
     if !(url.starts_with("http://") || url.starts_with("https://") || url.to_lowercase().starts_with("http")) {
-        bail!("Image URL must be http(s)");
+        bail!(tr!("Image URL must be http(s)"));
     }
     let resp = http
         .get(url)
@@ -188,10 +189,10 @@ fn download_image_bytes(http: &Http, url: &str) -> Result<(Vec<u8>, String)> {
     }
     let ext = sniff_image_ext(&resp.body, true).map(str::to_owned).unwrap_or_else(|| ext_from_url(url, &resp.content_type));
     if ext.is_empty() || !ALLOWED_EXT.contains(&ext.as_str()) {
-        bail!("Unsupported image type: {}", if ext.is_empty() { "unknown" } else { &ext });
+        bail!(tr!("Unsupported image type: {kind}", kind = if ext.is_empty() { tr!("unknown") } else { &ext }));
     }
     if resp.body.len() < 32 {
-        bail!("Downloaded image is empty");
+        bail!(tr!("Downloaded image is empty"));
     }
     Ok((resp.body, ext))
 }
@@ -221,7 +222,7 @@ pub fn set_collection_game_art_from_url(
             }
         }
     }
-    Err(anyhow!("Could not download image: {}", last.map(|e| e.to_string()).unwrap_or_else(|| "undefined".into())))
+    Err(anyhow!(tr!("Could not download image: {error}", error = last.map(|e| e.to_string()).unwrap_or_else(|| "undefined".into()))))
 }
 
 /// `clearCollectionGameArt`: reset one kind to the default art.

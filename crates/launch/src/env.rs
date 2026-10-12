@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use heronite_i18n::tr;
 use regex::Regex;
 
 use crate::probe::Probe;
@@ -283,14 +284,16 @@ pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option
     if s.show_mangohud && probe.env_var("SteamDeck").as_deref() != Some("1") {
         match probe.which("mangohud") {
             Some(bin) => mangohud = vec![bin, "--dlsym".into()],
-            None => error = Some("Mangohud is enabled, but `mangohud` executable could not be found on $PATH".to_string()),
+            None => error = Some(tr!("Mangohud is enabled, but `mangohud` executable could not be found on $PATH").to_string()),
         }
     }
     if s.use_game_mode {
         match probe.which("gamemoderun") {
             Some(bin) => gamemode = Some(bin),
             None => {
-                error.get_or_insert_with(|| "GameMode is enabled, but `gamemoderun` executable could not be found on $PATH".to_string());
+                error.get_or_insert_with(|| {
+                    tr!("GameMode is enabled, but `gamemoderun` executable could not be found on $PATH").to_string()
+                });
             }
         }
     }

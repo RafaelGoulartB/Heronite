@@ -17,6 +17,7 @@
 //!
 //! Every failure is a warning: the game starts anyway, like in Heroic.
 
+use heronite_i18n::tr;
 use std::cell::Cell;
 use std::path::Path;
 use std::time::Duration;
@@ -144,7 +145,10 @@ impl Prep<'_> {
         let cmd = match wine_command_for(ctx, self.probe, settings, parts, install_path) {
             Ok(c) => c,
             Err(e) => {
-                self.notice(Notice::warn(format!("Could not run a Wine command: {e}")));
+                self.notice(Notice::warn(
+                    format!("Could not run a Wine command: {e}"),
+                    tr!("Could not run a Wine command: {error}", error = e),
+                ));
                 incomplete.set(true);
                 return false;
             }
@@ -169,7 +173,7 @@ impl Prep<'_> {
         epic: Option<&dyn EpicSetup>,
         incomplete: &Cell<bool>,
     ) -> Flow {
-        self.notice(Notice::info("Installing Redistributables (EPIC)"));
+        self.notice(Notice::info("Installing Redistributables (EPIC)", tr!("Installing Redistributables (EPIC)")));
         let go = |this: &Self| if this.cancelled() { Flow::Cancelled } else { Flow::Go };
 
         // Fixes games like Fallout New Vegas and Dishonored: Death of the Outsider.
@@ -217,7 +221,12 @@ impl Prep<'_> {
                     log::warn!("the installer of {what} did not finish cleanly");
                 }
             } else {
-                self.notice(Notice::warn(format!("The installer of {what} was not found: {file}")));
+                let shown = if fl.ea_managed {
+                    tr!("The installer of the EA App was not found: {file}", file)
+                } else {
+                    tr!("The installer of Ubisoft Connect was not found: {file}", file)
+                };
+                self.notice(Notice::warn(format!("The installer of {what} was not found: {file}"), shown));
             }
             if let Flow::Cancelled = go(self) {
                 return Flow::Cancelled;
@@ -233,7 +242,10 @@ impl Prep<'_> {
                         if epic.eos_overlay_installed() {
                             log::info!("EOS Overlay: Enabling");
                             if let Err(e) = epic.eos_overlay_enable(&folder) {
-                                self.notice(Notice::warn(format!("Could not enable the EOS Overlay: {e}")));
+                                self.notice(Notice::warn(
+                                    format!("Could not enable the EOS Overlay: {e}"),
+                                    tr!("Could not enable the EOS Overlay: {error}", error = e),
+                                ));
                             }
                         } else {
                             log::info!("EOS Overlay: Not Installed");
@@ -248,7 +260,7 @@ impl Prep<'_> {
     /// `installFixes`: the winetricks verbs and programs of `known_fixes.json`.
     fn install_fixes(&self, ctx: &PlanContext, settings: &GameSettings, fl: &FirstLaunch, incomplete: &Cell<bool>) -> Flow {
         if !fl.winetricks.is_empty() {
-            self.notice(Notice::info("Applying Winetricks fixes"));
+            self.notice(Notice::info("Applying Winetricks fixes", tr!("Applying Winetricks fixes")));
             for verb in &fl.winetricks {
                 if self.cancelled() {
                     return Flow::Cancelled;
@@ -257,7 +269,7 @@ impl Prep<'_> {
             }
         }
         if !fl.run_in_prefix.is_empty() {
-            self.notice(Notice::info("Installing Redistributables (FIXES)"));
+            self.notice(Notice::info("Installing Redistributables (FIXES)", tr!("Installing Redistributables (FIXES)")));
             for file in &fl.run_in_prefix {
                 if self.cancelled() {
                     return Flow::Cancelled;
@@ -288,11 +300,17 @@ impl Prep<'_> {
                     log::warn!("winetricks: {note}");
                 }
                 if !run_wait(self.spawner, &tool.command, INSTALLER_TIMEOUT, self.cancel) && !self.cancelled() {
-                    self.notice(Notice::warn(format!("Winetricks could not install {verb}")));
+                    self.notice(Notice::warn(
+                        format!("Winetricks could not install {verb}"),
+                        tr!("Winetricks could not install {verb}", verb),
+                    ));
                 }
             }
             Err(e) => {
-                self.notice(Notice::warn(format!("Could not install {verb} with winetricks: {e}")));
+                self.notice(Notice::warn(
+                    format!("Could not install {verb} with winetricks: {e}"),
+                    tr!("Could not install {verb} with winetricks: {error}", verb, error = e),
+                ));
                 incomplete.set(true);
             }
         }

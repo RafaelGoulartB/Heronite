@@ -12,6 +12,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameArt;
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::{ArtKind, MetadataService};
 
@@ -66,14 +67,14 @@ impl Tab {
 
     fn label(self) -> &'static str {
         match self {
-            Tab::Images => "Images",
-            Tab::Details => "Details",
-            Tab::Launch => "Launch",
-            Tab::Wine => "Wine",
-            Tab::Other => "Other",
-            Tab::Advanced => "Advanced",
-            Tab::Saves => "Cloud saves",
-            Tab::Gamescope => "Gamescope",
+            Tab::Images => tr!("Images"),
+            Tab::Details => tr!("Details"),
+            Tab::Launch => tr!("Launch"),
+            Tab::Wine => tr!("Wine"),
+            Tab::Other => tr!("Other"),
+            Tab::Advanced => tr!("Advanced"),
+            Tab::Saves => tr!("Cloud saves"),
+            Tab::Gamescope => tr!("Gamescope"),
         }
     }
 
@@ -188,7 +189,7 @@ impl GameSettingsDialog {
             if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("gs-head:{key}"), chain, 104., 140.)) };
         let cover = picture(src).w(px(52.)).h(px(70.)).flex_none().rounded(px(10.)).border_1().border_color(theme::white_a(0.10));
         let mut meta = vec![self.game.source_label.to_string()];
-        meta.push(if self.game.installed { "Installed".into() } else { "Not installed".into() });
+        meta.push(if self.game.installed { tr!("Installed").into() } else { tr!("Not installed").into() });
         if let Some(size) = self.game.game.install.install_size.as_deref().filter(|s| !s.is_empty() && self.game.installed) {
             meta.push(size.to_string());
         }
@@ -206,7 +207,7 @@ impl GameSettingsDialog {
                     .flex_1()
                     .min_w_0()
                     .gap(px(1.))
-                    .child(kicker("Game settings"))
+                    .child(kicker(tr!("Game settings")))
                     .child(dialog_title(self.title.clone()).truncate())
                     .child(div().text_size(px(13.)).text_color(theme::text_muted()).truncate().child(meta.join(" \u{b7} "))),
             )
@@ -275,7 +276,7 @@ impl Render for GameSettingsDialog {
             action_button(
                 "gs-defaults",
                 ButtonKind::Ghost,
-                "Use defaults",
+                tr!("Use defaults"),
                 can_reset,
                 cx.listener(|this, _, _, cx| this.reset_all_images(cx)),
             )
@@ -288,13 +289,13 @@ impl Render for GameSettingsDialog {
             right = right.child(action_button(
                 "gs-save",
                 ButtonKind::Primary,
-                if self.busy == Some(Busy::Details) { "Saving\u{2026}" } else { "Save" },
+                if self.busy == Some(Busy::Details) { tr!("Saving…") } else { tr!("Save") },
                 self.busy.is_none() && dirty,
                 cx.listener(|this, _, _, cx| this.save_details(cx)),
             ));
         }
         right = right.child(
-            button("gs-close", if self.tab == Tab::Details { ButtonKind::Glass } else { ButtonKind::Primary }, "Done")
+            button("gs-close", if self.tab == Tab::Details { ButtonKind::Glass } else { ButtonKind::Primary }, tr!("Done"))
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
         );
         let footer = div().flex().w_full().items_center().justify_between().child(left).child(right);

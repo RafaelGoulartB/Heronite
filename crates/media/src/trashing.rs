@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use heronite_i18n::tr;
+
 /// Why a screenshot could not be trashed.
 #[derive(Debug)]
 pub enum TrashError {
@@ -13,8 +15,8 @@ pub enum TrashError {
 impl std::fmt::Display for TrashError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NotFound => f.write_str("Screenshot not found."),
-            Self::OutsideRoot => f.write_str("Invalid screenshot path."),
+            Self::NotFound => f.write_str(tr!("Screenshot not found.")),
+            Self::OutsideRoot => f.write_str(tr!("Invalid screenshot path.")),
             Self::Trash(e) => f.write_str(e),
         }
     }

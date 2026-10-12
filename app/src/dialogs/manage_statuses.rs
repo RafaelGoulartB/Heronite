@@ -6,6 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::models::CompletionStatus;
 use heronite_data::status;
+use heronite_i18n::tr;
 
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
@@ -41,7 +42,7 @@ fn text_input(window: &mut Window, cx: &mut App, value: &str, placeholder: &str)
 
 impl ManageStatusesDialog {
     pub fn new(ctx: DialogCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let new_name = text_input(window, cx, "", "New status");
+        let new_name = text_input(window, cx, "", tr!("New status"));
         cx.subscribe_in(&new_name, window, |this, _, ev: &InputEvent, window, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
                 this.add(window, cx);
@@ -58,7 +59,7 @@ impl ManageStatusesDialog {
         self.rows = statuses
             .into_iter()
             .map(|status| {
-                let input = text_input(window, cx, &status.name, "");
+                let input = text_input(window, cx, status::status_label(&status.name), "");
                 let id = status.id.clone();
                 cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, window, cx| {
                     if matches!(ev, InputEvent::Blur | InputEvent::PressEnter { .. }) {
@@ -86,7 +87,7 @@ impl ManageStatusesDialog {
 
     fn rename(&mut self, id: &str, name: String, window: &mut Window, cx: &mut Context<Self>) {
         let Some(row) = self.rows.iter().find(|r| r.status.id == id) else { return };
-        if name.is_empty() || name == row.status.name {
+        if name.is_empty() || name == row.status.name || name == status::status_label(&row.status.name) {
             return;
         }
         let mut st = row.status.clone();
@@ -164,7 +165,7 @@ impl Render for ManageStatusesDialog {
             .flex()
             .flex_col()
             .gap(px(16.))
-            .child(help_text("Rename, reorder, or remove statuses. Games on a removed status move to another one."))
+            .child(help_text(tr!("Rename, reorder, or remove statuses. Games on a removed status move to another one.")))
             .child(list)
             .child(
                 div()
@@ -172,15 +173,15 @@ impl Render for ManageStatusesDialog {
                     .items_center()
                     .gap(px(8.))
                     .child(field(&self.new_name))
-                    .child(button("st-add", ButtonKind::Glass, "Add").on_click(cx.listener(|this, _, w, cx| this.add(w, cx)))),
+                    .child(button("st-add", ButtonKind::Glass, tr!("Add")).on_click(cx.listener(|this, _, w, cx| this.add(w, cx)))),
             )
             .children(self.error.clone().map(|e| div().text_color(theme::danger_text()).text_size(px(13.)).child(e)));
-        let footer = button("st-close", ButtonKind::Primary, "Done")
+        let footer = button("st-close", ButtonKind::Primary, tr!("Done"))
             .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)))
             .into_any_element();
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "manage-statuses".into(), title: "Manage statuses".into(), width: 520., height: None },
+            DialogProps { id: "manage-statuses".into(), title: tr!("Manage statuses").into(), width: 520., height: None },
             body.into_any_element(),
             Some(footer),
             move |_, cx| {

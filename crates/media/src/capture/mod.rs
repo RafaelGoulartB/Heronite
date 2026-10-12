@@ -22,6 +22,7 @@ mod accelerator;
 use crate::list::list_game_folders;
 use crate::matching::{pick_screenshot_folder, MIN_SCORE};
 use chrono::{Datelike, NaiveDateTime, Timelike};
+use heronite_i18n::n_;
 use std::path::{Path, PathBuf};
 
 pub use accelerator::{
@@ -218,7 +219,8 @@ pub struct CaptureStatus {
     pub error: Option<String>,
 }
 
-/// Texts of the desktop notifications (`notify.screenshot.*`).
+/// Texts of the desktop notifications (`notify.screenshot.*`), in English:
+/// they are translated when shown.
 #[derive(Debug, Clone)]
 pub struct CaptureMessages {
     pub saved_title: String,
@@ -235,12 +237,12 @@ pub struct CaptureMessages {
 impl Default for CaptureMessages {
     fn default() -> Self {
         Self {
-            saved_title: "Screenshot saved".into(),
-            saved_body: "{game} screenshot saved to {path}".into(),
-            failed_title: "Screenshot failed".into(),
-            failed_body: "The screen could not be captured: {error}".into(),
-            shortcut_failed_title: "Screenshot shortcut unavailable".into(),
-            shortcut_failed_body: "The configured shortcut could not be activated: {error}".into(),
+            saved_title: n_!("Screenshot saved").into(),
+            saved_body: n_!("{game} screenshot saved to {path}").into(),
+            failed_title: n_!("Screenshot failed").into(),
+            failed_body: n_!("The screen could not be captured: {error}").into(),
+            shortcut_failed_title: n_!("Screenshot shortcut unavailable").into(),
+            shortcut_failed_body: n_!("The configured shortcut could not be activated: {error}").into(),
         }
     }
 }

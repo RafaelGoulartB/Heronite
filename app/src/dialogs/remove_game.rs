@@ -4,6 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 use heronite_metadata::remove::{remove_collection_game, ShortcutDirs};
 
 use super::{DialogCtx, DialogEvent};
@@ -11,8 +12,6 @@ use crate::theme;
 use crate::ui::controls::{button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::paragraph;
-
-pub const TITLE: &str = "Remove from Collection";
 
 pub struct RemoveGameDialog {
     ctx: DialogCtx,
@@ -26,9 +25,16 @@ pub struct RemoveGameDialog {
 
 impl EventEmitter<DialogEvent> for RemoveGameDialog {}
 
+pub fn title() -> &'static str {
+    tr!("Remove from Collection")
+}
+
 /// The confirmation text.
 pub fn confirm_message(title: &str) -> String {
-    format!("Remove {title} from Collection? This does not uninstall the game. Playtime, status, and Collection images for it are deleted.")
+    tr!(
+        "Remove {title} from Collection? This does not uninstall the game. Playtime, status, and Collection images for it are deleted.",
+        title
+    )
 }
 
 impl RemoveGameDialog {
@@ -63,7 +69,8 @@ impl RemoveGameDialog {
                     Ok(_) => cx.emit(DialogEvent::ChangedAndClose),
                     Err(message) => {
                         this.error = Some(
-                            if message.is_empty() { "Could not remove this game from Collection.".to_string() } else { message }.into(),
+                            if message.is_empty() { tr!("Could not remove this game from Collection.").to_string() } else { message }
+                                .into(),
                         );
                         cx.notify();
                     }
@@ -83,7 +90,7 @@ impl Render for RemoveGameDialog {
             return crate::console::list::simple_dialog(
                 &mut self.console_list,
                 "console-remove-game",
-                TITLE,
+                title(),
                 &confirm_message(&self.title),
                 self.error.clone(),
                 &rows,
@@ -98,14 +105,14 @@ impl Render for RemoveGameDialog {
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(button("remove-no", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .child(button("remove-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(
-                button("remove-yes", ButtonKind::Danger, if self.working { "Removing…" } else { "Remove" })
+                button("remove-yes", ButtonKind::Danger, if self.working { tr!("Removing…") } else { tr!("Remove") })
                     .on_click(cx.listener(|this, _, _, cx| this.confirm(cx))),
             );
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "remove-game".into(), title: TITLE.into(), width: 520., height: None },
+            DialogProps { id: "remove-game".into(), title: title().into(), width: 520., height: None },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
@@ -120,8 +127,8 @@ impl RemoveGameDialog {
     fn console_rows(&self) -> Vec<crate::console::list::Row> {
         use crate::console::list::Row;
         vec![
-            Row::action("cancel", "Cancel"),
-            Row::action("remove", if self.working { "Removing\u{2026}" } else { "Remove" }).danger().enabled(!self.working),
+            Row::action("cancel", tr!("Cancel")),
+            Row::action("remove", if self.working { tr!("Removing…") } else { tr!("Remove") }).danger().enabled(!self.working),
         ]
     }
 }
@@ -142,7 +149,7 @@ impl crate::console::PadTarget for RemoveGameDialog {
 
     fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
         use crate::console::{hint, Btn};
-        vec![hint(Btn::A, "Select"), hint(Btn::B, "Cancel")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Cancel"))]
     }
 }
 

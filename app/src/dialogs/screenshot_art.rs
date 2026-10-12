@@ -9,6 +9,7 @@ use std::time::Duration;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
+use heronite_i18n::tr;
 use heronite_media::{list_screenshots, GameQuery, Screenshot, ThumbnailCache};
 use heronite_metadata::{ArtKind, MetadataService};
 
@@ -165,15 +166,15 @@ impl Render for ScreenshotArtDialog {
                         Animation::new(Duration::from_secs(1)).repeat(),
                         |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
                     ))
-                    .child("Loading\u{2026}"),
+                    .child(tr!("Loading…")),
             );
         } else if self.items.is_empty() {
             grid =
                 grid.child(div().w_full().flex().items_center().justify_center().text_size(px(14.)).text_color(theme::text_muted()).child(
                     if self.folder_configured {
-                        "No screenshots found for this game."
+                        tr!("No screenshots found for this game.")
                     } else {
-                        "Set a screenshots folder in Collection settings first."
+                        tr!("Set a screenshots folder in Collection settings first.")
                     },
                 ));
         } else {
@@ -211,14 +212,15 @@ impl Render for ScreenshotArtDialog {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(help_text(format!(
-                "Pick a screenshot of this game to use as the {}.",
-                if self.kind == ArtKind::Hero { "background" } else { "cover" }
-            )))
+            .child(help_text(if self.kind == ArtKind::Hero {
+                tr!("Pick a screenshot of this game to use as the background.")
+            } else {
+                tr!("Pick a screenshot of this game to use as the cover.")
+            }))
             .child(grid);
         if !self.loading && self.visible < self.items.len() {
             body = body.child(div().flex().justify_center().child(
-                button("sa-more", ButtonKind::Glass, "Load more").min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
+                button("sa-more", ButtonKind::Glass, tr!("Load more")).min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
                     this.visible += PAGE_SIZE;
                     this.load_thumbs(cx);
                     cx.notify();
@@ -243,14 +245,14 @@ impl Render for ScreenshotArtDialog {
             .child(action_button(
                 "sa-cancel",
                 ButtonKind::Ghost,
-                "Cancel",
+                tr!("Cancel"),
                 !self.saving,
                 cx.listener(|_, _, _, cx| cx.emit(ArtEvent::Close)),
             ))
             .child(action_button(
                 "sa-select",
                 ButtonKind::Primary,
-                if self.saving { "Saving\u{2026}" } else { "Select" },
+                if self.saving { tr!("Saving…") } else { tr!("Select") },
                 self.selected.is_some() && !self.loading && !self.saving,
                 cx.listener(|this, _, _, cx| this.confirm(None, cx)),
             ));
@@ -259,7 +261,7 @@ impl Render for ScreenshotArtDialog {
         dialog(
             DialogProps {
                 id: "collection-screenshot-art".into(),
-                title: "Select screenshot".into(),
+                title: tr!("Select screenshot").into(),
                 width: 960f32.min(vw * 0.96),
                 height: None,
             },

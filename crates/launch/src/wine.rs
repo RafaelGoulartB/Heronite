@@ -3,6 +3,7 @@
 //! `backend/launcher.ts`.
 
 use heronite_data::models::GameInfo;
+use heronite_i18n::tr;
 
 use crate::emulators::{node_basename, node_dirname};
 use crate::env::{build_wrappers, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
@@ -66,12 +67,16 @@ fn prepare_with(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, d
     if !valid_wine(&settings.wine_version, probe) {
         let default = ctx.global.wine_version();
         if valid_wine(&default, probe) {
-            notes.push(format!("Wine version '{}' is not valid; using the default '{}'", settings.wine_version.name, default.name));
+            notes.push(tr!(
+                "Wine version '{name}' is not valid; using the default '{default}'",
+                name = settings.wine_version.name,
+                default = default.name
+            ));
             settings.wine_version = default;
         } else {
-            return Err(format!(
-                "Wine version '{}' is not valid and no valid default Wine/Proton is configured",
-                settings.wine_version.name
+            return Err(tr!(
+                "Wine version '{name}' is not valid and no valid default Wine/Proton is configured",
+                name = settings.wine_version.name
             ));
         }
     }
@@ -82,9 +87,9 @@ fn prepare_with(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, d
     let umu_download = wants_umu && !umu_present && download_umu;
     let umu_ok = wants_umu && (umu_present || download_umu);
     if umu_download {
-        notes.push("umu-run was not found; it will be downloaded".to_string());
+        notes.push(tr!("umu-run was not found; it will be downloaded").to_string());
     } else if wants_umu && !umu_ok {
-        notes.push("umu-run was not found; running Proton directly".to_string());
+        notes.push(tr!("umu-run was not found; running Proton directly").to_string());
     }
     let runtime = if umu_ok {
         WineRuntime::Umu
@@ -174,7 +179,7 @@ pub fn build_wine_plan(
     args: &[String],
 ) -> LaunchPlan {
     if executable.starts_with('/') && !probe.exists(executable) {
-        return LaunchPlan::Unavailable(format!("Executable not found: {executable}"));
+        return LaunchPlan::Unavailable(tr!("Executable not found: {executable}", executable));
     }
     let wine = match prepare_for_launch(ctx, probe, settings) {
         Ok(w) => w,
@@ -183,7 +188,7 @@ pub fn build_wine_plan(
     let s = &wine.settings;
     let wp = build_wrappers(s, probe, None);
     if let Some(err) = wp.error {
-        return LaunchPlan::Unavailable(format!("Launch aborted: {err}"));
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
 
     let mut env = setup_wrapper_env_vars(&game.app_name, &game.runner);
