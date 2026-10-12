@@ -14,6 +14,8 @@ use crate::ui::icon;
 pub(super) struct CardState<'a> {
     pub vm: &'a CardVm,
     pub cover: Option<ImageSource>,
+    /// No source of the cover chain loaded: the card shows the title.
+    pub no_art: bool,
     pub cover_h: f32,
     pub selected: bool,
     pub hovered: bool,
@@ -63,6 +65,25 @@ pub fn card(
                 el.into_any_element()
             }
         }
+        // No art at all: the title, so the card still says which game it is.
+        None if s.no_art => div()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .p(px(12.))
+            .bg(theme::rgb_a(255, 255, 255, 0.05))
+            .child(
+                div()
+                    .w_full()
+                    .text_center()
+                    .text_size(px(14.))
+                    .line_height(px(19.))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(theme::white_a(0.78))
+                    .child(vm.title.clone()),
+            )
+            .into_any_element(),
         None => div().size_full().into_any_element(),
     };
 

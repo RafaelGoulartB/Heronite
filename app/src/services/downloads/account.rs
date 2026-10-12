@@ -21,7 +21,7 @@ impl Downloads {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&data_paths)?;
+                    let lg = Legendary::locate_or_install(&data_paths)?;
                     let info = user::login(&data_paths, &lg, &input)?;
                     // Heroic refreshes the library right after logging in.
                     let refresh = library::refresh(&data_paths, &lg);

@@ -20,7 +20,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Point `HERONITE_DATA_DIR` at a copy of a data folder to try changes without touching your real library. `HERONITE_DEBUG_*` variables open a page, dialog, or menu at startup, which helps with screenshots.
+Point `HERONITE_DATA_DIR` at a copy of a data folder to try changes without touching your real library. To see what a new user sees, run [`scripts/fresh-start.sh`](scripts/fresh-start.sh): it starts the app with an empty home in `/tmp` (add `--steam` to let it find your Steam games, or pass an AppImage to test a release). `HERONITE_DEBUG_*` variables open a page, dialog, or menu at startup, which helps with screenshots.
 
 ## Code
 

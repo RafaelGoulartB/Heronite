@@ -36,6 +36,14 @@ impl CollectionView {
         hub_entity.update(cx, |h, cx| h.schedule_idle(Duration::from_secs(secs), cx));
     }
 
+    /// Fills the metadata of games that have none right away (new games
+    /// arrived), instead of waiting for the idle fill.
+    pub(super) fn fill_metadata_now(&self, cx: &mut Context<Self>) {
+        if cx.has_global::<HubGlobal>() {
+            hub(cx).update(cx, |h, cx| h.schedule_idle(Duration::ZERO, cx));
+        }
+    }
+
     fn game_for(&self, key: &str) -> Option<heronite_data::collection::Game> {
         self.lib.as_ref()?.get(key).cloned()
     }

@@ -172,6 +172,10 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
         if md.title.as_deref().is_some_and(|s| !s.is_empty()) && !next.title.as_deref().is_some_and(|s| !s.is_empty()) {
             next.title = md.title.clone();
         }
+        // The Steam store header follows the newest fetch (its URL changes).
+        if let Some(header) = md.extra.get(crate::steam::HEADER_URL).filter(|v| v.as_str().is_some_and(|s| !s.is_empty())) {
+            next.extra.insert(crate::steam::HEADER_URL.into(), header.clone());
+        }
         if !md.websites.is_empty() && next.websites.is_empty() {
             next.websites = md.websites.clone();
         }

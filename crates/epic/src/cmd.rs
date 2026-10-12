@@ -54,6 +54,14 @@ impl Legendary {
         Ok(Self { bin: PathBuf::from(bin), config_dir: data_paths.legendary_config_dir() })
     }
 
+    /// [`Self::locate`], downloading legendary into the data folder first when
+    /// none is found (a new setup). Blocking, network.
+    pub fn locate_or_install(data_paths: &DataPaths) -> Result<Self> {
+        let bin = heronite_launch::legendary_install::ensure(data_paths, &SystemProbe, &heronite_launch::net::SystemNet, &|| false)
+            .map_err(|e| anyhow!("Could not get legendary, which Heronite uses for Epic Games: {e}"))?;
+        Ok(Self { bin, config_dir: data_paths.legendary_config_dir() })
+    }
+
     pub fn with_bin(bin: impl Into<PathBuf>, config_dir: impl Into<PathBuf>) -> Self {
         Self { bin: bin.into(), config_dir: config_dir.into() }
     }

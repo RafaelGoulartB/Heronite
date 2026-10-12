@@ -193,6 +193,11 @@ impl ImageStore {
         self.pending.retain(|k, _| !hit(k));
     }
 
+    /// Every source of `id` failed: there is no image to wait for.
+    pub fn is_failed(&self, id: &SharedString) -> bool {
+        self.failed.contains(id)
+    }
+
     /// Forgets the failed loads so they are tried again (e.g. after the library changed on disk).
     pub fn clear_failed(&mut self) {
         self.failed.clear();

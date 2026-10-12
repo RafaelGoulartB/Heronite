@@ -28,7 +28,7 @@ impl CollectionView {
     /// Cover texture for `key` at `w`×`h` logical px (requested on demand).
     pub(super) fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
         let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
-        let id: SharedString = format!("c:{key}:{pw}x{ph}").into();
+        let id = cover_id(key, w, h, scale);
         let chains = &self.cover_chains;
         self.images
             .get_or_request(&id, || chains.get(key).cloned().unwrap_or_default(), pw, ph, Variant::Cover, priority)
@@ -83,11 +83,13 @@ impl CollectionView {
         let key = c.key.clone();
         let cover_h = self.cover_h();
         let cover = self.cover(&c.cover_key, theme::CARD_W, cover_h, scale, 100);
+        let no_art = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, theme::CARD_W, cover_h, scale));
         let (k1, k2, k3, k4) = (key.clone(), key.clone(), key.clone(), key.clone());
         let el = card::card(
             card::CardState {
                 vm: &c,
                 cover,
+                no_art,
                 cover_h,
                 selected: self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
@@ -205,4 +207,10 @@ impl CollectionView {
             .children(sticky)
             .children(list_scrollbar)
     }
+}
+
+/// Image id of a cover at a size (one texture per size).
+fn cover_id(key: &SharedString, w: f32, h: f32, scale: f32) -> SharedString {
+    let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
+    format!("c:{key}:{pw}x{ph}").into()
 }

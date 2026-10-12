@@ -34,6 +34,7 @@ mod scroll;
 mod sideload_uninstall;
 mod system_glue;
 mod timeline;
+mod welcome;
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
@@ -310,9 +311,15 @@ impl CollectionView {
             Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),
             None => stage::stage(None, SharedString::default(), self.scrim, 1.),
         };
-        let list_column = self.render_list_column(list_w, cx);
         let vh = f32::from(window.viewport_size().height);
-        let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
+        // A new setup without games gets the welcome across the whole width.
+        let body = if self.lib.as_ref().is_some_and(|lib| lib.games.is_empty()) {
+            self.render_welcome(vw, vh - 42., cx)
+        } else {
+            let list_column = self.render_list_column(list_w, cx);
+            let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
+            div().size_full().flex().child(list_column).child(div().flex_1().min_w_0().h_full().child(focus_panel)).into_any_element()
+        };
         let toast = self.render_toast();
 
         div()
@@ -333,11 +340,7 @@ impl CollectionView {
             .child(stage_el)
             .children(page_el)
             .when(!on_page, |root| {
-                root.child(
-                    div().absolute().inset_0().flex().flex_col().child(header).child(
-                        div().flex().flex_1().min_h_0().child(list_column).child(div().flex_1().min_w_0().h_full().child(focus_panel)),
-                    ),
-                )
+                root.child(div().absolute().inset_0().flex().flex_col().child(header).child(div().flex().flex_1().min_h_0().child(body)))
             })
             .children(toast)
             .children(self.render_context_menu(window, cx))

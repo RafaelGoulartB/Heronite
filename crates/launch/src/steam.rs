@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
@@ -58,7 +58,19 @@ impl SteamAction {
 
 /// `steam` (or `steam-runtime`) on `$PATH`.
 pub fn find_steam_binary(probe: &dyn Probe) -> Option<String> {
-    ["steam", "steam-runtime"].iter().find_map(|n| probe.which(n))
+    ["steam", "steam-runtime", FLATPAK_STEAM_ID].iter().find_map(|n| probe.which(n)).or_else(|| {
+        // Flatpak's launchers, which are not always on `$PATH`.
+        let user = format!("{}/.local/share/flatpak/exports/bin/{FLATPAK_STEAM_ID}", probe.home().trim_end_matches('/'));
+        [user, format!("/var/lib/flatpak/exports/bin/{FLATPAK_STEAM_ID}")].into_iter().find(|p| probe.exists(p))
+    })
+}
+
+/// Flatpak id of the Steam client (Fedora, Bazzite and other immutable setups).
+pub const FLATPAK_STEAM_ID: &str = "com.valvesoftware.Steam";
+
+/// Steam's folder inside the Flatpak sandbox data.
+pub fn flatpak_steam_root(home: &Path) -> PathBuf {
+    home.join(".var/app").join(FLATPAK_STEAM_ID).join(".local/share/Steam")
 }
 
 /// Opens `steam://install/<id>` or `steam://uninstall/<id>` in the Steam client.
@@ -123,9 +135,15 @@ pub struct SteamLocator {
 }
 
 impl SteamLocator {
+    /// The configured Steam folder when it exists, else the first existing
+    /// of the native folders and the Flatpak one.
     pub fn detect(global: &GlobalSettings, probe: &dyn Probe) -> Self {
         let home = PathBuf::from(probe.home());
-        let steam_path = global.default_steam_path().map(PathBuf::from).unwrap_or_else(|| home.join(".steam").join("steam"));
+        let configured = global.default_steam_path().filter(|p| !p.is_empty()).map(PathBuf::from);
+        let native = home.join(".steam").join("steam");
+        let candidates = configured.iter().cloned().chain([native.clone(), home.join(".local/share/Steam"), flatpak_steam_root(&home)]);
+        let found = candidates.into_iter().find(|p| probe.exists(&p.to_string_lossy()));
+        let steam_path = found.or(configured).unwrap_or(native);
         Self { home, steam_path, system_roots: vec![PathBuf::from("/usr/share/steam")] }
     }
 
@@ -155,6 +173,7 @@ impl SteamLocator {
         }
         roots.push(self.home.join(".steam").join("steam"));
         roots.push(self.home.join(".local").join("share").join("Steam"));
+        roots.push(flatpak_steam_root(&self.home));
         dedup_existing(roots)
     }
 
@@ -342,6 +361,41 @@ mod tests {
         assert!(!is_non_game_steam_app("Portal", "400"));
         assert!(!is_non_game_steam_app("Protonmail Simulator", "9")); // "proton" followed by a letter
         assert!(!is_non_game_steam_app("Frostpunk", "323190"));
+    }
+
+    #[test]
+    fn flatpak_steam_is_found_when_the_native_one_is_missing() {
+        use crate::probe::FakeProbe;
+        let flatpak = "/h/.var/app/com.valvesoftware.Steam/.local/share/Steam";
+        let probe = FakeProbe::new("/h").with_path(flatpak);
+        let global = GlobalSettings::default();
+        assert_eq!(SteamLocator::detect(&global, &probe).steam_path, PathBuf::from(flatpak));
+        // A native install wins.
+        let probe = probe.with_path("/h/.steam/steam");
+        assert_eq!(SteamLocator::detect(&global, &probe).steam_path, PathBuf::from("/h/.steam/steam"));
+        // Nothing installed: the usual default.
+        assert_eq!(SteamLocator::detect(&global, &FakeProbe::new("/h")).steam_path, PathBuf::from("/h/.steam/steam"));
+    }
+
+    #[test]
+    fn the_flatpak_steam_launcher_counts_as_a_steam_binary() {
+        use crate::probe::FakeProbe;
+        assert_eq!(find_steam_binary(&FakeProbe::new("/h")), None);
+        let user = "/h/.local/share/flatpak/exports/bin/com.valvesoftware.Steam";
+        assert_eq!(find_steam_binary(&FakeProbe::new("/h").with_path(user)).as_deref(), Some(user));
+        let system = "/var/lib/flatpak/exports/bin/com.valvesoftware.Steam";
+        assert_eq!(find_steam_binary(&FakeProbe::new("/h").with_path(system)).as_deref(), Some(system));
+        assert_eq!(find_steam_binary(&FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam")).as_deref(), Some("/usr/bin/steam"));
+    }
+
+    #[test]
+    fn flatpak_libraries_are_scanned() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let flatpak = flatpak_steam_root(&home);
+        write(&flatpak.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
+        let loc = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+        assert!(installed_app_ids(&loc).contains("400"));
     }
 
     #[test]

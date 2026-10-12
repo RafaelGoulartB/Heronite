@@ -144,10 +144,14 @@ pub fn card_cover(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> 
         steam_cover.as_deref(),
         steam_header.as_deref(),
     ];
+    // The Steam store header (a hashed URL from the store's API) when the
+    // CDN has no art for newer apps.
+    let store_header = game.metadata.as_deref().and_then(|m| m.extra.get("headerUrl")).and_then(|v| v.as_str());
     let candidates =
         [game.art.as_deref().and_then(|a| a.cover_url.as_deref()), game.metadata.as_deref().and_then(|m| m.cover_url.as_deref())]
             .into_iter()
-            .chain(defaults.into_iter().filter(|v| v.is_some_and(|v| !v.is_empty() && !is_managed_art(v))));
+            .chain(defaults.into_iter().filter(|v| v.is_some_and(|v| !v.is_empty() && !is_managed_art(v))))
+            .chain([store_header]);
 
     let mut chain = Vec::new();
     for value in candidates.flatten().filter(|v| !v.is_empty()) {

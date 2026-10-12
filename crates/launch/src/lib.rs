@@ -15,6 +15,7 @@ pub mod first_launch;
 pub mod install_state;
 pub mod known_fixes;
 pub mod legendary;
+pub mod legendary_install;
 pub mod library;
 pub mod log_reader;
 pub mod log_writer;

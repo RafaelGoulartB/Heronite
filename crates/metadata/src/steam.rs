@@ -50,6 +50,10 @@ pub struct SteamAppDetails {
     pub website: Option<String>,
     #[serde(default)]
     pub store_url: String,
+    /// The store's header image. Newer apps keep their art under hashed URLs
+    /// that only this field gives (the plain CDN paths are 404).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub header_image: Option<String>,
     /// Milliseconds since the epoch (`Date.now()`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fetched_at: Option<i64>,
@@ -123,6 +127,7 @@ pub fn map_details(steam_app_id: &str, language: &str, data: &Value) -> Option<S
         release_date: non_empty(data.get("release_date").map(|r| js_str(r, "date")).unwrap_or_default()),
         website: non_empty(js_str(data, "website")),
         store_url: format!("https://store.steampowered.com/app/{steam_app_id}"),
+        header_image: non_empty(js_str(data, "header_image")),
         fetched_at: None,
     })
 }
@@ -248,8 +253,15 @@ pub fn metadata_from_details(app_name: &str, runner: &str, steam_app_id: &str, d
     md.websites = unique_names([d.website.as_deref(), Some(d.store_url.as_str())], 3);
     md.cover_url = steam_cdn_cover(Some(steam_app_id));
     md.hero_url = steam_cdn_hero(Some(steam_app_id));
+    if let Some(header) = &d.header_image {
+        md.extra.insert(HEADER_URL.into(), Value::String(header.clone()));
+    }
     md
 }
+
+/// Key in a game's metadata (kept in `extra`, so the file stays Heronite's
+/// format) for the Steam store header, the cover of last resort.
+pub const HEADER_URL: &str = "headerUrl";
 
 pub fn fetch_steam_metadata(
     paths: &DataPaths,
@@ -381,6 +393,9 @@ mod tests {
         assert_eq!(md.hero_url.as_deref(), Some("https://cdn.cloudflare.steamstatic.com/steam/apps/400/library_hero_2x.jpg"));
         assert!(md.websites.contains(&"https://store.steampowered.com/app/400".to_string()));
         assert!(!md.description.unwrap().contains('<'));
+        // The store header is kept for cards whose CDN art is missing.
+        let header = d.header_image.as_deref().expect("fixture has header_image");
+        assert_eq!(md.extra.get(HEADER_URL).and_then(Value::as_str), Some(header));
     }
 
     #[test]

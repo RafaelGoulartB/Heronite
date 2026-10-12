@@ -231,6 +231,10 @@ fn spawn_tools_update(paths: DataPaths) {
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
+        // A new setup has no legendary yet: get it before the user logs in to Epic.
+        if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
+            log::warn!("{e}");
+        }
         heronite_launch::tools::update_all_if_due(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
         // known_fixes.json (winetricks verbs, env variables) as Heroic keeps it.
         if let Err(e) = heronite_launch::known_fixes::update_if_needed(&paths, &SystemNet, &|| false) {

@@ -48,7 +48,7 @@ impl CollectionView {
                 this.refreshing = false;
                 match loaded {
                     Ok(l) => {
-                        this.apply_loaded(l);
+                        this.apply_loaded(l, cx);
                         this.nav_library_loaded(cx);
                     }
                     Err(err) => log::error!("loading library: {err:#}"),
@@ -70,7 +70,7 @@ impl CollectionView {
         cx.notify();
     }
 
-    fn apply_loaded(&mut self, l: Loaded) {
+    fn apply_loaded(&mut self, l: Loaded, cx: &mut Context<Self>) {
         let first = self.lib.is_none();
         let s = &l.lib.settings;
         let bg = &s.background;
@@ -98,7 +98,15 @@ impl CollectionView {
         self.cover_chains = l.covers;
         self.stage_chains = l.stages;
         self.wiki = Arc::new(l.wiki);
+        // The first games of a new setup (Steam import) get a selection too.
+        let before = self.lib.as_ref().map_or(0, |lib| lib.games.len());
+        let was_empty = before == 0;
         self.lib = Some(Arc::new(l.lib));
+        // New games (a Steam import, an added game, a ROM scan) get their
+        // metadata now; the first load leaves it to the idle fill.
+        if !first && self.lib.as_ref().is_some_and(|lib| lib.games.len() > before) {
+            self.fill_metadata_now(cx);
+        }
         // Rebuilding the rows resets the list to the top; a reload (a dialog
         // saved, the files changed on disk) keeps the user's place.
         let scroll = (!first).then(|| self.list_state.logical_scroll_top());
@@ -111,6 +119,12 @@ impl CollectionView {
         } else {
             self.selected.as_ref().map(|s| s.to_string())
         };
+        // The remembered game, else (first start, a removed game) the first
+        // card, so the panel on the right is never empty when there are games.
+        let exists = |k: &String| self.lib.as_ref().is_some_and(|lib| lib.get(k).is_some());
+        let focused = focused.filter(exists).or_else(|| {
+            (first || was_empty).then(|| self.groups.iter().flat_map(|g| g.cards.iter()).next().map(|c| c.key.to_string())).flatten()
+        });
         if let Some(key) = focused {
             self.select(key.into(), false);
             if first {
