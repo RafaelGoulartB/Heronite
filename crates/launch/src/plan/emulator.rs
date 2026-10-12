@@ -1,6 +1,7 @@
 //! Plans for emulated games (port of Heroic's `emulation/launch.ts`).
 
 use heronite_data::models::{GameInfo, LocalGameMeta};
+use heronite_i18n::tr;
 
 use super::{Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
 use crate::emulators::{emulator_definition, expand_argv, node_basename, node_dirname, resolve_profile_template, vars_for_rom};
@@ -60,14 +61,14 @@ pub(super) fn emulator_plan(
     let rom_path = pick_rom_path(meta, &opts.extra_args, probe);
     let is_flatpak = emulator.map(|e| e.launch_kind == "flatpak").unwrap_or(false);
     let Some(executable) = emulator_executable(ctx, meta) else {
-        return unavailable("Emulator executable was not found");
+        return unavailable(tr!("Emulator executable was not found"));
     };
     if !is_flatpak && !probe.exists(&executable) {
-        return unavailable("Emulator executable was not found");
+        return unavailable(tr!("Emulator executable was not found"));
     }
     let has_roms = meta.roms.as_ref().map(|r| !r.is_empty()).unwrap_or(false);
     if has_roms && rom_path.is_none() {
-        return unavailable("ROM file was not found");
+        return unavailable(tr!("ROM file was not found"));
     }
 
     let emulator_dir = emulator.and_then(|e| e.install_dir.clone().filter(|d| !d.is_empty())).unwrap_or_else(|| node_dirname(&executable));

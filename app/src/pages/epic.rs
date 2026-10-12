@@ -4,6 +4,7 @@
 mod console;
 mod palette;
 
+use heronite_i18n::{tr, trc, trn};
 use std::process::{Command, Stdio};
 
 use gpui_kit::component::input::InputState;
@@ -59,7 +60,7 @@ impl EpicPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
-        let code = new_input(window, cx, "", "Authorization code or the page's JSON");
+        let code = new_input(window, cx, "", tr!("Authorization code or the page's JSON"));
         // Installed version and the latest one (Heroic asks when the settings open).
         svc.update(cx, |s, cx| s.eos_reload(true, cx));
         let debug = crate::env::value("HERONITE_DEBUG_EPIC_PAGE");
@@ -120,33 +121,35 @@ impl EpicPage {
             (s.eos().clone(), s.busy_of(eos_overlay::APP_NAME).cloned())
         };
         let working = busy.is_some();
-        let desc = (eos.installed && !working).then(|| format!("Current version {}  \u{b7}  Latest {}", eos.version, eos.latest));
+        let desc = (eos.installed && !working)
+            .then(|| tr!("Current version {version}  \u{b7}  Latest {latest}", version = eos.version, latest = eos.latest));
         let mut actions = div().flex().flex_wrap().items_center().justify_end().gap(px(8.));
         if let Some(b) = &busy {
             if let Some(cancel) = b.cancel.clone() {
-                actions = actions.child(button("eos-cancel", ButtonKind::Glass, "Cancel").on_click(move |_, _, _| cancel.request()));
+                actions = actions.child(button("eos-cancel", ButtonKind::Glass, tr!("Cancel")).on_click(move |_, _, _| cancel.request()));
             }
         } else if eos.installed {
             let outdated = !eos.latest.is_empty() && eos.latest != eos.version && !eos.checking;
             if outdated {
-                actions = actions.child(button("eos-update", ButtonKind::Primary, "Update").on_click(cx.listener(|this, _, _, cx| {
-                    this.svc.update(cx, |s, cx| s.eos_install(cx));
-                })));
+                actions =
+                    actions.child(button("eos-update", ButtonKind::Primary, tr!("Update")).on_click(cx.listener(|this, _, _, cx| {
+                        this.svc.update(cx, |s, cx| s.eos_install(cx));
+                    })));
             } else {
                 actions = actions.child(action_button(
                     "eos-check",
                     ButtonKind::Glass,
-                    if eos.checking { "Checking for updates..." } else { "Check for updates" },
+                    if eos.checking { tr!("Checking for updates...") } else { tr!("Check for updates") },
                     !eos.checking,
                     cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.eos_check_updates(cx))),
                 ));
             }
-            actions = actions.child(button("eos-remove", ButtonKind::Danger, "Uninstall").on_click(cx.listener(|this, _, _, cx| {
+            actions = actions.child(button("eos-remove", ButtonKind::Danger, tr!("Uninstall")).on_click(cx.listener(|this, _, _, cx| {
                 this.confirm_eos_remove = !this.confirm_eos_remove;
                 cx.notify();
             })));
         } else {
-            actions = actions.child(button("eos-install", ButtonKind::Primary, "Install").on_click(cx.listener(|this, _, _, cx| {
+            actions = actions.child(button("eos-install", ButtonKind::Primary, tr!("Install")).on_click(cx.listener(|this, _, _, cx| {
                 this.svc.update(cx, |s, cx| s.eos_install(cx));
             })));
         }
@@ -174,12 +177,14 @@ impl EpicPage {
                     .items_center()
                     .gap(px(8.))
                     .py(px(12.))
-                    .child(div().flex_1().min_w(px(240.)).text_size(px(13.)).child("Are you sure you want to uninstall the EOS Overlay?"))
-                    .child(button("eos-remove-no", ButtonKind::Ghost, "No").on_click(cx.listener(|this, _, _, cx| {
+                    .child(
+                        div().flex_1().min_w(px(240.)).text_size(px(13.)).child(tr!("Are you sure you want to uninstall the EOS Overlay?")),
+                    )
+                    .child(button("eos-remove-no", ButtonKind::Ghost, tr!("No")).on_click(cx.listener(|this, _, _, cx| {
                         this.confirm_eos_remove = false;
                         cx.notify();
                     })))
-                    .child(button("eos-remove-yes", ButtonKind::Danger, "Yes, uninstall").on_click(cx.listener(|this, _, _, cx| {
+                    .child(button("eos-remove-yes", ButtonKind::Danger, tr!("Yes, uninstall")).on_click(cx.listener(|this, _, _, cx| {
                         this.confirm_eos_remove = false;
                         this.svc.update(cx, |s, cx| s.eos_remove(cx));
                         cx.notify();
@@ -188,14 +193,19 @@ impl EpicPage {
             );
         }
         div().flex().flex_col().child(card(rows)).child(
-            div().mt(px(8.)).mx(px(6.)).child(meta_text("Enable or disable the overlay for a game from the game's menu (right-click).")),
+            div()
+                .mt(px(8.))
+                .mx(px(6.))
+                .child(meta_text(tr!("Enable or disable the overlay for a game from the game's menu (right-click)."))),
         )
     }
 
     fn start_window_login(&mut self, cx: &mut Context<Self>) {
         let Some(helper) = login_helper() else {
-            self.notice =
-                Some(("The login window (heronite-epic-login) was not found next to the app. Use the browser method below.".into(), true));
+            self.notice = Some((
+                tr!("The login window (heronite-epic-login) was not found next to the app. Use the browser method below.").into(),
+                true,
+            ));
             cx.notify();
             return;
         };
@@ -217,7 +227,7 @@ impl EpicPage {
                     Ok(o) if o.status.success() => {
                         let code = String::from_utf8_lossy(&o.stdout).trim().to_string();
                         if code.is_empty() {
-                            this.notice = Some(("The login window closed without a code.".into(), true));
+                            this.notice = Some((tr!("The login window closed without a code.").into(), true));
                         } else {
                             this.svc.update(cx, |s, cx| s.login(code, cx));
                         }
@@ -225,12 +235,12 @@ impl EpicPage {
                     // 127: the loader could not start it (WebKitGTK 4.1 is missing).
                     Ok(o) if o.status.code() == Some(127) => {
                         this.notice = Some((
-                            "The login window needs WebKitGTK 4.1, which is not installed. Use the browser method below.".into(),
+                            tr!("The login window needs WebKitGTK 4.1, which is not installed. Use the browser method below.").into(),
                             true,
                         ))
                     }
                     Ok(_) => {} // window closed by the user
-                    Err(err) => this.notice = Some((format!("Could not open the login window: {err}").into(), true)),
+                    Err(err) => this.notice = Some((tr!("Could not open the login window: {err}", err).into(), true)),
                 }
                 cx.notify();
             })
@@ -241,7 +251,7 @@ impl EpicPage {
 
     fn open_browser(&mut self, cx: &mut Context<Self>) {
         if let Err(err) = Command::new("xdg-open").arg(BROWSER_LOGIN_URL).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
-            self.notice = Some((format!("Could not open the browser: {err}").into(), true));
+            self.notice = Some((tr!("Could not open the browser: {err}", err).into(), true));
             cx.notify();
         }
     }
@@ -256,13 +266,22 @@ impl EpicPage {
     }
 }
 
+/// "1 installed" / "3 installed" (Portuguese inflects it).
+fn installed_count(n: usize) -> String {
+    if n == 1 {
+        trc!("one", "{n} installed", n)
+    } else {
+        trc!("other", "{n} installed", n)
+    }
+}
+
 /// Text under "EOS Overlay" (`getMainEosText`).
 fn eos_main_text(installed: bool, working: bool) -> &'static str {
     match (installed, working) {
-        (true, true) => "The EOS Overlay is being updated...",
-        (true, false) => "The EOS Overlay is installed",
-        (false, true) => "The EOS Overlay is being installed...",
-        (false, false) => "The EOS Overlay is not installed",
+        (true, true) => tr!("The EOS Overlay is being updated..."),
+        (true, false) => tr!("The EOS Overlay is installed"),
+        (false, true) => tr!("The EOS Overlay is being installed..."),
+        (false, false) => tr!("The EOS Overlay is not installed"),
     }
 }
 
@@ -301,9 +320,9 @@ impl Render for EpicPage {
                                     .text_color(theme::text_primary())
                                     .child(account.name.clone()),
                             )
-                            .child(div().flex().child(status_pill("Logged in to Epic Games", theme::success()))),
+                            .child(div().flex().child(status_pill(tr!("Logged in to Epic Games"), theme::success()))),
                     )
-                    .child(button("epic-logout", ButtonKind::Glass, "Log out").on_click(cx.listener(|this, _, _, cx| {
+                    .child(button("epic-logout", ButtonKind::Glass, tr!("Log out")).on_click(cx.listener(|this, _, _, cx| {
                         this.confirm_logout = !this.confirm_logout;
                         cx.notify();
                     })))
@@ -322,13 +341,13 @@ impl Render for EpicPage {
                                 .flex_1()
                                 .min_w(px(240.))
                                 .text_size(px(13.))
-                                .child("Log out of Epic Games? Your installed games stay on disk."),
+                                .child(tr!("Log out of Epic Games? Your installed games stay on disk.")),
                         )
-                        .child(button("epic-logout-no", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|this, _, _, cx| {
+                        .child(button("epic-logout-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_logout = false;
                             cx.notify();
                         })))
-                        .child(button("epic-logout-yes", ButtonKind::Danger, "Log out").on_click(cx.listener(|this, _, _, cx| {
+                        .child(button("epic-logout-yes", ButtonKind::Danger, tr!("Log out")).on_click(cx.listener(|this, _, _, cx| {
                             this.confirm_logout = false;
                             this.svc.update(cx, |s, cx| s.logout(cx));
                             cx.notify();
@@ -337,32 +356,31 @@ impl Render for EpicPage {
                 );
             }
             let line = format!(
-                "{} games in your library  \u{b7}  {} installed  \u{b7}  {} update{} available",
-                stats.owned,
-                stats.installed,
-                updates,
-                if updates == 1 { "" } else { "s" }
+                "{}  \u{b7}  {}  \u{b7}  {}",
+                trn!(stats.owned, "{n} game in your library", "{n} games in your library"),
+                installed_count(stats.installed),
+                trn!(updates, "{n} update available", "{n} updates available"),
             );
             let mut lib_actions = div().flex().items_center().gap(px(8.));
             if updates > 0 {
                 lib_actions = lib_actions.child(
-                    button("epic-update-all", ButtonKind::Glass, format!("Update all ({updates})"))
+                    button("epic-update-all", ButtonKind::Glass, tr!("Update all ({updates})", updates))
                         .on_click(cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.update_all(cx)))),
                 );
             }
             lib_actions = lib_actions.child(action_button(
                 "epic-refresh",
                 ButtonKind::Primary,
-                if refreshing { "Refreshing..." } else { "Refresh library" },
+                if refreshing { tr!("Refreshing...") } else { tr!("Refresh library") },
                 !refreshing,
                 cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.refresh_library(cx))),
             ));
-            rows.push(row("Library", Some(&line), lib_actions).into_any_element());
+            rows.push(row(tr!("Library"), Some(&line), lib_actions).into_any_element());
             rows.push(
                 row(
-                    "Import an installed game",
-                    Some("Add a game that is already on this PC without downloading it again."),
-                    button("epic-import", ButtonKind::Glass, "Import game").on_click(cx.listener(|this, _, window, cx| {
+                    tr!("Import an installed game"),
+                    Some(tr!("Add a game that is already on this PC without downloading it again.")),
+                    button("epic-import", ButtonKind::Glass, tr!("Import game")).on_click(cx.listener(|this, _, window, cx| {
                         let data_paths = this.ctx.data_paths.clone();
                         let picker = cx.new(|cx| EpicImportPicker::new(data_paths, window, cx));
                         this.open_dialog(picker, window, cx);
@@ -370,56 +388,57 @@ impl Render for EpicPage {
                 )
                 .into_any_element(),
             );
-            column = column.child(caption("Account")).child(card(rows));
+            column = column.child(caption(tr!("Account"))).child(card(rows));
         } else {
             let login = row(
-                "Log in with Epic Games",
-                Some("Your login is handled by legendary."),
+                tr!("Log in with Epic Games"),
+                Some(tr!("Your login is handled by legendary.")),
                 action_button(
                     "epic-login-window",
                     ButtonKind::Primary,
                     if self.window_open {
-                        "Waiting for the login window..."
+                        tr!("Waiting for the login window...")
                     } else if logging_in {
-                        "Logging in..."
+                        tr!("Logging in...")
                     } else {
-                        "Log in"
+                        tr!("Log in")
                     },
                     !self.window_open && !logging_in,
                     cx.listener(|this, _, _, cx| this.start_window_login(cx)),
                 ),
             );
-            column = column.child(caption("Account")).child(card([login.into_any_element()]));
+            column = column.child(caption(tr!("Account"))).child(card([login.into_any_element()]));
 
             let can_submit = !logging_in && !self.code.read(cx).value().trim().is_empty();
             let step1 = row(
-                "1. Open the login page",
-                Some("Sign in to Epic Games and copy the authorization code it shows (the value of \"authorizationCode\", or select all and copy the whole page)."),
+                tr!("1. Open the login page"),
+                Some(tr!("Sign in to Epic Games and copy the authorization code it shows (the value of \"authorizationCode\", or select all and copy the whole page).")),
                 div()
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(button("epic-open-browser", ButtonKind::Glass, "Open in browser").on_click(cx.listener(|this, _, _, cx| this.open_browser(cx))))
-                    .child(button("epic-copy-link", ButtonKind::Ghost, "Copy link").on_click(cx.listener(|_, _, _, cx| {
+                    .child(button("epic-open-browser", ButtonKind::Glass, tr!("Open in browser")).on_click(cx.listener(|this, _, _, cx| this.open_browser(cx))))
+                    .child(button("epic-copy-link", ButtonKind::Ghost, tr!("Copy link")).on_click(cx.listener(|_, _, _, cx| {
                         cx.write_to_clipboard(ClipboardItem::new_string(BROWSER_LOGIN_URL.to_string()));
                     }))),
             );
-            let step2 = div().flex().flex_col().gap(px(10.)).py(px(12.)).child(div().text_size(px(14.)).child("2. Paste the code")).child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .child(div().flex_1().min_w_0().child(crate::ui::fields::input_box(&self.code, false)))
-                    .child(action_button(
-                        "epic-login-code",
-                        ButtonKind::Primary,
-                        if logging_in { "Logging in..." } else { "Log in" },
-                        can_submit,
-                        cx.listener(|this, _, _, cx| this.submit_code(cx)),
-                    )),
-            );
+            let step2 =
+                div().flex().flex_col().gap(px(10.)).py(px(12.)).child(div().text_size(px(14.)).child(tr!("2. Paste the code"))).child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .child(div().flex_1().min_w_0().child(crate::ui::fields::input_box(&self.code, false)))
+                        .child(action_button(
+                            "epic-login-code",
+                            ButtonKind::Primary,
+                            if logging_in { tr!("Logging in...") } else { tr!("Log in") },
+                            can_submit,
+                            cx.listener(|this, _, _, cx| this.submit_code(cx)),
+                        )),
+                );
             column = column
-                .child(caption("Or log in with your browser"))
+                .child(caption(tr!("Or log in with your browser")))
                 .child(card([step1.into_any_element(), step2.into_any_element()]))
                 .child(div().mt(px(8.)).mx(px(6.)).child(meta_text(BROWSER_LOGIN_URL)));
         }
@@ -446,7 +465,7 @@ impl Render for EpicPage {
         let eos = div()
             .child(caption("EOS Overlay"))
             .child(self.eos_panel(cx))
-            .child(div().mt(px(18.)).mx(px(6.)).child(meta_text("Games are installed, updated and verified with legendary.")));
+            .child(div().mt(px(18.)).mx(px(6.)).child(meta_text(tr!("Games are installed, updated and verified with legendary."))));
         // Wide: the account on the left, the EOS Overlay on the right.
         let wide = content_width(window) >= 1000.;
 
@@ -457,7 +476,7 @@ impl Render for EpicPage {
             .child(sheet(
                 "page-epic",
                 "Epic Games",
-                Some("Your account, library and the EOS Overlay.".into()),
+                Some(tr!("Your account, library and the EOS Overlay.").into()),
                 None,
                 1320.,
                 window,

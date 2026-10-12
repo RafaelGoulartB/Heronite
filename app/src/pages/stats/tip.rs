@@ -5,8 +5,9 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::stats::{fmt_secs, Stats, TOP_N};
+use heronite_i18n::{tr, trn};
 
-use super::{bucket_label, day_label, plural, series_color, short_date, Hover, StatsPage, DAY_PARTS, WEEKDAYS_LONG};
+use super::{bucket_label, day_label, day_part, series_color, short_date, weekday_plural, Hover, StatsPage};
 use crate::theme;
 
 struct Row {
@@ -50,7 +51,7 @@ impl StatsPage {
             games.iter().take(5).map(|&(g, secs)| row(Some(series_color(st.series_of(g))), self.game_title(g), fmt_secs(secs))).collect();
         let rest: f64 = games.iter().skip(5).map(|(_, s)| s).sum();
         if rest >= 60. {
-            rows.push(row(Some(theme::chart_other()), format!("{} more", plural(games.len() - 5, "game", "games")), fmt_secs(rest)));
+            rows.push(row(Some(theme::chart_other()), trn!(games.len() - 5, "{n} more game", "{n} more games"), fmt_secs(rest)));
         }
         rows
     }
@@ -60,15 +61,15 @@ impl StatsPage {
         Some(match h {
             Hover::Bar(i) | Hover::River(i) => {
                 let b = st.buckets.get(i)?;
-                let mut rows = vec![row(None, "Played", fmt_secs(b.secs))];
+                let mut rows = vec![row(None, tr!("Played"), fmt_secs(b.secs))];
                 rows.extend(self.bucket_rows(st, i));
                 let (days, _) = st.days_between(b.start, b.end);
-                let note = (matches!(h, Hover::River(_)) && b.secs > 0.).then(|| format!("{} with play", plural(days, "day", "days")));
+                let note = (matches!(h, Hover::River(_)) && b.secs > 0.).then(|| trn!(days, "{n} day with play", "{n} days with play"));
                 Body { title: bucket_label(st.period.span, b.start, b.end), rows, note }
             }
             Hover::Heat(d, hr) => Body {
-                title: format!("{}s, {hr:02}:00\u{2013}{:02}:00", WEEKDAYS_LONG[d], (hr + 1) % 24),
-                rows: vec![row(None, "Played", fmt_secs(st.heat[d][hr]))],
+                title: format!("{}, {hr:02}:00\u{2013}{:02}:00", weekday_plural(d), (hr + 1) % 24),
+                rows: vec![row(None, tr!("Played"), fmt_secs(st.heat[d][hr]))],
                 note: None,
             },
             Hover::Day(d) => {
@@ -77,7 +78,7 @@ impl StatsPage {
                     title: day_label(d),
                     rows: vec![row(
                         None,
-                        if secs > 0. { "Played" } else { "No play" },
+                        if secs > 0. { tr!("Played") } else { tr!("No play") },
                         if secs > 0. { fmt_secs(secs) } else { String::new() },
                     )],
                     note: None,
@@ -89,21 +90,22 @@ impl StatsPage {
                     (self.game_title(g), st.game(g).map_or(0., |s| s.secs))
                 } else {
                     let top: f64 = st.series.iter().filter_map(|g| st.game(*g)).map(|g| g.secs).sum();
-                    ("Other games".into(), st.total_secs - top)
+                    (tr!("Other games").into(), st.total_secs - top)
                 };
-                Body { title, rows: vec![row(Some(series_color(Some(slot))), "This period", fmt_secs(secs))], note: None }
+                Body { title, rows: vec![row(Some(series_color(Some(slot))), tr!("This period"), fmt_secs(secs))], note: None }
             }
             Hover::Game(g) => {
                 let s = st.game(g)?;
                 let lib = self.lib.as_ref()?;
                 let game = lib.games.get(g)?;
-                let status = lib.statuses.iter().find(|x| x.id == game.status_id).map(|x| x.name.clone());
-                let mut rows = vec![row(None, "Time", fmt_secs(s.secs)), row(None, "Sessions", s.sessions.to_string())];
+                let status =
+                    lib.statuses.iter().find(|x| x.id == game.status_id).map(|x| heronite_data::status::status_label(&x.name).to_string());
+                let mut rows = vec![row(None, tr!("Time"), fmt_secs(s.secs)), row(None, tr!("Sessions"), s.sessions.to_string())];
                 if let Some(f) = s.first {
-                    rows.push(row(None, "First played", short_date(f.date())));
+                    rows.push(row(None, tr!("First played"), short_date(f.date())));
                 }
                 if let Some(l) = s.last {
-                    rows.push(row(None, "Last played", short_date(l.date())));
+                    rows.push(row(None, tr!("Last played"), short_date(l.date())));
                 }
                 if let Some(status) = status {
                     rows.push(row(
@@ -113,7 +115,7 @@ impl StatsPage {
                             )
                             .into(),
                         ),
-                        "Status",
+                        tr!("Status"),
                         status,
                     ));
                 }
@@ -121,23 +123,23 @@ impl StatsPage {
             }
             Hover::Genre(i) => {
                 let (name, secs) = self.derived.genres.get(i)?;
-                Body { title: name.clone(), rows: vec![row(None, "Time in these games", fmt_secs(*secs))], note: None }
+                Body { title: name.clone(), rows: vec![row(None, tr!("Time in these games"), fmt_secs(*secs))], note: None }
             }
             Hover::Source(i) => {
                 let (name, secs) = self.derived.sources.get(i)?;
                 let share = secs / st.total_secs.max(1.) * 100.;
                 Body {
                     title: (*name).to_string(),
-                    rows: vec![row(None, "Time", fmt_secs(*secs)), row(None, "Share", format!("{share:.0}%"))],
+                    rows: vec![row(None, tr!("Time"), fmt_secs(*secs)), row(None, tr!("Share"), format!("{share:.0}%"))],
                     note: None,
                 }
             }
             Hover::Part(i) => {
-                let (name, range) = DAY_PARTS[i];
+                let (name, range) = day_part(i);
                 let share = st.day_parts[i] / heat_total.max(1.) * 100.;
                 Body {
                     title: format!("{name} \u{b7} {range}"),
-                    rows: vec![row(None, "Time", fmt_secs(st.day_parts[i])), row(None, "Share", format!("{share:.0}%"))],
+                    rows: vec![row(None, tr!("Time"), fmt_secs(st.day_parts[i])), row(None, tr!("Share"), format!("{share:.0}%"))],
                     note: None,
                 }
             }

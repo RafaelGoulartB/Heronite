@@ -13,6 +13,7 @@ mod console;
 mod palette;
 mod render;
 
+use heronite_i18n::tr;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -64,7 +65,7 @@ fn stamp_path(ctx: &PageCtx) -> std::path::PathBuf {
 impl WineManagerPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let manager = WineManager::new(ctx.data_paths.clone());
-        let search = fields::new_input(window, cx, "", "Search versions...");
+        let search = fields::new_input(window, cx, "", tr!("Search versions..."));
         cx.subscribe_in(&search, window, |this, state, ev: &InputEvent, _window, cx| {
             if matches!(ev, InputEvent::Change) {
                 this.query = state.read(cx).value().trim().to_lowercase();
@@ -199,18 +200,19 @@ impl WineManagerPage {
         for ev in self.manager.take_events() {
             match ev {
                 JobEvent::Installed { version, update } => {
-                    self.toast(format!("{version} {}", if update { "updated" } else { "installed" }), false, cx);
+                    let text = if update { tr!("{version} updated", version) } else { tr!("{version} installed", version) };
+                    self.toast(text, false, cx);
                     reload = true;
                 }
                 JobEvent::Cancelled { version } => {
-                    self.toast(format!("Installation of {version} canceled"), false, cx);
+                    self.toast(tr!("Installation of {version} canceled", version), false, cx);
                 }
                 JobEvent::Removed { version } => {
-                    self.toast(format!("{version} uninstalled"), false, cx);
+                    self.toast(tr!("{version} uninstalled", version), false, cx);
                     reload = true;
                 }
                 JobEvent::Failed { version, message } => {
-                    let first = message.lines().find(|l| !l.trim().is_empty()).unwrap_or("error").trim().to_owned();
+                    let first = message.lines().find(|l| !l.trim().is_empty()).unwrap_or(tr!("error")).trim().to_owned();
                     self.toast(format!("{version}: {first}"), true, cx);
                     reload = true;
                 }
@@ -218,13 +220,13 @@ impl WineManagerPage {
                     let _ = std::fs::create_dir_all(&self.ctx.app.config);
                     let _ = std::fs::write(stamp_path(&self.ctx), now_secs().to_string());
                     if let Some(e) = errors.first() {
-                        self.toast(format!("Could not refresh everything: {e}"), true, cx);
+                        self.toast(tr!("Could not refresh everything: {error}", error = e), true, cx);
                     }
                     reload = true;
                 }
                 JobEvent::RefreshFailed { message } => {
-                    let first = message.lines().next().unwrap_or("error").to_owned();
-                    self.toast(format!("Could not fetch wine versions: {first}"), true, cx);
+                    let first = message.lines().next().unwrap_or(tr!("error")).to_owned();
+                    self.toast(tr!("Could not fetch Wine versions: {error}", error = first), true, cx);
                 }
             }
         }
@@ -270,7 +272,7 @@ impl WineManagerPage {
             if let Err(e) = res {
                 this.update(cx, |this, cx| {
                     this.download_to_steam = !value;
-                    this.toast(format!("Could not save the setting: {e:#}"), true, cx);
+                    this.toast(tr!("Could not save the setting: {error}", error = format!("{e:#}")), true, cx);
                     cx.notify();
                 })
                 .ok();
@@ -310,8 +312,8 @@ impl Render for WineManagerPage {
         let close = page_close(cx);
         sheet(
             "page-wine_manager",
-            "Wine Manager",
-            Some("Download and manage the Wine and Proton builds your games run on.".into()),
+            tr!("Wine Manager"),
+            Some(tr!("Download and manage the Wine and Proton builds your games run on.").into()),
             None,
             1480.,
             window,

@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::super::scan_roms::profile_label;
 use super::super::text_of;
@@ -30,32 +31,32 @@ impl RomFolderDialog {
         let profile_index = self.emulator().and_then(|e| e.profiles.iter().position(|p| p.id == self.profile_id)).unwrap_or(0);
         let mut rows = Vec::new();
         rows.push(if emu_names.is_empty() {
-            Row::choice("emulator", "Emulator", vec!["No emulators yet".into()], 0).enabled(false)
+            Row::choice("emulator", tr!("Emulator"), vec![tr!("No emulators yet").into()], 0).enabled(false)
         } else {
-            Row::choice("emulator", "Emulator", emu_names, emu_index)
+            Row::choice("emulator", tr!("Emulator"), emu_names, emu_index)
         });
         rows.push(if profiles.is_empty() {
-            Row::choice("profile", "Platform / profile", vec!["\u{2014}".into()], 0).enabled(false)
+            Row::choice("profile", tr!("Platform / profile"), vec!["\u{2014}".into()], 0).enabled(false)
         } else {
-            Row::choice("profile", "Platform / profile", profiles, profile_index)
+            Row::choice("profile", tr!("Platform / profile"), profiles, profile_index)
         });
-        rows.push(Row::text("dir", "ROM folder", text_of(&self.directory, cx)).icon(Icon::FolderOpen));
-        rows.push(Row::toggle("sub", "Include subfolders", self.scan_subfolders));
-        rows.push(Row::toggle("merge", "Merge discs into one game", self.merge_related));
+        rows.push(Row::text("dir", tr!("ROM folder"), text_of(&self.directory, cx)).icon(Icon::FolderOpen));
+        rows.push(Row::toggle("sub", tr!("Include subfolders"), self.scan_subfolders));
+        rows.push(Row::toggle("merge", tr!("Merge discs into one game"), self.merge_related));
         rows.push(
-            Row::toggle("auto", "Scan this folder when the Collection refreshes", self.auto_scan)
-                .desc("With this on, saving also scans the folder right away and adds the games it finds."),
+            Row::toggle("auto", tr!("Scan this folder when the Collection refreshes"), self.auto_scan)
+                .desc(tr!("With this on, saving also scans the folder right away and adds the games it finds.")),
         );
         let label = if self.saving {
             if self.auto_scan {
-                "Scanning\u{2026}"
+                tr!("Scanning\u{2026}")
             } else {
-                "Saving\u{2026}"
+                tr!("Saving\u{2026}")
             }
         } else if self.scanner.is_some() {
-            "Save"
+            tr!("Save")
         } else {
-            "Add ROM folder"
+            tr!("Add ROM folder")
         };
         rows.push(Row::action("save", label).enabled(!self.saving && !self.emulators.is_empty()));
         rows
@@ -63,10 +64,9 @@ impl RomFolderDialog {
 
     pub(super) fn render_console(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows(cx);
-        let mut body =
-            div().flex().flex_col().flex_1().min_h_0().gap(u(12.)).child(kit::body_text(
-                "Games found in this folder are added to the Collection and launched with the chosen emulator profile.",
-            ));
+        let mut body = div().flex().flex_col().flex_1().min_h_0().gap(u(12.)).child(kit::body_text(tr!(
+            "Games found in this folder are added to the Collection and launched with the chosen emulator profile."
+        )));
         if !self.error.is_empty() {
             body = body.child(kit::body_text(self.error.clone()).text_color(theme::danger_text()));
         }
@@ -75,7 +75,7 @@ impl RomFolderDialog {
             .absolute()
             .inset_0()
             .child(kit::modal(
-                if self.scanner.is_some() { "Edit ROM folder" } else { "Add ROM folder" },
+                if self.scanner.is_some() { tr!("Edit ROM folder") } else { tr!("Add ROM folder") },
                 760.,
                 body.child(list.flex_1().min_h_0()),
             ))
@@ -117,7 +117,7 @@ impl PadTarget for RomFolderDialog {
                     let input = self.directory.clone();
                     open_browser(
                         &mut self.layer,
-                        "Choose the ROM folder",
+                        tr!("Choose the ROM folder"),
                         PickKind::Folder,
                         start.as_deref(),
                         window,
@@ -140,6 +140,6 @@ impl PadTarget for RomFolderDialog {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, "Select"), hint(Btn::LeftRight, "Change"), hint(Btn::B, "Cancel")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::B, tr!("Cancel"))]
     }
 }

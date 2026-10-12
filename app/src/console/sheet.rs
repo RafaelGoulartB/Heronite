@@ -10,6 +10,7 @@ use super::kit::{self, u};
 use super::list::{ListNav, Outcome, Row, Value};
 use super::{hint, Btn, Hint, Pad, PadTarget};
 use crate::theme;
+use heronite_i18n::tr;
 
 pub enum SheetEvent {
     Activate(SharedString),
@@ -67,11 +68,11 @@ impl PadTarget for Sheet {
 
     fn hints(&self, _: &App) -> Vec<Hint> {
         let changes = self.rows.iter().any(|r| matches!(r.value, Value::Toggle(_) | Value::Choice { .. } | Value::Number { .. }));
-        let mut h = vec![hint(Btn::A, "Select")];
+        let mut h = vec![hint(Btn::A, tr!("Select"))];
         if changes {
-            h.push(hint(Btn::LeftRight, "Change"));
+            h.push(hint(Btn::LeftRight, tr!("Change")));
         }
-        h.push(hint(Btn::B, "Cancel"));
+        h.push(hint(Btn::B, tr!("Cancel")));
         h
     }
 }

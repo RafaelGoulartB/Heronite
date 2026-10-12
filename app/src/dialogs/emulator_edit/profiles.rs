@@ -6,6 +6,7 @@ use heronite_emulation::catalog::emulator_definition;
 use heronite_emulation::detect::profiles_for_definition;
 use heronite_emulation::store::{catalog_profile, new_id};
 use heronite_emulation::SystemEnv;
+use heronite_i18n::tr;
 use heronite_launch::emulators::UserEmulatorProfile;
 
 use super::{text_of, EmulatorEditDialog, ProfileForm};
@@ -37,8 +38,8 @@ impl EmulatorEditDialog {
         self.open_profile = Some(i);
         self.menu = None;
         self.form = Some(ProfileForm {
-            name: new_input(window, cx, &p.name, "Profile name"),
-            platform: new_input(window, cx, p.platform_name.as_deref().unwrap_or(""), "Platform (e.g. PlayStation 2)"),
+            name: new_input(window, cx, &p.name, tr!("Profile name")),
+            platform: new_input(window, cx, p.platform_name.as_deref().unwrap_or(""), tr!("Platform (e.g. PlayStation 2)")),
             arguments: new_input(window, cx, &p.arguments, "{ImagePath}"),
             extensions: new_input(window, cx, &p.extensions.join(", "), "iso, cue, chd"),
             core: new_input(window, cx, p.core_path.as_deref().unwrap_or(""), "/path/to/core_libretro.so"),

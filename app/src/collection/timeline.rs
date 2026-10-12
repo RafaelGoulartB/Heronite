@@ -15,6 +15,7 @@ use super::screenshots::thumb_tile;
 use super::CollectionView;
 use crate::theme;
 use crate::ui::controls::{button_sm, ButtonKind};
+use heronite_i18n::{tr, trc, trn};
 
 const DATE_W: f32 = 86.;
 const RAIL_W: f32 = 14.;
@@ -49,20 +50,20 @@ impl CollectionView {
         let since = days.iter().rev().find(|d| d.sessions > 0).map(|d| date_label(d, this_year));
         let meta = match (sessions, since) {
             (0, _) | (_, None) => String::new(),
-            (1, Some(s)) => format!("1 session · {s}"),
-            (n, Some(s)) => format!("{n} sessions since {s}"),
+            (1, Some(s)) => tr!("1 session · {since}", since = s),
+            (n, Some(s)) => tr!("{n} sessions since {since}", n, since = s),
         };
 
         let more = days.len() - shown;
         let footer = if more > 0 {
-            Some(button_sm("timeline-more", ButtonKind::Ghost, format!("Show {} more", more.min(TIMELINE_DAYS * 2))).on_click(cx.listener(
-                |this, _, _, cx| {
+            Some(button_sm("timeline-more", ButtonKind::Ghost, tr!("Show {n} more", n = more.min(TIMELINE_DAYS * 2))).on_click(
+                cx.listener(|this, _, _, cx| {
                     this.facts.timeline_days += TIMELINE_DAYS * 2;
                     cx.notify();
-                },
-            )))
+                }),
+            ))
         } else if shown > TIMELINE_DAYS {
-            Some(button_sm("timeline-less", ButtonKind::Ghost, "Show less").on_click(cx.listener(|this, _, _, cx| {
+            Some(button_sm("timeline-less", ButtonKind::Ghost, tr!("Show less")).on_click(cx.listener(|this, _, _, cx| {
                 this.facts.timeline_days = TIMELINE_DAYS;
                 cx.notify();
             })))
@@ -75,7 +76,7 @@ impl CollectionView {
                 .flex()
                 .flex_col()
                 .child(
-                    h3("Timeline").flex().justify_between().items_baseline().gap(px(12.)).child(
+                    h3(tr!("Timeline")).flex().justify_between().items_baseline().gap(px(12.)).child(
                         div()
                             .font_family(theme::FONT_BODY)
                             .text_size(px(12.5))
@@ -144,19 +145,18 @@ impl CollectionView {
 
 fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, tiles: Option<Div>) -> Div {
     let sub = match (day.sessions, day.first_start) {
-        (1, Some(t)) => t.format("%-I:%M %p").to_string(),
+        (1, Some(t)) => t.format(trc!("time format", "%-I:%M %p")).to_string(),
         (0, _) => String::new(),
-        (n, _) => format!("{n} sessions"),
+        (n, _) => tr!("{n} sessions", n),
     };
     let shots = match day.shots.len() {
         0 => None,
-        1 => Some("1 screenshot".to_string()),
-        n => Some(format!("{n} screenshots")),
+        n => Some(trn!(n, "{n} screenshot", "{n} screenshots")),
     };
     let played = (day.played_secs > 0.).then(|| format_playtime_minutes((day.played_secs / 60.).round().max(1.) as u64));
     let mut line = div().flex().items_center().flex_wrap().gap(px(6.)).text_size(px(13.6)).line_height(px(20.));
     if let Some(p) = played {
-        line = line.child(div().text_color(theme::white_a(0.72)).child("Played")).child(div().font_weight(theme::W_BOLD).child(p));
+        line = line.child(div().text_color(theme::white_a(0.72)).child(tr!("Played"))).child(div().font_weight(theme::W_BOLD).child(p));
     }
     if let Some(s) = shots {
         if day.played_secs > 0. {
@@ -173,7 +173,7 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, til
                 .bg(theme::accent_tint())
                 .text_size(px(11.5))
                 .text_color(theme::accent())
-                .child("Longest day"),
+                .child(tr!("Longest day")),
         );
     }
     div()
@@ -216,9 +216,10 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, til
 
 /// "Oct 7", or "Oct 7, 2025" outside the current year.
 fn date_label(day: &TimelineDay, this_year: i32) -> String {
+    let (month, d) = (heronite_i18n::month_short(day.date.month()), day.date.day());
     if day.date.year() == this_year {
-        day.date.format("%b %-d").to_string()
+        tr!("{month} {d}", month, d)
     } else {
-        day.date.format("%b %-d, %Y").to_string()
+        tr!("{month} {d}, {year}", month, d, year = day.date.year())
     }
 }

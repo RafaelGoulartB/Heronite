@@ -3,6 +3,7 @@
 //! (`backend/tools/index.ts`, `backend/launcher.ts`). Only builds the command
 //! (pure, unit-tested); the caller spawns it.
 
+use heronite_i18n::tr;
 use std::path::Path;
 
 use crate::emulators::node_dirname;
@@ -40,16 +41,16 @@ pub fn build_tool_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameS
     crate::shared_folders::map_for(&wine.settings);
     let mut notes = wine.notes.clone();
     if !probe.exists(&wine.settings.wine_prefix) {
-        notes.push(format!("The Wine prefix {} does not exist yet; Wine creates it on first run", wine.settings.wine_prefix));
+        notes.push(tr!("The Wine prefix {prefix} does not exist yet; Wine creates it on first run", prefix = wine.settings.wine_prefix));
     }
     let command = match tool {
         WineTool::Winecfg => run_in_prefix(ctx, probe, &wine, vec!["winecfg".into()], None),
         WineTool::RunExe(exe) => {
             if exe.trim().is_empty() {
-                return Err("No program selected".into());
+                return Err(tr!("No program selected").into());
             }
             if !probe.exists(exe) {
-                return Err(format!("File not found: {exe}"));
+                return Err(tr!("File not found: {exe}", exe));
             }
             run_in_prefix(ctx, probe, &wine, vec![exe.clone()], Some(node_dirname(exe)))
         }
@@ -161,7 +162,7 @@ fn winetricks(
 ) -> Result<Command, String> {
     let (prefix, wine_version) = wine_from_proton(wine, probe);
     if !valid_wine(&wine.settings.wine_version, probe) && !valid_wine(&wine_version, probe) {
-        return Err("The configured Wine version is not valid".into());
+        return Err(tr!("The configured Wine version is not valid").into());
     }
     let mut s = wine.settings.clone();
     s.wine_version = wine_version.clone();
@@ -190,7 +191,7 @@ fn winetricks(
 
     let script = winetricks_path(ctx);
     if !probe.exists(&script) {
-        return Err(format!("winetricks was not found at {script}. It is downloaded with the Wine tools updates"));
+        return Err(tr!("winetricks was not found at {script}. It is downloaded with the Wine tools updates", script));
     }
     let wine_dir = node_dirname(&wine_version.bin);
     let path = probe.env_var("PATH").unwrap_or_default();
@@ -210,7 +211,7 @@ fn missing_dependencies(probe: &dyn Probe) -> Vec<String> {
     ["7z", "cabextract", "zenity", "unzip", "curl"]
         .iter()
         .filter(|d| probe.which(d).is_none())
-        .map(|d| format!("{d} is not installed; winetricks might fail to install some packages or even open"))
+        .map(|d| tr!("{dependency} is not installed; winetricks might fail to install some packages or even open", dependency = d))
         .collect()
 }
 

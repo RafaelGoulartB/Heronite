@@ -21,6 +21,7 @@ use heronite_emulation::ludusavi::{
     backup_after_play, notification, AfterPlay, CommandRunner, LudusaviBackupResult, LudusaviEnv, SystemRunner,
 };
 use heronite_emulation::{remember_save_state_key, HostEnv};
+use heronite_i18n::tr;
 use heronite_launch::probe::Probe;
 use heronite_launch::{LaunchEvent, SystemProbe};
 use heronite_media::capture::{ActiveGame, CaptureConfig, CaptureEvent, CaptureService, ServiceOptions};
@@ -263,7 +264,7 @@ pub fn backup_notice(result: &LudusaviBackupResult, title: &str) -> Option<Notic
     }
     result.error.as_ref().map(|e| Notice {
         title: "Ludusavi".into(),
-        text: format!("Ludusavi backup failed: {e}"),
+        text: tr!("Ludusavi backup failed: {error}", error = e),
         error: true,
         desktop: false,
     })

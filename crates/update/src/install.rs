@@ -9,6 +9,7 @@
 //! picks the new file. The path stays the same, so menu entries and game
 //! shortcuts that point at it keep working.
 
+use heronite_i18n::tr;
 use std::ffi::{CString, OsString};
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -139,9 +140,9 @@ pub fn install(
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<(), InstallError> {
-    let asset = release.appimage.as_ref().ok_or_else(|| failed("This release has no AppImage"))?;
-    let sig_asset = release.signature.as_ref().ok_or_else(|| failed("This release is not signed"))?;
-    let key = PublicKey::from_base64(public_key).map_err(|e| failed(format!("Bad update key: {e}")))?;
+    let asset = release.appimage.as_ref().ok_or_else(|| failed(tr!("This release has no AppImage")))?;
+    let sig_asset = release.signature.as_ref().ok_or_else(|| failed(tr!("This release is not signed")))?;
+    let key = PublicKey::from_base64(public_key).map_err(|e| failed(tr!("Bad update key: {error}", error = e)))?;
     let signature = fetch_signature(&sig_asset.url)?;
     check_trusted_version(&signature, &release.version)?;
 
@@ -165,8 +166,8 @@ fn fetch_signature(url: &str) -> Result<Signature, InstallError> {
         .call()
         .map_err(crate::http_error)
         .and_then(|mut r| r.body_mut().with_config().limit(MAX_SIGNATURE_BYTES).read_to_string().map_err(|e| anyhow!("{e}")))
-        .map_err(|e| failed(format!("Could not download the signature: {e:#}")))?;
-    Signature::decode(&text).map_err(|e| failed(format!("Unreadable signature: {e}")))
+        .map_err(|e| failed(tr!("Could not download the signature: {error}", error = format!("{e:#}"))))?;
+    Signature::decode(&text).map_err(|e| failed(tr!("Unreadable signature: {error}", error = e)))
 }
 
 /// The signed comment must name the version the release claims, or an old
@@ -176,7 +177,7 @@ fn check_trusted_version(signature: &Signature, version: &str) -> Result<(), Ins
     if signature.trusted_comment().split_whitespace().any(|t| t == wanted) {
         Ok(())
     } else {
-        Err(failed(format!("The signature is for another version ({:?})", signature.trusted_comment())))
+        Err(failed(tr!("The signature is for another version ({version})", version = format!("{:?}", signature.trusted_comment()))))
     }
 }
 
@@ -189,8 +190,12 @@ fn download_verified(
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<(), InstallError> {
-    let mut verifier = key.verify_stream(signature).map_err(|e| failed(format!("The signature does not match the update key: {e}")))?;
-    let mut resp = crate::agent().get(url).call().map_err(|e| failed(format!("Download failed: {:#}", crate::http_error(e))))?;
+    let mut verifier =
+        key.verify_stream(signature).map_err(|e| failed(tr!("The signature does not match the update key: {error}", error = e)))?;
+    let mut resp = crate::agent()
+        .get(url)
+        .call()
+        .map_err(|e| failed(tr!("Download failed: {error}", error = format!("{:#}", crate::http_error(e)))))?;
     let total = resp
         .headers()
         .get("content-length")
@@ -199,7 +204,7 @@ fn download_verified(
         .filter(|n| *n > 0)
         .unwrap_or(expected_size);
     let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
-    let mut file = File::create(dest).map_err(|e| failed(format!("Could not create {}: {e}", dest.display())))?;
+    let mut file = File::create(dest).map_err(|e| failed(tr!("Could not create {path}: {error}", path = dest.display(), error = e)))?;
     let mut buf = vec![0u8; 256 * 1024];
     let mut downloaded = 0u64;
     let start = Instant::now();
@@ -209,11 +214,11 @@ fn download_verified(
         if cancel.load(Ordering::Relaxed) {
             return Err(InstallError::Cancelled);
         }
-        let n = body.read(&mut buf).map_err(|e| failed(format!("Download failed: {e}")))?;
+        let n = body.read(&mut buf).map_err(|e| failed(tr!("Download failed: {error}", error = e)))?;
         if n == 0 {
             break;
         }
-        file.write_all(&buf[..n]).map_err(|e| failed(format!("Could not write {}: {e}", dest.display())))?;
+        file.write_all(&buf[..n]).map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))?;
         verifier.update(&buf[..n]);
         downloaded += n as u64;
         if last.elapsed() >= Duration::from_millis(100) {
@@ -223,10 +228,10 @@ fn download_verified(
         }
     }
     if total > 0 && downloaded != total {
-        return Err(failed(format!("The download stopped after {downloaded} of {total} bytes")));
+        return Err(failed(tr!("The download stopped after {downloaded} of {total} bytes", downloaded, total)));
     }
-    verifier.finalize().map_err(|_| failed("The downloaded file does not match its signature"))?;
-    file.sync_all().map_err(|e| failed(format!("Could not write {}: {e}", dest.display())))?;
+    verifier.finalize().map_err(|_| failed(tr!("The downloaded file does not match its signature")))?;
+    file.sync_all().map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))?;
     on_progress(Progress { downloaded, total: downloaded, bytes_per_sec: 0. });
     Ok(())
 }
@@ -246,15 +251,16 @@ pub fn download_signed(
     if asset.name.is_empty() || asset.name.contains('/') || asset.name.starts_with('.') {
         return Err(failed(format!("Bad file name {:?}", asset.name)));
     }
-    let key = PublicKey::from_base64(public_key).map_err(|e| failed(format!("Bad update key: {e}")))?;
+    let key = PublicKey::from_base64(public_key).map_err(|e| failed(tr!("Bad update key: {error}", error = e)))?;
     let signature = fetch_signature(&signature.url)?;
     check_trusted_version(&signature, version)?;
-    fs::create_dir_all(dir).map_err(|e| failed(format!("Could not create {}: {e}", dir.display())))?;
+    fs::create_dir_all(dir).map_err(|e| failed(tr!("Could not create {path}: {error}", path = dir.display(), error = e)))?;
     let dest = dir.join(&asset.name);
     let part = dir.join(format!(".{}.part", asset.name));
     let _ = fs::remove_file(&part);
-    let result = download_verified(&asset.url, asset.size, &part, &key, &signature, cancel, on_progress)
-        .and_then(|()| fs::rename(&part, &dest).map_err(|e| failed(format!("Could not write {}: {e}", dest.display()))));
+    let result = download_verified(&asset.url, asset.size, &part, &key, &signature, cancel, on_progress).and_then(|()| {
+        fs::rename(&part, &dest).map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))
+    });
     if result.is_err() {
         let _ = fs::remove_file(&part);
     }
@@ -264,11 +270,13 @@ pub fn download_signed(
 /// An ELF file with the type 2 AppImage magic (`AI\x02` at offset 8).
 fn check_appimage(path: &Path) -> Result<(), InstallError> {
     let mut head = [0u8; 11];
-    File::open(path).and_then(|mut f| f.read_exact(&mut head)).map_err(|e| failed(format!("Could not read the download: {e}")))?;
+    File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .map_err(|e| failed(tr!("Could not read the download: {error}", error = e)))?;
     if &head[..4] == b"\x7fELF" && &head[8..11] == b"AI\x02" {
         Ok(())
     } else {
-        Err(failed("The download is not an AppImage"))
+        Err(failed(tr!("The download is not an AppImage")))
     }
 }
 
@@ -277,8 +285,8 @@ fn check_appimage(path: &Path) -> Result<(), InstallError> {
 fn swap_in(staging: &Path, appimage: &Path) -> Result<(), InstallError> {
     let mode = fs::metadata(appimage).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o755) | 0o700;
     fs::set_permissions(staging, fs::Permissions::from_mode(mode))
-        .map_err(|e| failed(format!("Could not make the update executable: {e}")))?;
-    fs::rename(staging, appimage).map_err(|e| failed(format!("Could not replace {}: {e}", appimage.display())))?;
+        .map_err(|e| failed(tr!("Could not make the update executable: {error}", error = e)))?;
+    fs::rename(staging, appimage).map_err(|e| failed(tr!("Could not replace {path}: {error}", path = appimage.display(), error = e)))?;
     if let Some(dir) = appimage.parent() {
         if let Ok(d) = File::open(dir) {
             let _ = d.sync_all();

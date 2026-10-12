@@ -10,6 +10,7 @@ use super::Request;
 use crate::console::list::Row;
 use crate::icons::Icon;
 use crate::services::downloads::EosGame;
+use heronite_i18n::tr;
 
 impl CollectionView {
     /// Rows `epic:<action>` for `game` (nothing for other stores).
@@ -26,13 +27,13 @@ impl CollectionView {
         let flags = svc.read(cx).game_flags(&game.app_name);
         let mut rows = Vec::new();
         if queued {
-            rows.push(Row::action("epic:downloads", "Show in Downloads").icon(Icon::Downloading));
+            rows.push(Row::action("epic:downloads", tr!("Show in Downloads")).icon(Icon::Downloading));
         }
         // EA app / Ubisoft Connect keep their games: legendary cannot import,
         // update, verify or move them (Heroic hides these too).
         if !game.installed {
             if !flags.third_party {
-                rows.push(Row::action("epic:import", "Import an existing install").icon(Icon::FolderOpen));
+                rows.push(Row::action("epic:import", tr!("Import an existing install")).icon(Icon::FolderOpen));
             }
             return rows;
         }
@@ -41,25 +42,27 @@ impl CollectionView {
         }
         if !flags.third_party {
             if update {
-                rows.push(Row::action("epic:update", "Update").icon(Icon::Update));
+                rows.push(Row::action("epic:update", tr!("Update")).icon(Icon::Update));
             }
-            rows.push(Row::action("epic:verify", "Verify and repair").icon(Icon::Build));
-            rows.push(Row::action("epic:move", "Move install").icon(Icon::Folder));
+            rows.push(Row::action("epic:verify", tr!("Verify and repair")).icon(Icon::Build));
+            rows.push(Row::action("epic:move", tr!("Move install")).icon(Icon::Folder));
         }
         if flags.has_dlcs && !flags.third_party {
-            rows.push(Row::action("epic:modify", "Modify installation").icon(Icon::Tune).desc("Choose the DLCs to keep installed"));
+            rows.push(
+                Row::action("epic:modify", tr!("Modify installation")).icon(Icon::Tune).desc(tr!("Choose the DLCs to keep installed")),
+            );
         }
         if cfg!(target_os = "linux") && !flags.third_party {
             let app = game.app_name.clone();
             svc.update(cx, |s, cx| s.eos_load_game(&app, cx));
             if let Some(state @ (EosGame::Enabled | EosGame::Disabled)) = svc.read(cx).eos_game(&game.app_name) {
-                rows.push(Row::toggle("epic:eos", "EOS Overlay", state == EosGame::Enabled).icon(Icon::Fullscreen));
+                rows.push(Row::toggle("epic:eos", tr!("EOS Overlay"), state == EosGame::Enabled).icon(Icon::Fullscreen));
             }
         }
         if cloud {
-            rows.push(Row::action("epic:sync", "Sync cloud saves").icon(Icon::CloudSync));
+            rows.push(Row::action("epic:sync", tr!("Sync cloud saves")).icon(Icon::CloudSync));
         }
-        rows.push(Row::action("epic:uninstall", "Uninstall\u{2026}").icon(Icon::DeleteForever).danger());
+        rows.push(Row::action("epic:uninstall", tr!("Uninstall\u{2026}")).icon(Icon::DeleteForever).danger());
         rows
     }
 

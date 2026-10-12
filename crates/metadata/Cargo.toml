@@ -7,6 +7,7 @@ description = "Collection metadata and artwork backend (IGDB, Steam, Lutris, mer
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-i18n = { path = "../i18n" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"

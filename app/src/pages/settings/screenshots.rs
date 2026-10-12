@@ -5,6 +5,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::settings::{self, EffectiveSettings, DEFAULT_CAPTURE_ACCELERATOR};
+use heronite_i18n::{grouped, tr, trn};
 use heronite_media::{CacheInfo, ThumbnailCache};
 
 use super::SettingsPage;
@@ -73,7 +74,7 @@ fn format_number(v: f64) -> String {
 fn format_size(bytes: u64) -> String {
     const GB: f64 = 1024. * 1024. * 1024.;
     if bytes as f64 >= GB {
-        format!("{:.1} GB", bytes as f64 / GB)
+        format!("{} GB", heronite_i18n::decimal(bytes as f64 / GB, 1))
     } else if bytes >= 1024 * 1024 {
         format!("{} MB", (bytes as f64 / (1024. * 1024.)).round() as u64)
     } else {
@@ -81,21 +82,13 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-/// `1,025`.
+/// `1,025` (`1.025` in Portuguese).
 fn format_count(n: u64) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (i, c) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(c);
-    }
-    out
+    grouped(n as i64)
 }
 
-fn plural(n: u64, one: &str, many: &str) -> String {
-    format!("{} {}", format_count(n), if n == 1 { one } else { many })
+fn files_text(n: u64) -> String {
+    trn!(n, "{count} file", "{count} files", count = format_count(n))
 }
 
 /// Share of the PNG bytes a conversion frees, for the estimate shown before
@@ -104,10 +97,14 @@ const EXPECTED_SAVING: f64 = 0.44;
 
 /// The "Space used" row: value on the right, details below the label.
 fn usage_text(c: Option<&Compression>) -> (String, Option<String>) {
-    let Some(u) = c.and_then(|c| c.usage) else { return ("Measuring\u{2026}".into(), None) };
-    let mut details = plural(u.files, "file", "files");
+    let Some(u) = c.and_then(|c| c.usage) else { return (tr!("Measuring\u{2026}").into(), None) };
+    let mut details = files_text(u.files);
     if u.compressed_files > 0 {
-        details.push_str(&format!(" \u{b7} {} compressed, {} freed", format_count(u.compressed_files), format_size(u.saved_bytes)));
+        details.push_str(&tr!(
+            " \u{b7} {compressed} compressed, {freed} freed",
+            compressed = format_count(u.compressed_files),
+            freed = format_size(u.saved_bytes)
+        ));
     }
     (format_size(u.total_bytes), Some(details))
 }
@@ -116,45 +113,61 @@ fn usage_text(c: Option<&Compression>) -> (String, Option<String>) {
 fn compression_status(c: &Compression) -> (String, String) {
     let t = &c.totals;
     let failed = if t.failed > 0 {
-        format!(" \u{b7} {} could not be compressed (see the logs)", plural(t.failed as u64, "file", "files"))
+        trn!(
+            t.failed,
+            " \u{b7} {count} file could not be compressed (see the logs)",
+            " \u{b7} {count} files could not be compressed (see the logs)",
+            count = format_count(t.failed as u64)
+        )
     } else {
         String::new()
     };
     match &c.phase {
         Phase::Off => {
             let estimate = c.usage.filter(|u| u.png_files > 0).map(|u| {
-                format!(
-                    "{} ({}) \u{b7} about {} could be freed",
-                    plural(u.png_files, "PNG capture", "PNG captures"),
-                    format_size(u.png_bytes),
-                    format_size((u.png_bytes as f64 * EXPECTED_SAVING) as u64)
+                trn!(
+                    u.png_files,
+                    "{count} PNG capture ({size}) \u{b7} about {saved} could be freed",
+                    "{count} PNG captures ({size}) \u{b7} about {saved} could be freed",
+                    count = format_count(u.png_files),
+                    size = format_size(u.png_bytes),
+                    saved = format_size((u.png_bytes as f64 * EXPECTED_SAVING) as u64)
                 )
             });
-            ("Off".into(), estimate.unwrap_or_else(|| "Turn it on to convert the PNG captures.".into()))
+            (tr!("Off").into(), estimate.unwrap_or_else(|| tr!("Turn it on to convert the PNG captures.").into()))
         }
-        Phase::NoFolder => ("Waiting for a folder".into(), "Choose the screenshots folder above.".into()),
-        Phase::Waiting => {
-            ("Starts in a moment".into(), "It waits a minute after the app opens or a game closes, so it never competes with them.".into())
-        }
-        Phase::Scanning => ("Looking for captures to compress\u{2026}".into(), String::new()),
+        Phase::NoFolder => (tr!("Waiting for a folder").into(), tr!("Choose the screenshots folder above.").into()),
+        Phase::Waiting => (
+            tr!("Starts in a moment").into(),
+            tr!("It waits a minute after the app opens or a game closes, so it never competes with them.").into(),
+        ),
+        Phase::Scanning => (tr!("Looking for captures to compress\u{2026}").into(), String::new()),
         Phase::Working { done, total, current } => (
-            format!("Compressing {} of {}", format_count((*done + 1).min(*total) as u64), format_count(*total as u64)),
-            format!("{} freed so far \u{b7} {current}{failed}", format_size(t.freed.max(0) as u64)),
+            tr!("Compressing {done} of {total}", done = format_count((*done + 1).min(*total) as u64), total = format_count(*total as u64)),
+            tr!("{freed} freed so far \u{b7} {current}{failed}", freed = format_size(t.freed.max(0) as u64), current),
         ),
         Phase::Paused { left } => (
-            "Paused while a game is running".into(),
+            tr!("Paused while a game is running").into(),
             match left {
-                Some(n) if *n > 0 => {
-                    format!("{} left; it resumes a minute after the game closes.", plural(*n as u64, "capture", "captures"))
-                }
-                _ => "It resumes a minute after the game closes.".into(),
+                Some(n) if *n > 0 => trn!(
+                    *n,
+                    "{count} capture left; it resumes a minute after the game closes.",
+                    "{count} captures left; it resumes a minute after the game closes.",
+                    count = format_count(*n as u64)
+                ),
+                _ => tr!("It resumes a minute after the game closes.").into(),
             },
         ),
         Phase::Idle if t.converted > 0 => (
-            format!("Done: {} compressed", plural(t.converted as u64, "capture", "captures")),
-            format!("{} freed this time{failed}", format_size(t.freed.max(0) as u64)),
+            trn!(
+                t.converted,
+                "Done: {count} capture compressed",
+                "Done: {count} captures compressed",
+                count = format_count(t.converted as u64)
+            ),
+            tr!("{freed} freed this time{failed}", freed = format_size(t.freed.max(0) as u64)),
         ),
-        Phase::Idle => ("All captures are compressed".into(), format!("New captures are compressed after each game.{failed}")),
+        Phase::Idle => (tr!("All captures are compressed").into(), tr!("New captures are compressed after each game.{failed}", failed)),
     }
 }
 
@@ -162,7 +175,7 @@ fn format_cache_size(bytes: u64) -> String {
     if bytes < 1024 * 1024 {
         format!("{} KB", (bytes as f64 / 1024.).round() as u64)
     } else {
-        format!("{:.1} MB", bytes as f64 / (1024. * 1024.))
+        format!("{} MB", heronite_i18n::decimal(bytes as f64 / (1024. * 1024.), 1))
     }
 }
 
@@ -294,7 +307,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .py(px(12.))
         .child(path_field(
             "shot-folder-icon",
-            Some("Screenshots folder"),
+            Some(tr!("Screenshots folder")),
             &st.folder,
             has_folder,
             false,
@@ -304,7 +317,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                     d.screenshots.folder.update(cx, |s, cx| s.set_value("", window, cx));
                     save(d, Some(String::new()), None, None, None, cx);
                 } else {
-                    choose_path(window, cx, true, "Choose", |d: &mut SettingsPage, path, window, cx| {
+                    choose_path(window, cx, true, tr!("Choose"), |d: &mut SettingsPage, path, window, cx| {
                         d.screenshots.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
                         save(d, Some(path), None, None, None, cx);
                     });
@@ -313,22 +326,22 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         ))
         .when(has_folder && st.compression.is_some(), |c| {
             c.child(div().mt(px(12.)).h(px(1.)).w_full().bg(theme::row_separator())).child(
-                row("Space used", used_details.as_deref(), div().text_size(px(14.)).text_color(theme::text_primary()).child(used))
+                row(tr!("Space used"), used_details.as_deref(), div().text_size(px(14.)).text_color(theme::text_primary()).child(used))
                     .pb(px(0.)),
             )
         });
 
     let status_line: Option<(SharedString, bool)> = if s.capture_enabled {
         Some(match status {
-            Some(status) if status.registered => ("Shortcut registered and ready.".into(), false),
+            Some(status) if status.registered => (tr!("Shortcut registered and ready.").into(), false),
             Some(status) if status.error.is_some() => (status.error.unwrap_or_default().into(), true),
-            _ => ("The shortcut activates automatically when a game starts.".into(), false),
+            _ => (tr!("The shortcut activates automatically when a game starts.").into(), false),
         })
     } else {
         None
     };
     let capture = card([
-        toggle_row("shot-capture-enabled", "Capture screenshots while a game is running", None, s.capture_enabled)
+        toggle_row("shot-capture-enabled", tr!("Capture screenshots while a game is running"), None, s.capture_enabled)
             .on_click(cx.listener(move |d, _, _, cx| {
                 let next = !d.settings.screenshots.capture_enabled;
                 save(d, None, None, Some(next), None, cx);
@@ -339,10 +352,10 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             .flex()
             .flex_col()
             .gap(px(8.))
-            .child(labeled("Screenshot shortcut", hotkey))
-            .child(meta_text(
-                "Click the shortcut field and press the desired key combination. Captures are saved in the matched game folder and appear automatically in Collection.",
-            ))
+            .child(labeled(tr!("Screenshot shortcut"), hotkey))
+            .child(meta_text(tr!(
+                "Click the shortcut field and press the desired key combination. Captures are saved in the matched game folder and appear automatically in Collection."
+            )))
             .children(status_line.map(|(text, error)| {
                 div().text_size(px(12.)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text)
             }))
@@ -364,7 +377,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             None => action_button(
                 "shot-compress-now",
                 ButtonKind::Glass,
-                "Compress now",
+                tr!("Compress now"),
                 can_start,
                 cx.listener(|d, _, _, cx| {
                     if let Some(c) = d.screenshots.compression.clone() {
@@ -377,8 +390,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         card([
             toggle_row(
                 "shot-compress",
-                "Compress screenshots without quality loss",
-                Some("Converts PNG captures to lossless WebP: every pixel stays identical and the files take about half the space."),
+                tr!("Compress screenshots without quality loss"),
+                Some(tr!("Converts PNG captures to lossless WebP: every pixel stays identical and the files take about half the space.")),
                 enabled,
             )
             .on_click(cx.listener(|d, _, _, cx| {
@@ -396,12 +409,18 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
 
     let can_clear = !st.busy && st.info.is_some_and(|i| i.item_count > 0);
     let usage = st.info.map(|i| {
-        format!("{} used by {} previews, {} limit.", format_cache_size(i.size_bytes), i.item_count, format_cache_size(i.limit_bytes))
+        trn!(
+            i.item_count,
+            "{size} used by {n} preview, {limit} limit.",
+            "{size} used by {n} previews, {limit} limit.",
+            size = format_cache_size(i.size_bytes),
+            limit = format_cache_size(i.limit_bytes)
+        )
     });
     let clear = action_button(
         "shot-clear-cache",
         ButtonKind::Glass,
-        if st.busy { "Clearing…" } else { "Clear preview cache" },
+        if st.busy { tr!("Clearing…") } else { tr!("Clear preview cache") },
         can_clear,
         cx.listener(|d, _, _, cx| {
             d.screenshots.busy = true;
@@ -412,7 +431,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 this.update(cx, |d, cx| {
                     d.screenshots.busy = false;
                     d.screenshots.info = Some(info);
-                    d.screenshots.message = Some("Screenshot preview cache cleared.".into());
+                    d.screenshots.message = Some(tr!("Screenshot preview cache cleared.").into());
                     cx.notify();
                 })
                 .ok();
@@ -422,33 +441,33 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         }),
     );
     let cache_card = card([
-        div().py(px(12.)).child(labeled("Preview cache limit (MB)", input_box(&st.limit, st.busy))).into_any_element(),
-        row("Clear preview cache", usage.as_deref(), clear).into_any_element(),
+        div().py(px(12.)).child(labeled(tr!("Preview cache limit (MB)"), input_box(&st.limit, st.busy))).into_any_element(),
+        row(tr!("Clear preview cache"), usage.as_deref(), clear).into_any_element(),
     ]);
 
     let mut col = div()
         .flex()
         .flex_col()
-        .child(caption("Screenshots folder"))
+        .child(caption(tr!("Screenshots folder")))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
-            "Folder with a subfolder per game (Xbox Game Bar Captures, NVIDIA, etc.). Collection matches those names to the selected game even when they are not identical.",
+            tr!("Folder with a subfolder per game (Xbox Game Bar Captures, NVIDIA, etc.). Collection matches those names to the selected game even when they are not identical."),
         )))
         .child(folder);
     if let Some(card) = compress_card {
         col = col
-            .child(caption("Lossless compression"))
+            .child(caption(tr!("Lossless compression")))
             .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
-                "Runs in the background at the lowest priority, one capture at a time, and pauses while a game is running. Each converted file is marked in its own metadata, so nothing is compressed twice; if the app closes midway, it continues at the next start.",
+                tr!("Runs in the background at the lowest priority, one capture at a time, and pauses while a game is running. Each converted file is marked in its own metadata, so nothing is compressed twice; if the app closes midway, it continues at the next start."),
             )))
             .child(card);
     }
     col = col
-        .child(caption("In-game capture"))
+        .child(caption(tr!("In-game capture")))
         .child(capture)
-        .child(caption("Preview cache"))
-        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
-            "Thumbnails generated so the screenshot gallery opens instantly. They are recreated on demand after clearing.",
-        )))
+        .child(caption(tr!("Preview cache")))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
+            "Thumbnails generated so the screenshot gallery opens instantly. They are recreated on demand after clearing."
+        ))))
         .child(cache_card);
     if let Some(m) = st.message.clone() {
         col = col.child(div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::success()).child(m));
@@ -494,30 +513,33 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let accel = if s.capture_accelerator.is_empty() { DEFAULT_CAPTURE_ACCELERATOR.to_string() } else { s.capture_accelerator.clone() };
     let shortcuts = console_shortcuts(&accel);
     let si = shortcuts.iter().position(|x| *x == accel).unwrap_or(0);
-    let usage = st.info.map(|i| format!("{} used by {} previews", format_cache_size(i.size_bytes), i.item_count)).unwrap_or_default();
-    let mut rows = vec![Row::text("folder", "Screenshots folder", st.folder.read(cx).value().to_string()).icon(Icon::FolderOpen)];
+    let usage = st
+        .info
+        .map(|i| trn!(i.item_count, "{size} used by {n} preview", "{size} used by {n} previews", size = format_cache_size(i.size_bytes)))
+        .unwrap_or_default();
+    let mut rows = vec![Row::text("folder", tr!("Screenshots folder"), st.folder.read(cx).value().to_string()).icon(Icon::FolderOpen)];
     if let Some(c) = st.compression.as_ref().map(|c| c.read(cx)) {
         if !s.folder.is_empty() {
             let (used, details) = usage_text(Some(c));
-            rows.push(Row::info("usage", "Space used", used).desc(details.unwrap_or_default()));
+            rows.push(Row::info("usage", tr!("Space used"), used).desc(details.unwrap_or_default()));
         }
         let (label, desc) = compression_status(c);
         rows.extend([
-            Row::header("Lossless compression"),
-            Row::toggle("compress", "Compress without quality loss", c.enabled())
-                .desc("PNG captures become lossless WebP: same pixels, about half the space"),
+            Row::header(tr!("Lossless compression")),
+            Row::toggle("compress", tr!("Compress without quality loss"), c.enabled())
+                .desc(tr!("PNG captures become lossless WebP: same pixels, about half the space")),
             Row::info("compress-status", label, "").desc(desc),
-            Row::action("compress-now", "Compress now").enabled(c.enabled() && !c.busy() && !c.game_running()),
+            Row::action("compress-now", tr!("Compress now")).enabled(c.enabled() && !c.busy() && !c.game_running()),
         ]);
     }
     rows.extend([
-        Row::header("Capture"),
-        Row::toggle("capture", "Capture screenshots while a game runs", s.capture_enabled),
-        Row::choice("shortcut", "Screenshot shortcut", shortcuts.into_iter().map(SharedString::from).collect(), si)
-            .desc("Captures go to the game's folder and show up in the Collection"),
-        Row::header("Preview cache"),
-        Row::number("limit", "Cache limit", s.cache_limit_mb.get() as i64, 50, 10_000, 50, " MB"),
-        Row::action("clear", if st.busy { "Clearing\u{2026}" } else { "Clear the preview cache" })
+        Row::header(tr!("Capture")),
+        Row::toggle("capture", tr!("Capture screenshots while a game runs"), s.capture_enabled),
+        Row::choice("shortcut", tr!("Screenshot shortcut"), shortcuts.into_iter().map(SharedString::from).collect(), si)
+            .desc(tr!("Captures go to the game's folder and show up in the Collection")),
+        Row::header(tr!("Preview cache")),
+        Row::number("limit", tr!("Cache limit"), s.cache_limit_mb.get() as i64, 50, 10_000, 50, " MB"),
+        Row::action("clear", if st.busy { tr!("Clearing\u{2026}") } else { tr!("Clear the preview cache") })
             .desc(usage)
             .enabled(!st.busy && st.info.is_some_and(|i| i.item_count > 0)),
     ]);
@@ -539,7 +561,7 @@ pub(super) fn console_apply(
             "folder" => {
                 let start = Some(std::path::PathBuf::from(d.screenshots.folder.read(cx).value().to_string()));
                 d.console_browse(
-                    "Screenshots folder",
+                    tr!("Screenshots folder"),
                     crate::console::browser::PickKind::Folder,
                     start,
                     window,
@@ -564,7 +586,7 @@ pub(super) fn console_apply(
                     this.update(cx, |d, cx| {
                         d.screenshots.busy = false;
                         d.screenshots.info = Some(info);
-                        d.screenshots.message = Some("Screenshot preview cache cleared.".into());
+                        d.screenshots.message = Some(tr!("Screenshot preview cache cleared.").into());
                         cx.notify();
                     })
                     .ok();

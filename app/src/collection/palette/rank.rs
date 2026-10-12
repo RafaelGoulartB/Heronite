@@ -8,6 +8,8 @@
 //! Both take the palette's history (ids, most recent first): items run
 //! lately come first inside their tier and fill the "Recent" group.
 
+use heronite_i18n::tr;
+
 use super::matching::{fold, score_entry, tokens, TIER_SUBSTR, TIER_WORD};
 use super::sources::{game_verbs, is_main_verb, is_status, Act, Entry, Kind};
 
@@ -41,10 +43,10 @@ impl Filter {
 
     pub fn label(self) -> &'static str {
         match self {
-            Filter::All => "All",
-            Filter::Pages => "Pages",
-            Filter::Actions => "Actions",
-            Filter::Games => "Games",
+            Filter::All => tr!("All"),
+            Filter::Pages => tr!("Pages"),
+            Filter::Actions => tr!("Actions"),
+            Filter::Games => tr!("Games"),
         }
     }
 
@@ -133,15 +135,15 @@ enum Verb {
 impl Verb {
     fn of(token: &str) -> Option<Verb> {
         Some(match token {
-            "play" | "launch" | "run" => Verb::Play,
-            "stop" | "kill" | "close" => Verb::Stop,
-            "install" | "download" => Verb::Install,
-            "settings" | "config" | "configure" | "options" => Verb::Settings,
-            "open" | "folder" => Verb::Folder,
-            "fav" | "favourite" | "favorite" | "unfavourite" | "unfavorite" => Verb::Favourite,
-            "hide" | "unhide" => Verb::Hide,
-            "log" | "logs" => Verb::Log,
-            "actions" | "menu" => Verb::Actions,
+            "play" | "launch" | "run" | "jogar" | "iniciar" | "executar" => Verb::Play,
+            "stop" | "kill" | "close" | "parar" | "encerrar" | "fechar" => Verb::Stop,
+            "install" | "download" | "instalar" | "baixar" => Verb::Install,
+            "settings" | "config" | "configure" | "options" | "configuracoes" | "configuracao" | "configurar" | "opcoes" => Verb::Settings,
+            "open" | "folder" | "abrir" | "pasta" => Verb::Folder,
+            "fav" | "favourite" | "favorite" | "unfavourite" | "unfavorite" | "favorito" | "favoritar" | "desfavoritar" => Verb::Favourite,
+            "hide" | "unhide" | "ocultar" | "mostrar" | "esconder" => Verb::Hide,
+            "log" | "logs" | "registro" => Verb::Log,
+            "actions" | "menu" | "acoes" => Verb::Actions,
             _ => return None,
         })
     }
@@ -161,15 +163,15 @@ impl Verb {
 
     fn caption(self) -> &'static str {
         match self {
-            Verb::Play => "Play",
-            Verb::Stop => "Stop",
-            Verb::Install => "Install",
-            Verb::Settings => "Game settings",
-            Verb::Folder => "Open folder",
-            Verb::Favourite => "Favourites",
-            Verb::Hide => "Hide",
-            Verb::Log => "Logs",
-            Verb::Actions => "Actions",
+            Verb::Play => tr!("Play"),
+            Verb::Stop => tr!("Stop"),
+            Verb::Install => tr!("Install"),
+            Verb::Settings => tr!("Game settings"),
+            Verb::Folder => tr!("Open folder"),
+            Verb::Favourite => tr!("Favourites"),
+            Verb::Hide => tr!("Hide"),
+            Verb::Log => tr!("Logs"),
+            Verb::Actions => tr!("Actions"),
         }
     }
 
@@ -240,16 +242,16 @@ pub fn search(entries: &[Entry], query: &str, filter: Filter, recent: &[String])
     let mut ranked: Vec<(i32, u8, &str, Vec<ItemRef>)> = Vec::new();
     let refs = |v: &[(i32, usize)]| v.iter().map(|(_, i)| ItemRef::Entry(*i)).collect::<Vec<_>>();
     if let Some((s, _)) = pages.first() {
-        ranked.push((*s, 0, "Go to", refs(&pages)));
+        ranked.push((*s, 0, tr!("Go to"), refs(&pages)));
     }
     if let Some((s, _)) = context.first() {
         ranked.push((*s, 1, &context_caption, refs(&context)));
     }
     if let Some((s, _)) = actions.first() {
-        ranked.push((*s, 2, "Actions", refs(&actions)));
+        ranked.push((*s, 2, tr!("Actions"), refs(&actions)));
     }
     if let Some((s, _)) = games.first() {
-        ranked.push((*s, 3, "Games", refs(&games)));
+        ranked.push((*s, 3, tr!("Games"), refs(&games)));
     }
     // The group with the best hit first; ties keep Go to, the game's, Actions, Games.
     ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
@@ -364,20 +366,20 @@ fn browse(entries: &[Entry], filter: Filter, recent: &[String]) -> Results {
             let rec: Vec<ItemRef> = resolve_recent(entries, recent, &mut out).into_iter().filter(|r| !ctx.contains(r)).collect();
             let played: Vec<ItemRef> = recent_games.iter().map(|i| ItemRef::Entry(*i)).filter(|r| !rec.contains(r)).take(RECENT).collect();
             out.push(&context_caption, ctx);
-            out.push("Recent", rec);
-            out.push("Recently played", played);
-            out.push("Go to", idx(&|e| e.kind == Kind::Page && !e.secondary));
+            out.push(tr!("Recent"), rec);
+            out.push(tr!("Recently played"), played);
+            out.push(tr!("Go to"), idx(&|e| e.kind == Kind::Page && !e.secondary));
         }
-        Filter::Pages => out.push("Go to", idx(&|e| e.kind == Kind::Page)),
+        Filter::Pages => out.push(tr!("Go to"), idx(&|e| e.kind == Kind::Page)),
         Filter::Actions => {
             out.push(&context_caption, idx(&|e| e.context));
-            out.push("Actions", idx(&|e| e.kind == Kind::Action && !e.context && !e.search_only));
+            out.push(tr!("Actions"), idx(&|e| e.kind == Kind::Action && !e.context && !e.search_only));
         }
         Filter::Games => {
             let shown: Vec<usize> = recent_games.iter().copied().take(RECENT).collect();
             let rest: Vec<ItemRef> = games.iter().filter(|i| !shown.contains(i)).take(GAMES_ONLY).map(|i| ItemRef::Entry(*i)).collect();
-            out.push("Recently played", shown.into_iter().map(ItemRef::Entry).collect());
-            out.push("Games", rest);
+            out.push(tr!("Recently played"), shown.into_iter().map(ItemRef::Entry).collect());
+            out.push(tr!("Games"), rest);
         }
     }
     out
@@ -393,7 +395,7 @@ pub fn actions_list(entries: &[Entry], query: &str, recent: &[String], caption: 
         let all =
             |status: bool| entries.iter().enumerate().filter(|(_, e)| is_status(e) == status).map(|(i, _)| ItemRef::Entry(i)).collect();
         out.push(caption, all(false));
-        out.push("Set status", all(true));
+        out.push(tr!("Set status"), all(true));
         return out;
     }
     let mut hits: Vec<(i32, usize)> =

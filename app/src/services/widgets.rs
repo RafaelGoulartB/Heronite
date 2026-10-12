@@ -26,15 +26,15 @@ pub fn progress_bar(percent: Option<f32>, height: f32, color: Rgba) -> Div {
 /// `1234.5` MiB -> `1.21 GiB`.
 pub fn fmt_mib(mib: f64) -> String {
     if mib >= 1024. {
-        format!("{:.2} GiB", mib / 1024.)
+        format!("{} GiB", heronite_i18n::decimal(mib / 1024., 2))
     } else {
-        format!("{mib:.1} MiB")
+        format!("{} MiB", heronite_i18n::decimal(mib, 1))
     }
 }
 
 /// `12.3%`.
 pub fn fmt_percent(p: f64) -> String {
-    format!("{p:.1}%")
+    format!("{}%", heronite_i18n::decimal(p, 1))
 }
 
 /// A page-local texture cache for covers (the Collection has its own).

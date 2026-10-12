@@ -110,7 +110,9 @@ pub struct EffectiveSettings {
     pub ludusavi: LudusaviSettings,
     /// Heroic `store/config.json` `theme` (default `midnightMirage`).
     pub theme: String,
-    /// Heroic `store/config.json` `language` (default `en`).
+    /// The interface language (`heronite_i18n`), which also picks the Steam
+    /// texts and date formats (Heroic's `store/config.json` `language` is not
+    /// used: this app has its own setting).
     pub language: String,
     /// Heroic `store/config.json` `allTilesInColor` (default false).
     pub all_tiles_in_color: bool,
@@ -169,7 +171,7 @@ impl EffectiveSettings {
                 extra: Default::default(),
             },
             theme: config.theme.clone().unwrap_or_else(|| DEFAULT_THEME.to_owned()),
-            language: config.language.clone().filter(|l| !l.is_empty()).unwrap_or_else(|| "en".to_owned()),
+            language: heronite_i18n::current().code().to_owned(),
             all_tiles_in_color: config.all_tiles_in_color.unwrap_or(false),
         }
     }

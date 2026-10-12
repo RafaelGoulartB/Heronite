@@ -2,6 +2,7 @@
 //! refresh the release lists and install the newest build of a source.
 
 use gpui_kit::*;
+use heronite_i18n::tr;
 use heronite_wine::{Repository, WineVersionInfo};
 
 use super::WineManagerPage;
@@ -33,11 +34,11 @@ impl WineManagerPage {
             }
             self.repo = repo;
             match self.latest(repo).cloned() {
-                Some(r) if r.installed() => self.toast(format!("{} is installed already", r.version), false, cx),
+                Some(r) if r.installed() => self.toast(tr!("{version} is installed already", version = r.version), false, cx),
                 Some(r) => {
                     self.manager.start_install(r);
                 }
-                None => self.toast(format!("No {} release found: refresh the list", repo.kind()), true, cx),
+                None => self.toast(tr!("No {kind} release found: refresh the list", kind = repo.kind()), true, cx),
             }
         }
         cx.notify();
@@ -47,22 +48,22 @@ impl WineManagerPage {
 impl PaletteCommands for WineManagerPage {
     fn palette_commands(page: Option<&Self>, _ctx: &CommandCtx, _cx: &App) -> Vec<PageCommand> {
         let busy = page.is_some_and(|p| p.manager.refreshing());
-        let mut v = vec![PageCommand::new("refresh", "Refresh Wine / Proton releases", "Fetch the newest builds", Icon::Refresh)
-            .keywords("proton wine runner update list")
-            .disabled(busy.then_some("Fetching releases already"))];
+        let mut v = vec![PageCommand::new("refresh", tr!("Refresh Wine / Proton releases"), tr!("Fetch the newest builds"), Icon::Refresh)
+            .keywords(tr!("proton wine runner update list"))
+            .disabled(busy.then_some(tr!("Fetching releases already")))];
         for repo in Repository::LINUX {
             let kind = repo.kind();
             let mut c = PageCommand::new(
                 format!("install:{kind}"),
-                format!("Install the latest {kind}"),
-                "Newest build of this source",
+                tr!("Install the latest {kind}", kind),
+                tr!("Newest build of this source"),
                 Icon::Download,
             )
-            .keywords("proton wine runner download compatibility");
+            .keywords(tr!("proton wine runner download compatibility"));
             if let Some(p) = page.filter(|p| p.loaded) {
                 match p.latest(repo) {
-                    Some(r) if r.installed() => c = c.disabled(Some(format!("{} is installed", r.version))),
-                    Some(r) if p.job(&r.version).is_some() => c = c.disabled(Some(format!("Installing {}", r.version))),
+                    Some(r) if r.installed() => c = c.disabled(Some(tr!("{version} is installed", version = r.version))),
+                    Some(r) if p.job(&r.version).is_some() => c = c.disabled(Some(tr!("Installing {version}", version = r.version))),
                     Some(r) => c.subtitle = format!("{} \u{b7} {}", r.version, r.date),
                     None => {}
                 }

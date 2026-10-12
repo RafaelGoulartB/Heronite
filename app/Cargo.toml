@@ -14,6 +14,7 @@ anyhow.workspace = true
 log.workspace = true
 rust-embed = "8"
 heronite-data = { path = "../crates/data" }
+heronite-i18n = { path = "../crates/i18n" }
 heronite-images = { path = "../crates/images" }
 heronite-launch = { path = "../crates/launch" }
 heronite-metadata = { path = "../crates/metadata" }

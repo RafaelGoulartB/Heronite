@@ -1,5 +1,6 @@
 //! Public types of the launcher API: requests, events, errors, configuration.
 
+use heronite_i18n::tr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -45,8 +46,8 @@ pub enum LaunchError {
 impl std::fmt::Display for LaunchError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LaunchError::Unavailable(r) => write!(f, "cannot launch: {r}"),
-            LaunchError::AlreadyRunning => write!(f, "this game is already running"),
+            LaunchError::Unavailable(r) => f.write_str(&tr!("cannot launch: {reason}", reason = r)),
+            LaunchError::AlreadyRunning => f.write_str(tr!("this game is already running")),
         }
     }
 }

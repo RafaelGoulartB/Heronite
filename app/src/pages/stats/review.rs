@@ -14,11 +14,14 @@ use std::time::Duration as StdDuration;
 use chrono::{Datelike, Duration, NaiveDate};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::stats::{self, fmt_secs, month_name, month_short, History, Period, Span, Stats};
+use heronite_data::stats::{self, fmt_secs, month_in_sentence, month_name, month_short, History, Period, Span, Stats};
 use heronite_data::Library;
+use heronite_i18n::{n_, tr, trn};
 
 use super::desktop::eyebrow;
-use super::{derive, hours_text, plural, series_color, short_date, today, Derived, Shot, StatsPage, WEEKDAYS, WEEKDAYS_LONG};
+use super::{
+    derive, hours_text, in_text, series_color, short_date, today, weekday, weekday_long, weekday_plural, Derived, Shot, StatsPage,
+};
 use crate::console::motion;
 use crate::icons::Icon;
 use crate::pages::PageEvent;
@@ -175,12 +178,29 @@ fn rich(parts: Vec<(String, u8)>) -> StyledText {
     StyledText::new(text).with_highlights(runs)
 }
 
-fn p(text: impl Into<String>) -> (String, u8) {
-    (text.into(), PLAIN)
-}
-
-fn b(text: impl Into<String>) -> (String, u8) {
-    (text.into(), BOLD)
+/// A translated sentence with `**bold**` and `~~accent~~` runs.
+pub(super) fn marked(text: impl AsRef<str>) -> StyledText {
+    let text = text.as_ref();
+    let bytes = text.as_bytes();
+    let (mut parts, mut kind, mut start, mut i) = (Vec::new(), PLAIN, 0, 0);
+    while i + 1 < bytes.len() {
+        let mark = match &bytes[i..i + 2] {
+            b"**" => BOLD,
+            b"~~" => ACCENT,
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        if i > start {
+            parts.push((text[start..i].to_string(), kind));
+        }
+        kind = if kind == mark { PLAIN } else { mark };
+        i += 2;
+        start = i;
+    }
+    parts.push((text[start..].to_string(), kind));
+    rich(parts)
 }
 
 fn two(a: String, c: String) -> Div {
@@ -224,8 +244,8 @@ fn cover_img(src: Option<ImageSource>, w: f32, h: f32, r: f32, z: Z) -> Div {
         .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
 }
 
-const PERSONA: [&str; 4] = ["Night owl", "Early bird", "Afternoon", "Evening"];
-const PART_RANGE: [&str; 4] = ["between midnight and 6 am", "between 6 am and noon", "between noon and 6 pm", "between 6 pm and midnight"];
+const PART_RANGE: [&str; 4] =
+    [n_!("between midnight and 6 am"), n_!("between 6 am and noon"), n_!("between noon and 6 pm"), n_!("between 6 pm and midnight")];
 
 impl StatsPage {
     fn review_go(&mut self, delta: isize, cx: &mut Context<Self>) {
@@ -258,23 +278,26 @@ impl StatsPage {
     fn summary_text(&self, r: &Review) -> String {
         let st = &r.st;
         let top: Vec<String> = st.games.iter().take(3).map(|g| format!("{} {}", self.game_title(g.game), hours_text(g.secs))).collect();
-        let mut s = format!(
-            "My {} in games: {} played on {} days, {} sessions, {} games ({} new).",
-            r.year,
-            fmt_secs(st.total_secs),
-            st.days_played,
-            st.sessions,
-            st.games.len(),
-            st.new_games()
+        let mut s = tr!(
+            "My {year} in games: {time} played on {days} days, {sessions} sessions, {games} games ({new} new).",
+            year = r.year,
+            time = fmt_secs(st.total_secs),
+            days = st.days_played,
+            sessions = st.sessions,
+            games = st.games.len(),
+            new = st.new_games()
         );
         if !top.is_empty() {
-            s.push_str(&format!(" Top {}: {}.", top.len(), top.join(", ")));
+            s.push(' ');
+            s.push_str(&tr!("Top {n}: {list}.", n = top.len(), list = top.join(", ")));
         }
         if let Some(l) = st.longest {
-            s.push_str(&format!(" Longest session: {}.", fmt_secs(l.secs)));
+            s.push(' ');
+            s.push_str(&tr!("Longest session: {time}.", time = fmt_secs(l.secs)));
         }
         if st.streak > 1 {
-            s.push_str(&format!(" Longest streak: {} days.", st.streak));
+            s.push(' ');
+            s.push_str(&tr!("Longest streak: {days} days.", days = st.streak));
         }
         s
     }
@@ -410,7 +433,7 @@ impl StatsPage {
                             .text_color(theme::text_primary())
                             .child("Heronite"),
                     )
-                    .child(format!("{year} in review")),
+                    .child(tr!("{year} in review", year)),
             )
             .child(
                 div()
@@ -535,28 +558,27 @@ impl StatsPage {
         let end = if year == today().year() { today() } else { st.period.end - Duration::days(1) };
         let mut text = Self::col(z, 110., 170., Some(760.));
         text = text
-            .child(rise("i-kick", kick("Year in review", z), 0, z))
+            .child(rise("i-kick", kick(tr!("Year in review"), z), 0, z))
             .child(rise(
                 "i-h1",
                 div()
                     .mt(z.p(28.))
-                    .child(heading("Your", 150., z))
+                    .child(heading(tr!("Your"), 150., z))
                     .child(heading(year.to_string(), 150., z))
-                    .child(heading("in games", 150., z).text_color(theme::accent())),
+                    .child(heading(tr!("in games"), 150., z).text_color(theme::accent())),
                 120,
                 z,
             ))
             .child(rise(
                 "i-lead",
-                lead(z).mt(z.p(34.)).child(rich(vec![
-                    p(format!("{} to {}: ", short_date(st.period.start), short_date(end))),
-                    b(plural(st.days_elapsed, "day", "days")),
-                    p(", "),
-                    b(plural(st.games.len(), "game", "games")),
-                    p(" and "),
-                    b(plural(st.sessions, "session", "sessions")),
-                    p("."),
-                ])),
+                lead(z).mt(z.p(34.)).child(marked(tr!(
+                    "{from} to {to}: **{days}**, **{games}** and **{sessions}**.",
+                    from = short_date(st.period.start),
+                    to = short_date(end),
+                    days = trn!(st.days_elapsed, "{n} day", "{n} days"),
+                    games = trn!(st.games.len(), "{n} game", "{n} games"),
+                    sessions = trn!(st.sessions, "{n} session", "{n} sessions")
+                ))),
                 360,
                 z,
             ))
@@ -570,7 +592,7 @@ impl StatsPage {
                     .text_size(z.p(14.))
                     .text_color(theme::text_muted())
                     .child(keycap("\u{2192}"))
-                    .child("Press next to start"),
+                    .child(tr!("Press next to start")),
                 520,
                 z,
             ));
@@ -585,22 +607,26 @@ impl StatsPage {
         let compare = match st.prev_secs.filter(|p| *p > 0.) {
             Some(prev) => {
                 let c = (st.total_secs / prev - 1.) * 100.;
-                let sign = if c >= 0. { "+" } else { "" };
-                format!("{sign}{c:.0}% on {} ({}){}", year - 1, hours_text(prev), if ongoing { ", and the year is not over." } else { "." })
+                let pct = format!("{}{c:.0}", if c >= 0. { "+" } else { "" });
+                if ongoing {
+                    tr!("{pct}% on {year} ({time}), and the year is not over.", pct, year = year - 1, time = hours_text(prev))
+                } else {
+                    tr!("{pct}% on {year} ({time}).", pct, year = year - 1, time = hours_text(prev))
+                }
             }
-            None => "Your first year on record.".into(),
+            None => tr!("Your first year on record.").into(),
         };
         let card = glass_card(z)
             .w(z.p(480.))
             .px(z.p(30.))
             .py(z.p(26.))
-            .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(z.p(32.)).line_height(z.p(38.)).child(rich(
-                vec![
-                    p("That is "),
-                    (format!("{} and {}", plural(dd as usize, "day", "days"), plural(hh as usize, "hour", "hours")), ACCENT),
-                    p(" without ever putting the controller down."),
-                ],
-            )))
+            .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(z.p(32.)).line_height(z.p(38.)).child(
+                marked(tr!(
+                    "That is ~~{days} and {hours}~~ without ever putting the controller down.",
+                    days = trn!(dd, "{n} day", "{n} days"),
+                    hours = trn!(hh, "{n} hour", "{n} hours")
+                )),
+            ))
             .child(div().mt(z.p(14.)).text_size(z.p(15.)).line_height(z.p(22.)).text_color(theme::text_muted()).child(compare));
         // One bar per day of the year so far.
         let start = st.period.start;
@@ -631,11 +657,11 @@ impl StatsPage {
         }));
         let gap_note = st.longest_break.filter(|g| g.days >= 7).map(|g| {
             let mid = g.last + Duration::days(g.days as i64 / 2 + 1);
-            format!("See that empty stretch? That is your {}-day break in {}.", g.days, month_name(mid.month()))
+            tr!("See that empty stretch? That is your {days}-day break in {month}.", days = g.days, month = month_in_sentence(mid.month()))
         });
         let mut text = Self::col(z, 110., 225., None);
         text = text
-            .child(rise(("n-kick", epoch), kick("The big number", z), 0, z))
+            .child(rise(("n-kick", epoch), kick(tr!("The big number"), z), 0, z))
             .child(
                 div()
                     .flex()
@@ -645,7 +671,7 @@ impl StatsPage {
                     .child(rise(("n-mega", epoch), heading(hours.to_string(), 300., z).line_height(z.p(250.)), 150, z))
                     .child(rise(
                         ("n-h2", epoch),
-                        div().pb(z.p(14.)).child(heading("hours", 72., z)).child(heading("of play", 72., z)),
+                        div().pb(z.p(14.)).child(heading(tr!("hours"), 72., z)).child(heading(tr!("of play"), 72., z)),
                         300,
                         z,
                     ))
@@ -662,11 +688,12 @@ impl StatsPage {
                             .justify_between()
                             .items_baseline()
                             .mb(z.p(14.))
-                            .child(heading(format!("{} of {} days with a game running", st.days_played, n), 24., z))
-                            .child(div().text_size(z.p(14.)).text_color(theme::text_muted()).child(format!(
-                                "{} sessions \u{b7} {} each, on average",
+                            .child(heading(tr!("{played} of {days} days with a game running", played = st.days_played, days = n), 24., z))
+                            .child(div().text_size(z.p(14.)).text_color(theme::text_muted()).child(trn!(
                                 st.sessions,
-                                fmt_secs(st.total_secs / st.sessions.max(1) as f64)
+                                "{n} session \u{b7} {time} each, on average",
+                                "{n} sessions \u{b7} {time} each, on average",
+                                time = fmt_secs(st.total_secs / st.sessions.max(1) as f64)
                             ))),
                     )
                     .child(strip)
@@ -693,7 +720,7 @@ impl StatsPage {
         let game = lib.as_ref().and_then(|l| l.games.get(g)).cloned();
         let (status, status_color) = match (&lib, &game) {
             (Some(l), Some(gm)) => match l.statuses.iter().find(|s| s.id == gm.status_id) {
-                Some(s) => (Some(s.name.clone()), theme::status_color(&s.slug)),
+                Some(s) => (Some(heronite_data::status::status_label(&s.name).to_string()), theme::status_color(&s.slug)),
                 None => (None, theme::status_color("")),
             },
             _ => (None, theme::status_color("")),
@@ -704,7 +731,7 @@ impl StatsPage {
             chips = chips.child(chip(z).child(div().size(z.p(9.)).rounded_full().bg(status_color)).child(s));
         }
         if top.new {
-            chips = chips.child(chip(z).child(format!("New in {year}")));
+            chips = chips.child(chip(z).child(tr!("New in {year}", year)));
         }
         for genre in genres {
             chips = chips.child(chip(z).font_weight(theme::W_REGULAR).text_color(theme::text_muted()).child(genre));
@@ -721,24 +748,20 @@ impl StatsPage {
         let months: Vec<f64> = st.bucket_games.iter().map(|gs| gs.iter().find(|x| x.0 == g).map_or(0., |x| x.1)).collect();
         let active: Vec<usize> = months.iter().enumerate().filter(|(_, v)| **v > 0.).map(|(i, _)| i).collect();
         let sentence = match (active.first(), active.last(), top.first, top.last) {
-            (Some(&a), Some(&l), Some(f), Some(last)) if a == l => lead(z).child(rich(vec![
-                p("All of it in "),
-                b(month_name(a as u32 + 1)),
-                p(format!(": {} between ", plural(top.sessions, "session", "sessions"))),
-                b(short_date(f.date())),
-                p(" and "),
-                b(short_date(last.date())),
-                p("."),
-            ])),
-            (Some(&a), Some(&l), _, _) => lead(z).child(rich(vec![
-                p(format!("{} across ", plural(top.sessions, "session", "sessions"))),
-                b(plural(active.len(), "month", "months")),
-                p(", from "),
-                b(month_name(a as u32 + 1)),
-                p(" to "),
-                b(month_name(l as u32 + 1)),
-                p("."),
-            ])),
+            (Some(&a), Some(&l), Some(f), Some(last)) if a == l => lead(z).child(marked(tr!(
+                "All of it in **{month}**: {sessions} between **{from}** and **{to}**.",
+                month = month_in_sentence(a as u32 + 1),
+                sessions = trn!(top.sessions, "{n} session", "{n} sessions"),
+                from = short_date(f.date()),
+                to = short_date(last.date())
+            ))),
+            (Some(&a), Some(&l), _, _) => lead(z).child(marked(tr!(
+                "{sessions} across **{months}**, from **{first}** to **{last}**.",
+                sessions = trn!(top.sessions, "{n} session", "{n} sessions"),
+                months = trn!(active.len(), "{n} month", "{n} months"),
+                first = month_in_sentence(a as u32 + 1),
+                last = month_in_sentence(l as u32 + 1)
+            ))),
             _ => lead(z),
         };
         let mmax = months.iter().copied().fold(1., f64::max);
@@ -786,7 +809,7 @@ impl StatsPage {
             )),
         );
         let ring = Hsla { a: 0.7, ..Hsla::from(theme::accent()) };
-        let content = Self::col(z, 110., 172., None).child(rise(("t-kick", epoch), kick("Your number one", z), 0, z)).child(
+        let content = Self::col(z, 110., 172., None).child(rise(("t-kick", epoch), kick(tr!("Your number one"), z), 0, z)).child(
             div()
                 .flex()
                 .gap(z.p(64.))
@@ -807,9 +830,9 @@ impl StatsPage {
                                 .flex()
                                 .gap(z.p(64.))
                                 .mt(z.p(46.))
-                                .child(stat(hours_text(top.secs), "time played"))
-                                .child(stat(top.sessions.to_string(), "sessions"))
-                                .child(stat(format!("{:.0}%", top.secs / st.total_secs.max(1.) * 100.), "of your whole year")),
+                                .child(stat(hours_text(top.secs), tr!("time played")))
+                                .child(stat(top.sessions.to_string(), tr!("sessions")))
+                                .child(stat(format!("{:.0}%", top.secs / st.total_secs.max(1.) * 100.), tr!("of your whole year"))),
                             580,
                             z,
                         ))
@@ -864,10 +887,10 @@ impl StatsPage {
                         .child(self.game_title(g.game)),
                 )
                 .child(heading(hours_text(g.secs), 30., z).mt(z.p(2.)))
-                .child(div().mt(z.p(2.)).text_size(z.p(13.)).text_color(theme::text_muted()).child(format!(
-                    "{} \u{b7} {:.0}% of the year",
-                    plural(g.sessions, "session", "sessions"),
-                    g.secs / st.total_secs.max(1.) * 100.
+                .child(div().mt(z.p(2.)).text_size(z.p(13.)).text_color(theme::text_muted()).child(tr!(
+                    "{sessions} \u{b7} {pct}% of the year",
+                    sessions = trn!(g.sessions, "{n} session", "{n} sessions"),
+                    pct = format!("{:.0}", g.secs / st.total_secs.max(1.) * 100.)
                 )))
                 .child(
                     div()
@@ -879,12 +902,13 @@ impl StatsPage {
                 );
             pod = pod.child(rise(("p-card", epoch * 10 + i), card, 300 + i as u64 * 120, z));
         }
-        let what = match n {
-            1 => "One game".to_string(),
-            2 => "Two games".into(),
-            3 => "Three games".into(),
-            4 => "Four games".into(),
-            _ => "Five games".into(),
+        let share = format!("{share:.0}");
+        let took = match n {
+            1 => tr!("One game took ~~{share}%~~ of your time.", share),
+            2 => tr!("Two games took ~~{share}%~~ of your time.", share),
+            3 => tr!("Three games took ~~{share}%~~ of your time.", share),
+            4 => tr!("Four games took ~~{share}%~~ of your time.", share),
+            _ => tr!("Five games took ~~{share}%~~ of your time.", share),
         };
         let head = div()
             .font_family(theme::FONT_HEADING)
@@ -892,10 +916,10 @@ impl StatsPage {
             .text_size(z.p(72.))
             .line_height(z.p(74.))
             .max_w(z.p(1000.))
-            .child(rich(vec![p(format!("{what} took ")), (format!("{share:.0}%"), ACCENT), p(" of your time.")]));
+            .child(marked(took));
         Self::col(z, 110., 130., None)
             .bottom(z.p(60.))
-            .child(rise(("p-kick", epoch), kick(&format!("Top {n} of the year"), z), 0, z))
+            .child(rise(("p-kick", epoch), kick(&tr!("Top {n} of the year", n), z), 0, z))
             .child(rise(("p-h2", epoch), head.mt(z.p(18.)), 120, z))
             .child(div().relative().flex_1().child(pod))
             .into_any_element()
@@ -911,21 +935,23 @@ impl StatsPage {
         let hmax = hours.iter().copied().fold(1., f64::max);
         let wmax = days.iter().copied().fold(1., f64::max);
         let persona = match best_part {
-            0 => "Night owl".to_string(),
-            1 => "Early bird".to_string(),
-            p => format!("{} player,", PERSONA[p]),
+            0 => tr!("Night owl"),
+            1 => tr!("Early bird"),
+            2 => tr!("Afternoon player,"),
+            _ => tr!("Evening player,"),
         };
         let h1 = div()
             .mt(z.p(30.))
             .child(heading(persona, 112., z))
-            .child(heading(format!("{}s", WEEKDAYS_LONG[best_day]), 112., z).text_color(theme::accent()))
-            .child(heading("mostly.", 112., z));
-        let leadline = lead(z).mt(z.p(36.)).child(rich(vec![
-            b(format!("{:.0}%", parts[best_part] / total * 100.)),
-            p(format!(" of your play time happens {}, and {} alone is ", PART_RANGE[best_part], WEEKDAYS_LONG[best_day])),
-            b(hours_text(days[best_day])),
-            p("."),
-        ]));
+            .child(heading(weekday_plural(best_day), 112., z).text_color(theme::accent()))
+            .child(heading(tr!("mostly."), 112., z));
+        let leadline = lead(z).mt(z.p(36.)).child(marked(tr!(
+            "**{pct}%** of your play time happens {range}, and {day} alone is **{time}**.",
+            pct = format!("{:.0}", parts[best_part] / total * 100.),
+            range = heronite_i18n::tr(PART_RANGE[best_part]),
+            day = in_text(weekday_long(best_day)),
+            time = hours_text(days[best_day])
+        )));
         let mut hbars = div().flex().items_end().gap(z.p(5.)).h(z.p(150.));
         for (i, v) in hours.iter().enumerate() {
             let c: Hsla = if *v > 0. { theme::chart_ramp((*v / hmax) as f32).into() } else { theme::white_a(0.07) };
@@ -950,8 +976,8 @@ impl StatsPage {
                     .flex()
                     .justify_between()
                     .mb(z.p(16.))
-                    .child(heading("Your day", 18., z))
-                    .child(div().text_size(z.p(13.)).text_color(theme::text_muted()).child("time played by hour")),
+                    .child(heading(tr!("Your day"), 18., z))
+                    .child(div().text_size(z.p(13.)).text_color(theme::text_muted()).child(tr!("time played by hour"))),
             )
             .child(hbars)
             .child(hx);
@@ -970,7 +996,7 @@ impl StatsPage {
                     .text_size(z.p(12.))
                     .text_color(if best { theme::text_primary() } else { theme::text_muted() })
                     .when(best, |d| d.font_weight(theme::W_BOLD))
-                    .child(format!("{}h", (v / 3600.).round()))
+                    .child(tr!("{h}h", h = (v / 3600.).round()))
                     .child(grow(
                         ("w-bar", epoch * 10 + i),
                         div().w_full().rounded_t(z.p(5.)).bg(if best { theme::accent() } else { theme::chart_ramp(0.55) }),
@@ -978,7 +1004,7 @@ impl StatsPage {
                         i as u64 * 90,
                         z,
                     ))
-                    .child(WEEKDAYS[i]),
+                    .child(weekday(i)),
             );
         }
         let week_card = glass_card(z)
@@ -986,11 +1012,11 @@ impl StatsPage {
             .pt(z.p(24.))
             .pb(z.p(20.))
             .child(
-                div().flex().justify_between().mb(z.p(16.)).child(heading("Your week", 18., z)).child(
+                div().flex().justify_between().mb(z.p(16.)).child(heading(tr!("Your week"), 18., z)).child(
                     div()
                         .text_size(z.p(13.))
                         .text_color(theme::text_muted())
-                        .child(format!("weekends hold {:.0}% of your time", st.weekend_secs / total * 100.)),
+                        .child(tr!("weekends hold {pct}% of your time", pct = format!("{:.0}", st.weekend_secs / total * 100.))),
                 ),
             )
             .child(wbars);
@@ -1016,11 +1042,11 @@ impl StatsPage {
                     .flex_1()
                     .child(heading(
                         if night >= 20. {
-                            "A true night owl."
+                            tr!("A true night owl.")
                         } else if night >= 5. {
-                            "Night owl? Only a little."
+                            tr!("Night owl? Only a little.")
                         } else {
-                            "Not a night owl."
+                            tr!("Not a night owl.")
                         },
                         22.,
                         z,
@@ -1030,12 +1056,12 @@ impl StatsPage {
                             .mt(z.p(3.))
                             .text_size(z.p(14.))
                             .text_color(theme::text_muted())
-                            .child(format!("{} between midnight and 6 am.", fmt_secs(parts[0]))),
+                            .child(tr!("{time} between midnight and 6 am.", time = fmt_secs(parts[0]))),
                     ),
             )
             .child(heading(format!("{night:.0}%"), 46., z));
         let left = Self::col(z, 110., 185., Some(700.))
-            .child(rise(("hb-kick", epoch), kick("Your habits", z), 0, z))
+            .child(rise(("hb-kick", epoch), kick(tr!("Your habits"), z), 0, z))
             .child(rise(("hb-h1", epoch), h1, 140, z))
             .child(rise(("hb-lead", epoch), leadline, 380, z));
         let right = div()
@@ -1136,9 +1162,9 @@ impl StatsPage {
             cards.push(self.record_card(
                 Some(l.game),
                 false,
-                "Longest session",
+                tr!("Longest session"),
                 big(fmt_secs(l.secs), None),
-                two(self.game_title(l.game), format!("{}, from {at}", super::day_label(l.start.date()))),
+                two(self.game_title(l.game), tr!("{day}, from {at}", day = super::day_label(l.start.date()), at)),
                 None,
                 z,
                 window,
@@ -1178,11 +1204,11 @@ impl StatsPage {
             cards.push(self.record_card(
                 game,
                 true,
-                "Busiest day",
+                tr!("Busiest day"),
                 big(fmt_secs(secs), None),
                 two(
                     super::day_label(d),
-                    if same { "The same day as that marathon.".into() } else { "Your most intense day of the year.".into() },
+                    if same { tr!("The same day as that marathon.").into() } else { tr!("Your most intense day of the year.").into() },
                 ),
                 Some(extra),
                 z,
@@ -1200,9 +1226,9 @@ impl StatsPage {
             cards.push(self.record_card(
                 st.streak_game,
                 false,
-                "Longest streak",
-                big(st.streak.to_string(), Some("days")),
-                two(format!("{} to {}", short_date(a), short_date(e)), "Not one day missed.".into()),
+                tr!("Longest streak"),
+                big(st.streak.to_string(), Some(tr!("days"))),
+                two(tr!("{from} to {to}", from = short_date(a), to = short_date(e)), tr!("Not one day missed.").into()),
                 Some(dots),
                 z,
                 window,
@@ -1217,14 +1243,14 @@ impl StatsPage {
                     .and_then(|i| st.bucket_games.get(i)?.first().map(|x| x.0));
                 let month = st.buckets.iter().find(|x| x.start <= g.back && g.back < x.end).map_or(0., |x| x.secs);
                 let detail = two(
-                    format!("{} to {}", short_date(g.last + Duration::days(1)), short_date(g.back - Duration::days(1))),
-                    format!("You came back on {} and played {} that month.", short_date(g.back), hours_text(month)),
+                    tr!("{from} to {to}", from = short_date(g.last + Duration::days(1)), to = short_date(g.back - Duration::days(1))),
+                    tr!("You came back on {day} and played {time} that month.", day = short_date(g.back), time = hours_text(month)),
                 );
                 cards.push(self.record_card(
                     back,
                     false,
-                    "The longest break",
-                    big(g.days.to_string(), Some("days")),
+                    tr!("The longest break"),
+                    big(g.days.to_string(), Some(tr!("days"))),
                     detail,
                     None,
                     z,
@@ -1237,11 +1263,11 @@ impl StatsPage {
                     cards.push(self.record_card(
                         game,
                         false,
-                        "Busiest month",
+                        tr!("Busiest month"),
                         big(hours_text(bk.secs), None),
                         two(
                             month_name(bk.start.month()).to_string(),
-                            game.map(|g| format!("Led by {}.", self.game_title(g))).unwrap_or_default(),
+                            game.map(|g| tr!("Led by {game}.", game = self.game_title(g))).unwrap_or_default(),
                         ),
                         None,
                         z,
@@ -1260,8 +1286,8 @@ impl StatsPage {
         );
         Self::col(z, 90., 128., None)
             .bottom(z.p(60.))
-            .child(rise(("r-kick", epoch), kick("Records", z), 0, z))
-            .child(rise(("r-h2", epoch), heading("The moments that stood out.", 60., z).mt(z.p(14.)), 100, z))
+            .child(rise(("r-kick", epoch), kick(tr!("Records"), z), 0, z))
+            .child(rise(("r-h2", epoch), heading(tr!("The moments that stood out."), 60., z).mt(z.p(14.)), 100, z))
             .child(grid)
             .into_any_element()
     }
@@ -1291,11 +1317,11 @@ impl StatsPage {
                 .gap_x(z.p(12.))
                 .mb(z.p(14.))
                 .child(heading(d.shots_total.to_string(), 54., z))
-                .child(div().text_size(z.p(17.)).text_color(theme::text_muted()).child("screenshots taken, mostly of"));
+                .child(div().text_size(z.p(17.)).text_color(theme::text_muted()).child(tr!("screenshots taken, mostly of")));
             head = match names.as_slice() {
                 [a, c] => head
                     .child(div().text_size(z.p(17.)).font_weight(theme::W_BOLD).child(a.clone()))
-                    .child(div().text_size(z.p(17.)).text_color(theme::text_muted()).child("and"))
+                    .child(div().text_size(z.p(17.)).text_color(theme::text_muted()).child(tr!("and")))
                     .child(div().text_size(z.p(17.)).font_weight(theme::W_BOLD).child(c.clone())),
                 [a] => head.child(div().text_size(z.p(17.)).font_weight(theme::W_BOLD).child(a.clone())),
                 _ => head,
@@ -1332,7 +1358,7 @@ impl StatsPage {
             left = left.child(head).child(grid).child(rise(("w-caps", epoch), caps, 1000, z));
         } else {
             let gmax = d.genres.first().map_or(1., |g| g.1.max(1.));
-            left = left.child(heading("Genres of the year", 30., z).mb(z.p(18.))).children(d.genres.iter().map(|(n, s)| {
+            left = left.child(heading(tr!("Genres of the year"), 30., z).mb(z.p(18.))).children(d.genres.iter().map(|(n, s)| {
                 div()
                     .flex()
                     .items_center()
@@ -1349,7 +1375,7 @@ impl StatsPage {
                             .child(div().h_full().w(relative((*s / gmax) as f32)).rounded_full().bg(theme::chart_ramp(1.))),
                     )
                     .child(
-                        div().w(z.p(70.)).flex().justify_end().text_color(theme::text_muted()).child(format!("{}h", (s / 3600.).round())),
+                        div().w(z.p(70.)).flex().justify_end().text_color(theme::text_muted()).child(tr!("{h}h", h = (s / 3600.).round())),
                     )
             }));
         }
@@ -1363,21 +1389,21 @@ impl StatsPage {
                         .items_baseline()
                         .gap(z.p(10.))
                         .child(heading(st.games.len().to_string(), 54., z))
-                        .child(div().text_size(z.p(17.)).text_color(theme::text_muted()).child("games played")),
+                        .child(div().text_size(z.p(17.)).text_color(theme::text_muted()).child(tr!("games played"))),
                 )
                 .child(
                     div()
                         .mt(z.p(10.))
                         .text_size(z.p(15.))
                         .text_color(theme::text_muted())
-                        .child(format!("{} of them for the first time.", st.new_games())),
+                        .child(tr!("{n} of them for the first time.", n = st.new_games())),
                 );
         } else {
             beaten = beaten.child(div().flex().items_baseline().gap(z.p(10.)).child(heading(d.beaten.len().to_string(), 54., z)).child(
                 div().text_size(z.p(17.)).text_color(theme::text_muted()).child(if d.beaten.len() == 1 {
-                    "game beaten"
+                    tr!("game beaten")
                 } else {
-                    "games beaten"
+                    tr!("games beaten")
                 }),
             ));
             let mut list = div().flex().flex_col().gap(z.p(7.)).mt(z.p(14.));
@@ -1471,15 +1497,15 @@ impl StatsPage {
                         .text_size(z.p(12.))
                         .text_color(theme::white_a(0.85))
                         .child(div().size(z.p(18.)).rounded(z.p(6.)).bg(theme::accent()))
-                        .child(format!("HERONITE \u{b7} {year} IN GAMES")),
+                        .child(tr!("HERONITE \u{b7} {year} IN GAMES", year)),
                 )
-                .child(heading("I played for", 21., z).mt(z.p(96.)).text_color(theme::white_a(0.9)))
+                .child(heading(tr!("I played for"), 21., z).mt(z.p(96.)).text_color(theme::white_a(0.9)))
                 .child(heading(fmt_secs(st.total_secs), 64., z).mt(z.p(6.)))
-                .child(div().mt(z.p(6.)).text_size(z.p(14.)).text_color(theme::text_muted()).child(format!(
-                    "{} days \u{b7} {} sessions \u{b7} {} games",
-                    st.days_played,
-                    st.sessions,
-                    st.games.len()
+                .child(div().mt(z.p(6.)).text_size(z.p(14.)).text_color(theme::text_muted()).child(tr!(
+                    "{days} days \u{b7} {sessions} sessions \u{b7} {games} games",
+                    days = st.days_played,
+                    sessions = st.sessions,
+                    games = st.games.len()
                 )))
                 .child(months)
                 .child(t3),
@@ -1511,11 +1537,11 @@ impl StatsPage {
             .flex()
             .gap(z.p(10.))
             .mt(z.p(18.))
-            .child(button("review-copy", "Copy summary", Some(Icon::ContentCopy), true).on_click(cx.listener(move |_, _, _, cx| {
+            .child(button("review-copy", tr!("Copy summary"), Some(Icon::ContentCopy), true).on_click(cx.listener(move |_, _, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(summary.clone()));
-                cx.emit(PageEvent::Toast("Summary copied".into(), false));
+                cx.emit(PageEvent::Toast(tr!("Summary copied").into(), false));
             })))
-            .child(button("review-back", "Back to stats", None, false).on_click(cx.listener(|this, _, _, cx| this.close_review(cx))));
+            .child(button("review-back", tr!("Back to stats"), None, false).on_click(cx.listener(|this, _, _, cx| this.close_review(cx))));
         let row = div()
             .absolute()
             .left_0()
@@ -1530,10 +1556,10 @@ impl StatsPage {
             .child(rise(("w-poster", epoch), div().child(poster).child(buttons), 760, z));
         Self::col(z, 110., 128., None)
             .bottom(z.p(40.))
-            .child(rise(("w-kick", epoch), kick("That is a wrap", z), 0, z))
+            .child(rise(("w-kick", epoch), kick(tr!("That is a wrap"), z), 0, z))
             .child(rise(
                 ("w-h2", epoch),
-                heading(if has_shots { "Proof of every good moment." } else { "That was your year." }, 64., z).mt(z.p(14.)),
+                heading(if has_shots { tr!("Proof of every good moment.") } else { tr!("That was your year.") }, 64., z).mt(z.p(14.)),
                 100,
                 z,
             ))

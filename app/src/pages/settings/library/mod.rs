@@ -11,6 +11,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::ui_state::UiState;
 use heronite_data::{config_games, game_config, AppPaths, DataPaths};
+use heronite_i18n::{tr, trn};
 use serde_json::json;
 
 use super::SettingsPage;
@@ -135,9 +136,9 @@ impl SettingsPage {
             Box::new(move |data_paths, _| {
                 let n = config_games::clear_list(data_paths, key)?;
                 Ok(match key {
-                    "hidden" => format!("{n} game(s) unhidden."),
-                    "favourites" => format!("{n} favourite(s) removed."),
-                    _ => format!("{n} recent game(s) cleared."),
+                    "hidden" => trn!(n, "{n} game unhidden.", "{n} games unhidden."),
+                    "favourites" => trn!(n, "{n} favourite removed.", "{n} favourites removed."),
+                    _ => trn!(n, "{n} recent game cleared.", "{n} recent games cleared."),
                 })
             }),
             cx,
@@ -177,26 +178,26 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
     let s = &p.library.snap;
     let mut rows = vec![
-        Row::toggle("show-hidden", "Show hidden games", s.show_hidden).desc("Hidden games stay in the library, marked"),
-        Row::number("max-recent", "Recent games to keep", s.max_recent, 1, 10, 1, ""),
-        Row::header(format!("Hidden games \u{b7} {}", s.hidden.len())),
+        Row::toggle("show-hidden", tr!("Show hidden games"), s.show_hidden).desc(tr!("Hidden games stay in the library, marked")),
+        Row::number("max-recent", tr!("Recent games to keep"), s.max_recent, 1, 10, 1, ""),
+        Row::header(tr!("Hidden games \u{b7} {count}", count = s.hidden.len())),
     ];
     for (app, title) in &s.hidden {
-        rows.push(Row::info(SharedString::from(format!("h:{app}")), title.clone(), "A shows it again"));
+        rows.push(Row::info(SharedString::from(format!("h:{app}")), title.clone(), tr!("A shows it again")));
     }
     if !s.hidden.is_empty() {
-        rows.push(Row::action("unhide-all", "Show all hidden games").enabled(!p.library.busy));
+        rows.push(Row::action("unhide-all", tr!("Show all hidden games")).enabled(!p.library.busy));
     }
-    rows.push(Row::header(format!("Favourites \u{b7} {}", s.favourites.len())));
+    rows.push(Row::header(tr!("Favourites \u{b7} {count}", count = s.favourites.len())));
     for (app, title) in &s.favourites {
         rows.push(Row::info(SharedString::from(format!("f:{app}")), title.clone(), ""));
     }
     if !s.favourites.is_empty() {
-        rows.push(Row::action("fav-clear", "Clear favourites").danger().enabled(!p.library.busy));
+        rows.push(Row::action("fav-clear", tr!("Clear favourites")).danger().enabled(!p.library.busy));
     }
-    rows.push(Row::header(format!("Recent \u{b7} {}", s.recent.len())));
+    rows.push(Row::header(tr!("Recent \u{b7} {count}", count = s.recent.len())));
     if !s.recent.is_empty() {
-        rows.push(Row::action("recent-clear", "Clear recent games").danger().enabled(!p.library.busy));
+        rows.push(Row::action("recent-clear", tr!("Clear recent games")).danger().enabled(!p.library.busy));
     }
     if let Some((text, _)) = &p.library.notice {
         rows.push(Row::info("notice", text.clone(), ""));

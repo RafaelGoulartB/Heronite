@@ -6,6 +6,7 @@ use gpui_kit::*;
 use heronite_data::settings::EffectiveSettings;
 use heronite_emulation::ludusavi::{detect_ludusavi, LudusaviDetected, SystemRunner};
 use heronite_emulation::settings_ext::{set_ludusavi_settings, LudusaviSettingsPatch};
+use heronite_i18n::{n_, tr};
 use heronite_launch::SystemProbe;
 
 use super::backup::format_time;
@@ -17,8 +18,8 @@ use crate::ui::controls::{caption, card, card_box, help_text, toggle_row};
 use crate::ui::fields::{choose_path, meta_text, new_input, on_commit, path_field, select_field};
 use crate::ui::icon;
 
-const FORMATS: [(&str, &str); 2] = [("zip", "Zip"), ("simple", "Simple folder")];
-const COMPRESSIONS: [(&str, &str); 4] = [("none", "None"), ("deflate", "Deflate"), ("bzip2", "Bzip2"), ("zstd", "Zstd")];
+const FORMATS: [(&str, &str); 2] = [("zip", "Zip"), ("simple", n_!("Simple folder"))];
+const COMPRESSIONS: [(&str, &str); 4] = [("none", n_!("None")), ("deflate", "Deflate"), ("bzip2", "Bzip2"), ("zstd", "Zstd")];
 
 pub struct State {
     /// `None` while detecting, `Some(None)` when Ludusavi was not found.
@@ -100,7 +101,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let details_open = d.saves.details_open.unwrap_or(!locked);
 
     let callout: AnyElement = match &detected {
-        None => card_box().py(px(12.)).child(help_text("Looking for Ludusavi…")).into_any_element(),
+        None => card_box().py(px(12.)).child(help_text(tr!("Looking for Ludusavi…"))).into_any_element(),
         Some(Some(f)) => {
             let compression = if f.format.as_deref() == Some("zip") {
                 f.compression.as_ref().map(|c| format!(" / {c}")).unwrap_or_default()
@@ -109,12 +110,12 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             };
             card_box()
                 .py(px(12.))
-                .child(div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_primary()).child(format!(
-                    "Found Ludusavi {} at {}. Backups go to {} ({}{}).",
-                    f.version.clone().unwrap_or_default(),
-                    f.binary,
-                    f.backup_path.clone().unwrap_or_else(|| "unknown".into()),
-                    f.format.clone().unwrap_or_else(|| "simple".into()),
+                .child(div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_primary()).child(tr!(
+                    "Found Ludusavi {version} at {binary}. Backups go to {path} ({format}{compression}).",
+                    version = f.version.clone().unwrap_or_default(),
+                    binary = f.binary,
+                    path = f.backup_path.clone().unwrap_or_else(|| tr!("unknown").into()),
+                    format = f.format.clone().unwrap_or_else(|| "simple".into()),
                     compression
                 )))
                 .into_any_element()
@@ -125,7 +126,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 div()
                     .text_size(px(13.))
                     .text_color(theme::danger_text())
-                    .child("Ludusavi was not found automatically. Set the binary and backup folder below."),
+                    .child(tr!("Ludusavi was not found automatically. Set the binary and backup folder below.")),
             )
             .into_any_element(),
     };
@@ -133,7 +134,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let (has_bin, has_dir) = (!l.binary_path.is_empty(), !l.backup_path.is_empty());
     let binary = path_field(
         "ludusavi-binary-pick",
-        Some("Ludusavi binary"),
+        Some(tr!("Ludusavi binary")),
         &d.saves.binary,
         has_bin,
         false,
@@ -143,7 +144,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 save(d, LudusaviSettingsPatch { binary_path: Some(String::new()), ..Default::default() }, cx);
                 detect(d, window, cx);
             } else {
-                choose_path(window, cx, false, "Ludusavi binary", |d: &mut SettingsPage, p, window, cx| {
+                choose_path(window, cx, false, tr!("Ludusavi binary"), |d: &mut SettingsPage, p, window, cx| {
                     d.saves.binary.update(cx, |s, cx| s.set_value(p.clone(), window, cx));
                     save(d, LudusaviSettingsPatch { binary_path: Some(p), ..Default::default() }, cx);
                     detect(d, window, cx);
@@ -153,7 +154,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     );
     let folder = path_field(
         "ludusavi-folder-pick",
-        Some("Save backup folder"),
+        Some(tr!("Save backup folder")),
         &d.saves.folder,
         has_dir,
         locked,
@@ -162,7 +163,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 d.saves.folder.update(cx, |s, cx| s.set_value("", window, cx));
                 save(d, LudusaviSettingsPatch { backup_path: Some(String::new()), ..Default::default() }, cx);
             } else {
-                choose_path(window, cx, true, "Save backup folder", |d: &mut SettingsPage, p, window, cx| {
+                choose_path(window, cx, true, tr!("Save backup folder"), |d: &mut SettingsPage, p, window, cx| {
                     d.saves.folder.update(cx, |s, cx| s.set_value(p.clone(), window, cx));
                     save(d, LudusaviSettingsPatch { backup_path: Some(p), ..Default::default() }, cx);
                 });
@@ -170,14 +171,14 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         }),
     );
     let label_of =
-        |table: &[(&'static str, &'static str)], v: &str| table.iter().find(|(k, _)| *k == v).map(|(_, l)| *l).unwrap_or("").to_string();
+        |table: &[(&'static str, &'static str)], v: &str| table.iter().find(|(k, _)| *k == v).map(|(_, l)| tr(l)).unwrap_or("").to_string();
     let format = select_field(
         "ludusavi-format",
-        Some("Backup format"),
+        Some(tr!("Backup format")),
         label_of(&FORMATS, &l.format),
         locked,
         d.saves.format_open,
-        FORMATS.iter().map(|(k, lbl)| ((*lbl).into(), *k == l.format)).collect(),
+        FORMATS.iter().map(|(k, lbl)| (tr(lbl).into(), *k == l.format)).collect(),
         cx,
         |d: &mut SettingsPage, _, cx| {
             d.saves.format_open = !d.saves.format_open;
@@ -191,11 +192,11 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     );
     let compression = select_field(
         "ludusavi-compression",
-        Some("Zip compression"),
+        Some(tr!("Zip compression")),
         label_of(&COMPRESSIONS, &l.compression),
         locked || l.format != "zip",
         d.saves.compression_open,
-        COMPRESSIONS.iter().map(|(k, lbl)| ((*lbl).into(), *k == l.compression)).collect(),
+        COMPRESSIONS.iter().map(|(k, lbl)| (tr(lbl).into(), *k == l.compression)).collect(),
         cx,
         |d: &mut SettingsPage, _, cx| {
             d.saves.compression_open = !d.saves.compression_open;
@@ -222,11 +223,11 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             cx.notify();
         }))
         .child(icon(if details_open { Icon::ExpandMore } else { Icon::ChevronRight }, px(16.), theme::text_muted()))
-        .child(div().text_size(px(12.)).text_color(theme::text_muted()).child("Backup location & format"));
+        .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(tr!("Backup location & format")));
 
     let mut last = match &l.last_backup_at {
-        Some(at) => format!("Last save backup: {}", format_time(at)),
-        None => "Last save backup: Never".to_string(),
+        Some(at) => tr!("Last save backup: {when}", when = format_time(at)),
+        None => tr!("Last save backup: Never").to_string(),
     };
     if let Some(g) = &l.last_backup_game {
         last.push_str(&format!(" · {g}"));
@@ -236,7 +237,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     }
 
     let enable = card([
-        toggle_row("ludusavi-enabled", "Back up saves when a game closes", None, l.enabled)
+        toggle_row("ludusavi-enabled", tr!("Back up saves when a game closes"), None, l.enabled)
             .on_click(cx.listener(move |d, _, _, cx| {
                 let on = !d.settings.ludusavi.enabled;
                 save(d, LudusaviSettingsPatch { enabled: Some(on), ..Default::default() }, cx);
@@ -247,8 +248,8 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             .child(
                 toggle_row(
                     "ludusavi-use-config",
-                    "Use installed Ludusavi settings",
-                    Some("Path, zip and compression come from Ludusavi's own configuration."),
+                    tr!("Use installed Ludusavi settings"),
+                    Some(tr!("Path, zip and compression come from Ludusavi's own configuration.")),
                     l.use_installed_config,
                 )
                 .when(config_known, |c| {
@@ -264,9 +265,9 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     div()
         .flex()
         .flex_col()
-        .child(caption("Save backups (Ludusavi)"))
+        .child(caption(tr!("Save backups (Ludusavi)")))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(
-            "When enabled, Heronite backs up the game save with Ludusavi after you close a game. Right-click a Collection card to back up that game now.",
+            tr!("When enabled, Heronite backs up the game save with Ludusavi after you close a game. Right-click a Collection card to back up that game now."),
         )))
         .child(enable)
         .child(div().mt(px(10.)).child(callout))
@@ -288,25 +289,25 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let config_known = detected.as_ref().and_then(|x| x.as_ref()).map(|x| x.config_path.is_some()).unwrap_or(false);
     let locked = l.use_installed_config && config_known;
     let found = match &detected {
-        None => "Looking for Ludusavi\u{2026}".to_string(),
-        Some(Some(f)) => format!("Found: {}", f.binary),
-        Some(None) => "Ludusavi was not found".into(),
+        None => tr!("Looking for Ludusavi\u{2026}").to_string(),
+        Some(Some(f)) => tr!("Found: {binary}", binary = f.binary),
+        Some(None) => tr!("Ludusavi was not found").into(),
     };
     let mut rows = vec![
-        Row::header("Save backups (Ludusavi)"),
-        Row::toggle("lu-enabled", "Back up saves when a game closes", l.enabled).desc(found),
-        Row::toggle("lu-config", "Use Ludusavi's own settings", l.use_installed_config)
+        Row::header(tr!("Save backups (Ludusavi)")),
+        Row::toggle("lu-enabled", tr!("Back up saves when a game closes"), l.enabled).desc(found),
+        Row::toggle("lu-config", tr!("Use Ludusavi's own settings"), l.use_installed_config)
             .enabled(config_known)
-            .desc("Path, zip and compression come from Ludusavi's configuration"),
+            .desc(tr!("Path, zip and compression come from Ludusavi's configuration")),
     ];
     if !locked {
-        rows.push(Row::text("lu-binary", "Ludusavi program", d.saves.binary.read(cx).value().to_string()).icon(Icon::Description));
-        rows.push(Row::text("lu-folder", "Backup folder", d.saves.folder.read(cx).value().to_string()).icon(Icon::FolderOpen));
+        rows.push(Row::text("lu-binary", tr!("Ludusavi program"), d.saves.binary.read(cx).value().to_string()).icon(Icon::Description));
+        rows.push(Row::text("lu-folder", tr!("Backup folder"), d.saves.folder.read(cx).value().to_string()).icon(Icon::FolderOpen));
         let fi = FORMATS.iter().position(|(k, _)| *k == l.format).unwrap_or(0);
-        rows.push(Row::choice("lu-format", "Backup format", FORMATS.iter().map(|(_, x)| SharedString::from(*x)).collect(), fi));
+        rows.push(Row::choice("lu-format", tr!("Backup format"), FORMATS.iter().map(|(_, x)| SharedString::from(tr(x))).collect(), fi));
         let ci = COMPRESSIONS.iter().position(|(k, _)| *k == l.compression).unwrap_or(0);
         rows.push(
-            Row::choice("lu-compression", "Compression", COMPRESSIONS.iter().map(|(_, x)| SharedString::from(*x)).collect(), ci)
+            Row::choice("lu-compression", tr!("Compression"), COMPRESSIONS.iter().map(|(_, x)| SharedString::from(tr(x))).collect(), ci)
                 .enabled(l.format == "zip"),
         );
     }
@@ -338,7 +339,7 @@ pub(super) fn console_apply(
             save(d, LudusaviSettingsPatch { compression: Some(COMPRESSIONS[*index].0.into()), ..Default::default() }, cx)
         }
         Outcome::Activate(id) if id.as_ref() == "lu-binary" => {
-            d.console_browse("Ludusavi program", PickKind::File(Vec::new()), None, window, cx, |d, path, window, cx| {
+            d.console_browse(tr!("Ludusavi program"), PickKind::File(Vec::new()), None, window, cx, |d, path, window, cx| {
                 d.saves.binary.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
                 save(d, LudusaviSettingsPatch { binary_path: Some(path), ..Default::default() }, cx);
                 detect(d, window, cx);
@@ -346,7 +347,7 @@ pub(super) fn console_apply(
         }
         Outcome::Activate(id) if id.as_ref() == "lu-folder" => {
             let start = Some(std::path::PathBuf::from(d.saves.folder.read(cx).value().to_string()));
-            d.console_browse("Ludusavi backup folder", PickKind::Folder, start, window, cx, |d, path, window, cx| {
+            d.console_browse(tr!("Ludusavi backup folder"), PickKind::Folder, start, window, cx, |d, path, window, cx| {
                 d.saves.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
                 save(d, LudusaviSettingsPatch { backup_path: Some(path), ..Default::default() }, cx);
             });

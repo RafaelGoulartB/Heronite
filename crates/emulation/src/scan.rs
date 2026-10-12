@@ -11,6 +11,7 @@ use anyhow::Result;
 use heronite_data::models::{LocalGameRom, LocalMetaFile};
 use heronite_data::text::locale_cmp;
 use heronite_data::{json_store, DataPaths};
+use heronite_i18n::tr;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 use regex::Regex;
 
@@ -173,7 +174,7 @@ pub fn scan_rom_directory(
         errors: vec![],
     };
     if !Path::new(&directory).exists() {
-        preview.errors.push(format!("Folder does not exist: {directory}"));
+        preview.errors.push(tr!("Folder does not exist: {directory}", directory = directory.as_str()));
         return preview;
     }
 
@@ -203,7 +204,7 @@ pub fn scan_rom_directory(
                         skip_children.insert(normalize_key(&c));
                     }
                 }
-                Err(_) => preview.errors.push(format!("Could not read playlist {file}")),
+                Err(_) => preview.errors.push(tr!("Could not read playlist {file}", file = file.as_str())),
             }
         }
         if !extensions.contains(&ext) && template.folder_indicator.is_none() {
@@ -260,10 +261,10 @@ pub fn preview_rom_scan(paths: &DataPaths, args: &RomScanArgs) -> Result<RomScan
         errors: vec![error.into()],
     };
     let Some(emulator) = store::get_user_emulator(paths, &args.emulator_id)? else {
-        return Ok(blank("", "", "Emulator not found. Add it in Collection settings first."));
+        return Ok(blank("", "", tr!("Emulator not found. Add it in Collection settings first.")));
     };
     let Some(profile) = emulator.profile(&args.profile_id).cloned() else {
-        return Ok(blank(&emulator.name, "", "Emulator profile not found."));
+        return Ok(blank(&emulator.name, "", tr!("Emulator profile not found.")));
     };
     let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let imported = imported_rom_paths(&metas, &emulator.id, &profile.id);
@@ -423,7 +424,7 @@ mod tests {
             &RomScanArgs { emulator_id: "x".into(), profile_id: "y".into(), directory: "/r".into(), ..Default::default() },
         )
         .unwrap();
-        assert_eq!(r.errors, ["Emulator not found. Add it in Collection settings first."]);
+        assert_eq!(r.errors, [tr!("Emulator not found. Add it in Collection settings first.")]);
         assert_eq!(r.directory, "/r");
     }
 }

@@ -4,6 +4,7 @@
 use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use heronite_launch::emulators::{EmulatorsFile, UserEmulator, UserEmulatorProfile};
 use uuid::Uuid;
 
@@ -174,7 +175,7 @@ pub fn insert_user_emulator(paths: &DataPaths, emulator: UserEmulator) -> Result
 pub fn replace_user_emulator(paths: &DataPaths, emulator: UserEmulator) -> Result<UserEmulator> {
     json_store::update::<EmulatorsFile, _>(&paths.emulators(), |f| {
         let Some(i) = f.emulators.iter().position(|e| e.id == emulator.id) else {
-            anyhow::bail!("Emulator not found.");
+            anyhow::bail!(tr!("Emulator not found."));
         };
         let mut next = emulator;
         next.name = next.name.trim().to_owned();
@@ -194,7 +195,7 @@ pub fn replace_user_emulator(paths: &DataPaths, emulator: UserEmulator) -> Resul
 /// are not copied).
 pub fn duplicate_user_emulator(paths: &DataPaths, id: &str) -> Result<UserEmulator> {
     let Some(mut copy) = get_user_emulator(paths, id)? else {
-        anyhow::bail!("Emulator not found.");
+        anyhow::bail!(tr!("Emulator not found."));
     };
     copy.id = String::new();
     copy.playnite_id = None;

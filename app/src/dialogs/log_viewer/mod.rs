@@ -18,6 +18,7 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use heronite_launch::log_reader::LogEntry;
 
 use super::{DialogCtx, DialogEvent};
@@ -176,7 +177,12 @@ impl Render for LogViewerDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "log-viewer".into(), title: format!("Logs - {}", self.title).into(), width: 1040., height: Some(520.) },
+            DialogProps {
+                id: "log-viewer".into(),
+                title: tr!("Logs - {title}", title = &self.title).into(),
+                width: 1040.,
+                height: Some(520.),
+            },
             self.viewer.clone().into_any_element(),
             None,
             move |_, cx| {

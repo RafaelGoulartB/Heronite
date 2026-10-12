@@ -6,9 +6,10 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_emulation::manager::EmulatorSummary;
+use heronite_i18n::{tr, trn};
 
 use super::render::{folder_flags, launch_label};
-use super::{plural, EmulatorsPage};
+use super::EmulatorsPage;
 use crate::console::kit::{self, u};
 use crate::console::layers::{open_sheet, HasLayer};
 use crate::console::list::{Outcome, Row};
@@ -30,7 +31,7 @@ fn location(s: &EmulatorSummary) -> String {
     if e.launch_kind == "flatpak" {
         format!("Flatpak \u{b7} {}", e.flatpak_id.clone().unwrap_or_default())
     } else if e.executable.is_empty() {
-        "No executable set".to_string()
+        tr!("No executable set").to_string()
     } else {
         e.executable.clone()
     }
@@ -48,7 +49,7 @@ fn platforms(s: &EmulatorSummary) -> String {
     names.truncate(6);
     let mut text = names.join(" \u{b7} ");
     if extra > 0 {
-        text.push_str(&format!(" \u{b7} +{extra} more"));
+        text.push_str(&format!(" \u{b7} {}", tr!("+{n} more", n = extra)));
     }
     text
 }
@@ -58,44 +59,44 @@ impl EmulatorsPage {
         let busy = self.busy.is_some();
         let folders = self.total_folders();
         let mut rows = vec![
-            Row::action("add", "Add emulator\u{2026}").desc("Pick one from the catalog or describe any program").icon(Icon::Add),
-            Row::action("detect", "Detect emulators on this PC")
-                .desc("Looks in PATH, Flatpak and the usual folders")
+            Row::action("add", tr!("Add emulator\u{2026}")).desc(tr!("Pick one from the catalog or describe any program")).icon(Icon::Add),
+            Row::action("detect", tr!("Detect emulators on this PC"))
+                .desc(tr!("Looks in PATH, Flatpak and the usual folders"))
                 .icon(Icon::TravelExplore),
-            Row::action("scan-folder", "Scan a folder for emulators\u{2026}")
-                .desc("Searches a folder you pick, for example your Emulation folder")
+            Row::action("scan-folder", tr!("Scan a folder for emulators\u{2026}"))
+                .desc(tr!("Searches a folder you pick, for example your Emulation folder"))
                 .icon(Icon::FolderOpen),
-            Row::action("add-folder", "Add ROM folder").desc("Games found in it are added to the Collection").icon(Icon::Folder),
-            Row::action("scan-all", if busy { "Scanning\u{2026}" } else { "Scan all ROM folders" })
-                .desc("Adds the games not imported yet from every saved folder")
+            Row::action("add-folder", tr!("Add ROM folder")).desc(tr!("Games found in it are added to the Collection")).icon(Icon::Folder),
+            Row::action("scan-all", if busy { tr!("Scanning\u{2026}") } else { tr!("Scan all ROM folders") })
+                .desc(tr!("Adds the games not imported yet from every saved folder"))
                 .icon(Icon::Refresh)
                 .enabled(!busy && folders > 0),
         ];
         for s in &self.summaries {
             let e = &s.emulator;
             rows.push(Row::header(format!("{} \u{b7} {} \u{b7} {}", e.name, launch_label(&e.launch_kind), s.health.label())));
-            let mut desc = format!("{}  \u{b7}  {} using it", location(s), plural(s.games, "game", "games"));
+            let mut desc = format!("{}  \u{b7}  {}", location(s), trn!(s.games, "{n} game using it", "{n} games using it"));
             let p = platforms(s);
             if !p.is_empty() {
                 desc.push_str(&format!("  \u{b7}  {p}"));
             }
             rows.push(
-                Row::info(format!("e:{}", e.id), "Emulator", location(s).rsplit('/').next().unwrap_or_default().to_string())
+                Row::info(format!("e:{}", e.id), tr!("Emulator"), location(s).rsplit('/').next().unwrap_or_default().to_string())
                     .desc(desc)
                     .icon(Icon::Settings),
             );
             for sc in &s.scanners {
                 let missing = s.missing_folders.contains(&sc.directory);
-                let profile = e.profile(&sc.profile_id).map(profile_label).unwrap_or_else(|| "Unknown profile".into());
+                let profile = e.profile(&sc.profile_id).map(profile_label).unwrap_or_else(|| tr!("Unknown profile").into());
                 let mut r = Row::action(format!("f:{}", sc.id), sc.directory.clone())
                     .desc(format!("{profile}  \u{b7}  {}", folder_flags(sc)))
                     .icon(Icon::Folder);
                 if missing {
-                    r = r.danger().desc(format!("Folder not found  \u{b7}  {profile}"));
+                    r = r.danger().desc(format!("{}  \u{b7}  {profile}", tr!("Folder not found")));
                 }
                 rows.push(r);
             }
-            rows.push(Row::action(format!("af:{}", e.id), "Add ROM folder").icon(Icon::Add));
+            rows.push(Row::action(format!("af:{}", e.id), tr!("Add ROM folder")).icon(Icon::Add));
         }
         rows
     }
@@ -132,9 +133,9 @@ impl EmulatorsPage {
         let Some(s) = self.console_summary(id) else { return };
         let title = s.emulator.name.clone();
         let rows = vec![
-            Row::action("edit", "Edit\u{2026}").icon(Icon::Edit),
-            Row::action("dup", "Duplicate").icon(Icon::Add),
-            Row::action("rm", "Remove\u{2026}").icon(Icon::FaTrash).danger(),
+            Row::action("edit", tr!("Edit\u{2026}")).icon(Icon::Edit),
+            Row::action("dup", tr!("Duplicate")).icon(Icon::Add),
+            Row::action("rm", tr!("Remove\u{2026}")).icon(Icon::FaTrash).danger(),
         ];
         let id = id.to_string();
         open_sheet(&mut self.layer, title, None, rows, window, cx, move |this: &mut Self, pick, window, cx| match pick {
@@ -150,13 +151,13 @@ impl EmulatorsPage {
         let Some((s, sc)) = found else { return };
         let missing = s.missing_folders.contains(&sc.directory);
         let rows = vec![
-            Row::action("scan", if missing { "Scan now (folder not found)" } else { "Scan now" })
-                .desc("Adds the games not imported yet")
+            Row::action("scan", if missing { tr!("Scan now (folder not found)") } else { tr!("Scan now") })
+                .desc(tr!("Adds the games not imported yet"))
                 .icon(Icon::Refresh)
                 .enabled(self.busy.is_none() && !missing),
-            Row::action("review", "Preview and import\u{2026}").desc("Choose which games to add").icon(Icon::Visibility),
-            Row::action("edit", "Edit\u{2026}").icon(Icon::Edit),
-            Row::action("rm", "Remove\u{2026}").icon(Icon::FaTrash).danger(),
+            Row::action("review", tr!("Preview and import\u{2026}")).desc(tr!("Choose which games to add")).icon(Icon::Visibility),
+            Row::action("edit", tr!("Edit\u{2026}")).icon(Icon::Edit),
+            Row::action("rm", tr!("Remove\u{2026}")).icon(Icon::FaTrash).danger(),
         ];
         let init = ScanInitial {
             emulator_id: Some(sc.emulator_id.clone()),
@@ -165,7 +166,7 @@ impl EmulatorsPage {
         };
         let title = sc.directory.clone();
         open_sheet(&mut self.layer, title, None, rows, window, cx, move |this: &mut Self, pick, window, cx| match pick {
-            "scan" => this.scan(vec![sc.id.clone()], "Scanning\u{2026}", cx),
+            "scan" => this.scan(vec![sc.id.clone()], tr!("Scanning\u{2026}"), cx),
             "review" => cx.emit(PageEvent::ScanRoms(init.clone())),
             "edit" => this.open_folder_dialog(None, Some(sc.clone()), window, cx),
             "rm" => this.confirm_remove_folder(&sc, window, cx),
@@ -189,9 +190,9 @@ impl EmulatorsPage {
             }
         }
         if !self.loaded {
-            status = status.child(kit::body_text("Loading\u{2026}"));
+            status = status.child(kit::body_text(tr!("Loading\u{2026}")));
         } else if self.summaries.is_empty() {
-            status = status.child(kit::body_text("No emulators configured yet. Detect the ones installed on this PC, or add one."));
+            status = status.child(kit::body_text(tr!("No emulators configured yet. Detect the ones installed on this PC, or add one.")));
         }
         div()
             .relative()
@@ -205,7 +206,7 @@ impl EmulatorsPage {
                     .items_center()
                     .h(u(76.))
                     .px(u(46.))
-                    .child(kit::wordmark("EMULATORS"))
+                    .child(kit::wordmark(tr!("EMULATORS")))
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
@@ -265,11 +266,11 @@ impl PadTarget for EmulatorsPage {
             return h;
         }
         if let Some(view) = &self.dialog {
-            return crate::console::registry::hook_for(view).map(|h| h.hints(cx)).unwrap_or_else(|| vec![hint(Btn::B, "Close")]);
+            return crate::console::registry::hook_for(view).map(|h| h.hints(cx)).unwrap_or_else(|| vec![hint(Btn::B, tr!("Close"))]);
         }
-        let mut h = vec![hint(Btn::A, "Select")];
+        let mut h = vec![hint(Btn::A, tr!("Select"))];
         if self.notice.is_some() {
-            h.push(hint(Btn::X, "Dismiss"));
+            h.push(hint(Btn::X, tr!("Dismiss")));
         }
         h
     }

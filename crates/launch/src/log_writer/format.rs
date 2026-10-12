@@ -1,5 +1,7 @@
 //! Heroic's log line format and the kinds of game logs.
 
+use heronite_i18n::trc;
+
 /// `LogLevel` of Heroic, widest name `WARNING` (+ 3 columns).
 const LEVEL_WIDTH: usize = 7 + 3;
 /// `MaxLogPrefixLength` of Heroic (`DownloadManager`) + 3 columns.
@@ -73,12 +75,12 @@ impl GameLogType {
 
     pub fn label(self) -> &'static str {
         match self {
-            GameLogType::Launch => "Launch",
-            GameLogType::Install => "Install",
-            GameLogType::Import => "Import",
-            GameLogType::Repair => "Repair",
-            GameLogType::Update => "Update",
-            GameLogType::Setup => "Setup",
+            GameLogType::Launch => trc!("log type", "Launch"),
+            GameLogType::Install => trc!("log type", "Install"),
+            GameLogType::Import => trc!("log type", "Import"),
+            GameLogType::Repair => trc!("log type", "Repair"),
+            GameLogType::Update => trc!("log type", "Update"),
+            GameLogType::Setup => trc!("log type", "Setup"),
         }
     }
 }

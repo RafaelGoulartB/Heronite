@@ -6,6 +6,7 @@
 //! is missing it also tries the store title. Entries older than 30 days are
 //! refetched by Heronite; here they are used as they are (no network).
 
+use heronite_i18n::tr;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -59,9 +60,9 @@ pub fn format_hours(value: f64) -> String {
     let total_minutes = (value * 60.0).round() as u64;
     let (hours, mins) = (total_minutes / 60, total_minutes % 60);
     match (hours, mins) {
-        (0, m) => format!("{m}m"),
-        (h, 0) => format!("{h}h"),
-        (h, m) => format!("{h}h {m}m"),
+        (0, m) => tr!("{m}m", m),
+        (h, 0) => tr!("{h}h", h),
+        (h, m) => tr!("{h}h {m}m", h, m),
     }
 }
 

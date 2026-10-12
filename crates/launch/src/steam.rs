@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use heronite_i18n::tr;
 use regex::Regex;
 
 use crate::probe::Probe;
@@ -76,7 +77,7 @@ pub fn flatpak_steam_root(home: &Path) -> PathBuf {
 /// Opens `steam://install/<id>` or `steam://uninstall/<id>` in the Steam client.
 pub fn open_steam_client_uri(spawner: &dyn Spawner, probe: &dyn Probe, action: SteamAction, app_id: &str) -> Result<(), String> {
     if find_steam_binary(probe).is_none() {
-        return Err("Steam client was not found".into());
+        return Err(tr!("Steam client was not found").into());
     }
     spawner.open_uri(&steam_uri(action.as_str(), app_id)).map_err(|e| e.to_string())
 }

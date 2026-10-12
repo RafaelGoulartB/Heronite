@@ -18,6 +18,7 @@ pub mod wine_manager;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::{AppPaths, DataPaths};
+use heronite_i18n::tr;
 
 use crate::icons::Icon;
 use crate::theme;
@@ -39,13 +40,13 @@ pub enum Page {
 impl Page {
     pub fn title(self) -> &'static str {
         match self {
-            Page::Collection => "Collection",
-            Page::Downloads => "Downloads",
-            Page::WineManager => "Wine Manager",
-            Page::Epic => "Epic Games",
-            Page::Emulators => "Emulators",
-            Page::Statistics => "Statistics",
-            Page::Settings => "Settings",
+            Page::Collection => tr!("Collection"),
+            Page::Downloads => tr!("Downloads"),
+            Page::WineManager => tr!("Wine Manager"),
+            Page::Epic => tr!("Epic Games"),
+            Page::Emulators => tr!("Emulators"),
+            Page::Statistics => tr!("Statistics"),
+            Page::Settings => tr!("Settings"),
         }
     }
 

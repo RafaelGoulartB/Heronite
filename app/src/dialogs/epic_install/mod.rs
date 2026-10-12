@@ -18,6 +18,7 @@ use heronite_epic::disk::{self, DiskSpace};
 use heronite_epic::info::{self, Dlc, InstallInfo, Sdl};
 use heronite_epic::third_party::{self, Provider};
 use heronite_epic::util::{file_size, remove_special_characters};
+use heronite_i18n::tr;
 use heronite_wine::WineInstallation;
 use serde_json::Value;
 
@@ -310,13 +311,13 @@ impl EpicInstallDialog {
     fn third_party_notice(&self) -> Option<(String, String)> {
         Some(match self.third_party.as_ref()? {
             Ok(p) => (
-                format!("This game is managed by a third-party application: \"{}\"", p.label()),
-                format!(
-                    "Install downloads the {0} installer. The first time you play, it runs in the game's Wine prefix: sign in to {0} there to install and play the game.",
-                    p.label()
+                tr!("This game is managed by a third-party application: \"{store}\"", store = p.label()),
+                tr!(
+                    "Install downloads the {store} installer. The first time you play, it runs in the game's Wine prefix: sign in to {store} there to install and play the game.",
+                    store = p.label()
                 ),
             ),
-            Err(name) => (format!("This game is managed by \"{name}\", which is not supported."), String::new()),
+            Err(name) => (tr!("This game is managed by \"{name}\", which is not supported.", name), String::new()),
         })
     }
 

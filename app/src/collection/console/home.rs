@@ -18,6 +18,7 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
+use heronite_i18n::{n_, tr, trc};
 
 const TILE_W: f32 = 150.;
 const GAP: f32 = 18.;
@@ -82,8 +83,8 @@ impl Default for LibraryNav {
     }
 }
 
-const SHOW: [&str; 4] = ["All games", "Installed", "Favourites", "Not installed"];
-const SORT: [&str; 3] = ["A\u{2013}Z", "Last played", "Most played"];
+const SHOW: [&str; 4] = [n_!("All games"), n_!("Installed"), n_!("Favourites"), n_!("Not installed")];
+const SORT: [&str; 3] = [n_!("A\u{2013}Z"), n_!("Last played"), n_!("Most played")];
 
 pub(super) struct Shelf {
     pub title: SharedString,
@@ -104,12 +105,12 @@ fn keys(v: Vec<&CollectionGame>) -> Vec<SharedString> {
 pub(super) fn shelves(lib: &Library) -> Vec<Shelf> {
     let mut out = Vec::new();
     let recent: Vec<&CollectionGame> = by_last_played(lib.games.iter().filter(|g| g.last_played.is_some())).into_iter().take(20).collect();
-    out.push(Shelf { title: "Continue playing".into(), keys: keys(recent) });
-    out.push(Shelf { title: "Favourites".into(), keys: keys(by_last_played(lib.games.iter().filter(|g| g.favourite))) });
-    out.push(Shelf { title: "Installed".into(), keys: keys(by_last_played(lib.games.iter().filter(|g| g.installed))) });
+    out.push(Shelf { title: tr!("Continue playing").into(), keys: keys(recent) });
+    out.push(Shelf { title: tr!("Favourites").into(), keys: keys(by_last_played(lib.games.iter().filter(|g| g.favourite))) });
+    out.push(Shelf { title: trc!("shelf", "Installed").into(), keys: keys(by_last_played(lib.games.iter().filter(|g| g.installed))) });
     for st in &lib.statuses {
         let games = by_last_played(lib.games.iter().filter(|g| g.status_id == st.id));
-        out.push(Shelf { title: st.name.clone().into(), keys: keys(games) });
+        out.push(Shelf { title: heronite_data::status::status_label(&st.name).to_string().into(), keys: keys(games) });
     }
     out.retain(|s| !s.keys.is_empty());
     out
@@ -117,7 +118,9 @@ pub(super) fn shelves(lib: &Library) -> Vec<Shelf> {
 
 impl LibraryNav {
     fn status_options(lib: &Library) -> Vec<SharedString> {
-        std::iter::once(SharedString::from("Any status")).chain(lib.statuses.iter().map(|s| SharedString::from(s.name.clone()))).collect()
+        std::iter::once(SharedString::from(tr!("Any status")))
+            .chain(lib.statuses.iter().map(|s| SharedString::from(heronite_data::status::status_label(&s.name).to_string())))
+            .collect()
     }
 
     /// The games the grid shows, in order.
@@ -148,10 +151,10 @@ impl LibraryNav {
     fn chips(&self, lib: &Library) -> [(SharedString, SharedString); 4] {
         let status = Self::status_options(lib);
         [
-            ("Show".into(), SHOW[self.show].into()),
-            ("Sort".into(), SORT[self.sort].into()),
-            ("Status".into(), status.get(self.status).cloned().unwrap_or_default()),
-            ("Search".into(), if self.search.is_empty() { "\u{2014}".into() } else { self.search.clone().into() }),
+            (tr!("Show").into(), tr(SHOW[self.show]).into()),
+            (tr!("Sort").into(), tr(SORT[self.sort]).into()),
+            (tr!("Status").into(), status.get(self.status).cloned().unwrap_or_default()),
+            (tr!("Search").into(), if self.search.is_empty() { "\u{2014}".into() } else { self.search.clone().into() }),
         ]
     }
 }
@@ -200,7 +203,7 @@ fn tile(id: SharedString, src: Option<ImageSource>, title: &str, w: Pixels, h: P
                     )
                     .into_any_element(),
             })
-            .when(playing, |d| d.child(div().absolute().top(u(8.)).left(u(8.)).child(kit::badge("Playing", theme::console_btn_a()))))
+            .when(playing, |d| d.child(div().absolute().top(u(8.)).left(u(8.)).child(kit::badge(tr!("Playing"), theme::console_btn_a()))))
     };
     div()
         .flex_none()
@@ -248,12 +251,15 @@ impl CollectionView {
     fn hero(&self, key: Option<&SharedString>) -> Div {
         let Some(g) = key.and_then(|k| self.lib.as_ref()?.get(k)) else { return div() };
         let mut facts = vec![g.source_label.to_string()];
-        facts.push(if g.installed { "Installed".into() } else { "Not installed".into() });
+        facts.push(if g.installed { tr!("Installed").into() } else { tr!("Not installed").into() });
         if g.playtime_minutes > 0 {
-            facts.push(format!("{} played", heronite_data::collection::format_playtime_minutes(g.playtime_minutes)));
+            facts.push(tr!("{time} played", time = heronite_data::collection::format_playtime_minutes(g.playtime_minutes)));
         }
-        let status =
-            self.lib.as_ref().and_then(|l| l.statuses.iter().find(|s| s.id == g.status_id)).map(|s| (s.name.clone(), s.slug.clone()));
+        let status = self
+            .lib
+            .as_ref()
+            .and_then(|l| l.statuses.iter().find(|s| s.id == g.status_id))
+            .map(|s| (heronite_data::status::status_label(&s.name).to_string(), s.slug.clone()));
         let overview = self.focus.as_ref().filter(|f| f.key.as_ref() == g.key).and_then(|f| f.overview.clone());
         let hero = div()
             .relative()
@@ -282,7 +288,7 @@ impl CollectionView {
 
     pub(super) fn render_console_home(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(lib) = self.lib.clone() else {
-            return kit::empty(Icon::GridView, "Loading your library\u{2026}", "").into_any_element();
+            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
         };
         let shelves = shelves(&lib);
         if shelves.is_empty() {
@@ -290,8 +296,8 @@ impl CollectionView {
                 .flex()
                 .flex_col()
                 .size_full()
-                .child(self.console_top_bar(Some((&["Home".into(), "Library".into()], 0))))
-                .child(kit::empty(Icon::GridView, "No games yet", "Add a game from the menu (\u{2630})."))
+                .child(self.console_top_bar(Some((&[tr!("Home").into(), tr!("Library").into()], 0))))
+                .child(kit::empty(Icon::GridView, tr!("No games yet"), tr!("Add a game from the menu (\u{2630}).")))
                 .into_any_element();
         }
         let nav = &mut self.console.home;
@@ -351,7 +357,7 @@ impl CollectionView {
             .flex()
             .flex_col()
             .size_full()
-            .child(self.console_top_bar(Some((&["Home".into(), "Library".into()], 0))))
+            .child(self.console_top_bar(Some((&[tr!("Home").into(), tr!("Library").into()], 0))))
             .child(screen_in(
                 "screen-home",
                 -1.,
@@ -407,24 +413,24 @@ impl CollectionView {
     }
 
     pub(super) fn home_hints(&self) -> Vec<Hint> {
-        let primary = self.selected.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).map(|g| self.primary_label(g)).unwrap_or("Play");
+        let primary = self.selected.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).map(|g| self.primary_label(g)).unwrap_or(tr!("Play"));
         vec![
-            hint(Btn::A, "Details"),
+            hint(Btn::A, tr!("Details")),
             hint(Btn::X, primary),
-            hint(Btn::Y, "Search"),
-            hint(Btn::Bumpers, "Library"),
-            hint(Btn::Start, "Menu"),
+            hint(Btn::Y, tr!("Search")),
+            hint(Btn::Bumpers, tr!("Library")),
+            hint(Btn::Start, tr!("Menu")),
         ]
     }
 
     /// "Play", "Install" or "Stop" for the X shortcut.
     pub(super) fn primary_label(&self, g: &CollectionGame) -> &'static str {
         if self.playing.contains_key(&g.app_name) {
-            "Stop"
+            tr!("Stop")
         } else if g.installed {
-            "Play"
+            tr!("Play")
         } else {
-            "Install"
+            tr!("Install")
         }
     }
 
@@ -435,7 +441,7 @@ impl CollectionView {
 
     pub(super) fn render_console_library(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(lib) = self.lib.clone() else {
-            return kit::empty(Icon::GridView, "Loading your library\u{2026}", "").into_any_element();
+            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
         };
         let cols = self.library_cols(window);
         let keys = self.console.library.keys(&lib);
@@ -510,22 +516,22 @@ impl CollectionView {
                     0.,
                     0.3,
                 ))
-                .child(div().flex_none().text_size(u(15.)).text_color(theme::text_muted()).child(format!(
-                    "{} of {}",
-                    index + 1,
-                    keys.len()
+                .child(div().flex_none().text_size(u(15.)).text_color(theme::text_muted()).child(tr!(
+                    "{index} of {total}",
+                    index = index + 1,
+                    total = keys.len()
                 )))
         });
         div()
             .flex()
             .flex_col()
             .size_full()
-            .child(self.console_top_bar(Some((&["Home".into(), "Library".into()], 1))))
+            .child(self.console_top_bar(Some((&[tr!("Home").into(), tr!("Library").into()], 1))))
             .child(screen_in(
                 "screen-library",
                 1.,
                 div().flex().flex_col().flex_1().min_h_0().child(bar).children(title_line).child(if keys.is_empty() {
-                    kit::empty(Icon::FaSearch, "No games match", "Change the filters above or the search (Y).").into_any_element()
+                    kit::empty(Icon::FaSearch, tr!("No games match"), tr!("Change the filters above or the search (Y).")).into_any_element()
                 } else {
                     grid.flex_1().min_h_0().into_any_element()
                 }),
@@ -606,20 +612,26 @@ impl CollectionView {
     pub(super) fn library_hints(&self) -> Vec<Hint> {
         if self.console.library.toolbar.is_some() {
             return vec![
-                hint(Btn::A, "Change"),
-                hint(Btn::X, "Reset"),
-                hint(Btn::Y, "Search"),
-                hint(Btn::Bumpers, "Home"),
-                hint(Btn::Start, "Menu"),
+                hint(Btn::A, tr!("Change")),
+                hint(Btn::X, tr!("Reset")),
+                hint(Btn::Y, tr!("Search")),
+                hint(Btn::Bumpers, tr!("Home")),
+                hint(Btn::Start, tr!("Menu")),
             ];
         }
-        let primary = self.selected.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).map(|g| self.primary_label(g)).unwrap_or("Play");
-        vec![hint(Btn::A, "Details"), hint(Btn::X, primary), hint(Btn::Y, "Search"), hint(Btn::Bumpers, "Home"), hint(Btn::Start, "Menu")]
+        let primary = self.selected.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).map(|g| self.primary_label(g)).unwrap_or(tr!("Play"));
+        vec![
+            hint(Btn::A, tr!("Details")),
+            hint(Btn::X, primary),
+            hint(Btn::Y, tr!("Search")),
+            hint(Btn::Bumpers, tr!("Home")),
+            hint(Btn::Start, tr!("Menu")),
+        ]
     }
 
     fn open_console_search(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let current = self.console.library.search.clone();
-        let osk = cx.new(|_| Osk::new("Search games", &current));
+        let osk = cx.new(|_| Osk::new(tr!("Search games"), &current));
         let sub = cx.subscribe(&osk, |this, _, ev: &OskEvent, cx| {
             if let OskEvent::Done(text) = ev {
                 let lib = &mut this.console.library;

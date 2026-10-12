@@ -11,6 +11,7 @@ use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 pub(super) struct ContextMenuState {
     pub key: SharedString,
@@ -82,7 +83,7 @@ impl CollectionView {
             playnite_id: game.meta.as_ref().map(|m| m.playnite_id.clone()),
         };
         if let Err(err) = set_game_status(&self.data_paths, &game.app_name, &status_id, &extras) {
-            self.show_toast(format!("Could not change status: {err:#}"), true, cx);
+            self.show_toast(tr!("Could not change status: {err}", err = format!("{err:#}")), true, cx);
         }
         self.reload(cx);
     }
@@ -121,7 +122,7 @@ impl CollectionView {
         let mut status_row = div().relative().child(
             item("cm-status")
                 .child(icon(Icon::Flag, px(18.), theme::text_muted()))
-                .child("Status")
+                .child(tr!("Status"))
                 .child(div().flex_1())
                 .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()))
                 .on_hover(cx.listener(|this, h: &bool, _, cx| {
@@ -143,7 +144,7 @@ impl CollectionView {
                     item(SharedString::from(format!("cm-st-{}", st.id)))
                         .py(px(8.))
                         .child(div().size(px(10.)).rounded_full().bg(theme::status_color(&st.slug)))
-                        .child(st.name.clone())
+                        .child(heronite_data::status::status_label(&st.name).to_string())
                         .when(st.id == current, |d| d.child(div().flex_1()).child(icon(Icon::Check, px(18.), theme::accent())))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.set_status(&k, id.clone(), cx);
@@ -170,11 +171,11 @@ impl CollectionView {
     ) -> Div {
         let k = key.clone();
         let (label, ic) = if playing {
-            ("Stop", Icon::Stop)
+            (tr!("Stop"), Icon::Stop)
         } else if game.installed {
-            ("Play", Icon::PlayArrow)
+            (tr!("Play"), Icon::PlayArrow)
         } else {
-            ("Install", Icon::Download)
+            (tr!("Install"), Icon::Download)
         };
         let more = !playing && super::install_options::has_more_ways(game);
         let mut row = item("cm-primary")

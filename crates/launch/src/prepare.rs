@@ -17,6 +17,7 @@
 use std::time::{Duration, Instant};
 
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 
 use crate::dxvk::{self, Action, WineRunner};
 use crate::net::{Net, CANCELLED};
@@ -31,17 +32,20 @@ use crate::wine_tools::wine_command;
 /// Something worth telling the user while a launch is being prepared.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Notice {
+    /// What the user reads, in the interface language.
     pub message: String,
+    /// The same in English: the game log and the app log stay in English.
+    pub log: String,
     /// Something failed (the launch carries on) rather than plain progress.
     pub warning: bool,
 }
 
 impl Notice {
-    pub fn info(message: impl Into<String>) -> Self {
-        Self { message: message.into(), warning: false }
+    pub fn info(log: impl Into<String>, message: impl Into<String>) -> Self {
+        Self { log: log.into(), message: message.into(), warning: false }
     }
-    pub fn warn(message: impl Into<String>) -> Self {
-        Self { message: message.into(), warning: true }
+    pub fn warn(log: impl Into<String>, message: impl Into<String>) -> Self {
+        Self { log: log.into(), message: message.into(), warning: true }
     }
 }
 
@@ -61,7 +65,7 @@ pub enum Flow {
     /// The user stopped the launch meanwhile.
     Cancelled,
     /// The launch cannot continue.
-    Fail(String),
+    Fail(Notice),
 }
 
 /// What preparing a launch can use.
@@ -133,9 +137,9 @@ impl WineRunner for PrefixRunner<'_> {
 impl Prep<'_> {
     pub(crate) fn notice(&self, n: Notice) {
         if n.warning {
-            log::warn!("{}", n.message);
+            log::warn!("{}", n.log);
         } else {
-            log::info!("{}", n.message);
+            log::info!("{}", n.log);
         }
         (self.notify)(n);
     }
@@ -148,16 +152,20 @@ impl Prep<'_> {
             log::info!("offline, not {what} saves of {app_name}");
             return;
         }
-        self.notice(Notice::info(format!("{} cloud saves...", if flag == "--skip-upload" { "Downloading" } else { "Uploading" })));
+        let download = flag == "--skip-upload";
+        self.notice(Notice::info(
+            format!("{} cloud saves...", if download { "Downloading" } else { "Uploading" }),
+            if download { tr!("Downloading cloud saves...") } else { tr!("Uploading cloud saves...") },
+        ));
         match cloud.sync(app_name, path, flag) {
             Ok(out) => {
                 if let Some(problem) = sync_problem(&out) {
-                    self.notice(Notice::warn(format!("Cloud saves: {problem}")));
+                    self.notice(Notice::warn(format!("Cloud saves: {problem}"), tr!("Cloud saves: {problem}", problem)));
                 } else {
                     log::info!("saves of {app_name} {what}");
                 }
             }
-            Err(e) => self.notice(Notice::warn(format!("Cloud saves failed: {e}"))),
+            Err(e) => self.notice(Notice::warn(format!("Cloud saves failed: {e}"), tr!("Cloud saves failed: {error}", error = e))),
         }
     }
 
@@ -174,9 +182,15 @@ impl Prep<'_> {
                 if e == CANCELLED {
                     return Flow::Cancelled;
                 }
-                return Flow::Fail(format!(
-                    "The umu runtime is not installed and could not be downloaded ({e}). \
-                     Enable \"Disable UMU\" in the game's settings to run Proton directly"
+                return Flow::Fail(Notice::warn(
+                    format!(
+                        "The umu runtime is not installed and could not be downloaded ({e}). \
+                         Enable \"Disable UMU\" in the game's settings to run Proton directly"
+                    ),
+                    tr!(
+                        "The umu runtime is not installed and could not be downloaded ({error}). Enable \"Disable UMU\" in the game's settings to run Proton directly",
+                        error = e
+                    ),
                 ));
             }
         }
@@ -191,7 +205,7 @@ impl Prep<'_> {
         if !self.net.is_online() {
             return Err("no internet connection".into());
         }
-        self.notice(Notice::info("Downloading the umu runtime..."));
+        self.notice(Notice::info("Downloading the umu runtime...", tr!("Downloading the umu runtime...")));
         runtimes::download(self.paths, self.net, Runtime::Umu, self.cancel)
     }
 
@@ -216,7 +230,10 @@ impl Prep<'_> {
                     Ok(dxvk::Outcome::Skipped(why)) => log::info!("{} not installed: {why}", tool.label()),
                     Ok(_) => {}
                     Err(e) if e == CANCELLED => return Flow::Cancelled,
-                    Err(e) => self.notice(Notice::warn(format!("Could not install {}: {e}", tool.label()))),
+                    Err(e) => self.notice(Notice::warn(
+                        format!("Could not install {}: {e}", tool.label()),
+                        tr!("Could not install {tool}: {error}", tool = tool.label(), error = e),
+                    )),
                 }
             }
         }
@@ -226,11 +243,17 @@ impl Prep<'_> {
                 continue;
             }
             if runtimes::needs_download(self.paths, self.net, rt) {
-                self.notice(Notice::info(format!("Downloading the {}...", rt.label())));
+                self.notice(Notice::info(
+                    format!("Downloading the {}...", rt.label()),
+                    tr!("Downloading the {runtime}...", runtime = rt.label()),
+                ));
                 match runtimes::download(self.paths, self.net, rt, self.cancel) {
                     Ok(()) => {}
                     Err(e) if e == CANCELLED => return Flow::Cancelled,
-                    Err(e) => self.notice(Notice::warn(format!("Could not install the {}: {e}", rt.label()))),
+                    Err(e) => self.notice(Notice::warn(
+                        format!("Could not install the {}: {e}", rt.label()),
+                        tr!("Could not install the {runtime}: {error}", runtime = rt.label(), error = e),
+                    )),
                 }
             }
         }
@@ -241,7 +264,7 @@ impl Prep<'_> {
     /// prefix of `settings`. Also behind the toggles of the game settings.
     pub fn toggle_tool(&self, ctx: &PlanContext, settings: &GameSettings, tool: Tool, action: Action) -> Result<dxvk::Outcome, String> {
         let runner = PrefixRunner { ctx, prep: self, settings };
-        let progress = |m: &str| self.notice(Notice::info(m));
+        let progress = |log: &str, message: &str| self.notice(Notice::info(log, message));
         let env = dxvk::Env {
             paths: self.paths,
             net: self.net,
@@ -440,7 +463,7 @@ pub(crate) mod tests {
         let offline = FakeNet::offline();
         let prep2 = collect(&fx2, &p, &offline, None, &sink);
         match prep2.before_prefix("g", &spec) {
-            Flow::Fail(m) => assert!(m.contains("umu") && m.contains("Disable UMU"), "{m}"),
+            Flow::Fail(n) => assert!(n.message.contains("umu") && n.message.contains("Disable UMU"), "{}", n.message),
             other => panic!("{other:?}"),
         }
 

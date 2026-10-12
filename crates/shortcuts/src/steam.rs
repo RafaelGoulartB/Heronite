@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, bail, Context, Result};
+use heronite_i18n::tr;
 
 use crate::vdf::{self, Document, Entry, Node};
 use crate::GameId;
@@ -97,7 +98,7 @@ fn pid_alive(pid: i32) -> bool {
 /// Heroic's.
 pub fn user_folders(userdata: &Path) -> Result<Vec<String>, String> {
     if !userdata.exists() {
-        return Err(format!("{} does not exist. Can't add/remove game to/from Steam!", userdata.display()));
+        return Err(tr!("{path} does not exist. Can't add/remove game to/from Steam!", path = userdata.display()));
     }
     let mut folders: Vec<String> = fs::read_dir(userdata)
         .map_err(|e| format!("{}: {e}", userdata.display()))?
@@ -108,7 +109,7 @@ pub fn user_folders(userdata: &Path) -> Result<Vec<String>, String> {
         .collect();
     folders.sort();
     if folders.is_empty() {
-        return Err(format!("{} does not contain a valid user directory!", userdata.display()));
+        return Err(tr!("{path} does not contain a valid user directory!", path = userdata.display()));
     }
     Ok(folders)
 }
@@ -358,11 +359,17 @@ pub struct Report {
 
 fn ensure_not_running(steam: &Path, adding: bool, title: &str) -> Result<()> {
     if is_steam_running(steam) {
-        bail!(
-            "Can't {} \"{title}\" {} Steam while Steam is running. Close Steam and try again (Steam overwrites shortcuts.vdf when it exits).",
-            if adding { "add" } else { "remove" },
-            if adding { "to" } else { "from" }
-        );
+        bail!(if adding {
+            tr!(
+                "Can't add \"{title}\" to Steam while Steam is running. Close Steam and try again (Steam overwrites shortcuts.vdf when it exits).",
+                title
+            )
+        } else {
+            tr!(
+                "Can't remove \"{title}\" from Steam while Steam is running. Close Steam and try again (Steam overwrites shortcuts.vdf when it exits).",
+                title
+            )
+        });
     }
     Ok(())
 }
@@ -386,12 +393,13 @@ pub fn add_game(steam: &Path, game: &GameId, spec: &ShortcutSpec, art: &ArtFiles
             let mut doc = read_doc(&file)?;
             let problems = validate(&doc);
             if !problems.is_empty() {
-                bail!(
-                    "Can't add \"{}\" to Steam user \"{folder}\". \"{}\" is corrupted!\n{}",
-                    game.title,
-                    file.display(),
-                    problems.join("\n")
-                );
+                bail!(tr!(
+                    "Can't add \"{title}\" to Steam user \"{folder}\". \"{file}\" is corrupted!\n{problems}",
+                    title = game.title,
+                    folder = &folder,
+                    file = file.display(),
+                    problems = problems.join("\n")
+                ));
             }
             let shortcuts = shortcuts_mut(&mut doc).expect("validated");
             if find_entry(shortcuts, game).is_some() {
@@ -441,12 +449,13 @@ pub fn remove_game(steam: &Path, game: &GameId) -> Result<Report> {
             let mut doc = read_doc(&file)?;
             let problems = validate(&doc);
             if !problems.is_empty() {
-                bail!(
-                    "Can't remove \"{}\" from Steam user \"{folder}\". \"{}\" is corrupted!\n{}",
-                    game.title,
-                    file.display(),
-                    problems.join("\n")
-                );
+                bail!(tr!(
+                    "Can't remove \"{title}\" from Steam user \"{folder}\". \"{file}\" is corrupted!\n{problems}",
+                    title = game.title,
+                    folder = &folder,
+                    file = file.display(),
+                    problems = problems.join("\n")
+                ));
             }
             let shortcuts = shortcuts_mut(&mut doc).expect("validated");
             let Some(index) = find_entry(shortcuts, game) else { return Ok(false) };

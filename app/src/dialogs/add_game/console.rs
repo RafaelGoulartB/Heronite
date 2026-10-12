@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::sideload::SideloadPlatform;
+use heronite_i18n::tr;
 
 use super::logic::*;
 use super::picker::{ImagePicker, PickerEvent, Slot};
@@ -85,13 +86,13 @@ impl AddGameDialog {
             let mut rows = Vec::new();
             if self.removable_prefix.is_some() {
                 rows.push(
-                    Row::toggle("remove-prefix", "Also delete the Wine prefix", self.remove_prefix_too)
-                        .desc("Saves and settings inside the prefix will be lost."),
+                    Row::toggle("remove-prefix", tr!("Also delete the Wine prefix"), self.remove_prefix_too)
+                        .desc(tr!("Saves and settings inside the prefix will be lost.")),
                 );
             }
-            rows.push(Row::action("back", "Back").enabled(!self.saving));
+            rows.push(Row::action("back", tr!("Back")).enabled(!self.saving));
             rows.push(
-                Row::action("remove-yes", if self.saving { "Removing\u{2026}" } else { "Remove game" })
+                Row::action("remove-yes", if self.saving { tr!("Removing\u{2026}") } else { tr!("Remove game") })
                     .icon(Icon::DeleteForever)
                     .danger()
                     .enabled(!self.saving),
@@ -102,84 +103,83 @@ impl AddGameDialog {
         let edit = self.is_edit();
         let busy = self.saving || self.installer_running;
         let mut rows = vec![
-            Row::header("Game"),
-            Row::text("title", "Title", title.trim()).icon(Icon::Edit).desc("Letters and numbers only, up to 40 characters."),
+            Row::header(tr!("Game")),
+            Row::text("title", tr!("Title"), title.trim()).icon(Icon::Edit).desc(tr!("Letters and numbers only, up to 40 characters.")),
             Row::choice(
                 "platform",
-                "Platform",
+                tr!("Platform"),
                 PLATFORMS.iter().map(|p| SharedString::from(platform_label(*p))).collect(),
                 PLATFORMS.iter().position(|p| *p == self.platform).unwrap_or(0),
             )
-            .desc("What the game needs to run. Picking an executable chooses it for you."),
+            .desc(tr!("What the game needs to run. Picking an executable chooses it for you.")),
         ];
         if self.platform == SideloadPlatform::Browser {
-            rows.push(Row::text("url", "Game URL", text_of(&self.url, cx).trim()).icon(Icon::OpenInNew));
+            rows.push(Row::text("url", tr!("Game URL"), text_of(&self.url, cx).trim()).icon(Icon::OpenInNew));
             rows.push(
-                Row::text("ua", "Custom user agent", text_of(&self.user_agent, cx).trim())
-                    .desc("Optional. Used only by this browser game."),
+                Row::text("ua", tr!("Custom user agent"), text_of(&self.user_agent, cx).trim())
+                    .desc(tr!("Optional. Used only by this browser game.")),
             );
-            rows.push(Row::toggle("fullscreen", "Launch fullscreen", self.fullscreen).desc("Press F11 to exit."));
+            rows.push(Row::toggle("fullscreen", tr!("Launch fullscreen"), self.fullscreen).desc(tr!("Press F11 to exit.")));
         } else {
             let exe = text_of(&self.exe, cx);
-            let mut r = Row::text("exe", "Executable", short_path(exe.trim())).icon(Icon::FolderOpen);
+            let mut r = Row::text("exe", tr!("Executable"), short_path(exe.trim())).icon(Icon::FolderOpen);
             r = match install_folder(&exe) {
-                Some(f) => r.desc(format!("{exe}\nInstall folder: {f}")),
-                None => r.desc("Choose the program that starts the game."),
+                Some(f) => r.desc(tr!("{exe}\nInstall folder: {folder}", exe, folder = f)),
+                None => r.desc(tr!("Choose the program that starts the game.")),
             };
             rows.push(r);
         }
 
-        rows.push(Row::header("Art"));
+        rows.push(Row::header(tr!("Art")));
         let finding = self.finding;
         rows.push(
-            Row::action("find-art", if finding { "Searching\u{2026}" } else { "Find art for this title" })
+            Row::action("find-art", if finding { tr!("Searching\u{2026}") } else { tr!("Find art for this title") })
                 .icon(Icon::TravelExplore)
-                .desc("Looks the title up on Steam, SteamGridDB and Bottles' mirror and fills the empty art.")
+                .desc(tr!("Looks the title up on Steam, SteamGridDB and Bottles' mirror and fills the empty art."))
                 .enabled(!finding && !title.trim().is_empty()),
         );
         rows.push(
-            Row::text("art-square", "Cover art", art_label(&text_of(&self.square, cx)))
+            Row::text("art-square", tr!("Cover art"), art_label(&text_of(&self.square, cx)))
                 .icon(Icon::GridView)
-                .desc("Tall image of the game. Search the web, choose a file or type an address."),
+                .desc(tr!("Tall image of the game. Search the web, choose a file or type an address.")),
         );
         rows.push(
-            Row::text("art-hero", "Background art", art_label(&text_of(&self.hero, cx)))
+            Row::text("art-hero", tr!("Background art"), art_label(&text_of(&self.hero, cx)))
                 .icon(Icon::GridView)
-                .desc("Optional wide background. The cover is used when empty."),
+                .desc(tr!("Optional wide background. The cover is used when empty.")),
         );
 
         if self.platform == SideloadPlatform::Windows && !edit {
             rows.push(Row::header("Wine"));
-            let mut share_label = "Use shared Wine prefix".to_string();
+            let mut share_label = tr!("Use shared Wine prefix").to_string();
             if self.global.get("wineVersion").is_some() {
-                share_label = format!("Use shared Wine prefix ({})", display_wine_name(&wine_of(&self.global).name));
+                share_label = tr!("Use shared Wine prefix ({name})", name = display_wine_name(&wine_of(&self.global).name));
             }
             rows.push(
                 Row::toggle("shared", share_label, self.shared_prefix)
-                    .desc("Only if you know what you are doing: games sharing a prefix can break each other's dependencies."),
+                    .desc(tr!("Only if you know what you are doing: games sharing a prefix can break each other's dependencies.")),
             );
             if self.wine.as_ref().is_some_and(|w| w.kind == "crossover") {
-                rows.push(Row::info("crossover", "CrossOver", "Choose the bottle in Game settings"));
+                rows.push(Row::info("crossover", "CrossOver", tr!("Choose the bottle in Game settings")));
             } else {
                 rows.push(
-                    Row::text("prefix", "Wine prefix", short_path(text_of(&self.prefix, cx).trim()))
+                    Row::text("prefix", tr!("Wine prefix"), short_path(text_of(&self.prefix, cx).trim()))
                         .icon(Icon::FolderOpen)
                         .desc(text_of(&self.prefix, cx))
                         .enabled(!self.shared_prefix),
                 );
             }
             match &self.wine_list {
-                None => rows.push(Row::info("wine-wait", "Wine version", "Loading\u{2026}")),
-                Some(list) if list.is_empty() && self.wine.is_none() => {
-                    rows.push(Row::info("wine-none", "Wine version", "None found").desc("Download one from the Wine Manager."))
-                }
+                None => rows.push(Row::info("wine-wait", tr!("Wine version"), tr!("Loading\u{2026}"))),
+                Some(list) if list.is_empty() && self.wine.is_none() => rows
+                    .push(Row::info("wine-none", tr!("Wine version"), tr!("None found")).desc(tr!("Download one from the Wine Manager."))),
                 Some(_) => {
                     let options = self.wine_choices();
                     let index = options.iter().position(|w| self.wine.as_ref().is_some_and(|c| c.name == w.name)).unwrap_or(0);
                     rows.push(
                         Row::choice(
                             "wine",
-                            "Wine version",
+                            tr!("Wine version"),
                             options.iter().map(|w| SharedString::from(display_wine_name(&w.name))).collect(),
                             index,
                         )
@@ -189,26 +189,26 @@ impl AddGameDialog {
             }
         }
 
-        rows.push(Row::header(if edit { "Save" } else { "Add" }));
+        rows.push(Row::header(if edit { tr!("Save") } else { tr!("Add") }));
         if !edit && self.platform == SideloadPlatform::Windows {
             rows.push(
-                Row::action("installer", if self.installer_running { "Running setup\u{2026}" } else { "Run installer first" })
+                Row::action("installer", if self.installer_running { tr!("Running setup\u{2026}") } else { tr!("Run installer first") })
                     .icon(Icon::PlayArrow)
-                    .desc("Runs a setup program in the Wine prefix above before the game is added.")
+                    .desc(tr!("Runs a setup program in the Wine prefix above before the game is added."))
                     .enabled(!busy && !title.trim().is_empty()),
             );
         }
         let (exe, url) = (text_of(&self.exe, cx), normalize_url(&text_of(&self.url, cx)));
         let valid = missing_field(&title, self.platform, &exe, &url).is_none();
         let finish = match (edit, self.saving) {
-            (false, false) => "Add game",
-            (true, false) => "Save",
-            (_, true) => "Saving\u{2026}",
+            (false, false) => tr!("Add game"),
+            (true, false) => tr!("Save"),
+            (_, true) => tr!("Saving\u{2026}"),
         };
         rows.push(Row::action("finish", finish).icon(Icon::Check).enabled(valid && !busy));
-        rows.push(Row::action("cancel", "Cancel").icon(Icon::Close).enabled(!self.saving));
+        rows.push(Row::action("cancel", tr!("Cancel")).icon(Icon::Close).enabled(!self.saving));
         if edit {
-            rows.push(Row::action("remove", "Remove game").icon(Icon::DeleteForever).danger().enabled(!busy));
+            rows.push(Row::action("remove", tr!("Remove game")).icon(Icon::DeleteForever).danger().enabled(!busy));
         }
         rows
     }
@@ -219,10 +219,10 @@ impl AddGameDialog {
             return Some((self.error.clone().into(), theme::danger_text().into()));
         }
         if self.finding {
-            return Some(("Looking for art\u{2026}".into(), theme::text_muted().into()));
+            return Some((tr!("Looking for art\u{2026}").into(), theme::text_muted().into()));
         }
         if self.installer_running {
-            return Some(("The setup program is running. This waits until it closes.".into(), theme::text_muted().into()));
+            return Some((tr!("The setup program is running. This waits until it closes.").into(), theme::text_muted().into()));
         }
         if !self.notice.is_empty() {
             return Some((self.notice.clone().into(), theme::success().into()));
@@ -231,8 +231,8 @@ impl AddGameDialog {
             return None;
         }
         let url = normalize_url(&text_of(&self.url, cx));
-        missing_field(&text_of(&self.title, cx), self.platform, &text_of(&self.exe, cx), &url)
-            .map(|m| (SharedString::from(format!("{m} to continue.")), theme::console_btn_y().into()))
+        missing_hint(&text_of(&self.title, cx), self.platform, &text_of(&self.exe, cx), &url)
+            .map(|m| (SharedString::from(m), theme::console_btn_y().into()))
     }
 
     fn console_art(&self, url: &str, w: f32, h: f32, empty: &'static str, cx: &mut Context<Self>) -> Div {
@@ -274,20 +274,20 @@ impl AddGameDialog {
         let preview_hero = if hero.trim().is_empty() { square.clone() } else { hero };
         let title = text_of(&self.title, cx);
         let heading = if self.confirm_remove {
-            "REMOVE GAME"
+            tr!("REMOVE GAME")
         } else {
             match self.mode {
-                super::Mode::Add => "ADD GAME",
-                super::Mode::Edit(_) => "EDIT GAME",
-                super::Mode::Install(_) => "INSTALL GAME",
+                super::Mode::Add => tr!("ADD GAME"),
+                super::Mode::Edit(_) => tr!("EDIT GAME"),
+                super::Mode::Install(_) => tr!("INSTALL GAME"),
             }
         };
 
         let mut left = div().w(u(820.)).max_w_full().flex_none().flex().flex_col().min_h_0().gap(u(8.));
         if self.confirm_remove {
-            left = left.child(kit::body_text(format!(
-                "Remove {} from your library? The game's files are not deleted. Its playtime, status, notes, images and Collection data are removed, and so are its shortcuts.",
-                if title.trim().is_empty() { "this game" } else { title.trim() }
+            left = left.child(kit::body_text(tr!(
+                "Remove {title} from your library? The game's files are not deleted. Its playtime, status, notes, images and Collection data are removed, and so are its shortcuts.",
+                title = if title.trim().is_empty() { tr!("this game") } else { title.trim() }
             )));
         } else if let Some(note) = self.top_note() {
             left = left.child(kit::body_text(note));
@@ -308,14 +308,14 @@ impl AddGameDialog {
             .min_w_0()
             .items_start()
             .gap(u(14.))
-            .child(self.console_art(&square, 200., 300., "No cover", cx))
-            .child(self.console_art(&preview_hero, 300., 122., "No background", cx))
+            .child(self.console_art(&square, 200., 300., tr!("No cover"), cx))
+            .child(self.console_art(&preview_hero, 300., 122., tr!("No background"), cx))
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .gap(u(2.))
-                    .child(kit::title(if title.trim().is_empty() { "New game".to_string() } else { title.trim().to_string() }, 22.))
+                    .child(kit::title(if title.trim().is_empty() { tr!("New game").to_string() } else { title.trim().to_string() }, 22.))
                     .child(kit::body_text(platform_label(self.platform))),
             );
 
@@ -345,11 +345,11 @@ impl AddGameDialog {
 
     fn open_text(&mut self, field: TextField, window: &mut Window, cx: &mut Context<Self>) {
         let (title, initial) = match field {
-            TextField::Title => ("Title", text_of(&self.title, cx)),
-            TextField::Url => ("Game URL", text_of(&self.url, cx)),
-            TextField::UserAgent => ("Custom user agent", text_of(&self.user_agent, cx)),
-            TextField::Art(Slot::Square) => ("Cover art address", text_of(&self.square, cx)),
-            TextField::Art(Slot::Cover) => ("Background art address", text_of(&self.hero, cx)),
+            TextField::Title => (tr!("Title"), text_of(&self.title, cx)),
+            TextField::Url => (tr!("Game URL"), text_of(&self.url, cx)),
+            TextField::UserAgent => (tr!("Custom user agent"), text_of(&self.user_agent, cx)),
+            TextField::Art(Slot::Square) => (tr!("Cover art address"), text_of(&self.square, cx)),
+            TextField::Art(Slot::Cover) => (tr!("Background art address"), text_of(&self.hero, cx)),
         };
         let osk = cx.new(|_| Osk::new(title, initial.trim()));
         let sub = cx.subscribe_in(&osk, window, move |this, _, ev: &OskEvent, window, cx| {
@@ -390,10 +390,12 @@ impl AddGameDialog {
 
     fn open_browser(&mut self, what: Pick, window: &mut Window, cx: &mut Context<Self>) {
         let (title, kind, start) = match what {
-            Pick::Executable => ("Select the executable", PickKind::File(Vec::new()), text_of(&self.exe, cx)),
-            Pick::Prefix => ("Select the Wine prefix folder", PickKind::Folder, text_of(&self.prefix, cx)),
-            Pick::Installer => ("Select the setup program to run", PickKind::File(Vec::new()), String::new()),
-            Pick::Art(_) => ("Select an image", PickKind::File(IMAGE_EXTENSIONS.iter().map(|e| e.to_string()).collect()), String::new()),
+            Pick::Executable => (tr!("Select the executable"), PickKind::File(Vec::new()), text_of(&self.exe, cx)),
+            Pick::Prefix => (tr!("Select the Wine prefix folder"), PickKind::Folder, text_of(&self.prefix, cx)),
+            Pick::Installer => (tr!("Select the setup program to run"), PickKind::File(Vec::new()), String::new()),
+            Pick::Art(_) => {
+                (tr!("Select an image"), PickKind::File(IMAGE_EXTENSIONS.iter().map(|e| e.to_string()).collect()), String::new())
+            }
         };
         let start = (!start.trim().is_empty()).then(|| PathBuf::from(start.trim()));
         let browser = cx.new(|cx| Browser::new(title, kind, start.as_deref(), cx));
@@ -434,14 +436,14 @@ impl AddGameDialog {
     fn open_art_sheet(&mut self, slot: Slot, window: &mut Window, cx: &mut Context<Self>) {
         let has = !text_of(&self.art_input(slot), cx).trim().is_empty();
         let mut rows = vec![
-            Row::action("web", "Search the web").icon(Icon::FaSearch),
-            Row::action("file", "Choose an image file").icon(Icon::FolderOpen),
-            Row::action("url", "Type an address").icon(Icon::OpenInNew),
+            Row::action("web", tr!("Search the web")).icon(Icon::FaSearch),
+            Row::action("file", tr!("Choose an image file")).icon(Icon::FolderOpen),
+            Row::action("url", tr!("Type an address")).icon(Icon::OpenInNew),
         ];
         if has {
-            rows.push(Row::action("clear", "Remove the image").icon(Icon::Close).danger());
+            rows.push(Row::action("clear", tr!("Remove the image")).icon(Icon::Close).danger());
         }
-        let name = if slot == Slot::Square { "Cover art" } else { "Background art" };
+        let name = if slot == Slot::Square { tr!("Cover art") } else { tr!("Background art") };
         let sheet = cx.new(|_| Sheet::new(name, None, rows));
         let sub = cx.subscribe_in(&sheet, window, move |this, _, ev: &SheetEvent, window, cx| {
             let SheetEvent::Activate(id) = ev;
@@ -529,14 +531,15 @@ impl PadTarget for AddGameDialog {
         let rows = self.console_rows(cx);
         let focused = self.console_list.focused(&rows).or_else(|| rows.iter().find(|r| r.value != Value::Header));
         let changes = focused.is_some_and(|r| matches!(r.value, Value::Toggle(_) | Value::Choice { .. }));
-        let mut h = vec![hint(Btn::A, if focused.is_some_and(|r| matches!(r.value, Value::Text(_))) { "Edit" } else { "Select" })];
+        let mut h =
+            vec![hint(Btn::A, if focused.is_some_and(|r| matches!(r.value, Value::Text(_))) { tr!("Edit") } else { tr!("Select") })];
         if changes {
-            h.push(hint(Btn::LeftRight, "Change"));
+            h.push(hint(Btn::LeftRight, tr!("Change")));
         }
         if !self.confirm_remove {
-            h.push(hint(Btn::X, "Find art"));
+            h.push(hint(Btn::X, tr!("Find art")));
         }
-        h.push(hint(Btn::B, if self.confirm_remove { "Back" } else { "Cancel" }));
+        h.push(hint(Btn::B, if self.confirm_remove { tr!("Back") } else { tr!("Cancel") }));
         h
     }
 }

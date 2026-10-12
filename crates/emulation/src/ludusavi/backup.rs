@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Result;
 use heronite_data::models::LocalMetaFile;
 use heronite_data::{json_store, settings, DataPaths};
+use heronite_i18n::tr;
 use heronite_launch::probe::Probe;
 use heronite_launch::settings::{load_game_settings, GlobalSettings};
 use serde::{Deserialize, Serialize};
@@ -137,7 +138,11 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     let Some(binary) = binary.filter(|b| env.probe.exists(b)) else {
         let error = "Ludusavi was not found".to_string();
         record_error(env.paths, &error);
-        return Ok(LudusaviBackupResult { skipped_reason: Some("not-found".into()), error: Some(error), ..Default::default() });
+        return Ok(LudusaviBackupResult {
+            skipped_reason: Some("not-found".into()),
+            error: Some(tr!("Ludusavi was not found").to_string()),
+            ..Default::default()
+        });
     };
 
     let use_installed = cfg.use_installed_config && detected.as_ref().is_some_and(|d| d.config_path.is_some());
@@ -147,7 +152,10 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     if !use_installed && configured.is_empty() {
         let error = "Set a Ludusavi backup folder in Collection settings".to_string();
         record_error(env.paths, &error);
-        return Ok(LudusaviBackupResult { error: Some(error), ..Default::default() });
+        return Ok(LudusaviBackupResult {
+            error: Some(tr!("Set a Ludusavi backup folder in Collection settings").to_string()),
+            ..Default::default()
+        });
     }
 
     let wine_prefix = extra_wine_prefix(env, &game.app_name);
@@ -185,9 +193,10 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     let stderr = result.stderr.trim().to_string();
 
     if result.code != 0 && total == 0 {
-        let error = if stderr.is_empty() { format!("Ludusavi did not find saves for {}", game.title) } else { stderr };
-        record_error(env.paths, &error);
-        log::error!("Ludusavi backup failed: {error}");
+        let recorded = if stderr.is_empty() { format!("Ludusavi did not find saves for {}", game.title) } else { stderr.clone() };
+        let error = if stderr.is_empty() { tr!("Ludusavi did not find saves for {title}", title = game.title) } else { stderr };
+        record_error(env.paths, &recorded);
+        log::error!("Ludusavi backup failed: {recorded}");
         return Ok(LudusaviBackupResult {
             skipped_reason: Some("no-match".into()),
             game_name: Some(game_name),
@@ -245,8 +254,8 @@ pub fn notification(result: &LudusaviBackupResult, title: &str) -> Option<(Strin
     }
     let name = result.game_name.as_deref().unwrap_or(title);
     let body = match &result.backup_path {
-        Some(p) => format!("Saved {name} to {p}"),
-        None => format!("Saved a backup for {name}"),
+        Some(p) => tr!("Saved {name} to {path}", name, path = p),
+        None => tr!("Saved a backup for {name}", name),
     };
     Some(("Ludusavi".into(), body))
 }

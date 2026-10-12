@@ -9,6 +9,7 @@ use gpui_kit::*;
 use heronite_emulation::catalog::emulator_definition;
 use heronite_emulation::detect::profiles_for_definition;
 use heronite_emulation::{emulator_definitions, SystemEnv};
+use heronite_i18n::{tr, trn};
 
 use super::super::scan_roms::profile_label;
 use super::super::DialogEvent;
@@ -41,7 +42,7 @@ impl EmulatorEditDialog {
                 .iter()
                 .map(|id| {
                     if id == "custom" {
-                        "Custom".into()
+                        tr!("Custom").into()
                     } else {
                         emulator_definition(id).map(|d| d.name.clone()).unwrap_or_default().into()
                     }
@@ -49,43 +50,45 @@ impl EmulatorEditDialog {
                 .collect();
             let index = ids.iter().position(|i| *i == self.definition_id).unwrap_or(0);
             rows.push(
-                Row::choice("def", "Emulator", names, index)
-                    .desc("Pick one from the catalog to start with its platforms and arguments, or Custom to describe any program."),
+                Row::choice("def", tr!("Emulator"), names, index)
+                    .desc(tr!("Pick one from the catalog to start with its platforms and arguments, or Custom to describe any program.")),
             );
         }
-        rows.push(Row::text("name", "Name", text_of(&self.name, cx)).icon(Icon::Edit));
+        rows.push(Row::text("name", tr!("Name"), text_of(&self.name, cx)).icon(Icon::Edit));
         let kind = KINDS.iter().position(|k| k.0 == self.launch_kind).unwrap_or(0);
-        rows.push(Row::choice("kind", "Run as", KINDS.iter().map(|k| SharedString::from(k.1)).collect(), kind));
+        rows.push(Row::choice("kind", tr!("Run as"), KINDS.iter().map(|k| SharedString::from(tr(k.1))).collect(), kind));
         if self.launch_kind == "flatpak" {
-            rows.push(Row::text("flatpak", "Flatpak application id", text_of(&self.flatpak_id, cx)).icon(Icon::Edit));
+            rows.push(Row::text("flatpak", tr!("Flatpak application id"), text_of(&self.flatpak_id, cx)).icon(Icon::Edit));
         } else {
             rows.push(
-                Row::text("exe", "Executable", text_of(&self.executable, cx)).icon(Icon::FolderOpen).desc("A picks the file. X clears it."),
+                Row::text("exe", tr!("Executable"), text_of(&self.executable, cx))
+                    .icon(Icon::FolderOpen)
+                    .desc(tr!("A picks the file. X clears it.")),
             );
         }
         rows.push(
-            Row::text("dir", "Install folder (optional)", text_of(&self.install_dir, cx))
+            Row::text("dir", tr!("Install folder (optional)"), text_of(&self.install_dir, cx))
                 .icon(Icon::FolderOpen)
-                .desc("{EmulatorDir} in arguments. Empty uses the executable's folder. X clears it."),
+                .desc(tr!("{EmulatorDir} in arguments. Empty uses the executable's folder. X clears it.")),
         );
-        rows.push(Row::header("Profiles"));
+        rows.push(Row::header(tr!("Profiles")));
         for (i, p) in self.profiles.iter().enumerate() {
-            let args = if p.arguments.is_empty() { "(catalog arguments)".to_string() } else { p.arguments.clone() };
-            let ext = if p.extensions.is_empty() { "any extension".to_string() } else { p.extensions.join(", ") };
+            let args = if p.arguments.is_empty() { tr!("(catalog arguments)").to_string() } else { p.arguments.clone() };
+            let ext = if p.extensions.is_empty() { tr!("any extension").to_string() } else { p.extensions.join(", ") };
             rows.push(Row::action(format!("p:{i}"), profile_label(p)).desc(format!("{args}  \u{b7}  {ext}")));
         }
-        rows.push(Row::action("padd", "Add profile").icon(Icon::Add));
+        rows.push(Row::action("padd", tr!("Add profile")).icon(Icon::Add));
         let missing = self.missing_catalog_profiles().len();
         if missing > 0 {
-            rows.push(Row::action("pcat", format!("Add {missing} catalog profile(s)")).icon(Icon::Add));
+            rows.push(Row::action("pcat", trn!(missing, "Add {n} catalog profile", "Add {n} catalog profiles")).icon(Icon::Add));
         }
-        rows.push(Row::action("cancel", "Cancel"));
+        rows.push(Row::action("cancel", tr!("Cancel")));
         let label = if self.saving {
-            "Saving\u{2026}"
+            tr!("Saving\u{2026}")
         } else if self.create {
-            "Add emulator"
+            tr!("Add emulator")
         } else {
-            "Save"
+            tr!("Save")
         };
         rows.push(Row::action("save", label).enabled(!self.saving));
         rows
@@ -95,34 +98,34 @@ impl EmulatorEditDialog {
         let (Some(i), Some(f)) = (self.open_profile, self.form.as_ref()) else { return vec![] };
         let Some(p) = self.profiles.get(i) else { return vec![] };
         let mut rows = vec![
-            Row::text("pf-name", "Profile name", text_of(&f.name, cx)).icon(Icon::Edit),
-            Row::text("pf-platform", "Platform", text_of(&f.platform, cx)).icon(Icon::Edit),
-            Row::text("pf-args", "Arguments", text_of(&f.arguments, cx)).icon(Icon::Edit).desc(
-                "May use {ImagePath}, {ImageName}, {ImageNameNoExt}, {ImageDir}, {EmulatorDir}, {CorePath}, {Name} and {InstallDir}.",
-            ),
-            Row::text("pf-ext", "ROM extensions", text_of(&f.extensions, cx))
+            Row::text("pf-name", tr!("Profile name"), text_of(&f.name, cx)).icon(Icon::Edit),
+            Row::text("pf-platform", tr!("Platform"), text_of(&f.platform, cx)).icon(Icon::Edit),
+            Row::text("pf-args", tr!("Arguments"), text_of(&f.arguments, cx)).icon(Icon::Edit).desc(tr!(
+                "May use {ImagePath}, {ImageName}, {ImageNameNoExt}, {ImageDir}, {EmulatorDir}, {CorePath}, {Name} and {InstallDir}."
+            )),
+            Row::text("pf-ext", tr!("ROM extensions"), text_of(&f.extensions, cx))
                 .icon(Icon::Edit)
-                .desc("Comma-separated, for example iso, cue, chd."),
+                .desc(tr!("Comma-separated, for example iso, cue, chd.")),
         ];
         if self.core_relevant(p) {
             rows.push(
-                Row::text("pf-core", "RetroArch core (.so)", text_of(&f.core, cx))
+                Row::text("pf-core", tr!("RetroArch core (.so)"), text_of(&f.core, cx))
                     .icon(Icon::FolderOpen)
-                    .desc("A picks the file. X clears it."),
+                    .desc(tr!("A picks the file. X clears it.")),
             );
         }
         let wd = WORKING_DIRS.iter().position(|w| Some(w.0) == f.working_dir.as_deref().or(Some(""))).unwrap_or(0);
-        rows.push(Row::choice("pf-wd", "Working folder", WORKING_DIRS.iter().map(|w| SharedString::from(w.1)).collect(), wd));
+        rows.push(Row::choice("pf-wd", tr!("Working folder"), WORKING_DIRS.iter().map(|w| SharedString::from(tr(w.1))).collect(), wd));
         let users = self.profile_users(p);
         let remove = if self.profiles.len() <= 1 {
-            Row::action("pf-rm", "Remove profile").desc("An emulator needs at least one profile.").enabled(false)
+            Row::action("pf-rm", tr!("Remove profile")).desc(tr!("An emulator needs at least one profile.")).enabled(false)
         } else if users > 0 {
-            Row::action("pf-rm", "Remove profile").desc("A ROM folder uses this profile.").enabled(false)
+            Row::action("pf-rm", tr!("Remove profile")).desc(tr!("A ROM folder uses this profile.")).enabled(false)
         } else {
-            Row::action("pf-rm", "Remove profile").icon(Icon::FaTrash).danger()
+            Row::action("pf-rm", tr!("Remove profile")).icon(Icon::FaTrash).danger()
         };
         rows.push(remove);
-        rows.push(Row::action("pf-done", "Done"));
+        rows.push(Row::action("pf-done", tr!("Done")));
         rows
     }
 
@@ -141,7 +144,7 @@ impl EmulatorEditDialog {
         if !profile && self.launch_kind != "flatpak" {
             let exe = text_of(&self.executable, cx);
             if !exe.is_empty() && exe.contains('/') && !std::path::Path::new(&exe).exists() {
-                body = body.child(kit::body_text("This file does not exist.").text_color(theme::danger_text()));
+                body = body.child(kit::body_text(tr!("This file does not exist.")).text_color(theme::danger_text()));
             }
         }
         if !self.error.is_empty() {
@@ -154,9 +157,9 @@ impl EmulatorEditDialog {
             self.console_list.render("console-emu-edit", &rows, active)
         };
         let title = match (profile, self.create) {
-            (true, _) => "Edit profile",
-            (false, true) => "Add emulator",
-            (false, false) => "Edit emulator",
+            (true, _) => tr!("Edit profile"),
+            (false, true) => tr!("Add emulator"),
+            (false, false) => tr!("Edit emulator"),
         };
         div()
             .absolute()
@@ -193,22 +196,24 @@ impl EmulatorEditDialog {
 
     fn console_activate(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         match id {
-            "name" => self.console_type("Name", self.name.clone(), window, cx),
-            "flatpak" => self.console_type("Flatpak application id", self.flatpak_id.clone(), window, cx),
-            "exe" => self.console_pick("Emulator executable", PickKind::File(vec![]), self.executable.clone(), window, cx, |this, p, _| {
-                if p.to_lowercase().ends_with(".exe") {
-                    this.launch_kind = "wine".into();
-                }
-                if this.create {
-                    let (def, kind) = (this.definition_id.clone(), this.launch_kind.clone());
-                    if emulator_definition(&def).is_some_and(|d| d.profiles.iter().any(|p| p.core.is_some())) {
-                        this.profiles = profiles_for_definition(&SystemEnv, &def, p, &kind);
-                        this.open_profile = None;
-                        this.form = None;
+            "name" => self.console_type(tr!("Name"), self.name.clone(), window, cx),
+            "flatpak" => self.console_type(tr!("Flatpak application id"), self.flatpak_id.clone(), window, cx),
+            "exe" => {
+                self.console_pick(tr!("Emulator executable"), PickKind::File(vec![]), self.executable.clone(), window, cx, |this, p, _| {
+                    if p.to_lowercase().ends_with(".exe") {
+                        this.launch_kind = "wine".into();
                     }
-                }
-            }),
-            "dir" => self.console_pick("Install folder", PickKind::Folder, self.install_dir.clone(), window, cx, |_, _, _| {}),
+                    if this.create {
+                        let (def, kind) = (this.definition_id.clone(), this.launch_kind.clone());
+                        if emulator_definition(&def).is_some_and(|d| d.profiles.iter().any(|p| p.core.is_some())) {
+                            this.profiles = profiles_for_definition(&SystemEnv, &def, p, &kind);
+                            this.open_profile = None;
+                            this.form = None;
+                        }
+                    }
+                })
+            }
+            "dir" => self.console_pick(tr!("Install folder"), PickKind::Folder, self.install_dir.clone(), window, cx, |_, _, _| {}),
             "padd" => self.add_profile(window, cx),
             "pcat" => self.add_catalog_profiles(cx),
             "cancel" => cx.emit(DialogEvent::Close),
@@ -216,16 +221,16 @@ impl EmulatorEditDialog {
             "pf-name" | "pf-platform" | "pf-args" | "pf-ext" => {
                 let Some(f) = self.form.as_ref() else { return };
                 let (title, input) = match id {
-                    "pf-name" => ("Profile name", f.name.clone()),
-                    "pf-platform" => ("Platform", f.platform.clone()),
-                    "pf-args" => ("Arguments", f.arguments.clone()),
-                    _ => ("ROM extensions", f.extensions.clone()),
+                    "pf-name" => (tr!("Profile name"), f.name.clone()),
+                    "pf-platform" => (tr!("Platform"), f.platform.clone()),
+                    "pf-args" => (tr!("Arguments"), f.arguments.clone()),
+                    _ => (tr!("ROM extensions"), f.extensions.clone()),
                 };
                 self.console_type(title, input, window, cx);
             }
             "pf-core" => {
                 if let Some(core) = self.form.as_ref().map(|f| f.core.clone()) {
-                    self.console_pick("Libretro core", PickKind::File(vec!["so".into()]), core, window, cx, |_, _, _| {});
+                    self.console_pick(tr!("Libretro core"), PickKind::File(vec!["so".into()]), core, window, cx, |_, _, _| {});
                 }
             }
             "pf-rm" => {
@@ -318,11 +323,11 @@ impl PadTarget for EmulatorEditDialog {
         }
         let rows = self.console_rows(cx);
         let focused = if self.form.is_some() { self.console_profile_list.focused(&rows) } else { self.console_list.focused(&rows) };
-        let mut h = vec![hint(Btn::A, "Select"), hint(Btn::LeftRight, "Change")];
+        let mut h = vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change"))];
         if focused.is_some_and(|r| self.console_path_input(&r.id).is_some()) {
-            h.push(hint(Btn::X, "Clear"));
+            h.push(hint(Btn::X, tr!("Clear")));
         }
-        h.push(hint(Btn::B, if self.form.is_some() { "Back" } else { "Cancel" }));
+        h.push(hint(Btn::B, if self.form.is_some() { tr!("Back") } else { tr!("Cancel") }));
         h
     }
 }

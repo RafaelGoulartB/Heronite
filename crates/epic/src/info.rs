@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, bail, Result};
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -106,7 +107,11 @@ pub fn install_info(data_paths: &DataPaths, legendary: &Legendary, app_name: &st
             }
         }
     }
-    bail!("Failed to get install info for {app_name}{}", if last.is_empty() { String::new() } else { format!(": {last}") })
+    if last.is_empty() {
+        bail!(tr!("Failed to get install info for {app_name}", app_name))
+    } else {
+        bail!(tr!("Failed to get install info for {app_name}: {error}", app_name, error = last))
+    }
 }
 
 /// The JSON object in `legendary info --json`'s stdout (tolerates log lines

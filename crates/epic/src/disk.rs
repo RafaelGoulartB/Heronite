@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::util::file_size;
+use crate::util::file_size_local;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DiskSpace {
@@ -46,7 +46,7 @@ pub fn check(path: &str) -> Option<DiskSpace> {
     };
     // SAFETY: access(2) on a valid C string.
     let writable = unsafe { libc::access(c.as_ptr(), libc::W_OK) == 0 };
-    Some(DiskSpace { free, total, writable, message: format!("{} / {}", file_size(free as f64), file_size(total as f64)) })
+    Some(DiskSpace { free, total, writable, message: format!("{} / {}", file_size_local(free as f64), file_size_local(total as f64)) })
 }
 
 #[cfg(not(unix))]

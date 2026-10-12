@@ -20,6 +20,7 @@ use heronite_metadata::{protondb, Endpoints, Http};
 
 use super::open_links::{game_folders, FolderKind};
 use super::CollectionView;
+use heronite_i18n::tr;
 
 /// Days of the timeline shown before "Show more".
 pub(super) const TIMELINE_DAYS: usize = 4;
@@ -216,7 +217,8 @@ impl CollectionView {
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { ratings::set_rating(&paths, &key, stars) }).await;
             if let Err(err) = res {
-                this.update(cx, |this, cx| this.show_toast(format!("Could not save the rating: {err:#}"), true, cx)).ok();
+                this.update(cx, |this, cx| this.show_toast(tr!("Could not save the rating: {err}", err = format!("{err:#}")), true, cx))
+                    .ok();
             }
         })
         .detach();

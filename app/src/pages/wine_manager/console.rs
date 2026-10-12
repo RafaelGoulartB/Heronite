@@ -5,6 +5,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 use heronite_wine::{JobKind, Repository, WineVersionInfo};
 
 use super::render::size_text;
@@ -30,16 +31,19 @@ impl WineManagerPage {
 
     fn console_rows(&self) -> Vec<Row> {
         let mut rows = vec![
-            Row::toggle("steam", "Install Proton into Steam", self.download_to_steam)
-                .desc("New Proton builds also go to Steam's compatibility tools"),
-            Row::action("refresh", if self.manager.refreshing() { "Fetching releases\u{2026}" } else { "Refresh the release lists" })
-                .icon(Icon::Refresh)
-                .enabled(!self.manager.refreshing() && !self.offline),
+            Row::toggle("steam", tr!("Install Proton into Steam"), self.download_to_steam)
+                .desc(tr!("New Proton builds also go to Steam's compatibility tools")),
+            Row::action(
+                "refresh",
+                if self.manager.refreshing() { tr!("Fetching releases\u{2026}") } else { tr!("Refresh the release lists") },
+            )
+            .icon(Icon::Refresh)
+            .enabled(!self.manager.refreshing() && !self.offline),
         ];
         if !self.console_query.is_empty() {
             rows.push(
-                Row::action("clear-search", format!("Search: \u{201c}{}\u{201d}", self.console_query))
-                    .desc("A clears the search")
+                Row::action("clear-search", tr!("Search: \u{201c}{query}\u{201d}", query = self.console_query))
+                    .desc(tr!("A clears the search"))
                     .icon(Icon::FaSearch),
             );
         }
@@ -48,8 +52,8 @@ impl WineManagerPage {
             let job = self.job(&r.version);
             let state = match &job {
                 Some(_) => size_text(job.as_ref(), &r).to_string(),
-                None if r.installed() && r.has_update() => format!("Update available \u{b7} {}", size_text(None, &r)),
-                None if r.installed() => format!("Installed \u{b7} {}", size_text(None, &r)),
+                None if r.installed() && r.has_update() => tr!("Update available \u{b7} {size}", size = size_text(None, &r)),
+                None if r.installed() => tr!("Installed \u{b7} {size}", size = size_text(None, &r)),
                 None => format!("{} \u{b7} {}", r.date, size_text(None, &r)),
             };
             let row = Row::info(SharedString::from(format!("v:{}", r.version)), r.version.clone(), state);
@@ -63,15 +67,15 @@ impl WineManagerPage {
         let job = self.job(version);
         let mut rows = Vec::new();
         match &job {
-            Some(j) if j.kind != JobKind::Remove => rows.push(Row::action("cancel", "Cancel the download").icon(Icon::Close)),
+            Some(j) if j.kind != JobKind::Remove => rows.push(Row::action("cancel", tr!("Cancel the download")).icon(Icon::Close)),
             Some(_) => {}
             None if r.installed() => {
                 if r.has_update() {
-                    rows.push(Row::action("install", "Update").icon(Icon::Update));
+                    rows.push(Row::action("install", tr!("Update")).icon(Icon::Update));
                 }
-                rows.push(Row::action("remove", "Remove\u{2026}").icon(Icon::FaTrash).danger());
+                rows.push(Row::action("remove", tr!("Remove\u{2026}")).icon(Icon::FaTrash).danger());
             }
-            None => rows.push(Row::action("install", "Install").icon(Icon::Download)),
+            None => rows.push(Row::action("install", tr!("Install")).icon(Icon::Download)),
         }
         if rows.is_empty() {
             return;
@@ -90,8 +94,11 @@ impl WineManagerPage {
                     this.manager.cancel(&r.version);
                 }
                 "remove" => sheet.update(cx, |s, cx| {
-                    s.set_message(Some(format!("Remove {}? Games set to use it fall back to the default.", r.version)));
-                    s.set_rows(vec![Row::action("keep", "Keep it"), Row::action("remove-yes", "Remove").icon(Icon::FaTrash).danger()]);
+                    s.set_message(Some(tr!("Remove {version}? Games set to use it fall back to the default.", version = r.version)));
+                    s.set_rows(vec![
+                        Row::action("keep", tr!("Keep it")),
+                        Row::action("remove-yes", tr!("Remove")).icon(Icon::FaTrash).danger(),
+                    ]);
                     cx.notify();
                 }),
                 "remove-yes" => {
@@ -106,7 +113,7 @@ impl WineManagerPage {
     }
 
     fn open_console_search(&mut self, cx: &mut Context<Self>) {
-        let osk = cx.new(|_| Osk::new("Search versions", &self.console_query));
+        let osk = cx.new(|_| Osk::new(tr!("Search versions"), &self.console_query));
         let sub = cx.subscribe(&osk, |this, _, ev: &OskEvent, cx| {
             if let OskEvent::Done(text) = ev {
                 this.console_query = text.trim().to_string();
@@ -136,7 +143,7 @@ impl WineManagerPage {
                     .gap(u(36.))
                     .h(u(76.))
                     .px(u(46.))
-                    .child(kit::wordmark("WINE MANAGER"))
+                    .child(kit::wordmark(tr!("WINE MANAGER")))
                     .child(kit::tabs(&tabs, tab))
                     .child(div().flex_1())
                     .child(kit::clock()),
@@ -146,7 +153,7 @@ impl WineManagerPage {
                 div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(if self.loaded {
                     list.flex_1().min_h_0().into_any_element()
                 } else {
-                    kit::body_text("Reading the release lists\u{2026}").into_any_element()
+                    kit::body_text(tr!("Reading the release lists\u{2026}")).into_any_element()
                 }),
             ))
             .children(self.layer.view())
@@ -197,6 +204,6 @@ impl PadTarget for WineManagerPage {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, "Select"), hint(Btn::Bumpers, "Source"), hint(Btn::Y, "Search"), hint(Btn::X, "Refresh")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::Bumpers, tr!("Source")), hint(Btn::Y, tr!("Search")), hint(Btn::X, tr!("Refresh"))]
     }
 }

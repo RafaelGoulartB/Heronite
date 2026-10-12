@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use gpui_kit::*;
 use heronite_data::{CollectionGame, Library};
+use heronite_i18n::tr;
 
 use super::quit::maybe_exit_idle;
 use super::window::{close_window_keep_alive, show_window};
@@ -47,7 +48,9 @@ fn launch_headless(cx: &mut App, req: LaunchRequest) {
         let (h, r) = (data_paths, req.clone());
         let found = cx
             .background_spawn(async move {
-                Library::load(&h).map(|lib| find_game(&lib, &r)).map_err(|e| format!("could not read the library: {e:#}"))
+                Library::load(&h)
+                    .map(|lib| find_game(&lib, &r))
+                    .map_err(|e| tr!("Could not read the library: {error}", error = format!("{e:#}")))
             })
             .await;
         cx.update(|cx| on_headless_game(cx, req, found));
@@ -69,7 +72,7 @@ fn fail(cx: &mut App, message: String) {
 fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<CollectionGame>>, String>) {
     let game = match found {
         Err(e) => return fail(cx, e),
-        Ok(None) => return fail(cx, format!("Could not find the game {} in the library", req.app_name)),
+        Ok(None) => return fail(cx, tr!("Could not find the game {name} in the library", name = req.app_name)),
         Ok(Some(g)) => g,
     };
     let hub = hub(cx);
@@ -100,7 +103,7 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
         Ok(()) => {
             hub.0.borrow_mut().running.entry(game.app_name.clone()).or_insert(None);
         }
-        Err(e) => fail(cx, format!("Could not launch {}: {e}", game.title)),
+        Err(e) => fail(cx, tr!("Could not launch {title}: {error}", title = game.title, error = e)),
     }
 }
 

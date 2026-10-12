@@ -16,6 +16,7 @@ use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{icon, round_button};
+use heronite_i18n::tr;
 
 const STAR: u32 = 0xf4d35e;
 const NARROW_COVER_W: f32 = 120.;
@@ -72,11 +73,11 @@ impl CollectionView {
             None => (None, false),
         };
         let (label, ic) = if vm.playing {
-            ("Stop", Icon::Stop)
+            (tr!("Stop"), Icon::Stop)
         } else if vm.installed {
-            ("Play", Icon::PlayArrow)
+            (tr!("Play"), Icon::PlayArrow)
         } else {
-            ("Install", Icon::Download)
+            (tr!("Install"), Icon::Download)
         };
         let key = vm.key.clone();
         let play = (!hide_play).then(|| {
@@ -137,7 +138,7 @@ impl CollectionView {
         let open = self.facts.status_open;
         let (name, color) = match &vm.status {
             Some(s) => (s.name.clone(), s.color),
-            None => ("No status".into(), theme::status_color("not-played")),
+            None => (tr!("No status").into(), theme::status_color("not-played")),
         };
         let pill = div()
             .id("focus-status")
@@ -193,7 +194,7 @@ impl CollectionView {
             menu = menu.child(
                 crate::ui::dropdown::menu_item(SharedString::from(format!("focus-st-{}", st.id)), active)
                     .child(div().size(px(10.)).flex_none().rounded_full().bg(theme::status_color(&st.slug)))
-                    .child(st.name.clone())
+                    .child(heronite_data::status::status_label(&st.name).to_string())
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.facts.status_open = false;
                         this.set_status(&key, id.clone(), cx);
@@ -269,7 +270,7 @@ impl CollectionView {
             .pt(px(4.))
             .text_size(px(13.))
             .text_color(theme::white_a(0.52))
-            .child("Your rating")
+            .child(tr!("Your rating"))
             .child(stars)
     }
 
@@ -277,16 +278,16 @@ impl CollectionView {
     fn facts_card(&self, vm: &FocusVm, cx: &mut Context<Self>) -> Div {
         let mut rows: Vec<AnyElement> = Vec::new();
         if let Some(score) = &vm.score {
-            rows.push(fact_row("Score", div().child(score.clone())).into_any_element());
+            rows.push(fact_row(tr!("Score"), div().child(score.clone())).into_any_element());
         }
-        rows.push(fact_row("Library", div().child(vm.library.clone())).into_any_element());
+        rows.push(fact_row(tr!("Library"), div().child(vm.library.clone())).into_any_element());
         match &self.facts.backup {
             Some(Backup::At(at)) => {
                 let (text, color) = backup_age(*at);
                 rows.push(self.backup_row(&vm.key, div().text_color(color).child(text), cx));
             }
             Some(Backup::Never) => {
-                rows.push(self.backup_row(&vm.key, div().text_color(theme::white_a(0.52)).child("Never"), cx));
+                rows.push(self.backup_row(&vm.key, div().text_color(theme::white_a(0.52)).child(tr!("Never")), cx));
             }
             Some(Backup::Off) | None => {}
         }
@@ -295,7 +296,7 @@ impl CollectionView {
             if linux.steam_app_id.is_some() {
                 value = value.child(icon(Icon::OpenInNew, px(13.), theme::white_a(0.4)));
             }
-            let row = fact_row("On Linux", value);
+            let row = fact_row(tr!("On Linux"), value);
             rows.push(match linux.steam_app_id.clone() {
                 // ProtonDB page of the game.
                 Some(id) => clickable(row, "focus-linux")
@@ -315,7 +316,7 @@ impl CollectionView {
     /// "Save backup": clicking it backs the saves up now.
     fn backup_row(&self, key: &SharedString, value: Div, cx: &mut Context<Self>) -> AnyElement {
         let key = key.clone();
-        clickable(fact_row("Save backup", value), "focus-backup")
+        clickable(fact_row(tr!("Save backup"), value), "focus-backup")
             .on_click(cx.listener(move |this, _, _, cx| this.open_ludusavi_backup(&key, cx)))
             .into_any_element()
     }
@@ -344,11 +345,11 @@ fn backup_age(at: SystemTime) -> (String, Hsla) {
     let at: chrono::DateTime<chrono::Local> = at.into();
     let days = (chrono::Local::now().date_naive() - at.date_naive()).num_days().max(0);
     let text = match days {
-        0 => "Today".to_string(),
-        1 => "Yesterday".to_string(),
-        2..=13 => format!("{days} days ago"),
-        14..=59 => format!("{} weeks ago", days / 7),
-        _ => format!("{} months ago", days / 30),
+        0 => tr!("Today").to_string(),
+        1 => tr!("Yesterday").to_string(),
+        2..=13 => tr!("{days} days ago", days),
+        14..=59 => tr!("{weeks} weeks ago", weeks = days / 7),
+        _ => tr!("{months} months ago", months = days / 30),
     };
     let color = match days {
         0..=7 => rgb(0x3ecf8e).into(),
@@ -373,24 +374,26 @@ fn linux_value(l: &Linux) -> Div {
             _ => rgb(0x9aa0a6),
         };
         let mut name = t.to_string();
-        if let Some(first) = name.get_mut(0..1) {
+        if t == "native" {
+            name = tr!("Native").to_string();
+        } else if let Some(first) = name.get_mut(0..1) {
             first.make_ascii_uppercase();
         }
         d = d.child(div().size(px(7.)).flex_none().rounded_full().bg(color)).child(name);
     }
     if let Some(ac) = &l.anticheat {
         let names: Vec<String> = ac.anticheats.iter().map(|a| heronite_data::anticheat::short_name(a)).collect();
-        let names = if names.is_empty() { "Anti-cheat".to_string() } else { names.join("/") };
-        let (state, color): (&str, Hsla) = match ac.status.as_str() {
-            "Supported" | "Running" => ("ok", rgb(0x3ecf8e).into()),
-            "Broken" | "Denied" => ("broken", rgb(0xe5534b).into()),
-            "Planned" => ("planned", theme::white_a(0.7)),
-            other => (other, theme::white_a(0.7)),
+        let names = if names.is_empty() { tr!("Anti-cheat").to_string() } else { names.join("/") };
+        let (state, color): (String, Hsla) = match ac.status.as_str() {
+            "Supported" | "Running" => (tr!("{names} ok", names), rgb(0x3ecf8e).into()),
+            "Broken" | "Denied" => (tr!("{names} broken", names), rgb(0xe5534b).into()),
+            "Planned" => (tr!("{names} planned", names), theme::white_a(0.7)),
+            other => (format!("{names} {}", other.to_lowercase()), theme::white_a(0.7)),
         };
         if tier.is_some() {
             d = d.child(div().text_color(theme::white_a(0.4)).child("·"));
         }
-        d = d.child(div().text_color(color).child(format!("{names} {}", state.to_lowercase())));
+        d = d.child(div().text_color(color).child(state));
     }
     d
 }

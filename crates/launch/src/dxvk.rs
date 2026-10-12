@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 
 use crate::net::{Cancel, Net};
 use crate::probe::Probe;
@@ -47,7 +48,8 @@ pub struct Env<'a> {
     pub vulkan: Vulkan,
     pub cancel: Cancel<'a>,
     /// Told what is about to take a while ("Downloading DXVK...").
-    pub progress: &'a dyn Fn(&str),
+    /// Called with the English text (logs) and the text in the interface language.
+    pub progress: &'a dyn Fn(&str, &str),
 }
 
 fn dll_names(dir: &Path) -> Vec<String> {
@@ -104,19 +106,19 @@ fn copy_dll(from: &Path, to: &Path) {
 pub fn install_remove(env: &Env, settings: &GameSettings, tool: Tool, action: Action) -> Result<Outcome, String> {
     if settings.wine_version.bin.contains("toolkit") {
         // It would break Apple's implementation.
-        return Ok(Outcome::Skipped("Game Porting Toolkit prefix".into()));
+        return Ok(Outcome::Skipped(tr!("Game Porting Toolkit prefix").into()));
     }
     let prefix = PathBuf::from(&settings.wine_prefix);
     if !prefix.join(".update-timestamp").exists() {
         // Proton prefix or not created yet; not an error, or the toggle would stick.
-        return Ok(Outcome::Skipped("not a Wine prefix (yet)".into()));
+        return Ok(Outcome::Skipped(tr!("not a Wine prefix (yet)").into()));
     }
     let is64 = prefix.join("drive_c/windows/syswow64").exists();
     if !is64 {
         log::warn!("32-bit prefix detected!");
     }
     if tools::installed_version(env.paths, tool).is_none() {
-        (env.progress)(&format!("Downloading {}...", tool.label()));
+        (env.progress)(&format!("Downloading {}...", tool.label()), &tr!("Downloading {tool}...", tool = tool.label()));
     }
     let release = tools::ensure(env.paths, env.net, tool, env.vulkan, env.cancel)?;
     let version = release.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
@@ -156,7 +158,10 @@ pub fn install_remove(env: &Env, settings: &GameSettings, tool: Tool, action: Ac
     if current == version {
         return Ok(Outcome::AlreadyInstalled(version));
     }
-    (env.progress)(&format!("Installing {} in the prefix...", tool.label()));
+    (env.progress)(
+        &format!("Installing {} in the prefix...", tool.label()),
+        &tr!("Installing {tool} in the prefix...", tool = tool.label()),
+    );
     if is64 {
         for d in &dlls32 {
             copy_dll(&dir32.join(d), &syswow64.join(d));
@@ -272,7 +277,7 @@ mod tests {
     }
 
     fn run(fx: &Fixture, tool: Tool, action: Action, rec: &Recorder, probe: &FakeProbe, net: &FakeNet) -> Result<Outcome, String> {
-        let env = Env { paths: &fx.paths, net, probe, runner: rec, vulkan: Vulkan::Modern, cancel: &|| false, progress: &|_| {} };
+        let env = Env { paths: &fx.paths, net, probe, runner: rec, vulkan: Vulkan::Modern, cancel: &|| false, progress: &|_, _| {} };
         install_remove(&env, &fx.settings, tool, action)
     }
 

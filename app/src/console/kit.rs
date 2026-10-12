@@ -17,6 +17,7 @@ use super::{Btn, Hint};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 static SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
 
@@ -206,7 +207,8 @@ pub fn toggle_pill(on: bool, focused: bool) -> Div {
         .flex_none()
         .items_center()
         .justify_center()
-        .w(u(64.))
+        .min_w(u(64.))
+        .px(u(10.))
         .h(u(30.))
         .rounded_full()
         .text_size(u(14.))
@@ -215,11 +217,11 @@ pub fn toggle_pill(on: bool, focused: bool) -> Div {
         d.bg(theme::console_on())
             .text_color(theme::console_on_focus())
             .when(focused, |d| d.border_2().border_color(theme::console_on_focus()))
-            .child("On")
+            .child(tr!("On"))
     } else {
         d.bg(if focused { theme::black_a(0.12) } else { theme::white_a(0.1) })
             .text_color(if focused { theme::console_on_focus() } else { theme::text_muted() })
-            .child("Off")
+            .child(tr!("Off"))
     }
 }
 

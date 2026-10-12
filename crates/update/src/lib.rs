@@ -58,7 +58,9 @@ fn agent() -> &'static ureq::Agent {
 /// A readable error for a failed request (GitHub's rate limit named as such).
 fn http_error(e: ureq::Error) -> anyhow::Error {
     match e {
-        ureq::Error::StatusCode(c @ (403 | 429)) => anyhow::anyhow!("GitHub rate limit reached (HTTP {c}), try again later"),
+        ureq::Error::StatusCode(c @ (403 | 429)) => {
+            anyhow::anyhow!(heronite_i18n::tr!("GitHub rate limit reached (HTTP {status}), try again later", status = c))
+        }
         ureq::Error::StatusCode(c) => anyhow::anyhow!("HTTP {c}"),
         e => anyhow::anyhow!("{e}"),
     }

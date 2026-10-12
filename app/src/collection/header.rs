@@ -16,6 +16,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::dropdown::{dropdown, menu_item, menu_panel, menu_separator, Align, PART_BUTTON};
 use crate::ui::{icon, tool_button, tool_button_base};
+use heronite_i18n::tr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Menu {
@@ -30,11 +31,11 @@ const OPEN_DELAY: Duration = Duration::from_millis(140);
 
 fn facet_label(k: FacetKind) -> &'static str {
     match k {
-        FacetKind::Series => "Series",
-        FacetKind::Developer => "Developer",
-        FacetKind::Publisher => "Publisher",
-        FacetKind::Genre => "Genre",
-        FacetKind::Platform => "Platform",
+        FacetKind::Series => tr!("Series"),
+        FacetKind::Developer => tr!("Developer"),
+        FacetKind::Publisher => tr!("Publisher"),
+        FacetKind::Genre => tr!("Genre"),
+        FacetKind::Platform => tr!("Platform"),
     }
 }
 
@@ -42,7 +43,7 @@ impl CollectionView {
     pub(super) fn new_search_input(window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
         let state = cx.new(|cx| {
             let mut s = InputState::new(window, cx);
-            s.set_placeholder("Search games", window, cx);
+            s.set_placeholder(tr!("Search games"), window, cx);
             s
         });
         cx.subscribe_in(&state, window, |this, state, _ev: &gpui_kit::component::input::InputEvent, _window, cx| {
@@ -201,13 +202,14 @@ impl CollectionView {
         match self.ui.install_filter {
             InstallFilter::All => {}
             f => chips.push(
-                filter_chip("chip-install", None, if f == InstallFilter::Installed { "Installed" } else { "Not installed" })
+                filter_chip("chip-install", None, if f == InstallFilter::Installed { tr!("Installed") } else { tr!("Not installed") })
                     .on_click(cx.listener(|this, _, _, cx| this.set_install_filter(InstallFilter::All, cx))),
             ),
         }
         if self.ui.show_hidden {
             chips.push(
-                filter_chip("chip-hidden", None, "Hidden shown").on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(false, cx))),
+                filter_chip("chip-hidden", None, tr!("Hidden shown"))
+                    .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(false, cx))),
             );
         }
         for kind in FACET_KINDS {
@@ -229,7 +231,11 @@ impl CollectionView {
         let weak = cx.entity().downgrade();
         let install = crate::ui::controls::tabs(
             "view-install",
-            &[(InstallFilter::All, "All"), (InstallFilter::Installed, "Installed"), (InstallFilter::Uninstalled, "Not installed")],
+            &[
+                (InstallFilter::All, tr!("All")),
+                (InstallFilter::Installed, tr!("Installed")),
+                (InstallFilter::Uninstalled, tr!("Not installed")),
+            ],
             self.ui.install_filter,
             {
                 let weak = weak.clone();
@@ -240,7 +246,7 @@ impl CollectionView {
         );
         let sort = crate::ui::controls::tabs(
             "view-sort",
-            &[(SortMode::Title, "Title"), (SortMode::LastPlayed, "Last played"), (SortMode::Playtime, "Playtime")],
+            &[(SortMode::Title, tr!("Title")), (SortMode::LastPlayed, tr!("Last played")), (SortMode::Playtime, tr!("Playtime"))],
             self.ui.sort,
             move |m, _, cx| {
                 weak.update(cx, |this, cx| {
@@ -253,7 +259,7 @@ impl CollectionView {
             },
         );
         let facets_active = self.ui.facet_filters.is_active();
-        let mut filter_title = section_label("Filter by");
+        let mut filter_title = section_label(tr!("Filter by"));
         if facets_active {
             filter_title = filter_title.child(
                 div()
@@ -261,7 +267,7 @@ impl CollectionView {
                     .text_color(theme::accent())
                     .cursor_pointer()
                     .hover(|s| s.text_color(white()))
-                    .child("Clear")
+                    .child(tr!("Clear"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.ui.clear_facets();
                         this.save_ui();
@@ -272,15 +278,15 @@ impl CollectionView {
         }
         menu_panel(300.)
             .w(px(300.))
-            .child(section_label("Show").mt(px(2.)))
+            .child(section_label(tr!("Show")).mt(px(2.)))
             .child(div().px(px(4.)).child(install))
-            .child(section_label("Sort by"))
+            .child(section_label(tr!("Sort by")))
             .child(div().px(px(4.)).child(sort))
             .child(menu_separator().mt(px(8.)))
             .child(
                 menu_item("status-group", false)
                     .justify_between()
-                    .child("Group by status")
+                    .child(tr!("Group by status"))
                     .child(toggle("status-group-sw", self.ui.group_by_status))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.ui.group_by_status = !this.ui.group_by_status;
@@ -292,7 +298,7 @@ impl CollectionView {
             .child(
                 menu_item("install-show-hidden", false)
                     .justify_between()
-                    .child("Show hidden games")
+                    .child(tr!("Show hidden games"))
                     .child(toggle("install-show-hidden-sw", self.ui.show_hidden))
                     .on_click(cx.listener(|this, _, _, cx| this.set_show_hidden(!this.ui.show_hidden, cx))),
             )
@@ -303,7 +309,7 @@ impl CollectionView {
             .child(
                 menu_item("status-manage", false)
                     .child(icon(Icon::Flag, px(15.), theme::text_muted()))
-                    .child("Manage statuses…")
+                    .child(tr!("Manage statuses…"))
                     .on_click(cx.listener(|this, _, window, cx| this.open_manage_statuses(window, cx))),
             )
             .into_any_element()
@@ -425,7 +431,7 @@ impl CollectionView {
                 let query = self.facet_query(kind, cx);
                 fly = fly.children(self.facet_search_box(kind));
                 fly = fly.child(
-                    menu_item(SharedString::from(format!("facet-all-{}", kind.as_str())), selected.is_none()).child("All").on_click(
+                    menu_item(SharedString::from(format!("facet-all-{}", kind.as_str())), selected.is_none()).child(tr!("All")).on_click(
                         cx.listener(move |this, _, _, cx| {
                             if let Some(sel) = this.ui.facet_filters.get(kind).map(str::to_owned) {
                                 this.toggle_facet(kind.as_str(), &sel);
@@ -436,7 +442,8 @@ impl CollectionView {
                 );
                 let opts: Vec<_> = options.get(kind).iter().filter(|o| super::extras::facet_option_matches(&o.value, &query)).collect();
                 if opts.is_empty() {
-                    fly = fly.child(div().mx(px(5.6)).text_size(px(13.33)).text_color(theme::white_a(0.45)).child("None in this library"));
+                    fly = fly
+                        .child(div().mx(px(5.6)).text_size(px(13.33)).text_color(theme::white_a(0.45)).child(tr!("None in this library")));
                 }
                 let mut list = div()
                     .id(SharedString::from(format!("facet-list-{}", kind.as_str())))

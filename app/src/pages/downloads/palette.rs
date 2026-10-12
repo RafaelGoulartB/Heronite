@@ -2,6 +2,7 @@
 
 use gpui_kit::*;
 use heronite_epic::manager::DmState;
+use heronite_i18n::{tr, trn};
 
 use super::DownloadsPage;
 use crate::icons::Icon;
@@ -13,36 +14,40 @@ impl PaletteCommands for DownloadsPage {
         let s = svc.read(cx);
         let snap = s.snapshot();
         let current = snap.queue.first().map(|e| e.params.title());
-        let idle = current.is_none().then_some("Nothing is downloading");
+        let idle = current.is_none().then_some(tr!("Nothing is downloading"));
         let what = current.clone().unwrap_or_default();
         let mut v = Vec::new();
         v.push(
             match (current.is_some(), snap.state) {
-                (true, DmState::Running) | (false, _) => {
-                    PageCommand::new("pause", "Pause downloads", what.clone(), Icon::Pause).keywords("hold queue epic").disabled(idle)
-                }
-                (true, _) => {
-                    PageCommand::new("resume", "Resume downloads", what.clone(), Icon::PlayArrow).keywords("continue start queue epic")
-                }
+                (true, DmState::Running) | (false, _) => PageCommand::new("pause", tr!("Pause downloads"), what.clone(), Icon::Pause)
+                    .keywords(tr!("hold queue epic"))
+                    .disabled(idle),
+                (true, _) => PageCommand::new("resume", tr!("Resume downloads"), what.clone(), Icon::PlayArrow)
+                    .keywords(tr!("continue start queue epic")),
             }
             .stay(),
         );
         v.push(
-            PageCommand::new("stop", "Stop the current download\u{2026}", what, Icon::Stop)
-                .keywords("cancel abort queue epic")
+            PageCommand::new("stop", tr!("Stop the current download\u{2026}"), what, Icon::Stop)
+                .keywords(tr!("cancel abort queue epic"))
                 .disabled(idle),
         );
         let updates = s.updates_count();
         v.push(
-            PageCommand::new("update-all", "Update all Epic games", format!("{updates} update(s) available"), Icon::Update)
-                .keywords("upgrade patch queue")
-                .disabled((updates == 0).then_some("No Epic updates available"))
-                .stay(),
+            PageCommand::new(
+                "update-all",
+                tr!("Update all Epic games"),
+                trn!(updates, "{n} update available", "{n} updates available"),
+                Icon::Update,
+            )
+            .keywords(tr!("upgrade patch queue"))
+            .disabled((updates == 0).then_some(tr!("No Epic updates available")))
+            .stay(),
         );
         v.push(
-            PageCommand::new("clear", "Clear completed downloads", "Empty the download history", Icon::DeleteOutline)
-                .keywords("history finished done")
-                .disabled(snap.finished.is_empty().then_some("No completed downloads"))
+            PageCommand::new("clear", tr!("Clear completed downloads"), tr!("Empty the download history"), Icon::DeleteOutline)
+                .keywords(tr!("history finished done"))
+                .disabled(snap.finished.is_empty().then_some(tr!("No completed downloads")))
                 .stay(),
         );
         v

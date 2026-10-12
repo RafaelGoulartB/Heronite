@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Result;
+use heronite_i18n::tr;
 use serde_json::Value;
 
 use crate::collection::{game_facets, GameFacets};
@@ -109,9 +110,9 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
             "gog" => return "GOG",
             "amazon" => return "Amazon",
             "xbox" => return "Xbox",
-            "emulator" => return "Emulator",
-            "manual" => return "Local",
-            "other" => return "Other",
+            "emulator" => return tr!("Emulator"),
+            "manual" => return tr!("Local"),
+            "other" => return tr!("Other"),
             _ => {}
         }
     }
@@ -119,7 +120,7 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
         "legendary" => "Epic",
         "gog" => "GOG",
         "nile" => "Amazon",
-        _ => "Local",
+        _ => tr!("Local"),
     }
 }
 

@@ -7,6 +7,7 @@ description = "Desktop / application-menu shortcuts and Steam non-Steam shortcut
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-i18n = { path = "../i18n" }
 anyhow = "1"
 log = "0.4"
 dirs = "6"

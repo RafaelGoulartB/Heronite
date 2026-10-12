@@ -9,6 +9,7 @@ use super::{
     SkipReason,
 };
 use crate::list::resolve_path;
+use heronite_i18n::tr;
 use signal_hook::consts::signal::SIGUSR2;
 use std::collections::HashMap;
 use std::path::Path;
@@ -177,7 +178,7 @@ impl CaptureService {
 
         if hyprland::is_hyprland_session() {
             let result = to_hyprland_binding(&accelerator)
-                .ok_or_else(|| format!("The shortcut {accelerator} is not supported by Hyprland"))
+                .ok_or_else(|| tr!("The shortcut {accelerator} is not supported by Hyprland", accelerator = &accelerator))
                 .and_then(|b| hyprland::register(&b, &accelerator, std::process::id()).map(|_| b));
             match result {
                 Ok(binding) => {
@@ -195,7 +196,7 @@ impl CaptureService {
         }
 
         let Some(trigger) = to_portal_trigger(&accelerator) else {
-            self.registration_failed(format!("The shortcut {accelerator} is unavailable"));
+            self.registration_failed(tr!("The shortcut {accelerator} is unavailable", accelerator = &accelerator));
             return;
         };
         let weak = Arc::downgrade(&self.inner);
@@ -252,7 +253,7 @@ impl CaptureService {
         };
         if notify {
             let m = &self.inner.options.messages;
-            feedback::notify(&m.shortcut_failed_title, &m.shortcut_failed_body.replace("{error}", &error));
+            feedback::notify(tr(&m.shortcut_failed_title), &tr(&m.shortcut_failed_body).replace("{error}", &error));
         }
         self.send(CaptureEvent::ShortcutError { error });
     }
@@ -287,10 +288,10 @@ impl CaptureService {
                 log::info!("Collection screenshot saved to {}", path.display());
                 self.send(CaptureEvent::Saved { app_name: game.app_name.clone(), runner: game.runner.clone(), path: path.clone() });
                 let m = &self.inner.options.messages;
-                if !feedback::show_osd(&m.saved_title, &game.title) {
+                if !feedback::show_osd(tr(&m.saved_title), &game.title) {
                     feedback::notify(
-                        &m.saved_title,
-                        &m.saved_body.replace("{game}", &game.title).replace("{path}", &path.to_string_lossy()),
+                        tr(&m.saved_title),
+                        &tr(&m.saved_body).replace("{game}", &game.title).replace("{path}", &path.to_string_lossy()),
                     );
                 }
                 CaptureOutcome::Saved(path)
@@ -298,7 +299,7 @@ impl CaptureService {
             Err(error) => {
                 log::error!("Collection screenshot capture failed: {error}");
                 let m = &self.inner.options.messages;
-                feedback::notify(&m.failed_title, &m.failed_body.replace("{error}", &error));
+                feedback::notify(tr(&m.failed_title), &tr(&m.failed_body).replace("{error}", &error));
                 self.send(CaptureEvent::Failed { error: error.clone() });
                 CaptureOutcome::Failed(error)
             }

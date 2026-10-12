@@ -10,6 +10,7 @@ use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::settings::METADATA_FIELDS;
+use heronite_i18n::{n_, tr};
 use heronite_metadata::{MetadataApplyArgs, MetadataPreview, MetadataSearchHit, MetadataService};
 
 use super::art_images::{chain_for_url, picture, DialogImages};
@@ -21,31 +22,31 @@ use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{input_box, new_input, select_field};
 
 pub const FETCH_SOURCES: [(&str, &str); 5] =
-    [("auto", "Auto (IGDB first)"), ("igdb", "IGDB"), ("steam", "Steam"), ("store", "Store"), ("lutris", "Lutris")];
+    [("auto", n_!("Auto (IGDB first)")), ("igdb", "IGDB"), ("steam", "Steam"), ("store", n_!("Store")), ("lutris", "Lutris")];
 
 pub fn field_label(field: &str) -> &'static str {
     match field {
-        "description" => "Description",
-        "releaseDate" => "Release date",
-        "developers" => "Developers",
-        "publishers" => "Publishers",
-        "genres" => "Genres",
-        "themes" => "Themes",
-        "gameModes" => "Game modes",
-        "platforms" => "Platforms",
-        "series" => "Series",
-        "features" => "Features",
-        "criticScore" => "Score",
-        "cover" => "Cover",
-        "hero" => "Background",
+        "description" => tr!("Description"),
+        "releaseDate" => tr!("Release date"),
+        "developers" => tr!("Developers"),
+        "publishers" => tr!("Publishers"),
+        "genres" => tr!("Genres"),
+        "themes" => tr!("Themes"),
+        "gameModes" => tr!("Game modes"),
+        "platforms" => tr!("Platforms"),
+        "series" => tr!("Series"),
+        "features" => tr!("Features"),
+        "criticScore" => tr!("Score"),
+        "cover" => tr!("Cover"),
+        "hero" => tr!("Background"),
         _ => "",
     }
 }
 
 fn source_label(source: &str) -> String {
-    FETCH_SOURCES.iter().find(|(id, _)| *id == source).map(|(_, l)| l.to_string()).unwrap_or_else(|| {
+    FETCH_SOURCES.iter().find(|(id, _)| *id == source).map(|(_, l)| tr(l).to_string()).unwrap_or_else(|| {
         if source == "manual" {
-            "Manual".into()
+            tr!("Manual").into()
         } else {
             source.to_string()
         }
@@ -108,7 +109,7 @@ impl MetadataDialog {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
-        let search = new_input(window, cx, &game.title, "Search IGDB title");
+        let search = new_input(window, cx, &game.title, tr!("Search IGDB title"));
         cx.subscribe_in(&search, window, |this, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::PressEnter { .. }) {
                 this.run_search(cx);
@@ -208,7 +209,7 @@ impl MetadataDialog {
             this.update(cx, |this, cx| {
                 this.busy = None;
                 if hits.is_empty() {
-                    this.error = "No IGDB matches. Check the title or add Twitch API credentials in Collection settings.".into();
+                    this.error = tr!("No IGDB matches. Check the title or add Twitch API credentials in Collection settings.").into();
                 }
                 this.hits = hits;
                 cx.notify();
@@ -257,7 +258,11 @@ impl MetadataDialog {
         let detail: AnyElement = if is_image {
             let chain = chain_for_url(&self.ctx.data_paths, self.ctx.lib.settings.screenshots_folder(), &value);
             if chain.is_empty() {
-                div().text_size(px(12.)).text_color(white()).child(if value.is_empty() { "Empty" } else { "Local file" }).into_any_element()
+                div()
+                    .text_size(px(12.))
+                    .text_color(white())
+                    .child(if value.is_empty() { tr!("Empty") } else { tr!("Local file") })
+                    .into_any_element()
             } else {
                 let (w, h) = if field == "cover" { (72., 108.) } else { (144., 54.) };
                 let src = self.images.update(cx, |im, _| im.get(&format!("md:{value}"), chain, w, h));
@@ -270,7 +275,7 @@ impl MetadataDialog {
                 .text_size(px(12.))
                 .line_height(px(16.2))
                 .text_color(white())
-                .child(if value.is_empty() { "Empty".to_string() } else { value })
+                .child(if value.is_empty() { tr!("Empty").to_string() } else { value })
                 .into_any_element()
         };
         let pick_id = id.clone();
@@ -318,10 +323,11 @@ impl MetadataDialog {
 
     fn render_source_row(&self, cx: &mut Context<Self>) -> Div {
         let busy = self.busy.is_some();
-        let sources: Vec<(SharedString, bool)> = FETCH_SOURCES.iter().map(|(id, label)| ((*label).into(), *id == self.source)).collect();
+        let sources: Vec<(SharedString, bool)> =
+            FETCH_SOURCES.iter().map(|(id, label)| (tr(label).to_string().into(), *id == self.source)).collect();
         let select = select_field(
             "md-source",
-            Some("Source"),
+            Some(tr!("Source")),
             source_label(&self.source),
             false,
             self.source_open,
@@ -342,7 +348,7 @@ impl MetadataDialog {
         div().flex().items_end().gap(px(8.)).child(div().w(px(200.)).child(select)).child(action_button(
             "md-fetch",
             ButtonKind::Primary,
-            if self.busy == Some(Busy::Preview) { "Fetching\u{2026}" } else { "Fetch" },
+            if self.busy == Some(Busy::Preview) { tr!("Fetching…") } else { tr!("Fetch") },
             !busy,
             cx.listener(|this, _, _, cx| this.run_preview(None, cx)),
         ))
@@ -353,7 +359,7 @@ impl MetadataDialog {
         div().flex().items_center().gap(px(8.)).child(div().flex_1().child(input_box(&self.search, false))).child(action_button(
             "md-search",
             ButtonKind::Glass,
-            if self.busy == Some(Busy::Search) { "Searching\u{2026}" } else { "Find on IGDB" },
+            if self.busy == Some(Busy::Search) { tr!("Searching…") } else { tr!("Find on IGDB") },
             !busy,
             cx.listener(|this, _, _, cx| this.run_search(cx)),
         ))
@@ -405,7 +411,7 @@ impl MetadataDialog {
             if !visible {
                 continue;
             }
-            let mut options = vec![("keep".to_string(), "Keep current".to_string(), format_value(current.as_ref(), field))];
+            let mut options = vec![("keep".to_string(), tr!("Keep current").to_string(), format_value(current.as_ref(), field))];
             for c in &preview.candidates {
                 let v = format_value(Some(&c.metadata), field);
                 if !v.is_empty() {
@@ -449,7 +455,7 @@ impl Render for MetadataDialog {
             .flex()
             .flex_col()
             .gap(px(16.))
-            .child(help_text("IGDB is tried first, then Steam, the store page and Lutris. Use this for games that are not on Steam."))
+            .child(help_text(tr!("IGDB is tried first, then Steam, the store page and Lutris. Use this for games that are not on Steam.")))
             .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(self.title.clone()));
         if self.preview.as_ref().is_some_and(|p| !p.igdb_configured) {
             body = body.child(
@@ -460,7 +466,7 @@ impl Render for MetadataDialog {
                     .bg(theme::accent_tint())
                     .text_size(px(13.))
                     .text_color(theme::text_primary())
-                    .child("IGDB is not configured. Add a Twitch Client ID and Secret in Collection settings for the richest data."),
+                    .child(tr!("IGDB is not configured. Add a Twitch Client ID and Secret in Collection settings for the richest data.")),
             );
         }
 
@@ -488,17 +494,17 @@ impl Render for MetadataDialog {
             .child(action_button(
                 "md-apply",
                 ButtonKind::Primary,
-                if self.busy == Some(Busy::Apply) { "Saving\u{2026}" } else { "Apply" },
+                if self.busy == Some(Busy::Apply) { tr!("Saving…") } else { tr!("Apply") },
                 !busy && self.preview.is_some(),
                 cx.listener(|this, _, _, cx| this.apply(cx)),
             ))
-            .child(button("md-close", ButtonKind::Glass, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
+            .child(button("md-close", ButtonKind::Glass, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
         let entity = cx.entity().downgrade();
         let (vw, vh) = (f32::from(window.viewport_size().width), f32::from(window.viewport_size().height));
         dialog(
             DialogProps {
                 id: "collection-metadata".into(),
-                title: "Collection metadata".into(),
+                title: tr!("Collection metadata").into(),
                 width: 840f32.min(vw * 0.9) + 64.,
                 height: Some(620f32.min(vh * 0.7)),
             },

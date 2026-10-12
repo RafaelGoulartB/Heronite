@@ -3,9 +3,10 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::super::DialogEvent;
-use super::{profiles_summary, DetectEmulatorsDialog};
+use super::{add_label, profiles_summary, DetectEmulatorsDialog};
 use crate::console::browser::PickKind;
 use crate::console::kit::{self, u};
 use crate::console::layers::{open_browser, HasLayer};
@@ -27,7 +28,7 @@ impl DetectEmulatorsDialog {
 
     /// Opens the console browser; the folder picked is searched for emulators.
     pub fn console_pick_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        open_browser(&mut self.layer, "Folder with emulators", PickKind::Folder, None, window, cx, |this: &mut Self, p, _, cx| {
+        open_browser(&mut self.layer, tr!("Folder with emulators"), PickKind::Folder, None, window, cx, |this: &mut Self, p, _, cx| {
             this.scan_folder(p.display().to_string(), cx);
         });
     }
@@ -35,17 +36,19 @@ impl DetectEmulatorsDialog {
     fn console_rows(&self) -> Vec<Row> {
         let busy = self.busy();
         let selected = self.selected_count();
-        let mut rows =
-            vec![Row::action("folder", if self.folder_scanning.is_some() { "Searching\u{2026}" } else { "Scan a folder\u{2026}" })
-                .desc("Searches a folder you pick, for example your Emulation folder")
-                .icon(Icon::FolderOpen)
-                .enabled(!busy)];
+        let mut rows = vec![Row::action(
+            "folder",
+            if self.folder_scanning.is_some() { tr!("Searching\u{2026}") } else { tr!("Scan a folder\u{2026}") },
+        )
+        .desc(tr!("Searches a folder you pick, for example your Emulation folder"))
+        .icon(Icon::FolderOpen)
+        .enabled(!busy)];
         if self.rows.iter().any(|r| !r.item.already_added) {
-            rows.push(Row::action("all", "Select all").icon(Icon::Check));
-            rows.push(Row::action("none", "Select none").icon(Icon::Close));
+            rows.push(Row::action("all", tr!("Select all")).icon(Icon::Check));
+            rows.push(Row::action("none", tr!("Select none")).icon(Icon::Close));
         }
         if !self.rows.is_empty() {
-            rows.push(Row::header("Found"));
+            rows.push(Row::header(tr!("Found")));
         }
         for (i, r) in self.rows.iter().enumerate() {
             let loc = if r.item.launch_kind == "flatpak" {
@@ -56,30 +59,19 @@ impl DetectEmulatorsDialog {
             let desc = format!("{loc}  \u{b7}  {}", profiles_summary(&r.item));
             let id = format!("d:{i}");
             rows.push(if r.item.already_added {
-                Row::info(id, r.item.name.clone(), "Already added").desc(desc)
+                Row::info(id, r.item.name.clone(), tr!("Already added")).desc(desc)
             } else {
                 Row::toggle(id, r.item.name.clone(), r.selected).desc(desc)
             });
         }
-        rows.push(
-            Row::action("add", if self.adding { "Adding\u{2026}".to_string() } else { format!("Add {selected} emulator(s)") })
-                .enabled(selected > 0 && !busy),
-        );
-        rows.push(Row::action("close", "Close"));
+        rows.push(Row::action("add", add_label(self.adding, selected)).enabled(selected > 0 && !busy));
+        rows.push(Row::action("close", tr!("Close")));
         rows
     }
 
     pub(super) fn render_console(&mut self) -> AnyElement {
         let rows = self.console_rows();
-        let status = if self.scanning {
-            "Looking in PATH, Flatpak and the usual folders\u{2026}".to_string()
-        } else if let Some(f) = &self.folder_scanning {
-            format!("Searching {f}\u{2026}")
-        } else if self.rows.is_empty() {
-            "No emulators found automatically. Scan a folder that contains them (for example your Emulation folder).".to_string()
-        } else {
-            format!("{} found, {} not added yet.", self.rows.len(), self.rows.iter().filter(|r| !r.item.already_added).count())
-        };
+        let status = self.status_text();
         let mut body = div().flex().flex_col().flex_1().min_h_0().gap(u(8.)).child(kit::body_text(status));
         if !self.error.is_empty() {
             body = body.child(kit::body_text(self.error.clone()).text_color(theme::danger_text()));
@@ -88,7 +80,7 @@ impl DetectEmulatorsDialog {
         div()
             .absolute()
             .inset_0()
-            .child(kit::modal("Detect emulators", 820., body.child(list.flex_1().min_h_0())))
+            .child(kit::modal(tr!("Detect emulators"), 820., body.child(list.flex_1().min_h_0())))
             .children(self.layer.view())
             .into_any_element()
     }
@@ -136,11 +128,11 @@ impl PadTarget for DetectEmulatorsDialog {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        let mut h = vec![hint(Btn::A, "Select")];
+        let mut h = vec![hint(Btn::A, tr!("Select"))];
         if self.selected_count() > 0 && !self.busy() {
-            h.push(hint(Btn::Y, format!("Add {}", self.selected_count())));
+            h.push(hint(Btn::Y, tr!("Add {n}", n = self.selected_count())));
         }
-        h.push(hint(Btn::B, "Close"));
+        h.push(hint(Btn::B, tr!("Close")));
         h
     }
 }

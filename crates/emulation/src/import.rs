@@ -10,6 +10,7 @@ use anyhow::Result;
 use heronite_data::models::{CollectionGameMetadata, LocalGameMeta, LocalGameRom, LocalMetaFile, MetadataFile};
 use heronite_data::status::{inferred_status_id, load_statuses};
 use heronite_data::{json_store, DataPaths};
+use heronite_i18n::tr;
 use serde_json::{json, Value};
 
 use crate::pathutil::{dirname, normalize_key};
@@ -84,11 +85,11 @@ fn seed_platforms(file: &mut MetadataFile, app_name: &str, platform_name: Option
 pub fn import_scanned_roms(paths: &DataPaths, args: &RomScanImportArgs) -> Result<RomScanImportResult> {
     let mut result = RomScanImportResult { scanner_id: args.scanner_id.clone().unwrap_or_default(), ..Default::default() };
     let Some(emulator) = store::get_user_emulator(paths, &args.emulator_id)? else {
-        result.errors.push("Emulator not found.".into());
+        result.errors.push(tr!("Emulator not found.").into());
         return Ok(result);
     };
     let Some(profile) = emulator.profile(&args.profile_id).cloned() else {
-        result.errors.push("Emulator profile not found.".into());
+        result.errors.push(tr!("Emulator profile not found.").into());
         return Ok(result);
     };
     let template = resolve_template(&emulator, &profile);

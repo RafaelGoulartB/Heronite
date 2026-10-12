@@ -4,6 +4,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use heronite_data::proc::Run;
+use heronite_i18n::tr;
 
 pub const LUDUSAVI_TIMEOUT: Duration = Duration::from_secs(180);
 
@@ -43,7 +44,7 @@ impl CommandRunner for SystemRunner {
         cmd.args(args).env("PATH", path);
         let out = Run::new().timeout(self.timeout).grace(Duration::from_secs(2)).run(&mut cmd).map_err(|e| e.to_string())?;
         if out.timed_out {
-            return Err(format!("{binary} timed out after {}s", self.timeout.as_secs()));
+            return Err(tr!("{binary} timed out after {seconds}s", seconds = self.timeout.as_secs()));
         }
         Ok(CommandOutput { stdout: out.stdout_text(), stderr: out.stderr_text(), code: out.code.unwrap_or(1) })
     }

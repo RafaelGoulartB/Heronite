@@ -4,6 +4,7 @@
 use anyhow::{bail, Result};
 use heronite_data::json_store;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -111,18 +112,21 @@ pub fn extract_code(input: &str) -> Option<String> {
 
 /// `legendary auth --code`; on success mirrors the account into the config.
 pub fn login(data_paths: &DataPaths, legendary: &Legendary, input: &str) -> Result<UserInfo> {
-    let Some(code) = extract_code(input) else { bail!("That does not look like an authorization code") };
+    let Some(code) = extract_code(input) else { bail!(tr!("That does not look like an authorization code")) };
     if code.len() < 30 {
-        bail!("That does not look like an authorization code");
+        bail!(tr!("That does not look like an authorization code"));
     }
     let out = legendary.run(&["auth", "--code", &code], &[])?;
     if out.stderr.contains("ERROR: Logging in ") || !out.success() {
         let why = out.error_lines();
-        bail!("Failed to login with Legendary{}", if why.is_empty() { String::new() } else { format!(": {why}") });
+        if why.is_empty() {
+            bail!(tr!("Failed to login with Legendary"));
+        }
+        bail!(tr!("Failed to login with Legendary: {error}", error = why));
     }
     match sync_user_info(data_paths)? {
         Some(info) => Ok(info),
-        None => bail!("Logged in, but the account information could not be read"),
+        None => bail!(tr!("Logged in, but the account information could not be read")),
     }
 }
 
@@ -130,7 +134,7 @@ pub fn login(data_paths: &DataPaths, legendary: &Legendary, input: &str) -> Resu
 pub fn logout(data_paths: &DataPaths, legendary: &Legendary) -> Result<()> {
     let out = legendary.run(&["auth", "--delete"], &[])?;
     if !out.success() {
-        bail!("Failed to logout: {}", out.error_lines());
+        bail!(tr!("Failed to logout: {error}", error = out.error_lines()));
     }
     remove_stored_user_info(data_paths)?;
     clear_caches(data_paths, legendary);

@@ -1,6 +1,8 @@
 //! The sections of the Settings page: labels, navigation groups, palette
 //! keywords and the `HERONITE_DEBUG_PAGE` names.
 
+use heronite_i18n::{n_, tr};
+
 use crate::dialogs::settings_panel::GlobalView;
 use crate::icons::Icon;
 
@@ -20,12 +22,12 @@ pub enum Section {
 }
 
 impl Section {
-    /// Left navigation: caption + sections.
+    /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 4] = [
-        ("App", &[Section::General, Section::Appearance, Section::Advanced]),
-        ("Games", &[Section::GameDefaults, Section::Downloads, Section::Library]),
-        ("Collection", &[Section::Metadata, Section::Screenshots, Section::Backups]),
-        ("Help", &[Section::Logs, Section::About]),
+        (n_!("App"), &[Section::General, Section::Appearance, Section::Advanced]),
+        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Library]),
+        (n_!("Collection"), &[Section::Metadata, Section::Screenshots, Section::Backups]),
+        (n_!("Help"), &[Section::Logs, Section::About]),
     ];
 
     /// Same order as [`Section::GROUPS`].
@@ -45,17 +47,17 @@ impl Section {
 
     pub fn label(self) -> &'static str {
         match self {
-            Section::General => "General",
-            Section::Appearance => "Appearance",
-            Section::Advanced => "Advanced",
-            Section::GameDefaults => "Game defaults",
-            Section::Downloads => "Downloads",
-            Section::Library => "Library",
-            Section::Metadata => "Metadata",
-            Section::Screenshots => "Screenshots",
-            Section::Backups => "Backups",
-            Section::Logs => "Logs",
-            Section::About => "About",
+            Section::General => tr!("General"),
+            Section::Appearance => tr!("Appearance"),
+            Section::Advanced => tr!("Advanced"),
+            Section::GameDefaults => tr!("Game defaults"),
+            Section::Downloads => tr!("Downloads"),
+            Section::Library => tr!("Library"),
+            Section::Metadata => tr!("Metadata"),
+            Section::Screenshots => tr!("Screenshots"),
+            Section::Backups => tr!("Backups"),
+            Section::Logs => tr!("Logs"),
+            Section::About => tr!("About"),
         }
     }
 
@@ -78,34 +80,34 @@ impl Section {
     /// Short description under the section title.
     pub(super) fn blurb(self) -> &'static str {
         match self {
-            Section::General => "Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically.",
-            Section::Appearance => "Two independent looks: the artwork behind the Collection, and the background of menus, dialogs and pages (glass or solid).",
-            Section::Advanced => "Logs, folders and cache.",
-            Section::GameDefaults => "Values new games start with. Settings of an installed game are changed from its own Settings.",
-            Section::Downloads => "Epic downloads and updates.",
-            Section::Library => "What the Collection shows: hidden games, favourites and recent games.",
-            Section::Metadata => "Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags.",
-            Section::Screenshots => "Where your captures live, the in-game shortcut and the preview cache of the gallery.",
-            Section::Backups => "Save backups with Ludusavi after you close a game, and a scheduled copy of the data folder.",
-            Section::Logs => "The logs of this app, the runners and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs).",
-            Section::About => "Updates, this app's data folders and the system it runs on.",
+            Section::General => tr!("Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically."),
+            Section::Appearance => tr!("Two independent looks: the artwork behind the Collection, and the background of menus, dialogs and pages (glass or solid)."),
+            Section::Advanced => tr!("Logs, folders and cache."),
+            Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
+            Section::Downloads => tr!("Epic downloads and updates."),
+            Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
+            Section::Metadata => tr!("Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags."),
+            Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),
+            Section::Backups => tr!("Save backups with Ludusavi after you close a game, and a scheduled copy of the data folder."),
+            Section::Logs => tr!("The logs of this app, the runners and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs)."),
+            Section::About => tr!("Updates, this app's data folders and the system it runs on."),
         }
     }
 
     /// Extra words the command palette matches.
     pub fn keywords(self) -> &'static str {
         match self {
-            Section::General => "folders tray shortcuts wine proton language theme",
-            Section::Appearance => "background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection",
-            Section::Advanced => "cache folders copy settings",
-            Section::GameDefaults => "defaults wine prefix gamescope launch options new games",
-            Section::Downloads => "epic updates install",
-            Section::Library => "hidden favourites favorites recent",
-            Section::Metadata => "igdb twitch steam lutris covers fill download images priority",
-            Section::Screenshots => "capture shortcut hotkey folder thumbnails cache gallery",
-            Section::Backups => "ludusavi saves backup config copy schedule zip compression",
-            Section::Logs => "log viewer debug",
-            Section::About => "version system info update upgrade new release changelog",
+            Section::General => "general folders tray shortcuts wine proton language theme geral pastas bandeja atalhos idioma tema",
+            Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao",
+            Section::Advanced => "advanced cache folders copy settings avancado pastas copiar configuracoes",
+            Section::GameDefaults => "game defaults wine prefix gamescope launch options new games padroes dos jogos prefixo opcoes de inicializacao novos jogos",
+            Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
+            Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
+            Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
+            Section::Screenshots => "screenshots capture shortcut hotkey folder thumbnails cache gallery capturas de tela atalho pasta miniaturas galeria",
+            Section::Backups => "backups ludusavi saves backup config copy schedule zip compression salvamentos copia agendar agendamento compressao",
+            Section::Logs => "logs log viewer debug registros visualizador depurar",
+            Section::About => "about version system info update upgrade new release changelog sobre versao sistema atualizacao atualizar novidades",
         }
     }
 

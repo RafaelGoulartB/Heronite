@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::{json_store, temps, DataPaths};
+use heronite_i18n::tr;
 use serde_json::{json, Value};
 
 use crate::cmd::Cancel;
@@ -173,7 +174,7 @@ fn download(url: &str, dest: &Path, cancel: &Cancel, on_progress: &mut dyn FnMut
         }
         file.flush()?;
         if total > 0 && got < total {
-            bail!("connection closed after {got} of {total} bytes");
+            bail!(tr!("connection closed after {got} of {total} bytes", got, total));
         }
         on_progress(progress(got, total.max(got), started.elapsed()));
         Ok(())

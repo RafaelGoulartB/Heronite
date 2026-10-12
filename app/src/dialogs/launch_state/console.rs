@@ -4,6 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::LaunchStateDialog;
 use crate::console::kit::{self, u};
@@ -70,24 +71,22 @@ impl LaunchStateDialog {
         let fg: Hsla = if on { theme::console_on_focus().into() } else { theme::text_primary().into() };
         list = list.child(
             kit::row_base(on).py(u(8.)).child(thumb(icon(Icon::Replay, u(32.), white()).into_any_element())).child(
-                div().flex().flex_col().min_w_0().child(div().text_size(u(19.)).text_color(fg).child("Start from the beginning")).child(
-                    div()
-                        .text_size(u(14.))
-                        .text_color(Hsla { a: 0.7, ..fg })
-                        .child("Boot the game normally. In-game saves on memory cards are kept."),
-                ),
+                div()
+                    .flex()
+                    .flex_col()
+                    .min_w_0()
+                    .child(div().text_size(u(19.)).text_color(fg).child(tr!("Start from the beginning")))
+                    .child(
+                        div()
+                            .text_size(u(14.))
+                            .text_color(Hsla { a: 0.7, ..fg })
+                            .child(tr!("Boot the game normally. In-game saves on memory cards are kept.")),
+                    ),
             ),
         );
-        let who = if self.emulator.is_empty() { "The emulator" } else { &self.emulator };
-        let body = div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h_0()
-            .gap(u(12.))
-            .child(kit::body_text(format!("{who} has save states for {}. Continue from one or start from the beginning.", self.title)))
-            .child(list.flex_1().min_h_0());
-        kit::modal("How do you want to play?", 760., body).into_any_element()
+        let body =
+            div().flex().flex_col().flex_1().min_h_0().gap(u(12.)).child(kit::body_text(self.intro())).child(list.flex_1().min_h_0());
+        kit::modal(tr!("How do you want to play?"), 760., body).into_any_element()
     }
 }
 
@@ -103,6 +102,6 @@ impl PadTarget for LaunchStateDialog {
     }
 
     fn hints(&self, _: &App) -> Vec<Hint> {
-        vec![hint(Btn::A, if self.selected.is_none() { "Start" } else { "Continue" }), hint(Btn::B, "Cancel")]
+        vec![hint(Btn::A, if self.selected.is_none() { tr!("Start") } else { tr!("Continue") }), hint(Btn::B, tr!("Cancel"))]
     }
 }

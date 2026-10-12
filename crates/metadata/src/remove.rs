@@ -17,6 +17,7 @@ use heronite_data::models::{LocalMetaFile, SessionsFile};
 use heronite_data::paths::DataPaths;
 use heronite_data::text::sanitize_filename;
 use heronite_data::{config_games, json_store};
+use heronite_i18n::{n_, tr};
 use serde_json::Value;
 
 use crate::art::remove_all_collection_game_art;
@@ -24,7 +25,8 @@ use crate::images::remove_metadata_art;
 use crate::store::delete_game_metadata;
 
 /// Message of the refusal for stores other than the Local Collection.
-pub const ONLY_LOCAL_MESSAGE: &str = "Only Local Collection games can be removed from here";
+/// English; shown through [`tr`].
+pub const ONLY_LOCAL_MESSAGE: &str = n_!("Only Local Collection games can be removed from here");
 
 /// Where the shortcuts live (`app.getPath('desktop')` and `$HOME`).
 #[derive(Debug, Clone)]
@@ -94,7 +96,7 @@ pub struct RemoveOutcome {
 /// `removeCollectionGame` + the renderer follow-up (hidden, favourites).
 pub fn remove_collection_game(paths: &DataPaths, shortcuts: &ShortcutDirs, app_name: &str, runner: &str) -> Result<RemoveOutcome> {
     if runner != "sideload" {
-        bail!(ONLY_LOCAL_MESSAGE);
+        bail!(tr(ONLY_LOCAL_MESSAGE).to_string());
     }
     let mut outcome = RemoveOutcome::default();
 

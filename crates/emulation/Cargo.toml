@@ -8,6 +8,7 @@ description = "ROM scanning, emulator manager, disc ids, save states, Ludusavi a
 [dependencies]
 heronite-data = { path = "../data" }
 heronite-launch = { path = "../launch" }
+heronite-i18n = { path = "../i18n" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"

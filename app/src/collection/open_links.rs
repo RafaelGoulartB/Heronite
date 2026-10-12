@@ -13,6 +13,7 @@ use heronite_launch::steam::SteamLocator;
 use heronite_launch::SystemProbe;
 
 use super::CollectionView;
+use heronite_i18n::tr;
 
 pub(super) fn protondb_url(steam_app_id: &str) -> String {
     format!("https://www.protondb.com/app/{steam_app_id}")
@@ -29,9 +30,9 @@ pub(super) enum FolderKind {
 impl FolderKind {
     pub fn label(self) -> &'static str {
         match self {
-            FolderKind::Install => "Installation Folder",
-            FolderKind::Emulator => "Emulator Folder",
-            FolderKind::Rom => "ROM Folder",
+            FolderKind::Install => tr!("Installation Folder"),
+            FolderKind::Emulator => tr!("Emulator Folder"),
+            FolderKind::Rom => tr!("ROM Folder"),
         }
     }
 }
@@ -96,7 +97,7 @@ impl CollectionView {
                     .find(|(k, _)| *k != FolderKind::Emulator)
                     .or(folders.first())
                     .map(|(_, d)| d.clone())
-                    .ok_or_else(|| "The install folder was not found on this computer.".to_string())?;
+                    .ok_or_else(|| tr!("The install folder was not found on this computer.").to_string())?;
                 xdg_open(&dir)
             },
             cx,
@@ -129,7 +130,7 @@ fn xdg_open(target: impl AsRef<OsStr>) -> Result<(), String> {
     let target = target.as_ref();
     match Command::new("xdg-open").arg(target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
         Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(format!("Could not open {}: xdg-open exited with {s}", target.to_string_lossy())),
-        Err(err) => Err(format!("Could not open {}: {err}", target.to_string_lossy())),
+        Ok(s) => Err(tr!("Could not open {target}: xdg-open exited with {s}", target = target.to_string_lossy(), s)),
+        Err(err) => Err(tr!("Could not open {target}: {err}", target = target.to_string_lossy(), err)),
     }
 }

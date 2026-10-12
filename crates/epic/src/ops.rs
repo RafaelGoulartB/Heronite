@@ -7,6 +7,7 @@ use std::path::Path;
 use anyhow::{bail, Result};
 use heronite_data::game_config;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use serde_json::{json, Value};
 
 use crate::cmd::{Cancel, Legendary, Output};
@@ -124,7 +125,7 @@ impl LegendaryJob {
             }
             Ok(out) => {
                 let why = out.error_lines();
-                JobResult::error(if why.is_empty() { format!("legendary exited with {:?}", out.code) } else { why })
+                JobResult::error(if why.is_empty() { tr!("legendary exited with {code}", code = format!("{:?}", out.code)) } else { why })
             }
         }
     }
@@ -136,7 +137,11 @@ impl LegendaryJob {
             if cancel.is_requested() {
                 return JobResult::abort();
             }
-            return JobResult::error(format!("Could not download the {} installer: {err:#}", provider.label()));
+            return JobResult::error(tr!(
+                "Could not download the {store} installer: {error}",
+                store = provider.label(),
+                error = format!("{err:#}")
+            ));
         }
         let platform = if el.params.platform_to_install.is_empty() { "Windows" } else { el.params.platform_to_install.as_str() };
         if let Err(err) = third_party::add_installed(&self.data_paths, &el.params.app_name, platform) {
@@ -208,10 +213,10 @@ pub fn repair(
     });
     match out {
         Err(err) => OpResult::err(format!("{err:#}")),
-        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, message: "Cancelled".into() },
+        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, message: tr!("Cancelled").into() },
         Ok(out) if out.success() => {
             let _ = library::write_library(data_paths);
-            OpResult::ok("Finished repairing")
+            OpResult::ok(tr!("Finished repairing"))
         }
         Ok(out) => OpResult::err(out.error_lines()),
     }
@@ -226,7 +231,7 @@ pub fn uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) 
         return match third_party::remove_installed(data_paths, app_name) {
             Ok(_) => {
                 let _ = library::write_library(data_paths);
-                OpResult::ok("Uninstalled")
+                OpResult::ok(tr!("Uninstalled"))
             }
             Err(err) => OpResult::err(format!("{err:#}")),
         };
@@ -235,7 +240,7 @@ pub fn uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) 
         Err(err) => OpResult::err(format!("{err:#}")),
         Ok(out) if out.success() => {
             let _ = library::write_library(data_paths);
-            OpResult::ok("Uninstalled")
+            OpResult::ok(tr!("Uninstalled"))
         }
         Ok(out) => OpResult::err(out.error_lines()),
     }
@@ -247,7 +252,7 @@ pub fn force_uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: 
         Err(err) => OpResult::err(format!("{err:#}")),
         Ok(out) if out.success() => {
             let _ = library::write_library(data_paths);
-            OpResult::ok("Removed from the installed games")
+            OpResult::ok(tr!("Removed from the installed games"))
         }
         Ok(out) => OpResult::err(out.error_lines()),
     }
@@ -256,7 +261,7 @@ pub fn force_uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: 
 /// `importGame`: tells legendary an existing folder is the install of a game.
 pub fn import_game(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, folder: &str, platform: &str) -> OpResult {
     if !Path::new(folder).is_dir() {
-        return OpResult::err("The folder does not exist");
+        return OpResult::err(tr!("The folder does not exist"));
     }
     let args = ["import", app_name, folder, "--with-dlcs", "--platform", platform];
     match legendary.run(&args, &[]) {
@@ -265,7 +270,7 @@ pub fn import_game(data_paths: &DataPaths, legendary: &Legendary, app_name: &str
             let errors: Vec<&str> = out.stderr.lines().filter(|l| l.contains("ERROR:")).collect();
             if out.success() && errors.is_empty() {
                 let _ = library::write_library(data_paths);
-                OpResult::ok("Game imported")
+                OpResult::ok(tr!("Game imported"))
             } else {
                 OpResult::err(if errors.is_empty() { out.error_lines() } else { errors.join("\n") })
             }
@@ -357,7 +362,7 @@ impl JobResult {
 /// Convenience: errors if legendary is not logged in.
 pub fn ensure_logged_in(data_paths: &DataPaths) -> Result<()> {
     if !crate::user::is_logged_in(data_paths) {
-        bail!("Log in to your Epic account first");
+        bail!(tr!("Log in to your Epic account first"));
     }
     Ok(())
 }

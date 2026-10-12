@@ -14,6 +14,7 @@ use heronite_launch::SystemProbe;
 
 use super::CollectionView;
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog, Toggle};
+use heronite_i18n::tr;
 
 /// What the uninstall needs, read from the library on the UI thread.
 #[derive(Clone)]
@@ -93,39 +94,42 @@ fn job_for(lib: &Library, game: &CollectionGame) -> Job {
 fn confirm_spec(job: &Job, plan: &UninstallPlan) -> Confirm {
     let mut spec = Confirm::new(
         "local-uninstall",
-        "Uninstall",
-        format!(
-            "Do you want to uninstall \"{}\"?\nIt stays in Collection with its playtime and status, marked as not installed.",
-            job.title
+        tr!("Uninstall"),
+        tr!(
+            "Do you want to uninstall \"{title}\"?\nIt stays in Collection with its playtime and status, marked as not installed.",
+            title = job.title
         ),
     );
     match &plan.files {
         Some(t) => {
             spec.toggles.push(Toggle {
-                label: "Delete the game files".into(),
+                label: tr!("Delete the game files").into(),
                 value: t.removable(),
                 disabled: false,
                 note: Some(match &t.blocked {
                     Some(why) => why.clone(),
-                    None => "Everything in the folder below is deleted. This can't be undone.".into(),
+                    None => tr!("Everything in the folder below is deleted. This can't be undone.").into(),
                 }),
             });
-            spec.path = Some(("Game folder".into(), t.path.display().to_string(), "Choose the game folder".into()));
+            spec.path = Some((tr!("Game folder").into(), t.path.display().to_string(), tr!("Choose the game folder").into()));
         }
-        None => spec.message.push_str("\nThe game folder was not found on this computer."),
+        None => {
+            spec.message.push('\n');
+            spec.message.push_str(tr!("The game folder was not found on this computer."));
+        }
     }
     if let Some(t) = &plan.prefix {
         spec.toggles.push(Toggle {
-            label: format!("Remove prefix: {}", t.path.display()),
+            label: tr!("Remove prefix: {path}", path = t.path.display()),
             value: t.removable(),
             disabled: !t.removable(),
             note: Some(match &t.blocked {
                 Some(why) => why.clone(),
-                None => "Only this game uses it. Save files that are not backed up are lost.".into(),
+                None => tr!("Only this game uses it. Save files that are not backed up are lost.").into(),
             }),
         });
     }
-    spec.confirm = Some("Uninstall".into());
+    spec.confirm = Some(tr!("Uninstall").into());
     spec.danger = true;
     spec
 }
@@ -137,7 +141,7 @@ impl CollectionView {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = lib.get(key).cloned() else { return };
         if self.playing.contains_key(&game.app_name) {
-            self.show_toast(format!("{} is running. Close the game to uninstall it.", game.title), true, cx);
+            self.show_toast(tr!("{title} is running. Close the game to uninstall it.", title = game.title), true, cx);
             return;
         }
         let job = job_for(&lib, &game);
@@ -201,9 +205,9 @@ impl CollectionView {
                 match result {
                     Ok(out) => {
                         log::info!("uninstalled {title}: {out:?}");
-                        this.show_toast(format!("{title} was uninstalled"), false, cx);
+                        this.show_toast(tr!("{title} was uninstalled", title), false, cx);
                     }
-                    Err(err) => this.show_toast(format!("Could not uninstall {title}: {err}"), true, cx),
+                    Err(err) => this.show_toast(tr!("Could not uninstall {title}: {err}", title, err), true, cx),
                 }
                 this.reload(cx);
             })

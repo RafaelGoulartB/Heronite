@@ -13,6 +13,7 @@ use crate::console::list::{Outcome, Row, Value};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::theme;
+use heronite_i18n::tr;
 
 impl EpicConfirmDialog {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
@@ -29,7 +30,7 @@ impl EpicConfirmDialog {
         }
         match &self.spec.confirm {
             Some(label) => {
-                rows.push(Row::action("cancel", "Cancel"));
+                rows.push(Row::action("cancel", tr!("Cancel")));
                 if let Some((label, _)) = &self.spec.secondary {
                     rows.push(Row::action("secondary", label.clone()));
                 }
@@ -37,7 +38,7 @@ impl EpicConfirmDialog {
                 let r = Row::action("confirm", label.clone()).enabled(ready);
                 rows.push(if self.spec.danger { r.danger() } else { r });
             }
-            None => rows.push(Row::action("cancel", "Close")),
+            None => rows.push(Row::action("cancel", tr!("Close"))),
         }
         rows
     }
@@ -96,7 +97,7 @@ impl PadTarget for EpicConfirmDialog {
                 "confirm" => self.confirm(cx),
                 "path" => {
                     let start = self.path_input.as_ref().map(|i| std::path::PathBuf::from(i.read(cx).value().to_string()));
-                    let browser = cx.new(|cx| Browser::new("Choose a folder", PickKind::Folder, start.as_deref(), cx));
+                    let browser = cx.new(|cx| Browser::new(tr!("Choose a folder"), PickKind::Folder, start.as_deref(), cx));
                     let sub = cx.subscribe_in(&browser, window, |this, _, ev: &BrowserEvent, window, cx| {
                         if let BrowserEvent::Picked(p) = ev {
                             if let Some(input) = this.path_input.clone() {
@@ -122,6 +123,6 @@ impl PadTarget for EpicConfirmDialog {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, "Select"), hint(Btn::B, "Cancel")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Cancel"))]
     }
 }

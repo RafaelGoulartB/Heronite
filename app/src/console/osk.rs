@@ -9,6 +9,7 @@ use gpui_kit::*;
 use super::kit::{self, u};
 use super::{hint, Btn, Hint, Pad, PadTarget};
 use crate::theme;
+use heronite_i18n::{n_, tr, trc};
 
 pub enum OskEvent {
     Done(String),
@@ -17,7 +18,7 @@ pub enum OskEvent {
 
 const ROWS: [&str; 5] = ["1234567890", "qwertyuiop", "asdfghjkl'", "zxcvbnm,.-", "/:?=&_%#+@"];
 /// Bottom row: Shift, Space, Delete, Done.
-const SPECIAL: [&str; 4] = ["Shift", "Space", "\u{232b}", "Done"];
+const SPECIAL: [&str; 4] = [n_!("Shift"), n_!("Space"), "\u{232b}", n_!("Done")];
 const SPECIAL_ROW: usize = ROWS.len();
 
 pub struct Osk {
@@ -135,12 +136,12 @@ impl PadTarget for Osk {
 
     fn hints(&self, _: &App) -> Vec<Hint> {
         vec![
-            hint(Btn::A, "Type"),
-            hint(Btn::X, "Delete"),
-            hint(Btn::Y, "Space"),
-            hint(Btn::LT, "Shift"),
-            hint(Btn::Start, "Done"),
-            hint(Btn::B, "Cancel"),
+            hint(Btn::A, tr!("Type")),
+            hint(Btn::X, trc!("keyboard", "Delete")),
+            hint(Btn::Y, tr!("Space")),
+            hint(Btn::LT, tr!("Shift")),
+            hint(Btn::Start, tr!("Done")),
+            hint(Btn::B, tr!("Cancel")),
         ]
     }
 }
@@ -170,7 +171,7 @@ impl Render for Osk {
         }
         grid = grid.child(div().flex().gap(u(8.)).children(SPECIAL.iter().enumerate().map(|(i, label)| {
             let wide = if i == 1 { 300. } else { 110. };
-            key(label.to_string(), self.row == SPECIAL_ROW && self.col == i, wide, i == 0 && self.shift)
+            key(tr(label).to_string(), self.row == SPECIAL_ROW && self.col == i, wide, i == 0 && self.shift)
         })));
         let field = div()
             .flex()

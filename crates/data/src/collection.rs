@@ -6,11 +6,12 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 use crate::library::CollectionGame;
 use crate::models::{CollectionGameMetadata, CompletionStatus, GameInfo};
-use crate::status::{resolve_status_id, status_color, UNKNOWN_GROUP_ID};
+use crate::status::{resolve_status_id, status_color, status_label, UNKNOWN_GROUP_ID};
 use crate::text::{facet_key, locale_cmp, locale_cmp_base, split_names, unique_names};
 
 pub type Game = Arc<CollectionGame>;
@@ -369,9 +370,6 @@ impl StatusGroup {
     }
 }
 
-/// Name of the extra group (`collection.ungrouped`).
-pub const OTHER_GROUP_NAME: &str = "Other";
-
 /// `grouped` + the render loop of `index.tsx`: one group per status in
 /// `statuses` order (empty ones omitted), then "Other" for games whose status
 /// id matches no status. Games keep the order of `filtered`. `statuses` must
@@ -398,14 +396,14 @@ pub fn group_by_status(filtered: &[Game], statuses: &[CompletionStatus]) -> Vec<
         }
         groups.push(StatusGroup {
             id: status.id.clone(),
-            name: status.name.clone(),
+            name: status_label(&status.name).to_string(),
             slug: Some(status.slug.clone()),
             color: status_color(&status.slug),
             games: std::mem::take(&mut buckets[i]),
         });
     }
     if !unknown.is_empty() {
-        groups.push(StatusGroup { id: UNKNOWN_GROUP_ID.into(), name: OTHER_GROUP_NAME.into(), slug: None, color: None, games: unknown });
+        groups.push(StatusGroup { id: UNKNOWN_GROUP_ID.into(), name: tr!("Other").into(), slug: None, color: None, games: unknown });
     }
     groups
 }
@@ -474,13 +472,13 @@ pub fn related_games_for(current: &CollectionGame, games: &[Game]) -> Vec<Relate
 /// `formatPlaytimeMinutes`: `0m`, `45m`, `2h`, `2h 5m`.
 pub fn format_playtime_minutes(minutes: u64) -> String {
     if minutes == 0 {
-        return "0m".into();
+        return tr!("0m").into();
     }
     let (hours, mins) = (minutes / 60, minutes % 60);
     match (hours, mins) {
-        (0, m) => format!("{m}m"),
-        (h, 0) => format!("{h}h"),
-        (h, m) => format!("{h}h {m}m"),
+        (0, m) => tr!("{m}m", m),
+        (h, 0) => tr!("{h}h", h),
+        (h, m) => tr!("{h}h {m}m", h, m),
     }
 }
 
@@ -489,7 +487,7 @@ pub fn playtime_label(minutes: u64) -> String {
     if minutes > 0 {
         format_playtime_minutes(minutes)
     } else {
-        "Not Played".into()
+        tr!("Not Played").into()
     }
 }
 

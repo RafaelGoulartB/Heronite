@@ -4,8 +4,9 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_emulation::RomScanner;
+use heronite_i18n::{tr, trn};
 
-use super::{plural, EmulatorsPage, Notice};
+use super::{EmulatorsPage, Notice};
 use crate::dialogs::emulator_confirm::EmulatorConfirmDialog;
 use crate::dialogs::emulator_detect::DetectEmulatorsDialog;
 use crate::dialogs::emulator_edit::EmulatorEditDialog;
@@ -43,7 +44,7 @@ impl EmulatorsPage {
         let view = match view.downcast::<EmulatorEditDialog>() {
             Ok(d) => {
                 if let Some(e) = d.update(cx, |d, _| d.saved.take()) {
-                    self.notice = Some(Notice { lines: vec![format!("Saved {}.", e.name)], error: false });
+                    self.notice = Some(Notice { lines: vec![tr!("Saved {name}.", name = e.name)], error: false });
                 }
                 return;
             }
@@ -52,7 +53,7 @@ impl EmulatorsPage {
         let view = match view.downcast::<DetectEmulatorsDialog>() {
             Ok(d) => {
                 let n = d.update(cx, |d, _| d.added);
-                self.notice = Some(Notice { lines: vec![format!("Added {}.", plural(n, "emulator", "emulators"))], error: false });
+                self.notice = Some(Notice { lines: vec![trn!(n, "Added {n} emulator.", "Added {n} emulators.")], error: false });
                 return;
             }
             Err(v) => v,
@@ -61,9 +62,13 @@ impl EmulatorsPage {
             Ok(d) => {
                 if let Some(o) = d.update(cx, |d, _| d.outcome.take()) {
                     let mut lines = vec![if o.scanned {
-                        format!("Saved {}. Added {}.", o.directory, plural(o.imported, "new game", "new games"))
+                        tr!(
+                            "Saved {directory}. Added {games}.",
+                            directory = o.directory,
+                            games = trn!(o.imported, "{n} new game", "{n} new games")
+                        )
                     } else {
-                        format!("Saved {}.", o.directory)
+                        tr!("Saved {directory}.", directory = o.directory)
                     }];
                     lines.extend(o.errors.iter().cloned());
                     self.notice = Some(Notice { lines, error: !o.errors.is_empty() && o.imported == 0 });
@@ -109,7 +114,7 @@ impl EmulatorsPage {
         cx: &mut Context<Self>,
     ) {
         if self.summaries.is_empty() {
-            self.notice = Some(Notice { lines: vec!["Add an emulator first, then add its ROM folders.".into()], error: true });
+            self.notice = Some(Notice { lines: vec![tr!("Add an emulator first, then add its ROM folders.").into()], error: true });
             cx.notify();
             return;
         }
@@ -120,7 +125,7 @@ impl EmulatorsPage {
 
     pub(super) fn confirm_remove_emulator(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(s) = self.summaries.iter().find(|s| s.emulator.id == id) else { return };
-        self.confirm_notice = Some(format!("Removed {}.", s.emulator.name));
+        self.confirm_notice = Some(tr!("Removed {name}.", name = s.emulator.name));
         let view = cx.new(|_| {
             EmulatorConfirmDialog::remove_emulator(
                 self.ctx.data_paths.clone(),
@@ -134,7 +139,7 @@ impl EmulatorsPage {
     }
 
     pub(super) fn confirm_remove_folder(&mut self, scanner: &RomScanner, window: &mut Window, cx: &mut Context<Self>) {
-        self.confirm_notice = Some(format!("Removed ROM folder {}.", scanner.directory));
+        self.confirm_notice = Some(tr!("Removed ROM folder {directory}.", directory = scanner.directory));
         let paths = self.ctx.data_paths.clone();
         let (id, dir) = (scanner.id.clone(), scanner.directory.clone());
         let view = cx.new(|_| EmulatorConfirmDialog::remove_scanner(paths, id, &dir));

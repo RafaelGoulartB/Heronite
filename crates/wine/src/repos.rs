@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
+use heronite_i18n::tr;
 use serde::Deserialize;
 
 use crate::types::WineVersionInfo;
@@ -51,10 +52,10 @@ impl Repository {
     /// Blurb under the tabs (Heroic `wineExplanation.*`).
     pub fn explanation(self) -> &'static str {
         match self {
-            Repository::ProtonGe => "GE-Proton is a Proton variant created by Glorious Eggroll. It is meant to be used along with the umu launcher (default in Heroic).",
-            Repository::ProtonCachyos => "Proton-CachyOS is a Proton variant maintaned by the CachyOS team. It includes extra tools like DXVK-Sarek and D7VK.",
-            Repository::Proton => "Valve's Proton.",
-            Repository::WineLutris => "Wine builds from Lutris.",
+            Repository::ProtonGe => tr!("GE-Proton is a Proton variant created by Glorious Eggroll. It is meant to be used along with the umu launcher (default in Heroic)."),
+            Repository::ProtonCachyos => tr!("Proton-CachyOS is a Proton variant maintained by the CachyOS team. It includes extra tools like DXVK-Sarek and D7VK."),
+            Repository::Proton => tr!("Valve's Proton."),
+            Repository::WineLutris => tr!("Wine builds from Lutris."),
         }
     }
 }
@@ -176,8 +177,8 @@ pub fn parse_releases(repo: Repository, json: &str) -> Result<Vec<WineVersionInf
 /// it on demand only).
 pub fn fetch_releases(repo: Repository, count: usize) -> Result<Vec<WineVersionInfo>> {
     let url = format!("{}?per_page={count}", repo.api_url());
-    let body =
-        http_get_text(&url, 2 * 1024 * 1024).map_err(|e| anyhow!("Could not fetch available releases from {}: {e}", repo.api_url()))?;
+    let body = http_get_text(&url, 2 * 1024 * 1024)
+        .map_err(|e| anyhow!(tr!("Could not fetch available releases from {url}: {error}", url = repo.api_url(), error = e)))?;
     parse_releases(repo, &body)
 }
 
@@ -209,13 +210,13 @@ pub(crate) fn http_get_text(url: &str, max: u64) -> Result<String> {
         .call()
         .map_err(|e| match e {
             ureq::Error::StatusCode(403) | ureq::Error::StatusCode(429) => {
-                anyhow!(
-                    "GitHub API rate limit reached (HTTP {}), try again later",
-                    match e {
+                anyhow!(tr!(
+                    "GitHub API rate limit reached (HTTP {status}), try again later",
+                    status = match e {
                         ureq::Error::StatusCode(c) => c,
                         _ => 0,
                     }
-                )
+                ))
             }
             ureq::Error::StatusCode(c) => anyhow!("HTTP {c}"),
             e => anyhow!("{e}"),

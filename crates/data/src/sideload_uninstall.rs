@@ -13,6 +13,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::Result;
+use heronite_i18n::tr;
 use serde_json::Value;
 
 use crate::game_config;
@@ -101,7 +102,7 @@ pub fn plan(paths: &DataPaths, input: &UninstallInput) -> UninstallPlan {
 pub fn uninstall(paths: &DataPaths, input: &UninstallInput, delete_files: bool, delete_prefix: bool) -> Result<UninstallOutcome> {
     let plan = plan(paths, input);
     let files = if delete_files {
-        let t = plan.files.ok_or_else(|| anyhow::anyhow!("The install folder was not found on this computer"))?;
+        let t = plan.files.ok_or_else(|| anyhow::anyhow!(tr!("The install folder was not found on this computer")))?;
         if let Some(why) = t.blocked {
             anyhow::bail!(why);
         }
@@ -114,7 +115,8 @@ pub fn uninstall(paths: &DataPaths, input: &UninstallInput, delete_files: bool, 
         Some(t) => Some(t.path),
         None => None,
     };
-    let remove = |p: &Path| std::fs::remove_dir_all(p).map_err(|e| anyhow::anyhow!("Could not delete {}: {e}", p.display()));
+    let remove =
+        |p: &Path| std::fs::remove_dir_all(p).map_err(|e| anyhow::anyhow!(tr!("Could not delete {path}: {e}", path = p.display(), e)));
     if let Some(p) = &files {
         remove(p)?;
     }
@@ -153,7 +155,7 @@ pub fn mark_uninstalled(paths: &DataPaths, app_name: &str) -> Result<()> {
                 g.insert("is_installed".into(), Value::Bool(false));
                 Ok(())
             }
-            None => anyhow::bail!("{app_name} is not in the local games library"),
+            None => anyhow::bail!(tr!("{app_name} is not in the local games library")),
         }
     })
 }
@@ -187,16 +189,16 @@ fn other_game_prefixes(paths: &DataPaths, app_name: &str, home: &str) -> Vec<Pat
 
 fn prefix_blocked(prefix: &Path, defaults: &[PathBuf], other_prefixes: &[PathBuf], others: &[PathBuf], home: &Path) -> Option<String> {
     if !is_clean_absolute(prefix) {
-        return Some(format!("Can't delete {}: not a full path", prefix.display()));
+        return Some(tr!("Can't delete {path}: not a full path", path = prefix.display()));
     }
     if defaults.iter().any(|d| same_path(d, prefix)) {
-        return Some(format!("{} is the shared or default prefix, so it is kept", prefix.display()));
+        return Some(tr!("{path} is the shared or default prefix, so it is kept", path = prefix.display()));
     }
     if other_prefixes.iter().any(|p| same_path(p, prefix)) {
-        return Some(format!("{} is also used by another game, so it is kept", prefix.display()));
+        return Some(tr!("{path} is also used by another game, so it is kept", path = prefix.display()));
     }
     if other_prefixes.iter().chain(others).chain(defaults).any(|p| inside(p, prefix)) {
-        return Some(format!("{} holds another game or a default folder, so it is kept", prefix.display()));
+        return Some(tr!("{path} holds another game or a default folder, so it is kept", path = prefix.display()));
     }
     check_prefix_removable(prefix, &[], home).err()
 }
@@ -204,34 +206,34 @@ fn prefix_blocked(prefix: &Path, defaults: &[PathBuf], other_prefixes: &[PathBuf
 fn folder_blocked(folder: &Path, taken: &[PathBuf], others: &[PathBuf], home: &Path) -> Option<String> {
     let shown = folder.display();
     if !is_clean_absolute(folder) {
-        return Some(format!("Can't delete {shown}: not a full path"));
+        return Some(tr!("Can't delete {path}: not a full path", path = shown));
     }
     let Ok(meta) = std::fs::symlink_metadata(folder) else {
-        return Some(format!("{shown} doesn't exist"));
+        return Some(tr!("{path} doesn't exist", path = shown));
     };
     if meta.file_type().is_symlink() {
-        return Some(format!("Can't delete {shown}: it is a link. Delete it by hand"));
+        return Some(tr!("Can't delete {path}: it is a link. Delete it by hand", path = shown));
     }
     if !meta.is_dir() {
-        return Some(format!("Can't delete {shown}: not a folder"));
+        return Some(tr!("Can't delete {path}: not a folder", path = shown));
     }
     if folder.parent().is_none() || inside(home, folder) {
-        return Some(format!("Won't delete {shown}: it contains your home folder"));
+        return Some(tr!("Won't delete {path}: it contains your home folder", path = shown));
     }
     if folder.parent() == Some(home) || folder.components().count() < 3 {
-        return Some(format!("Won't delete {shown}: it is a top-level folder. Delete the game by hand"));
+        return Some(tr!("Won't delete {path}: it is a top-level folder. Delete the game by hand", path = shown));
     }
     if is_mount_point(folder) {
-        return Some(format!("Won't delete {shown}: it is a whole drive"));
+        return Some(tr!("Won't delete {path}: it is a whole drive", path = shown));
     }
     if folder.join("steamapps").exists() || folder.file_name().is_some_and(|n| n == "steamapps" || n == "common") {
-        return Some(format!("Won't delete {shown}: it is a Steam library"));
+        return Some(tr!("Won't delete {path}: it is a Steam library", path = shown));
     }
     if taken.iter().any(|p| inside(p, folder)) {
-        return Some(format!("Won't delete {shown}: it is or holds a default folder or another game's prefix"));
+        return Some(tr!("Won't delete {path}: it is or holds a default folder or another game's prefix", path = shown));
     }
     if others.iter().any(|p| inside(p, folder)) {
-        return Some(format!("Won't delete {shown}: another game is installed in it"));
+        return Some(tr!("Won't delete {path}: another game is installed in it", path = shown));
     }
     None
 }

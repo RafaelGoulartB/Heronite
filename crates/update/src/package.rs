@@ -5,6 +5,7 @@
 //! signature like the AppImage's, and hands it to the package manager
 //! through `pkexec`.
 
+use heronite_i18n::tr;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -99,24 +100,24 @@ impl Package {
     /// password prompt). Blocks until the package manager is done. On
     /// failure the caller offers [`Package::install_command`].
     pub fn install(self, file: &Path) -> Result<(), InstallError> {
-        let pkexec = which("pkexec").ok_or_else(|| InstallError::Failed("pkexec is not installed".into()))?;
-        let args = self.install_args(file).ok_or_else(|| InstallError::Failed("No package manager found".into()))?;
+        let pkexec = which("pkexec").ok_or_else(|| InstallError::Failed(tr!("pkexec is not installed").into()))?;
+        let args = self.install_args(file).ok_or_else(|| InstallError::Failed(tr!("No package manager found").into()))?;
         let out = Command::new(pkexec)
             .args(args)
             .stdin(Stdio::null())
             .output()
-            .map_err(|e| InstallError::Failed(format!("Could not run pkexec: {e}")))?;
+            .map_err(|e| InstallError::Failed(tr!("Could not run pkexec: {error}", error = e)))?;
         match out.status.code() {
             Some(0) => Ok(()),
             // The password prompt was dismissed.
             Some(126) => Err(InstallError::Cancelled),
-            Some(127) => Err(InstallError::Failed("Not authorized (is a polkit agent running?)".into())),
+            Some(127) => Err(InstallError::Failed(tr!("Not authorized (is a polkit agent running?)").into())),
             _ => {
                 let text = String::from_utf8_lossy(&out.stderr);
                 let text = if text.trim().is_empty() { String::from_utf8_lossy(&out.stdout) } else { text };
                 let tail: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                 let tail = tail[tail.len().saturating_sub(3)..].join(" ");
-                Err(InstallError::Failed(format!("The package manager failed: {tail}")))
+                Err(InstallError::Failed(tr!("The package manager failed: {tail}", tail)))
             }
         }
     }

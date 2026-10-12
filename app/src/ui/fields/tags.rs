@@ -11,6 +11,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::dropdown::{menu_item, menu_panel};
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 fn normalize_tag(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -68,7 +69,7 @@ impl TagField {
     ) -> Self {
         let values = unique_tags(value);
         let initial = if multiple { String::new() } else { values.first().cloned().unwrap_or_default() };
-        let input = new_input(window, cx, &initial, "Select or type to add");
+        let input = new_input(window, cx, &initial, tr!("Select or type to add"));
         let sub = cx.subscribe_in(&input, window, move |this, input, ev: &InputEvent, window, cx| match ev {
             InputEvent::Focus => {
                 this.focused = true;

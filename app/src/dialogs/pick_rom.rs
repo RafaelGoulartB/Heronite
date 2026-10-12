@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::DialogEvent;
 use crate::theme;
@@ -94,16 +95,16 @@ impl Render for PickRomDialog {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(paragraph("This title has more than one ROM. Pick which disc to launch."))
+            .child(paragraph(tr!("This title has more than one ROM. Pick which disc to launch.")))
             .child(list);
         let footer = div()
             .flex()
             .gap(px(10.))
-            .child(button("rom-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .child(button("rom-cancel", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
             .child(action_button(
                 "rom-play",
                 ButtonKind::Primary,
-                "Play",
+                tr!("Play"),
                 self.selected.is_some(),
                 cx.listener(|this, _, _, cx| {
                     if let Some(p) = this.selected.clone() {
@@ -116,7 +117,7 @@ impl Render for PickRomDialog {
         dialog(
             DialogProps {
                 id: "pick-rom".into(),
-                title: "Choose disc".into(),
+                title: tr!("Choose disc").into(),
                 width: 520f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
                 height: None,
             },

@@ -10,6 +10,7 @@ use heronite_images::{ImageRef, Variant};
 
 use super::{focus, html, CollectionView};
 use crate::theme;
+use heronite_i18n::tr;
 
 impl CollectionView {
     pub(super) fn render_focus_panel(&mut self, vw: f32, vh: f32, list_w: f32, scale: f32, cx: &mut Context<Self>) -> AnyElement {
@@ -26,7 +27,7 @@ impl CollectionView {
                 .justify_center()
                 .text_size(px(15.2))
                 .text_color(theme::white_a(0.52))
-                .child("No game selected")
+                .child(tr!("No game selected"))
                 .into_any_element();
         };
         let vm = self.with_folder_rows(vm);
@@ -88,7 +89,7 @@ impl CollectionView {
             },
             split: i == 0,
         });
-        let at = vm.details.iter().position(|r| r.label.as_ref() == "Playtime").map_or(vm.details.len(), |i| i + 1);
+        let at = vm.details.iter().position(|r| r.label.as_ref() == tr!("Playtime")).map_or(vm.details.len(), |i| i + 1);
         vm.details.splice(at..at, rows.collect::<Vec<_>>());
         vm
     }

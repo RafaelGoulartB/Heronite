@@ -5,6 +5,7 @@ use gpui_kit::*;
 use heronite_emulation::catalog::emulator_definition;
 use heronite_emulation::detect::profiles_for_definition;
 use heronite_emulation::{emulator_definitions, SystemEnv};
+use heronite_i18n::{tr, trn};
 
 use super::{text_of, EmulatorEditDialog, Menu, KINDS, WORKING_DIRS};
 use crate::dialogs::scan_roms::profile_label;
@@ -18,19 +19,19 @@ impl EmulatorEditDialog {
         let flatpak = self.launch_kind == "flatpak";
         let exe_value = text_of(&self.executable, cx);
         if self.create {
-            let mut options: Vec<(SharedString, bool)> = vec![("Custom".into(), self.definition_id == "custom")];
+            let mut options: Vec<(SharedString, bool)> = vec![(tr!("Custom").into(), self.definition_id == "custom")];
             let defs: Vec<_> = emulator_definitions().iter().filter(|d| d.id != "custom").collect();
             options.extend(defs.iter().map(|d| (SharedString::from(d.name.clone()), d.id == self.definition_id)));
             let current = emulator_definition(&self.definition_id).map(|d| d.name.clone()).unwrap_or_default();
             let ids: Vec<String> = std::iter::once("custom".to_string()).chain(defs.iter().map(|d| d.id.clone())).collect();
             body = body
-                .child(meta_text(
-                    "Pick an emulator from the catalog to start with its platforms and arguments, or Custom to describe any program.",
-                ))
+                .child(meta_text(tr!(
+                    "Pick an emulator from the catalog to start with its platforms and arguments, or Custom to describe any program."
+                )))
                 .child(select_field(
                     "emu-def",
-                    Some("Emulator"),
-                    if self.definition_id == "custom" { "Custom".to_string() } else { current },
+                    Some(tr!("Emulator")),
+                    if self.definition_id == "custom" { tr!("Custom").to_string() } else { current },
                     false,
                     self.menu == Some(Menu::Definition),
                     options,
@@ -46,15 +47,15 @@ impl EmulatorEditDialog {
                     },
                 ));
         }
-        body = body.child(text_field("Name", &self.name));
-        let kind_label = KINDS.iter().find(|k| k.0 == self.launch_kind).map(|k| k.1).unwrap_or("Native (Linux)");
+        body = body.child(text_field(tr!("Name"), &self.name));
+        let kind_label = KINDS.iter().find(|k| k.0 == self.launch_kind).map(|k| tr(k.1)).unwrap_or(tr!("Native (Linux)"));
         body = body.child(select_field(
             "emu-kind",
-            Some("Run as"),
+            Some(tr!("Run as")),
             kind_label,
             false,
             self.menu == Some(Menu::Kind),
-            KINDS.iter().map(|k| (SharedString::from(k.1), k.0 == self.launch_kind)).collect(),
+            KINDS.iter().map(|k| (SharedString::from(tr(k.1)), k.0 == self.launch_kind)).collect(),
             cx,
             |this: &mut Self, _, cx| {
                 this.menu = if this.menu == Some(Menu::Kind) { None } else { Some(Menu::Kind) };
@@ -73,12 +74,12 @@ impl EmulatorEditDialog {
             },
         ));
         if flatpak {
-            body = body.child(text_field("Flatpak application id", &self.flatpak_id));
+            body = body.child(text_field(tr!("Flatpak application id"), &self.flatpak_id));
         } else {
             let has = !exe_value.is_empty();
             body = body.child(path_field(
                 "emu-exe-pick",
-                Some("Executable"),
+                Some(tr!("Executable")),
                 &self.executable,
                 has,
                 false,
@@ -87,7 +88,7 @@ impl EmulatorEditDialog {
                         this.executable.update(cx, |s, cx| s.set_value("", window, cx));
                         cx.notify();
                     } else {
-                        choose_path(window, cx, false, "Emulator executable", |this: &mut Self, p, window, cx| {
+                        choose_path(window, cx, false, tr!("Emulator executable"), |this: &mut Self, p, window, cx| {
                             this.executable.update(cx, |s, cx| s.set_value(p.clone(), window, cx));
                             if p.to_lowercase().ends_with(".exe") {
                                 this.launch_kind = "wine".into();
@@ -106,7 +107,7 @@ impl EmulatorEditDialog {
                 }),
             ));
             if has && !std::path::Path::new(&exe_value).exists() && exe_value.contains('/') {
-                body = body.child(div().text_size(px(13.33)).text_color(theme::danger_text()).child("This file does not exist."));
+                body = body.child(div().text_size(px(13.33)).text_color(theme::danger_text()).child(tr!("This file does not exist.")));
             }
         }
         let dir_value = text_of(&self.install_dir, cx);
@@ -114,7 +115,7 @@ impl EmulatorEditDialog {
         body = body
             .child(path_field(
                 "emu-dir-pick",
-                Some("Install folder (optional)"),
+                Some(tr!("Install folder (optional)")),
                 &self.install_dir,
                 has_dir,
                 false,
@@ -123,31 +124,32 @@ impl EmulatorEditDialog {
                         this.install_dir.update(cx, |s, cx| s.set_value("", window, cx));
                         cx.notify();
                     } else {
-                        choose_path(window, cx, true, "Install folder", |this: &mut Self, p, window, cx| {
+                        choose_path(window, cx, true, tr!("Install folder"), |this: &mut Self, p, window, cx| {
                             this.install_dir.update(cx, |s, cx| s.set_value(p, window, cx));
                             cx.notify();
                         });
                     }
                 }),
             ))
-            .child(meta_text("{EmulatorDir} in arguments. Leave empty to use the executable's folder."));
+            .child(meta_text(tr!("{EmulatorDir} in arguments. Leave empty to use the executable's folder.")));
         body
     }
 
     pub(super) fn render_profiles(&mut self, mut body: Div, cx: &mut Context<Self>) -> Div {
-        body = body.child(caption("Profiles")).child(meta_text(
-            "One per platform. Arguments may use {ImagePath} (the ROM), {ImageName}, {ImageNameNoExt}, {ImageDir}, {EmulatorDir}, {CorePath}, {Name} and {InstallDir}.",
-        ));
+        body = body.child(caption(tr!("Profiles"))).child(meta_text(tr!(
+            "One per platform. Arguments may use {ImagePath} (the ROM), {ImageName}, {ImageNameNoExt}, {ImageDir}, {EmulatorDir}, {CorePath}, {Name} and {InstallDir}."
+        )));
         for i in 0..self.profiles.len() {
             body = body.child(self.render_profile_card(i, cx));
         }
         let missing = self.missing_catalog_profiles();
         let mut adders = div().flex().gap(px(8.)).child(
-            button("prof-add", ButtonKind::Glass, "Add profile").on_click(cx.listener(|this, _, window, cx| this.add_profile(window, cx))),
+            button("prof-add", ButtonKind::Glass, tr!("Add profile"))
+                .on_click(cx.listener(|this, _, window, cx| this.add_profile(window, cx))),
         );
         if !missing.is_empty() {
             adders = adders.child(
-                button("prof-add-catalog", ButtonKind::Glass, format!("Add {} catalog profile(s)", missing.len()))
+                button("prof-add-catalog", ButtonKind::Glass, trn!(missing.len(), "Add {n} catalog profile", "Add {n} catalog profiles"))
                     .on_click(cx.listener(|this, _, _, cx| this.add_catalog_profiles(cx))),
             );
         }
@@ -161,13 +163,13 @@ impl EmulatorEditDialog {
         let open = self.open_profile == Some(i);
         let summary = format!(
             "{}  \u{b7}  {}",
-            if p.arguments.is_empty() { "(catalog arguments)".to_string() } else { p.arguments.clone() },
-            if p.extensions.is_empty() { "any extension".to_string() } else { p.extensions.join(", ") }
+            if p.arguments.is_empty() { tr!("(catalog arguments)").to_string() } else { p.arguments.clone() },
+            if p.extensions.is_empty() { tr!("any extension").to_string() } else { p.extensions.join(", ") }
         );
         let remove_block = if !can_remove {
-            Some("An emulator needs at least one profile.")
+            Some(tr!("An emulator needs at least one profile."))
         } else if users > 0 {
-            Some("A ROM folder uses this profile.")
+            Some(tr!("A ROM folder uses this profile."))
         } else {
             None
         };
@@ -190,20 +192,24 @@ impl EmulatorEditDialog {
                     .flex_none()
                     .gap(px(8.))
                     .child(
-                        button(SharedString::from(format!("prof-edit-{i}")), ButtonKind::Glass, if open { "Done" } else { "Edit" })
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                if this.open_profile == Some(i) {
-                                    this.close_form(cx);
-                                    cx.notify();
-                                } else {
-                                    this.edit_profile(i, window, cx);
-                                }
-                            })),
+                        button(
+                            SharedString::from(format!("prof-edit-{i}")),
+                            ButtonKind::Glass,
+                            if open { tr!("Done") } else { tr!("Edit") },
+                        )
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if this.open_profile == Some(i) {
+                                this.close_form(cx);
+                                cx.notify();
+                            } else {
+                                this.edit_profile(i, window, cx);
+                            }
+                        })),
                     )
                     .child(action_button(
                         SharedString::from(format!("prof-rm-{i}")),
                         ButtonKind::Glass,
-                        "Remove",
+                        tr!("Remove"),
                         remove_block.is_none(),
                         cx.listener(move |this, _, _, cx| this.remove_profile(i, cx)),
                     )),
@@ -217,17 +223,17 @@ impl EmulatorEditDialog {
                 let (name, platform, args, ext, core) =
                     (f.name.clone(), f.platform.clone(), f.arguments.clone(), f.extensions.clone(), f.core.clone());
                 let wd = f.working_dir.clone().unwrap_or_default();
-                let wd_label = WORKING_DIRS.iter().find(|w| w.0 == wd).map(|w| w.1).unwrap_or("Default");
+                let wd_label = WORKING_DIRS.iter().find(|w| w.0 == wd).map(|w| tr(w.1)).unwrap_or(tr!("Default"));
                 card = card
-                    .child(text_field("Profile name", &name))
-                    .child(text_field("Platform", &platform))
-                    .child(text_field("Arguments", &args))
-                    .child(text_field("ROM extensions (comma-separated)", &ext));
+                    .child(text_field(tr!("Profile name"), &name))
+                    .child(text_field(tr!("Platform"), &platform))
+                    .child(text_field(tr!("Arguments"), &args))
+                    .child(text_field(tr!("ROM extensions (comma-separated)"), &ext));
                 if self.core_relevant(&p) {
                     let has_core = !text_of(&core, cx).is_empty();
                     card = card.child(path_field(
                         SharedString::from(format!("prof-core-{i}")),
-                        Some("RetroArch core (.so)"),
+                        Some(tr!("RetroArch core (.so)")),
                         &core,
                         has_core,
                         false,
@@ -238,7 +244,7 @@ impl EmulatorEditDialog {
                                 core.update(cx, |s, cx| s.set_value("", window, cx));
                                 cx.notify();
                             } else {
-                                choose_path(window, cx, false, "Libretro core", move |_: &mut Self, p, window, cx| {
+                                choose_path(window, cx, false, tr!("Libretro core"), move |_: &mut Self, p, window, cx| {
                                     core.update(cx, |s, cx| s.set_value(p, window, cx));
                                     cx.notify();
                                 });
@@ -248,11 +254,11 @@ impl EmulatorEditDialog {
                 }
                 card = card.child(select_field(
                     "prof-wd",
-                    Some("Working folder"),
+                    Some(tr!("Working folder")),
                     wd_label,
                     false,
                     self.menu == Some(Menu::WorkingDir),
-                    WORKING_DIRS.iter().map(|w| (SharedString::from(w.1), w.0 == wd)).collect(),
+                    WORKING_DIRS.iter().map(|w| (SharedString::from(tr(w.1)), w.0 == wd)).collect(),
                     cx,
                     |this: &mut Self, _, cx| {
                         this.menu = if this.menu == Some(Menu::WorkingDir) { None } else { Some(Menu::WorkingDir) };
@@ -275,16 +281,19 @@ impl EmulatorEditDialog {
         div()
             .flex()
             .gap(px(10.))
-            .child(button("emu-edit-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
+            .child(
+                button("emu-edit-cancel", ButtonKind::Ghost, tr!("Cancel"))
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+            )
             .child(action_button(
                 "emu-edit-save",
                 ButtonKind::Primary,
                 if self.saving {
-                    "Saving\u{2026}"
+                    tr!("Saving\u{2026}")
                 } else if self.create {
-                    "Add emulator"
+                    tr!("Add emulator")
                 } else {
-                    "Save"
+                    tr!("Save")
                 },
                 !self.saving,
                 cx.listener(|this, _, _, cx| this.save(cx)),

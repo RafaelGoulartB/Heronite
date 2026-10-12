@@ -8,9 +8,13 @@ use serde_json::Value;
 use super::parts::{column, heading, help, hint, rows};
 use super::{Notice, Section, SettingsPanel};
 use crate::theme;
+use heronite_i18n::{n_, tr};
 
-pub const MODES: [(&str, SyncMode); 3] =
-    [("Sync (download and upload)", SyncMode::Both), ("Force Download", SyncMode::ForceDownload), ("Force Upload", SyncMode::ForceUpload)];
+pub const MODES: [(&str, SyncMode); 3] = [
+    (n_!("Sync (download and upload)"), SyncMode::Both),
+    (n_!("Force Download"), SyncMode::ForceDownload),
+    (n_!("Force Upload"), SyncMode::ForceUpload),
+];
 
 impl SettingsPanel {
     /// Heroic guesses the saves folder when the tab opens with none set.
@@ -42,7 +46,10 @@ impl SettingsPanel {
                     }
                     Ok(None) => {}
                     Err(err) => {
-                        this.notice = Some(Notice { text: format!("Could not detect the saves folder: {err:#}").into(), error: true })
+                        this.notice = Some(Notice {
+                            text: tr!("Could not detect the saves folder: {error}", error = format!("{err:#}")).into(),
+                            error: true,
+                        })
                     }
                 }
                 cx.notify();
@@ -71,9 +78,11 @@ impl SettingsPanel {
                 match res {
                     Ok(out) => {
                         this.saves.output = Some(out.lines().map(str::to_string).collect());
-                        this.notice = Some(Notice { text: "Sync Complete".into(), error: false });
+                        this.notice = Some(Notice { text: tr!("Sync Complete").into(), error: false });
                     }
-                    Err(err) => this.notice = Some(Notice { text: format!("Sync failed: {err:#}").into(), error: true }),
+                    Err(err) => {
+                        this.notice = Some(Notice { text: tr!("Sync failed: {error}", error = format!("{err:#}")).into(), error: true })
+                    }
                 }
                 cx.notify();
             })
@@ -85,13 +94,13 @@ impl SettingsPanel {
 
     pub(super) fn saves_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         if !self.facts().is_some_and(|f| f.cloud_saves) {
-            return column().child(hint("This game does not support Cloud Saves."));
+            return column().child(hint(tr!("This game does not support Cloud Saves.")));
         }
         let has_path = !self.text("savesPath").is_empty();
-        let mut col =
-            column().child(hint("Cloud Saves feature is in Beta, please backup your saves before syncing (in case something goes wrong)"));
+        let mut col = column()
+            .child(hint(tr!("Cloud Saves feature is in Beta, please backup your saves before syncing (in case something goes wrong)")));
         if self.saves.detecting {
-            return col.child(help("Trying to detect the correct save folder\u{2026}").px(px(6.)));
+            return col.child(help(tr!("Trying to detect the correct save folder\u{2026}")).px(px(6.)));
         }
         let retry = div()
             .id("saves-retry")
@@ -99,27 +108,27 @@ impl SettingsPanel {
             .text_size(px(12.))
             .text_color(theme::accent())
             .child(if has_path {
-                "Please check twice if the path is correct (click to retry)"
+                tr!("Please check twice if the path is correct (click to retry)")
             } else {
-                "Save folder not found, please select it manually (click to retry)"
+                tr!("Save folder not found, please select it manually (click to retry)")
             })
             .on_click(cx.listener(|this, _, window, cx| this.detect_saves(window, cx)));
         let folder = rows().field_help(
-            self.path_row("savesPath", Some("Saves folder"), true, "Choose the saves directory", true, cx),
+            self.path_row("savesPath", Some(tr!("Saves folder")), true, tr!("Choose the saves directory"), true, cx),
             vec![
                 div().child(retry),
-                help("Heronite tries to guess the right save folder and this will work on the majority of cases. In case the folder is wrong, use the box above to change it."),
-                help("In case you change the prefix folder for Wine or Proton, check the path again since Proton uses a different prefix (/pfx) and username (steamuser): clear the path and click retry."),
+                help(tr!("Heronite tries to guess the right save folder and this will work on the majority of cases. In case the folder is wrong, use the box above to change it.")),
+                help(tr!("In case you change the prefix folder for Wine or Proton, check the path again since Proton uses a different prefix (/pfx) and username (steamuser): clear the path and click retry.")),
             ],
         );
-        col = col.child(heading("Location")).child(folder.card());
+        col = col.child(heading(tr!("Location"))).child(folder.card());
 
         let mode = self.saves.mode;
         let select = self.select_row(
             "saves-mode",
-            Some("Manual Sync Saves"),
-            MODES[mode].0.to_string(),
-            MODES.iter().enumerate().map(|(i, (l, _))| (SharedString::from(*l), i == mode)).collect(),
+            Some(tr!("Manual Sync Saves")),
+            tr(MODES[mode].0).to_string(),
+            MODES.iter().enumerate().map(|(i, (l, _))| (SharedString::from(tr(l)), i == mode)).collect(),
             !has_path,
             cx,
             |this, i, _, cx| {
@@ -130,14 +139,14 @@ impl SettingsPanel {
         let syncing = self.saves.syncing;
         let sync = div().flex().items_end().gap(px(12.)).child(div().flex_1().child(select)).child(self.outline_button(
             "saves-sync",
-            if syncing { "Syncing" } else { "Sync" },
+            if syncing { tr!("Syncing") } else { tr!("Sync") },
             has_path && !syncing,
             cx,
             |this, _, cx| this.sync_saves(cx),
         ));
         let mut sync_rows = rows().field_help(
             sync,
-            vec![help("Manual Sync: Sync downloads and uploads what changed. Force Download and Force Upload ignore the version that is locally or on the cloud.")],
+            vec![help(tr!("Manual Sync: Sync downloads and uploads what changed. Force Download and Force Upload ignore the version that is locally or on the cloud."))],
         );
         if let Some(lines) = self.saves.output.clone() {
             let mut out = div()
@@ -156,14 +165,14 @@ impl SettingsPanel {
             }
             sync_rows = sync_rows.child(out);
         }
-        col = col.child(heading("Sync")).child(sync_rows.card());
+        col = col.child(heading(tr!("Sync"))).child(sync_rows.card());
 
         let mut auto = rows().child(self.toggle_row(
             "autosync",
             "autoSyncSaves",
             false,
-            "Autosync Saves",
-            Some("Autosync Saves will sync the saves every time you start a game and after finishing playing."),
+            tr!("Autosync Saves"),
+            Some(tr!("Autosync Saves will sync the saves every time you start a game and after finishing playing.")),
             !has_path,
             cx,
         ));
@@ -172,12 +181,12 @@ impl SettingsPanel {
                 "quick-saves",
                 "enableQuickSavesMenu",
                 false,
-                "Enable Quick Save-Sync Menu on game page",
+                tr!("Enable Quick Save-Sync Menu on game page"),
                 None,
                 false,
                 cx,
             ));
         }
-        col.child(heading("Automatic")).child(auto.card())
+        col.child(heading(tr!("Automatic"))).child(auto.card())
     }
 }

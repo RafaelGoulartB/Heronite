@@ -6,6 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::models::MetadataSettings;
 use heronite_data::settings::{self, default_field_priority, EffectiveSettings, METADATA_FIELDS};
+use heronite_i18n::{n_, tr};
 
 use super::SettingsPage;
 use crate::dialogs::metadata::field_label as metadata_field_label;
@@ -29,7 +30,7 @@ pub struct State {
 // "playnite" stays in the saved priorities (kept from Heronite's data) but is
 // not offered: nothing feeds that source here.
 const SOURCES: [(&str, &str); 5] =
-    [("auto", "Auto (IGDB first)"), ("igdb", "IGDB"), ("steam", "Steam"), ("store", "Store"), ("lutris", "Lutris")];
+    [("auto", n_!("Auto (IGDB first)")), ("igdb", "IGDB"), ("steam", "Steam"), ("store", n_!("Store")), ("lutris", "Lutris")];
 
 impl State {
     pub fn new(_ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
@@ -91,9 +92,9 @@ fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
         this.update(cx, |d, cx| {
             d.metadata.testing = false;
             if res.ok {
-                d.metadata.ok_message = Some("IGDB credentials work.".into());
+                d.metadata.ok_message = Some(tr!("IGDB credentials work.").into());
             } else {
-                d.error = Some(res.error.unwrap_or_else(|| "IGDB test failed.".into()).into());
+                d.error = Some(res.error.unwrap_or_else(|| tr!("IGDB test failed.").into()).into());
             }
             cx.notify();
         })
@@ -111,27 +112,27 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let creds = card_box()
         .py(px(12.))
         .gap(px(12.))
-        .child(labeled("Twitch / IGDB Client ID", input_box(&d.metadata.client_id, false)))
-        .child(labeled("Twitch / IGDB Client Secret", input_box(&d.metadata.secret, false)));
+        .child(labeled(tr!("Twitch / IGDB Client ID"), input_box(&d.metadata.client_id, false)))
+        .child(labeled(tr!("Twitch / IGDB Client Secret"), input_box(&d.metadata.secret, false)));
     let actions = div()
         .flex()
         .items_center()
         .gap(px(8.))
         .mt(px(12.))
-        .child(action_button("md-test", ButtonKind::Glass, "Test IGDB", !testing, cx.listener(|d, _, _, cx| test_igdb(d, cx))))
+        .child(action_button("md-test", ButtonKind::Glass, tr!("Test IGDB"), !testing, cx.listener(|d, _, _, cx| test_igdb(d, cx))))
         .child(action_button(
             "md-wizard",
             ButtonKind::Primary,
-            "Download metadata\u{2026}",
+            tr!("Download metadata\u{2026}"),
             true,
             cx.listener(|_, _, _, cx| hub(cx).update(cx, |h, cx| h.request_wizard(cx))),
         ))
         .children(d.metadata.ok_message.clone().map(|t| div().ml(px(6.)).text_size(px(13.)).text_color(theme::success()).child(t)));
     let images = card([
-        toggle_row("md-autofill", "Fill missing metadata in the background", None, auto_fill)
+        toggle_row("md-autofill", tr!("Fill missing metadata in the background"), None, auto_fill)
             .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.auto_fill_missing = !auto_fill)))
             .into_any_element(),
-        toggle_row("md-download", "Copy covers to disk", Some("Off keeps the CDN URLs instead of storing the images."), download)
+        toggle_row("md-download", tr!("Copy covers to disk"), Some(tr!("Off keeps the CDN URLs instead of storing the images.")), download)
             .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.download_images = !download)))
             .into_any_element(),
     ]);
@@ -139,11 +140,11 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let mut col = div()
         .flex()
         .flex_col()
-        .child(caption("Twitch / IGDB API"))
-        .child(div().px(px(6.)).pb(px(8.)).child(meta_text("Create a Twitch app to get IGDB keys: https://dev.twitch.tv/console")))
+        .child(caption(tr!("Twitch / IGDB API")))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!("Create a Twitch app to get IGDB keys: https://dev.twitch.tv/console"))))
         .child(creds)
         .child(actions)
-        .child(caption("Images & fields"))
+        .child(caption(tr!("Images & fields")))
         .child(images);
 
     // Field priority (advanced), collapsible.
@@ -164,16 +165,17 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 cx.notify();
             }))
             .child(icon(if open { Icon::ExpandMore } else { Icon::ChevronRight }, px(16.), theme::text_muted()))
-            .child(div().text_size(px(12.)).text_color(theme::text_muted()).child("Field priority (advanced)")),
+            .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(tr!("Field priority (advanced)"))),
     );
     if open {
-        col = col.child(div().px(px(6.)).pb(px(8.)).child(meta_text("Preferred source per field. Other sources still fill empty values.")));
+        col = col
+            .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!("Preferred source per field. Other sources still fill empty values."))));
         let mut grid = card_box().py(px(12.)).flex_row().flex_wrap().gap_x(px(12.)).gap_y(px(10.));
         for field in METADATA_FIELDS {
             let current = preferred_source(d, field);
-            let label = SOURCES.iter().find(|(v, _)| *v == current).map(|(_, l)| *l).unwrap_or("Auto (IGDB first)");
+            let label = SOURCES.iter().find(|(v, _)| *v == current).map(|(_, l)| tr(l)).unwrap_or(tr!("Auto (IGDB first)"));
             let is_open = d.metadata.open_select == Some(field);
-            let options: Vec<(SharedString, bool)> = SOURCES.iter().map(|(v, l)| (SharedString::from(*l), *v == current)).collect();
+            let options: Vec<(SharedString, bool)> = SOURCES.iter().map(|(v, l)| (SharedString::from(tr(l)), *v == current)).collect();
             grid = grid.child(div().w(px(200.)).child(select_field(
                 &format!("md-prio-{field}"),
                 Some(metadata_field_label(field)),
@@ -212,17 +214,17 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let m = &d.settings.metadata;
     let secret = d.metadata.secret.read(cx).value().to_string();
     let mut rows = vec![
-        Row::header("Twitch / IGDB API"),
-        Row::text("client-id", "Client ID", d.metadata.client_id.read(cx).value().to_string())
-            .desc("Create a Twitch app to get IGDB keys: dev.twitch.tv/console"),
-        Row::text("secret", "Client secret", "\u{2022}".repeat(secret.chars().count().min(24))),
-        Row::action("test", if d.metadata.testing { "Testing\u{2026}" } else { "Test IGDB" })
+        Row::header(tr!("Twitch / IGDB API")),
+        Row::text("client-id", tr!("Client ID"), d.metadata.client_id.read(cx).value().to_string())
+            .desc(tr!("Create a Twitch app to get IGDB keys: dev.twitch.tv/console")),
+        Row::text("secret", tr!("Client secret"), "\u{2022}".repeat(secret.chars().count().min(24))),
+        Row::action("test", if d.metadata.testing { tr!("Testing\u{2026}") } else { tr!("Test IGDB") })
             .enabled(!d.metadata.testing)
             .desc(d.metadata.ok_message.clone().unwrap_or_default()),
-        Row::header("Images and fields"),
-        Row::toggle("autofill", "Fill missing metadata in the background", m.auto_fill_missing),
-        Row::toggle("download", "Copy covers to disk", m.download_images).desc("Off keeps the CDN addresses instead"),
-        Row::header("Preferred source per field"),
+        Row::header(tr!("Images and fields")),
+        Row::toggle("autofill", tr!("Fill missing metadata in the background"), m.auto_fill_missing),
+        Row::toggle("download", tr!("Copy covers to disk"), m.download_images).desc(tr!("Off keeps the CDN addresses instead")),
+        Row::header(tr!("Preferred source per field")),
     ];
     for field in METADATA_FIELDS {
         let current = preferred_source(d, field);
@@ -230,7 +232,7 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         rows.push(Row::choice(
             SharedString::from(format!("prio:{field}")),
             metadata_field_label(field),
-            SOURCES.iter().map(|(_, l)| SharedString::from(*l)).collect(),
+            SOURCES.iter().map(|(_, l)| SharedString::from(tr(l))).collect(),
             i,
         ));
     }
@@ -248,13 +250,13 @@ pub(super) fn console_apply(
         Outcome::Activate(id) => match id.as_ref() {
             "client-id" => {
                 let cur = d.metadata.client_id.read(cx).value().to_string();
-                d.console_osk("IGDB client ID", &cur, window, cx, |d, text, window, cx| {
+                d.console_osk(tr!("IGDB client ID"), &cur, window, cx, |d, text, window, cx| {
                     let text = text.trim().to_string();
                     d.metadata.client_id.update(cx, |s, cx| s.set_value(text.clone(), window, cx));
                     persist(d, cx, |m| m.igdb_client_id = text);
                 });
             }
-            "secret" => d.console_osk("IGDB client secret", "", window, cx, |d, text, window, cx| {
+            "secret" => d.console_osk(tr!("IGDB client secret"), "", window, cx, |d, text, window, cx| {
                 let text = text.trim().to_string();
                 d.metadata.secret.update(cx, |s, cx| s.set_value(text.clone(), window, cx));
                 persist(d, cx, |m| m.igdb_client_secret = text);

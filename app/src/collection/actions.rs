@@ -8,6 +8,7 @@ use heronite_launch::LaunchEvent;
 
 use super::vm::{self, GroupVm, ListItem};
 use super::{data, CollectionView};
+use heronite_i18n::tr;
 
 impl CollectionView {
     pub(super) fn dialog_ctx(&self) -> Option<crate::dialogs::DialogCtx> {
@@ -132,7 +133,7 @@ impl CollectionView {
         let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
         let Some(game) = lib.get(&key) else { return };
         if let Err(err) = heronite_data::config_games::toggle_favourite(&self.data_paths, &game.app_name, &game.title) {
-            self.show_toast(format!("Could not update favourites: {err:#}"), true, cx);
+            self.show_toast(tr!("Could not update favourites: {err}", err = format!("{err:#}")), true, cx);
         }
         self.reload(cx);
     }

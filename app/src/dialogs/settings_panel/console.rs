@@ -24,6 +24,7 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use heronite_i18n::tr;
 
 type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
 type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel>)>;
@@ -103,14 +104,14 @@ impl SettingsPanel {
                 GlobalView::Advanced => vec![self.c_toggle(
                     "disableLogs",
                     false,
-                    "Disable logs",
-                    Some("Most log writes stop (critical information is always logged)"),
+                    tr!("Disable logs"),
+                    Some(tr!("Most log writes stop (critical information is always logged)")),
                     false,
                 )],
             },
         };
         if let Some(n) = &self.notice {
-            v.push(Self::c_info("notice", if n.error { "Problem" } else { "Done" }, n.text.clone()));
+            v.push(Self::c_info("notice", if n.error { tr!("Problem") } else { tr!("Done") }, n.text.clone()));
         }
         v
     }
@@ -123,9 +124,9 @@ impl SettingsPanel {
         let names: Vec<SharedString> = options.iter().map(|w| SharedString::from(logic::display_wine_name(&w.name))).collect();
         let selected = options.iter().position(|w| w.name == wine.name).unwrap_or(0);
         let desc = if self.wine_list.is_some() && list.is_empty() {
-            "No Wine version was found, download one from the Wine Manager".to_string()
+            tr!("No Wine version was found, download one from the Wine Manager").to_string()
         } else if !std::path::Path::new(&wine.bin).exists() && !list.is_empty() {
-            "Wine path is invalid, please select another one".to_string()
+            tr!("Wine path is invalid, please select another one").to_string()
         } else {
             wine.bin.clone()
         };
@@ -139,26 +140,29 @@ impl SettingsPanel {
         if names.is_empty() {
             v.push(Self::c_info(
                 "wine",
-                "Wine / Proton version",
-                if self.wine_list.is_none() { "Loading\u{2026}".to_string() } else { "None found".into() },
+                tr!("Wine / Proton version"),
+                if self.wine_list.is_none() { tr!("Loading\u{2026}").to_string() } else { tr!("None found").into() },
             ));
         } else {
-            v.push(item(Row::choice("c:wine", "Wine / Proton version", names, selected).icon(Icon::WineBar).desc(desc), Act::Choice(pick)));
+            v.push(item(
+                Row::choice("c:wine", tr!("Wine / Proton version"), names, selected).icon(Icon::WineBar).desc(desc),
+                Act::Choice(pick),
+            ));
         }
         if wine.kind == "crossover" {
-            v.push(self.c_text("crossoverBottle", "CrossOver bottle", cx));
+            v.push(self.c_text("crossoverBottle", tr!("CrossOver bottle"), cx));
             return v;
         }
-        v.push(self.c_path("winePrefix", "Prefix", true, cx));
+        v.push(self.c_path("winePrefix", tr!("Prefix"), true, cx));
         let busy = self.tool_toggle.is_some();
         let dxvk_on = self.flag("autoInstallDxvk", false);
-        v.push(Self::c_header("Graphics"));
+        v.push(Self::c_header(tr!("Graphics")));
         if logic::offers_dxvk(&wine) {
             v.push(self.c_toggle(
                 "autoInstallDxvk",
                 false,
-                "Auto install / update DXVK",
-                Some("Vulkan layer for DirectX 9-11 games"),
+                tr!("Auto install / update DXVK"),
+                Some(tr!("Vulkan layer for DirectX 9-11 games")),
                 self.flag("autoInstallDxvkNvapi", false) || self.flag("autoInstallVkd3d", false) || busy,
             ));
         }
@@ -166,51 +170,51 @@ impl SettingsPanel {
             v.push(self.c_toggle(
                 "autoInstallVkd3d",
                 false,
-                "Auto install / update VKD3D",
-                Some("Vulkan layer for DirectX 12 games (needs DXVK)"),
+                tr!("Auto install / update VKD3D"),
+                Some(tr!("Vulkan layer for DirectX 12 games (needs DXVK)")),
                 !dxvk_on || busy,
             ));
         }
         v.push(self.c_toggle(
             "autoInstallDxvkNvapi",
             false,
-            "Auto install / update DXVK-NVAPI",
-            Some("Lets DLSS work on NVIDIA GPUs"),
+            tr!("Auto install / update DXVK-NVAPI"),
+            Some(tr!("Lets DLSS work on NVIDIA GPUs")),
             !dxvk_on || busy,
         ));
-        v.push(Self::c_header("Sync and compatibility"));
-        v.push(self.c_toggle("enableEsync", false, "Esync", Some("Less wineserver overhead in CPU-heavy games"), false));
-        v.push(self.c_toggle("enableFsync", false, "Fsync", Some("Less wineserver overhead on supported kernels"), false));
+        v.push(Self::c_header(tr!("Sync and compatibility")));
+        v.push(self.c_toggle("enableEsync", false, "Esync", Some(tr!("Less wineserver overhead in CPU-heavy games")), false));
+        v.push(self.c_toggle("enableFsync", false, "Fsync", Some(tr!("Less wineserver overhead on supported kernels")), false));
         v.push(self.c_toggle(
             "enableWineWayland",
             false,
-            "Wine-Wayland (experimental)",
-            Some("The Wine version needs to support it"),
+            tr!("Wine-Wayland (experimental)"),
+            Some(tr!("The Wine version needs to support it")),
             false,
         ));
         if self.flag("enableWineWayland", false) {
-            v.push(self.c_toggle("enableHDR", false, "HDR", Some("The display and the game must support it"), false));
+            v.push(self.c_toggle("enableHDR", false, tr!("HDR"), Some(tr!("The display and the game must support it")), false));
         }
-        v.push(self.c_toggle("enableWoW64", false, "WoW64 (experimental)", Some("32-bit games on 64-bit Wine"), false));
-        v.push(self.c_toggle("enableFSR", false, "FSR hack", Some("The Wine version needs to support it"), false));
+        v.push(self.c_toggle("enableWoW64", false, tr!("WoW64 (experimental)"), Some(tr!("32-bit games on 64-bit Wine")), false));
+        v.push(self.c_toggle("enableFSR", false, tr!("FSR hack"), Some(tr!("The Wine version needs to support it")), false));
         if self.flag("enableFSR", false) {
             let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
             let opts = (1..=5).map(|n| SharedString::from(n.to_string())).collect();
             v.push(item(
-                Row::choice("c:sharp", "FSR sharpness", opts, (sharp - 1) as usize),
+                Row::choice("c:sharp", tr!("FSR sharpness"), opts, (sharp - 1) as usize),
                 Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx))),
             ));
         }
         if self.is_game() {
-            v.push(Self::c_header("Tools"));
+            v.push(Self::c_header(tr!("Tools")));
             let idle = self.tool_busy.is_none();
             v.push(Self::c_do("winecfg", "Winecfg", Icon::Tune, idle, |this, _, cx| this.run_tool("winecfg", WineTool::Winecfg, cx)));
             v.push(Self::c_do("winetricks", "Winetricks", Icon::Build, idle, |this, _, cx| {
                 this.run_tool("winetricks", WineTool::Winetricks, cx)
             }));
-            v.push(Self::c_do("runexe", "Run a program in the prefix\u{2026}", Icon::PlayArrow, idle, |this, window, cx| {
+            v.push(Self::c_do("runexe", tr!("Run a program in the prefix\u{2026}"), Icon::PlayArrow, idle, |this, window, cx| {
                 this.console_pick_file(
-                    "Run a program in the prefix",
+                    tr!("Run a program in the prefix"),
                     vec!["exe".into(), "msi".into(), "bat".into()],
                     window,
                     cx,
@@ -224,24 +228,30 @@ impl SettingsPanel {
     fn c_other(&self) -> Vec<Item> {
         let native = self.native();
         let wine = self.wine_version();
-        let mut v = vec![Self::c_header("Overlays and performance")];
+        let mut v = vec![Self::c_header(tr!("Overlays and performance"))];
         if !native {
-            v.push(self.c_toggle("showFps", false, "Show FPS (DX9, 10 and 11)", None, false));
+            v.push(self.c_toggle("showFps", false, tr!("Show FPS (DX9, 10 and 11)"), None, false));
         }
         v.push(self.c_toggle(
             "showMangohud",
             false,
             "MangoHud",
-            Some("FPS, temperatures and load overlay (needs MangoHud installed)"),
+            Some(tr!("FPS, temperatures and load overlay (needs MangoHud installed)")),
             false,
         ));
-        v.push(self.c_toggle("useGameMode", false, "GameMode", Some("Feral GameMode system tweaks (needs GameMode installed)"), false));
+        v.push(self.c_toggle(
+            "useGameMode",
+            false,
+            "GameMode",
+            Some(tr!("Feral GameMode system tweaks (needs GameMode installed)")),
+            false,
+        ));
         if !native && logic::offers_system_libs(&wine) {
             v.push(self.c_toggle(
                 "preferSystemLibs",
                 false,
-                "Prefer system libraries",
-                Some("Ignore the libraries shipped with this Wine build"),
+                tr!("Prefer system libraries"),
+                Some(tr!("Ignore the libraries shipped with this Wine build")),
                 false,
             ));
         }
@@ -249,8 +259,8 @@ impl SettingsPanel {
             v.push(self.c_toggle(
                 "nvidiaPrime",
                 false,
-                "Use the dedicated GPU",
-                Some("NVIDIA Optimus / AMD switchable graphics; OpenGL and Vulkan games only"),
+                tr!("Use the dedicated GPU"),
+                Some(tr!("NVIDIA Optimus / AMD switchable graphics; OpenGL and Vulkan games only")),
                 false,
             ));
         }
@@ -259,43 +269,44 @@ impl SettingsPanel {
                 Some(Value::String(s)) if !s.is_empty() => s.clone(),
                 _ => "none".to_string(),
             };
-            let mut opts: Vec<SharedString> = vec!["None".into()];
+            let mut opts: Vec<SharedString> = vec![tr!("None").into()];
             opts.extend(logic::STEAM_RUNTIMES.iter().map(|(_, n)| SharedString::from(*n)));
             let index = logic::STEAM_RUNTIMES.iter().position(|(id, _)| *id == current).map_or(0, |i| i + 1);
-            v.push(Self::c_header("Runtime"));
+            v.push(Self::c_header(tr!("Runtime")));
             v.push(item(
-                Row::choice("c:runtime", "Steam Runtime", opts, index),
+                Row::choice("c:runtime", tr!("Steam Runtime"), opts, index),
                 Act::Choice(Rc::new(|this, i, cx| {
                     let val = if i == 0 { Value::Bool(false) } else { Value::String(logic::STEAM_RUNTIMES[i - 1].0.into()) };
                     this.set("steamRuntime", val, cx);
                 })),
             ));
         } else {
-            let note =
-                |on: bool, installed: bool, name: &str| (on && !installed).then(|| format!("The {name} runtime is not installed yet"));
-            v.push(Self::c_header("Anti-cheat"));
+            let note = |on: bool, installed: bool, name: &'static str| {
+                (on && !installed).then(|| tr!("The {name} runtime is not installed yet", name))
+            };
+            v.push(Self::c_header(tr!("Anti-cheat")));
             let be = note(self.flag("battlEyeRuntime", false), self.runtimes.0, "BattlEye");
             let eac = note(self.flag("eacRuntime", false), self.runtimes.1, "EAC");
-            v.push(self.c_toggle("battlEyeRuntime", false, "BattlEye runtime", be.as_deref(), false));
-            v.push(self.c_toggle("eacRuntime", false, "EasyAntiCheat runtime", eac.as_deref(), false));
+            v.push(self.c_toggle("battlEyeRuntime", false, tr!("BattlEye runtime"), be.as_deref(), false));
+            v.push(self.c_toggle("eacRuntime", false, tr!("EasyAntiCheat runtime"), eac.as_deref(), false));
         }
         v
     }
 
     fn c_pairs(&self, t: PairTable) -> Vec<Item> {
-        let mut v = vec![Self::c_header(t.title.trim_end_matches(':'))];
+        let mut v = vec![Self::c_header(heronite_i18n::tr(t.title).trim_end_matches(':'))];
         for (i, (a, b)) in pairs(self.settings.get(t.setting), t.k1, t.k2).into_iter().enumerate() {
             v.push(item(
                 Row::info(SharedString::from(format!("pair:{}:{i}", t.id)), a.clone(), b.clone()),
                 Act::Do(Rc::new(move |this, window, cx| this.console_pair_sheet(t, i, window, cx))),
             ));
         }
-        let label = if t.env { "Add an environment variable" } else { "Add a wrapper" };
+        let label = if t.env { tr!("Add an environment variable") } else { tr!("Add a wrapper") };
         v.push(Self::c_do(&format!("add-{}", t.id), label, Icon::Add, true, move |this, window, cx| {
             this.console_pair_edit(t, None, window, cx)
         }));
         if t.env && !self.env_error.is_empty() {
-            v.push(Self::c_info("env-error", "Problem", self.env_error.clone()));
+            v.push(Self::c_info("env-error", tr!("Problem"), self.env_error.clone()));
         }
         v
     }
@@ -304,46 +315,46 @@ impl SettingsPanel {
         let sideload = self.facts().is_some_and(|f| f.is_sideload());
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
         let game = self.is_game();
-        let mut v = vec![Self::c_header("General")];
+        let mut v = vec![Self::c_header(tr!("General"))];
         if game && !sideload {
-            v.push(self.c_toggle("ignoreGameUpdates", false, "Ignore game updates", None, false));
+            v.push(self.c_toggle("ignoreGameUpdates", false, tr!("Ignore game updates"), None, false));
         }
         if game && legendary {
-            v.push(self.c_toggle("offlineMode", false, "Run the game offline", None, false));
+            v.push(self.c_toggle("offlineMode", false, tr!("Run the game offline"), None, false));
         }
-        v.push(self.c_toggle("verboseLogs", true, "Verbose logs", None, false));
+        v.push(self.c_toggle("verboseLogs", true, tr!("Verbose logs"), None, false));
         if game && !sideload {
-            v.push(self.c_path("targetExe", "Alternative executable", false, cx));
+            v.push(self.c_path("targetExe", tr!("Alternative executable"), false, cx));
         }
         if !sideload {
-            let mut it = self.c_text("language", "Preferred language code", cx);
-            it.row = it.row.desc("Like \u{201c}fr\u{201d} or \u{201c}pt-BR\u{201d}; empty uses the app's language");
+            let mut it = self.c_text("language", tr!("Preferred language code"), cx);
+            it.row = it.row.desc(tr!("Like \u{201c}fr\u{201d} or \u{201c}pt-BR\u{201d}; empty uses the app's language"));
             v.push(it);
         }
-        v.push(Self::c_header("Launch"));
+        v.push(Self::c_header(tr!("Launch")));
         if game {
             let err = launcher_args_error(&self.input_text("launcherArgs", cx));
-            let mut it = self.c_text("launcherArgs", "Game arguments", cx);
-            it.row = it.row.desc(if err.is_empty() { "Appended to the launch command, like -nolauncher" } else { err });
+            let mut it = self.c_text("launcherArgs", tr!("Game arguments"), cx);
+            it.row = it.row.desc(if err.is_empty() { tr!("Appended to the launch command, like -nolauncher") } else { err });
             v.push(it);
         }
-        v.push(self.c_path("beforeScript", "Script before launch", false, cx));
-        v.push(self.c_path("afterScript", "Script after exit", false, cx));
+        v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
+        v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
         v.extend(self.c_pairs(WRAPPERS));
         v.extend(self.c_pairs(ENV));
         let wine = self.wine_version();
         let show_dxvk_fps = !self.native() && !wine.bin.contains("toolkit") && !wine.name.ends_with("-DXMT");
         let show_umu = game && !self.native() && wine.kind == "proton";
         if show_dxvk_fps || show_umu {
-            v.push(Self::c_header("Legacy (mostly deprecated)"));
+            v.push(Self::c_header(tr!("Legacy (mostly deprecated)")));
             if show_dxvk_fps {
-                v.push(self.c_toggle("enableDXVKFpsLimit", false, "Limit DirectX games FPS", None, false));
+                v.push(self.c_toggle("enableDXVKFpsLimit", false, tr!("Limit DirectX games FPS"), None, false));
                 if self.flag("enableDXVKFpsLimit", false) {
-                    v.push(self.c_text("dxvkFps", "FPS limit", cx));
+                    v.push(self.c_text("dxvkFps", tr!("FPS limit"), cx));
                 }
             }
             if show_umu {
-                v.push(self.c_toggle("disableUMU", false, "Disable umu", None, false));
+                v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
             }
         }
         v
@@ -351,12 +362,12 @@ impl SettingsPanel {
 
     fn c_gamescope(&self, cx: &App) -> Vec<Item> {
         if !self.gamescope_installed {
-            return vec![Self::c_info("gs-missing", "Gamescope", "Not found on the PATH")];
+            return vec![Self::c_info("gs-missing", "Gamescope", tr!("Not found on the PATH"))];
         }
         let g = self.gamescope();
         let gs_choice = |id: &'static str, field: &'static str, label: &str, table: &'static [(&'static str, &'static str)]| {
             let current = g.get(field).and_then(Value::as_str).unwrap_or("").to_string();
-            let opts = table.iter().map(|(_, l)| SharedString::from(*l)).collect();
+            let opts = table.iter().map(|(_, l)| SharedString::from(heronite_i18n::tr(l))).collect();
             let index = table.iter().position(|(k, _)| *k == current).unwrap_or(0);
             item(
                 Row::choice(id, label.to_string(), opts, index),
@@ -366,42 +377,44 @@ impl SettingsPanel {
         let gs_toggle = |field: &'static str, label: &str| {
             item(Row::toggle(SharedString::from(format!("g:{field}")), label.to_string(), self.gs_flag(field)), Act::GsToggle(field))
         };
-        let mut v = vec![gs_toggle("enableUpscaling", "Upscaling")];
+        let mut v = vec![gs_toggle("enableUpscaling", tr!("Upscaling"))];
         if self.gs_flag("enableUpscaling") {
-            v.push(gs_choice("c:gs-method", "upscaleMethod", "Upscale method", &UPSCALE_METHODS));
-            v.push(self.c_text("gs.gameWidth", "Game width", cx));
-            v.push(self.c_text("gs.gameHeight", "Game height", cx));
-            v.push(self.c_text("gs.upscaleWidth", "Upscale width", cx));
-            v.push(self.c_text("gs.upscaleHeight", "Upscale height", cx));
-            v.push(gs_choice("c:gs-window", "windowType", "Window type", &WINDOW_TYPES));
+            v.push(gs_choice("c:gs-method", "upscaleMethod", tr!("Upscale method"), &UPSCALE_METHODS));
+            v.push(self.c_text("gs.gameWidth", tr!("Game width"), cx));
+            v.push(self.c_text("gs.gameHeight", tr!("Game height"), cx));
+            v.push(self.c_text("gs.upscaleWidth", tr!("Upscale width"), cx));
+            v.push(self.c_text("gs.upscaleHeight", tr!("Upscale height"), cx));
+            v.push(gs_choice("c:gs-window", "windowType", tr!("Window type"), &WINDOW_TYPES));
         }
-        v.push(gs_toggle("enableLimiter", "FPS limiter"));
+        v.push(gs_toggle("enableLimiter", tr!("FPS limiter")));
         if self.gs_flag("enableLimiter") {
-            v.push(self.c_text("gs.fpsLimiter", "FPS limit", cx));
-            v.push(self.c_text("gs.fpsLimiterNoFocus", "FPS limit without focus", cx));
+            v.push(self.c_text("gs.fpsLimiter", tr!("FPS limit"), cx));
+            v.push(self.c_text("gs.fpsLimiterNoFocus", tr!("FPS limit without focus"), cx));
         }
-        v.push(gs_toggle("enableForceGrabCursor", "Force grab cursor"));
-        v.push(self.c_text("gs.additionalOptions", "Additional options", cx));
+        v.push(gs_toggle("enableForceGrabCursor", tr!("Force grab cursor")));
+        v.push(self.c_text("gs.additionalOptions", tr!("Additional options"), cx));
         v
     }
 
     fn c_saves(&self, cx: &App) -> Vec<Item> {
         if !self.facts().is_some_and(|f| f.cloud_saves) {
-            return vec![Self::c_info("no-saves", "Cloud saves", "This game does not support them")];
+            return vec![Self::c_info("no-saves", tr!("Cloud saves"), tr!("This game does not support them"))];
         }
         if self.saves.detecting {
-            return vec![Self::c_info("detecting", "Saves folder", "Detecting\u{2026}")];
+            return vec![Self::c_info("detecting", tr!("Saves folder"), tr!("Detecting\u{2026}"))];
         }
         let has_path = !self.text("savesPath").is_empty();
         let mut v = vec![
-            Self::c_header("Location (beta: back up your saves first)"),
-            self.c_path("savesPath", "Saves folder", true, cx),
-            Self::c_do("detect", "Detect the saves folder again", Icon::FaSearch, true, |this, window, cx| this.detect_saves(window, cx)),
-            Self::c_header("Sync"),
+            Self::c_header(tr!("Location (beta: back up your saves first)")),
+            self.c_path("savesPath", tr!("Saves folder"), true, cx),
+            Self::c_do("detect", tr!("Detect the saves folder again"), Icon::FaSearch, true, |this, window, cx| {
+                this.detect_saves(window, cx)
+            }),
+            Self::c_header(tr!("Sync")),
         ];
-        let opts = MODES.iter().map(|(l, _)| SharedString::from(*l)).collect();
+        let opts = MODES.iter().map(|(l, _)| SharedString::from(heronite_i18n::tr(l))).collect();
         v.push(item(
-            Row::choice("c:saves-mode", "Manual sync", opts, self.saves.mode).enabled(has_path),
+            Row::choice("c:saves-mode", tr!("Manual sync"), opts, self.saves.mode).enabled(has_path),
             Act::Choice(Rc::new(|this, i, cx| {
                 this.saves.mode = i;
                 cx.notify();
@@ -409,7 +422,7 @@ impl SettingsPanel {
         ));
         v.push(Self::c_do(
             "sync",
-            if self.saves.syncing { "Syncing\u{2026}" } else { "Sync now" },
+            if self.saves.syncing { tr!("Syncing\u{2026}") } else { tr!("Sync now") },
             Icon::CloudSync,
             has_path && !self.saves.syncing,
             |this, _, cx| this.sync_saves(cx),
@@ -419,10 +432,16 @@ impl SettingsPanel {
                 v.push(Self::c_info(&format!("out{i}"), "", l.clone()));
             }
         }
-        v.push(Self::c_header("Automatic"));
-        v.push(self.c_toggle("autoSyncSaves", false, "Autosync saves", Some("Before the game starts and after it ends"), !has_path));
+        v.push(Self::c_header(tr!("Automatic")));
+        v.push(self.c_toggle(
+            "autoSyncSaves",
+            false,
+            tr!("Autosync saves"),
+            Some(tr!("Before the game starts and after it ends")),
+            !has_path,
+        ));
         if has_path {
-            v.push(self.c_toggle("enableQuickSavesMenu", false, "Quick save-sync menu on the game page", None, false));
+            v.push(self.c_toggle("enableQuickSavesMenu", false, tr!("Quick save-sync menu on the game page"), None, false));
         }
         v
     }
@@ -430,36 +449,47 @@ impl SettingsPanel {
     fn c_general(&self, cx: &App) -> Vec<Item> {
         let no_tray = self.flag("noTrayIcon", false);
         let exit_to_tray = self.flag("exitToTray", false);
+        let app_paths = heronite_data::AppPaths::for_data(&self.paths);
+        let (choices, names, selected) = super::general::language_options(&app_paths);
         let mut v = vec![
-            Self::c_header("Folders"),
-            self.c_path("defaultInstallPath", "Default install folder", true, cx),
-            self.c_path("defaultWinePrefixDir", "Folder for new Wine prefixes", true, cx),
-            self.c_path("defaultSteamPath", "Steam folder", true, cx),
-            Self::c_header("Launching"),
-            self.c_toggle("minimizeOnLaunch", false, "Minimize after game launch", None, false),
-            Self::c_header("System"),
-            self.c_toggle("noTrayIcon", false, "Hide the tray icon (needs restart)", None, false),
-            self.c_toggle("exitToTray", false, "Exit to tray", None, no_tray),
-            self.c_toggle("startInTray", false, "Start minimized", None, !exit_to_tray || no_tray),
-            self.c_toggle("darkTrayIcon", false, "Dark tray icon (needs restart)", None, no_tray),
-            self.c_toggle("hideWindowOnProtocolLaunch", false, "Hide the window for heronite-rs:// launches", None, false),
-            self.c_toggle("addDesktopShortcuts", false, "Add desktop shortcuts automatically", None, false),
-            self.c_toggle("addStartMenuShortcuts", false, "Add games to the start menu automatically", None, false),
-            self.c_toggle("addSteamShortcuts", false, "Add games to Steam automatically", None, false),
-            Self::c_header("Wine and Proton"),
+            Self::c_header(tr!("Language")),
+            item(
+                Row::choice("c:language", tr!("Interface language"), names, selected).icon(Icon::Language),
+                Act::Choice(Rc::new(move |_, i, cx| {
+                    if let Some(&p) = choices.get(i) {
+                        crate::language::choose(&app_paths, p, cx);
+                    }
+                })),
+            ),
+            Self::c_header(tr!("Folders")),
+            self.c_path("defaultInstallPath", tr!("Default install folder"), true, cx),
+            self.c_path("defaultWinePrefixDir", tr!("Folder for new Wine prefixes"), true, cx),
+            self.c_path("defaultSteamPath", tr!("Steam folder"), true, cx),
+            Self::c_header(tr!("Launching")),
+            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
+            Self::c_header(tr!("System")),
+            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon (needs restart)"), None, false),
+            self.c_toggle("exitToTray", false, tr!("Exit to tray"), None, no_tray),
+            self.c_toggle("startInTray", false, tr!("Start minimized"), None, !exit_to_tray || no_tray),
+            self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon (needs restart)"), None, no_tray),
+            self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite-rs:// launches"), None, false),
+            self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
+            self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
+            self.c_toggle("addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false),
+            Self::c_header(tr!("Wine and Proton")),
             self.c_toggle(
                 "showValveProton",
                 false,
-                "Allow Valve Proton builds",
-                Some("Custom forks (GE-Proton, Proton-CachyOS) are recommended"),
+                tr!("Allow Valve Proton builds"),
+                Some(tr!("Custom forks (GE-Proton, Proton-CachyOS) are recommended")),
                 false,
             ),
-            self.c_toggle("downloadProtonToSteam", false, "Download GE-Proton to Steam", None, false),
-            Self::c_header("Custom Wine / Proton paths"),
+            self.c_toggle("downloadProtonToSteam", false, tr!("Download GE-Proton to Steam"), None, false),
+            Self::c_header(tr!("Custom Wine / Proton paths")),
         ];
         for (i, p) in self.custom_paths().into_iter().enumerate() {
             v.push(item(
-                Row::info(SharedString::from(format!("wp:{i}")), p.clone(), "A removes"),
+                Row::info(SharedString::from(format!("wp:{i}")), p.clone(), tr!("A removes")),
                 Act::Do(Rc::new(move |this, _, cx| {
                     let mut now = this.custom_paths();
                     if i < now.len() {
@@ -469,8 +499,8 @@ impl SettingsPanel {
                 })),
             ));
         }
-        v.push(Self::c_do("add-wine-path", "Add a Wine or Proton binary\u{2026}", Icon::Add, true, |this, window, cx| {
-            this.console_pick_file("Wine or Proton binary", Vec::new(), window, cx, |this, path, cx| {
+        v.push(Self::c_do("add-wine-path", tr!("Add a Wine or Proton binary\u{2026}"), Icon::Add, true, |this, window, cx| {
+            this.console_pick_file(tr!("Wine or Proton binary"), Vec::new(), window, cx, |this, path, cx| {
                 let mut now = this.custom_paths();
                 if !now.contains(&path) {
                     now.push(path);
@@ -484,19 +514,19 @@ impl SettingsPanel {
     fn c_downloads(&self, cx: &App) -> Vec<Item> {
         let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
         let current = self.number("maxWorkers").unwrap_or(0).max(0) as usize;
-        let mut opts: Vec<SharedString> = vec!["Max".into()];
+        let mut opts: Vec<SharedString> = vec![tr!("Max").into()];
         opts.extend((1..=cores).map(|n| SharedString::from(n.to_string())));
         vec![
-            Self::c_header("Downloads"),
+            Self::c_header(tr!("Downloads")),
             item(
-                Row::choice("c:workers", "Download workers", opts, current.min(cores))
-                    .desc("More workers download faster but use more CPU, memory and disk"),
+                Row::choice("c:workers", tr!("Download workers"), opts, current.min(cores))
+                    .desc(tr!("More workers download faster but use more CPU, memory and disk")),
                 Act::Choice(Rc::new(|this, i, cx| this.set("maxWorkers", json!(i as i64), cx))),
             ),
-            self.c_path("altLegendaryBin", "Alternative legendary binary", false, cx),
-            self.c_toggle("downloadNoHttps", false, "Download without HTTPS (LanCache)", None, false),
-            Self::c_header("Updates"),
-            self.c_toggle("autoUpdateGames", false, "Update games automatically", None, false),
+            self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx),
+            self.c_toggle("downloadNoHttps", false, tr!("Download without HTTPS (LanCache)"), None, false),
+            Self::c_header(tr!("Updates")),
+            self.c_toggle("autoUpdateGames", false, tr!("Update games automatically"), None, false),
         ]
     }
 
@@ -560,8 +590,8 @@ impl SettingsPanel {
     /// Add / Update.
     fn console_pair_edit(&mut self, t: PairTable, existing: Option<(String, String)>, window: &mut Window, cx: &mut Context<Self>) {
         let (a, b) = existing.unwrap_or_default();
-        let first = if t.env { "Variable name" } else { "Wrapper command" };
-        let second = if t.env { "Value" } else { "Wrapper arguments" };
+        let first = if t.env { tr!("Variable name") } else { tr!("Wrapper command") };
+        let second = if t.env { tr!("Value") } else { tr!("Wrapper arguments") };
         self.console_osk(first, &a, window, cx, move |this, name, window, cx| {
             this.set_input(t.in1, &name, window, cx);
             let b = b.clone();
@@ -574,7 +604,10 @@ impl SettingsPanel {
 
     fn console_pair_sheet(&mut self, t: PairTable, i: usize, window: &mut Window, cx: &mut Context<Self>) {
         let Some((a, b)) = pairs(self.settings.get(t.setting), t.k1, t.k2).get(i).cloned() else { return };
-        let rows = vec![Row::action("edit", "Edit").icon(Icon::Edit), Row::action("remove", "Remove").icon(Icon::DeleteOutline).danger()];
+        let rows = vec![
+            Row::action("edit", tr!("Edit")).icon(Icon::Edit),
+            Row::action("remove", tr!("Remove")).icon(Icon::DeleteOutline).danger(),
+        ];
         let sheet = cx.new(|_| Sheet::new(a.clone(), Some(b.clone()), rows));
         let sub = cx.subscribe_in(&sheet, window, move |this, _, ev: &SheetEvent, window, cx| {
             let SheetEvent::Activate(id) = ev;
@@ -669,6 +702,6 @@ impl PadTarget for SettingsPanel {
         if let Some(h) = self.console_layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, "Select"), hint(Btn::LeftRight, "Change"), hint(Btn::X, "Clear")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::X, tr!("Clear"))]
     }
 }

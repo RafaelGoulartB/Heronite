@@ -7,6 +7,7 @@ use std::path::Path;
 use anyhow::Result;
 use heronite_data::models::LocalMetaFile;
 use heronite_data::{json_store, DataPaths};
+use heronite_i18n::tr;
 use heronite_launch::emulators::UserEmulator;
 
 use crate::detect::DetectEnv;
@@ -31,10 +32,10 @@ impl Health {
 
     pub fn label(self) -> &'static str {
         match self {
-            Health::Ok => "Ready",
-            Health::MissingExecutable => "Executable not found",
-            Health::NotExecutable => "Not executable (chmod +x)",
-            Health::FlatpakMissing => "Flatpak not installed",
+            Health::Ok => tr!("Ready"),
+            Health::MissingExecutable => tr!("Executable not found"),
+            Health::NotExecutable => tr!("Not executable (chmod +x)"),
+            Health::FlatpakMissing => tr!("Flatpak not installed"),
         }
     }
 }

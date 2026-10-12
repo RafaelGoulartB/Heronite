@@ -5,6 +5,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::collect_tag_options;
 use heronite_data::models::{CollectionGameMetadata, LocalGameMeta};
+use heronite_i18n::{n_, tr};
 use heronite_metadata::{DetailsPatch, DetailsResult};
 
 use super::{block, Busy, GameSettingsDialog};
@@ -62,14 +63,14 @@ fn split_list(value: &str) -> Vec<String> {
 }
 
 pub(super) const TAG_FIELDS: [(&str, &str, bool); 8] = [
-    ("series", "Series", false),
-    ("developers", "Developers", true),
-    ("publishers", "Publishers", true),
-    ("genres", "Genres", true),
-    ("themes", "Themes", true),
-    ("gameModes", "Game modes", true),
-    ("platforms", "Platforms", true),
-    ("features", "Features", true),
+    ("series", n_!("Series"), false),
+    ("developers", n_!("Developers"), true),
+    ("publishers", n_!("Publishers"), true),
+    ("genres", n_!("Genres"), true),
+    ("themes", n_!("Themes"), true),
+    ("gameModes", n_!("Game modes"), true),
+    ("platforms", n_!("Platforms"), true),
+    ("features", n_!("Features"), true),
 ];
 
 pub(super) struct Details {
@@ -101,7 +102,7 @@ impl GameSettingsDialog {
                     _ => initial.features.clone(),
                 };
                 let opts = options.get(i).map(|(_, v)| v.clone()).unwrap_or_default();
-                let field = cx.new(|cx| TagField::new(&format!("gs-{id}"), label, *multiple, opts, values, window, cx));
+                let field = cx.new(|cx| TagField::new(&format!("gs-{id}"), tr(label), *multiple, opts, values, window, cx));
                 cx.subscribe(&field, |_, _, _: &TagEvent, cx| cx.notify()).detach();
                 field
             })
@@ -201,7 +202,7 @@ impl GameSettingsDialog {
                 match t.parse::<f64>() {
                     Ok(n) if n.is_finite() => patch.critic_score = Some(Some(n.round())),
                     _ => {
-                        self.error = "Score must be a number, or empty.".into();
+                        self.error = tr!("Score must be a number, or empty.").into();
                         cx.notify();
                         return;
                     }
@@ -235,34 +236,35 @@ impl GameSettingsDialog {
     pub(super) fn details_tab(&mut self) -> Div {
         let d = &self.details;
         let general = card([
-            block(labeled("Name", input_box(&d.name, false))),
-            block(labeled("Description", textarea_box(&d.description, 6))),
+            block(labeled(tr!("Name"), input_box(&d.name, false))),
+            block(labeled(tr!("Description"), textarea_box(&d.description, 6))),
             block(
                 div()
                     .flex()
                     .gap(px(12.))
-                    .child(div().flex_1().child(labeled("Release date", input_box(&d.release, false))))
-                    .child(div().flex_1().child(labeled("Score", input_box(&d.score, false)))),
+                    .child(div().flex_1().child(labeled(tr!("Release date"), input_box(&d.release, false))))
+                    .child(div().flex_1().child(labeled(tr!("Score"), input_box(&d.score, false)))),
             ),
         ]);
         let tags = card(d.tags.iter().map(|t| block(t.clone())));
-        let more = card([block(labeled("Websites", input_box(&d.websites, false))), block(labeled("Notes", textarea_box(&d.notes, 4)))]);
+        let more =
+            card([block(labeled(tr!("Websites"), input_box(&d.websites, false))), block(labeled(tr!("Notes"), textarea_box(&d.notes, 4)))]);
         div()
             .flex()
             .flex_col()
             .gap(px(6.))
             .child(
-                help_text(
-                    "These fields stay in Collection. Fetching metadata later will not overwrite values you edit here, unless you choose to overwrite.",
-                )
+                help_text(tr!(
+                    "These fields stay in Collection. Fetching metadata later will not overwrite values you edit here, unless you choose to overwrite."
+                ))
                 .px(px(6.)),
             )
-            .child(caption("General"))
+            .child(caption(tr!("General")))
             .child(general)
-            .child(caption("Tags"))
-            .child(help_text("Pick existing tags or type a new one and press Enter to create it.").px(px(6.)))
+            .child(caption(tr!("Tags")))
+            .child(help_text(tr!("Pick existing tags or type a new one and press Enter to create it.")).px(px(6.)))
             .child(tags)
-            .child(caption("Links and notes"))
+            .child(caption(tr!("Links and notes")))
             .child(more)
     }
 }

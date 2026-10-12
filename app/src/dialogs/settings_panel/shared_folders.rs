@@ -13,6 +13,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 impl SettingsPanel {
     pub(super) fn shared_folders_section(&mut self, cx: &mut Context<Self>) -> Div {
@@ -42,15 +43,16 @@ impl SettingsPanel {
                     ),
             );
         }
-        list = list.child(div().py(px(10.)).child(self.outline_button("shared-folder-add", "Add folder", true, cx, |_, window, cx| {
-            choose_path(window, cx, true, "Choose a folder for Proton to see", |this: &mut Self, path, _, cx| {
-                this.add_shared_folder(path, cx)
-            });
-        })));
+        list =
+            list.child(div().py(px(10.)).child(self.outline_button("shared-folder-add", tr!("Add folder"), true, cx, |_, window, cx| {
+                choose_path(window, cx, true, tr!("Choose a folder for Proton to see"), |this: &mut Self, path, _, cx| {
+                    this.add_shared_folder(path, cx)
+                });
+            })));
         column()
-            .child(heading("Folders visible to Proton"))
+            .child(heading(tr!("Folders visible to Proton")))
             .child(help(
-                "Games and installers run with Proton (umu) inside the Steam Linux Runtime, which only sees your home folder, /mnt, /media and /run/media. Add other folders here (for example a second drive mounted at /data) so file pickers and games can reach them. Each folder also gets a drive letter (D:, E:, ...) in the prefix the next time something runs in it.",
+                tr!("Games and installers run with Proton (umu) inside the Steam Linux Runtime, which only sees your home folder, /mnt, /media and /run/media. Add other folders here (for example a second drive mounted at /data) so file pickers and games can reach them. Each folder also gets a drive letter (D:, E:, ...) in the prefix the next time something runs in it."),
             ).px(px(6.)))
             .child(list.card())
     }

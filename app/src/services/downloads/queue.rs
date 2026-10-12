@@ -11,6 +11,7 @@ use heronite_epic::ops::{self, LegendaryJob};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
 use heronite_epic::util::file_size;
+use heronite_i18n::tr;
 use serde_json::Value;
 
 use super::{library_entry, Downloads, DownloadsEvent, InstallRequest, QueueState};
@@ -54,13 +55,21 @@ impl Downloads {
             }
             DmEvent::Finished { element, error } => {
                 let title = element.params.title();
-                let verb = if element.kind == ElementKind::Install { "Installation" } else { "Update" };
+                let install = element.kind == ElementKind::Install;
                 match element.status {
                     Some(DmStatus::Done) => {
                         self.auto_failed.remove(&element.params.app_name);
-                        self.toast(cx, format!("{title}: {} finished", verb.to_lowercase()), false);
+                        let done = if install {
+                            tr!("{title}: installation finished", title = title.clone())
+                        } else {
+                            tr!("{title}: update finished", title = title.clone())
+                        };
+                        self.toast(cx, done, false);
                         if !crate::system::has_window(cx) {
-                            crate::system::notify::send(title.clone(), format!("{verb} Finished"));
+                            crate::system::notify::send(
+                                title.clone(),
+                                if install { tr!("Installation finished") } else { tr!("Update finished") },
+                            );
                         }
                         self.progress.remove(&element.params.app_name);
                         self.emit(cx, DownloadsEvent::LibraryChanged);
@@ -86,17 +95,18 @@ impl Downloads {
                         }
                         let why = error.unwrap_or_default();
                         let first = why.lines().next().unwrap_or("").to_string();
-                        self.toast(
-                            cx,
-                            format!(
-                                "{title}: {} failed{}",
-                                verb.to_lowercase(),
-                                if first.is_empty() { String::new() } else { format!(" ({first})") }
-                            ),
-                            true,
-                        );
+                        let failed = match (install, first.is_empty()) {
+                            (true, true) => tr!("{title}: installation failed", title = title.clone()),
+                            (true, false) => tr!("{title}: installation failed ({reason})", title = title.clone(), reason = first),
+                            (false, true) => tr!("{title}: update failed", title = title.clone()),
+                            (false, false) => tr!("{title}: update failed ({reason})", title = title.clone(), reason = first),
+                        };
+                        self.toast(cx, failed, true);
                         if !crate::system::has_window(cx) {
-                            crate::system::notify::send(title.clone(), format!("{verb} Failed"));
+                            crate::system::notify::send(
+                                title.clone(),
+                                if install { tr!("Installation failed") } else { tr!("Update failed") },
+                            );
                         }
                     }
                     _ => {}
@@ -147,8 +157,8 @@ impl Downloads {
                 })
                 .await;
             this.update(cx, |this, cx| match result {
-                Ok(()) => this.toast(cx, "Added to the download queue", false),
-                Err(err) => this.toast(cx, format!("Could not queue the installation: {err:#}"), true),
+                Ok(()) => this.toast(cx, tr!("Added to the download queue"), false),
+                Err(err) => this.toast(cx, tr!("Could not queue the installation: {error}", error = format!("{err:#}")), true),
             })
             .ok();
         })
@@ -181,7 +191,7 @@ impl Downloads {
             ));
         })
         .detach();
-        self.toast(cx, "Update added to the download queue", false);
+        self.toast(cx, tr!("Update added to the download queue"), false);
     }
 
     pub fn pause(&mut self) {

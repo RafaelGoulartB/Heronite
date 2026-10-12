@@ -5,7 +5,8 @@
 use chrono::Datelike;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::stats::{fmt_hours_short, fmt_secs, month_name, Span, Stats};
+use heronite_data::stats::{fmt_hours_short, fmt_secs, month_in_sentence, Span, Stats};
+use heronite_i18n::{n_, tr};
 
 use super::{change_pct, today, StatsPage};
 use crate::icons::Icon;
@@ -97,19 +98,21 @@ fn total_parts(secs: f64, all: bool) -> (String, Option<String>) {
     let mins = (secs / 60.).round() as u64;
     let (h, m) = (mins / 60, mins % 60);
     if h == 0 {
-        (format!("{m}m"), None)
+        (tr!("{m}m", m), None)
     } else {
-        (format!("{h}h"), Some(format!("{m}m")))
+        (tr!("{h}h", h), Some(tr!("{m}m", m)))
     }
 }
 
-/// What the period is called after "your #1 game of".
-fn period_name(st: &Stats) -> String {
+/// "· your #1 game of October 2026".
+fn top_game_line(st: &Stats) -> String {
     match st.period.span {
-        Span::Week => "this week".into(),
-        Span::Month => format!("{} {}", month_name(st.period.start.month()), st.period.start.year()),
-        Span::Year => st.period.start.year().to_string(),
-        Span::All => "all time".into(),
+        Span::Week => tr!("\u{b7} your #1 game of this week").into(),
+        Span::Month => {
+            tr!("\u{b7} your #1 game of {month} {year}", month = month_in_sentence(st.period.start.month()), year = st.period.start.year())
+        }
+        Span::Year => tr!("\u{b7} your #1 game of {year}", year = st.period.start.year()),
+        Span::All => tr!("\u{b7} your #1 game of all time").into(),
     }
 }
 
@@ -123,7 +126,7 @@ impl StatsPage {
     }
 
     fn render_switch(&self, cx: &mut Context<Self>) -> Div {
-        let spans = [(Span::Week, "Week"), (Span::Month, "Month"), (Span::Year, "Year"), (Span::All, "All time")];
+        let spans = [(Span::Week, n_!("Week")), (Span::Month, n_!("Month")), (Span::Year, n_!("Year")), (Span::All, n_!("All time"))];
         let mut seg = capsule();
         for (span, label) in spans {
             let on = self.period.span == span;
@@ -145,7 +148,7 @@ impl StatsPage {
                             .hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary()))
                     })
                     .on_click(cx.listener(move |this, _, _, cx| this.set_span(span, cx)))
-                    .child(label),
+                    .child(heronite_i18n::tr(label)),
             );
         }
         let all = self.period.span == Span::All;
@@ -154,7 +157,7 @@ impl StatsPage {
                 .history
                 .as_ref()
                 .and_then(|h| h.since)
-                .map_or_else(String::new, |d| format!("Since {} {}", month_name(d.month()), d.year())),
+                .map_or_else(String::new, |d| tr!("Since {month} {year}", month = month_in_sentence(d.month()), year = d.year())),
             _ => self.period.label(),
         };
         let arrow = |id: &'static str, ic: Icon, enabled: bool| {
@@ -228,7 +231,7 @@ impl StatsPage {
             );
         }
         let ongoing = year == today().year();
-        let title = if ongoing { format!("Your {year} so far, in review") } else { format!("Your {year} in review is ready") };
+        let title = if ongoing { tr!("Your {year} so far, in review", year) } else { tr!("Your {year} in review is ready", year) };
         Some(
             div()
                 .id("stats-review")
@@ -270,7 +273,7 @@ impl StatsPage {
                             div()
                                 .text_size(px(12.))
                                 .text_color(theme::text_muted())
-                                .child("7 stories \u{b7} Ctrl K \u{2192} Year in review"),
+                                .child(tr!("7 stories \u{b7} Ctrl K \u{2192} Year in review")),
                         ),
                 )
                 .child(
@@ -287,7 +290,7 @@ impl StatsPage {
                         .font_weight(theme::W_BOLD)
                         .text_size(px(13.))
                         .child(icon(Icon::PlayArrow, px(16.), theme::on_accent()))
-                        .child("Watch"),
+                        .child(tr!("Watch")),
                 ),
         )
     }
@@ -358,9 +361,9 @@ impl StatsPage {
                                 .bg(theme::white_a(0.06))
                                 .children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
                         )
-                        .child("Art:")
+                        .child(tr!("Art:"))
                         .child(div().font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(title))
-                        .child(format!("\u{b7} your #1 game of {}", period_name(st))),
+                        .child(top_game_line(st)),
                 );
             }
         }
@@ -371,8 +374,8 @@ impl StatsPage {
     fn render_total(&self, st: &Stats) -> Div {
         let all = st.period.span == Span::All;
         let eyebrow_text = match st.period.span {
-            Span::All => "Time played \u{b7} all time".to_string(),
-            _ => format!("Time played \u{b7} {}", st.period.label()),
+            Span::All => tr!("Time played \u{b7} all time").into(),
+            _ => tr!("Time played \u{b7} {period}", period = st.period.label()),
         };
         let (main, small) = total_parts(st.total_secs, all);
         let number = div()
@@ -393,9 +396,9 @@ impl StatsPage {
         match (change_pct(st), st.prev_secs) {
             (Some(c), _) if c.abs() >= 1. && (over || c > 0.) => {
                 let (text, color) = if c > 0. {
-                    (format!("\u{25b2} +{c:.0}% vs {prev_name}"), theme::success())
+                    (tr!("\u{25b2} +{pct}% vs {name}", pct = format!("{c:.0}"), name = prev_name), theme::success())
                 } else {
-                    (format!("\u{25bc} {c:.0}% vs {prev_name}"), theme::danger_text())
+                    (tr!("\u{25bc} {pct}% vs {name}", pct = format!("{c:.0}"), name = prev_name), theme::danger_text())
                 };
                 let tint: Hsla = color.into();
                 story = story.child(
@@ -420,16 +423,16 @@ impl StatsPage {
         }
         let sep = || div().size(px(4.)).rounded_full().bg(theme::white_a(0.35));
         story = story.child(if all {
-            fact(st.days_played.to_string(), "days played".into(), false)
+            fact(st.days_played.to_string(), tr!("days played").into(), false)
         } else {
-            fact(st.days_played.to_string(), format!("of {} days", st.days_elapsed), false)
+            fact(st.days_played.to_string(), tr!("of {days} days", days = st.days_elapsed), false)
         });
         if st.streak > 1 {
-            story = story.child(sep()).child(fact(format!("{}-day", st.streak), "streak".into(), false));
+            story = story.child(sep()).child(fact(tr!("{n}-day", n = st.streak), tr!("streak").into(), false));
         }
         story = story.child(sep()).child(fact(
             heronite_data::stats::group_thousands(st.sessions as u64),
-            if st.sessions == 1 { "session".into() } else { "sessions".into() },
+            if st.sessions == 1 { tr!("session").into() } else { tr!("sessions").into() },
             false,
         ));
         div().mt_auto().pb(px(30.)).child(eyebrow(eyebrow_text, 0.7)).child(number).child(story)
@@ -443,15 +446,19 @@ impl StatsPage {
         let st = self.stats.clone();
         let hero = self.render_hero(st.as_deref(), panel_w, col_w, window, cx);
         let body: Vec<AnyElement> = match (&self.history, &st) {
-            (None, _) | (_, None) => vec![notice(Icon::BarChart, "Reading your play history\u{2026}", "")],
+            (None, _) | (_, None) => vec![notice(Icon::BarChart, tr!("Reading your play history\u{2026}"), "")],
             (Some(h), Some(_)) if h.is_empty() => {
-                vec![notice(Icon::BarChart, "No play time yet", "Play a game from the Collection and your statistics show up here.")]
+                vec![notice(
+                    Icon::BarChart,
+                    tr!("No play time yet"),
+                    tr!("Play a game from the Collection and your statistics show up here."),
+                )]
             }
             (Some(_), Some(st)) if st.total_secs <= 0. => {
                 vec![notice(
                     Icon::AccessTime,
-                    &format!("Nothing played in {}", self.period.label()),
-                    "Pick another period with the arrows above.",
+                    &tr!("Nothing played in {name}", name = self.period.label()),
+                    tr!("Pick another period with the arrows above."),
                 )]
             }
             (Some(_), Some(st)) => self.render_sections(st, col_w, wide, window, cx),

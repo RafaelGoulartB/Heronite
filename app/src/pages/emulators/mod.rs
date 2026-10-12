@@ -22,6 +22,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_emulation::manager::{data_stamp, overview, EmulatorSummary};
 use heronite_emulation::{AutoScanReport, SystemEnv};
+use heronite_i18n::{tr, trn};
 
 use super::{content_width, page_close, sheet, PageCtx, PageEvent};
 use crate::ui::controls::{button, ButtonKind};
@@ -56,16 +57,12 @@ pub struct EmulatorsPage {
 
 impl EventEmitter<PageEvent> for EmulatorsPage {}
 
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
-}
-
 /// The notice for a finished scan of ROM folders.
 fn scan_notice(report: &AutoScanReport) -> Notice {
-    let mut lines = vec![format!(
-        "Scanned {}: added {}.",
-        plural(report.scanned, "folder", "folders"),
-        plural(report.imported, "new game", "new games")
+    let mut lines = vec![tr!(
+        "Scanned {folders}: added {games}.",
+        folders = trn!(report.scanned, "{n} folder", "{n} folders"),
+        games = trn!(report.imported, "{n} new game", "{n} new games")
     )];
     lines.extend(report.errors.iter().cloned());
     Notice { lines, error: !report.errors.is_empty() && report.imported == 0 }
@@ -182,21 +179,22 @@ impl Render for EmulatorsPage {
 
         let lead = if self.loaded {
             format!(
-                "{} \u{b7} {}. Folders set to scan on refresh add new games whenever the Collection refreshes.",
-                plural(self.summaries.len(), "emulator", "emulators"),
-                plural(folders, "ROM folder", "ROM folders")
+                "{} \u{b7} {}. {}",
+                trn!(self.summaries.len(), "{n} emulator", "{n} emulators"),
+                trn!(folders, "{n} ROM folder", "{n} ROM folders"),
+                tr!("Folders set to scan on refresh add new games whenever the Collection refreshes.")
             )
         } else {
-            "Loading\u{2026}".to_string()
+            tr!("Loading\u{2026}").to_string()
         };
-        let add = button("emus-add", ButtonKind::Primary, "Add emulator")
+        let add = button("emus-add", ButtonKind::Primary, tr!("Add emulator"))
             .on_click(cx.listener(|this, _, window, cx| this.open_add_emulator(window, cx)))
             .into_any_element();
         let close = page_close(cx);
         div()
             .size_full()
             .relative()
-            .child(sheet("page-emulators", "Emulators", Some(lead.into()), Some(add), max_w, window, close, column))
+            .child(sheet("page-emulators", tr!("Emulators"), Some(lead.into()), Some(add), max_w, window, close, column))
             .children(self.dialog.clone())
             .into_any_element()
     }
@@ -204,13 +202,11 @@ impl Render for EmulatorsPage {
 
 #[cfg(test)]
 mod tests {
-    use super::{plural, scan_notice};
+    use super::scan_notice;
     use heronite_emulation::AutoScanReport;
 
     #[test]
     fn scan_notices() {
-        assert_eq!(plural(1, "folder", "folders"), "1 folder");
-        assert_eq!(plural(0, "new game", "new games"), "0 new games");
         let n = scan_notice(&AutoScanReport { scanned: 2, imported: 3, errors: vec![] });
         assert_eq!(n.lines, ["Scanned 2 folders: added 3 new games."]);
         assert!(!n.error);

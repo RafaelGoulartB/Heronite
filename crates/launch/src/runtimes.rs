@@ -7,6 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use serde_json::Value;
 
 use crate::net::{extract_tar, Cancel, Net, CANCELLED};
@@ -34,8 +35,8 @@ impl Runtime {
     pub fn label(self) -> &'static str {
         match self {
             Runtime::Umu => "umu",
-            Runtime::Eac => "Easy Anti-Cheat runtime",
-            Runtime::BattlEye => "BattlEye runtime",
+            Runtime::Eac => tr!("Easy Anti-Cheat runtime"),
+            Runtime::BattlEye => tr!("BattlEye runtime"),
         }
     }
 }
@@ -85,10 +86,10 @@ pub fn needs_download(paths: &DataPaths, net: &dyn Net, runtime: Runtime) -> boo
 /// `download`: fetches Lutris' archive and replaces `runtimes/<name>`. The old
 /// folder stays until the new one is fully extracted.
 pub fn download(paths: &DataPaths, net: &dyn Net, runtime: Runtime, cancel: Cancel) -> Result<(), String> {
-    let list = net.get_json(RUNTIMES_URL).map_err(|e| format!("could not fetch the runtime list: {e}"))?;
+    let list = net.get_json(RUNTIMES_URL).map_err(|e| tr!("could not fetch the runtime list: {error}", error = e))?;
     let entry = find_entry(&list, runtime)
         .filter(|e| !e.url.is_empty())
-        .ok_or_else(|| format!("{} was not found in the runtime list", runtime.label()))?;
+        .ok_or_else(|| tr!("{runtime} was not found in the runtime list", runtime = runtime.label()))?;
     let base = runtimes_dir(paths);
     fs::create_dir_all(&base).map_err(|e| format!("creating {}: {e}", base.display()))?;
     let file = entry.url.rsplit('/').next().unwrap_or("runtime.tar.xz");
@@ -99,7 +100,7 @@ pub fn download(paths: &DataPaths, net: &dyn Net, runtime: Runtime, cancel: Canc
     let _ = fs::remove_file(&archive);
     if let Err(e) = net.download(&entry.url, &archive, cancel) {
         let _ = fs::remove_file(&archive);
-        return Err(if e == CANCELLED { e } else { format!("downloading {} failed: {e}", runtime.label()) });
+        return Err(if e == CANCELLED { e } else { tr!("downloading {runtime} failed: {error}", runtime = runtime.label(), error = e) });
     }
     let tmp = base.join(format!(".{}.extracting", runtime.name()));
     let _ = fs::remove_dir_all(&tmp);
@@ -107,7 +108,7 @@ pub fn download(paths: &DataPaths, net: &dyn Net, runtime: Runtime, cancel: Canc
     let _ = fs::remove_file(&archive);
     if let Err(e) = extracted {
         let _ = fs::remove_dir_all(&tmp);
-        return Err(if e == CANCELLED { e } else { format!("unpacking {} failed: {e}", runtime.label()) });
+        return Err(if e == CANCELLED { e } else { tr!("unpacking {runtime} failed: {error}", runtime = runtime.label(), error = e) });
     }
     if let Err(e) = write_atomic(&tmp.join("current_version"), &entry.created_at) {
         let _ = fs::remove_dir_all(&tmp);
@@ -117,7 +118,7 @@ pub fn download(paths: &DataPaths, net: &dyn Net, runtime: Runtime, cancel: Canc
     let _ = fs::remove_dir_all(&dest);
     fs::rename(&tmp, &dest).map_err(|e| {
         let _ = fs::remove_dir_all(&tmp);
-        format!("could not move {} into place: {e}", runtime.label())
+        tr!("could not move {runtime} into place: {error}", runtime = runtime.label(), error = e)
     })
 }
 

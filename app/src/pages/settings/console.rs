@@ -7,6 +7,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::{n_, tr};
 
 use super::{about, advanced, appearance, library, logs, metadata, saves, screenshots, Section, SettingsPage};
 use crate::console::kit::{self, u};
@@ -31,9 +32,9 @@ pub(super) enum CSec {
 }
 
 const GROUPS: [(&str, &[CSec]); 4] = [
-    ("App", &[CSec::Panel(Section::General), CSec::Rows(Section::Appearance), CSec::Panel(Section::Advanced), CSec::Extras]),
+    (n_!("App"), &[CSec::Panel(Section::General), CSec::Rows(Section::Appearance), CSec::Panel(Section::Advanced), CSec::Extras]),
     (
-        "Games",
+        n_!("Games"),
         &[
             CSec::Defaults(HSection::Wine),
             CSec::Defaults(HSection::Other),
@@ -43,16 +44,16 @@ const GROUPS: [(&str, &[CSec]); 4] = [
             CSec::Rows(Section::Library),
         ],
     ),
-    ("Collection", &[CSec::Rows(Section::Metadata), CSec::Rows(Section::Screenshots), CSec::Rows(Section::Backups)]),
-    ("Help", &[CSec::Rows(Section::Logs), CSec::Rows(Section::About)]),
+    (n_!("Collection"), &[CSec::Rows(Section::Metadata), CSec::Rows(Section::Screenshots), CSec::Rows(Section::Backups)]),
+    (n_!("Help"), &[CSec::Rows(Section::Logs), CSec::Rows(Section::About)]),
 ];
 
 impl CSec {
     fn label(self) -> String {
         match self {
             CSec::Panel(s) | CSec::Rows(s) => s.label().to_string(),
-            CSec::Defaults(h) => format!("Game defaults \u{b7} {}", h.label()),
-            CSec::Extras => "Folders and cache".into(),
+            CSec::Defaults(h) => tr!("Game defaults \u{b7} {section}", section = h.label()),
+            CSec::Extras => tr!("Folders and cache").into(),
         }
     }
 
@@ -67,8 +68,8 @@ impl CSec {
     fn blurb(self) -> &'static str {
         match self {
             CSec::Panel(s) | CSec::Rows(s) => s.blurb(),
-            CSec::Defaults(_) => "What new games start with. Change an installed game in its own settings.",
-            CSec::Extras => "Open the app's folders, clear the image cache, copy the settings for a bug report.",
+            CSec::Defaults(_) => tr!("What new games start with. Change an installed game in its own settings."),
+            CSec::Extras => tr!("Open the app's folders, clear the image cache, copy the settings for a bug report."),
         }
     }
 }
@@ -160,7 +161,7 @@ impl SettingsPage {
     pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let sec = self.console_sec();
         let (_, secs) = GROUPS[self.console.group];
-        let groups: Vec<SharedString> = GROUPS.iter().map(|(g, _)| SharedString::from(*g)).collect();
+        let groups: Vec<SharedString> = GROUPS.iter().map(|(g, _)| SharedString::from(tr(g))).collect();
         let content_focus = self.console.content && !self.console.layer.is_open();
         let mut nav = div().flex().flex_col().gap(u(4.)).w(u(320.)).flex_none();
         for (i, s) in secs.iter().enumerate() {
@@ -202,7 +203,7 @@ impl SettingsPage {
                     .gap(u(36.))
                     .h(u(76.))
                     .px(u(46.))
-                    .child(kit::wordmark("SETTINGS"))
+                    .child(kit::wordmark(tr!("SETTINGS")))
                     .child(kit::tabs(&groups, self.console.group))
                     .child(div().flex_1())
                     .child(kit::clock()),
@@ -300,7 +301,7 @@ impl PadTarget for SettingsPage {
             return h;
         }
         if !self.console.content {
-            return vec![hint(Btn::A, "Open"), hint(Btn::Bumpers, "Group")];
+            return vec![hint(Btn::A, tr!("Open")), hint(Btn::Bumpers, tr!("Group"))];
         }
         let mut h = match self.console_sec() {
             CSec::Panel(_) | CSec::Defaults(_) => {
@@ -310,9 +311,9 @@ impl PadTarget for SettingsPage {
                 };
                 panel.map(|p| p.read(cx).hints(cx)).unwrap_or_default()
             }
-            _ => vec![hint(Btn::A, "Select"), hint(Btn::LeftRight, "Change")],
+            _ => vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change"))],
         };
-        h.push(hint(Btn::Bumpers, "Group"));
+        h.push(hint(Btn::Bumpers, tr!("Group")));
         h
     }
 }

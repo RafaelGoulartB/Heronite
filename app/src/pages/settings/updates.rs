@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::{n_, tr};
 use heronite_update::Unsupported;
 
 use super::SettingsPage;
@@ -35,81 +36,83 @@ fn status(u: &Updater, cx: &App) -> Status {
     match u.phase() {
         Phase::Idle => Status {
             title: format!("Heronite {current}"),
-            detail: checked.map(|a| format!("Last checked {a}")).unwrap_or_else(|| "Not checked yet".into()),
-            action: Some(("Check for updates", ButtonKind::Glass, true, Action::Check)),
+            detail: checked.map(|a| tr!("Last checked {a}", a)).unwrap_or_else(|| tr!("Not checked yet").into()),
+            action: Some((tr!("Check for updates"), ButtonKind::Glass, true, Action::Check)),
         },
         Phase::Checking => Status {
-            title: "Checking for updates\u{2026}".into(),
-            detail: "Asking GitHub for the latest release".into(),
-            action: Some(("Checking\u{2026}", ButtonKind::Glass, false, Action::Check)),
+            title: tr!("Checking for updates\u{2026}").into(),
+            detail: tr!("Asking GitHub for the latest release").into(),
+            action: Some((tr!("Checking\u{2026}"), ButtonKind::Glass, false, Action::Check)),
         },
         Phase::UpToDate => Status {
-            title: "Heronite is up to date".into(),
-            detail: format!("Version {current} \u{b7} checked {}", checked.unwrap_or_else(|| "just now".into())),
-            action: Some(("Check again", ButtonKind::Glass, true, Action::Check)),
+            title: tr!("Heronite is up to date").into(),
+            detail: tr!("Version {current} \u{b7} checked {when}", current, when = checked.unwrap_or_else(|| tr!("just now").into())),
+            action: Some((tr!("Check again"), ButtonKind::Glass, true, Action::Check)),
         },
         Phase::Available => {
             let r = u.release();
-            let mut detail = format!("You have {current}");
+            let mut detail = tr!("You have {current}", current);
             if let Some(r) = r.filter(|r| !r.date().is_empty()) {
-                detail.push_str(&format!(" \u{b7} released {}", r.date()));
+                detail.push_str(&tr!(" \u{b7} released {date}", date = r.date()));
             }
             if let Some(p) = u.package() {
-                detail.push_str(&format!(" \u{b7} {} package", p.label()));
+                detail.push_str(&tr!(" \u{b7} {package} package", package = p.label()));
             }
             if let Some(a) = u.download_asset().filter(|a| a.size > 0) {
                 detail.push_str(&format!(" \u{b7} {}", update::size_text(a.size)));
             }
-            let label = if u.can_install() { "Update" } else { "Download" };
+            let label = if u.can_install() { tr!("Update") } else { tr!("Download") };
             Status {
-                title: format!("Heronite {version} is available"),
+                title: tr!("Heronite {version} is available", version),
                 detail,
                 action: Some((label, ButtonKind::Primary, true, get(Action::Install))),
             }
         }
         Phase::Downloading(p) => Status {
-            title: format!("Downloading Heronite {version}"),
+            title: tr!("Downloading Heronite {version}", version),
             detail: update::progress_text(p),
-            action: Some(("Cancel", ButtonKind::Ghost, true, Action::Cancel)),
+            action: Some((tr!("Cancel"), ButtonKind::Ghost, true, Action::Cancel)),
         },
         Phase::Installing => Status {
-            title: format!("Installing Heronite {version}"),
-            detail: "The package manager is installing it. Enter your password if you are asked.".into(),
-            action: Some(("Installing\u{2026}", ButtonKind::Primary, false, Action::Install)),
+            title: tr!("Installing Heronite {version}", version),
+            detail: tr!("The package manager is installing it. Enter your password if you are asked.").into(),
+            action: Some((tr!("Installing\u{2026}"), ButtonKind::Primary, false, Action::Install)),
         },
         Phase::Ready => {
             let blocker = crate::system::restart_blocker(cx);
             Status {
-                title: format!("Heronite {version} is installed"),
+                title: tr!("Heronite {version} is installed", version),
                 detail: match &blocker {
-                    Some(why) => format!("{why}: restart later, or it starts the next time you open Heronite."),
-                    None => "Restart to use it now, or it starts the next time you open Heronite.".into(),
+                    Some(why) => tr!("{why}: restart later, or it starts the next time you open Heronite.", why),
+                    None => tr!("Restart to use it now, or it starts the next time you open Heronite.").into(),
                 },
-                action: Some(("Restart now", ButtonKind::Primary, blocker.is_none(), Action::Restart)),
+                action: Some((tr!("Restart now"), ButtonKind::Primary, blocker.is_none(), Action::Restart)),
             }
         }
         Phase::CheckFailed(e) => Status {
-            title: "Could not check for updates".into(),
+            title: tr!("Could not check for updates").into(),
             detail: e.clone(),
-            action: Some(("Try again", ButtonKind::Glass, true, Action::Check)),
+            action: Some((tr!("Try again"), ButtonKind::Glass, true, Action::Check)),
         },
         Phase::InstallFailed(e) => Status {
-            title: format!("Could not update to {version}"),
+            title: tr!("Could not update to {version}", version),
             detail: e.clone(),
-            action: Some(("Try again", ButtonKind::Primary, true, get(Action::Install))),
+            action: Some((tr!("Try again"), ButtonKind::Primary, true, get(Action::Install))),
         },
     }
 }
 
 /// Why "Install updates automatically" is off for packages.
-const PACKAGE_NO_AUTO: &str = "Packages ask for your password, so Heronite installs them only when you click Update.";
+const PACKAGE_NO_AUTO: &str = n_!("Packages ask for your password, so Heronite installs them only when you click Update.");
 
 /// Why this copy cannot install updates by itself, for the switches.
 fn unsupported_text(why: &Unsupported) -> String {
     match why {
-        Unsupported::NotAppImage => "Only the AppImage updates itself. Update this copy the way you installed it.".into(),
-        Unsupported::Missing(_) => "The AppImage file was moved or deleted while Heronite runs.".into(),
-        Unsupported::ReadOnly(dir) => format!("The AppImage's folder ({}) is not writable: download new versions by hand.", dir.display()),
+        Unsupported::NotAppImage => tr!("Only the AppImage updates itself. Update this copy the way you installed it.").into(),
+        Unsupported::Missing(_) => tr!("The AppImage file was moved or deleted while Heronite runs.").into(),
+        Unsupported::ReadOnly(dir) => {
+            tr!("The AppImage's folder ({dir}) is not writable: download new versions by hand.", dir = dir.display())
+        }
     }
 }
 
@@ -177,34 +180,36 @@ impl SettingsPage {
         let manual = u.manual_command().filter(|_| matches!(u.phase(), Phase::InstallFailed(_))).map(|cmd| {
             let copy = cmd.clone();
             row(
-                "Install it from a terminal",
+                tr!("Install it from a terminal"),
                 Some(&cmd),
-                button_sm("upd-copy", ButtonKind::Glass, "Copy command")
+                button_sm("upd-copy", ButtonKind::Glass, tr!("Copy command"))
                     .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()))),
             )
             .into_any_element()
         });
 
         let auto_check = {
-            let desc = "At start and every 6 hours. Only GitHub's release page is contacted.";
+            let desc = tr!("At start and every 6 hours. Only GitHub's release page is contacted.");
             match &unsupported {
-                Some(why) => row("Check for updates automatically", Some(&unsupported_text(why)), toggle("upd-auto-check-sw", false, true))
-                    .into_any_element(),
+                Some(why) => {
+                    row(tr!("Check for updates automatically"), Some(&unsupported_text(why)), toggle("upd-auto-check-sw", false, true))
+                        .into_any_element()
+                }
                 None => {
                     let updater = updater.clone();
-                    toggle_row("upd-auto-check", "Check for updates automatically", Some(desc), prefs.auto_check)
+                    toggle_row("upd-auto-check", tr!("Check for updates automatically"), Some(desc), prefs.auto_check)
                         .on_click(move |_, _, cx| updater.update(cx, |u, cx| u.set_auto_check(!u.prefs().auto_check, cx)))
                         .into_any_element()
                 }
             }
         };
         let auto_install = {
-            let label = "Install updates automatically";
-            let desc = "Download new versions in the background. They are checked against Heronite's signing key and start the next time you open Heronite.";
+            let label = tr!("Install updates automatically");
+            let desc = tr!("Download new versions in the background. They are checked against Heronite's signing key and start the next time you open Heronite.");
             if unsupported.is_some() {
                 row(label, Some(desc), toggle("upd-auto-install-sw", false, true)).into_any_element()
             } else if !u.can_auto_install() {
-                row(label, Some(PACKAGE_NO_AUTO), toggle("upd-auto-install-sw", false, true)).into_any_element()
+                row(label, Some(tr(PACKAGE_NO_AUTO)), toggle("upd-auto-install-sw", false, true)).into_any_element()
             } else {
                 let updater = updater.clone();
                 toggle_row("upd-auto-install", label, Some(desc), prefs.auto_install)
@@ -214,7 +219,7 @@ impl SettingsPage {
         };
 
         let rows = std::iter::once(main.into_any_element()).chain(manual).chain([auto_check, auto_install]);
-        let mut col = div().flex().flex_col().child(caption("Updates")).child(card(rows));
+        let mut col = div().flex().flex_col().child(caption(tr!("Updates"))).child(card(rows));
         if let (true, Some(r)) = (show_notes, release) {
             let page = r.page_url.clone();
             let skip_updater = updater.clone();
@@ -226,16 +231,20 @@ impl SettingsPage {
                 .border_t_1()
                 .border_color(theme::row_separator())
                 .child(
-                    button_sm("upd-skip", ButtonKind::Ghost, if skipped { "Don't skip this version" } else { "Skip this version" })
-                        .on_click(move |_, _, cx| skip_updater.update(cx, |u, cx| u.set_skipped(!skipped, cx))),
+                    button_sm(
+                        "upd-skip",
+                        ButtonKind::Ghost,
+                        if skipped { tr!("Don't skip this version") } else { tr!("Skip this version") },
+                    )
+                    .on_click(move |_, _, cx| skip_updater.update(cx, |u, cx| u.set_skipped(!skipped, cx))),
                 )
-                .child(button_sm("upd-page", ButtonKind::Glass, "Release page").on_click(move |_, _, _| update::open_page(&page)));
+                .child(button_sm("upd-page", ButtonKind::Glass, tr!("Release page")).on_click(move |_, _, _| update::open_page(&page)));
             let notes = if r.notes.trim().is_empty() {
-                div().py(px(12.)).text_size(px(13.)).text_color(theme::text_dim()).child("This release has no notes.")
+                div().py(px(12.)).text_size(px(13.)).text_color(theme::text_dim()).child(tr!("This release has no notes."))
             } else {
                 notes_list(&r.notes)
             };
-            col = col.child(caption(format!("What's new in {}", r.version))).child(card_box().child(notes).child(buttons));
+            col = col.child(caption(tr!("What's new in {version}", version = r.version))).child(card_box().child(notes).child(buttons));
         }
         Some(col)
     }
@@ -246,30 +255,30 @@ pub(super) fn console_rows(cx: &App) -> Vec<Row> {
     let Some(updater) = update::get(cx) else { return Vec::new() };
     let u = updater.read(cx);
     let s = status(u, cx);
-    let mut rows = vec![Row::header("Updates")];
+    let mut rows = vec![Row::header(tr!("Updates"))];
     rows.push(match s.action {
         Some((label, _, enabled, _)) => Row::action("upd:action", format!("{}: {label}", s.title)).desc(s.detail).enabled(enabled),
         None => Row::info("upd:status", s.title, s.detail),
     });
     let unsupported = u.unsupported().map(unsupported_text);
-    let check = Row::toggle("upd:auto-check", "Check for updates automatically", u.prefs().auto_check && unsupported.is_none());
+    let check = Row::toggle("upd:auto-check", tr!("Check for updates automatically"), u.prefs().auto_check && unsupported.is_none());
     rows.push(match &unsupported {
         Some(why) => check.desc(why.clone()).enabled(false),
-        None => check.desc("At start and every 6 hours"),
+        None => check.desc(tr!("At start and every 6 hours")),
     });
     let auto = unsupported.is_none() && u.can_auto_install();
     rows.push(
-        Row::toggle("upd:auto-install", "Install updates automatically", u.prefs().auto_install && auto)
-            .desc(if u.package().is_some() { PACKAGE_NO_AUTO } else { "They start the next time you open Heronite" })
+        Row::toggle("upd:auto-install", tr!("Install updates automatically"), u.prefs().auto_install && auto)
+            .desc(if u.package().is_some() { tr(PACKAGE_NO_AUTO) } else { tr!("They start the next time you open Heronite") })
             .enabled(auto),
     );
     if let Some(cmd) = u.manual_command().filter(|_| matches!(u.phase(), Phase::InstallFailed(_))) {
-        rows.push(Row::info("upd:manual", "Install it from a terminal", cmd));
+        rows.push(Row::info("upd:manual", tr!("Install it from a terminal"), cmd));
     }
     if let Some(r) = u.release().filter(|_| matches!(u.phase(), Phase::Available | Phase::InstallFailed(_))) {
         let skipped = u.skipped();
         rows.push(
-            Row::action("upd:skip", if skipped { "Don't skip this version" } else { "Skip this version" })
+            Row::action("upd:skip", if skipped { tr!("Don't skip this version") } else { tr!("Skip this version") })
                 .desc(format!("Heronite {}", r.version)),
         );
     }
@@ -303,23 +312,28 @@ pub(super) fn palette_commands(cx: &App) -> Vec<crate::pages::commands::PageComm
     let Some(updater) = update::get(cx) else { return Vec::new() };
     let u = updater.read(cx);
     let busy = match u.phase() {
-        Phase::Checking => Some("Checking now"),
-        Phase::Downloading(_) | Phase::Installing => Some("An update is installing"),
-        Phase::Ready => Some("An update is installed: restart to use it"),
+        Phase::Checking => Some(tr!("Checking now")),
+        Phase::Downloading(_) | Phase::Installing => Some(tr!("An update is installing")),
+        Phase::Ready => Some(tr!("An update is installed: restart to use it")),
         _ => None,
     };
-    let mut v = vec![PageCommand::new("upd:check", "Check for updates", format!("Heronite {}", u.current()), Icon::Update)
-        .keywords("update upgrade new version release")
+    let mut v = vec![PageCommand::new("upd:check", tr!("Check for updates"), format!("Heronite {}", u.current()), Icon::Update)
+        .keywords("update upgrade new version release atualizar atualizacao atualização nova versão")
         .disabled(busy)];
     let version = u.release().map(|r| r.version.clone()).unwrap_or_default();
     match u.phase() {
         Phase::Available | Phase::InstallFailed(_) if u.can_install() => v.push(
-            PageCommand::new("upd:install", format!("Update to Heronite {version}"), "Download, verify and install it", Icon::Download)
-                .keywords("update upgrade new version install"),
+            PageCommand::new(
+                "upd:install",
+                tr!("Update to Heronite {version}", version),
+                tr!("Download, verify and install it"),
+                Icon::Download,
+            )
+            .keywords("update upgrade new version install atualizar atualização nova versão instalar"),
         ),
         Phase::Ready => v.push(
-            PageCommand::new("upd:restart", format!("Restart into Heronite {version}"), "The update is installed", Icon::Update)
-                .keywords("update upgrade restart relaunch")
+            PageCommand::new("upd:restart", tr!("Restart into Heronite {version}", version), tr!("The update is installed"), Icon::Update)
+                .keywords("update upgrade restart relaunch atualizar reiniciar")
                 .disabled(crate::system::restart_blocker(cx)),
         ),
         _ => {}

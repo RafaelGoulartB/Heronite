@@ -17,6 +17,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{Appearance, InterfaceMode, SolidTint, INTERFACE_BLUR_RANGE, INTERFACE_BLUR_STEP, INTERFACE_OPACITY_RANGE};
 use heronite_data::settings::{self, CoverAspect, EffectiveSettings, PartialBackground};
+use heronite_i18n::{n_, tr};
 use heronite_images::{ImageRef, Opts};
 
 use super::SettingsPage;
@@ -60,9 +61,9 @@ const ASPECTS: [(CoverAspect, &str); 6] = [
     (CoverAspect::Steam, "Steam (2:3)"),
     (CoverAspect::Igdb, "IGDB (3:4)"),
     (CoverAspect::Gog, "GOG (11:15)"),
-    (CoverAspect::Square, "Square (1:1)"),
-    (CoverAspect::Dvd, "DVD case (5:7)"),
-    (CoverAspect::Banner, "Banner (16:9)"),
+    (CoverAspect::Square, n_!("Square (1:1)")),
+    (CoverAspect::Dvd, n_!("DVD case (5:7)")),
+    (CoverAspect::Banner, n_!("Banner (16:9)")),
 ];
 
 impl State {
@@ -219,28 +220,29 @@ fn slider_of(a: &State, field: Field) -> &Entity<SliderState> {
 /// Interface mode (Transparent / Solid), its controls and a sample menu.
 fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
     let this = cx.entity();
-    let mode = tabs("ui-mode", &[(InterfaceMode::Transparent, "Transparent"), (InterfaceMode::Solid, "Solid")], a.ui.interface_mode, {
-        let this = this.clone();
-        move |m, _, cx| {
-            this.update(cx, |d, cx| {
-                d.appearance.ui.interface_mode = m;
-                apply_interface(d, true, cx);
-            });
-        }
-    });
+    let mode =
+        tabs("ui-mode", &[(InterfaceMode::Transparent, tr!("Transparent")), (InterfaceMode::Solid, tr!("Solid"))], a.ui.interface_mode, {
+            let this = this.clone();
+            move |m, _, cx| {
+                this.update(cx, |d, cx| {
+                    d.appearance.ui.interface_mode = m;
+                    apply_interface(d, true, cx);
+                });
+            }
+        });
     let mut rows: Vec<AnyElement> = vec![row(
-        "Panels",
+        tr!("Panels"),
         Some(match a.ui.interface_mode {
-            InterfaceMode::Transparent => "Glass: the blurred game artwork shows through the panels.",
-            InterfaceMode::Solid => "Opaque panels in a solid colour, no artwork.",
+            InterfaceMode::Transparent => tr!("Glass: the blurred game artwork shows through the panels."),
+            InterfaceMode::Solid => tr!("Opaque panels in a solid colour, no artwork."),
         }),
         mode,
     )
     .into_any_element()];
     match a.ui.interface_mode {
         InterfaceMode::Transparent => {
-            rows.push(slider_row(format!("Opacity: {}%", a.ui.interface_opacity.round()), slider_of(a, Field::PanelOpacity)));
-            rows.push(slider_row(format!("Blur: {} px", a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)));
+            rows.push(slider_row(tr!("Opacity: {value}%", value = a.ui.interface_opacity.round()), slider_of(a, Field::PanelOpacity)));
+            rows.push(slider_row(tr!("Blur: {value} px", value = a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)));
         }
         InterfaceMode::Solid => {
             let items: Vec<(SolidTint, &'static str)> = SolidTint::ALL.iter().map(|t| (*t, t.label())).collect();
@@ -250,7 +252,7 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
                     apply_interface(d, true, cx);
                 });
             });
-            rows.push(row("Colour", None, tint).into_any_element());
+            rows.push(row(tr!("Colour"), None, tint).into_any_element());
         }
     }
     let sample_item = |label: &'static str, selected: bool| {
@@ -269,9 +271,9 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
         .gap(px(2.))
         .p(px(6.))
         .w(px(210.))
-        .child(sample_item("Play", true))
-        .child(sample_item("Add to favourites", false))
-        .child(sample_item("Properties", false));
+        .child(sample_item(tr!("Play"), true))
+        .child(sample_item(tr!("Add to favourites"), false))
+        .child(sample_item(tr!("Properties"), false));
     let sample_row = div()
         .flex()
         .items_center()
@@ -283,8 +285,8 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
                 .flex()
                 .flex_col()
                 .gap(px(1.))
-                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child("Preview"))
-                .child(meta_text("A menu with the current settings.")),
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Preview")))
+                .child(meta_text(tr!("A menu with the current settings."))),
         )
         .child(sample);
     rows.push(sample_row.into_any_element());
@@ -319,16 +321,19 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 .gap(px(2.))
                 .px(px(12.))
                 .py(px(10.))
-                .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(white()).child("Live preview"))
+                .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(white()).child(tr!("Live preview")))
                 .child(
-                    div().text_size(px(12.)).text_color(theme::white_a(0.8)).child("Titles, details and tags sit on top of this layer."),
+                    div()
+                        .text_size(px(12.))
+                        .text_color(theme::white_a(0.8))
+                        .child(tr!("Titles, details and tags sit on top of this layer.")),
                 ),
         );
 
     let mut rows: Vec<AnyElement> = vec![toggle_row(
         "bg-enabled",
-        "Use the game artwork as page background",
-        Some("Only behind the Collection list and the game details."),
+        tr!("Use the game artwork as page background"),
+        Some(tr!("Only behind the Collection list and the game details.")),
         a.enabled,
     )
     .on_click(cx.listener(|d, _, _, cx| {
@@ -338,11 +343,11 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     .into_any_element()];
     for (field, state) in &a.sliders {
         let label = match field {
-            Field::CollectionOpacity => format!("Opacity: {}%", a.ui.collection_opacity.round()),
-            Field::Blur => format!("Blur: {} px", a.blur.round()),
-            Field::Dimming => format!("Darkening: {}%", a.dimming.round()),
-            Field::Saturation => format!("Colour intensity: {}%", a.saturation.round()),
-            Field::Scrim => format!("Edge shading: {}%", a.scrim.round()),
+            Field::CollectionOpacity => tr!("Opacity: {value}%", value = a.ui.collection_opacity.round()),
+            Field::Blur => tr!("Blur: {value} px", value = a.blur.round()),
+            Field::Dimming => tr!("Darkening: {value}%", value = a.dimming.round()),
+            Field::Saturation => tr!("Colour intensity: {value}%", value = a.saturation.round()),
+            Field::Scrim => tr!("Edge shading: {value}%", value = a.scrim.round()),
             Field::PanelOpacity | Field::PanelBlur => continue,
         };
         rows.push(slider_row(label, state));
@@ -350,8 +355,8 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let background = card(rows);
 
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
-    let aspect_label = ASPECTS.iter().find(|(a, _)| *a == aspect).map(|(_, l)| *l).unwrap_or("Steam (2:3)");
-    let aspect_options: Vec<(SharedString, bool)> = ASPECTS.iter().map(|(a, l)| ((*l).into(), *a == aspect)).collect();
+    let aspect_label = ASPECTS.iter().find(|(a, _)| *a == aspect).map(|(_, l)| tr(l)).unwrap_or("Steam (2:3)");
+    let aspect_options: Vec<(SharedString, bool)> = ASPECTS.iter().map(|(a, l)| (tr(l).into(), *a == aspect)).collect();
     let aspect_select = select_field(
         "cover-aspect",
         None,
@@ -374,7 +379,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     );
 
     let grey = d.settings.grey_uninstalled_games;
-    let reset = button("bg-reset", ButtonKind::Glass, "Reset background").on_click(cx.listener(|d, _, window, cx| {
+    let reset = button("bg-reset", ButtonKind::Glass, tr!("Reset background")).on_click(cx.listener(|d, _, window, cx| {
         let defaults = heronite_data::models::BackgroundSettings::default();
         let a = &mut d.appearance;
         a.enabled = defaults.enabled;
@@ -399,7 +404,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         apply_interface(d, true, cx);
         save_background(d, cx);
     }));
-    let reset_interface = button("ui-reset", ButtonKind::Glass, "Reset interface").on_click(cx.listener(|d, _, window, cx| {
+    let reset_interface = button("ui-reset", ButtonKind::Glass, tr!("Reset interface")).on_click(cx.listener(|d, _, window, cx| {
         let defaults = Appearance::default();
         let a = &mut d.appearance;
         a.ui.interface_mode = defaults.interface_mode;
@@ -412,12 +417,12 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let interface = interface_group(a, cx);
     let covers = card([
         row(
-            "Cover aspect",
-            Some("Shape of the covers in the grid, the details panel and related games."),
+            tr!("Cover aspect"),
+            Some(tr!("Shape of the covers in the grid, the details panel and related games.")),
             div().w(px(200.)).child(aspect_select),
         )
         .into_any_element(),
-        toggle_row("grey-uninstalled", "Show uninstalled games in grey", None, grey)
+        toggle_row("grey-uninstalled", tr!("Show uninstalled games in grey"), None, grey)
             .on_click(cx.listener(move |d, _, _, cx| {
                 let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);
                 d.saved(res, cx);
@@ -427,7 +432,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     div()
         .flex()
         .flex_col()
-        .child(caption("Collection background"))
+        .child(caption(tr!("Collection background")))
         .child(preview)
         .child(div().h(px(10.)))
         .child(background)
@@ -438,12 +443,12 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 .justify_between()
                 .gap(px(12.))
                 .mt(px(10.))
-                .child(div().flex_1().pl(px(6.)).child(meta_text(
-                    "Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit.",
-                )))
+                .child(div().flex_1().pl(px(6.)).child(meta_text(tr!(
+                    "Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit."
+                ))))
                 .child(reset),
         )
-        .child(caption("Interface background"))
+        .child(caption(tr!("Interface background")))
         .child(interface)
         .child(
             div()
@@ -452,12 +457,12 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 .justify_between()
                 .gap(px(12.))
                 .mt(px(10.))
-                .child(div().flex_1().pl(px(6.)).child(meta_text(
-                    "Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.",
-                )))
+                .child(div().flex_1().pl(px(6.)).child(meta_text(tr!(
+                    "Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette."
+                ))))
                 .child(reset_interface),
         )
-        .child(caption("Covers"))
+        .child(caption(tr!("Covers")))
         .child(covers)
         .into_any_element()
 }
@@ -472,19 +477,19 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     let a = &d.appearance;
     let n = |v: f32| v.round() as i64;
     let mut rows = vec![
-        Row::header("Collection background"),
-        Row::toggle("bg-enabled", "Game artwork behind the library", a.enabled).desc("Desktop mode's Collection background"),
-        Row::number("bg-opacity", "Opacity", n(a.ui.collection_opacity), 0, 100, 5, "%"),
-        Row::number("bg-blur", "Blur", n(a.blur), 0, 40, 1, " px"),
-        Row::number("bg-dim", "Darkening", n(a.dimming), 0, 90, 5, "%"),
-        Row::number("bg-sat", "Colour intensity", n(a.saturation), 0, 150, 5, "%"),
-        Row::number("bg-scrim", "Edge shading", n(a.scrim), 0, 150, 5, "%"),
-        Row::action("bg-reset", "Reset the background"),
-        Row::header("Interface background"),
+        Row::header(tr!("Collection background")),
+        Row::toggle("bg-enabled", tr!("Game artwork behind the library"), a.enabled).desc(tr!("Desktop mode's Collection background")),
+        Row::number("bg-opacity", tr!("Opacity"), n(a.ui.collection_opacity), 0, 100, 5, "%"),
+        Row::number("bg-blur", tr!("Blur"), n(a.blur), 0, 40, 1, " px"),
+        Row::number("bg-dim", tr!("Darkening"), n(a.dimming), 0, 90, 5, "%"),
+        Row::number("bg-sat", tr!("Colour intensity"), n(a.saturation), 0, 150, 5, "%"),
+        Row::number("bg-scrim", tr!("Edge shading"), n(a.scrim), 0, 150, 5, "%"),
+        Row::action("bg-reset", tr!("Reset the background")),
+        Row::header(tr!("Interface background")),
         Row::choice(
             "ui-mode",
-            "Panels",
-            vec!["Transparent".into(), "Solid".into()],
+            tr!("Panels"),
+            vec![tr!("Transparent").into(), tr!("Solid").into()],
             if a.ui.interface_mode == InterfaceMode::Solid { 1 } else { 0 },
         ),
     ];
@@ -492,7 +497,7 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         InterfaceMode::Transparent => {
             rows.push(Row::number(
                 "ui-opacity",
-                "Opacity",
+                tr!("Opacity"),
                 n(a.ui.interface_opacity),
                 INTERFACE_OPACITY_RANGE.0 as i64,
                 INTERFACE_OPACITY_RANGE.1 as i64,
@@ -501,7 +506,7 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
             ));
             rows.push(Row::number(
                 "ui-blur",
-                "Blur",
+                tr!("Blur"),
                 n(a.ui.interface_blur),
                 INTERFACE_BLUR_RANGE.0 as i64,
                 INTERFACE_BLUR_RANGE.1 as i64,
@@ -512,15 +517,15 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         InterfaceMode::Solid => {
             let tints: Vec<SharedString> = SolidTint::ALL.iter().map(|t| SharedString::from(t.label())).collect();
             let i = SolidTint::ALL.iter().position(|t| *t == a.ui.solid_tint).unwrap_or(0);
-            rows.push(Row::choice("ui-tint", "Colour", tints, i));
+            rows.push(Row::choice("ui-tint", tr!("Colour"), tints, i));
         }
     }
-    rows.push(Row::action("ui-reset", "Reset the interface"));
-    rows.push(Row::header("Covers"));
+    rows.push(Row::action("ui-reset", tr!("Reset the interface")));
+    rows.push(Row::header(tr!("Covers")));
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
     let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
-    rows.push(Row::choice("aspect", "Cover aspect", ASPECTS.iter().map(|(_, l)| SharedString::from(*l)).collect(), ai));
-    rows.push(Row::toggle("grey", "Show uninstalled games in grey", d.settings.grey_uninstalled_games));
+    rows.push(Row::choice("aspect", tr!("Cover aspect"), ASPECTS.iter().map(|(_, l)| SharedString::from(tr(l))).collect(), ai));
+    rows.push(Row::toggle("grey", tr!("Show uninstalled games in grey"), d.settings.grey_uninstalled_games));
     rows
 }
 
@@ -658,54 +663,54 @@ pub(super) fn palette_commands(d: Option<&SettingsPage>, loaded: Option<&Effecti
             if bg {
                 PageCommand::new(
                     "bg",
-                    "Turn off the background artwork",
-                    "The selected game's art behind the Collection",
+                    tr!("Turn off the background artwork"),
+                    tr!("The selected game's art behind the Collection"),
                     Icon::VisibilityOff,
                 )
             } else {
                 PageCommand::new(
                     "bg",
-                    "Use the game artwork as background",
-                    "The selected game's art behind the Collection",
+                    tr!("Use the game artwork as background"),
+                    tr!("The selected game's art behind the Collection"),
                     Icon::Visibility,
                 )
             }
-            .keywords("appearance stage wallpaper picture backdrop"),
+            .keywords("appearance stage wallpaper picture backdrop aparencia aparência plano de fundo papel de parede imagem arte"),
         );
     }
     v.push(
         match ui.interface_mode {
             InterfaceMode::Transparent => {
-                PageCommand::new("mode", "Switch the interface to Solid", "Opaque panels in a solid colour", Icon::Tune)
+                PageCommand::new("mode", tr!("Switch the interface to Solid"), tr!("Opaque panels in a solid colour"), Icon::Tune)
             }
             InterfaceMode::Solid => {
-                PageCommand::new("mode", "Switch the interface to Transparent", "Glass panels over the game artwork", Icon::Tune)
+                PageCommand::new("mode", tr!("Switch the interface to Transparent"), tr!("Glass panels over the game artwork"), Icon::Tune)
             }
         }
-        .keywords("appearance glass opaque panels menus dialogs theme"),
+        .keywords("appearance glass opaque panels menus dialogs theme aparencia aparência vidro opaco transparente sólido solido painéis paineis tema"),
     );
     for t in SolidTint::ALL {
         let current = ui.interface_mode == InterfaceMode::Solid && ui.solid_tint == t;
         v.push(
             PageCommand::new(
                 format!("tint:{}", t.as_str()),
-                format!("Solid interface: {}", t.label()),
-                "Panels in this colour",
+                tr!("Solid interface: {tint}", tint = t.label()),
+                tr!("Panels in this colour"),
                 Icon::Tune,
             )
-            .keywords("appearance colour color tint theme")
-            .disabled(current.then_some("In use")),
+            .keywords("appearance colour color tint theme aparencia aparência cor tema")
+            .disabled(current.then_some(tr!("In use"))),
         );
     }
     if let Some(grey) = settings.map(|s| s.grey_uninstalled_games) {
         v.push(
             PageCommand::new(
                 "grey",
-                if grey { "Show uninstalled games in colour" } else { "Show uninstalled games in grey" },
-                "Covers of the Collection",
+                if grey { tr!("Show uninstalled games in colour") } else { tr!("Show uninstalled games in grey") },
+                tr!("Covers of the Collection"),
                 Icon::GridView,
             )
-            .keywords("appearance covers greyscale gray"),
+            .keywords("appearance covers greyscale gray aparencia aparência capas cinza"),
         );
     }
     v

@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 use heronite_wine::{Job, JobKind, JobPhase, Repository, WineVersionInfo};
 
 use super::WineManagerPage;
@@ -25,7 +26,7 @@ fn fmt_size(bytes: u64) -> String {
     if i == 0 {
         format!("{bytes} B")
     } else {
-        format!("{v:.1} {}", UNITS[i])
+        format!("{} {}", heronite_i18n::decimal(v, 1), UNITS[i])
     }
 }
 
@@ -58,15 +59,16 @@ fn job_fraction(job: Option<&Job>) -> Option<f32> {
 pub(super) fn size_text(job: Option<&Job>, r: &WineVersionInfo) -> SharedString {
     match job.map(|j| &j.phase) {
         Some(JobPhase::Downloading { percentage, speed, eta_secs, .. }) => {
-            let mut s = format!("{percentage:.1}%  \u{b7}  {}/s", fmt_size(*speed as u64));
-            if let Some(eta) = eta_secs {
-                s.push_str(&format!("  \u{b7}  ETA {}", fmt_eta(*eta)));
+            let (percent, speed) = (heronite_i18n::decimal(*percentage, 1), fmt_size(*speed as u64));
+            match eta_secs {
+                Some(eta) => tr!("{percent}%  \u{b7}  {speed}/s  \u{b7}  ETA {eta}", percent, speed, eta = fmt_eta(*eta)),
+                None => tr!("{percent}%  \u{b7}  {speed}/s", percent, speed),
             }
-            s.into()
+            .into()
         }
-        Some(JobPhase::Unzipping) => "Unzipping...".into(),
-        Some(JobPhase::Starting) => "Starting...".into(),
-        Some(JobPhase::Removing) => "Removing...".into(),
+        Some(JobPhase::Unzipping) => tr!("Unzipping...").into(),
+        Some(JobPhase::Starting) => tr!("Starting...").into(),
+        Some(JobPhase::Removing) => tr!("Removing...").into(),
         None => if r.installed() { fmt_size(r.disksize) } else { fmt_size(r.downsize.unwrap_or(0)) }.into(),
     }
 }
@@ -103,7 +105,7 @@ impl WineManagerPage {
             .gap(px(12.))
             .child(div().flex().flex_1().max_w(px(460.)).child(fields::search_box(&self.search)))
             .child(refresh)
-            .when(refreshing, |d| d.child(div().text_size(px(13.)).text_color(theme::text_muted()).child("Fetching releases...")))
+            .when(refreshing, |d| d.child(div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Fetching releases..."))))
     }
 
     pub(super) fn render_tabs(&self, cx: &mut Context<Self>) -> Div {
@@ -126,8 +128,8 @@ impl WineManagerPage {
             let active = repo == self.repo;
             let installed: Vec<&WineVersionInfo> = self.releases.iter().filter(|r| r.kind == repo.kind() && r.installed()).collect();
             let summary = match installed.len() {
-                0 => "Nothing installed".to_string(),
-                n => format!("{n} installed \u{b7} {}", fmt_size(installed.iter().map(|r| r.disksize).sum())),
+                0 => tr!("Nothing installed").to_string(),
+                n => tr!("{count} installed \u{b7} {size}", count = n, size = fmt_size(installed.iter().map(|r| r.disksize).sum())),
             };
             list = list.child(
                 div()
@@ -165,8 +167,8 @@ impl WineManagerPage {
     pub(super) fn render_steam_row(&self, cx: &mut Context<Self>) -> Div {
         card([toggle_row(
             "wine-to-steam",
-            "Install Proton into Steam",
-            Some("Downloads into Steam's compatibilitytools.d folder as well."),
+            tr!("Install Proton into Steam"),
+            Some(tr!("Downloads into Steam's compatibilitytools.d folder as well.")),
             self.download_to_steam,
         )
         .on_click(cx.listener(|this, _, _, cx| {
@@ -194,13 +196,13 @@ impl WineManagerPage {
         let rows = self.visible();
         let refreshing = self.manager.refreshing();
         if !self.loaded || (rows.is_empty() && refreshing) {
-            return message("Loading wine versions...", false);
+            return message(tr!("Loading Wine versions..."), false);
         }
         if rows.is_empty() {
             return if self.query.is_empty() {
-                message("No Wine versions found. Please click the refresh icon to try again.", true)
+                message(tr!("No Wine versions found. Please click the refresh icon to try again."), true)
             } else {
-                message("No Wine versions match your search.", true)
+                message(tr!("No Wine versions match your search."), true)
             };
         }
         let header_cell = |t: &'static str| div().text_size(px(12.)).text_color(theme::text_muted()).child(t);
@@ -210,9 +212,9 @@ impl WineManagerPage {
                 .flex_none()
                 .items_center()
                 .py(px(10.))
-                .child(header_cell("Version").flex_1())
-                .child(header_cell("Release date").w(px(110.)).flex_none())
-                .child(header_cell("Size").w(px(260.)).flex_none())
+                .child(header_cell(tr!("Version")).flex_1())
+                .child(header_cell(tr!("Release date")).w(px(110.)).flex_none())
+                .child(header_cell(tr!("Size")).w(px(260.)).flex_none())
                 .child(header_cell("").w(px(230.)).flex_none()),
         );
         for r in &rows {
@@ -254,13 +256,13 @@ impl WineManagerPage {
             let k = key.clone();
             let info = r.clone();
             actions = actions
-                .child(div().mr(px(2.)).text_size(px(13.)).text_color(theme::text_muted()).child("Remove?"))
-                .child(button_sm(row_id("yes", r), ButtonKind::Danger, "Remove").on_click(cx.listener(move |this, _, _, cx| {
+                .child(div().mr(px(2.)).text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Remove?")))
+                .child(button_sm(row_id("yes", r), ButtonKind::Danger, tr!("Remove")).on_click(cx.listener(move |this, _, _, cx| {
                     this.confirm_remove = None;
                     this.manager.start_remove(info.clone());
                     cx.notify();
                 })))
-                .child(button_sm(row_id("no", r), ButtonKind::Ghost, "No").on_click(cx.listener(move |this, _, _, cx| {
+                .child(button_sm(row_id("no", r), ButtonKind::Ghost, tr!("No")).on_click(cx.listener(move |this, _, _, cx| {
                     if this.confirm_remove.as_deref() == Some(k.as_str()) {
                         this.confirm_remove = None;
                     }
@@ -268,11 +270,12 @@ impl WineManagerPage {
                 })));
         } else if job.is_some_and(|j| j.kind != JobKind::Remove) {
             let k = key.clone();
-            actions =
-                actions.child(button_sm(row_id("cancel", r), ButtonKind::Glass, "Cancel").on_click(cx.listener(move |this, _, _, cx| {
+            actions = actions.child(button_sm(row_id("cancel", r), ButtonKind::Glass, tr!("Cancel")).on_click(cx.listener(
+                move |this, _, _, cx| {
                     this.manager.cancel(&k);
                     cx.notify();
-                })));
+                },
+            )));
         } else if job.is_some() {
             // Removing: nothing to click.
         } else if r.installed() {
@@ -281,7 +284,7 @@ impl WineManagerPage {
             }
             if r.has_update() {
                 let info = r.clone();
-                actions = actions.child(button_sm(row_id("update", r), ButtonKind::Primary, "Update").on_click(cx.listener(
+                actions = actions.child(button_sm(row_id("update", r), ButtonKind::Primary, tr!("Update")).on_click(cx.listener(
                     move |this, _, _, cx| {
                         this.manager.start_install(info.clone());
                         cx.notify();
@@ -295,7 +298,7 @@ impl WineManagerPage {
             })));
         } else {
             let info = r.clone();
-            actions = actions.child(button_sm(row_id("install", r), ButtonKind::Glass, "Install").on_click(cx.listener(
+            actions = actions.child(button_sm(row_id("install", r), ButtonKind::Glass, tr!("Install")).on_click(cx.listener(
                 move |this, _, _, cx| {
                     this.manager.start_install(info.clone());
                     cx.notify();
@@ -331,8 +334,8 @@ fn version_cell(r: &WineVersionInfo) -> Div {
                 .child(r.version.clone())
                 .when(!notes.is_empty(), |d| d.on_click(move |_, _, _| open_path(&notes))),
         )
-        .when(installed && !r.has_update(), |d| d.child(status_pill("Installed", theme::success())))
-        .when(r.has_update(), |d| d.child(status_pill("Update available", rgb(0xf2c76e))))
+        .when(installed && !r.has_update(), |d| d.child(status_pill(tr!("Installed"), theme::success())))
+        .when(r.has_update(), |d| d.child(status_pill(tr!("Update available"), rgb(0xf2c76e))))
 }
 
 /// Full-width card with a centred message (loading, empty, no match).

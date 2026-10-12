@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::{n_, tr};
 
 use super::CollectionView;
 use crate::icons::Icon;
@@ -23,10 +24,10 @@ enum Source {
 }
 
 const SOURCES: [(Source, Icon, &str, &str); 4] = [
-    (Source::Epic, Icon::AccountCircle, "Epic Games", "Log in"),
-    (Source::Steam, Icon::CloudSync, "Steam", "Automatic"),
-    (Source::Emulators, Icon::SportsEsports, "Emulators", "Detect & scan ROMs"),
-    (Source::AddGame, Icon::Add, "Add a game", "Program, browser or ROM"),
+    (Source::Epic, Icon::AccountCircle, "Epic Games", n_!("Log in")),
+    (Source::Steam, Icon::CloudSync, "Steam", n_!("Automatic")),
+    (Source::Emulators, Icon::SportsEsports, n_!("Emulators"), n_!("Detect & scan ROMs")),
+    (Source::AddGame, Icon::Add, n_!("Add a game"), n_!("Program, browser or ROM")),
 ];
 
 /// Empty covers: 2/3 like the real ones, a little smaller on each lower row
@@ -80,8 +81,20 @@ impl CollectionView {
                     cx.notify();
                 }))
                 .child(icon(ic, px(32.), theme::accent()))
-                .child(div().mt(px(2.)).text_size(px(15.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(title))
-                .child(div().text_size(px(12.)).text_color(if auto { theme::success() } else { theme::text_dim() }).child(note))
+                .child(
+                    div()
+                        .mt(px(2.))
+                        .text_size(px(15.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(theme::text_primary())
+                        .child(heronite_i18n::tr(title)),
+                )
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(if auto { theme::success() } else { theme::text_dim() })
+                        .child(heronite_i18n::tr(note)),
+                )
         });
         let proton = div()
             .id("welcome-proton")
@@ -92,7 +105,7 @@ impl CollectionView {
                 this.navigate(Page::WineManager, window, cx);
                 cx.notify();
             }))
-            .child("Download Proton");
+            .child(tr!("Download Proton"));
         div()
             .w(px(760.))
             .flex()
@@ -111,7 +124,7 @@ impl CollectionView {
                 spread_radius: px(0.),
                 inset: false,
             }])
-            .child(kicker("Welcome to Heronite"))
+            .child(kicker(tr!("Welcome to Heronite")))
             .child(
                 div()
                     .mt(px(12.))
@@ -120,14 +133,14 @@ impl CollectionView {
                     .line_height(px(46.))
                     .font_weight(theme::W_BOLD)
                     .text_color(theme::text_primary())
-                    .child("Your shelves are empty \u{2014} for now"),
+                    .child(tr!("Your shelves are empty \u{2014} for now")),
             )
             .child(
                 div()
                     .mt(px(8.))
                     .text_size(px(16.))
                     .text_color(theme::text_muted())
-                    .child("Choose where your games come from. You can add more sources at any time."),
+                    .child(tr!("Choose where your games come from. You can add more sources at any time.")),
             )
             .child(div().mt(px(30.)).w_full().flex().gap(px(12.)).children(tiles))
             .child(
@@ -138,11 +151,11 @@ impl CollectionView {
                     .gap(px(6.))
                     .text_size(px(13.5))
                     .text_color(theme::text_muted())
-                    .child("Playing Windows games?")
+                    .child(tr!("Playing Windows games?"))
                     .child(proton)
                     .child("\u{00b7}")
                     .child(kbd("Ctrl K"))
-                    .child("finds anything"),
+                    .child(tr!("finds anything")),
             )
     }
 }

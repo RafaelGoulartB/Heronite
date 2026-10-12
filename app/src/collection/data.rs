@@ -12,6 +12,7 @@ use heronite_data::{CollectionGame, Library, ViewQuery};
 
 use super::vm::*;
 use crate::theme;
+use heronite_i18n::tr;
 
 fn parse_hex(hex: &str) -> Rgba {
     let h = hex.trim_start_matches('#');
@@ -68,34 +69,42 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     };
 
     if !d.developers.is_empty() {
-        rows.push(DetailRow { label: "Developer".into(), value: chips(&d.developers, Some("developer"), false), split: false });
+        rows.push(DetailRow { label: tr!("Developer").into(), value: chips(&d.developers, Some("developer"), false), split: false });
     }
     if !d.publishers.is_empty() {
-        rows.push(DetailRow { label: "Publisher".into(), value: chips(&d.publishers, Some("publisher"), false), split: false });
+        rows.push(DetailRow { label: tr!("Publisher").into(), value: chips(&d.publishers, Some("publisher"), false), split: false });
     }
     if let Some(series) = &d.series {
-        rows.push(DetailRow { label: "Series".into(), value: chips(std::slice::from_ref(series), Some("series"), false), split: false });
+        rows.push(DetailRow {
+            label: tr!("Series").into(),
+            value: chips(std::slice::from_ref(series), Some("series"), false),
+            split: false,
+        });
     }
-    rows.push(DetailRow { label: "Last Played".into(), value: text(fd.last_played.as_deref().unwrap_or("Never")), split: false });
-    rows.push(DetailRow { label: "Playtime".into(), value: text(&fd.playtime), split: false });
+    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(fd.last_played.as_deref().unwrap_or(tr!("Never"))), split: false });
+    rows.push(DetailRow { label: tr!("Playtime").into(), value: text(&fd.playtime), split: false });
     if !d.features.is_empty() {
-        rows.push(DetailRow { label: "Features".into(), value: chips(&d.features[..d.features.len().min(8)], None, false), split: true });
+        rows.push(DetailRow {
+            label: tr!("Features").into(),
+            value: chips(&d.features[..d.features.len().min(8)], None, false),
+            split: true,
+        });
     }
     if !d.themes.is_empty() {
-        rows.push(DetailRow { label: "Themes".into(), value: chips(&d.themes[..d.themes.len().min(8)], None, false), split: true });
+        rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes[..d.themes.len().min(8)], None, false), split: true });
     }
     if d.platforms.len() > 1 {
         rows.push(DetailRow {
-            label: "Platforms".into(),
+            label: tr!("Platforms").into(),
             value: chips(&d.platforms[..d.platforms.len().min(8)], None, false),
             split: true,
         });
     }
     if !d.genres.is_empty() {
-        rows.push(DetailRow { label: "Tags".into(), value: chips(&d.genres, Some("genre"), true), split: true });
+        rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre"), true), split: true });
     }
     if let Some(notes) = d.notes.as_ref().filter(|n| !n.is_empty()) {
-        rows.push(DetailRow { label: "Notes".into(), value: text(notes), split: true });
+        rows.push(DetailRow { label: tr!("Notes").into(), value: text(notes), split: true });
     }
 
     let related = collection::related_games_for(g, &lib.games)
@@ -103,8 +112,8 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         .filter(|r| !r.games.is_empty())
         .map(|r| RelatedGroupVm {
             title: match r.kind {
-                RelatedKind::Series => "Same series".into(),
-                RelatedKind::Developer => "Same developer".into(),
+                RelatedKind::Series => tr!("Same series").into(),
+                RelatedKind::Developer => tr!("Same developer").into(),
             },
             games: r.games.iter().map(|x| card_vm(x, false)).collect(),
         })
@@ -130,7 +139,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         }),
         status: display_status(g.status_raw.as_deref(), &lib.statuses).map(|st| StatusVm {
             id: st.id.clone().into(),
-            name: st.name.clone().into(),
+            name: heronite_data::status::status_label(&st.name).to_string().into(),
             color: theme::status_color(&st.slug),
         }),
         score: d.critic_score.map(|s| fmt_number(s).into()),

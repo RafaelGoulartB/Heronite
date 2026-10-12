@@ -13,6 +13,7 @@ use super::list::{ListNav, Outcome, Row};
 use super::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::theme;
+use heronite_i18n::{tr, trc};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum PickKind {
@@ -128,7 +129,7 @@ impl Browser {
     fn rows(&self) -> Vec<Row> {
         let mut rows = Vec::new();
         if self.kind == PickKind::Folder {
-            rows.push(Row::action("use", "Use this folder").icon(Icon::Check));
+            rows.push(Row::action("use", tr!("Use this folder")).icon(Icon::Check));
         }
         for (i, e) in self.entries.iter().enumerate() {
             rows.push(Row::action(SharedString::from(format!("e{i}")), e.name.clone()).icon(if e.dir {
@@ -179,11 +180,11 @@ impl PadTarget for Browser {
     }
 
     fn hints(&self, _: &App) -> Vec<Hint> {
-        let mut h = vec![hint(Btn::A, "Open")];
+        let mut h = vec![hint(Btn::A, tr!("Open"))];
         if self.kind == PickKind::Folder {
-            h.push(hint(Btn::X, "Use this folder"));
+            h.push(hint(Btn::X, tr!("Use this folder")));
         }
-        h.extend([hint(Btn::Y, "Home"), hint(Btn::B, "Up"), hint(Btn::Start, "Cancel")]);
+        h.extend([hint(Btn::Y, trc!("folder", "Home")), hint(Btn::B, tr!("Up")), hint(Btn::Start, tr!("Cancel"))]);
         h
     }
 }
@@ -192,9 +193,9 @@ impl Render for Browser {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows();
         let body: AnyElement = if self.loading {
-            kit::body_text("Reading\u{2026}").px(u(22.)).into_any_element()
+            kit::body_text(tr!("Reading\u{2026}")).px(u(22.)).into_any_element()
         } else if let Some(err) = &self.error {
-            kit::body_text(format!("Cannot open this folder: {err}")).px(u(22.)).into_any_element()
+            kit::body_text(tr!("Cannot open this folder: {err}", err)).px(u(22.)).into_any_element()
         } else {
             self.nav.render("console-browser", &rows, true).flex_1().min_h_0().into_any_element()
         };

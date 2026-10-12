@@ -10,6 +10,7 @@ use heronite_epic::autoupdate;
 use heronite_epic::cmd::Legendary;
 use heronite_epic::library;
 use heronite_epic::ops;
+use heronite_i18n::{tr, trn};
 use serde_json::Value;
 
 use super::library_file::{library_entry, read_stats};
@@ -91,14 +92,18 @@ impl Downloads {
                         match r.list_error {
                             Some(e) => {
                                 this.last_error = Some(e.clone());
-                                this.toast(cx, format!("Could not refresh the Epic library: {}", e.lines().next().unwrap_or("")), true);
+                                this.toast(
+                                    cx,
+                                    tr!("Could not refresh the Epic library: {error}", error = e.lines().next().unwrap_or("")),
+                                    true,
+                                );
                             }
                             None => {
                                 let n = this.updates.len();
                                 let msg = if n > 0 {
-                                    format!("Epic library refreshed - {n} update(s) available")
+                                    trn!(n, "Epic library refreshed: {n} update available", "Epic library refreshed: {n} updates available")
                                 } else {
-                                    "Epic library refreshed".to_string()
+                                    tr!("Epic library refreshed").to_string()
                                 };
                                 if quiet {
                                     log::info!("epic: {msg}");
@@ -237,12 +242,12 @@ impl Downloads {
         }
         let mut titles = Vec::new();
         for info in entries {
-            titles.push(info.get("title").and_then(Value::as_str).unwrap_or("a game").to_string());
+            titles.push(info.get("title").and_then(Value::as_str).unwrap_or(tr!("a game")).to_string());
             log::info!("epic: auto-updating {}", titles.last().map(String::as_str).unwrap_or_default());
             self.queue_update(info, cx);
         }
         if !titles.is_empty() && !crate::system::has_window(cx) {
-            crate::system::notify::send("Heronite", format!("Updating {} in the background", titles.join(", ")));
+            crate::system::notify::send("Heronite", tr!("Updating {titles} in the background", titles = titles.join(", ")));
         }
     }
 }

@@ -1,6 +1,7 @@
 //! Entry points of plan building: sideload games (executables, Steam URIs) and runner dispatch.
 
 use heronite_data::models::{GameInfo, LocalGameMeta};
+use heronite_i18n::tr;
 
 use super::emulator::{emulator_plan, EmulatorOutcome};
 use super::{Command, LaunchOptions, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec};
@@ -28,7 +29,7 @@ pub fn build_plan_with_settings(
     match game.runner.as_str() {
         "sideload" => build_sideload(ctx, probe, game, meta, settings, opts),
         "legendary" => crate::legendary::build(ctx, probe, game, settings, opts),
-        other => LaunchPlan::Unavailable(format!("Launching {other} games is not supported yet")),
+        other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),
     }
 }
 
@@ -56,7 +57,7 @@ fn build_sideload(
     // 2. Local executables (tryLaunchNativeLocalGame, else Heroic's launchGame).
     if is_executable_game(game, meta) {
         if is_browser_game(game) {
-            return LaunchPlan::Unavailable("Browser games are not supported".into());
+            return LaunchPlan::Unavailable(tr!("Browser games are not supported").into());
         }
         return executable_plan(ctx, probe, game, meta, settings, opts);
     }
@@ -65,12 +66,12 @@ fn build_sideload(
     if let Some(m) = meta.filter(|m| m.launch_kind == "steam-uri") {
         if let Some(app_id) = m.steam_app_id.as_deref().filter(|s| !s.is_empty()) {
             if steam::find_steam_binary(probe).is_none() {
-                return LaunchPlan::Unavailable("Steam client was not found on PATH".into());
+                return LaunchPlan::Unavailable(tr!("Steam client was not found on PATH").into());
             }
             return LaunchPlan::SteamUri { app_id: app_id.to_string(), uri: steam::steam_uri("rungameid", app_id) };
         }
     }
-    LaunchPlan::Unavailable("This game has no launch method".into())
+    LaunchPlan::Unavailable(tr!("This game has no launch method").into())
 }
 
 fn first_existing<'a>(probe: &dyn Probe, paths: &[Option<&'a str>]) -> Option<&'a str> {
@@ -98,7 +99,7 @@ fn executable_plan(
         first_existing(probe, &[meta.and_then(|m| m.remapped_executable.as_deref()), install_exe]).or(install_exe).unwrap_or("").to_string()
     };
     if executable.is_empty() {
-        return LaunchPlan::Unavailable("No executable is configured for this game".into());
+        return LaunchPlan::Unavailable(tr!("No executable is configured for this game").into());
     }
     let mut extra = split_args(&settings.launcher_args);
     extra.extend(opts.extra_args.iter().cloned());
@@ -109,13 +110,13 @@ fn executable_plan(
 
     // Linux program: Heroic's wrappers and environment, no Wine.
     if !probe.exists(&executable) {
-        return LaunchPlan::Unavailable(format!("Executable not found: {executable}"));
+        return LaunchPlan::Unavailable(tr!("Executable not found: {executable}", executable));
     }
     let umu = settings.steam_runtime.as_ref().map(|_| crate::wine::umu_path(ctx, probe));
     let umu_missing = umu.as_deref().is_some_and(|u| !probe.exists(u));
     let wp = build_wrappers(settings, probe, umu.as_deref());
     if let Some(err) = wp.error {
-        return LaunchPlan::Unavailable(format!("Launch aborted: {err}"));
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
     let mut env = setup_wrapper_env_vars(&game.app_name, "sideload");
     env.extend(setup_env_vars(settings, game.install.install_path.as_deref(), probe));

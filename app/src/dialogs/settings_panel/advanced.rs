@@ -12,6 +12,7 @@ use crate::theme;
 use crate::ui::controls::{action_button, ButtonKind};
 use crate::ui::fields::input_box;
 use crate::ui::icon;
+use heronite_i18n::{n_, tr};
 
 /// Static description of a two-column table setting.
 #[derive(Clone, Copy)]
@@ -28,7 +29,7 @@ pub(super) struct PairTable {
 
 pub(super) const ENV: PairTable = PairTable {
     id: "env",
-    title: "Environment Variables",
+    title: n_!("Environment Variables"),
     setting: "enviromentOptions",
     k1: "key",
     k2: "value",
@@ -38,7 +39,7 @@ pub(super) const ENV: PairTable = PairTable {
 };
 pub(super) const WRAPPERS: PairTable = PairTable {
     id: "wrap",
-    title: "Wrapper command:",
+    title: n_!("Wrapper command:"),
     setting: "wrapperOptions",
     k1: "exe",
     k2: "args",
@@ -55,22 +56,30 @@ impl SettingsPanel {
         let mut col = column();
         let mut general = rows();
         if game && !sideload {
-            general = general.child(self.toggle_row("ignore-updates", "ignoreGameUpdates", false, "Ignore game updates", None, false, cx));
+            general =
+                general.child(self.toggle_row("ignore-updates", "ignoreGameUpdates", false, tr!("Ignore game updates"), None, false, cx));
         }
         if game && legendary {
-            general = general.child(self.toggle_row("offline", "offlineMode", false, "Run Game Offline", None, false, cx));
+            general = general.child(self.toggle_row("offline", "offlineMode", false, tr!("Run Game Offline"), None, false, cx));
         }
-        general = general.child(self.toggle_row("verbose", "verboseLogs", true, "Enable verbose logs", None, false, cx));
+        general = general.child(self.toggle_row("verbose", "verboseLogs", true, tr!("Enable verbose logs"), None, false, cx));
         if game && !sideload {
-            general = general.field(self.path_row("targetExe", Some("Select an alternative EXE to run"), false, "Select EXE", true, cx));
+            general = general.field(self.path_row(
+                "targetExe",
+                Some(tr!("Select an alternative EXE to run")),
+                false,
+                tr!("Select EXE"),
+                true,
+                cx,
+            ));
         }
         if !sideload {
             general = general.field_help(
-                self.text_row("language", Some("Prefered Language (Language Code)"), None),
-                vec![help("Leave blank to use the app's language. Not all games support this configuration, some have in-game language setting. Valid language codes are game-dependant.")],
+                self.text_row("language", Some(tr!("Prefered Language (Language Code)")), None),
+                vec![help(tr!("Leave blank to use the app's language. Not all games support this configuration, some have in-game language setting. Valid language codes are game-dependant."))],
             );
         }
-        col = col.child(heading("General")).child(general.card());
+        col = col.child(heading(tr!("General"))).child(general.card());
 
         let mut launch = rows();
         if game {
@@ -80,21 +89,28 @@ impl SettingsPanel {
             if !err.is_empty() {
                 notes.push(danger_text(err));
             }
-            notes.push(help("Use the Game Arguments to be called after the launch command, for instance: -nolauncher to skip the launcher in some games, etc."));
-            launch =
-                launch.field_help(self.text_row("launcherArgs", Some("Game Arguments (appended to game launch command)"), None), notes);
+            notes.push(help(tr!("Use the Game Arguments to be called after the launch command, for instance: -nolauncher to skip the launcher in some games, etc.")));
+            launch = launch
+                .field_help(self.text_row("launcherArgs", Some(tr!("Game Arguments (appended to game launch command)")), None), notes);
         }
         launch = launch
             .field(self.path_row(
                 "beforeScript",
-                Some("Select a script to run before the game is launched"),
+                Some(tr!("Select a script to run before the game is launched")),
                 false,
-                "Select script ...",
+                tr!("Select script ..."),
                 true,
                 cx,
             ))
-            .field(self.path_row("afterScript", Some("Select a script to run after the game exits"), false, "Select script ...", true, cx));
-        col = col.child(heading("Launch")).child(launch.card());
+            .field(self.path_row(
+                "afterScript",
+                Some(tr!("Select a script to run after the game exits")),
+                false,
+                tr!("Select script ..."),
+                true,
+                cx,
+            ));
+        col = col.child(heading(tr!("Launch"))).child(launch.card());
         col = col.child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
 
         // Legacy options (a tab of its own in Heroic).
@@ -108,8 +124,8 @@ impl SettingsPanel {
                     "dxvk-fps",
                     "enableDXVKFpsLimit",
                     false,
-                    "Limit DirectX Games FPS",
-                    Some("Sets a frame rate cap for DirectX Games (9-12)"),
+                    tr!("Limit DirectX Games FPS"),
+                    Some(tr!("Sets a frame rate cap for DirectX Games (9-12)")),
                     false,
                     cx,
                 ));
@@ -118,11 +134,11 @@ impl SettingsPanel {
                 }
             }
             if show_umu {
-                legacy = legacy.child(self.toggle_row("disable-umu", "disableUMU", false, "Disable umu", None, false, cx));
+                legacy = legacy.child(self.toggle_row("disable-umu", "disableUMU", false, tr!("Disable umu"), None, false, cx));
             }
             col = col
-                .child(heading("Legacy"))
-                .child(help("Warning: The settings on this tab are mostly deprecated and might not work at all.").px(px(6.)))
+                .child(heading(tr!("Legacy")))
+                .child(help(tr!("Warning: The settings on this tab are mostly deprecated and might not work at all.")).px(px(6.)))
                 .child(legacy.card());
         }
         col
@@ -176,19 +192,19 @@ impl SettingsPanel {
             .child(action_button(
                 SharedString::from(format!("{}-add", t.id)),
                 ButtonKind::Glass,
-                if exists { "Update" } else { "Add" },
+                if exists { tr!("Update") } else { tr!("Add") },
                 true,
                 cx.listener(move |this, _, window, cx| this.pair_add(t, window, cx)),
             ));
         card_rows = card_rows.child(add);
-        let mut col = column().child(heading(t.title.trim_end_matches(':'))).child(card_rows.card());
+        let mut col = column().child(heading(tr(t.title).trim_end_matches(':'))).child(card_rows.card());
         if t.env && !self.env_error.is_empty() {
             col = col.child(danger_text(&self.env_error).px(px(6.)));
         }
         let note = if t.env {
-            "Set environment variables to append to the command. Do NOT include the \"=\" sign, e.g: for a setting like \"MY_FLAG=123\", set MY_FLAG in NAME and 123 in VALUE."
+            tr!("Set environment variables to append to the command. Do NOT include the \"=\" sign, e.g: for a setting like \"MY_FLAG=123\", set MY_FLAG in NAME and 123 in VALUE.")
         } else {
-            "Warning: Make sure to quote args with spaces! E.g.: \"path/with spaces/\". Arguments example: --arg; --extra-file=\"file-path/ with/spaces\""
+            tr!("Warning: Make sure to quote args with spaces! E.g.: \"path/with spaces/\". Arguments example: --arg; --extra-file=\"file-path/ with/spaces\"")
         };
         col.child(help(note).px(px(6.)))
     }

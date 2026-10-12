@@ -5,6 +5,7 @@ mod dialogs;
 mod env;
 mod icons;
 mod images;
+mod language;
 mod pages;
 mod runtime;
 mod services;
@@ -19,9 +20,13 @@ use gpui_kit::*;
 fn main() {
     let started = Instant::now();
     tune_allocator();
+    // First, so even the migration's error is in the user's language (only
+    // reads a file).
+    language::init(&heronite_data::AppPaths::for_data(&heronite_data::DataPaths::detect()));
     // Before anything (the logger included) creates the data folder.
     let migration = migrate_from_heroic();
     env_logger_init();
+    log::info!("interface language: {}", heronite_i18n::current().code());
     match migration {
         heronite_data::migrate::Outcome::Migrated(r) => log::info!(
             "copied the Heroic setup into the data folder: {} files, {} MB, {} files with rewritten paths, legendary from {:?}",
@@ -53,7 +58,7 @@ fn main() {
         SingleInstance::Unresponsive(reason) => {
             // Starting a second, unlocked instance on the same data would
             // double-run the Epic queue, the tray and every game record.
-            let text = format!("Heronite is already running but is not responding ({reason})");
+            let text = heronite_i18n::tr!("Heronite is already running but is not responding ({reason})", reason);
             eprintln!("heronite-rs: {text}");
             system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(3));
             std::process::exit(1);
@@ -99,7 +104,11 @@ fn migrate_from_heroic() -> heronite_data::migrate::Outcome {
     match heronite_data::migrate::run_if_needed(&data_paths, &app) {
         Ok(outcome) => outcome,
         Err(err) => {
-            let text = format!("Could not copy the Heroic data into {}: {err:#}", data_paths.root.display());
+            let text = heronite_i18n::tr!(
+                "Could not copy the Heroic data into {path}: {err}",
+                path = data_paths.root.display(),
+                err = format!("{err:#}")
+            );
             eprintln!("heronite-rs: {text}");
             system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(5));
             std::process::exit(1);

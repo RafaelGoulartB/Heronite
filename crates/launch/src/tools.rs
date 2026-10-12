@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use regex::Regex;
 use serde_json::Value;
 
@@ -150,17 +151,19 @@ fn release_name(asset: &str) -> String {
 /// that is renamed when complete, so an interruption never leaves a broken
 /// release behind.
 pub fn install_or_update(paths: &DataPaths, net: &dyn Net, tool: Tool, vulkan: Vulkan, cancel: Cancel) -> Result<Updated, String> {
-    let release = net.get_json(tool.release_url(vulkan)).map_err(|e| format!("could not fetch the {} release: {e}", tool.label()))?;
+    let release = net
+        .get_json(tool.release_url(vulkan))
+        .map_err(|e| tr!("could not fetch the {tool} release: {error}", tool = tool.label(), error = e))?;
     let asset = release
         .get("assets")
         .and_then(Value::as_array)
         .and_then(|a| a.first())
-        .ok_or_else(|| format!("the {} release has no assets", tool.label()))?;
+        .ok_or_else(|| tr!("the {tool} release has no assets", tool = tool.label()))?;
     let name = asset.get("name").and_then(Value::as_str).unwrap_or_default();
     let url = asset.get("browser_download_url").and_then(Value::as_str).unwrap_or_default();
     let version = release_name(name);
     if !is_safe_name(&version) || url.is_empty() {
-        return Err(format!("the {} release has an unusable asset ({name:?})", tool.label()));
+        return Err(tr!("the {tool} release has an unusable asset ({name})", tool = tool.label(), name = format!("{name:?}")));
     }
 
     let dir = tool_dir(paths, tool);
@@ -173,7 +176,7 @@ pub fn install_or_update(paths: &DataPaths, net: &dyn Net, tool: Tool, vulkan: V
     let _ = fs::remove_file(&archive);
     if let Err(e) = net.download(url, &archive, cancel) {
         let _ = fs::remove_file(&archive);
-        return Err(if e == CANCELLED { e } else { format!("downloading {} failed: {e}", tool.label()) });
+        return Err(if e == CANCELLED { e } else { tr!("downloading {tool} failed: {error}", tool = tool.label(), error = e) });
     }
     let final_dir = dir.join(&version);
     let tmp = dir.join(format!(".{version}.extracting"));
@@ -182,7 +185,7 @@ pub fn install_or_update(paths: &DataPaths, net: &dyn Net, tool: Tool, vulkan: V
     let _ = fs::remove_file(&archive);
     if let Err(e) = extracted {
         let _ = fs::remove_dir_all(&tmp);
-        return Err(if e == CANCELLED { e } else { format!("unpacking {} failed: {e}", tool.label()) });
+        return Err(if e == CANCELLED { e } else { tr!("unpacking {tool} failed: {error}", tool = tool.label(), error = e) });
     }
     // Same version re-installed (a broken folder): replace it.
     if final_dir.exists() {
@@ -190,7 +193,7 @@ pub fn install_or_update(paths: &DataPaths, net: &dyn Net, tool: Tool, vulkan: V
     }
     fs::rename(&tmp, &final_dir).map_err(|e| {
         let _ = fs::remove_dir_all(&tmp);
-        format!("could not move {} into place: {e}", tool.label())
+        tr!("could not move {tool} into place: {error}", tool = tool.label(), error = e)
     })?;
     write_atomic(&latest_file(paths, tool), &version)?;
     Ok(Updated::Installed(version))
@@ -202,10 +205,10 @@ pub fn ensure(paths: &DataPaths, net: &dyn Net, tool: Tool, vulkan: Vulkan, canc
         return Ok(dir);
     }
     if !net.is_online() {
-        return Err(format!("{} is not installed and there is no internet connection", tool.label()));
+        return Err(tr!("{tool} is not installed and there is no internet connection", tool = tool.label()));
     }
     install_or_update(paths, net, tool, vulkan, cancel)?;
-    installed_dir(paths, tool).ok_or_else(|| format!("{} was not installed", tool.label()))
+    installed_dir(paths, tool).ok_or_else(|| tr!("{tool} was not installed", tool = tool.label()))
 }
 
 /// Writes a file next to its final place and renames it over.
@@ -236,13 +239,13 @@ pub fn download_winetricks(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> 
         return Ok(false);
     }
     if !net.is_online() {
-        return Err("winetricks cannot be downloaded without an internet connection".into());
+        return Err(tr!("winetricks cannot be downloaded without an internet connection").into());
     }
     fs::create_dir_all(paths.tools_dir()).map_err(|e| e.to_string())?;
     let part = paths.tools_dir().join("winetricks.part");
     net.download(WINETRICKS_URL, &part, cancel).map_err(|e| {
         let _ = fs::remove_file(&part);
-        format!("downloading winetricks failed: {e}")
+        tr!("downloading winetricks failed: {error}", error = e)
     })?;
     fs::set_permissions(&part, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
     fs::rename(&part, &target).map_err(|e| format!("installing winetricks: {e}"))?;

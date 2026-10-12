@@ -9,6 +9,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Result};
+use heronite_i18n::tr;
 use parking_lot::Mutex;
 use serde_json::Value;
 
@@ -189,7 +190,7 @@ fn fetch_web_images(http: &Http, query: &str, transparent: bool, deadline: Insta
     ];
     for (name, attempt) in attempts.drain(..) {
         if Instant::now() >= deadline {
-            bail!("Image search timed out");
+            bail!(tr!("Image search timed out"));
         }
         match attempt() {
             Ok(images) if !images.is_empty() => return Ok(images),
@@ -226,7 +227,7 @@ pub fn search_web_images(http: &Http, query: &str, transparent: bool) -> Result<
     }
     result.map_err(|e| {
         log::warn!("Web image search failed: {e}");
-        anyhow!("Could not search images. Try another term.")
+        anyhow!(tr!("Could not search images. Try another term."))
     })
 }
 

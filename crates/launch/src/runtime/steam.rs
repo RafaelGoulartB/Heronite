@@ -4,12 +4,14 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use chrono::Utc;
+use heronite_i18n::tr;
 
 use super::session::{fail, finish};
 use super::state::{Control, Shared};
 use super::{LaunchEvent, LaunchRequest};
 use crate::log_writer::GameLog;
 use crate::playtime_watch::{wait_for_steam_session, SteamWaitOutcome};
+use crate::prepare::Notice;
 use crate::record;
 
 pub(super) fn run_steam(
@@ -24,7 +26,12 @@ pub(super) fn run_steam(
 ) {
     log.info(&format!("Opening {uri}"));
     if let Err(e) = shared.spawner.open_uri(uri) {
-        return fail(shared, log, req, format!("could not open {uri}: {e}"));
+        return fail(
+            shared,
+            log,
+            req,
+            Notice::warn(format!("could not open {uri}: {e}"), tr!("could not open {uri}: {error}", uri, error = e)),
+        );
     }
     let locator = shared.steam.clone();
     let mut announced: Option<u32> = None;
@@ -48,7 +55,13 @@ pub(super) fn run_steam(
     );
     match outcome {
         SteamWaitOutcome::NotStarted => {
-            fail(shared, log, req, format!("Steam did not start {} within {}s", req.title, shared.cfg.steam.start_timeout.as_secs()))
+            let seconds = shared.cfg.steam.start_timeout.as_secs();
+            let title = &req.title;
+            let notice = Notice::warn(
+                format!("Steam did not start {title} within {seconds}s"),
+                tr!("Steam did not start {title} within {seconds}s", title, seconds),
+            );
+            fail(shared, log, req, notice)
         }
         SteamWaitOutcome::Finished | SteamWaitOutcome::Aborted => {
             log.info("Steam game finished");

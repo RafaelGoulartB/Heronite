@@ -5,6 +5,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::{n_, tr};
 use heronite_launch::native::{ExecutableKind, Platform};
 use heronite_metadata::ArtKind;
 
@@ -20,7 +21,7 @@ use crate::icons::Icon;
 use crate::theme;
 
 const RUN_AS: [(&str, &str); 3] =
-    [("auto", "Automatic (from the file)"), ("linux", "Linux native"), ("windows", "Windows (Wine / Proton)")];
+    [("auto", n_!("Automatic (from the file)")), ("linux", n_!("Linux native")), ("windows", n_!("Windows (Wine / Proton)"))];
 
 /// Which text field a keyboard edit goes to.
 #[derive(Clone, Copy)]
@@ -64,20 +65,21 @@ impl GameSettingsDialog {
                 let exe = l.executable.read(cx).value().to_string();
                 let dirty = exe != l.initial_exe || l.run_as != l.initial_run_as;
                 let detected = match l.detected {
-                    ExecutableKind::Linux => "Linux program",
-                    ExecutableKind::Windows => "Windows program",
-                    ExecutableKind::Unknown => "Unknown file type",
+                    ExecutableKind::Linux => tr!("Linux program"),
+                    ExecutableKind::Windows => tr!("Windows program"),
+                    ExecutableKind::Unknown => tr!("Unknown file type"),
                 };
-                let effective = if l.effective == Platform::Linux { "runs natively on Linux" } else { "runs through Wine / Proton" };
+                let effective =
+                    if l.effective == Platform::Linux { tr!("runs natively on Linux") } else { tr!("runs through Wine / Proton") };
                 let index = RUN_AS.iter().position(|(v, _)| *v == l.run_as).unwrap_or(0);
                 vec![
-                    Row::text("exe", "Executable", exe.clone()).icon(Icon::Description).desc(if l.exists {
-                        format!("{detected}, {effective}")
+                    Row::text("exe", tr!("Executable"), exe.clone()).icon(Icon::Description).desc(if l.exists {
+                        tr!("{detected}, {effective}", detected, effective)
                     } else {
-                        "File not found".into()
+                        tr!("File not found").into()
                     }),
-                    Row::choice("run-as", "Run as", RUN_AS.iter().map(|(_, t)| SharedString::from(*t)).collect(), index),
-                    Row::action("save-launch", if l.saved && !dirty { "Saved" } else { "Save" })
+                    Row::choice("run-as", tr!("Run as"), RUN_AS.iter().map(|(_, t)| SharedString::from(tr(t))).collect(), index),
+                    Row::action("save-launch", if l.saved && !dirty { tr!("Saved") } else { tr!("Save") })
                         .icon(Icon::Save)
                         .enabled(dirty && !exe.trim().is_empty() && self.busy.is_none()),
                 ]
@@ -87,21 +89,21 @@ impl GameSettingsDialog {
                 let form = self.read_form(cx);
                 let dirty = form != self.initial;
                 let mut rows = vec![
-                    Row::text("f:name", "Name", d.name.read(cx).value().to_string()),
-                    Row::text("f:release", "Release date", d.release.read(cx).value().to_string()),
-                    Row::text("f:score", "Critic score", d.score.read(cx).value().to_string()),
-                    Row::text("f:websites", "Websites", d.websites.read(cx).value().to_string()),
-                    Row::text("f:description", "Description", d.description.read(cx).value().to_string()),
-                    Row::text("f:notes", "Notes", d.notes.read(cx).value().to_string()),
-                    Row::header("Tags (comma separated)"),
+                    Row::text("f:name", tr!("Name"), d.name.read(cx).value().to_string()),
+                    Row::text("f:release", tr!("Release date"), d.release.read(cx).value().to_string()),
+                    Row::text("f:score", tr!("Critic score"), d.score.read(cx).value().to_string()),
+                    Row::text("f:websites", tr!("Websites"), d.websites.read(cx).value().to_string()),
+                    Row::text("f:description", tr!("Description"), d.description.read(cx).value().to_string()),
+                    Row::text("f:notes", tr!("Notes"), d.notes.read(cx).value().to_string()),
+                    Row::header(tr!("Tags (comma separated)")),
                 ];
                 for (i, (_, label, _)) in TAG_FIELDS.iter().enumerate() {
                     let values = d.tags[i].read(cx).values().join(", ");
-                    rows.push(Row::text(SharedString::from(format!("f:tag{i}")), *label, values));
+                    rows.push(Row::text(SharedString::from(format!("f:tag{i}")), tr(label), values));
                 }
                 rows.push(Row::header(""));
                 rows.push(
-                    Row::action("save-details", if self.busy.is_some() { "Saving\u{2026}" } else { "Save" })
+                    Row::action("save-details", if self.busy.is_some() { tr!("Saving…") } else { tr!("Save") })
                         .icon(Icon::Save)
                         .enabled(dirty && self.busy.is_none()),
                 );
@@ -110,12 +112,12 @@ impl GameSettingsDialog {
             Tab::Images => {
                 let custom = self.art.cover_url.is_some() || self.art.hero_url.is_some();
                 vec![
-                    Row::info("img-cover", "Cover", if self.art.cover_url.is_some() { "Custom" } else { "Default" }),
-                    Row::info("img-hero", "Background", if self.art.hero_url.is_some() { "Custom" } else { "Default" }),
-                    Row::action("img-reset", "Use the default images")
+                    Row::info("img-cover", tr!("Cover"), if self.art.cover_url.is_some() { tr!("Custom") } else { tr!("Default") }),
+                    Row::info("img-hero", tr!("Background"), if self.art.hero_url.is_some() { tr!("Custom") } else { tr!("Default") }),
+                    Row::action("img-reset", tr!("Use the default images"))
                         .icon(Icon::Replay)
                         .enabled(custom && self.busy.is_none())
-                        .desc("Choosing new images from the web needs desktop mode"),
+                        .desc(tr!("Choosing new images from the web needs desktop mode")),
                 ]
             }
             _ => Vec::new(),
@@ -163,7 +165,7 @@ impl GameSettingsDialog {
 
     fn pick_executable(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let start = self.launch.as_ref().map(|l| std::path::PathBuf::from(l.executable.read(cx).value().to_string()));
-        let browser = cx.new(|cx| Browser::new("Executable", PickKind::File(Vec::new()), start.as_deref(), cx));
+        let browser = cx.new(|cx| Browser::new(tr!("Executable"), PickKind::File(Vec::new()), start.as_deref(), cx));
         let sub = cx.subscribe_in(&browser, window, |this, _, ev: &BrowserEvent, window, cx| {
             this.layer.close();
             if let BrowserEvent::Picked(p) = ev {
@@ -201,10 +203,12 @@ impl GameSettingsDialog {
         let tabs = self.console_tabs();
         let active = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
         let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
-        let mut meta =
-            vec![self.game.source_label.to_string(), if self.game.installed { "Installed".into() } else { "Not installed".into() }];
+        let mut meta = vec![
+            self.game.source_label.to_string(),
+            if self.game.installed { tr!("Installed").into() } else { tr!("Not installed").into() },
+        ];
         if self.game.playtime_minutes > 0 {
-            meta.push(format!("{} played", heronite_data::collection::format_playtime_minutes(self.game.playtime_minutes)));
+            meta.push(tr!("{time} played", time = heronite_data::collection::format_playtime_minutes(self.game.playtime_minutes)));
         }
 
         let header = div()
@@ -244,7 +248,7 @@ impl GameSettingsDialog {
                             .flex_col()
                             .gap(u(4.))
                             .min_w_0()
-                            .child(kit::kicker("Game settings"))
+                            .child(kit::kicker(tr!("Game settings")))
                             .child(kit::title(self.title.clone(), 48.))
                             .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(meta.join(" \u{b7} "))),
                     ),
@@ -324,15 +328,15 @@ impl PadTarget for GameSettingsDialog {
                 "save-launch" => self.save_launch(cx),
                 "save-details" => self.save_details(cx),
                 "img-reset" => self.reset_all_images(cx),
-                "f:name" => self.edit_field(Field::Name, "Name", window, cx),
-                "f:release" => self.edit_field(Field::Release, "Release date", window, cx),
-                "f:score" => self.edit_field(Field::Score, "Critic score", window, cx),
-                "f:websites" => self.edit_field(Field::Websites, "Websites", window, cx),
-                "f:description" => self.edit_field(Field::Description, "Description", window, cx),
-                "f:notes" => self.edit_field(Field::Notes, "Notes", window, cx),
+                "f:name" => self.edit_field(Field::Name, tr!("Name"), window, cx),
+                "f:release" => self.edit_field(Field::Release, tr!("Release date"), window, cx),
+                "f:score" => self.edit_field(Field::Score, tr!("Critic score"), window, cx),
+                "f:websites" => self.edit_field(Field::Websites, tr!("Websites"), window, cx),
+                "f:description" => self.edit_field(Field::Description, tr!("Description"), window, cx),
+                "f:notes" => self.edit_field(Field::Notes, tr!("Notes"), window, cx),
                 id => {
                     if let Some(i) = id.strip_prefix("f:tag").and_then(|n| n.parse::<usize>().ok()) {
-                        self.edit_field(Field::Tag(i), TAG_FIELDS[i].1, window, cx);
+                        self.edit_field(Field::Tag(i), tr(TAG_FIELDS[i].1), window, cx);
                     }
                 }
             },
@@ -350,11 +354,11 @@ impl PadTarget for GameSettingsDialog {
         if self.tab.section().is_some() {
             if let Some((panel, _)) = &self.panel {
                 let mut h = panel.read(cx).hints(cx);
-                h.push(hint(Btn::Bumpers, "Tabs"));
-                h.push(hint(Btn::B, "Done"));
+                h.push(hint(Btn::Bumpers, tr!("Tabs")));
+                h.push(hint(Btn::B, tr!("Done")));
                 return h;
             }
         }
-        vec![hint(Btn::A, "Select"), hint(Btn::LeftRight, "Change"), hint(Btn::Bumpers, "Tabs"), hint(Btn::B, "Done")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::Bumpers, tr!("Tabs")), hint(Btn::B, tr!("Done"))]
     }
 }

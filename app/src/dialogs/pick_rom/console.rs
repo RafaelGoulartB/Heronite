@@ -2,6 +2,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::super::DialogEvent;
 use super::PickRomDialog;
@@ -21,7 +22,7 @@ impl PickRomDialog {
                 Row::action(format!("r:{i}"), label).desc(path.clone()).icon(Icon::PlayArrow)
             })
             .collect();
-        rows.push(Row::action("cancel", "Cancel"));
+        rows.push(Row::action("cancel", tr!("Cancel")));
         rows
     }
 
@@ -40,9 +41,9 @@ impl PickRomDialog {
             .flex_1()
             .min_h_0()
             .gap(u(12.))
-            .child(kit::body_text("This title has more than one ROM. Pick which disc to launch."))
+            .child(kit::body_text(tr!("This title has more than one ROM. Pick which disc to launch.")))
             .child(self.console_list.render("console-pick-rom", &rows, true).flex_1().min_h_0());
-        kit::modal("Choose disc", 760., body).into_any_element()
+        kit::modal(tr!("Choose disc"), 760., body).into_any_element()
     }
 }
 
@@ -66,6 +67,6 @@ impl PadTarget for PickRomDialog {
     }
 
     fn hints(&self, _: &App) -> Vec<Hint> {
-        vec![hint(Btn::A, "Play"), hint(Btn::B, "Cancel")]
+        vec![hint(Btn::A, tr!("Play")), hint(Btn::B, tr!("Cancel"))]
     }
 }

@@ -31,6 +31,7 @@ use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::collect_facet_options;
+use heronite_i18n::tr;
 
 use self::sources::{Act, GameRow, ViewCmd};
 use self::view::{PaletteEvent, PaletteView};
@@ -140,7 +141,7 @@ impl CollectionView {
         let signed_in = crate::services::downloads_started(cx).map(|s| s.read(cx).account().logged_in);
         if let Some(e) = v.iter_mut().find(|e| e.act == Act::EpicUpdates) {
             if signed_in == Some(false) {
-                e.disable("Sign in to Epic Games first");
+                e.disable(tr!("Sign in to Epic Games first"));
             }
         }
         // The game selected in the Collection: its actions, by name.
@@ -267,7 +268,7 @@ impl CollectionView {
                 if svc.read(cx).account().logged_in {
                     svc.update(cx, |s, cx| s.refresh_library(cx));
                 } else {
-                    self.show_toast("Sign in to Epic Games first (\u{2630} \u{203a} Epic Games)", true, cx);
+                    self.show_toast(tr!("Sign in to Epic Games first (\u{2630} \u{203a} Epic Games)"), true, cx);
                 }
             }
             Act::OpenLogs => {
@@ -275,7 +276,7 @@ impl CollectionView {
                 if dir.is_dir() {
                     self.open_in_file_manager(&dir, cx);
                 } else {
-                    self.show_toast("There is no logs folder yet: it appears when a game is launched", true, cx);
+                    self.show_toast(tr!("There is no logs folder yet: it appears when a game is launched"), true, cx);
                 }
             }
             Act::Console => self.set_console(true, window, cx),

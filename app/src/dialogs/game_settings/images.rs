@@ -5,6 +5,7 @@ use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameArt;
 use heronite_data::{art, ArtContext};
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::ArtKind;
 
@@ -56,7 +57,8 @@ impl GameSettingsDialog {
     }
 
     fn pick_image(&mut self, kind: ArtKind, cx: &mut Context<Self>) {
-        let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some("Select".into()) });
+        let rx =
+            cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some(tr!("Select").into()) });
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = rx.await else { return };
             let Some(path) = paths.into_iter().next() else { return };
@@ -195,14 +197,14 @@ impl GameSettingsDialog {
         let mut actions = div().flex().flex_wrap().gap(px(8.)).child(action_button(
             SharedString::from(format!("gs-{tag}-change")),
             ButtonKind::Glass,
-            if busy_this { "Saving\u{2026}" } else { "Change" },
+            if busy_this { tr!("Saving…") } else { tr!("Change") },
             !busy,
             cx.listener(move |this, _, _, cx| this.pick_image(kind, cx)),
         ));
         actions = actions.child(action_button(
             SharedString::from(format!("gs-{tag}-web")),
             ButtonKind::Glass,
-            "Search web",
+            tr!("Search web"),
             !busy,
             cx.listener(move |this, _, window, cx| this.open_web(kind, window, cx)),
         ));
@@ -210,7 +212,7 @@ impl GameSettingsDialog {
             actions = actions.child(action_button(
                 "gs-hero-shot",
                 ButtonKind::Glass,
-                "Screenshot",
+                tr!("Screenshot"),
                 !busy,
                 cx.listener(move |this, _, _, cx| this.open_screenshot(kind, cx)),
             ));
@@ -218,7 +220,7 @@ impl GameSettingsDialog {
         actions = actions.child(action_button(
             SharedString::from(format!("gs-{tag}-reset")),
             ButtonKind::Ghost,
-            "Reset",
+            tr!("Reset"),
             !busy && custom_url.is_some(),
             cx.listener(move |this, _, _, cx| this.reset_image(kind, cx)),
         ));
@@ -229,14 +231,14 @@ impl GameSettingsDialog {
             .min_w_0()
             .gap(px(3.))
             .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(if custom_url.is_some() {
-                "Custom image"
+                tr!("Custom image")
             } else {
-                "Default image"
+                tr!("Default image")
             }))
             .child(div().mb(px(10.)).text_size(px(12.)).text_color(theme::text_dim()).child(if is_cover {
-                "Shown on the game card"
+                tr!("Shown on the game card")
             } else {
-                "Shown behind the game in Collection"
+                tr!("Shown behind the game in Collection")
             }))
             .child(actions);
         if is_cover {
@@ -254,12 +256,12 @@ impl GameSettingsDialog {
             .flex_col()
             .gap(px(6.))
             .child(
-                help_text("These images are used in Collection. Steam art stays cached; a custom file replaces it until you reset.")
+                help_text(tr!("These images are used in Collection. Steam art stays cached; a custom file replaces it until you reset."))
                     .px(px(6.)),
             )
-            .child(caption("Cover"))
+            .child(caption(tr!("Cover")))
             .child(card([cover.into_any_element()]))
-            .child(caption("Background"))
+            .child(caption(tr!("Background")))
             .child(card([hero.into_any_element()]))
     }
 }

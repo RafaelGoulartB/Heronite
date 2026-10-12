@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use heronite_data::{CollectionGame, DataPaths};
+use heronite_i18n::tr;
 use heronite_launch::net::SystemNet;
 use heronite_launch::prepare::CloudSync;
 use heronite_launch::runtime::PrepServices;
@@ -174,8 +175,8 @@ impl GameRuntime {
             return open_steam_client_uri(&SystemSpawner::default(), &SystemProbe, SteamAction::Install, id);
         }
         Err(match game.runner.as_str() {
-            "legendary" => "Epic games are installed from the install dialog.".into(),
-            _ => "This game has no install action.".into(),
+            "legendary" => tr!("Epic games are installed from the install dialog.").into(),
+            _ => tr!("This game has no install action.").into(),
         })
     }
 }

@@ -4,6 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::LogViewer;
 use crate::console::kit::u;
@@ -24,7 +25,7 @@ impl LogViewer {
             rows.push(Row::action(SharedString::from(format!("l{i}")), name).desc(detail));
         }
         if rows.is_empty() {
-            rows.push(Row::info("none", if self.entries_loaded { "No logs yet" } else { "Looking for logs\u{2026}" }, ""));
+            rows.push(Row::info("none", if self.entries_loaded { tr!("No logs yet") } else { tr!("Looking for logs…") }, ""));
         }
         rows
     }
@@ -77,6 +78,6 @@ impl PadTarget for LogViewer {
     }
 
     fn hints(&self, _: &App) -> Vec<Hint> {
-        vec![hint(Btn::A, "Show"), hint(Btn::X, "Previous run"), hint(Btn::Y, "Earlier lines")]
+        vec![hint(Btn::A, tr!("Show")), hint(Btn::X, tr!("Previous run")), hint(Btn::Y, tr!("Earlier lines"))]
     }
 }

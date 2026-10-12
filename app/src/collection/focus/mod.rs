@@ -15,6 +15,7 @@ use self::description::render_html;
 use self::panels::{details_panel, hltb_panel, related_panel};
 use super::vm::FocusVm;
 use crate::theme;
+use heronite_i18n::tr;
 
 pub(super) type CoverFor = Rc<dyn Fn(&str) -> Option<ImageSource>>;
 
@@ -157,8 +158,8 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         timeline,
         related: (!vm.related.is_empty()).then(|| related_panel(&vm.related, &cover_for, actions.on_select)),
         top: extras.top,
-        details: div().flex().flex_col().child(h3("Details")).child(details),
-        hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3("How Long To Beat")).child(hltb_panel(h))),
+        details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
+        hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
     };
     let body = body(&lay, sections);
     // Wide: the title sits above a fixed left column and the scrolling
@@ -267,14 +268,14 @@ struct Sections {
 }
 
 fn overview(vm: &FocusVm, html_images: &CoverFor, panel_w: f32) -> Div {
-    div().flex().flex_col().child(h3("Overview")).child(match &vm.overview_html {
+    div().flex().flex_col().child(h3(tr!("Overview"))).child(match &vm.overview_html {
         Some(blocks) => render_html(blocks, &**html_images, main_column_width(panel_w)).into_any_element(),
         None => div()
             .max_w(px(72. * 7.6))
             .text_size(px(15.2))
             .line_height(px(15.2 * 1.65))
             .text_color(theme::white_a(0.92))
-            .child(vm.overview.clone().unwrap_or_else(|| "No description available".into()))
+            .child(vm.overview.clone().unwrap_or_else(|| tr!("No description available").into()))
             .into_any_element(),
     })
 }

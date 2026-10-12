@@ -9,6 +9,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::DialogEvent;
 use crate::ui::controls::{button, ButtonKind};
@@ -30,22 +31,33 @@ pub fn name_list(names: &[String]) -> String {
     match quoted.as_slice() {
         [] => String::new(),
         [one] => one.clone(),
-        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+        [init @ .., last] => {
+            let init = init.join(", ");
+            tr!("{init} and {last}", init, last)
+        }
     }
 }
 
 /// The body of the question.
 pub fn message(games: &[String], post_game: bool) -> String {
     if games.is_empty() {
-        return "Post-game tasks (backups, cloud saves) are still running. If you quit now they are interrupted.".into();
+        return tr!("Post-game tasks (backups, cloud saves) are still running. If you quit now they are interrupted.").into();
     }
-    let (subject, verb, it) = if games.len() == 1 { (name_list(games), "is", "it ends") } else { (name_list(games), "are", "they end") };
-    let mut text = format!(
-        "{subject} {verb} still running. Heronite records the playtime and runs the post-game tasks (backups, cloud saves) when {it}. \
-         If you quit now, the playtime so far is saved and the game keeps running, but those tasks will not run."
-    );
+    let subject = name_list(games);
+    let mut text = if games.len() == 1 {
+        tr!(
+            "{subject} is still running. Heronite records the playtime and runs the post-game tasks (backups, cloud saves) when it ends. If you quit now, the playtime so far is saved and the game keeps running, but those tasks will not run.",
+            subject
+        )
+    } else {
+        tr!(
+            "{subject} are still running. Heronite records the playtime and runs the post-game tasks (backups, cloud saves) when they end. If you quit now, the playtime so far is saved and the game keeps running, but those tasks will not run.",
+            subject
+        )
+    };
     if post_game {
-        text.push_str(" Post-game tasks of another game are also still running and would be interrupted.");
+        text.push(' ');
+        text.push_str(tr!("Post-game tasks of another game are also still running and would be interrupted."));
     }
     text
 }
@@ -61,29 +73,39 @@ impl Render for QuitConfirmDialog {
         if crate::console::active() {
             let rows = self.console_rows();
             let text = message(&self.games, self.post_game);
-            return crate::console::list::simple_dialog(&mut self.console_list, "console-quit", "A game is running", &text, None, &rows);
+            return crate::console::list::simple_dialog(
+                &mut self.console_list,
+                "console-quit",
+                tr!("A game is running"),
+                &text,
+                None,
+                &rows,
+            );
         }
         let body = div().flex().flex_col().gap(px(14.)).child(paragraph(message(&self.games, self.post_game)));
         let mut footer = div().flex().gap(px(10.));
         if self.tray {
             footer = footer
-                .child(button("quit-cancel", ButtonKind::Ghost, "Cancel").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
-                .child(button("quit-tray", ButtonKind::Primary, "Keep running in tray").on_click(cx.listener(|_, _, _, cx| {
+                .child(
+                    button("quit-cancel", ButtonKind::Ghost, tr!("Cancel"))
+                        .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+                )
+                .child(button("quit-tray", ButtonKind::Primary, tr!("Keep running in tray")).on_click(cx.listener(|_, _, _, cx| {
                     cx.emit(DialogEvent::Close);
                     crate::system::keep_in_tray(cx);
                 })));
         } else {
             footer = footer.child(
-                button("quit-keep", ButtonKind::Primary, "Keep open").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+                button("quit-keep", ButtonKind::Primary, tr!("Keep open")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
             );
         }
-        footer = footer.child(button("quit-anyway", ButtonKind::Danger, "Quit anyway").on_click(cx.listener(|_, _, _, cx| {
+        footer = footer.child(button("quit-anyway", ButtonKind::Danger, tr!("Quit anyway")).on_click(cx.listener(|_, _, _, cx| {
             cx.emit(DialogEvent::Close);
             crate::system::quit_anyway(cx);
         })));
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "quit-confirm".into(), title: "A game is running".into(), width: 560., height: None },
+            DialogProps { id: "quit-confirm".into(), title: tr!("A game is running").into(), width: 560., height: None },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
@@ -99,12 +121,12 @@ impl QuitConfirmDialog {
         use crate::console::list::Row;
         let mut rows = Vec::new();
         if self.tray {
-            rows.push(Row::action("tray", "Keep running in tray"));
-            rows.push(Row::action("cancel", "Cancel"));
+            rows.push(Row::action("tray", tr!("Keep running in tray")));
+            rows.push(Row::action("cancel", tr!("Cancel")));
         } else {
-            rows.push(Row::action("cancel", "Keep open"));
+            rows.push(Row::action("cancel", tr!("Keep open")));
         }
-        rows.push(Row::action("quit", "Quit anyway").danger());
+        rows.push(Row::action("quit", tr!("Quit anyway")).danger());
         rows
     }
 }
@@ -131,7 +153,7 @@ impl crate::console::PadTarget for QuitConfirmDialog {
 
     fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
         use crate::console::{hint, Btn};
-        vec![hint(Btn::A, "Select"), hint(Btn::B, "Cancel")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Cancel"))]
     }
 }
 

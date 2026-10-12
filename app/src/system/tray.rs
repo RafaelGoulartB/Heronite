@@ -11,6 +11,8 @@ use heronite_data::DataPaths;
 use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::{MenuItem, StandardItem};
 
+use heronite_i18n::tr;
+
 use super::settings::recent_games;
 
 const ICON_DARK: &[u8] = include_bytes!("../../assets/tray/icon-dark.png");
@@ -129,14 +131,14 @@ impl ksni::Tray for HeroniteTray {
                 Row::ShowHide { window_open } => {
                     let hide = window_open && self.exit_to_tray;
                     StandardItem {
-                        label: if hide { "Hide" } else { "Show" }.into(),
+                        label: if hide { tr!("Hide") } else { tr!("Show") }.into(),
                         activate: Box::new(move |t: &mut Self| t.send(if hide { TrayCmd::Toggle } else { TrayCmd::Show })),
                         ..Default::default()
                     }
                     .into()
                 }
                 Row::Quit => StandardItem {
-                    label: "Quit".into(),
+                    label: tr!("Quit").into(),
                     icon_name: "application-exit".into(),
                     activate: Box::new(|t: &mut Self| t.send(TrayCmd::Quit)),
                     ..Default::default()
