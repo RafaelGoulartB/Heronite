@@ -10,6 +10,7 @@ use std::time::Duration;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::rank::{actions_list, search, Filter, ItemRef, Results};
 use super::sources::{Act, Entry};
@@ -39,7 +40,9 @@ const LIST_PAD: f32 = 6.;
 const LIST_MAX_H: f32 = 9. * ROW_H + CAPTION_H;
 const PANEL_W: f32 = 620.;
 const TOP: f32 = 90.;
-const ROOT_PLACEHOLDER: &str = "Type a command, page or game\u{2026}";
+fn root_placeholder() -> &'static str {
+    tr!("Type a command, page or game\u{2026}")
+}
 
 /// The second level: one game's actions.
 struct GameLevel {
@@ -70,7 +73,7 @@ impl PaletteView {
     pub fn new(entries: Rc<Vec<Entry>>, recent: Rc<Vec<String>>, query: &str, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| {
             let mut s = InputState::new(window, cx);
-            s.set_placeholder(ROOT_PLACEHOLDER, window, cx);
+            s.set_placeholder(root_placeholder(), window, cx);
             s.set_value(query.to_string(), window, cx);
             s
         });
@@ -222,7 +225,7 @@ impl PaletteView {
     pub fn show_game(&mut self, title: SharedString, entries: Vec<Entry>, window: &mut Window, cx: &mut Context<Self>) {
         let root_query = std::mem::take(&mut self.query);
         let root_selected = if self.game.is_some() { 0 } else { self.selected };
-        let placeholder = format!("Search the actions of {title}\u{2026}");
+        let placeholder = tr!("Search the actions of {title}\u{2026}", title);
         self.game = Some(GameLevel { title, entries: Rc::new(entries), root_query, root_selected });
         self.input.update(cx, |s, cx| {
             s.set_value(String::new(), window, cx);
@@ -237,7 +240,7 @@ impl PaletteView {
         self.query = g.root_query.clone();
         self.input.update(cx, |s, cx| {
             s.set_value(g.root_query, window, cx);
-            s.set_placeholder(ROOT_PLACEHOLDER, window, cx);
+            s.set_placeholder(root_placeholder(), window, cx);
         });
         self.results = self.rank();
         self.selected = g.root_selected.min(self.results.count().saturating_sub(1));
@@ -414,7 +417,7 @@ impl Render for PaletteView {
                     .h(px(64.))
                     .text_size(px(13.))
                     .text_color(theme::text_dim())
-                    .child(if self.query.trim().is_empty() { "Nothing to show here" } else { "No results" }),
+                    .child(if self.query.trim().is_empty() { tr!("Nothing to show here") } else { tr!("No results") }),
             );
         }
         let mut n = 0;
@@ -471,14 +474,14 @@ impl Render for PaletteView {
             .border_color(theme::white_a(0.08))
             .text_size(px(12.))
             .text_color(theme::text_dim())
-            .child(hint(vec!["\u{2191}", "\u{2193}"], "move"))
-            .child(hint(vec!["\u{21b5}"], if self.game.is_some() { "run" } else { "open" }));
+            .child(hint(vec!["\u{2191}", "\u{2193}"], tr!("move")))
+            .child(hint(vec!["\u{21b5}"], if self.game.is_some() { tr!("run") } else { tr!("open") }));
         footer = if self.game.is_some() {
-            footer.child(hint(vec!["Esc"], "back")).child(div().flex_1())
+            footer.child(hint(vec!["Esc"], tr!("back"))).child(div().flex_1())
         } else {
             footer
-                .when(has_game, |f| f.child(hint(vec!["\u{2192}"], "actions")))
-                .child(hint(vec!["Tab"], "filter"))
+                .when(has_game, |f| f.child(hint(vec!["\u{2192}"], tr!("actions"))))
+                .child(hint(vec!["Tab"], tr!("filter")))
                 .child(div().flex_1())
                 .child(self.filter_pills(cx))
         };

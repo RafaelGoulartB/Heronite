@@ -8,6 +8,7 @@ use heronite_data::DataPaths;
 use heronite_epic::cmd::Legendary;
 use heronite_epic::eos_overlay::{self, PrefixFolder};
 use heronite_epic::ops::OpResult;
+use heronite_i18n::tr;
 
 use super::{Downloads, DownloadsEvent, EosGame, EosStatus};
 
@@ -111,7 +112,7 @@ impl Downloads {
     }
 
     fn eos_install_then(&mut self, enable_for: Option<String>, cx: &mut Context<Self>) {
-        let label = if self.eos.installed { "Updating EOS Overlay" } else { "Installing EOS Overlay" };
+        let label = if self.eos.installed { tr!("Updating EOS Overlay") } else { tr!("Installing EOS Overlay") };
         self.run_op_then(
             eos_overlay::APP_NAME,
             label,
@@ -133,7 +134,7 @@ impl Downloads {
     pub fn eos_remove(&mut self, cx: &mut Context<Self>) {
         self.run_op_then(
             eos_overlay::APP_NAME,
-            "Removing EOS Overlay",
+            tr!("Removing EOS Overlay"),
             false,
             cx,
             |_, lg, _, _| eos_overlay::remove(lg),
@@ -235,7 +236,7 @@ impl Downloads {
 
     fn eos_set_game(&mut self, app_name: &str, enable: bool, cx: &mut Context<Self>) {
         let app = app_name.to_string();
-        let label = if enable { "Enabling EOS Overlay" } else { "Disabling EOS Overlay" };
+        let label = if enable { tr!("Enabling EOS Overlay") } else { tr!("Disabling EOS Overlay") };
         let app_for_work = app.clone();
         self.run_op_then(
             app_name,
@@ -248,13 +249,13 @@ impl Downloads {
                     PrefixFolder::NotApplicable => None,
                     // Nothing to enable / disable without a prefix (Heroic returns quietly).
                     PrefixFolder::Invalid if !enable => {
-                        return OpResult { ok: true, aborted: false, message: "EOS Overlay disabled".into() }
+                        return OpResult { ok: true, aborted: false, message: tr!("EOS Overlay disabled").into() }
                     }
                     PrefixFolder::Invalid => {
                         return OpResult {
                             ok: false,
                             aborted: false,
-                            message: "The Wine prefix of this game does not exist yet; start the game once first".into(),
+                            message: tr!("The Wine prefix of this game does not exist yet; start the game once first").into(),
                         }
                     }
                 };

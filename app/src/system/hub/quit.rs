@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
+use heronite_i18n::{tr, trn};
 
 use super::hub;
 use super::window::{close_window_keep_alive, show_window};
@@ -104,10 +105,10 @@ pub fn restart_blocker(cx: &App) -> Option<String> {
     cx.try_global::<super::Hub>()?;
     let (titles, busy) = pending_work(cx);
     match titles.as_slice() {
-        [] if busy => Some("Saving after your game".into()),
+        [] if busy => Some(tr!("Saving after your game").into()),
         [] => None,
-        [one] => Some(format!("{one} is running")),
-        _ => Some(format!("{} games are running", titles.len())),
+        [one] => Some(tr!("{title} is running", title = one)),
+        _ => Some(trn!(titles.len(), "{n} game is running", "{n} games are running")),
     }
 }
 

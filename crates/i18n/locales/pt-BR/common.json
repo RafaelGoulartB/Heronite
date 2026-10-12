@@ -144,5 +144,19 @@
   "Back": "Voltar",
   "Game settings": "Configurações do jogo",
   "Game": "Jogo",
-  "Screenshots": "Capturas de tela"
+  "Screenshots": "Capturas de tela",
+  "General": "Geral",
+  "Downloads": "Downloads",
+  "Advanced": "Avançado",
+  "Actions": "Ações",
+  "Collection": "Coleção",
+  "EOS Overlay disabled": "EOS Overlay desativado",
+  "Logs": "Logs",
+  "Open folder": "Abrir pasta",
+  "Wine Manager": "Gerenciador do Wine",
+  "App": "App",
+  "Failed": "Falhou",
+  "Help": "Ajuda",
+  "Heronite {version} is available": "O Heronite {version} está disponível",
+  "just now": "agora mesmo"
 }

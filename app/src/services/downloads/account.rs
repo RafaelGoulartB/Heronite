@@ -4,6 +4,7 @@ use gpui_kit::*;
 use heronite_epic::cmd::Legendary;
 use heronite_epic::library;
 use heronite_epic::user;
+use heronite_i18n::tr;
 
 use super::library_file::read_stats;
 use super::{Downloads, DownloadsEvent, Stats};
@@ -36,7 +37,7 @@ impl Downloads {
                         this.apply_account(Some(info));
                         this.updates = updates.into_iter().collect();
                         this.stats = stats;
-                        this.toast(cx, format!("Logged in as {name}"), false);
+                        this.toast(cx, tr!("Logged in as {name}", name), false);
                         this.emit(cx, DownloadsEvent::LibraryChanged);
                     }
                     Err(err) => {
@@ -67,7 +68,7 @@ impl Downloads {
                         this.apply_account(None);
                         this.updates.clear();
                         this.stats = Stats::default();
-                        this.toast(cx, "Logged out of Epic Games", false);
+                        this.toast(cx, tr!("Logged out of Epic Games"), false);
                         this.emit(cx, DownloadsEvent::LibraryChanged);
                     }
                     Err(err) => this.toast(cx, format!("{err:#}"), true),

@@ -38,6 +38,7 @@ use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::AppPaths;
+use heronite_i18n::tr;
 use heronite_update::{Asset, Fetched, InstallError, Package, Prefs, Progress, Release, Target, Unsupported, Version};
 
 const FIRST_CHECK: Duration = Duration::from_secs(10);
@@ -174,7 +175,11 @@ pub fn size_text(bytes: u64) -> String {
 
 /// `6.1 MiB of 14.7 MiB · 2.3 MiB/s`.
 pub fn progress_text(p: &Progress) -> String {
-    let mut text = if p.total > 0 { format!("{} of {}", size_text(p.downloaded), size_text(p.total)) } else { size_text(p.downloaded) };
+    let mut text = if p.total > 0 {
+        tr!("{done} of {total}", done = size_text(p.downloaded), total = size_text(p.total))
+    } else {
+        size_text(p.downloaded)
+    };
     if p.bytes_per_sec > 0. {
         text.push_str(&format!(" \u{b7} {}/s", size_text(p.bytes_per_sec as u64)));
     }
@@ -185,11 +190,11 @@ pub fn progress_text(p: &Progress) -> String {
 pub fn ago_text(unix_secs: u64) -> String {
     let secs = now_secs().saturating_sub(unix_secs);
     match secs {
-        0..=59 => "just now".into(),
-        60..=3599 => format!("{} min ago", secs / 60),
-        3600..=86_399 => format!("{} h ago", secs / 3600),
-        _ if secs < 2 * 86_400 => "yesterday".into(),
-        _ => format!("{} days ago", secs / 86_400),
+        0..=59 => tr!("just now").into(),
+        60..=3599 => tr!("{n} min ago", n = secs / 60),
+        3600..=86_399 => tr!("{n} h ago", n = secs / 3600),
+        _ if secs < 2 * 86_400 => tr!("yesterday").into(),
+        _ => tr!("{n} days ago", n = secs / 86_400),
     }
 }
 
@@ -437,7 +442,7 @@ impl Updater {
             return;
         }
         self.notified = Some(r.version.clone());
-        crate::system::notify::send(format!("Heronite {} is available", r.version), "Open Heronite to update.");
+        crate::system::notify::send(tr!("Heronite {version} is available", version = r.version), tr!("Open Heronite to update."));
     }
 
     /// Downloads the release and installs it ([`Method`]).
@@ -466,7 +471,7 @@ impl Updater {
                 }
                 Method::Package { kind, .. } => {
                     let (Some(asset), Some(sig)) = (release.package(kind), release.package_signature(kind)) else {
-                        return (Err(InstallError::Failed("This release has no signed package for this system".into())), None);
+                        return (Err(InstallError::Failed(tr!("This release has no signed package for this system").into())), None);
                     };
                     log::info!("downloading {} into {}", asset.name, dir.display());
                     let file =
@@ -521,7 +526,10 @@ impl Updater {
             Ok(()) => {
                 log::info!("Heronite {version} is installed; it runs from the next start");
                 if !crate::system::has_window(cx) {
-                    crate::system::notify::send(format!("Heronite {version} is installed"), "It starts the next time you open Heronite.");
+                    crate::system::notify::send(
+                        tr!("Heronite {version} is installed", version),
+                        tr!("It starts the next time you open Heronite."),
+                    );
                 }
                 Phase::Ready
             }

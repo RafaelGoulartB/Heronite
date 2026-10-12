@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 
 use heronite_data::game_config::load_global;
 use heronite_data::{art, AppPaths, ArtContext, CollectionGame, DataPaths, Library};
+use heronite_i18n::tr;
 use heronite_shortcuts::desktop::{self, Roots};
 use heronite_shortcuts::steam::{self, ArtFiles, ShortcutSpec};
 use heronite_shortcuts::steam_client::{SteamClient, DEFAULT_ADDR};
@@ -118,13 +119,13 @@ fn own_exe() -> PathBuf {
 }
 
 fn find_game(data_paths: &DataPaths, runner: &str, app_name: &str) -> Result<(Library, std::sync::Arc<CollectionGame>), String> {
-    let lib = Library::load(data_paths).map_err(|e| format!("Could not read the library: {e:#}"))?;
+    let lib = Library::load(data_paths).map_err(|e| tr!("Could not read the library: {error}", error = format!("{e:#}")))?;
     let game = lib
         .games
         .iter()
         .find(|g| g.app_name == app_name && (runner.is_empty() || g.runner == runner))
         .cloned()
-        .ok_or_else(|| format!("Game {app_name} was not found in the library"))?;
+        .ok_or_else(|| tr!("Game {name} was not found in the library", name = app_name))?;
     Ok((lib, game))
 }
 
@@ -221,19 +222,13 @@ fn write_desktop(data_paths: &DataPaths, lib: &Library, game: &CollectionGame, d
     let roots = Roots::detect();
     let icon = icon_file(data_paths, lib, game);
     match desktop::add(&roots, &game_id(game), &own_exe(), icon.as_deref(), desktop, menu) {
-        Ok(w) => {
-            let mut places = Vec::new();
-            if w.desktop.is_some() {
-                places.push("Desktop");
-            }
-            if w.menu.is_some() {
-                places.push("Start Menu");
-            }
-            if !places.is_empty() {
-                out.ok(format!("Shortcuts were created on {}", places.join(" and ")));
-            }
-        }
-        Err(e) => out.err(format!("Could not create the shortcuts for {}: {e:#}", game.title)),
+        Ok(w) => match (w.desktop.is_some(), w.menu.is_some()) {
+            (true, true) => out.ok(tr!("Shortcuts were created on Desktop and Start Menu")),
+            (true, false) => out.ok(tr!("Shortcuts were created on Desktop")),
+            (false, true) => out.ok(tr!("Shortcuts were created on Start Menu")),
+            (false, false) => {}
+        },
+        Err(e) => out.err(tr!("Could not create the shortcuts for {title}: {error}", title = game.title, error = format!("{e:#}"))),
     }
 }
 
@@ -257,8 +252,8 @@ pub fn remove_shortcuts(data_paths: &DataPaths, runner: &str, app_name: &str) ->
     let mut out = Outcome::default();
     match find_game(data_paths, runner, app_name) {
         Ok((_, game)) => match desktop::remove(&Roots::detect(), &game.title) {
-            Ok(_) => out.ok("Shortcuts were removed from Desktop and Start Menu"),
-            Err(e) => out.err(format!("Could not remove the shortcuts of {}: {e:#}", game.title)),
+            Ok(_) => out.ok(tr!("Shortcuts were removed from Desktop and Start Menu")),
+            Err(e) => out.err(tr!("Could not remove the shortcuts of {title}: {error}", title = game.title, error = format!("{e:#}"))),
         },
         Err(e) => out.err(e),
     }
@@ -303,8 +298,9 @@ fn url_handler() -> UrlHandler {
     UrlHandler::new(crate::env::value("HERONITE_STEAM_BIN").unwrap_or_else(|| "steam".into()), wrapper_dir())
 }
 
-const STEAM_RUNNING: &str =
-    "Steam is running. Close Steam and try again, or restart Steam once to let Heronite manage shortcuts while Steam is running.";
+fn steam_running() -> &'static str {
+    tr!("Steam is running. Close Steam and try again, or restart Steam once to let Heronite manage shortcuts while Steam is running.")
+}
 
 /// "Add to Steam". With Steam closed, `shortcuts.vdf` is edited (Steam picks
 /// it up at its next start). With Steam running, Heroic's order: its debugging
@@ -329,7 +325,7 @@ pub fn add_to_steam(data_paths: &DataPaths, runner: &str, app_name: &str) -> Out
     if running && !live {
         steam::enable_client_api_on_next_start(&steam_dir);
         if steam::is_added(&steam_dir, &game_id(&game)) {
-            out.ok(format!("{} was successfully added to Steam.", game.title));
+            out.ok(tr!("{title} was successfully added to Steam.", title = game.title));
             return out;
         }
     }
@@ -338,35 +334,36 @@ pub fn add_to_steam(data_paths: &DataPaths, runner: &str, app_name: &str) -> Out
     let spec = steam_spec(&game, icon.as_deref());
     if live {
         match steam_running::add_with_client(&client, &steam_dir, &game_id(&game), &spec, &art) {
-            Ok(_) => out.ok(format!("{} was successfully added to Steam.", game.title)),
-            Err(e) => out.err(format!("Adding {} to Steam failed with:\n{e:#}", game.title)),
+            Ok(_) => out.ok(tr!("{title} was successfully added to Steam.", title = game.title)),
+            Err(e) => out.err(tr!("Adding {title} to Steam failed with:\n{error}", title = game.title, error = format!("{e:#}"))),
         }
         return out;
     }
     if running {
         match steam_running::add_with_url_handler(&url_handler(), &steam_dir, &game_id(&game), &spec, &art) {
-            Ok(_) => out.ok(format!("{} was successfully added to Steam.", game.title)),
+            Ok(_) => out.ok(tr!("{title} was successfully added to Steam.", title = game.title)),
             Err(e) => {
                 log::error!("Failed to add {} to Steam via the url handler with: {e:#}", game.title);
-                out.err(STEAM_RUNNING);
+                out.err(steam_running());
             }
         }
         return out;
     }
     match steam::add_game(&steam_dir, &game_id(&game), &spec, &art) {
-        Ok(report) if report.errors.is_empty() => {
-            out.ok(format!("{} was successfully added to Steam. A restart of Steam is required for changes to take effect.", game.title))
-        }
+        Ok(report) if report.errors.is_empty() => out.ok(tr!(
+            "{title} was successfully added to Steam. A restart of Steam is required for changes to take effect.",
+            title = game.title
+        )),
         Ok(report) => {
             for e in &report.errors {
                 log::error!("{e}");
             }
-            out.ok(format!(
-                "{} could not be added to all found Steam users. See logs for more info. A restart of Steam is required for changes to take effect.",
-                game.title
+            out.ok(tr!(
+                "{title} could not be added to all found Steam users. See logs for more info. A restart of Steam is required for changes to take effect.",
+                title = game.title
             ));
         }
-        Err(e) => out.err(format!("Adding {} to Steam failed with:\n{e:#}", game.title)),
+        Err(e) => out.err(tr!("Adding {title} to Steam failed with:\n{error}", title = game.title, error = format!("{e:#}"))),
     }
     out
 }
@@ -388,22 +385,22 @@ pub fn remove_from_steam(data_paths: &DataPaths, runner: &str, app_name: &str) -
         if !client.is_available() {
             steam::enable_client_api_on_next_start(&steam_dir);
             log::error!("Can't remove \"{}\" from Steam while Steam is running.", game.title);
-            out.err(STEAM_RUNNING);
+            out.err(steam_running());
             return out;
         }
         match steam_running::remove_with_client(&client, &steam_dir, &game_id(&game), &wrapper_dir()) {
-            Ok(true) => out.ok(format!("{} was successfully removed from Steam.", game.title)),
+            Ok(true) => out.ok(tr!("{title} was successfully removed from Steam.", title = game.title)),
             Ok(false) => {}
-            Err(e) => out.err(format!("Removing {} from Steam failed with:\n{e:#}", game.title)),
+            Err(e) => out.err(tr!("Removing {title} from Steam failed with:\n{error}", title = game.title, error = format!("{e:#}"))),
         }
         return out;
     }
     match steam::remove_game(&steam_dir, &game_id(&game)) {
         Ok(report) if report.errors.is_empty() => {
             if !report.users_done.is_empty() {
-                out.ok(format!(
-                    "{} was successfully removed from Steam. A restart of Steam is required for changes to take effect.",
-                    game.title
+                out.ok(tr!(
+                    "{title} was successfully removed from Steam. A restart of Steam is required for changes to take effect.",
+                    title = game.title
                 ));
             }
         }
@@ -411,12 +408,12 @@ pub fn remove_from_steam(data_paths: &DataPaths, runner: &str, app_name: &str) -
             for e in &report.errors {
                 log::error!("{e}");
             }
-            out.err(format!(
-                "{} could not be removed from all found Steam users. See logs for more info. A restart of Steam is required for changes to take effect.",
-                game.title
+            out.err(tr!(
+                "{title} could not be removed from all found Steam users. See logs for more info. A restart of Steam is required for changes to take effect.",
+                title = game.title
             ));
         }
-        Err(e) => out.err(format!("Removing {} from Steam failed with:\n{e:#}", game.title)),
+        Err(e) => out.err(tr!("Removing {title} from Steam failed with:\n{error}", title = game.title, error = format!("{e:#}"))),
     }
     out
 }

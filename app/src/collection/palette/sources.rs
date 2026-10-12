@@ -7,6 +7,7 @@ use gpui_kit::SharedString;
 use heronite_data::collection::{FacetOptions, FACET_KINDS};
 use heronite_data::ui_state::UiState;
 use heronite_data::{FacetKind, InstallFilter, SortMode};
+use heronite_i18n::{tr, trn};
 
 use super::matching::{fold, Haystack};
 use crate::collection::game_actions::{GameAction, GameActionItem};
@@ -153,17 +154,30 @@ impl Entry {
 /// Settings sections the palette opens directly: (section, one-line help).
 fn section_help(s: Section) -> &'static str {
     match s {
-        Section::General => "Folders, tray, Wine and Proton lookup",
-        Section::Appearance => "Page background, blur, covers",
-        Section::Advanced => "Folders, cache, copy settings",
-        Section::GameDefaults => "Values new games start with",
-        Section::Downloads => "Epic downloads and updates",
-        Section::Library => "Hidden games, favourites, recent games",
-        Section::Metadata => "IGDB keys, covers, field sources",
-        Section::Screenshots => "Folder, capture shortcut, preview cache",
-        Section::Backups => "Ludusavi saves and data folder backup",
-        Section::Logs => "Logs of this app and your games",
-        Section::About => "Version, data folders, system",
+        Section::General => tr!("Folders, tray, Wine and Proton lookup"),
+        Section::Appearance => tr!("Page background, blur, covers"),
+        Section::Advanced => tr!("Folders, cache, copy settings"),
+        Section::GameDefaults => tr!("Values new games start with"),
+        Section::Downloads => tr!("Epic downloads and updates"),
+        Section::Library => tr!("Hidden games, favourites, recent games"),
+        Section::Metadata => tr!("IGDB keys, covers, field sources"),
+        Section::Screenshots => tr!("Folder, capture shortcut, preview cache"),
+        Section::Backups => tr!("Ludusavi saves and data folder backup"),
+        Section::Logs => tr!("Logs of this app and your games"),
+        Section::About => tr!("Version, data folders, system"),
+    }
+}
+
+/// English page names, so a page's commands are found by either language.
+fn page_name_en(p: Page) -> &'static str {
+    match p {
+        Page::Collection => "collection",
+        Page::Downloads => "downloads",
+        Page::WineManager => "wine manager",
+        Page::Epic => "epic games",
+        Page::Emulators => "emulators",
+        Page::Statistics => "statistics",
+        Page::Settings => "settings",
     }
 }
 
@@ -171,24 +185,35 @@ fn section_help(s: Section) -> &'static str {
 pub(super) fn static_entries() -> Vec<Entry> {
     let mut v = Vec::new();
     let page = |p: Page, sub: &str, shortcut: &'static str, kw: &str| {
-        Entry::new(Kind::Page, Act::Go(p), format!("go:{p:?}"), p.title(), sub, p.icon(), kw).shortcut(shortcut)
+        Entry::new(Kind::Page, Act::Go(p), format!("go:{p:?}"), p.title(), sub, p.icon(), &format!("{} {kw}", page_name_en(p)))
+            .shortcut(shortcut)
     };
-    v.push(page(Page::Collection, "Your games", "Ctrl 1", "library home games list"));
-    v.push(page(Page::Downloads, "Epic installs and updates", "Ctrl 2", "queue install update epic"));
-    v.push(page(Page::WineManager, "Download and manage Proton / Wine", "Ctrl 3", "proton wine runner compatibility"));
-    v.push(page(Page::Epic, "Account and library", "Ctrl 4", "epic games store account login legendary"));
-    v.push(page(Page::Emulators, "Emulators and ROM folders", "Ctrl 5", "emulator rom retro console"));
-    v.push(page(Page::Statistics, "Play time and habits", "Ctrl 6", "stats playtime hours activity chart most played"));
-    v.push(page(Page::Settings, "Global settings", "Ctrl ,", "preferences options config"));
+    v.push(page(Page::Collection, tr!("Your games"), "Ctrl 1", "library home games list biblioteca inicio jogos lista"));
+    v.push(page(Page::Downloads, tr!("Epic installs and updates"), "Ctrl 2", "queue install update epic fila instalar atualizar baixar"));
+    v.push(page(
+        Page::WineManager,
+        tr!("Download and manage Proton / Wine"),
+        "Ctrl 3",
+        "proton wine runner compatibility executor compatibilidade",
+    ));
+    v.push(page(Page::Epic, tr!("Account and library"), "Ctrl 4", "epic games store account login legendary loja conta entrar biblioteca"));
+    v.push(page(Page::Emulators, tr!("Emulators and ROM folders"), "Ctrl 5", "emulator rom retro console emulador emuladores"));
+    v.push(page(
+        Page::Statistics,
+        tr!("Play time and habits"),
+        "Ctrl 6",
+        "stats playtime hours activity chart most played estatisticas tempo de jogo horas atividade grafico mais jogados",
+    ));
+    v.push(page(Page::Settings, tr!("Global settings"), "Ctrl ,", "preferences options config preferencias opcoes configuracoes ajustes"));
     for s in Section::ALL {
         let mut e = Entry::new(
             Kind::Page,
             Act::Section(s),
             format!("section:{s:?}"),
-            &format!("Settings \u{203a} {}", s.label()),
+            &tr!("Settings \u{203a} {section}", section = s.label()),
             section_help(s),
             Page::Settings.icon(),
-            &format!("preferences options config {}", s.keywords()),
+            &format!("preferences options config preferencias opcoes configuracoes {}", s.keywords()),
         );
         e.secondary = true;
         v.push(e);
@@ -197,72 +222,97 @@ pub(super) fn static_entries() -> Vec<Entry> {
         Entry::new(Kind::Action, a, format!("act:{id}"), title, sub, icon, kw)
     };
     v.push(
-        action(Act::AddGame, "add-game", "Add game\u{2026}", "Sideload a program, browser game or ROM", Icon::Add, "new sideload import")
-            .shortcut("Ctrl N"),
+        action(
+            Act::AddGame,
+            "add-game",
+            tr!("Add game\u{2026}"),
+            tr!("Sideload a program, browser game or ROM"),
+            Icon::Add,
+            "new sideload import novo adicionar manual importar",
+        )
+        .shortcut("Ctrl N"),
     );
     v.push(
         action(
             Act::Refresh,
             "refresh",
-            "Refresh library and scan ROMs",
-            "Reload the library and import new ROMs",
+            tr!("Refresh library and scan ROMs"),
+            tr!("Reload the library and import new ROMs"),
             Icon::Refresh,
-            "reload update rescan",
+            "reload update rescan recarregar atualizar escanear",
         )
         .shortcut("F5"),
     );
     v.push(action(
         Act::ScanRoms,
         "scan-roms",
-        "Scan ROMs\u{2026}",
-        "Add games from a ROM folder",
+        tr!("Scan ROMs\u{2026}"),
+        tr!("Add games from a ROM folder"),
         Icon::FolderOpen,
-        "emulation import folder",
+        "emulation import folder emulacao importar pasta escanear",
     ));
     v.push(action(
         Act::EpicUpdates,
         "epic-updates",
-        "Check for Epic updates",
-        "Refresh the Epic library and look for updates",
+        tr!("Check for Epic updates"),
+        tr!("Refresh the Epic library and look for updates"),
         Icon::Update,
-        "epic games legendary upgrade",
+        "epic games legendary upgrade atualizacoes verificar",
     ));
-    v.push(action(Act::OpenLogs, "logs", "Open logs folder", "App, runner and game logs", Icon::Description, "log folder directory debug"));
+    v.push(action(
+        Act::OpenLogs,
+        "logs",
+        tr!("Open logs folder"),
+        tr!("App, runner and game logs"),
+        Icon::Description,
+        "log folder directory debug pasta registros depurar",
+    ));
     v.push(action(
         Act::YearReview,
         "year-review",
-        "Year in review",
-        "Your year in games, as stories",
+        tr!("Year in review"),
+        tr!("Your year in games, as stories"),
         Icon::BarChart,
-        "wrapped recap retrospective statistics stats year summary",
+        "wrapped recap retrospective statistics stats year summary retrospectiva resumo ano estatisticas",
     ));
     v.push(action(
         Act::ManageStatuses,
         "statuses",
-        "Manage statuses\u{2026}",
-        "Add, rename and order the statuses",
+        tr!("Manage statuses\u{2026}"),
+        tr!("Add, rename and order the statuses"),
         Icon::Flag,
-        "status playing beaten completed custom",
+        "status playing beaten completed custom jogando zerado completo personalizado renomear",
     ));
     v.push(action(
         Act::Console,
         "console",
-        "Console mode",
-        "Controller-first TV layout",
+        tr!("Console mode"),
+        tr!("Controller-first TV layout"),
         Icon::Tv,
-        "controller gamepad tv big picture couch",
+        "controller gamepad tv big picture couch controle sala modo console",
     ));
-    v.push(action(Act::Quit, "quit", "Quit", "Close Heronite", Icon::Logout, "exit close"));
+    v.push(action(Act::Quit, "quit", tr!("Quit"), tr!("Close Heronite"), Icon::Logout, "exit close sair fechar encerrar"));
     v
 }
 
 fn facet_label(k: FacetKind) -> &'static str {
     match k {
-        FacetKind::Series => "Series",
-        FacetKind::Developer => "Developer",
-        FacetKind::Publisher => "Publisher",
-        FacetKind::Genre => "Genre",
-        FacetKind::Platform => "Platform",
+        FacetKind::Series => tr!("Series"),
+        FacetKind::Developer => tr!("Developer"),
+        FacetKind::Publisher => tr!("Publisher"),
+        FacetKind::Genre => tr!("Genre"),
+        FacetKind::Platform => tr!("Platform"),
+    }
+}
+
+/// What the facet filters are also found by, in both languages.
+fn facet_keywords(k: FacetKind) -> &'static str {
+    match k {
+        FacetKind::Series => "series serie",
+        FacetKind::Developer => "developer desenvolvedora desenvolvedor",
+        FacetKind::Publisher => "publisher publicadora editora",
+        FacetKind::Genre => "genre genero",
+        FacetKind::Platform => "platform plataforma",
     }
 }
 
@@ -273,49 +323,70 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions) -> Vec<Entry> {
     let cmd = |c: ViewCmd, id: String, title: &str, sub: &str, icon: Icon, kw: &str| {
         Entry::new(Kind::Action, Act::View(c), id, title, sub, icon, kw)
     };
-    for (mode, id, label) in [
-        (SortMode::Title, "title", "title"),
-        (SortMode::LastPlayed, "last-played", "last played"),
-        (SortMode::Playtime, "playtime", "playtime"),
+    for (mode, id, title) in [
+        (SortMode::Title, "title", tr!("Sort by title")),
+        (SortMode::LastPlayed, "last-played", tr!("Sort by last played")),
+        (SortMode::Playtime, "playtime", tr!("Sort by playtime")),
     ] {
         let mut e = cmd(
             ViewCmd::Sort(mode),
             format!("view:sort:{id}"),
-            &format!("Sort by {label}"),
-            "Order of the Collection list",
+            title,
+            tr!("Order of the Collection list"),
             Icon::Tune,
-            "order view list",
+            "order view list sort ordenar visualizacao lista",
         );
         if ui.sort == mode {
-            e.disable("Current order");
+            e.disable(tr!("Current order"));
         }
         v.push(e);
     }
     for (f, id, title) in [
-        (InstallFilter::All, "all", "Show all games"),
-        (InstallFilter::Installed, "installed", "Show installed games only"),
-        (InstallFilter::Uninstalled, "uninstalled", "Show games not installed only"),
+        (InstallFilter::All, "all", tr!("Show all games")),
+        (InstallFilter::Installed, "installed", tr!("Show installed games only")),
+        (InstallFilter::Uninstalled, "uninstalled", tr!("Show games not installed only")),
     ] {
-        let mut e = cmd(ViewCmd::Show(f), format!("view:show:{id}"), title, "Collection list", Icon::Tune, "filter view installed");
+        let mut e = cmd(
+            ViewCmd::Show(f),
+            format!("view:show:{id}"),
+            title,
+            tr!("Collection list"),
+            Icon::Tune,
+            "filter view installed filtro visualizacao instalados mostrar",
+        );
         if ui.install_filter == f {
-            e.disable("Shown now");
+            e.disable(tr!("Shown now"));
         }
         v.push(e);
     }
-    let group = if ui.group_by_status { "Stop grouping by status" } else { "Group by status" };
-    v.push(cmd(ViewCmd::GroupByStatus, "view:group".into(), group, "Collection list", Icon::Flag, "view status groups sections"));
-    let hidden = if ui.show_hidden { "Stop showing hidden games" } else { "Show hidden games" };
-    v.push(cmd(ViewCmd::ShowHidden, "view:hidden".into(), hidden, "Collection list", Icon::Visibility, "view hidden unhide"));
+    let group = if ui.group_by_status { tr!("Stop grouping by status") } else { tr!("Group by status") };
+    v.push(cmd(
+        ViewCmd::GroupByStatus,
+        "view:group".into(),
+        group,
+        tr!("Collection list"),
+        Icon::Flag,
+        "view status groups sections agrupar grupos secoes",
+    ));
+    let hidden = if ui.show_hidden { tr!("Stop showing hidden games") } else { tr!("Show hidden games") };
+    v.push(cmd(
+        ViewCmd::ShowHidden,
+        "view:hidden".into(),
+        hidden,
+        tr!("Collection list"),
+        Icon::Visibility,
+        "view hidden unhide ocultos mostrar ocultar",
+    ));
     let mut clear = cmd(
         ViewCmd::ClearFilters,
         "view:clear".into(),
-        "Clear filters",
-        "Series, developer, publisher, genre, platform",
+        tr!("Clear filters"),
+        tr!("Series, developer, publisher, genre, platform"),
         Icon::Close,
-        "reset filters facets",
+        "reset filters facets limpar filtros redefinir",
     );
     if !ui.facet_filters.is_active() {
-        clear.disable("No filter is active");
+        clear.disable(tr!("No filter is active"));
     }
     v.push(clear);
     for kind in FACET_KINDS {
@@ -323,10 +394,21 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions) -> Vec<Entry> {
         let label = facet_label(kind);
         for o in facets.get(kind) {
             let on = active.as_deref() == Some(fold(&o.value).as_str());
-            let title = if on { format!("Remove filter {label}: {}", o.value) } else { format!("Filter {label}: {}", o.value) };
-            let sub = format!("{} game{}", o.count, if o.count == 1 { "" } else { "s" });
+            let title = if on {
+                tr!("Remove filter {kind}: {value}", kind = label, value = o.value)
+            } else {
+                tr!("Filter {kind}: {value}", kind = label, value = o.value)
+            };
+            let sub = trn!(o.count, "{n} game", "{n} games");
             let id = format!("view:facet:{}:{}", kind.as_str(), o.value);
-            let mut e = cmd(ViewCmd::Facet(kind, o.value.clone()), id, &title, &sub, Icon::Tune, &format!("filter {label}"));
+            let mut e = cmd(
+                ViewCmd::Facet(kind, o.value.clone()),
+                id,
+                &title,
+                &sub,
+                Icon::Tune,
+                &format!("filter filtro {}", facet_keywords(kind)),
+            );
             e.search_only = true;
             v.push(e);
         }
@@ -344,7 +426,7 @@ pub(super) fn page_entry(page: Page, c: &PageCommand) -> Entry {
         &c.title,
         &c.subtitle,
         c.icon,
-        &format!("{} {}", page.title(), c.keywords),
+        &format!("{} {} {}", page.title(), page_name_en(page), c.keywords),
     );
     if let Some(why) = &c.disabled {
         e.disable(why.clone());
@@ -369,7 +451,7 @@ pub(super) struct GameRow<'a> {
 }
 
 pub(super) fn game_entry(g: &GameRow) -> Entry {
-    let sub = if g.playing { format!("{} \u{b7} Playing now", g.source) } else { format!("{} \u{b7} {}", g.source, g.playtime) };
+    let sub = if g.playing { tr!("{source} \u{b7} Playing now", source = g.source) } else { format!("{} \u{b7} {}", g.source, g.playtime) };
     let mut e =
         Entry::new(Kind::Game, Act::SelectGame(g.key.to_string()), format!("game:{}", g.key), g.title, &sub, Icon::SportsEsports, "");
     if !g.store_title.is_empty() && g.store_title != g.title {
@@ -398,41 +480,41 @@ pub(super) fn game_verbs(title: &str, bits: &GameBits) -> Vec<Entry> {
         e
     };
     v.push(if bits.playing {
-        mk(GameAction::Primary, "primary", format!("Stop {title}"), "Close the running game", Icon::Stop)
+        mk(GameAction::Primary, "primary", tr!("Stop {title}", title), tr!("Close the running game"), Icon::Stop)
     } else if bits.installed {
-        mk(GameAction::Primary, "primary", format!("Play {title}"), "Launch the game", Icon::PlayArrow)
+        mk(GameAction::Primary, "primary", tr!("Play {title}", title), tr!("Launch the game"), Icon::PlayArrow)
     } else {
-        mk(GameAction::Primary, "primary", format!("Install {title}"), "Install the game", Icon::Download)
+        mk(GameAction::Primary, "primary", tr!("Install {title}", title), tr!("Install the game"), Icon::Download)
     });
     if bits.installed && !bits.playing {
-        v.push(mk(GameAction::Settings, "settings", format!("{title} settings"), "Wine, launch options, art\u{2026}", Icon::Tune));
+        v.push(mk(GameAction::Settings, "settings", tr!("{title} settings", title), tr!("Wine, launch options, art\u{2026}"), Icon::Tune));
     }
     if bits.has_folder {
         v.push(mk(
             GameAction::OpenFolder,
             "folder",
-            format!("Open {title} folder"),
-            "Install folder in the file manager",
+            tr!("Open {title} folder", title),
+            tr!("Install folder in the file manager"),
             Icon::FolderOpen,
         ));
     }
     v.push(if bits.favourite {
-        mk(GameAction::Favourite, "fav", format!("Remove {title} from favourites"), "Favourites", Icon::Favorite)
+        mk(GameAction::Favourite, "fav", tr!("Remove {title} from favourites", title), tr!("Favourites"), Icon::Favorite)
     } else {
-        mk(GameAction::Favourite, "fav", format!("Add {title} to favourites"), "Favourites", Icon::FavoriteBorder)
+        mk(GameAction::Favourite, "fav", tr!("Add {title} to favourites", title), tr!("Favourites"), Icon::FavoriteBorder)
     });
     v.push(if bits.hidden {
-        mk(GameAction::Hide, "hide", format!("Unhide {title}"), "Show it in the Collection again", Icon::Visibility)
+        mk(GameAction::Hide, "hide", tr!("Unhide {title}", title), tr!("Show it in the Collection again"), Icon::Visibility)
     } else {
-        mk(GameAction::Hide, "hide", format!("Hide {title}"), "Leave it out of the Collection", Icon::VisibilityOff)
+        mk(GameAction::Hide, "hide", tr!("Hide {title}", title), tr!("Leave it out of the Collection"), Icon::VisibilityOff)
     });
-    v.push(mk(GameAction::Log, "log", format!("{title} log"), "Last launch log", Icon::Description));
+    v.push(mk(GameAction::Log, "log", tr!("{title} log", title), tr!("Last launch log"), Icon::Description));
     let mut all = Entry::new(
         Kind::Game,
         Act::GameActions(bits.key.clone()),
         format!("game:{}:actions", bits.key),
-        &format!("All actions for {title}\u{2026}"),
-        "Status, uninstall, shortcuts\u{2026}",
+        &tr!("All actions for {title}\u{2026}", title),
+        tr!("Status, uninstall, shortcuts\u{2026}"),
         Icon::Menu,
         "",
     );
@@ -474,10 +556,10 @@ pub(super) fn action_entries(key: &str, game_title: &str, items: &[GameActionIte
             Kind::Action,
             Act::GameActions(key.to_string()),
             format!("game:{key}:actions"),
-            "All actions\u{2026}",
+            tr!("All actions\u{2026}"),
             game_title,
             Icon::Menu,
-            "menu more",
+            "menu more mais acoes",
         );
         all.context = true;
         v.push(all);
