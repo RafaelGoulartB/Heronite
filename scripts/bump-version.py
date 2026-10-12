@@ -43,7 +43,7 @@ def main() -> None:
     lock_path = ROOT / "Cargo.lock"
     blocks = lock_path.read_text().split("\n[[package]]\n")
     for i, block in enumerate(blocks):
-        if re.search(r'^name = "heronite(-[a-z-]+)?"$', block, re.M) and "\nsource = " not in block:
+        if re.search(r'^name = "heronite(-[a-z0-9-]+)?"$', block, re.M) and "\nsource = " not in block:
             blocks[i] = re.sub(r'^version = ".*"$', f'version = "{new}"', block, count=1, flags=re.M)
     lock_path.write_text("\n[[package]]\n".join(blocks))
     print(new)

@@ -53,10 +53,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let out = tmp.path().join("out");
         let script = tmp.path().join("app");
-        // Lists the descriptors the child got and its session id.
+        // Lists what the child's descriptors point to, and its session id.
         std::fs::write(
             &script,
-            format!("#!/bin/sh\nls /proc/$$/fd > {0}.tmp; ps -o sid= -p $$ >> {0}.tmp; mv {0}.tmp {0}\n", out.display()),
+            format!(
+                "#!/bin/sh\nfor f in /proc/$$/fd/*; do readlink $f; done > {0}.tmp; ps -o sid= -p $$ >> {0}.tmp; mv {0}.tmp {0}\n",
+                out.display()
+            ),
         )
         .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -78,8 +81,11 @@ mod tests {
         let mut lines: Vec<&str> = text.lines().collect();
         let sid: u32 = lines.pop().unwrap().trim().parse().unwrap();
         assert_eq!(sid, pid, "the child leads its own session");
-        // stdin/stdout/stderr, and the shell's own script descriptor at most.
-        assert!(!lines.contains(&r.to_string().as_str()) && !lines.contains(&w.to_string().as_str()), "{lines:?}");
+        // Compared by what they point to, not by number: the shell opens its
+        // own descriptors (dash puts the script at 10) that may reuse the
+        // pipe's numbers.
+        let pipe = std::fs::read_link(format!("/proc/self/fd/{r}")).unwrap();
+        assert!(!lines.contains(&pipe.to_str().unwrap()), "{pipe:?} in {lines:?}");
         // SAFETY: closing the pipe made above.
         unsafe {
             libc::close(r);
