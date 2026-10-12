@@ -45,7 +45,7 @@ use crate::collection::CollectionView;
 use crate::runtime::GameRuntime;
 
 pub use launch::candidate_keys;
-pub use quit::{keep_in_tray, post_game_idle, quit_anyway, request_quit};
+pub use quit::{keep_in_tray, post_game_idle, quit_anyway, relaunch_if_requested, request_quit, restart_blocker, restart_into};
 pub use start::init;
 pub use window::has_window;
 

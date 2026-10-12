@@ -34,6 +34,7 @@ mod scroll;
 mod sideload_uninstall;
 mod system_glue;
 mod timeline;
+mod update_banner;
 mod welcome;
 pub use screenshots::screenshots_global;
 pub mod stage;
@@ -156,6 +157,10 @@ impl CollectionView {
         // Captures converted to WebP in the background (renamed files).
         if let Some(compression) = crate::services::compression::get(cx) {
             cx.subscribe(&compression, |this, _, ev, cx| this.on_compression_event(ev, cx)).detach();
+        }
+        // The update banner and the ☰ Settings row.
+        if let Some(updater) = crate::services::update::get(cx) {
+            cx.observe(&updater, |_, _, cx| cx.notify()).detach();
         }
 
         let search_input = Self::new_search_input(window, cx);
@@ -321,6 +326,7 @@ impl CollectionView {
             div().size_full().flex().child(list_column).child(div().flex_1().min_w_0().h_full().child(focus_panel)).into_any_element()
         };
         let toast = self.render_toast();
+        let update_banner = self.render_update_banner(cx);
 
         div()
             .id("collection")
@@ -343,6 +349,7 @@ impl CollectionView {
                 root.child(div().absolute().inset_0().flex().flex_col().child(header).child(div().flex().flex_1().min_h_0().child(body)))
             })
             .children(toast)
+            .children(update_banner)
             .children(self.render_context_menu(window, cx))
             .children(self.dialog.clone())
             .children(self.render_gallery(window, cx))

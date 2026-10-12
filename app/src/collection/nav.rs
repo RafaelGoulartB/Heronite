@@ -96,6 +96,21 @@ pub(super) fn downloads_meta(svc: Option<&crate::services::downloads::Downloads>
     }
 }
 
+/// "Update 0.1.4" / "Updating 42%" / "Restart to update" while an app
+/// update wants attention (the Settings row shows it instead of its key).
+fn update_meta(cx: &App) -> Option<String> {
+    use crate::services::update::Phase;
+    let updater = crate::services::update::get(cx)?;
+    let u = updater.read(cx);
+    let version = &u.release()?.version;
+    match u.phase() {
+        Phase::Available if !u.skipped() => Some(format!("Update {version}")),
+        Phase::Downloading(p) => Some(p.percent().map_or_else(|| "Updating".into(), |p| format!("Updating {}%", p.round() as u32))),
+        Phase::Ready => Some("Restart to update".into()),
+        _ => None,
+    }
+}
+
 /// One row of the ☰ menu: icon in a small rounded square, title, and on
 /// the right a one-line meta (accent when `live`) or a key hint.
 fn nav_row(id: SharedString, ic: Icon, title: &str, trailing: Trailing, active: bool) -> Stateful<Div> {
@@ -210,6 +225,7 @@ impl CollectionView {
                     None => pending(),
                 };
                 let downloading = downloads != "Idle";
+                let update = update_meta(cx);
                 let trailing = |page: Page| match page {
                     Page::Collection => Trailing::Meta(plural(games, "game", "games"), false),
                     Page::Downloads => Trailing::Meta(downloads.clone(), downloading),
@@ -217,7 +233,10 @@ impl CollectionView {
                     Page::Epic => Trailing::Meta(if signed_in { "Signed in".into() } else { "Not signed in".into() }, false),
                     Page::WineManager => Trailing::Meta(meta.wine.clone().unwrap_or_else(pending), false),
                     Page::Emulators => Trailing::Meta(emulators.clone(), false),
-                    Page::Settings => Trailing::Key("Ctrl ,"),
+                    Page::Settings => match &update {
+                        Some(text) => Trailing::Meta(text.clone(), true),
+                        None => Trailing::Key("Ctrl ,"),
+                    },
                 };
                 let mut p = glass::glass_panel(theme::R_POPOVER).w(px(300.)).p(px(6.)).flex().flex_col().gap(px(2.));
                 // Where the games are, then what sets them up.

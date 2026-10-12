@@ -112,12 +112,13 @@ pub fn init(
 
     cx.on_window_closed(on_window_closed).detach();
 
-    // The Epic service (download queue, startup update check, auto-updates)
-    // and the capture compression belong to the app, not to the window. A
-    // one-shot launch has no use for them.
+    // The Epic service (download queue, startup update check, auto-updates),
+    // the capture compression and the app's own updates belong to the app,
+    // not to the window. A one-shot launch has no use for them.
     if !hub(cx).0.borrow().exit_when_idle {
         crate::services::downloads(cx);
         crate::services::compression::init(cx, data_paths.clone());
+        crate::services::update::init(cx, heronite_data::AppPaths::for_data(&data_paths));
     }
 
     if want_window || unreachable {

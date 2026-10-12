@@ -7,7 +7,8 @@ name: Release
 # - "Run workflow" in the Actions tab, picking the bump (for work pushed
 #   straight to main);
 # - pushing a `vX.Y.Z` tag by hand (Cargo.toml must already have X.Y.Z).
-# Then the AppImage is built from the tag and published as a GitHub release.
+# Then the AppImage is built from the tag, signed (secret MINISIGN_SECRET_KEY,
+# see scripts/sign-release.sh) and published as a GitHub release.
 on:
   pull_request_target:
     types: [closed]
@@ -100,18 +101,31 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --release --locked -p heronite -p heronite-epic-login
-      - name: appimagetool
+      - name: appimagetool and minisign
         run: |
           sudo curl -fsSL -o /usr/local/bin/appimagetool \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           sudo chmod +x /usr/local/bin/appimagetool
+          # zsyncmake writes the .zsync of the update information.
+          sudo apt-get install -y --no-install-recommends zsync
+          # minisign signs the AppImages for the in-app updater (pinned build).
+          curl -fsSL -o "$RUNNER_TEMP/minisign.tar.gz" \
+            https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz
+          echo "9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73  $RUNNER_TEMP/minisign.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/minisign.tar.gz" -C "$RUNNER_TEMP" minisign-linux/x86_64/minisign
+          sudo install -m755 "$RUNNER_TEMP/minisign-linux/x86_64/minisign" /usr/local/bin/minisign
       - name: Package
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
           TAG: ${{ needs.version.outputs.tag }}
-        run: |
-          OUT=$(scripts/appimage.sh "${TAG#v}" | tail -1)
-          (cd dist && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256")
+        run: scripts/appimage.sh "${TAG#v}"
+      # The in-app updater only installs AppImages signed with the key whose
+      # public half is built into the app (crates/update/src/lib.rs).
+      - name: Sign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: scripts/sign-release.sh "${TAG#v}" dist
       - uses: actions/upload-artifact@v4
         with:
           name: Heronite-AppImage

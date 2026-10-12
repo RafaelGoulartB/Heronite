@@ -33,7 +33,7 @@ fi
 cat > "$APP_DIR/com.heronite.rs.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Heronite
+Name=Heronite (Dev)
 Comment=Game Collection
 Exec=$PREFIX/heronite-rs %U
 Icon=$ICON_NAME

@@ -22,6 +22,7 @@ heronite-media = { path = "../crates/media" }
 heronite-emulation = { path = "../crates/emulation" }
 heronite-wine = { path = "../crates/wine" }
 heronite-epic = { path = "../crates/epic" }
+heronite-update = { path = "../crates/update" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 smallvec = "1"
 libc = "0.2"

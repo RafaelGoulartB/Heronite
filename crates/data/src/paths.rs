@@ -244,6 +244,10 @@ impl AppPaths {
     pub fn screenshot_prefs(&self) -> PathBuf {
         self.config.join("screenshots.json")
     }
+    /// Update switches and the last update check (see `heronite_update::prefs`).
+    pub fn update_state(&self) -> PathBuf {
+        self.config.join("update.json")
+    }
     /// Journal of an Epic install move in progress (see `heronite_epic::moves`).
     pub fn epic_move_journal(&self) -> PathBuf {
         self.config.join("epic-move.json")

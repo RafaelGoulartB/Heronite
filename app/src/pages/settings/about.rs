@@ -1,4 +1,5 @@
-//! Settings → About: version, data folders and system information.
+//! Settings → About: updates (`updates.rs`), version, data folders and
+//! system information.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -118,7 +119,8 @@ impl SettingsPage {
             info_row("Cache folder", self.ctx.app.cache.display().to_string()),
         ]);
 
-        let mut col = div().flex().flex_col().child(caption("Heronite")).child(app).child(caption("System"));
+        let updates = self.updates_section(cx);
+        let mut col = div().flex().flex_col().children(updates).child(caption("Heronite")).child(app).child(caption("System"));
         if s.os.is_empty() {
             col = col.child(card([empty_line("Reading system information...")]));
         } else {
@@ -175,11 +177,12 @@ fn empty_line(text: &str) -> AnyElement {
 }
 
 /// Console mode rows: the same facts, read-only, and the copy action.
-pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
+pub(super) fn console_rows(p: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
     let a = &p.about;
     let s = &a.system;
-    let mut rows = vec![
+    let mut rows = super::updates::console_rows(cx);
+    rows.extend([
         Row::header("Heronite"),
         Row::info("i:version", "Version", format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
         Row::info("i:legendary", "Legendary", a.legendary.clone().unwrap_or_else(|| "\u{2026}".into())),
@@ -193,7 +196,7 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
         ),
         Row::info("i:config", "Data folder", p.ctx.data_paths.root.display().to_string()),
         Row::header("System"),
-    ];
+    ]);
     if s.os.is_empty() {
         rows.push(Row::info("i:reading", "Reading system information\u{2026}", ""));
     } else {
@@ -215,6 +218,9 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
 }
 
 pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list::Outcome, cx: &mut Context<SettingsPage>) {
+    if super::updates::console_apply(&outcome, cx) {
+        return;
+    }
     if let crate::console::list::Outcome::Activate(id) = outcome {
         if id.as_ref() == "copy" {
             let text = p.about.report(&p.ctx);

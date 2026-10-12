@@ -82,6 +82,8 @@ fn main() {
 
     // Removes the socket of the single-instance server.
     drop(server);
+    // "Restart now" after an update: the new version takes over the socket.
+    system::relaunch_if_requested();
     let code = system::exit_code();
     if code != 0 {
         std::process::exit(code);
