@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::sysinfo::{self, SystemInfo};
 use super::SettingsPage;
@@ -102,33 +103,35 @@ impl SettingsPage {
         let a = &self.about;
         let s = &a.system;
         let app = card([
-            info_row("Version", format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
+            info_row(tr!("Version"), format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
             info_row(
                 "Legendary",
-                a.legendary.clone().unwrap_or_else(|| if a.loaded && a.wine_count.is_some() { "not found".into() } else { "...".into() }),
+                a.legendary
+                    .clone()
+                    .unwrap_or_else(|| if a.loaded && a.wine_count.is_some() { tr!("not found").into() } else { "...".into() }),
             ),
             info_row(
-                "Wine / Proton found",
+                tr!("Wine / Proton found"),
                 match (a.wine_count, a.proton_count) {
-                    (Some(w), Some(p)) => format!("{w} Wine, {p} Proton"),
+                    (Some(wine), Some(proton)) => tr!("{wine} Wine, {proton} Proton", wine, proton),
                     _ => "...".into(),
                 },
             ),
-            info_row("Data folder", self.ctx.data_paths.root.display().to_string()),
-            info_row("Settings folder", self.ctx.app.config.display().to_string()),
-            info_row("Cache folder", self.ctx.app.cache.display().to_string()),
+            info_row(tr!("Data folder"), self.ctx.data_paths.root.display().to_string()),
+            info_row(tr!("Settings folder"), self.ctx.app.config.display().to_string()),
+            info_row(tr!("Cache folder"), self.ctx.app.cache.display().to_string()),
         ]);
 
         let updates = self.updates_section(cx);
-        let mut col = div().flex().flex_col().children(updates).child(caption("Heronite")).child(app).child(caption("System"));
+        let mut col = div().flex().flex_col().children(updates).child(caption("Heronite")).child(app).child(caption(tr!("System")));
         if s.os.is_empty() {
-            col = col.child(card([empty_line("Reading system information...")]));
+            col = col.child(card([empty_line(tr!("Reading system information..."))]));
         } else {
             let mut rows = vec![
-                info_row("OS", s.os.clone()),
-                info_row("Kernel", s.kernel.clone()),
-                info_row("CPU", format!("{} ({} threads)", s.cpu, s.cores)),
-                info_row("Memory", sysinfo::human_memory(s.memory_kb)),
+                info_row(tr!("OS"), s.os.clone()),
+                info_row(tr!("Kernel"), s.kernel.clone()),
+                info_row("CPU", tr!("{cpu} ({threads} threads)", cpu = s.cpu, threads = s.cores)),
+                info_row(tr!("Memory"), sysinfo::memory_label(s.memory_kb)),
             ];
             for (i, g) in s.gpus.iter().enumerate() {
                 let driver = match &g.driver_version {
@@ -137,24 +140,24 @@ impl SettingsPage {
                 };
                 rows.push(info_row(
                     &if s.gpus.len() > 1 { format!("GPU {}", i + 1) } else { "GPU".to_string() },
-                    format!("{} {}  (driver {driver})", g.vendor, g.name),
+                    tr!("{vendor} {name}  (driver {driver})", vendor = g.vendor, name = g.name, driver),
                 ));
             }
             if s.gpus.is_empty() {
-                rows.push(info_row("GPU", "not detected"));
+                rows.push(info_row("GPU", tr!("not detected")));
             }
             if !s.session.is_empty() {
-                rows.push(info_row("Session", s.session.clone()));
+                rows.push(info_row(tr!("Session"), s.session.clone()));
             }
             let copied = a.copied;
             rows.push(
                 row(
-                    "Copy system information",
-                    Some("For bug reports."),
+                    tr!("Copy system information"),
+                    Some(tr!("For bug reports.")),
                     action_button(
                         "about-copy",
                         ButtonKind::Glass,
-                        if copied { "Copied to clipboard!" } else { "Copy to clipboard" },
+                        if copied { tr!("Copied to clipboard!") } else { tr!("Copy to clipboard") },
                         true,
                         cx.listener(|this, _, _, cx| {
                             let text = this.about.report(&this.ctx);
@@ -184,34 +187,35 @@ pub(super) fn console_rows(p: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let mut rows = super::updates::console_rows(cx);
     rows.extend([
         Row::header("Heronite"),
-        Row::info("i:version", "Version", format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
+        Row::info("i:version", tr!("Version"), format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
         Row::info("i:legendary", "Legendary", a.legendary.clone().unwrap_or_else(|| "\u{2026}".into())),
         Row::info(
             "i:wine",
-            "Wine / Proton found",
+            tr!("Wine / Proton found"),
             match (a.wine_count, a.proton_count) {
-                (Some(w), Some(pr)) => format!("{w} Wine, {pr} Proton"),
+                (Some(wine), Some(proton)) => tr!("{wine} Wine, {proton} Proton", wine, proton),
                 _ => "\u{2026}".into(),
             },
         ),
-        Row::info("i:config", "Data folder", p.ctx.data_paths.root.display().to_string()),
-        Row::header("System"),
+        Row::info("i:config", tr!("Data folder"), p.ctx.data_paths.root.display().to_string()),
+        Row::header(tr!("System")),
     ]);
     if s.os.is_empty() {
-        rows.push(Row::info("i:reading", "Reading system information\u{2026}", ""));
+        rows.push(Row::info("i:reading", tr!("Reading system information\u{2026}"), ""));
     } else {
-        rows.push(Row::info("i:os", "OS", s.os.clone()));
-        rows.push(Row::info("i:kernel", "Kernel", s.kernel.clone()));
-        rows.push(Row::info("i:cpu", "CPU", format!("{} ({} threads)", s.cpu, s.cores)));
-        rows.push(Row::info("i:mem", "Memory", sysinfo::human_memory(s.memory_kb)));
+        rows.push(Row::info("i:os", tr!("OS"), s.os.clone()));
+        rows.push(Row::info("i:kernel", tr!("Kernel"), s.kernel.clone()));
+        rows.push(Row::info("i:cpu", "CPU", tr!("{cpu} ({threads} threads)", cpu = s.cpu, threads = s.cores)));
+        rows.push(Row::info("i:mem", tr!("Memory"), sysinfo::memory_label(s.memory_kb)));
         for (i, g) in s.gpus.iter().enumerate() {
             rows.push(Row::info(SharedString::from(format!("i:gpu{i}")), "GPU", format!("{} {}", g.vendor, g.name)));
         }
         if !s.session.is_empty() {
-            rows.push(Row::info("i:session", "Session", s.session.clone()));
+            rows.push(Row::info("i:session", tr!("Session"), s.session.clone()));
         }
         rows.push(
-            Row::action("copy", if a.copied { "Copied to the clipboard" } else { "Copy the system information" }).desc("For bug reports"),
+            Row::action("copy", if a.copied { tr!("Copied to the clipboard") } else { tr!("Copy the system information") })
+                .desc(tr!("For bug reports")),
         );
     }
     rows

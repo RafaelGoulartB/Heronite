@@ -5,6 +5,7 @@ use std::path::Path;
 use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_i18n::tr;
 use heronite_launch::dxvk::{self, Action};
 use heronite_launch::settings::GameSettings;
 use heronite_launch::tools::Tool;
@@ -27,15 +28,16 @@ impl SettingsPanel {
         let crossover = wine.kind == "crossover";
         let mut col = column();
         if crossover {
-            let top = rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some("CrossOver Bottle"), None));
+            let top =
+                rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some(tr!("CrossOver Bottle")), None));
             return col.child(top.card());
         }
         let top = rows()
             .field(self.wine_version_field(cx))
             .field_help(
-                self.path_row("winePrefix", Some("Prefix"), true, "Select WinePrefix Folder", false, cx),
+                self.path_row("winePrefix", Some(tr!("Prefix")), true, tr!("Select WinePrefix Folder"), false, cx),
                 vec![help(
-                    "Wine uses what is called a WINEPREFIX to encapsulate Windows applications. This prefix contains the Wine configuration files and a reproduction of the file hierarchy of C: (the main disk on a Windows OS). In this reproduction of the C: drive, your game save files and dependencies installed via winetricks are stored.",
+                    tr!("Wine uses what is called a WINEPREFIX to encapsulate Windows applications. This prefix contains the Wine configuration files and a reproduction of the file hierarchy of C: (the main disk on a Windows OS). In this reproduction of the C: drive, your game save files and dependencies installed via winetricks are stored."),
                 )],
             );
         col = col.child(top.card());
@@ -50,8 +52,8 @@ impl SettingsPanel {
                 "auto-dxvk",
                 "autoInstallDxvk",
                 false,
-                "Auto Install/Update DXVK on Prefix",
-                Some("DXVK is a Vulkan-based translational layer for DirectX 9, 10 and 11 games. Enabling may improve compatibility. Might cause issues especially for older DirectX games."),
+                tr!("Auto Install/Update DXVK on Prefix"),
+                Some(tr!("DXVK is a Vulkan-based translational layer for DirectX 9, 10 and 11 games. Enabling may improve compatibility. Might cause issues especially for older DirectX games.")),
                 self.flag("autoInstallDxvkNvapi", false) || self.flag("autoInstallVkd3d", false) || tools_busy,
                 cx,
             ));
@@ -61,8 +63,8 @@ impl SettingsPanel {
                 "auto-vkd3d",
                 "autoInstallVkd3d",
                 false,
-                "Auto Install/Update VKD3D on Prefix",
-                Some("VKD3D is a Vulkan-based translational layer for DirectX 12 games. Enabling may improve compatibility significantly. Has no effect on older DirectX games, it requires DXVK."),
+                tr!("Auto Install/Update VKD3D on Prefix"),
+                Some(tr!("VKD3D is a Vulkan-based translational layer for DirectX 12 games. Enabling may improve compatibility significantly. Has no effect on older DirectX games, it requires DXVK.")),
                 !dxvk_on || tools_busy,
                 cx,
             ));
@@ -71,20 +73,20 @@ impl SettingsPanel {
             "auto-dxvk-nvapi",
             "autoInstallDxvkNvapi",
             false,
-            "Auto Install/Update DXVK-NVAPI on Prefix",
-            Some("DXVK-NVAPI is an implementation of NVAPI built on top of DXVK and the linux native NVAPI, it allows for the usage of DLSS on Nvidia GPUs."),
+            tr!("Auto Install/Update DXVK-NVAPI on Prefix"),
+            Some(tr!("DXVK-NVAPI is an implementation of NVAPI built on top of DXVK and the linux native NVAPI, it allows for the usage of DLSS on Nvidia GPUs.")),
             !dxvk_on || tools_busy,
             cx,
         ));
-        col = col.child(heading("Graphics")).child(graphics.card());
+        col = col.child(heading(tr!("Graphics"))).child(graphics.card());
 
         let mut sync = rows()
             .child(self.toggle_row(
                 "esync",
                 "enableEsync",
                 false,
-                "Enable Esync",
-                Some("Esync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance."),
+                tr!("Enable Esync"),
+                Some(tr!("Esync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance.")),
                 false,
                 cx,
             ))
@@ -92,8 +94,8 @@ impl SettingsPanel {
                 "fsync",
                 "enableFsync",
                 false,
-                "Enable Fsync",
-                Some("Fsync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance on supported Linux kernels."),
+                tr!("Enable Fsync"),
+                Some(tr!("Fsync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance on supported Linux kernels.")),
                 false,
                 cx,
             ))
@@ -101,8 +103,8 @@ impl SettingsPanel {
                 "wayland",
                 "enableWineWayland",
                 false,
-                "Enable Wine-Wayland (Experimental) (Wine version needs to support it)",
-                Some("The Wine-Wayland experimental driver allows games to run natively under the Wayland display protocol. Enabling might break some games."),
+                tr!("Enable Wine-Wayland (Experimental) (Wine version needs to support it)"),
+                Some(tr!("The Wine-Wayland experimental driver allows games to run natively under the Wayland display protocol. Enabling might break some games.")),
                 false,
                 cx,
             ));
@@ -111,8 +113,8 @@ impl SettingsPanel {
                 "hdr",
                 "enableHDR",
                 false,
-                "Enable HDR",
-                Some("HDR enhances colors by providing brighter highlights and deeper contrasts. For HDR to work, both the display and the game must support it."),
+                tr!("Enable HDR"),
+                Some(tr!("HDR enhances colors by providing brighter highlights and deeper contrasts. For HDR to work, both the display and the game must support it.")),
                 false,
                 cx,
             ));
@@ -122,8 +124,8 @@ impl SettingsPanel {
                 "wow64",
                 "enableWoW64",
                 false,
-                "Enable WoW64 (Experimental)",
-                Some("The Wine WoW64 mode allows 32-bit Windows games to be run on 64-bit Wine. Enabling may improve performance, but could also break older 32-bit games."),
+                tr!("Enable WoW64 (Experimental)"),
+                Some(tr!("The Wine WoW64 mode allows 32-bit Windows games to be run on 64-bit Wine. Enabling may improve performance, but could also break older 32-bit games.")),
                 false,
                 cx,
             ))
@@ -131,8 +133,8 @@ impl SettingsPanel {
                 "fsr",
                 "enableFSR",
                 false,
-                "Enable FSR Hack (Wine version needs to support it)",
-                Some("AMD's FSR helps boost framerate by upscaling lower resolutions in Fullscreen Mode. Image quality increases from 5 to 1 at the cost of a slight performance hit. Enabling may improve performance."),
+                tr!("Enable FSR Hack (Wine version needs to support it)"),
+                Some(tr!("AMD's FSR helps boost framerate by upscaling lower resolutions in Fullscreen Mode. Image quality increases from 5 to 1 at the cost of a slight performance hit. Enabling may improve performance.")),
                 false,
                 cx,
             ));
@@ -140,7 +142,7 @@ impl SettingsPanel {
             let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
             sync = sync.field(self.select_row(
                 "fsr-sharpness",
-                Some("FSR Sharpness Strength"),
+                Some(tr!("FSR Sharpness Strength")),
                 sharp.to_string(),
                 (1..=5).map(|n| (SharedString::from(n.to_string()), n == sharp)).collect(),
                 false,
@@ -148,7 +150,7 @@ impl SettingsPanel {
                 |this, i, _, cx| this.set("maxSharpness", json!(i as i64 + 1), cx),
             ));
         }
-        col = col.child(heading("Sync and compatibility")).child(sync.card());
+        col = col.child(heading(tr!("Sync and compatibility"))).child(sync.card());
         if self.is_game() {
             col = col.child(self.tools_row(cx));
         } else {
@@ -163,12 +165,12 @@ impl SettingsPanel {
         let list = self.wine_list.clone().unwrap_or_default();
         let options = logic::wine_options(&list, &current);
         let selected = options.iter().position(|w| w.name == current.name).unwrap_or(0);
-        let shown = if loading && list.is_empty() { "Loading\u{2026}".to_string() } else { logic::display_wine_name(&current.name) };
+        let shown = if loading && list.is_empty() { tr!("Loading\u{2026}").to_string() } else { logic::display_wine_name(&current.name) };
         let items: Vec<(SharedString, bool)> =
             options.iter().enumerate().map(|(i, w)| (SharedString::from(logic::display_wine_name(&w.name)), i == selected)).collect();
         let field = self.select_row(
             "wine-version",
-            Some("Wine / Proton version"),
+            Some(tr!("Wine / Proton version")),
             shown,
             items,
             loading && list.is_empty(),
@@ -183,18 +185,18 @@ impl SettingsPanel {
         );
         let mut col = column().gap(px(6.)).child(field);
         if !loading && list.is_empty() {
-            col = col.child(danger_text("No Wine version was found, download one from the Wine Manager"));
+            col = col.child(danger_text(tr!("No Wine version was found, download one from the Wine Manager")));
         }
         if !list.is_empty() && !Path::new(&current.bin).exists() {
-            col = col.child(danger_text("Wine Path is invalid, please select another one."));
+            col = col.child(danger_text(tr!("Wine Path is invalid, please select another one.")));
         }
         if !self.flag("showValveProton", false) {
-            col = col.child(help(
-                "Valve Proton versions ignored: Valve versions of Proton are ignored by default, enable them in the General settings",
-            ));
+            col = col.child(help(tr!(
+                "Valve Proton versions ignored: Valve versions of Proton are ignored by default, enable them in the General settings"
+            )));
         }
-        col.child(help(&format!("Wine Path: {}", current.bin))).child(help(
-            "Heronite searches for versions of Wine, Proton, and CrossOver in: ~/.local/share/heronite/tools/wine, ~/.local/share/heronite/tools/proton, ~/.steam/root/compatibilitytools.d, ~/.steam/steamapps/common, ~/.local/share/lutris/runners/wine, ~/.var/app/com.valvesoftware.Steam (Steam Flatpak) and /usr/share/steam. For other places, use a symbolic link to one of these folders.",
+        col.child(help(&tr!("Wine Path: {path}", path = current.bin))).child(help(
+            tr!("Heronite searches for versions of Wine, Proton, and CrossOver in: ~/.local/share/heronite/tools/wine, ~/.local/share/heronite/tools/proton, ~/.steam/root/compatibilitytools.d, ~/.steam/steamapps/common, ~/.local/share/lutris/runners/wine, ~/.var/app/com.valvesoftware.Steam (Steam Flatpak) and /usr/share/steam. For other places, use a symbolic link to one of these folders."),
         ))
     }
 
@@ -202,7 +204,7 @@ impl SettingsPanel {
         let busy = self.tool_busy;
         let idle = busy.is_none();
         let label =
-            |name: &'static str, text: &'static str| if busy == Some(name) { format!("{text} (running)") } else { text.to_string() };
+            |name: &'static str, text: &'static str| if busy == Some(name) { tr!("{text} (running)", text) } else { text.to_string() };
         div()
             .flex()
             .flex_col()
@@ -219,13 +221,13 @@ impl SettingsPanel {
                     .child(self.outline_button("tool-winetricks", &label("winetricks", "Winetricks"), idle, cx, |this, _, cx| {
                         this.run_tool("winetricks", WineTool::Winetricks, cx)
                     }))
-                    .child(self.outline_button("tool-runexe", &label("runexe", "Run .exe in prefix"), idle, cx, |_, window, cx| {
-                        choose_path(window, cx, false, "Select EXE to Run", |this: &mut Self, path, _, cx| {
+                    .child(self.outline_button("tool-runexe", &label("runexe", tr!("Run .exe in prefix")), idle, cx, |_, window, cx| {
+                        choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
                             this.run_tool("runexe", WineTool::RunExe(path), cx)
                         });
                     })),
             )
-            .child(help("Tools run with this game's Wine version and prefix.").px(px(6.)))
+            .child(help(tr!("Tools run with this game's Wine version and prefix.")).px(px(6.)))
     }
 
     /// Starts a Wine tool for this game: builds the command off the UI thread
@@ -243,7 +245,7 @@ impl SettingsPanel {
             let _ = tx.send(run_tool_blocking(&paths, &home, &app, &tool));
         });
         cx.spawn(async move |this, cx| {
-            let res = rx.await.unwrap_or_else(|_| Err("The tool was interrupted".into()));
+            let res = rx.await.unwrap_or_else(|_| Err(tr!("The tool was interrupted").into()));
             this.update(cx, |this, cx| {
                 this.tool_busy = None;
                 this.notice = Some(match res {
@@ -279,10 +281,10 @@ enum ToolMsg {
 fn outcome_text(tool: Tool, outcome: &dxvk::Outcome) -> String {
     let name = tool.label();
     match outcome {
-        dxvk::Outcome::Installed(v) => format!("{name} {v} installed in the prefix."),
-        dxvk::Outcome::AlreadyInstalled(v) => format!("{name} {v} is already installed in the prefix."),
-        dxvk::Outcome::Removed => format!("{name} removed from the prefix."),
-        dxvk::Outcome::Skipped(why) => format!("{name} not changed in the prefix: {why}."),
+        dxvk::Outcome::Installed(version) => tr!("{name} {version} installed in the prefix.", name, version),
+        dxvk::Outcome::AlreadyInstalled(version) => tr!("{name} {version} is already installed in the prefix.", name, version),
+        dxvk::Outcome::Removed => tr!("{name} removed from the prefix.", name),
+        dxvk::Outcome::Skipped(why) => tr!("{name} not changed in the prefix: {why}.", name, why),
     }
 }
 
@@ -296,8 +298,12 @@ impl SettingsPanel {
         let Some(action) = dxvk::toggle_action(tool, &settings.wine_version, on) else { return };
         self.tool_toggle = Some(key);
         let name = tool.label();
-        let verb = if action == Action::Install { "Installing" } else { "Removing" };
-        self.notice = Some(Notice { text: format!("Please wait... {verb} {name}").into(), error: false });
+        let wait = if action == Action::Install {
+            tr!("Please wait... Installing {name}", name)
+        } else {
+            tr!("Please wait... Removing {name}", name)
+        };
+        self.notice = Some(Notice { text: wait.into(), error: false });
         let paths = self.paths.clone();
         let (tx, mut rx) = futures::channel::mpsc::unbounded();
         std::thread::spawn(move || {
@@ -321,11 +327,12 @@ impl SettingsPanel {
                         ToolMsg::Done(Err(e)) => {
                             this.tool_toggle = None;
                             this.set(key, Value::Bool(!on), cx);
-                            let what = if action == Action::Install { "install" } else { "remove" };
-                            this.notice = Some(Notice {
-                                text: format!("Could not {what} {name}: {e}. The setting was left unchanged.").into(),
-                                error: true,
-                            });
+                            let text = if action == Action::Install {
+                                tr!("Could not install {name}: {error}. The setting was left unchanged.", name, error = e)
+                            } else {
+                                tr!("Could not remove {name}: {error}. The setting was left unchanged.", name, error = e)
+                            };
+                            this.notice = Some(Notice { text: text.into(), error: true });
                         }
                     }
                     cx.notify();
@@ -340,7 +347,7 @@ impl SettingsPanel {
                 // The worker died without reporting.
                 this.update(cx, |this, cx| {
                     this.tool_toggle = None;
-                    this.notice = Some(Notice { text: format!("{name} stopped unexpectedly.").into(), error: true });
+                    this.notice = Some(Notice { text: tr!("{name} stopped unexpectedly.", name).into(), error: true });
                     cx.notify();
                 })
                 .ok();
@@ -369,14 +376,19 @@ fn run_tool_blocking(paths: &heronite_data::DataPaths, home: &str, app: &str, to
     if let Some(dir) = c.cwd.as_deref().filter(|d| Path::new(d).is_dir()) {
         cmd.current_dir(dir);
     }
-    let mut child = cmd.spawn().map_err(|e| format!("Could not start {}: {e}", c.program))?;
+    let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
     let status = child.wait().map_err(|e| format!("{}: {e}", c.program))?;
-    let what = match tool {
-        WineTool::Winecfg => "Winecfg",
-        WineTool::Winetricks => "Winetricks",
-        WineTool::RunExe(_) => "The program",
+    let name = match tool {
+        WineTool::Winecfg => Some("Winecfg"),
+        WineTool::Winetricks => Some("Winetricks"),
+        WineTool::RunExe(_) => None,
     };
-    let mut text = if status.success() { format!("{what} finished.") } else { format!("{what} exited with {status}.") };
+    let mut text = match (name, status.success()) {
+        (Some(name), true) => tr!("{name} finished.", name),
+        (Some(name), false) => tr!("{name} exited with {status}.", name, status),
+        (None, true) => tr!("The program finished.").to_string(),
+        (None, false) => tr!("The program exited with {status}.", status),
+    };
     for n in built.notes {
         text.push_str(&format!(" {n}."));
     }

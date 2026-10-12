@@ -27,6 +27,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::game_config::{self, Settings};
 use heronite_data::DataPaths;
+use heronite_i18n::{n_, tr};
 use heronite_wine::WineInstallation;
 use serde_json::{json, Value};
 
@@ -60,15 +61,15 @@ const fn s(key: &'static str) -> Bind {
 
 /// `(input id, binding, placeholder)`.
 const INPUTS: &[(&str, Bind, &str)] = &[
-    ("launcherArgs", Bind::Str { key: "launcherArgs", trim: false }, "Put here the Launcher Arguments"),
+    ("launcherArgs", Bind::Str { key: "launcherArgs", trim: false }, n_!("Put here the Launcher Arguments")),
     ("winePrefix", s("winePrefix"), ""),
     ("crossoverBottle", s("wineCrossoverBottle"), ""),
-    ("targetExe", s("targetExe"), "Select EXE..."),
-    ("beforeScript", s("beforeLaunchScriptPath"), "Select script ..."),
-    ("afterScript", s("afterLaunchScriptPath"), "Select script ..."),
-    ("language", Bind::Str { key: "language", trim: true }, "2-char or 4-char code (i.e.: \"fr\" or \"pt-BR\")"),
-    ("dxvkFps", s("DXVKFpsCap"), "Positive integer value (e.g. 30, 60, ...)"),
-    ("savesPath", s("savesPath"), "Select the exact save games folder"),
+    ("targetExe", s("targetExe"), n_!("Select EXE...")),
+    ("beforeScript", s("beforeLaunchScriptPath"), n_!("Select script ...")),
+    ("afterScript", s("afterLaunchScriptPath"), n_!("Select script ...")),
+    ("language", Bind::Str { key: "language", trim: true }, n_!("2-char or 4-char code (i.e.: \"fr\" or \"pt-BR\")")),
+    ("dxvkFps", s("DXVKFpsCap"), n_!("Positive integer value (e.g. 30, 60, ...)")),
+    ("savesPath", s("savesPath"), n_!("Select the exact save games folder")),
     ("gs.gameWidth", Bind::Gamescope { field: "gameWidth", digits: true }, ""),
     ("gs.gameHeight", Bind::Gamescope { field: "gameHeight", digits: true }, ""),
     ("gs.upscaleWidth", Bind::Gamescope { field: "upscaleWidth", digits: true }, ""),
@@ -79,11 +80,11 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("defaultInstallPath", s("defaultInstallPath"), ""),
     ("defaultWinePrefixDir", s("defaultWinePrefixDir"), ""),
     ("defaultSteamPath", s("defaultSteamPath"), ""),
-    ("altLegendaryBin", s("altLegendaryBin"), "Using built-in Legendary binary..."),
-    ("env.key", Bind::Scratch, "NAME"),
-    ("env.value", Bind::Scratch, "VALUE"),
-    ("wrap.exe", Bind::Scratch, "New Wrapper"),
-    ("wrap.args", Bind::Scratch, "Wrapper Arguments"),
+    ("altLegendaryBin", s("altLegendaryBin"), n_!("Using built-in Legendary binary...")),
+    ("env.key", Bind::Scratch, n_!("NAME")),
+    ("env.value", Bind::Scratch, n_!("VALUE")),
+    ("wrap.exe", Bind::Scratch, n_!("New Wrapper")),
+    ("wrap.args", Bind::Scratch, n_!("Wrapper Arguments")),
 ];
 
 /// Outcome line shown under a tab (tool started, sync result, errors).
@@ -152,7 +153,7 @@ impl SettingsPanel {
                 Bind::Gamescope { field, .. } => value_text(settings.get("gamescope").and_then(|g| g.get(*field))),
                 Bind::Scratch => String::new(),
             };
-            let input = new_input(window, cx, &initial, placeholder);
+            let input = new_input(window, cx, &initial, tr(placeholder));
             if !matches!(bind, Bind::Scratch) {
                 let id: &'static str = id;
                 let digits = matches!(bind, Bind::Gamescope { digits: true, .. });
@@ -359,7 +360,8 @@ impl SettingsPanel {
             this.update(cx, |this, cx| {
                 this.writing = false;
                 if let Err(err) = res {
-                    this.notice = Some(Notice { text: format!("Could not save settings: {err:#}").into(), error: true });
+                    this.notice =
+                        Some(Notice { text: tr!("Could not save settings: {err}", err = format!("{err:#}")).into(), error: true });
                 }
                 this.flush(cx);
                 cx.notify();
@@ -451,7 +453,7 @@ impl Render for SettingsPanel {
             .pt(px(10.))
             .text_size(px(12.))
             .text_color(theme::text_dim())
-            .child("Settings are saved automatically");
+            .child(tr!("Settings are saved automatically"));
         if let Some(f) = self.facts() {
             footer = footer.child(format!("AppName: {}", f.app_name));
         }
@@ -474,7 +476,7 @@ impl Render for SettingsPanel {
             .gap(px(8.))
             .when(!self.is_game() && self.section != Section::General, |d| {
                 d.child(parts::hint(
-                    "Changes in this section only apply as default values when installing games. If you want to change the settings of an already installed game, use the Settings button in the game page.",
+                    tr!("Changes in this section only apply as default values when installing games. If you want to change the settings of an already installed game, use the Settings button in the game page."),
                 ))
             })
             .child(content)

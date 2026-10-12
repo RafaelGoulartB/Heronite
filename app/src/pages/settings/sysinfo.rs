@@ -49,6 +49,11 @@ pub fn human_memory(kb: u64) -> String {
     format!("{:.1} GB", kb as f64 / 1024. / 1024.)
 }
 
+/// [`human_memory`] with the decimal separator of the interface language.
+pub fn memory_label(kb: u64) -> String {
+    format!("{} GB", heronite_i18n::decimal(kb as f64 / 1024. / 1024., 1))
+}
+
 /// Version out of the first line of `/proc/driver/nvidia/version`
 /// ("NVRM version: NVIDIA UNIX x86_64 Kernel Module  580.82.09  Thu ...").
 pub fn nvidia_version(text: &str) -> Option<String> {

@@ -3,6 +3,7 @@
 //! the conditions in `Settings/sections/GamesSettings` and `components/*`.
 
 use heronite_data::collection::Game;
+use heronite_i18n::tr;
 use heronite_launch::native::{effective_platform, Platform};
 use heronite_launch::SystemProbe;
 use heronite_wine::WineInstallation;
@@ -23,12 +24,12 @@ pub enum Section {
 impl Section {
     pub fn label(self) -> &'static str {
         match self {
-            Section::General => "General",
-            Section::Wine => "Wine",
-            Section::Other => "Other",
-            Section::Advanced => "Advanced",
-            Section::Gamescope => "Gamescope",
-            Section::Saves => "Cloud saves",
+            Section::General => tr!("General"),
+            Section::Wine => tr!("Wine"),
+            Section::Other => tr!("Other"),
+            Section::Advanced => tr!("Advanced"),
+            Section::Gamescope => tr!("Gamescope"),
+            Section::Saves => tr!("Cloud saves"),
         }
     }
 }
@@ -169,11 +170,11 @@ pub fn wine_to_value(w: &WineInstallation) -> Value {
 pub fn validate_env_key(key: &str) -> &'static str {
     let key = key.trim();
     if key.is_empty() {
-        "Variable names can't be empty"
+        tr!("Variable names can't be empty")
     } else if key.contains('=') {
-        "Variable names can't contain the \"=\" sign"
+        tr!("Variable names can't contain the \"=\" sign")
     } else if key.contains(' ') {
-        "Variable names can't contain spaces"
+        tr!("Variable names can't contain spaces")
     } else {
         ""
     }
@@ -182,9 +183,9 @@ pub fn validate_env_key(key: &str) -> &'static str {
 /// `LauncherArgs` warnings.
 pub fn launcher_args_error(args: &str) -> &'static str {
     if args.contains("%command") {
-        "The %command% syntax from Steam is not valid as game arguments."
+        tr!("The %command% syntax from Steam is not valid as game arguments.")
     } else if has_env_assignment(args) {
-        "Environment variables must be configured in the table below."
+        tr!("Environment variables must be configured in the table below.")
     } else {
         ""
     }

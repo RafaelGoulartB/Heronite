@@ -8,6 +8,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::maintenance::{self, ClearReport};
 use heronite_data::{game_config, DataPaths};
+use heronite_i18n::{tr, trn};
 
 use super::SettingsPage;
 use crate::pages::{PageCtx, PageEvent};
@@ -63,7 +64,7 @@ impl SettingsPage {
     fn open_dir(&mut self, dir: PathBuf, cx: &mut Context<Self>) {
         self.advanced.notice = match open_folder(&dir) {
             Ok(()) => None,
-            Err(err) => Some((format!("Could not open {}: {err}", dir.display()).into(), true)),
+            Err(err) => Some((tr!("Could not open {path}: {err}", path = dir.display(), err).into(), true)),
         };
         cx.notify();
     }
@@ -78,8 +79,16 @@ impl SettingsPage {
                 this.advanced.busy = false;
                 match res {
                     Ok(r) => {
-                        this.advanced.notice =
-                            Some((format!("Cache cleared: {} file(s), {}.", r.files, maintenance::human_size(r.bytes)).into(), false));
+                        this.advanced.notice = Some((
+                            trn!(
+                                r.files,
+                                "Cache cleared: {n} file, {size}.",
+                                "Cache cleared: {n} files, {size}.",
+                                size = maintenance::human_size(r.bytes)
+                            )
+                            .into(),
+                            false,
+                        ));
                         this.advanced.size = Some(ClearReport::default());
                         // The Epic library cache is rebuilt by its refresh.
                         cx.emit(PageEvent::LibraryChanged);
@@ -102,42 +111,42 @@ impl SettingsPage {
             Some(dir) => action_button(
                 "adv-open-logs",
                 ButtonKind::Glass,
-                "Open",
+                tr!("Open"),
                 true,
                 cx.listener(move |this, _, _, cx| this.open_dir(dir.clone(), cx)),
             ),
-            None => action_button("adv-open-logs", ButtonKind::Glass, "Open", false, |_, _, _| {}),
+            None => action_button("adv-open-logs", ButtonKind::Glass, tr!("Open"), false, |_, _, _| {}),
         };
         let folders = card([
             row(
-                "Data folder",
-                Some("Library, settings, logins, Wine tools and logs."),
+                tr!("Data folder"),
+                Some(tr!("Library, settings, logins, Wine tools and logs.")),
                 action_button(
                     "adv-open-config",
                     ButtonKind::Glass,
-                    "Open",
+                    tr!("Open"),
                     true,
                     cx.listener(move |this, _, _, cx| this.open_dir(cfg.clone(), cx)),
                 ),
             )
             .into_any_element(),
             row(
-                "Logs folder",
+                tr!("Logs folder"),
                 Some(if logs.is_some() {
-                    "Logs of this app, the runners and your games."
+                    tr!("Logs of this app, the runners and your games.")
                 } else {
-                    "There is no logs folder yet: it appears when a game is launched."
+                    tr!("There is no logs folder yet: it appears when a game is launched.")
                 }),
                 logs_btn,
             )
             .into_any_element(),
             row(
-                "Settings folder",
-                Some("Where this app keeps its own data."),
+                tr!("Settings folder"),
+                Some(tr!("Where this app keeps its own data.")),
                 action_button(
                     "adv-open-app",
                     ButtonKind::Glass,
-                    "Open",
+                    tr!("Open"),
                     true,
                     cx.listener(move |this, _, _, cx| this.open_dir(app_cfg.clone(), cx)),
                 ),
@@ -146,9 +155,14 @@ impl SettingsPage {
         ]);
 
         let size_line = match self.advanced.size {
-            Some(r) if r.files > 0 => format!("{} file(s), {} would be removed.", r.files, maintenance::human_size(r.bytes)),
-            Some(_) => "Nothing to clear.".into(),
-            None => "Measuring...".into(),
+            Some(r) if r.files > 0 => trn!(
+                r.files,
+                "{n} file, {size} would be removed.",
+                "{n} files, {size} would be removed.",
+                size = maintenance::human_size(r.bytes)
+            ),
+            Some(_) => tr!("Nothing to clear.").into(),
+            None => tr!("Measuring...").into(),
         };
         let has_cache = self.advanced.size.is_some_and(|r| r.files > 0);
         let control: AnyElement = if self.advanced.confirm {
@@ -159,7 +173,7 @@ impl SettingsPage {
                 .child(action_button(
                     "adv-cache-cancel",
                     ButtonKind::Ghost,
-                    "Cancel",
+                    tr!("Cancel"),
                     true,
                     cx.listener(|this, _, _, cx| {
                         this.advanced.confirm = false;
@@ -169,7 +183,7 @@ impl SettingsPage {
                 .child(action_button(
                     "adv-cache-yes",
                     ButtonKind::Danger,
-                    "Yes, clear the cache",
+                    tr!("Yes, clear the cache"),
                     true,
                     cx.listener(|this, _, _, cx| this.clear_cache(cx)),
                 ))
@@ -178,7 +192,7 @@ impl SettingsPage {
             action_button(
                 "adv-cache-clear",
                 ButtonKind::Glass,
-                if self.advanced.busy { "Clearing..." } else { "Clear cache" },
+                if self.advanced.busy { tr!("Clearing...") } else { tr!("Clear cache") },
                 has_cache && !self.advanced.busy,
                 cx.listener(|this, _, _, cx| {
                     this.advanced.confirm = true;
@@ -189,8 +203,8 @@ impl SettingsPage {
         };
         let cache = card([
             row(
-                "Clear cache",
-                Some(&format!("{size_line} Clears third-party game info (scores, Steam compatibility, HowLongToBeat, PCGamingWiki), Epic library info and resized thumbnails; they are rebuilt as you browse. Store logins, installed games, game settings, the Collection data and the GOG and Amazon caches are kept.")),
+                tr!("Clear cache"),
+                Some(&format!("{size_line} {}", tr!("Clears third-party game info (scores, Steam compatibility, HowLongToBeat, PCGamingWiki), Epic library info and resized thumbnails; they are rebuilt as you browse. Store logins, installed games, game settings, the Collection data and the GOG and Amazon caches are kept."))),
                 control,
             )
             .into_any_element(),
@@ -198,12 +212,12 @@ impl SettingsPage {
 
         let copied = self.advanced.copied;
         let copy = card([row(
-            "Copy all settings",
-            Some("Puts the settings JSON on the clipboard. API keys are left out."),
+            tr!("Copy all settings"),
+            Some(tr!("Puts the settings JSON on the clipboard. API keys are left out.")),
             action_button(
                 "adv-copy",
                 ButtonKind::Glass,
-                if copied { "Copied to clipboard!" } else { "Copy to clipboard" },
+                if copied { tr!("Copied to clipboard!") } else { tr!("Copy to clipboard") },
                 true,
                 cx.listener(|this, _, _, cx| {
                     let text = settings_json(&this.ctx.data_paths, &std::env::var("HOME").unwrap_or_default());
@@ -218,11 +232,11 @@ impl SettingsPage {
         let mut col = div()
             .flex()
             .flex_col()
-            .child(caption("Folders"))
+            .child(caption(tr!("Folders")))
             .child(folders)
-            .child(caption("Cache"))
+            .child(caption(tr!("Cache")))
             .child(cache)
-            .child(caption("Settings"))
+            .child(caption(tr!("Settings")))
             .child(copy);
         if let Some((text, error)) = self.advanced.notice.clone() {
             col = col.child(super::library::notice_line(text, error));
@@ -237,31 +251,38 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
     use crate::icons::Icon;
     let a = &p.advanced;
     let size_line = match a.size {
-        Some(r) if r.files > 0 => format!("{} file(s), {}", r.files, maintenance::human_size(r.bytes)),
-        Some(_) => "Nothing to clear".into(),
-        None => "Measuring\u{2026}".into(),
+        Some(r) if r.files > 0 => {
+            trn!(r.files, "{n} file, {size}", "{n} files, {size}", size = maintenance::human_size(r.bytes))
+        }
+        Some(_) => tr!("Nothing to clear").into(),
+        None => tr!("Measuring\u{2026}").into(),
     };
     let has_cache = a.size.is_some_and(|r| r.files > 0);
     let mut rows = vec![
-        Row::header("Folders"),
-        Row::action("open-config", "Open the data folder").icon(Icon::FolderOpen).desc("Library, settings, logins, Wine tools and logs"),
-        Row::action("open-logs", "Open the logs folder").icon(Icon::FolderOpen).enabled(logs_dir(&p.ctx.data_paths).is_some()),
-        Row::action("open-app", "Open the settings folder").icon(Icon::FolderOpen),
-        Row::header("Cache"),
+        Row::header(tr!("Folders")),
+        Row::action("open-config", tr!("Open the data folder"))
+            .icon(Icon::FolderOpen)
+            .desc(tr!("Library, settings, logins, Wine tools and logs")),
+        Row::action("open-logs", tr!("Open the logs folder")).icon(Icon::FolderOpen).enabled(logs_dir(&p.ctx.data_paths).is_some()),
+        Row::action("open-app", tr!("Open the settings folder")).icon(Icon::FolderOpen),
+        Row::header(tr!("Cache")),
     ];
     if a.confirm {
-        rows.push(Row::action("cache-no", "Keep the cache"));
-        rows.push(Row::action("cache-yes", "Yes, clear the cache").danger());
+        rows.push(Row::action("cache-no", tr!("Keep the cache")));
+        rows.push(Row::action("cache-yes", tr!("Yes, clear the cache")).danger());
     } else {
         rows.push(
-            Row::action("cache", if a.busy { "Clearing\u{2026}" } else { "Clear the cache" })
+            Row::action("cache", if a.busy { tr!("Clearing\u{2026}") } else { tr!("Clear the cache") })
                 .icon(Icon::DeleteOutline)
                 .desc(size_line)
                 .enabled(has_cache && !a.busy),
         );
     }
-    rows.push(Row::header("Settings"));
-    rows.push(Row::action("copy", if a.copied { "Copied to the clipboard" } else { "Copy all settings" }).desc("API keys are left out"));
+    rows.push(Row::header(tr!("Settings")));
+    rows.push(
+        Row::action("copy", if a.copied { tr!("Copied to the clipboard") } else { tr!("Copy all settings") })
+            .desc(tr!("API keys are left out")),
+    );
     if let Some((text, _)) = &a.notice {
         rows.push(Row::info("notice", text.clone(), ""));
     }

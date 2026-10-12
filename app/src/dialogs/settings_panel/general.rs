@@ -55,25 +55,25 @@ impl SettingsPanel {
         let fields = rows()
             .field_help(
                 self.max_workers_field(cx),
-                vec![help("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core.")],
+                vec![help(tr!("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))],
             )
             .field_help(
                 self.path_row(
                     "altLegendaryBin",
-                    Some("Choose an Alternative Legendary Binary"),
+                    Some(tr!("Choose an Alternative Legendary Binary")),
                     false,
-                    "Select Legendary Binary",
+                    tr!("Select Legendary Binary"),
                     true,
                     cx,
                 ),
-                vec![help("Leave it empty to use the one in the data folder (tools/bin/legendary).")],
+                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/legendary)."))],
             );
         let toggles = rows()
             .child(self.toggle_row(
                 "download-no-https",
                 "downloadNoHttps",
                 false,
-                "Download games without HTTPS (useful for CDNs e.g. LanCache)",
+                tr!("Download games without HTTPS (useful for CDNs e.g. LanCache)"),
                 None,
                 false,
                 cx,
@@ -82,12 +82,12 @@ impl SettingsPanel {
                 "auto-update",
                 "autoUpdateGames",
                 false,
-                "Automatically update games",
-                Some("Updates are queued in the background when they are found, except offline, on a metered connection or while the game is running."),
+                tr!("Automatically update games"),
+                Some(tr!("Updates are queued in the background when they are found, except offline, on a metered connection or while the game is running.")),
                 false,
                 cx,
             ));
-        column().child(heading("Downloads")).child(fields.card()).child(heading("Updates")).child(toggles.card())
+        column().child(heading(tr!("Downloads"))).child(fields.card()).child(heading(tr!("Updates"))).child(toggles.card())
     }
 
     /// Logging and advanced switches (folders and cache live in the page).
@@ -97,44 +97,47 @@ impl SettingsPanel {
                 "disable-logs",
                 "disableLogs",
                 false,
-                "Disable Logs",
-                Some("Toggle this switch ON to disable most of the writes to log files (critical information is always logged). Make sure to turn OFF this setting before reporting any issue."),
+                tr!("Disable Logs"),
+                Some(tr!("Toggle this switch ON to disable most of the writes to log files (critical information is always logged). Make sure to turn OFF this setting before reporting any issue.")),
                 false,
                 cx,
             ));
-        column().child(heading("Logging")).child(r.card())
+        column().child(heading(tr!("Logging"))).child(r.card())
     }
 
     fn general_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let folders = rows()
             .field(self.path_row(
                 "defaultInstallPath",
-                Some("Default Installation Path"),
+                Some(tr!("Default Installation Path")),
                 true,
-                "Choose the default installation folder",
+                tr!("Choose the default installation folder"),
                 false,
                 cx,
             ))
             .field(self.path_row(
                 "defaultWinePrefixDir",
-                Some("Set Folder for new Wine Prefixes"),
+                Some(tr!("Set Folder for new Wine Prefixes")),
                 true,
-                "Select a Folder for new Wine Prefixes",
+                tr!("Select a Folder for new Wine Prefixes"),
                 false,
                 cx,
             ))
             .field_help(
-                self.path_row("defaultSteamPath", Some("Default Steam path"), true, "Steam path.", false, cx),
-                vec![help("This path lets Heronite determine what version of Proton Steam uses, for adding non-Steam games to Steam.")],
+                self.path_row("defaultSteamPath", Some(tr!("Default Steam path")), true, tr!("Steam path."), false, cx),
+                vec![help(tr!(
+                    "This path lets Heronite determine what version of Proton Steam uses, for adding non-Steam games to Steam."
+                ))],
             );
-        let launch = rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, "Minimize after game launch", None, false, cx));
+        let launch =
+            rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false, cx));
         let wine = rows()
             .child(self.toggle_row(
                 "valve-proton",
                 "showValveProton",
                 false,
-                "Allow using Valve Proton builds to run games",
-                Some("We recommend custom Proton forks (GE-Proton, Proton-CachyOS, etc.) to be used because Valve's Proton builds lack winetricks and protofixes. You can still use them if you want."),
+                tr!("Allow using Valve Proton builds to run games"),
+                Some(tr!("We recommend custom Proton forks (GE-Proton, Proton-CachyOS, etc.) to be used because Valve's Proton builds lack winetricks and protofixes. You can still use them if you want.")),
                 false,
                 cx,
             ))
@@ -142,23 +145,23 @@ impl SettingsPanel {
                 "proton-to-steam",
                 "downloadProtonToSteam",
                 false,
-                "Download GE-Proton to Steam directory",
-                Some("When enabled, GE-Proton will be downloaded directly to the Steam compatibility tools directory instead of the tools folder. It will use the Steam path set in the 'Default Steam path' setting above."),
+                tr!("Download GE-Proton to Steam directory"),
+                Some(tr!("When enabled, GE-Proton will be downloaded directly to the Steam compatibility tools directory instead of the tools folder. It will use the Steam path set in the 'Default Steam path' setting above.")),
                 false,
                 cx,
             ));
         column()
             .child(heading(tr!("Language")))
             .child(rows().field(self.language_field(cx)).card())
-            .child(heading("Folders"))
+            .child(heading(tr!("Folders")))
             .child(folders.card())
-            .child(heading("Launching"))
+            .child(heading(tr!("Launching")))
             .child(launch.card())
-            .child(heading("System"))
+            .child(heading(tr!("System")))
             .child(self.system_rows(cx).card())
-            .child(heading("Wine and Proton"))
+            .child(heading(tr!("Wine and Proton")))
             .child(wine.card())
-            .child(heading("Custom Wine/Proton Paths"))
+            .child(heading(tr!("Custom Wine/Proton Paths")))
             .child(self.custom_wine_paths(cx))
     }
 
@@ -167,16 +170,16 @@ impl SettingsPanel {
         let no_tray = self.flag("noTrayIcon", false);
         let exit_to_tray = self.flag("exitToTray", false);
         rows()
-            .child(self.toggle_row("no-tray", "noTrayIcon", false, "Hide System Tray Icon (requires restart)", None, false, cx))
-            .child(self.toggle_row("exit-to-tray", "exitToTray", false, "Exit to System Tray", None, no_tray, cx))
-            .child(self.toggle_row("start-in-tray", "startInTray", false, "Start Minimized", None, !exit_to_tray || no_tray, cx))
-            .child(self.toggle_row("dark-tray", "darkTrayIcon", false, "Use Dark Tray Icon (needs restart)", None, no_tray, cx))
+            .child(self.toggle_row("no-tray", "noTrayIcon", false, tr!("Hide System Tray Icon (requires restart)"), None, false, cx))
+            .child(self.toggle_row("exit-to-tray", "exitToTray", false, tr!("Exit to System Tray"), None, no_tray, cx))
+            .child(self.toggle_row("start-in-tray", "startInTray", false, tr!("Start Minimized"), None, !exit_to_tray || no_tray, cx))
+            .child(self.toggle_row("dark-tray", "darkTrayIcon", false, tr!("Use Dark Tray Icon (needs restart)"), None, no_tray, cx))
             .child(self.toggle_row(
                 "hide-on-protocol",
                 "hideWindowOnProtocolLaunch",
                 false,
-                "Hide Heronite window when launching games from heronite-rs:// links",
-                Some("Keeps the window hidden when a game is launched from an external shortcut, like the 'Add to Steam' feature."),
+                tr!("Hide Heronite window when launching games from heronite-rs:// links"),
+                Some(tr!("Keeps the window hidden when a game is launched from an external shortcut, like the 'Add to Steam' feature.")),
                 false,
                 cx,
             ))
@@ -184,7 +187,7 @@ impl SettingsPanel {
                 "shortcuts-desktop",
                 "addDesktopShortcuts",
                 false,
-                "Add desktop shortcuts automatically",
+                tr!("Add desktop shortcuts automatically"),
                 None,
                 false,
                 cx,
@@ -193,12 +196,12 @@ impl SettingsPanel {
                 "shortcuts-menu",
                 "addStartMenuShortcuts",
                 false,
-                "Add games to start menu automatically",
+                tr!("Add games to start menu automatically"),
                 None,
                 false,
                 cx,
             ))
-            .child(self.toggle_row("shortcuts-steam", "addSteamShortcuts", false, "Add games to Steam automatically", None, false, cx))
+            .child(self.toggle_row("shortcuts-steam", "addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false, cx))
     }
 
     /// Interface language: the system's (English when it is not one we
@@ -218,12 +221,12 @@ impl SettingsPanel {
     fn max_workers_field(&self, cx: &mut Context<Self>) -> Div {
         let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
         let current = self.number("maxWorkers").unwrap_or(0).max(0) as usize;
-        let mut items: Vec<(SharedString, bool)> = vec![("Max".into(), current == 0)];
+        let mut items: Vec<(SharedString, bool)> = vec![(tr!("Max").into(), current == 0)];
         items.extend((1..=cores).map(|n| (SharedString::from(n.to_string()), n == current)));
-        let shown = if current == 0 { "Max".to_string() } else { current.to_string() };
+        let shown = if current == 0 { tr!("Max").to_string() } else { current.to_string() };
         div().child(self.select_row(
             "max-workers",
-            Some("Maximum Number of Workers when downloading"),
+            Some(tr!("Maximum Number of Workers when downloading")),
             shown,
             items,
             false,
@@ -264,8 +267,8 @@ impl SettingsPanel {
                     ),
             );
         }
-        let add = self.outline_button("wine-path-add", "Add path", true, cx, |_, window, cx| {
-            choose_path(window, cx, false, "Select the Wine or Proton Binary", |this: &mut Self, path, _, cx| {
+        let add = self.outline_button("wine-path-add", tr!("Add path"), true, cx, |_, window, cx| {
+            choose_path(window, cx, false, tr!("Select the Wine or Proton Binary"), |this: &mut Self, path, _, cx| {
                 let mut now = this.custom_paths();
                 if !now.contains(&path) {
                     now.push(path);

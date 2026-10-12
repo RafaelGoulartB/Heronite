@@ -39,6 +39,7 @@ pub use section::Section;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::settings::{self as store, EffectiveSettings};
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 
 use super::{Page, PageCtx, PageEvent};
@@ -313,11 +314,11 @@ impl SettingsPage {
                             .text_size(px(19.))
                             .font_weight(theme::W_BOLD)
                             .text_color(theme::text_primary())
-                            .child("Settings"),
+                            .child(tr!("Settings")),
                     ),
             );
         for (group, sections) in Section::GROUPS {
-            col = col.child(div().px(px(12.)).pt(px(12.)).pb(px(5.)).text_size(px(12.)).text_color(theme::text_muted()).child(group));
+            col = col.child(div().px(px(12.)).pt(px(12.)).pb(px(5.)).text_size(px(12.)).text_color(theme::text_muted()).child(tr(group)));
             for s in sections.iter().copied() {
                 let active = self.section == s;
                 col = col.child(

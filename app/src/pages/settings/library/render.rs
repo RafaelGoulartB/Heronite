@@ -4,6 +4,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::config_games;
+use heronite_i18n::{tr, trn};
 
 use super::pager::{ListKind, Pager, COLLAPSED_ROWS};
 use super::{SettingsPage, Snapshot};
@@ -25,7 +26,7 @@ impl SettingsPage {
         let recent = self.render_recent(&snap, cx);
 
         let mut col =
-            div().flex().flex_col().child(show).children(hidden).children(favourites).child(caption("Recent games")).child(recent);
+            div().flex().flex_col().child(show).children(hidden).children(favourites).child(caption(tr!("Recent games"))).child(recent);
         if let Some((text, error)) = self.library.notice.clone() {
             col = col.child(notice_line(text, error));
         }
@@ -35,8 +36,8 @@ impl SettingsPage {
     fn render_show_hidden(&self, snap: &Snapshot, cx: &mut Context<Self>) -> Div {
         card([toggle_row(
             "lib-show-hidden",
-            "Show hidden games",
-            Some("Hidden games appear in the Collection, greyed with a \"Hidden\" tag, and can be unhidden from their menu. The same switch is in the filter menu of the header."),
+            tr!("Show hidden games"),
+            Some(tr!("Hidden games appear in the Collection, greyed with a \"Hidden\" tag, and can be unhidden from their menu. The same switch is in the filter menu of the header.")),
             snap.show_hidden,
         )
         .on_click(cx.listener(|this, _, _, cx| {
@@ -52,21 +53,19 @@ impl SettingsPage {
         let range = self.library.hidden_pg.range(snap.hidden.len());
         for (i, (app, title)) in snap.hidden.iter().enumerate().skip(range.start).take(range.len()) {
             let app_name = app.clone();
-            rows.push(
-                self.entry_row(format!("lib-unhide-{i}"), title, app, "Unhide", cx, move |this, cx| {
-                    this.library_unhide(app_name.clone(), cx)
-                }),
-            );
+            rows.push(self.entry_row(format!("lib-unhide-{i}"), title, app, tr!("Unhide"), cx, move |this, cx| {
+                this.library_unhide(app_name.clone(), cx)
+            }));
         }
         if rows.is_empty() {
-            rows.push(empty_row("No hidden games. Use \"Hide\" in a game's context menu.").into_any_element());
+            rows.push(empty_row(tr!("No hidden games. Use \"Hide\" in a game's context menu.")).into_any_element());
         }
         let head = list_caption(
-            format!("Hidden games ({})", snap.hidden.len()),
+            tr!("Hidden games ({count})", count = snap.hidden.len()),
             action_button(
                 "lib-unhide-all",
                 ButtonKind::Glass,
-                "Unhide all",
+                tr!("Unhide all"),
                 !self.library.busy && !snap.hidden.is_empty(),
                 cx.listener(|this, _, _, cx| this.library_clear("hidden", cx)),
             ),
@@ -81,7 +80,7 @@ impl SettingsPage {
         let range = self.library.fav_pg.range(snap.favourites.len());
         for (i, (app, title)) in snap.favourites.iter().enumerate().skip(range.start).take(range.len()) {
             let app_name = app.clone();
-            rows.push(self.entry_row(format!("lib-fav-{i}"), title, app, "Remove", cx, move |this, cx| {
+            rows.push(self.entry_row(format!("lib-fav-{i}"), title, app, tr!("Remove"), cx, move |this, cx| {
                 let app = app_name.clone();
                 this.library_job(
                     Box::new(move |data_paths, _| {
@@ -93,14 +92,14 @@ impl SettingsPage {
             }));
         }
         if rows.is_empty() {
-            rows.push(empty_row("No favourites. Use \"Add to favourites\" in a game's context menu.").into_any_element());
+            rows.push(empty_row(tr!("No favourites. Use \"Add to favourites\" in a game's context menu.")).into_any_element());
         }
         let head = list_caption(
-            format!("Favourites ({})", snap.favourites.len()),
+            tr!("Favourites ({count})", count = snap.favourites.len()),
             action_button(
                 "lib-fav-clear",
                 ButtonKind::Glass,
-                "Clear favourites",
+                tr!("Clear favourites"),
                 !self.library.busy && !snap.favourites.is_empty(),
                 cx.listener(|this, _, _, cx| this.library_clear("favourites", cx)),
             ),
@@ -130,15 +129,19 @@ impl SettingsPage {
             },
         );
         card([
-            row("Recent games to show", Some("How many recently played games the tray menu lists."), div().w(px(120.)).child(select))
-                .into_any_element(),
             row(
-                "Clear recent games",
-                Some(&format!("{} game(s) in the recent list", snap.recent.len())),
+                tr!("Recent games to show"),
+                Some(tr!("How many recently played games the tray menu lists.")),
+                div().w(px(120.)).child(select),
+            )
+            .into_any_element(),
+            row(
+                tr!("Clear recent games"),
+                Some(&trn!(snap.recent.len(), "{n} game in the recent list", "{n} games in the recent list")),
                 action_button(
                     "lib-recent-clear",
                     ButtonKind::Glass,
-                    "Clear recent",
+                    tr!("Clear recent"),
                     !self.library.busy && !snap.recent.is_empty(),
                     cx.listener(|this, _, _, cx| this.library_clear("recent", cx)),
                 ),
@@ -208,7 +211,9 @@ impl SettingsPage {
         let row = div().flex().items_center().justify_between().gap(px(12.)).mt(px(8.));
         if !pager.expanded {
             return Some(
-                row.child(toggle("Expand", true, cx)).child(meta_text(format!("Showing {COLLAPSED_ROWS} of {total}"))).into_any_element(),
+                row.child(toggle(tr!("Expand"), true, cx))
+                    .child(meta_text(tr!("Showing {shown} of {total}", shown = COLLAPSED_ROWS, total)))
+                    .into_any_element(),
             );
         }
         let range = pager.range(total);
@@ -232,9 +237,16 @@ impl SettingsPage {
             .items_center()
             .gap(px(10.))
             .child(step("prev", Icon::ChevronLeft, page > 0, -1, cx))
-            .child(meta_text(format!("{}\u{2013}{} of {total} \u{b7} Page {} of {pages}", range.start + 1, range.end, page + 1)))
+            .child(meta_text(tr!(
+                "{start}\u{2013}{end} of {total} \u{b7} Page {page} of {pages}",
+                start = range.start + 1,
+                end = range.end,
+                total,
+                page = page + 1,
+                pages
+            )))
             .child(step("next", Icon::ChevronRight, page + 1 < pages, 1, cx));
-        Some(row.child(toggle("Collapse", false, cx)).child(nav).into_any_element())
+        Some(row.child(toggle(tr!("Collapse"), false, cx)).child(nav).into_any_element())
     }
 }
 
