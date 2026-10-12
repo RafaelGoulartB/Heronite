@@ -185,7 +185,8 @@ pub fn get_steam_app_details(
     if steam_app_id.is_empty() {
         return None;
     }
-    let language = steam_language(language.unwrap_or("en"));
+    // Without a language, the interface's (Steam text is then in Portuguese too).
+    let language = steam_language(language.unwrap_or(heronite_i18n::current().code()));
     let key = format!("{steam_app_id}:{language}");
     let file = paths.steam_details(steam_app_id, language);
     let fresh = |c: &SteamAppDetails| c.fetched_at.is_some_and(|t| now_ms() - t < CACHE_MS);

@@ -263,7 +263,7 @@ pub fn focus_meta_line(release_date: Option<&str>, platform: &str, genres: &[Str
 /// all and has a Steam app id.
 pub fn focus_details(paths: &DataPaths, game: &CollectionGame, language: &str, wiki: Option<&WikiEntry>) -> Details {
     let steam = match (&game.metadata, &game.steam_app_id) {
-        (None, Some(id)) => load_steam_details(paths, id, language),
+        (None, Some(id)) => load_steam_details(paths, id, language).or_else(|| load_steam_details(paths, id, "en")),
         _ => None,
     };
     Details::compute(&game.game, game.meta.as_deref(), game.metadata.as_deref(), steam.as_ref(), wiki)
