@@ -106,6 +106,7 @@ fn update_meta(cx: &App) -> Option<String> {
     match u.phase() {
         Phase::Available if !u.skipped() => Some(format!("Update {version}")),
         Phase::Downloading(p) => Some(p.percent().map_or_else(|| "Updating".into(), |p| format!("Updating {}%", p.round() as u32))),
+        Phase::Installing => Some("Installing update".into()),
         Phase::Ready => Some("Restart to update".into()),
         _ => None,
     }

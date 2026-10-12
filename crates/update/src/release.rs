@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::package::Package;
 use crate::version::Version;
 
 /// Architecture part of the AppImage names (`appimagetool`'s `ARCH`).
@@ -38,6 +39,10 @@ pub struct Release {
     pub appimage: Option<Asset>,
     /// Its minisign signature; without one the app does not install it.
     pub signature: Option<Asset>,
+    /// The system packages (.deb, .rpm, Arch) of the release and their
+    /// `.minisig` signatures.
+    #[serde(default)]
+    pub packages: Vec<Asset>,
 }
 
 impl Release {
@@ -53,6 +58,18 @@ impl Release {
     /// The app can download and swap it in by itself.
     pub fn installable(&self) -> bool {
         self.appimage.is_some() && self.signature.is_some()
+    }
+
+    /// The file of `package`'s format for this architecture.
+    pub fn package(&self, package: Package) -> Option<&Asset> {
+        let suffix = package.file_suffix();
+        self.packages.iter().find(|a| a.name.starts_with("heronite") && a.name.ends_with(&suffix))
+    }
+
+    /// The signature of [`Release::package`].
+    pub fn package_signature(&self, package: Package) -> Option<&Asset> {
+        let name = format!("{}.minisig", self.package(package)?.name);
+        self.packages.iter().find(|a| a.name == name)
     }
 
     /// `2026-10-11` from [`Release::published_at`].
@@ -122,6 +139,15 @@ pub fn parse_latest(json: &str) -> Result<Release> {
         published_at: r.published_at.unwrap_or_default(),
         appimage: appimage.map(Asset::from),
         signature: signature.map(Asset::from),
+        packages: r
+            .assets
+            .iter()
+            .filter(|a| {
+                let name = a.name.strip_suffix(".minisig").unwrap_or(&a.name);
+                [".deb", ".rpm", ".pkg.tar.zst"].iter().any(|ext| name.ends_with(ext))
+            })
+            .map(Asset::from)
+            .collect(),
     })
 }
 
@@ -187,9 +213,21 @@ mod tests {
                 "Heronite-x86_64.AppImage",
                 "Heronite-x86_64.AppImage.minisig",
                 "Heronite-x86_64.AppImage.zsync",
+                "heronite_0.1.4_amd64.deb",
+                "heronite_0.1.4_amd64.deb.minisig",
+                "heronite-0.1.4-1.x86_64.rpm",
+                "heronite-0.1.4-1-x86_64.pkg.tar.zst",
             ],
         );
         let r = parse_latest(&json).unwrap();
+        assert_eq!(r.packages.len(), 4);
+        if ARCH == "x86_64" {
+            assert_eq!(r.package(Package::Deb).unwrap().name, "heronite_0.1.4_amd64.deb");
+            assert_eq!(r.package_signature(Package::Deb).unwrap().name, "heronite_0.1.4_amd64.deb.minisig");
+            assert!(r.package_signature(Package::Rpm).is_none());
+            assert_eq!(r.package(Package::Rpm).unwrap().name, "heronite-0.1.4-1.x86_64.rpm");
+            assert_eq!(r.package(Package::Arch).unwrap().name, "heronite-0.1.4-1-x86_64.pkg.tar.zst");
+        }
         assert_eq!(r.version, "0.1.4");
         assert_eq!(r.date(), "2026-10-11");
         assert_eq!(r.notes, "### Features\n- Something new");
@@ -212,6 +250,7 @@ mod tests {
         assert!(!r.installable());
         let none = parse_latest(&gh("v0.2.0", &["notes.txt"])).unwrap();
         assert!(none.appimage.is_none());
+        assert!(none.package(Package::Deb).is_none());
     }
 
     #[test]
@@ -221,6 +260,15 @@ mod tests {
         v["prerelease"] = true.into();
         assert!(parse_latest(&v.to_string()).is_err());
         assert!(parse_latest("{").is_err());
+    }
+
+    #[test]
+    fn stored_release_without_packages_still_reads() {
+        let r = parse_latest(&gh("v0.1.4", &["Heronite-x86_64.AppImage"])).unwrap();
+        let mut v = serde_json::to_value(&r).unwrap();
+        v.as_object_mut().unwrap().remove("packages");
+        let back: Release = serde_json::from_value(v).unwrap();
+        assert_eq!(back, r);
     }
 
     #[test]

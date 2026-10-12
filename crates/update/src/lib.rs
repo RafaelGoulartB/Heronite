@@ -13,17 +13,21 @@
 //!   file. The running app keeps reading the old inode, so it is never
 //!   disturbed; the new version starts with the next launch.
 //! - [`relaunch`]: starts the new AppImage, detached, as the app quits.
+//! - [`package`]: .deb / .rpm / Arch installs, which are only told about new
+//!   versions (their package manager owns the files).
 //! - [`prefs`]: the user's choices and the last check (`update.json`).
 //!
 //! Every function blocks; the app calls them off the UI thread.
 
 pub mod install;
+pub mod package;
 pub mod prefs;
 pub mod relaunch;
 pub mod release;
 pub mod version;
 
 pub use install::{InstallError, Progress, Target, Unsupported};
+pub use package::Package;
 pub use prefs::Prefs;
 pub use release::{Asset, Fetched, Release};
 pub use version::Version;

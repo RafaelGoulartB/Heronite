@@ -28,6 +28,8 @@ impl CollectionView {
         let version = release.version.clone();
         let current = u.current().to_string();
         let can_install = u.can_install();
+        let manual = u.manual_command();
+        let installing = *u.phase() == Phase::Installing;
         let blocker = crate::system::restart_blocker(cx);
 
         let act = |f: fn(&mut Updater, &mut Context<Updater>)| {
@@ -37,6 +39,9 @@ impl CollectionView {
         let (label, title, detail, accent): (&str, String, String, Rgba) = match (kind, u.phase()) {
             (Banner::Downloading, Phase::Downloading(p)) => {
                 ("Updating", format!("Downloading Heronite {version}"), update::progress_text(p), theme::accent())
+            }
+            (Banner::Downloading, _) => {
+                ("Updating", format!("Installing Heronite {version}"), "Enter your password if you are asked.".into(), theme::accent())
             }
             (Banner::Ready, _) => (
                 "Update ready",
@@ -51,7 +56,7 @@ impl CollectionView {
                 ("Update failed", format!("Could not update to {version}"), e.clone(), theme::danger())
             }
             _ => {
-                let size = release.appimage.as_ref().filter(|a| a.size > 0).map(|a| format!(" \u{b7} {}", update::size_text(a.size)));
+                let size = u.download_asset().filter(|a| a.size > 0).map(|a| format!(" \u{b7} {}", update::size_text(a.size)));
                 (
                     "Update available",
                     format!("Heronite {version}"),
@@ -81,14 +86,24 @@ impl CollectionView {
                     footer.child(button_sm("upd-page", ButtonKind::Primary, "Download").on_click(move |_, _, _| update::open_page(&page)))
                 }
             }
+            // The package manager cannot be stopped halfway.
+            Banner::Downloading if installing => footer,
             Banner::Downloading => footer.child(button_sm("upd-cancel", ButtonKind::Ghost, "Cancel").on_click(act(Updater::cancel))),
             Banner::Ready => footer.child(button_sm("upd-later", ButtonKind::Ghost, "Later").on_click(act(Updater::dismiss))).child(
                 action_button("upd-restart", ButtonKind::Primary, "Restart now", blocker.is_none(), act(Updater::restart))
                     .h(px(theme::BUTTON_H_SM)),
             ),
-            Banner::Failed => footer
-                .child(button_sm("upd-page", ButtonKind::Ghost, "Release page").on_click(move |_, _, _| update::open_page(&page)))
-                .child(button_sm("upd-retry", ButtonKind::Primary, "Try again").on_click(act(Updater::install))),
+            Banner::Failed => {
+                let footer = match manual {
+                    Some(cmd) => footer.child(
+                        button_sm("upd-copy", ButtonKind::Ghost, "Copy terminal command")
+                            .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(cmd.clone()))),
+                    ),
+                    None => footer
+                        .child(button_sm("upd-page", ButtonKind::Ghost, "Release page").on_click(move |_, _, _| update::open_page(&page))),
+                };
+                footer.child(button_sm("upd-retry", ButtonKind::Primary, "Try again").on_click(act(Updater::install)))
+            }
         };
 
         let close = (kind != Banner::Downloading).then(|| close_button("upd-close").size(px(26.)).on_click(act(Updater::dismiss)));

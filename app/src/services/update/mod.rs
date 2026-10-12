@@ -1,26 +1,35 @@
-//! App updates (`heronite_update`): looks for a newer GitHub release, and
-//! when the app runs from an AppImage, downloads it, swaps it in and restarts.
+//! App updates (`heronite_update`): looks for a newer GitHub release and
+//! installs it the way this copy was installed ([`Method`]):
+//! - AppImage: downloads it, swaps it in place, restarts;
+//! - our .deb / .rpm / Arch package: downloads the release's package of the
+//!   same format and hands it to apt / dnf / pacman through `pkexec` (the
+//!   desktop's password prompt), then restarts. Never automatic: it asks for
+//!   a password.
+//!
+//! Anything else (built from source, a distribution's own package) is
+//! updated by whatever installed it, so it only checks when asked.
 //!
 //! Checks run [`FIRST_CHECK`] after the start (skipped when the last one is
-//! younger than [`RECHECK_AFTER`]) and every [`CHECK_EVERY`], only for an
-//! AppImage with "Check for updates automatically" on; a build that did not
-//! come from an AppImage is updated by whatever installed it, so it only
-//! checks when asked (Settings → About). A failed background check stays
-//! quiet; a failed manual check or install is shown.
+//! younger than [`RECHECK_AFTER`]) and every [`CHECK_EVERY`] while "Check for
+//! updates automatically" is on. A failed background check stays quiet; a
+//! failed manual check or install is shown.
 //!
 //! The Collection draws the banner ([`Updater::banner`]) and Settings → About
 //! the full card; both observe this entity.
 //!
 //! Switches: `HERONITE_NO_UPDATE_CHECK=1` turns the automatic checks off;
 //! `HERONITE_UPDATE_API=<url>` asks another endpoint (local tests);
-//! `HERONITE_DEBUG_UPDATE=checking|uptodate|available|downloading|ready|failed`
+//! `HERONITE_DEBUG_UPDATE=checking|uptodate|available|downloading|installing|ready|failed`
 //! shows that state with a made-up release, without any request;
+//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch` pretends this copy came from
+//! that package (with `HERONITE_DEBUG_UPDATE`);
 //! `HERONITE_DEBUG_UPDATE_RESTART=1` restarts as soon as an update is
 //! installed (end-to-end tests without clicks).
 
 mod debug;
 pub mod notes;
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -29,7 +38,7 @@ use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::AppPaths;
-use heronite_update::{Fetched, InstallError, Prefs, Progress, Release, Target, Unsupported, Version};
+use heronite_update::{Asset, Fetched, InstallError, Package, Prefs, Progress, Release, Target, Unsupported, Version};
 
 const FIRST_CHECK: Duration = Duration::from_secs(10);
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
@@ -45,7 +54,9 @@ pub enum Phase {
     /// [`Updater::release`] is newer than this build.
     Available,
     Downloading(Progress),
-    /// The new AppImage is in place; it runs from the next start.
+    /// The package manager is installing the downloaded package.
+    Installing,
+    /// The new version is in place; it runs from the next start.
     Ready,
     /// A check the user asked for failed.
     CheckFailed(String),
@@ -61,10 +72,50 @@ pub enum Banner {
     Failed,
 }
 
+/// How this copy is updated.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Method {
+    AppImage(Target),
+    /// Our system package; `exe` is this binary, read at start (once the
+    /// package manager replaced it, `/proc/self/exe` names a deleted file).
+    Package {
+        kind: Package,
+        exe: PathBuf,
+    },
+}
+
+impl Method {
+    fn detect() -> Result<Self, Unsupported> {
+        match Target::detect(std::env::var_os("APPIMAGE")) {
+            Ok(t) => Ok(Method::AppImage(t)),
+            Err(Unsupported::NotAppImage) => {
+                let exe = std::env::current_exe().map_err(|_| Unsupported::NotAppImage)?;
+                let kind = Package::detect(&exe).ok_or(Unsupported::NotAppImage)?;
+                Ok(Method::Package { kind, exe })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// What to start after a restart.
+    fn executable(&self) -> PathBuf {
+        match self {
+            Method::AppImage(t) => t.appimage.clone(),
+            Method::Package { exe, .. } => exe.clone(),
+        }
+    }
+}
+
+/// What the background install reports.
+enum Step {
+    Progress(Progress),
+    Installing,
+}
+
 pub struct Updater {
     app: AppPaths,
     prefs: Prefs,
-    target: Result<Target, Unsupported>,
+    method: Result<Method, Unsupported>,
     current: Version,
     phase: Phase,
     /// The newest release when it is newer than this build.
@@ -73,6 +124,8 @@ pub struct Updater {
     dismissed: Option<String>,
     /// Version already announced by a desktop notification.
     notified: Option<String>,
+    /// The downloaded package, while it waits for or failed its install.
+    downloaded: Option<PathBuf>,
     cancel: Option<Arc<AtomicBool>>,
     job: Option<Task<()>>,
     timer: Option<Task<()>>,
@@ -143,13 +196,22 @@ pub fn ago_text(unix_secs: u64) -> String {
 impl Updater {
     fn new(app: AppPaths, cx: &mut Context<Self>) -> Self {
         let prefs = Prefs::load(&app.update_state());
-        let target = Target::detect(std::env::var_os("APPIMAGE"));
-        match &target {
-            Ok(t) => {
+        let method = Method::detect();
+        match &method {
+            Ok(Method::AppImage(t)) => {
                 log::info!("running from {}: updates can be installed", t.appimage.display());
                 // A download cut short by a quit or a crash.
                 let t = t.clone();
                 cx.background_spawn(async move { t.sweep_staging() }).detach();
+            }
+            Ok(Method::Package { kind, .. }) => {
+                log::info!("installed from a {} package: updates go through its package manager", kind.label());
+                // Packages of earlier updates (installed or not).
+                let dir = Self::downloads_dir(&app);
+                cx.background_spawn(async move {
+                    let _ = std::fs::remove_dir_all(dir);
+                })
+                .detach();
             }
             Err(Unsupported::NotAppImage) => {}
             Err(why) => log::info!("updates cannot be installed in place: {why}"),
@@ -157,12 +219,13 @@ impl Updater {
         let mut this = Self {
             app,
             prefs,
-            target,
+            method,
             current: Version::current(),
             phase: Phase::Idle,
             release: None,
             dismissed: None,
             notified: None,
+            downloaded: None,
             cancel: None,
             job: None,
             timer: None,
@@ -195,12 +258,50 @@ impl Updater {
 
     /// Why this build cannot install updates by itself (`None` = it can).
     pub fn unsupported(&self) -> Option<&Unsupported> {
-        self.target.as_ref().err()
+        self.method.as_ref().err()
     }
 
-    /// The release can be downloaded and swapped in from here.
+    /// The package format this copy was installed from.
+    pub fn package(&self) -> Option<Package> {
+        match &self.method {
+            Ok(Method::Package { kind, .. }) => Some(*kind),
+            _ => None,
+        }
+    }
+
+    /// The file an update downloads (the AppImage or this format's package).
+    pub fn download_asset(&self) -> Option<&Asset> {
+        let release = self.release.as_ref()?;
+        match &self.method {
+            Ok(Method::Package { kind, .. }) => release.package(*kind),
+            _ => release.appimage.as_ref(),
+        }
+    }
+
+    /// The release can be downloaded and installed from here.
     pub fn can_install(&self) -> bool {
-        self.target.is_ok() && self.release.as_ref().is_some_and(Release::installable)
+        let Some(release) = &self.release else { return false };
+        match &self.method {
+            Ok(Method::AppImage(_)) => release.installable(),
+            Ok(Method::Package { kind, .. }) => release.package_signature(*kind).is_some(),
+            Err(_) => false,
+        }
+    }
+
+    /// Updates may install without a click (AppImages only: a package asks
+    /// for a password).
+    pub fn can_auto_install(&self) -> bool {
+        matches!(self.method, Ok(Method::AppImage(_)))
+    }
+
+    /// The terminal command for a downloaded package whose install failed.
+    pub fn manual_command(&self) -> Option<String> {
+        let file = self.downloaded.as_ref()?;
+        Some(self.package()?.install_command(&file.display().to_string()))
+    }
+
+    fn downloads_dir(app: &AppPaths) -> PathBuf {
+        app.cache.join("updates")
     }
 
     /// The release on offer was skipped with "Skip this version".
@@ -219,7 +320,7 @@ impl Updater {
         let closed = version.is_some() && self.dismissed.as_deref() == version;
         match &self.phase {
             Phase::Available if !closed && !self.skipped() => Some(Banner::Available),
-            Phase::Downloading(_) => Some(Banner::Downloading),
+            Phase::Downloading(_) | Phase::Installing => Some(Banner::Downloading),
             Phase::Ready if !closed => Some(Banner::Ready),
             Phase::InstallFailed(_) if !closed => Some(Banner::Failed),
             _ => None,
@@ -227,11 +328,11 @@ impl Updater {
     }
 
     fn busy(&self) -> bool {
-        matches!(self.phase, Phase::Checking | Phase::Downloading(_))
+        matches!(self.phase, Phase::Checking | Phase::Downloading(_) | Phase::Installing)
     }
 
     fn auto_checks(&self) -> bool {
-        self.prefs.auto_check && self.target.is_ok() && !crate::env::flag("HERONITE_NO_UPDATE_CHECK")
+        self.prefs.auto_check && self.method.is_ok() && !crate::env::flag("HERONITE_NO_UPDATE_CHECK")
     }
 
     /// (Re)arms the automatic checks from the current switches.
@@ -314,7 +415,7 @@ impl Updater {
                     // Asked for: show it even if it was skipped or closed.
                     self.dismissed = None;
                 }
-                if self.prefs.auto_install && self.can_install() && !self.skipped() {
+                if self.prefs.auto_install && self.can_auto_install() && self.can_install() && !self.skipped() {
                     self.install(cx);
                     return;
                 }
@@ -339,44 +440,76 @@ impl Updater {
         crate::system::notify::send(format!("Heronite {} is available", r.version), "Open Heronite to update.");
     }
 
-    /// Downloads the release and swaps it in.
+    /// Downloads the release and installs it ([`Method`]).
     pub fn install(&mut self, cx: &mut Context<Self>) {
-        if self.busy() || self.debug {
+        if self.busy() || self.debug || !self.can_install() {
             return;
         }
-        let (Ok(target), Some(release)) = (self.target.clone(), self.release.clone()) else { return };
-        if !release.installable() {
-            return;
-        }
-        log::info!("downloading Heronite {} into {}", release.version, target.appimage.display());
+        let (Ok(method), Some(release)) = (self.method.clone(), self.release.clone()) else { return };
         let cancel = Arc::new(AtomicBool::new(false));
         self.cancel = Some(cancel.clone());
         self.phase = Phase::Downloading(Progress::default());
+        self.downloaded = None;
         cx.notify();
-        let (tx, mut rx) = unbounded::<Progress>();
+        let (tx, mut rx) = unbounded::<Step>();
+        let dir = Self::downloads_dir(&self.app);
+        // The result, and the downloaded package when its install failed.
         let job = cx.background_spawn(async move {
-            heronite_update::install::install(&release, &target, heronite_update::PUBLIC_KEY, &cancel, &mut |p| {
-                let _ = tx.unbounded_send(p);
-            })
+            let key = heronite_update::PUBLIC_KEY;
+            let mut progress = |p| {
+                let _ = tx.unbounded_send(Step::Progress(p));
+            };
+            match method {
+                Method::AppImage(target) => {
+                    log::info!("downloading Heronite {} into {}", release.version, target.appimage.display());
+                    (heronite_update::install::install(&release, &target, key, &cancel, &mut progress), None)
+                }
+                Method::Package { kind, .. } => {
+                    let (Some(asset), Some(sig)) = (release.package(kind), release.package_signature(kind)) else {
+                        return (Err(InstallError::Failed("This release has no signed package for this system".into())), None);
+                    };
+                    log::info!("downloading {} into {}", asset.name, dir.display());
+                    let file =
+                        match heronite_update::install::download_signed(asset, sig, &release.version, &dir, key, &cancel, &mut progress) {
+                            Ok(file) => file,
+                            Err(e) => return (Err(e), None),
+                        };
+                    let _ = tx.unbounded_send(Step::Installing);
+                    log::info!("installing {} with the package manager", file.display());
+                    match kind.install(&file) {
+                        Ok(()) => {
+                            let _ = std::fs::remove_file(&file);
+                            (Ok(()), None)
+                        }
+                        Err(e) => (Err(e), Some(file)),
+                    }
+                }
+            }
         });
         self.job = Some(cx.spawn(async move |this, cx| {
-            // Ends when the download drops its sender.
-            while let Some(mut p) = rx.next().await {
+            // Ends when the job drops its sender.
+            while let Some(mut step) = rx.next().await {
                 while let Ok(newer) = rx.try_recv() {
-                    p = newer;
+                    step = newer;
                 }
                 let alive = this.update(cx, |u, cx| {
-                    if matches!(u.phase, Phase::Downloading(_)) {
-                        u.phase = Phase::Downloading(p);
-                        cx.notify();
+                    match step {
+                        Step::Progress(p) if matches!(u.phase, Phase::Downloading(_)) => u.phase = Phase::Downloading(p),
+                        Step::Installing => u.phase = Phase::Installing,
+                        Step::Progress(_) => {}
                     }
+                    cx.notify();
                 });
                 if alive.is_err() {
                     return;
                 }
             }
-            let result = job.await;
-            this.update(cx, |u, cx| u.install_finished(result, cx)).ok();
+            let (result, kept) = job.await;
+            this.update(cx, |u, cx| {
+                u.downloaded = kept;
+                u.install_finished(result, cx)
+            })
+            .ok();
         }));
     }
 
@@ -444,7 +577,7 @@ impl Updater {
     pub fn set_auto_install(&mut self, on: bool, cx: &mut Context<Self>) {
         self.prefs.auto_install = on;
         self.save_prefs(cx);
-        if on && self.phase == Phase::Available && self.can_install() && !self.skipped() {
+        if on && self.phase == Phase::Available && self.can_auto_install() && self.can_install() && !self.skipped() {
             self.install(cx);
         }
         cx.notify();
@@ -456,9 +589,9 @@ impl Updater {
         if self.phase != Phase::Ready || self.debug {
             return;
         }
-        let Ok(target) = &self.target else { return };
-        let appimage = target.appimage.clone();
-        cx.defer(move |cx| crate::system::restart_into(appimage, cx));
+        let Ok(method) = &self.method else { return };
+        let exe = method.executable();
+        cx.defer(move |cx| crate::system::restart_into(exe, cx));
     }
 
     fn save_prefs(&self, cx: &mut Context<Self>) {

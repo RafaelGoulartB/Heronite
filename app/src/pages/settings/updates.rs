@@ -54,7 +54,10 @@ fn status(u: &Updater, cx: &App) -> Status {
             if let Some(r) = r.filter(|r| !r.date().is_empty()) {
                 detail.push_str(&format!(" \u{b7} released {}", r.date()));
             }
-            if let Some(a) = r.and_then(|r| r.appimage.as_ref()).filter(|a| a.size > 0) {
+            if let Some(p) = u.package() {
+                detail.push_str(&format!(" \u{b7} {} package", p.label()));
+            }
+            if let Some(a) = u.download_asset().filter(|a| a.size > 0) {
                 detail.push_str(&format!(" \u{b7} {}", update::size_text(a.size)));
             }
             let label = if u.can_install() { "Update" } else { "Download" };
@@ -68,6 +71,11 @@ fn status(u: &Updater, cx: &App) -> Status {
             title: format!("Downloading Heronite {version}"),
             detail: update::progress_text(p),
             action: Some(("Cancel", ButtonKind::Ghost, true, Action::Cancel)),
+        },
+        Phase::Installing => Status {
+            title: format!("Installing Heronite {version}"),
+            detail: "The package manager is installing it. Enter your password if you are asked.".into(),
+            action: Some(("Installing\u{2026}", ButtonKind::Primary, false, Action::Install)),
         },
         Phase::Ready => {
             let blocker = crate::system::restart_blocker(cx);
@@ -92,6 +100,9 @@ fn status(u: &Updater, cx: &App) -> Status {
         },
     }
 }
+
+/// Why "Install updates automatically" is off for packages.
+const PACKAGE_NO_AUTO: &str = "Packages ask for your password, so Heronite installs them only when you click Update.";
 
 /// Why this copy cannot install updates by itself, for the switches.
 fn unsupported_text(why: &Unsupported) -> String {
@@ -162,6 +173,17 @@ impl SettingsPage {
             _ => None,
         };
         let main = div().flex().flex_col().child(row(s.title, Some(&s.detail), div().children(control))).children(progress);
+        // A package whose install failed: the command that installs it by hand.
+        let manual = u.manual_command().filter(|_| matches!(u.phase(), Phase::InstallFailed(_))).map(|cmd| {
+            let copy = cmd.clone();
+            row(
+                "Install it from a terminal",
+                Some(&cmd),
+                button_sm("upd-copy", ButtonKind::Glass, "Copy command")
+                    .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(copy.clone()))),
+            )
+            .into_any_element()
+        });
 
         let auto_check = {
             let desc = "At start and every 6 hours. Only GitHub's release page is contacted.";
@@ -181,6 +203,8 @@ impl SettingsPage {
             let desc = "Download new versions in the background. They are checked against Heronite's signing key and start the next time you open Heronite.";
             if unsupported.is_some() {
                 row(label, Some(desc), toggle("upd-auto-install-sw", false, true)).into_any_element()
+            } else if !u.can_auto_install() {
+                row(label, Some(PACKAGE_NO_AUTO), toggle("upd-auto-install-sw", false, true)).into_any_element()
             } else {
                 let updater = updater.clone();
                 toggle_row("upd-auto-install", label, Some(desc), prefs.auto_install)
@@ -189,7 +213,8 @@ impl SettingsPage {
             }
         };
 
-        let mut col = div().flex().flex_col().child(caption("Updates")).child(card([main.into_any_element(), auto_check, auto_install]));
+        let rows = std::iter::once(main.into_any_element()).chain(manual).chain([auto_check, auto_install]);
+        let mut col = div().flex().flex_col().child(caption("Updates")).child(card(rows));
         if let (true, Some(r)) = (show_notes, release) {
             let page = r.page_url.clone();
             let skip_updater = updater.clone();
@@ -232,11 +257,15 @@ pub(super) fn console_rows(cx: &App) -> Vec<Row> {
         Some(why) => check.desc(why.clone()).enabled(false),
         None => check.desc("At start and every 6 hours"),
     });
+    let auto = unsupported.is_none() && u.can_auto_install();
     rows.push(
-        Row::toggle("upd:auto-install", "Install updates automatically", u.prefs().auto_install && unsupported.is_none())
-            .desc("They start the next time you open Heronite")
-            .enabled(unsupported.is_none()),
+        Row::toggle("upd:auto-install", "Install updates automatically", u.prefs().auto_install && auto)
+            .desc(if u.package().is_some() { PACKAGE_NO_AUTO } else { "They start the next time you open Heronite" })
+            .enabled(auto),
     );
+    if let Some(cmd) = u.manual_command().filter(|_| matches!(u.phase(), Phase::InstallFailed(_))) {
+        rows.push(Row::info("upd:manual", "Install it from a terminal", cmd));
+    }
     if let Some(r) = u.release().filter(|_| matches!(u.phase(), Phase::Available | Phase::InstallFailed(_))) {
         let skipped = u.skipped();
         rows.push(
@@ -275,7 +304,7 @@ pub(super) fn palette_commands(cx: &App) -> Vec<crate::pages::commands::PageComm
     let u = updater.read(cx);
     let busy = match u.phase() {
         Phase::Checking => Some("Checking now"),
-        Phase::Downloading(_) => Some("An update is downloading"),
+        Phase::Downloading(_) | Phase::Installing => Some("An update is installing"),
         Phase::Ready => Some("An update is installed: restart to use it"),
         _ => None,
     };

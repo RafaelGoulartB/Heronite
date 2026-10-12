@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use anyhow::anyhow;
 use minisign_verify::{PublicKey, Signature};
 
-use crate::release::Release;
+use crate::release::{Asset, Release};
 
 /// The running AppImage, writable in place.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,7 +32,8 @@ pub struct Target {
 /// Why this process cannot update itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unsupported {
-    /// Not started from an AppImage (built from source, a distro package).
+    /// Not started from an AppImage nor from one of our packages (built from
+    /// source, a distribution's own package).
     NotAppImage,
     /// `$APPIMAGE` does not point at a file.
     Missing(PathBuf),
@@ -230,6 +231,36 @@ fn download_verified(
     Ok(())
 }
 
+/// Downloads `asset` into `dir` (as `dir/<name>`, through a hidden partial
+/// file) and checks it against `signature` like [`install`] does. Returns the
+/// file. Used for the system packages, which their package manager installs.
+pub fn download_signed(
+    asset: &Asset,
+    signature: &Asset,
+    version: &str,
+    dir: &Path,
+    public_key: &str,
+    cancel: &AtomicBool,
+    on_progress: &mut dyn FnMut(Progress),
+) -> Result<PathBuf, InstallError> {
+    if asset.name.is_empty() || asset.name.contains('/') || asset.name.starts_with('.') {
+        return Err(failed(format!("Bad file name {:?}", asset.name)));
+    }
+    let key = PublicKey::from_base64(public_key).map_err(|e| failed(format!("Bad update key: {e}")))?;
+    let signature = fetch_signature(&signature.url)?;
+    check_trusted_version(&signature, version)?;
+    fs::create_dir_all(dir).map_err(|e| failed(format!("Could not create {}: {e}", dir.display())))?;
+    let dest = dir.join(&asset.name);
+    let part = dir.join(format!(".{}.part", asset.name));
+    let _ = fs::remove_file(&part);
+    let result = download_verified(&asset.url, asset.size, &part, &key, &signature, cancel, on_progress)
+        .and_then(|()| fs::rename(&part, &dest).map_err(|e| failed(format!("Could not write {}: {e}", dest.display()))));
+    if result.is_err() {
+        let _ = fs::remove_file(&part);
+    }
+    result.map(|()| dest)
+}
+
 /// An ELF file with the type 2 AppImage magic (`AI\x02` at offset 8).
 fn check_appimage(path: &Path) -> Result<(), InstallError> {
     let mut head = [0u8; 11];
@@ -259,7 +290,6 @@ fn swap_in(staging: &Path, appimage: &Path) -> Result<(), InstallError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::release::Asset;
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
     use std::sync::Arc;
@@ -329,6 +359,7 @@ mod tests {
             published_at: String::new(),
             appimage: Some(Asset { name: "test.AppImage".into(), url: format!("{base}/test.AppImage"), size }),
             signature: Some(Asset { name: "test.AppImage.minisig".into(), url: format!("{base}/test.AppImage.minisig"), size: 0 }),
+            packages: Vec::new(),
         }
     }
 
@@ -382,6 +413,30 @@ mod tests {
         assert!(err.to_string().contains("update key"), "{err}");
         assert_eq!(fs::read(&target.appimage).unwrap(), b"old");
         assert!(!target.staging().exists());
+    }
+
+    #[test]
+    fn downloads_a_signed_package_and_refuses_a_bad_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = blob();
+        let mut tampered = data.clone();
+        tampered[10] ^= 1;
+        let base = serve(
+            vec![("/heronite.deb".into(), data.clone()), ("/heronite.deb.minisig".into(), SIG_014.into()), ("/bad.deb".into(), tampered)],
+            0,
+        );
+        let asset = |name: &str| Asset { name: name.into(), url: format!("{base}/{name}"), size: 0 };
+        let sig = asset("heronite.deb.minisig");
+        let no = AtomicBool::new(false);
+        let dir = tmp.path().join("updates");
+        let file = download_signed(&asset("heronite.deb"), &sig, "0.1.4", &dir, TEST_KEY, &no, &mut |_| {}).unwrap();
+        assert_eq!(file, dir.join("heronite.deb"));
+        assert_eq!(fs::read(&file).unwrap(), data);
+        let err = download_signed(&asset("bad.deb"), &sig, "0.1.4", &dir, TEST_KEY, &no, &mut |_| {}).unwrap_err();
+        assert!(err.to_string().contains("does not match"), "{err}");
+        assert!(!dir.join("bad.deb").exists() && !dir.join(".bad.deb.part").exists());
+        let err = download_signed(&asset("../x.deb"), &sig, "0.1.4", &dir, TEST_KEY, &no, &mut |_| {}).unwrap_err();
+        assert!(err.to_string().contains("Bad file name"));
     }
 
     #[test]
