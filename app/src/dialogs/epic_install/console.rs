@@ -5,7 +5,8 @@
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_epic::util::file_size;
+use heronite_epic::util::file_size_local;
+use heronite_i18n::tr;
 
 use super::super::{text_of, DialogEvent};
 use super::{EpicInstallDialog, Mode};
@@ -27,26 +28,36 @@ impl EpicInstallDialog {
         if let (Some(tp), Some((_, detail))) = (&self.third_party, self.third_party_notice()) {
             let (ic, store) = match tp {
                 Ok(p) => (Icon::Check, p.label().to_string()),
-                Err(name) => (Icon::Warning, format!("{name} (not supported)")),
+                Err(name) => (Icon::Warning, tr!("{name} (not supported)", name)),
             };
-            rows.push(Row::info("third-party", "Managed by", store).icon(ic).desc(detail));
+            rows.push(Row::info("third-party", tr!("Managed by"), store).icon(ic).desc(detail));
         } else if !importing {
             let sizes = match (&self.info, &self.info_error) {
-                (Some(_), _) => format!("Download {}  \u{b7}  On disk {}", file_size(self.download_bytes()), file_size(self.disk_bytes())),
-                (None, Some(e)) => format!("Could not read the sizes: {}", e.lines().next().unwrap_or("")),
-                (None, None) => "Getting the download and install size\u{2026}".into(),
+                (Some(_), _) => tr!(
+                    "Download {download}  \u{b7}  On disk {disk}",
+                    download = file_size_local(self.download_bytes()),
+                    disk = file_size_local(self.disk_bytes())
+                ),
+                (None, Some(e)) => tr!("Could not read the sizes: {error}", error = e.lines().next().unwrap_or("")),
+                (None, None) => tr!("Getting the download and install size\u{2026}").into(),
             };
-            rows.push(Row::info("sizes", "Size", sizes).icon(Icon::FaHardDrive));
+            rows.push(Row::info("sizes", tr!("Size"), sizes).icon(Icon::FaHardDrive));
             rows.push(
-                Row::text("path", "Install folder", text_of(&self.path, cx)).icon(Icon::FolderOpen).desc(
+                Row::text("path", tr!("Install folder"), text_of(&self.path, cx)).icon(Icon::FolderOpen).desc(
                     self.space
                         .as_ref()
-                        .map(|s| format!("Free space: {}{}", s.message, if s.writable { "" } else { " (may not be writable)" }))
+                        .map(|s| {
+                            if s.writable {
+                                tr!("Free space: {space}", space = s.message)
+                            } else {
+                                tr!("Free space: {space} (may not be writable)", space = s.message)
+                            }
+                        })
                         .unwrap_or_default(),
                 ),
             );
             if !self.sdl.is_empty() {
-                rows.push(Row::header("Components"));
+                rows.push(Row::header(tr!("Components")));
                 for (i, (sdl, on)) in self.sdl.iter().enumerate() {
                     rows.push(
                         Row::toggle(SharedString::from(format!("sdl{i}")), sdl.name.clone(), sdl.required || *on)
@@ -57,50 +68,50 @@ impl EpicInstallDialog {
             }
             if !self.dlcs.is_empty() {
                 rows.push(Row::header("DLC"));
-                rows.push(Row::toggle("dlc-all", "Install all DLCs", self.dlcs.iter().all(|(_, on)| *on)));
+                rows.push(Row::toggle("dlc-all", tr!("Install all DLCs"), self.dlcs.iter().all(|(_, on)| *on)));
                 for (i, (dlc, on)) in self.dlcs.iter().enumerate() {
                     rows.push(Row::toggle(SharedString::from(format!("dlc{i}")), dlc.title.clone(), *on));
                 }
             }
         } else {
             rows.push(
-                Row::text("import-path", "Game folder", text_of(&self.import_path, cx))
+                Row::text("import-path", tr!("Game folder"), text_of(&self.import_path, cx))
                     .icon(Icon::FolderOpen)
-                    .desc("The folder that holds the installed game files"),
+                    .desc(tr!("The folder that holds the installed game files")),
             );
         }
         if self.linux_windows_game() {
             rows.push(Row::header("Wine"));
             rows.push(
-                Row::toggle("shared", "Use the shared Wine prefix", self.shared_prefix)
-                    .desc("Only if you know what you are doing: games can break each other's dependencies"),
+                Row::toggle("shared", tr!("Use the shared Wine prefix"), self.shared_prefix)
+                    .desc(tr!("Only if you know what you are doing: games can break each other's dependencies")),
             );
             if !self.shared_prefix {
-                rows.push(Row::text("prefix", "Wine prefix", text_of(&self.prefix, cx)).icon(Icon::FolderOpen));
+                rows.push(Row::text("prefix", tr!("Wine prefix"), text_of(&self.prefix, cx)).icon(Icon::FolderOpen));
                 if self.wine_list.is_empty() {
                     rows.push(Row::info(
                         "wine",
-                        "Wine version",
-                        if self.wine_loaded { "No Wine or Proton found" } else { "Looking for Wine and Proton\u{2026}" },
+                        tr!("Wine version"),
+                        if self.wine_loaded { tr!("No Wine or Proton found") } else { tr!("Looking for Wine and Proton\u{2026}") },
                     ));
                 } else {
                     let names = self.wine_list.iter().map(|w| SharedString::from(w.name.clone())).collect();
-                    rows.push(Row::choice("wine", "Wine version", names, self.wine_pick).icon(Icon::WineBar));
+                    rows.push(Row::choice("wine", tr!("Wine version"), names, self.wine_pick).icon(Icon::WineBar));
                 }
             }
         }
         rows.push(Row::header(""));
         if importing {
-            rows.push(Row::action("import", "Import").icon(Icon::Check).enabled(!text_of(&self.import_path, cx).is_empty()));
-            rows.push(Row::action("mode", "Download and install instead").icon(Icon::Download));
+            rows.push(Row::action("import", tr!("Import")).icon(Icon::Check).enabled(!text_of(&self.import_path, cx).is_empty()));
+            rows.push(Row::action("mode", tr!("Download and install instead")).icon(Icon::Download));
         } else {
-            let label = if self.third_party.is_none() && self.not_enough() { "Force install" } else { "Install" };
+            let label = if self.third_party.is_none() && self.not_enough() { tr!("Force install") } else { tr!("Install") };
             rows.push(Row::action("install", label).icon(Icon::Download).enabled(self.can_install(cx)));
             if self.third_party.is_none() {
-                rows.push(Row::action("mode", "Import an existing install instead").icon(Icon::FolderOpen));
+                rows.push(Row::action("mode", tr!("Import an existing install instead")).icon(Icon::FolderOpen));
             }
         }
-        rows.push(Row::action("cancel", "Cancel"));
+        rows.push(Row::action("cancel", tr!("Cancel")));
         rows
     }
 
@@ -121,7 +132,7 @@ impl EpicInstallDialog {
 
     pub(super) fn render_console(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows(cx);
-        let kicker = if self.mode == Mode::Import { "Import game" } else { "Install" };
+        let kicker = if self.mode == Mode::Import { tr!("Import game") } else { tr!("Install") };
         let list = self.console_list.render("console-epic-install", &rows, !self.layer.is_open());
         div()
             .absolute()
@@ -191,9 +202,9 @@ impl PadTarget for EpicInstallDialog {
                 _ => {}
             },
             Outcome::Activate(id) => match id.as_ref() {
-                "path" => self.pick_folder(self.path.clone(), "Install folder", window, cx),
-                "import-path" => self.pick_folder(self.import_path.clone(), "Game folder", window, cx),
-                "prefix" => self.pick_folder(self.prefix.clone(), "Wine prefix", window, cx),
+                "path" => self.pick_folder(self.path.clone(), tr!("Install folder"), window, cx),
+                "import-path" => self.pick_folder(self.import_path.clone(), tr!("Game folder"), window, cx),
+                "prefix" => self.pick_folder(self.prefix.clone(), tr!("Wine prefix"), window, cx),
                 "install" => self.install(cx),
                 "import" => self.import(cx),
                 "mode" => {
@@ -214,6 +225,6 @@ impl PadTarget for EpicInstallDialog {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, "Select"), hint(Btn::LeftRight, "Change"), hint(Btn::B, "Cancel")]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::B, tr!("Cancel"))]
     }
 }

@@ -1,6 +1,7 @@
 //! Command palette commands of the Epic Games page (see `pages/commands.rs`).
 
 use gpui_kit::*;
+use heronite_i18n::tr;
 
 use super::{login_helper, EpicPage};
 use crate::icons::Icon;
@@ -12,28 +13,42 @@ impl PaletteCommands for EpicPage {
         let s = svc.read(cx);
         let account = s.account();
         if !account.logged_in {
-            return vec![PageCommand::new("login", "Sign in to Epic Games", "Opens the login window", Icon::AccountCircle)
-                .keywords("log in login account legendary")];
+            return vec![PageCommand::new("login", tr!("Sign in to Epic Games"), tr!("Opens the login window"), Icon::AccountCircle)
+                .keywords(tr!("log in login account legendary"))];
         }
         let eos = s.eos();
-        let mut v =
-            vec![PageCommand::new("logout", "Sign out of Epic Games\u{2026}", format!("Signed in as {}", account.name), Icon::Logout)
-                .keywords("log out logout account disconnect")];
+        let mut v = vec![PageCommand::new(
+            "logout",
+            tr!("Sign out of Epic Games\u{2026}"),
+            tr!("Signed in as {name}", name = account.name),
+            Icon::Logout,
+        )
+        .keywords(tr!("log out logout account disconnect"))];
         if eos.installed {
             v.push(
-                PageCommand::new("eos-check", "Check for EOS Overlay updates", format!("Version {}", eos.version), Icon::Update)
-                    .keywords("epic online services overlay")
-                    .disabled(eos.checking.then_some("Checking already"))
-                    .stay(),
+                PageCommand::new(
+                    "eos-check",
+                    tr!("Check for EOS Overlay updates"),
+                    tr!("Version {version}", version = eos.version),
+                    Icon::Update,
+                )
+                .keywords(tr!("epic online services overlay"))
+                .disabled(eos.checking.then_some(tr!("Checking already")))
+                .stay(),
             );
             v.push(
-                PageCommand::new("eos-remove", "Remove the EOS Overlay\u{2026}", "Uninstall it from every prefix", Icon::DeleteOutline)
-                    .keywords("epic online services overlay uninstall"),
+                PageCommand::new(
+                    "eos-remove",
+                    tr!("Remove the EOS Overlay\u{2026}"),
+                    tr!("Uninstall it from every prefix"),
+                    Icon::DeleteOutline,
+                )
+                .keywords(tr!("epic online services overlay uninstall")),
             );
         } else {
             v.push(
-                PageCommand::new("eos-install", "Install the EOS Overlay", "Epic's in-game overlay", Icon::Download)
-                    .keywords("epic online services overlay")
+                PageCommand::new("eos-install", tr!("Install the EOS Overlay"), tr!("Epic's in-game overlay"), Icon::Download)
+                    .keywords(tr!("epic online services overlay"))
                     .stay(),
             );
         }

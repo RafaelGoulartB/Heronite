@@ -11,6 +11,8 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use heronite_i18n::tr;
+
 use super::DialogEvent;
 use crate::theme;
 use crate::ui::controls::{action_button, button, ButtonKind};
@@ -167,7 +169,7 @@ impl Render for EpicConfirmDialog {
         match &self.spec.confirm {
             Some(label) => {
                 footer = footer.child(
-                    button(SharedString::from(format!("{id}-cancel")), ButtonKind::Ghost, "Cancel")
+                    button(SharedString::from(format!("{id}-cancel")), ButtonKind::Ghost, tr!("Cancel"))
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
                 );
                 if let Some((label, action)) = self.spec.secondary.clone() {
@@ -190,7 +192,7 @@ impl Render for EpicConfirmDialog {
             }
             None => {
                 footer = footer.child(
-                    button(SharedString::from(format!("{id}-close")), ButtonKind::Primary, "Close")
+                    button(SharedString::from(format!("{id}-close")), ButtonKind::Primary, tr!("Close"))
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
                 );
             }

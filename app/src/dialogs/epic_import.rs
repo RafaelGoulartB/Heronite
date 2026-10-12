@@ -6,6 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::json_store;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use serde_json::Value;
 
 use super::DialogEvent;
@@ -34,7 +35,7 @@ fn title_of(g: &Value) -> String {
 
 impl EpicImportPicker {
     pub fn new(data_paths: DataPaths, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let filter = new_input(window, cx, "", "Search your Epic games");
+        let filter = new_input(window, cx, "", tr!("Search your Epic games"));
         cx.subscribe_in(&filter, window, |_, _, ev: &InputEvent, _, cx| {
             if matches!(ev, InputEvent::Change) {
                 cx.notify();
@@ -117,22 +118,22 @@ impl Render for EpicImportPicker {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(meta_text("Choose the game you already have on disk, then pick its folder."))
+            .child(meta_text(tr!("Choose the game you already have on disk, then pick its folder.")))
             .child(div().flex().child(crate::ui::fields::input_box(&self.filter, false)))
             .child(if !self.loaded {
-                meta_text("Loading...")
+                meta_text(tr!("Loading..."))
             } else if self.games.is_empty() {
-                meta_text("No games to import. Refresh your library first.")
+                meta_text(tr!("No games to import. Refresh your library first."))
             } else {
                 div().child(list)
             })
-            .child(if total > 10 { meta_text(format!("{} more - type to narrow the list", total - 10)) } else { div() });
-        let footer = button("epic-pick-close", ButtonKind::Primary, "Close")
+            .child(if total > 10 { meta_text(tr!("{count} more - type to narrow the list", count = total - 10)) } else { div() });
+        let footer = button("epic-pick-close", ButtonKind::Primary, tr!("Close"))
             .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)))
             .into_any_element();
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "epic-import-pick".into(), title: "Import Game".into(), width: 520., height: None },
+            DialogProps { id: "epic-import-pick".into(), title: tr!("Import game").into(), width: 520., height: None },
             body.into_any_element(),
             Some(footer),
             move |_, cx| {
@@ -147,7 +148,7 @@ impl EpicImportPicker {
     fn console_rows(&self) -> Vec<crate::console::list::Row> {
         use crate::console::list::Row;
         let q = self.console_query.to_lowercase();
-        let mut rows = vec![Row::text("search", "Search", self.console_query.clone()).icon(crate::icons::Icon::FaSearch)];
+        let mut rows = vec![Row::text("search", tr!("Search"), self.console_query.clone()).icon(crate::icons::Icon::FaSearch)];
         rows.extend(
             self.games
                 .iter()
@@ -162,16 +163,23 @@ impl EpicImportPicker {
     fn render_console(&mut self) -> AnyElement {
         let rows = self.console_rows();
         let message = if !self.loaded {
-            "Loading\u{2026}"
+            tr!("Loading\u{2026}")
         } else if self.games.is_empty() {
-            "No games to import. Refresh your library first."
+            tr!("No games to import. Refresh your library first.")
         } else {
-            "Choose the game you already have on disk, then pick its folder."
+            tr!("Choose the game you already have on disk, then pick its folder.")
         };
         div()
             .absolute()
             .inset_0()
-            .child(crate::console::list::simple_dialog(&mut self.console_list, "console-epic-import", "Import game", message, None, &rows))
+            .child(crate::console::list::simple_dialog(
+                &mut self.console_list,
+                "console-epic-import",
+                tr!("Import game"),
+                message,
+                None,
+                &rows,
+            ))
             .children(self.layer.view())
             .into_any_element()
     }
@@ -188,7 +196,7 @@ impl crate::console::PadTarget for EpicImportPicker {
         let rows = self.console_rows();
         match self.console_list.on_pad(pad, &rows) {
             Outcome::Activate(id) if id.as_ref() == "search" => {
-                let osk = cx.new(|_| Osk::new("Search your Epic games", &self.console_query));
+                let osk = cx.new(|_| Osk::new(tr!("Search your Epic games"), &self.console_query));
                 let sub = cx.subscribe(&osk, |this, _, ev: &OskEvent, cx| {
                     if let OskEvent::Done(t) = ev {
                         this.console_query = t.trim().to_string();
@@ -213,6 +221,6 @@ impl crate::console::PadTarget for EpicImportPicker {
 
     fn hints(&self, cx: &App) -> Vec<crate::console::Hint> {
         use crate::console::{hint, Btn};
-        self.layer.hints(cx).unwrap_or_else(|| vec![hint(Btn::A, "Select"), hint(Btn::B, "Close")])
+        self.layer.hints(cx).unwrap_or_else(|| vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Close"))])
     }
 }

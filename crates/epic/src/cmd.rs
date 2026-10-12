@@ -9,6 +9,7 @@ use std::process::Command;
 use anyhow::{anyhow, Context, Result};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use heronite_launch::{legendary::find_legendary, PlanContext, SystemProbe};
 
 /// The legendary binary and the config folder it works on.
@@ -50,7 +51,7 @@ impl Legendary {
     /// `$PATH`; `HERONITE_LEGENDARY_BIN` overrides all).
     pub fn locate(data_paths: &DataPaths) -> Result<Self> {
         let ctx = PlanContext::load(data_paths);
-        let bin = find_legendary(&ctx, &SystemProbe).ok_or_else(|| anyhow!("The legendary binary was not found"))?;
+        let bin = find_legendary(&ctx, &SystemProbe).ok_or_else(|| anyhow!(tr!("The legendary binary was not found")))?;
         Ok(Self { bin: PathBuf::from(bin), config_dir: data_paths.legendary_config_dir() })
     }
 
@@ -58,7 +59,7 @@ impl Legendary {
     /// none is found (a new setup). Blocking, network.
     pub fn locate_or_install(data_paths: &DataPaths) -> Result<Self> {
         let bin = heronite_launch::legendary_install::ensure(data_paths, &SystemProbe, &heronite_launch::net::SystemNet, &|| false)
-            .map_err(|e| anyhow!("Could not get legendary, which Heronite uses for Epic Games: {e}"))?;
+            .map_err(|e| anyhow!(tr!("Could not get legendary, which Heronite uses for Epic Games: {error}", error = e)))?;
         Ok(Self { bin, config_dir: data_paths.legendary_config_dir() })
     }
 

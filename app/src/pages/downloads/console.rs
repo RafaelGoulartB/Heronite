@@ -6,6 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_epic::manager::{DmState, Snapshot};
 use heronite_epic::queue::{DmElement, DmStatus};
+use heronite_i18n::tr;
 
 use super::{date_text, meta_line, progress_text, DownloadsPage};
 use crate::console::kit::{self, u};
@@ -18,11 +19,11 @@ use crate::theme;
 
 fn status_text(el: &DmElement) -> String {
     let what = match el.status {
-        Some(DmStatus::Done) => "Done",
-        Some(DmStatus::Error) => "Failed",
-        Some(DmStatus::Abort) => "Stopped",
-        Some(DmStatus::Paused) => "Paused",
-        None => "Finished",
+        Some(DmStatus::Done) => tr!("Done"),
+        Some(DmStatus::Error) => tr!("Failed"),
+        Some(DmStatus::Abort) => tr!("Stopped"),
+        Some(DmStatus::Paused) => tr!("Paused"),
+        None => tr!("Finished"),
     };
     format!("{what} \u{b7} {}", date_text(el.end_time))
 }
@@ -32,16 +33,16 @@ impl DownloadsPage {
         let mut rows = Vec::new();
         if !snap.queue.is_empty() {
             let running = snap.state == DmState::Running;
-            rows.push(Row::action("pause", if running { "Pause" } else { "Resume" }).icon(if running {
+            rows.push(Row::action("pause", if running { tr!("Pause") } else { tr!("Resume") }).icon(if running {
                 Icon::Pause
             } else {
                 Icon::PlayArrow
             }));
-            rows.push(Row::action("stop", "Stop installing\u{2026}").icon(Icon::Stop).danger());
+            rows.push(Row::action("stop", tr!("Stop installing\u{2026}")).icon(Icon::Stop).danger());
         }
         let waiting: Vec<&DmElement> = snap.queue.iter().skip(1).collect();
         if !waiting.is_empty() {
-            rows.push(Row::header(format!("Queued \u{b7} {}", waiting.len())));
+            rows.push(Row::header(tr!("Queued \u{b7} {count}", count = waiting.len())));
             for el in waiting {
                 rows.push(
                     Row::action(SharedString::from(format!("q:{}", el.params.app_name)), el.params.title())
@@ -51,11 +52,11 @@ impl DownloadsPage {
             }
         }
         if !snap.finished.is_empty() {
-            rows.push(Row::header(format!("Completed \u{b7} {}", snap.finished.len())));
+            rows.push(Row::header(tr!("Completed \u{b7} {count}", count = snap.finished.len())));
             for el in snap.finished.iter().rev() {
                 rows.push(Row::info(SharedString::from(format!("f:{}", el.params.app_name)), el.params.title(), status_text(el)));
             }
-            rows.push(Row::action("clear", "Clear the list").icon(Icon::DeleteOutline));
+            rows.push(Row::action("clear", tr!("Clear the list")).icon(Icon::DeleteOutline));
         }
         rows
     }
@@ -84,11 +85,11 @@ impl DownloadsPage {
             "stop" => {
                 let title = snap.queue.first().map(|e| e.params.title()).unwrap_or_default();
                 let rows = vec![
-                    Row::action("keep-going", "Keep installing"),
-                    Row::action("stop-keep", "Stop, keep the downloaded files"),
-                    Row::action("stop-delete", "Stop and delete the files").danger(),
+                    Row::action("keep-going", tr!("Keep installing")),
+                    Row::action("stop-keep", tr!("Stop, keep the downloaded files")),
+                    Row::action("stop-delete", tr!("Stop and delete the files")).danger(),
                 ];
-                self.open_sheet(format!("Stop installing {title}?"), None, rows, cx, |this, id, cx| match id {
+                self.open_sheet(tr!("Stop installing {title}?", title), None, rows, cx, |this, id, cx| match id {
                     "stop-keep" => this.svc.update(cx, |s, _| s.cancel_current(false)),
                     "stop-delete" => this.svc.update(cx, |s, _| s.cancel_current(true)),
                     _ => {}
@@ -99,9 +100,9 @@ impl DownloadsPage {
                 let app = id[2..].to_string();
                 let title = snap.queue.iter().find(|e| e.params.app_name == app).map(|e| e.params.title()).unwrap_or_default();
                 let rows = vec![
-                    Row::action("up", "Move up").icon(crate::icons::Icon::FaChevronUp),
-                    Row::action("down", "Move down").icon(crate::icons::Icon::FaChevronDown),
-                    Row::action("remove", "Remove from the queue").icon(Icon::Close).danger(),
+                    Row::action("up", tr!("Move up")).icon(crate::icons::Icon::FaChevronUp),
+                    Row::action("down", tr!("Move down")).icon(crate::icons::Icon::FaChevronDown),
+                    Row::action("remove", tr!("Remove from the queue")).icon(Icon::Close).danger(),
                 ];
                 self.open_sheet(title, None, rows, cx, move |this, id, cx| match id {
                     "up" => this.svc.update(cx, |s, _| s.move_in_queue(&app, true)),
@@ -112,7 +113,7 @@ impl DownloadsPage {
             }
             id if id.starts_with("f:") => {
                 let app = id[2..].to_string();
-                let rows = vec![Row::action("forget", "Remove from the list").icon(Icon::Close)];
+                let rows = vec![Row::action("forget", tr!("Remove from the list")).icon(Icon::Close)];
                 let title = snap.finished.iter().find(|e| e.params.app_name == app).map(|e| e.params.title()).unwrap_or_default();
                 self.open_sheet(title, None, rows, cx, move |this, id, cx| {
                     if id == "forget" {
@@ -138,9 +139,9 @@ impl DownloadsPage {
             let running = snap.state == DmState::Running;
             let percent = progress.as_ref().map(|p| p.percent as f32);
             let status = match snap.state {
-                DmState::Running => "Downloading",
-                DmState::Paused => "Paused",
-                DmState::Idle => "Waiting",
+                DmState::Running => tr!("Downloading"),
+                DmState::Paused => tr!("Paused"),
+                DmState::Idle => tr!("Waiting"),
             };
             div()
                 .flex()
@@ -171,14 +172,15 @@ impl DownloadsPage {
                         .child(progress_bar(percent, f32::from(u(10.)), if running { theme::success() } else { theme::accent() }))
                         .child(div().text_size(u(15.)).text_color(theme::text_muted()).child(match &progress {
                             Some(p) => progress_text(p),
-                            None if running => "Starting\u{2026}".to_string(),
-                            None => "Resume (A on \u{201c}Resume\u{201d}) to continue".to_string(),
+                            None if running => tr!("Starting\u{2026}").to_string(),
+                            None => tr!("Resume (A on \u{201c}Resume\u{201d}) to continue").to_string(),
                         })),
                 )
         });
 
         let body: AnyElement = if rows.is_empty() {
-            kit::empty(Icon::Download, "Nothing to download", "Install a game from its page and it shows up here.").into_any_element()
+            kit::empty(Icon::Download, tr!("Nothing to download"), tr!("Install a game from its page and it shows up here."))
+                .into_any_element()
         } else {
             self.console_list.render("console-downloads", &rows, !self.layer.is_open()).flex_1().min_h_0().into_any_element()
         };
@@ -194,7 +196,7 @@ impl DownloadsPage {
                     .items_center()
                     .h(u(76.))
                     .px(u(46.))
-                    .child(kit::wordmark("DOWNLOADS"))
+                    .child(kit::wordmark(tr!("DOWNLOADS")))
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
@@ -239,6 +241,6 @@ impl PadTarget for DownloadsPage {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, "Select")]
+        vec![hint(Btn::A, tr!("Select"))]
     }
 }

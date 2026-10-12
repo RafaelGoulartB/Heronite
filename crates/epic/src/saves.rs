@@ -3,6 +3,7 @@
 use anyhow::{bail, Result};
 use heronite_data::json_store;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use heronite_launch::env::setup_wine_env_vars;
 use heronite_launch::settings::load_game_settings;
 use heronite_launch::{PlanContext, SystemProbe};
@@ -49,7 +50,7 @@ pub fn sync(data_paths: &DataPaths, app_name: &str, saves_path: &str, mode: Sync
 /// `--force-upload`, or none.
 pub fn sync_flag(data_paths: &DataPaths, app_name: &str, saves_path: &str, flag: Option<&str>) -> Result<String> {
     if saves_path.trim().is_empty() {
-        bail!("No path provided.");
+        bail!(tr!("No path provided."));
     }
     let legendary = Legendary::locate(data_paths)?;
     sync_with(&legendary, app_name, saves_path, flag)
@@ -98,7 +99,7 @@ pub(crate) fn detect_path_with(data_paths: &DataPaths, legendary: &Legendary, ap
         && !std::path::Path::new(&prefix).join("user.reg").exists()
         && !std::path::Path::new(&prefix).join("pfx/user.reg").exists()
     {
-        bail!("The Wine prefix of this game does not exist yet; launch the game once or set the save folder by hand");
+        bail!(tr!("The Wine prefix of this game does not exist yet; launch the game once or set the save folder by hand"));
     }
     let env: Vec<(String, String)> = setup_wine_env_vars(&settings, "0", &ctx.runtime_dir(), &probe).into_iter().collect();
     let out = legendary.run(&["sync-saves", app_name, "--skip-upload", "--skip-download", "--accept-path"], &env)?;

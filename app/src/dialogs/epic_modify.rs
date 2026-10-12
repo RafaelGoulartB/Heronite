@@ -10,7 +10,8 @@ use heronite_data::DataPaths;
 use heronite_epic::cmd::Legendary;
 use heronite_epic::info::{self, Dlc};
 use heronite_epic::manager::DmState;
-use heronite_epic::util::file_size;
+use heronite_epic::util::{file_size, file_size_local};
+use heronite_i18n::tr;
 use serde_json::Value;
 
 use super::DialogEvent;
@@ -234,25 +235,27 @@ impl EpicModifyDialog {
         if let Some(state) = queue {
             let progress = self.svc.read(cx).progress_of(&row.dlc.app_name).map(|p| p.percent);
             let text = match (state, progress) {
-                (QueueState::Downloading, Some(p)) => format!("Installing {}", fmt_percent(p)),
-                (QueueState::Downloading, None) => "Installing...".to_string(),
-                (QueueState::Paused, _) => "Paused".to_string(),
-                (QueueState::Waiting, _) => "Queued".to_string(),
+                (QueueState::Downloading, Some(p)) => tr!("Installing {percent}", percent = fmt_percent(p)),
+                (QueueState::Downloading, None) => tr!("Installing...").to_string(),
+                (QueueState::Paused, _) => tr!("Paused").to_string(),
+                (QueueState::Waiting, _) => tr!("Queued").to_string(),
             };
             return div()
                 .flex()
                 .items_center()
                 .gap(px(10.))
                 .child(label(text))
-                .child(button(id("cancel"), ButtonKind::Glass, "Cancel").on_click(cx.listener(move |this, _, _, cx| this.cancel(i, cx))))
+                .child(
+                    button(id("cancel"), ButtonKind::Glass, tr!("Cancel")).on_click(cx.listener(move |this, _, _, cx| this.cancel(i, cx))),
+                )
                 .into_any_element();
         }
         if row.installed {
             // Legendary cannot uninstall while it is downloading something.
             return if downloading {
-                label("Not while installing".to_string()).opacity(0.7).into_any_element()
+                label(tr!("Not while installing").to_string()).opacity(0.7).into_any_element()
             } else {
-                button(id("uninstall"), ButtonKind::Danger, "Uninstall")
+                button(id("uninstall"), ButtonKind::Danger, tr!("Uninstall"))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.confirm = Some(i);
                         cx.notify();
@@ -263,7 +266,7 @@ impl EpicModifyDialog {
         if row.info.is_none() || row.size.is_none() {
             return icon(Icon::FaSpinner, px(14.), crate::theme::text_primary()).into_any_element();
         }
-        button(id("install"), ButtonKind::Primary, "Install")
+        button(id("install"), ButtonKind::Primary, tr!("Install"))
             .on_click(cx.listener(move |this, _, _, cx| this.install(i, cx)))
             .into_any_element()
     }
@@ -276,17 +279,17 @@ impl Render for EpicModifyDialog {
             let message = if let Some(e) = &self.error {
                 e.lines().next().unwrap_or("").to_string()
             } else if !self.loaded {
-                "Getting the DLCs\u{2026}".into()
+                tr!("Getting the DLCs\u{2026}").into()
             } else if let Some(i) = self.confirm.filter(|i| *i < self.rows.len()) {
-                format!("Uninstall \u{201c}{}\u{201d} (DLC)?", self.rows[i].dlc.title)
+                tr!("Uninstall \u{201c}{title}\u{201d} (DLC)?", title = self.rows[i].dlc.title)
             } else if self.rows.is_empty() {
-                "No DLCs found".into()
+                tr!("No DLCs found").into()
             } else if self.install_path.is_empty() {
-                "The install folder of the game is unknown, DLCs cannot be installed.".into()
+                tr!("The install folder of the game is unknown, DLCs cannot be installed.").into()
             } else {
                 String::new()
             };
-            let title = format!("Modify installation \u{b7} {}", self.title);
+            let title = tr!("Modify installation \u{b7} {title}", title = self.title);
             return crate::console::list::simple_dialog(&mut self.console_list, "console-epic-modify", title, &message, None, &rows);
         }
         let mut body = div().flex().flex_col().gap(px(8.));
@@ -300,10 +303,10 @@ impl Render for EpicModifyDialog {
                     .items_center()
                     .gap(px(8.))
                     .child(icon(Icon::FaSpinner, px(16.), crate::theme::text_primary()))
-                    .child(div().text_size(px(15.)).text_color(crate::theme::text_primary()).child("Getting the DLCs...")),
+                    .child(div().text_size(px(15.)).text_color(crate::theme::text_primary()).child(tr!("Getting the DLCs..."))),
             );
         } else if self.rows.is_empty() {
-            body = body.child(paragraph("No DLCs found"));
+            body = body.child(paragraph(tr!("No DLCs found")));
         } else {
             let head = |text: &'static str| {
                 div().text_size(px(13.33)).font_weight(theme::W_BOLD).text_color(crate::theme::text_primary()).child(text)
@@ -316,13 +319,13 @@ impl Render for EpicModifyDialog {
                     .pb(px(6.))
                     .border_b_1()
                     .border_color(theme::white_a(0.12))
-                    .child(head("Title").flex_1())
-                    .child(head("Size").w(px(90.)).flex_none())
-                    .child(head("Actions").w(px(190.)).flex_none().flex().justify_end()),
+                    .child(head(tr!("Title")).flex_1())
+                    .child(head(tr!("Size")).w(px(90.)).flex_none())
+                    .child(head(tr!("Actions")).w(px(190.)).flex_none().flex().justify_end()),
             );
             for i in 0..self.rows.len() {
                 let size = match self.rows[i].size {
-                    Some(s) => file_size(s),
+                    Some(s) => file_size_local(s),
                     None => "...".to_string(),
                 };
                 let cell = self.action_cell(i, cx);
@@ -348,35 +351,35 @@ impl Render for EpicModifyDialog {
                         .p(px(12.))
                         .rounded(px(4.))
                         .bg(theme::white_a(0.06))
-                        .child(paragraph(format!("Do you want to uninstall \"{title}\" (DLC)?")))
+                        .child(paragraph(tr!("Do you want to uninstall \"{title}\" (DLC)?", title)))
                         .child(
                             div()
                                 .flex()
                                 .gap(px(12.))
-                                .child(button("epic-modify-confirm-no", ButtonKind::Ghost, "Cancel").on_click(cx.listener(
+                                .child(button("epic-modify-confirm-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(
                                     |this, _, _, cx| {
                                         this.confirm = None;
                                         cx.notify();
                                     },
                                 )))
                                 .child(
-                                    button("epic-modify-confirm-yes", ButtonKind::Danger, "Uninstall")
+                                    button("epic-modify-confirm-yes", ButtonKind::Danger, tr!("Uninstall"))
                                         .on_click(cx.listener(move |this, _, _, cx| this.uninstall(i, cx))),
                                 ),
                         ),
                 );
             }
             if self.install_path.is_empty() {
-                body = body.child(meta_text("The install folder of the game is unknown, DLCs cannot be installed."));
+                body = body.child(meta_text(tr!("The install folder of the game is unknown, DLCs cannot be installed.")));
             }
         }
         let footer =
-            button("epic-modify-close", ButtonKind::Primary, "Close").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)));
+            button("epic-modify-close", ButtonKind::Primary, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)));
         let entity = cx.entity().downgrade();
         dialog(
             DialogProps {
                 id: "epic-modify".into(),
-                title: format!("Modify Installation - {}", self.title).into(),
+                title: tr!("Modify installation - {title}", title = self.title).into(),
                 width: 680.,
                 height: None,
             },
@@ -394,35 +397,35 @@ impl EpicModifyDialog {
     fn console_rows(&self, cx: &App) -> Vec<crate::console::list::Row> {
         use crate::console::list::Row as CRow;
         if self.confirm.is_some_and(|i| i < self.rows.len()) {
-            return vec![CRow::action("no", "Cancel"), CRow::action("yes", "Uninstall").danger()];
+            return vec![CRow::action("no", tr!("Cancel")), CRow::action("yes", tr!("Uninstall")).danger()];
         }
         let s = self.svc.read(cx);
         let downloading = s.snapshot().state == DmState::Running;
         let mut rows = Vec::new();
         for (i, r) in self.rows.iter().enumerate() {
             let app = &r.dlc.app_name;
-            let size = r.size.map(file_size).unwrap_or_else(|| "\u{2026}".into());
+            let size = r.size.map(file_size_local).unwrap_or_else(|| "\u{2026}".into());
             let state = if let Some(b) = s.busy_of(app) {
                 format!("{}\u{2026}", b.label)
             } else if let Some(q) = s.queue_state(app) {
                 match (q, s.progress_of(app).map(|p| p.percent)) {
-                    (QueueState::Downloading, Some(p)) => format!("Installing {} \u{b7} A cancels", fmt_percent(p)),
-                    (QueueState::Downloading, None) => "Installing\u{2026} \u{b7} A cancels".into(),
-                    (QueueState::Paused, _) => "Paused \u{b7} A cancels".into(),
-                    (QueueState::Waiting, _) => "Queued \u{b7} A cancels".into(),
+                    (QueueState::Downloading, Some(p)) => tr!("Installing {percent} \u{b7} A cancels", percent = fmt_percent(p)),
+                    (QueueState::Downloading, None) => tr!("Installing\u{2026} \u{b7} A cancels").into(),
+                    (QueueState::Paused, _) => tr!("Paused \u{b7} A cancels").into(),
+                    (QueueState::Waiting, _) => tr!("Queued \u{b7} A cancels").into(),
                 }
             } else if r.installed {
                 if downloading {
-                    format!("Installed \u{b7} {size}")
+                    tr!("Installed \u{b7} {size}", size)
                 } else {
-                    format!("Installed \u{b7} {size} \u{b7} A uninstalls")
+                    tr!("Installed \u{b7} {size} \u{b7} A uninstalls", size)
                 }
             } else {
-                format!("{size} \u{b7} A installs")
+                tr!("{size} \u{b7} A installs", size)
             };
             rows.push(CRow::info(SharedString::from(format!("d{i}")), r.dlc.title.clone(), state));
         }
-        rows.push(CRow::action("close", "Close"));
+        rows.push(CRow::action("close", tr!("Close")));
         rows
     }
 }
@@ -475,6 +478,6 @@ impl crate::console::PadTarget for EpicModifyDialog {
 
     fn hints(&self, _: &App) -> Vec<crate::console::Hint> {
         use crate::console::{hint, Btn};
-        vec![hint(Btn::A, "Select"), hint(Btn::B, if self.confirm.is_some() { "Cancel" } else { "Close" })]
+        vec![hint(Btn::A, tr!("Select")), hint(Btn::B, if self.confirm.is_some() { tr!("Cancel") } else { tr!("Close") })]
     }
 }

@@ -219,5 +219,9 @@
   "Show Wine settings": "Mostrar configurações do Wine",
   "Use shared Wine prefix": "Usar prefixo Wine compartilhado",
   "Wine prefix": "Prefixo Wine",
-  "Wine version": "Versão do Wine"
+  "Wine version": "Versão do Wine",
+  "Refresh": "Atualizar",
+  "Release date": "Data de lançamento",
+  "Source": "Fonte",
+  "The legendary binary was not found": "O binário do legendary não foi encontrado"
 }

@@ -27,6 +27,20 @@ pub fn file_size(bytes: f64) -> String {
     format!("{text} {}", UNITS[unit])
 }
 
+/// [`file_size`] for the screen: the language's decimal separator.
+pub fn file_size_local(bytes: f64) -> String {
+    localize_size(&file_size(bytes))
+}
+
+/// A size text made by [`file_size`] (stored, e.g. in the queue) shown in the
+/// language's number format.
+pub fn localize_size(text: &str) -> String {
+    match heronite_i18n::current() {
+        heronite_i18n::Lang::En => text.to_string(),
+        heronite_i18n::Lang::PtBr => text.replace('.', ","),
+    }
+}
+
 fn trim_decimals(v: f64) -> String {
     let s = format!("{v:.2}");
     s.trim_end_matches('0').trim_end_matches('.').to_string()

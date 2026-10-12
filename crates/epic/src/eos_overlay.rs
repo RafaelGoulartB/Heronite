@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 
 use heronite_data::game_config;
 use heronite_data::DataPaths;
+use heronite_i18n::tr;
 use regex::Regex;
 use serde_json::Value;
 
@@ -88,7 +89,11 @@ pub fn latest_version(data_paths: &DataPaths, legendary: &Legendary) -> String {
 
 fn failed(out: &crate::cmd::Output) -> OpResult {
     let why = out.error_lines();
-    OpResult { ok: false, aborted: false, message: if why.is_empty() { format!("legendary exited with {:?}", out.code) } else { why } }
+    OpResult {
+        ok: false,
+        aborted: false,
+        message: if why.is_empty() { tr!("legendary exited with {code}", code = format!("{:?}", out.code)) } else { why },
+    }
 }
 
 /// `install`: first asks legendary for the download size (without `-y`, so it
@@ -111,7 +116,7 @@ pub fn install(data_paths: &DataPaths, legendary: &Legendary, cancel: &std::sync
         return OpResult { ok: false, aborted: false, message: format!("{err:#}") };
     }
     if cancel.is_requested() {
-        return OpResult { ok: false, aborted: true, message: "Cancelled".into() };
+        return OpResult { ok: false, aborted: true, message: tr!("Cancelled").into() };
     }
 
     let mut parser = ProgressParser::new(Some(download_size));
@@ -122,8 +127,8 @@ pub fn install(data_paths: &DataPaths, legendary: &Legendary, cancel: &std::sync
     });
     match out {
         Err(err) => OpResult { ok: false, aborted: false, message: format!("{err:#}") },
-        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, message: "Cancelled".into() },
-        Ok(out) if out.success() => OpResult { ok: true, aborted: false, message: "EOS Overlay installed".into() },
+        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, message: tr!("Cancelled").into() },
+        Ok(out) if out.success() => OpResult { ok: true, aborted: false, message: tr!("EOS Overlay installed").into() },
         Ok(out) => failed(&out),
     }
 }
@@ -132,7 +137,7 @@ pub fn install(data_paths: &DataPaths, legendary: &Legendary, cancel: &std::sync
 pub fn remove(legendary: &Legendary) -> OpResult {
     match legendary.run(&["eos-overlay", "remove", "-y"], &[]) {
         Err(err) => OpResult { ok: false, aborted: false, message: format!("{err:#}") },
-        Ok(out) if out.success() => OpResult { ok: true, aborted: false, message: "EOS Overlay uninstalled".into() },
+        Ok(out) if out.success() => OpResult { ok: true, aborted: false, message: tr!("EOS Overlay uninstalled").into() },
         Ok(out) => failed(&out),
     }
 }
@@ -147,12 +152,12 @@ fn prefix_args<'a>(action: &'a str, prefix: Option<&'a str>) -> Vec<&'a str> {
 
 /// `enable` for a valid prefix folder (see [`prefix_folder`]).
 pub fn enable(legendary: &Legendary, prefix: Option<&str>) -> OpResult {
-    switch(legendary, "enable", prefix, "EOS Overlay enabled")
+    switch(legendary, "enable", prefix, tr!("EOS Overlay enabled"))
 }
 
 /// `disable` for a valid prefix folder.
 pub fn disable(legendary: &Legendary, prefix: Option<&str>) -> OpResult {
-    switch(legendary, "disable", prefix, "EOS Overlay disabled")
+    switch(legendary, "disable", prefix, tr!("EOS Overlay disabled"))
 }
 
 fn switch(legendary: &Legendary, action: &str, prefix: Option<&str>, done: &str) -> OpResult {

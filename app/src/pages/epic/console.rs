@@ -7,8 +7,9 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_epic::eos_overlay;
+use heronite_i18n::{tr, trn};
 
-use super::EpicPage;
+use super::{installed_count, EpicPage};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
 use crate::console::osk::{Osk, OskEvent};
@@ -22,51 +23,50 @@ impl EpicPage {
         let (account, stats, updates, refreshing, logging_in) =
             (s.account().clone(), s.stats().clone(), s.updates_count(), s.refreshing, s.logging_in);
         let (eos, busy) = (s.eos().clone(), s.busy_of(eos_overlay::APP_NAME).cloned());
-        let mut rows = vec![Row::header("Account")];
+        let mut rows = vec![Row::header(tr!("Account"))];
         if account.logged_in {
-            rows.push(Row::info("account", account.name.clone(), "Signed in").icon(Icon::AccountCircle));
+            rows.push(Row::info("account", account.name.clone(), tr!("Signed in")).icon(Icon::AccountCircle));
             let line = format!(
-                "{} games \u{b7} {} installed \u{b7} {} update{}",
-                stats.owned,
-                stats.installed,
-                updates,
-                if updates == 1 { "" } else { "s" }
+                "{} \u{b7} {} \u{b7} {}",
+                trn!(stats.owned, "{n} game", "{n} games"),
+                installed_count(stats.installed),
+                trn!(updates, "{n} update", "{n} updates"),
             );
             rows.push(
-                Row::action("refresh", if refreshing { "Refreshing the library\u{2026}" } else { "Refresh the library" })
+                Row::action("refresh", if refreshing { tr!("Refreshing the library\u{2026}") } else { tr!("Refresh the library") })
                     .desc(line)
                     .icon(Icon::Refresh)
                     .enabled(!refreshing),
             );
             if updates > 0 {
-                rows.push(Row::action("update-all", format!("Update all ({updates})")).icon(Icon::Update));
+                rows.push(Row::action("update-all", tr!("Update all ({updates})", updates)).icon(Icon::Update));
             }
             rows.push(
-                Row::action("import", "Import an installed game")
-                    .desc("Add a game already on this PC without downloading it again")
+                Row::action("import", tr!("Import an installed game"))
+                    .desc(tr!("Add a game already on this PC without downloading it again"))
                     .icon(Icon::FolderOpen),
             );
-            rows.push(Row::action("logout", "Log out\u{2026}").icon(Icon::Logout).danger());
+            rows.push(Row::action("logout", tr!("Log out\u{2026}")).icon(Icon::Logout).danger());
         } else {
             rows.push(
                 Row::action(
                     "login-window",
                     if self.window_open {
-                        "Waiting for the login window\u{2026}"
+                        tr!("Waiting for the login window\u{2026}")
                     } else if logging_in {
-                        "Logging in\u{2026}"
+                        tr!("Logging in\u{2026}")
                     } else {
-                        "Log in with Epic Games"
+                        tr!("Log in with Epic Games")
                     },
                 )
-                .desc("Opens Epic's login window (typing the password needs a keyboard)")
+                .desc(tr!("Opens Epic's login window (typing the password needs a keyboard)"))
                 .icon(Icon::AccountCircle)
                 .enabled(!self.window_open && !logging_in),
             );
-            rows.push(Row::action("browser", "Open the login page in the browser").icon(Icon::OpenInNew));
+            rows.push(Row::action("browser", tr!("Open the login page in the browser")).icon(Icon::OpenInNew));
             rows.push(
-                Row::action("code", "Enter the authorization code")
-                    .desc("Shown on the login page after signing in")
+                Row::action("code", tr!("Enter the authorization code"))
+                    .desc(tr!("Shown on the login page after signing in"))
                     .icon(Icon::Edit)
                     .enabled(!logging_in),
             );
@@ -83,26 +83,33 @@ impl EpicPage {
                 };
                 rows.push(Row::info("eos-state", "EOS Overlay", state).icon(Icon::Downloading));
                 if b.cancel.is_some() {
-                    rows.push(Row::action("eos-cancel", "Cancel").icon(Icon::Close));
+                    rows.push(Row::action("eos-cancel", tr!("Cancel")).icon(Icon::Close));
                 }
             }
             None if eos.installed => {
-                rows.push(Row::info("eos-state", "Installed", format!("{}  \u{b7}  latest {}", eos.version, eos.latest)).icon(Icon::Check));
+                rows.push(
+                    Row::info(
+                        "eos-state",
+                        tr!("Installed"),
+                        tr!("{version}  \u{b7}  latest {latest}", version = eos.version, latest = eos.latest),
+                    )
+                    .icon(Icon::Check),
+                );
                 let outdated = !eos.latest.is_empty() && eos.latest != eos.version && !eos.checking;
                 if outdated {
-                    rows.push(Row::action("eos-update", "Update").icon(Icon::Update));
+                    rows.push(Row::action("eos-update", tr!("Update")).icon(Icon::Update));
                 } else {
                     rows.push(
-                        Row::action("eos-check", if eos.checking { "Checking for updates\u{2026}" } else { "Check for updates" })
+                        Row::action("eos-check", if eos.checking { tr!("Checking for updates\u{2026}") } else { tr!("Check for updates") })
                             .icon(Icon::Refresh)
                             .enabled(!eos.checking),
                     );
                 }
-                rows.push(Row::action("eos-remove", "Uninstall\u{2026}").icon(Icon::FaTrash).danger());
+                rows.push(Row::action("eos-remove", tr!("Uninstall\u{2026}")).icon(Icon::FaTrash).danger());
             }
             None => rows.push(
-                Row::action("eos-install", "Install the EOS Overlay")
-                    .desc("Epic's in-game overlay for friends and achievements")
+                Row::action("eos-install", tr!("Install the EOS Overlay"))
+                    .desc(tr!("Epic's in-game overlay for friends and achievements"))
                     .icon(Icon::Download),
             ),
         }
@@ -117,7 +124,7 @@ impl EpicPage {
         cx: &mut Context<Self>,
         on_yes: impl Fn(&mut Self, &mut Context<Self>) + 'static,
     ) {
-        let rows = vec![Row::action("no", "Cancel"), Row::action("yes", yes.to_string()).danger()];
+        let rows = vec![Row::action("no", tr!("Cancel")), Row::action("yes", yes.to_string()).danger()];
         let sheet = cx.new(|_| Sheet::new(title.to_string(), Some(message.to_string()), rows));
         let sub = cx.subscribe(&sheet, move |this, _, ev: &SheetEvent, cx| {
             let SheetEvent::Activate(id) = ev;
@@ -139,13 +146,15 @@ impl EpicPage {
                 let picker = cx.new(|cx| super::EpicImportPicker::new(data_paths, window, cx));
                 self.open_dialog(picker, window, cx);
             }
-            "logout" => self.confirm("Log out of Epic Games?", "Your installed games stay on disk.", "Log out", cx, |this, cx| {
-                this.svc.update(cx, |s, cx| s.logout(cx));
-            }),
+            "logout" => {
+                self.confirm(tr!("Log out of Epic Games?"), tr!("Your installed games stay on disk."), tr!("Log out"), cx, |this, cx| {
+                    this.svc.update(cx, |s, cx| s.logout(cx));
+                })
+            }
             "login-window" => self.start_window_login(cx),
             "browser" => self.open_browser(cx),
             "code" => {
-                let osk = cx.new(|_| Osk::new("Authorization code", ""));
+                let osk = cx.new(|_| Osk::new(tr!("Authorization code"), ""));
                 let sub = cx.subscribe(&osk, |this, _, ev: &OskEvent, cx| {
                     if let OskEvent::Done(text) = ev {
                         let text = text.trim().to_string();
@@ -166,9 +175,9 @@ impl EpicPage {
             "eos-update" | "eos-install" => self.svc.update(cx, |s, cx| s.eos_install(cx)),
             "eos-check" => self.svc.update(cx, |s, cx| s.eos_check_updates(cx)),
             "eos-remove" => self.confirm(
-                "Uninstall the EOS Overlay?",
-                "Games that use it lose the overlay until you install it again.",
-                "Uninstall",
+                tr!("Uninstall the EOS Overlay?"),
+                tr!("Games that use it lose the overlay until you install it again."),
+                tr!("Uninstall"),
                 cx,
                 |this, cx| {
                     this.svc.update(cx, |s, cx| s.eos_remove(cx));
@@ -249,8 +258,8 @@ impl PadTarget for EpicPage {
             return h;
         }
         if let Some(view) = &self.dialog {
-            return crate::console::registry::hook_for(view).map(|h| h.hints(cx)).unwrap_or_else(|| vec![hint(Btn::B, "Close")]);
+            return crate::console::registry::hook_for(view).map(|h| h.hints(cx)).unwrap_or_else(|| vec![hint(Btn::B, tr!("Close"))]);
         }
-        vec![hint(Btn::A, "Select")]
+        vec![hint(Btn::A, tr!("Select"))]
     }
 }

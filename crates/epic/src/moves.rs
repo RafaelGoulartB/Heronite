@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use heronite_data::{json_store, proc, AppPaths, DataPaths};
+use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 use crate::cache_store::CacheStore;
@@ -184,12 +185,16 @@ pub fn move_install_with(
     let source = PathBuf::from(install_path);
     let parent = PathBuf::from(new_parent);
     if install_path.is_empty() || !source.is_dir() {
-        return OpResult::err("No install path found");
+        return OpResult::err(tr!("No install path found"));
     }
     if parent.starts_with(&source) {
-        return OpResult::err(format!("New install path ({new_parent}) cannot be inside the current install path ({install_path})."));
+        return OpResult::err(tr!(
+            "New install path ({new_parent}) cannot be inside the current install path ({install_path}).",
+            new_parent,
+            install_path
+        ));
     }
-    let Some(name) = source.file_name() else { return OpResult::err("Invalid install path") };
+    let Some(name) = source.file_name() else { return OpResult::err(tr!("Invalid install path")) };
     let destination = parent.join(name);
     let journal = MoveJournal {
         app_name: app_name.into(),
@@ -199,7 +204,7 @@ pub fn move_install_with(
         phase: Phase::Copying,
     };
     if let Err(why) = validate(&journal) {
-        return OpResult::err(format!("Can't move {install_path}: {why}"));
+        return OpResult::err(tr!("Can't move {install_path}: {error}", install_path, error = why));
     }
 
     // A journal of the same move: this is a retry, finish it. Another pending
@@ -210,9 +215,9 @@ pub fn move_install_with(
         if old.app_name == journal.app_name && old.source == journal.source && old.destination == journal.destination {
             resuming = true;
         } else if validate(&old).is_ok() && matches!(decide(&old), Decision::FinishCopy | Decision::Record) {
-            return OpResult::err(format!(
-                "The move of {} was interrupted and has to finish first (it resumes when the launcher starts)",
-                old.app_name
+            return OpResult::err(tr!(
+                "The move of {game} was interrupted and has to finish first (it resumes when the launcher starts)",
+                game = old.app_name
             ));
         } else {
             clear_journal(&file);
@@ -220,17 +225,17 @@ pub fn move_install_with(
     }
     let merge = resuming || has_files(&destination);
     if destination.exists() && has_files(&destination) && !resuming {
-        return OpResult::err(format!("{} already exists and is not empty", destination.display()));
+        return OpResult::err(tr!("{path} already exists and is not empty", path = destination.display()));
     }
     if destination.is_file() {
-        return OpResult::err(format!("{} already exists and is not empty", destination.display()));
+        return OpResult::err(tr!("{path} already exists and is not empty", path = destination.display()));
     }
     if let Err(err) = fs::create_dir_all(&parent) {
         return OpResult::err(format!("{err}"));
     }
     // Written before the first file moves: after this the move can be finished.
     if let Err(err) = write_journal(&file, &journal) {
-        return OpResult::err(format!("Could not write the move journal: {err:#}"));
+        return OpResult::err(tr!("Could not write the move journal: {error}", error = format!("{err:#}")));
     }
     run_copy_and_record(data_paths, legendary, tools, &journal, merge)
 }
@@ -259,11 +264,11 @@ fn finish_move(data_paths: &DataPaths, legendary: &Legendary, j: &MoveJournal) -
     }
     // Only empty folders may be left in the source now.
     if has_files(source) {
-        return OpResult::err(format!("Some files could not be moved out of {}", source.display()));
+        return OpResult::err(tr!("Some files could not be moved out of {path}", path = source.display()));
     }
     if source.exists() {
         if let Err(e) = fs::remove_dir_all(source) {
-            return OpResult::err(format!("Copied, but the old folder could not be removed: {e}"));
+            return OpResult::err(tr!("Copied, but the old folder could not be removed: {error}", error = e));
         }
     }
     let args = ["move", j.app_name.as_str(), j.new_parent.as_str(), "--skip-move"];
@@ -274,7 +279,7 @@ fn finish_move(data_paths: &DataPaths, legendary: &Legendary, j: &MoveJournal) -
             clear_journal(&file);
             OpResult::ok(j.destination.clone())
         }
-        Ok(out) => OpResult::err(format!("Moved, but legendary could not record the new path: {}", out.error_lines())),
+        Ok(out) => OpResult::err(tr!("Moved, but legendary could not record the new path: {error}", error = out.error_lines())),
     }
 }
 
@@ -295,19 +300,21 @@ pub fn resume_interrupted_move_with(data_paths: &DataPaths, legendary: &Legendar
         Decision::NeverStarted => {
             remove_empty_tree(Path::new(&j.destination));
             clear_journal(&file);
-            return Some(OpResult::ok(format!("The move of {title} never started; nothing was changed")));
+            return Some(OpResult::ok(tr!("The move of {title} never started; nothing was changed", title)));
         }
         Decision::Lost => {
             clear_journal(&file);
-            return Some(OpResult::err(format!(
-                "The move of {title} was interrupted and neither {} nor {} has files any more",
-                j.source, j.destination
+            return Some(OpResult::err(tr!(
+                "The move of {title} was interrupted and neither {source} nor {destination} has files any more",
+                title,
+                source = j.source,
+                destination = j.destination
             )));
         }
         Decision::FinishCopy => run_copy_and_record(data_paths, legendary, tools, &j, true),
         Decision::Record => finish_move(data_paths, legendary, &j),
     };
-    Some(if result.ok { OpResult::ok(format!("Finished moving {title}")) } else { result })
+    Some(if result.ok { OpResult::ok(tr!("Finished moving {title}", title)) } else { result })
 }
 
 fn game_title(data_paths: &DataPaths, app_name: &str) -> Option<String> {
@@ -343,7 +350,7 @@ fn move_dir(tools: &Tools, source: &Path, destination: &Path, merge: bool) -> Re
         // `mv` would nest the folder inside a destination that already exists.
         let origin = format!("{}/.", source.display());
         run(Command::new("cp").arg("-a").arg(&origin).arg(format!("{}/", destination.display())))?;
-        return fs::remove_dir_all(source).map_err(|e| format!("Copied, but the old folder could not be removed: {e}"));
+        return fs::remove_dir_all(source).map_err(|e| tr!("Copied, but the old folder could not be removed: {error}", error = e));
     }
     if destination.is_dir() {
         // `mv src dest` puts src inside an existing folder: an empty one is replaced instead.

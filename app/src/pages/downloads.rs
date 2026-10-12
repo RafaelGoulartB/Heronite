@@ -10,6 +10,7 @@ use gpui_kit::*;
 use heronite_epic::manager::{DmState, Snapshot};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind};
+use heronite_i18n::{tr, trc};
 
 use super::{caption_with, columns, content_width, empty_row, icon_action, list_item, page_close, sheet, status_pill, PageCtx, PageEvent};
 use crate::icons::Icon;
@@ -41,24 +42,28 @@ impl DownloadsPage {
 }
 
 fn meta_line(el: &DmElement) -> String {
-    let kind = if el.kind == ElementKind::Install { "Install" } else { "Update" };
+    let kind = if el.kind == ElementKind::Install { trc!("download kind", "Install") } else { trc!("download kind", "Update") };
     let platform = if el.params.platform_to_install.is_empty() { "Windows" } else { el.params.platform_to_install.as_str() };
-    let size = el.params.size.clone().unwrap_or_else(|| "?? MB".into());
+    let size = el.params.size.as_deref().map(heronite_epic::util::localize_size).unwrap_or_else(|| "?? MB".into());
     format!("{kind} \u{b7} {platform} \u{b7} {size}")
 }
 
 fn date_text(ms: u64) -> String {
-    Local.timestamp_millis_opt(ms as i64).single().map(|d| d.format("%Y-%m-%d %H:%M").to_string()).unwrap_or_default()
+    let format = match heronite_i18n::current() {
+        heronite_i18n::Lang::PtBr => "%d/%m/%Y %H:%M",
+        heronite_i18n::Lang::En => "%Y-%m-%d %H:%M",
+    };
+    Local.timestamp_millis_opt(ms as i64).single().map(|d| d.format(format).to_string()).unwrap_or_default()
 }
 
 fn progress_text(p: &Progress) -> String {
-    format!(
-        "{} - {} downloaded - {:.2} MiB/s download - {:.2} MiB/s disk - ETA {}",
-        fmt_percent(p.percent),
-        fmt_mib(p.downloaded_mib),
-        p.down_speed,
-        p.disk_speed,
-        if p.eta.is_empty() { "--:--:--" } else { p.eta.as_str() }
+    tr!(
+        "{percent} - {downloaded} downloaded - {down} MiB/s download - {disk} MiB/s disk - ETA {eta}",
+        percent = fmt_percent(p.percent),
+        downloaded = fmt_mib(p.downloaded_mib),
+        down = heronite_i18n::decimal(p.down_speed, 2),
+        disk = heronite_i18n::decimal(p.disk_speed, 2),
+        eta = if p.eta.is_empty() { "--:--:--" } else { p.eta.as_str() }
     )
 }
 
@@ -85,9 +90,9 @@ impl Render for DownloadsPage {
             let cover = self.covers.get(cur.params.cover().as_deref(), 60., 80., scale);
             let percent = progress.as_ref().map(|p| p.percent as f32);
             let (status, status_color) = match snap.state {
-                DmState::Running => ("Downloading", theme::success()),
-                DmState::Paused => ("Paused", theme::accent()),
-                DmState::Idle => ("Waiting", theme::accent()),
+                DmState::Running => (tr!("Downloading"), theme::success()),
+                DmState::Paused => (tr!("Paused"), theme::accent()),
+                DmState::Idle => (tr!("Waiting"), theme::accent()),
             };
             let bar_color = if paused { theme::accent() } else { theme::success() };
             let info = div()
@@ -106,9 +111,9 @@ impl Render for DownloadsPage {
                 .child(progress_bar(percent, 8., bar_color))
                 .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(match &progress {
                     Some(p) => progress_text(p),
-                    None if snap.state == DmState::Paused => "Paused - resume to continue where it stopped".to_string(),
-                    None if paused => "Press play to start the queue".to_string(),
-                    None => "Starting...".to_string(),
+                    None if snap.state == DmState::Paused => tr!("Paused - resume to continue where it stopped").to_string(),
+                    None if paused => tr!("Press play to start the queue").to_string(),
+                    None => tr!("Starting...").to_string(),
                 }));
             let controls = div()
                 .flex()
@@ -138,20 +143,22 @@ impl Render for DownloadsPage {
                                 .min_w(px(240.))
                                 .text_size(px(13.))
                                 .text_color(theme::text_primary())
-                                .child("Stop the installation? Keep the downloaded files?"),
+                                .child(tr!("Stop the installation? Keep the downloaded files?")),
                         )
-                        .child(button_sm("dm-keep-running", ButtonKind::Ghost, "Keep installing").on_click(cx.listener(
+                        .child(button_sm("dm-keep-running", ButtonKind::Ghost, tr!("Keep installing")).on_click(cx.listener(
                             |this, _, _, cx| {
                                 this.confirm_stop = false;
                                 cx.notify();
                             },
                         )))
-                        .child(button_sm("dm-stop-keep", ButtonKind::Glass, "Stop, keep files").on_click(cx.listener(|this, _, _, cx| {
-                            this.confirm_stop = false;
-                            this.svc.update(cx, |s, _| s.cancel_current(false));
-                            cx.notify();
-                        })))
-                        .child(button_sm("dm-stop-delete", ButtonKind::Danger, "Stop, delete files").on_click(cx.listener(
+                        .child(button_sm("dm-stop-keep", ButtonKind::Glass, tr!("Stop, keep files")).on_click(cx.listener(
+                            |this, _, _, cx| {
+                                this.confirm_stop = false;
+                                this.svc.update(cx, |s, _| s.cancel_current(false));
+                                cx.notify();
+                            },
+                        )))
+                        .child(button_sm("dm-stop-delete", ButtonKind::Danger, tr!("Stop, delete files")).on_click(cx.listener(
                             |this, _, _, cx| {
                                 this.confirm_stop = false;
                                 this.svc.update(cx, |s, _| s.cancel_current(true));
@@ -160,14 +167,17 @@ impl Render for DownloadsPage {
                         ))),
                 );
             }
-            column = column.child(caption("Downloading")).child(now);
+            column = column.child(caption(tr!("Downloading"))).child(now);
         } else {
             self.confirm_stop = false;
         }
 
         let waiting: Vec<DmElement> = snap.queue.iter().skip(1).cloned().collect();
-        let mut queued =
-            div().child(caption(if waiting.is_empty() { "Queued".to_string() } else { format!("Queued \u{b7} {}", waiting.len()) }));
+        let mut queued = div().child(caption(if waiting.is_empty() {
+            tr!("Queued").to_string()
+        } else {
+            tr!("Queued \u{b7} {count}", count = waiting.len())
+        }));
         let last = waiting.len().saturating_sub(1);
         let mut rows: Vec<AnyElement> = Vec::new();
         for (i, el) in waiting.iter().enumerate() {
@@ -210,7 +220,7 @@ impl Render for DownloadsPage {
             rows.push(list_item(Some(cover_box(cover, 36., 48.).into_any_element()), content, trailing).into_any_element());
         }
         if rows.is_empty() {
-            rows.push(empty_row("Nothing to download").into_any_element());
+            rows.push(empty_row(tr!("Nothing to download")).into_any_element());
         }
         queued = queued.child(card(rows));
 
@@ -219,8 +229,8 @@ impl Render for DownloadsPage {
         finished.sort_by_key(|e| std::cmp::Reverse(e.end_time));
         if !finished.is_empty() {
             done = done.child(caption_with(
-                format!("Completed \u{b7} {}", finished.len()),
-                button_sm("dm-clear", ButtonKind::Ghost, "Clear list").on_click(cx.listener(|this, _, _, cx| {
+                tr!("Completed \u{b7} {count}", count = finished.len()),
+                button_sm("dm-clear", ButtonKind::Ghost, tr!("Clear list")).on_click(cx.listener(|this, _, _, cx| {
                     this.svc.update(cx, |s, _| s.clear_finished());
                 })),
             ));
@@ -230,9 +240,9 @@ impl Render for DownloadsPage {
             let cover = self.covers.get(el.params.cover().as_deref(), 36., 48., scale);
             let app = el.params.app_name.clone();
             let pill = match el.status {
-                Some(DmStatus::Done) => Some(status_pill("Done", theme::success())),
-                Some(DmStatus::Error) => Some(status_pill("Failed", theme::danger_text())),
-                Some(DmStatus::Abort) => Some(status_pill("Canceled", theme::danger_text())),
+                Some(DmStatus::Done) => Some(status_pill(tr!("Done"), theme::success())),
+                Some(DmStatus::Error) => Some(status_pill(tr!("Failed"), theme::danger_text())),
+                Some(DmStatus::Abort) => Some(status_pill(tr!("Canceled"), theme::danger_text())),
                 _ => None,
             };
             let content = div()
@@ -270,16 +280,17 @@ impl Render for DownloadsPage {
         if !rows.is_empty() {
             done = done.child(card(rows));
         } else if wide {
-            done =
-                done.child(caption("Completed")).child(card([empty_row("Finished installs and updates show up here").into_any_element()]));
+            done = done
+                .child(caption(trc!("downloads", "Completed")))
+                .child(card([empty_row(tr!("Finished installs and updates show up here")).into_any_element()]));
         }
         column = column.child(columns(wide, [queued, done]));
 
         let _ = &self.ctx;
         sheet(
             "page-downloads",
-            "Downloads",
-            Some("Installs and updates from Epic Games run one at a time, in this order.".into()),
+            tr!("Downloads"),
+            Some(tr!("Installs and updates from Epic Games run one at a time, in this order.").into()),
             None,
             1560.,
             window,

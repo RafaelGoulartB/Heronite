@@ -2,6 +2,7 @@
 //! (port of `downloader/main.ts::installVersion`, `utils.ts::installWineVersion`
 //! / `removeWineVersion` and `getInstallDir`).
 
+use heronite_i18n::tr;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -94,13 +95,13 @@ pub fn install_into(
         .download
         .as_deref()
         .filter(|d| !d.is_empty())
-        .ok_or_else(|| InstallError::Failed(format!("No download link provided for {}!", info.version)))?;
+        .ok_or_else(|| InstallError::Failed(tr!("No download link provided for {version}!", version = info.version)))?;
     if !is_safe_name(&info.version) {
         return Err(InstallError::Failed(format!("Invalid version name {:?}", info.version)));
     }
     fs::create_dir_all(install_dir).with_context(|| format!("creating {}", install_dir.display()))?;
     if !install_dir.is_dir() {
-        return Err(InstallError::Failed(format!("Installation directory {} is not a directory!", install_dir.display())));
+        return Err(InstallError::Failed(tr!("Installation directory {path} is not a directory!", path = install_dir.display())));
     }
 
     let file_name = download.rsplit('/').next().unwrap_or("download.tar");
@@ -113,9 +114,10 @@ pub fn install_into(
 
     // Source checksum (a `.sha512sum` file next to the archive).
     let source_checksum = match info.checksum.as_deref().filter(|c| !c.is_empty()) {
-        Some(url) => {
-            Some(repos::http_get_text(url, 1024 * 1024).map_err(|e| InstallError::Failed(format!("Could not fetch the checksum: {e}")))?)
-        }
+        Some(url) => Some(
+            repos::http_get_text(url, 1024 * 1024)
+                .map_err(|e| InstallError::Failed(tr!("Could not fetch the checksum: {error}", error = e)))?,
+        ),
         None => None,
     };
 
@@ -139,14 +141,16 @@ pub fn install_into(
             let _ = fs::remove_file(&part_file);
             return Err(match e {
                 InstallError::Aborted => InstallError::Aborted,
-                InstallError::Failed(m) => InstallError::Failed(format!("Download of {} failed with:\n {m}", info.version)),
+                InstallError::Failed(m) => {
+                    InstallError::Failed(tr!("Download of {version} failed with:\n {error}", version = info.version, error = m))
+                }
             });
         }
     };
     if let Some(sum) = &source_checksum {
         if !sum.to_ascii_lowercase().contains(&digest) {
             let _ = fs::remove_file(&part_file);
-            return Err(InstallError::Failed("Checksum verification failed".into()));
+            return Err(InstallError::Failed(tr!("Checksum verification failed").into()));
         }
     } else {
         log::warn!("No checksum provided. Download of {} could be invalid!", info.version);
@@ -161,7 +165,7 @@ pub fn install_into(
     let _ = fs::remove_dir_all(&tmp_dir);
     if let Err(e) = fs::create_dir_all(&tmp_dir) {
         let _ = fs::remove_file(&tar_file);
-        return Err(InstallError::Failed(format!("Failed to make folder {} with:\n {e}", tmp_dir.display())));
+        return Err(InstallError::Failed(tr!("Failed to make folder {path} with:\n {error}", path = tmp_dir.display(), error = e)));
     }
 
     on_progress(Progress::Unzipping);
@@ -171,7 +175,7 @@ pub fn install_into(
         let _ = fs::remove_dir_all(&tmp_dir);
         return Err(match e {
             InstallError::Aborted => InstallError::Aborted,
-            InstallError::Failed(m) => InstallError::Failed(format!("Unzip of {file_name} failed with:\n {m}")),
+            InstallError::Failed(m) => InstallError::Failed(tr!("Unzip of {file_name} failed with:\n {error}", file_name, error = m)),
         });
     }
 
@@ -183,7 +187,7 @@ pub fn install_into(
         let _ = fs::remove_dir_all(&backup);
         if let Err(e) = fs::rename(&install_sub_dir, &backup) {
             let _ = fs::remove_dir_all(&tmp_dir);
-            return Err(InstallError::Failed(format!("Could not back up {}: {e}", install_sub_dir.display())));
+            return Err(InstallError::Failed(tr!("Could not back up {path}: {error}", path = install_sub_dir.display(), error = e)));
         }
         backed_up = true;
     }
@@ -192,7 +196,11 @@ pub fn install_into(
         if backed_up {
             let _ = fs::rename(&backup, &install_sub_dir);
         }
-        return Err(InstallError::Failed(format!("Could not move the build into {}: {e}", install_sub_dir.display())));
+        return Err(InstallError::Failed(tr!(
+            "Could not move the build into {path}: {error}",
+            path = install_sub_dir.display(),
+            error = e
+        )));
     }
     if backed_up {
         let _ = fs::remove_dir_all(&backup);
@@ -255,7 +263,7 @@ fn download_file(
     }
     file.flush().map_err(|e| fail(e.to_string()))?;
     if total > 0 && downloaded < total {
-        return Err(fail(format!("connection closed after {downloaded} of {total} bytes")));
+        return Err(fail(tr!("connection closed after {downloaded} of {total} bytes", downloaded, total)));
     }
     let speed = downloaded as f64 / start.elapsed().as_secs_f64().max(0.001);
     on_progress(progress(downloaded, downloaded.max(total), speed));
@@ -279,7 +287,7 @@ fn extract_tar(archive: &Path, dest: &Path, strip: u32, cancel: &AtomicBool) -> 
         .poll(&poll)
         .grace(Duration::from_secs(3))
         .run(&mut cmd)
-        .map_err(|e| InstallError::Failed(format!("could not run tar: {e}")))?;
+        .map_err(|e| InstallError::Failed(tr!("could not run tar: {error}", error = e)))?;
     if out.aborted {
         Err(InstallError::Aborted)
     } else if out.success() {
@@ -324,7 +332,7 @@ pub fn remove_version(data_paths: &DataPaths, info: &WineVersionInfo) -> anyhow:
         let path = Path::new(dir);
         if path.exists() {
             if !is_managed_dir(data_paths, path) {
-                return Err(anyhow!("Refusing to delete {dir}: it is not inside a Wine/Proton tools folder"));
+                return Err(anyhow!(tr!("Refusing to delete {dir}: it is not inside a Wine/Proton tools folder", dir)));
             }
             if let Err(e) = fs::remove_dir_all(path) {
                 log::warn!("Couldn't remove folder {dir}: {e}. Still marking {} as not installed", info.version);
