@@ -73,6 +73,8 @@ pub struct Downloads {
     eos_games: HashMap<String, EosEntry>,
     gog: StoreState,
     amazon: StoreState,
+    /// The Amazon sign-in in progress (nile's verifier, needed to register).
+    amazon_login: Option<heronite_amazon::user::LoginRequest>,
 }
 
 impl EventEmitter<DownloadsEvent> for Downloads {}
@@ -128,6 +130,7 @@ impl Downloads {
             eos_games: HashMap::new(),
             gog: StoreState::default(),
             amazon: StoreState::default(),
+            amazon_login: None,
         };
         this.reload_local(cx);
         this.eos_reload(false, cx);

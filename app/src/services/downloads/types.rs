@@ -83,6 +83,7 @@ pub struct StoreState {
     pub installed: usize,
     pub updates: HashSet<String>,
     pub refreshing: bool,
+    pub logging_in: bool,
     /// Last problem of login / refresh, for the store's page.
     pub last_error: Option<String>,
 }

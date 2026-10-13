@@ -23,6 +23,7 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
         crate::dialogs::quit_confirm::QuitConfirmDialog,
         crate::dialogs::ludusavi_backup::LudusaviBackupDialog,
         crate::dialogs::epic_import::EpicImportPicker,
+        crate::dialogs::store_import::StoreImportPicker,
         crate::dialogs::epic_modify::EpicModifyDialog,
         crate::dialogs::game_settings::GameSettingsDialog,
         crate::dialogs::add_game::AddGameDialog,

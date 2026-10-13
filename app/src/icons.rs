@@ -64,6 +64,8 @@ pub enum Icon {
     Sunrise,
     Sunset,
     ContentCopy,
+    Storefront,
+    ShoppingBag,
     /// Multi-colour 32px circle buttons (rendered with `img`, not `svg`).
     PlayCircle,
     InstallCircle,
@@ -103,6 +105,8 @@ impl Icon {
             Sunrise => "icons/sunrise.svg",
             Sunset => "icons/sunset.svg",
             ContentCopy => "icons/content-copy.svg",
+            Storefront => "icons/storefront.svg",
+            ShoppingBag => "icons/shopping-bag.svg",
             Menu => "icons/menu.svg",
             OpenInNew => "icons/open-in-new.svg",
             PlayArrow => "icons/play-arrow.svg",

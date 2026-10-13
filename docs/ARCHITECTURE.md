@@ -27,6 +27,10 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
  ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
  ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
+ ├─ heronite-gog        gogdl CLI + GOG web APIs: GOG account,
+ │                      library, installs, updates, cloud saves      → data, launch, epic
+ ├─ heronite-amazon     nile CLI: Amazon Games account, library,
+ │                      installs, updates                            → data, launch, epic
  ├─ heronite-emulation  emulators, ROM scan, save states, Ludusavi   → data, launch
  ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
@@ -35,7 +39,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf       → data
  └─ heronite-update     app updates: release check, signed download,
                         AppImage swap / package install, relaunch   → data
-epic-login (bin)        WebKit window for the Epic login (keeps a web engine out of the app)
+epic-login (bin)        WebKit window for the Epic, GOG (`--store gog`) and Amazon
+                        (`--store amazon --url ..`) logins (keeps a web engine out of the app)
 ```
 
 Library crates never depend on GPUI. Their functions are blocking; the app
@@ -62,9 +67,23 @@ calls them from `cx.background_spawn` or worker threads.
   around a launch (cloud saves, runtimes); `first_launch` sets up a game the
   first time it runs in a Wine prefix.
 - **heronite-epic:** `cmd` runs legendary. `manager` + `queue` are the
-  download queue (`store/download-manager.json`). `ops` covers install,
+  download queue (`store/download-manager.json`), shared by every store: an
+  element's `params.runner` picks the job (legendary, gogdl or nile), and
+  `progress` parses the reports of all three tools. `ops` covers install,
   repair, uninstall and import. `moves` is the resumable install move with
   its journal. `eos_overlay` manages the EOS overlay.
+- **heronite-gog / heronite-amazon:** the same shape for GOG and Amazon
+  Games. The tools (`gogdl`, `nile`) are found or downloaded into
+  `<data>/tools/bin` by `heronite_launch::store_tools`. GOG's library comes
+  from GOG's web APIs (token from gogdl's `gog_store/auth.json`) into
+  `store_cache/gog_library.json`, installs are listed in
+  `gog_store/installed.json`; Amazon's library and installs are nile's own
+  files (`nile_config/nile/`), mirrored into `store_cache/nile_library.json`.
+  Both libraries are read by the Collection like Epic's. Launching is in
+  `heronite-launch` (`gog.rs`: the primary task of `goggame-<id>.info`, or
+  `start.sh` for Linux builds; `nile.rs`: `fuel.json`), always through the
+  Wine/Proton plan of local games; the first launch in a prefix runs the
+  store's installers (`first_launch::StoreSetup`, Amazon's `PostInstall`).
 
 ## App (`app/src`)
 
@@ -73,11 +92,11 @@ calls them from `cx.background_spawn` or worker threads.
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the Epic service), `session` (post-game work), `compression` (background lossless compression of the captures), `update/` (app updates: checks, download, restart), `widgets` |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `update/` (app updates: checks, download, restart), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `collection/` | the main screen (`CollectionView`): list, header, focus panel, stage, context menu, command palette, screenshots, and the glue to dialogs and services |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
-| `pages/` | ☰ pages (Settings, Downloads, Epic, Wine Manager, Emulators); they talk back through `PageEvent` |
+| `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Wine Manager, Emulators); they talk back through `PageEvent` |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar` |
 | `theme/` | colour, font, layout and glass tokens, plus the runtime appearance |
 | `images.rs` | UI side of the image pipeline (texture cache, eviction) |

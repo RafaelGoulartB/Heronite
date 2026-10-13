@@ -9,6 +9,7 @@ use super::CollectionView;
 use crate::icons::Icon;
 use crate::pages::commands::{CommandCtx, PageCommand, PaletteCommands};
 use crate::pages::{self, Page, PageCtx, PageEvent};
+use crate::services::downloads::Store;
 use crate::theme;
 use crate::ui::dropdown::{menu_separator, Align};
 use crate::ui::{glass, icon};
@@ -20,6 +21,8 @@ pub struct Pages {
     downloads: Option<AnyView>,
     wine: Option<AnyView>,
     epic: Option<AnyView>,
+    gog: Option<AnyView>,
+    amazon: Option<AnyView>,
     emulators: Option<AnyView>,
     stats: Option<AnyView>,
     settings: Option<AnyView>,
@@ -231,11 +234,17 @@ impl CollectionView {
                     None => pending(),
                 };
                 let update = update_meta(cx);
+                let store_meta = |store: Store| {
+                    let on = svc.is_some_and(|s| s.store(store).account.logged_in);
+                    Trailing::Meta(if on { tr!("Signed in").into() } else { tr!("Not signed in").into() }, false)
+                };
                 let trailing = |page: Page| match page {
                     Page::Collection => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
                     Page::Downloads => Trailing::Meta(downloads.clone(), downloading.is_some()),
                     Page::Statistics => Trailing::Meta(meta.month.clone().unwrap_or_else(pending), false),
                     Page::Epic => Trailing::Meta(if signed_in { tr!("Signed in").into() } else { tr!("Not signed in").into() }, false),
+                    Page::Gog => store_meta(Store::Gog),
+                    Page::Amazon => store_meta(Store::Amazon),
                     Page::WineManager => Trailing::Meta(meta.wine.clone().unwrap_or_else(pending), false),
                     Page::Emulators => Trailing::Meta(emulators.clone(), false),
                     Page::Settings => match &update {
@@ -245,10 +254,12 @@ impl CollectionView {
                 };
                 let mut p = glass::glass_panel(theme::R_POPOVER).w(px(300.)).p(px(6.)).flex().flex_col().gap(px(2.));
                 // Where the games are, then what sets them up.
-                for (i, group) in
-                    [&[Page::Collection, Page::Downloads, Page::Statistics][..], &[Page::Epic, Page::WineManager, Page::Emulators][..]]
-                        .into_iter()
-                        .enumerate()
+                for (i, group) in [
+                    &[Page::Collection, Page::Downloads, Page::Statistics][..],
+                    &[Page::Epic, Page::Gog, Page::Amazon, Page::WineManager, Page::Emulators][..],
+                ]
+                .into_iter()
+                .enumerate()
                 {
                     if i > 0 {
                         p = p.child(menu_separator());
@@ -336,6 +347,8 @@ impl CollectionView {
             Page::Downloads => self.pages.downloads.is_none(),
             Page::WineManager => self.pages.wine.is_none(),
             Page::Epic => self.pages.epic.is_none(),
+            Page::Gog => self.pages.gog.is_none(),
+            Page::Amazon => self.pages.amazon.is_none(),
             Page::Emulators => self.pages.emulators.is_none(),
             Page::Statistics => self.pages.stats.is_none(),
             Page::Settings => self.pages.settings.is_none(),
@@ -362,6 +375,18 @@ impl CollectionView {
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
                 self.pages.hooks.insert(Page::Epic, crate::console::PadHook::new(&v));
                 self.pages.epic = Some(v.into());
+            }
+            Page::Gog => {
+                let v = cx.new(|cx| pages::store::GogPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Gog, crate::console::PadHook::new(&v));
+                self.pages.gog = Some(v.into());
+            }
+            Page::Amazon => {
+                let v = cx.new(|cx| pages::store::AmazonPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Amazon, crate::console::PadHook::new(&v));
+                self.pages.amazon = Some(v.into());
             }
             Page::Emulators => {
                 let v = cx.new(|cx| pages::emulators::EmulatorsPage::new(ctx, window, cx));
@@ -397,6 +422,8 @@ impl CollectionView {
         list::<pages::downloads::DownloadsPage>(Page::Downloads, &p.downloads, &ctx, cx, &mut out);
         list::<pages::wine_manager::WineManagerPage>(Page::WineManager, &p.wine, &ctx, cx, &mut out);
         list::<pages::epic::EpicPage>(Page::Epic, &p.epic, &ctx, cx, &mut out);
+        list::<pages::store::GogPage>(Page::Gog, &p.gog, &ctx, cx, &mut out);
+        list::<pages::store::AmazonPage>(Page::Amazon, &p.amazon, &ctx, cx, &mut out);
         list::<pages::emulators::EmulatorsPage>(Page::Emulators, &p.emulators, &ctx, cx, &mut out);
         list::<pages::stats::StatsPage>(Page::Statistics, &p.stats, &ctx, cx, &mut out);
         list::<pages::settings::SettingsPage>(Page::Settings, &p.settings, &ctx, cx, &mut out);
@@ -422,6 +449,8 @@ impl CollectionView {
             Page::Downloads => run::<pages::downloads::DownloadsPage>(&p.downloads, id, window, cx),
             Page::WineManager => run::<pages::wine_manager::WineManagerPage>(&p.wine, id, window, cx),
             Page::Epic => run::<pages::epic::EpicPage>(&p.epic, id, window, cx),
+            Page::Gog => run::<pages::store::GogPage>(&p.gog, id, window, cx),
+            Page::Amazon => run::<pages::store::AmazonPage>(&p.amazon, id, window, cx),
             Page::Emulators => run::<pages::emulators::EmulatorsPage>(&p.emulators, id, window, cx),
             Page::Statistics => run::<pages::stats::StatsPage>(&p.stats, id, window, cx),
             Page::Settings => run::<pages::settings::SettingsPage>(&p.settings, id, window, cx),
@@ -441,6 +470,8 @@ impl CollectionView {
             Page::Downloads => modal::<pages::downloads::DownloadsPage>(&p.downloads, cx),
             Page::WineManager => modal::<pages::wine_manager::WineManagerPage>(&p.wine, cx),
             Page::Epic => modal::<pages::epic::EpicPage>(&p.epic, cx),
+            Page::Gog => modal::<pages::store::GogPage>(&p.gog, cx),
+            Page::Amazon => modal::<pages::store::AmazonPage>(&p.amazon, cx),
             Page::Emulators => modal::<pages::emulators::EmulatorsPage>(&p.emulators, cx),
             Page::Statistics => modal::<pages::stats::StatsPage>(&p.stats, cx),
             Page::Settings => modal::<pages::settings::SettingsPage>(&p.settings, cx),
@@ -496,6 +527,8 @@ impl CollectionView {
             Page::Downloads => self.pages.downloads.clone(),
             Page::WineManager => self.pages.wine.clone(),
             Page::Epic => self.pages.epic.clone(),
+            Page::Gog => self.pages.gog.clone(),
+            Page::Amazon => self.pages.amazon.clone(),
             Page::Emulators => self.pages.emulators.clone(),
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
@@ -510,6 +543,8 @@ impl CollectionView {
             Page::Downloads => self.pages.downloads.clone(),
             Page::WineManager => self.pages.wine.clone(),
             Page::Epic => self.pages.epic.clone(),
+            Page::Gog => self.pages.gog.clone(),
+            Page::Amazon => self.pages.amazon.clone(),
             Page::Emulators => self.pages.emulators.clone(),
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),

@@ -4,6 +4,8 @@
   "The game's launch information was not found: {path}": "As informações de execução do jogo não foram encontradas: {path}",
   "Could not prepare the game's installers: {error}": "Não foi possível preparar os instaladores do jogo: {error}",
   "Installing Redistributables ({store})": "Instalando redistribuíveis ({store})",
+  "Open the Amazon sign-in page first": "Abra primeiro a página de login da Amazon",
+  "Logged out of {store}": "Desconectado da {store}",
   "{store} library refreshed": "Biblioteca da {store} atualizada",
   "{store} library refreshed: {n} update available": "Biblioteca da {store} atualizada: {n} atualização disponível",
   "{store} library refreshed: {n} updates available": "Biblioteca da {store} atualizada: {n} atualizações disponíveis",

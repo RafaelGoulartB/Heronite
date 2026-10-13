@@ -18,13 +18,17 @@ use crate::ui::icon;
 #[derive(Clone, Copy)]
 enum Source {
     Epic,
+    Gog,
+    Amazon,
     Steam,
     Emulators,
     AddGame,
 }
 
-const SOURCES: [(Source, Icon, &str, &str); 4] = [
+const SOURCES: [(Source, Icon, &str, &str); 6] = [
     (Source::Epic, Icon::AccountCircle, "Epic Games", n_!("Log in")),
+    (Source::Gog, Icon::Storefront, "GOG", n_!("Log in")),
+    (Source::Amazon, Icon::ShoppingBag, "Amazon Games", n_!("Log in")),
     (Source::Steam, Icon::CloudSync, "Steam", n_!("Automatic")),
     (Source::Emulators, Icon::SportsEsports, n_!("Emulators"), n_!("Detect & scan ROMs")),
     (Source::AddGame, Icon::Add, n_!("Add a game"), n_!("Program, browser or ROM")),
@@ -54,6 +58,7 @@ impl CollectionView {
             div()
                 .id(SharedString::from(format!("welcome-{title}")))
                 .flex_1()
+                .min_w_0()
                 .flex()
                 .flex_col()
                 .items_center()
@@ -71,6 +76,8 @@ impl CollectionView {
                 .on_click(cx.listener(move |this, _, window, cx| {
                     match source {
                         Source::Epic => this.navigate(Page::Epic, window, cx),
+                        Source::Gog => this.navigate(Page::Gog, window, cx),
+                        Source::Amazon => this.navigate(Page::Amazon, window, cx),
                         // Steam games are found on their own; a click looks again now.
                         Source::Steam => this.refresh_all(cx),
                         Source::Emulators => this.navigate(Page::Emulators, window, cx),
@@ -107,7 +114,8 @@ impl CollectionView {
             }))
             .child(tr!("Download Proton"));
         div()
-            .w(px(760.))
+            .w(px(920.))
+            .max_w_full()
             .flex()
             .flex_col()
             .items_center()

@@ -40,7 +40,7 @@ https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
 > [!NOTE]
 > **Windows support is coming soon.** Heronite runs on Linux today, and a Windows version is on the way.
 
-Heronite puts your Steam, Epic Games, emulated, native Linux, and Windows games into one Collection. You can sort them by your own statuses, fill in their metadata and art, and launch them through Wine/Proton or an emulator. Each session is recorded, so you can see how much you played and which screenshots you took.
+Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux, and Windows games into one Collection. You can sort them by your own statuses, fill in their metadata and art, and launch them through Wine/Proton or an emulator. Each session is recorded, so you can see how much you played and which screenshots you took.
 
 Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, CPU, and disk](#light-on-your-pc). On Linux it builds on Wine/Proton, gamescope, Ludusavi, the system tray, and desktop shortcuts.
 
@@ -61,6 +61,8 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 
 - **Steam:** installed Steam games are added to the Collection automatically, and their play time is tracked.
 - **Epic Games:** log in, install, update, repair, move, and uninstall games, manage DLC, and sync cloud saves. Downloads run through a queue you can reorder.
+- **GOG:** log in, and your GOG games appear in the Collection. Install them (Windows or native Linux builds, with the language and DLCs you choose), update, repair, move, import, and uninstall them, and sync cloud saves. Downloads share the same queue.
+- **Amazon Games:** log in, and the games of your Amazon account (Prime Gaming included) appear in the Collection. Install, update, verify, move, import, and uninstall them through the same queue.
 - **Wine and Proton:** each Windows game gets Heroic's full settings (Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, launch options, environment variables). The Wine Manager downloads and updates Proton from six sources: Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM and Proton-Sarek. It only asks GitHub for a source's list when that source has something new.
 - **Emulators:** detect installed emulators (PATH, Flatpak, AppImages) or add your own with profiles and RetroArch cores. Scan ROM folders to import games, with multi-disc games merged into one entry, and continue from a save state.
 
@@ -86,7 +88,7 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 
 ## Console mode
 
-A controller-first layout for the couch or a TV. It covers the whole app: the library, game pages, downloads, the Wine Manager, Epic, emulators, statistics, and settings. You can use a gamepad or the keyboard, and an on-screen keyboard is available for text fields. Turn it on from the palette (**Console mode**); Heronite remembers it on the next start. The desktop layout does not change.
+A controller-first layout for the couch or a TV. It covers the whole app: the library, game pages, downloads, the Wine Manager, Epic, GOG, Amazon Games, emulators, statistics, and settings. You can use a gamepad or the keyboard, and an on-screen keyboard is available for text fields. Turn it on from the palette (**Console mode**); Heronite remembers it on the next start. The desktop layout does not change.
 
 <table>
   <tr>
@@ -110,13 +112,13 @@ A controller-first layout for the couch or a TV. It covers the whole app: the li
 
 ## Light on your PC
 
-A game launcher should get out of the way when the game starts. Heronite is a single native process that draws its UI on the GPU, with no bundled browser engine. A web engine is only used by the Epic login window, which is a separate small program started when you log in. Slow work like scanning, metadata, image decoding, and compression runs on background threads. When the app sits idle, it does no work.
+A game launcher should get out of the way when the game starts. Heronite is a single native process that draws its UI on the GPU, with no bundled browser engine. A web engine is only used by the store login window (Epic, GOG, Amazon), which is a separate small program started when you log in. Slow work like scanning, metadata, image decoding, and compression runs on background threads. When the app sits idle, it does no work.
 
 | | Heronite |
 |---|---|
 | Memory while idle | **~195 MB** in a single process |
 | CPU while idle | **0.0%** (no CPU time used over 60 s) |
-| Install size | **47 MB** (app + Epic login helper) |
+| Install size | **47 MB** (app + store login helper) |
 | Start to library on screen | **~335 ms** median |
 
 
@@ -126,7 +128,7 @@ Everything stays on your machine, in Heroic-compatible files: library, Collectio
 
 On first start, if that folder does not exist yet, Heronite copies an existing Heroic setup into it **once**. It only reads Heroic's files and never writes to Heroic's folders, so both apps can stay installed.
 
-Online features need connectivity: metadata and art (IGDB, Steam, Lutris, How Long To Beat, ProtonDB), Epic Games, Wine/Proton downloads, and the app's update check (Heronite asks GitHub for the latest release at start and every 6 hours; switch it off in **Settings > About**). For IGDB, add your own Twitch client ID and secret in **Settings > Metadata**.
+Online features need connectivity: metadata and art (IGDB, Steam, Lutris, How Long To Beat, ProtonDB), Epic Games, GOG, Amazon Games, Wine/Proton downloads, and the app's update check (Heronite asks GitHub for the latest release at start and every 6 hours; switch it off in **Settings > About**). For IGDB, add your own Twitch client ID and secret in **Settings > Metadata**.
 
 ## Download
 
@@ -150,11 +152,12 @@ Either way, the new version runs after **Restart now** or the next time you open
 
 ## Run from source
 
-You need a stable Rust toolchain, `clang` and `lld` (used as the linker, see `.cargo/config.toml`), a Vulkan-capable GPU driver, and GTK/WebKitGTK for the Epic login window. Optional tools: [legendary](https://github.com/derrod/legendary) for Epic Games and [Ludusavi](https://github.com/mtkennerly/ludusavi) for save backups.
+You need a stable Rust toolchain, `clang` and `lld` (used as the linker, see `.cargo/config.toml`), a Vulkan-capable GPU driver, and GTK/WebKitGTK for the store login window. Optional tools: [legendary](https://github.com/derrod/legendary) for Epic Games, [gogdl](https://github.com/Heroic-Games-Launcher/heroic-gogdl) for GOG (needs `python3`), [nile](https://github.com/imLinguin/nile) for Amazon Games, and [Ludusavi](https://github.com/mtkennerly/ludusavi) for save backups. Heronite downloads legendary, gogdl and nile into its data folder when they are missing.
 
 ```bash
-# fast optimised build for trying the app
-cargo run --profile quick -p heronite
+# fast optimised build for trying the app (the login window is a binary of
+# its own: build it too, or the app runs an old one)
+cargo build --profile quick -p heronite-epic-login && cargo run --profile quick -p heronite
 
 # build in release mode and install for the current user
 # (~/.local/opt/heronite-rs, a launcher in ~/.local/bin and a .desktop entry)
@@ -163,7 +166,7 @@ scripts/install.sh
 
 ## Development
 
-The app is a Cargo workspace. `app/` is the GPUI binary (`heronite-rs`): the Collection screen, dialogs, ☰ pages, and console mode. The `crates/` folder holds the GPUI-free libraries: data files and Heroic migration, launching and playtime, Epic (legendary), emulation, metadata, screenshots and images, Wine/Proton, and shortcuts. A separate small binary handles the Epic login window, which keeps a web engine out of the main app.
+The app is a Cargo workspace. `app/` is the GPUI binary (`heronite-rs`): the Collection screen, dialogs, ☰ pages, and console mode. The `crates/` folder holds the GPUI-free libraries: data files and Heroic migration, launching and playtime, Epic (legendary), GOG (gogdl), Amazon Games (nile), emulation, metadata, screenshots and images, Wine/Proton, and shortcuts. A separate small binary handles the store login window, which keeps a web engine out of the main app.
 
 ```bash
 cargo fmt --all

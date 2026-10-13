@@ -131,6 +131,144 @@ impl Downloads {
         .detach();
     }
 
+    /// Amazon's sign-in starts with nile (downloaded first when missing):
+    /// `then` gets the page to open, `None` when nile is already logged in.
+    pub fn amazon_begin_login(
+        &mut self,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, Result<Option<String>, String>, &mut Context<Self>) + 'static,
+    ) {
+        let paths = self.data_paths.clone();
+        self.amazon.last_error = None;
+        cx.spawn(async move |this, cx| {
+            let res = cx
+                .background_spawn(async move {
+                    let nile = Nile::locate_or_install(&paths)?;
+                    heronite_amazon::user::start_login(&nile)
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                let res = match res {
+                    Ok(Some(request)) => {
+                        let url = request.url.clone();
+                        this.amazon_login = Some(request);
+                        Ok(Some(url))
+                    }
+                    Ok(None) => {
+                        this.store_reload_local(Store::Amazon, cx);
+                        Ok(None)
+                    }
+                    Err(err) => Err(format!("{err:#}")),
+                };
+                then(this, res, cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Logs in with the code the login window returned or the user pasted
+    /// (Amazon: after [`amazon_begin_login`](Self::amazon_begin_login)), then
+    /// refreshes the library.
+    pub fn store_login(&mut self, store: Store, input: String, cx: &mut Context<Self>) {
+        if self.store(store).logging_in {
+            return;
+        }
+        let request = match store {
+            Store::Gog => None,
+            Store::Amazon => match self.amazon_login.clone() {
+                Some(r) => Some(r),
+                None => {
+                    self.toast(cx, tr!("Open the Amazon sign-in page first"), true);
+                    return;
+                }
+            },
+        };
+        let st = self.store_mut(store);
+        st.logging_in = true;
+        st.last_error = None;
+        cx.notify();
+        let paths = self.data_paths.clone();
+        cx.spawn(async move |this, cx| {
+            let res = cx
+                .background_spawn(async move {
+                    let name = match (store, request) {
+                        (Store::Amazon, Some(request)) => {
+                            let nile = Nile::locate_or_install(&paths)?;
+                            heronite_amazon::user::register(&paths, &nile, &request, &input)?.name
+                        }
+                        _ => {
+                            let gogdl = Gogdl::locate_or_install(&paths)?;
+                            heronite_gog::user::login(&paths, &gogdl, &input)?.username
+                        }
+                    };
+                    // The library right away, like after an Epic login.
+                    let local = match refresh_blocking(&paths, store) {
+                        Ok(local) => local,
+                        Err(err) => {
+                            log::warn!("{}: refreshing the library after the login: {err:#}", store.runner());
+                            read_local(&paths, store)
+                        }
+                    };
+                    anyhow::Ok((name, local))
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                this.store_mut(store).logging_in = false;
+                match res {
+                    Ok((name, local)) => {
+                        if store == Store::Amazon {
+                            this.amazon_login = None;
+                        }
+                        this.apply_local(store, local);
+                        this.toast(cx, tr!("Logged in as {name}", name), false);
+                        this.emit(cx, DownloadsEvent::LibraryChanged);
+                    }
+                    Err(err) => {
+                        let msg = format!("{err:#}");
+                        this.store_mut(store).last_error = Some(msg.clone());
+                        this.toast(cx, msg, true);
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    pub fn store_logout(&mut self, store: Store, cx: &mut Context<Self>) {
+        let paths = self.data_paths.clone();
+        cx.spawn(async move |this, cx| {
+            let res = cx
+                .background_spawn(async move {
+                    match store {
+                        Store::Gog => heronite_gog::user::logout(&paths),
+                        Store::Amazon => {
+                            let nile = Nile::locate(&paths)?;
+                            heronite_amazon::user::logout(&paths, &nile)
+                        }
+                    }
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                match res {
+                    Ok(()) => {
+                        *this.store_mut(store) = StoreState::default();
+                        this.toast(cx, tr!("Logged out of {store}", store = store.name()), false);
+                        this.emit(cx, DownloadsEvent::LibraryChanged);
+                        this.store_reload_local(store, cx);
+                    }
+                    Err(err) => this.toast(cx, format!("{err:#}"), true),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     /// Library refresh and update check. `quiet`: a background check (no
     /// toast unless it fails); `auto_update`: queue the updates it finds when
     /// `autoUpdateGames` allows.
