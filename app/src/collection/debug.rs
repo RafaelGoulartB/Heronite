@@ -47,12 +47,17 @@ impl CollectionView {
             }
             "statuses" => self.open_manage_statuses(window, cx),
             "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
-            // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves
-            w
-            @ ("gamesettings:wine" | "gamesettings:other" | "gamesettings:advanced" | "gamesettings:gamescope" | "gamesettings:saves") => {
+            // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves|proton
+            w @ ("gamesettings:wine"
+            | "gamesettings:other"
+            | "gamesettings:advanced"
+            | "gamesettings:gamescope"
+            | "gamesettings:saves"
+            | "gamesettings:proton") => {
                 use crate::dialogs::game_settings::Tab;
                 let tab = match w {
                     "gamesettings:wine" => Tab::Wine,
+                    "gamesettings:proton" => Tab::Proton,
                     "gamesettings:other" => Tab::Other,
                     "gamesettings:advanced" => Tab::Advanced,
                     "gamesettings:saves" => Tab::Saves,

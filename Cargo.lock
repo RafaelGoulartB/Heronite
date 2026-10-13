@@ -3458,6 +3458,7 @@ dependencies = [
  "heronite-media",
  "heronite-metadata",
  "heronite-shortcuts",
+ "heronite-steam",
  "heronite-update",
  "heronite-wine",
  "image",

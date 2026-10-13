@@ -39,6 +39,8 @@ pub enum Tab {
     Advanced,
     Saves,
     Gamescope,
+    /// Steam games' Proton tab.
+    Proton,
 }
 
 impl Tab {
@@ -50,6 +52,7 @@ impl Tab {
             Tab::Advanced => Some(Section::Advanced),
             Tab::Saves => Some(Section::Saves),
             Tab::Gamescope => Some(Section::Gamescope),
+            Tab::Proton => Some(Section::Proton),
             _ => None,
         }
     }
@@ -61,6 +64,7 @@ impl Tab {
             Section::Advanced => Tab::Advanced,
             Section::Saves => Tab::Saves,
             Section::Gamescope => Tab::Gamescope,
+            Section::Proton => Tab::Proton,
             Section::General => Tab::Images,
         }
     }
@@ -75,11 +79,12 @@ impl Tab {
             Tab::Advanced => tr!("Advanced"),
             Tab::Saves => tr!("Cloud saves"),
             Tab::Gamescope => tr!("Gamescope"),
+            Tab::Proton => "Proton",
         }
     }
 
-    /// The tab Heroic opens first for this game (its Wine or Other tab), or
-    /// Images when the game has no Heroic settings.
+    /// The tab Heroic opens first for this game (its Wine or Other tab, Proton
+    /// for Steam games), or Images when the game has no Heroic settings.
     pub fn settings_start(game: &Game) -> Tab {
         GameFacts::of(game).start_section().map(Tab::of_section).unwrap_or(Tab::Images)
     }

@@ -26,6 +26,8 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use heronite_i18n::tr;
 
+mod steam;
+
 type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
 type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel>)>;
 
@@ -93,6 +95,9 @@ impl SettingsPanel {
 
     fn console_items(&self, cx: &App) -> Vec<Item> {
         let mut v = match self.section {
+            Section::Proton => self.c_proton(),
+            Section::Other if self.is_steam() => self.c_steam_other(cx),
+            Section::Advanced if self.is_steam() => self.c_steam_advanced(cx),
             Section::Wine => self.c_wine(cx),
             Section::Other => self.c_other(cx),
             Section::Advanced => self.c_advanced(cx),
