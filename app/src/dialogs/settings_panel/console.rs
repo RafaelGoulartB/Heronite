@@ -153,6 +153,16 @@ impl SettingsPanel {
             v.push(self.c_text("crossoverBottle", tr!("CrossOver bottle"), cx));
             return v;
         }
+        if self.is_game() {
+            let current = std::path::PathBuf::from(self.text("winePrefix").trim().trim_end_matches('/'));
+            let label = self.prefix_choices().iter().find(|p| p.path == current).map(|p| p.name.clone());
+            let mut it =
+                Self::c_do("prefix-pick", tr!("Choose a prefix\u{2026}"), Icon::Folder, self.prefix_list.is_some(), |this, window, cx| {
+                    this.console_prefix_sheet(window, cx)
+                });
+            it.row = it.row.desc(label.unwrap_or_else(|| tr!("Another folder (below)").to_string()));
+            v.push(it);
+        }
         v.push(self.c_path("winePrefix", tr!("Prefix"), true, cx));
         let busy = self.tool_toggle.is_some();
         let dxvk_on = self.flag("autoInstallDxvk", false);
@@ -338,6 +348,29 @@ impl SettingsPanel {
             }));
         }
         v
+    }
+
+    fn console_prefix_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let choices = self.prefix_choices();
+        let mut rows: Vec<Row> = choices
+            .iter()
+            .enumerate()
+            .map(|(i, p)| Row::action(SharedString::from(format!("pfx:{i}")), Self::prefix_label(p)).icon(Icon::Folder))
+            .collect();
+        rows.push(Row::action("pfx-new", tr!("New prefix for this game")).icon(Icon::Add));
+        let paths: Vec<std::path::PathBuf> = choices.into_iter().map(|p| p.path).collect();
+        let sheet = cx.new(|_| Sheet::new(tr!("Prefix"), None, rows));
+        let sub = cx.subscribe_in(&sheet, window, move |this, _, ev: &SheetEvent, window, cx| {
+            let SheetEvent::Activate(id) = ev;
+            this.console_layer.close();
+            if id.as_ref() == "pfx-new" {
+                this.new_prefix_for_game(window, cx);
+            } else if let Some(path) = id.strip_prefix("pfx:").and_then(|n| n.parse::<usize>().ok()).and_then(|i| paths.get(i)) {
+                this.set_prefix(path, window, cx);
+            }
+            cx.notify();
+        });
+        self.console_layer.open(&sheet, sub);
     }
 
     fn console_companion_remove(&mut self, window: &mut Window, cx: &mut Context<Self>) {

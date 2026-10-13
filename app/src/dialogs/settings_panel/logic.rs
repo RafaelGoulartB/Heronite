@@ -49,6 +49,7 @@ pub enum RunKind {
 #[derive(Clone, Debug)]
 pub struct GameFacts {
     pub app_name: String,
+    pub title: String,
     pub runner: String,
     pub run_kind: RunKind,
     pub cloud_saves: bool,
@@ -82,6 +83,7 @@ impl GameFacts {
         };
         Self {
             app_name: game.app_name.clone(),
+            title: game.title.clone(),
             runner: game.runner.clone(),
             run_kind,
             cloud_saves: g.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false),

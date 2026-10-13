@@ -283,5 +283,10 @@
   "Trainers, mod tools and other programs to run while you play. Windows programs run in the game's prefix with its Wine or Proton, so they can see the game. They close when the game exits.": "Trainers, ferramentas de mods e outros programas para rodar enquanto você joga. Programas do Windows rodam no prefixo do jogo com o Wine ou Proton dele, para conseguirem enxergar o jogo. Eles fecham quando o jogo fecha.",
   "With the game": "Junto com o jogo",
   "{minutes} min after the game": "{minutes} min depois do jogo",
-  "{seconds} s after the game": "{seconds} s depois do jogo"
+  "{seconds} s after the game": "{seconds} s depois do jogo",
+  "Another folder (below)": "Outra pasta (abaixo)",
+  "Choose a prefix…": "Escolher um prefixo…",
+  "New prefix for this game": "Novo prefixo para este jogo",
+  "Prefix folder": "Pasta do prefixo",
+  "{name} (default) · {folder}": "{name} (padrão) · {folder}"
 }

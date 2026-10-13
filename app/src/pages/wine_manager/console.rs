@@ -28,7 +28,100 @@ impl WineManagerPage {
             .collect()
     }
 
+    fn console_prefix_rows(&self) -> Vec<Row> {
+        let mut rows = vec![Row::action("pfx-new", tr!("New prefix\u{2026}")).icon(Icon::Add)];
+        if self.prefixes.list.is_none() {
+            rows.push(Row::info("pfx-loading", tr!("Looking for prefixes\u{2026}"), ""));
+        }
+        for (i, p) in self.visible_prefixes().iter().enumerate() {
+            let state = format!("{} \u{b7} {}", self.prefix_size(p), self.prefix_users(p));
+            let folder = p.path.parent().map(|d| d.display().to_string()).unwrap_or_default();
+            rows.push(Row::info(SharedString::from(format!("pfx:{i}")), p.name.clone(), state).desc(folder).icon(Icon::Folder));
+        }
+        rows
+    }
+
+    fn open_prefix_sheet(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(p) = self.visible_prefixes().get(index).cloned() else { return };
+        let mut rows = Vec::new();
+        if p.kind != heronite_wine::prefixes::PrefixKind::NotCreated && self.prefixes_copying().is_none() {
+            rows.push(Row::action("dup", tr!("Duplicate\u{2026}")).icon(Icon::ContentCopy));
+        }
+        if self.prefixes_copying().as_ref() == Some(&p.path) {
+            rows.push(Row::action("cancel-copy", tr!("Cancel the copy")).icon(Icon::Close));
+        }
+        if !p.default && p.kind != heronite_wine::prefixes::PrefixKind::NotCreated {
+            rows.push(Row::action("trash", tr!("Move to trash\u{2026}")).icon(Icon::FaTrash).danger());
+        }
+        if rows.is_empty() {
+            return;
+        }
+        let message = Some(format!("{} \u{b7} {}", p.path.display(), self.prefix_users(&p)));
+        let sheet = cx.new(|_| Sheet::new(p.name.clone(), message, rows));
+        let sub = cx.subscribe(&sheet, move |this, sheet, ev: &SheetEvent, cx| {
+            let SheetEvent::Activate(id) = ev;
+            match id.as_ref() {
+                "dup" => {
+                    this.layer.close();
+                    let source = p.path.clone();
+                    let osk = cx.new(|_| Osk::new(tr!("Name of the copy"), &tr!("{name} copy", name = p.name)));
+                    let sub = cx.subscribe(&osk, move |this, _, ev: &OskEvent, cx| {
+                        if let OskEvent::Done(text) = ev {
+                            let name = text.trim().to_string();
+                            if !name.is_empty() {
+                                this.duplicate_prefix(source.clone(), name, cx);
+                            }
+                        }
+                        this.layer.close();
+                        cx.notify();
+                    });
+                    this.layer.open(&osk, sub);
+                }
+                "cancel-copy" => {
+                    this.layer.close();
+                    this.cancel_prefix_copy();
+                }
+                "trash" => sheet.update(cx, |s, cx| {
+                    s.set_message(Some(tr!(
+                        "Move {name} to the trash? Games set to it get a new, empty prefix the next time they start.",
+                        name = p.name
+                    )));
+                    s.set_rows(vec![
+                        Row::action("keep", tr!("Keep it")),
+                        Row::action("trash-yes", tr!("Move to trash")).icon(Icon::FaTrash).danger(),
+                    ]);
+                    cx.notify();
+                }),
+                "trash-yes" => {
+                    this.layer.close();
+                    this.trash_prefix(p.path.clone(), cx);
+                }
+                _ => this.layer.close(),
+            }
+            cx.notify();
+        });
+        self.layer.open(&sheet, sub);
+    }
+
+    fn open_new_prefix(&mut self, cx: &mut Context<Self>) {
+        let osk = cx.new(|_| Osk::new(tr!("New prefix name"), ""));
+        let sub = cx.subscribe(&osk, |this, _, ev: &OskEvent, cx| {
+            if let OskEvent::Done(text) = ev {
+                let name = text.trim().to_string();
+                if !name.is_empty() {
+                    this.create_prefix(name, cx);
+                }
+            }
+            this.layer.close();
+            cx.notify();
+        });
+        self.layer.open(&osk, sub);
+    }
+
     fn console_rows(&self) -> Vec<Row> {
+        if self.show_prefixes {
+            return self.console_prefix_rows();
+        }
         let mut rows = vec![
             Row::toggle("steam", tr!("Install Proton into Steam"), self.download_to_steam)
                 .desc(tr!("New Proton builds also go to Steam's compatibility tools")),
@@ -123,8 +216,15 @@ impl WineManagerPage {
 
     pub(super) fn render_console(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows();
-        let tab = Repository::offered().iter().position(|r| *r == self.repo).unwrap_or(0);
-        let tabs: Vec<SharedString> = Repository::offered().iter().map(|r| SharedString::from(r.kind())).collect();
+        let offered = Repository::offered();
+        let tab = if self.show_prefixes { offered.len() } else { offered.iter().position(|r| *r == self.repo).unwrap_or(0) };
+        let mut tabs: Vec<SharedString> = offered.iter().map(|r| SharedString::from(r.kind())).collect();
+        tabs.push(tr!("Prefixes").into());
+        let about = if self.show_prefixes {
+            tr!("Where your games keep their Windows files and saves. A opens what can be done with a prefix; choose a game's prefix in its Wine settings.")
+        } else {
+            self.repo.explanation()
+        };
         let list = self.console_list.render("console-wine", &rows, !self.layer.is_open());
         div()
             .relative()
@@ -144,7 +244,7 @@ impl WineManagerPage {
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
-            .child(div().px(u(46.)).pb(u(14.)).max_w(u(900.)).child(kit::body_text(self.repo.explanation())))
+            .child(div().px(u(46.)).pb(u(14.)).max_w(u(900.)).child(kit::body_text(about)))
             .child(div().flex().flex_col().flex_1().min_h_0().px(u(46.)).pb(u(16.)).child(
                 div().w(u(900.)).max_w_full().flex().flex_col().flex_1().min_h_0().child(if self.loaded {
                     list.flex_1().min_h_0().into_any_element()
@@ -164,15 +264,20 @@ impl PadTarget for WineManagerPage {
             return true;
         }
         let offered = Repository::offered();
-        let tab = offered.iter().position(|r| *r == self.repo).unwrap_or(0);
-        let n = offered.len();
+        // The sources, then the Prefixes view.
+        let tab = if self.show_prefixes { offered.len() } else { offered.iter().position(|r| *r == self.repo).unwrap_or(0) };
+        let n = offered.len() + 1;
         match pad {
             Pad::LB | Pad::RB => {
                 let next = if pad == Pad::RB { (tab + 1) % n } else { (tab + n - 1) % n };
-                self.select_source(offered[next]);
+                match offered.get(next) {
+                    Some(repo) => self.select_source(*repo),
+                    None => self.select_prefixes(cx),
+                }
                 self.console_list.reset();
             }
             Pad::Y => self.open_console_search(cx),
+            Pad::X if self.show_prefixes => self.load_prefixes(cx),
             Pad::X if !self.checking() && !self.offline => self.check(self.repo, CheckMode::Manual),
             _ => {
                 let rows = self.console_rows();
@@ -180,6 +285,12 @@ impl PadTarget for WineManagerPage {
                     Outcome::Changed(id, Value::Toggle(on)) if id.as_ref() == "steam" => self.set_download_to_steam(on, cx),
                     Outcome::Activate(id) => match id.as_ref() {
                         "refresh" => self.check(self.repo, CheckMode::Manual),
+                        "pfx-new" => self.open_new_prefix(cx),
+                        v if v.starts_with("pfx:") => {
+                            if let Ok(i) = v[4..].parse::<usize>() {
+                                self.open_prefix_sheet(i, cx);
+                            }
+                        }
                         "clear-search" => self.console_query.clear(),
                         v if v.starts_with("v:") => self.open_version_sheet(&v[2..], cx),
                         _ => {}

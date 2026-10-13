@@ -6,6 +6,7 @@ mod detect;
 pub mod github;
 pub mod install;
 pub mod manager;
+pub mod prefixes;
 pub mod repos;
 pub mod store;
 mod types;
