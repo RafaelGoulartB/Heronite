@@ -18,6 +18,7 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
     try_as!(
         crate::dialogs::epic_confirm::EpicConfirmDialog,
         crate::dialogs::epic_install::EpicInstallDialog,
+        crate::dialogs::store_install::StoreInstallDialog,
         crate::dialogs::remove_game::RemoveGameDialog,
         crate::dialogs::quit_confirm::QuitConfirmDialog,
         crate::dialogs::ludusavi_backup::LudusaviBackupDialog,

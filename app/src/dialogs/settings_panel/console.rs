@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use super::advanced::{PairTable, ENV, WRAPPERS};
 use super::gamescope::{UPSCALE_METHODS, WINDOW_TYPES};
 use super::logic::{self, launcher_args_error, pairs};
-use super::saves::MODES;
+use super::saves::{GOG_MODES, MODES};
 use super::{GlobalView, Section, SettingsPanel};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
 use crate::console::kit::{self, u};
@@ -482,7 +482,63 @@ impl SettingsPanel {
         v
     }
 
+    fn c_gog_saves(&self, cx: &App) -> Vec<Item> {
+        let mut v = vec![Self::c_header(tr!("Location (beta: back up your saves first)"))];
+        match &self.saves.gog.locations {
+            None => v.push(Self::c_info("gog-loading", tr!("Save folders"), tr!("Loading\u{2026}"))),
+            Some(Err(err)) => v.push(Self::c_info("gog-error", tr!("Save folders"), err.clone())),
+            Some(Ok(list)) if list.is_empty() => {
+                v.push(Self::c_info("gog-none", tr!("Cloud saves"), tr!("This game does not support them")))
+            }
+            Some(Ok(list)) => {
+                for (i, l) in list.iter().enumerate() {
+                    let name = if l.name == "__default" { tr!("Default folder").to_string() } else { l.name.clone() };
+                    v.push(Self::c_info(&format!("gog-loc{i}"), &name, l.location.clone()));
+                }
+            }
+        }
+        let loading = self.saves.gog.loading;
+        v.push(Self::c_do(
+            "gog-refresh",
+            if loading { tr!("Loading\u{2026}") } else { tr!("Refresh locations") },
+            Icon::FaSearch,
+            !loading,
+            |this, _, cx| this.load_gog_locations(true, cx),
+        ));
+        let has_places = !self.gog_locations().is_empty();
+        let syncing = self.gog_syncing(cx);
+        v.push(Self::c_header(tr!("Sync")));
+        let opts = GOG_MODES.iter().map(|(l, _)| SharedString::from(heronite_i18n::tr(l))).collect();
+        v.push(item(
+            Row::choice("c:saves-mode", tr!("Manual sync"), opts, self.saves.mode).enabled(has_places),
+            Act::Choice(Rc::new(|this, i, cx| {
+                this.saves.mode = i;
+                cx.notify();
+            })),
+        ));
+        v.push(Self::c_do(
+            "sync",
+            if syncing { tr!("Syncing\u{2026}") } else { tr!("Sync now") },
+            Icon::CloudSync,
+            has_places && !syncing,
+            |this, _, cx| this.gog_sync(cx),
+        ));
+        v.push(Self::c_header(tr!("Automatic")));
+        let no_cloud = matches!(&self.saves.gog.locations, Some(Ok(list)) if list.is_empty());
+        v.push(self.c_toggle(
+            "autoSyncSaves",
+            false,
+            tr!("Autosync saves"),
+            Some(tr!("Before the game starts and after it ends")),
+            no_cloud,
+        ));
+        v
+    }
+
     fn c_saves(&self, cx: &App) -> Vec<Item> {
+        if self.is_gog() {
+            return self.c_gog_saves(cx);
+        }
         if !self.facts().is_some_and(|f| f.cloud_saves) {
             return vec![Self::c_info("no-saves", tr!("Cloud saves"), tr!("This game does not support them"))];
         }
@@ -610,6 +666,8 @@ impl SettingsPanel {
                 Act::Choice(Rc::new(|this, i, cx| this.set("maxWorkers", json!(i as i64), cx))),
             ),
             self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx),
+            self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx),
+            self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx),
             self.c_toggle("downloadNoHttps", false, tr!("Download without HTTPS (LanCache)"), None, false),
             Self::c_header(tr!("Updates")),
             self.c_toggle("autoUpdateGames", false, tr!("Update games automatically"), None, false),

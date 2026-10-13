@@ -301,7 +301,7 @@ impl Render for EpicPage {
         }
         let (account, stats, updates, refreshing, logging_in, last_error) = {
             let s = self.svc.read(cx);
-            (s.account().clone(), s.stats().clone(), s.updates_count(), s.refreshing, s.logging_in, s.last_error.clone())
+            (s.account().clone(), s.stats().clone(), s.epic_updates_count(), s.refreshing, s.logging_in, s.last_error.clone())
         };
 
         let mut column = div().flex().flex_col().w_full();
@@ -374,7 +374,7 @@ impl Render for EpicPage {
             if updates > 0 {
                 lib_actions = lib_actions.child(
                     button("epic-update-all", ButtonKind::Glass, tr!("Update all ({updates})", updates))
-                        .on_click(cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.update_all(cx)))),
+                        .on_click(cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.update_all_epic(cx)))),
                 );
             }
             lib_actions = lib_actions.child(action_button(

@@ -49,12 +49,15 @@ impl Downloads {
     }
 
     /// `HERONITE_DEBUG_QUEUE_INSTALL=<appName>`: queues an install of that game
-    /// into `$HERONITE_DEBUG_INSTALL_DIR` the way the install dialog would.
+    /// into `$HERONITE_DEBUG_INSTALL_DIR` the way the install dialog would
+    /// (any store's game; GOG / Amazon with a fake gogdl / nile through
+    /// `HERONITE_GOGDL_BIN` / `HERONITE_NILE_BIN`).
     pub(super) fn debug_queue_install(&mut self, app_name: &str, cx: &mut Context<Self>) {
-        let Some(game_info) = library_entry(&self.data_paths, app_name) else {
-            log::warn!("debug install: {app_name} is not in the Epic library");
+        let Some(game_info) = super::stores::any_library_entry(&self.data_paths, app_name) else {
+            log::warn!("debug install: {app_name} is not in a store library");
             return;
         };
+        let platform = if game_info.get("runner").and_then(Value::as_str) == Some("gog") { "windows" } else { "Windows" };
         let path = crate::env::value("HERONITE_DEBUG_INSTALL_DIR").unwrap_or_else(|| "/tmp/heronite-fake-games".into());
         let dlcs = crate::env::value("HERONITE_DEBUG_INSTALL_DLCS")
             .map(|d| d.split(',').filter(|s| !s.is_empty()).map(str::to_string).collect())
@@ -63,7 +66,7 @@ impl Downloads {
             InstallRequest {
                 game_info,
                 path,
-                platform: "Windows".into(),
+                platform: platform.into(),
                 sdl_tags: Vec::new(),
                 dlcs,
                 language: String::new(),

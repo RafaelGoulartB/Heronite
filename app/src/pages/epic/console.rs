@@ -21,7 +21,7 @@ impl EpicPage {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         let s = self.svc.read(cx);
         let (account, stats, updates, refreshing, logging_in) =
-            (s.account().clone(), s.stats().clone(), s.updates_count(), s.refreshing, s.logging_in);
+            (s.account().clone(), s.stats().clone(), s.epic_updates_count(), s.refreshing, s.logging_in);
         let (eos, busy) = (s.eos().clone(), s.busy_of(eos_overlay::APP_NAME).cloned());
         let mut rows = vec![Row::header(tr!("Account"))];
         if account.logged_in {
@@ -140,7 +140,7 @@ impl EpicPage {
     fn console_activate(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         match id {
             "refresh" => self.svc.update(cx, |s, cx| s.refresh_library(cx)),
-            "update-all" => self.svc.update(cx, |s, cx| s.update_all(cx)),
+            "update-all" => self.svc.update(cx, |s, cx| s.update_all_epic(cx)),
             "import" => {
                 let data_paths = self.ctx.data_paths.clone();
                 let picker = cx.new(|cx| super::EpicImportPicker::new(data_paths, window, cx));

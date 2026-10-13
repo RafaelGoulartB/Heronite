@@ -1,5 +1,6 @@
 //! Downloads page: the running install/update with its progress, the queue
-//! (reorder / remove) and the history, backed by the Epic download manager.
+//! (reorder / remove) and the history, backed by the download manager shared
+//! by Epic, GOG and Amazon Games.
 
 mod console;
 mod palette;
@@ -43,9 +44,19 @@ impl DownloadsPage {
 
 fn meta_line(el: &DmElement) -> String {
     let kind = if el.kind == ElementKind::Install { trc!("download kind", "Install") } else { trc!("download kind", "Update") };
-    let platform = if el.params.platform_to_install.is_empty() { "Windows" } else { el.params.platform_to_install.as_str() };
+    let store = match el.params.runner.as_str() {
+        "gog" => "GOG",
+        "nile" => "Amazon",
+        _ => "Epic",
+    };
+    // GOG names its platforms in lower case.
+    let platform = match el.params.platform_to_install.as_str() {
+        "" | "windows" => "Windows",
+        "linux" => "Linux",
+        other => other,
+    };
     let size = el.params.size.as_deref().map(heronite_epic::util::localize_size).unwrap_or_else(|| "?? MB".into());
-    format!("{kind} \u{b7} {platform} \u{b7} {size}")
+    format!("{kind} \u{b7} {store} \u{b7} {platform} \u{b7} {size}")
 }
 
 fn date_text(ms: u64) -> String {
@@ -290,7 +301,7 @@ impl Render for DownloadsPage {
         sheet(
             "page-downloads",
             tr!("Downloads"),
-            Some(tr!("Installs and updates from Epic Games run one at a time, in this order.").into()),
+            Some(tr!("Installs and updates from Epic Games, GOG and Amazon Games run one at a time, in this order.").into()),
             None,
             1560.,
             window,

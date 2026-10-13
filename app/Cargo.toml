@@ -23,6 +23,8 @@ heronite-media = { path = "../crates/media" }
 heronite-emulation = { path = "../crates/emulation" }
 heronite-wine = { path = "../crates/wine" }
 heronite-epic = { path = "../crates/epic" }
+heronite-gog = { path = "../crates/gog" }
+heronite-amazon = { path = "../crates/amazon" }
 heronite-update = { path = "../crates/update" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 smallvec = "1"

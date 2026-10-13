@@ -36,12 +36,12 @@ impl PaletteCommands for DownloadsPage {
         v.push(
             PageCommand::new(
                 "update-all",
-                tr!("Update all Epic games"),
+                tr!("Update all games"),
                 trn!(updates, "{n} update available", "{n} updates available"),
                 Icon::Update,
             )
             .keywords(tr!("upgrade patch queue"))
-            .disabled((updates == 0).then_some(tr!("No Epic updates available")))
+            .disabled((updates == 0).then_some(tr!("No updates available")))
             .stay(),
         );
         v.push(

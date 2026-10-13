@@ -1,6 +1,6 @@
-//! Plain data the Epic service exposes to pages, dialogs and the Collection.
+//! Plain data the store service exposes to pages, dialogs and the Collection.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use gpui_kit::*;
@@ -37,6 +37,54 @@ pub struct GameFlags {
     pub has_dlcs: bool,
     /// EA App / Ubisoft Connect games (`thirdPartyManagedApp`).
     pub third_party: bool,
+}
+
+/// The stores besides Epic: their games install through gogdl / nile but
+/// share the download queue, the Collection glue and the pages with Epic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Store {
+    Gog,
+    Amazon,
+}
+
+impl Store {
+    pub const ALL: [Store; 2] = [Store::Gog, Store::Amazon];
+
+    /// `GameInfo.runner` of its games.
+    pub fn runner(self) -> &'static str {
+        match self {
+            Store::Gog => "gog",
+            Store::Amazon => "nile",
+        }
+    }
+
+    pub fn from_runner(runner: &str) -> Option<Store> {
+        match runner {
+            "gog" => Some(Store::Gog),
+            "nile" => Some(Store::Amazon),
+            _ => None,
+        }
+    }
+
+    /// The store's name (a brand: not translated).
+    pub fn name(self) -> &'static str {
+        match self {
+            Store::Gog => "GOG",
+            Store::Amazon => "Amazon Games",
+        }
+    }
+}
+
+/// Account, library counts and updates of a [`Store`].
+#[derive(Clone, Debug, Default)]
+pub struct StoreState {
+    pub account: Account,
+    pub owned: usize,
+    pub installed: usize,
+    pub updates: HashSet<String>,
+    pub refreshing: bool,
+    /// Last problem of login / refresh, for the store's page.
+    pub last_error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

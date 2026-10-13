@@ -1,0 +1,8 @@
+{
+  "Could not load the save folders: {error}": "Não foi possível carregar as pastas de saves: {error}",
+  "Default folder": "Pasta padrão",
+  "GOG lists these folders. They are kept in the game's settings (gogSaves); refresh them after changing the Wine prefix.": "A GOG informa estas pastas. Elas ficam nas configurações do jogo (gogSaves); atualize-as depois de trocar o prefixo do Wine.",
+  "Loading the save folders…": "Carregando as pastas de saves…",
+  "Refresh locations": "Atualizar pastas",
+  "Save folders": "Pastas de saves"
+}

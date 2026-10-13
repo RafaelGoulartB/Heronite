@@ -1,20 +1,24 @@
-//! Epic service: owns the download queue (running one install/update at a
-//! time on a worker thread), the account state, the "update available" set
-//! and the one-off operations on games (verify, uninstall, move, import,
-//! cloud saves). Pages, dialogs and the Collection observe it.
+//! Store service: owns the download queue (running one install/update at a
+//! time on a worker thread, for Epic, GOG and Amazon Games), the accounts, the
+//! "update available" sets and the one-off operations on games (verify,
+//! uninstall, move, import, cloud saves). Pages, dialogs and the Collection
+//! observe it.
 //!
 //! `Downloads` is split by responsibility: `queue` (install/update/queue
 //! control), `ops` (one-off operations), `updates` (library refresh and
-//! auto-update), `eos` (EOS overlay), `account` (login/logout) and `debug`
+//! auto-update), `eos` (EOS overlay), `account` (Epic login/logout), `stores`
+//! (GOG and Amazon Games: accounts, refreshes, operations) and `debug`
 //! (`HERONITE_DEBUG_*` hooks).
 
 mod account;
 mod debug;
 mod eos;
+mod gog_saves;
 mod launch_setup;
 mod library_file;
 mod ops;
 mod queue;
+mod stores;
 mod types;
 mod updates;
 
@@ -36,6 +40,7 @@ use queue::LazyJob;
 
 pub use launch_setup::EpicLaunchSetup;
 pub use library_file::library_entry;
+pub use stores::{gog_sync_saves_flag, StoreLaunchSetup};
 pub use types::*;
 
 pub struct Downloads {
@@ -66,6 +71,8 @@ pub struct Downloads {
     pub last_error: Option<String>,
     eos: EosStatus,
     eos_games: HashMap<String, EosEntry>,
+    gog: StoreState,
+    amazon: StoreState,
 }
 
 impl EventEmitter<DownloadsEvent> for Downloads {}
@@ -119,6 +126,8 @@ impl Downloads {
             last_error: None,
             eos: EosStatus::default(),
             eos_games: HashMap::new(),
+            gog: StoreState::default(),
+            amazon: StoreState::default(),
         };
         this.reload_local(cx);
         this.eos_reload(false, cx);
@@ -155,10 +164,26 @@ impl Downloads {
     }
 
     pub fn has_update(&self, app_name: &str) -> bool {
-        self.updates.contains(app_name) || self.fake_update.as_deref() == Some(app_name)
+        self.updates.contains(app_name)
+            || self.gog.updates.contains(app_name)
+            || self.amazon.updates.contains(app_name)
+            || self.fake_update.as_deref() == Some(app_name)
     }
 
+    /// Updates of every store.
     pub fn updates_count(&self) -> usize {
+        self.updates.len()
+            + self.gog.updates.len()
+            + self.amazon.updates.len()
+            + usize::from(self.fake_update.as_ref().is_some_and(|a| !self.has_real_update(a)))
+    }
+
+    fn has_real_update(&self, app_name: &str) -> bool {
+        self.updates.contains(app_name) || self.gog.updates.contains(app_name) || self.amazon.updates.contains(app_name)
+    }
+
+    /// Epic's updates only (the Epic page).
+    pub fn epic_updates_count(&self) -> usize {
         self.updates.len() + usize::from(self.fake_update.as_ref().is_some_and(|a| !self.updates.contains(a)))
     }
 
@@ -181,12 +206,15 @@ impl Downloads {
 
     fn toast(&self, cx: &mut Context<Self>, text: impl Into<String>, error: bool) {
         let text = text.into();
-        log::info!("epic: {text}");
+        log::info!("downloads: {text}");
         self.emit(cx, DownloadsEvent::Toast(text, error));
     }
 
-    /// Account, stats and updates from files on disk.
+    /// Account, stats and updates of every store from files on disk.
     pub fn reload_local(&mut self, cx: &mut Context<Self>) {
+        for store in Store::ALL {
+            self.store_reload_local(store, cx);
+        }
         let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let (info, updates, stats) = cx

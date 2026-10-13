@@ -84,7 +84,7 @@ impl Section {
             Section::Appearance => tr!("Two independent looks: the artwork behind the Collection, and the background of menus, dialogs and pages (glass or solid)."),
             Section::Advanced => tr!("Logs, folders and cache."),
             Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
-            Section::Downloads => tr!("Epic downloads and updates."),
+            Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
             Section::Metadata => tr!("Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags."),
             Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),

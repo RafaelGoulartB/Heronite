@@ -74,20 +74,26 @@ impl GameFacts {
                 Platform::Linux => RunKind::Native,
                 Platform::Windows => RunKind::Wine,
             }
-        } else if platform.contains("linux") || g.is_linux_native == Some(true) {
+        } else if platform.contains("linux") || (platform.is_empty() && g.is_linux_native == Some(true)) {
+            // The installed build decides: a GOG game with a Linux build may
+            // be installed as its Windows build.
             RunKind::Native
         } else if platform.contains("mac") || platform == "osx" {
             RunKind::None
         } else {
             RunKind::Wine
         };
-        Self {
-            app_name: game.app_name.clone(),
-            title: game.title.clone(),
-            runner: game.runner.clone(),
-            run_kind,
-            cloud_saves: g.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false),
-        }
+        let cloud_saves = if game.runner == "gog" {
+            // Two small files, no network: the tab list is built on the UI thread.
+            run_kind == RunKind::Wine && heronite_gog::saves::supported(&heronite_data::DataPaths::detect(), &game.app_name)
+        } else {
+            g.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false)
+        };
+        Self { app_name: game.app_name.clone(), title: game.title.clone(), runner: game.runner.clone(), run_kind, cloud_saves }
+    }
+
+    pub fn is_gog(&self) -> bool {
+        self.runner == "gog"
     }
 
     pub fn is_sideload(&self) -> bool {
@@ -120,7 +126,7 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
         RunKind::Native => out.push(Section::Other),
     }
     out.push(Section::Advanced);
-    if runner == "legendary" && cloud_saves_tab {
+    if matches!(runner, "legendary" | "gog") && cloud_saves_tab {
         out.push(Section::Saves);
     }
     out.push(Section::Gamescope);
@@ -287,6 +293,8 @@ mod tests {
         assert_eq!(sections_for(RunKind::Native, "sideload", false), [Section::Other, Section::Advanced, Section::Gamescope]);
         assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
+        assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));
+        assert!(!sections_for(RunKind::Wine, "gog", false).contains(&Section::Saves));
     }
 
     #[test]

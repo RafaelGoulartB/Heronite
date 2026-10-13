@@ -50,7 +50,7 @@ impl SettingsPanel {
         }
     }
 
-    /// Epic downloads and game updates.
+    /// Store downloads (Epic, GOG, Amazon Games) and game updates.
     fn downloads_view(&mut self, cx: &mut Context<Self>) -> Div {
         let fields = rows()
             .field_help(
@@ -67,6 +67,14 @@ impl SettingsPanel {
                     cx,
                 ),
                 vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/legendary)."))],
+            )
+            .field_help(
+                self.path_row("altGogdlBin", Some(tr!("Choose an Alternative gogdl Binary")), false, tr!("Select gogdl Binary"), true, cx),
+                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/gogdl)."))],
+            )
+            .field_help(
+                self.path_row("altNileBin", Some(tr!("Choose an Alternative nile Binary")), false, tr!("Select nile Binary"), true, cx),
+                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/nile)."))],
             );
         let toggles = rows()
             .child(self.toggle_row(

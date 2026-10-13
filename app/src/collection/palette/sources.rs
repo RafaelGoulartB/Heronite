@@ -158,7 +158,7 @@ fn section_help(s: Section) -> &'static str {
         Section::Appearance => tr!("Page background, blur, covers"),
         Section::Advanced => tr!("Folders, cache, copy settings"),
         Section::GameDefaults => tr!("Values new games start with"),
-        Section::Downloads => tr!("Epic downloads and updates"),
+        Section::Downloads => tr!("Store downloads and updates"),
         Section::Library => tr!("Hidden games, favourites, recent games"),
         Section::Metadata => tr!("IGDB keys, covers, field sources"),
         Section::Screenshots => tr!("Folder, capture shortcut, preview cache"),
@@ -189,7 +189,12 @@ pub(super) fn static_entries() -> Vec<Entry> {
             .shortcut(shortcut)
     };
     v.push(page(Page::Collection, tr!("Your games"), "Ctrl 1", "library home games list biblioteca inicio jogos lista"));
-    v.push(page(Page::Downloads, tr!("Epic installs and updates"), "Ctrl 2", "queue install update epic fila instalar atualizar baixar"));
+    v.push(page(
+        Page::Downloads,
+        tr!("Installs and updates of every store"),
+        "Ctrl 2",
+        "queue install update epic gog amazon fila instalar atualizar baixar",
+    ));
     v.push(page(
         Page::WineManager,
         tr!("Download and manage Proton / Wine"),

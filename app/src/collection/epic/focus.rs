@@ -1,10 +1,9 @@
-//! Epic items of the focus panel footer and of the game actions (context
+//! Store items of the focus panel footer and of the game actions (context
 //! menu, palette).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::CollectionGame;
-use serde_json::Value;
 
 use super::{app_of, EpicAction, FocusEpic, Request};
 use crate::collection::game_actions::{GameAction, GameActionItem};
@@ -31,7 +30,7 @@ fn round_btn(id: impl Into<ElementId>, ic: Icon) -> Stateful<Div> {
         .child(icon(ic, px(16.), rgb(0xf4f6f8)))
 }
 impl CollectionView {
-    /// Footer content of the focus panel for an Epic game.
+    /// Footer content of the focus panel for a store game.
     pub(in crate::collection) fn epic_focus(&self, key: &str, installed: bool, cx: &mut Context<Self>) -> Option<FocusEpic> {
         let app = app_of(key)?.to_string();
         let svc = self.epic.service.as_ref()?.clone();
@@ -114,6 +113,7 @@ impl CollectionView {
             return Some(FocusEpic { element: row.into_any_element(), replaces_play: true });
         }
         if update {
+            let key = key.to_string();
             let el = div()
                 .id("epic-focus-update")
                 .flex()
@@ -131,17 +131,17 @@ impl CollectionView {
                 .text_size(px(15.2))
                 .child(icon(Icon::Update, px(19.2), rgb(0x161616)))
                 .child(tr!("Update"))
-                .on_click(cx.listener(move |this, _, _, cx| this.epic_update(&format!("legendary_{app}"), cx)))
+                .on_click(cx.listener(move |this, _, _, cx| this.epic_update(&key, cx)))
                 .into_any_element();
             return Some(FocusEpic { element: el, replaces_play: false });
         }
         None
     }
 
-    /// The Epic actions `game` offers now (none for other runners).
+    /// The store actions `game` offers now (none for games of no store).
     pub(in crate::collection) fn epic_actions(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<GameActionItem> {
         let mut v = Vec::new();
-        if game.runner != "legendary" {
+        if !super::is_store_runner(&game.runner) {
             return v;
         }
         let svc = self.epic_service(cx);
@@ -149,7 +149,7 @@ impl CollectionView {
             let s = svc.read(cx);
             (s.busy_of(&game.app_name).is_some(), s.queued(&game.app_name).is_some(), s.has_update(&game.app_name))
         };
-        let cloud = game.game.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false);
+        let cloud = super::has_cloud_saves(game);
         // The Collection's game model leaves these out; the service read them from the library file.
         let flags = svc.read(cx).game_flags(&game.app_name);
         let (third_party, has_dlcs) = (flags.third_party, flags.has_dlcs);
@@ -200,7 +200,7 @@ impl CollectionView {
             v.push(item(EpicAction::Modify, "modify", Icon::Tune, tr!("Modify installation"), "dlc content modificar instalacao conteudo"));
         }
         // The overlay is enabled per Wine prefix on Linux only.
-        if cfg!(target_os = "linux") && !third_party {
+        if cfg!(target_os = "linux") && !third_party && game.runner == "legendary" {
             let app = game.app_name.clone();
             svc.update(cx, |s, cx| s.eos_load_game(&app, cx));
             let state = svc.read(cx).eos_game(&game.app_name);
@@ -244,8 +244,7 @@ impl CollectionView {
             }
             EpicAction::Sync => {
                 let Some(game) = self.epic_game(key) else { return };
-                let (app, title) = (game.app_name.clone(), game.title.clone());
-                self.epic_service(cx).update(cx, |s, cx| s.sync_saves(&app, &title, cx));
+                self.epic_sync_saves(&game, cx);
                 None
             }
         };

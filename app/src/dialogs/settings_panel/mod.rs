@@ -86,6 +86,8 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("defaultWinePrefixDir", s("defaultWinePrefixDir"), ""),
     ("defaultSteamPath", s("defaultSteamPath"), ""),
     ("altLegendaryBin", s("altLegendaryBin"), n_!("Using built-in Legendary binary...")),
+    ("altGogdlBin", s("altGogdlBin"), n_!("Using built-in gogdl binary...")),
+    ("altNileBin", s("altNileBin"), n_!("Using built-in nile binary...")),
     ("env.key", Bind::Scratch, n_!("NAME")),
     ("env.value", Bind::Scratch, n_!("VALUE")),
     ("wrap.exe", Bind::Scratch, n_!("New Wrapper")),
@@ -107,6 +109,15 @@ pub struct SavesState {
     /// Index into `saves::MODES`.
     pub mode: usize,
     pub output: Option<Vec<String>>,
+    pub gog: GogSaves,
+}
+
+/// The save folders of a GOG game (GOG's cloud saves tab).
+#[derive(Default)]
+pub struct GogSaves {
+    /// `None` until the first load ends.
+    pub locations: Option<Result<Vec<heronite_gog::saves::SaveLocation>, String>>,
+    pub loading: bool,
 }
 
 pub struct SettingsPanel {
@@ -216,6 +227,11 @@ impl SettingsPanel {
             _subs: subs,
         };
         this.load_wine_list(cx);
+        if this.facts().is_some_and(|f| f.is_gog()) {
+            // A manual sync runs in the service: redraw when it starts and ends.
+            let service = crate::services::downloads(cx);
+            this._subs.push(cx.observe(&service, |_, _, cx| cx.notify()));
+        }
         if this.is_game() && !this.native() {
             this.load_prefix_list(cx);
         }

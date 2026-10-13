@@ -1,7 +1,7 @@
-//! Epic Games glue of the Collection: install / import dialogs, progress on
-//! cards and in the focus panel footer, the Epic items of the context menu
-//! and the confirmations behind them. The work itself is done by
-//! `services::Downloads` (download queue and operations).
+//! Store glue of the Collection (Epic Games, GOG, Amazon Games): install /
+//! import dialogs, progress on cards and in the focus panel footer, the store
+//! items of the context menu and the confirmations behind them. The work
+//! itself is done by `services::Downloads` (download queue and operations).
 
 mod console;
 mod dialogs;
@@ -96,8 +96,14 @@ fn queue_verb(kind: Option<ElementKind>, paused: bool) -> &'static str {
     }
 }
 
+/// The app name of a store game's key (`<runner>_<appName>`).
 fn app_of(key: &str) -> Option<&str> {
-    key.strip_prefix("legendary_")
+    ["legendary_", "gog_", "nile_"].iter().find_map(|prefix| key.strip_prefix(prefix))
+}
+
+/// Games of a store that installs through the download queue.
+pub(super) fn is_store_runner(runner: &str) -> bool {
+    matches!(runner, "legendary" | "gog" | "nile")
 }
 
 /// Card overlay: bottom strip with label + bar, "Update" pill at the top.
@@ -140,7 +146,31 @@ pub(super) fn card_overlay(e: &CardEpic) -> Div {
     layer
 }
 
+/// The game keeps cloud saves its store can sync: Epic says so in its
+/// library; GOG keeps them for its Windows builds (whether this game has any
+/// is known when the sync runs).
+pub(super) fn has_cloud_saves(game: &CollectionGame) -> bool {
+    match game.runner.as_str() {
+        "gog" => game.installed && game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("windows")),
+        "legendary" => game.game.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false),
+        _ => false,
+    }
+}
+
 impl CollectionView {
+    /// Cloud saves sync of a store game (Epic or GOG), from a menu.
+    pub(super) fn epic_sync_saves(&mut self, game: &CollectionGame, cx: &mut Context<Self>) {
+        let (app, title) = (game.app_name.clone(), game.title.clone());
+        let gog = game.runner == "gog";
+        self.epic_service(cx).update(cx, |s, cx| {
+            if gog {
+                s.gog_sync_saves(&app, &title, heronite_gog::saves::SyncMode::Both, cx);
+            } else {
+                s.sync_saves(&app, &title, cx);
+            }
+        });
+    }
+
     /// The service, created and observed on first use.
     fn epic_service(&mut self, cx: &mut Context<Self>) -> Entity<Downloads> {
         if let Some(s) = &self.epic.service {
@@ -202,13 +232,10 @@ impl CollectionView {
         serde_json::to_value(&*game.game).unwrap_or(Value::Null)
     }
 
-    /// Play/Install button of an Epic game. Returns `true` when handled here:
-    /// uninstalled games open the install dialog, games in the queue open the
-    /// Downloads page, outdated games ask to update first.
-    /// Legendary can import an existing install of `game` (not EA app /
+    /// The store can import an existing install of `game` (not EA app /
     /// Ubisoft Connect games, which live in their store's prefix).
     pub(super) fn epic_can_import(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> bool {
-        if game.runner != "legendary" || game.installed {
+        if !is_store_runner(&game.runner) || game.installed {
             return false;
         }
         let svc = self.epic_service(cx);
@@ -216,8 +243,11 @@ impl CollectionView {
         !third_party
     }
 
+    /// Play/Install button of a store game. Returns `true` when handled here:
+    /// uninstalled games open the install dialog, games in the queue open the
+    /// Downloads page, outdated games ask to update first.
     pub(super) fn epic_primary(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> bool {
-        if game.runner != "legendary" {
+        if !is_store_runner(&game.runner) {
             return false;
         }
         let svc = self.epic_service(cx);

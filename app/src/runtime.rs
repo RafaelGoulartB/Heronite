@@ -15,13 +15,17 @@ use heronite_launch::{
     build_plan, LaunchEvent, LaunchOptions, LaunchPlan, LaunchRequest, Launcher, PlanContext, SystemProbe, SystemSpawner,
 };
 
-/// Cloud saves around a launch go through legendary (the Epic crate depends on
-/// the launch crate, so the launcher gets this through a trait).
-struct EpicCloudSaves(DataPaths);
+/// Cloud saves around a launch go through legendary or gogdl (the store
+/// crates depend on the launch crate, so the launcher gets this through a
+/// trait).
+struct StoreCloudSaves(DataPaths);
 
-impl CloudSync for EpicCloudSaves {
-    fn sync(&self, _runner: &str, app_name: &str, saves_path: &str, flag: &str) -> Result<String, String> {
-        heronite_epic::saves::sync_flag(&self.0, app_name, saves_path, Some(flag)).map_err(|e| format!("{e:#}"))
+impl CloudSync for StoreCloudSaves {
+    fn sync(&self, runner: &str, app_name: &str, saves_path: &str, flag: &str) -> Result<String, String> {
+        match runner {
+            "gog" => crate::services::downloads::gog_sync_saves_flag(&self.0, app_name, flag),
+            _ => heronite_epic::saves::sync_flag(&self.0, app_name, saves_path, Some(flag)).map_err(|e| format!("{e:#}")),
+        }
     }
 }
 
@@ -69,9 +73,10 @@ impl GameRuntime {
         launcher.set_prep_services(PrepServices {
             probe: Arc::new(SystemProbe),
             net: Arc::new(SystemNet),
-            cloud: Some(Arc::new(EpicCloudSaves(paths.clone()))),
+            cloud: Some(Arc::new(StoreCloudSaves(paths.clone()))),
         });
         launcher.set_epic_setup(Arc::new(crate::services::downloads::EpicLaunchSetup(paths.clone())));
+        launcher.set_store_setup(Arc::new(crate::services::downloads::StoreLaunchSetup(paths.clone())));
         // Header of every launch log (Heroic's `formatSystemInfo`).
         launcher.set_system_info(Arc::new(crate::pages::settings::logs::system_info_text));
         spawn_tools_update(paths.clone());

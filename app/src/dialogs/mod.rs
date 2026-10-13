@@ -34,6 +34,7 @@ pub mod rom_folder;
 pub mod scan_roms;
 pub mod screenshot_art;
 pub mod settings_panel;
+pub mod store_install;
 pub mod web_image;
 
 use std::sync::Arc;

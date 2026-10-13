@@ -14,7 +14,8 @@ use heronite_i18n::{tr, trn};
 use serde_json::Value;
 
 use super::library_file::{library_entry, read_stats};
-use super::{Downloads, DownloadsEvent};
+use super::stores::any_library_entry;
+use super::{Downloads, DownloadsEvent, Store};
 
 /// How often the background check for game updates repeats while the app
 /// lives (Heroic only checks at startup and on refresh; a tray-resident app
@@ -129,8 +130,16 @@ impl Downloads {
         .detach();
     }
 
-    /// Queues an update for every installed game that has one.
+    /// Queues an update for every installed game of every store that has one.
     pub fn update_all(&mut self, cx: &mut Context<Self>) {
+        self.update_all_epic(cx);
+        for store in Store::ALL {
+            self.store_update_all(store, cx);
+        }
+    }
+
+    /// Queues an update for every installed Epic game that has one.
+    pub fn update_all_epic(&mut self, cx: &mut Context<Self>) {
         let apps: Vec<String> = self.updates.iter().cloned().collect();
         for app in apps {
             if self.queued(&app).is_some() {
@@ -143,22 +152,30 @@ impl Downloads {
     }
 
     /// The background update check (startup and periodic): skipped offline,
-    /// otherwise refreshes the library and, with `autoUpdateGames`, queues the
-    /// updates found (see [`autoupdate`]).
+    /// otherwise refreshes the libraries of the stores logged in and, with
+    /// `autoUpdateGames`, queues the updates found (see [`autoupdate`]).
     pub fn check_for_updates(&mut self, auto: bool, cx: &mut Context<Self>) {
-        if self.refreshing || !self.account.logged_in {
+        let epic = !self.refreshing && self.account.logged_in;
+        let stores: Vec<Store> =
+            Store::ALL.into_iter().filter(|s| self.store(*s).account.logged_in && !self.store(*s).refreshing).collect();
+        if !epic && stores.is_empty() {
             return;
         }
         cx.spawn(async move |this, cx| {
             let online = cx.background_spawn(async { heronite_launch::net::Net::is_online(&heronite_launch::net::SystemNet) }).await;
             if !online {
-                log::info!("epic: offline, not checking for game updates");
+                log::info!("offline, not checking for game updates");
                 return;
             }
             this.update(cx, |this, cx| {
-                this.quiet_refresh = true;
-                this.auto_update_after_refresh = auto;
-                this.refresh_library(cx);
+                if epic {
+                    this.quiet_refresh = true;
+                    this.auto_update_after_refresh = auto;
+                    this.refresh_library(cx);
+                }
+                for store in stores {
+                    this.store_refresh(store, true, auto, cx);
+                }
             })
             .ok();
         })
@@ -182,10 +199,16 @@ impl Downloads {
     /// ignore updates (`ignoreGameUpdates` in their settings) and games being
     /// played (those wait for their exit); not at all offline or on a
     /// metered connection. `only`: just that game.
-    fn queue_auto_updates(&mut self, only: Option<String>, cx: &mut Context<Self>) {
+    pub(super) fn queue_auto_updates(&mut self, only: Option<String>, cx: &mut Context<Self>) {
         let data_paths = self.data_paths.clone();
-        let apps: Vec<String> =
-            self.updates.iter().filter(|a| only.as_ref().is_none_or(|o| o == *a) && !self.auto_failed.contains(*a)).cloned().collect();
+        let apps: Vec<String> = self
+            .updates
+            .iter()
+            .chain(&self.gog.updates)
+            .chain(&self.amazon.updates)
+            .filter(|a| only.as_ref().is_none_or(|o| o == *a) && !self.auto_failed.contains(*a))
+            .cloned()
+            .collect();
         if apps.is_empty() {
             return;
         }
@@ -219,7 +242,7 @@ impl Downloads {
                         autoupdate::Gates::default()
                     };
                     let plan = autoupdate::plan(&gates, &candidates);
-                    let entries: Vec<Value> = plan.queue.iter().filter_map(|app| library_entry(&data_paths, app)).collect();
+                    let entries: Vec<Value> = plan.queue.iter().filter_map(|app| any_library_entry(&data_paths, app)).collect();
                     (plan, entries)
                 })
                 .await;
