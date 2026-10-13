@@ -250,8 +250,10 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
   never switch workspaces, never move/click the real mouse.
 - Debug hooks (env, via `SHOT_ENV="..."`): `HERONITE_DEBUG_SELECT=<runner_appName>`,
   `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|facets|nav`,
-  `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>` (extend the match in
-  `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section).
+  `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>|onboarding[:<step>]` (extend the match in
+  `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section,
+  `onboarding:<step>` the getting-started checklist on a step such as `palette` or `screenshots`).
+  `scripts/shot.sh` sets `HERONITE_NO_ONBOARDING=1`: the checklist does not open by itself on a new state folder.
 - Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).
 - Anything that WRITES data must be exercised only against a copy:
   `HERONITE_DATA_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`

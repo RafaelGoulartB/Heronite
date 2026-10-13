@@ -72,6 +72,7 @@ impl CollectionView {
     /// Opens the palette (the ☰ menu offers it too). Does nothing while a
     /// dialog is open.
     pub(super) fn open_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.mark_onboarding(crate::dialogs::onboarding::Step::Palette);
         self.open_palette_with("", window, cx);
     }
 
@@ -97,6 +98,10 @@ impl CollectionView {
         self.palette.view = Some(view.clone());
         cx.notify();
         Some(view)
+    }
+
+    pub(super) fn palette_open(&self) -> bool {
+        self.palette.view.is_some()
     }
 
     pub(super) fn close_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -281,6 +286,7 @@ impl CollectionView {
             }
             Act::Console => self.set_console(true, window, cx),
             Act::YearReview => self.open_year_review(window, cx),
+            Act::Onboarding => self.open_onboarding(cx),
             Act::ManageStatuses => self.open_manage_statuses(window, cx),
             // The quit question needs the window: ask once this update ended.
             Act::Quit => cx.defer(crate::system::request_quit),

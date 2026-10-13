@@ -191,7 +191,8 @@ impl CollectionView {
                     .w(px((list_w - 24.).max(300.)))
                     .child(self.nav_dropdown(cx))
                     .child(self.search_box(window, cx))
-                    .child(view),
+                    .child(view)
+                    .children(self.onboarding_button(cx)),
             )
             .child(div().flex().flex_1().min_w_0().items_center().gap(px(6.)).overflow_hidden().children(self.filter_chips(cx)))
             .child(div().flex().flex_none().items_center().gap(px(2.)).children(self.bulk_chip(cx)).child(refresh).children(close))

@@ -89,6 +89,7 @@ impl CollectionView {
         self.ui.console_mode = on;
         self.save_ui();
         if on {
+            self.mark_onboarding(crate::dialogs::onboarding::Step::Console);
             self.enter_console(window, cx);
         } else {
             console::set_active(false);

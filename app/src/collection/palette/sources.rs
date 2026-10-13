@@ -38,6 +38,8 @@ pub(super) enum Act {
     Console,
     /// Statistics, Year in review of this year.
     YearReview,
+    /// The getting-started checklist.
+    Onboarding,
     ManageStatuses,
     Quit,
     /// Sort, filters and grouping of the Collection list.
@@ -289,6 +291,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         tr!("Your year in games, as stories"),
         Icon::BarChart,
         "wrapped recap retrospective statistics stats year summary retrospectiva resumo ano estatisticas",
+    ));
+    v.push(action(
+        Act::Onboarding,
+        "onboarding",
+        tr!("Getting started"),
+        tr!("What Heronite does, step by step"),
+        Icon::Lightbulb,
+        "onboarding tour tips help checklist welcome first steps primeiros passos ajuda dicas boas-vindas",
     ));
     v.push(action(
         Act::ManageStatuses,
