@@ -9,7 +9,12 @@ use heronite_images::Variant;
 
 use super::vm::{CardVm, ListItem};
 use super::{card, list, CollectionView};
+use crate::icons::Icon;
 use crate::theme;
+use crate::ui::controls::{button_sm, ButtonKind};
+use crate::ui::icon;
+use heronite_data::InstallFilter;
+use heronite_i18n::tr;
 
 impl CollectionView {
     pub(super) fn list_column_width(viewport_w: f32) -> (f32, usize) {
@@ -189,6 +194,8 @@ impl CollectionView {
                 }
             })),
         );
+        // Games exist, but the search and the filters leave none.
+        let no_match = self.lib.as_ref().is_some_and(|lib| !lib.games.is_empty()) && self.groups.iter().all(|g| g.cards.is_empty());
         let sticky = self.sticky().map(|(g, shift)| {
             div().absolute().top(px(shift)).left(px(13.6)).right(px(16.)).child(list::group_header(&self.groups[g], true))
         });
@@ -206,6 +213,44 @@ impl CollectionView {
             .child(wheel_layer)
             .children(sticky)
             .children(list_scrollbar)
+            .when(no_match, |d| d.child(self.render_no_match(cx)))
+    }
+
+    /// The list when the search and the filters hide every game.
+    fn render_no_match(&self, cx: &mut Context<Self>) -> Div {
+        let filtered = self.ui.install_filter != InstallFilter::All || self.ui.facet_filters.is_active();
+        let hint = if filtered { tr!("Try another search, or clear the filters.") } else { tr!("Try another name.") };
+        div()
+            .absolute()
+            .top(px(48.))
+            .left_0()
+            .right_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(8.))
+            .px(px(24.))
+            .child(icon(Icon::FaSearch, px(26.), theme::text_dim()))
+            .child(
+                div()
+                    .mt(px(4.))
+                    .text_size(px(15.))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(theme::text_primary())
+                    .child(tr!("No games match")),
+            )
+            .child(div().text_center().text_size(px(13.)).text_color(theme::text_muted()).child(hint))
+            .child(div().mt(px(6.)).child(button_sm("no-match-clear", ButtonKind::Glass, tr!("Show all games")).on_click(cx.listener(
+                |this, _, window, cx| {
+                    this.search.clear();
+                    this.search_input.update(cx, |s, cx| s.set_value("", window, cx));
+                    this.ui.clear_facets();
+                    this.ui.install_filter = InstallFilter::All;
+                    this.save_ui();
+                    this.refresh_groups();
+                    cx.notify();
+                },
+            ))))
     }
 }
 

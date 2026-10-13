@@ -94,6 +94,7 @@ pub struct CollectionView {
     dialog_sub: Option<Subscription>,
     epic: epic::EpicState,
     extras: extras::Extras,
+    welcome: welcome::Welcome,
     /// Rating, save backup, Linux facts and timeline of the focused game.
     facts: game_facts::Facts,
     focus_scroll: ScrollHandle,
@@ -197,6 +198,7 @@ impl CollectionView {
             dialog_sub: None,
             epic: Default::default(),
             extras: Default::default(),
+            welcome: Default::default(),
             facts: Default::default(),
             focus_scroll: ScrollHandle::new(),
             shots: Default::default(),
@@ -338,6 +340,8 @@ impl CollectionView {
         // A new setup without games gets the welcome across the whole width.
         let body = if self.lib.as_ref().is_some_and(|lib| lib.games.is_empty()) {
             self.render_welcome(vw, vh - 42., cx)
+        } else if let Some(err) = self.lib.is_none().then(|| self.welcome.load_error.clone()).flatten() {
+            self.render_load_error(err, cx)
         } else {
             let list_column = self.render_list_column(list_w, cx);
             let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);

@@ -1,7 +1,7 @@
 //! Collection leftovers: edit playtime, remove from Collection, manual
 //! Ludusavi backup, the focus panel's achievements / session history /
 //! "open details" button, the search box inside the facet filter flyout and
-//! the "Steam not found" message.
+//! the "Steam not found" and "Proton needed" messages.
 //!
 //! The data work lives in `heronite-data` (playtime, sessions, details URL),
 //! `heronite-metadata` (remove, achievements) and `heronite-emulation`
@@ -26,6 +26,7 @@ use crate::dialogs::ludusavi_backup::LudusaviBackupDialog;
 use crate::dialogs::playtime::PlaytimeDialog;
 use crate::dialogs::remove_game::RemoveGameDialog;
 use crate::icons::Icon;
+use crate::pages::Page;
 use crate::theme;
 use heronite_i18n::tr;
 
@@ -43,9 +44,10 @@ pub(super) fn facet_option_matches(value: &str, query: &str) -> bool {
     query.is_empty() || value.to_lowercase().contains(query)
 }
 
-/// Whether a launch/install error means that there is no Steam client.
+/// Whether a launch/install error means that there is no Steam client
+/// (the message may be translated).
 fn is_steam_missing(error: &str) -> bool {
-    error.contains("Steam client was not found")
+    error.contains("Steam client was not found") || error.contains(heronite_i18n::tr("Steam client was not found"))
 }
 
 struct FacetSearch {
@@ -61,6 +63,10 @@ pub(super) struct Extras {
     ach_key: Option<SharedString>,
     ach: Vec<Achievement>,
     steam_missing: bool,
+    /// A Windows game could not start: no Wine/Proton on this PC.
+    wine_missing: bool,
+    /// A page a dialog asked for (dialogs have no `Window` to navigate with).
+    go_to: Option<Page>,
     /// `HERONITE_DEBUG_SCROLL=list:<0..1>|focus:<0..1>` already applied.
     debug_scroll_done: bool,
 }
@@ -79,6 +85,33 @@ impl CollectionView {
             );
             let view = cx.new(|cx| EpicConfirmDialog::new(spec, |_, _| {}, window, cx));
             self.open_dialog(view, cx);
+        }
+        if std::mem::take(&mut self.extras.wine_missing) {
+            let mut spec = Confirm::new(
+                "wine-missing",
+                tr!("Proton is needed"),
+                tr!("Windows games run through Proton, and there is none on this PC yet. Download one in the Wine Manager: it becomes the default, then press Play again."),
+            );
+            spec.confirm = Some(tr!("Download Proton").into());
+            let this = cx.entity().downgrade();
+            let view = cx.new(|cx| {
+                EpicConfirmDialog::new(
+                    spec,
+                    move |_, cx| {
+                        this.update(cx, |this, cx| {
+                            this.extras.go_to = Some(Page::WineManager);
+                            cx.notify();
+                        })
+                        .ok();
+                    },
+                    window,
+                    cx,
+                )
+            });
+            self.open_dialog(view, cx);
+        }
+        if let Some(page) = self.extras.go_to.take() {
+            self.navigate(page, window, cx);
         }
 
         // A game removed from the Collection leaves the focus panel.
@@ -221,6 +254,9 @@ impl CollectionView {
     pub(super) fn report_launch_error(&mut self, error: String, cx: &mut Context<Self>) {
         if is_steam_missing(&error) {
             self.extras.steam_missing = true;
+            cx.notify();
+        } else if heronite_launch::wine::is_no_wine_error(&error) {
+            self.extras.wine_missing = true;
             cx.notify();
         } else {
             self.show_toast(error, true, cx);

@@ -194,7 +194,11 @@ impl WineManager {
                     this.set_phase(&version, phase);
                 });
                 let event = match result {
-                    Ok(_) => JobEvent::Installed { version: version.clone(), update },
+                    Ok(_) => {
+                        // The first build of a new setup becomes the default.
+                        crate::default::ensure_default(&this.inner.data_paths);
+                        JobEvent::Installed { version: version.clone(), update }
+                    }
                     Err(InstallError::Aborted) => JobEvent::Cancelled { version: version.clone() },
                     Err(InstallError::Failed(message)) => {
                         log::error!("wine manager: install of {version} failed: {message}");

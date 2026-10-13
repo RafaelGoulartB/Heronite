@@ -11,7 +11,6 @@
   "Find emulators and ROMs": "Encontrar emuladores e ROMs",
   "Add a game": "Adicionar um jogo",
   "A program, web game or ROM": "Um programa, jogo web ou ROM",
-  "Epic, GOG and Amazon": "Epic, GOG e Amazon",
   "Automatic while Steam is open": "Automático com a Steam aberta",
   "Download Proton": "Baixar o Proton",
   "Welcome to Heronite": "Boas-vindas ao Heronite",
@@ -207,5 +206,16 @@
   "This game has no install action.": "Este jogo não tem ação de instalação.",
   "shelf|Installed": "Instalados",
   "Added manually": "Adicionado manualmente",
-  "Emulated": "Emulado"
+  "Emulated": "Emulado",
+  "A file in the data folder could not be read. Your games and their files were not touched.": "Um arquivo da pasta de dados não pôde ser lido. Seus jogos e os arquivos deles não foram alterados.",
+  "Could not reload the library: {err}": "Não foi possível recarregar a biblioteca: {err}",
+  "Open Steam to bring in your games": "Abra a Steam para trazer seus jogos",
+  "Proton is needed": "É preciso ter o Proton",
+  "Reading your Steam library…": "Lendo sua biblioteca da Steam…",
+  "Restart Steam once to bring in your games": "Reinicie a Steam uma vez para trazer seus jogos",
+  "Steam was not found on this PC": "A Steam não foi encontrada neste PC",
+  "Try another name.": "Tente outro nome.",
+  "Try another search, or clear the filters.": "Tente outra busca ou limpe os filtros.",
+  "Windows games run through Proton, and there is none on this PC yet. Download one in the Wine Manager: it becomes the default, then press Play again.": "Jogos do Windows rodam pelo Proton, e ainda não há nenhum neste PC. Baixe um no Gerenciador do Wine: ele vira o padrão, e aí é só apertar Jogar de novo.",
+  "Your library could not be loaded": "Não foi possível carregar sua biblioteca"
 }

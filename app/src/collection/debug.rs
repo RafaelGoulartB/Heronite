@@ -50,6 +50,7 @@ impl CollectionView {
                 self.open_settings_section(section.unwrap_or(crate::pages::settings::Section::Appearance), window, cx);
             }
             "statuses" => self.open_manage_statuses(window, cx),
+            "wine-missing" => self.report_launch_error(heronite_launch::wine::no_wine_message(""), cx),
             "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
             // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves|proton
             w @ ("gamesettings:wine"

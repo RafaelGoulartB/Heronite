@@ -61,6 +61,14 @@ pub struct DialogCtx {
     pub lib: Arc<Library>,
 }
 
+/// Under the Wine field of the install dialogs when this PC has no Wine or
+/// Proton: the game installs, but cannot start until one is downloaded.
+fn no_proton_note() -> Div {
+    div().mt(px(-4.)).text_size(px(12.5)).line_height(px(17.)).text_color(crate::theme::danger_text()).child(heronite_i18n::tr!(
+        "You can install now, but Windows games need Proton to run. Download it from Wine Manager in the menu (\u{2630})."
+    ))
+}
+
 /// The text of an input, trimmed.
 fn text_of(input: &Entity<InputState>, cx: &App) -> String {
     input.read(cx).value().trim().to_string()

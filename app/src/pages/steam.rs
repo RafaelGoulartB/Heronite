@@ -67,6 +67,7 @@ impl SteamPage {
             Some(LibraryAccess::Ready) => (tr!("Steam is running").into(), theme::success(), true),
             Some(LibraryAccess::Closed) => (tr!("Steam is closed").into(), theme::text_muted(), false),
             Some(LibraryAccess::NeedsRestart) => (tr!("Restart Steam once").into(), theme::danger_text(), false),
+            Some(LibraryAccess::NotInstalled) => (tr!("Steam not found").into(), theme::text_muted(), false),
         }
     }
 
@@ -76,6 +77,9 @@ impl SteamPage {
             Some(LibraryAccess::NeedsRestart) => Some(tr!(
                 "Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once."
             )),
+            Some(LibraryAccess::NotInstalled) => {
+                Some(tr!("Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself."))
+            }
             _ => None,
         }
     }
