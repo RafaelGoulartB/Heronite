@@ -249,5 +249,7 @@
   "{subject} is still running. Heronite records the playtime and runs the post-game tasks (backups, cloud saves) when it ends. If you quit now, the playtime so far is saved and the game keeps running, but those tasks will not run.": "{subject} ainda está em execução. O Heronite registra o tempo de jogo e executa as tarefas pós-jogo (backups, saves na nuvem) quando ele termina. Se você sair agora, o tempo de jogo até aqui é salvo e o jogo continua em execução, mas essas tarefas não serão executadas.",
   "{tool} is not installed and there is no internet connection": "{tool} não está instalado e não há conexão com a internet",
   "{tool} was not installed": "{tool} não foi instalado",
-  "{total}, showing the last {shown}": "{total}, mostrando os últimos {shown}"
+  "{total}, showing the last {shown}": "{total}, mostrando os últimos {shown}",
+  "Running the script before launch...": "Executando o script antes de iniciar...",
+  "Script not found: {program}": "Script não encontrado: {program}"
 }
