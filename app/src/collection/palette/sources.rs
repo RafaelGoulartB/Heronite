@@ -317,6 +317,7 @@ fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Publisher => tr!("Publisher"),
         FacetKind::Genre => tr!("Genre"),
         FacetKind::Platform => tr!("Platform"),
+        FacetKind::Store => tr!("Store"),
     }
 }
 
@@ -328,6 +329,7 @@ fn facet_keywords(k: FacetKind) -> &'static str {
         FacetKind::Publisher => "publisher publicadora editora",
         FacetKind::Genre => "genre genero",
         FacetKind::Platform => "platform plataforma",
+        FacetKind::Store => "store source manual loja origem manualmente",
     }
 }
 

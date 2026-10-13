@@ -73,6 +73,7 @@ impl UiState {
                 publisher: text(FacetKind::Publisher),
                 genre: text(FacetKind::Genre),
                 platform: text(FacetKind::Platform),
+                store: text(FacetKind::Store),
             };
         }
         state.sidebar_hidden = value.get("sidebarHidden").and_then(Value::as_bool).unwrap_or(false);
@@ -99,6 +100,7 @@ impl UiState {
                 "publisher": facets.publisher,
                 "genre": facets.genre,
                 "platform": facets.platform,
+                "store": facets.store,
             },
             "sort": self.sort,
             "sidebarHidden": self.sidebar_hidden,

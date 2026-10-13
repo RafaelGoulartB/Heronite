@@ -76,11 +76,14 @@ pub enum FacetKind {
     Publisher,
     Genre,
     Platform,
+    /// Where the game comes from (Steam, Epic Games, added manually...);
+    /// a game also owned on Steam is under Steam too.
+    Store,
 }
 
 /// `FACET_KINDS`, in the order the filter menu lists them.
-pub const FACET_KINDS: [FacetKind; 5] =
-    [FacetKind::Series, FacetKind::Developer, FacetKind::Publisher, FacetKind::Genre, FacetKind::Platform];
+pub const FACET_KINDS: [FacetKind; 6] =
+    [FacetKind::Store, FacetKind::Series, FacetKind::Developer, FacetKind::Publisher, FacetKind::Genre, FacetKind::Platform];
 
 impl FacetKind {
     pub fn index(self) -> usize {
@@ -94,6 +97,7 @@ impl FacetKind {
             Self::Publisher => "publisher",
             Self::Genre => "genre",
             Self::Platform => "platform",
+            Self::Store => "store",
         }
     }
 
@@ -110,6 +114,7 @@ pub struct FacetFilters {
     pub publisher: Option<String>,
     pub genre: Option<String>,
     pub platform: Option<String>,
+    pub store: Option<String>,
 }
 
 impl FacetFilters {
@@ -120,6 +125,7 @@ impl FacetFilters {
             FacetKind::Publisher => &self.publisher,
             FacetKind::Genre => &self.genre,
             FacetKind::Platform => &self.platform,
+            FacetKind::Store => &self.store,
         }
         .as_deref()
     }
@@ -131,6 +137,7 @@ impl FacetFilters {
             FacetKind::Publisher => &mut self.publisher,
             FacetKind::Genre => &mut self.genre,
             FacetKind::Platform => &mut self.platform,
+            FacetKind::Store => &mut self.store,
         }
     }
 
@@ -156,7 +163,7 @@ pub struct FacetItem {
 }
 
 /// Facet values of a game, indexed by [`FacetKind::index`].
-pub type GameFacets = [Vec<FacetItem>; 5];
+pub type GameFacets = [Vec<FacetItem>; 6];
 
 fn items(values: Vec<String>) -> Vec<FacetItem> {
     values.into_iter().map(|value| FacetItem { key: facet_key(&value), value }).collect()
@@ -186,7 +193,31 @@ pub fn game_facets(game: &GameInfo, metadata: Option<&CollectionGameMetadata>) -
         }
     };
     let platforms = unique_names(metadata.map(|m| m.platforms.as_slice()).unwrap_or(&[]).iter().map(String::as_str));
-    [items(series), items(developers), items(publishers), items(genres), items(platforms)]
+    // The stores are known from the overlay (`store_facet`).
+    [items(series), items(developers), items(publishers), items(genres), items(platforms), Vec::new()]
+}
+
+/// Values of the Store facet: the game's source (a Steam entry, `steam-uri`,
+/// is a Steam game whatever imported it), plus Steam for a game also owned
+/// there. Brand names stay in English.
+pub fn store_facet(source: Option<&str>, runner: &str, steam_entry: bool, also_on_steam: bool) -> Vec<FacetItem> {
+    let own = match (source.unwrap_or(""), runner) {
+        _ if steam_entry => "Steam",
+        ("steam", _) => "Steam",
+        ("epic", _) | (_, "legendary") => "Epic Games",
+        ("gog", _) | (_, "gog") => "GOG",
+        ("amazon", _) | (_, "nile") => "Amazon Games",
+        ("xbox", _) => "Xbox",
+        (_, "zoom") => "Zoom Platform",
+        ("emulator", _) => heronite_i18n::tr!("Emulated"),
+        ("other", _) => heronite_i18n::tr!("Other"),
+        _ => heronite_i18n::tr!("Added manually"),
+    };
+    let mut values = vec![own.to_string()];
+    if also_on_steam && own != "Steam" {
+        values.push("Steam".into());
+    }
+    items(values)
 }
 
 /// `matchesFacets`: every active kind must match one of the game's values.
@@ -217,6 +248,7 @@ pub struct FacetOptions {
     pub publisher: Vec<FacetOption>,
     pub genre: Vec<FacetOption>,
     pub platform: Vec<FacetOption>,
+    pub store: Vec<FacetOption>,
 }
 
 impl FacetOptions {
@@ -227,13 +259,14 @@ impl FacetOptions {
             FacetKind::Publisher => &self.publisher,
             FacetKind::Genre => &self.genre,
             FacetKind::Platform => &self.platform,
+            FacetKind::Store => &self.store,
         }
     }
 }
 
 /// `collectFacetOptions`: first spelling wins, sorted with `localeCompare`.
 pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
-    let mut buckets: [HashMap<&str, (usize, &str)>; 5] = Default::default();
+    let mut buckets: [HashMap<&str, (usize, &str)>; 6] = Default::default();
     // Preserve first-seen order only for the spelling; the output is sorted.
     for game in games {
         for kind in FACET_KINDS {
@@ -256,6 +289,7 @@ pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
         publisher: finish(&buckets[2]),
         genre: finish(&buckets[3]),
         platform: finish(&buckets[4]),
+        store: finish(&buckets[5]),
     }
 }
 

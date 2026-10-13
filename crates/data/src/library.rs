@@ -165,7 +165,13 @@ impl CollectionGame {
             _ => None,
         };
         let details = Details::compute(&game, meta.as_deref(), metadata.as_deref(), None, None);
-        let facets = game_facets(&game, metadata.as_deref());
+        let mut facets = game_facets(&game, metadata.as_deref());
+        facets[crate::collection::FacetKind::Store.index()] = crate::collection::store_facet(
+            meta.as_deref().map(|m| m.source.as_str()),
+            &game.runner,
+            meta.as_deref().is_some_and(|m| m.launch_kind == "steam-uri"),
+            steam.is_some(),
+        );
         let minutes = timestamp.map(|t| t.total_played.get()).filter(|m| *m > 0.0).unwrap_or(0.0);
         let non_empty = |s: &Option<String>| s.clone().filter(|v| !v.is_empty());
         Self {
@@ -902,6 +908,22 @@ mod tests {
         let portal = lib.get("sideload_portal").unwrap();
         assert!(portal.installed && !portal.via_steam && portal.store_installed());
         assert_eq!(portal.steam_link.as_ref().map(|l| l.app_id.as_str()), Some("4"));
+
+        // The Store filter: own source, plus Steam for a game also owned there.
+        let stores = |key: &str| {
+            lib.get(key).unwrap().facets[crate::collection::FacetKind::Store.index()].iter().map(|i| i.value.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(stores("legendary_ctl"), ["Epic Games", "Steam"]);
+        assert_eq!(stores("sideload_steam_3"), ["Steam"]);
+        assert_eq!(stores("sideload_portal"), ["Added manually", "Steam"]);
+        let only_manual = crate::collection::filter_games(
+            &lib.games,
+            &crate::collection::ViewQuery {
+                facets: crate::collection::FacetFilters::default().toggled(crate::collection::FacetKind::Store, "added manually"),
+                ..Default::default()
+            },
+        );
+        assert_eq!(only_manual.iter().map(|g| g.key.as_str()).collect::<Vec<_>>(), ["sideload_manual", "sideload_portal"]);
 
         // Played through its Steam entry: that one stays, and so does the Epic game.
         w(paths.timestamps(), r#"{"steam_2":{"totalPlayed":5}}"#);
