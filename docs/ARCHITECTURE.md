@@ -37,6 +37,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      lossless PNG → WebP compression              → data, images
  ├─ heronite-wine       Wine/Proton manager                          → data
  ├─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf       → data
+ ├─ heronite-steam      settings of Steam games (launch options,
+ │                      Proton) via the client or its files         → data, launch, shortcuts
  └─ heronite-update     app updates: release check, signed download,
                         AppImage swap / package install, relaunch   → data
 epic-login (bin)        WebKit window for the Epic, GOG (`--store gog`) and Amazon
@@ -84,6 +86,17 @@ calls them from `cx.background_spawn` or worker threads.
   `start.sh` for Linux builds; `nile.rs`: `fuel.json`), always through the
   Wine/Proton plan of local games; the first launch in a prefix runs the
   store's installers (`first_launch::StoreSetup`, Amazon's `PostInstall`).
+
+- **heronite-steam:** Steam games keep launching through Steam
+  (`steam://rungameid`), with Steam's Proton and prefix. Their game settings
+  tabs edit what Steam stores per game instead: the compatibility tool and the
+  launch options line. `options` maps the line to the panel's settings keys
+  and back (lines with shell syntax are only edited as text). While Steam
+  runs, changes go through its CEF debugging interface (`client`, via
+  `heronite_shortcuts::steam_client`, whose port `debugger_addr` finds);
+  with Steam closed, `files` edits `localconfig.vdf` and `config.vdf` in
+  place (`vdf_edit` touches only the changed entry). `wrap` writes the script
+  that runs the before/after scripts from the launch options.
 
 ## App (`app/src`)
 

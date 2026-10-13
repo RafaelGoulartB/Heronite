@@ -1,0 +1,22 @@
+[package]
+name = "heronite-steam"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Settings of Steam games (launch options, Proton) through the Steam client or its files"
+
+[dependencies]
+heronite-data = { path = "../data" }
+heronite-i18n = { path = "../i18n" }
+heronite-launch = { path = "../launch" }
+heronite-shortcuts = { path = "../shortcuts" }
+anyhow = "1"
+log = "0.4"
+serde_json.workspace = true
+shlex = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

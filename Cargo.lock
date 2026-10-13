@@ -3675,6 +3675,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-steam"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-launch",
+ "heronite-shortcuts",
+ "log",
+ "serde_json",
+ "shlex 1.3.0",
+ "tempfile",
+]
+
+[[package]]
 name = "heronite-update"
 version = "0.4.0"
 dependencies = [
