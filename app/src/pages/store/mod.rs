@@ -134,6 +134,14 @@ impl<K: StoreKind> StorePage<K> {
         K::STORE
     }
 
+    /// The page (and tab) of this store.
+    fn page(&self) -> crate::pages::Page {
+        match K::STORE {
+            Store::Gog => crate::pages::Page::Gog,
+            Store::Amazon => crate::pages::Page::Amazon,
+        }
+    }
+
     fn open_dialog<V>(&mut self, view: Entity<V>, window: &mut Window, cx: &mut Context<Self>)
     where
         V: Render + EventEmitter<DialogEvent>,
@@ -280,11 +288,7 @@ impl<K: StoreKind> StorePage<K> {
                     // `CLOSED` of the helper: the user closed the window.
                     Ok(o) if o.status.code() == Some(4) => {}
                     Ok(o) => {
-                        log::warn!(
-                            "the login window stopped ({}): {}",
-                            o.status,
-                            String::from_utf8_lossy(&o.stderr).trim()
-                        );
+                        log::warn!("the login window stopped ({}): {}", o.status, String::from_utf8_lossy(&o.stderr).trim());
                         this.notice = Some((tr!("The login window stopped unexpectedly. Use the browser method below.").into(), true));
                     }
                     Err(err) => this.notice = Some((tr!("Could not open the login window: {err}", err).into(), true)),

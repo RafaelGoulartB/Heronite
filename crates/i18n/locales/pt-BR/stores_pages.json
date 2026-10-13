@@ -24,5 +24,7 @@
   "The address of the page you land on after signing in, or its code": "O endereço da página em que você cai depois de entrar, ou o código dela",
   "Update all {store} games": "Atualizar todos os jogos da {store}",
   "Use a copy already on this PC": "Usar uma cópia que já está neste PC",
-  "Your account and library.": "Sua conta e biblioteca."
+  "Your account and library.": "Sua conta e biblioteca.",
+  "Stores": "Lojas",
+  "{n} of {total} signed in": "{n} de {total} conectadas"
 }

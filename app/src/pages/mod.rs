@@ -14,6 +14,7 @@ pub mod epic;
 pub mod settings;
 pub mod stats;
 pub mod store;
+pub mod stores;
 pub mod wine_manager;
 
 use gpui_kit::prelude::*;

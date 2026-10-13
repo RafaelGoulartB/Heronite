@@ -13,7 +13,7 @@ use gpui_kit::*;
 use heronite_epic::eos_overlay;
 use heronite_epic::user::BROWSER_LOGIN_URL;
 
-use super::{columns, content_width, page_close, sheet, status_pill, PageCtx, PageEvent};
+use super::{columns, content_width, page_close, sheet, status_pill, stores, Page, PageCtx, PageEvent};
 use crate::dialogs::epic_import::EpicImportPicker;
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::DialogEvent;
@@ -242,11 +242,7 @@ impl EpicPage {
                     // `CLOSED` of the helper: the user closed the window.
                     Ok(o) if o.status.code() == Some(4) => {}
                     Ok(o) => {
-                        log::warn!(
-                            "the login window stopped ({}): {}",
-                            o.status,
-                            String::from_utf8_lossy(&o.stderr).trim()
-                        );
+                        log::warn!("the login window stopped ({}): {}", o.status, String::from_utf8_lossy(&o.stderr).trim());
                         this.notice = Some((tr!("The login window stopped unexpectedly. Use the browser method below.").into(), true));
                     }
                     Err(err) => this.notice = Some((tr!("Could not open the login window: {err}", err).into(), true)),
@@ -484,13 +480,13 @@ impl Render for EpicPage {
             .relative()
             .child(sheet(
                 "page-epic",
-                "Epic Games",
+                stores::title(),
                 Some(tr!("Your account, library and the EOS Overlay.").into()),
                 None,
                 1320.,
                 window,
                 close,
-                columns(wide, [column, eos]),
+                div().flex().flex_col().child(stores::tabs(Page::Epic, cx)).child(columns(wide, [column, eos])),
             ))
             .children(self.dialog.clone())
             .into_any_element()

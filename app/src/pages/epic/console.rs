@@ -16,6 +16,7 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use crate::pages::{stores, Page, PageEvent};
 
 impl EpicPage {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
@@ -201,9 +202,11 @@ impl EpicPage {
                     .flex()
                     .flex_none()
                     .items_center()
+                    .gap(u(36.))
                     .h(u(76.))
                     .px(u(46.))
-                    .child(kit::wordmark("EPIC GAMES"))
+                    .child(kit::wordmark(&stores::title().to_uppercase()))
+                    .child(stores::console_tabs(Page::Epic))
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
@@ -238,6 +241,10 @@ impl PadTarget for EpicPage {
                 self.dialog_sub = None;
             }
             cx.notify();
+            return true;
+        }
+        if let Some(next) = stores::switch(Page::Epic, pad) {
+            cx.emit(PageEvent::Navigate(next));
             return true;
         }
         let rows = self.console_rows(cx);

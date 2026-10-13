@@ -14,6 +14,7 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use crate::pages::{stores, PageEvent};
 
 impl<K: StoreKind> StorePage<K> {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
@@ -131,7 +132,9 @@ impl<K: StoreKind> StorePage<K> {
                     .items_center()
                     .h(u(76.))
                     .px(u(46.))
-                    .child(kit::wordmark(&self.store().name().to_uppercase()))
+                    .gap(u(36.))
+                    .child(kit::wordmark(&stores::title().to_uppercase()))
+                    .child(stores::console_tabs(self.page()))
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
@@ -166,6 +169,10 @@ impl<K: StoreKind> PadTarget for StorePage<K> {
                 self.dialog_sub = None;
             }
             cx.notify();
+            return true;
+        }
+        if let Some(next) = stores::switch(self.page(), pad) {
+            cx.emit(PageEvent::Navigate(next));
             return true;
         }
         let rows = self.console_rows(cx);

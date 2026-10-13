@@ -28,6 +28,8 @@ pub struct Pages {
     settings: Option<AnyView>,
     subs: Vec<Subscription>,
     meta: NavMeta,
+    /// The store page "Stores" opens: the one shown last (Epic at first).
+    last_store: Option<Page>,
     /// Controller hooks of the pages (console mode).
     hooks: std::collections::HashMap<Page, crate::console::PadHook>,
 }
@@ -40,6 +42,11 @@ impl Pages {
 
     pub(super) fn hook(&self, page: Page) -> Option<crate::console::PadHook> {
         self.hooks.get(&page).cloned()
+    }
+
+    /// The store page the "Stores" entry opens.
+    pub(super) fn stores_page(&self) -> Page {
+        self.last_store.unwrap_or(Page::Epic)
     }
 }
 
@@ -234,17 +241,17 @@ impl CollectionView {
                     None => pending(),
                 };
                 let update = update_meta(cx);
-                let store_meta = |store: Store| {
-                    let on = svc.is_some_and(|s| s.store(store).account.logged_in);
-                    Trailing::Meta(if on { tr!("Signed in").into() } else { tr!("Not signed in").into() }, false)
+                let stores_on =
+                    usize::from(signed_in) + Store::ALL.iter().filter(|st| svc.is_some_and(|s| s.store(**st).account.logged_in)).count();
+                let stores_meta = match stores_on {
+                    0 => tr!("Not signed in").to_string(),
+                    n => tr!("{n} of {total} signed in", n, total = pages::stores::PAGES.len()),
                 };
                 let trailing = |page: Page| match page {
                     Page::Collection => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
                     Page::Downloads => Trailing::Meta(downloads.clone(), downloading.is_some()),
                     Page::Statistics => Trailing::Meta(meta.month.clone().unwrap_or_else(pending), false),
-                    Page::Epic => Trailing::Meta(if signed_in { tr!("Signed in").into() } else { tr!("Not signed in").into() }, false),
-                    Page::Gog => store_meta(Store::Gog),
-                    Page::Amazon => store_meta(Store::Amazon),
+                    Page::Epic | Page::Gog | Page::Amazon => Trailing::Meta(stores_meta.clone(), false),
                     Page::WineManager => Trailing::Meta(meta.wine.clone().unwrap_or_else(pending), false),
                     Page::Emulators => Trailing::Meta(emulators.clone(), false),
                     Page::Settings => match &update {
@@ -253,27 +260,28 @@ impl CollectionView {
                     },
                 };
                 let mut p = glass::glass_panel(theme::R_POPOVER).w(px(300.)).p(px(6.)).flex().flex_col().gap(px(2.));
-                // Where the games are, then what sets them up.
-                for (i, group) in [
-                    &[Page::Collection, Page::Downloads, Page::Statistics][..],
-                    &[Page::Epic, Page::Gog, Page::Amazon, Page::WineManager, Page::Emulators][..],
-                ]
-                .into_iter()
-                .enumerate()
+                // Where the games are, then what sets them up. The three
+                // stores are one "Stores" row (their pages switch with tabs).
+                let stores = this.pages.stores_page();
+                for (i, group) in
+                    [&[Page::Collection, Page::Downloads, Page::Statistics][..], &[stores, Page::WineManager, Page::Emulators][..]]
+                        .into_iter()
+                        .enumerate()
                 {
                     if i > 0 {
                         p = p.child(menu_separator());
                     }
                     for &page in group {
+                        let is_stores = pages::stores::is_store_page(page);
+                        let (id, ic, title) = if is_stores {
+                            (SharedString::from("nav-stores"), Icon::Storefront, pages::stores::title())
+                        } else {
+                            (SharedString::from(format!("nav-{page:?}")), page.icon(), page.title())
+                        };
+                        let active = this.page == page || (is_stores && pages::stores::is_store_page(this.page));
                         p = p.child(
-                            nav_row(
-                                SharedString::from(format!("nav-{page:?}")),
-                                page.icon(),
-                                page.title(),
-                                trailing(page),
-                                this.page == page,
-                            )
-                            .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx))),
+                            nav_row(id, ic, title, trailing(page), active)
+                                .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx))),
                         );
                     }
                 }
@@ -321,6 +329,9 @@ impl CollectionView {
         self.open_menu = None;
         self.context_menu = None;
         self.page = page;
+        if pages::stores::is_store_page(page) {
+            self.pages.last_store = Some(page);
+        }
         self.ensure_page(page, window, cx);
         cx.notify();
     }
@@ -556,7 +567,7 @@ impl CollectionView {
                     .text_size(px(17.6))
                     .font_weight(theme::W_BOLD)
                     .text_color(rgb(0xcaf3fd))
-                    .child(self.page.title()),
+                    .child(if pages::stores::is_store_page(self.page) { pages::stores::title() } else { self.page.title() }),
             );
         Some(
             div()
