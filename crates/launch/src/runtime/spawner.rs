@@ -188,7 +188,7 @@ impl SystemSpawner {
             Sink::Log(log) => (log.child_stdio(), log.child_stdio()),
         };
         c.stdout(out).stderr(err);
-        let child = c.spawn()?;
+        let child = heronite_data::proc::spawn(&mut c)?;
         let pid = child.id();
         Ok(Box::new(SystemHandle { child: Some(child), pid, exit: None, procs: self.procs.clone() }))
     }
