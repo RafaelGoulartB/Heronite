@@ -50,6 +50,8 @@ pub struct GameSettings {
     pub env_options: Vec<(String, String)>,
     /// `heroniteSharedFolders`: folders the Steam runtime container mounts.
     pub shared_folders: Vec<String>,
+    /// `heroniteCompanions`: programs run alongside the game.
+    pub companions: Vec<crate::companions::Companion>,
     pub wrapper_options: Vec<Wrapper>,
     pub launcher_args: String,
     pub target_exe: String,
@@ -186,6 +188,7 @@ impl GameSettings {
             wine_prefix,
             env_options,
             shared_folders: crate::shared_folders::parse(m.get(crate::shared_folders::KEY)),
+            companions: crate::companions::parse(m.get(crate::companions::KEY)),
             wrapper_options,
             launcher_args: text(m.get("launcherArgs")),
             target_exe: text(m.get("targetExe")),

@@ -9,6 +9,7 @@
 //! tab.
 
 mod advanced;
+mod companions;
 mod console;
 mod gamescope;
 mod general;

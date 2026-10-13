@@ -63,6 +63,18 @@ pub struct ProcessPlan {
     /// What Heroic's `prepareLaunch` / `prepareWineLaunch` and the cloud-save
     /// sync around a launch need before and after the process runs.
     pub prep: PrepSpec,
+    /// Programs started while the game runs and closed with it.
+    pub companions: Vec<CompanionPlan>,
+}
+
+/// A program run alongside the game (see [`crate::companions`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionPlan {
+    /// The file the user picked (the command may run it through Wine).
+    pub path: String,
+    pub command: Command,
+    /// Time after the game started.
+    pub delay: std::time::Duration,
 }
 
 /// Work around a launch that needs the network, the tools folder or the

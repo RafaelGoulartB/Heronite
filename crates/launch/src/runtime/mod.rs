@@ -5,6 +5,7 @@
 //! Like Heroic's backend, several games may run at once (one per app name);
 //! launching an app that is already tracked is refused.
 
+mod companions;
 mod fake;
 mod process;
 mod session;

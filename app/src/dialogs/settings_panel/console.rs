@@ -314,6 +314,53 @@ impl SettingsPanel {
         v
     }
 
+    /// One row per program (left / right change its delay), then add and remove.
+    fn c_companions(&self) -> Vec<Item> {
+        use super::companions::{delay_index, delay_label, file_name, DELAYS};
+        let list = self.companions();
+        let mut v = vec![Self::c_header(tr!("Programs alongside the game"))];
+        for (i, c) in list.iter().enumerate() {
+            let options = DELAYS.iter().map(|d| SharedString::from(delay_label(*d))).collect();
+            let row = Row::choice(SharedString::from(format!("companion:{i}")), file_name(&c.path), options, delay_index(c.delay_secs));
+            v.push(item(
+                row.desc(c.path.clone()),
+                Act::Choice(Rc::new(move |this, index, cx| this.set_companion_delay(i, DELAYS[index], cx))),
+            ));
+        }
+        v.push(Self::c_do("companion-add", tr!("Add a program\u{2026}"), Icon::Add, true, |this, window, cx| {
+            this.console_pick_file(tr!("Program to run alongside the game"), Vec::new(), window, cx, |this, path, cx| {
+                this.add_companion(path, cx)
+            })
+        }));
+        if !list.is_empty() {
+            v.push(Self::c_do("companion-remove", tr!("Remove a program\u{2026}"), Icon::DeleteOutline, true, |this, window, cx| {
+                this.console_companion_remove(window, cx)
+            }));
+        }
+        v
+    }
+
+    fn console_companion_remove(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rows = self
+            .companions()
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                Row::action(SharedString::from(format!("rm:{i}")), super::companions::file_name(&c.path)).icon(Icon::DeleteOutline).danger()
+            })
+            .collect();
+        let sheet = cx.new(|_| Sheet::new(tr!("Remove a program"), None, rows));
+        let sub = cx.subscribe_in(&sheet, window, move |this, _, ev: &SheetEvent, _, cx| {
+            let SheetEvent::Activate(id) = ev;
+            this.console_layer.close();
+            if let Some(i) = id.strip_prefix("rm:").and_then(|n| n.parse::<usize>().ok()) {
+                this.remove_companion(i, cx);
+            }
+            cx.notify();
+        });
+        self.console_layer.open(&sheet, sub);
+    }
+
     fn c_advanced(&self, cx: &App) -> Vec<Item> {
         let sideload = self.facts().is_some_and(|f| f.is_sideload());
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
@@ -343,6 +390,9 @@ impl SettingsPanel {
         }
         v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
         v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
+        if game {
+            v.extend(self.c_companions());
+        }
         v.extend(self.c_pairs(WRAPPERS));
         v.extend(self.c_pairs(ENV));
         let wine = self.wine_version();

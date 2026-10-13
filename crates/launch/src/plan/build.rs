@@ -32,6 +32,7 @@ pub fn build_plan_with_settings(
         other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),
     };
     crate::scripts::attach(&mut plan, probe, game, settings);
+    crate::companions::attach(&mut plan, ctx, probe, game, settings);
     plan
 }
 

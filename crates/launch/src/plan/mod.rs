@@ -14,4 +14,4 @@ mod tests;
 pub use build::{build_plan, build_plan_with_settings};
 pub use context::{LaunchOptions, PlanContext};
 pub use emulator::{emulator_executable, pick_rom_path};
-pub use types::{Command, FirstLaunch, LaunchPlan, PrepSpec, ProcessPlan, StopSpec, WineRuntime};
+pub use types::{Command, CompanionPlan, FirstLaunch, LaunchPlan, PrepSpec, ProcessPlan, StopSpec, WineRuntime};

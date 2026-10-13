@@ -25,25 +25,28 @@ impl ScriptKind {
     }
 }
 
-/// What the script is told about the game. Heroic's `HEROIC_GAME_*` names,
-/// so scripts written for Heroic keep working, plus the same values under
-/// `HERONITE_GAME_*`.
-fn script_env(game: &GameInfo, settings: &GameSettings, kind: ScriptKind) -> Env {
+/// What the user's programs (scripts, programs run alongside) are told about
+/// the game. Heroic's `HEROIC_GAME_*` names, so scripts written for Heroic
+/// keep working, plus the same values under `HERONITE_GAME_*`.
+pub(crate) fn game_env(game: &GameInfo, settings: &GameSettings, extra: &[(&str, String)]) -> Env {
     let values = [
         ("APP_NAME", game.app_name.clone()),
         ("EXEC", game.install.executable.clone().unwrap_or_default()),
         ("PLATFORM", game.install.platform.clone().unwrap_or_default()),
         ("PREFIX", settings.wine_prefix.clone()),
         ("RUNNER", game.runner.clone()),
-        ("SCRIPT_TYPE", kind.label().to_string()),
         ("TITLE", game.title.clone()),
     ];
     let mut env = Env::new();
-    for (key, value) in values {
+    for (key, value) in values.iter().cloned().chain(extra.iter().cloned()) {
         env.insert(format!("HEROIC_GAME_{key}"), value.clone());
         env.insert(format!("HERONITE_GAME_{key}"), value);
     }
     env
+}
+
+fn script_env(game: &GameInfo, settings: &GameSettings, kind: ScriptKind) -> Env {
+    game_env(game, settings, &[("SCRIPT_TYPE", kind.label().to_string())])
 }
 
 /// The command for the script of `kind`, `None` when none is set. Runs in

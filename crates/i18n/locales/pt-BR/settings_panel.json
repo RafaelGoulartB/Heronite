@@ -272,5 +272,16 @@
   "Enable Quick Save-Sync Menu on game page": "Ativar menu de sincronização rápida de saves na página do jogo",
   "MangoHud FPS limit": "Limite de FPS do MangoHud",
   "MangoHud's frame rate cap. Works with Vulkan, OpenGL and DirectX games. Leave empty for no limit.": "Limite de quadros por segundo do MangoHud. Funciona com jogos Vulkan, OpenGL e DirectX. Deixe vazio para não limitar.",
-  "No limit": "Sem limite"
+  "No limit": "Sem limite",
+  "Programs alongside the game": "Programas junto do jogo",
+  "Add program": "Adicionar programa",
+  "Add a program…": "Adicionar um programa…",
+  "Remove a program": "Remover um programa",
+  "Remove a program…": "Remover um programa…",
+  "Choose a program to run alongside the game": "Escolha um programa para rodar junto do jogo",
+  "Program to run alongside the game": "Programa para rodar junto do jogo",
+  "Trainers, mod tools and other programs to run while you play. Windows programs run in the game's prefix with its Wine or Proton, so they can see the game. They close when the game exits.": "Trainers, ferramentas de mods e outros programas para rodar enquanto você joga. Programas do Windows rodam no prefixo do jogo com o Wine ou Proton dele, para conseguirem enxergar o jogo. Eles fecham quando o jogo fecha.",
+  "With the game": "Junto com o jogo",
+  "{minutes} min after the game": "{minutes} min depois do jogo",
+  "{seconds} s after the game": "{seconds} s depois do jogo"
 }

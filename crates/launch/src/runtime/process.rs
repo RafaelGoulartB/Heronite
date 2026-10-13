@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use heronite_i18n::tr;
 
+use super::companions::Companions;
 use super::session::{fail, finish};
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
@@ -148,6 +149,8 @@ pub(super) fn run_process(
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
     control.set_playing();
     shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid: handle.pid() });
+    let mut companions = Companions::new(&plan.companions, Instant::now());
+    let prefix = plan.prep.wine.as_ref().map(|s| s.wine_prefix.clone());
 
     let mut terminated_at: Option<Instant> = None;
     let mut exit: Option<ExitInfo> = None;
@@ -184,17 +187,35 @@ pub(super) fn run_process(
                 _ => {}
             }
         }
+        if terminated_at.is_none() {
+            companions.start_due(shared, &*services.probe, log, &status);
+            // The game is over but what started it waits for these programs.
+            if let Some(prefix) = prefix.as_deref().filter(|_| companions.active()) {
+                if companions.game_left(&*shared.procs, prefix) {
+                    companions.stop(shared.cfg.kill_grace, log);
+                }
+            }
+        }
         // Sleeps until the next poll unless a stop arrives first.
         let kill_pending = terminated_at.is_none();
-        control.wake.wait_while(shared.cfg.poll_interval, || {
-            !control.abort.load(Ordering::SeqCst) && !(kill_pending && control.kill.load(Ordering::SeqCst))
-        });
+        let wait = companions.next_due(Instant::now()).map_or(shared.cfg.poll_interval, |d| d.min(shared.cfg.poll_interval));
+        control.wake.wait_while(wait, || !control.abort.load(Ordering::SeqCst) && !(kill_pending && control.kill.load(Ordering::SeqCst)));
     }
 
     match exit {
         Some(info) => log.info(&describe_exit(info)),
         None if aborted => log.info("Stopped tracking the game"),
         None => {}
+    }
+    if !aborted && !control.kill.load(Ordering::SeqCst) {
+        if let Some(prefix) = prefix.filter(|_| companions.active()) {
+            aborted = follow_the_prefix(shared, control, &mut companions, &prefix, &*services.probe, log, &status);
+        }
+    }
+    if aborted {
+        companions.leave_running();
+    } else {
+        companions.stop(shared.cfg.kill_grace, log);
     }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(cmd) = &plan.wait_after_exit {
@@ -210,6 +231,32 @@ pub(super) fn run_process(
         prep.after_exit(&req.app_name, &plan.prep);
     }
     finish(shared, log, req, control, started_at, elapsed, exit);
+}
+
+/// Keeps the session (and the programs alongside the game) going while the
+/// game still runs in its prefix after the process that started it exited.
+/// Returns true when tracking was aborted meanwhile.
+fn follow_the_prefix(
+    shared: &Shared,
+    control: &Control,
+    companions: &mut Companions,
+    prefix: &str,
+    probe: &dyn Probe,
+    log: &Arc<GameLog>,
+    status: &dyn Fn(Notice),
+) -> bool {
+    while companions.game_may_run(&*shared.procs, prefix) {
+        if control.abort.load(Ordering::SeqCst) {
+            return true;
+        }
+        if control.kill.load(Ordering::SeqCst) {
+            return false;
+        }
+        companions.start_due(shared, probe, log, status);
+        let wait = companions.next_due(Instant::now()).map_or(shared.cfg.poll_interval, |d| d.min(shared.cfg.poll_interval));
+        control.wake.wait_while(wait, || !control.abort.load(Ordering::SeqCst) && !control.kill.load(Ordering::SeqCst));
+    }
+    false
 }
 
 /// Runs one of the game's scripts to completion. Its exit code is ignored and
