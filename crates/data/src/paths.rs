@@ -104,6 +104,10 @@ impl DataPaths {
     pub fn nile_library(&self) -> PathBuf {
         self.j("store_cache/nile_library.json")
     }
+    /// The Steam library as the client last showed it (`steam_owned`).
+    pub fn steam_owned(&self) -> PathBuf {
+        self.j("store_cache/steam_library.json")
+    }
     pub fn timestamps(&self) -> PathBuf {
         self.j("store/timestamp.json")
     }
