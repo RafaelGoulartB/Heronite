@@ -7,14 +7,13 @@
 
 use std::path::PathBuf;
 
+use crate::services::steam_library::steam;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
-use heronite_launch::settings::{GameSettings, GlobalSettings, WineVersion};
-use heronite_launch::steam::SteamLocator;
+use heronite_launch::settings::{GameSettings, WineVersion};
 use heronite_launch::wine_tools::WineTool;
-use heronite_launch::SystemProbe;
-use heronite_steam::{options, wrap, Access, Change, Snapshot, Steam};
+use heronite_steam::{options, wrap, Access, Change, Snapshot};
 use serde_json::Value;
 
 use super::advanced::{ENV, WRAPPERS};
@@ -54,12 +53,6 @@ impl SteamState {
     fn ready(&self) -> Option<&Snapshot> {
         self.snapshot.as_ref().and_then(|s| s.as_ref().ok())
     }
-}
-
-/// The Steam install, read fresh (the Steam folder setting may change).
-fn steam(paths: &heronite_data::DataPaths) -> Steam {
-    let locator = SteamLocator::detect(&GlobalSettings::load(paths), &SystemProbe);
-    Steam::new(locator, crate::system::shortcuts::steam_client())
 }
 
 impl SettingsPanel {

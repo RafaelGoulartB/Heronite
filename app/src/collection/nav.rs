@@ -23,6 +23,7 @@ pub struct Pages {
     epic: Option<AnyView>,
     gog: Option<AnyView>,
     amazon: Option<AnyView>,
+    steam: Option<AnyView>,
     emulators: Option<AnyView>,
     stats: Option<AnyView>,
     settings: Option<AnyView>,
@@ -245,13 +246,14 @@ impl CollectionView {
                     usize::from(signed_in) + Store::ALL.iter().filter(|st| svc.is_some_and(|s| s.store(**st).account.logged_in)).count();
                 let stores_meta = match stores_on {
                     0 => tr!("Not signed in").to_string(),
-                    n => tr!("{n} of {total} signed in", n, total = pages::stores::PAGES.len()),
+                    // Steam has no login of its own here.
+                    n => tr!("{n} of {total} signed in", n, total = Store::ALL.len() + 1),
                 };
                 let trailing = |page: Page| match page {
                     Page::Collection => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
                     Page::Downloads => Trailing::Meta(downloads.clone(), downloading.is_some()),
                     Page::Statistics => Trailing::Meta(meta.month.clone().unwrap_or_else(pending), false),
-                    Page::Epic | Page::Gog | Page::Amazon => Trailing::Meta(stores_meta.clone(), false),
+                    Page::Epic | Page::Gog | Page::Amazon | Page::Steam => Trailing::Meta(stores_meta.clone(), false),
                     Page::WineManager => Trailing::Meta(meta.wine.clone().unwrap_or_else(pending), false),
                     Page::Emulators => Trailing::Meta(emulators.clone(), false),
                     Page::Settings => match &update {
@@ -349,6 +351,11 @@ impl CollectionView {
                 v.update(cx, |p, cx| p.refresh(window, cx));
             }
         }
+        if page == Page::Steam {
+            if let Some(v) = self.pages.steam.clone().and_then(|v| v.downcast::<pages::steam::SteamPage>().ok()) {
+                v.update(cx, |p, cx| p.refresh(cx));
+            }
+        }
         if page == Page::Statistics {
             // Hand the page the library after the slot below is filled.
             cx.defer_in(window, |this, _, cx| this.offer_stats_data(cx));
@@ -360,6 +367,7 @@ impl CollectionView {
             Page::Epic => self.pages.epic.is_none(),
             Page::Gog => self.pages.gog.is_none(),
             Page::Amazon => self.pages.amazon.is_none(),
+            Page::Steam => self.pages.steam.is_none(),
             Page::Emulators => self.pages.emulators.is_none(),
             Page::Statistics => self.pages.stats.is_none(),
             Page::Settings => self.pages.settings.is_none(),
@@ -399,6 +407,12 @@ impl CollectionView {
                 self.pages.hooks.insert(Page::Amazon, crate::console::PadHook::new(&v));
                 self.pages.amazon = Some(v.into());
             }
+            Page::Steam => {
+                let v = cx.new(|cx| pages::steam::SteamPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Steam, crate::console::PadHook::new(&v));
+                self.pages.steam = Some(v.into());
+            }
             Page::Emulators => {
                 let v = cx.new(|cx| pages::emulators::EmulatorsPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
@@ -435,6 +449,7 @@ impl CollectionView {
         list::<pages::epic::EpicPage>(Page::Epic, &p.epic, &ctx, cx, &mut out);
         list::<pages::store::GogPage>(Page::Gog, &p.gog, &ctx, cx, &mut out);
         list::<pages::store::AmazonPage>(Page::Amazon, &p.amazon, &ctx, cx, &mut out);
+        list::<pages::steam::SteamPage>(Page::Steam, &p.steam, &ctx, cx, &mut out);
         list::<pages::emulators::EmulatorsPage>(Page::Emulators, &p.emulators, &ctx, cx, &mut out);
         list::<pages::stats::StatsPage>(Page::Statistics, &p.stats, &ctx, cx, &mut out);
         list::<pages::settings::SettingsPage>(Page::Settings, &p.settings, &ctx, cx, &mut out);
@@ -462,6 +477,7 @@ impl CollectionView {
             Page::Epic => run::<pages::epic::EpicPage>(&p.epic, id, window, cx),
             Page::Gog => run::<pages::store::GogPage>(&p.gog, id, window, cx),
             Page::Amazon => run::<pages::store::AmazonPage>(&p.amazon, id, window, cx),
+            Page::Steam => run::<pages::steam::SteamPage>(&p.steam, id, window, cx),
             Page::Emulators => run::<pages::emulators::EmulatorsPage>(&p.emulators, id, window, cx),
             Page::Statistics => run::<pages::stats::StatsPage>(&p.stats, id, window, cx),
             Page::Settings => run::<pages::settings::SettingsPage>(&p.settings, id, window, cx),
@@ -483,6 +499,7 @@ impl CollectionView {
             Page::Epic => modal::<pages::epic::EpicPage>(&p.epic, cx),
             Page::Gog => modal::<pages::store::GogPage>(&p.gog, cx),
             Page::Amazon => modal::<pages::store::AmazonPage>(&p.amazon, cx),
+            Page::Steam => modal::<pages::steam::SteamPage>(&p.steam, cx),
             Page::Emulators => modal::<pages::emulators::EmulatorsPage>(&p.emulators, cx),
             Page::Statistics => modal::<pages::stats::StatsPage>(&p.stats, cx),
             Page::Settings => modal::<pages::settings::SettingsPage>(&p.settings, cx),
@@ -540,6 +557,7 @@ impl CollectionView {
             Page::Epic => self.pages.epic.clone(),
             Page::Gog => self.pages.gog.clone(),
             Page::Amazon => self.pages.amazon.clone(),
+            Page::Steam => self.pages.steam.clone(),
             Page::Emulators => self.pages.emulators.clone(),
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
@@ -556,6 +574,7 @@ impl CollectionView {
             Page::Epic => self.pages.epic.clone(),
             Page::Gog => self.pages.gog.clone(),
             Page::Amazon => self.pages.amazon.clone(),
+            Page::Steam => self.pages.steam.clone(),
             Page::Emulators => self.pages.emulators.clone(),
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),

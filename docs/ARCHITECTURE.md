@@ -54,7 +54,9 @@ calls them from `cx.background_spawn` or worker threads.
   `proc` (`guard` and `Run`: helper processes die with the app), and one
   module per data file: `library`, `collection`, `sideload`, `game_config`,
   `settings`, `status`, `sessions`, `playtime`, `ui_state`, `appearance`,
-  `language`.
+  `language`, `steam_owned` (the cached Steam library and its twins: a game
+  owned on Steam that the Collection has from another source joins that
+  entry instead of getting a Steam entry of its own).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
   lives in `locales/pt-BR/*.json`, embedded at build time and loaded the
   first time it is needed. The language follows the system unless one is
@@ -96,7 +98,11 @@ calls them from `cx.background_spawn` or worker threads.
   `heronite_shortcuts::steam_client`, whose port `debugger_addr` finds);
   with Steam closed, `files` edits `localconfig.vdf` and `config.vdf` in
   place (`vdf_edit` touches only the changed entry). `wrap` writes the script
-  that runs the before/after scripts from the launch options.
+  that runs the before/after scripts from the launch options. `library`
+  reads the account's library from the client (games only: no tools,
+  soundtracks, demos, test servers or games hidden in Steam), caches it and
+  adds the games the Collection does not have yet; Steam's play time moves
+  the Steam entries up when it is ahead.
 
 ## App (`app/src`)
 
@@ -105,11 +111,11 @@ calls them from `cx.background_spawn` or worker threads.
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `update/` (app updates: checks, download, restart), `widgets` |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `update/` (app updates: checks, download, restart), `steam_library` (reads the Steam library while Steam runs), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `collection/` | the main screen (`CollectionView`): list, header, focus panel, stage, context menu, command palette, screenshots, and the glue to dialogs and services |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
-| `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Wine Manager, Emulators); they talk back through `PageEvent` |
+| `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, Wine Manager, Emulators); they talk back through `PageEvent` |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar` |
 | `theme/` | colour, font, layout and glass tokens, plus the runtime appearance |
 | `images.rs` | UI side of the image pipeline (texture cache, eviction) |

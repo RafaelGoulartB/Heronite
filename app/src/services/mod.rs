@@ -4,6 +4,7 @@
 pub mod compression;
 pub mod downloads;
 pub mod session;
+pub mod steam_library;
 pub mod update;
 pub mod widgets;
 
@@ -30,6 +31,24 @@ pub fn downloads(cx: &mut App) -> Entity<Downloads> {
     let data_paths = DataPaths::detect();
     let entity = cx.new(|cx| Downloads::new(data_paths, cx));
     cx.set_global(DownloadsGlobal(entity.clone()));
+    entity
+}
+
+struct SteamLibraryGlobal(Entity<steam_library::SteamLibrary>);
+impl Global for SteamLibraryGlobal {}
+
+/// The Steam library service when something started it already.
+pub fn steam_library_started(cx: &App) -> Option<Entity<steam_library::SteamLibrary>> {
+    cx.try_global::<SteamLibraryGlobal>().map(|g| g.0.clone())
+}
+
+/// The Steam library service (created, and its timer started, on first use).
+pub fn steam_library(cx: &mut App) -> Entity<steam_library::SteamLibrary> {
+    if let Some(g) = cx.try_global::<SteamLibraryGlobal>() {
+        return g.0.clone();
+    }
+    let entity = cx.new(|cx| steam_library::SteamLibrary::new(DataPaths::detect(), cx));
+    cx.set_global(SteamLibraryGlobal(entity.clone()));
     entity
 }
 
