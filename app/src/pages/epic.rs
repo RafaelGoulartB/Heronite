@@ -217,7 +217,7 @@ impl EpicPage {
                 .background_spawn(async move {
                     // Guarded helper: closes with the app instead of being orphaned.
                     let mut cmd = Command::new(helper);
-                    cmd.stdin(Stdio::null()).stderr(Stdio::null());
+                    cmd.stdin(Stdio::null());
                     heronite_data::proc::guard(&mut cmd).output()
                 })
                 .await;
@@ -239,7 +239,16 @@ impl EpicPage {
                             true,
                         ))
                     }
-                    Ok(_) => {} // window closed by the user
+                    // `CLOSED` of the helper: the user closed the window.
+                    Ok(o) if o.status.code() == Some(4) => {}
+                    Ok(o) => {
+                        log::warn!(
+                            "the login window stopped ({}): {}",
+                            o.status,
+                            String::from_utf8_lossy(&o.stderr).trim()
+                        );
+                        this.notice = Some((tr!("The login window stopped unexpectedly. Use the browser method below.").into(), true));
+                    }
                     Err(err) => this.notice = Some((tr!("Could not open the login window: {err}", err).into(), true)),
                 }
                 cx.notify();

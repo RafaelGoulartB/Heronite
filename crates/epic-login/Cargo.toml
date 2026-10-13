@@ -3,7 +3,7 @@ name = "heronite-epic-login"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Small helper window (wry + GTK WebKit) that logs in to Epic Games and prints the authorization code; kept out of the main binary so the GPUI app stays small"
+description = "Small helper window (wry + GTK WebKit) that logs in to Epic Games, GOG or Amazon Games and prints the authorization code; kept out of the main binary so the GPUI app stays small"
 
 [[bin]]
 name = "heronite-epic-login"
