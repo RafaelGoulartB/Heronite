@@ -19,6 +19,8 @@ use heronite_i18n::tr;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Item {
     Go(Page),
+    /// Epic Games, GOG and Amazon Games: the store page shown last.
+    Stores,
     AddGame,
     Desktop,
     Separator,
@@ -35,6 +37,7 @@ impl Item {
     fn label(self) -> &'static str {
         match self {
             Item::Go(p) => p.title(),
+            Item::Stores => crate::pages::stores::title(),
             Item::AddGame => tr!("Add game"),
             Item::Desktop => tr!("Desktop mode"),
             Item::Separator => "",
@@ -44,6 +47,7 @@ impl Item {
     fn icon(self) -> Icon {
         match self {
             Item::Go(p) => p.icon(),
+            Item::Stores => Icon::Storefront,
             Item::AddGame => Icon::Add,
             Item::Desktop => Icon::Logout,
             Item::Separator => Icon::Menu,
@@ -55,7 +59,7 @@ pub(super) const ITEMS: [Item; 11] = [
     Item::Go(Page::Collection),
     Item::Go(Page::Downloads),
     Item::Go(Page::WineManager),
-    Item::Go(Page::Epic),
+    Item::Stores,
     Item::Go(Page::Emulators),
     Item::Go(Page::Statistics),
     Item::Separator,
@@ -95,6 +99,10 @@ impl CollectionView {
                         }
                     }
                     Item::Go(page) => self.navigate(page, window, cx),
+                    Item::Stores => {
+                        let page = self.pages.stores_page();
+                        self.navigate(page, window, cx);
+                    }
                     Item::AddGame => self.console_add_game(window, cx),
                     Item::Desktop => self.set_console(false, window, cx),
                     Item::Separator => {}
@@ -115,7 +123,7 @@ impl CollectionView {
                 continue;
             }
             let on = i == focused;
-            let current = item.page() == Some(self.page);
+            let current = item.page() == Some(self.page) || (*item == Item::Stores && crate::pages::stores::is_store_page(self.page));
             let fg: Hsla = if on {
                 theme::console_on_focus().into()
             } else if current {

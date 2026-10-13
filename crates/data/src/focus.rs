@@ -125,6 +125,17 @@ pub struct Details {
     pub install_size: Option<String>,
 }
 
+/// `install.platform` as shown: GOG stores it in lower case (`windows`,
+/// `linux`, `osx`).
+fn platform_name(platform: &str) -> &str {
+    match platform {
+        "windows" => "Windows",
+        "linux" => "Linux",
+        "osx" => "Mac",
+        other => other,
+    }
+}
+
 fn non_empty(value: Option<&str>) -> Option<&str> {
     value.filter(|s| !s.is_empty())
 }
@@ -205,7 +216,7 @@ impl Details {
         };
         let platforms = match metadata.map(|m| &m.platforms).filter(|f| !f.is_empty()) {
             Some(p) => p.clone(),
-            None => vec![non_empty(game.install.platform.as_deref()).unwrap_or("PC").to_owned()],
+            None => vec![non_empty(game.install.platform.as_deref()).map(platform_name).unwrap_or("PC").to_owned()],
         };
         let platform = non_empty(platforms.first().map(String::as_str)).unwrap_or("PC").to_owned();
 

@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use heronite_i18n::tr;
 
+use super::companions::Companions;
 use super::session::{fail, finish};
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
@@ -89,12 +90,15 @@ pub(super) fn run_process(
         cancel: &cancelled,
         notify: &status,
     };
+    // How long each step took, for the log: a slow launch shows where.
+    let mut steps = Steps::new();
     // Cloud saves down, umu runtime.
     match prep.before_prefix(&req.app_name, &plan.prep) {
         Flow::Go => {}
         Flow::Cancelled => return finish_aborted(shared, log, req, t0),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
+    steps.done("cloud saves and umu");
     if !plan.pre_commands.is_empty() {
         status(Notice::info("Preparing prefix...", tr!("Preparing prefix...")));
     }
@@ -103,20 +107,24 @@ pub(super) fn run_process(
             return finish_aborted(shared, log, req, t0);
         }
     }
+    steps.done("prefix creation");
     // Redistributables, EOS overlay and known fixes the first time the game
     // runs in this prefix.
     let epic = shared.epic.lock().unwrap().clone();
-    match prep.first_launch(&plan.prep, epic.as_deref()) {
+    let store = shared.store_setup.lock().unwrap().clone();
+    match prep.first_launch(&plan.prep, epic.as_deref(), store.as_deref()) {
         Flow::Go => {}
         Flow::Cancelled => return finish_aborted(shared, log, req, t0),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
+    steps.done("first launch setup");
     // DXVK / VKD3D into the prefix, anti-cheat runtimes.
     match prep.after_prefix(&plan.prep) {
         Flow::Go => {}
         Flow::Cancelled => return finish_aborted(shared, log, req, t0),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
+    steps.done("Wine tools and anti-cheat runtimes");
     if cancelled() {
         // Stopped while preparing: the game must not start afterwards.
         return finish_aborted(shared, log, req, t0);
@@ -133,6 +141,8 @@ pub(super) fn run_process(
             return finish_aborted(shared, log, req, t0);
         }
     }
+    steps.done("script before launch");
+    log.info(&steps.summary());
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&plan.command)));
     log.info("Game Output:");
     let mut handle = match shared.spawner.spawn_logged(&plan.command, Some(log.clone())) {
@@ -148,6 +158,8 @@ pub(super) fn run_process(
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
     control.set_playing();
     shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid: handle.pid() });
+    let mut companions = Companions::new(&plan.companions, Instant::now());
+    let prefix = plan.prep.wine.as_ref().map(|s| s.wine_prefix.clone());
 
     let mut terminated_at: Option<Instant> = None;
     let mut exit: Option<ExitInfo> = None;
@@ -184,17 +196,35 @@ pub(super) fn run_process(
                 _ => {}
             }
         }
+        if terminated_at.is_none() {
+            companions.start_due(shared, &*services.probe, log, &status);
+            // The game is over but what started it waits for these programs.
+            if let Some(prefix) = prefix.as_deref().filter(|_| companions.active()) {
+                if companions.game_left(&*shared.procs, prefix) {
+                    companions.stop(shared.cfg.kill_grace, log);
+                }
+            }
+        }
         // Sleeps until the next poll unless a stop arrives first.
         let kill_pending = terminated_at.is_none();
-        control.wake.wait_while(shared.cfg.poll_interval, || {
-            !control.abort.load(Ordering::SeqCst) && !(kill_pending && control.kill.load(Ordering::SeqCst))
-        });
+        let wait = companions.next_due(Instant::now()).map_or(shared.cfg.poll_interval, |d| d.min(shared.cfg.poll_interval));
+        control.wake.wait_while(wait, || !control.abort.load(Ordering::SeqCst) && !(kill_pending && control.kill.load(Ordering::SeqCst)));
     }
 
     match exit {
         Some(info) => log.info(&describe_exit(info)),
         None if aborted => log.info("Stopped tracking the game"),
         None => {}
+    }
+    if !aborted && !control.kill.load(Ordering::SeqCst) {
+        if let Some(prefix) = prefix.filter(|_| companions.active()) {
+            aborted = follow_the_prefix(shared, control, &mut companions, &prefix, &*services.probe, log, &status);
+        }
+    }
+    if aborted {
+        companions.leave_running();
+    } else {
+        companions.stop(shared.cfg.kill_grace, log);
     }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(cmd) = &plan.wait_after_exit {
@@ -210,6 +240,69 @@ pub(super) fn run_process(
         prep.after_exit(&req.app_name, &plan.prep);
     }
     finish(shared, log, req, control, started_at, elapsed, exit);
+}
+
+/// The duration of each preparation step.
+struct Steps {
+    start: Instant,
+    last: Instant,
+    done: Vec<(&'static str, Duration)>,
+}
+
+impl Steps {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self { start: now, last: now, done: Vec::new() }
+    }
+
+    fn done(&mut self, step: &'static str) {
+        let now = Instant::now();
+        self.done.push((step, now - self.last));
+        self.last = now;
+    }
+
+    /// "Prepared in 1.24 s (Wine tools and anti-cheat runtimes 1.20 s)":
+    /// the steps that took a noticeable time.
+    fn summary(&self) -> String {
+        let total = self.last - self.start;
+        let slow: Vec<String> = self
+            .done
+            .iter()
+            .filter(|(_, d)| *d >= Duration::from_millis(10))
+            .map(|(s, d)| format!("{s} {:.2} s", d.as_secs_f64()))
+            .collect();
+        if slow.is_empty() {
+            format!("Prepared in {:.2} s", total.as_secs_f64())
+        } else {
+            format!("Prepared in {:.2} s ({})", total.as_secs_f64(), slow.join(", "))
+        }
+    }
+}
+
+/// Keeps the session (and the programs alongside the game) going while the
+/// game still runs in its prefix after the process that started it exited.
+/// Returns true when tracking was aborted meanwhile.
+fn follow_the_prefix(
+    shared: &Shared,
+    control: &Control,
+    companions: &mut Companions,
+    prefix: &str,
+    probe: &dyn Probe,
+    log: &Arc<GameLog>,
+    status: &dyn Fn(Notice),
+) -> bool {
+    while companions.game_may_run(&*shared.procs, prefix) {
+        if control.abort.load(Ordering::SeqCst) {
+            return true;
+        }
+        if control.kill.load(Ordering::SeqCst) {
+            return false;
+        }
+        companions.start_due(shared, probe, log, status);
+        let wait = companions.next_due(Instant::now()).map_or(shared.cfg.poll_interval, |d| d.min(shared.cfg.poll_interval));
+        control.wake.wait_while(wait, || !control.abort.load(Ordering::SeqCst) && !control.kill.load(Ordering::SeqCst));
+    }
+    false
 }
 
 /// Runs one of the game's scripts to completion. Its exit code is ignored and

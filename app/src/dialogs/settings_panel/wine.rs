@@ -32,10 +32,16 @@ impl SettingsPanel {
                 rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some(tr!("CrossOver Bottle")), None));
             return col.child(top.card());
         }
-        let top = rows()
-            .field(self.wine_version_field(cx))
+        let mut top = rows().field(self.wine_version_field(cx));
+        let folder_label = if self.is_game() {
+            top = top.field(self.prefix_menu(cx));
+            tr!("Prefix folder")
+        } else {
+            tr!("Prefix")
+        };
+        let top = top
             .field_help(
-                self.path_row("winePrefix", Some(tr!("Prefix")), true, tr!("Select WinePrefix Folder"), false, cx),
+                self.path_row("winePrefix", Some(folder_label), true, tr!("Select WinePrefix Folder"), false, cx),
                 vec![help(
                     tr!("Wine uses what is called a WINEPREFIX to encapsulate Windows applications. This prefix contains the Wine configuration files and a reproduction of the file hierarchy of C: (the main disk on a Windows OS). In this reproduction of the C: drive, your game save files and dependencies installed via winetricks are stored."),
                 )],

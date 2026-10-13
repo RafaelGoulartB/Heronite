@@ -13,7 +13,7 @@ use gpui_kit::*;
 use heronite_epic::eos_overlay;
 use heronite_epic::user::BROWSER_LOGIN_URL;
 
-use super::{columns, content_width, page_close, sheet, status_pill, PageCtx, PageEvent};
+use super::{columns, content_width, page_close, sheet, status_pill, stores, Page, PageCtx, PageEvent};
 use crate::dialogs::epic_import::EpicImportPicker;
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::DialogEvent;
@@ -217,7 +217,7 @@ impl EpicPage {
                 .background_spawn(async move {
                     // Guarded helper: closes with the app instead of being orphaned.
                     let mut cmd = Command::new(helper);
-                    cmd.stdin(Stdio::null()).stderr(Stdio::null());
+                    cmd.stdin(Stdio::null());
                     heronite_data::proc::guard(&mut cmd).output()
                 })
                 .await;
@@ -239,7 +239,12 @@ impl EpicPage {
                             true,
                         ))
                     }
-                    Ok(_) => {} // window closed by the user
+                    // `CLOSED` of the helper: the user closed the window.
+                    Ok(o) if o.status.code() == Some(4) => {}
+                    Ok(o) => {
+                        log::warn!("the login window stopped ({}): {}", o.status, String::from_utf8_lossy(&o.stderr).trim());
+                        this.notice = Some((tr!("The login window stopped unexpectedly. Use the browser method below.").into(), true));
+                    }
                     Err(err) => this.notice = Some((tr!("Could not open the login window: {err}", err).into(), true)),
                 }
                 cx.notify();
@@ -292,7 +297,7 @@ impl Render for EpicPage {
         }
         let (account, stats, updates, refreshing, logging_in, last_error) = {
             let s = self.svc.read(cx);
-            (s.account().clone(), s.stats().clone(), s.updates_count(), s.refreshing, s.logging_in, s.last_error.clone())
+            (s.account().clone(), s.stats().clone(), s.epic_updates_count(), s.refreshing, s.logging_in, s.last_error.clone())
         };
 
         let mut column = div().flex().flex_col().w_full();
@@ -365,7 +370,7 @@ impl Render for EpicPage {
             if updates > 0 {
                 lib_actions = lib_actions.child(
                     button("epic-update-all", ButtonKind::Glass, tr!("Update all ({updates})", updates))
-                        .on_click(cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.update_all(cx)))),
+                        .on_click(cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.update_all_epic(cx)))),
                 );
             }
             lib_actions = lib_actions.child(action_button(
@@ -475,13 +480,13 @@ impl Render for EpicPage {
             .relative()
             .child(sheet(
                 "page-epic",
-                "Epic Games",
+                stores::title(),
                 Some(tr!("Your account, library and the EOS Overlay.").into()),
                 None,
                 1320.,
                 window,
                 close,
-                columns(wide, [column, eos]),
+                div().flex().flex_col().child(stores::tabs(Page::Epic, cx)).child(columns(wide, [column, eos])),
             ))
             .children(self.dialog.clone())
             .into_any_element()

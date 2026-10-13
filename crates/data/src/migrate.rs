@@ -35,6 +35,8 @@ const ENTRIES: &[&str] = &[
     "nile_store",
     "zoom_store",
     "legendaryConfig",
+    "gogdlConfig",
+    "nile_config",
     "local_library",
     "tools",
     "images-cache",

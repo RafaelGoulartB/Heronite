@@ -21,7 +21,7 @@ use heronite_i18n::tr;
 
 use crate::dxvk::{self, Action, WineRunner};
 use crate::net::{Net, CANCELLED};
-use crate::plan::{PlanContext, PrepSpec};
+use crate::plan::{CloudSaves, PlanContext, PrepSpec};
 use crate::probe::Probe;
 use crate::runtime::Spawner;
 use crate::runtimes::{self, Runtime};
@@ -49,13 +49,13 @@ impl Notice {
     }
 }
 
-/// Cloud save synchronisation (`LegendaryGame.syncSaves`). Implemented by the
-/// app on top of the Epic crate, which depends on this one.
+/// Cloud save synchronisation (`LegendaryGame.syncSaves`, and GOG's).
+/// Implemented by the app on top of the store crates, which depend on this one.
 pub trait CloudSync: Send + Sync {
-    /// Runs the sync for `app_name` with `saves_path`; `flag` is
-    /// `--skip-upload` (download) or `--skip-download` (upload). Returns the
-    /// tool's output.
-    fn sync(&self, app_name: &str, saves_path: &str, flag: &str) -> Result<String, String>;
+    /// Runs the sync of `runner`'s game `app_name` with `saves_path`; `flag`
+    /// is `--skip-upload` (download) or `--skip-download` (upload). Returns
+    /// the tool's output.
+    fn sync(&self, runner: &str, app_name: &str, saves_path: &str, flag: &str) -> Result<String, String>;
 }
 
 /// How a preparation step ended.
@@ -146,7 +146,7 @@ impl Prep<'_> {
 
     /// `game.syncSaves(flag, path)` when online. Problems are warnings: the
     /// game starts anyway, like in Heroic.
-    fn sync_saves(&self, app_name: &str, path: &str, flag: &str, what: &str) {
+    fn sync_saves(&self, app_name: &str, saves: &CloudSaves, flag: &str, what: &str) {
         let Some(cloud) = self.cloud else { return };
         if !self.net.is_online() {
             log::info!("offline, not {what} saves of {app_name}");
@@ -157,7 +157,7 @@ impl Prep<'_> {
             format!("{} cloud saves...", if download { "Downloading" } else { "Uploading" }),
             if download { tr!("Downloading cloud saves...") } else { tr!("Uploading cloud saves...") },
         ));
-        match cloud.sync(app_name, path, flag) {
+        match cloud.sync(&saves.runner, app_name, &saves.path, flag) {
             Ok(out) => {
                 if let Some(problem) = sync_problem(&out) {
                     self.notice(Notice::warn(format!("Cloud saves: {problem}"), tr!("Cloud saves: {problem}", problem)));
@@ -171,8 +171,8 @@ impl Prep<'_> {
 
     /// Before the prefix is created: cloud saves down, umu present.
     pub fn before_prefix(&self, app_name: &str, spec: &PrepSpec) -> Flow {
-        if let Some(path) = &spec.cloud_saves {
-            self.sync_saves(app_name, path, "--skip-upload", "downloaded");
+        if let Some(saves) = &spec.cloud_saves {
+            self.sync_saves(app_name, saves, "--skip-upload", "downloaded");
             if (self.cancel)() {
                 return Flow::Cancelled;
             }
@@ -279,8 +279,8 @@ impl Prep<'_> {
 
     /// After the game exited: upload the saves.
     pub fn after_exit(&self, app_name: &str, spec: &PrepSpec) {
-        if let Some(path) = &spec.cloud_saves {
-            self.sync_saves(app_name, path, "--skip-download", "uploaded");
+        if let Some(saves) = &spec.cloud_saves {
+            self.sync_saves(app_name, saves, "--skip-download", "uploaded");
         }
     }
 }
@@ -337,7 +337,7 @@ pub(crate) mod tests {
         fail: bool,
     }
     impl CloudSync for FakeCloud {
-        fn sync(&self, app: &str, path: &str, flag: &str) -> Result<String, String> {
+        fn sync(&self, _runner: &str, app: &str, path: &str, flag: &str) -> Result<String, String> {
             self.calls.lock().unwrap().push((app.into(), path.into(), flag.into()));
             if self.fail {
                 Err("legendary is missing".into())
@@ -391,7 +391,7 @@ pub(crate) mod tests {
         let seen = Mutex::new(Vec::new());
         let sink = |n: Notice| seen.lock().unwrap().push(n);
         let prep = collect(&fx, &p, &net, Some(&cloud), &sink);
-        let spec = PrepSpec { cloud_saves: Some("/saves".into()), ..Default::default() };
+        let spec = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/saves")), ..Default::default() };
         assert_eq!(prep.before_prefix("Calluna", &spec), Flow::Go);
         prep.after_exit("Calluna", &spec);
         assert_eq!(
@@ -413,7 +413,7 @@ pub(crate) mod tests {
         let offline = FakeNet::offline();
         let sink = |_: Notice| {};
         let prep = collect(&fx, &p, &offline, Some(&cloud), &sink);
-        let spec = PrepSpec { cloud_saves: Some("/saves".into()), ..Default::default() };
+        let spec = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/saves")), ..Default::default() };
         prep.before_prefix("A", &spec);
         prep.after_exit("A", &spec);
         prep.before_prefix("A", &PrepSpec::default());
@@ -424,7 +424,7 @@ pub(crate) mod tests {
     fn cloud_save_problems_warn_but_never_stop_the_launch() {
         let fx = Fx::new();
         let (p, net) = (probe(), FakeNet::online());
-        let spec = PrepSpec { cloud_saves: Some("/s".into()), ..Default::default() };
+        let spec = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
         for cloud in [
             FakeCloud { output: "[cli] INFO: x\n[cli] ERROR: Could not get remote saves\n".into(), ..Default::default() },
             FakeCloud { fail: true, ..Default::default() },

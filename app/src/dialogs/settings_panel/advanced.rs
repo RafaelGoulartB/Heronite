@@ -111,6 +111,9 @@ impl SettingsPanel {
                 cx,
             ));
         col = col.child(heading(tr!("Launch"))).child(launch.card());
+        if self.is_game() {
+            col = col.child(self.companions_section(cx));
+        }
         col = col.child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
 
         // Legacy options (a tab of its own in Heroic).

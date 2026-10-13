@@ -1,5 +1,5 @@
-//! Epic dialogs opened from the context menu and the confirmations behind
-//! them.
+//! Store dialogs opened from the context menu and the confirmations behind
+//! them (Epic, GOG, Amazon Games).
 
 use std::rc::Rc;
 
@@ -13,6 +13,8 @@ use crate::collection::CollectionView;
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog, Toggle};
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::epic_modify::EpicModifyDialog;
+use crate::dialogs::store_install::{StoreInstallDialog, StoreInstallMode};
+use crate::services::downloads::Store;
 use heronite_i18n::tr;
 
 impl CollectionView {
@@ -25,8 +27,7 @@ impl CollectionView {
         if update {
             self.epic_update(key, cx);
         } else {
-            let (app, title) = (game.app_name.clone(), game.title.clone());
-            svc.update(cx, |s, cx| s.sync_saves(&app, &title, cx));
+            self.epic_sync_saves(&game, cx);
         }
     }
 
@@ -66,6 +67,12 @@ impl CollectionView {
         let Some(game) = self.epic_game(key) else { return };
         let info = Self::epic_game_info(&game);
         let (data_paths, app) = (self.data_paths.clone(), self.app_paths.clone());
+        if let Some(store) = Store::from_runner(&game.runner) {
+            let mode = if import { StoreInstallMode::Import } else { StoreInstallMode::Install };
+            let view = cx.new(|cx| StoreInstallDialog::new(data_paths, store, info, mode, window, cx));
+            self.open_dialog(view, cx);
+            return;
+        }
         let mode = if import { Mode::Import } else { Mode::Install };
         let view = cx.new(|cx| EpicInstallDialog::new(data_paths, app, info, mode, window, cx));
         self.open_dialog(view, cx);
@@ -121,6 +128,7 @@ impl CollectionView {
         spec.danger = true;
         let has_prefix_toggle = spec.toggles.len() == 2;
         let app = game.app_name.clone();
+        let store = Store::from_runner(&game.runner);
         let view = cx.new(|cx| {
             EpicConfirmDialog::new(
                 spec,
@@ -129,7 +137,10 @@ impl CollectionView {
                         if has_prefix_toggle { (choice.toggles[0], choice.toggles[1]) } else { (false, choice.toggles[0]) };
                     let svc = crate::services::downloads(cx);
                     let app = app.clone();
-                    svc.update(cx, |s, cx| s.uninstall(&app, prefix, settings, cx));
+                    svc.update(cx, |s, cx| match store {
+                        Some(store) => s.store_uninstall(store, &app, prefix, settings, cx),
+                        None => s.uninstall(&app, prefix, settings, cx),
+                    });
                 },
                 window,
                 cx,
@@ -153,13 +164,17 @@ impl CollectionView {
         spec.path = Some((tr!("Choose where you want to move").into(), parent, tr!("Choose where you want to move").into()));
         spec.confirm = Some(tr!("Move").into());
         let app = game.app_name.clone();
+        let store = Store::from_runner(&game.runner);
         let view = cx.new(|cx| {
             EpicConfirmDialog::new(
                 spec,
                 move |choice, cx| {
                     let svc = crate::services::downloads(cx);
                     let (app, from) = (app.clone(), current.clone());
-                    svc.update(cx, |s, cx| s.move_install(&app, &from, &choice.path, cx));
+                    svc.update(cx, |s, cx| match store {
+                        Some(store) => s.store_move(store, &app, &choice.path, cx),
+                        None => s.move_install(&app, &from, &choice.path, cx),
+                    });
                 },
                 window,
                 cx,
@@ -180,13 +195,17 @@ impl CollectionView {
         );
         spec.confirm = Some(tr!("Verify").into());
         let app = game.app_name.clone();
+        let store = Store::from_runner(&game.runner);
         let view = cx.new(|cx| {
             EpicConfirmDialog::new(
                 spec,
                 move |_, cx| {
                     let svc = crate::services::downloads(cx);
                     let app = app.clone();
-                    svc.update(cx, |s, cx| s.verify(&app, cx));
+                    svc.update(cx, |s, cx| match store {
+                        Some(store) => s.store_verify(store, &app, cx),
+                        None => s.verify(&app, cx),
+                    });
                 },
                 window,
                 cx,
@@ -237,14 +256,22 @@ impl CollectionView {
 
     /// `HERONITE_DEBUG_DIALOG=epic-install:<appName>` / `epic-import:<appName>` /
     /// `epic-uninstall:<appName>` / `epic-move:..` / `epic-verify:..` /
-    /// `epic-update:..` / `epic-modify:..` / `epic-eos-install:..` / `epic-message`.
+    /// `epic-update:..` / `epic-modify:..` / `epic-eos-install:..` / `epic-message`;
+    /// `gog-<what>:<appName>` and `nile-<what>:<appName>` open the same for a
+    /// GOG / Amazon game.
     pub(in crate::collection) fn epic_debug_dialog(&mut self, which: &str, _window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some((kind, app)) =
             which.split_once(':').map(|(k, a)| (k, a.to_string())).or_else(|| which.starts_with("epic-").then(|| (which, String::new())))
         else {
             return false;
         };
-        let key = format!("legendary_{app}");
+        let (runner, kind) = match kind.split_once('-') {
+            Some(("gog", rest)) => ("gog", format!("epic-{rest}")),
+            Some(("nile", rest)) => ("nile", format!("epic-{rest}")),
+            _ => ("legendary", kind.to_string()),
+        };
+        let kind = kind.as_str();
+        let key = format!("{runner}_{app}");
         self.epic.pending = match kind {
             "epic-install" => Some(Request::Install { key, import: false }),
             "epic-import" => Some(Request::Install { key, import: true }),

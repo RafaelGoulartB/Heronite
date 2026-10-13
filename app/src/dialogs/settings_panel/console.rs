@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use super::advanced::{PairTable, ENV, WRAPPERS};
 use super::gamescope::{UPSCALE_METHODS, WINDOW_TYPES};
 use super::logic::{self, launcher_args_error, pairs};
-use super::saves::MODES;
+use super::saves::{GOG_MODES, MODES};
 use super::{GlobalView, Section, SettingsPanel};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
 use crate::console::kit::{self, u};
@@ -152,6 +152,16 @@ impl SettingsPanel {
         if wine.kind == "crossover" {
             v.push(self.c_text("crossoverBottle", tr!("CrossOver bottle"), cx));
             return v;
+        }
+        if self.is_game() {
+            let current = std::path::PathBuf::from(self.text("winePrefix").trim().trim_end_matches('/'));
+            let label = self.prefix_choices().iter().find(|p| p.path == current).map(|p| p.name.clone());
+            let mut it =
+                Self::c_do("prefix-pick", tr!("Choose a prefix\u{2026}"), Icon::Folder, self.prefix_list.is_some(), |this, window, cx| {
+                    this.console_prefix_sheet(window, cx)
+                });
+            it.row = it.row.desc(label.unwrap_or_else(|| tr!("Another folder (below)").to_string()));
+            v.push(it);
         }
         v.push(self.c_path("winePrefix", tr!("Prefix"), true, cx));
         let busy = self.tool_toggle.is_some();
@@ -314,6 +324,76 @@ impl SettingsPanel {
         v
     }
 
+    /// One row per program (left / right change its delay), then add and remove.
+    fn c_companions(&self) -> Vec<Item> {
+        use super::companions::{delay_index, delay_label, file_name, DELAYS};
+        let list = self.companions();
+        let mut v = vec![Self::c_header(tr!("Programs alongside the game"))];
+        for (i, c) in list.iter().enumerate() {
+            let options = DELAYS.iter().map(|d| SharedString::from(delay_label(*d))).collect();
+            let row = Row::choice(SharedString::from(format!("companion:{i}")), file_name(&c.path), options, delay_index(c.delay_secs));
+            v.push(item(
+                row.desc(c.path.clone()),
+                Act::Choice(Rc::new(move |this, index, cx| this.set_companion_delay(i, DELAYS[index], cx))),
+            ));
+        }
+        v.push(Self::c_do("companion-add", tr!("Add a program\u{2026}"), Icon::Add, true, |this, window, cx| {
+            this.console_pick_file(tr!("Program to run alongside the game"), Vec::new(), window, cx, |this, path, cx| {
+                this.add_companion(path, cx)
+            })
+        }));
+        if !list.is_empty() {
+            v.push(Self::c_do("companion-remove", tr!("Remove a program\u{2026}"), Icon::DeleteOutline, true, |this, window, cx| {
+                this.console_companion_remove(window, cx)
+            }));
+        }
+        v
+    }
+
+    fn console_prefix_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let choices = self.prefix_choices();
+        let mut rows: Vec<Row> = choices
+            .iter()
+            .enumerate()
+            .map(|(i, p)| Row::action(SharedString::from(format!("pfx:{i}")), Self::prefix_label(p)).icon(Icon::Folder))
+            .collect();
+        rows.push(Row::action("pfx-new", tr!("New prefix for this game")).icon(Icon::Add));
+        let paths: Vec<std::path::PathBuf> = choices.into_iter().map(|p| p.path).collect();
+        let sheet = cx.new(|_| Sheet::new(tr!("Prefix"), None, rows));
+        let sub = cx.subscribe_in(&sheet, window, move |this, _, ev: &SheetEvent, window, cx| {
+            let SheetEvent::Activate(id) = ev;
+            this.console_layer.close();
+            if id.as_ref() == "pfx-new" {
+                this.new_prefix_for_game(window, cx);
+            } else if let Some(path) = id.strip_prefix("pfx:").and_then(|n| n.parse::<usize>().ok()).and_then(|i| paths.get(i)) {
+                this.set_prefix(path, window, cx);
+            }
+            cx.notify();
+        });
+        self.console_layer.open(&sheet, sub);
+    }
+
+    fn console_companion_remove(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rows = self
+            .companions()
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                Row::action(SharedString::from(format!("rm:{i}")), super::companions::file_name(&c.path)).icon(Icon::DeleteOutline).danger()
+            })
+            .collect();
+        let sheet = cx.new(|_| Sheet::new(tr!("Remove a program"), None, rows));
+        let sub = cx.subscribe_in(&sheet, window, move |this, _, ev: &SheetEvent, _, cx| {
+            let SheetEvent::Activate(id) = ev;
+            this.console_layer.close();
+            if let Some(i) = id.strip_prefix("rm:").and_then(|n| n.parse::<usize>().ok()) {
+                this.remove_companion(i, cx);
+            }
+            cx.notify();
+        });
+        self.console_layer.open(&sheet, sub);
+    }
+
     fn c_advanced(&self, cx: &App) -> Vec<Item> {
         let sideload = self.facts().is_some_and(|f| f.is_sideload());
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
@@ -343,6 +423,9 @@ impl SettingsPanel {
         }
         v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
         v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
+        if game {
+            v.extend(self.c_companions());
+        }
         v.extend(self.c_pairs(WRAPPERS));
         v.extend(self.c_pairs(ENV));
         let wine = self.wine_version();
@@ -399,7 +482,63 @@ impl SettingsPanel {
         v
     }
 
+    fn c_gog_saves(&self, cx: &App) -> Vec<Item> {
+        let mut v = vec![Self::c_header(tr!("Location (beta: back up your saves first)"))];
+        match &self.saves.gog.locations {
+            None => v.push(Self::c_info("gog-loading", tr!("Save folders"), tr!("Loading\u{2026}"))),
+            Some(Err(err)) => v.push(Self::c_info("gog-error", tr!("Save folders"), err.clone())),
+            Some(Ok(list)) if list.is_empty() => {
+                v.push(Self::c_info("gog-none", tr!("Cloud saves"), tr!("This game does not support them")))
+            }
+            Some(Ok(list)) => {
+                for (i, l) in list.iter().enumerate() {
+                    let name = if l.name == "__default" { tr!("Default folder").to_string() } else { l.name.clone() };
+                    v.push(Self::c_info(&format!("gog-loc{i}"), &name, l.location.clone()));
+                }
+            }
+        }
+        let loading = self.saves.gog.loading;
+        v.push(Self::c_do(
+            "gog-refresh",
+            if loading { tr!("Loading\u{2026}") } else { tr!("Refresh locations") },
+            Icon::FaSearch,
+            !loading,
+            |this, _, cx| this.load_gog_locations(true, cx),
+        ));
+        let has_places = !self.gog_locations().is_empty();
+        let syncing = self.gog_syncing(cx);
+        v.push(Self::c_header(tr!("Sync")));
+        let opts = GOG_MODES.iter().map(|(l, _)| SharedString::from(heronite_i18n::tr(l))).collect();
+        v.push(item(
+            Row::choice("c:saves-mode", tr!("Manual sync"), opts, self.saves.mode).enabled(has_places),
+            Act::Choice(Rc::new(|this, i, cx| {
+                this.saves.mode = i;
+                cx.notify();
+            })),
+        ));
+        v.push(Self::c_do(
+            "sync",
+            if syncing { tr!("Syncing\u{2026}") } else { tr!("Sync now") },
+            Icon::CloudSync,
+            has_places && !syncing,
+            |this, _, cx| this.gog_sync(cx),
+        ));
+        v.push(Self::c_header(tr!("Automatic")));
+        let no_cloud = matches!(&self.saves.gog.locations, Some(Ok(list)) if list.is_empty());
+        v.push(self.c_toggle(
+            "autoSyncSaves",
+            false,
+            tr!("Autosync saves"),
+            Some(tr!("Before the game starts and after it ends")),
+            no_cloud,
+        ));
+        v
+    }
+
     fn c_saves(&self, cx: &App) -> Vec<Item> {
+        if self.is_gog() {
+            return self.c_gog_saves(cx);
+        }
         if !self.facts().is_some_and(|f| f.cloud_saves) {
             return vec![Self::c_info("no-saves", tr!("Cloud saves"), tr!("This game does not support them"))];
         }
@@ -527,6 +666,8 @@ impl SettingsPanel {
                 Act::Choice(Rc::new(|this, i, cx| this.set("maxWorkers", json!(i as i64), cx))),
             ),
             self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx),
+            self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx),
+            self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx),
             self.c_toggle("downloadNoHttps", false, tr!("Download without HTTPS (LanCache)"), None, false),
             Self::c_header(tr!("Updates")),
             self.c_toggle("autoUpdateGames", false, tr!("Update games automatically"), None, false),

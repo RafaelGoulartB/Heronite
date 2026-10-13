@@ -18,6 +18,27 @@ pub trait Procs: Send + Sync {
     /// Direct children.
     fn children(&self, pid: u32) -> Vec<u32>;
     fn signal(&self, pid: u32, sig: Sig);
+    /// File names (lowercase, `game.exe`) of the Windows programs running in
+    /// the Wine prefix `prefix`.
+    fn windows_programs(&self, prefix: &str) -> Vec<String>;
+}
+
+/// Whether the Wine prefix variable of a process (`WINEPREFIX`) is `prefix`
+/// (Proton keeps the Wine prefix in `<prefix>/pfx`).
+fn same_prefix(wineprefix: &str, prefix: &str) -> bool {
+    let a = wineprefix.trim_end_matches('/');
+    let b = prefix.trim_end_matches('/');
+    !b.is_empty() && (a == b || a.strip_prefix(b).is_some_and(|rest| rest == "/pfx"))
+}
+
+/// The file name of a Windows path Wine gives a process as its name
+/// (`C:\windows\system32\services.exe`, `Z:\games\Game.exe`).
+fn windows_file_name(argv0: &str) -> Option<String> {
+    let b = argv0.as_bytes();
+    if b.len() < 3 || !b[0].is_ascii_alphabetic() || b[1] != b':' || b[2] != b'\\' {
+        return None;
+    }
+    argv0.rsplit('\\').next().filter(|n| !n.is_empty()).map(str::to_lowercase)
 }
 
 /// All descendants of `root` (children before parents), `root` excluded.
@@ -109,6 +130,27 @@ impl Procs for SystemProcs {
             libc::kill(pid as libc::pid_t, s);
         }
     }
+
+    fn windows_programs(&self, prefix: &str) -> Vec<String> {
+        let Ok(rd) = std::fs::read_dir("/proc") else { return Vec::new() };
+        let mut out = Vec::new();
+        for e in rd.flatten() {
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+            let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { continue };
+            let argv0 = String::from_utf8_lossy(cmdline.split(|b| *b == 0).next().unwrap_or_default()).into_owned();
+            let Some(name) = windows_file_name(&argv0) else { continue };
+            // Other users' processes are not readable: they are not ours anyway.
+            let Ok(environ) = std::fs::read(format!("/proc/{pid}/environ")) else { continue };
+            let in_prefix = environ
+                .split(|b| *b == 0)
+                .filter_map(|kv| kv.strip_prefix(b"WINEPREFIX="))
+                .any(|v| same_prefix(&String::from_utf8_lossy(v), prefix));
+            if in_prefix && self.is_alive(pid) {
+                out.push(name);
+            }
+        }
+        out
+    }
 }
 
 /// Scriptable process table for tests.
@@ -123,6 +165,7 @@ struct FakeState {
     comms: HashMap<u32, String>,
     parents: HashMap<u32, u32>,
     signals: Vec<(u32, Sig)>,
+    windows: HashMap<String, Vec<String>>,
 }
 
 impl FakeProcs {
@@ -143,6 +186,10 @@ impl FakeProcs {
     pub fn signals(&self) -> Vec<(u32, Sig)> {
         self.inner.lock().unwrap().signals.clone()
     }
+    /// What [`Procs::windows_programs`] reports for `prefix`.
+    pub fn set_windows_programs(&self, prefix: &str, names: &[&str]) {
+        self.inner.lock().unwrap().windows.insert(prefix.to_string(), names.iter().map(|n| n.to_string()).collect());
+    }
 }
 
 impl Procs for FakeProcs {
@@ -161,11 +208,24 @@ impl Procs for FakeProcs {
     fn signal(&self, pid: u32, sig: Sig) {
         self.inner.lock().unwrap().signals.push((pid, sig));
     }
+    fn windows_programs(&self, prefix: &str) -> Vec<String> {
+        self.inner.lock().unwrap().windows.get(prefix).cloned().unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_processes_are_matched_to_their_prefix() {
+        assert_eq!(windows_file_name("C:\\windows\\system32\\services.exe").as_deref(), Some("services.exe"));
+        assert_eq!(windows_file_name("Z:\\games\\My Game\\Game.EXE").as_deref(), Some("game.exe"));
+        assert_eq!(windows_file_name("/usr/bin/wineserver"), None);
+        assert_eq!(windows_file_name("C:"), None);
+        assert!(same_prefix("/p/game/pfx/", "/p/game") && same_prefix("/p/game", "/p/game/"));
+        assert!(!same_prefix("/p/game2", "/p/game") && !same_prefix("/p/game/other", "/p/game") && !same_prefix("/x", ""));
+    }
 
     #[test]
     fn parses_stat_with_odd_comm() {

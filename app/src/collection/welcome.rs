@@ -17,14 +17,15 @@ use crate::ui::icon;
 
 #[derive(Clone, Copy)]
 enum Source {
-    Epic,
+    /// Epic Games, GOG and Amazon Games (their pages switch with tabs).
+    Stores,
     Steam,
     Emulators,
     AddGame,
 }
 
 const SOURCES: [(Source, Icon, &str, &str); 4] = [
-    (Source::Epic, Icon::AccountCircle, "Epic Games", n_!("Log in")),
+    (Source::Stores, Icon::Storefront, n_!("Stores"), "Epic \u{b7} GOG \u{b7} Amazon"),
     (Source::Steam, Icon::CloudSync, "Steam", n_!("Automatic")),
     (Source::Emulators, Icon::SportsEsports, n_!("Emulators"), n_!("Detect & scan ROMs")),
     (Source::AddGame, Icon::Add, n_!("Add a game"), n_!("Program, browser or ROM")),
@@ -54,6 +55,7 @@ impl CollectionView {
             div()
                 .id(SharedString::from(format!("welcome-{title}")))
                 .flex_1()
+                .min_w_0()
                 .flex()
                 .flex_col()
                 .items_center()
@@ -70,7 +72,10 @@ impl CollectionView {
                 .hover(|s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     match source {
-                        Source::Epic => this.navigate(Page::Epic, window, cx),
+                        Source::Stores => {
+                            let page = this.pages.stores_page();
+                            this.navigate(page, window, cx);
+                        }
                         // Steam games are found on their own; a click looks again now.
                         Source::Steam => this.refresh_all(cx),
                         Source::Emulators => this.navigate(Page::Emulators, window, cx),
@@ -108,6 +113,7 @@ impl CollectionView {
             .child(tr!("Download Proton"));
         div()
             .w(px(760.))
+            .max_w_full()
             .flex()
             .flex_col()
             .items_center()

@@ -5,6 +5,7 @@
 //! Like Heroic's backend, several games may run at once (one per app name);
 //! launching an app that is already tracked is refused.
 
+mod companions;
 mod fake;
 mod process;
 mod session;
@@ -22,7 +23,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use heronite_data::DataPaths;
 
-use crate::first_launch::EpicSetup;
+use crate::first_launch::{EpicSetup, StoreSetup};
 use crate::plan::LaunchPlan;
 use crate::procs::{signal_tree, Procs, Sig, SystemProcs};
 use crate::record::Checkpointer;
@@ -54,6 +55,7 @@ impl Launcher {
                 system_info: Mutex::new(None),
                 services: Mutex::new(PrepServices::default()),
                 epic: Mutex::new(None),
+                store_setup: Mutex::new(None),
                 paths,
                 spawner,
                 procs,
@@ -80,6 +82,12 @@ impl Launcher {
     /// (prerequisites, EOS overlay).
     pub fn set_epic_setup(&self, epic: Arc<dyn EpicSetup>) {
         *self.shared.epic.lock().unwrap() = Some(epic);
+    }
+
+    /// What the first launch of a GOG game in a prefix asks gogdl
+    /// (redistributables, the game's install scripts).
+    pub fn set_store_setup(&self, store: Arc<dyn StoreSetup>) {
+        *self.shared.store_setup.lock().unwrap() = Some(store);
     }
 
     /// Changes how often running games' playtime is saved (tests).

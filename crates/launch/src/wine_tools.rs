@@ -7,7 +7,7 @@ use heronite_i18n::tr;
 use std::path::Path;
 
 use crate::emulators::node_dirname;
-use crate::env::{join, setup_env_vars, setup_wine_env_vars, Env};
+use crate::env::{join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
 use crate::plan::{Command, PlanContext, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::GameSettings;
@@ -91,6 +91,49 @@ pub fn wine_command_for(
     let wine = prepare(ctx, probe, settings)?;
     Ok(run_in_prefix_at(ctx, probe, &wine, parts, None, install_path))
 }
+
+/// A Windows program run while the game runs (see [`crate::companions`]):
+/// the game's Wine, prefix and environment. `beside_the_game`: the game itself
+/// runs in that prefix, so the program joins it (`runinprefix`, and with umu
+/// the game's container, see `UMU_CONTAINER_NSENTER`) instead of preparing
+/// the prefix again.
+pub fn alongside_command(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    app_name: &str,
+    runner: &str,
+    settings: &GameSettings,
+    exe: &str,
+    beside_the_game: bool,
+) -> Result<Command, String> {
+    let wine = prepare(ctx, probe, settings)?;
+    let s = &wine.settings;
+    let mut env = setup_wrapper_env_vars(app_name, runner);
+    env.extend(setup_env_vars(s, None, probe));
+    env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
+    quiet_wine_debug(&mut env, s);
+    let verb = if beside_the_game { "runinprefix" } else { "run" };
+    env.insert("PROTON_VERB".into(), verb.into());
+    let mut args = Vec::new();
+    match wine.runtime {
+        WineRuntime::Umu => {
+            // The game already brought the runtime up to date.
+            env.insert("UMU_RUNTIME_UPDATE".into(), "0".into());
+            if beside_the_game {
+                env.insert(UMU_NSENTER.into(), "1".into());
+            }
+        }
+        WineRuntime::Proton => args.push(verb.to_string()),
+        WineRuntime::Wine => {}
+    }
+    args.push(exe.to_string());
+    Ok(Command { program: wine.runner_bin(), args, env, cwd: Some(node_dirname(exe)) })
+}
+
+/// Set on a game run through umu, it starts a service in the game's container
+/// that a second `umu-run` with the same prefix and this variable uses to run
+/// its program inside that container (same wineserver), as `runinprefix`.
+pub const UMU_NSENTER: &str = "UMU_CONTAINER_NSENTER";
 
 /// `runWineCommand` with `protonVerb: 'run'`.
 fn run_in_prefix(ctx: &PlanContext, probe: &dyn Probe, wine: &WineEnv, parts: Vec<String>, cwd: Option<String>) -> Command {

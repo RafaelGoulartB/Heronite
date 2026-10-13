@@ -63,6 +63,18 @@ pub struct ProcessPlan {
     /// What Heroic's `prepareLaunch` / `prepareWineLaunch` and the cloud-save
     /// sync around a launch need before and after the process runs.
     pub prep: PrepSpec,
+    /// Programs started while the game runs and closed with it.
+    pub companions: Vec<CompanionPlan>,
+}
+
+/// A program run alongside the game (see [`crate::companions`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompanionPlan {
+    /// The file the user picked (the command may run it through Wine).
+    pub path: String,
+    pub command: Command,
+    /// Time after the game started.
+    pub delay: std::time::Duration,
 }
 
 /// Work around a launch that needs the network, the tools folder or the
@@ -75,9 +87,9 @@ pub struct PrepSpec {
     /// DXVK / DXVK-NVAPI / VKD3D install into the prefix and the EAC /
     /// BattlEye runtime downloads.
     pub wine: Option<GameSettings>,
-    /// `savesPath` when `autoSyncSaves` is on: cloud saves are downloaded
-    /// before the game starts and uploaded after it exits.
-    pub cloud_saves: Option<String>,
+    /// Set when `autoSyncSaves` is on: cloud saves are downloaded before the
+    /// game starts and uploaded after it exits.
+    pub cloud_saves: Option<CloudSaves>,
     /// Epic game run through Wine: what Heroic does the first time the game
     /// starts in its prefix (`legendarySetup`, `installFixes`).
     pub first_launch: Option<FirstLaunch>,
@@ -88,6 +100,8 @@ pub struct PrepSpec {
 /// and `installFixes`.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct FirstLaunch {
+    /// `legendary`, `gog` or `nile`: which store's setup runs.
+    pub runner: String,
     pub app_name: String,
     pub install_path: String,
     /// `install.platform` of the game.
@@ -99,6 +113,34 @@ pub struct FirstLaunch {
     /// `known_fixes.json`: programs (relative to the install folder) to run
     /// in the prefix.
     pub run_in_prefix: Vec<String>,
+    /// Installers the store names for the game (Amazon's `PostInstall`), run
+    /// before the store setup asks for more ([`crate::first_launch::StoreSetup`]).
+    pub post_install: Vec<SetupStep>,
+}
+
+/// What a cloud save sync around a launch works on.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct CloudSaves {
+    /// `legendary` or `gog`: the store that keeps the saves.
+    pub runner: String,
+    /// Epic: the `savesPath` folder. GOG: empty (the store's own locations
+    /// are used).
+    pub path: String,
+}
+
+impl CloudSaves {
+    pub fn new(runner: &str, path: &str) -> Self {
+        Self { runner: runner.to_string(), path: path.to_string() }
+    }
+}
+
+/// A Windows program run in the prefix during the first-launch setup.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SetupStep {
+    /// Program (a Linux path or a Wine built-in such as `msiexec`) and its arguments.
+    pub parts: Vec<String>,
+    /// Folder it starts in.
+    pub cwd: Option<String>,
 }
 
 impl PrepSpec {

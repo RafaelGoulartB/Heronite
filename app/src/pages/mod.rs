@@ -13,6 +13,8 @@ pub mod emulators;
 pub mod epic;
 pub mod settings;
 pub mod stats;
+pub mod store;
+pub mod stores;
 pub mod wine_manager;
 
 use gpui_kit::prelude::*;
@@ -31,6 +33,8 @@ pub enum Page {
     Downloads,
     WineManager,
     Epic,
+    Gog,
+    Amazon,
     Emulators,
     Statistics,
     /// Global settings (☰ → Settings, listed last).
@@ -44,6 +48,9 @@ impl Page {
             Page::Downloads => tr!("Downloads"),
             Page::WineManager => tr!("Wine Manager"),
             Page::Epic => tr!("Epic Games"),
+            // Brands: not translated.
+            Page::Gog => "GOG",
+            Page::Amazon => "Amazon Games",
             Page::Emulators => tr!("Emulators"),
             Page::Statistics => tr!("Statistics"),
             Page::Settings => tr!("Settings"),
@@ -56,6 +63,8 @@ impl Page {
             Page::Downloads => Icon::Download,
             Page::WineManager => Icon::WineBar,
             Page::Epic => Icon::AccountCircle,
+            Page::Gog => Icon::Storefront,
+            Page::Amazon => Icon::ShoppingBag,
             Page::Emulators => Icon::SportsEsports,
             Page::Statistics => Icon::BarChart,
             Page::Settings => Icon::Settings,
@@ -69,6 +78,8 @@ impl Page {
             "downloads" => Some(Page::Downloads),
             "wine" => Some(Page::WineManager),
             "epic" => Some(Page::Epic),
+            "gog" => Some(Page::Gog),
+            "amazon" => Some(Page::Amazon),
             "emulators" => Some(Page::Emulators),
             // `stats[:week|month|year|all]`, see `stats::StatsPage`.
             s if s == "stats" || s.starts_with("stats:") => Some(Page::Statistics),

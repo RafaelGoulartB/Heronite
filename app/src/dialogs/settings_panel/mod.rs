@@ -9,12 +9,14 @@
 //! tab.
 
 mod advanced;
+mod companions;
 mod console;
 mod gamescope;
 mod general;
 pub mod logic;
 mod other;
 mod parts;
+mod prefix_menu;
 mod saves;
 mod shared_folders;
 mod wine;
@@ -84,6 +86,8 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("defaultWinePrefixDir", s("defaultWinePrefixDir"), ""),
     ("defaultSteamPath", s("defaultSteamPath"), ""),
     ("altLegendaryBin", s("altLegendaryBin"), n_!("Using built-in Legendary binary...")),
+    ("altGogdlBin", s("altGogdlBin"), n_!("Using built-in gogdl binary...")),
+    ("altNileBin", s("altNileBin"), n_!("Using built-in nile binary...")),
     ("env.key", Bind::Scratch, n_!("NAME")),
     ("env.value", Bind::Scratch, n_!("VALUE")),
     ("wrap.exe", Bind::Scratch, n_!("New Wrapper")),
@@ -105,6 +109,15 @@ pub struct SavesState {
     /// Index into `saves::MODES`.
     pub mode: usize,
     pub output: Option<Vec<String>>,
+    pub gog: GogSaves,
+}
+
+/// The save folders of a GOG game (GOG's cloud saves tab).
+#[derive(Default)]
+pub struct GogSaves {
+    /// `None` until the first load ends.
+    pub locations: Option<Result<Vec<heronite_gog::saves::SaveLocation>, String>>,
+    pub loading: bool,
 }
 
 pub struct SettingsPanel {
@@ -118,6 +131,8 @@ pub struct SettingsPanel {
     pub(super) settings: Settings,
     /// `None` while the Wine list loads.
     pub(super) wine_list: Option<Vec<WineInstallation>>,
+    /// The prefixes on this machine, for the prefix menu (`None` while read).
+    pub(super) prefix_list: Option<Vec<heronite_wine::prefixes::Prefix>>,
     /// Id of the select whose menu is open.
     pub(super) open_select: Option<&'static str>,
     pub(super) inputs: HashMap<&'static str, Entity<InputState>>,
@@ -191,6 +206,7 @@ impl SettingsPanel {
             global_view: GlobalView::default(),
             settings,
             wine_list: None,
+            prefix_list: None,
             open_select: None,
             inputs,
             notice: None,
@@ -211,6 +227,14 @@ impl SettingsPanel {
             _subs: subs,
         };
         this.load_wine_list(cx);
+        if this.facts().is_some_and(|f| f.is_gog()) {
+            // A manual sync runs in the service: redraw when it starts and ends.
+            let service = crate::services::downloads(cx);
+            this._subs.push(cx.observe(&service, |_, _, cx| cx.notify()));
+        }
+        if this.is_game() && !this.native() {
+            this.load_prefix_list(cx);
+        }
         this.maybe_detect_saves(window, cx);
         // Debug: HERONITE_DEBUG_SETTINGS_SET='key=<json or text>,gamescope.field=<value>' saves values as if
         // the user had changed them (exercises the write path without clicks).

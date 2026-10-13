@@ -8,10 +8,12 @@
 //!   formats.
 //! * [`steam`]: `steam://` URIs and installed-app detection.
 
+pub mod companions;
 pub mod dxvk;
 pub mod emulators;
 pub mod env;
 pub mod first_launch;
+pub mod gog;
 pub mod install_state;
 pub mod known_fixes;
 pub mod legendary;
@@ -21,6 +23,7 @@ pub mod log_reader;
 pub mod log_writer;
 pub mod native;
 pub mod net;
+pub mod nile;
 pub mod plan;
 pub mod playtime_watch;
 pub mod prepare;
@@ -33,6 +36,7 @@ pub mod scripts;
 pub mod settings;
 pub mod shared_folders;
 pub mod steam;
+pub mod store_tools;
 pub mod tools;
 pub mod vdf;
 pub mod wake;

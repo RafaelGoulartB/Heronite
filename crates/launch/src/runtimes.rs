@@ -78,9 +78,38 @@ pub fn is_installed(paths: &DataPaths, net: &dyn Net, runtime: Runtime) -> bool 
     fs::read_to_string(dir.join("current_version")).map(|v| v == entry.created_at).unwrap_or(false)
 }
 
-/// Whether the runtime has to be downloaded now.
+/// Whether the runtime has to be downloaded before a launch: only when it
+/// is missing. Heroic also asks Lutris for a newer release before every
+/// launch; that costs about half a second each time, so newer releases are
+/// installed in the background instead ([`update_installed`]).
 pub fn needs_download(paths: &DataPaths, net: &dyn Net, runtime: Runtime) -> bool {
-    net.is_online() && !is_installed(paths, net, runtime)
+    !runtimes_dir(paths).join(runtime.name()).is_dir() && net.is_online()
+}
+
+/// The anti-cheat runtimes this app installed, brought up to Lutris' newest
+/// release (one request for the list). Part of the background tools update.
+pub fn update_installed(paths: &DataPaths, net: &dyn Net, cancel: Cancel, report: &dyn Fn(&str)) {
+    let installed: Vec<Runtime> =
+        [Runtime::Eac, Runtime::BattlEye].into_iter().filter(|rt| runtimes_dir(paths).join(rt.name()).is_dir()).collect();
+    if installed.is_empty() || !net.is_online() {
+        return;
+    }
+    let list = match net.get_json(RUNTIMES_URL) {
+        Ok(l) => l,
+        Err(e) => return log::warn!("could not fetch the runtime list: {e}"),
+    };
+    for rt in installed {
+        let Some(entry) = find_entry(&list, rt) else { continue };
+        let current = fs::read_to_string(runtimes_dir(paths).join(rt.name()).join("current_version")).unwrap_or_default();
+        if current == entry.created_at || cancel() {
+            continue;
+        }
+        match download(paths, net, rt, cancel) {
+            Ok(()) => report(&format!("{} updated", rt.label())),
+            Err(e) if e == CANCELLED => return,
+            Err(e) => log::warn!("{e}"),
+        }
+    }
 }
 
 /// `download`: fetches Lutris' archive and replaces `runtimes/<name>`. The old
@@ -161,17 +190,27 @@ mod tests {
     }
 
     #[test]
-    fn a_newer_release_is_detected_but_offline_never_forces_a_download() {
+    fn a_newer_release_never_holds_a_launch_and_is_installed_in_the_background() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("h"));
-        let rt = runtimes_dir(&paths).join("umu");
+        let rt = runtimes_dir(&paths).join("eac_runtime");
         fs::create_dir_all(&rt).unwrap();
         fs::write(rt.join("current_version"), "old").unwrap();
-        let newer = FakeNet::online().with_json(RUNTIMES_URL, list("new"));
-        assert!(!is_installed(&paths, &newer, Runtime::Umu));
+        let tar = tarball(dir.path(), Some("eac"), &[("v3/lib64/x.so", "new")]);
+        let newer = FakeNet::online().with_json(RUNTIMES_URL, list("new")).with_file("http://x/eac.tar.xz", tar);
+        assert!(!is_installed(&paths, &newer, Runtime::Eac));
+        assert!(!needs_download(&paths, &newer, Runtime::Eac), "the launch goes on with the installed one");
         // The list cannot be fetched: an existing folder is good enough.
-        assert!(is_installed(&paths, &FakeNet::offline(), Runtime::Umu));
-        assert!(!needs_download(&paths, &FakeNet::offline(), Runtime::Umu));
+        assert!(is_installed(&paths, &FakeNet::offline(), Runtime::Eac));
+
+        let reported = std::cell::RefCell::new(Vec::new());
+        update_installed(&paths, &newer, &|| false, &|m| reported.borrow_mut().push(m.to_string()));
+        assert_eq!(fs::read_to_string(rt.join("current_version")).unwrap(), "new");
+        assert!(rt.join("v3/lib64/x.so").exists());
+        assert_eq!(reported.borrow().len(), 1);
+        // Up to date, and BattlEye was never installed: nothing to do.
+        update_installed(&paths, &newer, &|| false, &|m| panic!("{m}"));
+        assert!(!runtimes_dir(&paths).join("battleye_runtime").exists());
     }
 
     #[test]

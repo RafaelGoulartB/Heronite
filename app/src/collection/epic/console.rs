@@ -1,9 +1,8 @@
-//! The Epic items of the context menu as console rows (game page in console
+//! The store items of the context menu as console rows (game page in console
 //! mode): same choices and the same requests as `focus.rs`.
 
 use gpui_kit::*;
 use heronite_data::CollectionGame;
-use serde_json::Value;
 
 use super::super::CollectionView;
 use super::Request;
@@ -13,9 +12,9 @@ use crate::services::downloads::EosGame;
 use heronite_i18n::tr;
 
 impl CollectionView {
-    /// Rows `epic:<action>` for `game` (nothing for other stores).
+    /// Rows `epic:<action>` for a store game (nothing for other games).
     pub(in crate::collection) fn epic_console_rows(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<Row> {
-        if game.runner != "legendary" {
+        if !super::is_store_runner(&game.runner) {
             return Vec::new();
         }
         let svc = self.epic_service(cx);
@@ -23,7 +22,7 @@ impl CollectionView {
             let s = svc.read(cx);
             (s.busy_of(&game.app_name).is_some(), s.queued(&game.app_name).is_some(), s.has_update(&game.app_name))
         };
-        let cloud = game.game.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false);
+        let cloud = super::has_cloud_saves(game);
         let flags = svc.read(cx).game_flags(&game.app_name);
         let mut rows = Vec::new();
         if queued {
@@ -52,7 +51,7 @@ impl CollectionView {
                 Row::action("epic:modify", tr!("Modify installation")).icon(Icon::Tune).desc(tr!("Choose the DLCs to keep installed")),
             );
         }
-        if cfg!(target_os = "linux") && !flags.third_party {
+        if cfg!(target_os = "linux") && !flags.third_party && game.runner == "legendary" {
             let app = game.app_name.clone();
             svc.update(cx, |s, cx| s.eos_load_game(&app, cx));
             if let Some(state @ (EosGame::Enabled | EosGame::Disabled)) = svc.read(cx).eos_game(&game.app_name) {
@@ -83,8 +82,7 @@ impl CollectionView {
             }
             "epic:sync" => {
                 if let Some(game) = self.epic_game(key) {
-                    let (app, title) = (game.app_name.clone(), game.title.clone());
-                    self.epic_service(cx).update(cx, |s, cx| s.sync_saves(&app, &title, cx));
+                    self.epic_sync_saves(&game, cx);
                 }
                 None
             }

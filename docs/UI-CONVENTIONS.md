@@ -110,8 +110,10 @@ anything is filtered) whose single menu holds Show (segmented), Sort by (segment
 games (switches), Filter by (facet rows with a flyout to the right) and Manage statuses. Each active filter appears
 as a removable `filter_chip` after it. Right: bulk metadata, refresh, close focus. Header menus open on click or
 after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The ☰ menu (`nav.rs`) is a list:
-pages grouped (Collection, Downloads, Statistics | Epic, Wine Manager, Emulators), then Add game, Console mode,
-then Settings and Command palette with their keys; each row = icon square + title + meta on the right.
+pages grouped (Collection, Downloads, Statistics | Stores, Wine Manager, Emulators), then Add game, Console mode,
+then Settings and Command palette with their keys; each row = icon square + title + meta on the right. "Stores" is one
+row for Epic Games, GOG and Amazon Games: each store keeps its own page, titled "Stores", and the three switch with the
+tabs of `pages::stores` (LB / RB in console mode); the row (and the console sidebar's) opens the store shown last.
 
 **Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
 (`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, star rating, facts card with score,

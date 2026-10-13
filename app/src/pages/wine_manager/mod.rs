@@ -13,6 +13,7 @@
 
 mod console;
 mod palette;
+mod prefixes;
 mod render;
 
 use heronite_i18n::tr;
@@ -31,6 +32,9 @@ pub struct WineManagerPage {
     ctx: PageCtx,
     manager: WineManager,
     repo: Repository,
+    /// The Prefixes view is shown instead of the builds of `repo`.
+    show_prefixes: bool,
+    prefixes: prefixes::PrefixesState,
     releases: Vec<WineVersionInfo>,
     loaded: bool,
     search: Entity<InputState>,
@@ -85,6 +89,8 @@ impl WineManagerPage {
                 .find_map(|t| t.strip_prefix("source=").and_then(Repository::from_kind))
                 .or(debug_has("ge").then_some(Repository::ProtonGe))
                 .unwrap_or(Repository::offered()[0]),
+            show_prefixes: debug_has("prefixes"),
+            prefixes: prefixes::PrefixesState::new(window, cx),
             releases: Vec::new(),
             loaded: false,
             search,
@@ -102,6 +108,9 @@ impl WineManagerPage {
         };
         let auto_install = debug.split(',').find_map(|t| t.strip_prefix("install=")).map(str::to_owned);
         this.init(debug_has("progress"), debug_has("confirm"), auto_install, cx);
+        if this.show_prefixes {
+            this.load_prefixes(cx);
+        }
 
         // Poll the manager (progress, finished jobs). Fast while busy.
         cx.spawn(async move |this, cx| loop {
@@ -149,8 +158,16 @@ impl WineManagerPage {
     /// Shows `repo` and checks it for new releases.
     fn select_source(&mut self, repo: Repository) {
         self.repo = repo;
+        self.show_prefixes = false;
         self.confirm_remove = None;
         self.check(repo, CheckMode::Auto);
+    }
+
+    /// Shows the prefixes, read again from disk.
+    fn select_prefixes(&mut self, cx: &mut Context<Self>) {
+        self.show_prefixes = true;
+        self.confirm_remove = None;
+        self.load_prefixes(cx);
     }
 
     /// Asks the manager to check `repo` (never when offline).
@@ -324,7 +341,7 @@ impl Render for WineManagerPage {
         }
         let toolbar = self.render_toolbar(cx);
         let steam = self.render_steam_row(cx);
-        let list = self.render_list(cx);
+        let list = if self.show_prefixes { self.render_prefixes(cx) } else { self.render_list(cx) };
         // Wide: search, sources and the Steam switch in a side column, the
         // versions beside it. Narrow: all stacked, sources as tabs.
         let wide = content_width(window) >= 1100.;
@@ -339,7 +356,7 @@ impl Render for WineManagerPage {
                 .w_full()
                 .gap(px(14.))
                 .child(toolbar)
-                .child(div().flex().flex_col().child(self.render_tabs(cx)).child(self.render_info()))
+                .child(div().flex().flex_col().child(self.render_tabs(cx)).when(!self.show_prefixes, |d| d.child(self.render_info())))
                 .child(steam)
                 .child(list)
         };

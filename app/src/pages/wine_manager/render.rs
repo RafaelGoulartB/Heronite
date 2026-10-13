@@ -15,7 +15,7 @@ use crate::ui::controls::{button_sm, card, card_box, tabs, toggle_row, ButtonKin
 use crate::ui::fields;
 use crate::ui::icon;
 
-fn fmt_size(bytes: u64) -> String {
+pub(super) fn fmt_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut v = bytes as f64;
     let mut i = 0;
@@ -75,7 +75,7 @@ pub(super) fn size_text(job: Option<&Job>, r: &WineVersionInfo) -> SharedString 
 
 impl WineManagerPage {
     pub(super) fn render_toolbar(&self, cx: &mut Context<Self>) -> Div {
-        let refreshing = self.checking();
+        let refreshing = !self.show_prefixes && self.checking();
         let refresh = {
             let b = div()
                 .id("wine-refresh")
@@ -93,7 +93,11 @@ impl WineManagerPage {
                 b.cursor_not_allowed().opacity(0.6)
             } else {
                 b.cursor_pointer().hover(|s| s.bg(theme::button_fill_hover())).on_click(cx.listener(|this, _, _, cx| {
-                    this.check(this.repo, CheckMode::Manual);
+                    if this.show_prefixes {
+                        this.load_prefixes(cx);
+                    } else {
+                        this.check(this.repo, CheckMode::Manual);
+                    }
                     cx.notify();
                 }))
             }
@@ -110,10 +114,15 @@ impl WineManagerPage {
 
     pub(super) fn render_tabs(&self, cx: &mut Context<Self>) -> Div {
         let this = cx.entity();
-        let items: Vec<(Repository, &'static str)> = Repository::offered().iter().map(|r| (*r, r.kind())).collect();
-        tabs("wine-tab", &items, self.repo, move |repo, _, cx| {
+        let mut items: Vec<(Option<Repository>, &'static str)> = Repository::offered().iter().map(|r| (Some(*r), r.kind())).collect();
+        items.push((None, tr!("Prefixes")));
+        let active = (!self.show_prefixes).then_some(self.repo);
+        tabs("wine-tab", &items, active, move |repo, _, cx| {
             this.update(cx, |this, cx| {
-                this.select_source(repo);
+                match repo {
+                    Some(repo) => this.select_source(repo),
+                    None => this.select_prefixes(cx),
+                }
                 cx.notify();
             });
         })
@@ -124,7 +133,7 @@ impl WineManagerPage {
     pub(super) fn render_sources(&self, cx: &mut Context<Self>) -> Div {
         let mut list = card_box().py(px(8.)).px(px(8.)).gap(px(2.));
         for (i, repo) in Repository::offered().iter().copied().enumerate() {
-            let active = repo == self.repo;
+            let active = !self.show_prefixes && repo == self.repo;
             let installed: Vec<&WineVersionInfo> = self.releases.iter().filter(|r| r.kind == repo.kind() && r.installed()).collect();
             let summary = match installed.len() {
                 0 => tr!("Nothing installed").to_string(),
@@ -159,6 +168,41 @@ impl WineManagerPage {
                     .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(summary)),
             );
         }
+        let count = self.prefixes.list.as_ref().map(Vec::len);
+        let summary = match count {
+            Some(n) => tr!("{count} found", count = n),
+            None => tr!("Where your games keep their Windows files and saves").to_string(),
+        };
+        let active = self.show_prefixes;
+        list = list.child(div().h(px(1.)).mx(px(12.)).my(px(6.)).bg(theme::row_separator())).child(
+            div()
+                .id("wine-source-prefixes")
+                .flex()
+                .flex_col()
+                .gap(px(3.))
+                .px(px(12.))
+                .py(px(10.))
+                .rounded(px(12.))
+                .cursor_pointer()
+                .when(active, |d| d.bg(theme::accent_tint()))
+                .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.select_prefixes(cx);
+                    cx.notify();
+                }))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(8.))
+                        .child(div().flex().items_center().gap(px(8.)).child(icon(Icon::Folder, px(16.), theme::text_muted())).child(
+                            div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(tr!("Prefixes")),
+                        ))
+                        .when(active, |d| d.child(icon(Icon::Check, px(16.), theme::accent()))),
+                )
+                .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(summary)),
+        );
         list
     }
 

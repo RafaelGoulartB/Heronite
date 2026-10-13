@@ -16,12 +16,13 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use crate::pages::{stores, Page, PageEvent};
 
 impl EpicPage {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         let s = self.svc.read(cx);
         let (account, stats, updates, refreshing, logging_in) =
-            (s.account().clone(), s.stats().clone(), s.updates_count(), s.refreshing, s.logging_in);
+            (s.account().clone(), s.stats().clone(), s.epic_updates_count(), s.refreshing, s.logging_in);
         let (eos, busy) = (s.eos().clone(), s.busy_of(eos_overlay::APP_NAME).cloned());
         let mut rows = vec![Row::header(tr!("Account"))];
         if account.logged_in {
@@ -140,7 +141,7 @@ impl EpicPage {
     fn console_activate(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         match id {
             "refresh" => self.svc.update(cx, |s, cx| s.refresh_library(cx)),
-            "update-all" => self.svc.update(cx, |s, cx| s.update_all(cx)),
+            "update-all" => self.svc.update(cx, |s, cx| s.update_all_epic(cx)),
             "import" => {
                 let data_paths = self.ctx.data_paths.clone();
                 let picker = cx.new(|cx| super::EpicImportPicker::new(data_paths, window, cx));
@@ -201,9 +202,11 @@ impl EpicPage {
                     .flex()
                     .flex_none()
                     .items_center()
+                    .gap(u(36.))
                     .h(u(76.))
                     .px(u(46.))
-                    .child(kit::wordmark("EPIC GAMES"))
+                    .child(kit::wordmark(&stores::title().to_uppercase()))
+                    .child(stores::console_tabs(Page::Epic))
                     .child(div().flex_1())
                     .child(kit::clock()),
             )
@@ -238,6 +241,10 @@ impl PadTarget for EpicPage {
                 self.dialog_sub = None;
             }
             cx.notify();
+            return true;
+        }
+        if let Some(next) = stores::switch(Page::Epic, pad) {
+            cx.emit(PageEvent::Navigate(next));
             return true;
         }
         let rows = self.console_rows(cx);

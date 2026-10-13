@@ -251,5 +251,6 @@
   "{tool} was not installed": "{tool} não foi instalado",
   "{total}, showing the last {shown}": "{total}, mostrando os últimos {shown}",
   "Running the script before launch...": "Executando o script antes de iniciar...",
-  "Script not found: {program}": "Script não encontrado: {program}"
+  "Script not found: {program}": "Script não encontrado: {program}",
+  "Program not found: {path}": "Programa não encontrado: {path}"
 }

@@ -48,6 +48,30 @@ impl Downloads {
         work: impl FnOnce(&DataPaths, &Legendary, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
         then: impl FnOnce(&mut Self, &OpResult, &mut Context<Self>) + 'static,
     ) {
+        self.run_task_then(
+            app_name,
+            label,
+            cancellable,
+            cx,
+            move |data_paths, cancel, report| match locate(data_paths) {
+                Err(r) => r,
+                Ok(lg) => work(data_paths, &lg, cancel, report),
+            },
+            then,
+        );
+    }
+
+    /// Runs `work` for a game on a worker thread: the game shows as busy
+    /// (with the percents `work` reports) until it ends with a toast.
+    pub(super) fn run_task_then(
+        &mut self,
+        app_name: &str,
+        label: &str,
+        cancellable: bool,
+        cx: &mut Context<Self>,
+        work: impl FnOnce(&DataPaths, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
+        then: impl FnOnce(&mut Self, &OpResult, &mut Context<Self>) + 'static,
+    ) {
         let mut then = Some(then);
         if self.busy.contains_key(app_name) {
             self.toast(cx, tr!("Another operation is running for this game"), true);
@@ -60,20 +84,15 @@ impl Downloads {
         let data_paths = self.data_paths.clone();
         let c = cancel.unwrap_or_else(Cancel::new);
         std::thread::Builder::new()
-            .name("epic-op".into())
+            .name("store-op".into())
             .spawn(move || {
-                let result = match locate(&data_paths) {
-                    Err(r) => r,
-                    Ok(lg) => {
-                        let progress_tx: UnboundedSender<OpMsg> = tx.clone();
-                        work(&data_paths, &lg, &c, &move |p| {
-                            let _ = progress_tx.unbounded_send(OpMsg::Percent(p));
-                        })
-                    }
-                };
+                let progress_tx: UnboundedSender<OpMsg> = tx.clone();
+                let result = work(&data_paths, &c, &move |p| {
+                    let _ = progress_tx.unbounded_send(OpMsg::Percent(p));
+                });
                 let _ = tx.unbounded_send(OpMsg::Done(result));
             })
-            .expect("spawning an epic operation");
+            .expect("spawning a store operation");
         let app = app_name.to_string();
         let label = label.to_string();
         cx.spawn(async move |this, cx| {

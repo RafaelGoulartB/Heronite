@@ -3,6 +3,8 @@
 use std::collections::HashSet;
 
 use gpui_kit::*;
+use heronite_amazon::cmd::Nile;
+use heronite_amazon::ops::NileJob;
 use heronite_data::DataPaths;
 use heronite_epic::cmd::{Cancel, Legendary};
 use heronite_epic::info;
@@ -11,6 +13,8 @@ use heronite_epic::ops::{self, LegendaryJob};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
 use heronite_epic::util::file_size;
+use heronite_gog::cmd::Gogdl;
+use heronite_gog::ops::GogJob;
 use heronite_i18n::tr;
 use serde_json::Value;
 
@@ -76,10 +80,11 @@ impl Downloads {
                         self.reload_local(cx);
                         if element.kind == ElementKind::Install {
                             // Desktop / menu / Steam shortcuts from the General settings.
+                            let runner = if element.params.runner.is_empty() { "legendary" } else { element.params.runner.as_str() };
                             crate::system::shortcuts::spawn_on_game_added(
                                 cx,
                                 &self.data_paths,
-                                "legendary",
+                                runner,
                                 &element.params.app_name,
                                 |this, o, cx| {
                                     if let Some(m) = o.summary() {
@@ -116,11 +121,14 @@ impl Downloads {
         cx.notify();
     }
 
-    /// Queues an install (and its DLCs) the way Heroic's `install` handler does.
+    /// Queues an install (and its DLCs) the way Heroic's `install` handler
+    /// does. GOG installs the chosen DLCs with the game (gogdl takes them
+    /// along); Epic DLCs are elements of their own.
     pub fn queue_install(&mut self, req: InstallRequest, cx: &mut Context<Self>) {
         let manager = self.manager.clone();
         let data_paths = self.data_paths.clone();
         let app_name = req.game_info.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
+        let runner = req.game_info.get("runner").and_then(Value::as_str).filter(|r| !r.is_empty()).unwrap_or("legendary").to_string();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_spawn(async move {
@@ -138,14 +146,15 @@ impl Downloads {
                         install_dlcs: req.dlcs.clone(),
                         sdl_list: req.sdl_tags.clone(),
                         install_language: req.language.clone(),
-                        runner: "legendary".into(),
+                        runner: runner.clone(),
                         platform_to_install: req.platform.clone(),
                         game_info: req.game_info.clone(),
                         size: req.size.clone(),
                         ..Default::default()
                     };
                     manager.add(DmElement::new(ElementKind::Install, base.clone()));
-                    for dlc in &req.dlcs {
+                    let separate_dlcs = if runner == "legendary" { req.dlcs.as_slice() } else { &[] };
+                    for dlc in separate_dlcs {
                         // The queue lists the DLC under its own title and cover.
                         let game_info = library_entry(&data_paths, dlc).unwrap_or_else(|| base.game_info.clone());
                         manager.add(DmElement::new(
@@ -165,29 +174,24 @@ impl Downloads {
         .detach();
     }
 
-    /// `updateGame`: queues an update of an installed game.
+    /// `updateGame`: queues an update of an installed game (any store).
     pub fn queue_update(&mut self, game_info: Value, cx: &mut Context<Self>) {
         let manager = self.manager.clone();
         let data_paths = self.data_paths.clone();
         let app = game_info.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
+        let runner = game_info.get("runner").and_then(Value::as_str).filter(|r| !r.is_empty()).unwrap_or("legendary").to_string();
         let path = game_info.pointer("/install/install_path").and_then(Value::as_str).unwrap_or_default().to_string();
         let platform = game_info.pointer("/install/platform").and_then(Value::as_str).unwrap_or("Windows").to_string();
         cx.background_spawn(async move {
-            let size = Legendary::locate(&data_paths)
-                .ok()
+            // GOG and Amazon only know the size of a full download, not of the update.
+            let size = (runner == "legendary")
+                .then(|| Legendary::locate(&data_paths).ok())
+                .flatten()
                 .and_then(|lg| info::install_info(&data_paths, &lg, &app, &platform).ok())
                 .map(|i| file_size(i.download_size()));
             manager.add(DmElement::new(
                 ElementKind::Update,
-                InstallParams {
-                    app_name: app,
-                    path,
-                    runner: "legendary".into(),
-                    platform_to_install: platform,
-                    game_info,
-                    size,
-                    ..Default::default()
-                },
+                InstallParams { app_name: app, path, runner, platform_to_install: platform, game_info, size, ..Default::default() },
             ));
         })
         .detach();
@@ -243,17 +247,29 @@ impl Downloads {
     }
 }
 
-/// Locates legendary when the first element runs (cheap to create, and picks
-/// up an `altLegendaryBin` changed in the settings).
+/// Locates the element's tool (legendary, gogdl or nile) when it runs (cheap
+/// to create, and picks up a binary changed in the settings).
 pub(super) struct LazyJob {
     pub(super) data_paths: DataPaths,
 }
 
 impl Job for LazyJob {
     fn run(&self, element: &DmElement, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
-        match Legendary::locate(&self.data_paths) {
-            Ok(legendary) => LegendaryJob { data_paths: self.data_paths.clone(), legendary }.run(element, cancel, on_progress),
-            Err(err) => JobResult { status: DmStatus::Error, error: Some(format!("{err:#}")) },
+        let paths = self.data_paths.clone();
+        let failed = |err: anyhow::Error| JobResult { status: DmStatus::Error, error: Some(format!("{err:#}")) };
+        match element.params.runner.as_str() {
+            "gog" => match Gogdl::locate_or_install(&paths) {
+                Ok(gogdl) => GogJob { paths, gogdl }.run(element, cancel, on_progress),
+                Err(err) => failed(err),
+            },
+            "nile" => match Nile::locate_or_install(&paths) {
+                Ok(nile) => NileJob { paths, nile }.run(element, cancel, on_progress),
+                Err(err) => failed(err),
+            },
+            _ => match Legendary::locate(&paths) {
+                Ok(legendary) => LegendaryJob { data_paths: paths, legendary }.run(element, cancel, on_progress),
+                Err(err) => failed(err),
+            },
         }
     }
 }

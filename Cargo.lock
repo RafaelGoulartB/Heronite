@@ -3447,9 +3447,11 @@ dependencies = [
  "futures",
  "gilrs",
  "gpui-kit",
+ "heronite-amazon",
  "heronite-data",
  "heronite-emulation",
  "heronite-epic",
+ "heronite-gog",
  "heronite-i18n",
  "heronite-images",
  "heronite-launch",
@@ -3467,6 +3469,22 @@ dependencies = [
  "serde_json",
  "signal-hook",
  "smallvec",
+ "tempfile",
+]
+
+[[package]]
+name = "heronite-amazon"
+version = "0.3.2"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-epic",
+ "heronite-i18n",
+ "heronite-launch",
+ "log",
+ "regex",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 
@@ -3536,6 +3554,22 @@ dependencies = [
  "serde_json",
  "url",
  "wry",
+]
+
+[[package]]
+name = "heronite-gog"
+version = "0.3.2"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-epic",
+ "heronite-i18n",
+ "heronite-launch",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ureq",
 ]
 
 [[package]]
@@ -3670,6 +3704,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "trash",
  "ureq",
 ]
 

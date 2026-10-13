@@ -29,6 +29,10 @@ use heronite_i18n::tr;
 pub(super) fn store_install_label(game: &CollectionGame) -> Option<&'static str> {
     if game.runner == "legendary" {
         Some(tr!("Install with Epic Games"))
+    } else if game.runner == "gog" {
+        Some(tr!("Install with GOG"))
+    } else if game.runner == "nile" {
+        Some(tr!("Install with Amazon Games"))
     } else if game.steam_app_id.as_deref().is_some_and(|id| !id.is_empty()) {
         Some(tr!("Install with Steam"))
     } else {
@@ -108,13 +112,12 @@ impl CollectionView {
             ways.push(Way { id: "store", icon: Icon::Download, label, desc: tr!("Default for this game"), kind: WayKind::Store });
         }
         if self.epic_can_import(game, cx) {
-            ways.push(Way {
-                id: "import",
-                icon: Icon::FolderOpen,
-                label: tr!("Import game"),
-                desc: tr!("Use a copy already installed by Epic"),
-                kind: WayKind::EpicImport,
-            });
+            let desc = match game.runner.as_str() {
+                "gog" => tr!("Use a copy of the game already on this computer"),
+                "nile" => tr!("Use a copy of the game already on this computer"),
+                _ => tr!("Use a copy already installed by Epic"),
+            };
+            ways.push(Way { id: "import", icon: Icon::FolderOpen, label: tr!("Import game"), desc, kind: WayKind::EpicImport });
         }
         if can_install_manually(game) {
             ways.push(Way {

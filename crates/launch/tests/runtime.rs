@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use heronite_data::models::SessionsFile;
 use heronite_data::{json_store, DataPaths};
 use heronite_launch::net::FakeNet;
-use heronite_launch::plan::PrepSpec;
+use heronite_launch::plan::{CloudSaves, CompanionPlan, PrepSpec};
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::prepare::CloudSync;
 use heronite_launch::probe::SystemProbe;
@@ -437,7 +437,7 @@ struct RecordingCloud {
 }
 
 impl CloudSync for RecordingCloud {
-    fn sync(&self, app: &str, path: &str, flag: &str) -> Result<String, String> {
+    fn sync(&self, _runner: &str, app: &str, path: &str, flag: &str) -> Result<String, String> {
         self.calls.lock().unwrap().push((flag.to_string(), format!("{app}:{path}")));
         if flag == "--skip-download" {
             std::thread::sleep(self.upload_delay);
@@ -467,7 +467,7 @@ fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     let cloud = Arc::new(RecordingCloud { upload_delay: Duration::from_millis(500), ..Default::default() });
     r.launcher.set_prep_services(services(true, Some(cloud.clone())));
     let mut process = process_plan("/games/run.sh", &[]);
-    process.prep = PrepSpec { cloud_saves: Some("/saves".into()), ..Default::default() };
+    process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/saves")), ..Default::default() };
     r.launcher.launch(request("Calluna", LaunchPlan::Native(process))).unwrap();
 
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
@@ -492,7 +492,7 @@ fn a_forced_clear_does_not_upload_saves() {
     let cloud = Arc::new(RecordingCloud::default());
     r.launcher.set_prep_services(services(true, Some(cloud.clone())));
     let mut process = process_plan("/games/run.sh", &[]);
-    process.prep = PrepSpec { cloud_saves: Some("/s".into()), ..Default::default() };
+    process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
     let _download = next(&r.rx);
@@ -508,7 +508,7 @@ fn offline_launches_skip_cloud_saves_silently() {
     let cloud = Arc::new(RecordingCloud::default());
     r.launcher.set_prep_services(services(false, Some(cloud.clone())));
     let mut process = process_plan("/games/run.sh", &[]);
-    process.prep = PrepSpec { cloud_saves: Some("/s".into()), ..Default::default() };
+    process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
@@ -640,4 +640,102 @@ fn a_game_that_is_still_preparing_has_nothing_to_checkpoint() {
     assert_eq!(r.launcher.checkpoint_all(), 0);
     assert!(!r.paths.timestamps().exists());
     r.launcher.stop("g");
+}
+
+// ---------------------------------------------------------------------------
+// Programs alongside the game
+// ---------------------------------------------------------------------------
+
+/// A program alongside the game, run as `program` (Wine for an `.exe`).
+fn companion(path: &std::path::Path, program: &str, delay_ms: u64) -> CompanionPlan {
+    CompanionPlan {
+        path: path.to_string_lossy().into_owned(),
+        command: Command { program: program.into(), ..Default::default() },
+        delay: Duration::from_millis(delay_ms),
+    }
+}
+
+fn trainer_file(r: &Rig) -> std::path::PathBuf {
+    let path = r._dir.path().join("Trainer.exe");
+    fs::write(&path, "MZ").unwrap();
+    path
+}
+
+#[test]
+fn a_program_alongside_starts_after_its_delay_and_closes_with_the_game() {
+    let r = rig();
+    let mut plan = process_plan("/games/run.sh", &[]);
+    plan.companions = vec![companion(&trainer_file(&r), "/umu", 300)];
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(r.spawner.spawned().len(), 1, "not before its delay");
+    wait_until("the program", || r.spawner.spawned().len() == 2);
+    assert_eq!(r.spawner.spawned()[1].program, "/umu");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "closed with the game");
+}
+
+#[test]
+fn with_plain_proton_the_session_follows_the_game_in_its_prefix() {
+    let r = rig();
+    let mut plan = process_plan("/proton", &["waitforexitandrun", "game.exe"]);
+    plan.prep.wine = Some(heronite_launch::settings::GameSettings { wine_prefix: "/pfx".into(), ..Default::default() });
+    plan.companions = vec![companion(&trainer_file(&r), "/proton", 150)];
+    // Proton returns right away; the game goes on in the prefix.
+    r.procs.set_windows_programs("/pfx", &["services.exe", "game.exe"]);
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 0);
+    // Started although the first process is gone.
+    wait_until("the program", || r.spawner.spawned().len() == 2);
+    r.procs.set_windows_programs("/pfx", &["services.exe", "game.exe", "trainer.exe"]);
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(r.launcher.is_running("g"), "the game still runs in the prefix");
+    assert!(!r.spawner.handle(1).unwrap().lock().unwrap().terminated);
+    // Only Wine's services and the trainer are left: the game is over.
+    r.procs.set_windows_programs("/pfx", &["services.exe", "explorer.exe", "trainer.exe"]);
+    let LaunchEvent::Exited { record, .. } = next(&r.rx) else { panic!() };
+    assert!(record.is_some());
+    assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated);
+}
+
+#[test]
+fn clearing_a_game_leaves_its_programs_running_and_missing_ones_are_reported() {
+    let r = rig();
+    let mut plan = process_plan("/games/run.sh", &[]);
+    plan.companions = vec![companion(&r._dir.path().join("nope.exe"), "/umu", 0), companion(&trainer_file(&r), "/umu", 0)];
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    let (message, warning) = status_of(next(&r.rx));
+    assert!(warning && message.contains("nope.exe"), "{message}");
+    wait_until("the program", || r.spawner.spawned().len() == 2);
+    assert!(r.launcher.force_clear("g"));
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert!(!r.spawner.handle(1).unwrap().lock().unwrap().terminated);
+}
+
+#[test]
+fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for_them() {
+    let r = rig();
+    let mut plan = process_plan("/proton", &["waitforexitandrun", "game.exe"]);
+    plan.prep.wine = Some(heronite_launch::settings::GameSettings { wine_prefix: "/pfx".into(), ..Default::default() });
+    plan.companions = vec![companion(&trainer_file(&r), "/proton", 0)];
+    r.procs.set_windows_programs("/pfx", &["steam.exe", "game.exe"]);
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    wait_until("the program", || r.spawner.spawned().len() == 2);
+    // The game exits; Proton's process stays, waiting for the trainer.
+    r.procs.set_windows_programs("/pfx", &["steam.exe", "services.exe", "trainer.exe"]);
+    let t = Instant::now();
+    wait_until("the trainer to be closed", || r.spawner.handle(1).unwrap().lock().unwrap().terminated);
+    assert!(t.elapsed() >= Duration::from_secs(2), "a launcher may hand over to the game first: {:?}", t.elapsed());
+    assert!(r.launcher.is_running("g"));
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
 }

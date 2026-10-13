@@ -47,16 +47,17 @@ pub fn ensure(paths: &DataPaths, probe: &dyn Probe, net: &dyn Net, cancel: Cance
         return Err("legendary is not installed and there is no internet connection".into());
     }
     let target = paths.legendary_bin();
-    install(&download_url(asset), &target, net, cancel)?;
+    install_binary("legendary", &download_url(asset), &target, net, cancel)?;
     log::info!("legendary {VERSION} downloaded to {}", target.display());
     Ok(target)
 }
 
-/// Downloads next to `target`, checks that it runs, then renames it into
-/// place, so an interrupted or broken download never becomes the binary.
-fn install(url: &str, target: &Path, net: &dyn Net, cancel: Cancel) -> Result<(), String> {
+/// Downloads `name` next to `target`, checks that it runs (`--version`), then
+/// renames it into place, so an interrupted or broken download never becomes
+/// the binary.
+pub(crate) fn install_binary(name: &str, url: &str, target: &Path, net: &dyn Net, cancel: Cancel) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
-    let dir = target.parent().ok_or("legendary has no folder")?;
+    let dir = target.parent().ok_or_else(|| format!("{name} has no folder"))?;
     fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let part = target.with_extension("part");
     let _ = fs::remove_file(&part);
@@ -64,8 +65,8 @@ fn install(url: &str, target: &Path, net: &dyn Net, cancel: Cancel) -> Result<()
         let _ = fs::remove_file(&part);
         msg
     };
-    net.download(url, &part, cancel).map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading legendary failed: {e}") }))?;
-    fs::set_permissions(&part, fs::Permissions::from_mode(0o755)).map_err(|e| fail(format!("making legendary executable: {e}")))?;
+    net.download(url, &part, cancel).map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading {name} failed: {e}") }))?;
+    fs::set_permissions(&part, fs::Permissions::from_mode(0o755)).map_err(|e| fail(format!("making {name} executable: {e}")))?;
     let runs = Command::new(&part)
         .arg("--version")
         .stdin(Stdio::null())
@@ -75,9 +76,9 @@ fn install(url: &str, target: &Path, net: &dyn Net, cancel: Cancel) -> Result<()
         .map(|s| s.success())
         .unwrap_or(false);
     if !runs {
-        return Err(fail("the downloaded legendary does not run".into()));
+        return Err(fail(format!("the downloaded {name} does not run")));
     }
-    fs::rename(&part, target).map_err(|e| fail(format!("installing legendary: {e}")))
+    fs::rename(&part, target).map_err(|e| fail(format!("installing {name}: {e}")))
 }
 
 #[cfg(test)]

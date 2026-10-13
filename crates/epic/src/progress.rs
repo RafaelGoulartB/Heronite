@@ -119,6 +119,62 @@ impl ProgressParser {
     }
 }
 
+/// The report of gogdl (GOG) and nile (Amazon Games), printed every second:
+/// ```text
+/// [PROGRESS] INFO: = Progress: 12.34 1234/10000, Running for: 00:00:05, ETA: 00:01:23
+/// [PROGRESS] INFO: = Downloaded: 123.45 MiB, Written: 150.00 MiB
+/// [PROGRESS] INFO:  + Download\t- 5.12 MiB/s (raw) / 8.00 MiB/s (decompressed)
+/// [PROGRESS] INFO:  + Disk\t- 9.00 MiB/s (write) / 0.00 MiB/s (read)
+/// ```
+/// nile leaves out the parts in parentheses. The percent is the tool's own
+/// (it already counts what an earlier run fetched); the `Disk` line closes a
+/// report.
+#[derive(Debug, Default)]
+pub struct ToolProgressParser {
+    percent: Option<f64>,
+    eta: Option<String>,
+    downloaded: Option<f64>,
+    down_speed: Option<f64>,
+}
+
+impl ToolProgressParser {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Feeds one output line.
+    pub fn feed(&mut self, line: &str) -> Option<Progress> {
+        static PERC: OnceLock<Regex> = OnceLock::new();
+        static ETA: OnceLock<Regex> = OnceLock::new();
+        static DL: OnceLock<Regex> = OnceLock::new();
+        static DOWN: OnceLock<Regex> = OnceLock::new();
+        static DISK: OnceLock<Regex> = OnceLock::new();
+
+        if let Some(c) = re(&PERC, r"= Progress: ([\d.]+) ").captures(line) {
+            self.percent = num(&c[1]);
+            self.eta = re(&ETA, r"ETA: (\d\d:\d\d:\d\d)").captures(line).map(|c| c[1].to_string());
+        }
+        if let Some(c) = re(&DL, r"Downloaded: ([\d.]+) MiB").captures(line) {
+            self.downloaded = num(&c[1]);
+        }
+        if let Some(c) = re(&DOWN, r"Download\t- ([\d.]+) MiB").captures(line) {
+            self.down_speed = num(&c[1]);
+        }
+        if let Some(c) = re(&DISK, r"Disk\t- ([\d.]+) MiB").captures(line) {
+            let report = self.percent.map(|percent| Progress {
+                percent: percent.clamp(0., 100.),
+                downloaded_mib: self.downloaded.unwrap_or(0.),
+                eta: self.eta.clone().unwrap_or_default(),
+                down_speed: self.down_speed.unwrap_or(0.),
+                disk_speed: num(&c[1]).unwrap_or(0.),
+            });
+            *self = Self::default();
+            return report;
+        }
+        None
+    }
+}
+
 /// `Verification progress: 3/8 (37.5%)` style percentages of `repair`.
 pub fn verification_percent(line: &str) -> Option<f64> {
     static VERIFY: OnceLock<Regex> = OnceLock::new();
@@ -190,6 +246,30 @@ mod tests {
         let mut p = ProgressParser::new(Some(100. * 1024. * 1024.));
         let out = run(&mut p, &REPORT);
         assert_eq!(out[0].percent, 100.);
+    }
+
+    #[test]
+    fn gogdl_and_nile_reports() {
+        let gogdl = [
+            "[PROGRESS] INFO: = Progress: 42.50 4250/10000, Running for: 00:00:05, ETA: 00:01:23",
+            "[PROGRESS] INFO: = Downloaded: 123.45 MiB, Written: 150.00 MiB",
+            "[PROGRESS] INFO:  + Download\t- 5.12 MiB/s (raw) / 8.00 MiB/s (decompressed)",
+            "[PROGRESS] INFO:  + Disk\t- 9.00 MiB/s (write) / 0.00 MiB/s (read)",
+        ];
+        let mut p = ToolProgressParser::new();
+        let out: Vec<Progress> = gogdl.iter().filter_map(|l| p.feed(l)).collect();
+        assert_eq!(out, [Progress { percent: 42.5, downloaded_mib: 123.45, eta: "00:01:23".into(), down_speed: 5.12, disk_speed: 9. }]);
+        let nile = [
+            "[PROGRESS] INFO: = Progress: 7.00 70/1000, Running for: 00:00:01, ETA: 00:00:30",
+            "[PROGRESS] INFO: = Downloaded: 1.00 MiB, Written: 1.00 MiB",
+            "[PROGRESS] INFO:  + Download\t- 2.00 MiB/s",
+            "[PROGRESS] INFO:  + Disk\t- 3.00 MiB/s",
+        ];
+        let out: Vec<Progress> = nile.iter().filter_map(|l| p.feed(l)).collect();
+        assert_eq!(out.len(), 1);
+        assert_eq!((out[0].percent, out[0].down_speed, out[0].disk_speed), (7., 2., 3.));
+        // A report without its percent line gives nothing.
+        assert!(p.feed(nile[3]).is_none());
     }
 
     #[test]
