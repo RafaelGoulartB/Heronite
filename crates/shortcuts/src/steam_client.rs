@@ -4,8 +4,10 @@
 //! non-Steam shortcuts while Steam runs: Steam reads `shortcuts.vdf` at start
 //! and rewrites it on exit, so editing the file meanwhile is lost.
 //!
-//! Steam only opens the interface (HTTP + WebSocket on `127.0.0.1:8080`) when
-//! the flag file [`FLAG_FILE`] exists in its install folder at start.
+//! Steam only opens the interface (HTTP + WebSocket on `127.0.0.1`) when the
+//! flag file [`FLAG_FILE`] exists in its install folder at start. Older
+//! clients listen on port 8080; current ones pick a port at each start, which
+//! [`debugger_addr`] finds.
 //!
 //! The HTTP and WebSocket clients are minimal on purpose: plain TCP to a fixed
 //! local address, no TLS, one request per connection.
@@ -22,8 +24,30 @@ use serde_json::{json, Value};
 
 /// Created in the Steam folder so the next Steam start exposes the interface.
 pub const FLAG_FILE: &str = ".cef-enable-remote-debugging";
-/// Where Steam serves the debugger.
+/// Where older Steam clients serve the debugger.
 pub const DEFAULT_ADDR: &str = "127.0.0.1:8080";
+
+/// Address of the running Steam's debugger: the port its `steamwebhelper`
+/// was started with (`--remote-debugging-port=<n>`), else [`DEFAULT_ADDR`].
+pub fn debugger_addr() -> String {
+    debugger_port(Path::new("/proc")).map(|p| format!("127.0.0.1:{p}")).unwrap_or_else(|| DEFAULT_ADDR.to_string())
+}
+
+/// The debugging port in the command line of a `steamwebhelper` under `proc`.
+fn debugger_port(proc: &Path) -> Option<u16> {
+    std::fs::read_dir(proc).ok()?.flatten().find_map(|entry| {
+        let name = entry.file_name();
+        if !name.to_string_lossy().bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        let cmdline = std::fs::read(entry.path().join("cmdline")).ok()?;
+        let mut args = cmdline.split(|b| *b == 0).map(String::from_utf8_lossy);
+        if !args.next()?.rsplit('/').next()?.starts_with("steamwebhelper") {
+            return None;
+        }
+        args.find_map(|a| a.strip_prefix("--remote-debugging-port=").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0))
+    })
+}
 
 const HTTP_TIMEOUT: Duration = Duration::from_secs(3);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -259,7 +283,8 @@ fn read_head(reader: &mut impl BufRead) -> Result<(String, Option<usize>)> {
 
 fn http_get(addr: &str, path: &str) -> Result<String> {
     let mut stream = connect(addr, HTTP_TIMEOUT)?;
-    write!(stream, "GET {path} HTTP/1.0\r\nHost: {addr}\r\nConnection: close\r\n\r\n")?;
+    // Current clients drop HTTP/1.0 requests without an answer.
+    write!(stream, "GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n")?;
     let mut reader = BufReader::new(stream);
     let (status, length) = read_head(&mut reader)?;
     if status.split_whitespace().nth(1) != Some("200") {
@@ -521,6 +546,22 @@ mod tests {
         assert_eq!(appid_of(&json!(-1_294_967_295i64)), Some(3_000_000_001));
         assert_eq!(appid_of(&json!(0)), None);
         assert_eq!(appid_of(&json!("x")), None);
+    }
+
+    #[test]
+    fn the_port_comes_from_steamwebhelpers_command_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let proc = dir.path();
+        let add = |pid: &str, args: &[&str]| {
+            std::fs::create_dir_all(proc.join(pid)).unwrap();
+            std::fs::write(proc.join(pid).join("cmdline"), args.join("\0")).unwrap();
+        };
+        add("self", &["x"]);
+        add("10", &["/usr/bin/bash", "--remote-debugging-port=1"]);
+        add("11", &["/s/ubuntu12_64/steamwebhelper", "--type=zygote"]);
+        assert_eq!(debugger_port(proc), None);
+        add("12", &["./steamwebhelper", "-nocrashdialog", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=39445"]);
+        assert_eq!(debugger_port(proc), Some(39445));
     }
 
     #[test]

@@ -29,7 +29,7 @@ use heronite_data::{art, AppPaths, ArtContext, CollectionGame, DataPaths, Librar
 use heronite_i18n::tr;
 use heronite_shortcuts::desktop::{self, Roots};
 use heronite_shortcuts::steam::{self, ArtFiles, ShortcutSpec};
-use heronite_shortcuts::steam_client::{SteamClient, DEFAULT_ADDR};
+use heronite_shortcuts::steam_client::{debugger_addr, SteamClient};
 use heronite_shortcuts::steam_running::{self, UrlHandler};
 use heronite_shortcuts::GameId;
 use serde_json::Value;
@@ -284,8 +284,8 @@ fn steam_spec(game: &CollectionGame, icon: Option<&Path>) -> ShortcutSpec {
 
 /// The running Steam's debugger: `HERONITE_STEAM_CEF` (`host:port`, tests
 /// against a fake) or Steam's own address.
-fn steam_client() -> SteamClient {
-    SteamClient::new(crate::env::value("HERONITE_STEAM_CEF").unwrap_or_else(|| DEFAULT_ADDR.to_string()))
+pub fn steam_client() -> SteamClient {
+    SteamClient::new(crate::env::value("HERONITE_STEAM_CEF").unwrap_or_else(debugger_addr))
 }
 
 /// Where `.desktop` wrappers for the `steam://addnonsteamgame` fallback live.
