@@ -9,9 +9,13 @@
 //! While Steam runs, its CEF debugging interface ([`client`]) is the only
 //! way: Steam keeps the settings in memory and rewrites its files. With
 //! Steam closed, the files are edited in place ([`files`], [`vdf_edit`]).
+//!
+//! [`library`] reads the account's library from the client and joins it to
+//! the Collection.
 
 pub mod client;
 pub mod files;
+pub mod library;
 pub mod options;
 pub mod vdf_edit;
 pub mod wrap;
@@ -72,6 +76,16 @@ pub struct Change {
 pub struct Steam {
     pub locator: SteamLocator,
     pub client: SteamClient,
+}
+
+/// Whether the library can be read from the client now.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibraryAccess {
+    Ready,
+    /// Steam is not running.
+    Closed,
+    /// Steam runs without its debugging interface (turned on for its next start).
+    NeedsRestart,
 }
 
 /// Shown when Steam runs without its debugging interface.
@@ -147,6 +161,25 @@ impl Steam {
             prefix: files::prefix(&self.locator, app_id),
             flatpak: self.root().starts_with(flatpak_steam_root(&self.locator.home)),
         })
+    }
+
+    /// Whether [`read_library`](Self::read_library) can work now. Blocking
+    /// (asks the client, a few milliseconds).
+    pub fn library_access(&self) -> LibraryAccess {
+        match self.access() {
+            Access::Client => LibraryAccess::Ready,
+            Access::Files => LibraryAccess::Closed,
+            Access::ReadOnly => LibraryAccess::NeedsRestart,
+        }
+    }
+
+    /// The account's games, from the running client.
+    pub fn read_library(&self) -> Result<Vec<heronite_data::steam_owned::SteamOwnedGame>, String> {
+        match self.library_access() {
+            LibraryAccess::Ready => library::read_owned(&self.client).map_err(|e| format!("{e:#}")),
+            LibraryAccess::Closed => Err(tr!("Steam is not running. Open Steam to read your library.").to_string()),
+            LibraryAccess::NeedsRestart => Err(tr!("Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once.").to_string()),
+        }
     }
 
     /// Applies `change`; the access used. Blocking.

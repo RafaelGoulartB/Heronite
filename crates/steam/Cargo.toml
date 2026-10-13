@@ -14,6 +14,8 @@ anyhow = "1"
 log = "0.4"
 serde_json.workspace = true
 shlex = "1"
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 tempfile = "3"
