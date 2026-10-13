@@ -1,0 +1,77 @@
+[
+ {
+  "tag_name": "dwproton-11.0-14",
+  "name": "dwproton-11.0-14",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-09-29T23:33:03Z",
+  "html_url": "https://github.com/dawn-winery/dwproton-mirror/releases/tag/dwproton-11.0-14",
+  "assets": [
+   {
+    "name": "dwproton-11.0-14-x86_64.sha512sum",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-14/dwproton-11.0-14-x86_64.sha512sum",
+    "size": 161
+   },
+   {
+    "name": "dwproton-11.0-14-x86_64.tar.xz",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-14/dwproton-11.0-14-x86_64.tar.xz",
+    "size": 338802004
+   },
+   {
+    "name": "dwproton-11.0-14-x86_64.tar.xz.torrent",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-14/dwproton-11.0-14-x86_64.tar.xz.torrent",
+    "size": 67819
+   }
+  ]
+ },
+ {
+  "tag_name": "dwproton-11.0-13",
+  "name": "dwproton-11.0-13",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-09-20T21:06:30Z",
+  "html_url": "https://github.com/dawn-winery/dwproton-mirror/releases/tag/dwproton-11.0-13",
+  "assets": [
+   {
+    "name": "dwproton-11.0-13-x86_64.sha512sum",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-13/dwproton-11.0-13-x86_64.sha512sum",
+    "size": 161
+   },
+   {
+    "name": "dwproton-11.0-13-x86_64.tar.xz",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-13/dwproton-11.0-13-x86_64.tar.xz",
+    "size": 339000632
+   },
+   {
+    "name": "dwproton-11.0-13-x86_64.tar.xz.torrent",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-13/dwproton-11.0-13-x86_64.tar.xz.torrent",
+    "size": 67873
+   }
+  ]
+ },
+ {
+  "tag_name": "dwproton-11.0-12",
+  "name": "dwproton-11.0-12",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-08-24T19:19:39Z",
+  "html_url": "https://github.com/dawn-winery/dwproton-mirror/releases/tag/dwproton-11.0-12",
+  "assets": [
+   {
+    "name": "dwproton-11.0-12-x86_64.sha512sum",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-12/dwproton-11.0-12-x86_64.sha512sum",
+    "size": 161
+   },
+   {
+    "name": "dwproton-11.0-12-x86_64.tar.xz",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-12/dwproton-11.0-12-x86_64.tar.xz",
+    "size": 337243428
+   },
+   {
+    "name": "dwproton-11.0-12-x86_64.tar.xz.torrent",
+    "browser_download_url": "https://github.com/dawn-winery/dwproton-mirror/releases/download/dwproton-11.0-12/dwproton-11.0-12-x86_64.tar.xz.torrent",
+    "size": 67489
+   }
+  ]
+ }
+]

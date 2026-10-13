@@ -1,13 +1,15 @@
-//! Wine Manager page: browse Wine/Proton builds (GE-Proton, Proton-CachyOS),
-//! install / update / remove them. Port of Heroic's `screens/WineManager`
+//! Wine Manager page: browse the Proton builds of several sources (see
+//! `heronite_wine::Repository::offered`), install / update / remove them.
+//! Only the source on screen is checked for new releases (see
+//! `heronite_wine::checks`). Port of Heroic's `screens/WineManager`
 //! with this app's look. All work happens in `heronite_wine::WineManager`
 //! (background threads); its state is owned by this entity, which the
 //! Collection keeps alive, so downloads continue while another page is shown.
 //!
 //! Debug: `HERONITE_WINE_OFFLINE=1` disables every network request;
-//! `HERONITE_DEBUG_WINE=progress,confirm,ge,install=<version>` fakes an install in progress, an
-//! open removal confirmation, the GE-Proton tab, or a real install of `<version>`
-//! (use a fixture dir!) for screenshots.
+//! `HERONITE_DEBUG_WINE=progress,confirm,ge,source=<type>,install=<version>` fakes an install in
+//! progress, an open removal confirmation, opens the GE-Proton or another source (`DW-Proton`),
+//! or runs a real install of `<version>` (use a fixture dir!) for screenshots.
 
 mod console;
 mod palette;
@@ -15,18 +17,15 @@ mod render;
 
 use heronite_i18n::tr;
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_wine::{Job, JobEvent, JobKind, JobPhase, Repository, WineConfig, WineManager, WineVersionInfo};
+use heronite_wine::{CheckMode, CheckOutcome, Job, JobEvent, JobKind, JobPhase, Repository, WineConfig, WineManager, WineVersionInfo};
 
 use super::{content_width, page_close, sheet, PageCtx, PageEvent};
 use crate::ui::fields;
-
-/// Refresh the release lists on open when the last fetch is older than this.
-const STALE_AFTER_SECS: u64 = 24 * 3600;
 
 pub struct WineManagerPage {
     ctx: PageCtx,
@@ -42,6 +41,9 @@ pub struct WineManagerPage {
     /// `WineManager::revision` last seen by `poll`.
     last_rev: u64,
     offline: bool,
+    /// GitHub refused to list the releases of these sources until then (Unix
+    /// seconds), shown while their list is empty.
+    limited: HashMap<Repository, u64>,
     /// Screenshot helper: fake jobs shown instead of real ones.
     fake: HashMap<String, Job>,
     /// Console mode: focused row, open sheet / keyboard, search text.
@@ -54,12 +56,11 @@ pub struct WineManagerPage {
 
 impl EventEmitter<PageEvent> for WineManagerPage {}
 
-fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
-}
-
-fn stamp_path(ctx: &PageCtx) -> std::path::PathBuf {
-    ctx.app.config.join("wine-releases-fetched")
+/// "21:04" for a Unix time in seconds.
+fn local_time(unix: u64) -> String {
+    chrono::DateTime::from_timestamp(unix as i64, 0)
+        .map(|t| t.with_timezone(&chrono::Local).format("%H:%M").to_string())
+        .unwrap_or_default()
 }
 
 impl WineManagerPage {
@@ -79,7 +80,11 @@ impl WineManagerPage {
         let mut this = Self {
             ctx,
             manager,
-            repo: if debug_has("ge") { Repository::ProtonGe } else { Repository::LINUX[0] },
+            repo: debug
+                .split(',')
+                .find_map(|t| t.strip_prefix("source=").and_then(Repository::from_kind))
+                .or(debug_has("ge").then_some(Repository::ProtonGe))
+                .unwrap_or(Repository::offered()[0]),
             releases: Vec::new(),
             loaded: false,
             search,
@@ -88,6 +93,7 @@ impl WineManagerPage {
             download_to_steam: false,
             last_rev: 0,
             offline: crate::env::flag("HERONITE_WINE_OFFLINE"),
+            limited: HashMap::new(),
             fake: HashMap::new(),
             console_list: Default::default(),
             layer: Default::default(),
@@ -113,19 +119,12 @@ impl WineManagerPage {
         this
     }
 
-    /// Reads the cache off the UI thread and decides whether to refresh.
+    /// Reads the cache off the UI thread, then checks the source on screen.
     fn init(&mut self, fake_progress: bool, fake_confirm: bool, auto_install: Option<String>, cx: &mut Context<Self>) {
         let data_paths = self.ctx.data_paths.clone();
-        let stamp = stamp_path(&self.ctx);
         cx.spawn(async move |this, cx| {
-            let (releases, cfg, age) = cx
-                .background_spawn(async move {
-                    let releases = heronite_wine::store::read_releases(&data_paths);
-                    let cfg = WineConfig::load(&data_paths);
-                    let fetched = std::fs::read_to_string(&stamp).ok().and_then(|s| s.trim().parse::<u64>().ok());
-                    (releases, cfg, fetched.map(|t| now_secs().saturating_sub(t)))
-                })
-                .await;
+            let (releases, cfg) =
+                cx.background_spawn(async move { (heronite_wine::store::read_releases(&data_paths), WineConfig::load(&data_paths)) }).await;
             this.update(cx, |this, cx| {
                 this.releases = releases;
                 this.loaded = true;
@@ -138,18 +137,36 @@ impl WineManagerPage {
                         this.manager.start_install(r.clone());
                     }
                 }
-                // Heroic fetches when it has nothing cached; we also refresh
-                // when the last fetch is stale. Never when offline.
-                let stale = age.is_none_or(|a| a > STALE_AFTER_SECS);
-                if !this.offline && (this.releases.is_empty() || stale) {
-                    this.manager.start_refresh(Repository::LINUX.to_vec());
-                }
+                this.check(this.repo, CheckMode::Auto);
                 this.run_palette_pending(cx);
                 cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// Shows `repo` and checks it for new releases.
+    fn select_source(&mut self, repo: Repository) {
+        self.repo = repo;
+        self.confirm_remove = None;
+        self.check(repo, CheckMode::Auto);
+    }
+
+    /// Asks the manager to check `repo` (never when offline).
+    fn check(&mut self, repo: Repository, mode: CheckMode) {
+        if !self.offline {
+            self.manager.start_check(repo, mode);
+        }
+    }
+
+    fn checking(&self) -> bool {
+        self.manager.checking(self.repo)
+    }
+
+    /// Why the list of the source on screen may stay empty.
+    fn limited_until(&self) -> Option<u64> {
+        self.limited.get(&self.repo).copied()
     }
 
     fn install_fakes(&mut self, confirm: bool) {
@@ -216,22 +233,39 @@ impl WineManagerPage {
                     self.toast(format!("{version}: {first}"), true, cx);
                     reload = true;
                 }
-                JobEvent::Refreshed { errors } => {
-                    let _ = std::fs::create_dir_all(&self.ctx.app.config);
-                    let _ = std::fs::write(stamp_path(&self.ctx), now_secs().to_string());
-                    if let Some(e) = errors.first() {
-                        self.toast(tr!("Could not refresh everything: {error}", error = e), true, cx);
+                JobEvent::Checked { repo, mode, outcome } => {
+                    let kind = repo.kind();
+                    let manual = mode == CheckMode::Manual;
+                    if !matches!(outcome, CheckOutcome::RateLimited { .. }) {
+                        self.limited.remove(&repo);
                     }
-                    reload = true;
-                }
-                JobEvent::RefreshFailed { message } => {
-                    let first = message.lines().next().unwrap_or(tr!("error")).to_owned();
-                    self.toast(tr!("Could not fetch Wine versions: {error}", error = first), true, cx);
+                    match outcome {
+                        CheckOutcome::Updated => reload = true,
+                        CheckOutcome::UpToDate if manual => self.toast(tr!("{kind} is up to date", kind), false, cx),
+                        CheckOutcome::UpToDate => {}
+                        CheckOutcome::RateLimited { until } => {
+                            self.limited.insert(repo, until);
+                            if manual {
+                                let time = local_time(until);
+                                self.toast(
+                                    tr!("GitHub's limit for checking releases was reached. Try again after {time}.", time),
+                                    true,
+                                    cx,
+                                );
+                            }
+                        }
+                        CheckOutcome::Failed(message) => {
+                            let first = message.lines().next().unwrap_or(tr!("error")).to_owned();
+                            self.toast(tr!("Could not fetch {kind} releases: {error}", kind, error = first), true, cx);
+                        }
+                    }
                 }
             }
         }
         if reload {
             self.reload(cx);
+        } else {
+            self.run_palette_pending(cx);
         }
         cx.notify();
     }

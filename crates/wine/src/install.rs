@@ -13,9 +13,9 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
-use sha2::{Digest, Sha512};
+use sha2::{Digest, Sha256, Sha512};
 
-use crate::repos;
+use crate::github;
 use crate::store;
 use crate::types::{Progress, WineConfig, WineVersionInfo};
 
@@ -112,10 +112,10 @@ pub fn install_into(
         None => install_dir.join(&info.version),
     };
 
-    // Source checksum (a `.sha512sum` file next to the archive).
+    // Source checksum (a `.sha512sum` or `.sha256sum` file next to the archive).
     let source_checksum = match info.checksum.as_deref().filter(|c| !c.is_empty()) {
         Some(url) => Some(
-            repos::http_get_text(url, 1024 * 1024)
+            github::http_get_text(url, 1024 * 1024)
                 .map_err(|e| InstallError::Failed(tr!("Could not fetch the checksum: {error}", error = e)))?,
         ),
         None => None,
@@ -134,8 +134,9 @@ pub fn install_into(
     let _ = fs::remove_file(&tar_file);
     let _ = fs::remove_file(&part_file);
 
-    // Download (+ sha512 while streaming).
-    let digest = match download_file(download, &part_file, info.downsize.unwrap_or(0), cancel, on_progress) {
+    // Download (+ the checksum's hash while streaming).
+    let algorithm = source_checksum.as_deref().map(HashKind::of_checksum).unwrap_or(HashKind::Sha512);
+    let digest = match download_file(download, &part_file, info.downsize.unwrap_or(0), algorithm, cancel, on_progress) {
         Ok(d) => d,
         Err(e) => {
             let _ = fs::remove_file(&part_file);
@@ -219,16 +220,62 @@ fn is_safe_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\0')
 }
 
-/// Streams `url` to `dest`, returning the lowercase sha512 hex of the body.
+/// Hash a published checksum file is made with.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HashKind {
+    Sha256,
+    Sha512,
+}
+
+impl HashKind {
+    /// From the length of the first hex digest in the file (`<hex>  <name>`).
+    fn of_checksum(text: &str) -> Self {
+        let is_hex = |w: &&str| w.bytes().all(|b| b.is_ascii_hexdigit());
+        match text.split_whitespace().find(is_hex).map(str::len) {
+            Some(64) => HashKind::Sha256,
+            _ => HashKind::Sha512,
+        }
+    }
+}
+
+enum Hasher {
+    Sha256(Sha256),
+    Sha512(Sha512),
+}
+
+impl Hasher {
+    fn new(kind: HashKind) -> Self {
+        match kind {
+            HashKind::Sha256 => Hasher::Sha256(Sha256::new()),
+            HashKind::Sha512 => Hasher::Sha512(Sha512::new()),
+        }
+    }
+    fn update(&mut self, data: &[u8]) {
+        match self {
+            Hasher::Sha256(h) => h.update(data),
+            Hasher::Sha512(h) => h.update(data),
+        }
+    }
+    fn hex(self) -> String {
+        let bytes: Vec<u8> = match self {
+            Hasher::Sha256(h) => h.finalize().to_vec(),
+            Hasher::Sha512(h) => h.finalize().to_vec(),
+        };
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+}
+
+/// Streams `url` to `dest`, returning the lowercase hex hash of the body.
 fn download_file(
     url: &str,
     dest: &Path,
     expected_size: u64,
+    algorithm: HashKind,
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<String, InstallError> {
     let fail = |m: String| InstallError::Failed(m);
-    let mut resp = repos::http_agent().get(url).call().map_err(|e| fail(format!("{url}: {e}")))?;
+    let mut resp = github::http_agent().get(url).call().map_err(|e| fail(format!("{url}: {e}")))?;
     let total = resp
         .headers()
         .get("content-length")
@@ -238,7 +285,7 @@ fn download_file(
         .unwrap_or(expected_size);
     let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
     let mut file = File::create(dest).map_err(|e| fail(format!("creating {}: {e}", dest.display())))?;
-    let mut hasher = Sha512::new();
+    let mut hasher = Hasher::new(algorithm);
     let mut buf = vec![0u8; 256 * 1024];
     let mut downloaded = 0u64;
     let start = Instant::now();
@@ -267,7 +314,7 @@ fn download_file(
     }
     let speed = downloaded as f64 / start.elapsed().as_secs_f64().max(0.001);
     on_progress(progress(downloaded, downloaded.max(total), speed));
-    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+    Ok(hasher.hex())
 }
 
 fn progress(downloaded: u64, total: u64, speed: f64) -> Progress {
@@ -446,6 +493,31 @@ mod tests {
         assert!(done.disksize >= 300_000);
         // archive and partial file are gone
         assert_eq!(fs::read_dir(&dest).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn sha256_checksums_are_verified_too() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = make_tar_gz(tmp.path(), "proton-EM-test");
+        let sha256: String = Sha256::digest(&data).iter().map(|b| format!("{b:02x}")).collect();
+        let good = format!("{sha256}  proton-EM-test.tar.xz\n");
+        let bad = format!("{}  proton-EM-test.tar.xz\n", "0".repeat(64));
+        let base =
+            serve(vec![("/a.tar.gz".into(), data.clone()), ("/good".into(), good.into_bytes()), ("/bad".into(), bad.into_bytes())], 0);
+        let mut info = info_for(&base, "a.tar.gz", &data);
+        info.checksum = Some(format!("{base}/bad"));
+        let dest = tmp.path().join("tools/proton");
+        let err = install_into(&info, &dest, false, &AtomicBool::new(false), &mut |_| {}).unwrap_err();
+        assert!(err.to_string().contains("Checksum verification failed"), "{err}");
+        info.checksum = Some(format!("{base}/good"));
+        assert!(install_into(&info, &dest, false, &AtomicBool::new(false), &mut |_| {}).unwrap().installed());
+    }
+
+    #[test]
+    fn checksum_kind_follows_the_digest_length() {
+        assert_eq!(HashKind::of_checksum(&format!("{}  a.tar.xz", "a".repeat(64))), HashKind::Sha256);
+        assert_eq!(HashKind::of_checksum(&format!("{}  a.tar.gz\n", "b".repeat(128))), HashKind::Sha512);
+        assert_eq!(HashKind::of_checksum("deadbeef  a.tar.gz"), HashKind::Sha512);
     }
 
     #[test]

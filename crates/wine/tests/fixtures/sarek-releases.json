@@ -1,0 +1,62 @@
+[
+ {
+  "tag_name": "Proton-Sarek10-29",
+  "name": "Proton-Sarek10-29 Released",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-02-02T07:17:36Z",
+  "html_url": "https://github.com/pythonlover02/Proton-Sarek/releases/tag/Proton-Sarek10-29",
+  "assets": [
+   {
+    "name": "Proton-Sarek10-29-async.tar.gz",
+    "browser_download_url": "https://github.com/pythonlover02/Proton-Sarek/releases/download/Proton-Sarek10-29/Proton-Sarek10-29-async.tar.gz",
+    "size": 520911018
+   },
+   {
+    "name": "Proton-Sarek10-29.tar.gz",
+    "browser_download_url": "https://github.com/pythonlover02/Proton-Sarek/releases/download/Proton-Sarek10-29/Proton-Sarek10-29.tar.gz",
+    "size": 520865148
+   }
+  ]
+ },
+ {
+  "tag_name": "Proton-Sarek10-17",
+  "name": "Proton-Sarek10-17 Released",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2025-10-03T23:42:20Z",
+  "html_url": "https://github.com/pythonlover02/Proton-Sarek/releases/tag/Proton-Sarek10-17",
+  "assets": [
+   {
+    "name": "Proton-Sarek10-17-async.tar.gz",
+    "browser_download_url": "https://github.com/pythonlover02/Proton-Sarek/releases/download/Proton-Sarek10-17/Proton-Sarek10-17-async.tar.gz",
+    "size": 519147118
+   },
+   {
+    "name": "Proton-Sarek10-17.tar.gz",
+    "browser_download_url": "https://github.com/pythonlover02/Proton-Sarek/releases/download/Proton-Sarek10-17/Proton-Sarek10-17.tar.gz",
+    "size": 519086319
+   }
+  ]
+ },
+ {
+  "tag_name": "Proton-Sarek10-15",
+  "name": "Proton-Sarek10-15 Released",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2025-08-31T17:55:15Z",
+  "html_url": "https://github.com/pythonlover02/Proton-Sarek/releases/tag/Proton-Sarek10-15",
+  "assets": [
+   {
+    "name": "Proton-Sarek10-15-async.tar.gz",
+    "browser_download_url": "https://github.com/pythonlover02/Proton-Sarek/releases/download/Proton-Sarek10-15/Proton-Sarek10-15-async.tar.gz",
+    "size": 515767262
+   },
+   {
+    "name": "Proton-Sarek10-15.tar.gz",
+    "browser_download_url": "https://github.com/pythonlover02/Proton-Sarek/releases/download/Proton-Sarek10-15/Proton-Sarek10-15.tar.gz",
+    "size": 515708693
+   }
+  ]
+ }
+]

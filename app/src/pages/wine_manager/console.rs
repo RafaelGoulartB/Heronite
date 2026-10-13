@@ -1,12 +1,11 @@
-//! Wine Manager in console mode: LB / RB switch the source (Proton-CachyOS,
-//! GE-Proton), each version is a row with its state on the right, A opens
+//! Wine Manager in console mode: LB / RB switch the source, each version is a row with its state on the right, A opens
 //! what can be done with it (install, update, cancel, remove after a
 //! confirmation). Y searches, X refreshes the release lists.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
-use heronite_wine::{JobKind, Repository, WineVersionInfo};
+use heronite_wine::{CheckMode, JobKind, Repository, WineVersionInfo};
 
 use super::render::size_text;
 use super::WineManagerPage;
@@ -33,12 +32,9 @@ impl WineManagerPage {
         let mut rows = vec![
             Row::toggle("steam", tr!("Install Proton into Steam"), self.download_to_steam)
                 .desc(tr!("New Proton builds also go to Steam's compatibility tools")),
-            Row::action(
-                "refresh",
-                if self.manager.refreshing() { tr!("Fetching releases\u{2026}") } else { tr!("Refresh the release lists") },
-            )
-            .icon(Icon::Refresh)
-            .enabled(!self.manager.refreshing() && !self.offline),
+            Row::action("refresh", if self.checking() { tr!("Fetching releases\u{2026}") } else { tr!("Refresh the release list") })
+                .icon(Icon::Refresh)
+                .enabled(!self.checking() && !self.offline),
         ];
         if !self.console_query.is_empty() {
             rows.push(
@@ -127,8 +123,8 @@ impl WineManagerPage {
 
     pub(super) fn render_console(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows();
-        let tab = Repository::LINUX.iter().position(|r| *r == self.repo).unwrap_or(0);
-        let tabs: Vec<SharedString> = Repository::LINUX.iter().map(|r| SharedString::from(r.kind())).collect();
+        let tab = Repository::offered().iter().position(|r| *r == self.repo).unwrap_or(0);
+        let tabs: Vec<SharedString> = Repository::offered().iter().map(|r| SharedString::from(r.kind())).collect();
         let list = self.console_list.render("console-wine", &rows, !self.layer.is_open());
         div()
             .relative()
@@ -167,26 +163,23 @@ impl PadTarget for WineManagerPage {
             cx.notify();
             return true;
         }
-        let tab = Repository::LINUX.iter().position(|r| *r == self.repo).unwrap_or(0);
-        let n = Repository::LINUX.len();
+        let offered = Repository::offered();
+        let tab = offered.iter().position(|r| *r == self.repo).unwrap_or(0);
+        let n = offered.len();
         match pad {
             Pad::LB | Pad::RB => {
                 let next = if pad == Pad::RB { (tab + 1) % n } else { (tab + n - 1) % n };
-                self.repo = Repository::LINUX[next];
+                self.select_source(offered[next]);
                 self.console_list.reset();
             }
             Pad::Y => self.open_console_search(cx),
-            Pad::X if !self.manager.refreshing() && !self.offline => {
-                self.manager.start_refresh(Repository::LINUX.to_vec());
-            }
+            Pad::X if !self.checking() && !self.offline => self.check(self.repo, CheckMode::Manual),
             _ => {
                 let rows = self.console_rows();
                 match self.console_list.on_pad(pad, &rows) {
                     Outcome::Changed(id, Value::Toggle(on)) if id.as_ref() == "steam" => self.set_download_to_steam(on, cx),
                     Outcome::Activate(id) => match id.as_ref() {
-                        "refresh" => {
-                            self.manager.start_refresh(Repository::LINUX.to_vec());
-                        }
+                        "refresh" => self.check(self.repo, CheckMode::Manual),
                         "clear-search" => self.console_query.clear(),
                         v if v.starts_with("v:") => self.open_version_sheet(&v[2..], cx),
                         _ => {}

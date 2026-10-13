@@ -1,5 +1,5 @@
 //! Background jobs of the Wine Manager (installs with progress and cancel,
-//! removals, release refreshes). The state lives here, not in a view, so
+//! removals, release checks). The state lives here, not in a view, so
 //! downloads continue while the page is closed. Threads are plain
 //! `std::thread`s; the UI polls [`WineManager::job`] / [`WineManager::take_events`].
 
@@ -10,9 +10,9 @@ use std::sync::Arc;
 use heronite_data::DataPaths;
 use parking_lot::Mutex;
 
+use crate::checks::{self, CheckMode, CheckOutcome};
 use crate::install::{self, InstallError};
 use crate::repos::Repository;
-use crate::store;
 use crate::types::{Progress, WineConfig, WineVersionInfo};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,12 +60,11 @@ pub enum JobEvent {
         version: String,
         message: String,
     },
-    /// The release list was refreshed; `errors` lists repositories that failed.
-    Refreshed {
-        errors: Vec<String>,
-    },
-    RefreshFailed {
-        message: String,
+    /// The releases of `repo` were checked (see [`checks`]).
+    Checked {
+        repo: Repository,
+        mode: CheckMode,
+        outcome: CheckOutcome,
     },
 }
 
@@ -78,11 +77,15 @@ struct Active {
 struct State {
     jobs: HashMap<String, Active>,
     events: Vec<JobEvent>,
-    refreshing: bool,
+    /// Sources waiting to be checked, in order; the first one is being checked
+    /// while `checking` is set.
+    checks: Vec<(Repository, CheckMode)>,
+    checking: bool,
 }
 
 struct Inner {
     data_paths: DataPaths,
+    remote: Arc<dyn checks::Remote>,
     state: Mutex<State>,
     revision: AtomicU64,
 }
@@ -95,7 +98,12 @@ pub struct WineManager {
 
 impl WineManager {
     pub fn new(data_paths: DataPaths) -> Self {
-        Self { inner: Arc::new(Inner { data_paths, state: Mutex::new(State::default()), revision: AtomicU64::new(0) }) }
+        Self::with_remote(data_paths, Arc::new(checks::GitHub))
+    }
+
+    /// Checks releases through `remote` instead of GitHub (tests).
+    pub fn with_remote(data_paths: DataPaths, remote: Arc<dyn checks::Remote>) -> Self {
+        Self { inner: Arc::new(Inner { data_paths, remote, state: Mutex::new(State::default()), revision: AtomicU64::new(0) }) }
     }
 
     pub fn data_paths(&self) -> &DataPaths {
@@ -117,11 +125,12 @@ impl WineManager {
 
     pub fn has_active_jobs(&self) -> bool {
         let s = self.inner.state.lock();
-        !s.jobs.is_empty() || s.refreshing
+        !s.jobs.is_empty() || s.checking
     }
 
-    pub fn refreshing(&self) -> bool {
-        self.inner.state.lock().refreshing
+    /// `repo` is being checked or waits for its turn.
+    pub fn checking(&self, repo: Repository) -> bool {
+        self.inner.state.lock().checks.iter().any(|(r, _)| *r == repo)
     }
 
     /// Events since the last call.
@@ -216,31 +225,93 @@ impl WineManager {
             .is_ok()
     }
 
-    /// Re-fetches the release lists from GitHub (one request per repository)
-    /// and merges them into `wine-downloader-info.json`.
-    pub fn start_refresh(&self, repos: Vec<Repository>) -> bool {
-        {
-            let mut s = self.inner.state.lock();
-            if s.refreshing {
-                return false;
+    /// Checks the releases of `repo` in the background (one at a time, in
+    /// the order asked). Asking for a source already waiting does nothing,
+    /// except that a manual request replaces an automatic one.
+    pub fn start_check(&self, repo: Repository, mode: CheckMode) {
+        let mut s = self.inner.state.lock();
+        if let Some(i) = s.checks.iter().position(|(r, _)| *r == repo) {
+            // The first one is already running as it is.
+            if i > 0 && mode == CheckMode::Manual {
+                s.checks[i].1 = mode;
             }
-            s.refreshing = true;
+            return;
         }
+        s.checks.push((repo, mode));
+        if s.checking {
+            return;
+        }
+        s.checking = true;
+        drop(s);
         self.bump();
         let this = self.clone();
-        std::thread::Builder::new()
-            .name("wine-refresh".into())
-            .spawn(move || {
-                let event = match store::refresh(&this.inner.data_paths, &repos, 50) {
-                    Ok(o) => JobEvent::Refreshed { errors: o.errors },
-                    Err(e) => JobEvent::RefreshFailed { message: format!("{e:#}") },
-                };
-                let mut s = this.inner.state.lock();
-                s.refreshing = false;
-                s.events.push(event);
+        let spawned = std::thread::Builder::new().name("wine-check".into()).spawn(move || loop {
+            let Some((repo, mode)) = this.inner.state.lock().checks.first().copied() else { break };
+            let outcome = checks::check_source(&this.inner.data_paths, &*this.inner.remote, repo, mode, now_secs());
+            let mut s = this.inner.state.lock();
+            s.checks.remove(0);
+            s.events.push(JobEvent::Checked { repo, mode, outcome });
+            if s.checks.is_empty() {
+                s.checking = false;
                 drop(s);
                 this.bump();
+                break;
+            }
+            drop(s);
+            this.bump();
+        });
+        if let Err(e) = spawned {
+            log::warn!("wine manager: could not start the release check: {e}");
+            let mut s = self.inner.state.lock();
+            s.checks.clear();
+            s.checking = false;
+        }
+    }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::checks::tests::Fake;
+    use std::time::{Duration, Instant};
+
+    fn wait_events(m: &WineManager, n: usize) -> Vec<JobEvent> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut events = Vec::new();
+        while events.len() < n && Instant::now() < deadline {
+            events.extend(m.take_events());
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        events
+    }
+
+    #[test]
+    fn checks_run_one_at_a_time_in_order_without_duplicates() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake = Arc::new(Fake::new("<feed></feed>"));
+        // Holds the first check until every request is queued.
+        let gate = fake.feed.lock().unwrap();
+        let m = WineManager::with_remote(DataPaths::at(dir.path()), fake.clone());
+        m.start_check(Repository::DwProton, CheckMode::Auto);
+        m.start_check(Repository::ProtonEm, CheckMode::Auto);
+        m.start_check(Repository::DwProton, CheckMode::Auto);
+        m.start_check(Repository::ProtonEm, CheckMode::Manual);
+        assert!(m.checking(Repository::ProtonEm) && !m.checking(Repository::ProtonGe));
+        drop(gate);
+        let events = wait_events(&m, 2);
+        let done: Vec<(Repository, CheckMode)> = events
+            .iter()
+            .filter_map(|e| match e {
+                JobEvent::Checked { repo, mode, .. } => Some((*repo, *mode)),
+                _ => None,
             })
-            .is_ok()
+            .collect();
+        assert_eq!(done, [(Repository::DwProton, CheckMode::Auto), (Repository::ProtonEm, CheckMode::Manual)]);
+        assert_eq!(*fake.asked.lock().unwrap(), [Repository::DwProton, Repository::ProtonEm]);
+        assert!(!m.has_active_jobs());
     }
 }

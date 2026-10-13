@@ -8,7 +8,6 @@ use anyhow::{anyhow, Result};
 use heronite_data::{json_store, DataPaths};
 use serde_json::Value;
 
-use crate::repos::{self, Repository};
 use crate::types::WineVersionInfo;
 
 const KEY: &str = "wine-releases";
@@ -100,32 +99,6 @@ pub fn merge_releases(
     // Stable sort, newest first (dates are `YYYY-MM-DD`).
     to_store.sort_by(|a, b| b.date.cmp(&a.date));
     to_store
-}
-
-pub struct RefreshOutcome {
-    pub releases: Vec<WineVersionInfo>,
-    /// One message per repository that could not be fetched.
-    pub errors: Vec<String>,
-}
-
-/// Fetches `repos` from GitHub and merges them into the cache. The cache is
-/// left untouched when every repository failed. Blocking (network).
-pub fn refresh(data_paths: &DataPaths, repos_to_fetch: &[Repository], count: usize) -> Result<RefreshOutcome> {
-    let mut fetched = Vec::new();
-    let mut errors = Vec::new();
-    for repo in repos_to_fetch {
-        match repos::fetch_releases(*repo, count) {
-            Ok(mut r) => fetched.append(&mut r),
-            Err(e) => {
-                log::warn!("wine manager: {e}");
-                errors.push(format!("{}: {e}", repo.kind()));
-            }
-        }
-    }
-    if fetched.is_empty() && !errors.is_empty() {
-        return Err(anyhow!(errors.join("\n")));
-    }
-    Ok(RefreshOutcome { releases: apply_fetched(data_paths, fetched)?, errors })
 }
 
 /// Merges already fetched releases into the cache file.
