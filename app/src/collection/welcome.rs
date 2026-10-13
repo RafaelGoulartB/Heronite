@@ -25,10 +25,10 @@ enum Source {
 }
 
 const SOURCES: [(Source, Icon, &str, &str); 4] = [
-    (Source::Stores, Icon::Storefront, n_!("Stores"), "Epic \u{b7} GOG \u{b7} Amazon \u{b7} Steam"),
-    (Source::Steam, Icon::CloudSync, "Steam", n_!("Automatic")),
-    (Source::Emulators, Icon::SportsEsports, n_!("Emulators"), n_!("Detect & scan ROMs")),
-    (Source::AddGame, Icon::Add, n_!("Add a game"), n_!("Program, browser or ROM")),
+    (Source::Stores, Icon::Storefront, n_!("Stores"), n_!("Epic, GOG and Amazon")),
+    (Source::Steam, Icon::CloudSync, "Steam", n_!("Automatic while Steam is open")),
+    (Source::Emulators, Icon::SportsEsports, n_!("Emulators"), n_!("Find emulators and ROMs")),
+    (Source::AddGame, Icon::Add, n_!("Add a game"), n_!("A program, web game or ROM")),
 ];
 
 /// Empty covers: 2/3 like the real ones, a little smaller on each lower row
@@ -96,6 +96,7 @@ impl CollectionView {
                 )
                 .child(
                     div()
+                        .text_center()
                         .text_size(px(12.))
                         .text_color(if auto { theme::success() } else { theme::text_dim() })
                         .child(heronite_i18n::tr(note)),
@@ -139,14 +140,14 @@ impl CollectionView {
                     .line_height(px(46.))
                     .font_weight(theme::W_BOLD)
                     .text_color(theme::text_primary())
-                    .child(tr!("Your shelves are empty \u{2014} for now")),
+                    .child(tr!("Let's fill your shelves")),
             )
             .child(
                 div()
                     .mt(px(8.))
                     .text_size(px(16.))
                     .text_color(theme::text_muted())
-                    .child(tr!("Choose where your games come from. You can add more sources at any time.")),
+                    .child(tr!("Pick where your games come from. You can add more sources later.")),
             )
             .child(div().mt(px(30.)).w_full().flex().gap(px(12.)).children(tiles))
             .child(
@@ -161,7 +162,7 @@ impl CollectionView {
                     .child(proton)
                     .child("\u{00b7}")
                     .child(kbd("Ctrl K"))
-                    .child(tr!("finds anything")),
+                    .child(tr!("to search anything")),
             )
     }
 }
