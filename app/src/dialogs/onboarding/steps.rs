@@ -19,9 +19,9 @@ pub enum Step {
     Screenshots,
     Saves,
     Tray,
+    Appearance,
     Palette,
     Statuses,
-    Appearance,
     Stats,
     Console,
 }
@@ -34,9 +34,9 @@ pub const STEPS: [Step; 12] = [
     Step::Screenshots,
     Step::Saves,
     Step::Tray,
+    Step::Appearance,
     Step::Palette,
     Step::Statuses,
-    Step::Appearance,
     Step::Stats,
     Step::Console,
 ];
