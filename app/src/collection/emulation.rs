@@ -16,6 +16,7 @@ use super::CollectionView;
 use crate::dialogs::launch_state::{LaunchStateDialog, StateRow, ThumbRaw};
 use crate::dialogs::pick_rom::PickRomDialog;
 use crate::dialogs::scan_roms::{ScanInitial, ScanRomsDialog};
+use crate::services::steam_library::SteamLibraryEvent;
 use heronite_i18n::{tr, trn};
 
 /// How long after start the Collection scans the saved ROM folders.
@@ -215,6 +216,7 @@ impl CollectionView {
                 })
                 .await;
             this.update(cx, |this, cx| {
+                crate::services::steam_library(cx).update(cx, |s, cx| s.sync_if_ready(cx));
                 // `reload` skips when a reload is in flight.
                 this.refreshing = false;
                 this.after_rom_scan(res, false, cx);
@@ -255,6 +257,21 @@ impl CollectionView {
         if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             return;
         }
+        let steam = crate::services::steam_library(cx);
+        cx.subscribe(&steam, |this, _, ev: &SteamLibraryEvent, cx| {
+            let SteamLibraryEvent::Imported(report) = ev;
+            if report.added > 0 {
+                this.show_toast(
+                    trn!(report.added, "Added {n} game from your Steam library", "Added {n} games from your Steam library"),
+                    false,
+                    cx,
+                );
+            }
+            if report.added > 0 || report.playtime > 0 {
+                this.reload(cx);
+            }
+        })
+        .detach();
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let p = paths.clone();

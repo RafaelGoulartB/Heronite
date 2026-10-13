@@ -243,12 +243,20 @@ impl SettingsPanel {
         if self.tool_busy.is_some() {
             return;
         }
+        let steam = self.steam_tool_settings();
+        if self.is_steam() && steam.is_none() {
+            return;
+        }
         self.tool_busy = Some(name);
         self.notice = None;
         let (paths, home) = (self.paths.clone(), self.home.clone());
         let (tx, rx) = futures::channel::oneshot::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(run_tool_blocking(&paths, &home, &app, &tool));
+            let res = match steam {
+                Some(settings) => run_settings_tool(&paths, &settings, &tool),
+                None => run_tool_blocking(&paths, &home, &app, &tool),
+            };
+            let _ = tx.send(res);
         });
         cx.spawn(async move |this, cx| {
             let res = rx.await.unwrap_or_else(|_| Err(tr!("The tool was interrupted").into()));
@@ -368,10 +376,15 @@ impl SettingsPanel {
 fn run_tool_blocking(paths: &heronite_data::DataPaths, home: &str, app: &str, tool: &WineTool) -> Result<String, String> {
     let map = heronite_data::game_config::load_game(paths, app, home);
     let settings = GameSettings::from_map(&map, home);
-    let ctx = PlanContext::load(paths);
     // A new prefix is created first so shared folders get their drive letters.
-    heronite_launch::shared_folders::create_prefix_first(&ctx, &SystemProbe, &settings)?;
-    let built = build_tool_command(&ctx, &SystemProbe, &settings, tool)?;
+    heronite_launch::shared_folders::create_prefix_first(&PlanContext::load(paths), &SystemProbe, &settings)?;
+    run_settings_tool(paths, &settings, tool)
+}
+
+/// Runs a tool with `settings`' Wine and prefix, waiting for it to exit.
+fn run_settings_tool(paths: &heronite_data::DataPaths, settings: &GameSettings, tool: &WineTool) -> Result<String, String> {
+    let ctx = PlanContext::load(paths);
+    let built = build_tool_command(&ctx, &SystemProbe, settings, tool)?;
     let c = &built.command;
     let mut cmd = std::process::Command::new(&c.program);
     cmd.args(&c.args)

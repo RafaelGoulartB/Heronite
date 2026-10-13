@@ -13,6 +13,7 @@ pub mod emulators;
 pub mod epic;
 pub mod settings;
 pub mod stats;
+pub mod steam;
 pub mod store;
 pub mod stores;
 pub mod wine_manager;
@@ -35,6 +36,8 @@ pub enum Page {
     Epic,
     Gog,
     Amazon,
+    /// The Steam tab of the Stores (the library read from the Steam client).
+    Steam,
     Emulators,
     Statistics,
     /// Global settings (☰ → Settings, listed last).
@@ -51,6 +54,7 @@ impl Page {
             // Brands: not translated.
             Page::Gog => "GOG",
             Page::Amazon => "Amazon Games",
+            Page::Steam => "Steam",
             Page::Emulators => tr!("Emulators"),
             Page::Statistics => tr!("Statistics"),
             Page::Settings => tr!("Settings"),
@@ -65,6 +69,7 @@ impl Page {
             Page::Epic => Icon::AccountCircle,
             Page::Gog => Icon::Storefront,
             Page::Amazon => Icon::ShoppingBag,
+            Page::Steam => Icon::SportsEsports,
             Page::Emulators => Icon::SportsEsports,
             Page::Statistics => Icon::BarChart,
             Page::Settings => Icon::Settings,
@@ -80,6 +85,7 @@ impl Page {
             "epic" => Some(Page::Epic),
             "gog" => Some(Page::Gog),
             "amazon" => Some(Page::Amazon),
+            "steam" => Some(Page::Steam),
             "emulators" => Some(Page::Emulators),
             // `stats[:week|month|year|all]`, see `stats::StatsPage`.
             s if s == "stats" || s.starts_with("stats:") => Some(Page::Statistics),

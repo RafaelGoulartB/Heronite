@@ -1,6 +1,6 @@
 //! Which local games count as installed (port of `install-state.ts`):
 //! the pure rules, and [`refresh_local_install_states`] that applies them to
-//! `sideload_apps/library.json`.
+//! `sideload_apps/library.json` (and to the cached Steam library).
 
 use std::collections::{HashMap, HashSet};
 
@@ -103,7 +103,27 @@ pub fn steam_sideload_entry(game: &SteamInstalledGame, steam_bin: Option<&str>, 
         completion_status_id: Some(not_played_status_id.to_string()),
         ..Default::default()
     };
+    let mut meta = meta;
+    meta.extra.insert(heronite_data::steam_owned::AUTO_KEY.into(), Value::Bool(true));
     (info, meta)
+}
+
+/// Brings `installed` of the cached Steam library in line with the
+/// manifests (a game installed or uninstalled since the client was read).
+/// Whether the file changed.
+fn refresh_owned_installs(paths: &DataPaths, installed_steam: &HashSet<String>) -> anyhow::Result<bool> {
+    use heronite_data::steam_owned::SteamOwnedFile;
+    let file = SteamOwnedFile::read(paths);
+    if !file.games.iter().any(|g| g.installed != installed_steam.contains(&g.app_id)) {
+        return Ok(false);
+    }
+    json_store::update::<SteamOwnedFile, _>(&paths.steam_owned(), |f| {
+        for g in &mut f.games {
+            g.installed = installed_steam.contains(&g.app_id);
+        }
+        Ok(())
+    })?;
+    Ok(true)
 }
 
 /// What [`refresh_local_install_states`] changed.
@@ -133,7 +153,9 @@ fn launch_kind_for_local_exe(existing: &str) -> &'static str {
 /// `refreshLocalInstallStates`: recomputes `is_installed` and the executable
 /// of every sideloaded game with Collection metadata (a game uninstalled
 /// from Steam, a moved executable, a missing ROM...) and adds the Steam games
-/// installed since the last run. Blocking file I/O.
+/// installed since the last run, unless the game is already in the Collection
+/// from another source (its Steam twin, `heronite_data::steam_owned`).
+/// Blocking file I/O.
 pub fn refresh_local_install_states(paths: &DataPaths, probe: &dyn Probe) -> anyhow::Result<RefreshReport> {
     let ctx = PlanContext::load(paths);
     let locator = SteamLocator::detect(&ctx.global, probe);
@@ -170,8 +192,22 @@ pub fn refresh_local_install_states(paths: &DataPaths, probe: &dyn Probe) -> any
             known.insert(id.to_string());
         }
     }
+    let owned_changed = refresh_owned_installs(paths, &installed_steam)?;
     let mut new_steam = Vec::new();
-    let installed_games = list_installed_games(&locator);
+    let mut installed_games = list_installed_games(&locator);
+    // Once the client was read, its list says what is a game: tools and
+    // games hidden in Steam stay out (a game bought since is added by the
+    // next read of the library).
+    let owned = heronite_data::steam_owned::SteamOwnedFile::read(paths);
+    if owned.known() {
+        installed_games.retain(|g| owned.get(&g.app_id).is_some());
+    }
+    if installed_games.iter().any(|g| !known.contains(&g.app_id)) {
+        // Installed through Steam for a game the Collection has from another source.
+        if let Ok(lib) = heronite_data::Library::load(paths) {
+            known.extend(lib.games.iter().filter_map(|g| g.steam_link.as_ref().map(|l| l.app_id.clone())));
+        }
+    }
     if installed_games.iter().any(|g| !known.contains(&g.app_id)) {
         let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
         let not_played = heronite_data::status::inferred_status_id(0., &statuses);
@@ -196,8 +232,8 @@ pub fn refresh_local_install_states(paths: &DataPaths, probe: &dyn Probe) -> any
             Ok(())
         })?;
     }
-    let report = RefreshReport { updated: states.len(), added: new_steam.len() };
-    if !report.changed() {
+    let report = RefreshReport { updated: states.len() + usize::from(owned_changed), added: new_steam.len() };
+    if states.is_empty() && new_steam.is_empty() {
         return Ok(report);
     }
     json_store::update_value(&paths.sideload_library(), |doc| {
@@ -304,6 +340,7 @@ mod tests {
         assert_eq!(info.rest["canRunOffline"], false);
         assert_eq!(meta.launcher_args.as_deref(), Some("steam://rungameid/400"));
         assert_eq!(meta.launch_kind, "steam-uri");
+        assert_eq!(meta.extra[heronite_data::steam_owned::AUTO_KEY], true);
     }
 
     #[test]
@@ -346,5 +383,26 @@ mod tests {
 
         // Nothing changed since: the files are left alone.
         assert!(!refresh_local_install_states(&paths, &probe).unwrap().changed());
+
+        // Installed through Steam for an Epic game of the Collection: no Steam
+        // entry, and the cached library learns it is installed.
+        std::fs::write(
+            steamapps.join("appmanifest_870780.acf"),
+            "\"AppState\"\n{\n\t\"appid\"\t\t\"870780\"\n\t\"name\"\t\t\"Control\"\n\t\"StateFlags\"\t\t\"4\"\n}\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(paths.legendary_library().parent().unwrap()).unwrap();
+        std::fs::write(
+            paths.legendary_library(),
+            r#"{"library":[{"runner":"legendary","app_name":"ctl","title":"Control","install":{}}],"__timestamp":{"library":"x"}}"#,
+        )
+        .unwrap();
+        std::fs::write(paths.steam_owned(), r#"{"games":[{"appId":"870780","name":"Control"}],"updatedAt":"x"}"#).unwrap();
+        let report = refresh_local_install_states(&paths, &probe).unwrap();
+        assert_eq!(report, RefreshReport { updated: 1, added: 0 });
+        let owned = heronite_data::steam_owned::SteamOwnedFile::read(&paths);
+        assert!(owned.games[0].installed);
+        let doc = json_store::read_value(&paths.sideload_library()).unwrap();
+        assert_eq!(doc["games"].as_array().unwrap().len(), 2);
     }
 }

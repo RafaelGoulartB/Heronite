@@ -203,5 +203,7 @@
   "Could not copy the Heroic data into {path}: {err}": "Não foi possível copiar os dados do Heroic para {path}: {err}",
   "Epic games are installed from the install dialog.": "Os jogos da Epic são instalados pela janela de instalação.",
   "This game has no install action.": "Este jogo não tem ação de instalação.",
-  "shelf|Installed": "Instalados"
+  "shelf|Installed": "Instalados",
+  "Added manually": "Adicionado manualmente",
+  "Emulated": "Emulado"
 }

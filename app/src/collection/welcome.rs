@@ -25,7 +25,7 @@ enum Source {
 }
 
 const SOURCES: [(Source, Icon, &str, &str); 4] = [
-    (Source::Stores, Icon::Storefront, n_!("Stores"), "Epic \u{b7} GOG \u{b7} Amazon"),
+    (Source::Stores, Icon::Storefront, n_!("Stores"), "Epic \u{b7} GOG \u{b7} Amazon \u{b7} Steam"),
     (Source::Steam, Icon::CloudSync, "Steam", n_!("Automatic")),
     (Source::Emulators, Icon::SportsEsports, n_!("Emulators"), n_!("Detect & scan ROMs")),
     (Source::AddGame, Icon::Add, n_!("Add a game"), n_!("Program, browser or ROM")),

@@ -147,7 +147,7 @@ impl SettingsPanel {
         col
     }
 
-    fn pair_table(&mut self, t: PairTable, cx: &mut Context<Self>) -> Div {
+    pub(super) fn pair_table(&mut self, t: PairTable, cx: &mut Context<Self>) -> Div {
         let rows_data = pairs(self.settings.get(t.setting), t.k1, t.k2);
         let editing = self.input_text(t.in1, cx).trim().to_string();
         let exists = rows_data.iter().any(|(a, _)| *a == editing);

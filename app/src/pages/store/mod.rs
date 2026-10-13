@@ -87,7 +87,7 @@ fn login_helper() -> Option<std::path::PathBuf> {
 }
 
 /// "1 installed" / "3 installed" (Portuguese inflects it).
-fn installed_count(n: usize) -> String {
+pub(crate) fn installed_count(n: usize) -> String {
     if n == 1 {
         trc!("one", "{n} installed", n)
     } else {

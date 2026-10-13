@@ -41,6 +41,10 @@ pub(super) enum GameAction {
     EditPlaytime,
     Ludusavi,
     SteamUninstall,
+    /// The Steam copy of a game whose own copy is installed too.
+    SteamPlay,
+    /// Steam's install of a game owned on Steam from another entry.
+    SteamInstall,
     LocalUninstall,
     RemoveFromCollection,
     /// Desktop / application menu shortcuts (`add` = create them).
@@ -173,6 +177,7 @@ impl CollectionView {
         }
         v.push(item(A::Log, "log", tr!("View log"), Icon::Description, "logs debug output ver registro depuracao saida"));
         v.extend(self.extras_actions(game));
+        v.extend(self.steam_copy_actions(game));
         v.extend(self.epic_actions(game, cx));
         v.extend(self.system_actions(game, cx));
 
@@ -223,6 +228,8 @@ impl CollectionView {
             A::EditPlaytime => self.open_edit_playtime(key, window, cx),
             A::Ludusavi => self.open_ludusavi_backup(key, cx),
             A::SteamUninstall => self.open_steam_uninstall(key, window, cx),
+            A::SteamPlay => self.play_with_steam(key, cx),
+            A::SteamInstall => self.install_with_steam(key, cx),
             A::LocalUninstall => self.open_sideload_uninstall(key, window, cx),
             A::RemoveFromCollection => self.open_remove_game(key, cx),
             A::Shortcuts { add } => self.run_shortcuts(key, *add, cx),

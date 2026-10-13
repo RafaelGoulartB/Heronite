@@ -3458,6 +3458,7 @@ dependencies = [
  "heronite-media",
  "heronite-metadata",
  "heronite-shortcuts",
+ "heronite-steam",
  "heronite-update",
  "heronite-wine",
  "image",
@@ -3671,6 +3672,23 @@ dependencies = [
  "libc",
  "log",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "heronite-steam"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-launch",
+ "heronite-shortcuts",
+ "log",
+ "regex",
+ "serde_json",
+ "shlex 1.3.0",
  "tempfile",
 ]
 

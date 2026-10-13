@@ -36,6 +36,7 @@ fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Publisher => tr!("Publisher"),
         FacetKind::Genre => tr!("Genre"),
         FacetKind::Platform => tr!("Platform"),
+        FacetKind::Store => tr!("Store"),
     }
 }
 
@@ -392,7 +393,7 @@ impl CollectionView {
             })
     }
 
-    /// The five facet rows (current value on the right) and, for the
+    /// The facet rows (current value on the right) and, for the
     /// hovered one, its searchable flyout opening to the right.
     fn facet_rows(&self, cx: &mut Context<Self>) -> Vec<Div> {
         let Some(lib) = self.lib.clone() else { return Vec::new() };

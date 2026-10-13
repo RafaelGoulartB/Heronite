@@ -19,6 +19,8 @@ pub enum Section {
     Advanced,
     Gamescope,
     Saves,
+    /// Steam games: Steam's compatibility tool and Proton options.
+    Proton,
 }
 
 impl Section {
@@ -30,6 +32,7 @@ impl Section {
             Section::Advanced => tr!("Advanced"),
             Section::Gamescope => tr!("Gamescope"),
             Section::Saves => tr!("Cloud saves"),
+            Section::Proton => "Proton",
         }
     }
 }
@@ -41,7 +44,9 @@ pub enum RunKind {
     Wine,
     /// Native Linux program.
     Native,
-    /// Browser games, Steam URIs, emulated ROMs, not installed: no Heroic settings.
+    /// Installed Steam game: the settings are Steam's own (`heronite_steam`).
+    Steam,
+    /// Browser games, emulated ROMs, not installed: no Heroic settings.
     None,
 }
 
@@ -53,6 +58,8 @@ pub struct GameFacts {
     pub runner: String,
     pub run_kind: RunKind,
     pub cloud_saves: bool,
+    /// Steam's app id of a [`RunKind::Steam`] game.
+    pub steam_app_id: Option<String>,
 }
 
 impl GameFacts {
@@ -62,7 +69,10 @@ impl GameFacts {
         let g = &game.game;
         let platform = g.install.platform.clone().unwrap_or_default().to_ascii_lowercase();
         let launch_kind = game.launch_kind.as_deref().unwrap_or("");
-        let run_kind = if !game.installed
+        let steam_app_id = game.steam_launch_id.clone().filter(|_| game.installed && launch_kind == "steam-uri");
+        let run_kind = if steam_app_id.is_some() {
+            RunKind::Steam
+        } else if !game.installed
             || matches!(launch_kind, "emulator" | "steam-uri")
             || platform == "browser"
             || g.rest.get("browserUrl").is_some_and(|v| !v.is_null() && v != "")
@@ -89,7 +99,14 @@ impl GameFacts {
         } else {
             g.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false)
         };
-        Self { app_name: game.app_name.clone(), title: game.title.clone(), runner: game.runner.clone(), run_kind, cloud_saves }
+        Self {
+            app_name: game.app_name.clone(),
+            title: game.title.clone(),
+            runner: game.runner.clone(),
+            run_kind,
+            cloud_saves,
+            steam_app_id,
+        }
     }
 
     pub fn is_gog(&self) -> bool {
@@ -110,6 +127,7 @@ impl GameFacts {
         match self.run_kind {
             RunKind::Wine => Some(Section::Wine),
             RunKind::Native => Some(Section::Other),
+            RunKind::Steam => Some(Section::Proton),
             RunKind::None => None,
         }
     }
@@ -119,6 +137,7 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
     let mut out = Vec::new();
     match run_kind {
         RunKind::None => return out,
+        RunKind::Steam => return vec![Section::Proton, Section::Other, Section::Advanced, Section::Gamescope],
         RunKind::Wine => {
             out.push(Section::Wine);
             out.push(Section::Other);
@@ -295,6 +314,10 @@ mod tests {
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
         assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));
         assert!(!sections_for(RunKind::Wine, "gog", false).contains(&Section::Saves));
+        assert_eq!(
+            sections_for(RunKind::Steam, "sideload", true),
+            [Section::Proton, Section::Other, Section::Advanced, Section::Gamescope]
+        );
     }
 
     #[test]

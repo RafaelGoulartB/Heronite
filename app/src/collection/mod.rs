@@ -32,6 +32,7 @@ mod screenshot_viewer;
 mod screenshots;
 mod scroll;
 mod sideload_uninstall;
+mod steam_copy;
 mod system_glue;
 mod timeline;
 mod update_banner;

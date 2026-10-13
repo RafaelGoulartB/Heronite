@@ -177,6 +177,7 @@ fn page_name_en(p: Page) -> &'static str {
         Page::Epic => "epic games",
         Page::Gog => "gog",
         Page::Amazon => "amazon games",
+        Page::Steam => "steam",
         Page::Emulators => "emulators",
         Page::Statistics => "statistics",
         Page::Settings => "settings",
@@ -210,6 +211,7 @@ pub(super) fn static_entries() -> Vec<Entry> {
     v.push(page(Page::Epic, tr!("Account and library"), "Ctrl 4", "epic games store account login legendary loja conta entrar biblioteca"));
     v.push(page(Page::Gog, tr!("Account and library"), "", "gog galaxy store account login gogdl loja conta entrar biblioteca"));
     v.push(page(Page::Amazon, tr!("Account and library"), "", "amazon prime gaming store account login nile loja conta entrar biblioteca"));
+    v.push(page(Page::Steam, tr!("Your Steam library"), "", "steam valve store library import loja biblioteca importar"));
     v.push(page(Page::Emulators, tr!("Emulators and ROM folders"), "Ctrl 5", "emulator rom retro console emulador emuladores"));
     v.push(page(
         Page::Statistics,
@@ -315,6 +317,7 @@ fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Publisher => tr!("Publisher"),
         FacetKind::Genre => tr!("Genre"),
         FacetKind::Platform => tr!("Platform"),
+        FacetKind::Store => tr!("Store"),
     }
 }
 
@@ -326,6 +329,7 @@ fn facet_keywords(k: FacetKind) -> &'static str {
         FacetKind::Publisher => "publisher publicadora editora",
         FacetKind::Genre => "genre genero",
         FacetKind::Platform => "platform plataforma",
+        FacetKind::Store => "store source manual loja origem manualmente",
     }
 }
 
@@ -611,7 +615,18 @@ mod tests {
         let pages: Vec<_> = v.iter().filter(|e| e.kind == Kind::Page && !e.secondary).map(|e| e.title.to_string()).collect();
         assert_eq!(
             pages,
-            ["Collection", "Downloads", "Wine Manager", "Epic Games", "GOG", "Amazon Games", "Emulators", "Statistics", "Settings"]
+            [
+                "Collection",
+                "Downloads",
+                "Wine Manager",
+                "Epic Games",
+                "GOG",
+                "Amazon Games",
+                "Steam",
+                "Emulators",
+                "Statistics",
+                "Settings"
+            ]
         );
         let sections = v.iter().filter(|e| matches!(e.act, Act::Section(_))).count();
         assert_eq!(sections, Section::ALL.len());

@@ -13,7 +13,10 @@
 //!   Zoom games get `install` from `gog_store/installed.json` /
 //!   `zoom_store/installed.json` and are marked installed;
 //! - Zoom only when `store/config.json` `settings.experimentalFeatures.zoomPlatform`;
-//! - `store/game-overrides.json` attaches Heroic's custom title/art.
+//! - `store/game-overrides.json` attaches Heroic's custom title/art;
+//! - `store_cache/steam_library.json` joins games owned on Steam to the
+//!   entries of other sources (`steam_owned`): those get a [`SteamLink`],
+//!   and a Steam entry this app added that nobody used yet gives way to them.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -31,6 +34,7 @@ use crate::models::*;
 use crate::paths::DataPaths;
 use crate::settings::EffectiveSettings;
 use crate::status::{resolve_status_id, sorted_or_default};
+use crate::steam_owned::{self, Candidate, SteamOwnedFile};
 use crate::text::DateLocale;
 
 /// Everything the UI needs about one game. Cheap to share: keep it in an
@@ -49,7 +53,8 @@ pub struct CollectionGame {
     /// Xbox, Local, Other.
     pub source_label: &'static str,
     /// `GameInfo.is_installed` (Heronite keeps it current for Steam, ROMs and
-    /// executables when it refreshes its install states).
+    /// executables when it refreshes its install states), or the Steam copy
+    /// is installed ([`via_steam`](Self::via_steam)).
     pub installed: bool,
     /// `completionStatusId` as stored.
     pub status_raw: Option<String>,
@@ -70,8 +75,14 @@ pub struct CollectionGame {
     /// `meta.steamAppId` (art, screenshots, Steam details).
     pub steam_app_id: Option<String>,
     /// `steamAppIdFromMeta`: set only for `steam-uri` games (Install/Uninstall
-    /// open the Steam client).
+    /// open the Steam client), and for games that play through their Steam copy.
     pub steam_launch_id: Option<String>,
+    /// The same game owned on Steam, for an entry of another source.
+    pub steam_link: Option<SteamLink>,
+    /// Only the Steam copy is installed: the game plays, uninstalls and is
+    /// set up through Steam (`launch_kind` reads `steam-uri`), while its
+    /// store's own actions treat it as not installed.
+    pub via_steam: bool,
     /// Focus panel values without Steam/wiki data; see
     /// [`focus_details`](crate::focus::focus_details) for the full chain.
     pub details: Details,
@@ -86,8 +97,16 @@ pub struct CollectionGame {
     pub sessions: Option<Arc<Vec<LocalGameSession>>>,
 }
 
+/// The Steam copy of a game from another source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SteamLink {
+    pub app_id: String,
+    pub installed: bool,
+}
+
 pub(crate) struct BuildInputs<'a> {
     pub game: GameInfo,
+    pub steam: Option<SteamLink>,
     pub overrides: Option<GameOverride>,
     pub meta: Option<Arc<LocalGameMeta>>,
     pub metadata: Option<Arc<CollectionGameMetadata>>,
@@ -126,21 +145,33 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
 
 impl CollectionGame {
     pub(crate) fn build(input: BuildInputs<'_>) -> Self {
-        let BuildInputs { game, overrides, meta, metadata, art, timestamp, sessions, favourite, recent, hidden, statuses } = input;
-        let title = metadata
-            .as_deref()
-            .and_then(|m| m.title.as_deref())
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .map(str::to_owned)
-            .or_else(|| overrides.as_ref().and_then(|o| o.title.clone()).filter(|t| !t.is_empty()))
-            .unwrap_or_else(|| game.title.clone());
+        let BuildInputs { game, steam, overrides, meta, metadata, art, timestamp, sessions, favourite, recent, hidden, statuses } = input;
+        let title = display_title(&game, overrides.as_ref(), metadata.as_deref());
         let status_raw = meta.as_deref().and_then(|m| m.completion_status_id.clone()).filter(|s| !s.is_empty());
-        let steam_app_id = meta.as_deref().and_then(|m| m.steam_app_id.clone()).filter(|s| !s.is_empty());
-        let launch_kind = meta.as_deref().map(|m| m.launch_kind.clone()).filter(|s| !s.is_empty());
-        let steam_launch_id = if launch_kind.as_deref() == Some("steam-uri") { steam_app_id.clone() } else { None };
+        let via_steam = !game.is_installed && steam.as_ref().is_some_and(|s| s.installed);
+        let steam_app_id = meta
+            .as_deref()
+            .and_then(|m| m.steam_app_id.clone())
+            .filter(|s| !s.is_empty())
+            .or_else(|| steam.as_ref().map(|s| s.app_id.clone()));
+        let launch_kind = if via_steam {
+            Some("steam-uri".to_string())
+        } else {
+            meta.as_deref().map(|m| m.launch_kind.clone()).filter(|s| !s.is_empty())
+        };
+        let steam_launch_id = match &steam {
+            Some(s) if via_steam => Some(s.app_id.clone()),
+            _ if launch_kind.as_deref() == Some("steam-uri") => steam_app_id.clone(),
+            _ => None,
+        };
         let details = Details::compute(&game, meta.as_deref(), metadata.as_deref(), None, None);
-        let facets = game_facets(&game, metadata.as_deref());
+        let mut facets = game_facets(&game, metadata.as_deref());
+        facets[crate::collection::FacetKind::Store.index()] = crate::collection::store_facet(
+            meta.as_deref().map(|m| m.source.as_str()),
+            &game.runner,
+            meta.as_deref().is_some_and(|m| m.launch_kind == "steam-uri"),
+            steam.is_some(),
+        );
         let minutes = timestamp.map(|t| t.total_played.get()).filter(|m| *m > 0.0).unwrap_or(0.0);
         let non_empty = |s: &Option<String>| s.clone().filter(|v| !v.is_empty());
         Self {
@@ -150,7 +181,7 @@ impl CollectionGame {
             title_lower: title.to_lowercase(),
             title,
             source_label: source_label(meta.as_deref(), &game.runner),
-            installed: game.is_installed,
+            installed: game.is_installed || via_steam,
             status_id: resolve_status_id(status_raw.as_deref(), statuses),
             status_raw,
             playtime_minutes: minutes.round() as u64,
@@ -162,6 +193,8 @@ impl CollectionGame {
             launch_kind,
             steam_app_id,
             steam_launch_id,
+            steam_link: steam,
+            via_steam,
             details,
             facets,
             game: Arc::new(game),
@@ -189,6 +222,32 @@ impl CollectionGame {
         crate::collection::playtime_label(self.playtime_minutes)
     }
 
+    /// The game's own copy is installed (not only its Steam copy): what its
+    /// store's actions (update, verify, move, uninstall) go by.
+    pub fn store_installed(&self) -> bool {
+        self.installed && !self.via_steam
+    }
+
+    /// The Steam app id of the game's installed Steam copy, if any (a Steam
+    /// entry, or the Steam twin of another entry).
+    pub fn steam_installed_id(&self) -> Option<&str> {
+        match &self.steam_link {
+            Some(l) if l.installed => Some(&l.app_id),
+            Some(_) => None,
+            None => self.steam_launch_id.as_deref().filter(|_| self.installed),
+        }
+    }
+
+    /// Both copies are installed: the game plays its own, and Steam's on request.
+    pub fn steam_also_playable(&self) -> Option<&str> {
+        self.steam_link.as_ref().filter(|l| l.installed && self.store_installed()).map(|l| l.app_id.as_str())
+    }
+
+    /// The game is owned on Steam from another entry and Steam's copy is not installed.
+    pub fn steam_installable(&self) -> Option<&str> {
+        self.steam_link.as_ref().filter(|l| !l.installed).map(|l| l.app_id.as_str())
+    }
+
     /// The `runner` to store in the overlay for this game
     /// (`zoom` becomes `sideload`).
     pub fn overlay_runner(&self) -> &str {
@@ -198,6 +257,18 @@ impl CollectionGame {
             &self.runner
         }
     }
+}
+
+/// `collectionGameTitle`: Collection metadata title, else the Heroic
+/// override, else the store title.
+fn display_title(game: &GameInfo, overrides: Option<&GameOverride>, metadata: Option<&CollectionGameMetadata>) -> String {
+    metadata
+        .and_then(|m| m.title.as_deref())
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_owned)
+        .or_else(|| overrides.and_then(|o| o.title.clone()).filter(|t| !t.is_empty()))
+        .unwrap_or_else(|| game.title.clone())
 }
 
 pub fn metadata_key(runner: &str, app_name: &str) -> String {
@@ -318,6 +389,7 @@ fn stamp_files(paths: &DataPaths) -> Vec<PathBuf> {
         paths.sessions(),
         paths.timestamps(),
         paths.store_config(),
+        paths.steam_owned(),
     ]
 }
 
@@ -375,6 +447,85 @@ fn apply_installed(games: &mut [GameInfo], installed: Vec<InstalledGame>) {
 
 fn arcs<T>(map: indexmap::IndexMap<String, T>) -> HashMap<String, Arc<T>> {
     map.into_iter().map(|(k, v)| (k, Arc::new(v))).collect()
+}
+
+/// How the Steam library joins the list (see `steam_owned`).
+#[derive(Default)]
+struct SteamJoins {
+    /// Entry key → its Steam copy.
+    links: HashMap<String, SteamLink>,
+    /// Steam entries added by this app, never used, whose game has a twin.
+    gone: HashSet<String>,
+}
+
+/// The Steam app id a Steam entry (`steam-uri`) launches.
+fn steam_entry_id<'a>(game: &'a GameInfo, meta: Option<&'a LocalGameMeta>) -> Option<&'a str> {
+    let meta = meta.filter(|m| m.launch_kind == "steam-uri")?;
+    meta.steam_app_id.as_deref().filter(|s| !s.is_empty()).or_else(|| game.app_name.strip_prefix("steam_"))
+}
+
+fn steam_joins(
+    games: &[GameInfo],
+    owned: &SteamOwnedFile,
+    metas: &HashMap<String, Arc<LocalGameMeta>>,
+    metadatas: &HashMap<String, Arc<CollectionGameMetadata>>,
+    overrides: &indexmap::IndexMap<String, GameOverride>,
+    timestamps: &TimestampFile,
+    sessions: &HashMap<String, Arc<Vec<LocalGameSession>>>,
+    favourites: &HashSet<&str>,
+) -> SteamJoins {
+    if !owned.known() {
+        return SteamJoins::default();
+    }
+    let titles: Vec<String> = games
+        .iter()
+        .map(|g| display_title(g, overrides.get(&g.app_name), metadatas.get(&metadata_key(&g.runner, &g.app_name)).map(|m| &**m)))
+        .collect();
+    let keys: Vec<String> = games.iter().map(|g| format!("{}_{}", g.runner, g.app_name)).collect();
+    let candidates: Vec<Candidate<'_>> = games
+        .iter()
+        .enumerate()
+        .map(|(i, g)| {
+            let meta = metas.get(&g.app_name).map(|m| &**m);
+            let metadata = metadatas.get(&metadata_key(&g.runner, &g.app_name));
+            let steam_ids = [meta.and_then(|m| m.steam_app_id.as_deref()), metadata.and_then(|m| m.steam_app_id.as_deref())]
+                .into_iter()
+                .flatten()
+                .filter(|s| !s.is_empty())
+                .collect();
+            let browser = g.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("browser"));
+            Candidate {
+                key: &keys[i],
+                title: &titles[i],
+                steam_ids,
+                steam_entry: steam_entry_id(g, meta),
+                joinable: !browser && meta.is_none_or(|m| m.launch_kind != "emulator"),
+            }
+        })
+        .collect();
+    let mut twins = steam_owned::twins(&candidates, owned);
+    let mut gone = HashSet::new();
+    for (g, c) in games.iter().zip(&candidates) {
+        let Some(id) = c.steam_entry.filter(|id| twins.contains_key(*id)) else { continue };
+        let auto = metas.get(&g.app_name).is_some_and(|m| m.extra.get(steam_owned::AUTO_KEY) == Some(&Value::Bool(true)));
+        let played = timestamps.get(&g.app_name).is_some_and(|t| t.total_played.get() > 0.0)
+            || sessions.get(&g.app_name).is_some_and(|s| !s.is_empty())
+            || favourites.contains(g.app_name.as_str());
+        if auto && !played {
+            gone.insert(c.key.to_string());
+        } else {
+            // A Steam entry in use stays the Steam copy; the other entry stays apart.
+            twins.remove(id);
+        }
+    }
+    let links = twins
+        .into_iter()
+        .map(|(id, key)| {
+            let installed = owned.get(&id).is_some_and(|g| g.installed);
+            (key, SteamLink { app_id: id, installed })
+        })
+        .collect();
+    SteamJoins { links, gone }
 }
 
 impl Library {
@@ -461,19 +612,27 @@ impl Library {
             .chain(zoom_games);
 
         let mut seen: HashSet<String> = HashSet::new();
+        let kept: Vec<GameInfo> = all
+            .filter(|game| {
+                let is_hidden = hidden.contains(game.app_name.as_str());
+                game.install.is_dlc != Some(true)
+                    && (!is_hidden || include_hidden)
+                    && seen.insert(format!("{}_{}", game.runner, game.app_name))
+            })
+            .collect();
+        let owned = SteamOwnedFile::read(paths);
+        let joins = steam_joins(&kept, &owned, &metas, &metadatas, &overrides, &timestamps, &sessions, &favourites);
+
         let mut games: Vec<Arc<CollectionGame>> = Vec::new();
-        for game in all {
-            let is_hidden = hidden.contains(game.app_name.as_str());
-            if game.install.is_dlc == Some(true) || (is_hidden && !include_hidden) {
-                continue;
-            }
+        for game in kept {
             let key = format!("{}_{}", game.runner, game.app_name);
-            if !seen.insert(key) {
+            if joins.gone.contains(&key) {
                 continue;
             }
             let app = game.app_name.clone();
             let runner = game.runner.clone();
             games.push(Arc::new(CollectionGame::build(BuildInputs {
+                steam: joins.links.get(&key).cloned(),
                 overrides: overrides.get(&app).cloned(),
                 meta: metas.get(&app).cloned(),
                 metadata: metadatas.get(&metadata_key(&runner, &app)).cloned(),
@@ -482,7 +641,7 @@ impl Library {
                 sessions: sessions.get(&app).cloned(),
                 favourite: favourites.contains(app.as_str()),
                 recent: recent.contains(app.as_str()),
-                hidden: is_hidden,
+                hidden: hidden.contains(app.as_str()),
                 statuses: &statuses,
                 game,
             })));
@@ -534,6 +693,7 @@ pub(crate) mod tests_support {
         let statuses = crate::status::default_statuses();
         Arc::new(CollectionGame::build(BuildInputs {
             game: info,
+            steam: None,
             overrides: Some(overrides),
             meta: Some(Arc::new(meta)),
             metadata: Some(Arc::new(metadata)),
@@ -591,6 +751,7 @@ pub(crate) mod tests_support {
         let statuses = crate::status::default_statuses();
         Arc::new(CollectionGame::build(BuildInputs {
             game: info,
+            steam: None,
             overrides: None,
             meta,
             metadata,
@@ -688,6 +849,87 @@ mod tests {
         assert!(!lib.changed_on_disk());
         w(paths.store_config(), r#"{"games":{"hidden":[]}}"#);
         assert!(lib.changed_on_disk());
+    }
+
+    #[test]
+    fn steam_twins_join_other_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let w = |p: PathBuf, s: &str| {
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, s).unwrap();
+        };
+        w(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"steam_1","title":"Control","is_installed":true,"install":{}},
+              {"runner":"sideload","app_name":"steam_2","title":"Hades","install":{}},
+              {"runner":"sideload","app_name":"steam_3","title":"Celeste","install":{}},
+              {"runner":"sideload","app_name":"manual","title":"Celeste","install":{}},
+              {"runner":"sideload","app_name":"portal","title":"Portal","is_installed":true,"install":{}}]}"#,
+        );
+        w(
+            paths.legendary_library(),
+            r#"{"library":[{"runner":"legendary","app_name":"ctl","title":"Control Ultimate Edition","install":{}},
+                           {"runner":"legendary","app_name":"hds","title":"HADES™","install":{}}],
+                "__timestamp":{"library":"x"}}"#,
+        );
+        w(
+            paths.local_meta(),
+            r#"{"games":{
+              "steam_1":{"appName":"steam_1","runner":"sideload","launchKind":"steam-uri","steamAppId":"1","heroniteSteamAuto":true},
+              "steam_2":{"appName":"steam_2","runner":"sideload","launchKind":"steam-uri","steamAppId":"2","heroniteSteamAuto":true},
+              "steam_3":{"appName":"steam_3","runner":"sideload","launchKind":"steam-uri","steamAppId":"3"},
+              "ctl":{"appName":"ctl","runner":"legendary","steamAppId":"1"}}}"#,
+        );
+        w(
+            paths.steam_owned(),
+            r#"{"games":[{"appId":"1","name":"Control","installed":true},{"appId":"2","name":"Hades"},
+                         {"appId":"3","name":"Celeste"},{"appId":"4","name":"Portal","installed":false}],
+                "updatedAt":"2026-10-13T00:00:00Z"}"#,
+        );
+        let lib = Library::load(&paths).unwrap();
+        let keys: Vec<_> = lib.games.iter().map(|g| g.key.as_str()).collect();
+        // The untouched Steam entries of Control and Hades give way to the Epic games.
+        assert_eq!(keys, ["sideload_steam_3", "sideload_manual", "sideload_portal", "legendary_ctl", "legendary_hds"]);
+        let ctl = lib.get("legendary_ctl").unwrap();
+        assert_eq!(ctl.steam_link, Some(SteamLink { app_id: "1".into(), installed: true }));
+        assert!(ctl.via_steam && ctl.installed && !ctl.store_installed());
+        assert_eq!(ctl.launch_kind.as_deref(), Some("steam-uri"));
+        assert_eq!(ctl.steam_launch_id.as_deref(), Some("1"));
+        // Joined by its title.
+        let hds = lib.get("legendary_hds").unwrap();
+        assert_eq!(hds.steam_link, Some(SteamLink { app_id: "2".into(), installed: false }));
+        assert!(!hds.installed && hds.steam_launch_id.is_none());
+        assert_eq!(hds.steam_app_id.as_deref(), Some("2"));
+        // A Steam entry not added by this app stays the Steam copy.
+        assert!(lib.get("sideload_manual").unwrap().steam_link.is_none());
+        // The local game keeps its own copy and gets Steam's install.
+        let portal = lib.get("sideload_portal").unwrap();
+        assert!(portal.installed && !portal.via_steam && portal.store_installed());
+        assert_eq!(portal.steam_link.as_ref().map(|l| l.app_id.as_str()), Some("4"));
+
+        // The Store filter: own source, plus Steam for a game also owned there.
+        let stores = |key: &str| {
+            lib.get(key).unwrap().facets[crate::collection::FacetKind::Store.index()].iter().map(|i| i.value.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(stores("legendary_ctl"), ["Epic Games", "Steam"]);
+        assert_eq!(stores("sideload_steam_3"), ["Steam"]);
+        assert_eq!(stores("sideload_portal"), ["Added manually", "Steam"]);
+        let only_manual = crate::collection::filter_games(
+            &lib.games,
+            &crate::collection::ViewQuery {
+                facets: crate::collection::FacetFilters::default().toggled(crate::collection::FacetKind::Store, "added manually"),
+                ..Default::default()
+            },
+        );
+        assert_eq!(only_manual.iter().map(|g| g.key.as_str()).collect::<Vec<_>>(), ["sideload_manual", "sideload_portal"]);
+
+        // Played through its Steam entry: that one stays, and so does the Epic game.
+        w(paths.timestamps(), r#"{"steam_2":{"totalPlayed":5}}"#);
+        let lib = Library::load(&paths).unwrap();
+        assert!(lib.get("sideload_steam_2").is_some());
+        assert!(lib.get("legendary_hds").unwrap().steam_link.is_none());
     }
 
     #[test]

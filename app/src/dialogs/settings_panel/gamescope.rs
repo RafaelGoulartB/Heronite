@@ -55,7 +55,12 @@ impl SettingsPanel {
     ) -> Div {
         let g = self.gamescope();
         let current = g.get(field).and_then(Value::as_str).unwrap_or("").to_string();
-        let shown = table.iter().find(|(k, _)| *k == current).map(|(_, l)| tr(l).to_string()).unwrap_or(current.clone());
+        let shown = match table.iter().find(|(k, _)| *k == current) {
+            Some((_, l)) => tr(l).to_string(),
+            // A Steam line's gamescope without an upscaling filter.
+            None if current.is_empty() => tr!("None").to_string(),
+            None => current.clone(),
+        };
         let items = table.iter().map(|(k, l)| (SharedString::from(tr(l)), *k == current)).collect();
         self.select_row(id, Some(label), shown, items, false, cx, move |this, i, _, cx| {
             this.set_gamescope(field, Value::String(table[i].0.into()), cx)

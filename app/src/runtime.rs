@@ -130,7 +130,27 @@ impl GameRuntime {
             }
             opts.extra_args = rom.into_iter().collect();
         }
-        let plan = build_plan(&ctx, &SystemProbe, &game.game, game.meta.as_deref(), &opts);
+        let plan = match game.steam_launch_id.as_deref().filter(|_| game.via_steam) {
+            // Only its Steam copy is installed.
+            Some(app_id) => steam_plan(app_id),
+            None => build_plan(&ctx, &SystemProbe, &game.game, game.meta.as_deref(), &opts),
+        };
+        self.start(game, plan)
+    }
+
+    /// "Play with Steam": the Steam copy of a game whose own copy is installed too.
+    pub fn play_with_steam(&self, game: &CollectionGame) -> Result<(), String> {
+        let app_id = game.steam_also_playable().ok_or_else(|| tr!("This game has no Steam copy installed.").to_string())?;
+        self.start(game, steam_plan(app_id)).map(|_| ())
+    }
+
+    /// Opens Steam's install of the game's Steam copy.
+    pub fn install_with_steam(&self, app_id: &str) -> Result<(), String> {
+        open_steam_client_uri(&SystemSpawner::default(), &SystemProbe, SteamAction::Install, app_id)
+    }
+
+    /// Starts `plan` as `game`'s session; the ROM it runs, for emulated games.
+    fn start(&self, game: &CollectionGame, plan: LaunchPlan) -> Result<Option<String>, String> {
         if let LaunchPlan::Unavailable(reason) = &plan {
             return Err(reason.clone());
         }
@@ -184,6 +204,14 @@ impl GameRuntime {
             _ => tr!("This game has no install action.").into(),
         })
     }
+}
+
+/// Opens `app_id` through the Steam client.
+fn steam_plan(app_id: &str) -> LaunchPlan {
+    if heronite_launch::steam::find_steam_binary(&SystemProbe).is_none() {
+        return LaunchPlan::Unavailable(tr!("Steam client was not found on PATH").into());
+    }
+    LaunchPlan::SteamUri { app_id: app_id.to_string(), uri: heronite_launch::steam::steam_uri("rungameid", app_id) }
 }
 
 fn session_info(game: &CollectionGame, rom: Option<String>) -> SessionInfo {

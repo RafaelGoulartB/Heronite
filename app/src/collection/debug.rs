@@ -10,7 +10,7 @@ use super::{context_menu, CollectionView};
 
 impl CollectionView {
     /// `HERONITE_DEBUG_MENU=<card key>` opens its context menu (with the
-    /// status flyout), `HERONITE_DEBUG_DROPDOWN=view|nav|facets`
+    /// status flyout), `HERONITE_DEBUG_DROPDOWN=view|nav|facets|stores`
     /// opens a header menu, `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
     /// the first render that has a window (`open_pending_debug_dialog`).
     pub(super) fn apply_debug_env(&mut self) {
@@ -33,6 +33,10 @@ impl CollectionView {
                     self.facet_flyout = Some(FacetKind::Developer);
                     Some(Menu::View)
                 }
+                "stores" => {
+                    self.facet_flyout = Some(FacetKind::Store);
+                    Some(Menu::View)
+                }
                 _ => None,
             };
         }
@@ -47,12 +51,17 @@ impl CollectionView {
             }
             "statuses" => self.open_manage_statuses(window, cx),
             "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
-            // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves
-            w
-            @ ("gamesettings:wine" | "gamesettings:other" | "gamesettings:advanced" | "gamesettings:gamescope" | "gamesettings:saves") => {
+            // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves|proton
+            w @ ("gamesettings:wine"
+            | "gamesettings:other"
+            | "gamesettings:advanced"
+            | "gamesettings:gamescope"
+            | "gamesettings:saves"
+            | "gamesettings:proton") => {
                 use crate::dialogs::game_settings::Tab;
                 let tab = match w {
                     "gamesettings:wine" => Tab::Wine,
+                    "gamesettings:proton" => Tab::Proton,
                     "gamesettings:other" => Tab::Other,
                     "gamesettings:advanced" => Tab::Advanced,
                     "gamesettings:saves" => Tab::Saves,

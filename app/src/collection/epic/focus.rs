@@ -167,7 +167,7 @@ impl CollectionView {
         }
         // EA app / Ubisoft Connect keep their games: legendary cannot import,
         // update, verify or move them (Heroic hides these too).
-        if !game.installed {
+        if !game.store_installed() {
             // Otherwise it is in the Install submenu (`install_options`).
             if !third_party && !crate::collection::install_options::has_more_ways(game) {
                 v.push(item(

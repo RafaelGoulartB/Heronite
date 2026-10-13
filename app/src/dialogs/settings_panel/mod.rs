@@ -19,6 +19,7 @@ mod parts;
 mod prefix_menu;
 mod saves;
 mod shared_folders;
+mod steam;
 mod wine;
 
 use std::collections::HashMap;
@@ -57,6 +58,8 @@ enum Bind {
     Gamescope { field: &'static str, digits: bool },
     /// Scratch input (a "new row" form), never saved by itself.
     Scratch,
+    /// A Steam game's launch options as text (saved on Enter or blur).
+    SteamLine,
 }
 
 const fn s(key: &'static str) -> Bind {
@@ -92,6 +95,7 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("env.value", Bind::Scratch, n_!("VALUE")),
     ("wrap.exe", Bind::Scratch, n_!("New Wrapper")),
     ("wrap.args", Bind::Scratch, n_!("Wrapper Arguments")),
+    ("steamLine", Bind::SteamLine, n_!("Empty: Steam's defaults")),
 ];
 
 /// Outcome line shown under a tab (tool started, sync result, errors).
@@ -150,6 +154,8 @@ pub struct SettingsPanel {
     pub(super) runtimes: (bool, bool),
     pub(super) env_error: String,
     pub(super) saves: SavesState,
+    /// Steam games: what Steam has (the settings map mirrors its launch options).
+    steam: Option<steam::SteamState>,
     debounce: HashMap<&'static str, Task<()>>,
     queue: Vec<(String, Value)>,
     writing: bool,
@@ -159,24 +165,29 @@ pub struct SettingsPanel {
 impl SettingsPanel {
     pub fn new(paths: DataPaths, target: Target, section: Section, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+        let steam_app = match &target {
+            Target::Game(f) => f.steam_app_id.clone(),
+            Target::Defaults => None,
+        };
         let settings = match &target {
+            // Filled from Steam once it is read.
+            _ if steam_app.is_some() => heronite_steam::options::defaults(),
             Target::Game(f) => game_config::load_game(&paths, &f.app_name, &home),
             Target::Defaults => game_config::load_global(&paths, &home),
         };
         let mut inputs = HashMap::new();
         let mut subs = Vec::new();
         for (id, bind, placeholder) in INPUTS {
-            let initial = match bind {
-                Bind::Str { key, .. } | Bind::Digits { key } => value_text(settings.get(*key)),
-                Bind::Gamescope { field, .. } => value_text(settings.get("gamescope").and_then(|g| g.get(*field))),
-                Bind::Scratch => String::new(),
-            };
+            let initial = bound_text(&settings, bind);
             let input = new_input(window, cx, &initial, tr(placeholder));
             if !matches!(bind, Bind::Scratch) {
                 let id: &'static str = id;
                 let digits = matches!(bind, Bind::Gamescope { digits: true, .. } | Bind::Digits { .. });
                 subs.push(cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, window, cx| match ev {
                     InputEvent::Change => {
+                        if matches!(bind, Bind::SteamLine) {
+                            return;
+                        }
                         if digits {
                             let text = state.read(cx).value().to_string();
                             let clean = logic::digits_only(&text);
@@ -218,6 +229,7 @@ impl SettingsPanel {
             runtimes,
             env_error: String::new(),
             saves: SavesState::default(),
+            steam: steam_app.map(steam::SteamState::new),
             debounce: HashMap::new(),
             queue: Vec::new(),
             writing: false,
@@ -226,6 +238,11 @@ impl SettingsPanel {
             console_active: true,
             _subs: subs,
         };
+        if this.is_steam() {
+            // Debug settings are applied once Steam was read.
+            this.load_steam(cx);
+            return this;
+        }
         this.load_wine_list(cx);
         if this.facts().is_some_and(|f| f.is_gog()) {
             // A manual sync runs in the service: redraw when it starts and ends.
@@ -236,21 +253,24 @@ impl SettingsPanel {
             this.load_prefix_list(cx);
         }
         this.maybe_detect_saves(window, cx);
-        // Debug: HERONITE_DEBUG_SETTINGS_SET='key=<json or text>,gamescope.field=<value>' saves values as if
-        // the user had changed them (exercises the write path without clicks).
-        if let Some(spec) = crate::env::value("HERONITE_DEBUG_SETTINGS_SET") {
-            for pair in spec.split(',') {
-                if let Some((k, v)) = pair.split_once('=') {
-                    // JSON when it parses, else a plain string (no quotes through the shell).
-                    let value = serde_json::from_str::<Value>(v).unwrap_or_else(|_| Value::String(v.to_string()));
-                    match k.trim().strip_prefix("gamescope.") {
-                        Some(field) => this.set_gamescope(field, value, cx),
-                        None => this.set(k.trim(), value, cx),
-                    }
+        this.apply_debug_settings(cx);
+        this
+    }
+
+    /// Debug: HERONITE_DEBUG_SETTINGS_SET='key=<json or text>,gamescope.field=<value>' saves values as if
+    /// the user had changed them (exercises the write path without clicks).
+    fn apply_debug_settings(&mut self, cx: &mut Context<Self>) {
+        let Some(spec) = crate::env::value("HERONITE_DEBUG_SETTINGS_SET") else { return };
+        for pair in spec.split(',') {
+            if let Some((k, v)) = pair.split_once('=') {
+                // JSON when it parses, else a plain string (no quotes through the shell).
+                let value = serde_json::from_str::<Value>(v).unwrap_or_else(|_| Value::String(v.to_string()));
+                match k.trim().strip_prefix("gamescope.") {
+                    Some(field) => self.set_gamescope(field, value, cx),
+                    None => self.set(k.trim(), value, cx),
                 }
             }
         }
-        this
     }
 
     /// Switches tab (closing open menus).
@@ -341,6 +361,9 @@ impl SettingsPanel {
     pub(super) fn set(&mut self, key: &str, value: Value, cx: &mut Context<Self>) {
         if self.settings.get(key) == Some(&value) {
             return;
+        }
+        if self.is_steam() {
+            return self.steam_set(key, value, cx);
         }
         self.settings.insert(key.to_string(), value.clone());
         self.queue.push((key.to_string(), value));
@@ -434,7 +457,21 @@ impl SettingsPanel {
                     self.set_gamescope(field, Value::String(v), cx);
                 }
             }
+            Bind::SteamLine => self.steam_commit_line(raw, cx),
             Bind::Scratch => {}
+        }
+    }
+
+    /// Shows the current settings in every bound input (after the map was
+    /// replaced, like a Steam read).
+    fn reload_inputs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for (id, bind, _) in INPUTS {
+            if !matches!(bind, Bind::Scratch | Bind::SteamLine) {
+                let text = bound_text(&self.settings, bind);
+                if self.input_text(id, cx) != text {
+                    self.set_input(id, &text, window, cx);
+                }
+            }
         }
     }
 
@@ -457,6 +494,15 @@ impl SettingsPanel {
     }
 }
 
+/// What input `bind` shows for `settings`.
+fn bound_text(settings: &Settings, bind: &Bind) -> String {
+    match bind {
+        Bind::Str { key, .. } | Bind::Digits { key } => value_text(settings.get(*key)),
+        Bind::Gamescope { field, .. } => value_text(settings.get("gamescope").and_then(|g| g.get(*field))),
+        Bind::Scratch | Bind::SteamLine => String::new(),
+    }
+}
+
 pub(super) fn value_text(v: Option<&Value>) -> String {
     match v {
         Some(Value::String(s)) => s.clone(),
@@ -467,10 +513,15 @@ pub(super) fn value_text(v: Option<&Value>) -> String {
 
 impl Render for SettingsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_steam_inputs(window, cx);
         if crate::console::active() {
             return self.render_console(window, cx);
         }
         let content = match self.section {
+            Section::Proton => self.proton_tab(cx),
+            Section::Other if self.is_steam() => self.steam_other_tab(cx),
+            Section::Advanced if self.is_steam() => self.steam_advanced_tab(cx),
+            Section::Gamescope if self.is_steam() => self.steam_gamescope_tab(cx),
             Section::General => self.general_tab(window, cx),
             Section::Wine => self.wine_tab(window, cx),
             Section::Other => self.other_tab(cx),

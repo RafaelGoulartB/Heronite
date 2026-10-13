@@ -30,7 +30,7 @@ impl CollectionView {
         }
         // EA app / Ubisoft Connect keep their games: legendary cannot import,
         // update, verify or move them (Heroic hides these too).
-        if !game.installed {
+        if !game.store_installed() {
             if !flags.third_party {
                 rows.push(Row::action("epic:import", tr!("Import an existing install")).icon(Icon::FolderOpen));
             }
