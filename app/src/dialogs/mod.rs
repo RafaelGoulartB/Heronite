@@ -26,6 +26,7 @@ pub mod ludusavi_backup;
 pub mod manage_statuses;
 pub mod metadata;
 pub mod metadata_wizard;
+pub mod onboarding;
 pub mod pick_rom;
 pub mod playtime;
 pub mod quit_confirm;
