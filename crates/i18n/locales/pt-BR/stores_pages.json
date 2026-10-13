@@ -27,6 +27,11 @@
   "Your account and library.": "Sua conta e biblioteca.",
   "Stores": "Lojas",
   "{n} of {total} signed in": "{n} de {total} conectadas",
+  "Play with Steam": "Jogar pela Steam",
   "Steam is not running. Open Steam to read your library.": "A Steam não está aberta. Abra a Steam para ler sua biblioteca.",
-  "Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once.": "A Steam está aberta sem o acesso que o Heronite precisa para ler sua biblioteca. Esse acesso foi ligado para a próxima vez que a Steam abrir: reinicie a Steam uma vez."
+  "Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once.": "A Steam está aberta sem o acesso que o Heronite precisa para ler sua biblioteca. Esse acesso foi ligado para a próxima vez que a Steam abrir: reinicie a Steam uma vez.",
+  "This game has no Steam copy installed.": "Este jogo não está instalado pela Steam.",
+  "Uninstall from Steam": "Desinstalar da Steam",
+  "Uninstall from Steam…": "Desinstalar da Steam…",
+  "You own it on Steam too": "Você também tem na Steam"
 }

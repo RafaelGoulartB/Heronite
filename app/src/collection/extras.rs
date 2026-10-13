@@ -289,11 +289,11 @@ impl CollectionView {
         self.open_dialog(view, cx);
     }
 
-    /// Uninstall of a Steam game: asks, then opens Steam's uninstall page
+    /// Uninstall of a Steam game (or of a game's Steam copy): asks, then opens Steam's uninstall page
     /// (`steam://uninstall/<id>`). The game stays in the Collection.
     pub(super) fn open_steam_uninstall(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
-        let Some(app_id) = game.steam_launch_id.clone() else { return };
+        let Some(app_id) = game.steam_installed_id().map(str::to_string) else { return };
         let mut spec = Confirm::new("steam-uninstall", tr!("Uninstall"), steam_uninstall_message(&game.title));
         spec.confirm = Some(tr!("Yes").into());
         let weak = cx.entity().downgrade();

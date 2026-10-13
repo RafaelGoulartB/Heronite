@@ -3,6 +3,7 @@
 //! the arrow next to it lists the rest:
 //!
 //! * the store's own install, and Epic's "Import game";
+//! * "Install with Steam" for a game also owned on Steam (its Steam twin);
 //! * "Install manually": the Add game dialog in [`Mode::Install`] with the
 //!   game's title and art filled in, so only the files are left to choose
 //!   (run a setup program in a prefix, or pick an existing executable).
@@ -51,6 +52,12 @@ pub(super) fn has_more_ways(game: &CollectionGame) -> bool {
     can_install_manually(game) && store_install_label(game).is_some()
 }
 
+/// Steam's install is a way of its own: the game is owned on Steam and its
+/// store installs it some other way.
+pub(super) fn steam_way(game: &CollectionGame) -> bool {
+    !game.installed && game.steam_installable().is_some() && store_install_label(game) != Some(tr!("Install with Steam"))
+}
+
 /// One way to install, as listed by the arrow and the context submenu.
 struct Way {
     id: &'static str,
@@ -64,6 +71,7 @@ struct Way {
 pub(super) enum WayKind {
     Store,
     EpicImport,
+    Steam,
     Manual,
 }
 
@@ -119,6 +127,15 @@ impl CollectionView {
             };
             ways.push(Way { id: "import", icon: Icon::FolderOpen, label: tr!("Import game"), desc, kind: WayKind::EpicImport });
         }
+        if steam_way(game) {
+            ways.push(Way {
+                id: "steam",
+                icon: Icon::SportsEsports,
+                label: tr!("Install with Steam"),
+                desc: tr!("You own it on Steam too"),
+                kind: WayKind::Steam,
+            });
+        }
         if can_install_manually(game) {
             ways.push(Way {
                 id: "manual",
@@ -160,6 +177,7 @@ impl CollectionView {
         match kind {
             WayKind::Store => self.primary_action(key, cx),
             WayKind::EpicImport => self.epic.pending = Some(Request::Install { key: key.to_string(), import: true }),
+            WayKind::Steam => self.install_with_steam(key, cx),
             WayKind::Manual => self.open_manual_install(key, window, cx),
         }
         cx.notify();

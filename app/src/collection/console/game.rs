@@ -55,6 +55,13 @@ impl CollectionView {
             && super::super::install_options::can_install_manually(g)
             && super::super::install_options::store_install_label(g).is_some()
         {
+            if super::super::install_options::steam_way(g) {
+                rows.push(
+                    Row::action("x:steam-install", tr!("Install with Steam"))
+                        .icon(Icon::SportsEsports)
+                        .desc(tr!("You own it on Steam too")),
+                );
+            }
             rows.push(
                 Row::action("x:manual-install", tr!("Install manually\u{2026}"))
                     .icon(Icon::Edit)
@@ -104,8 +111,15 @@ impl CollectionView {
         if g.runner == "sideload" && !playing && !matches!(g.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
             manage.push(Row::action("x:edit", tr!("Edit game")).icon(Icon::Edit));
         }
-        if g.steam_launch_id.is_some() && g.installed && !playing {
-            manage.push(Row::action("x:steam-uninstall", tr!("Uninstall\u{2026}")).icon(Icon::DeleteForever).danger());
+        if !playing && g.steam_also_playable().is_some() {
+            manage.push(Row::action("x:steam-play", tr!("Play with Steam")).icon(Icon::PlayArrow));
+        }
+        if !playing && g.installed && g.steam_installable().is_some() {
+            manage.push(Row::action("x:steam-install", tr!("Install with Steam")).icon(Icon::Download));
+        }
+        if g.steam_installed_id().is_some() && g.installed && !playing {
+            let label = if g.steam_also_playable().is_some() { tr!("Uninstall from Steam\u{2026}") } else { tr!("Uninstall\u{2026}") };
+            manage.push(Row::action("x:steam-uninstall", label).icon(Icon::DeleteForever).danger());
         }
         if !playing && super::super::sideload_uninstall::can_uninstall_local(g) {
             manage.push(Row::action("x:local-uninstall", tr!("Uninstall\u{2026}")).icon(Icon::DeleteForever).danger());
@@ -271,6 +285,8 @@ impl CollectionView {
                 "x:manual-install" => self.open_manual_install(key, window, cx),
                 "x:ludusavi" => self.open_ludusavi_backup(key, cx),
                 "x:steam-uninstall" => self.open_steam_uninstall(key, window, cx),
+                "x:steam-play" => self.play_with_steam(key, cx),
+                "x:steam-install" => self.install_with_steam(key, cx),
                 "x:local-uninstall" => self.open_sideload_uninstall(key, window, cx),
                 "x:remove" => self.open_remove_game(key, cx),
                 "x:edit" => {

@@ -151,7 +151,7 @@ pub(super) fn card_overlay(e: &CardEpic) -> Div {
 /// is known when the sync runs).
 pub(super) fn has_cloud_saves(game: &CollectionGame) -> bool {
     match game.runner.as_str() {
-        "gog" => game.installed && game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("windows")),
+        "gog" => game.store_installed() && game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("windows")),
         "legendary" => game.game.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false),
         _ => false,
     }
@@ -235,7 +235,7 @@ impl CollectionView {
     /// The store can import an existing install of `game` (not EA app /
     /// Ubisoft Connect games, which live in their store's prefix).
     pub(super) fn epic_can_import(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> bool {
-        if !is_store_runner(&game.runner) || game.installed {
+        if !is_store_runner(&game.runner) || game.store_installed() {
             return false;
         }
         let svc = self.epic_service(cx);
