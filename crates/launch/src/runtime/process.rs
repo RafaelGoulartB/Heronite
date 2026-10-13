@@ -111,7 +111,8 @@ pub(super) fn run_process(
     // Redistributables, EOS overlay and known fixes the first time the game
     // runs in this prefix.
     let epic = shared.epic.lock().unwrap().clone();
-    match prep.first_launch(&plan.prep, epic.as_deref()) {
+    let store = shared.store_setup.lock().unwrap().clone();
+    match prep.first_launch(&plan.prep, epic.as_deref(), store.as_deref()) {
         Flow::Go => {}
         Flow::Cancelled => return finish_aborted(shared, log, req, t0),
         Flow::Fail(message) => return fail(shared, log, req, message),

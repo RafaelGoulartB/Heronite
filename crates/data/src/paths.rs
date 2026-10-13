@@ -145,6 +145,27 @@ impl DataPaths {
     pub fn gog_installed(&self) -> PathBuf {
         self.j("gog_store/installed.json")
     }
+    /// gogdl's tokens (`--auth-config-path`).
+    pub fn gog_auth(&self) -> PathBuf {
+        self.j("gog_store/auth.json")
+    }
+    /// `GOGDL_CONFIG_PATH`: gogdl keeps its manifests and support files in
+    /// `heroic_gogdl/` under it.
+    pub fn gogdl_config_dir(&self) -> PathBuf {
+        self.j("gogdlConfig")
+    }
+    /// GOG's shared redistributables (`gogdl redist`).
+    pub fn gog_redist_dir(&self) -> PathBuf {
+        self.j("tools/redist/gog")
+    }
+    /// `NILE_CONFIG_PATH`: nile keeps its files in `nile/` under it.
+    pub fn nile_config_dir(&self) -> PathBuf {
+        self.j("nile_config")
+    }
+    /// `nile_store/<name>.json`.
+    pub fn nile_store(&self, name: &str) -> PathBuf {
+        self.j("nile_store").join(format!("{name}.json"))
+    }
     pub fn zoom_installed(&self) -> PathBuf {
         self.j("zoom_store/installed.json")
     }

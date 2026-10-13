@@ -29,6 +29,8 @@ pub fn build_plan_with_settings(
     let mut plan = match game.runner.as_str() {
         "sideload" => build_sideload(ctx, probe, game, meta, settings, opts),
         "legendary" => crate::legendary::build(ctx, probe, game, settings, opts),
+        "gog" => crate::gog::build(ctx, probe, game, settings, opts),
+        "nile" => crate::nile::build(ctx, probe, game, settings, opts),
         other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),
     };
     crate::scripts::attach(&mut plan, probe, game, settings);
@@ -81,7 +83,7 @@ fn first_existing<'a>(probe: &dyn Probe, paths: &[Option<&'a str>]) -> Option<&'
     paths.iter().flatten().copied().find(|p| !p.is_empty() && probe.exists(p))
 }
 
-fn split_args(s: &str) -> Vec<String> {
+pub(crate) fn split_args(s: &str) -> Vec<String> {
     shlex::split(s).unwrap_or_else(|| s.split_whitespace().map(str::to_string).collect())
 }
 
@@ -111,8 +113,21 @@ fn executable_plan(
         return crate::wine::build_wine_plan(ctx, probe, game, settings, &executable, &extra);
     }
 
-    // Linux program: Heroic's wrappers and environment, no Wine.
-    if !probe.exists(&executable) {
+    native_plan(ctx, probe, game, settings, &executable, extra, "sideload")
+}
+
+/// A Linux program started directly: Heroic's wrappers and environment, no
+/// Wine. `runner` is the store named in the `HEROIC_APP_*` variables.
+pub(crate) fn native_plan(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    game: &GameInfo,
+    settings: &GameSettings,
+    executable: &str,
+    extra: Vec<String>,
+    runner: &str,
+) -> LaunchPlan {
+    if !probe.exists(executable) {
         return LaunchPlan::Unavailable(tr!("Executable not found: {executable}", executable));
     }
     let umu = settings.steam_runtime.as_ref().map(|_| crate::wine::umu_path(ctx, probe));
@@ -121,17 +136,17 @@ fn executable_plan(
     if let Some(err) = wp.error {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
-    let mut env = setup_wrapper_env_vars(&game.app_name, "sideload");
+    let mut env = setup_wrapper_env_vars(&game.app_name, runner);
     env.extend(setup_env_vars(settings, game.install.install_path.as_deref(), probe));
 
     let mut parts = wp.wrappers;
-    parts.push(executable.clone());
+    parts.push(executable.to_string());
     parts.extend(extra);
     let program = parts.remove(0);
     LaunchPlan::Native(ProcessPlan {
-        command: Command { program, args: parts, env, cwd: Some(node_dirname(&executable)) },
-        stop: StopSpec { kill_patterns: vec![node_basename(&executable)], commands: vec![] },
-        make_executable: (!probe.is_executable(&executable)).then(|| executable.clone()),
+        command: Command { program, args: parts, env, cwd: Some(node_dirname(executable)) },
+        stop: StopSpec { kill_patterns: vec![node_basename(executable)], commands: vec![] },
+        make_executable: (!probe.is_executable(executable)).then(|| executable.to_string()),
         prep: PrepSpec { umu: umu_missing, ..Default::default() },
         ..Default::default()
     })

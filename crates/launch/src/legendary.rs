@@ -6,7 +6,7 @@ use heronite_i18n::tr;
 use serde_json::Value;
 
 use crate::env::{build_wrappers, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
-use crate::plan::{Command, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
+use crate::plan::{CloudSaves, Command, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
 use crate::probe::Probe;
 use crate::settings::GameSettings;
 use crate::wine;
@@ -29,13 +29,14 @@ pub fn find_legendary(ctx: &PlanContext, probe: &dyn Probe) -> Option<String> {
     legendary_candidates(ctx, probe).into_iter().find(|p| probe.exists(p)).or_else(|| probe.which("legendary"))
 }
 
-/// Heroic's `known_fixes.json` env variables for an Epic game.
-fn known_fixes_env(ctx: &PlanContext, app_name: &str) -> Env {
+/// Heroic's `known_fixes.json` env variables for a game of `store`
+/// (`epic`, `gog`, `amazon`).
+pub(crate) fn known_fixes_env(ctx: &PlanContext, store: &str, app_name: &str) -> Env {
     let mut env = Env::new();
     let fixes = ctx
         .known_fixes
         .as_ref()
-        .and_then(|k| k.get("epic"))
+        .and_then(|k| k.get(store))
         .and_then(|e| e.get(app_name))
         .and_then(|f| f.get("envVariables"))
         .and_then(Value::as_object);
@@ -51,9 +52,9 @@ fn known_fixes_env(ctx: &PlanContext, app_name: &str) -> Env {
 }
 
 /// `known_fixes.json` entries that change the prefix: the winetricks verbs
-/// and the programs to run in it (`installFixes`).
-pub fn known_fixes_steps(ctx: &PlanContext, app_name: &str) -> (Vec<String>, Vec<String>) {
-    let entry = ctx.known_fixes.as_ref().and_then(|k| k.get("epic")).and_then(|e| e.get(app_name));
+/// and the programs to run in it (`installFixes`), for a game of `store`.
+pub fn known_fixes_steps(ctx: &PlanContext, store: &str, app_name: &str) -> (Vec<String>, Vec<String>) {
+    let entry = ctx.known_fixes.as_ref().and_then(|k| k.get(store)).and_then(|e| e.get(app_name));
     let list = |key: &str| -> Vec<String> {
         entry
             .and_then(|f| f.get(key))
@@ -64,8 +65,9 @@ pub fn known_fixes_steps(ctx: &PlanContext, app_name: &str) -> (Vec<String>, Vec
     (list("winetricks"), list("runInPrefix"))
 }
 
-fn cached_umu_id(ctx: &PlanContext, app_name: &str) -> Option<String> {
-    ctx.umu_ids.as_ref()?.get(format!("legendary_{app_name}"))?.as_str().filter(|s| !s.is_empty()).map(str::to_string)
+/// The umu id cached for `<runner>_<appName>`.
+pub(crate) fn cached_umu_id(ctx: &PlanContext, runner: &str, app_name: &str) -> Option<String> {
+    ctx.umu_ids.as_ref()?.get(format!("{runner}_{app_name}"))?.as_str().filter(|s| !s.is_empty()).map(str::to_string)
 }
 
 fn flag(rest: &heronite_data::models::Extra, key: &str) -> bool {
@@ -106,10 +108,10 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     // Environment, later entries win (same order as Heroic).
     let mut env = setup_wrapper_env_vars(app, "legendary");
     env.extend(setup_env_vars(s, Some(install_path), probe));
-    env.extend(known_fixes_env(ctx, app));
+    env.extend(known_fixes_env(ctx, "epic", app));
     env.extend(setup_wine_env_vars(s, game.folder_name.as_deref().unwrap_or("0"), &ctx.runtime_dir(), probe));
     if wine.umu.is_some() {
-        if let Some(id) = cached_umu_id(ctx, app) {
+        if let Some(id) = cached_umu_id(ctx, "legendary", app) {
             env.insert("GAMEID".into(), id);
         }
     }
@@ -170,11 +172,12 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     // and there is a folder to sync.
     let mut prep = wine.prep_spec();
     if s.auto_sync_saves && !s.saves_path.trim().is_empty() {
-        prep.cloud_saves = Some(s.saves_path.clone());
+        prep.cloud_saves = Some(CloudSaves::new("legendary", &s.saves_path));
     }
     // Redistributables, EOS overlay and known fixes: once per game and prefix.
-    let (winetricks, run_in_prefix) = known_fixes_steps(ctx, app);
+    let (winetricks, run_in_prefix) = known_fixes_steps(ctx, "epic", app);
     prep.first_launch = Some(FirstLaunch {
+        runner: "legendary".into(),
         app_name: app.to_string(),
         install_path: install_path.to_string(),
         platform: game.install.platform.clone().unwrap_or_default(),
@@ -182,6 +185,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
         ubisoft_managed: flag(&game.rest, "isUbisoftManaged"),
         winetricks,
         run_in_prefix,
+        post_install: Vec::new(),
     });
     LaunchPlan::Legendary {
         app_name: app.to_string(),
@@ -377,7 +381,7 @@ mod tests {
         let no_path = legendary_process(&p, &settings(json!({"autoSyncSaves": true, "savesPath": "  "})), &Default::default());
         assert_eq!(no_path.prep.cloud_saves, None);
         let on = legendary_process(&p, &settings(json!({"autoSyncSaves": true, "savesPath": "/saves"})), &Default::default());
-        assert_eq!(on.prep.cloud_saves.as_deref(), Some("/saves"));
+        assert_eq!(on.prep.cloud_saves, Some(CloudSaves::new("legendary", "/saves")));
         // The Wine side of the preparation travels with the plan.
         let wine = on.prep.wine.as_ref().unwrap();
         assert_eq!(wine.wine_prefix, "/pfx");

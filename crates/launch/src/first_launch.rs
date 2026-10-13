@@ -12,6 +12,9 @@
 //!   prerequisites (`manifest.prerequisites` of `legendary info`), the EA App
 //!   / Ubisoft Connect installers for third-party managed games, and turning
 //!   the EOS Overlay on for the prefix when it is installed (Linux);
+//! * GOG and Amazon Games: the store's installers for the game (Amazon's
+//!   `fuel.json` `PostInstall`; GOG's redistributables and install scripts,
+//!   through [`StoreSetup`]);
 //! * the game's `known_fixes.json` entry: winetricks verbs and programs to run
 //!   in the prefix.
 //!
@@ -23,7 +26,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::env::join;
-use crate::plan::{FirstLaunch, PlanContext, PrepSpec};
+use crate::plan::{FirstLaunch, PlanContext, PrepSpec, SetupStep};
 use crate::prepare::{run_wait, Flow, Notice, Prep};
 use crate::settings::GameSettings;
 use crate::wine_tools::{wine_command_for, winetricks_install_command, winetricks_path};
@@ -52,6 +55,15 @@ pub trait EpicSetup: Send + Sync {
     fn eos_overlay_enabled(&self, prefix: &str) -> bool;
     /// `eos_overlay.enable(appName)` for a valid prefix folder.
     fn eos_overlay_enable(&self, prefix: &str) -> Result<(), String>;
+}
+
+/// What the setup needs from the GOG side (redistributables, the game's
+/// install scripts), implemented by the app because the store crates depend
+/// on this one.
+pub trait StoreSetup: Send + Sync {
+    /// Programs to run in the prefix the first time `app_name` of `runner`
+    /// starts there. Blocking; may download (`Err` = try again next launch).
+    fn steps(&self, runner: &str, app_name: &str, install_path: &str) -> Result<Vec<SetupStep>, String>;
 }
 
 /// The app names in the `installed_games` file of `prefix` (empty when the
@@ -96,7 +108,7 @@ pub fn eos_prefix_folder(settings: &GameSettings, exists: &dyn Fn(&str) -> bool)
 
 impl Prep<'_> {
     /// Runs the first-launch work if the prefix has not seen this game.
-    pub fn first_launch(&self, spec: &PrepSpec, epic: Option<&dyn EpicSetup>) -> Flow {
+    pub fn first_launch(&self, spec: &PrepSpec, epic: Option<&dyn EpicSetup>, store: Option<&dyn StoreSetup>) -> Flow {
         let (Some(fl), Some(settings)) = (&spec.first_launch, &spec.wine) else { return Flow::Go };
         let prefix = settings.wine_prefix.trim();
         if prefix.is_empty() {
@@ -108,9 +120,12 @@ impl Prep<'_> {
         let ctx = PlanContext::load(self.paths);
         // Set when a step could not even be run (so the setup is not done).
         let incomplete = Cell::new(false);
-        match self.epic_setup(&ctx, settings, fl, epic, &incomplete) {
-            Flow::Go => {}
-            other => return other,
+        let setup = match fl.runner.as_str() {
+            "gog" | "nile" => self.store_setup(&ctx, settings, fl, store, &incomplete),
+            _ => self.epic_setup(&ctx, settings, fl, epic, &incomplete),
+        };
+        if setup != Flow::Go {
+            return setup;
         }
         let flow = self.install_fixes(&ctx, settings, fl, &incomplete);
         if flow == Flow::Go {
@@ -257,6 +272,52 @@ impl Prep<'_> {
         go(self)
     }
 
+    /// The installers of a GOG or Amazon game: Amazon's are in the plan,
+    /// GOG's come from `store`.
+    fn store_setup(
+        &self,
+        ctx: &PlanContext,
+        settings: &GameSettings,
+        fl: &FirstLaunch,
+        store: Option<&dyn StoreSetup>,
+        incomplete: &Cell<bool>,
+    ) -> Flow {
+        let mut steps = fl.post_install.clone();
+        if let Some(store) = store {
+            match store.steps(&fl.runner, &fl.app_name, &fl.install_path) {
+                Ok(more) => steps.extend(more),
+                Err(e) => {
+                    self.notice(Notice::warn(
+                        format!("Could not prepare the game's installers: {e}"),
+                        tr!("Could not prepare the game's installers: {error}", error = e),
+                    ));
+                    incomplete.set(true);
+                }
+            }
+        }
+        if steps.is_empty() {
+            return if self.cancelled() { Flow::Cancelled } else { Flow::Go };
+        }
+        let store_name = if fl.runner == "gog" { "GOG" } else { "AMAZON" };
+        self.notice(Notice::info(
+            format!("Installing Redistributables ({store_name})"),
+            tr!("Installing Redistributables ({store})", store = store_name),
+        ));
+        for step in steps {
+            if self.cancelled() {
+                return Flow::Cancelled;
+            }
+            log::info!("first-launch setup of {}: {:?}", fl.app_name, step.parts);
+            let cwd = step.cwd.as_deref().unwrap_or(&fl.install_path);
+            self.wine_run(ctx, settings, step.parts, Some(cwd), true, INSTALLER_TIMEOUT, incomplete);
+        }
+        if self.cancelled() {
+            Flow::Cancelled
+        } else {
+            Flow::Go
+        }
+    }
+
     /// `installFixes`: the winetricks verbs and programs of `known_fixes.json`.
     fn install_fixes(&self, ctx: &PlanContext, settings: &GameSettings, fl: &FirstLaunch, incomplete: &Cell<bool>) -> Flow {
         if !fl.winetricks.is_empty() {
@@ -393,11 +454,21 @@ mod tests {
         }
 
         fn run(&self, spec: &PrepSpec, epic: Option<&dyn EpicSetup>, probe: &FakeProbe) -> (Flow, Vec<Notice>) {
+            self.run_with(spec, epic, None, probe)
+        }
+
+        fn run_with(
+            &self,
+            spec: &PrepSpec,
+            epic: Option<&dyn EpicSetup>,
+            store: Option<&dyn StoreSetup>,
+            probe: &FakeProbe,
+        ) -> (Flow, Vec<Notice>) {
             let seen = Mutex::new(Vec::new());
             let sink = |n: Notice| seen.lock().unwrap().push(n);
             let net = FakeNet::offline();
             let prep = Prep { paths: &self.paths, probe, net: &net, spawner: &self.spawner, cloud: None, cancel: &|| false, notify: &sink };
-            let flow = prep.first_launch(spec, epic);
+            let flow = prep.first_launch(spec, epic, store);
             let notices = seen.into_inner().unwrap();
             (flow, notices)
         }
@@ -580,7 +651,7 @@ mod tests {
         let sink = |_: Notice| {};
         let p = probe(&fx);
         let prep = Prep { paths: &fx.paths, probe: &p, net: &net, spawner: &fx.spawner, cloud: None, cancel: &|| true, notify: &sink };
-        assert_eq!(prep.first_launch(&spec, None), Flow::Cancelled);
+        assert_eq!(prep.first_launch(&spec, None, None), Flow::Cancelled);
         assert!(!fx.spawned().iter().any(|c| c.program.ends_with("/winetricks")));
         assert!(!is_recorded(&fx.prefix, "Calluna"), "an interrupted setup must be retried");
     }
@@ -612,7 +683,7 @@ mod tests {
         let net = FakeNet::offline();
         let sink = |_: Notice| {};
         let prep = Prep { paths: &fx.paths, probe: &p, net: &net, spawner: &peek, cloud: None, cancel: &|| false, notify: &sink };
-        assert_eq!(prep.first_launch(&spec, None), Flow::Go);
+        assert_eq!(prep.first_launch(&spec, None, None), Flow::Go);
         let seen = peek.seen.into_inner().unwrap();
         assert!(seen.len() >= 3 && seen.iter().all(|recorded| !recorded), "{seen:?}");
         assert!(is_recorded(&fx.prefix, "Calluna"));
@@ -630,6 +701,53 @@ mod tests {
         let (flow, _) = fx.run(&spec, None, &probe(&fx));
         assert_eq!(flow, Flow::Go);
         assert!(is_recorded(&fx.prefix, "Calluna"));
+    }
+
+    struct FakeStore(Result<Vec<SetupStep>, String>);
+
+    impl StoreSetup for FakeStore {
+        fn steps(&self, runner: &str, app_name: &str, install_path: &str) -> Result<Vec<SetupStep>, String> {
+            assert_eq!((runner, app_name, install_path), ("gog", "Calluna", "/games/Control"));
+            self.0.clone()
+        }
+    }
+
+    fn step(parts: &[&str]) -> SetupStep {
+        SetupStep { parts: parts.iter().map(|p| p.to_string()).collect(), cwd: None }
+    }
+
+    #[test]
+    fn store_games_run_their_installers_instead_of_the_epic_setup() {
+        let fx = Fx::new();
+        let spec =
+            fx.spec(FirstLaunch { runner: "nile".into(), post_install: vec![step(&["/games/Control/redist/vc.exe", "/quiet"])], ..base() });
+        let (flow, notices) = fx.run(&spec, None, &probe(&fx));
+        assert_eq!(flow, Flow::Go);
+        assert!(notices.iter().any(|n| n.log == "Installing Redistributables (AMAZON)"), "{notices:?}");
+        let spawned = fx.spawned();
+        assert_eq!(spawned.len(), 2, "{spawned:?}");
+        assert_eq!(spawned[0].args, ["/games/Control/redist/vc.exe", "/quiet"]);
+        assert!(!spawned.iter().any(|c| c.args.iter().any(|a| a.contains("epicgames"))));
+        assert!(is_recorded(&fx.prefix, "Calluna"));
+
+        let fx = Fx::new();
+        let store = FakeStore(Ok(vec![step(&["msiexec", "/i", "/r/physx.msi", "/qb"])]));
+        let spec = fx.spec(FirstLaunch { runner: "gog".into(), ..base() });
+        let (flow, _) = fx.run_with(&spec, None, Some(&store), &probe(&fx));
+        assert_eq!(flow, Flow::Go);
+        assert_eq!(fx.spawned()[0].args, ["msiexec", "/i", "/r/physx.msi", "/qb"]);
+        assert!(is_recorded(&fx.prefix, "Calluna"));
+    }
+
+    #[test]
+    fn a_store_setup_that_cannot_prepare_runs_again_next_time() {
+        let fx = Fx::new();
+        let store = FakeStore(Err("offline".into()));
+        let spec = fx.spec(FirstLaunch { runner: "gog".into(), ..base() });
+        let (flow, notices) = fx.run_with(&spec, None, Some(&store), &probe(&fx));
+        assert_eq!(flow, Flow::Go);
+        assert!(notices.iter().any(|n| n.log.contains("offline")));
+        assert!(!is_recorded(&fx.prefix, "Calluna"));
     }
 
     #[test]

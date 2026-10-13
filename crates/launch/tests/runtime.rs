@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use heronite_data::models::SessionsFile;
 use heronite_data::{json_store, DataPaths};
 use heronite_launch::net::FakeNet;
-use heronite_launch::plan::{CompanionPlan, PrepSpec};
+use heronite_launch::plan::{CloudSaves, CompanionPlan, PrepSpec};
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::prepare::CloudSync;
 use heronite_launch::probe::SystemProbe;
@@ -437,7 +437,7 @@ struct RecordingCloud {
 }
 
 impl CloudSync for RecordingCloud {
-    fn sync(&self, app: &str, path: &str, flag: &str) -> Result<String, String> {
+    fn sync(&self, _runner: &str, app: &str, path: &str, flag: &str) -> Result<String, String> {
         self.calls.lock().unwrap().push((flag.to_string(), format!("{app}:{path}")));
         if flag == "--skip-download" {
             std::thread::sleep(self.upload_delay);
@@ -467,7 +467,7 @@ fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     let cloud = Arc::new(RecordingCloud { upload_delay: Duration::from_millis(500), ..Default::default() });
     r.launcher.set_prep_services(services(true, Some(cloud.clone())));
     let mut process = process_plan("/games/run.sh", &[]);
-    process.prep = PrepSpec { cloud_saves: Some("/saves".into()), ..Default::default() };
+    process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/saves")), ..Default::default() };
     r.launcher.launch(request("Calluna", LaunchPlan::Native(process))).unwrap();
 
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
@@ -492,7 +492,7 @@ fn a_forced_clear_does_not_upload_saves() {
     let cloud = Arc::new(RecordingCloud::default());
     r.launcher.set_prep_services(services(true, Some(cloud.clone())));
     let mut process = process_plan("/games/run.sh", &[]);
-    process.prep = PrepSpec { cloud_saves: Some("/s".into()), ..Default::default() };
+    process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
     let _download = next(&r.rx);
@@ -508,7 +508,7 @@ fn offline_launches_skip_cloud_saves_silently() {
     let cloud = Arc::new(RecordingCloud::default());
     r.launcher.set_prep_services(services(false, Some(cloud.clone())));
     let mut process = process_plan("/games/run.sh", &[]);
-    process.prep = PrepSpec { cloud_saves: Some("/s".into()), ..Default::default() };
+    process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));

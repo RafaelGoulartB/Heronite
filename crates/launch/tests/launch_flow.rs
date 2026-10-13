@@ -35,7 +35,7 @@ fn script(path: &Path, body: &str) {
 
 struct LoggingCloud(PathBuf);
 impl CloudSync for LoggingCloud {
-    fn sync(&self, app: &str, path: &str, flag: &str) -> Result<String, String> {
+    fn sync(&self, _runner: &str, app: &str, path: &str, flag: &str) -> Result<String, String> {
         use std::io::Write;
         let mut f = fs::OpenOptions::new().create(true).append(true).open(&self.0).unwrap();
         writeln!(f, "cloud {app} {flag} {path}").unwrap();

@@ -1,0 +1,7 @@
+{
+  "This GOG game is not installed": "Este jogo da GOG não está instalado",
+  "This Amazon game is not installed": "Este jogo da Amazon não está instalado",
+  "The game's launch information was not found: {path}": "As informações de execução do jogo não foram encontradas: {path}",
+  "Could not prepare the game's installers: {error}": "Não foi possível preparar os instaladores do jogo: {error}",
+  "Installing Redistributables ({store})": "Instalando redistribuíveis ({store})"
+}

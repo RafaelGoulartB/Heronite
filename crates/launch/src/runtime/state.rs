@@ -10,7 +10,7 @@ use chrono::Utc;
 use heronite_data::DataPaths;
 
 use super::{LaunchEvent, LauncherConfig, PrepServices, Spawner, SystemInfoFn};
-use crate::first_launch::EpicSetup;
+use crate::first_launch::{EpicSetup, StoreSetup};
 use crate::plan::StopSpec;
 use crate::procs::Procs;
 use crate::record::{Checkpointer, PlayRecord};
@@ -68,6 +68,7 @@ pub(super) struct Shared {
     pub(super) system_info: Mutex<Option<SystemInfoFn>>,
     pub(super) services: Mutex<PrepServices>,
     pub(super) epic: Mutex<Option<Arc<dyn EpicSetup>>>,
+    pub(super) store_setup: Mutex<Option<Arc<dyn StoreSetup>>>,
     pub(super) paths: DataPaths,
     pub(super) spawner: Arc<dyn Spawner>,
     pub(super) procs: Arc<dyn Procs>,

@@ -426,7 +426,88 @@ fn browser_and_unknown_runners_are_unavailable() {
     browser.install.platform = Some("Browser".into());
     let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &browser, None, &settings(json!({})), &Default::default());
     assert!(plan.unavailable_reason().unwrap().contains("Browser"));
-    let gog = GameInfo { runner: "gog".into(), app_name: "x".into(), ..Default::default() };
-    let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &gog, None, &settings(json!({})), &Default::default());
-    assert!(plan.unavailable_reason().unwrap().contains("gog"));
+    let zoom = GameInfo { runner: "zoom".into(), app_name: "x".into(), ..Default::default() };
+    let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &zoom, None, &settings(json!({})), &Default::default());
+    assert!(plan.unavailable_reason().unwrap().contains("zoom"));
+    // Store games that are not installed say so.
+    for runner in ["gog", "nile"] {
+        let game = GameInfo { runner: runner.into(), app_name: "x".into(), ..Default::default() };
+        let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, None, &settings(json!({})), &Default::default());
+        assert!(plan.unavailable_reason().unwrap().contains("not installed"), "{runner}");
+    }
+}
+
+fn store_game(runner: &str, app: &str, path: &str, platform: &str) -> GameInfo {
+    GameInfo {
+        runner: runner.into(),
+        app_name: app.into(),
+        title: "Store Game".into(),
+        is_installed: true,
+        install: InstallInfo { install_path: Some(path.into()), platform: Some(platform.into()), ..Default::default() },
+        ..Default::default()
+    }
+}
+
+#[test]
+fn gog_windows_games_run_their_primary_task_in_wine() {
+    let info = br#"{"playTasks": [{"category": "game", "isPrimary": true, "type": "FileTask", "path": "bin\\game.exe", "arguments": "-x", "workingDir": "bin"}]}"#;
+    let probe = proton_probe().with_path("/games/gog").with_path("/games/gog/bin/game.exe").with_file("/games/gog/goggame-42.info", info);
+    let game = store_game("gog", "42", "/games/gog", "windows");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, None, &proton_settings(), &Default::default());
+    let LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
+    let args = &process.command.args;
+    assert!(args.iter().any(|a| a == "/games/gog/bin/game.exe"), "{args:?}");
+    assert!(args.ends_with(&["-x".to_string(), "-windowed".into(), "-w".into(), "1920".into()]), "{args:?}");
+    assert_eq!(process.command.cwd.as_deref(), Some("/games/gog/bin"));
+    assert_eq!(process.command.env["HEROIC_APP_SOURCE"], "gog");
+    assert_eq!(process.prep.cloud_saves, None);
+    let first = process.prep.first_launch.expect("first launch setup");
+    assert_eq!((first.runner.as_str(), first.app_name.as_str()), ("gog", "42"));
+    let mut sync = proton_settings();
+    sync.auto_sync_saves = true;
+    let LaunchPlan::Wine { process, .. } = build_plan_with_settings(&ctx(json!({})), &probe, &game, None, &sync, &Default::default())
+    else {
+        panic!()
+    };
+    assert_eq!(process.prep.cloud_saves, Some(CloudSaves::new("gog", "")));
+
+    // Without the info file there is nothing to run.
+    let bare = proton_probe().with_path("/games/gog");
+    let plan = build_plan_with_settings(&ctx(json!({})), &bare, &game, None, &proton_settings(), &Default::default());
+    assert!(plan.unavailable_reason().unwrap().contains("goggame-42.info"), "{plan:?}");
+}
+
+#[test]
+fn gog_linux_builds_start_their_script() {
+    let probe = FakeProbe::new("/home/u").with_path("/games/l").with_file("/games/l/start.sh", b"#!/bin/sh\n");
+    let game = store_game("gog", "7", "/games/l", "linux");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, None, &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.program, "/games/l/start.sh");
+    assert_eq!(p.command.env["HEROIC_APP_RUNNER"], "gog");
+}
+
+#[test]
+fn amazon_games_run_their_fuel_command_with_the_sdk_variables() {
+    let fuel = br#"{"Main": {"Command": "Game.exe", "Args": ["-a"], "WorkingSubdirOverride": ""}, "PostInstall": [{"Command": "vc.exe", "Args": ["/q"]}]}"#;
+    let probe = proton_probe()
+        .with_path("/games/amz")
+        .with_path("/games/amz/Game.exe")
+        .with_path("/games/amz/vc.exe")
+        .with_file("/games/amz/fuel.json", fuel)
+        .with_file("/hr/nile_config/nile/library.json", br#"[{"id": "ent-1", "product": {"id": "amzn1.p", "sku": "SKU9"}}]"#)
+        .with_file("/hr/nile_config/nile/current_user.json", br#"{"name": "Ana", "user_id": "u"}"#);
+    let game = store_game("nile", "amzn1.p", "/games/amz", "Windows");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, None, &proton_settings(), &Default::default());
+    let LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
+    assert!(process.command.args.iter().any(|a| a == "/games/amz/Game.exe"));
+    assert_eq!(process.command.cwd.as_deref(), Some("/games/amz"));
+    let env = &process.command.env;
+    assert_eq!(env["AMAZON_GAMES_FUEL_ENTITLEMENT_ID"], "ent-1");
+    assert_eq!(env["AMAZON_GAMES_FUEL_PRODUCT_SKU"], "SKU9");
+    assert_eq!(env["AMAZON_GAMES_FUEL_DISPLAY_NAME"], "Ana");
+    assert_eq!(env["HEROIC_APP_SOURCE"], "amazon");
+    let first = process.prep.first_launch.expect("first launch setup");
+    assert_eq!(first.runner, "nile");
+    assert_eq!(first.post_install[0].parts, ["/games/amz/vc.exe", "/q"]);
 }

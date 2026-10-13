@@ -20,7 +20,7 @@ use heronite_launch::{
 struct EpicCloudSaves(DataPaths);
 
 impl CloudSync for EpicCloudSaves {
-    fn sync(&self, app_name: &str, saves_path: &str, flag: &str) -> Result<String, String> {
+    fn sync(&self, _runner: &str, app_name: &str, saves_path: &str, flag: &str) -> Result<String, String> {
         heronite_epic::saves::sync_flag(&self.0, app_name, saves_path, Some(flag)).map_err(|e| format!("{e:#}"))
     }
 }
