@@ -265,6 +265,10 @@ impl AppPaths {
     pub fn ui_state(&self) -> PathBuf {
         self.config.join("ui-state.json")
     }
+    /// The getting-started checklist (see `heronite_data::onboarding`).
+    pub fn onboarding(&self) -> PathBuf {
+        self.config.join("onboarding.json")
+    }
     /// Appearance settings specific to this app (see `heronite_data::appearance`).
     pub fn appearance(&self) -> PathBuf {
         self.config.join("appearance.json")

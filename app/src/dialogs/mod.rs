@@ -26,6 +26,7 @@ pub mod ludusavi_backup;
 pub mod manage_statuses;
 pub mod metadata;
 pub mod metadata_wizard;
+pub mod onboarding;
 pub mod pick_rom;
 pub mod playtime;
 pub mod quit_confirm;
@@ -59,6 +60,14 @@ pub struct DialogCtx {
     pub data_paths: DataPaths,
     pub app: AppPaths,
     pub lib: Arc<Library>,
+}
+
+/// Under the Wine field of the install dialogs when this PC has no Wine or
+/// Proton: the game installs, but cannot start until one is downloaded.
+fn no_proton_note() -> Div {
+    div().mt(px(-4.)).text_size(px(12.5)).line_height(px(17.)).text_color(crate::theme::danger_text()).child(heronite_i18n::tr!(
+        "You can install now, but Windows games need Proton to run. Download it from Wine Manager in the menu (\u{2630})."
+    ))
 }
 
 /// The text of an input, trimmed.

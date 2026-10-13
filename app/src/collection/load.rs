@@ -8,6 +8,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::hltb::WikiCache;
 use heronite_data::{art, ArtContext, DataPaths, Library};
+use heronite_i18n::tr;
 use heronite_images::ImageRef;
 
 use super::{stage, CollectionView};
@@ -48,10 +49,18 @@ impl CollectionView {
                 this.refreshing = false;
                 match loaded {
                     Ok(l) => {
+                        this.welcome.load_error = None;
                         this.apply_loaded(l, cx);
                         this.nav_library_loaded(cx);
                     }
-                    Err(err) => log::error!("loading library: {err:#}"),
+                    Err(err) => {
+                        log::error!("loading library: {err:#}");
+                        if this.lib.is_some() {
+                            this.show_toast(tr!("Could not reload the library: {err}", err = format!("{err:#}")), true, cx);
+                        } else {
+                            this.welcome.load_error = Some(format!("{err:#}"));
+                        }
+                    }
                 }
                 cx.notify();
             })
@@ -102,6 +111,9 @@ impl CollectionView {
         let before = self.lib.as_ref().map_or(0, |lib| lib.games.len());
         let was_empty = before == 0;
         self.lib = Some(Arc::new(l.lib));
+        if self.lib.as_ref().is_some_and(|lib| lib.games.is_empty()) {
+            self.start_welcome_watch(cx);
+        }
         // New games (a Steam import, an added game, a ROM scan) get their
         // metadata now; the first load leaves it to the idle fill.
         if !first && self.lib.as_ref().is_some_and(|lib| lib.games.len() > before) {
@@ -134,6 +146,7 @@ impl CollectionView {
         if first {
             log::info!("library on screen after {:?}", self.started.elapsed());
             self.apply_debug_env();
+            self.maybe_open_onboarding(cx);
             crate::trim_heap_later();
         }
     }

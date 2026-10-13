@@ -37,6 +37,18 @@ pub fn valid_wine(w: &WineVersion, probe: &dyn Probe) -> bool {
     }
 }
 
+/// The error of [`prepare`] when no Wine/Proton can run the game.
+pub fn no_wine_message(name: &str) -> String {
+    tr!("Wine version '{name}' is not valid and no valid default Wine/Proton is configured", name)
+}
+
+/// Whether a launch failed with [`no_wine_message`] (in the current language).
+pub fn is_no_wine_error(reason: &str) -> bool {
+    let template = no_wine_message("\u{1}");
+    let (pre, post) = template.split_once('\u{1}').unwrap_or((&template, ""));
+    reason.len() >= pre.len() + post.len() && reason.starts_with(pre) && reason.ends_with(post)
+}
+
 /// Settings with a usable Wine version, an explanation if it had to change.
 pub struct WineEnv {
     pub settings: GameSettings,
@@ -74,10 +86,7 @@ fn prepare_with(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, d
             ));
             settings.wine_version = default;
         } else {
-            return Err(tr!(
-                "Wine version '{name}' is not valid and no valid default Wine/Proton is configured",
-                name = settings.wine_version.name
-            ));
+            return Err(no_wine_message(&settings.wine_version.name));
         }
     }
     let kind = settings.wine_version.kind.clone();
@@ -233,5 +242,17 @@ pub fn build_wine_plan(
             notes: wine.notes,
             ..Default::default()
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_no_wine_error, no_wine_message};
+
+    #[test]
+    fn the_no_wine_message_is_recognised() {
+        assert!(is_no_wine_error(&no_wine_message("GE-Proton9-1")));
+        assert!(is_no_wine_error(&no_wine_message("")));
+        assert!(!is_no_wine_error("Steam client was not found on PATH"));
     }
 }

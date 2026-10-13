@@ -103,6 +103,12 @@ calls them from `cx.background_spawn` or worker threads.
   soundtracks, demos, test servers or games hidden in Steam), caches it and
   adds the games the Collection does not have yet; Steam's play time moves
   the Steam entries up when it is ahead.
+- **heronite-wine:** the Wine Manager (`manager`: download, install, remove
+  builds from `repos`) and `detect`, the Wine/Proton list the settings pick
+  from. `default` keeps a global default that can run games: when none is
+  set (a new setup) or it was removed, the newest Proton found becomes the
+  default, a few seconds after start, after a Wine Manager install, and when
+  a Windows game cannot start for lack of one.
 
 ## App (`app/src`)
 
@@ -113,7 +119,7 @@ calls them from `cx.background_spawn` or worker threads.
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
 | `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `update/` (app updates: checks, download, restart), `steam_library` (reads the Steam library while Steam runs), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
-| `collection/` | the main screen (`CollectionView`): list, header, focus panel, stage, context menu, command palette, screenshots, and the glue to dialogs and services |
+| `collection/` | the main screen (`CollectionView`): list, header, focus panel, stage, context menu, command palette, screenshots, and the glue to dialogs and services; `welcome` is the empty Collection of a new setup (it checks Steam every few seconds while it shows); `onboarding` hosts the getting-started checklist (`dialogs/onboarding`: steps, looping previews drawn from the user's covers), which opens by itself once per setup and from the bulb in the header (`onboarding.json` in the app state) |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, Wine Manager, Emulators); they talk back through `PageEvent` |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar` |

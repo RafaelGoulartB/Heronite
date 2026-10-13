@@ -2,8 +2,6 @@
   "Already logged in": "Você já está conectado",
   "Code or page address": "Código ou endereço da página",
   "Enter the code": "Digitar o código",
-  "Games are downloaded and verified with gogdl. Your GOG games appear in your Collection once they are installed.": "Os jogos são baixados e verificados com o gogdl. Seus jogos da GOG aparecem na Coleção depois de instalados.",
-  "Games are downloaded and verified with nile. Your Amazon Games, including the Prime Gaming games you claimed, appear in your Collection once they are installed.": "Os jogos são baixados e verificados com o nile. Seus jogos da Amazon Games, incluindo os do Prime Gaming que você resgatou, aparecem na Coleção depois de instalados.",
   "Import a {store} game": "Importar um jogo da {store}",
   "Log in to {store}": "Entrar na {store}",
   "Log in to {store} first": "Entre na {store} primeiro",
@@ -51,5 +49,9 @@
   "Uninstall from Steam": "Desinstalar da Steam",
   "Uninstall from Steam…": "Desinstalar da Steam…",
   "You own it on Steam too": "Você também tem na Steam",
-  "Your Steam library": "Sua biblioteca Steam"
+  "Your Steam library": "Sua biblioteca Steam",
+  "Games are downloaded and verified with gogdl. After you log in, your whole GOG library shows in your Collection, and you install games from there.": "Os jogos são baixados e verificados com o gogdl. Depois que você entra, toda a sua biblioteca da GOG aparece na Coleção, e você instala os jogos por lá.",
+  "Games are downloaded and verified with nile. After you log in, your whole Amazon Games library, including the Prime Gaming games you claimed, shows in your Collection, and you install games from there.": "Os jogos são baixados e verificados com o nile. Depois que você entra, toda a sua biblioteca da Amazon Games, incluindo os jogos do Prime Gaming que você resgatou, aparece na Coleção, e você instala os jogos por lá.",
+  "Steam was not found on this PC. Install Steam and sign in, then open it to read your library.": "A Steam não foi encontrada neste PC. Instale a Steam e entre na sua conta, depois abra-a para ler sua biblioteca.",
+  "Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself.": "A Steam não foi encontrada neste PC. Instale a Steam, entre na sua conta e abra-a: o Heronite lê sua biblioteca sozinho."
 }

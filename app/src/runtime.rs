@@ -133,7 +133,19 @@ impl GameRuntime {
         let plan = match game.steam_launch_id.as_deref().filter(|_| game.via_steam) {
             // Only its Steam copy is installed.
             Some(app_id) => steam_plan(app_id),
-            None => build_plan(&ctx, &SystemProbe, &game.game, game.meta.as_deref(), &opts),
+            None => {
+                let plan = build_plan(&ctx, &SystemProbe, &game.game, game.meta.as_deref(), &opts);
+                match &plan {
+                    // No default Wine yet: pick one found on this PC and try again.
+                    LaunchPlan::Unavailable(reason)
+                        if heronite_launch::wine::is_no_wine_error(reason)
+                            && heronite_wine::default::ensure_default(&self.paths).is_some() =>
+                    {
+                        build_plan(&PlanContext::load(&self.paths), &SystemProbe, &game.game, game.meta.as_deref(), &opts)
+                    }
+                    _ => plan,
+                }
+            }
         };
         self.start(game, plan)
     }
@@ -265,6 +277,9 @@ fn spawn_tools_update(paths: DataPaths) {
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
+        // A new setup with a Proton already on this PC (Steam's
+        // compatibilitytools.d, Lutris) gets it as the default Wine.
+        heronite_wine::default::ensure_default(&paths);
         // A new setup has no legendary yet: get it before the user logs in to Epic.
         if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
             log::warn!("{e}");

@@ -86,6 +86,8 @@ pub enum LibraryAccess {
     Closed,
     /// Steam runs without its debugging interface (turned on for its next start).
     NeedsRestart,
+    /// No Steam install was found.
+    NotInstalled,
 }
 
 /// Shown when Steam runs without its debugging interface.
@@ -166,6 +168,9 @@ impl Steam {
     /// Whether [`read_library`](Self::read_library) can work now. Blocking
     /// (asks the client, a few milliseconds).
     pub fn library_access(&self) -> LibraryAccess {
+        if !self.root().join("config").is_dir() && !self.running() {
+            return LibraryAccess::NotInstalled;
+        }
         match self.access() {
             Access::Client => LibraryAccess::Ready,
             Access::Files => LibraryAccess::Closed,
@@ -179,6 +184,7 @@ impl Steam {
             LibraryAccess::Ready => library::read_owned(&self.client).map_err(|e| format!("{e:#}")),
             LibraryAccess::Closed => Err(tr!("Steam is not running. Open Steam to read your library.").to_string()),
             LibraryAccess::NeedsRestart => Err(tr!("Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once.").to_string()),
+            LibraryAccess::NotInstalled => Err(tr!("Steam was not found on this PC. Install Steam and sign in, then open it to read your library.").to_string()),
         }
     }
 

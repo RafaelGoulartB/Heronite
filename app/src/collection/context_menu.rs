@@ -84,6 +84,8 @@ impl CollectionView {
         };
         if let Err(err) = set_game_status(&self.data_paths, &game.app_name, &status_id, &extras) {
             self.show_toast(tr!("Could not change status: {err}", err = format!("{err:#}")), true, cx);
+        } else {
+            self.mark_onboarding(crate::dialogs::onboarding::Step::Statuses);
         }
         self.reload(cx);
     }

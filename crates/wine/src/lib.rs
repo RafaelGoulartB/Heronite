@@ -2,6 +2,7 @@
 //! `backend/wine/manager/**` and `backend/utils/compatibility_layers.ts`).
 
 pub mod checks;
+pub mod default;
 mod detect;
 pub mod github;
 pub mod install;

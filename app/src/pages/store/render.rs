@@ -193,10 +193,10 @@ impl<K: StoreKind> StorePage<K> {
     fn render_about(&self) -> Div {
         let text = match self.store() {
             Store::Gog => {
-                tr!("Games are downloaded and verified with gogdl. Your GOG games appear in your Collection once they are installed.")
+                tr!("Games are downloaded and verified with gogdl. After you log in, your whole GOG library shows in your Collection, and you install games from there.")
             }
             Store::Amazon => {
-                tr!("Games are downloaded and verified with nile. Your Amazon Games, including the Prime Gaming games you claimed, appear in your Collection once they are installed.")
+                tr!("Games are downloaded and verified with nile. After you log in, your whole Amazon Games library, including the Prime Gaming games you claimed, shows in your Collection, and you install games from there.")
             }
         };
         div().child(caption(tr!("About"))).child(card([div()

@@ -331,6 +331,9 @@ impl CollectionView {
         self.open_menu = None;
         self.context_menu = None;
         self.page = page;
+        if page == Page::Statistics {
+            self.mark_onboarding(crate::dialogs::onboarding::Step::Stats);
+        }
         if pages::stores::is_store_page(page) {
             self.pages.last_store = Some(page);
         }

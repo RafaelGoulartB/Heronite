@@ -156,6 +156,9 @@ impl EpicInstallDialog {
                 cx.notify();
             },
         ));
+        if self.wine_loaded && self.wine_list.is_empty() {
+            col = col.child(crate::dialogs::no_proton_note());
+        }
         Some(col)
     }
 }

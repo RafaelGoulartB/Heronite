@@ -24,6 +24,7 @@ mod list_view;
 mod load;
 mod metadata_ui;
 mod nav;
+mod onboarding;
 mod open_links;
 mod palette;
 mod pumps;
@@ -94,6 +95,8 @@ pub struct CollectionView {
     dialog_sub: Option<Subscription>,
     epic: epic::EpicState,
     extras: extras::Extras,
+    welcome: welcome::Welcome,
+    onboarding: onboarding::OnboardingGlue,
     /// Rating, save backup, Linux facts and timeline of the focused game.
     facts: game_facts::Facts,
     focus_scroll: ScrollHandle,
@@ -168,6 +171,7 @@ impl CollectionView {
         }
 
         let search_input = Self::new_search_input(window, cx);
+        let onboarding = onboarding::OnboardingGlue::load(&app_paths);
         let mut this = Self {
             started,
             first_frame_logged: false,
@@ -197,6 +201,8 @@ impl CollectionView {
             dialog_sub: None,
             epic: Default::default(),
             extras: Default::default(),
+            welcome: Default::default(),
+            onboarding,
             facts: Default::default(),
             focus_scroll: ScrollHandle::new(),
             shots: Default::default(),
@@ -310,6 +316,7 @@ impl CollectionView {
         self.open_pending_debug_dialog(window, cx);
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);
+        self.sync_onboarding(window, cx);
         self.sync_language(window, cx);
         self.sync_facts(cx);
         self.sync_shots(window, cx);
@@ -338,6 +345,8 @@ impl CollectionView {
         // A new setup without games gets the welcome across the whole width.
         let body = if self.lib.as_ref().is_some_and(|lib| lib.games.is_empty()) {
             self.render_welcome(vw, vh - 42., cx)
+        } else if let Some(err) = self.lib.is_none().then(|| self.welcome.load_error.clone()).flatten() {
+            self.render_load_error(err, cx)
         } else {
             let list_column = self.render_list_column(list_w, cx);
             let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
