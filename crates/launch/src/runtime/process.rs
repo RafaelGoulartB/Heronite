@@ -90,12 +90,15 @@ pub(super) fn run_process(
         cancel: &cancelled,
         notify: &status,
     };
+    // How long each step took, for the log: a slow launch shows where.
+    let mut steps = Steps::new();
     // Cloud saves down, umu runtime.
     match prep.before_prefix(&req.app_name, &plan.prep) {
         Flow::Go => {}
         Flow::Cancelled => return finish_aborted(shared, log, req, t0),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
+    steps.done("cloud saves and umu");
     if !plan.pre_commands.is_empty() {
         status(Notice::info("Preparing prefix...", tr!("Preparing prefix...")));
     }
@@ -104,6 +107,7 @@ pub(super) fn run_process(
             return finish_aborted(shared, log, req, t0);
         }
     }
+    steps.done("prefix creation");
     // Redistributables, EOS overlay and known fixes the first time the game
     // runs in this prefix.
     let epic = shared.epic.lock().unwrap().clone();
@@ -112,12 +116,14 @@ pub(super) fn run_process(
         Flow::Cancelled => return finish_aborted(shared, log, req, t0),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
+    steps.done("first launch setup");
     // DXVK / VKD3D into the prefix, anti-cheat runtimes.
     match prep.after_prefix(&plan.prep) {
         Flow::Go => {}
         Flow::Cancelled => return finish_aborted(shared, log, req, t0),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
+    steps.done("Wine tools and anti-cheat runtimes");
     if cancelled() {
         // Stopped while preparing: the game must not start afterwards.
         return finish_aborted(shared, log, req, t0);
@@ -134,6 +140,8 @@ pub(super) fn run_process(
             return finish_aborted(shared, log, req, t0);
         }
     }
+    steps.done("script before launch");
+    log.info(&steps.summary());
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&plan.command)));
     log.info("Game Output:");
     let mut handle = match shared.spawner.spawn_logged(&plan.command, Some(log.clone())) {
@@ -231,6 +239,43 @@ pub(super) fn run_process(
         prep.after_exit(&req.app_name, &plan.prep);
     }
     finish(shared, log, req, control, started_at, elapsed, exit);
+}
+
+/// The duration of each preparation step.
+struct Steps {
+    start: Instant,
+    last: Instant,
+    done: Vec<(&'static str, Duration)>,
+}
+
+impl Steps {
+    fn new() -> Self {
+        let now = Instant::now();
+        Self { start: now, last: now, done: Vec::new() }
+    }
+
+    fn done(&mut self, step: &'static str) {
+        let now = Instant::now();
+        self.done.push((step, now - self.last));
+        self.last = now;
+    }
+
+    /// "Prepared in 1.24 s (Wine tools and anti-cheat runtimes 1.20 s)":
+    /// the steps that took a noticeable time.
+    fn summary(&self) -> String {
+        let total = self.last - self.start;
+        let slow: Vec<String> = self
+            .done
+            .iter()
+            .filter(|(_, d)| *d >= Duration::from_millis(10))
+            .map(|(s, d)| format!("{s} {:.2} s", d.as_secs_f64()))
+            .collect();
+        if slow.is_empty() {
+            format!("Prepared in {:.2} s", total.as_secs_f64())
+        } else {
+            format!("Prepared in {:.2} s ({})", total.as_secs_f64(), slow.join(", "))
+        }
+    }
 }
 
 /// Keeps the session (and the programs alongside the game) going while the

@@ -274,6 +274,7 @@ pub fn update_all(paths: &DataPaths, net: &dyn Net, cancel: Cancel, report: &dyn
     if let Err(e) = download_winetricks(paths, net, cancel) {
         log::warn!("{e}");
     }
+    crate::runtimes::update_installed(paths, net, cancel, report);
 }
 
 const CHECK_STAMP: &str = ".heronite-last-update-check";
