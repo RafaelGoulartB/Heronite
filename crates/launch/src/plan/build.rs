@@ -26,11 +26,13 @@ pub fn build_plan_with_settings(
     settings: &GameSettings,
     opts: &LaunchOptions,
 ) -> LaunchPlan {
-    match game.runner.as_str() {
+    let mut plan = match game.runner.as_str() {
         "sideload" => build_sideload(ctx, probe, game, meta, settings, opts),
         "legendary" => crate::legendary::build(ctx, probe, game, settings, opts),
         other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),
-    }
+    };
+    crate::scripts::attach(&mut plan, probe, game, settings);
+    plan
 }
 
 fn is_browser_game(game: &GameInfo) -> bool {

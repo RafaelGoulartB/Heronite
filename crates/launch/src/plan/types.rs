@@ -52,6 +52,10 @@ pub struct ProcessPlan {
     pub pre_commands: Vec<Command>,
     /// Run after `command` exits (`wineserver --wait`).
     pub wait_after_exit: Option<Command>,
+    /// The user's script run to completion right before `command`.
+    pub before_script: Option<Command>,
+    /// The user's script run to completion after the game is gone.
+    pub after_script: Option<Command>,
     /// Program to `chmod +x` before launching (Heroic does this too).
     pub make_executable: Option<String>,
     /// Human-readable decisions worth logging (e.g. fell back to default Wine).
@@ -121,6 +125,16 @@ pub enum LaunchPlan {
 
 impl LaunchPlan {
     pub fn process(&self) -> Option<&ProcessPlan> {
+        match self {
+            LaunchPlan::Native(p)
+            | LaunchPlan::Wine { process: p, .. }
+            | LaunchPlan::Emulator { process: p, .. }
+            | LaunchPlan::Legendary { process: p, .. } => Some(p),
+            LaunchPlan::SteamUri { .. } | LaunchPlan::Unavailable(_) => None,
+        }
+    }
+
+    pub fn process_mut(&mut self) -> Option<&mut ProcessPlan> {
         match self {
             LaunchPlan::Native(p)
             | LaunchPlan::Wine { process: p, .. }

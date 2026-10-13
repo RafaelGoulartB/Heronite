@@ -121,6 +121,10 @@ impl DataPaths {
     pub fn wine_downloader_info(&self) -> PathBuf {
         self.j("store/wine-downloader-info.json")
     }
+    /// When each Wine Manager source was last checked and GitHub's API budget.
+    pub fn wine_release_checks(&self) -> PathBuf {
+        self.j("store/wine-release-checks.json")
+    }
     /// `store_cache/<name>.json`.
     pub fn store_cache(&self, name: &str) -> PathBuf {
         self.j("store_cache").join(format!("{name}.json"))

@@ -1,0 +1,62 @@
+[
+ {
+  "tag_name": "UMU-Proton-10.0-4",
+  "name": "UMU-Proton-10.0-4",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-03-30T07:34:52Z",
+  "html_url": "https://github.com/Open-Wine-Components/umu-proton/releases/tag/UMU-Proton-10.0-4",
+  "assets": [
+   {
+    "name": "UMU-Proton-10.0-4.sha512sum",
+    "browser_download_url": "https://github.com/Open-Wine-Components/umu-proton/releases/download/UMU-Proton-10.0-4/UMU-Proton-10.0-4.sha512sum",
+    "size": 155
+   },
+   {
+    "name": "UMU-Proton-10.0-4.tar.gz",
+    "browser_download_url": "https://github.com/Open-Wine-Components/umu-proton/releases/download/UMU-Proton-10.0-4/UMU-Proton-10.0-4.tar.gz",
+    "size": 491237448
+   }
+  ]
+ },
+ {
+  "tag_name": "UMU-Proton-9.0-4e",
+  "name": "UMU-Proton-9.0-4e",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2025-05-04T02:21:29Z",
+  "html_url": "https://github.com/Open-Wine-Components/umu-proton/releases/tag/UMU-Proton-9.0-4e",
+  "assets": [
+   {
+    "name": "UMU-Proton-9.0-4e.sha512sum",
+    "browser_download_url": "https://github.com/Open-Wine-Components/umu-proton/releases/download/UMU-Proton-9.0-4e/UMU-Proton-9.0-4e.sha512sum",
+    "size": 155
+   },
+   {
+    "name": "UMU-Proton-9.0-4e.tar.gz",
+    "browser_download_url": "https://github.com/Open-Wine-Components/umu-proton/releases/download/UMU-Proton-9.0-4e/UMU-Proton-9.0-4e.tar.gz",
+    "size": 443481943
+   }
+  ]
+ },
+ {
+  "tag_name": "UMU-Proton-9.0-3.2",
+  "name": "UMU-Proton-9.0-3.2",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2024-10-16T01:34:46Z",
+  "html_url": "https://github.com/Open-Wine-Components/umu-proton/releases/tag/UMU-Proton-9.0-3.2",
+  "assets": [
+   {
+    "name": "UMU-Proton-9.0-3.2.sha512sum",
+    "browser_download_url": "https://github.com/Open-Wine-Components/umu-proton/releases/download/UMU-Proton-9.0-3.2/UMU-Proton-9.0-3.2.sha512sum",
+    "size": 156
+   },
+   {
+    "name": "UMU-Proton-9.0-3.2.tar.gz",
+    "browser_download_url": "https://github.com/Open-Wine-Components/umu-proton/releases/download/UMU-Proton-9.0-3.2/UMU-Proton-9.0-3.2.tar.gz",
+    "size": 415815785
+   }
+  ]
+ }
+]

@@ -13,9 +13,12 @@ use super::{ExitInfo, LaunchEvent, LaunchRequest};
 use crate::log_writer::{self, GameLog};
 use crate::plan::{Command, ProcessPlan};
 use crate::prepare::{Flow, Notice, Prep};
+use crate::probe::Probe;
 use crate::record;
 
-/// Runs a command to completion (prefix creation, wineserver --wait).
+/// Runs a command to completion (prefix creation, scripts, wineserver
+/// --wait). A stop that arrives meanwhile ends it; one requested before it
+/// started does not (the after-exit script still runs for a stopped game).
 /// Returns false if tracking was aborted meanwhile.
 fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command, log: Option<&Arc<GameLog>>) -> bool {
     if let Some(log) = log {
@@ -25,9 +28,13 @@ fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command, log: Opt
         Ok(h) => h,
         Err(e) => {
             log::warn!("{}: {e}", cmd.display());
+            if let Some(log) = log {
+                log.warning(&format!("could not start {}: {e}", cmd.program));
+            }
             return true;
         }
     };
+    let stopped_before = control.kill.load(Ordering::SeqCst);
     let mut killed_at: Option<Instant> = None;
     loop {
         match handle.poll() {
@@ -37,7 +44,7 @@ fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command, log: Opt
         if control.abort.load(Ordering::SeqCst) {
             return false;
         }
-        if control.kill.load(Ordering::SeqCst) && killed_at.is_none() {
+        if !stopped_before && control.kill.load(Ordering::SeqCst) && killed_at.is_none() {
             handle.terminate();
             killed_at = Some(Instant::now());
         }
@@ -119,6 +126,13 @@ pub(super) fn run_process(
             log::warn!("chmod {path}: {e}");
         }
     }
+    // After the prefix is ready, so the script can use it.
+    if let Some(script) = &plan.before_script {
+        status(Notice::info("Running the script before launch...", tr!("Running the script before launch...")));
+        if !run_script(shared, control, &*services.probe, script, log, &status) || cancelled() {
+            return finish_aborted(shared, log, req, t0);
+        }
+    }
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&plan.command)));
     log.info("Game Output:");
     let mut handle = match shared.spawner.spawn_logged(&plan.command, Some(log.clone())) {
@@ -190,9 +204,36 @@ pub(super) fn run_process(
     // The session ends here; saving to the cloud is not playtime.
     let elapsed = t0.elapsed();
     if !aborted {
+        if let Some(script) = &plan.after_script {
+            run_script(shared, control, &*services.probe, script, log, &status);
+        }
         prep.after_exit(&req.app_name, &plan.prep);
     }
     finish(shared, log, req, control, started_at, elapsed, exit);
+}
+
+/// Runs one of the game's scripts to completion. Its exit code is ignored and
+/// a missing script is only reported, as in Heroic: the game still runs.
+/// Returns false if tracking was aborted meanwhile.
+fn run_script(
+    shared: &Shared,
+    control: &Control,
+    probe: &dyn Probe,
+    script: &Command,
+    log: &Arc<GameLog>,
+    status: &dyn Fn(Notice),
+) -> bool {
+    let program = &script.program;
+    if !probe.exists(program) {
+        status(Notice::warn(format!("Script not found: {program}"), tr!("Script not found: {program}", program)));
+        return true;
+    }
+    if !probe.is_executable(program) {
+        if let Err(e) = shared.spawner.make_executable(program) {
+            log::warn!("chmod {program}: {e}");
+        }
+    }
+    run_to_completion(shared, control, script, Some(log))
 }
 
 fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest, t0: Instant) {

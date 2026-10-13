@@ -94,7 +94,7 @@ impl SettingsPanel {
     fn console_items(&self, cx: &App) -> Vec<Item> {
         let mut v = match self.section {
             Section::Wine => self.c_wine(cx),
-            Section::Other => self.c_other(),
+            Section::Other => self.c_other(cx),
             Section::Advanced => self.c_advanced(cx),
             Section::Gamescope => self.c_gamescope(cx),
             Section::Saves => self.c_saves(cx),
@@ -225,7 +225,7 @@ impl SettingsPanel {
         v
     }
 
-    fn c_other(&self) -> Vec<Item> {
+    fn c_other(&self, cx: &App) -> Vec<Item> {
         let native = self.native();
         let wine = self.wine_version();
         let mut v = vec![Self::c_header(tr!("Overlays and performance"))];
@@ -239,6 +239,9 @@ impl SettingsPanel {
             Some(tr!("FPS, temperatures and load overlay (needs MangoHud installed)")),
             false,
         ));
+        if self.flag("showMangohud", false) {
+            v.push(self.c_text("mangohudFps", tr!("MangoHud FPS limit"), cx));
+        }
         v.push(self.c_toggle(
             "useGameMode",
             false,

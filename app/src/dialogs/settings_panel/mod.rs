@@ -49,6 +49,8 @@ pub enum Target {
 enum Bind {
     /// A string setting.
     Str { key: &'static str, trim: bool },
+    /// A string setting holding a whole number (digits only).
+    Digits { key: &'static str },
     /// A field of the `gamescope` object; `digits`: numbers only.
     Gamescope { field: &'static str, digits: bool },
     /// Scratch input (a "new row" form), never saved by itself.
@@ -69,6 +71,7 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("afterScript", s("afterLaunchScriptPath"), n_!("Select script ...")),
     ("language", Bind::Str { key: "language", trim: true }, n_!("2-char or 4-char code (i.e.: \"fr\" or \"pt-BR\")")),
     ("dxvkFps", s("DXVKFpsCap"), n_!("Positive integer value (e.g. 30, 60, ...)")),
+    ("mangohudFps", Bind::Digits { key: "heroniteMangohudFpsLimit" }, n_!("No limit")),
     ("savesPath", s("savesPath"), n_!("Select the exact save games folder")),
     ("gs.gameWidth", Bind::Gamescope { field: "gameWidth", digits: true }, ""),
     ("gs.gameHeight", Bind::Gamescope { field: "gameHeight", digits: true }, ""),
@@ -149,14 +152,14 @@ impl SettingsPanel {
         let mut subs = Vec::new();
         for (id, bind, placeholder) in INPUTS {
             let initial = match bind {
-                Bind::Str { key, .. } => value_text(settings.get(*key)),
+                Bind::Str { key, .. } | Bind::Digits { key } => value_text(settings.get(*key)),
                 Bind::Gamescope { field, .. } => value_text(settings.get("gamescope").and_then(|g| g.get(*field))),
                 Bind::Scratch => String::new(),
             };
             let input = new_input(window, cx, &initial, tr(placeholder));
             if !matches!(bind, Bind::Scratch) {
                 let id: &'static str = id;
-                let digits = matches!(bind, Bind::Gamescope { digits: true, .. });
+                let digits = matches!(bind, Bind::Gamescope { digits: true, .. } | Bind::Digits { .. });
                 subs.push(cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, window, cx| match ev {
                     InputEvent::Change => {
                         if digits {
@@ -390,6 +393,12 @@ impl SettingsPanel {
         match *bind {
             Bind::Str { key, trim } => {
                 let v = if trim { raw.trim().to_string() } else { raw };
+                if v != self.text(key) {
+                    self.set(key, Value::String(v), cx);
+                }
+            }
+            Bind::Digits { key } => {
+                let v = logic::digits_only(&raw);
                 if v != self.text(key) {
                     self.set(key, Value::String(v), cx);
                 }

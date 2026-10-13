@@ -269,5 +269,8 @@
   "Manual Sync: Sync downloads and uploads what changed. Force Download and Force Upload ignore the version that is locally or on the cloud.": "Sincronização manual: Sincronizar baixa e envia o que mudou. Forçar download e Forçar upload ignoram a versão que está no computador ou na nuvem.",
   "Autosync Saves": "Sincronizar saves automaticamente",
   "Autosync Saves will sync the saves every time you start a game and after finishing playing.": "O Autosync sincroniza os saves toda vez que você inicia um jogo e depois de terminar de jogar.",
-  "Enable Quick Save-Sync Menu on game page": "Ativar menu de sincronização rápida de saves na página do jogo"
+  "Enable Quick Save-Sync Menu on game page": "Ativar menu de sincronização rápida de saves na página do jogo",
+  "MangoHud FPS limit": "Limite de FPS do MangoHud",
+  "MangoHud's frame rate cap. Works with Vulkan, OpenGL and DirectX games. Leave empty for no limit.": "Limite de quadros por segundo do MangoHud. Funciona com jogos Vulkan, OpenGL e DirectX. Deixe vazio para não limitar.",
+  "No limit": "Sem limite"
 }

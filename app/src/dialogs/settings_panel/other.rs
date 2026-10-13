@@ -18,25 +18,33 @@ impl SettingsPanel {
         if !native {
             overlays = overlays.child(self.toggle_row("show-fps", "showFps", false, tr!("Show FPS (DX9, 10 and 11)"), None, false, cx));
         }
-        overlays = overlays
-            .child(self.toggle_row(
-                "mangohud",
-                "showMangohud",
-                false,
-                tr!("Enable Mangohud (Mangohud needs to be installed)"),
-                Some(tr!("MangoHUD is an overlay that displays and monitors FPS, temperatures, CPU/GPU load and other system resources.")),
-                false,
-                cx,
-            ))
-            .child(self.toggle_row(
-                "gamemode",
-                "useGameMode",
-                false,
-                tr!("Use GameMode (Feral Game Mode needs to be installed)"),
-                Some(tr!("Feral GameMode applies automatic and temporary tweaks to the system when running games. Enabling may improve performance.")),
-                false,
-                cx,
+        overlays = overlays.child(self.toggle_row(
+            "mangohud",
+            "showMangohud",
+            false,
+            tr!("Enable Mangohud (Mangohud needs to be installed)"),
+            Some(tr!("MangoHUD is an overlay that displays and monitors FPS, temperatures, CPU/GPU load and other system resources.")),
+            false,
+            cx,
+        ));
+        if self.flag("showMangohud", false) {
+            overlays = overlays.field(self.text_row(
+                "mangohudFps",
+                Some(tr!("FPS limit")),
+                Some(tr!("MangoHud's frame rate cap. Works with Vulkan, OpenGL and DirectX games. Leave empty for no limit.")),
             ));
+        }
+        overlays = overlays.child(self.toggle_row(
+            "gamemode",
+            "useGameMode",
+            false,
+            tr!("Use GameMode (Feral Game Mode needs to be installed)"),
+            Some(tr!(
+                "Feral GameMode applies automatic and temporary tweaks to the system when running games. Enabling may improve performance."
+            )),
+            false,
+            cx,
+        ));
         if !native && logic::offers_system_libs(&wine) {
             overlays = overlays.child(self.toggle_row(
                 "system-libs",

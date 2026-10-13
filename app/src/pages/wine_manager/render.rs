@@ -4,7 +4,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
-use heronite_wine::{Job, JobKind, JobPhase, Repository, WineVersionInfo};
+use heronite_wine::{CheckMode, Job, JobKind, JobPhase, Repository, WineVersionInfo};
 
 use super::WineManagerPage;
 use crate::icons::Icon;
@@ -75,7 +75,7 @@ pub(super) fn size_text(job: Option<&Job>, r: &WineVersionInfo) -> SharedString 
 
 impl WineManagerPage {
     pub(super) fn render_toolbar(&self, cx: &mut Context<Self>) -> Div {
-        let refreshing = self.manager.refreshing();
+        let refreshing = self.checking();
         let refresh = {
             let b = div()
                 .id("wine-refresh")
@@ -93,7 +93,7 @@ impl WineManagerPage {
                 b.cursor_not_allowed().opacity(0.6)
             } else {
                 b.cursor_pointer().hover(|s| s.bg(theme::button_fill_hover())).on_click(cx.listener(|this, _, _, cx| {
-                    this.manager.start_refresh(Repository::LINUX.to_vec());
+                    this.check(this.repo, CheckMode::Manual);
                     cx.notify();
                 }))
             }
@@ -110,11 +110,10 @@ impl WineManagerPage {
 
     pub(super) fn render_tabs(&self, cx: &mut Context<Self>) -> Div {
         let this = cx.entity();
-        let items: Vec<(Repository, &'static str)> = Repository::LINUX.iter().map(|r| (*r, r.kind())).collect();
+        let items: Vec<(Repository, &'static str)> = Repository::offered().iter().map(|r| (*r, r.kind())).collect();
         tabs("wine-tab", &items, self.repo, move |repo, _, cx| {
             this.update(cx, |this, cx| {
-                this.repo = repo;
-                this.confirm_remove = None;
+                this.select_source(repo);
                 cx.notify();
             });
         })
@@ -124,7 +123,7 @@ impl WineManagerPage {
     /// many of its builds are installed; the selected one is tinted.
     pub(super) fn render_sources(&self, cx: &mut Context<Self>) -> Div {
         let mut list = card_box().py(px(8.)).px(px(8.)).gap(px(2.));
-        for (i, repo) in Repository::LINUX.iter().copied().enumerate() {
+        for (i, repo) in Repository::offered().iter().copied().enumerate() {
             let active = repo == self.repo;
             let installed: Vec<&WineVersionInfo> = self.releases.iter().filter(|r| r.kind == repo.kind() && r.installed()).collect();
             let summary = match installed.len() {
@@ -144,8 +143,7 @@ impl WineManagerPage {
                     .when(active, |d| d.bg(theme::accent_tint()))
                     .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
                     .on_click(cx.listener(move |this, _, _, cx| {
-                        this.repo = repo;
-                        this.confirm_remove = None;
+                        this.select_source(repo);
                         cx.notify();
                     }))
                     .child(
@@ -194,12 +192,14 @@ impl WineManagerPage {
 
     pub(super) fn render_list(&self, cx: &mut Context<Self>) -> Div {
         let rows = self.visible();
-        let refreshing = self.manager.refreshing();
-        if !self.loaded || (rows.is_empty() && refreshing) {
+        if !self.loaded || (rows.is_empty() && self.checking()) {
             return message(tr!("Loading Wine versions..."), false);
         }
         if rows.is_empty() {
-            return if self.query.is_empty() {
+            return if let Some(until) = self.limited_until().filter(|_| self.query.is_empty()) {
+                let time = super::local_time(until);
+                message(tr!("GitHub's limit for checking releases was reached. Try again after {time}.", time), true)
+            } else if self.query.is_empty() {
                 message(tr!("No Wine versions found. Please click the refresh icon to try again."), true)
             } else {
                 message(tr!("No Wine versions match your search."), true)
@@ -339,11 +339,11 @@ fn version_cell(r: &WineVersionInfo) -> Div {
 }
 
 /// Full-width card with a centred message (loading, empty, no match).
-fn message(text: &'static str, error: bool) -> Div {
+fn message(text: impl Into<SharedString>, error: bool) -> Div {
     card_box()
         .items_center()
         .py(px(24.))
         .text_size(px(14.))
         .text_color(if error { theme::danger_text() } else { theme::text_muted() })
-        .child(text)
+        .child(text.into())
 }

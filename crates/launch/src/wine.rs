@@ -231,6 +231,7 @@ pub fn build_wine_plan(
             make_executable: None,
             prep: wine.prep_spec(),
             notes: wine.notes,
+            ..Default::default()
         },
     }
 }

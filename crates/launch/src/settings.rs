@@ -53,9 +53,15 @@ pub struct GameSettings {
     pub wrapper_options: Vec<Wrapper>,
     pub launcher_args: String,
     pub target_exe: String,
+    /// `beforeLaunchScriptPath`: run to completion before the game starts.
+    pub before_launch_script: String,
+    /// `afterLaunchScriptPath`: run to completion after the game exits.
+    pub after_launch_script: String,
     pub use_game_mode: bool,
     pub show_fps: bool,
     pub show_mangohud: bool,
+    /// `heroniteMangohudFpsLimit`: MangoHud's `fps_limit`; empty = no limit.
+    pub mangohud_fps_limit: String,
     pub nvidia_prime: bool,
     pub enable_esync: bool,
     pub enable_fsync: bool,
@@ -183,9 +189,12 @@ impl GameSettings {
             wrapper_options,
             launcher_args: text(m.get("launcherArgs")),
             target_exe: text(m.get("targetExe")),
+            before_launch_script: text(m.get("beforeLaunchScriptPath")).trim().to_string(),
+            after_launch_script: text(m.get("afterLaunchScriptPath")).trim().to_string(),
             use_game_mode: b("useGameMode"),
             show_fps: b("showFps"),
             show_mangohud: b("showMangohud"),
+            mangohud_fps_limit: text(m.get("heroniteMangohudFpsLimit")).trim().to_string(),
             nvidia_prime: b("nvidiaPrime"),
             enable_esync: b("enableEsync"),
             enable_fsync: b("enableFsync"),

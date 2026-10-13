@@ -34,11 +34,31 @@ pub fn setup_env_vars(s: &GameSettings, install_path: Option<&str>, probe: &dyn 
     for (k, v) in &s.env_options {
         ret.insert(k.clone(), v.clone());
     }
+    if let Some(config) = mangohud_config(s, ret.get(MANGOHUD_CONFIG).cloned().or_else(|| probe.env_var(MANGOHUD_CONFIG))) {
+        ret.insert(MANGOHUD_CONFIG.into(), config);
+    }
     // Fixes the std::log_error crash in Fall Guys (Heroic does the same).
     if probe.env_var("LD_PRELOAD").is_none() && !ret.contains_key("LD_PRELOAD") {
         ret.insert("LD_PRELOAD".into(), String::new());
     }
     ret
+}
+
+const MANGOHUD_CONFIG: &str = "MANGOHUD_CONFIG";
+
+/// `MANGOHUD_CONFIG` with the game's FPS limit, `None` when MangoHud is off
+/// or there is no limit. Without `read_cfg` MangoHud would ignore the user's
+/// config file; a `MANGOHUD_CONFIG` the user set already says whether it is
+/// read, so the limit is only appended to it.
+fn mangohud_config(s: &GameSettings, existing: Option<String>) -> Option<String> {
+    let limit = s.mangohud_fps_limit.parse::<u32>().ok().filter(|n| *n > 0)?;
+    if !s.show_mangohud {
+        return None;
+    }
+    Some(match existing.filter(|c| !c.trim().is_empty()) {
+        Some(c) => format!("{},fps_limit={limit}", c.trim_end_matches(',')),
+        None => format!("read_cfg,fps_limit={limit}"),
+    })
 }
 
 pub fn setup_wrapper_env_vars(app_name: &str, runner: &str) -> Env {
@@ -452,6 +472,27 @@ mod tests {
         assert_eq!(w.wrappers, ["taskset", "-c", "0-3", "/usr/bin/mangohud", "--dlsym", "/usr/bin/gamemoderun", "/umu"]);
         let missing = build_wrappers(&s, &FakeProbe::new("/h"), None);
         assert!(missing.error.unwrap().contains("mangohud"));
+    }
+
+    #[test]
+    fn mangohud_fps_limit_keeps_the_users_config() {
+        let probe = FakeProbe::new("/h");
+        let on = settings(json!({"showMangohud": true, "heroniteMangohudFpsLimit": " 60 "}));
+        assert_eq!(setup_env_vars(&on, None, &probe)["MANGOHUD_CONFIG"], "read_cfg,fps_limit=60");
+        let user = settings(json!({
+            "showMangohud": true, "heroniteMangohudFpsLimit": "45",
+            "enviromentOptions": [{"key":"MANGOHUD_CONFIG","value":"fps,frametime"}]
+        }));
+        assert_eq!(setup_env_vars(&user, None, &probe)["MANGOHUD_CONFIG"], "fps,frametime,fps_limit=45");
+        let inherited = FakeProbe::new("/h").with_env("MANGOHUD_CONFIG", "read_cfg,cpu_temp");
+        assert_eq!(setup_env_vars(&on, None, &inherited)["MANGOHUD_CONFIG"], "read_cfg,cpu_temp,fps_limit=60");
+        for off in [
+            json!({"showMangohud": false, "heroniteMangohudFpsLimit": "60"}),
+            json!({"showMangohud": true, "heroniteMangohudFpsLimit": ""}),
+            json!({"showMangohud": true, "heroniteMangohudFpsLimit": "0"}),
+        ] {
+            assert!(!setup_env_vars(&settings(off), None, &probe).contains_key("MANGOHUD_CONFIG"));
+        }
     }
 
     #[test]

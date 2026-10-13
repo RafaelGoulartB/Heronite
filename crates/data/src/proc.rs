@@ -68,6 +68,24 @@ impl Cancel {
     }
 }
 
+/// `cmd.spawn()`, tried again for a moment when the program is "busy"
+/// (`ETXTBSY`). That happens right after the file was written (a download,
+/// a generated script): a process forked meanwhile by another thread holds the
+/// written file open until its own `exec`, and executing a file open for
+/// writing fails.
+pub fn spawn(cmd: &mut Command) -> io::Result<Child> {
+    let mut tries = 0;
+    loop {
+        match cmd.spawn() {
+            Err(e) if e.kind() == io::ErrorKind::ExecutableFileBusy && tries < 40 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            other => return other,
+        }
+    }
+}
+
 #[cfg(unix)]
 fn sig_term() -> i32 {
     libc::SIGTERM
@@ -187,7 +205,7 @@ impl<'a> Run<'a> {
     pub fn run(mut self, cmd: &mut Command) -> io::Result<RunOutput> {
         guard(cmd);
         cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let mut child = cmd.spawn()?;
+        let mut child = spawn(cmd)?;
         let pid = child.id() as i32;
         let local = Cancel::default();
         let cancel = self.cancel.unwrap_or(&local);
@@ -366,6 +384,25 @@ mod tests {
         std::fs::write(&bin, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         Command::new(bin)
+    }
+
+    #[test]
+    fn a_program_still_open_for_writing_is_started_once_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cmd = script(dir.path(), "exit 0");
+        let writer = std::fs::OpenOptions::new().append(true).open(dir.path().join("helper.sh")).unwrap();
+        assert_eq!(cmd.spawn().unwrap_err().kind(), io::ErrorKind::ExecutableFileBusy);
+        let closer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            drop(writer);
+        });
+        let mut child = spawn(&mut cmd).unwrap();
+        assert!(child.wait().unwrap().success());
+        closer.join().unwrap();
+        // Other errors are not retried.
+        let started = Instant::now();
+        assert_eq!(spawn(&mut Command::new(dir.path().join("missing"))).unwrap_err().kind(), io::ErrorKind::NotFound);
+        assert!(started.elapsed() < Duration::from_millis(20));
     }
 
     fn alive(pid: i32) -> bool {

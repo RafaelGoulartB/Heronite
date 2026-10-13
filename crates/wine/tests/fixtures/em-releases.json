@@ -1,0 +1,62 @@
+[
+ {
+  "tag_name": "EM-10.0-37-HDR",
+  "name": "Proton-EM 10.0-37 HDR",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-04-11T18:58:28Z",
+  "html_url": "https://github.com/BananaWorks07/Proton/releases/tag/EM-10.0-37-HDR",
+  "assets": [
+   {
+    "name": "proton-EM-10.0-37-HDR.sha256sum",
+    "browser_download_url": "https://github.com/BananaWorks07/Proton/releases/download/EM-10.0-37-HDR/proton-EM-10.0-37-HDR.sha256sum",
+    "size": 95
+   },
+   {
+    "name": "proton-EM-10.0-37-HDR.tar.xz",
+    "browser_download_url": "https://github.com/BananaWorks07/Proton/releases/download/EM-10.0-37-HDR/proton-EM-10.0-37-HDR.tar.xz",
+    "size": 343702836
+   }
+  ]
+ },
+ {
+  "tag_name": "EM-10.0-36-HDRTEST",
+  "name": "Proton-EM 10.0-36 HDR TEST",
+  "prerelease": false,
+  "draft": false,
+  "published_at": "2026-03-23T17:32:26Z",
+  "html_url": "https://github.com/BananaWorks07/Proton/releases/tag/EM-10.0-36-HDRTEST",
+  "assets": [
+   {
+    "name": "proton-EM-10.0-36-HDRTEST.sha256sum",
+    "browser_download_url": "https://github.com/BananaWorks07/Proton/releases/download/EM-10.0-36-HDRTEST/proton-EM-10.0-36-HDRTEST.sha256sum",
+    "size": 99
+   },
+   {
+    "name": "proton-EM-10.0-36-HDRTEST.tar.xz",
+    "browser_download_url": "https://github.com/BananaWorks07/Proton/releases/download/EM-10.0-36-HDRTEST/proton-EM-10.0-36-HDRTEST.tar.xz",
+    "size": 396350308
+   }
+  ]
+ },
+ {
+  "tag_name": "EM-10.0-35-HDRTEST",
+  "name": "Proton-EM 10.0-35 HDR TEST",
+  "prerelease": true,
+  "draft": false,
+  "published_at": "2026-03-14T01:58:59Z",
+  "html_url": "https://github.com/BananaWorks07/Proton/releases/tag/EM-10.0-35-HDRTEST",
+  "assets": [
+   {
+    "name": "proton-EM-10.0-35-HDRTEST.sha256sum",
+    "browser_download_url": "https://github.com/BananaWorks07/Proton/releases/download/EM-10.0-35-HDRTEST/proton-EM-10.0-35-HDRTEST.sha256sum",
+    "size": 99
+   },
+   {
+    "name": "proton-EM-10.0-35-HDRTEST.tar.xz",
+    "browser_download_url": "https://github.com/BananaWorks07/Proton/releases/download/EM-10.0-35-HDRTEST/proton-EM-10.0-35-HDRTEST.tar.xz",
+    "size": 396149340
+   }
+  ]
+ }
+]

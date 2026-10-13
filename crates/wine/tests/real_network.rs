@@ -5,7 +5,12 @@
 use std::time::{Duration, Instant};
 
 use heronite_data::DataPaths;
+use heronite_wine::checks::{self, CheckMode, CheckOutcome};
 use heronite_wine::{store, JobEvent, JobPhase, Repository, WineManager};
+
+fn now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs()
+}
 
 const SMALL: &str = "cachyos-10.0-20250702-slr";
 
@@ -16,11 +21,14 @@ fn refresh_install_remove_against_fixture() {
     assert!(dir.starts_with("/tmp/heronite-fixture"), "refusing to run outside /tmp/heronite-fixture*");
     let data_paths = DataPaths::at(&dir);
 
-    let out = store::refresh(&data_paths, &Repository::LINUX, 50).expect("refresh");
-    eprintln!("refreshed: {} releases, errors {:?}", out.releases.len(), out.errors);
-    assert!(out.releases.iter().any(|r| r.version == "GE-Proton-latest"));
-    assert!(out.releases.iter().any(|r| r.version == "Proton-CachyOS-latest"));
-    assert!(out.errors.is_empty());
+    for repo in [Repository::ProtonGe, Repository::ProtonCachyos] {
+        let outcome = checks::check_source(&data_paths, &checks::GitHub, repo, CheckMode::Manual, now());
+        eprintln!("{}: {outcome:?}", repo.kind());
+        assert!(matches!(outcome, CheckOutcome::Updated | CheckOutcome::UpToDate), "{outcome:?}");
+    }
+    let releases = store::read_releases(&data_paths);
+    assert!(releases.iter().any(|r| r.version == "GE-Proton-latest"));
+    assert!(releases.iter().any(|r| r.version == "Proton-CachyOS-latest"));
 
     let info = store::read_releases(&data_paths).into_iter().find(|r| r.version == SMALL).expect("small build in cache");
     let manager = WineManager::new(data_paths.clone());
@@ -63,4 +71,32 @@ fn refresh_install_remove_against_fixture() {
     assert!(events.iter().any(|e| matches!(e, JobEvent::Removed { .. })), "{events:?}");
     assert!(!installed.exists());
     assert!(!store::read_releases(&data_paths).into_iter().find(|r| r.version == SMALL).unwrap().installed());
+}
+
+/// Every offered source lists installable builds, and checking again right
+/// away costs no API call. Ignored by default (network, 1 API call per source).
+///   cargo test -p heronite-wine --test real_network every_source -- --ignored --nocapture
+#[test]
+#[ignore]
+fn every_source_lists_builds_and_a_second_check_is_free() {
+    let dir = tempfile::tempdir().unwrap();
+    let data_paths = DataPaths::at(dir.path());
+    for &repo in Repository::offered() {
+        let outcome = checks::check_source(&data_paths, &checks::GitHub, repo, CheckMode::Manual, now());
+        let releases: Vec<_> =
+            store::read_releases(&data_paths).into_iter().filter(|r| r.kind == repo.kind() && r.downloadable()).collect();
+        eprintln!("{}: {outcome:?}, {} builds, newest {:?}", repo.kind(), releases.len(), releases.get(1).map(|r| &r.version));
+        assert_eq!(outcome, CheckOutcome::Updated, "{}", repo.kind());
+        assert!(releases.iter().any(|r| r.version == format!("{}-latest", repo.kind())), "{}", repo.kind());
+    }
+    // A minute later the feeds are read again; nothing changed, so no API call
+    // (a spent budget would show up as RateLimited instead).
+    let later = now() + 120;
+    for &repo in Repository::offered() {
+        let outcome = checks::check_source(&data_paths, &checks::GitHub, repo, CheckMode::Manual, later);
+        eprintln!("{} again: {outcome:?}", repo.kind());
+        assert_eq!(outcome, CheckOutcome::UpToDate, "{}", repo.kind());
+    }
+    let state = std::fs::read_to_string(data_paths.wine_release_checks()).unwrap();
+    eprintln!("{state}");
 }

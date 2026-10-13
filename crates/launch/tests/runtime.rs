@@ -308,6 +308,65 @@ fn real_process_is_not_done_while_a_child_holds_its_output() {
     assert!(t.elapsed() >= Duration::from_millis(900), "{:?}", t.elapsed());
 }
 
+/// A script (not executable yet, as a picked file often is) that appends its
+/// name and `HEROIC_GAME_SCRIPT_TYPE` to `out`.
+fn write_script(dir: &std::path::Path, name: &str, out: &std::path::Path) -> String {
+    let path = dir.join(name);
+    fs::write(&path, format!("#!/bin/sh\necho \"{name} $HEROIC_GAME_SCRIPT_TYPE\" >> '{}'\n", out.display())).unwrap();
+    path.to_string_lossy().into_owned()
+}
+
+fn script(program: &str, kind: &str) -> Command {
+    let env = BTreeMap::from([("HEROIC_GAME_SCRIPT_TYPE".to_string(), kind.to_string())]);
+    Command { program: program.into(), env, ..Default::default() }
+}
+
+#[test]
+fn real_scripts_run_before_and_after_the_game() {
+    let (d, paths, launcher, rx) = real_rig();
+    let out = d.path().join("order.txt");
+    let mut plan = process_plan("sh", &["-c", &format!("echo game >> '{}'", out.display())]);
+    plan.before_script = Some(script(&write_script(d.path(), "before.sh", &out), "before"));
+    plan.after_script = Some(script(&write_script(d.path(), "after.sh", &out), "after"));
+    launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    assert!(matches!(next(&rx), LaunchEvent::Launching { .. }));
+    assert_eq!(status_of(next(&rx)), ("Running the script before launch...".to_string(), false));
+    assert!(matches!(next(&rx), LaunchEvent::Running { .. }));
+    let LaunchEvent::Exited { record, .. } = next(&rx) else { panic!() };
+    assert!(record.is_some());
+    assert_eq!(fs::read_to_string(&out).unwrap(), "before.sh before\ngame\nafter.sh after\n");
+    let log = fs::read_to_string(paths.root.join("logs/games/g_sideload/launch.log")).unwrap();
+    assert!(log.contains("before.sh"), "{log}");
+}
+
+#[test]
+fn real_a_missing_script_is_reported_and_the_game_still_runs() {
+    let (d, _paths, launcher, rx) = real_rig();
+    let mut plan = process_plan("true", &[]);
+    plan.before_script = Some(script(&d.path().join("nope.sh").to_string_lossy(), "before"));
+    launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&rx);
+    let _ = next(&rx);
+    let (message, warning) = status_of(next(&rx));
+    assert!(warning && message.contains("nope.sh"), "{message}");
+    assert!(matches!(next(&rx), LaunchEvent::Running { .. }));
+    assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
+}
+
+#[test]
+fn real_the_after_script_runs_for_a_stopped_game() {
+    let (d, _paths, launcher, rx) = real_rig();
+    let out = d.path().join("order.txt");
+    let mut plan = process_plan("sleep", &["60"]);
+    plan.after_script = Some(script(&write_script(d.path(), "after.sh", &out), "after"));
+    launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&rx);
+    assert!(matches!(next(&rx), LaunchEvent::Running { .. }));
+    assert!(launcher.stop("g"));
+    assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
+    assert_eq!(fs::read_to_string(&out).unwrap(), "after.sh after\n");
+}
+
 #[test]
 fn real_stop_kills_the_whole_tree() {
     let (_d, _paths, launcher, rx) = real_rig();
