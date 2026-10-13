@@ -12,7 +12,7 @@ use heronite_i18n::tr;
 use regex::Regex;
 
 use crate::probe::Probe;
-use crate::settings::GameSettings;
+use crate::settings::{GameSettings, Gamescope};
 
 pub type Env = BTreeMap<String, String>;
 
@@ -322,52 +322,7 @@ pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option
         if let Some(bin) = probe.which("gamescope") {
             let old = probe.gamescope_is_old(&bin);
             gamescope.push(bin);
-            if g.enable_upscaling {
-                if !g.game_width.is_empty() {
-                    gamescope.extend(["-w".into(), g.game_width.clone()]);
-                }
-                if !g.game_height.is_empty() {
-                    gamescope.extend(["-h".into(), g.game_height.clone()]);
-                }
-                if !g.upscale_width.is_empty() {
-                    gamescope.extend(["-W".into(), g.upscale_width.clone()]);
-                }
-                if !g.upscale_height.is_empty() {
-                    gamescope.extend(["-H".into(), g.upscale_height.clone()]);
-                }
-                match (g.upscale_method.as_str(), old) {
-                    ("fsr", true) => gamescope.push("-U".into()),
-                    ("fsr", false) => gamescope.extend(["-F".into(), "fsr".into()]),
-                    ("nis", true) => gamescope.push("-Y".into()),
-                    ("nis", false) => gamescope.extend(["-F".into(), "nis".into()]),
-                    ("integer", true) => gamescope.push("-i".into()),
-                    ("integer", false) => gamescope.extend(["-S".into(), "integer".into()]),
-                    ("stretch", false) => gamescope.extend(["-S".into(), "stretch".into()]),
-                    _ => {}
-                }
-                match g.window_type.as_str() {
-                    "fullscreen" => gamescope.push("-f".into()),
-                    "borderless" => gamescope.push("-b".into()),
-                    _ => {}
-                }
-            }
-            if g.enable_limiter {
-                if !g.fps_limiter.is_empty() {
-                    gamescope.extend(["-r".into(), g.fps_limiter.clone()]);
-                }
-                if !g.fps_limiter_no_focus.is_empty() {
-                    gamescope.extend(["-o".into(), g.fps_limiter_no_focus.clone()]);
-                }
-            }
-            if g.enable_force_grab_cursor {
-                gamescope.push("--force-grab-cursor".into());
-            }
-            if s.show_mangohud {
-                gamescope.push("--mangoapp".into());
-            }
-            gamescope.extend(shlex::split(&g.additional_options).unwrap_or_default());
-            // Must be the last option.
-            gamescope.push("--".into());
+            gamescope.extend(gamescope_args(g, old, s.show_mangohud));
         } else {
             log::warn!("Gamescope is enabled, but `gamescope` executable could not be found on $PATH");
         }
@@ -391,6 +346,60 @@ pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option
     }
     wrappers.retain(|w| !w.is_empty());
     WrapperPlan { wrappers, error }
+}
+
+/// Gamescope's options for the game's settings, ending with `--` (the game
+/// command follows). `old`: gamescope before 3.12, which has other upscaling
+/// flags. `mangoapp`: MangoHud runs inside gamescope instead of as a wrapper.
+pub fn gamescope_args(g: &Gamescope, old: bool, mangoapp: bool) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if g.enable_upscaling {
+        if !g.game_width.is_empty() {
+            out.extend(["-w".into(), g.game_width.clone()]);
+        }
+        if !g.game_height.is_empty() {
+            out.extend(["-h".into(), g.game_height.clone()]);
+        }
+        if !g.upscale_width.is_empty() {
+            out.extend(["-W".into(), g.upscale_width.clone()]);
+        }
+        if !g.upscale_height.is_empty() {
+            out.extend(["-H".into(), g.upscale_height.clone()]);
+        }
+        match (g.upscale_method.as_str(), old) {
+            ("fsr", true) => out.push("-U".into()),
+            ("fsr", false) => out.extend(["-F".into(), "fsr".into()]),
+            ("nis", true) => out.push("-Y".into()),
+            ("nis", false) => out.extend(["-F".into(), "nis".into()]),
+            ("integer", true) => out.push("-i".into()),
+            ("integer", false) => out.extend(["-S".into(), "integer".into()]),
+            ("stretch", false) => out.extend(["-S".into(), "stretch".into()]),
+            _ => {}
+        }
+        match g.window_type.as_str() {
+            "fullscreen" => out.push("-f".into()),
+            "borderless" => out.push("-b".into()),
+            _ => {}
+        }
+    }
+    if g.enable_limiter {
+        if !g.fps_limiter.is_empty() {
+            out.extend(["-r".into(), g.fps_limiter.clone()]);
+        }
+        if !g.fps_limiter_no_focus.is_empty() {
+            out.extend(["-o".into(), g.fps_limiter_no_focus.clone()]);
+        }
+    }
+    if g.enable_force_grab_cursor {
+        out.push("--force-grab-cursor".into());
+    }
+    if mangoapp {
+        out.push("--mangoapp".into());
+    }
+    out.extend(shlex::split(&g.additional_options).unwrap_or_default());
+    // Must be the last option.
+    out.push("--".into());
+    out
 }
 
 #[cfg(test)]
