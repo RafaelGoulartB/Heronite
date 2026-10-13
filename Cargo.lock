@@ -3471,6 +3471,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-amazon"
+version = "0.3.2"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-epic",
+ "heronite-i18n",
+ "heronite-launch",
+ "log",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "heronite-data"
 version = "0.3.2"
 dependencies = [
@@ -3536,6 +3552,22 @@ dependencies = [
  "serde_json",
  "url",
  "wry",
+]
+
+[[package]]
+name = "heronite-gog"
+version = "0.3.2"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-epic",
+ "heronite-i18n",
+ "heronite-launch",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "ureq",
 ]
 
 [[package]]

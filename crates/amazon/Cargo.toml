@@ -1,0 +1,23 @@
+[package]
+name = "heronite-amazon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Amazon Games through the nile CLI (login, library, install, update, verify, move)"
+
+[dependencies]
+heronite-data = { path = "../data" }
+heronite-i18n = { path = "../i18n" }
+heronite-launch = { path = "../launch" }
+heronite-epic = { path = "../epic" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+anyhow = "1"
+log = "0.4"
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
