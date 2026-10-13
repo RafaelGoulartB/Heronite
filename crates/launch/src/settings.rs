@@ -60,6 +60,8 @@ pub struct GameSettings {
     pub use_game_mode: bool,
     pub show_fps: bool,
     pub show_mangohud: bool,
+    /// `heroniteMangohudFpsLimit`: MangoHud's `fps_limit`; empty = no limit.
+    pub mangohud_fps_limit: String,
     pub nvidia_prime: bool,
     pub enable_esync: bool,
     pub enable_fsync: bool,
@@ -192,6 +194,7 @@ impl GameSettings {
             use_game_mode: b("useGameMode"),
             show_fps: b("showFps"),
             show_mangohud: b("showMangohud"),
+            mangohud_fps_limit: text(m.get("heroniteMangohudFpsLimit")).trim().to_string(),
             nvidia_prime: b("nvidiaPrime"),
             enable_esync: b("enableEsync"),
             enable_fsync: b("enableFsync"),
