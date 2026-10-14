@@ -210,7 +210,7 @@ impl WineManagerPage {
         card([toggle_row(
             "wine-to-steam",
             tr!("Install Proton into Steam"),
-            Some(tr!("Downloads into Steam's compatibilitytools.d folder as well.")),
+            Some(tr!("Steam's games can pick these builds too: new ones download into its compatibilitytools.d folder, the ones already here are registered there. Steam sees them after it restarts.")),
             self.download_to_steam,
         )
         .on_click(cx.listener(|this, _, _, cx| {

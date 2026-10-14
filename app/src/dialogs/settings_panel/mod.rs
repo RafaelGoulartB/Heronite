@@ -17,6 +17,7 @@ pub mod logic;
 mod other;
 mod parts;
 mod prefix_menu;
+mod protondb;
 mod saves;
 mod shared_folders;
 mod steam;
@@ -96,6 +97,7 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("wrap.exe", Bind::Scratch, n_!("New Wrapper")),
     ("wrap.args", Bind::Scratch, n_!("Wrapper Arguments")),
     ("steamLine", Bind::SteamLine, n_!("Empty: Steam's defaults")),
+    ("select.filter", Bind::Scratch, n_!("Search\u{2026}")),
 ];
 
 /// Outcome line shown under a tab (tool started, sync result, errors).
@@ -156,6 +158,10 @@ pub struct SettingsPanel {
     pub(super) saves: SavesState,
     /// Steam games: what Steam has (the settings map mirrors its launch options).
     steam: Option<steam::SteamState>,
+    /// The game's ProtonDB tier, for the Proton picker.
+    protondb: protondb::ProtonDb,
+    /// Name of the Wine version new games get (marked in a game's menu).
+    pub(super) global_wine: Option<String>,
     debounce: HashMap<&'static str, Task<()>>,
     queue: Vec<(String, Value)>,
     writing: bool,
@@ -205,6 +211,14 @@ impl SettingsPanel {
                     _ => {}
                 }));
             }
+            if *id == "select.filter" {
+                // The open menu narrows as the search changes.
+                subs.push(cx.subscribe_in(&input, window, |_, _, ev: &InputEvent, _, cx| {
+                    if matches!(ev, InputEvent::Change) {
+                        cx.notify();
+                    }
+                }));
+            }
             inputs.insert(*id, input);
         }
         let tools = paths.tools_dir();
@@ -218,7 +232,12 @@ impl SettingsPanel {
             settings,
             wine_list: None,
             prefix_list: None,
-            open_select: None,
+            // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version`: that menu starts open.
+            open_select: match crate::env::value("HERONITE_DEBUG_OPEN_SELECT").as_deref() {
+                Some("steam-tool") => Some("steam-tool"),
+                Some("wine-version") => Some("wine-version"),
+                _ => None,
+            },
             inputs,
             notice: None,
             tool_busy: None,
@@ -230,6 +249,8 @@ impl SettingsPanel {
             env_error: String::new(),
             saves: SavesState::default(),
             steam: steam_app.map(steam::SteamState::new),
+            protondb: protondb::ProtonDb::Off,
+            global_wine: None,
             debounce: HashMap::new(),
             queue: Vec::new(),
             writing: false,
@@ -238,9 +259,17 @@ impl SettingsPanel {
             console_active: true,
             _subs: subs,
         };
+        let wine = this.facts().is_some_and(|f| matches!(f.run_kind, logic::RunKind::Steam | logic::RunKind::Wine));
+        if wine {
+            this.load_protondb(cx);
+        }
+        if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
+            this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
+        }
         if this.is_steam() {
             // Debug settings are applied once Steam was read.
             this.load_steam(cx);
+            this.watch_steam(cx);
             return this;
         }
         this.load_wine_list(cx);

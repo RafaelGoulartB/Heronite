@@ -9,6 +9,7 @@ pub mod install;
 pub mod manager;
 pub mod prefixes;
 pub mod repos;
+pub mod steam_link;
 pub mod store;
 mod types;
 mod vdf;

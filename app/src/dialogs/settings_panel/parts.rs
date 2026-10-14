@@ -6,7 +6,10 @@ use gpui_kit::*;
 use super::SettingsPanel;
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, toggle_row, ButtonKind};
-use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_field};
+use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_field, select_menu_field, SelectOption};
+
+/// Menus longer than this get a search box.
+const SEARCH_FROM: usize = 8;
 
 /// Info callout (`.defaults-hint`): a quiet glass box.
 pub fn hint(text: &str) -> Div {
@@ -166,6 +169,46 @@ impl SettingsPanel {
             cx,
             move |this: &mut Self, _, cx| {
                 this.open_select = if this.open_select == Some(id) { None } else { Some(id) };
+                cx.notify();
+            },
+            move |this: &mut Self, i, window, cx| {
+                this.open_select = None;
+                on_pick(this, i, window, cx);
+                cx.notify();
+            },
+        )
+    }
+
+    /// [`select_row`](Self::select_row) with groups and notes; long lists
+    /// get a search box (focused, and emptied, when the menu opens).
+    pub(super) fn select_menu_row(
+        &self,
+        id: &'static str,
+        label: Option<&str>,
+        current: String,
+        options: Vec<SelectOption>,
+        disabled: bool,
+        cx: &mut Context<Self>,
+        on_pick: impl Fn(&mut Self, usize, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Div {
+        let searchable = options.len() > SEARCH_FROM;
+        let filter = searchable.then(|| self.input("select.filter"));
+        select_menu_field(
+            id,
+            label,
+            current,
+            disabled,
+            self.open_select == Some(id),
+            options,
+            filter.as_ref(),
+            cx,
+            move |this: &mut Self, window, cx| {
+                let opening = this.open_select != Some(id);
+                this.open_select = if opening { Some(id) } else { None };
+                if opening && searchable {
+                    this.set_input("select.filter", "", window, cx);
+                    this.input("select.filter").update(cx, |s, cx| s.focus(window, cx));
+                }
                 cx.notify();
             },
             move |this: &mut Self, i, window, cx| {

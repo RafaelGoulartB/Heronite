@@ -60,6 +60,8 @@ pub struct GameFacts {
     pub cloud_saves: bool,
     /// Steam's app id of a [`RunKind::Steam`] game.
     pub steam_app_id: Option<String>,
+    /// The Steam id ProtonDB knows the game by (its own or the metadata's).
+    pub protondb_id: Option<String>,
 }
 
 impl GameFacts {
@@ -99,12 +101,19 @@ impl GameFacts {
         } else {
             g.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false)
         };
+        let protondb_id =
+            [steam_app_id.as_deref(), game.steam_app_id.as_deref(), game.metadata.as_ref().and_then(|m| m.steam_app_id.as_deref())]
+                .into_iter()
+                .flatten()
+                .find(|s| !s.is_empty())
+                .map(str::to_owned);
         Self {
             app_name: game.app_name.clone(),
             title: game.title.clone(),
             runner: game.runner.clone(),
             run_kind,
             cloud_saves,
+            protondb_id,
             steam_app_id,
         }
     }
@@ -180,13 +189,34 @@ pub fn wine_of(settings: &serde_json::Map<String, Value>) -> WineInstallation {
 }
 
 /// The Wine list plus the configured version when it is not in it (Heroic
-/// adds it when it is still valid).
+/// adds it when it is still valid), in the order of [`wine_group`].
 pub fn wine_options(list: &[WineInstallation], current: &WineInstallation) -> Vec<WineInstallation> {
     let mut out = list.to_vec();
     if !out.iter().any(|w| w.name == current.name || (!w.bin.is_empty() && w.bin == current.bin)) {
         out.push(current.clone());
     }
+    out.sort_by_key(wine_group_rank);
     out
+}
+
+fn wine_group_rank(w: &WineInstallation) -> u8 {
+    match w.kind.as_str() {
+        "proton" if w.bin.contains("/steamapps/common/") => 1,
+        "proton" => 0,
+        "wine" => 2,
+        _ => 3,
+    }
+}
+
+/// Heading of the menu group `w` is listed under: the Proton builds you
+/// installed (GE-Proton...), Valve's, Wine builds, the rest.
+pub fn wine_group(w: &WineInstallation) -> &'static str {
+    match wine_group_rank(w) {
+        0 => tr!("Your versions"),
+        1 => "Valve",
+        2 => "Wine",
+        _ => tr!("Other"),
+    }
 }
 
 pub fn wine_to_value(w: &WineInstallation) -> Value {

@@ -126,7 +126,16 @@ impl SettingsPanel {
         let mut v = Vec::new();
         let list = self.wine_list.clone().unwrap_or_default();
         let options = logic::wine_options(&list, &wine);
-        let names: Vec<SharedString> = options.iter().map(|w| SharedString::from(logic::display_wine_name(&w.name))).collect();
+        let names: Vec<SharedString> = options
+            .iter()
+            .map(|w| {
+                let name = logic::display_wine_name(&w.name);
+                SharedString::from(match self.global_wine.as_deref() == Some(w.name.as_str()) {
+                    true => format!("{name} \u{b7} {}", tr!("default")),
+                    false => name,
+                })
+            })
+            .collect();
         let selected = options.iter().position(|w| w.name == wine.name).unwrap_or(0);
         let desc = if self.wine_list.is_some() && list.is_empty() {
             tr!("No Wine version was found, download one from the Wine Manager").to_string()
@@ -154,6 +163,7 @@ impl SettingsPanel {
                 Act::Choice(pick),
             ));
         }
+        v.extend(self.c_protondb(self.wine_recommendation(&options, &wine), Self::pick_wine));
         if wine.kind == "crossover" {
             v.push(self.c_text("crossoverBottle", tr!("CrossOver bottle"), cx));
             return v;
@@ -236,6 +246,7 @@ impl SettingsPanel {
                     |this, path, cx| this.run_tool("runexe", WineTool::RunExe(path), cx),
                 )
             }));
+            v.push(Self::c_do("openpfx", tr!("Open prefix folder"), Icon::FolderOpen, true, |this, _, cx| this.open_wine_prefix(cx)));
         }
         v
     }

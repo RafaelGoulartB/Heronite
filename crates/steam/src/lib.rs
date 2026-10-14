@@ -20,10 +20,11 @@ pub mod options;
 pub mod vdf_edit;
 pub mod wrap;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use heronite_i18n::tr;
-use heronite_launch::steam::{flatpak_steam_root, SteamLocator};
+use heronite_launch::steam::{desktop_protocol_env, flatpak_steam_root, SteamLocator};
 use heronite_shortcuts::steam::{enable_client_api_on_next_start, is_steam_running};
 use heronite_shortcuts::steam_client::SteamClient;
 
@@ -33,6 +34,59 @@ use heronite_shortcuts::steam_client::SteamClient;
 pub struct CompatTool {
     pub name: String,
     pub display: String,
+    /// The build's folder, when it is known from disk.
+    pub path: Option<PathBuf>,
+}
+
+/// The kinds of tool, as the menu groups them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ToolGroup {
+    /// GE-Proton, the Wine Manager's and other builds in `compatibilitytools.d`.
+    Custom,
+    /// Valve's Proton.
+    Valve,
+    /// Steam Linux Runtime and the legacy runtime (Linux games).
+    Runtime,
+}
+
+impl CompatTool {
+    pub fn group(&self) -> ToolGroup {
+        let n = self.name.to_ascii_lowercase();
+        if n.starts_with("steamlinuxruntime") || n == "legacysteamruntime" {
+            ToolGroup::Runtime
+        } else if n.starts_with("proton_") {
+            ToolGroup::Valve
+        } else {
+            ToolGroup::Custom
+        }
+    }
+}
+
+/// The display name of the tool Steam calls `name` (its logs and mappings
+/// write some with dashes: `proton-experimental`).
+fn display_of(tools: &[CompatTool], name: &str) -> Option<String> {
+    let norm = |s: &str| s.to_ascii_lowercase().replace('-', "_");
+    tools.iter().find(|t| norm(&t.name) == norm(name)).map(|t| t.display.clone())
+}
+
+/// Custom builds (GE-Proton, the Wine Manager's...) first, by name; then
+/// Valve's Proton, Experimental and Hotfix before the newest versions; the
+/// runtimes last. The client lists them in no useful order.
+fn order_tools(tools: &mut [CompatTool]) {
+    let version = |t: &CompatTool| -> (u32, u32) {
+        let v = t.display.strip_prefix("Proton ").and_then(|r| r.split(['-', ' ']).next()).unwrap_or("");
+        let mut parts = v.split('.').map(|p| p.parse().unwrap_or(0));
+        (parts.next().unwrap_or(0), parts.next().unwrap_or(0))
+    };
+    let rank = |t: &CompatTool| match t.name.as_str() {
+        "proton_experimental" => 1,
+        "proton_hotfix" => 2,
+        n if n.starts_with("proton_") => 3,
+        n if n.starts_with("steamlinuxruntime") => 4,
+        "legacysteamruntime" => 5,
+        _ => 0,
+    };
+    tools.sort_by_cached_key(|t| (rank(t), std::cmp::Reverse(version(t)), t.display.to_lowercase()));
 }
 
 /// How the settings can be changed right now.
@@ -55,6 +109,13 @@ pub struct Snapshot {
     pub compat_tool: String,
     /// The tools to pick from (always includes `compat_tool`).
     pub tools: Vec<CompatTool>,
+    /// What "Steam's default" runs the game with (display name), when known.
+    pub default_tool: Option<String>,
+    /// `name` of the tool whose build last ran the game (from the prefix).
+    pub last_ran: Option<String>,
+    /// Tools in `compatibilitytools.d` newer than the running Steam: it
+    /// lists them only after it restarts.
+    pub unseen: Vec<CompatTool>,
     pub access: Access,
     /// `None` until Steam runs the game through Proton once.
     pub prefix: Option<files::Prefix>,
@@ -90,6 +151,12 @@ pub enum LibraryAccess {
     NotInstalled,
 }
 
+/// Whether [`Steam::restart`] can be offered: not in a gamescope session
+/// (Steam Deck's game mode), where Steam is the session itself.
+pub fn can_restart() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").as_deref() != Ok("gamescope")
+}
+
 /// Shown when Steam runs without its debugging interface.
 pub fn read_only_message() -> &'static str {
     tr!("Steam is running without the access Heronite needs to change its settings. It is turned on for Steam's next start: restart Steam once, or close it, to change these settings.")
@@ -107,10 +174,12 @@ impl Steam {
     /// Steam's pid file sits next to `~/.steam/steam`, wherever the
     /// configured folder points.
     fn running(&self) -> bool {
+        self.pid_dirs().iter().any(|dir| is_steam_running(dir))
+    }
+
+    fn pid_dirs(&self) -> [PathBuf; 3] {
         let home = &self.locator.home;
         [self.root().to_path_buf(), home.join(".steam/steam"), home.join(".var/app/com.valvesoftware.Steam/.steam/steam")]
-            .iter()
-            .any(|dir| is_steam_running(dir))
     }
 
     fn access(&self) -> Access {
@@ -144,25 +213,104 @@ impl Steam {
                 }
             }
         }
-        let (launch_options, compat_tool, mut tools) = match from_client {
-            Some(app) => (app.launch_options, app.compat_tool, app.tools),
+        let on_disk = files::compat_tools(&self.locator);
+        let (launch_options, compat_tool, automatic, mut tools) = match from_client {
+            Some(app) => (app.launch_options, app.compat_tool, app.automatic, app.tools.unwrap_or_else(|| on_disk.clone())),
             None => (
                 files::read_launch_options(self.root(), &self.user()?, app_id)?,
                 files::read_compat_tool(self.root(), app_id),
-                files::compat_tools(&self.locator),
+                None,
+                on_disk.clone(),
             ),
         };
-        if !compat_tool.is_empty() && !tools.iter().any(|t| t.name == compat_tool) {
-            tools.push(CompatTool { name: compat_tool.clone(), display: compat_tool.clone() });
+        for t in tools.iter_mut().filter(|t| t.path.is_none()) {
+            t.path = on_disk.iter().find(|d| d.name == t.name).and_then(|d| d.path.clone());
         }
-        Ok(Snapshot {
-            launch_options,
-            compat_tool,
-            tools,
-            access,
-            prefix: files::prefix(&self.locator, app_id),
-            flatpak: self.root().starts_with(flatpak_steam_root(&self.locator.home)),
+        if !compat_tool.is_empty() && !tools.iter().any(|t| t.name == compat_tool) {
+            tools.push(CompatTool { name: compat_tool.clone(), display: compat_tool.clone(), path: None });
+        }
+        order_tools(&mut tools);
+        let default_tool = automatic.or_else(|| {
+            let name = files::automatic_tool(self.root(), app_id)?;
+            Some(display_of(&tools, &name).unwrap_or(name))
+        });
+        let prefix = files::prefix(&self.locator, app_id);
+        let last_ran = prefix.as_ref().and_then(|p| p.proton.as_deref()).and_then(|dir| {
+            let dir = std::fs::canonicalize(dir).ok()?;
+            let same = |p: &Path| std::fs::canonicalize(p).is_ok_and(|p| p == dir);
+            tools.iter().find(|t| t.path.as_deref().is_some_and(same)).map(|t| t.name.clone())
+        });
+        let unseen = match access {
+            Access::Files => Vec::new(),
+            _ => self.started_at().map(|at| files::tools_added_since(&self.locator, at)).unwrap_or_default(),
+        };
+        Ok(Snapshot { launch_options, compat_tool, tools, default_tool, last_ran, unseen, access, prefix, flatpak: self.flatpak() })
+    }
+
+    fn flatpak(&self) -> bool {
+        self.root().starts_with(flatpak_steam_root(&self.locator.home))
+    }
+
+    /// When the running Steam started: the time of its pid file.
+    fn started_at(&self) -> Option<SystemTime> {
+        self.pid_dirs().iter().filter(|dir| is_steam_running(dir)).find_map(|dir| {
+            let files = [dir.parent().map(|p| p.join("steam.pid")), Some(dir.join("steam.pid"))];
+            files.into_iter().flatten().filter_map(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok()).max()
         })
+    }
+
+    /// Whether Steam runs, and whether its client answers (Heronite can
+    /// read and change settings through it). Blocking, a few milliseconds.
+    pub fn status(&self) -> (bool, bool) {
+        let running = self.running();
+        (running, running && self.client.is_available())
+    }
+
+    /// Closes Steam and starts it again (so it lists new tools and opens
+    /// the access Heronite needs). `steam_bin` is the `steam` command.
+    /// Blocking: waits up to a minute for Steam to close.
+    pub fn restart(&self, steam_bin: &str) -> Result<(), String> {
+        use std::process::{Command, Stdio};
+        if !can_restart() {
+            return Err(tr!("Steam cannot be restarted from here in game mode.").to_string());
+        }
+        let command = |args: &[&str]| {
+            let mut c = if self.flatpak() {
+                let mut c = Command::new("flatpak");
+                c.args(["run", "com.valvesoftware.Steam"]);
+                c
+            } else {
+                Command::new(steam_bin)
+            };
+            // Not this app's environment: when Steam started Heronite it holds
+            // Steam's overlay preload, its runtime and the AppImage's paths.
+            c.args(args)
+                .env_clear()
+                .envs(desktop_protocol_env(std::env::vars()))
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            c
+        };
+        let fail = |e: std::io::Error| tr!("Could not run Steam: {error}", error = e.to_string());
+        if self.running() {
+            command(&["-shutdown"]).status().map_err(fail)?;
+            let deadline = std::time::Instant::now() + Duration::from_secs(60);
+            while self.running() {
+                if std::time::Instant::now() > deadline {
+                    return Err(tr!("Steam did not close within a minute.").to_string());
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        }
+        enable_client_api_on_next_start(self.root());
+        let mut start = command(&[]);
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut start, 0);
+        let mut child = start.spawn().map_err(fail)?;
+        // Reaped when it exits; Steam keeps running after Heronite closes.
+        std::thread::spawn(move || child.wait());
+        Ok(())
     }
 
     /// Whether [`read_library`](Self::read_library) can work now. Blocking
@@ -212,5 +360,44 @@ impl Steam {
             Access::ReadOnly => return Err(read_only_message().to_string()),
         }
         Ok(access)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_builds_first_then_valve_newest_first() {
+        let t = |name: &str, display: &str| CompatTool { name: name.into(), display: display.into(), path: None };
+        let mut tools = vec![
+            t("steamlinuxruntime", "Steam Linux Runtime 1.0"),
+            t("proton_63", "Proton 6.3-8"),
+            t("proton_experimental", "Proton Experimental"),
+            t("proton_9", "Proton 9.0-4"),
+            t("legacysteamruntime", "Legacy Steam Runtime"),
+            t("proton_11", "Proton 11.0-2"),
+            t("proton_hotfix", "Proton Hotfix"),
+            t("proton_7", "Proton 7.0-6"),
+            t("dwproton", "dwproton-11.0-14"),
+            t("GE-Proton11-6", "GE-Proton11-6"),
+        ];
+        order_tools(&mut tools);
+        let names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "dwproton",
+                "GE-Proton11-6",
+                "proton_experimental",
+                "proton_hotfix",
+                "proton_11",
+                "proton_9",
+                "proton_7",
+                "proton_63",
+                "steamlinuxruntime",
+                "legacysteamruntime"
+            ]
+        );
     }
 }

@@ -135,7 +135,7 @@ pub fn compat_tools(locator: &SteamLocator) -> Vec<CompatTool> {
     let mut out: Vec<CompatTool> = Vec::new();
     for m in read_manifests(locator) {
         if let Some(name) = valve_tool_name(&m.name) {
-            out.push(CompatTool { name, display: m.name.clone() });
+            out.push(CompatTool { name, display: m.name.clone(), path: locator.install_dir(&m.app_id) });
         }
     }
     for dir in compat_tool_dirs(locator) {
@@ -170,9 +170,57 @@ fn read_compat_tool_vdf(dir: &Path) -> Option<Vec<CompatTool>> {
         tools
             .entries()
             .iter()
-            .map(|(name, t)| CompatTool { name: name.clone(), display: t.str_of("display_name").unwrap_or(name).to_string() })
+            .map(|(name, t)| CompatTool {
+                name: name.clone(),
+                display: t.str_of("display_name").unwrap_or(name).to_string(),
+                // `.`, a path relative to the manifest's folder, or an absolute one.
+                path: t.str_of("install_path").map(|p| dir.join(p)),
+            })
             .collect(),
     )
+}
+
+/// The tools in `compatibilitytools.d` whose manifest appeared (or changed)
+/// after `since`: Steam reads the folder only when it starts. The change
+/// time, not the modification time: archives keep their files' old dates.
+pub fn tools_added_since(locator: &SteamLocator, since: std::time::SystemTime) -> Vec<CompatTool> {
+    use std::os::unix::fs::MetadataExt;
+    let since = since.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    let mut out = Vec::new();
+    for dir in compat_tool_dirs(locator) {
+        let Ok(rd) = fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let changed = fs::metadata(e.path().join("compatibilitytool.vdf")).is_ok_and(|m| m.ctime() > since);
+            if changed {
+                out.extend(read_compat_tool_vdf(&e.path()).into_iter().flatten());
+            }
+        }
+    }
+    out.sort_by_key(|t| t.display.to_lowercase());
+    out
+}
+
+/// The tool Steam itself maps the game to (its per-game pick, else the
+/// global default), as its `compat_log` last recorded it: the user's choice
+/// hides it everywhere else.
+pub fn automatic_tool(root: &Path, app_id: &str) -> Option<String> {
+    let logs = root.join("logs");
+    ["compat_log.txt", "compat_log.previous.txt"]
+        .iter()
+        .find_map(|f| fs::read_to_string(logs.join(f)).ok().and_then(|text| automatic_tool_in(&text, app_id)))
+}
+
+/// Last `Mapping AppID <id> to tool "<name>" with priority <p>` (or the
+/// `Skip mapping` variant Steam logs when the user's choice wins) below the
+/// user's priority.
+fn automatic_tool_in(log: &str, app_id: &str) -> Option<String> {
+    let needle = format!("apping AppID {app_id} to tool \"");
+    log.lines().rev().find_map(|line| {
+        let rest = &line[line.find(&needle)? + needle.len()..];
+        let (name, rest) = rest.split_once('"')?;
+        let priority: u32 = rest.trim_start().strip_prefix("with priority ")?.split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()?;
+        (priority < USER_PRIORITY.parse().unwrap_or(250) && !name.is_empty()).then(|| name.to_string())
+    })
 }
 
 /// Steam's internal name of a Valve Proton app: `Proton 9.0` is `proton_9`,
@@ -325,9 +373,23 @@ mod tests {
         assert_eq!(
             tools,
             [
-                CompatTool { name: "proton_9".into(), display: "Proton 9.0".into() },
-                CompatTool { name: "GE-Proton9-20".into(), display: "GE-Proton9-20 (GE)".into() },
+                CompatTool { name: "proton_9".into(), display: "Proton 9.0".into(), path: None },
+                CompatTool {
+                    name: "GE-Proton9-20".into(),
+                    display: "GE-Proton9-20 (GE)".into(),
+                    path: Some(steam.join("compatibilitytools.d/ge/."))
+                },
             ]
         );
+    }
+
+    #[test]
+    fn the_automatic_tool_comes_from_the_compat_log() {
+        let log = "[x] Mapping AppID 400 to tool \"proton_9\" with priority 75\n\
+            [x] Mapping AppID 4000 to tool \"other\" with priority 90\n\
+            [x] Skip mapping AppID 400 to tool \"proton_experimental\" with priority 90: mapping to tool \"GE\" with priority 250 already exists.\n\
+            [x] Mapping AppID 400 to tool \"GE\" with priority 250\n";
+        assert_eq!(automatic_tool_in(log, "400").as_deref(), Some("proton_experimental"));
+        assert_eq!(automatic_tool_in(log, "500"), None);
     }
 }
