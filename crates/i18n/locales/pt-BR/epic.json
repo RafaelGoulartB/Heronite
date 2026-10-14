@@ -60,7 +60,7 @@
   "Download size": "Tamanho do download",
   "Download {download}  ·  On disk {disk}": "Download {download}  ·  No disco {disk}",
   "Downloading": "Baixando",
-  "Downloads into Steam's compatibilitytools.d folder as well.": "Baixa também na pasta compatibilitytools.d do Steam.",
+  "Steam's games can pick these builds too: new ones download into its compatibilitytools.d folder, the ones already here are registered there. Steam sees them after it restarts.": "Os jogos da Steam também podem usar estas versões: as novas são baixadas na pasta compatibilitytools.d dela e as que já estão aqui são registradas lá. A Steam as vê depois de reiniciar.",
   "EOS Overlay enabled": "EOS Overlay ativado",
   "EOS Overlay installed": "EOS Overlay instalado",
   "EOS Overlay uninstalled": "EOS Overlay desinstalado",

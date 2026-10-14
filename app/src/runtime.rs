@@ -280,6 +280,8 @@ fn spawn_tools_update(paths: DataPaths) {
         // A new setup with a Proton already on this PC (Steam's
         // compatibilitytools.d, Lutris) gets it as the default Wine.
         heronite_wine::default::ensure_default(&paths);
+        // Wine Manager builds where Steam's games can pick them too.
+        heronite_wine::steam_link::sync(&paths);
         // A new setup has no legendary yet: get it before the user logs in to Epic.
         if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
             log::warn!("{e}");

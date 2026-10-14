@@ -13,8 +13,9 @@ pub struct ClientApp {
     pub launch_options: String,
     /// `""`: Steam's default.
     pub compat_tool: String,
-    /// Every tool the client offers for the game, Valve's first.
-    pub tools: Vec<CompatTool>,
+    /// Every tool the client offers for the game. `None`: this client has
+    /// no call for it (Steam dropped `GetAvailableCompatTools` in 2026-10).
+    pub tools: Option<Vec<CompatTool>>,
 }
 
 fn app_id_number(app_id: &str) -> Result<u32> {
@@ -36,22 +37,19 @@ pub fn read(client: &SteamClient, app_id: &str) -> Result<ClientApp> {
         setTimeout(() => finish(null), 5000)
       }})
       if (!details) throw new Error('Steam has no details for app {id}')
-      const tools = await SteamClient.Apps.GetAvailableCompatTools({id})
+      const list = SteamClient.Apps.GetAvailableCompatTools
+      const tools = typeof list === 'function' ? await list({id}) : null
       return {{
         launchOptions: details.strLaunchOptions ?? '',
         compatTool: details.strCompatToolName ?? '',
-        tools: (tools ?? []).map((t) => ({{ name: t.strToolName, display: t.strDisplayName }})),
+        tools: tools && tools.map((t) => ({{ name: t.strToolName, display: t.strDisplayName }})),
       }}
     }})()"#
     ))?;
     let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-    let tools = value
-        .get("tools")
-        .and_then(Value::as_array)
-        .map(|list| {
-            list.iter().map(|t| CompatTool { name: text(t, "name"), display: text(t, "display") }).filter(|t| !t.name.is_empty()).collect()
-        })
-        .unwrap_or_default();
+    let tools = value.get("tools").and_then(Value::as_array).map(|list| {
+        list.iter().map(|t| CompatTool { name: text(t, "name"), display: text(t, "display") }).filter(|t| !t.name.is_empty()).collect()
+    });
     Ok(ClientApp { launch_options: text(&value, "launchOptions"), compat_tool: text(&value, "compatTool"), tools })
 }
 

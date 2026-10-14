@@ -35,6 +35,26 @@ pub struct CompatTool {
     pub display: String,
 }
 
+/// Custom builds (GE-Proton, the Wine Manager's...) first, by name; then
+/// Valve's Proton, Experimental and Hotfix before the newest versions; the
+/// runtimes last. The client lists them in no useful order.
+fn order_tools(tools: &mut [CompatTool]) {
+    let version = |t: &CompatTool| -> (u32, u32) {
+        let v = t.display.strip_prefix("Proton ").and_then(|r| r.split(['-', ' ']).next()).unwrap_or("");
+        let mut parts = v.split('.').map(|p| p.parse().unwrap_or(0));
+        (parts.next().unwrap_or(0), parts.next().unwrap_or(0))
+    };
+    let rank = |t: &CompatTool| match t.name.as_str() {
+        "proton_experimental" => 1,
+        "proton_hotfix" => 2,
+        n if n.starts_with("proton_") => 3,
+        n if n.starts_with("steamlinuxruntime") => 4,
+        "legacysteamruntime" => 5,
+        _ => 0,
+    };
+    tools.sort_by_cached_key(|t| (rank(t), std::cmp::Reverse(version(t)), t.display.to_lowercase()));
+}
+
 /// How the settings can be changed right now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
@@ -145,7 +165,7 @@ impl Steam {
             }
         }
         let (launch_options, compat_tool, mut tools) = match from_client {
-            Some(app) => (app.launch_options, app.compat_tool, app.tools),
+            Some(app) => (app.launch_options, app.compat_tool, app.tools.unwrap_or_else(|| files::compat_tools(&self.locator))),
             None => (
                 files::read_launch_options(self.root(), &self.user()?, app_id)?,
                 files::read_compat_tool(self.root(), app_id),
@@ -155,6 +175,7 @@ impl Steam {
         if !compat_tool.is_empty() && !tools.iter().any(|t| t.name == compat_tool) {
             tools.push(CompatTool { name: compat_tool.clone(), display: compat_tool.clone() });
         }
+        order_tools(&mut tools);
         Ok(Snapshot {
             launch_options,
             compat_tool,
@@ -212,5 +233,44 @@ impl Steam {
             Access::ReadOnly => return Err(read_only_message().to_string()),
         }
         Ok(access)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_builds_first_then_valve_newest_first() {
+        let t = |name: &str, display: &str| CompatTool { name: name.into(), display: display.into() };
+        let mut tools = vec![
+            t("steamlinuxruntime", "Steam Linux Runtime 1.0"),
+            t("proton_63", "Proton 6.3-8"),
+            t("proton_experimental", "Proton Experimental"),
+            t("proton_9", "Proton 9.0-4"),
+            t("legacysteamruntime", "Legacy Steam Runtime"),
+            t("proton_11", "Proton 11.0-2"),
+            t("proton_hotfix", "Proton Hotfix"),
+            t("proton_7", "Proton 7.0-6"),
+            t("dwproton", "dwproton-11.0-14"),
+            t("GE-Proton11-6", "GE-Proton11-6"),
+        ];
+        order_tools(&mut tools);
+        let names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "dwproton",
+                "GE-Proton11-6",
+                "proton_experimental",
+                "proton_hotfix",
+                "proton_11",
+                "proton_9",
+                "proton_7",
+                "proton_63",
+                "steamlinuxruntime",
+                "legacysteamruntime"
+            ]
+        );
     }
 }

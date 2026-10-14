@@ -197,6 +197,7 @@ impl WineManager {
                     Ok(_) => {
                         // The first build of a new setup becomes the default.
                         crate::default::ensure_default(&this.inner.data_paths);
+                        crate::steam_link::sync(&this.inner.data_paths);
                         JobEvent::Installed { version: version.clone(), update }
                     }
                     Err(InstallError::Aborted) => JobEvent::Cancelled { version: version.clone() },
@@ -221,7 +222,10 @@ impl WineManager {
             .spawn(move || {
                 let version = info.version.clone();
                 let event = match install::remove_version(&this.inner.data_paths, &info) {
-                    Ok(()) => JobEvent::Removed { version: version.clone() },
+                    Ok(()) => {
+                        crate::steam_link::sync(&this.inner.data_paths);
+                        JobEvent::Removed { version: version.clone() }
+                    }
                     Err(e) => JobEvent::Failed { version: version.clone(), message: format!("{e:#}") },
                 };
                 this.finish(&version, event);

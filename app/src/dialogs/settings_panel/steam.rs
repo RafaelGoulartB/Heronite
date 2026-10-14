@@ -339,7 +339,7 @@ impl SettingsPanel {
             rows()
                 .field_help(
                     tool,
-                    vec![help(tr!("The build Steam runs the game with. GE-Proton and other builds in Steam's compatibilitytools.d folder are listed too; Steam only sees a new build after it restarts."))],
+                    vec![help(tr!("The build Steam runs the game with. GE-Proton and other builds in Steam's compatibilitytools.d folder are listed too, and the Wine Manager's while \"Install Proton into Steam\" is on; Steam only sees a new build after it restarts."))],
                 )
                 .card(),
         );
