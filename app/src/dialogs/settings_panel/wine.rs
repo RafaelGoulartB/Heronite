@@ -15,8 +15,10 @@ use serde_json::{json, Value};
 
 use super::logic::{self, RunKind};
 use super::parts::{column, danger_text, heading, help, rows};
+use super::protondb::{best_ge, ProtonDb, Recommendation};
 use super::{Notice, SettingsPanel, Target};
-use crate::ui::fields::choose_path;
+use crate::ui::fields::{choose_path, SelectOption};
+use heronite_wine::WineInstallation;
 
 impl SettingsPanel {
     pub(super) fn native(&self) -> bool {
@@ -172,24 +174,30 @@ impl SettingsPanel {
         let options = logic::wine_options(&list, &current);
         let selected = options.iter().position(|w| w.name == current.name).unwrap_or(0);
         let shown = if loading && list.is_empty() { tr!("Loading\u{2026}").to_string() } else { logic::display_wine_name(&current.name) };
-        let items: Vec<(SharedString, bool)> =
-            options.iter().enumerate().map(|(i, w)| (SharedString::from(logic::display_wine_name(&w.name)), i == selected)).collect();
-        let field = self.select_row(
+        let items: Vec<SelectOption> = options
+            .iter()
+            .enumerate()
+            .map(|(i, w)| SelectOption {
+                label: logic::display_wine_name(&w.name).into(),
+                selected: i == selected,
+                group: Some(logic::wine_group(w).into()),
+                note: None,
+            })
+            .collect();
+        let field = self.select_menu_row(
             "wine-version",
             Some(tr!("Wine / Proton version")),
             shown,
             items,
             loading && list.is_empty(),
             cx,
-            move |this, i, _, cx| {
-                let list = this.wine_list.clone().unwrap_or_default();
-                let options = logic::wine_options(&list, &this.wine_version());
-                if let Some(w) = options.get(i) {
-                    this.set("wineVersion", logic::wine_to_value(w), cx);
-                }
-            },
+            |this, i, _, cx| this.pick_wine(i, cx),
         );
         let mut col = column().gap(px(6.)).child(field);
+        let rec = self.wine_recommendation(&options, &current);
+        if let Some(row) = self.protondb_row(rec, cx, Self::pick_wine) {
+            col = col.child(row);
+        }
         if !loading && list.is_empty() {
             col = col.child(danger_text(tr!("No Wine version was found, download one from the Wine Manager")));
         }
@@ -204,6 +212,28 @@ impl SettingsPanel {
         col.child(help(&tr!("Wine Path: {path}", path = current.bin))).child(help(
             tr!("Heronite searches for versions of Wine, Proton, and CrossOver in: ~/.local/share/heronite/tools/wine, ~/.local/share/heronite/tools/proton, ~/.steam/root/compatibilitytools.d, ~/.steam/steamapps/common, ~/.local/share/lutris/runners/wine, ~/.var/app/com.valvesoftware.Steam (Steam Flatpak) and /usr/share/steam. For other places, use a symbolic link to one of these folders."),
         ))
+    }
+
+    /// For games run through Wine: the newest GE-Proton, whatever the
+    /// tier (umu runs them like Steam would; GE carries the extra fixes).
+    pub(super) fn wine_recommendation(&self, options: &[WineInstallation], current: &WineInstallation) -> Option<Recommendation> {
+        let ProtonDb::Tier(tier) = &self.protondb else { return None };
+        if tier == "pending" || !self.is_game() {
+            return None;
+        }
+        let names: Vec<String> = options.iter().map(|w| logic::display_wine_name(&w.name)).collect();
+        Some(match best_ge(names.iter().map(String::as_str)) {
+            Some(i) => Recommendation { label: names[i].clone(), index: Some(i), in_use: options[i].name == current.name },
+            None => Recommendation { label: "GE-Proton".into(), index: None, in_use: false },
+        })
+    }
+
+    /// Picks entry `index` of the Wine menu.
+    pub(super) fn pick_wine(&mut self, index: usize, cx: &mut Context<Self>) {
+        let list = self.wine_list.clone().unwrap_or_default();
+        if let Some(w) = logic::wine_options(&list, &self.wine_version()).get(index) {
+            self.set("wineVersion", logic::wine_to_value(w), cx);
+        }
     }
 
     fn tools_row(&mut self, cx: &mut Context<Self>) -> Div {

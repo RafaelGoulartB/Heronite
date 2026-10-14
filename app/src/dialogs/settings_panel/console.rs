@@ -154,6 +154,7 @@ impl SettingsPanel {
                 Act::Choice(pick),
             ));
         }
+        v.extend(self.c_protondb(self.wine_recommendation(&options, &wine), Self::pick_wine));
         if wine.kind == "crossover" {
             v.push(self.c_text("crossoverBottle", tr!("CrossOver bottle"), cx));
             return v;

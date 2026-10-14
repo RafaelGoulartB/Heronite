@@ -9,6 +9,8 @@ use heronite_steam::options;
 
 use super::super::advanced::{ENV, WRAPPERS};
 use super::super::logic::launcher_args_error;
+use super::super::protondb::{tier_advice, tier_name, ProtonDb, Recommendation};
+use super::super::steam::Restart;
 use super::{item, Act, Item, SettingsPanel};
 use crate::console::list::Row;
 use crate::icons::Icon;
@@ -21,10 +23,60 @@ impl SettingsPanel {
         if !self.steam.as_ref().is_some_and(|s| s.editable) {
             v.push(Self::c_info("steam-shell", tr!("Launch options"), tr!("They use shell syntax; edit them as text in Advanced")));
         }
+        let read_only = self.steam_locked().is_some_and(|w| w == heronite_steam::read_only_message());
+        if read_only {
+            v.extend(self.c_restart());
+        }
         v.push(Self::c_do("steam-reload", tr!("Read from Steam again"), Icon::Refresh, true, |this, _, cx| {
             this.notice = None;
             this.load_steam(cx)
         }));
+        v
+    }
+
+    /// "Restart Steam", asking once before Steam's games close.
+    fn c_restart(&self) -> Vec<Item> {
+        match self.steam.as_ref().map(|s| s.restart).unwrap_or_default() {
+            Restart::Idle => vec![Self::c_do("steam-restart", tr!("Restart Steam"), Icon::Refresh, true, |this, _, cx| {
+                this.steam_restart_state(Restart::Confirm, cx)
+            })],
+            Restart::Confirm => vec![
+                Self::c_do(
+                    "steam-restart-yes",
+                    tr!("Restart now: games running from Steam will close"),
+                    Icon::Refresh,
+                    true,
+                    |this, _, cx| this.restart_steam(cx),
+                ),
+                Self::c_do("steam-restart-no", tr!("Cancel"), Icon::Close, true, |this, _, cx| this.steam_restart_state(Restart::Idle, cx)),
+            ],
+            Restart::Running(_) => vec![Self::c_info("steam-restart", "Steam", tr!("Restarting Steam\u{2026}"))],
+        }
+    }
+
+    /// The ProtonDB tier and a row that picks the suggested build.
+    pub(super) fn c_protondb(&self, rec: Option<Recommendation>, pick: fn(&mut Self, usize, &mut Context<Self>)) -> Vec<Item> {
+        let mut v = Vec::new();
+        match &self.protondb {
+            ProtonDb::Off => {}
+            ProtonDb::Loading => v.push(Self::c_info("protondb", "ProtonDB", tr!("Asking ProtonDB\u{2026}"))),
+            ProtonDb::Tier(t) => v.push(Self::c_info("protondb", "ProtonDB", format!("{}: {}", tier_name(t), tier_advice(t)))),
+        }
+        if let Some(rec) = rec {
+            match (rec.in_use, rec.index) {
+                (true, _) => v.push(Self::c_info("protondb-rec", tr!("Recommended"), tr!("{build} (in use)", build = rec.label))),
+                (false, Some(i)) => v.push(Self::c_do(
+                    "protondb-use",
+                    &tr!("Use the recommended build: {build}", build = rec.label),
+                    Icon::WineBar,
+                    true,
+                    move |this, _, cx| pick(this, i, cx),
+                )),
+                (false, None) => {
+                    v.push(Self::c_info("protondb-rec", tr!("Recommended"), tr!("{build}, from the Wine Manager", build = rec.label)))
+                }
+            }
+        }
         v
     }
 
@@ -36,8 +88,22 @@ impl SettingsPanel {
         let mut v = self.c_steam_status();
         let options = self.steam_tool_options();
         let current = self.steam_current_tool();
-        let names = options.iter().map(|(l, _)| SharedString::from(l.clone())).collect();
-        let selected = options.iter().position(|(_, n)| *n == current).unwrap_or(0);
+        let names = options
+            .iter()
+            .map(|o| {
+                SharedString::from(match o.note {
+                    Some(note) => format!("{} \u{b7} {note}", o.label),
+                    None => o.label.clone(),
+                })
+            })
+            .collect();
+        let selected = options.iter().position(|o| o.name == current).unwrap_or(0);
+        if let Some(text) = self.steam_unseen_text() {
+            v.push(Self::c_info("steam-unseen", tr!("New builds"), text));
+            if !self.steam_locked().is_some_and(|w| w == heronite_steam::read_only_message()) {
+                v.extend(self.c_restart());
+            }
+        }
         v.push(Self::c_header("Proton"));
         v.push(item(
             Row::choice("c:steam-tool", tr!("Compatibility tool"), names, selected)
@@ -46,6 +112,8 @@ impl SettingsPanel {
                 .enabled(self.steam_locked().is_none()),
             Act::Choice(Rc::new(|this, i, cx| this.pick_steam_tool(i, cx))),
         ));
+        let rec = self.steam_recommendation(&options).filter(|_| self.steam_locked().is_none());
+        v.extend(self.c_protondb(rec, |this, i, cx| this.pick_steam_tool(i, cx)));
         if self.steam.as_ref().is_some_and(|s| s.editable) {
             v.push(Self::c_header(tr!("Proton options")));
             v.push(self.c_steam_toggle("enableEsync", true, "Esync", None));

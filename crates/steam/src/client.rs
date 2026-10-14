@@ -13,6 +13,9 @@ pub struct ClientApp {
     pub launch_options: String,
     /// `""`: Steam's default.
     pub compat_tool: String,
+    /// What Steam's default is for this game (display name), when the user
+    /// has not picked a tool: the client reports its own pick then.
+    pub automatic: Option<String>,
     /// Every tool the client offers for the game. `None`: this client has
     /// no call for it (Steam dropped `GetAvailableCompatTools` in 2026-10).
     pub tools: Option<Vec<CompatTool>>,
@@ -42,15 +45,27 @@ pub fn read(client: &SteamClient, app_id: &str) -> Result<ClientApp> {
       return {{
         launchOptions: details.strLaunchOptions ?? '',
         compatTool: details.strCompatToolName ?? '',
+        compatDisplay: details.strCompatToolDisplayName ?? '',
+        priority: details.nCompatToolPriority ?? 0,
         tools: tools && tools.map((t) => ({{ name: t.strToolName, display: t.strDisplayName }})),
       }}
     }})()"#
     ))?;
     let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
     let tools = value.get("tools").and_then(Value::as_array).map(|list| {
-        list.iter().map(|t| CompatTool { name: text(t, "name"), display: text(t, "display") }).filter(|t| !t.name.is_empty()).collect()
+        list.iter()
+            .map(|t| CompatTool { name: text(t, "name"), display: text(t, "display"), path: None })
+            .filter(|t| !t.name.is_empty())
+            .collect()
     });
-    Ok(ClientApp { launch_options: text(&value, "launchOptions"), compat_tool: text(&value, "compatTool"), tools })
+    // Below the user's priority (250) the tool is Steam's own pick.
+    let automatic = value.get("priority").and_then(Value::as_i64).is_some_and(|p| p < 250);
+    let (compat_tool, display) = (text(&value, "compatTool"), text(&value, "compatDisplay"));
+    let (compat_tool, automatic) = match automatic {
+        true if !compat_tool.is_empty() => (String::new(), Some(if display.is_empty() { compat_tool } else { display })),
+        _ => (compat_tool, None),
+    };
+    Ok(ClientApp { launch_options: text(&value, "launchOptions"), compat_tool, automatic, tools })
 }
 
 pub fn set_launch_options(client: &SteamClient, app_id: &str, line: &str) -> Result<()> {

@@ -6,6 +6,7 @@
 //! it to Steam.
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use crate::services::steam_library::steam;
 use gpui_kit::prelude::*;
@@ -13,14 +14,38 @@ use gpui_kit::*;
 use heronite_i18n::tr;
 use heronite_launch::settings::{GameSettings, WineVersion};
 use heronite_launch::wine_tools::WineTool;
-use heronite_steam::{options, wrap, Access, Change, Snapshot};
+use heronite_steam::{options, wrap, Access, Change, Snapshot, ToolGroup};
 use serde_json::Value;
 
 use super::advanced::{ENV, WRAPPERS};
 use super::logic::launcher_args_error;
 use super::parts::{column, danger_text, heading, help, hint, rows};
+use super::protondb::{best_ge, runs_well, ProtonDb, Recommendation};
 use super::{Notice, SettingsPanel};
-use crate::ui::fields::choose_path;
+use crate::ui::fields::{choose_path, SelectOption};
+
+/// How long Steam may run without its client answering before the panel
+/// reads it anyway (it then shows why nothing can change).
+const CLIENT_WAIT: Duration = Duration::from_secs(20);
+
+/// The "Restart Steam" button: idle, asking to confirm, or restarting.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum Restart {
+    #[default]
+    Idle,
+    Confirm,
+    Running(Instant),
+}
+
+/// One entry of the compatibility tool menu.
+pub(super) struct ToolOption {
+    pub(super) label: String,
+    /// What Steam stores (`""`: its default).
+    pub(super) name: String,
+    pub(super) group: Option<&'static str>,
+    /// "last used".
+    pub(super) note: Option<&'static str>,
+}
 
 /// What the panel knows of the game in Steam.
 pub(super) struct SteamState {
@@ -35,6 +60,11 @@ pub(super) struct SteamState {
     inputs_stale: bool,
     pending: Change,
     writing: bool,
+    pub(super) restart: Restart,
+    /// Last `(running, client answers)` of Steam, to read again when it changes.
+    seen: Option<(bool, bool)>,
+    /// Since when Steam runs without its client answering yet.
+    starting_since: Option<Instant>,
 }
 
 impl SteamState {
@@ -47,6 +77,9 @@ impl SteamState {
             inputs_stale: false,
             pending: Change::default(),
             writing: false,
+            restart: Restart::Idle,
+            seen: None,
+            starting_since: None,
         }
     }
 
@@ -255,13 +288,143 @@ impl SettingsPanel {
         }
     }
 
-    /// The tool list as `(label, name)`, "Steam's default" first.
-    pub(super) fn steam_tool_options(&self) -> Vec<(String, String)> {
-        let mut out = vec![(tr!("Steam's default").to_string(), String::new())];
-        if let Some(snap) = self.steam.as_ref().and_then(SteamState::ready) {
-            out.extend(snap.tools.iter().map(|t| (t.display.clone(), t.name.clone())));
+    /// The tool menu: "Steam's default" (with what it runs, when known),
+    /// then the tools by group; the one that last ran the game is marked.
+    pub(super) fn steam_tool_options(&self) -> Vec<ToolOption> {
+        let snap = self.steam.as_ref().and_then(SteamState::ready);
+        let default = match snap.and_then(|s| s.default_tool.as_deref()) {
+            Some(tool) => tr!("Steam's default ({tool})", tool),
+            None => tr!("Steam's default").to_string(),
+        };
+        let mut out = vec![ToolOption { label: default, name: String::new(), group: None, note: None }];
+        if let Some(snap) = snap {
+            out.extend(snap.tools.iter().map(|t| ToolOption {
+                label: t.display.clone(),
+                name: t.name.clone(),
+                group: Some(match t.group() {
+                    ToolGroup::Custom => tr!("Your versions"),
+                    ToolGroup::Valve => "Valve",
+                    ToolGroup::Runtime => tr!("Runtimes"),
+                }),
+                note: (snap.last_ran.as_deref() == Some(t.name.as_str())).then(|| tr!("last used")),
+            }));
         }
         out
+    }
+
+    /// What ProtonDB's tier suggests among `options`: Steam's default for
+    /// games that run well, else the newest GE-Proton.
+    pub(super) fn steam_recommendation(&self, options: &[ToolOption]) -> Option<Recommendation> {
+        let ProtonDb::Tier(tier) = &self.protondb else { return None };
+        if tier == "pending" || options.is_empty() {
+            return None;
+        }
+        let current = self.steam_current_tool();
+        if runs_well(tier) {
+            return Some(Recommendation { label: options[0].label.clone(), index: Some(0), in_use: current.is_empty() });
+        }
+        Some(match best_ge(options.iter().skip(1).map(|o| o.label.as_str())).map(|i| i + 1) {
+            Some(i) => Recommendation { label: options[i].label.clone(), index: Some(i), in_use: options[i].name == current },
+            None => Recommendation { label: "GE-Proton".into(), index: None, in_use: false },
+        })
+    }
+
+    /// Reads Steam again when it opens or closes (once its client answers).
+    /// Runs while the panel lives.
+    pub(super) fn watch_steam(&mut self, cx: &mut Context<Self>) {
+        let paths = self.paths.clone();
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(Duration::from_secs(2)).await;
+            let p = paths.clone();
+            let status = cx.background_spawn(async move { steam(&p).status() }).await;
+            if this.update(cx, |this, cx| this.on_steam_status(status, cx)).is_err() {
+                break;
+            }
+        })
+        .detach();
+    }
+
+    fn on_steam_status(&mut self, status: (bool, bool), cx: &mut Context<Self>) {
+        let st = self.steam_mut();
+        let Some(before) = st.seen.replace(status) else { return };
+        let restarting = matches!(st.restart, Restart::Running(_));
+        let read = if before == status {
+            // Steam up without its client for a while: read it as it is.
+            let stuck = st.starting_since.is_some_and(|t| t.elapsed() > CLIENT_WAIT);
+            let gave_up = matches!(st.restart, Restart::Running(t) if t.elapsed() > CLIENT_WAIT * 4);
+            stuck || gave_up
+        } else if status == (true, false) {
+            st.starting_since = Some(Instant::now());
+            false
+        } else {
+            // Closed, or its client answers. Mid-restart, only the latter.
+            !restarting || status.1
+        };
+        if !read {
+            return;
+        }
+        st.starting_since = None;
+        st.restart = Restart::Idle;
+        self.notice = None;
+        self.load_steam(cx);
+    }
+
+    /// Closes and starts Steam; the watcher reads it again once it is back.
+    pub(super) fn restart_steam(&mut self, cx: &mut Context<Self>) {
+        self.steam_mut().restart = Restart::Running(Instant::now());
+        let paths = self.paths.clone();
+        cx.spawn(async move |this, cx| {
+            let bin = crate::env::value("HERONITE_STEAM_BIN").unwrap_or_else(|| "steam".into());
+            let res = cx.background_spawn(async move { steam(&paths).restart(&bin) }).await;
+            this.update(cx, |this, cx| {
+                if let Err(e) = res {
+                    this.steam_mut().restart = Restart::Idle;
+                    this.notice = Some(Notice { text: e.into(), error: true });
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
+    }
+
+    pub(super) fn steam_restart_state(&mut self, state: Restart, cx: &mut Context<Self>) {
+        self.steam_mut().restart = state;
+        cx.notify();
+    }
+
+    /// "Restart Steam", which asks once before closing Steam's games.
+    fn restart_buttons(&self, cx: &mut Context<Self>) -> Div {
+        let state = self.steam.as_ref().map(|s| s.restart).unwrap_or_default();
+        let row = div().flex().flex_wrap().items_center().gap(px(8.));
+        match state {
+            Restart::Idle => row.child(self.outline_button("steam-restart", tr!("Restart Steam"), true, cx, |this, _, cx| {
+                this.steam_mut().restart = Restart::Confirm;
+                cx.notify();
+            })),
+            Restart::Confirm => row
+                .child(self.outline_button("steam-restart-yes", tr!("Restart now"), true, cx, |this, _, cx| this.restart_steam(cx)))
+                .child(self.outline_button("steam-restart-no", tr!("Cancel"), true, cx, |this, _, cx| {
+                    this.steam_mut().restart = Restart::Idle;
+                    cx.notify();
+                }))
+                .child(help(tr!("Games running from Steam will close."))),
+            Restart::Running(_) => {
+                row.child(self.outline_button("steam-restart", tr!("Restarting Steam\u{2026}"), false, cx, |_, _, _| {}))
+            }
+        }
+    }
+
+    /// "2 new Proton builds: restart Steam to use them", when there are.
+    pub(super) fn steam_unseen_text(&self) -> Option<String> {
+        let snap = self.steam.as_ref().and_then(SteamState::ready)?;
+        let names: Vec<&str> = snap.unseen.iter().map(|t| t.display.as_str()).collect();
+        Some(match names.len() {
+            0 => return None,
+            1 => tr!("A new Proton build, {names}: restart Steam to use it.", names = names[0]),
+            n => tr!("{count} new Proton builds, {names}: restart Steam to use them.", count = n, names = names.join(", ")),
+        })
     }
 
     pub(super) fn steam_current_tool(&self) -> String {
@@ -269,7 +432,7 @@ impl SettingsPanel {
     }
 
     pub(super) fn pick_steam_tool(&mut self, index: usize, cx: &mut Context<Self>) {
-        if let Some((_, name)) = self.steam_tool_options().get(index).cloned() {
+        if let Some(name) = self.steam_tool_options().into_iter().nth(index).map(|o| o.name) {
             if name != self.steam_current_tool() {
                 self.steam_set_tool(name, cx);
             }
@@ -297,6 +460,11 @@ impl SettingsPanel {
         let (text, error) = self.steam_status();
         let loading = self.steam.as_ref().is_some_and(|s| s.snapshot.is_none());
         let mut col = column().child(if error { danger_text(&text).px(px(6.)) } else { hint(&text) });
+        // Steam runs without the access Heronite needs: a restart opens it.
+        let read_only = self.steam.as_ref().and_then(SteamState::ready).is_some_and(|s| s.access == Access::ReadOnly);
+        if read_only {
+            col = col.child(self.restart_buttons(cx));
+        }
         if !self.steam.as_ref().is_some_and(|s| s.editable) && !loading {
             col = col.child(hint(tr!(
                 "These launch options use shell syntax (like ; $VAR or redirections) that the fields here cannot rebuild. Edit them as text in Advanced, or clear them there to use the fields."
@@ -328,21 +496,40 @@ impl SettingsPanel {
     pub(super) fn proton_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let mut col = column().child(self.steam_banner(cx));
         let locked = self.steam_locked().is_some();
+        if let Some(text) = self.steam_unseen_text() {
+            let restarting = self.steam.as_ref().is_some_and(|s| s.restart != Restart::Idle);
+            let read_only = self.steam.as_ref().and_then(SteamState::ready).is_some_and(|s| s.access == Access::ReadOnly);
+            // The banner already offers the restart when Steam is read-only.
+            let mut box_ = column().child(hint(&text));
+            if !read_only || restarting {
+                box_ = box_.child(self.restart_buttons(cx));
+            }
+            col = col.child(box_);
+        }
         let options = self.steam_tool_options();
         let current = self.steam_current_tool();
-        let shown = options.iter().find(|(_, n)| *n == current).map(|(l, _)| l.clone()).unwrap_or(current.clone());
-        let items = options.iter().map(|(l, n)| (SharedString::from(l.clone()), *n == current)).collect();
-        let tool = self.select_row("steam-tool", Some(tr!("Compatibility tool")), shown, items, locked, cx, |this, i, _, cx| {
+        let shown = options.iter().find(|o| o.name == current).map(|o| o.label.clone()).unwrap_or(current.clone());
+        let items = options
+            .iter()
+            .map(|o| SelectOption {
+                label: o.label.clone().into(),
+                selected: o.name == current,
+                group: o.group.map(SharedString::from),
+                note: o.note.map(SharedString::from),
+            })
+            .collect();
+        let rec = self.steam_recommendation(&options);
+        let tool = self.select_menu_row("steam-tool", Some(tr!("Compatibility tool")), shown, items, locked, cx, |this, i, _, cx| {
             this.pick_steam_tool(i, cx)
         });
-        col = col.child(heading("Proton")).child(
-            rows()
-                .field_help(
-                    tool,
-                    vec![help(tr!("The build Steam runs the game with. GE-Proton and other builds in Steam's compatibilitytools.d folder are listed too, and the Wine Manager's while \"Install Proton into Steam\" is on; Steam only sees a new build after it restarts."))],
-                )
-                .card(),
+        let mut card = rows().field_help(
+            tool,
+            vec![help(tr!("The build Steam runs the game with. GE-Proton and other builds in Steam's compatibilitytools.d folder are listed too, and the Wine Manager's while \"Install Proton into Steam\" is on; Steam only sees a new build after it restarts."))],
         );
+        if let Some(row) = self.protondb_row(rec.filter(|_| !locked), cx, |this, i, cx| this.pick_steam_tool(i, cx)) {
+            card = card.child(row);
+        }
+        col = col.child(heading("Proton")).child(card.card());
         if self.steam.as_ref().is_some_and(|s| s.editable) {
             col = col.child(heading(tr!("Proton options"))).child(self.proton_switches(cx).card()).child(
                 help(tr!(
