@@ -65,6 +65,10 @@ pub(super) struct SteamState {
     seen: Option<(bool, bool)>,
     /// Since when Steam runs without its client answering yet.
     starting_since: Option<Instant>,
+    /// Steam opened or closed: read it again once no change is on its way.
+    reload_wanted: bool,
+    /// Steam can be restarted from here (not in a gamescope session).
+    pub(super) can_restart: bool,
 }
 
 impl SteamState {
@@ -80,6 +84,8 @@ impl SteamState {
             restart: Restart::Idle,
             seen: None,
             starting_since: None,
+            reload_wanted: false,
+            can_restart: heronite_steam::can_restart(),
         }
     }
 
@@ -345,6 +351,7 @@ impl SettingsPanel {
     }
 
     fn on_steam_status(&mut self, status: (bool, bool), cx: &mut Context<Self>) {
+        let typing = !self.debounce.is_empty();
         let st = self.steam_mut();
         let Some(before) = st.seen.replace(status) else { return };
         let restarting = matches!(st.restart, Restart::Running(_));
@@ -360,11 +367,18 @@ impl SettingsPanel {
             // Closed, or its client answers. Mid-restart, only the latter.
             !restarting || status.1
         };
-        if !read {
+        if read {
+            st.starting_since = None;
+            st.restart = Restart::Idle;
+            st.reload_wanted = true;
+        }
+        // A read now would put Steam's old values over a change still being
+        // typed or sent (and the next change would build on them).
+        let busy = st.writing || st.pending != Change::default() || typing;
+        if !st.reload_wanted || busy {
             return;
         }
-        st.starting_since = None;
-        st.restart = Restart::Idle;
+        st.reload_wanted = false;
         self.notice = None;
         self.load_steam(cx);
     }
@@ -374,7 +388,9 @@ impl SettingsPanel {
         self.steam_mut().restart = Restart::Running(Instant::now());
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let bin = crate::env::value("HERONITE_STEAM_BIN").unwrap_or_else(|| "steam".into());
+            let bin = crate::env::value("HERONITE_STEAM_BIN")
+                .or_else(|| heronite_launch::steam::find_steam_binary(&heronite_launch::SystemProbe))
+                .unwrap_or_else(|| "steam".into());
             let res = cx.background_spawn(async move { steam(&paths).restart(&bin) }).await;
             this.update(cx, |this, cx| {
                 if let Err(e) = res {
@@ -398,6 +414,9 @@ impl SettingsPanel {
     fn restart_buttons(&self, cx: &mut Context<Self>) -> Div {
         let state = self.steam.as_ref().map(|s| s.restart).unwrap_or_default();
         let row = div().flex().flex_wrap().items_center().gap(px(8.));
+        if !self.steam.as_ref().is_some_and(|s| s.can_restart) {
+            return row;
+        }
         match state {
             Restart::Idle => row.child(self.outline_button("steam-restart", tr!("Restart Steam"), true, cx, |this, _, cx| {
                 this.steam_mut().restart = Restart::Confirm;

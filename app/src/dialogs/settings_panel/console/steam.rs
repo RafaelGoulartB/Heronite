@@ -36,6 +36,9 @@ impl SettingsPanel {
 
     /// "Restart Steam", asking once before Steam's games close.
     fn c_restart(&self) -> Vec<Item> {
+        if !self.steam.as_ref().is_some_and(|s| s.can_restart) {
+            return Vec::new();
+        }
         match self.steam.as_ref().map(|s| s.restart).unwrap_or_default() {
             Restart::Idle => vec![Self::c_do("steam-restart", tr!("Restart Steam"), Icon::Refresh, true, |this, _, cx| {
                 this.steam_restart_state(Restart::Confirm, cx)

@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use heronite_i18n::tr;
-use heronite_launch::steam::{flatpak_steam_root, SteamLocator};
+use heronite_launch::steam::{desktop_protocol_env, flatpak_steam_root, SteamLocator};
 use heronite_shortcuts::steam::{enable_client_api_on_next_start, is_steam_running};
 use heronite_shortcuts::steam_client::SteamClient;
 
@@ -151,6 +151,12 @@ pub enum LibraryAccess {
     NotInstalled,
 }
 
+/// Whether [`Steam::restart`] can be offered: not in a gamescope session
+/// (Steam Deck's game mode), where Steam is the session itself.
+pub fn can_restart() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").as_deref() != Ok("gamescope")
+}
+
 /// Shown when Steam runs without its debugging interface.
 pub fn read_only_message() -> &'static str {
     tr!("Steam is running without the access Heronite needs to change its settings. It is turned on for Steam's next start: restart Steam once, or close it, to change these settings.")
@@ -265,6 +271,9 @@ impl Steam {
     /// Blocking: waits up to a minute for Steam to close.
     pub fn restart(&self, steam_bin: &str) -> Result<(), String> {
         use std::process::{Command, Stdio};
+        if !can_restart() {
+            return Err(tr!("Steam cannot be restarted from here in game mode.").to_string());
+        }
         let command = |args: &[&str]| {
             let mut c = if self.flatpak() {
                 let mut c = Command::new("flatpak");
@@ -273,7 +282,14 @@ impl Steam {
             } else {
                 Command::new(steam_bin)
             };
-            c.args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            // Not this app's environment: when Steam started Heronite it holds
+            // Steam's overlay preload, its runtime and the AppImage's paths.
+            c.args(args)
+                .env_clear()
+                .envs(desktop_protocol_env(std::env::vars()))
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
             c
         };
         let fail = |e: std::io::Error| tr!("Could not run Steam: {error}", error = e.to_string());

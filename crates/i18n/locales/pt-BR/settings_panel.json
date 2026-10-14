@@ -360,5 +360,6 @@
   "ProtonDB: no rating": "ProtonDB: sem nota",
   "The prefix does not exist yet: it is created the first time the game runs.": "O prefixo ainda não existe: ele é criado na primeira vez que o jogo roda.",
   "Wine / Proton": "Wine / Proton",
-  "default": "padrão"
+  "default": "padrão",
+  "Steam cannot be restarted from here in game mode.": "A Steam não pode ser reiniciada daqui no modo jogo."
 }
