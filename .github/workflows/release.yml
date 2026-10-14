@@ -107,8 +107,11 @@ jobs:
           sudo curl -fsSL -o /usr/local/bin/appimagetool \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           sudo chmod +x /usr/local/bin/appimagetool
-          # zsyncmake writes the .zsync of the update information.
-          sudo apt-get install -y --no-install-recommends zsync
+          # zsyncmake writes the .zsync of the update information; patchelf
+          # points the app at the libraries the AppImage bundles. bison,
+          # ninja and meson build its libxkbcommon (scripts/xkbcommon.sh).
+          sudo apt-get install -y --no-install-recommends zsync patchelf bison ninja-build
+          pipx install 'meson>=1.4'
           # minisign signs the AppImages for the in-app updater (pinned build).
           curl -fsSL -o "$RUNNER_TEMP/minisign.tar.gz" \
             https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-linux.tar.gz
@@ -130,7 +133,9 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
         run: scripts/packages.sh "${TAG#v}"
       # Installs each package on clean Ubuntu 22.04 / 24.04, Debian 12,
-      # Fedora and Arch containers: a wrong dependency name fails here.
+      # Fedora and Arch containers: a wrong dependency name fails here. Runs
+      # the AppImage on containers with only glibc and libxcb: a library it
+      # should bundle fails here.
       - name: Check the packages
         run: scripts/package-smoke.sh
       # The in-app updater only installs AppImages signed with the key whose
