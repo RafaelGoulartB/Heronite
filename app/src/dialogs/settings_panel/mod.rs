@@ -160,6 +160,8 @@ pub struct SettingsPanel {
     steam: Option<steam::SteamState>,
     /// The game's ProtonDB tier, for the Proton picker.
     protondb: protondb::ProtonDb,
+    /// Name of the Wine version new games get (marked in a game's menu).
+    pub(super) global_wine: Option<String>,
     debounce: HashMap<&'static str, Task<()>>,
     queue: Vec<(String, Value)>,
     writing: bool,
@@ -248,6 +250,7 @@ impl SettingsPanel {
             saves: SavesState::default(),
             steam: steam_app.map(steam::SteamState::new),
             protondb: protondb::ProtonDb::Off,
+            global_wine: None,
             debounce: HashMap::new(),
             queue: Vec::new(),
             writing: false,
@@ -259,6 +262,9 @@ impl SettingsPanel {
         let wine = this.facts().is_some_and(|f| matches!(f.run_kind, logic::RunKind::Steam | logic::RunKind::Wine));
         if wine {
             this.load_protondb(cx);
+        }
+        if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
+            this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
         if this.is_steam() {
             // Debug settings are applied once Steam was read.

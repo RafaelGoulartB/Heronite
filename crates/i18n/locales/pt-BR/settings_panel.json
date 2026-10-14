@@ -355,5 +355,10 @@
   "Your versions": "Suas versões",
   "last used": "usado por último",
   "{build} (in use)": "{build} (em uso)",
-  "{build}, from the Wine Manager": "{build}, pelo Wine Manager"
+  "{build}, from the Wine Manager": "{build}, pelo Wine Manager",
+  "ProtonDB has no reports for this game, or it was not found on Steam under this name.": "O ProtonDB não tem relatos deste jogo, ou ele não foi encontrado na Steam com este nome.",
+  "ProtonDB: no rating": "ProtonDB: sem nota",
+  "The prefix does not exist yet: it is created the first time the game runs.": "O prefixo ainda não existe: ele é criado na primeira vez que o jogo roda.",
+  "Wine / Proton": "Wine / Proton",
+  "default": "padrão"
 }

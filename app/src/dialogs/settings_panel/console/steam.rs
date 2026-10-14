@@ -9,7 +9,7 @@ use heronite_steam::options;
 
 use super::super::advanced::{ENV, WRAPPERS};
 use super::super::logic::launcher_args_error;
-use super::super::protondb::{tier_advice, tier_name, ProtonDb, Recommendation};
+use super::super::protondb::{not_found_text, tier_advice, tier_name, ProtonDb, Recommendation};
 use super::super::steam::Restart;
 use super::{item, Act, Item, SettingsPanel};
 use crate::console::list::Row;
@@ -61,6 +61,7 @@ impl SettingsPanel {
             ProtonDb::Off => {}
             ProtonDb::Loading => v.push(Self::c_info("protondb", "ProtonDB", tr!("Asking ProtonDB\u{2026}"))),
             ProtonDb::Tier(t) => v.push(Self::c_info("protondb", "ProtonDB", format!("{}: {}", tier_name(t), tier_advice(t)))),
+            ProtonDb::NotFound => v.push(Self::c_info("protondb", "ProtonDB", not_found_text())),
         }
         if let Some(rec) = rec {
             match (rec.in_use, rec.index) {

@@ -21,6 +21,8 @@ pub(super) enum ProtonDb {
     Loading,
     /// Lowercase tier: `platinum`, `gold`, `silver`, `bronze`, `borked`, `pending`.
     Tier(String),
+    /// ProtonDB has no reports, or the game was not found on Steam.
+    NotFound,
 }
 
 /// The build to suggest, as an index in the options of the picker.
@@ -44,6 +46,10 @@ pub(super) fn tier_advice(tier: &str) -> &'static str {
         "borked" => tr!("Reported broken: GE-Proton is the best chance."),
         _ => tr!("Not enough reports yet."),
     }
+}
+
+pub(super) fn not_found_text() -> &'static str {
+    tr!("ProtonDB has no reports for this game, or it was not found on Steam under this name.")
 }
 
 /// `Gold`, `Silver`...
@@ -104,7 +110,7 @@ impl SettingsPanel {
                 })
                 .await;
             this.update(cx, |this, cx| {
-                this.protondb = tier.map_or(ProtonDb::Off, ProtonDb::Tier);
+                this.protondb = tier.map_or(ProtonDb::NotFound, ProtonDb::Tier);
                 cx.notify();
             })
             .ok();
@@ -125,6 +131,18 @@ impl SettingsPanel {
             ProtonDb::Loading => {
                 return Some(
                     row_shell().child(div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Asking ProtonDB\u{2026}"))),
+                )
+            }
+            ProtonDb::NotFound => {
+                return Some(
+                    row_shell().child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).child(tr!("ProtonDB: no rating")))
+                            .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(not_found_text())),
+                    ),
                 )
             }
             ProtonDb::Tier(t) => t.clone(),

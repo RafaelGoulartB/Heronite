@@ -17,6 +17,7 @@ use super::logic::{self, RunKind};
 use super::parts::{column, danger_text, heading, help, rows};
 use super::protondb::{best_ge, ProtonDb, Recommendation};
 use super::{Notice, SettingsPanel, Target};
+use crate::theme;
 use crate::ui::fields::{choose_path, SelectOption};
 use heronite_wine::WineInstallation;
 
@@ -34,21 +35,25 @@ impl SettingsPanel {
                 rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some(tr!("CrossOver Bottle")), None));
             return col.child(top.card());
         }
-        let mut top = rows().field(self.wine_version_field(cx));
+        // The same sections as a Steam game's Proton tab: the build, then the prefix.
+        col = col.child(heading(tr!("Wine / Proton"))).child(rows().field(self.wine_version_field(cx)).card());
+        let mut prefix = rows();
         let folder_label = if self.is_game() {
-            top = top.field(self.prefix_menu(cx));
+            prefix = prefix.field(self.prefix_menu(cx));
             tr!("Prefix folder")
         } else {
             tr!("Prefix")
         };
-        let top = top
-            .field_help(
-                self.path_row("winePrefix", Some(folder_label), true, tr!("Select WinePrefix Folder"), false, cx),
-                vec![help(
-                    tr!("Wine uses what is called a WINEPREFIX to encapsulate Windows applications. This prefix contains the Wine configuration files and a reproduction of the file hierarchy of C: (the main disk on a Windows OS). In this reproduction of the C: drive, your game save files and dependencies installed via winetricks are stored."),
-                )],
-            );
-        col = col.child(top.card());
+        prefix = prefix.field_help(
+            self.path_row("winePrefix", Some(folder_label), true, tr!("Select WinePrefix Folder"), false, cx),
+            vec![help(
+                tr!("Wine uses what is called a WINEPREFIX to encapsulate Windows applications. This prefix contains the Wine configuration files and a reproduction of the file hierarchy of C: (the main disk on a Windows OS). In this reproduction of the C: drive, your game save files and dependencies installed via winetricks are stored."),
+            )],
+        );
+        if self.is_game() {
+            prefix = prefix.child(self.tools_row(cx));
+        }
+        col = col.child(heading(tr!("Prefix"))).child(prefix.card());
 
         let dxvk = logic::offers_dxvk(&wine);
         let dxvk_on = self.flag("autoInstallDxvk", false);
@@ -159,9 +164,7 @@ impl SettingsPanel {
             ));
         }
         col = col.child(heading(tr!("Sync and compatibility"))).child(sync.card());
-        if self.is_game() {
-            col = col.child(self.tools_row(cx));
-        } else {
+        if !self.is_game() {
             col = col.child(self.shared_folders_section(cx));
         }
         col
@@ -181,7 +184,7 @@ impl SettingsPanel {
                 label: logic::display_wine_name(&w.name).into(),
                 selected: i == selected,
                 group: Some(logic::wine_group(w).into()),
-                note: None,
+                note: (self.global_wine.as_deref() == Some(w.name.as_str())).then(|| tr!("default").into()),
             })
             .collect();
         let field = self.select_menu_row(
@@ -194,10 +197,6 @@ impl SettingsPanel {
             |this, i, _, cx| this.pick_wine(i, cx),
         );
         let mut col = column().gap(px(6.)).child(field);
-        let rec = self.wine_recommendation(&options, &current);
-        if let Some(row) = self.protondb_row(rec, cx, Self::pick_wine) {
-            col = col.child(row);
-        }
         if !loading && list.is_empty() {
             col = col.child(danger_text(tr!("No Wine version was found, download one from the Wine Manager")));
         }
@@ -209,9 +208,28 @@ impl SettingsPanel {
                 "Valve Proton versions ignored: Valve versions of Proton are ignored by default, enable them in the General settings"
             )));
         }
-        col.child(help(&tr!("Wine Path: {path}", path = current.bin))).child(help(
+        col = col.child(help(&tr!("Wine Path: {path}", path = current.bin))).child(help(
             tr!("Heronite searches for versions of Wine, Proton, and CrossOver in: ~/.local/share/heronite/tools/wine, ~/.local/share/heronite/tools/proton, ~/.steam/root/compatibilitytools.d, ~/.steam/steamapps/common, ~/.local/share/lutris/runners/wine, ~/.var/app/com.valvesoftware.Steam (Steam Flatpak) and /usr/share/steam. For other places, use a symbolic link to one of these folders."),
-        ))
+        ));
+        let rec = self.wine_recommendation(&options, &current);
+        if let Some(row) = self.protondb_row(rec, cx, Self::pick_wine) {
+            col = col.child(div().border_t_1().border_color(theme::white_a(0.06)).mt(px(4.)).child(row));
+        }
+        col
+    }
+
+    /// `drive_c` of the game's prefix (`pfx/drive_c` in a Proton one).
+    pub(super) fn open_wine_prefix(&mut self, cx: &mut Context<Self>) {
+        let dir = std::path::PathBuf::from(heronite_data::game_config::expand_tilde(&self.text("winePrefix"), &self.home));
+        let target = [dir.join("pfx/drive_c"), dir.join("drive_c"), dir.clone()].into_iter().find(|d| d.is_dir());
+        let res = match target {
+            Some(d) => crate::pages::settings::open_folder(&d).map_err(|e| format!("{}: {e}", d.display())),
+            None => Err(tr!("The prefix does not exist yet: it is created the first time the game runs.").to_string()),
+        };
+        if let Err(e) = res {
+            self.notice = Some(Notice { text: e.into(), error: true });
+            cx.notify();
+        }
     }
 
     /// For games run through Wine: the newest GE-Proton, whatever the
@@ -245,7 +263,7 @@ impl SettingsPanel {
             .flex()
             .flex_col()
             .gap(px(8.))
-            .pt(px(10.))
+            .py(px(12.))
             .child(
                 div()
                     .flex()
@@ -261,9 +279,12 @@ impl SettingsPanel {
                         choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
                             this.run_tool("runexe", WineTool::RunExe(path), cx)
                         });
-                    })),
+                    }))
+                    .child(
+                        self.outline_button("tool-openpfx", tr!("Open prefix folder"), true, cx, |this, _, cx| this.open_wine_prefix(cx)),
+                    ),
             )
-            .child(help(tr!("Tools run with this game's Wine version and prefix.")).px(px(6.)))
+            .child(help(tr!("Tools run with this game's Wine version and prefix.")))
     }
 
     /// Starts a Wine tool for this game: builds the command off the UI thread
