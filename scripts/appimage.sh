@@ -13,10 +13,12 @@
 # (Gear Lever, AppImageLauncher) update it from the .zsync of the latest
 # release, downloading only the changed blocks.
 #   usage: scripts/appimage.sh
-#   needs: patchelf, readelf, and the BUNDLED_LIBS installed (the release
+#   needs: patchelf, readelf, the BUNDLED_LIBS installed (the release
 #          builds on the oldest supported Ubuntu: their versions run on every
-#          newer system)
+#          newer system) and what scripts/xkbcommon.sh needs
 #   env:   APPIMAGETOOL=path to appimagetool (default: on PATH)
+#          XKBCOMMON=folder of the libxkbcommon to bundle (default: built by
+#          scripts/xkbcommon.sh; "" = the system's)
 #          BIN=folder of the binaries (default: target/release)
 #          UPDATE_INFO=update information to embed ("" = none)
 set -euo pipefail
@@ -29,6 +31,7 @@ BIN=${BIN:-target/release}
 ARCH=x86_64
 NAME=Heronite-$ARCH.AppImage
 UPDATE_INFO=${UPDATE_INFO-"gh-releases-zsync|RafaelGoulartB|Heronite|latest|$NAME.zsync"}
+XKBCOMMON=${XKBCOMMON-$(scripts/xkbcommon.sh)}
 
 [[ -x $BIN/heronite-rs && -x $BIN/heronite-epic-login ]] || cargo build --release -p heronite -p heronite-epic-login
 
@@ -37,7 +40,7 @@ trap 'rm -rf "$WORK"' EXIT
 APPDIR=$WORK/Heronite.AppDir
 ID=com.heronite.rs
 # Linked by heronite-rs, directly or through each other: keyboard input
-# (xkbcommon) and controllers (udev).
+# (xkbcommon, from $XKBCOMMON) and controllers (udev).
 BUNDLED_LIBS=(libxkbcommon.so.0 libxkbcommon-x11.so.0 libxcb-xkb.so.1 libudev.so.1)
 # What may stay a system library: glibc and the rest of the AppImage
 # excludelist that the app links.
@@ -51,7 +54,7 @@ install -Dm755 $BIN/heronite-epic-login "$APPDIR/usr/bin/heronite-epic-login"
 # Epic login window takes everything from the system, like its WebKitGTK.
 mkdir -p "$APPDIR/usr/lib"
 for lib in "${BUNDLED_LIBS[@]}"; do
-  path=$(ldd "$APPDIR/usr/bin/heronite-rs" | awk -v lib="$lib" '$1 == lib { print $3 }')
+  path=$(LD_LIBRARY_PATH=$XKBCOMMON ldd "$APPDIR/usr/bin/heronite-rs" | awk -v lib="$lib" '$1 == lib { print $3 }')
   [[ -f $path ]] || { echo "appimage.sh: $lib not found on this system" >&2; exit 1; }
   install -m644 "$path" "$APPDIR/usr/lib/$lib"
   patchelf --set-rpath '$ORIGIN' "$APPDIR/usr/lib/$lib"

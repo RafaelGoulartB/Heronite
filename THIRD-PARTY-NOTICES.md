@@ -25,11 +25,11 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 
 ## Libraries in the AppImage
 
-The AppImage carries these system libraries in `usr/lib`, taken unchanged from Ubuntu 22.04 (`scripts/appimage.sh`), because not every system has them. The .deb, .rpm and Arch packages use the system's copies instead. Each one is a separate shared library: replace it in an extracted AppImage to use another build.
+The AppImage carries these libraries in `usr/lib` because not every system has them (`scripts/appimage.sh`). libxkbcommon is built unchanged from its release source (`scripts/xkbcommon.sh`); the others are taken unchanged from Ubuntu 22.04. The .deb, .rpm and Arch packages use the system's copies instead. Each one is a separate shared library: replace it in an extracted AppImage to use another build.
 
 | Library | Files | Copyright | License |
 |---|---|---|---|
-| [libxkbcommon](https://xkbcommon.org) | `libxkbcommon.so.0`, `libxkbcommon-x11.so.0` | The Open Group, Dan Nicholson, Silicon Graphics, Digital Equipment Corporation, and the other xkbcommon authors | MIT and similar permissive licenses ([`licenses/MIT-xkbcommon.txt`](licenses/MIT-xkbcommon.txt)) |
+| [libxkbcommon](https://xkbcommon.org) 1.13.2 | `libxkbcommon.so.0`, `libxkbcommon-x11.so.0` | The Open Group, Dan Nicholson, Silicon Graphics, Digital Equipment Corporation, Intel Corporation, Ran Benita, and the other xkbcommon authors | MIT and similar permissive licenses ([`licenses/MIT-xkbcommon.txt`](licenses/MIT-xkbcommon.txt)) |
 | [libxcb](https://xcb.freedesktop.org) | `libxcb-xkb.so.1` | Copyright (C) 2001-2006 Bart Massey, Jamey Sharp, and Josh Triplett | MIT ([`licenses/MIT-libxcb.txt`](licenses/MIT-libxcb.txt)) |
 | libudev, from [systemd](https://github.com/systemd/systemd) | `libudev.so.1` | the systemd contributors | LGPL-2.1-or-later ([`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt)); source: the [`systemd` package of Ubuntu 22.04](https://launchpad.net/ubuntu/jammy/+source/systemd) |
 
