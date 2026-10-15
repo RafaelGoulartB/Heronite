@@ -245,7 +245,7 @@ impl SettingsPage {
             Section::Advanced => self.advanced.measure(&self.ctx, cx),
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
-            Section::Backups => saves::State::shown(self, window, cx),
+            Section::Saves => saves::State::shown(self, window, cx),
             _ => {}
         }
     }
@@ -353,16 +353,16 @@ impl SettingsPage {
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
             Section::Screenshots => Self::collection_section(screenshots::render(self, window, cx), self.error.clone()),
-            Section::Backups => {
+            Section::Saves => {
                 let body = div()
                     .flex()
                     .flex_col()
                     .child(saves::render(self, window, cx))
                     .child(div().mt(px(12.)).child(saves_restore::render(self, window, cx)))
-                    .child(div().mt(px(12.)).child(backup::render(self, window, cx)))
                     .into_any_element();
                 Self::collection_section(body, self.error.clone())
             }
+            Section::Backups => Self::collection_section(backup::render(self, window, cx), self.error.clone()),
             Section::Logs => self.logs_section(cx),
             Section::About => self.about_section(cx).into_any_element(),
         }

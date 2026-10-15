@@ -1,4 +1,4 @@
-//! Settings → Backups, first card: Ludusavi after-play save backups.
+//! Settings → Saves, first card: Ludusavi after-play save backups.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -291,7 +291,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .into_any_element()
 }
 
-/// Console mode rows of Backups: Ludusavi, restoring, then the Collection backup.
+/// Console mode rows of Saves: Ludusavi, then restoring.
 pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
     use crate::icons::Icon;
@@ -326,7 +326,6 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         rows.push(Row::info("lu-error", e.clone(), "").danger());
     }
     rows.extend(super::saves_restore::console_rows(d));
-    rows.extend(super::backup::console_rows(d, cx));
     rows
 }
 
@@ -364,8 +363,9 @@ pub(super) fn console_apply(
                 save(d, LudusaviSettingsPatch { backup_path: Some(path), ..Default::default() }, cx);
             });
         }
-        _ if super::saves_restore::console_apply(d, &outcome, window, cx) => {}
-        _ => super::backup::console_apply(d, outcome, window, cx),
+        _ => {
+            super::saves_restore::console_apply(d, &outcome, window, cx);
+        }
     }
     cx.notify();
 }

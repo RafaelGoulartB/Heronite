@@ -333,7 +333,7 @@ impl SaveBackupsView {
 
         let mut list = card_box().py(px(6.));
         match current {
-            None => list = list.child(div().py(px(10.)).child(meta_text(tr!("No backup folder yet. Set one in Settings → Backups.")))),
+            None => list = list.child(div().py(px(10.)).child(meta_text(tr!("No backup folder yet. Set one in Settings → Saves.")))),
             Some(s) if s.backups.is_empty() => {
                 let text = s.error.clone().unwrap_or_else(|| tr!("No backup of this game in this folder.").into());
                 list = list.child(div().py(px(10.)).child(meta_text(text)));

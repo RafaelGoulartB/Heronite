@@ -37,7 +37,7 @@ const RESTORE_TIMEOUT: Duration = Duration::from_secs(600);
 pub(crate) struct Loaded {
     tool: Tool,
     target: RestoreTarget,
-    /// One entry per backup folder, in the order of Settings → Backups.
+    /// One entry per backup folder, in the order of Settings → Saves.
     sources: Vec<GameBackups>,
     /// The copy of what the last restore replaced.
     undo: Option<undo::UndoRecord>,

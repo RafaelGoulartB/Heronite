@@ -18,7 +18,7 @@ use super::Tool;
 pub enum SourceKind {
     /// Where the backups go (this app's or Ludusavi's backup folder).
     Backups,
-    /// Added in Settings → Backups.
+    /// Added in Settings → Saves.
     Extra,
     /// Picked for this game only.
     Picked,

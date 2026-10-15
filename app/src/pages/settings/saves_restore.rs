@@ -1,4 +1,4 @@
-//! Settings → Backups, the restore card under Ludusavi's: the folders a
+//! Settings → Saves, the restore card under Ludusavi's: the folders a
 //! game's Saves tab restores from, how many backups Ludusavi keeps, and
 //! its list of games.
 //!
@@ -150,7 +150,7 @@ pub(super) fn update_game_list(d: &mut SettingsPage, cx: &mut Context<SettingsPa
             .background_spawn(async move {
                 let runner = SystemRunner::default();
                 let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &SystemProbe };
-                Tool::resolve(&env).and_then(|tool| update_manifest(&env, &tool))
+                Tool::resolve(&env).map_err(String::from).and_then(|tool| update_manifest(&env, &tool))
             })
             .await;
         this.update(cx, |d, cx| {

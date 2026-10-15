@@ -9,7 +9,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{n_, tr};
 
-use super::{about, advanced, appearance, library, logs, metadata, saves, screenshots, Section, SettingsPage};
+use super::{about, advanced, appearance, backup, library, logs, metadata, saves, screenshots, Section, SettingsPage};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
@@ -44,7 +44,10 @@ const GROUPS: [(&str, &[CSec]); 4] = [
             CSec::Rows(Section::Library),
         ],
     ),
-    (n_!("Collection"), &[CSec::Rows(Section::Metadata), CSec::Rows(Section::Screenshots), CSec::Rows(Section::Backups)]),
+    (
+        n_!("Collection"),
+        &[CSec::Rows(Section::Metadata), CSec::Rows(Section::Screenshots), CSec::Rows(Section::Saves), CSec::Rows(Section::Backups)],
+    ),
     (n_!("Help"), &[CSec::Rows(Section::Logs), CSec::Rows(Section::About)]),
 ];
 
@@ -125,7 +128,8 @@ impl SettingsPage {
             CSec::Rows(Section::Appearance) => appearance::console_rows(self),
             CSec::Rows(Section::Metadata) => metadata::console_rows(self, cx),
             CSec::Rows(Section::Screenshots) => screenshots::console_rows(self, cx),
-            CSec::Rows(Section::Backups) => saves::console_rows(self, cx),
+            CSec::Rows(Section::Saves) => saves::console_rows(self, cx),
+            CSec::Rows(Section::Backups) => backup::console_rows(self, cx),
             _ => Vec::new(),
         }
     }
@@ -139,7 +143,11 @@ impl SettingsPage {
             CSec::Rows(Section::Appearance) => appearance::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Metadata) => metadata::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Screenshots) => screenshots::console_apply(self, outcome, window, cx),
-            CSec::Rows(Section::Backups) => saves::console_apply(self, outcome, window, cx),
+            CSec::Rows(Section::Saves) => saves::console_apply(self, outcome, window, cx),
+            CSec::Rows(Section::Backups) => {
+                backup::console_apply(self, outcome, window, cx);
+                cx.notify();
+            }
             _ => {}
         }
     }

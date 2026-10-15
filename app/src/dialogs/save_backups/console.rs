@@ -1,5 +1,5 @@
 //! Console mode of the Saves tab: the same steps as rows. Folders are the
-//! ones of Settings → Backups (picking another one needs desktop mode).
+//! ones of Settings → Saves (picking another one needs desktop mode).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -57,7 +57,7 @@ impl SaveBackupsView {
                 }
                 rows.push(Row::header(tr!("Backups")));
                 match l.sources.get(self.source) {
-                    None => rows.push(Row::info("sb-none", tr!("No backup folder yet. Set one in Settings → Backups."), "")),
+                    None => rows.push(Row::info("sb-none", tr!("No backup folder yet. Set one in Settings → Saves."), "")),
                     Some(s) if s.backups.is_empty() => {
                         let text = s.error.clone().unwrap_or_else(|| tr!("No backup of this game in this folder.").into());
                         rows.push(Row::info("sb-none", text, ""));
