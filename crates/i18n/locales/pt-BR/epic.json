@@ -346,5 +346,8 @@
   "Copy cancelled": "Cópia cancelada",
   "Could not copy the prefix: {error}": "Não foi possível copiar o prefixo: {error}",
   "Could not move {path} to the trash: {error}": "Não foi possível mover {path} para a lixeira: {error}",
-  "You can install now, but Windows games need Proton to run. Download it from Wine Manager in the menu (☰).": "Você já pode instalar, mas jogos do Windows precisam do Proton para rodar. Baixe-o no Gerenciador do Wine, no menu (☰)."
+  "You can install now, but Windows games need Proton to run. Download it from Wine Manager in the menu (☰).": "Você já pode instalar, mas jogos do Windows precisam do Proton para rodar. Baixe-o no Gerenciador do Wine, no menu (☰).",
+  "No internet connection: downloads paused": "Sem conexão com a internet: downloads pausados",
+  "Back online: downloads resumed": "Conexão de volta: downloads retomados",
+  "Waiting for the connection": "Aguardando a conexão"
 }

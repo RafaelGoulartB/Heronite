@@ -132,6 +132,7 @@ impl DownloadsPage {
         let svc = self.svc.read(cx);
         let snap: Snapshot = svc.snapshot().clone();
         let progress = snap.current.as_ref().and_then(|(app, _)| svc.progress_of(app).cloned());
+        let offline = svc.paused_offline();
         let rows = self.console_rows(&snap);
 
         let now = snap.queue.first().map(|cur| {
@@ -140,6 +141,7 @@ impl DownloadsPage {
             let percent = progress.as_ref().map(|p| p.percent as f32);
             let status = match snap.state {
                 DmState::Running => tr!("Downloading"),
+                DmState::Paused if offline => tr!("Waiting for the connection"),
                 DmState::Paused => tr!("Paused"),
                 DmState::Idle => tr!("Waiting"),
             };

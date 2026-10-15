@@ -1,6 +1,7 @@
 //! Install and update requests, queue control and the download manager's events.
 
 use std::collections::HashSet;
+use std::time::Instant;
 
 use gpui_kit::*;
 use heronite_amazon::cmd::Nile;
@@ -16,8 +17,10 @@ use heronite_epic::util::file_size;
 use heronite_gog::cmd::Gogdl;
 use heronite_gog::ops::GogJob;
 use heronite_i18n::tr;
+use heronite_launch::net::{Net, SystemNet};
 use serde_json::Value;
 
+use super::connectivity::{self, Check};
 use super::{library_entry, Downloads, DownloadsEvent, InstallRequest, QueueState};
 
 impl Downloads {
@@ -50,6 +53,10 @@ impl Downloads {
     pub(super) fn on_manager_event(&mut self, ev: DmEvent, cx: &mut Context<Self>) {
         match ev {
             DmEvent::Progress { app_name, progress } => {
+                let prev = self.progress.get(&app_name);
+                if prev.is_none_or(|p| p.percent != progress.percent || p.downloaded_mib != progress.downloaded_mib) {
+                    self.offline.moved(Instant::now());
+                }
                 self.progress.insert(app_name, progress);
             }
             DmEvent::Changed => {
@@ -199,11 +206,115 @@ impl Downloads {
     }
 
     pub fn pause(&mut self) {
+        self.offline.release();
         self.manager.pause();
     }
 
     pub fn resume(&mut self) {
+        self.offline.release();
         self.manager.resume();
+    }
+
+    /// The queue waits for the connection to come back (it resumes alone).
+    pub fn paused_offline(&self) -> bool {
+        self.offline.is_paused()
+    }
+
+    /// Looks at the connection while the queue downloads or waits for it.
+    pub(super) fn spawn_offline_watch(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor().timer(connectivity::TICK).await;
+            if this.update(cx, |this, cx| this.offline_tick(cx)).is_err() {
+                break;
+            }
+        })
+        .detach();
+    }
+
+    fn offline_tick(&mut self, cx: &mut Context<Self>) {
+        let state = self.snapshot.state;
+        // Resumed, paused again or emptied by the user meanwhile.
+        if self.offline.is_paused() && (state != DmState::Paused || self.snapshot.queue.is_empty()) {
+            self.offline.release();
+        }
+        let running = state == DmState::Running && !self.snapshot.queue.is_empty();
+        if !running && !self.offline.is_paused() {
+            self.offline.idle();
+            return;
+        }
+        match self.offline.check(running, connectivity::has_network(), Instant::now()) {
+            Check::Nothing => {}
+            Check::Pause => self.pause_offline(cx),
+            Check::Resume => self.resume_online(cx),
+            check @ (Check::PauseIfOffline | Check::ResumeIfOnline) => {
+                self.offline.probe_started();
+                cx.spawn(async move |this, cx| {
+                    let online = cx.background_spawn(async { SystemNet.is_online() }).await;
+                    this.update(cx, |this, cx| {
+                        this.offline.probe_ended();
+                        // The queue may have changed while the probe ran.
+                        let state = this.snapshot.state;
+                        match check {
+                            Check::PauseIfOffline if !online && state == DmState::Running && this.offline.stalled(Instant::now()) => {
+                                this.pause_offline(cx)
+                            }
+                            Check::ResumeIfOnline if online && this.offline.is_paused() && state == DmState::Paused => {
+                                this.resume_online(cx)
+                            }
+                            _ => {}
+                        }
+                    })
+                    .ok();
+                })
+                .detach();
+            }
+        }
+    }
+
+    /// Heroic's auto-pause: the element stays first and resumes later.
+    fn pause_offline(&mut self, cx: &mut Context<Self>) {
+        log::info!("downloads: no internet connection, pausing the queue");
+        self.manager.pause();
+        self.offline.did_pause();
+        self.offline_notice(tr!("No internet connection: downloads paused"), true, cx);
+    }
+
+    fn resume_online(&mut self, cx: &mut Context<Self>) {
+        log::info!("downloads: back online, resuming the queue");
+        self.offline.release();
+        self.manager.resume();
+        self.offline_notice(tr!("Back online: downloads resumed"), false, cx);
+    }
+
+    fn offline_notice(&self, text: &str, error: bool, cx: &mut Context<Self>) {
+        if !crate::system::has_window(cx) {
+            crate::system::notify::send(tr!("Downloads"), text);
+        }
+        self.toast(cx, text, error);
+    }
+
+    /// At start: a queue left from the last run waits for the network instead
+    /// of failing its first element.
+    pub(super) fn start_queue_when_online(&mut self, cx: &mut Context<Self>) {
+        if self.snapshot.queue.is_empty() {
+            self.manager.start();
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            let online = cx.background_spawn(async { connectivity::has_network() && SystemNet.is_online() }).await;
+            this.update(cx, |this, cx| {
+                if online {
+                    this.manager.start();
+                } else {
+                    log::info!("downloads: offline at start, the queue waits for the connection");
+                    this.manager.pause();
+                    this.offline.did_pause();
+                    this.offline_notice(tr!("No internet connection: downloads paused"), true, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn cancel_current(&mut self, remove_downloaded: bool) {

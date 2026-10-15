@@ -88,6 +88,7 @@ impl Render for DownloadsPage {
         let svc = self.svc.read(cx);
         let snap: Snapshot = svc.snapshot().clone();
         let progress = snap.current.as_ref().and_then(|(app, _)| svc.progress_of(app).cloned());
+        let offline = svc.paused_offline();
         let running = snap.state == DmState::Running;
         let paused = !running;
         // Wide: the running download on top, then the queue and the history
@@ -102,6 +103,7 @@ impl Render for DownloadsPage {
             let percent = progress.as_ref().map(|p| p.percent as f32);
             let (status, status_color) = match snap.state {
                 DmState::Running => (tr!("Downloading"), theme::success()),
+                DmState::Paused if offline => (tr!("Waiting for the connection"), theme::accent()),
                 DmState::Paused => (tr!("Paused"), theme::accent()),
                 DmState::Idle => (tr!("Waiting"), theme::accent()),
             };

@@ -5,12 +5,13 @@
 //! observe it.
 //!
 //! `Downloads` is split by responsibility: `queue` (install/update/queue
-//! control), `ops` (one-off operations), `updates` (library refresh and
+//! control, pausing while offline with `connectivity`), `ops` (one-off operations), `updates` (library refresh and
 //! auto-update), `eos` (EOS overlay), `account` (Epic login/logout), `stores`
 //! (GOG and Amazon Games: accounts, refreshes, operations) and `debug`
 //! (`HERONITE_DEBUG_*` hooks).
 
 mod account;
+mod connectivity;
 mod debug;
 mod eos;
 mod gog_saves;
@@ -48,6 +49,8 @@ pub struct Downloads {
     manager: DownloadManager,
     snapshot: Snapshot,
     progress: HashMap<String, Progress>,
+    /// Pauses the queue while the connection is down.
+    offline: connectivity::OfflineWatch,
     updates: HashSet<String>,
     /// `HERONITE_DEBUG_FAKE_UPDATE=<appName>`: shows an update for screenshots.
     fake_update: Option<String>,
@@ -113,6 +116,7 @@ impl Downloads {
             manager,
             snapshot,
             progress: HashMap::new(),
+            offline: Default::default(),
             updates: HashSet::new(),
             fake_update: crate::env::value("HERONITE_DEBUG_FAKE_UPDATE"),
             busy: HashMap::new(),
@@ -145,6 +149,7 @@ impl Downloads {
             this.debug_queue_install(&app, cx);
         } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             this.spawn_idle_jobs(cx);
+            this.spawn_offline_watch(cx);
         }
         this
     }
