@@ -208,6 +208,10 @@ fn edit_args(root: &std::path::Path, game: &str, backup_id: &str, locked: bool) 
 
 /// Locks a backup (the retention never removes it) or unlocks it.
 pub fn set_locked(env: &LudusaviEnv, tool: &Tool, root: &std::path::Path, game: &str, backup_id: &str, locked: bool) -> Result<(), String> {
+    // Ludusavi rewrites the game's mapping.yaml, like a backup does.
+    let Some(_guard) = InFlight::acquire() else {
+        return Err(tr!("Ludusavi is busy with another backup or restore. Try again in a moment.").into());
+    };
     let out = env.runner.run(&tool.binary, &edit_args(root, game, backup_id, locked))?;
     if out.code == 0 {
         Ok(())

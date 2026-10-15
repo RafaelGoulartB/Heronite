@@ -16,6 +16,10 @@ use super::Tool;
 
 /// Names a backup; an empty `name` clears it.
 pub fn set_name(env: &LudusaviEnv, tool: &Tool, root: &Path, game: &str, backup_id: &str, name: &str) -> Result<(), String> {
+    // Ludusavi rewrites the game's mapping.yaml, like a backup does.
+    let Some(_guard) = InFlight::acquire() else {
+        return Err(tr!("Ludusavi is busy with another backup or restore. Try again in a moment.").into());
+    };
     let mut args: Vec<String> = ["--no-manifest-update", "backups", "edit", "--path"].iter().map(|s| s.to_string()).collect();
     args.push(root.to_string_lossy().into_owned());
     args.extend(["--backup".into(), backup_id.into(), "--comment".into(), name.trim().into(), game.into()]);
@@ -72,6 +76,23 @@ fn remove_path(path: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Writes `path` through a temporary file next to it, so a crash or a full
+/// disk never leaves a half-written mapping (which would hide every backup
+/// of the game from Ludusavi).
+fn write_replacing(path: &Path, text: &str) -> std::io::Result<()> {
+    let tmp = path.with_extension("yaml.heronite-tmp");
+    let written = (|| {
+        let mut f = fs::File::create(&tmp)?;
+        std::io::Write::write_all(&mut f, text.as_bytes())?;
+        f.sync_all()?;
+        fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    written
+}
+
 /// Deletes a backup from the game's folder under a backup root. The last
 /// backup of a game takes the whole game folder with it.
 pub fn delete_backup(game_dir: &Path, backup_id: &str) -> Result<(), String> {
@@ -87,7 +108,7 @@ pub fn delete_backup(game_dir: &Path, backup_id: &str) -> Result<(), String> {
     if !any_left {
         return fs::remove_dir_all(game_dir).map_err(|e| format!("{}: {e}", game_dir.display()));
     }
-    fs::write(&mapping, text).map_err(|e| format!("{}: {e}", mapping.display()))?;
+    write_replacing(&mapping, &text).map_err(|e| format!("{}: {e}", mapping.display()))?;
     for name in cut {
         if name == "." {
             // The old simple format keeps its full backup in drive-* folders.
