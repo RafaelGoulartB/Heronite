@@ -15,6 +15,9 @@ pub struct LudusaviDetected {
     pub config_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backup_path: Option<String>,
+    /// Where Ludusavi restores from (`restore.path`), often another folder.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restore_path: Option<String>,
     /// 'zip' | 'simple'
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
@@ -103,6 +106,11 @@ pub fn parse_config(yaml: &str, home: &str) -> (Option<String>, Option<String>, 
     (backup_path, format, compression)
 }
 
+/// `restore.path` of Ludusavi's `config.yaml`.
+pub fn parse_restore_path(yaml: &str, home: &str) -> Option<String> {
+    expand_home(yaml_get(yaml, &["restore", "path"]), home)
+}
+
 /// `detectLudusavi`.
 pub fn detect_ludusavi(runner: &dyn CommandRunner, probe: &dyn Probe, preferred: Option<&str>) -> Option<LudusaviDetected> {
     let binary = resolve_binary(probe, preferred)?;
@@ -121,14 +129,17 @@ pub fn detect_ludusavi(runner: &dyn CommandRunner, probe: &dyn Probe, preferred:
         .filter(|p| !p.is_empty())
         .unwrap_or_else(|| join(&home, ".config/ludusavi/config.yaml"));
     let exists = std::path::Path::new(&config_path).exists();
-    let (mut backup_path, mut format, mut compression) = (None, None, None);
+    let (mut backup_path, mut format, mut compression, mut restore_path) = (None, None, None, None);
     if exists {
         match std::fs::read_to_string(&config_path) {
-            Ok(yaml) => (backup_path, format, compression) = parse_config(&yaml, &home),
+            Ok(yaml) => {
+                (backup_path, format, compression) = parse_config(&yaml, &home);
+                restore_path = parse_restore_path(&yaml, &home);
+            }
             Err(e) => log::error!("Failed to read Ludusavi config: {e}"),
         }
     }
-    Some(LudusaviDetected { binary, config_path: exists.then_some(config_path), backup_path, format, compression, version })
+    Some(LudusaviDetected { binary, config_path: exists.then_some(config_path), backup_path, restore_path, format, compression, version })
 }
 
 #[cfg(test)]
@@ -171,6 +182,7 @@ mod tests {
         assert_eq!(det.version.as_deref(), Some("v0.30.0"));
         assert_eq!(det.config_path.as_deref(), cfg.to_str());
         assert_eq!(det.backup_path.as_deref(), Some("/home/u/Saves"));
+        assert_eq!(det.restore_path.as_deref(), Some("/elsewhere"));
         assert_eq!(det.format.as_deref(), Some("zip"));
         assert_eq!(det.compression.as_deref(), Some("zstd"));
         // Preferred binary wins; nothing found -> None.

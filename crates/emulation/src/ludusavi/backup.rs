@@ -60,10 +60,11 @@ pub struct LudusaviBackupResult {
 
 static IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
-struct InFlight;
+/// One Ludusavi backup or restore at a time.
+pub(super) struct InFlight;
 
 impl InFlight {
-    fn acquire() -> Option<Self> {
+    pub(super) fn acquire() -> Option<Self> {
         IN_FLIGHT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).ok().map(|_| InFlight)
     }
 }
@@ -87,7 +88,9 @@ fn record_error(paths: &DataPaths, error: &str) {
     }
 }
 
-fn extra_wine_prefix(env: &LudusaviEnv, app_name: &str) -> Option<String> {
+/// The game's own Wine prefix (the folder holding `drive_c`), from its game
+/// settings. `None` for Steam-launched games: their prefix is Steam's.
+pub fn game_wine_prefix(env: &LudusaviEnv, app_name: &str) -> Option<String> {
     let metas: LocalMetaFile = json_store::read(&env.paths.local_meta()).ok()?;
     if metas.games.get(app_name).is_some_and(|m| m.launch_kind == "steam-uri") {
         return None;
@@ -99,7 +102,7 @@ fn extra_wine_prefix(env: &LudusaviEnv, app_name: &str) -> Option<String> {
 
 /// `resolveLudusaviTitle`: Ludusavi's own name for the game (Steam/GOG id
 /// first, then the title), falling back to the title.
-fn resolve_title(env: &LudusaviEnv, binary: &str, game: &LudusaviGame) -> String {
+pub(super) fn resolve_title(env: &LudusaviEnv, binary: &str, game: &LudusaviGame) -> String {
     for cmd in find_commands(&game.title, game.steam_app_id.as_deref(), &game.runner, game.store_game_id.as_deref()) {
         if let Ok(out) = env.runner.run(binary, &cmd) {
             if let Some(m) = best_find_match(&parse_json(&out.stdout)) {
@@ -158,7 +161,7 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
         });
     }
 
-    let wine_prefix = extra_wine_prefix(env, &game.app_name);
+    let wine_prefix = game_wine_prefix(env, &game.app_name);
     let run_backup = |name: &str| -> Result<CommandOutput> {
         let cmd = backup_command(&BackupCommand {
             use_installed,

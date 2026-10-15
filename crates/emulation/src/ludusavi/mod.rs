@@ -1,6 +1,7 @@
 //! Ludusavi integration (port of `local-library/ludusavi.ts`): binary and
 //! config detection, `find --api` / `backup --api` command construction and
-//! JSON parsing, and the after-play backup flow.
+//! JSON parsing, the after-play backup flow, and restoring a backup into the
+//! game's current prefix ([`restore`]).
 //!
 //! Processes only run through [`CommandRunner`]; tests inject a fake so no
 //! real `ludusavi backup` is ever executed. Results are written back to
@@ -12,15 +13,16 @@ mod detect;
 #[cfg(test)]
 mod fake;
 mod last_backup;
+pub mod restore;
 mod runner;
 
 pub use backup::{
-    backup_after_play, backup_for_game, notification, AfterPlay, BackupReason, LudusaviBackupResult, LudusaviEnv, LudusaviGame,
-    SKIP_SESSION_SECONDS,
+    backup_after_play, backup_for_game, game_wine_prefix, notification, AfterPlay, BackupReason, LudusaviBackupResult, LudusaviEnv,
+    LudusaviGame, SKIP_SESSION_SECONDS,
 };
 pub use commands::{
     backup_command, best_find_match, find_commands, game_names, parse_json, total_games, wine_prefix_for_ludusavi, BackupCommand,
 };
-pub use detect::{detect_ludusavi, parse_config, resolve_binary, yaml_get, LudusaviDetected};
+pub use detect::{detect_ludusavi, parse_config, parse_restore_path, resolve_binary, yaml_get, LudusaviDetected};
 pub use last_backup::{last_backup, LastBackup};
 pub use runner::{CommandOutput, CommandRunner, SystemRunner, LUDUSAVI_TIMEOUT};

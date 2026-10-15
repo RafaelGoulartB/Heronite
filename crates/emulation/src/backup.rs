@@ -18,7 +18,8 @@ use crate::pathutil::{join, resolve};
 use crate::settings_ext::{record_collection_backup, BackupRecord};
 
 /// File/folder names never copied (caches, tools, logs).
-pub const SKIP_NAMES: &[&str] = &["images-cache", "tools", "store_cache", "screenshot-thumbnails", "steam-details", "logs"];
+pub const SKIP_NAMES: &[&str] =
+    &["images-cache", "tools", "store_cache", "screenshot-thumbnails", "steam-details", "logs", "save-restore-undo"];
 
 /// `CollectionBackupResult`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

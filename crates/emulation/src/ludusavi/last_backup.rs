@@ -45,7 +45,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -
 }
 
 /// `$XDG_CONFIG_HOME/ludusavi/config.yaml`, else `~/.config/ludusavi/config.yaml`.
-fn ludusavi_config_path(xdg_config_home: Option<OsString>, home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+pub(super) fn ludusavi_config_path(xdg_config_home: Option<OsString>, home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
     let base = match xdg_config_home.filter(|v| !v.is_empty()) {
         Some(xdg) => PathBuf::from(xdg),
         None => PathBuf::from(home?).join(".config"),
@@ -54,7 +54,7 @@ fn ludusavi_config_path(xdg_config_home: Option<OsString>, home: Option<&std::ff
 }
 
 /// The folder holding the per-game backup folders.
-fn backup_root(use_installed_config: bool, configured: &str, config_file: Option<&Path>, home: &str) -> Option<PathBuf> {
+pub(super) fn backup_root(use_installed_config: bool, configured: &str, config_file: Option<&Path>, home: &str) -> Option<PathBuf> {
     let from_config = || {
         let yaml = fs::read_to_string(config_file?).ok()?;
         parse_config(&yaml, home).0.map(PathBuf::from)
@@ -92,7 +92,7 @@ fn found(dir: PathBuf, yaml: Option<&str>) -> LastBackup {
     LastBackup { game_name, dir, at }
 }
 
-fn find_in(root: &Path, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
+pub(super) fn find_in(root: &Path, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
     let wanted = normalize(title);
     let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(root)
         .ok()?

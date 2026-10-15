@@ -1,0 +1,9 @@
+{
+  "Choose at least one file to restore.": "Escolha ao menos um arquivo para restaurar.",
+  "Ludusavi could not change the backup": "O Ludusavi não conseguiu alterar o backup",
+  "Ludusavi could not update its game list": "O Ludusavi não conseguiu atualizar a lista de jogos",
+  "Ludusavi did not answer as expected": "O Ludusavi não respondeu como esperado",
+  "Ludusavi has no backup of {game} in {folder}": "O Ludusavi não tem backup de {game} em {folder}",
+  "Ludusavi is busy with another backup or restore. Try again in a moment.": "O Ludusavi está ocupado com outro backup ou restauração. Tente de novo em instantes.",
+  "The game's prefix does not exist yet. Start the game once, then restore.": "O prefixo do jogo ainda não existe. Abra o jogo uma vez e depois restaure."
+}
