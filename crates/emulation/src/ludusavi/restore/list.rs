@@ -18,8 +18,6 @@ use super::Tool;
 pub enum SourceKind {
     /// Where the backups go (this app's or Ludusavi's backup folder).
     Backups,
-    /// Ludusavi's own restore folder, when it is another one.
-    LudusaviRestore,
     /// Added in Settings → Backups.
     Extra,
     /// Picked for this game only.
@@ -80,7 +78,8 @@ fn same(a: &Path, b: &Path) -> bool {
 }
 
 /// The folders to look for backups in, in order and without repeats: the
-/// backup folder, Ludusavi's restore folder, the extra ones, then `picked`.
+/// backup folder, the ones added in Settings, then `picked`. Ludusavi's own
+/// restore folder is only listed once added (Settings offers it).
 pub fn restore_sources(
     settings: &LudusaviSettings,
     detected: Option<&LudusaviDetected>,
@@ -94,9 +93,6 @@ pub fn restore_sources(
         .or_else(|| detected.and_then(|d| d.backup_path.as_deref()).and_then(|p| expand(p, home)))
     {
         candidates.push((root, SourceKind::Backups));
-    }
-    if let Some(p) = detected.and_then(|d| d.restore_path.as_deref()).and_then(|p| expand(p, home)) {
-        candidates.push((p, SourceKind::LudusaviRestore));
     }
     candidates.extend(settings.restore_paths.iter().filter_map(|p| expand(p, home)).map(|p| (p, SourceKind::Extra)));
     candidates.extend(picked.map(|p| (p.to_path_buf(), SourceKind::Picked)));
@@ -223,14 +219,18 @@ mod tests {
             got,
             [
                 ("/home/u/Saves".into(), SourceKind::Backups),
-                ("/win".into(), SourceKind::LudusaviRestore),
+                ("/win/".into(), SourceKind::Extra),
                 ("/old".into(), SourceKind::Extra),
                 ("/picked".into(), SourceKind::Picked),
             ]
         );
         // No folder set: Ludusavi's own backup folder.
         let s = restore_sources(&settings("", &[]), Some(&detected), "/h", None);
-        assert_eq!(s[0], BackupSource { root: "/lud".into(), kind: SourceKind::Backups });
+        assert_eq!(
+            s,
+            [BackupSource { root: "/lud".into(), kind: SourceKind::Backups }],
+            "Ludusavi's restore folder is not added by itself"
+        );
         assert!(restore_sources(&settings("", &[]), None, "/h", None).is_empty());
     }
 

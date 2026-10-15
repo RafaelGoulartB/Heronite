@@ -93,6 +93,12 @@ fn detect_with(preferred: String, window: &mut Window, cx: &mut Context<Settings
     .detach();
 }
 
+/// Sets where new save backups go (also from the restore card).
+pub(super) fn set_backup_folder(d: &mut SettingsPage, path: String, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    d.saves.folder.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+    save(d, LudusaviSettingsPatch { backup_path: Some(path), ..Default::default() }, cx);
+}
+
 pub(super) fn save(d: &mut SettingsPage, patch: LudusaviSettingsPatch, cx: &mut Context<SettingsPage>) {
     let res = set_ludusavi_settings(&d.ctx.data_paths, &patch);
     d.saved(res, cx);

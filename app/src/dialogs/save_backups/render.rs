@@ -49,7 +49,6 @@ pub(super) fn backup_line(b: &BackupEntry) -> (String, String) {
 pub(super) fn source_name(kind: SourceKind) -> &'static str {
     match kind {
         SourceKind::Backups => tr!("Backup folder"),
-        SourceKind::LudusaviRestore => tr!("Ludusavi's restore folder"),
         SourceKind::Extra => tr!("Added folder"),
         SourceKind::Picked => tr!("Picked folder"),
     }
