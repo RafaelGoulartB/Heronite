@@ -1,4 +1,4 @@
-//! Console mode of the Backups tab: the same steps as rows. Folders are the
+//! Console mode of the Saves tab: the same steps as rows. Folders are the
 //! ones of Settings → Backups (picking another one needs desktop mode).
 
 use gpui_kit::prelude::*;

@@ -1,5 +1,5 @@
 //! Settings → Backups, the restore card under Ludusavi's: the folders a
-//! game's Backups tab restores from, how many backups Ludusavi keeps, and
+//! game's Saves tab restores from, how many backups Ludusavi keeps, and
 //! its list of games.
 
 use std::path::PathBuf;
@@ -212,14 +212,14 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .flex_col()
         .child(caption(tr!("Restoring saves")))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
-            "A game's settings have a Backups tab that puts a backup back into the game's prefix as it is now, even one made in another Steam library or on Windows. It lists the backups in these folders."
+            "A game's settings have a Saves tab that puts a backup back into the game's prefix as it is now, even one made in another Steam library or on Windows. It lists the backups in these folders."
         ))))
         .child(list)
         .child(div().mt(px(10.)).flex().child(add))
         .child(caption(tr!("Backups kept")))
         .child(card_box().py(px(12.)).gap(px(12.)).child(full).child(differential))
         .child(div().mt(px(8.)).mx(px(6.)).child(meta_text(tr!(
-            "Ludusavi removes the oldest backups past these numbers. Locked backups are never removed: lock one in the game's Backups tab. Differential backups only store what changed since the last full one."
+            "Ludusavi removes the oldest backups past these numbers. Locked backups are never removed: lock one in the game's Saves tab. Differential backups only store what changed since the last full one."
         ))))
         .child(manifest)
         .child(div().mt(px(6.)).mx(px(6.)).child(meta_text(tr!(

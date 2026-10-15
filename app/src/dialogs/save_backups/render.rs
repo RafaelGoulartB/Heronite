@@ -1,4 +1,4 @@
-//! Desktop view of the Backups tab.
+//! Desktop view of the Saves tab.
 
 use std::path::Path;
 

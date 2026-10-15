@@ -37,10 +37,8 @@ enum Field {
 
 impl GameSettingsDialog {
     fn console_tabs(&self) -> Vec<Tab> {
-        let mut t: Vec<Tab> = self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default();
-        if self.backups.is_some() {
-            t.push(Tab::Backups);
-        }
+        let mut t = self
+            .with_saves_tab(self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default());
         if self.launch.is_some() {
             t.push(Tab::Launch);
         }
@@ -306,7 +304,7 @@ impl PadTarget for GameSettingsDialog {
             cx.notify();
             return true;
         }
-        // The Backups tab's keyboard and backup menu keep B and the bumpers.
+        // The Saves tab's keyboard and backup menu keep B and the bumpers.
         if let (Tab::Backups, Some(view)) = (self.tab, self.backups.clone()) {
             if view.read(cx).captures(pad) {
                 return view.update(cx, |v, cx| v.on_pad(pad, window, cx));

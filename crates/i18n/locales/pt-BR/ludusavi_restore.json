@@ -1,5 +1,5 @@
 {
-  "A game's settings have a Backups tab that puts a backup back into the game's prefix as it is now, even one made in another Steam library or on Windows. It lists the backups in these folders.": "As configurações de cada jogo têm uma aba Backups que devolve um backup ao prefixo atual do jogo, mesmo um feito em outra biblioteca da Steam ou no Windows. Ela lista os backups destas pastas.",
+  "A game's settings have a Saves tab that puts a backup back into the game's prefix as it is now, even one made in another Steam library or on Windows. It lists the backups in these folders.": "As configurações de cada jogo têm uma aba Saves que devolve um backup ao prefixo atual do jogo, mesmo um feito em outra biblioteca da Steam ou no Windows. Ela lista os backups destas pastas.",
   "Add folder…": "Adicionar pasta…",
   "Added folder": "Pasta adicionada",
   "Added folder. A removes it from the list.": "Pasta adicionada. A tira da lista.",
@@ -25,7 +25,7 @@
   "Ludusavi did not answer as expected": "O Ludusavi não respondeu como esperado",
   "Ludusavi has no backup of {game} in {folder}": "O Ludusavi não tem backup de {game} em {folder}",
   "Ludusavi is busy with another backup or restore. Try again in a moment.": "O Ludusavi está ocupado com outro backup ou restauração. Tente de novo em instantes.",
-  "Ludusavi removes the oldest backups past these numbers. Locked backups are never removed: lock one in the game's Backups tab. Differential backups only store what changed since the last full one.": "O Ludusavi apaga os backups mais antigos além desses números. Backups travados nunca são apagados: trave um na aba Backups do jogo. Backups diferenciais guardam só o que mudou desde o último completo.",
+  "Ludusavi removes the oldest backups past these numbers. Locked backups are never removed: lock one in the game's Saves tab. Differential backups only store what changed since the last full one.": "O Ludusavi apaga os backups mais antigos além desses números. Backups travados nunca são apagados: trave um na aba Saves do jogo. Backups diferenciais guardam só o que mudou desde o último completo.",
   "Ludusavi's game list is up to date.": "A lista de jogos do Ludusavi está atualizada.",
   "Ludusavi's list of games and where they keep saves. It updates by itself once a day; update it now when a new game is not found.": "A lista de jogos do Ludusavi e de onde eles guardam saves. Ela se atualiza sozinha uma vez por dia; atualize agora quando um jogo novo não for encontrado.",
   "Ludusavi's restore folder": "Pasta de restauração do Ludusavi",
@@ -57,6 +57,7 @@
   "Restore…": "Restaurar…",
   "Restoring saves": "Restaurar saves",
   "Restoring the save…": "Restaurando o save…",
+  "Saves": "Saves",
   "Steam userdata: {file}": "userdata da Steam: {file}",
   "The game is not installed. You can see, lock and take its backups here; to restore one, install the game and start it once.": "O jogo não está instalado. Aqui dá para ver, travar e fazer backups; para restaurar um, instale o jogo e abra-o uma vez.",
   "The game's prefix does not exist yet. Start the game once, then restore.": "O prefixo do jogo ainda não existe. Abra o jogo uma vez e depois restaure.",

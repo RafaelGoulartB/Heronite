@@ -83,7 +83,7 @@ impl Tab {
             Tab::Saves => tr!("Cloud saves"),
             Tab::Gamescope => tr!("Gamescope"),
             Tab::Proton => "Proton",
-            Tab::Backups => tr!("Backups"),
+            Tab::Backups => tr!("Saves"),
         }
     }
 
@@ -124,7 +124,7 @@ pub struct GameSettingsDialog {
     launch: Option<LaunchState>,
     /// Heroic settings: the view and the tabs this game has.
     panel: Option<(Entity<SettingsPanel>, Vec<Section>)>,
-    /// The Backups tab, for games that run here or through Steam.
+    /// The Saves tab, for games that run here or through Steam.
     backups: Option<Entity<SaveBackupsView>>,
     /// Console mode: focused row and the open keyboard / picker.
     console_list: crate::console::list::ListNav,
@@ -194,7 +194,17 @@ impl GameSettingsDialog {
         this
     }
 
-    /// Reads the backups the first time the Backups tab shows.
+    /// `tabs` with the Saves tab (Ludusavi backups) next to Cloud saves, or
+    /// last when the game has no Cloud saves tab.
+    fn with_saves_tab(&self, mut tabs: Vec<Tab>) -> Vec<Tab> {
+        if self.backups.is_some() {
+            let at = tabs.iter().position(|t| *t == Tab::Saves).unwrap_or(tabs.len());
+            tabs.insert(at, Tab::Backups);
+        }
+        tabs
+    }
+
+    /// Reads the backups the first time the Saves tab shows.
     fn show_backups(&self, cx: &mut Context<Self>) {
         if let Some(view) = &self.backups {
             view.update(cx, |v, cx| v.shown(cx));
@@ -258,12 +268,9 @@ impl Render for GameSettingsDialog {
         if self.launch.is_some() {
             items.push((Tab::Launch, Tab::Launch.label()));
         }
-        if let Some((_, sections)) = &self.panel {
-            items.extend(sections.iter().map(|s| (Tab::of_section(*s), s.label())));
-        }
-        if self.backups.is_some() {
-            items.push((Tab::Backups, Tab::Backups.label()));
-        }
+        let sections: Vec<Tab> =
+            self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default();
+        items.extend(self.with_saves_tab(sections).into_iter().map(|t| (t, t.label())));
         let entity = cx.entity().downgrade();
         let panel = self.panel.as_ref().map(|(p, _)| p.clone());
         let tab_bar = tabs("gs", &items, self.tab, move |t, window, cx| {
