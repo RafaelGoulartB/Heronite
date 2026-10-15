@@ -271,7 +271,7 @@ impl Downloads {
         }
     }
 
-    /// Heroic's auto-pause: the element stays first and resumes later.
+    /// Pauses for the connection: the element stays first and resumes later.
     fn pause_offline(&mut self, cx: &mut Context<Self>) {
         log::info!("downloads: no internet connection, pausing the queue");
         self.manager.pause();

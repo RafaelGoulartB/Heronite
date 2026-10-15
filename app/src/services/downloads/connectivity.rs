@@ -1,9 +1,8 @@
 //! Pauses the download queue when the connection drops and resumes it when it
-//! comes back (Heroic's `onConnectivityChange` in `downloadqueue.ts`).
+//! comes back.
 //!
-//! Heroic hears "offline" from Chromium (no network up) and "online" once one
-//! of its sites answers. Here the kernel's routing table says whether any
-//! network is up (a file read, no traffic) and the probes of
+//! Two signals: the kernel's routing table says whether any network is up (a
+//! file read, no traffic), and the probes of
 //! [`Net::is_online`](heronite_launch::net::Net::is_online) whether the
 //! internet answers. A download that still moves is never paused, so a
 //! network that blocks the probes but downloads fine is left alone.

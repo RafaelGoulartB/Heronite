@@ -8,9 +8,8 @@
 //!   `heronite-rs://launch?appName=..&runner=..[&arg=..][&altExe=..][&gui=false]`
 //!   (Heroic's URL forms under this app's own scheme; `heroic://` stays Heroic's).
 //!
-//! `--no-gui` (Heroic's flag) means "do not show the window". `--console`
-//! and `--fullscreen` (Heroic's flags too) show it in console mode and/or
-//! fullscreen.
+//! `--no-gui` means "do not show the window". `--console` and `--fullscreen`
+//! show it in console mode and/or fullscreen.
 
 /// Runners Heroic's protocol accepts; we also know `zoom`.
 pub const RUNNERS: [&str; 5] = ["legendary", "gog", "nile", "sideload", "zoom"];
