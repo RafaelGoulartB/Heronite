@@ -9,6 +9,7 @@ use heronite_i18n::{tr, trn};
 use super::render::{backup_line, group_facts, group_help, group_title, groups, overwrite_line, short_path, source_name, target_line};
 use super::{Load, SaveBackupsView, Stage};
 use crate::console::list::{Outcome, Row, Value};
+use crate::console::osk::{Osk, OskEvent};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::pages::settings::format_time;
@@ -62,19 +63,37 @@ impl SaveBackupsView {
                         rows.push(Row::info("sb-none", text, ""));
                     }
                     Some(s) => {
-                        let can = !busy && !l.target.missing_prefix();
-                        for (i, b) in s.backups.iter().enumerate() {
-                            let (when, facts) = backup_line(b);
-                            let mut r = Row::action(SharedString::from(format!("sb-b-{i}")), when).icon(Icon::Replay).enabled(can);
-                            let desc = if facts.is_empty() { tr!("A restores it").to_string() } else { facts };
-                            r = r.desc(desc);
-                            rows.push(r);
+                        if let Some(b) = self.console_backup.and_then(|i| s.backups.get(i)) {
+                            // One backup's actions.
+                            let (title, facts) = backup_line(b);
+                            rows.push(Row::info("sb-m-title", title, "").desc(facts));
+                            rows.push(
+                                Row::action("sb-m-restore", tr!("Restore…"))
+                                    .icon(Icon::Replay)
+                                    .enabled(!busy && !l.target.missing_prefix()),
+                            );
+                            rows.push(
+                                Row::text("sb-m-name", tr!("Name"), b.comment.clone().unwrap_or_default()).icon(Icon::Edit).enabled(!busy),
+                            );
+                            rows.push(
+                                Row::toggle("sb-m-lock", tr!("Lock"), b.locked)
+                                    .enabled(!busy)
+                                    .desc(tr!("Locked backups are never removed")),
+                            );
+                            rows.push(if self.confirm_delete == self.console_backup {
+                                Row::action("sb-m-delete-yes", tr!("Press A again to delete it. This cannot be undone."))
+                                    .icon(Icon::DeleteForever)
+                                    .danger()
+                            } else {
+                                Row::action("sb-m-delete", tr!("Delete")).icon(Icon::DeleteOutline).enabled(!busy)
+                            });
+                            rows.push(Row::action("sb-m-back", tr!("Back")).icon(Icon::ChevronLeft));
+                            return rows;
                         }
-                        rows.push(
-                            Row::toggle("sb-lock", tr!("Lock the newest backup"), s.backups[0].locked)
-                                .enabled(!busy)
-                                .desc(tr!("Locked backups are never removed")),
-                        );
+                        for (i, b) in s.backups.iter().enumerate() {
+                            let (title, facts) = backup_line(b);
+                            rows.push(Row::action(SharedString::from(format!("sb-b-{i}")), title).icon(Icon::History).desc(facts));
+                        }
                     }
                 }
                 rows.push(Row::header(""));
@@ -140,20 +159,65 @@ impl SaveBackupsView {
 
     pub(super) fn render_console(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> AnyElement {
         let rows = self.console_rows();
-        self.console_list.render("console-save-backups", &rows, true).size_full().into_any_element()
+        let active = !self.layer.is_open();
+        div()
+            .size_full()
+            .child(self.console_list.render("console-save-backups", &rows, active).size_full())
+            .children(self.layer.view())
+            .into_any_element()
+    }
+
+    fn console_open_backup(&mut self, index: Option<usize>) {
+        self.console_backup = index;
+        self.confirm_delete = None;
+        self.console_list.reset();
+    }
+
+    /// The on-screen keyboard for the name of the backup shown.
+    fn console_edit_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(index) = self.console_backup else { return };
+        let current = self.loaded().and_then(|l| l.sources.get(self.source)?.backups.get(index)?.comment.clone()).unwrap_or_default();
+        let osk = cx.new(|_| Osk::new(tr!("Name this backup"), &current));
+        let sub = cx.subscribe_in(&osk, window, move |v, _, ev: &OskEvent, _, cx| {
+            v.layer.close();
+            if let OskEvent::Done(text) = ev {
+                v.set_backup_name(index, text.trim().to_string(), cx);
+            }
+            cx.notify();
+        });
+        self.layer.open(&osk, sub);
     }
 
     pub fn console_reset(&mut self) {
         self.console_list.reset();
     }
 
+    /// Whether the tab takes `pad` before the dialog does: everything while
+    /// the keyboard is open, B while a backup's actions are shown.
+    pub fn captures(&self, pad: Pad) -> bool {
+        self.layer.is_open() || (pad == Pad::B && self.console_backup.is_some())
+    }
+
     /// A pad press for the tab; `false` when it did nothing.
-    pub fn on_pad(&mut self, pad: Pad, cx: &mut Context<Self>) -> bool {
+    pub fn on_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.layer.pad(pad, window, cx) {
+            cx.notify();
+            return true;
+        }
+        if pad == Pad::B && self.console_backup.is_some() {
+            self.console_open_backup(None);
+            cx.notify();
+            return true;
+        }
         let rows = self.console_rows();
         match self.console_list.on_pad(pad, &rows) {
             Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "sb-folder" => self.pick_source(index, cx),
             Outcome::Changed(id, Value::Toggle(_)) => match id.as_ref() {
-                "sb-lock" => self.toggle_lock(0, cx),
+                "sb-m-lock" => {
+                    if let Some(i) = self.console_backup {
+                        self.toggle_lock(i, cx);
+                    }
+                }
                 id => {
                     let kind = id.strip_prefix("sb-g-").and_then(|n| n.parse::<u8>().ok()).and_then(|n| {
                         [FileKind::Save, FileKind::Registry, FileKind::Outside, FileKind::Unmapped].into_iter().find(|k| *k as u8 == n)
@@ -169,10 +233,24 @@ impl SaveBackupsView {
                 "sb-undo" => self.undo_last(cx),
                 "sb-confirm" => self.confirm_restore(cx),
                 "sb-back" => self.back_to_list(cx),
+                "sb-m-back" => self.console_open_backup(None),
+                "sb-m-restore" => {
+                    if let Some(i) = self.console_backup {
+                        self.console_open_backup(None);
+                        self.pick_backup(i, cx);
+                        self.start_restore(cx);
+                    }
+                }
+                "sb-m-name" => self.console_edit_name(window, cx),
+                "sb-m-delete" => self.confirm_delete = self.console_backup,
+                "sb-m-delete-yes" => {
+                    self.delete_confirmed(cx);
+                    self.console_list.reset();
+                }
                 id => {
                     if let Some(i) = id.strip_prefix("sb-b-").and_then(|n| n.parse::<usize>().ok()) {
                         self.pick_backup(i, cx);
-                        self.start_restore(cx);
+                        self.console_open_backup(Some(i));
                     }
                 }
             },
@@ -183,7 +261,10 @@ impl SaveBackupsView {
         true
     }
 
-    pub fn hints(&self) -> Vec<Hint> {
+    pub fn hints(&self, cx: &App) -> Vec<Hint> {
+        if let Some(h) = self.layer.hints(cx) {
+            return h;
+        }
         vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change"))]
     }
 }

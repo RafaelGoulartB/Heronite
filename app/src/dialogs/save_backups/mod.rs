@@ -11,13 +11,14 @@ mod render;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::DataPaths;
 use heronite_emulation::ludusavi::restore::{
-    apply_restore, list_backups, plan_restore, set_locked, steam_game_running, undo, wine_user, FileKind, GameBackups, RestoreOutcome,
-    RestorePlan, RestoreRequest, RestoreTarget, Tool,
+    apply_restore, delete_backup, list_backups, plan_restore, set_locked, set_name, steam_game_running, undo, wine_user, FileKind,
+    GameBackups, RestoreOutcome, RestorePlan, RestoreRequest, RestoreTarget, Tool,
 };
 use heronite_emulation::ludusavi::{backup_for_game, game_wine_prefix, BackupReason, LudusaviEnv, LudusaviGame, SystemRunner};
 use heronite_i18n::tr;
@@ -79,7 +80,15 @@ pub struct SaveBackupsView {
     /// Background job besides the restore (backup, lock, undo).
     working: bool,
     notice: Option<(String, bool)>,
+    /// Desktop: the backup being named and its text field.
+    renaming: Option<(usize, Entity<InputState>, Subscription)>,
+    /// The backup asking "delete?".
+    confirm_delete: Option<usize>,
+    /// Console mode: the backup whose actions are listed.
+    console_backup: Option<usize>,
     console_list: crate::console::list::ListNav,
+    /// Console mode: the on-screen keyboard for the name.
+    layer: crate::console::Layer,
 }
 
 impl EventEmitter<()> for SaveBackupsView {}
@@ -139,7 +148,11 @@ impl SaveBackupsView {
             stage: Stage::List,
             working: false,
             notice: None,
+            renaming: None,
+            confirm_delete: None,
+            console_backup: None,
             console_list: Default::default(),
+            layer: Default::default(),
         }
     }
 
@@ -431,6 +444,101 @@ impl SaveBackupsView {
                     Err(e) => v.notice = Some((e, true)),
                 }
                 cx.notify();
+            },
+        );
+    }
+
+    /// The selected folder's game folder, game name and the backup `index`.
+    fn backup_ref(&self, index: usize) -> Option<(Tool, PathBuf, Option<PathBuf>, String, String)> {
+        let l = self.loaded()?;
+        let src = l.sources.get(self.source)?;
+        let b = src.backups.get(index)?;
+        Some((l.tool.clone(), src.source.root.clone(), src.dir.clone(), src.game_name.clone()?, b.id.clone()))
+    }
+
+    /// Desktop: shows a text field for the backup's name.
+    pub(crate) fn start_rename(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+        let current = self.loaded().and_then(|l| l.sources.get(self.source)?.backups.get(index)?.comment.clone()).unwrap_or_default();
+        let input = crate::ui::fields::new_input(window, cx, &current, tr!("Name this backup (\u{201c}Before the last boss\u{201d})"));
+        input.update(cx, |s, cx| s.focus(window, cx));
+        let sub = cx.subscribe_in(&input, window, |v, _, ev: &InputEvent, _, cx| {
+            if matches!(ev, InputEvent::PressEnter { .. }) {
+                v.save_rename(cx);
+            }
+        });
+        self.renaming = Some((index, input, sub));
+        self.confirm_delete = None;
+        cx.notify();
+    }
+
+    pub(crate) fn cancel_rename(&mut self, cx: &mut Context<Self>) {
+        self.renaming = None;
+        cx.notify();
+    }
+
+    pub(crate) fn save_rename(&mut self, cx: &mut Context<Self>) {
+        let Some((index, input, _)) = self.renaming.take() else { return };
+        let name = input.read(cx).value().trim().to_string();
+        self.set_backup_name(index, name, cx);
+    }
+
+    /// Saves a backup's name (Ludusavi's comment); empty clears it.
+    pub(crate) fn set_backup_name(&mut self, index: usize, name: String, cx: &mut Context<Self>) {
+        let Some((tool, root, _, game, id)) = self.backup_ref(index).filter(|_| !self.busy()) else { return };
+        self.working = true;
+        cx.notify();
+        let saved = name.clone();
+        self.background(
+            cx,
+            heronite_emulation::ludusavi::LUDUSAVI_TIMEOUT,
+            move |env| set_name(env, &tool, &root, &game, &id, &name),
+            move |v, result, _| {
+                v.working = false;
+                match result {
+                    Ok(()) => {
+                        if let Load::Ready(l) = &mut v.load {
+                            if let Some(b) = l.sources.get_mut(v.source).and_then(|s| s.backups.get_mut(index)) {
+                                b.comment = Some(saved).filter(|s| !s.is_empty());
+                            }
+                        }
+                    }
+                    Err(e) => v.notice = Some((e, true)),
+                }
+            },
+        );
+    }
+
+    pub(crate) fn ask_delete(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.confirm_delete = Some(index);
+        self.renaming = None;
+        cx.notify();
+    }
+
+    pub(crate) fn cancel_delete(&mut self, cx: &mut Context<Self>) {
+        self.confirm_delete = None;
+        cx.notify();
+    }
+
+    /// Deletes the backup asked about, then reads the list again.
+    pub(crate) fn delete_confirmed(&mut self, cx: &mut Context<Self>) {
+        let Some(index) = self.confirm_delete.take() else { return };
+        let Some((_, _, Some(dir), _, id)) = self.backup_ref(index).filter(|_| !self.busy()) else { return };
+        self.working = true;
+        self.console_backup = None;
+        cx.notify();
+        self.background(
+            cx,
+            heronite_emulation::ludusavi::LUDUSAVI_TIMEOUT,
+            move |_| delete_backup(&dir, &id),
+            |v, result, cx| {
+                v.working = false;
+                match result {
+                    Ok(()) => {
+                        v.notice = Some((tr!("Backup deleted.").into(), false));
+                        v.reload(cx);
+                    }
+                    Err(e) => v.notice = Some((e, true)),
+                }
             },
         );
     }

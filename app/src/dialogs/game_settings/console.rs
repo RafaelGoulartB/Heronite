@@ -306,6 +306,12 @@ impl PadTarget for GameSettingsDialog {
             cx.notify();
             return true;
         }
+        // The Backups tab's keyboard and backup menu keep B and the bumpers.
+        if let (Tab::Backups, Some(view)) = (self.tab, self.backups.clone()) {
+            if view.read(cx).captures(pad) {
+                return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
+            }
+        }
         let tabs = self.console_tabs();
         let i = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
         match pad {
@@ -329,7 +335,7 @@ impl PadTarget for GameSettingsDialog {
         }
         if self.tab == Tab::Backups {
             if let Some(view) = self.backups.clone() {
-                return view.update(cx, |v, cx| v.on_pad(pad, cx));
+                return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
             }
             return false;
         }
@@ -372,7 +378,7 @@ impl PadTarget for GameSettingsDialog {
             return h;
         }
         if let (Tab::Backups, Some(view)) = (self.tab, &self.backups) {
-            let mut h = view.read(cx).hints();
+            let mut h = view.read(cx).hints(cx);
             h.push(hint(Btn::Bumpers, tr!("Tabs")));
             h.push(hint(Btn::B, tr!("Done")));
             return h;

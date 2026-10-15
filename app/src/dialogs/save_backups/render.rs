@@ -13,8 +13,8 @@ use crate::icons::Icon;
 use crate::pages::settings::format_time;
 use crate::theme;
 use crate::ui::controls::{action_button, button_sm, caption, card_box, help_text, mini_checkbox, ButtonKind};
-use crate::ui::fields::{choose_path, meta_text, select_field};
-use crate::ui::icon;
+use crate::ui::fields::{choose_path, input_box, meta_text, select_field};
+use crate::ui::{icon, tool_button};
 
 /// `Windows` / `Linux` for the OS Ludusavi recorded.
 pub(super) fn os_label(os: Option<&str>) -> Option<&'static str> {
@@ -26,15 +26,24 @@ pub(super) fn os_label(os: Option<&str>) -> Option<&'static str> {
     }
 }
 
-/// The date and the other facts of a backup, for one line.
+/// A backup's title (its name, else its date) and the line under it
+/// (the date when named, the OS, the size, locked).
 pub(super) fn backup_line(b: &BackupEntry) -> (String, String) {
+    let when = format_time(&b.when);
     let mut facts: Vec<String> = Vec::new();
+    let title = match &b.comment {
+        Some(name) => {
+            facts.push(when);
+            name.clone()
+        }
+        None => when,
+    };
     facts.extend(os_label(b.os.as_deref()).map(|os| tr!("made on {os}", os)));
+    facts.extend(b.bytes.map(human_size));
     if b.locked {
         facts.push(tr!("locked").into());
     }
-    facts.extend(b.comment.clone());
-    (format_time(&b.when), facts.join(" \u{b7} "))
+    (title, facts.join(" \u{b7} "))
 }
 
 pub(super) fn source_name(kind: SourceKind) -> &'static str {
@@ -391,7 +400,7 @@ impl SaveBackupsView {
     }
 
     fn backup_row(&self, i: usize, b: &BackupEntry, selected: bool, busy: bool, cx: &mut Context<Self>) -> AnyElement {
-        let (when, facts) = backup_line(b);
+        let (title, facts) = backup_line(b);
         let dot = div()
             .flex_none()
             .size(px(16.))
@@ -399,10 +408,7 @@ impl SaveBackupsView {
             .border_2()
             .border_color(if selected { theme::accent().into() } else { theme::white_a(0.3) })
             .when(selected, |d| d.child(div().m(px(3.)).size(px(6.)).rounded_full().bg(theme::accent())));
-        let lock =
-            button_sm(SharedString::from(format!("sb-lock-{i}")), ButtonKind::Ghost, if b.locked { tr!("Unlock") } else { tr!("Lock") })
-                .when(!busy, |b| b.on_click(cx.listener(move |v, _, _, cx| v.toggle_lock(i, cx))));
-        div()
+        let row = div()
             .id(SharedString::from(format!("sb-backup-{i}")))
             .flex()
             .items_center()
@@ -411,22 +417,53 @@ impl SaveBackupsView {
             .py(px(8.))
             .my(px(2.))
             .rounded(px(10.))
-            .cursor_pointer()
             .when(selected, |d| d.bg(theme::white_a(0.06)))
+            .child(dot);
+        let small = |id: &str, kind, label: &'static str| button_sm(SharedString::from(format!("sb-{id}-{i}")), kind, label);
+
+        if let Some((_, input, _)) = self.renaming.as_ref().filter(|(r, _, _)| *r == i) {
+            return row
+                .child(div().flex_1().min_w_0().child(input_box(input, false)))
+                .child(small("name-save", ButtonKind::Primary, tr!("Save")).on_click(cx.listener(|v, _, _, cx| v.save_rename(cx))))
+                .child(small("name-cancel", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|v, _, _, cx| v.cancel_rename(cx))))
+                .into_any_element();
+        }
+        if self.confirm_delete == Some(i) {
+            return row
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_size(px(13.))
+                        .text_color(theme::text_primary())
+                        .child(tr!("Delete \u{201c}{name}\u{201d}? This cannot be undone.", name = title)),
+                )
+                .child(small("delete-yes", ButtonKind::Danger, tr!("Delete")).on_click(cx.listener(|v, _, _, cx| v.delete_confirmed(cx))))
+                .child(small("delete-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|v, _, _, cx| v.cancel_delete(cx))))
+                .into_any_element();
+        }
+        let lock = small("lock", ButtonKind::Ghost, if b.locked { tr!("Unlock") } else { tr!("Lock") })
+            .when(!busy, |b| b.on_click(cx.listener(move |v, _, _, cx| v.toggle_lock(i, cx))));
+        let rename = tool_button(SharedString::from(format!("sb-rename-{i}")), Icon::Edit, false)
+            .when(!busy, |b| b.on_click(cx.listener(move |v, _, window, cx| v.start_rename(i, window, cx))));
+        let delete = tool_button(SharedString::from(format!("sb-delete-{i}")), Icon::DeleteOutline, false)
+            .when(!busy, |b| b.on_click(cx.listener(move |v, _, _, cx| v.ask_delete(i, cx))));
+        row.cursor_pointer()
             .hover(|s| s.bg(theme::white_a(0.04)))
             .on_click(cx.listener(move |v, _, _, cx| v.pick_backup(i, cx)))
-            .child(dot)
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .flex_1()
                     .min_w_0()
-                    .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(when))
+                    .child(div().text_size(px(14.)).text_color(theme::text_primary()).truncate().child(title))
                     .children((!facts.is_empty()).then(|| div().text_size(px(12.)).text_color(theme::text_dim()).truncate().child(facts))),
             )
             .children(b.locked.then(|| icon(Icon::Flag, px(14.), theme::text_muted())))
+            .child(rename)
             .child(lock)
+            .child(delete)
             .into_any_element()
     }
 
