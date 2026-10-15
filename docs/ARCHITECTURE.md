@@ -71,7 +71,11 @@ calls them from `cx.background_spawn` or worker threads.
   around a launch (cloud saves, runtimes); `first_launch` sets up a game the
   first time it runs in a Wine prefix. `lsfg` finds lsfg-vk (Lossless
   Scaling frame generation), the Lossless Scaling DLL and lsfg-vk's profiles,
-  and adds the frame generation variables to a launch.
+  and adds the frame generation variables to a launch. `umu_ids` picks the
+  `GAMEID` of a umu launch (protonfixes) from the user's id, the umu
+  database (downloaded weekly), Heroic's cache, the metadata's Steam id or
+  the title; `keep_awake` adds the logind lock the runtime holds while the
+  game runs.
 - **heronite-epic:** `cmd` runs legendary. `manager` + `queue` are the
   download queue (`store/download-manager.json`), shared by every store: an
   element's `params.runner` picks the job (legendary, gogdl or nile), and

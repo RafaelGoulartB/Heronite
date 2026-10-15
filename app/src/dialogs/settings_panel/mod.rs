@@ -11,6 +11,7 @@
 mod advanced;
 mod companions;
 mod console;
+mod fixes;
 mod gamescope;
 mod general;
 pub mod logic;
@@ -18,6 +19,7 @@ mod lsfg;
 mod other;
 mod parts;
 mod prefix_menu;
+mod presets;
 mod protondb;
 mod saves;
 mod shared_folders;
@@ -80,6 +82,8 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("dxvkFps", s("DXVKFpsCap"), n_!("Positive integer value (e.g. 30, 60, ...)")),
     ("mangohudFps", Bind::Digits { key: "heroniteMangohudFpsLimit" }, n_!("No limit")),
     ("savesPath", s("savesPath"), n_!("Select the exact save games folder")),
+    ("umuId", s("heroniteUmuId"), n_!("Automatic")),
+    ("preset.name", Bind::Scratch, n_!("Preset name")),
     ("gs.gameWidth", Bind::Gamescope { field: "gameWidth", digits: true }, ""),
     ("gs.gameHeight", Bind::Gamescope { field: "gameHeight", digits: true }, ""),
     ("gs.upscaleWidth", Bind::Gamescope { field: "upscaleWidth", digits: true }, ""),
@@ -159,6 +163,10 @@ pub struct SettingsPanel {
     pub(super) lsfg: Option<heronite_launch::lsfg::Install>,
     /// `lsfg-vk-ui`, when installed.
     pub(super) lsfg_ui: Option<String>,
+    /// The umu database, for the Game fixes section (`None` while read).
+    pub(super) umu: Option<fixes::UmuData>,
+    /// The launch presets of every game.
+    pub(super) presets: Vec<heronite_data::launch_presets::Preset>,
     pub(super) env_error: String,
     pub(super) saves: SavesState,
     /// Steam games: what Steam has (the settings map mirrors its launch options).
@@ -253,6 +261,8 @@ impl SettingsPanel {
             runtimes,
             lsfg: None,
             lsfg_ui: None,
+            umu: None,
+            presets: Vec::new(),
             env_error: String::new(),
             saves: SavesState::default(),
             steam: steam_app.map(steam::SteamState::new),
@@ -274,6 +284,10 @@ impl SettingsPanel {
             this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
         this.load_lsfg(cx);
+        this.load_presets(cx);
+        if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
+            this.load_umu(cx);
+        }
         if this.is_steam() {
             // Debug settings are applied once Steam was read.
             this.load_steam(cx);

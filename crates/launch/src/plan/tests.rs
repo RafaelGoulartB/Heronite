@@ -126,6 +126,34 @@ fn windows_exe_uses_umu_with_proton_path() {
 }
 
 #[test]
+fn heronite_switches_reach_a_umu_launch() {
+    let game = sideload("g", "/games/win/game.exe", "Windows");
+    let mut c = ctx(json!({}));
+    c.umu_database = vec![crate::umu_ids::Entry { title: "Game".into(), umu_id: "umu-55".into(), ..Default::default() }];
+    let probe = proton_probe().with_bin("systemd-inhibit", "/usr/bin/systemd-inhibit");
+    let s = settings(json!({
+        "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"},
+        "winePrefix": "/pfx", "heronitePreferSdl": true, "heroniteKeepAwake": true
+    }));
+    let m = LocalGameMeta { steam_app_id: Some("55".into()), ..meta("executable") };
+    let plan = build_plan_with_settings(&c, &probe, &game, Some(&m), &s, &Default::default());
+    let LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
+    assert_eq!(process.command.env["GAMEID"], "umu-55", "the metadata's Steam id is in the database");
+    assert_eq!(process.command.env["PROTON_PREFER_SDL"], "1");
+    assert_eq!(process.keep_awake.as_ref().unwrap().program, "/usr/bin/systemd-inhibit");
+    // The game's own id wins; without the switches nothing is added.
+    let mine = settings(json!({
+        "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"},
+        "winePrefix": "/pfx", "heroniteUmuId": "1091500"
+    }));
+    let plan = build_plan_with_settings(&c, &probe, &game, Some(&m), &mine, &Default::default());
+    let LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
+    assert_eq!(process.command.env["GAMEID"], "umu-1091500");
+    assert!(!process.command.env.contains_key("PROTON_PREFER_SDL"));
+    assert!(process.keep_awake.is_none());
+}
+
+#[test]
 fn missing_prefix_files_trigger_prefix_creation() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
     let probe = proton_probe();

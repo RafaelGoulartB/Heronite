@@ -11,7 +11,7 @@ use heronite_launch::lsfg::{self, Install};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, card_box, help_text, ButtonKind};
-use crate::ui::icon;
+use crate::ui::{icon, open_external};
 
 /// Why frame generation cannot run, `None` when it can.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,29 +83,16 @@ impl Missing {
     }
 }
 
-/// Opens `target` (a web page or a `steam://` link) with the desktop's handler.
-fn open(target: &str) {
-    if let Err(e) = std::process::Command::new("xdg-open")
-        .arg(target)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        log::warn!("xdg-open {target}: {e}");
-    }
-}
-
 pub fn open_site() {
-    open(lsfg::WEBSITE);
+    open_external(lsfg::WEBSITE);
 }
 
 /// Lossless Scaling's store page, in the Steam client when it is installed.
 pub fn open_store() {
     let steam = heronite_launch::Probe::which(&heronite_launch::SystemProbe, "steam").is_some();
     match steam {
-        true => open(&format!("steam://store/{}", lsfg::STEAM_APP_ID)),
-        false => open(&format!("https://store.steampowered.com/app/{}/", lsfg::STEAM_APP_ID)),
+        true => open_external(&format!("steam://store/{}", lsfg::STEAM_APP_ID)),
+        false => open_external(&format!("https://store.steampowered.com/app/{}/", lsfg::STEAM_APP_ID)),
     }
 }
 

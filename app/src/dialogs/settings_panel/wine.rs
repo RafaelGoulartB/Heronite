@@ -92,6 +92,9 @@ impl SettingsPanel {
             cx,
         ));
         col = col.child(heading(tr!("Graphics"))).child(graphics.card());
+        if self.shows_game_fixes() {
+            col = col.child(self.game_fixes_section(cx));
+        }
 
         let mut sync = rows()
             .child(self.toggle_row(

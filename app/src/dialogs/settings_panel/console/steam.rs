@@ -190,6 +190,7 @@ impl SettingsPanel {
             ));
         }
         v.extend(self.c_lsfg(true));
+        v.extend(self.c_controls(true));
         v
     }
 
@@ -209,6 +210,7 @@ impl SettingsPanel {
             v.push(it);
             v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
             v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
+            v.extend(self.c_presets(true));
             v.extend(self.c_pairs(WRAPPERS));
             v.extend(self.c_pairs(ENV));
             v.push(Self::c_header("DirectX"));

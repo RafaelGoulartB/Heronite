@@ -17,6 +17,20 @@ use gpui_kit::*;
 use crate::icons::Icon;
 use crate::theme;
 
+/// Opens `target` (a web page, a `steam://` link) with the desktop's handler,
+/// without waiting.
+pub fn open_external(target: &str) {
+    if let Err(e) = std::process::Command::new("xdg-open")
+        .arg(target)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        log::warn!("xdg-open {target}: {e}");
+    }
+}
+
 /// Monochrome icon tinted with `color`.
 pub fn icon(icon: Icon, size: Pixels, color: impl Into<Hsla>) -> Svg {
     svg().path(icon.path()).size(size).flex_none().text_color(color.into())

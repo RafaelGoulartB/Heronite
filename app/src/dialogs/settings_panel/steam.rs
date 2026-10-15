@@ -688,7 +688,10 @@ impl SettingsPanel {
             ));
         }
         col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
-        col.child(self.lsfg_section(off, cx))
+        col = col.child(self.lsfg_section(off, cx));
+        // Steam keeps the computer awake itself while a game runs.
+        let sdl = rows().child(self.sdl_row(off, cx));
+        col.child(heading(tr!("Controllers and power"))).child(sdl.card())
     }
 
     pub(super) fn steam_gamescope_tab(&mut self, cx: &mut Context<Self>) -> Div {
@@ -741,7 +744,7 @@ impl SettingsPanel {
                     vec![help(tr!("Steam runs the scripts through a small script of Heronite's, so they run however the game starts."))],
                 );
             col = col.child(heading(tr!("Launch"))).child(launch.card());
-            col = col.child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
+            col = col.child(self.presets_section(off, cx)).child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
             let mut dx = rows().child(self.toggle_row(
                 "dxvk-fps",
                 "enableDXVKFpsLimit",

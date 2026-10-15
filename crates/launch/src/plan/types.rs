@@ -65,6 +65,12 @@ pub struct ProcessPlan {
     pub prep: PrepSpec,
     /// Programs started while the game runs and closed with it.
     pub companions: Vec<CompanionPlan>,
+    /// Holds the "do not suspend" lock while the game runs (see
+    /// [`crate::keep_awake`]).
+    pub keep_awake: Option<Command>,
+    /// legendary starts the game through umu (a Wine plan says it with
+    /// [`WineRuntime::Umu`]): its `GAMEID` picks the protonfixes.
+    pub through_umu: bool,
 }
 
 /// A program run alongside the game (see [`crate::companions`]).

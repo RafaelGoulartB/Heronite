@@ -95,6 +95,12 @@ pub struct GameSettings {
     pub gamescope: Gamescope,
     /// `heroniteLsfg*`: Lossless Scaling frame generation.
     pub lsfg: crate::lsfg::Lsfg,
+    /// `heronitePreferSdl`: Proton reads controllers through SDL.
+    pub prefer_sdl: bool,
+    /// `heroniteKeepAwake` (see [`crate::keep_awake`]).
+    pub keep_awake: bool,
+    /// `heroniteUmuId`: the umu id the user set (see [`crate::umu_ids`]).
+    pub umu_id: String,
 }
 
 fn truthy(v: Option<&Value>) -> bool {
@@ -228,6 +234,9 @@ impl GameSettings {
             },
             gamescope: gs,
             lsfg: crate::lsfg::Lsfg::from_map(m),
+            prefer_sdl: b(crate::env::KEY_PREFER_SDL),
+            keep_awake: b(crate::keep_awake::KEY),
+            umu_id: text(m.get(crate::umu_ids::KEY)).trim().to_string(),
         }
     }
 }

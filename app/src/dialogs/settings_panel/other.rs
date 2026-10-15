@@ -1,4 +1,5 @@
-//! "Other" tab: overlays, GameMode, frame generation, runtimes.
+//! "Other" tab: overlays, GameMode, frame generation, controllers and
+//! power, runtimes.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -69,6 +70,19 @@ impl SettingsPanel {
         }
         col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
         col = col.child(self.lsfg_section(false, cx));
+        let mut system = rows().child(self.toggle_row(
+            "keep-awake",
+            heronite_launch::keep_awake::KEY,
+            false,
+            tr!("Keep the computer awake while playing"),
+            Some(tr!("Stops the computer from suspending or going idle while the game runs. Useful with a controller, which the system does not count as activity.")),
+            false,
+            cx,
+        ));
+        if !native && wine.kind == "proton" {
+            system = system.child(self.sdl_row(false, cx));
+        }
+        col = col.child(heading(tr!("Controllers and power"))).child(system.card());
         if native {
             col = col.child(heading(tr!("Runtime"))).child(rows().field_help(
                 self.steam_runtime_field(cx),
@@ -87,6 +101,19 @@ impl SettingsPanel {
             col = col.child(heading(tr!("Anti-cheat"))).child(anti.card());
         }
         col
+    }
+
+    /// `PROTON_PREFER_SDL` (Proton only).
+    pub(super) fn sdl_row(&self, disabled: bool, cx: &mut Context<Self>) -> AnyElement {
+        self.toggle_row(
+            "prefer-sdl",
+            heronite_launch::env::KEY_PREFER_SDL,
+            false,
+            tr!("Use SDL for controllers"),
+            Some(tr!("Can fix a controller the game does not see, swapped buttons or double input. PlayStation controllers lose their own features (adaptive triggers, gyro, touchpad).")),
+            disabled,
+            cx,
+        )
     }
 
     fn steam_runtime_field(&self, cx: &mut Context<Self>) -> Div {

@@ -28,6 +28,7 @@ use heronite_i18n::tr;
 
 mod lsfg;
 mod steam;
+mod tweaks;
 
 type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
 type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel>)>;
@@ -208,6 +209,7 @@ impl SettingsPanel {
             Some(tr!("Lets DLSS work on NVIDIA GPUs")),
             !dxvk_on || busy,
         ));
+        v.extend(self.c_fixes(cx));
         v.push(Self::c_header(tr!("Sync and compatibility")));
         v.push(self.c_toggle("enableEsync", false, "Esync", Some(tr!("Less wineserver overhead in CPU-heavy games")), false));
         v.push(self.c_toggle("enableFsync", false, "Fsync", Some(tr!("Less wineserver overhead on supported kernels")), false));
@@ -295,6 +297,7 @@ impl SettingsPanel {
             ));
         }
         v.extend(self.c_lsfg(false));
+        v.extend(self.c_controls(false));
         if native {
             let current = match self.settings.get("steamRuntime") {
                 Some(Value::String(s)) if !s.is_empty() => s.clone(),
@@ -444,6 +447,7 @@ impl SettingsPanel {
         if game {
             v.extend(self.c_companions());
         }
+        v.extend(self.c_presets(false));
         v.extend(self.c_pairs(WRAPPERS));
         v.extend(self.c_pairs(ENV));
         let wine = self.wine_version();

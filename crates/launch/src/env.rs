@@ -16,6 +16,11 @@ use crate::settings::{GameSettings, Gamescope};
 
 pub type Env = BTreeMap<String, String>;
 
+/// `heronitePreferSdl`: `PROTON_PREFER_SDL=1`, controllers through SDL
+/// instead of hidraw (fixes undetected controllers, swapped buttons and
+/// double input; PlayStation controllers lose their own features).
+pub const KEY_PREFER_SDL: &str = "heronitePreferSdl";
+
 pub fn setup_env_vars(s: &GameSettings, install_path: Option<&str>, probe: &dyn Probe) -> Env {
     let mut ret = Env::new();
     if s.nvidia_prime {
@@ -206,6 +211,9 @@ pub fn setup_wine_env_vars(s: &GameSettings, game_id: &str, runtime_dir: &str, p
         } else {
             ret.insert("WINEARCH".into(), "wow64".into());
         }
+    }
+    if is_proton && s.prefer_sdl {
+        ret.insert("PROTON_PREFER_SDL".into(), "1".into());
     }
     if is_proton {
         if s.auto_install_dxvk_nvapi {

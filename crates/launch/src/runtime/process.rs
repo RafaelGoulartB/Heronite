@@ -158,6 +158,13 @@ pub(super) fn run_process(
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
     control.set_playing();
     shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid: handle.pid() });
+    let mut awake = plan.keep_awake.as_ref().and_then(|cmd| match shared.spawner.spawn(cmd, None) {
+        Ok(h) => Some(h),
+        Err(e) => {
+            log.warning(&format!("Could not keep the computer awake ({}): {e}", cmd.program));
+            None
+        }
+    });
     let mut companions = Companions::new(&plan.companions, Instant::now());
     let prefix = plan.prep.wine.as_ref().map(|s| s.wine_prefix.clone());
 
@@ -225,6 +232,9 @@ pub(super) fn run_process(
         companions.leave_running();
     } else {
         companions.stop(shared.cfg.kill_grace, log);
+    }
+    if let Some(h) = awake.as_mut() {
+        h.terminate();
     }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(cmd) = &plan.wait_after_exit {

@@ -16,8 +16,10 @@ pub struct PlanContext {
     pub ui_language: Option<String>,
     /// `<data>/known_fixes.json`, if downloaded.
     pub known_fixes: Option<Value>,
-    /// `store_cache/umu.json` (cached umu ids), if present.
+    /// `store_cache/umu.json` (umu ids cached by Heroic), if present.
     pub umu_ids: Option<Value>,
+    /// The umu database (see [`crate::umu_ids`]); empty before it is downloaded.
+    pub umu_database: Vec<crate::umu_ids::Entry>,
 }
 
 impl PlanContext {
@@ -37,6 +39,7 @@ impl PlanContext {
                 .map(str::to_string),
             known_fixes: opt(paths.known_fixes()),
             umu_ids: opt(paths.store_cache("umu")),
+            umu_database: crate::umu_ids::load(paths),
         }
     }
 

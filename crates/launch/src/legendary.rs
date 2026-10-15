@@ -98,6 +98,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     let s = &wine.settings;
 
     // umu goes into the wrapper list so legendary starts the game through it.
+    let through_umu = wine.umu.is_some();
     let wp = build_wrappers(s, probe, wine.umu.as_deref());
     if let Some(err) = wp.error {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
@@ -199,6 +200,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
             pre_commands,
             prep,
             notes: wine.notes,
+            through_umu,
             ..Default::default()
         },
     }

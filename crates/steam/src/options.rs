@@ -37,13 +37,14 @@ pub const KEY_NVAPI: &str = "steamEnableNvapi";
 pub const KEY_WINED3D: &str = "steamUseWined3d";
 
 /// Switches set by `VAR=1`.
-const SWITCHES: [(&str, &str); 6] = [
+const SWITCHES: [(&str, &str); 7] = [
     ("enableWineWayland", "PROTON_ENABLE_WAYLAND"),
     ("enableHDR", "PROTON_ENABLE_HDR"),
     ("enableWoW64", "PROTON_USE_WOW64"),
     (KEY_NVAPI, "PROTON_ENABLE_NVAPI"),
     (KEY_WINED3D, "PROTON_USE_WINED3D"),
     ("verboseLogs", "PROTON_LOG"),
+    (heronite_launch::env::KEY_PREFER_SDL, "PROTON_PREFER_SDL"),
 ];
 /// Switches that are on unless `VAR=1`.
 const INVERTED: [(&str, &str); 2] = [("enableEsync", "PROTON_NO_ESYNC"), ("enableFsync", "PROTON_NO_FSYNC")];

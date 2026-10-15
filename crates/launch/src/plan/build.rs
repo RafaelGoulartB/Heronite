@@ -33,6 +33,16 @@ pub fn build_plan_with_settings(
         "nile" => crate::nile::build(ctx, probe, game, settings, opts),
         other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),
     };
+    // Before the companions: they join the game's container with its GAMEID.
+    let keys = crate::umu_ids::GameKeys {
+        runner: &game.runner,
+        app_name: &game.app_name,
+        title: &game.title,
+        steam_app_id: meta.and_then(|m| m.steam_app_id.as_deref()),
+        user_id: &settings.umu_id,
+    };
+    crate::umu_ids::attach(&mut plan, ctx, keys);
+    crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
     crate::scripts::attach(&mut plan, probe, game, settings);
     crate::companions::attach(&mut plan, ctx, probe, game, settings);
     plan
