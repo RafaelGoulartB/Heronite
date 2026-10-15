@@ -13,6 +13,7 @@
 
 mod config;
 mod list;
+mod manage;
 mod plan;
 mod target;
 pub mod undo;
@@ -23,7 +24,8 @@ use heronite_data::models::LudusaviSettings;
 use heronite_data::settings;
 use heronite_i18n::tr;
 
-pub use list::{list_backups, parse_backups, restore_sources, BackupEntry, BackupSource, GameBackups, SourceKind};
+pub use list::{backup_size, list_backups, parse_backups, restore_sources, BackupEntry, BackupSource, GameBackups, SourceKind};
+pub use manage::{delete_backup, set_name};
 pub use plan::{classify, is_windows_path, redirects, Change, FileKind, PlannedFile, Redirect};
 pub use target::{steam_game_running, wine_user, RestoreTarget};
 

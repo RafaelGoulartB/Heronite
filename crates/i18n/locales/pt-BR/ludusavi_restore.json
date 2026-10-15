@@ -57,6 +57,7 @@
   "The game is not installed. You can see, lock and take its backups here; to restore one, install the game and start it once.": "O jogo não está instalado. Aqui dá para ver, travar e fazer backups; para restaurar um, instale o jogo e abra-o uma vez.",
   "The game's prefix does not exist yet. Start the game once, then restore.": "O prefixo do jogo ainda não existe. Abra o jogo uma vez e depois restaure.",
   "The whole registry of the prefix: restoring it also rolls back the settings of everything else installed there. Only pick it if the game keeps its save in the registry.": "O registro inteiro do prefixo: restaurá-lo também volta as configurações de tudo o que estiver instalado nele. Só marque se o jogo guardar o save no registro.",
+  "This backup is not in the folder any more.": "Este backup não está mais na pasta.",
   "Undo": "Desfazer",
   "Undo the last restore": "Desfazer a última restauração",
   "Undone: {n} file is back as it was.": "Desfeito: {n} arquivo voltou a ser como era.",
