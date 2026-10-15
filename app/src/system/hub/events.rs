@@ -6,7 +6,7 @@ use heronite_launch::LaunchEvent;
 use super::hub;
 use super::launch::launch;
 use super::quit::{maybe_exit_idle, request_quit};
-use super::window::{close_window_keep_alive, has_window, show_window};
+use super::window::{apply_window_flags, close_window_keep_alive, has_window, show_window};
 use crate::system::cli::{Cli, LaunchRequest};
 use crate::system::single_instance::Message;
 use crate::system::tray::TrayCmd;
@@ -125,6 +125,9 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
     let hide_setting = hub(cx).0.borrow_mut().settings().hide_window_on_protocol_launch;
     let cli = Cli { launch: msg.launch.clone(), no_gui: msg.no_gui, ..Default::default() };
     let hide = cli.hide_window(hide_setting);
+    if !hide {
+        apply_window_flags(cx, msg.console, msg.fullscreen);
+    }
     match msg.launch {
         // Heroic's `second-instance`: show the window unless the launch hides it.
         None => {

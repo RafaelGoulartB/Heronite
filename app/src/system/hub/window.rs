@@ -9,10 +9,11 @@ use super::start::STARTED;
 use super::{hub, Hub, MainWindow};
 use crate::collection::CollectionView;
 
-fn open_main_window(cx: &mut App, started: Instant) -> Option<MainWindow> {
+fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<MainWindow> {
     let bounds = Bounds::centered(None, size(px(1600.), px(1000.)), cx);
     let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(bounds)),
+        // Fullscreen keeps `bounds` for when F11 switches back.
+        window_bounds: Some(if fullscreen { WindowBounds::Fullscreen(bounds) } else { WindowBounds::Windowed(bounds) }),
         titlebar: None,
         app_id: Some("com.heronite.rs".into()),
         window_background: WindowBackgroundAppearance::Opaque,
@@ -49,7 +50,8 @@ pub(super) fn show_window(cx: &mut App) -> Option<WeakEntity<CollectionView>> {
         }
     }
     let started = STARTED.with(|s| s.take()).unwrap_or_else(Instant::now);
-    let window = open_main_window(cx, started)?;
+    let fullscreen = hub.0.borrow().fullscreen;
+    let window = open_main_window(cx, started, fullscreen)?;
     let view = window.view.clone();
     let mut s = hub.0.borrow_mut();
     s.window = Some(window);
@@ -59,6 +61,33 @@ pub(super) fn show_window(cx: &mut App) -> Option<WeakEntity<CollectionView>> {
     }
     log::info!("main window opened");
     Some(view)
+}
+
+/// `--console` / `--fullscreen` (at start or from another invocation): shows
+/// the window and switches it. Console mode is remembered like when it is
+/// picked in the app; fullscreen holds for the windows of this run.
+pub(super) fn apply_window_flags(cx: &mut App, console: bool, fullscreen: bool) {
+    if !(console || fullscreen) {
+        return;
+    }
+    let hub = hub(cx);
+    let existing = hub.0.borrow().window.as_ref().map(|w| w.handle);
+    hub.0.borrow_mut().fullscreen |= fullscreen;
+    // A new window already opens fullscreen; only an open one is switched
+    // (asking a window that is still being mapped could switch it back).
+    let Some(view) = show_window(cx) else { return };
+    let Some(handle) = hub.0.borrow().window.as_ref().map(|w| w.handle) else { return };
+    let switch_fullscreen = fullscreen && existing == Some(handle);
+    handle
+        .update(cx, |_, window, cx| {
+            if switch_fullscreen && !window.is_fullscreen() {
+                window.toggle_fullscreen();
+            }
+            if console {
+                view.update(cx, |v, cx| v.enter_console_mode(window, cx)).ok();
+            }
+        })
+        .ok();
 }
 
 /// Closes the window but keeps the app alive (needs the tray). Returns whether

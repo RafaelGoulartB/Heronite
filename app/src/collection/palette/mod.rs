@@ -183,6 +183,12 @@ impl CollectionView {
     /// Every keystroke of the window, before anything else sees it. Returns
     /// whether it was taken.
     fn palette_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // F11: fullscreen on / off, in both modes (`--fullscreen` starts there).
+        let plain = !ks.modifiers.control && !ks.modifiers.alt && !ks.modifiers.platform && !ks.modifiers.shift;
+        if ks.key == "f11" && plain {
+            window.toggle_fullscreen();
+            return true;
+        }
         if crate::console::active() {
             return self.console_key(ks, window, cx);
         }

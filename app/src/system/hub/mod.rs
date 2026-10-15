@@ -81,6 +81,8 @@ struct State {
     /// The graceful quit began: no new windows, requests or quits.
     quitting: bool,
     fake_launch: bool,
+    /// `--fullscreen` was asked for: every window of this run opens fullscreen.
+    fullscreen: bool,
     settings: SysSettings,
     settings_stamp: Option<SystemTime>,
 }

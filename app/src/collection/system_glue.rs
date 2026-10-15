@@ -18,6 +18,12 @@ use crate::system::shortcuts as sc;
 use heronite_i18n::tr;
 
 impl CollectionView {
+    /// `--console`: switches to console mode the way the palette's "Console
+    /// mode" does (remembered).
+    pub fn enter_console_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.set_console(true, window, cx);
+    }
+
     /// Selects the game and presses its primary button (play, or the install
     /// flow when it is not installed) as soon as the library is loaded.
     pub fn system_launch(&mut self, req: LaunchRequest, cx: &mut Context<Self>) {
