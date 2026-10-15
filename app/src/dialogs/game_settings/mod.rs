@@ -18,6 +18,7 @@ use heronite_metadata::{ArtKind, MetadataService};
 
 use super::art_images::{picture, DialogImages};
 use super::metadata_wizard::hub;
+use super::save_backups::{self, SaveBackupsView};
 use super::screenshot_art::ScreenshotArtDialog;
 use super::settings_panel::{GameFacts, Section, SettingsPanel, Target};
 use super::web_image::WebImageDialog;
@@ -41,6 +42,8 @@ pub enum Tab {
     Gamescope,
     /// Steam games' Proton tab.
     Proton,
+    /// Ludusavi backups and restore (`save_backups`).
+    Backups,
 }
 
 impl Tab {
@@ -80,6 +83,7 @@ impl Tab {
             Tab::Saves => tr!("Cloud saves"),
             Tab::Gamescope => tr!("Gamescope"),
             Tab::Proton => "Proton",
+            Tab::Backups => tr!("Backups"),
         }
     }
 
@@ -120,6 +124,8 @@ pub struct GameSettingsDialog {
     launch: Option<LaunchState>,
     /// Heroic settings: the view and the tabs this game has.
     panel: Option<(Entity<SettingsPanel>, Vec<Section>)>,
+    /// The Backups tab, for games that run here or through Steam.
+    backups: Option<Entity<SaveBackupsView>>,
     /// Console mode: focused row and the open keyboard / picker.
     console_list: crate::console::list::ListNav,
     layer: crate::console::Layer,
@@ -145,8 +151,14 @@ impl GameSettingsDialog {
             cx.observe(&panel, |_, _, cx| cx.notify()).detach();
             (panel, sections)
         });
+        let backups = save_backups::has_tab(&game).then(|| {
+            let view = cx.new(|_| SaveBackupsView::new(ctx.data_paths.clone(), &game));
+            cx.observe(&view, |_, _, cx| cx.notify()).detach();
+            view
+        });
         let tab = match tab {
             Tab::Launch if launch.is_none() => Tab::Images,
+            Tab::Backups if backups.is_none() => Tab::Images,
             t if t.section().is_some_and(|s| !panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s))) => Tab::Images,
             t => t,
         };
@@ -166,6 +178,7 @@ impl GameSettingsDialog {
             initial,
             launch,
             panel,
+            backups,
             game,
             ctx,
             console_list: Default::default(),
@@ -174,8 +187,18 @@ impl GameSettingsDialog {
         if let Some(text) = this.launch.as_ref().map(|l| l.initial_exe.clone()) {
             this.refresh_launch(&text);
         }
+        if this.tab == Tab::Backups {
+            this.show_backups(cx);
+        }
         this.debug_set_art(cx);
         this
+    }
+
+    /// Reads the backups the first time the Backups tab shows.
+    fn show_backups(&self, cx: &mut Context<Self>) {
+        if let Some(view) = &self.backups {
+            view.update(cx, |v, cx| v.shown(cx));
+        }
     }
 
     fn runner(&self) -> String {
@@ -238,6 +261,9 @@ impl Render for GameSettingsDialog {
         if let Some((_, sections)) = &self.panel {
             items.extend(sections.iter().map(|s| (Tab::of_section(*s), s.label())));
         }
+        if self.backups.is_some() {
+            items.push((Tab::Backups, Tab::Backups.label()));
+        }
         let entity = cx.entity().downgrade();
         let panel = self.panel.as_ref().map(|(p, _)| p.clone());
         let tab_bar = tabs("gs", &items, self.tab, move |t, window, cx| {
@@ -247,6 +273,9 @@ impl Render for GameSettingsDialog {
             entity
                 .update(cx, |this, cx| {
                     this.tab = t;
+                    if t == Tab::Backups {
+                        this.show_backups(cx);
+                    }
                     cx.notify();
                 })
                 .ok();
@@ -255,6 +284,10 @@ impl Render for GameSettingsDialog {
             Tab::Images => self.images_tab(cx),
             Tab::Details => self.details_tab(),
             Tab::Launch => self.launch_tab(cx),
+            Tab::Backups => match &self.backups {
+                Some(view) => div().child(view.clone()),
+                None => div(),
+            },
             _ => match &self.panel {
                 Some((panel, _)) => div().child(panel.clone()),
                 None => div(),

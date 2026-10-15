@@ -56,13 +56,14 @@ impl CollectionView {
             }
             "wine-missing" => self.report_launch_error(heronite_launch::wine::no_wine_message(""), cx),
             "gallery" | "viewer" | "viewer-zoom" | "viewer-fit" | "confirm" | "delete" => self.shots.debug = Some(which),
-            // Heroic game settings tabs: gamesettings:wine|other|advanced|gamescope|saves|proton
+            // Game settings tabs: gamesettings:wine|other|advanced|gamescope|saves|proton|backups
             w @ ("gamesettings:wine"
             | "gamesettings:other"
             | "gamesettings:advanced"
             | "gamesettings:gamescope"
             | "gamesettings:saves"
-            | "gamesettings:proton") => {
+            | "gamesettings:proton"
+            | "gamesettings:backups") => {
                 use crate::dialogs::game_settings::Tab;
                 let tab = match w {
                     "gamesettings:wine" => Tab::Wine,
@@ -70,6 +71,7 @@ impl CollectionView {
                     "gamesettings:other" => Tab::Other,
                     "gamesettings:advanced" => Tab::Advanced,
                     "gamesettings:saves" => Tab::Saves,
+                    "gamesettings:backups" => Tab::Backups,
                     _ => Tab::Gamescope,
                 };
                 self.open_game_settings_tab(tab, window, cx);

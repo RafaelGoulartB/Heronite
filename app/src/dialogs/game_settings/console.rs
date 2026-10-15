@@ -38,6 +38,9 @@ enum Field {
 impl GameSettingsDialog {
     fn console_tabs(&self) -> Vec<Tab> {
         let mut t: Vec<Tab> = self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default();
+        if self.backups.is_some() {
+            t.push(Tab::Backups);
+        }
         if self.launch.is_some() {
             t.push(Tab::Launch);
         }
@@ -54,6 +57,14 @@ impl GameSettingsDialog {
                 p.set_section(section, window, cx);
                 p.console_reset();
             });
+        }
+        if tab == Tab::Backups {
+            if let Some(view) = &self.backups {
+                view.update(cx, |v, cx| {
+                    v.console_reset();
+                    v.shown(cx);
+                });
+            }
         }
         cx.notify();
     }
@@ -256,6 +267,9 @@ impl GameSettingsDialog {
 
         let body: AnyElement = match (self.tab.section(), &self.panel) {
             (Some(_), Some((panel, _))) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
+            _ if self.tab == Tab::Backups && self.backups.is_some() => {
+                div().flex().flex_col().size_full().children(self.backups.clone()).into_any_element()
+            }
             _ => {
                 let rows = self.console_rows(cx);
                 self.console_list.render("console-gs", &rows, !self.layer.is_open()).size_full().into_any_element()
@@ -313,6 +327,12 @@ impl PadTarget for GameSettingsDialog {
             }
             return false;
         }
+        if self.tab == Tab::Backups {
+            if let Some(view) = self.backups.clone() {
+                return view.update(cx, |v, cx| v.on_pad(pad, cx));
+            }
+            return false;
+        }
         let rows = self.console_rows(cx);
         match self.console_list.on_pad(pad, &rows) {
             Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "run-as" => {
@@ -349,6 +369,12 @@ impl PadTarget for GameSettingsDialog {
 
     fn hints(&self, cx: &App) -> Vec<Hint> {
         if let Some(h) = self.layer.hints(cx) {
+            return h;
+        }
+        if let (Tab::Backups, Some(view)) = (self.tab, &self.backups) {
+            let mut h = view.read(cx).hints();
+            h.push(hint(Btn::Bumpers, tr!("Tabs")));
+            h.push(hint(Btn::B, tr!("Done")));
             return h;
         }
         if self.tab.section().is_some() {

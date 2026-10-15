@@ -36,6 +36,7 @@ pub mod sysinfo;
 mod updates;
 
 pub use advanced::open_folder;
+pub use backup::format_time;
 pub use section::Section;
 
 use gpui_kit::prelude::*;
