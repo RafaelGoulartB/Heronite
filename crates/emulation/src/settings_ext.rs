@@ -26,6 +26,13 @@ pub struct LudusaviSettingsPatch {
     /// 'none' | 'deflate' | 'bzip2' | 'zstd'
     #[serde(default)]
     pub compression: Option<String>,
+    #[serde(default)]
+    pub restore_paths: Option<Vec<String>>,
+    /// `Some(None)` goes back to Ludusavi's own retention.
+    #[serde(default)]
+    pub full_limit: Option<Option<u8>>,
+    #[serde(default)]
+    pub differential_limit: Option<Option<u8>>,
 }
 
 fn current_ludusavi(paths: &DataPaths) -> Result<LudusaviSettings> {
@@ -56,6 +63,21 @@ pub fn set_ludusavi_settings(paths: &DataPaths, patch: &LudusaviSettingsPatch) -
     }
     if let Some(v) = &patch.compression {
         next.compression = v.clone();
+    }
+    if let Some(v) = &patch.restore_paths {
+        let mut paths: Vec<String> = Vec::new();
+        for p in v.iter().map(|p| p.trim()).filter(|p| !p.is_empty()) {
+            if !paths.iter().any(|q| q == p) {
+                paths.push(p.to_owned());
+            }
+        }
+        next.restore_paths = paths;
+    }
+    if let Some(v) = patch.full_limit {
+        next.full_limit = v.filter(|n| *n >= 1);
+    }
+    if let Some(v) = patch.differential_limit {
+        next.differential_limit = v;
     }
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |f| {
         f.ludusavi = Some(next);
@@ -137,6 +159,22 @@ mod tests {
         assert_eq!(eff.ludusavi.binary_path, "/usr/bin/ludusavi");
         assert_eq!(eff.ludusavi.format, "simple");
         assert!(eff.ludusavi.enabled);
+        let eff = set_ludusavi_settings(
+            &paths,
+            &LudusaviSettingsPatch {
+                restore_paths: Some(vec![" /win ".into(), "".into(), "/win".into(), "/old".into()]),
+                full_limit: Some(Some(5)),
+                differential_limit: Some(Some(0)),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(eff.ludusavi.restore_paths, ["/win", "/old"]);
+        assert_eq!((eff.ludusavi.full_limit, eff.ludusavi.differential_limit), (Some(5), Some(0)));
+        assert_eq!(eff.ludusavi.format, "simple");
+        let eff = set_ludusavi_settings(&paths, &LudusaviSettingsPatch { full_limit: Some(None), ..Default::default() }).unwrap();
+        assert_eq!(eff.ludusavi.full_limit, None);
+        assert_eq!(eff.ludusavi.restore_paths.len(), 2);
         // Unknown top-level keys survive.
         let raw = json_store::read_value(&paths.collection_settings()).unwrap();
         assert_eq!(raw["greyUninstalledGames"], false);

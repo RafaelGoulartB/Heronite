@@ -166,6 +166,8 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
             format: &cfg.format,
             compression: &cfg.compression,
             wine_prefix: wine_prefix.as_deref(),
+            full_limit: cfg.full_limit,
+            differential_limit: cfg.differential_limit,
             game_name: name,
         });
         log::info!("Running {binary} {}", cmd.join(" "));
