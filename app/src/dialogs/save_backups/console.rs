@@ -26,6 +26,10 @@ impl SaveBackupsView {
                 rows.push(Row::info("sb-loading", tr!("Looking for backups…"), ""));
                 return rows;
             }
+            Load::Missing => {
+                rows.extend(crate::ui::ludusavi::missing_rows("sb"));
+                return rows;
+            }
             Load::Failed(e) => {
                 rows.push(Row::info("sb-error", e.clone(), "").danger());
                 rows.push(Row::action("sb-retry", tr!("Try again")).icon(Icon::Refresh));
@@ -234,7 +238,8 @@ impl SaveBackupsView {
                 }
             },
             Outcome::Activate(id) => match id.as_ref() {
-                "sb-retry" | "sb-refresh" => self.reload(cx),
+                "sb-retry" | "sb-refresh" | "sb-look-again" => self.reload(cx),
+                "sb-download" => crate::ui::ludusavi::open_download(),
                 "sb-backup-now" => self.backup_now(cx),
                 "sb-undo" => self.undo_last(cx),
                 "sb-confirm" => self.confirm_restore(cx),

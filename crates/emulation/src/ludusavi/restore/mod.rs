@@ -44,16 +44,40 @@ pub struct Tool {
     pub settings: LudusaviSettings,
 }
 
+/// Why there is no [`Tool`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolError {
+    /// Ludusavi is not installed (or not where Heronite looks).
+    NotFound,
+    /// The settings could not be read.
+    Settings(String),
+}
+
+impl std::fmt::Display for ToolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolError::NotFound => f.write_str(tr!("Ludusavi was not found")),
+            ToolError::Settings(e) => f.write_str(e),
+        }
+    }
+}
+
+impl From<ToolError> for String {
+    fn from(e: ToolError) -> Self {
+        e.to_string()
+    }
+}
+
 impl Tool {
     /// Like the backup: the binary set in Settings, else the one found.
-    pub fn resolve(env: &LudusaviEnv) -> Result<Tool, String> {
-        let settings = settings::load(env.paths).map_err(|e| format!("{e:#}"))?.ludusavi;
+    pub fn resolve(env: &LudusaviEnv) -> Result<Tool, ToolError> {
+        let settings = settings::load(env.paths).map_err(|e| ToolError::Settings(format!("{e:#}")))?.ludusavi;
         let preferred = Some(settings.binary_path.trim()).filter(|p| !p.is_empty());
         let detected = detect_ludusavi(env.runner, env.probe, preferred);
         let binary = preferred.map(str::to_string).or_else(|| detected.as_ref().map(|d| d.binary.clone()));
         match binary.filter(|b| env.probe.exists(b)) {
             Some(binary) => Ok(Tool { binary, detected, settings }),
-            None => Err(tr!("Ludusavi was not found").into()),
+            None => Err(ToolError::NotFound),
         }
     }
 }

@@ -18,7 +18,7 @@ use heronite_data::collection::Game;
 use heronite_data::DataPaths;
 use heronite_emulation::ludusavi::restore::{
     apply_restore, delete_backup, list_backups, plan_restore, set_locked, set_name, steam_game_running, undo, wine_user, BackupEntry,
-    FileKind, GameBackups, RestoreOutcome, RestorePlan, RestoreRequest, RestoreTarget, Tool,
+    FileKind, GameBackups, RestoreOutcome, RestorePlan, RestoreRequest, RestoreTarget, Tool, ToolError,
 };
 use heronite_emulation::ludusavi::{backup_for_game, game_wine_prefix, BackupReason, LudusaviEnv, LudusaviGame, SystemRunner};
 use heronite_i18n::tr;
@@ -95,6 +95,8 @@ impl Preview {
 enum Load {
     Idle,
     Loading,
+    /// Ludusavi is not installed: the tab says how to get it.
+    Missing,
     Failed(String),
     Ready(Box<Loaded>),
 }
@@ -272,7 +274,7 @@ impl SaveBackupsView {
         self.background(
             cx,
             heronite_emulation::ludusavi::LUDUSAVI_TIMEOUT,
-            move |env| -> Result<Loaded, String> {
+            move |env| -> Result<Loaded, ToolError> {
                 let tool = Tool::resolve(env)?;
                 let target = resolve_target(env, kind, steam.as_deref(), &game.app_name, install, installed);
                 let sources = list_backups(env, &tool, &game, picked.as_deref());
@@ -306,7 +308,8 @@ impl SaveBackupsView {
                         }
                         Load::Ready(Box::new(l))
                     }
-                    Err(e) => Load::Failed(e),
+                    Err(ToolError::NotFound) => Load::Missing,
+                    Err(e) => Load::Failed(e.into()),
                 };
                 v.apply_debug_env(cx);
             },

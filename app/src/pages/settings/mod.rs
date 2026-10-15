@@ -358,7 +358,8 @@ impl SettingsPage {
                     .flex()
                     .flex_col()
                     .child(saves::render(self, window, cx))
-                    .child(div().mt(px(12.)).child(saves_restore::render(self, window, cx)))
+                    // Restoring needs Ludusavi: the card above says how to get it.
+                    .when(!self.saves.missing(), |d| d.child(div().mt(px(12.)).child(saves_restore::render(self, window, cx))))
                     .into_any_element();
                 Self::collection_section(body, self.error.clone())
             }

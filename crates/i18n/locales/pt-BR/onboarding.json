@@ -56,7 +56,6 @@
   "{n} emulated game": "{n} jogo emulado",
   "{n} emulated games": "{n} jogos emulados",
   "{name} is the default": "{name} é o padrão",
-  "Ludusavi was not found. Install it (Flatpak or your distribution's packages), then turn this on.": "O Ludusavi não foi encontrado. Instale-o (Flatpak ou pacotes da sua distribuição) e depois ligue isto.",
   "Steam is open": "Steam aberta",
   "{n} game from Steam joined the Collection": "{n} jogo da Steam entrou na Coleção",
   "{n} games from Steam joined the Collection": "{n} jogos da Steam entraram na Coleção",
@@ -89,5 +88,6 @@
   "Make it yours": "Do seu jeito",
   "Settings → Appearance": "Configurações → Aparência",
   "Customise the look": "Personalizar a aparência",
-  "Change how Heronite looks: the game's art behind the Collection with the blur, darkening and colour you like, glass or solid panels in several colours, and the shape of the covers.": "Mude o visual do Heronite: a arte do jogo atrás da Coleção com o desfoque, o escurecimento e a cor que você quiser, painéis de vidro ou sólidos em várias cores e o formato das capas."
+  "Change how Heronite looks: the game's art behind the Collection with the blur, darkening and colour you like, glass or solid panels in several colours, and the shape of the covers.": "Mude o visual do Heronite: a arte do jogo atrás da Coleção com o desfoque, o escurecimento e a cor que você quiser, painéis de vidro ou sólidos em várias cores e o formato das capas.",
+  "Ludusavi was not found. Settings → Saves shows where to download it; then turn this on.": "O Ludusavi não foi encontrado. Configurações → Saves mostra onde baixá-lo; depois ligue isto."
 }

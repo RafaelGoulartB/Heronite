@@ -50,6 +50,11 @@ impl State {
         Self { detected: None, detecting: false, binary, folder, details_open: None, format_open: false, compression_open: false }
     }
 
+    /// Detection finished without finding Ludusavi.
+    pub(super) fn missing(&self) -> bool {
+        matches!(self.detected, Some(None))
+    }
+
     /// What detection found (`None` while detecting or when not found).
     pub(super) fn detected(&self) -> Option<&LudusaviDetected> {
         self.detected.as_ref().and_then(Option::as_ref)
@@ -131,15 +136,9 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 )))
                 .into_any_element()
         }
-        Some(None) => card_box()
-            .py(px(12.))
-            .child(
-                div()
-                    .text_size(px(13.))
-                    .text_color(theme::danger_text())
-                    .child(tr!("Ludusavi was not found automatically. Set the binary and backup folder below.")),
-            )
-            .into_any_element(),
+        Some(None) => {
+            crate::ui::ludusavi::missing_card("ludusavi-missing", cx.listener(|d, _, window, cx| detect(d, window, cx))).into_any_element()
+        }
     };
 
     let (has_bin, has_dir) = (!l.binary_path.is_empty(), !l.backup_path.is_empty());
@@ -247,12 +246,25 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         last.push_str(&format!(" · {p}"));
     }
 
+    // Without Ludusavi there is nothing to run: the switch can only go off.
+    let can_switch = !d.saves.missing() || l.enabled;
     let enable = card([
-        toggle_row("ludusavi-enabled", tr!("Back up saves when a game closes"), None, l.enabled)
-            .on_click(cx.listener(move |d, _, _, cx| {
-                let on = !d.settings.ludusavi.enabled;
-                save(d, LudusaviSettingsPatch { enabled: Some(on), ..Default::default() }, cx);
-            }))
+        div()
+            .when(!can_switch, |d| d.opacity(0.5))
+            .child(
+                toggle_row(
+                    "ludusavi-enabled",
+                    tr!("Back up saves when a game closes"),
+                    (!can_switch).then(|| tr!("Install Ludusavi first: see how below.")),
+                    l.enabled,
+                )
+                .when(can_switch, |c| {
+                    c.on_click(cx.listener(move |d, _, _, cx| {
+                        let on = !d.settings.ludusavi.enabled;
+                        save(d, LudusaviSettingsPatch { enabled: Some(on), ..Default::default() }, cx);
+                    }))
+                }),
+            )
             .into_any_element(),
         div()
             .when(!config_known, |d| d.opacity(0.5))
@@ -306,7 +318,7 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     };
     let mut rows = vec![
         Row::header(tr!("Save backups (Ludusavi)")),
-        Row::toggle("lu-enabled", tr!("Back up saves when a game closes"), l.enabled).desc(found),
+        Row::toggle("lu-enabled", tr!("Back up saves when a game closes"), l.enabled).enabled(!d.saves.missing() || l.enabled).desc(found),
         Row::toggle("lu-config", tr!("Use Ludusavi's own settings"), l.use_installed_config)
             .enabled(config_known)
             .desc(tr!("Path, zip and compression come from Ludusavi's configuration")),
@@ -322,10 +334,16 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
                 .enabled(l.format == "zip"),
         );
     }
+    if d.saves.missing() {
+        // What to install first; restoring needs Ludusavi too.
+        rows.splice(1..1, crate::ui::ludusavi::missing_rows("lu"));
+    }
     if let Some(e) = &l.last_error {
         rows.push(Row::info("lu-error", e.clone(), "").danger());
     }
-    rows.extend(super::saves_restore::console_rows(d));
+    if !d.saves.missing() {
+        rows.extend(super::saves_restore::console_rows(d));
+    }
     rows
 }
 
@@ -339,7 +357,8 @@ pub(super) fn console_apply(
     use crate::console::list::{Outcome, Value};
     match &outcome {
         Outcome::Changed(id, Value::Toggle(on)) => match id.as_ref() {
-            "lu-enabled" => save(d, LudusaviSettingsPatch { enabled: Some(*on), ..Default::default() }, cx),
+            // Only off while Ludusavi is missing.
+            "lu-enabled" if !*on || !d.saves.missing() => save(d, LudusaviSettingsPatch { enabled: Some(*on), ..Default::default() }, cx),
             "lu-config" => save(d, LudusaviSettingsPatch { use_installed_config: Some(*on), ..Default::default() }, cx),
             _ => {}
         },
@@ -349,6 +368,8 @@ pub(super) fn console_apply(
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "lu-compression" => {
             save(d, LudusaviSettingsPatch { compression: Some(COMPRESSIONS[*index].0.into()), ..Default::default() }, cx)
         }
+        Outcome::Activate(id) if id.as_ref() == "lu-download" => crate::ui::ludusavi::open_download(),
+        Outcome::Activate(id) if id.as_ref() == "lu-look-again" => detect(d, window, cx),
         Outcome::Activate(id) if id.as_ref() == "lu-binary" => {
             d.console_browse(tr!("Ludusavi program"), PickKind::File(Vec::new()), None, window, cx, |d, path, window, cx| {
                 d.saves.binary.update(cx, |s, cx| s.set_value(path.clone(), window, cx));

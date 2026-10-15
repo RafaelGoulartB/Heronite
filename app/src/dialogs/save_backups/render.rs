@@ -247,6 +247,7 @@ impl SaveBackupsView {
     pub(super) fn render_desktop(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let body: AnyElement = match &self.load {
             Load::Idle | Load::Loading => card_box().py(px(12.)).child(help_text(tr!("Looking for backups…"))).into_any_element(),
+            Load::Missing => crate::ui::ludusavi::missing_card("sb-missing", cx.listener(|v, _, _, cx| v.reload(cx))).into_any_element(),
             Load::Failed(e) => div()
                 .flex()
                 .flex_col()
