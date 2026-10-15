@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use super::super::backup::resolve_title;
 use super::super::detect::LudusaviDetected;
-use super::super::last_backup::{backup_root, find_in};
+use super::super::last_backup::{backup_root, RootFolders};
 use super::super::{parse_json, LudusaviEnv, LudusaviGame};
 use super::Tool;
 
@@ -160,14 +160,16 @@ pub fn list_backups(env: &LudusaviEnv, tool: &Tool, game: &LudusaviGame, picked:
     let home = env.probe.home();
     let sources = restore_sources(&tool.settings, tool.detected.as_ref(), &home, picked);
     let steam = game.steam_app_id.as_deref();
+    // Read once per folder: the second lookup reuses the mappings read.
+    let mut roots: Vec<Option<RootFolders>> = sources.iter().map(|s| RootFolders::read(&s.root, steam)).collect();
     let mut found: Vec<Option<(String, PathBuf)>> =
-        sources.iter().map(|s| find_in(&s.root, &game.title, steam).map(|b| (b.game_name, b.dir))).collect();
+        roots.iter_mut().map(|r| r.as_mut()?.find(&game.title).map(|b| (b.game_name, b.dir))).collect();
     if found.iter().any(Option::is_none) && (steam.is_some_and(|s| !s.is_empty()) || game.runner == "gog") {
         let name = resolve_title(env, &tool.binary, game);
         if name != game.title {
-            for (slot, s) in found.iter_mut().zip(&sources) {
+            for (slot, root) in found.iter_mut().zip(&mut roots) {
                 if slot.is_none() {
-                    *slot = find_in(&s.root, &name, steam).map(|b| (b.game_name, b.dir));
+                    *slot = root.as_mut().and_then(|r| r.find(&name)).map(|b| (b.game_name, b.dir));
                 }
             }
         }
