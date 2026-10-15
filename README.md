@@ -101,7 +101,7 @@ A controller-first layout for the couch or a TV. It covers the whole app: the li
 
 - **Appearance:** set the opacity, blur, darkening, and colour intensity of the game art behind the Collection. Panels can be glass or solid, and covers can use the Steam (2:3), IGDB (3:4), GOG (11:15), or other aspect ratios.
 - **Screenshots:** set the capture folder and the in-game shortcut, compress captures without quality loss, and limit the preview cache.
-- **Backups:** back up saves with Ludusavi after each game closes (or manually from the game's menu), and schedule copies of the whole data folder.
+- **Backups:** back up saves with Ludusavi after each game closes (or manually from the game's menu), restore any backup into the game's current Wine/Proton prefix from its settings (even one made in another Steam library or on Windows, with undo), and schedule copies of the whole data folder.
 
 <table>
   <tr>
