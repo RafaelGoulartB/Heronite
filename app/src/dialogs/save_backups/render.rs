@@ -8,7 +8,7 @@ use heronite_data::maintenance::human_size;
 use heronite_emulation::ludusavi::restore::{BackupEntry, Change, FileKind, PlannedFile, RestorePlan, RestoreTarget, SourceKind};
 use heronite_i18n::{tr, trn};
 
-use super::{Load, Loaded, SaveBackupsView, Stage};
+use super::{BackupKey, Load, Loaded, SaveBackupsView, Stage};
 use crate::icons::Icon;
 use crate::pages::settings::format_time;
 use crate::theme;
@@ -340,8 +340,11 @@ impl SaveBackupsView {
                 list = list.child(div().py(px(10.)).child(meta_text(text)));
             }
             Some(s) => {
+                let picked = self.selected_key();
                 for (i, b) in s.backups.iter().enumerate() {
-                    list = list.child(self.backup_row(i, b, i == self.backup, busy, cx));
+                    let key = BackupKey::of(s, b);
+                    let selected = picked.as_ref() == Some(&key);
+                    list = list.child(self.backup_row(i, key, b, selected, busy, cx));
                 }
             }
         }
@@ -399,7 +402,8 @@ impl SaveBackupsView {
             .into_any_element()
     }
 
-    fn backup_row(&self, i: usize, b: &BackupEntry, selected: bool, busy: bool, cx: &mut Context<Self>) -> AnyElement {
+    /// `i` only names the elements; every action goes by `key`.
+    fn backup_row(&self, i: usize, key: BackupKey, b: &BackupEntry, selected: bool, busy: bool, cx: &mut Context<Self>) -> AnyElement {
         let (title, facts) = backup_line(b);
         let dot = div()
             .flex_none()
@@ -421,14 +425,14 @@ impl SaveBackupsView {
             .child(dot);
         let small = |id: &str, kind, label: &'static str| button_sm(SharedString::from(format!("sb-{id}-{i}")), kind, label);
 
-        if let Some((_, input, _)) = self.renaming.as_ref().filter(|(r, _, _)| *r == i) {
+        if let Some((_, input, _)) = self.renaming.as_ref().filter(|(r, _, _)| *r == key) {
             return row
                 .child(div().flex_1().min_w_0().child(input_box(input, false)))
                 .child(small("name-save", ButtonKind::Primary, tr!("Save")).on_click(cx.listener(|v, _, _, cx| v.save_rename(cx))))
                 .child(small("name-cancel", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|v, _, _, cx| v.cancel_rename(cx))))
                 .into_any_element();
         }
-        if self.confirm_delete == Some(i) {
+        if self.confirm_delete.as_ref() == Some(&key) {
             return row
                 .child(
                     div()
@@ -442,15 +446,18 @@ impl SaveBackupsView {
                 .child(small("delete-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|v, _, _, cx| v.cancel_delete(cx))))
                 .into_any_element();
         }
+        let k = key.clone();
         let lock = small("lock", ButtonKind::Ghost, if b.locked { tr!("Unlock") } else { tr!("Lock") })
-            .when(!busy, |b| b.on_click(cx.listener(move |v, _, _, cx| v.toggle_lock(i, cx))));
+            .when(!busy, |b| b.on_click(cx.listener(move |v, _, _, cx| v.toggle_lock(k.clone(), cx))));
+        let k = key.clone();
         let rename = tool_button(SharedString::from(format!("sb-rename-{i}")), Icon::Edit, false)
-            .when(!busy, |b| b.on_click(cx.listener(move |v, _, window, cx| v.start_rename(i, window, cx))));
+            .when(!busy, |b| b.on_click(cx.listener(move |v, _, window, cx| v.start_rename(k.clone(), window, cx))));
+        let k = key.clone();
         let delete = tool_button(SharedString::from(format!("sb-delete-{i}")), Icon::DeleteOutline, false)
-            .when(!busy, |b| b.on_click(cx.listener(move |v, _, _, cx| v.ask_delete(i, cx))));
+            .when(!busy, |b| b.on_click(cx.listener(move |v, _, _, cx| v.ask_delete(k.clone(), cx))));
         row.cursor_pointer()
             .hover(|s| s.bg(theme::white_a(0.04)))
-            .on_click(cx.listener(move |v, _, _, cx| v.pick_backup(i, cx)))
+            .on_click(cx.listener(move |v, _, _, cx| v.pick_backup(key.clone(), cx)))
             .child(
                 div()
                     .flex()

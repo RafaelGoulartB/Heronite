@@ -7,7 +7,7 @@ use heronite_emulation::ludusavi::restore::FileKind;
 use heronite_i18n::{tr, trn};
 
 use super::render::{backup_line, group_facts, group_help, group_title, groups, overwrite_line, short_path, source_name, target_line};
-use super::{Load, SaveBackupsView, Stage};
+use super::{BackupKey, Load, SaveBackupsView, Stage};
 use crate::console::list::{Outcome, Row, Value};
 use crate::console::osk::{Osk, OskEvent};
 use crate::console::{hint, Btn, Hint, Pad};
@@ -63,7 +63,12 @@ impl SaveBackupsView {
                         rows.push(Row::info("sb-none", text, ""));
                     }
                     Some(s) => {
-                        if let Some(b) = self.console_backup.and_then(|i| s.backups.get(i)) {
+                        if let Some(b) = self
+                            .console_backup
+                            .as_ref()
+                            .filter(|k| k.root == s.source.root)
+                            .and_then(|k| s.backups.iter().find(|b| k.is(b)))
+                        {
                             // One backup's actions.
                             let (title, facts) = backup_line(b);
                             rows.push(Row::info("sb-m-title", title, "").desc(facts));
@@ -167,21 +172,21 @@ impl SaveBackupsView {
             .into_any_element()
     }
 
-    fn console_open_backup(&mut self, index: Option<usize>) {
-        self.console_backup = index;
+    fn console_open_backup(&mut self, key: Option<BackupKey>) {
+        self.console_backup = key;
         self.confirm_delete = None;
         self.console_list.reset();
     }
 
     /// The on-screen keyboard for the name of the backup shown.
     fn console_edit_name(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(index) = self.console_backup else { return };
-        let current = self.loaded().and_then(|l| l.sources.get(self.source)?.backups.get(index)?.comment.clone()).unwrap_or_default();
+        let Some(key) = self.console_backup.clone() else { return };
+        let current = self.backup_name(&key);
         let osk = cx.new(|_| Osk::new(tr!("Name this backup"), &current));
         let sub = cx.subscribe_in(&osk, window, move |v, _, ev: &OskEvent, _, cx| {
             v.layer.close();
             if let OskEvent::Done(text) = ev {
-                v.set_backup_name(index, text.trim().to_string(), cx);
+                v.set_backup_name(key.clone(), text.trim().to_string(), cx);
             }
             cx.notify();
         });
@@ -214,8 +219,8 @@ impl SaveBackupsView {
             Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "sb-folder" => self.pick_source(index, cx),
             Outcome::Changed(id, Value::Toggle(_)) => match id.as_ref() {
                 "sb-m-lock" => {
-                    if let Some(i) = self.console_backup {
-                        self.toggle_lock(i, cx);
+                    if let Some(key) = self.console_backup.clone() {
+                        self.toggle_lock(key, cx);
                     }
                 }
                 id => {
@@ -235,22 +240,28 @@ impl SaveBackupsView {
                 "sb-back" => self.back_to_list(cx),
                 "sb-m-back" => self.console_open_backup(None),
                 "sb-m-restore" => {
-                    if let Some(i) = self.console_backup {
+                    if let Some(key) = self.console_backup.clone() {
                         self.console_open_backup(None);
-                        self.pick_backup(i, cx);
+                        self.pick_backup(key, cx);
                         self.start_restore(cx);
                     }
                 }
                 "sb-m-name" => self.console_edit_name(window, cx),
-                "sb-m-delete" => self.confirm_delete = self.console_backup,
+                "sb-m-delete" => self.confirm_delete = self.console_backup.clone(),
                 "sb-m-delete-yes" => {
                     self.delete_confirmed(cx);
                     self.console_list.reset();
                 }
                 id => {
-                    if let Some(i) = id.strip_prefix("sb-b-").and_then(|n| n.parse::<usize>().ok()) {
-                        self.pick_backup(i, cx);
-                        self.console_open_backup(Some(i));
+                    // The row number is read against the rows just built, then
+                    // the backup is kept by key.
+                    let key = id.strip_prefix("sb-b-").and_then(|n| n.parse::<usize>().ok()).and_then(|i| {
+                        let src = self.current_source()?;
+                        Some(BackupKey::of(src, src.backups.get(i)?))
+                    });
+                    if let Some(key) = key {
+                        self.pick_backup(key.clone(), cx);
+                        self.console_open_backup(Some(key));
                     }
                 }
             },

@@ -17,8 +17,8 @@ use gpui_kit::*;
 use heronite_data::collection::Game;
 use heronite_data::DataPaths;
 use heronite_emulation::ludusavi::restore::{
-    apply_restore, delete_backup, list_backups, plan_restore, set_locked, set_name, steam_game_running, undo, wine_user, FileKind,
-    GameBackups, RestoreOutcome, RestorePlan, RestoreRequest, RestoreTarget, Tool,
+    apply_restore, delete_backup, list_backups, plan_restore, set_locked, set_name, steam_game_running, undo, wine_user, BackupEntry,
+    FileKind, GameBackups, RestoreOutcome, RestorePlan, RestoreRequest, RestoreTarget, Tool,
 };
 use heronite_emulation::ludusavi::{backup_for_game, game_wine_prefix, BackupReason, LudusaviEnv, LudusaviGame, SystemRunner};
 use heronite_i18n::tr;
@@ -40,6 +40,42 @@ pub(crate) struct Loaded {
     sources: Vec<GameBackups>,
     /// The copy of what the last restore replaced.
     undo: Option<undo::UndoRecord>,
+}
+
+impl Loaded {
+    /// A backup by its key, with the folder it is in.
+    fn find(&self, key: &BackupKey) -> Option<(&GameBackups, &BackupEntry)> {
+        let src = self.sources.iter().find(|s| s.source.root == key.root)?;
+        Some((src, src.backups.iter().find(|b| key.is(b))?))
+    }
+
+    fn find_mut(&mut self, key: &BackupKey) -> Option<&mut BackupEntry> {
+        let src = self.sources.iter_mut().find(|s| s.source.root == key.root)?;
+        src.backups.iter_mut().find(|b| key.is(b))
+    }
+}
+
+/// One backup, wherever it is in the list. The list is read again after a
+/// backup, a delete or a refresh and its order shifts (the newest comes
+/// first), so the selection, the name being typed and the delete being
+/// confirmed keep the folder, Ludusavi's id and the date instead of a row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BackupKey {
+    root: PathBuf,
+    id: String,
+    /// Ludusavi can give two differential backups made in the same second
+    /// the same id.
+    when: String,
+}
+
+impl BackupKey {
+    fn of(src: &GameBackups, b: &BackupEntry) -> Self {
+        Self { root: src.source.root.clone(), id: b.id.clone(), when: b.when.clone() }
+    }
+
+    fn is(&self, b: &BackupEntry) -> bool {
+        b.id == self.id && b.when == self.when
+    }
 }
 
 enum Load {
@@ -74,18 +110,18 @@ pub struct SaveBackupsView {
     /// Index into `Loaded::sources`.
     source: usize,
     source_open: bool,
-    /// Index into the backups of the chosen source.
-    backup: usize,
+    /// The backup picked (`None` or gone: the newest of the folder).
+    backup: Option<BackupKey>,
     stage: Stage,
     /// Background job besides the restore (backup, lock, undo).
     working: bool,
     notice: Option<(String, bool)>,
     /// Desktop: the backup being named and its text field.
-    renaming: Option<(usize, Entity<InputState>, Subscription)>,
+    renaming: Option<(BackupKey, Entity<InputState>, Subscription)>,
     /// The backup asking "delete?".
-    confirm_delete: Option<usize>,
+    confirm_delete: Option<BackupKey>,
     /// Console mode: the backup whose actions are listed.
-    console_backup: Option<usize>,
+    console_backup: Option<BackupKey>,
     console_list: crate::console::list::ListNav,
     /// Console mode: the on-screen keyboard for the name.
     layer: crate::console::Layer,
@@ -144,7 +180,7 @@ impl SaveBackupsView {
             picked: None,
             source: 0,
             source_open: false,
-            backup: 0,
+            backup: None,
             stage: Stage::List,
             working: false,
             notice: None,
@@ -168,6 +204,18 @@ impl SaveBackupsView {
             Load::Ready(l) => Some(l),
             _ => None,
         }
+    }
+
+    /// The backups of the folder shown.
+    fn current_source(&self) -> Option<&GameBackups> {
+        self.loaded()?.sources.get(self.source)
+    }
+
+    /// The backup picked in the folder shown, else its newest.
+    pub(crate) fn selected_key(&self) -> Option<BackupKey> {
+        let src = self.current_source()?;
+        let picked = self.backup.as_ref().filter(|k| k.root == src.source.root && src.backups.iter().any(|b| k.is(b)));
+        picked.cloned().or_else(|| src.backups.first().map(|b| BackupKey::of(src, b)))
     }
 
     fn busy(&self) -> bool {
@@ -202,6 +250,7 @@ impl SaveBackupsView {
 
     /// Reads Ludusavi, the prefix and the backups again.
     pub(crate) fn reload(&mut self, cx: &mut Context<Self>) {
+        let shown = self.current_source().map(|s| s.source.root.clone());
         self.load = Load::Loading;
         let (game, kind, steam, install, picked, installed) =
             (self.game.clone(), self.run_kind, self.steam_app_id.clone(), self.install_dir.clone(), self.picked.clone(), self.installed);
@@ -216,19 +265,31 @@ impl SaveBackupsView {
                 let undo = undo::latest(&env.paths.save_restore_undo(), &game.app_name);
                 Ok(Loaded { tool, target, sources, undo })
             },
-            |v, result, cx| {
+            move |v, result, cx| {
                 v.load = match result {
                     Ok(l) => {
                         // Keep the folder chosen; else the first one with backups.
-                        let keep = v.source < l.sources.len() && !l.sources[v.source].backups.is_empty();
-                        if !keep {
-                            v.source = l.sources.iter().position(|s| !s.backups.is_empty()).unwrap_or(0);
-                        }
+                        v.source = shown
+                            .and_then(|root| l.sources.iter().position(|s| s.source.root == root && !s.backups.is_empty()))
+                            .or_else(|| l.sources.iter().position(|s| !s.backups.is_empty()))
+                            .unwrap_or(0);
                         if let Some(p) = &v.picked {
                             v.source = l.sources.iter().position(|s| &s.source.root == p).unwrap_or(v.source);
                         }
-                        let count = l.sources.get(v.source).map(|s| s.backups.len()).unwrap_or(0);
-                        v.backup = v.backup.min(count.saturating_sub(1));
+                        // Drop what points at a backup that is gone.
+                        let gone = |k: &Option<BackupKey>| k.as_ref().is_some_and(|k| l.find(k).is_none());
+                        if gone(&v.backup) {
+                            v.backup = None;
+                        }
+                        if gone(&v.confirm_delete) {
+                            v.confirm_delete = None;
+                        }
+                        if gone(&v.console_backup) {
+                            v.console_backup = None;
+                        }
+                        if v.renaming.as_ref().is_some_and(|(k, _, _)| l.find(k).is_none()) {
+                            v.renaming = None;
+                        }
                         Load::Ready(Box::new(l))
                     }
                     Err(e) => Load::Failed(e),
@@ -246,7 +307,7 @@ impl SaveBackupsView {
         let (which, folder) = value.split_once('@').unwrap_or((value.as_str(), ""));
         if let Ok(i) = folder.parse::<usize>() {
             self.source = i;
-            self.backup = 0;
+            self.backup = None;
         }
         match which {
             "folder" => self.source_open = true,
@@ -257,7 +318,7 @@ impl SaveBackupsView {
 
     pub(crate) fn pick_source(&mut self, index: usize, cx: &mut Context<Self>) {
         self.source = index;
-        self.backup = 0;
+        self.backup = None;
         self.source_open = false;
         self.stage = Stage::List;
         cx.notify();
@@ -270,8 +331,8 @@ impl SaveBackupsView {
         self.reload(cx);
     }
 
-    pub(crate) fn pick_backup(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.backup = index;
+    pub(crate) fn pick_backup(&mut self, key: BackupKey, cx: &mut Context<Self>) {
+        self.backup = Some(key);
         cx.notify();
     }
 
@@ -289,9 +350,10 @@ impl SaveBackupsView {
             cx.notify();
             return;
         }
+        let Some(key) = self.selected_key() else { return };
         let Some(l) = self.loaded() else { return };
-        let Some(src) = l.sources.get(self.source) else { return };
-        let (Some(name), Some(backup)) = (src.game_name.clone(), src.backups.get(self.backup)) else { return };
+        let Some((src, backup)) = l.find(&key) else { return };
+        let Some(name) = src.game_name.clone() else { return };
         let request = RestoreRequest {
             source_root: src.source.root.clone(),
             game_name: name,
@@ -416,15 +478,13 @@ impl SaveBackupsView {
         );
     }
 
-    /// Locks or unlocks the selected backup.
-    pub(crate) fn toggle_lock(&mut self, index: usize, cx: &mut Context<Self>) {
+    /// Locks or unlocks a backup.
+    pub(crate) fn toggle_lock(&mut self, key: BackupKey, cx: &mut Context<Self>) {
         if self.busy() {
             return;
         }
-        let Some(l) = self.loaded() else { return };
-        let Some(src) = l.sources.get(self.source) else { return };
-        let (Some(name), Some(b)) = (src.game_name.clone(), src.backups.get(index)) else { return };
-        let (tool, root, id, lock) = (l.tool.clone(), src.source.root.clone(), b.id.clone(), !b.locked);
+        let Some((tool, root, _, name, id)) = self.backup_ref(&key) else { return };
+        let Some(lock) = self.loaded().and_then(|l| l.find(&key)).map(|(_, b)| !b.locked) else { return };
         self.working = true;
         cx.notify();
         self.background(
@@ -435,10 +495,8 @@ impl SaveBackupsView {
                 v.working = false;
                 match result {
                     Ok(()) => {
-                        if let Load::Ready(l) = &mut v.load {
-                            if let Some(b) = l.sources.get_mut(v.source).and_then(|s| s.backups.get_mut(index)) {
-                                b.locked = lock;
-                            }
+                        if let Some(b) = v.loaded_mut().and_then(|l| l.find_mut(&key)) {
+                            b.locked = lock;
                         }
                     }
                     Err(e) => v.notice = Some((e, true)),
@@ -448,17 +506,28 @@ impl SaveBackupsView {
         );
     }
 
-    /// The selected folder's game folder, game name and the backup `index`.
-    fn backup_ref(&self, index: usize) -> Option<(Tool, PathBuf, Option<PathBuf>, String, String)> {
+    fn loaded_mut(&mut self) -> Option<&mut Loaded> {
+        match &mut self.load {
+            Load::Ready(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    /// The tool, folder, game folder, game name and id of a backup.
+    fn backup_ref(&self, key: &BackupKey) -> Option<(Tool, PathBuf, Option<PathBuf>, String, String)> {
         let l = self.loaded()?;
-        let src = l.sources.get(self.source)?;
-        let b = src.backups.get(index)?;
+        let (src, b) = l.find(key)?;
         Some((l.tool.clone(), src.source.root.clone(), src.dir.clone(), src.game_name.clone()?, b.id.clone()))
     }
 
+    /// A backup's name, if it has one.
+    fn backup_name(&self, key: &BackupKey) -> String {
+        self.loaded().and_then(|l| l.find(key)).and_then(|(_, b)| b.comment.clone()).unwrap_or_default()
+    }
+
     /// Desktop: shows a text field for the backup's name.
-    pub(crate) fn start_rename(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        let current = self.loaded().and_then(|l| l.sources.get(self.source)?.backups.get(index)?.comment.clone()).unwrap_or_default();
+    pub(crate) fn start_rename(&mut self, key: BackupKey, window: &mut Window, cx: &mut Context<Self>) {
+        let current = self.backup_name(&key);
         let input = crate::ui::fields::new_input(window, cx, &current, tr!("Name this backup (\u{201c}Before the last boss\u{201d})"));
         input.update(cx, |s, cx| s.focus(window, cx));
         let sub = cx.subscribe_in(&input, window, |v, _, ev: &InputEvent, _, cx| {
@@ -466,7 +535,7 @@ impl SaveBackupsView {
                 v.save_rename(cx);
             }
         });
-        self.renaming = Some((index, input, sub));
+        self.renaming = Some((key, input, sub));
         self.confirm_delete = None;
         cx.notify();
     }
@@ -477,14 +546,21 @@ impl SaveBackupsView {
     }
 
     pub(crate) fn save_rename(&mut self, cx: &mut Context<Self>) {
-        let Some((index, input, _)) = self.renaming.take() else { return };
+        let Some((key, input, _)) = self.renaming.take() else { return };
         let name = input.read(cx).value().trim().to_string();
-        self.set_backup_name(index, name, cx);
+        self.set_backup_name(key, name, cx);
     }
 
     /// Saves a backup's name (Ludusavi's comment); empty clears it.
-    pub(crate) fn set_backup_name(&mut self, index: usize, name: String, cx: &mut Context<Self>) {
-        let Some((tool, root, _, game, id)) = self.backup_ref(index).filter(|_| !self.busy()) else { return };
+    pub(crate) fn set_backup_name(&mut self, key: BackupKey, name: String, cx: &mut Context<Self>) {
+        if self.busy() {
+            return;
+        }
+        let Some((tool, root, _, game, id)) = self.backup_ref(&key) else {
+            self.notice = Some((tr!("This backup is not in the folder any more.").into(), true));
+            cx.notify();
+            return;
+        };
         self.working = true;
         cx.notify();
         let saved = name.clone();
@@ -496,10 +572,8 @@ impl SaveBackupsView {
                 v.working = false;
                 match result {
                     Ok(()) => {
-                        if let Load::Ready(l) = &mut v.load {
-                            if let Some(b) = l.sources.get_mut(v.source).and_then(|s| s.backups.get_mut(index)) {
-                                b.comment = Some(saved).filter(|s| !s.is_empty());
-                            }
+                        if let Some(b) = v.loaded_mut().and_then(|l| l.find_mut(&key)) {
+                            b.comment = Some(saved).filter(|s| !s.is_empty());
                         }
                     }
                     Err(e) => v.notice = Some((e, true)),
@@ -508,8 +582,8 @@ impl SaveBackupsView {
         );
     }
 
-    pub(crate) fn ask_delete(&mut self, index: usize, cx: &mut Context<Self>) {
-        self.confirm_delete = Some(index);
+    pub(crate) fn ask_delete(&mut self, key: BackupKey, cx: &mut Context<Self>) {
+        self.confirm_delete = Some(key);
         self.renaming = None;
         cx.notify();
     }
@@ -521,8 +595,15 @@ impl SaveBackupsView {
 
     /// Deletes the backup asked about, then reads the list again.
     pub(crate) fn delete_confirmed(&mut self, cx: &mut Context<Self>) {
-        let Some(index) = self.confirm_delete.take() else { return };
-        let Some((_, _, Some(dir), _, id)) = self.backup_ref(index).filter(|_| !self.busy()) else { return };
+        if self.busy() {
+            return;
+        }
+        let Some(key) = self.confirm_delete.take() else { return };
+        let Some((_, _, Some(dir), _, id)) = self.backup_ref(&key) else {
+            self.notice = Some((tr!("This backup is not in the folder any more.").into(), true));
+            cx.notify();
+            return;
+        };
         self.working = true;
         self.console_backup = None;
         cx.notify();
@@ -565,7 +646,7 @@ impl SaveBackupsView {
                     Outcome::Running => (String::new(), false),
                 });
                 if result.ran {
-                    v.backup = 0;
+                    v.backup = None;
                     v.reload(cx);
                 }
             },
