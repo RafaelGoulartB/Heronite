@@ -295,8 +295,10 @@ pub fn action_button(
     }
 }
 
-/// Segmented pill tabs: a dark pill track with the active item lifted
-/// (`rgba(255,255,255,.14)`, white text). Scrolls horizontally when too wide.
+/// Segmented pill tabs: a dark track with the active item lifted
+/// (`rgba(255,255,255,.14)`, white text). Tabs that do not fit the width
+/// (it depends on the language, not on how many there are) wrap to another
+/// row; one row keeps the pill look.
 pub fn tabs<T: Copy + PartialEq + 'static>(
     id: &str,
     items: &[(T, &'static str)],
@@ -310,10 +312,10 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
         .items_center()
         .gap(px(2.))
         .p(px(4.))
+        .flex_wrap()
         .max_w_full()
-        .rounded_full()
-        .bg(theme::seg_track())
-        .overflow_x_scroll();
+        .rounded(px(18.))
+        .bg(theme::seg_track());
     for (i, (value, label)) in items.iter().enumerate() {
         let is_active = *value == active;
         let v = *value;
