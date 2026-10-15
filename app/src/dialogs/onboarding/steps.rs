@@ -169,7 +169,7 @@ impl Step {
             Step::Emulators => tr!("\u{2630} \u{2192} Emulators"),
             Step::Proton => tr!("\u{2630} \u{2192} Wine Manager"),
             Step::Screenshots => tr!("Settings \u{2192} Screenshots"),
-            Step::Saves => tr!("Settings \u{2192} Backups"),
+            Step::Saves => tr!("Settings \u{2192} Saves"),
             Step::Tray => tr!("Settings \u{2192} General"),
             Step::Palette => tr!("Ctrl K on any screen"),
             Step::Statuses => tr!("Right-click a game \u{2192} Status"),

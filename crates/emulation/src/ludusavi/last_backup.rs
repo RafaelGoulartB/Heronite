@@ -45,7 +45,7 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -
 }
 
 /// `$XDG_CONFIG_HOME/ludusavi/config.yaml`, else `~/.config/ludusavi/config.yaml`.
-fn ludusavi_config_path(xdg_config_home: Option<OsString>, home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
+pub(super) fn ludusavi_config_path(xdg_config_home: Option<OsString>, home: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
     let base = match xdg_config_home.filter(|v| !v.is_empty()) {
         Some(xdg) => PathBuf::from(xdg),
         None => PathBuf::from(home?).join(".config"),
@@ -54,7 +54,7 @@ fn ludusavi_config_path(xdg_config_home: Option<OsString>, home: Option<&std::ff
 }
 
 /// The folder holding the per-game backup folders.
-fn backup_root(use_installed_config: bool, configured: &str, config_file: Option<&Path>, home: &str) -> Option<PathBuf> {
+pub(super) fn backup_root(use_installed_config: bool, configured: &str, config_file: Option<&Path>, home: &str) -> Option<PathBuf> {
     let from_config = || {
         let yaml = fs::read_to_string(config_file?).ok()?;
         parse_config(&yaml, home).0.map(PathBuf::from)
@@ -83,44 +83,70 @@ fn mapping_name(yaml: &str) -> Option<String> {
     yaml_get(yaml, &["name"]).map(|n| n.trim_matches('\'').to_owned()).filter(|n| !n.is_empty())
 }
 
-fn found(dir: PathBuf, yaml: Option<&str>) -> LastBackup {
-    let folder_name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let game_name = yaml.and_then(mapping_name).unwrap_or(folder_name);
+fn found(dir: PathBuf, name: Option<String>) -> LastBackup {
+    let game_name = name.unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
     let at = heronite_data::json_store::mtime(&dir.join("mapping.yaml"))
         .or_else(|| heronite_data::json_store::mtime(&dir))
         .unwrap_or(SystemTime::UNIX_EPOCH);
     LastBackup { game_name, dir, at }
 }
 
-fn find_in(root: &Path, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
-    let wanted = normalize(title);
-    let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(root)
-        .ok()?
-        .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-        .map(|e| (e.file_name().to_string_lossy().into_owned(), e.path()))
-        .collect();
-    dirs.sort();
+/// The game folders of a backup root. Each `mapping.yaml` is read at most
+/// once, however many titles are looked up (they can be large).
+pub(super) struct RootFolders {
+    dirs: Vec<(String, PathBuf)>,
+    /// `compatdata/<id>/`, the Proton prefix the game's paths mention.
+    proton: Option<String>,
+    /// Per folder, read on the first lookup the folder names miss:
+    /// `(mapping name, mentions the Proton prefix)`; `None` without mapping.
+    mapped: Option<Vec<Option<(Option<String>, bool)>>>,
+}
 
-    if !wanted.is_empty() {
-        if let Some((_, dir)) = dirs.iter().find(|(name, _)| normalize(name) == wanted) {
-            let yaml = fs::read_to_string(dir.join("mapping.yaml")).ok();
-            return Some(found(dir.clone(), yaml.as_deref()));
-        }
+impl RootFolders {
+    pub(super) fn read(root: &Path, steam_app_id: Option<&str>) -> Option<Self> {
+        let mut dirs: Vec<(String, PathBuf)> = fs::read_dir(root)
+            .ok()?
+            .filter_map(Result::ok)
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+            .map(|e| (e.file_name().to_string_lossy().into_owned(), e.path()))
+            .collect();
+        dirs.sort();
+        let proton = steam_app_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
+            .map(|id| format!("compatdata/{id}/"));
+        Some(Self { dirs, proton, mapped: None })
     }
 
-    let proton = steam_app_id
-        .map(str::trim)
-        .filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()))
-        .map(|id| format!("compatdata/{id}/"));
-    for (_, dir) in dirs {
-        let Ok(yaml) = fs::read_to_string(dir.join("mapping.yaml")) else { continue };
-        let by_name = !wanted.is_empty() && mapping_name(&yaml).is_some_and(|n| normalize(&n) == wanted);
-        if by_name || proton.as_ref().is_some_and(|p| yaml.contains(p.as_str())) {
-            return Some(found(dir, Some(&yaml)));
+    /// The folder of `title`: by folder name, then by mapping name or by the
+    /// game's Proton prefix.
+    pub(super) fn find(&mut self, title: &str) -> Option<LastBackup> {
+        let wanted = normalize(title);
+        if !wanted.is_empty() {
+            if let Some((_, dir)) = self.dirs.iter().find(|(name, _)| normalize(name) == wanted) {
+                let name = fs::read_to_string(dir.join("mapping.yaml")).ok().as_deref().and_then(mapping_name);
+                return Some(found(dir.clone(), name));
+            }
         }
+        let (dirs, proton) = (&self.dirs, &self.proton);
+        let mapped = self.mapped.get_or_insert_with(|| {
+            dirs.iter()
+                .map(|(_, dir)| {
+                    let yaml = fs::read_to_string(dir.join("mapping.yaml")).ok()?;
+                    Some((mapping_name(&yaml), proton.as_ref().is_some_and(|p| yaml.contains(p.as_str()))))
+                })
+                .collect()
+        });
+        dirs.iter().zip(mapped.iter()).find_map(|((_, dir), m)| {
+            let (name, in_prefix) = m.as_ref()?;
+            let by_name = !wanted.is_empty() && name.as_ref().is_some_and(|n| normalize(n) == wanted);
+            (by_name || *in_prefix).then(|| found(dir.clone(), name.clone()))
+        })
     }
-    None
+}
+
+pub(super) fn find_in(root: &Path, title: &str, steam_app_id: Option<&str>) -> Option<LastBackup> {
+    RootFolders::read(root, steam_app_id)?.find(title)
 }
 
 #[cfg(test)]

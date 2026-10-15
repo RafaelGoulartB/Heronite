@@ -29,12 +29,14 @@ pub mod logs;
 mod metadata;
 mod palette;
 mod saves;
+mod saves_restore;
 mod screenshots;
 mod section;
 pub mod sysinfo;
 mod updates;
 
 pub use advanced::open_folder;
+pub use backup::format_time;
 pub use section::Section;
 
 use gpui_kit::prelude::*;
@@ -92,6 +94,7 @@ pub struct SettingsPage {
     metadata: metadata::State,
     backup: backup::State,
     saves: saves::State,
+    saves_restore: saves_restore::State,
     section: Section,
     global: Option<Entity<SettingsPanel>>,
     defaults: Option<Entity<SettingsPanel>>,
@@ -136,6 +139,7 @@ impl SettingsPage {
             metadata,
             backup,
             saves,
+            saves_restore: Default::default(),
             library: library::State::new(&ctx),
             advanced: advanced::State::default(),
             about: about::State::default(),
@@ -241,7 +245,7 @@ impl SettingsPage {
             Section::Advanced => self.advanced.measure(&self.ctx, cx),
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
-            Section::Backups => saves::State::shown(self, window, cx),
+            Section::Saves => saves::State::shown(self, window, cx),
             _ => {}
         }
     }
@@ -349,15 +353,17 @@ impl SettingsPage {
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
             Section::Screenshots => Self::collection_section(screenshots::render(self, window, cx), self.error.clone()),
-            Section::Backups => {
+            Section::Saves => {
                 let body = div()
                     .flex()
                     .flex_col()
                     .child(saves::render(self, window, cx))
-                    .child(div().mt(px(12.)).child(backup::render(self, window, cx)))
+                    // Restoring needs Ludusavi: the card above says how to get it.
+                    .when(!self.saves.missing(), |d| d.child(div().mt(px(12.)).child(saves_restore::render(self, window, cx))))
                     .into_any_element();
                 Self::collection_section(body, self.error.clone())
             }
+            Section::Backups => Self::collection_section(backup::render(self, window, cx), self.error.clone()),
             Section::Logs => self.logs_section(cx),
             Section::About => self.about_section(cx).into_any_element(),
         }

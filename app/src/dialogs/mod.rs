@@ -32,6 +32,7 @@ pub mod playtime;
 pub mod quit_confirm;
 pub mod remove_game;
 pub mod rom_folder;
+pub mod save_backups;
 pub mod scan_roms;
 pub mod screenshot_art;
 pub mod settings_panel;

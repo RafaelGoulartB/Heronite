@@ -1,4 +1,4 @@
-//! Settings → Backups, second card: scheduled copy of the data folder.
+//! Settings → Backups: scheduled copy of the data folder.
 
 use chrono::{DateTime, Datelike, Local, Utc};
 use gpui_kit::component::input::InputState;

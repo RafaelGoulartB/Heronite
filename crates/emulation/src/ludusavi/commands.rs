@@ -30,6 +30,9 @@ pub struct BackupCommand<'a> {
     pub format: &'a str,
     pub compression: &'a str,
     pub wine_prefix: Option<&'a str>,
+    /// Retention overrides; `None` keeps Ludusavi's own.
+    pub full_limit: Option<u8>,
+    pub differential_limit: Option<u8>,
     pub game_name: &'a str,
 }
 
@@ -45,6 +48,12 @@ pub fn backup_command(c: &BackupCommand) -> Vec<String> {
     }
     if let Some(p) = c.wine_prefix {
         cmd.extend(["--wine-prefix".into(), p.into()]);
+    }
+    if let Some(n) = c.full_limit {
+        cmd.extend(["--full-limit".into(), n.max(1).to_string()]);
+    }
+    if let Some(n) = c.differential_limit {
+        cmd.extend(["--differential-limit".into(), n.to_string()]);
     }
     cmd.push(c.game_name.into());
     cmd
@@ -109,6 +118,8 @@ mod tests {
             format: "zip",
             compression: "deflate",
             wine_prefix: None,
+            full_limit: None,
+            differential_limit: None,
             game_name: "Tony Hawk's Underground",
         });
         assert_eq!(c, ["backup", "--force", "--api", "--no-cloud-sync", "Tony Hawk's Underground"]);
@@ -118,6 +129,8 @@ mod tests {
             format: "zip",
             compression: "zstd",
             wine_prefix: Some("/pfx"),
+            full_limit: Some(5),
+            differential_limit: Some(0),
             game_name: "G",
         });
         assert_eq!(
@@ -135,6 +148,10 @@ mod tests {
                 "zstd",
                 "--wine-prefix",
                 "/pfx",
+                "--full-limit",
+                "5",
+                "--differential-limit",
+                "0",
                 "G"
             ]
         );
@@ -144,6 +161,8 @@ mod tests {
             format: "simple",
             compression: "zstd",
             wine_prefix: None,
+            full_limit: None,
+            differential_limit: None,
             game_name: "G",
         });
         assert!(!c.contains(&"--compression".to_string()));

@@ -58,6 +58,16 @@ pub struct LudusaviSettings {
     pub format: String,
     #[serde(default)]
     pub compression: String,
+    /// More folders to restore backups from (a Ludusavi folder made on
+    /// another PC or on Windows), after the backup folder.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub restore_paths: Vec<String>,
+    /// Full backups kept per game (1..=255); `None` = Ludusavi's own setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_limit: Option<u8>,
+    /// Differential backups kept per full one (0..=255); `None` = Ludusavi's own setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub differential_limit: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_backup_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

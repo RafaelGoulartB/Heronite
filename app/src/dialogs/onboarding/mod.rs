@@ -291,7 +291,7 @@ impl OnboardingDialog {
                     .when(missing, |d| {
                         d.child(
                             div().text_size(px(12.5)).line_height(px(17.)).text_color(theme::danger_text()).child(tr!(
-                                "Ludusavi was not found. Install it (Flatpak or your distribution's packages), then turn this on."
+                                "Ludusavi was not found. Settings \u{2192} Saves shows where to download it; then turn this on."
                             )),
                         )
                     })

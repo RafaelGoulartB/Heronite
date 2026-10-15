@@ -37,7 +37,8 @@ enum Field {
 
 impl GameSettingsDialog {
     fn console_tabs(&self) -> Vec<Tab> {
-        let mut t: Vec<Tab> = self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default();
+        let mut t = self
+            .with_saves_tab(self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default());
         if self.launch.is_some() {
             t.push(Tab::Launch);
         }
@@ -54,6 +55,14 @@ impl GameSettingsDialog {
                 p.set_section(section, window, cx);
                 p.console_reset();
             });
+        }
+        if tab == Tab::Backups {
+            if let Some(view) = &self.backups {
+                view.update(cx, |v, cx| {
+                    v.console_reset();
+                    v.shown(cx);
+                });
+            }
         }
         cx.notify();
     }
@@ -256,6 +265,9 @@ impl GameSettingsDialog {
 
         let body: AnyElement = match (self.tab.section(), &self.panel) {
             (Some(_), Some((panel, _))) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
+            _ if self.tab == Tab::Backups && self.backups.is_some() => {
+                div().flex().flex_col().size_full().children(self.backups.clone()).into_any_element()
+            }
             _ => {
                 let rows = self.console_rows(cx);
                 self.console_list.render("console-gs", &rows, !self.layer.is_open()).size_full().into_any_element()
@@ -292,6 +304,12 @@ impl PadTarget for GameSettingsDialog {
             cx.notify();
             return true;
         }
+        // The Saves tab's keyboard and backup menu keep B and the bumpers.
+        if let (Tab::Backups, Some(view)) = (self.tab, self.backups.clone()) {
+            if view.read(cx).captures(pad) {
+                return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
+            }
+        }
         let tabs = self.console_tabs();
         let i = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
         match pad {
@@ -310,6 +328,12 @@ impl PadTarget for GameSettingsDialog {
         if self.tab.section().is_some() {
             if let Some((panel, _)) = self.panel.clone() {
                 return panel.update(cx, |p, cx| p.on_pad(pad, window, cx));
+            }
+            return false;
+        }
+        if self.tab == Tab::Backups {
+            if let Some(view) = self.backups.clone() {
+                return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
             }
             return false;
         }
@@ -349,6 +373,12 @@ impl PadTarget for GameSettingsDialog {
 
     fn hints(&self, cx: &App) -> Vec<Hint> {
         if let Some(h) = self.layer.hints(cx) {
+            return h;
+        }
+        if let (Tab::Backups, Some(view)) = (self.tab, &self.backups) {
+            let mut h = view.read(cx).hints(cx);
+            h.push(hint(Btn::Bumpers, tr!("Tabs")));
+            h.push(hint(Btn::B, tr!("Done")));
             return h;
         }
         if self.tab.section().is_some() {

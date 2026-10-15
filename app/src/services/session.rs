@@ -8,7 +8,7 @@
 //! itself (`heronite-launch`), and cloud saves go through its prepare/after
 //! exit steps, so neither needs anything here.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -52,6 +52,8 @@ pub struct Session {
     capture_cfg: Option<CaptureConfig>,
     /// Runner of each game with a capture session (`app_name` -> runner).
     capture_games: HashMap<String, String>,
+    /// Games launched and not exited yet (`app_name`).
+    running: HashSet<String>,
 }
 
 impl EventEmitter<SessionEvent> for Session {}
@@ -64,7 +66,14 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) -> E
     if let Some(g) = cx.try_global::<SessionGlobal>() {
         return g.0.clone();
     }
-    let entity = cx.new(|_| Session { data_paths, runtime, capture: None, capture_cfg: None, capture_games: HashMap::new() });
+    let entity = cx.new(|_| Session {
+        data_paths,
+        runtime,
+        capture: None,
+        capture_cfg: None,
+        capture_games: HashMap::new(),
+        running: HashSet::new(),
+    });
     cx.set_global(SessionGlobal(entity.clone()));
     entity
 }
@@ -72,6 +81,12 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) -> E
 /// The service, once the hub created it.
 pub fn get(cx: &App) -> Option<Entity<Session>> {
     cx.try_global::<SessionGlobal>().map(|g| g.0.clone())
+}
+
+/// Whether a game this app launched is still running (the save restore
+/// waits for it to close).
+pub fn is_running(cx: &App, app_name: &str) -> bool {
+    get(cx).is_some_and(|s| s.read(cx).running.contains(app_name))
 }
 
 /// The capture service, once a game was launched (the settings dialog shows
@@ -84,12 +99,19 @@ impl Session {
     /// Every launch event, from the hub.
     pub fn on_launch_event(&mut self, ev: &LaunchEvent, cx: &mut Context<Self>) {
         match ev {
-            LaunchEvent::Launching { app_name } => self.begin_capture(app_name, cx),
+            LaunchEvent::Launching { app_name } => {
+                self.running.insert(app_name.clone());
+                self.begin_capture(app_name, cx);
+            }
             LaunchEvent::Exited { app_name, elapsed, .. } => {
+                self.running.remove(app_name);
                 self.end_capture(app_name);
                 self.game_ended(app_name, *elapsed, cx);
             }
-            LaunchEvent::Error { app_name, .. } => self.end_capture(app_name),
+            LaunchEvent::Error { app_name, .. } => {
+                self.running.remove(app_name);
+                self.end_capture(app_name);
+            }
             LaunchEvent::Running { .. } | LaunchEvent::Status { .. } => {}
         }
     }

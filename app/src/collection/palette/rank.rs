@@ -551,7 +551,8 @@ mod tests {
         for (q, section) in [
             ("blur", "Settings \u{203a} Appearance"),
             ("igdb", "Settings \u{203a} Metadata"),
-            ("ludusavi", "Settings \u{203a} Backups"),
+            ("ludusavi", "Settings \u{203a} Saves"),
+            ("schedule", "Settings \u{203a} Backups"),
             ("screenshots", "Settings \u{203a} Screenshots"),
         ] {
             let r = search(&e, q, Filter::All, &[]);
