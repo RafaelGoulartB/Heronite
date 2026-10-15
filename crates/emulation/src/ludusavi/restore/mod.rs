@@ -159,34 +159,44 @@ pub fn apply_restore(
     }
     let record = undo::snapshot(undo_root, app_name, &req.game_name, &req.backup_id, &selected).map_err(|e| format!("{e:#}"))?;
     let skipped: Vec<&str> = plan.files.iter().filter(|f| !f.selected).map(|f| f.target.as_str()).collect();
-    let run = || -> Result<RestoreOutcome, String> {
-        let cfg = TempConfig::write(&req.game_name, &plan.redirects, &skipped).map_err(|e| e.to_string())?;
-        let args = restore_args(&cfg, req, false);
-        log::info!("Running {} {}", tool.binary, args.join(" "));
-        let out = env.runner.run(&tool.binary, &args)?;
-        let reply = parse_reply(&parse_json(&out.stdout), &req.game_name).map_err(|code| reply_error(&out, &code, req))?;
-        let mut outcome = RestoreOutcome { written: 0, unchanged: 0, failed: Vec::new(), undo: None };
-        for f in reply.into_iter().filter(|f| !f.ignored) {
-            if f.failed {
-                outcome.failed.push((f.target, f.error.unwrap_or_default()));
-            } else if f.change == Change::Same {
-                outcome.unchanged += 1;
-            } else {
-                outcome.written += 1;
-            }
-        }
-        Ok(outcome)
-    };
-    match run() {
-        Ok(mut outcome) if outcome.written > 0 => {
-            outcome.undo = Some(record);
-            Ok(outcome)
-        }
-        result => {
+    let cfg = match TempConfig::write(&req.game_name, &plan.redirects, &skipped) {
+        Ok(cfg) => cfg,
+        Err(e) => {
             undo::discard(&record);
-            result
+            return Err(e.to_string());
+        }
+    };
+    let args = restore_args(&cfg, req, false);
+    log::info!("Running {} {}", tool.binary, args.join(" "));
+    let reply = env
+        .runner
+        .run(&tool.binary, &args)
+        .and_then(|out| parse_reply(&parse_json(&out.stdout), &req.game_name).map_err(|code| reply_error(&out, &code, req)));
+    let reply = match reply {
+        Ok(reply) => reply,
+        // Ludusavi ran (or was stopped part-way through): files may have
+        // changed, so the copy stays for the undo.
+        Err(e) => {
+            log::warn!("Ludusavi restore failed after it started; keeping the undo copy {}", record.dir.display());
+            return Err(format!("{e}\n{}", tr!("A copy of what the restore may have replaced is kept: Undo puts it back.")));
+        }
+    };
+    let mut outcome = RestoreOutcome { written: 0, unchanged: 0, failed: Vec::new(), undo: None };
+    for f in reply.into_iter().filter(|f| !f.ignored) {
+        if f.failed {
+            outcome.failed.push((f.target, f.error.unwrap_or_default()));
+        } else if f.change == Change::Same {
+            outcome.unchanged += 1;
+        } else {
+            outcome.written += 1;
         }
     }
+    if outcome.written > 0 {
+        outcome.undo = Some(record);
+    } else {
+        undo::discard(&record);
+    }
+    Ok(outcome)
 }
 
 fn edit_args(root: &std::path::Path, game: &str, backup_id: &str, locked: bool) -> Vec<String> {
@@ -365,6 +375,31 @@ mod tests {
         assert_eq!((outcome.written, outcome.unchanged), (0, 1));
         assert!(outcome.undo.is_none());
         assert!(undo::latest(&undo_root, "app").is_none());
+    }
+
+    #[test]
+    fn a_restore_stopped_part_way_keeps_the_undo_copy() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(d.path());
+        let save = d.path().join("save.sav");
+        std::fs::write(&save, "before").unwrap();
+        // No JSON back (killed on timeout, crashed): files may have changed.
+        let runner = Fake { replies: vec![("--config".into(), out("", "killed", 1))], ..Default::default() };
+        let probe = FakeProbe::new("/home/u");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let file = PlannedFile {
+            target: save.to_string_lossy().into_owned(),
+            original: save.to_string_lossy().into_owned(),
+            bytes: 6,
+            change: Change::Different,
+            kind: FileKind::Save,
+            selected: true,
+        };
+        let plan = RestorePlan { request: request(RestoreTarget::default()), redirects: Vec::new(), files: vec![file] };
+        let undo_root = d.path().join("undo");
+        assert!(apply(&env, &plan, &undo_root).is_err());
+        let kept = undo::latest(&undo_root, "app").expect("the undo copy stays");
+        assert_eq!(std::fs::read_to_string(kept.dir.join("files/0")).unwrap(), "before");
     }
 
     #[test]

@@ -54,6 +54,26 @@ pub fn snapshot(root: &Path, app_name: &str, game_name: &str, backup_id: &str, t
     let game_dir = root.join(game_key(app_name));
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%3fZ").to_string();
     let dir = game_dir.join(&stamp);
+    let written = write_snapshot(&dir, targets).and_then(|entries| {
+        let record =
+            UndoRecord { dir: dir.clone(), created_at: iso_now(), game_name: game_name.into(), backup_id: backup_id.into(), entries };
+        fs::write(dir.join("undo.json"), serde_json::to_string_pretty(&record)?)?;
+        Ok(record)
+    });
+    match written {
+        Ok(record) => {
+            prune(&game_dir);
+            Ok(record)
+        }
+        // Without `undo.json` a partial copy is never listed nor pruned.
+        Err(e) => {
+            let _ = fs::remove_dir_all(&dir);
+            Err(e)
+        }
+    }
+}
+
+fn write_snapshot(dir: &Path, targets: &[String]) -> Result<Vec<UndoEntry>> {
     let files = dir.join("files");
     fs::create_dir_all(&files).with_context(|| format!("creating {}", files.display()))?;
     let mut entries = Vec::new();
@@ -68,10 +88,7 @@ pub fn snapshot(root: &Path, app_name: &str, game_name: &str, backup_id: &str, t
         };
         entries.push(UndoEntry { target: target.clone(), stored });
     }
-    let record = UndoRecord { dir: dir.clone(), created_at: iso_now(), game_name: game_name.into(), backup_id: backup_id.into(), entries };
-    fs::write(dir.join("undo.json"), serde_json::to_string_pretty(&record)?)?;
-    prune(&game_dir);
-    Ok(record)
+    Ok(entries)
 }
 
 fn copies(game_dir: &Path) -> Vec<PathBuf> {

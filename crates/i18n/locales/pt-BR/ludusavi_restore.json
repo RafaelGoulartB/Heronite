@@ -1,4 +1,5 @@
 {
+  "A copy of what the restore may have replaced is kept: Undo puts it back.": "Uma cópia do que a restauração pode ter substituído foi guardada: Desfazer a coloca de volta.",
   "A game's settings have a Saves tab that puts a backup back into the game's prefix as it is now, even one made in another Steam library or on Windows. It lists the backups in these folders.": "As configurações de cada jogo têm uma aba Saves que devolve um backup ao prefixo atual do jogo, mesmo um feito em outra biblioteca da Steam ou no Windows. Ela lista os backups destas pastas.",
   "Add folder…": "Adicionar pasta…",
   "Added folder": "Pasta adicionada",
