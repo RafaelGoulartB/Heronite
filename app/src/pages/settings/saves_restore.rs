@@ -34,6 +34,17 @@ pub struct State {
     manifest: Option<Result<(), String>>,
 }
 
+/// The presets, with the value in use added when it is not one of them
+/// (set by hand), so it shows and stays picked.
+fn options(presets: &[Option<u8>], current: Option<u8>) -> Vec<Option<u8>> {
+    let mut all = presets.to_vec();
+    if !all.contains(&current) {
+        all.push(current);
+        all.sort_by_key(|v| v.map(|n| n as i32 + 1).unwrap_or(0));
+    }
+    all
+}
+
 fn full_label(v: Option<u8>) -> String {
     match v {
         None => tr!("Ludusavi's setting").into(),
@@ -148,22 +159,26 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         }),
     );
 
+    let full_options = options(&FULL, l.full_limit);
+    let differential_options = options(&DIFFERENTIAL, l.differential_limit);
     let full = select_field(
         "ludusavi-full-limit",
         Some(tr!("Full backups kept per game")),
         full_label(l.full_limit),
         false,
         st.full_open,
-        FULL.iter().map(|v| (full_label(*v).into(), *v == l.full_limit)).collect(),
+        full_options.iter().map(|v| (full_label(*v).into(), *v == l.full_limit)).collect(),
         cx,
         |d: &mut SettingsPage, _, cx| {
             d.saves_restore.full_open = !d.saves_restore.full_open;
             d.saves_restore.differential_open = false;
             cx.notify();
         },
-        |d: &mut SettingsPage, i, _, cx| {
+        move |d: &mut SettingsPage, i, _, cx| {
             d.saves_restore.full_open = false;
-            save(d, LudusaviSettingsPatch { full_limit: Some(FULL[i]), ..Default::default() }, cx);
+            if let Some(v) = full_options.get(i) {
+                save(d, LudusaviSettingsPatch { full_limit: Some(*v), ..Default::default() }, cx);
+            }
         },
     );
     let differential = select_field(
@@ -172,16 +187,18 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         differential_label(l.differential_limit),
         false,
         st.differential_open,
-        DIFFERENTIAL.iter().map(|v| (differential_label(*v).into(), *v == l.differential_limit)).collect(),
+        differential_options.iter().map(|v| (differential_label(*v).into(), *v == l.differential_limit)).collect(),
         cx,
         |d: &mut SettingsPage, _, cx| {
             d.saves_restore.differential_open = !d.saves_restore.differential_open;
             d.saves_restore.full_open = false;
             cx.notify();
         },
-        |d: &mut SettingsPage, i, _, cx| {
+        move |d: &mut SettingsPage, i, _, cx| {
             d.saves_restore.differential_open = false;
-            save(d, LudusaviSettingsPatch { differential_limit: Some(DIFFERENTIAL[i]), ..Default::default() }, cx);
+            if let Some(v) = differential_options.get(i) {
+                save(d, LudusaviSettingsPatch { differential_limit: Some(*v), ..Default::default() }, cx);
+            }
         },
     );
 
@@ -245,13 +262,15 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         });
     }
     rows.push(Row::action("rs-add", tr!("Add folder…")).icon(Icon::Add));
-    let fi = FULL.iter().position(|v| *v == l.full_limit).unwrap_or(0);
-    rows.push(Row::choice("rs-full", tr!("Full backups kept per game"), FULL.iter().map(|v| full_label(*v).into()).collect(), fi));
-    let di = DIFFERENTIAL.iter().position(|v| *v == l.differential_limit).unwrap_or(0);
+    let full = options(&FULL, l.full_limit);
+    let fi = full.iter().position(|v| *v == l.full_limit).unwrap_or(0);
+    rows.push(Row::choice("rs-full", tr!("Full backups kept per game"), full.iter().map(|v| full_label(*v).into()).collect(), fi));
+    let differential = options(&DIFFERENTIAL, l.differential_limit);
+    let di = differential.iter().position(|v| *v == l.differential_limit).unwrap_or(0);
     rows.push(Row::choice(
         "rs-differential",
         tr!("Differential backups"),
-        DIFFERENTIAL.iter().map(|v| differential_label(*v).into()).collect(),
+        differential.iter().map(|v| differential_label(*v).into()).collect(),
         di,
     ));
     let desc = match &st.manifest {
@@ -291,10 +310,14 @@ pub(super) fn console_apply(
             }
         }
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "rs-full" => {
-            save(d, LudusaviSettingsPatch { full_limit: Some(FULL[*index]), ..Default::default() }, cx)
+            if let Some(v) = options(&FULL, d.settings.ludusavi.full_limit).get(*index) {
+                save(d, LudusaviSettingsPatch { full_limit: Some(*v), ..Default::default() }, cx)
+            }
         }
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "rs-differential" => {
-            save(d, LudusaviSettingsPatch { differential_limit: Some(DIFFERENTIAL[*index]), ..Default::default() }, cx)
+            if let Some(v) = options(&DIFFERENTIAL, d.settings.ludusavi.differential_limit).get(*index) {
+                save(d, LudusaviSettingsPatch { differential_limit: Some(*v), ..Default::default() }, cx)
+            }
         }
         _ => return false,
     }
