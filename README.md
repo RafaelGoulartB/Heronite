@@ -89,7 +89,7 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 
 ## Console mode
 
-A controller-first layout for the couch or a TV. It covers the whole app: the library, game pages, downloads, the Wine Manager, Epic, GOG, Amazon Games, emulators, statistics, and settings. You can use a gamepad or the keyboard, and an on-screen keyboard is available for text fields. Turn it on from the palette (**Console mode**); Heronite remembers it on the next start. The desktop layout does not change.
+A controller-first layout for the couch or a TV. It covers the whole app: the library, game pages, downloads, the Wine Manager, Epic, GOG, Amazon Games, emulators, statistics, and settings. You can use a gamepad or the keyboard, and an on-screen keyboard is available for text fields. Turn it on from the palette (**Console mode**); Heronite remembers it on the next start. The desktop layout does not change. Its menu (<kbd>Start</kbd>) also has **Power**, to suspend, restart or shut down the computer without leaving the couch.
 
 <table>
   <tr>

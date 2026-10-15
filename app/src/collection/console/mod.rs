@@ -11,6 +11,7 @@
 mod actions;
 mod game;
 mod home;
+mod power;
 mod sidebar;
 
 use gpui_kit::prelude::*;
@@ -72,13 +73,21 @@ impl CollectionView {
     /// At start: reopens in console mode when it was left on
     /// (`HERONITE_DEBUG_CONSOLE=1` forces it, without saving).
     pub(super) fn console_init(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // `HERONITE_DEBUG_CONSOLE=1`, or `=game:<key>` to open that game's page.
+        // `HERONITE_DEBUG_CONSOLE=1`, `=game:<key>` to open that game's page,
+        // `=menu` for the menu, `=power` for the Power menu or
+        // `=power:reboot|poweroff` for its question.
         let debug = crate::env::value("HERONITE_DEBUG_CONSOLE");
         if self.ui.console_mode || debug.is_some() {
             self.enter_console(window, cx);
         }
         if let Some(key) = debug.as_deref().and_then(|d| d.strip_prefix("game:")) {
             self.open_game_page(key.to_string().into());
+        }
+        if debug.as_deref() == Some("menu") {
+            self.open_sidebar();
+        }
+        if let Some(which) = debug.as_deref().and_then(|d| d.strip_prefix("power")) {
+            self.debug_power(which, cx);
         }
     }
 

@@ -1,6 +1,6 @@
 //! The console menu (Start / Menu, or B on a top screen): a full-height
 //! sidebar over the dimmed screen with every page, Add game,
-//! Settings and the way back to desktop mode.
+//! Settings, the way back to desktop mode and Power.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -23,6 +23,8 @@ pub(super) enum Item {
     Stores,
     AddGame,
     Desktop,
+    /// Suspend, restart, shut down (`power.rs`).
+    Power,
     Separator,
 }
 
@@ -40,6 +42,7 @@ impl Item {
             Item::Stores => crate::pages::stores::title(),
             Item::AddGame => tr!("Add game"),
             Item::Desktop => tr!("Desktop mode"),
+            Item::Power => tr!("Power"),
             Item::Separator => "",
         }
     }
@@ -50,12 +53,13 @@ impl Item {
             Item::Stores => Icon::Storefront,
             Item::AddGame => Icon::Add,
             Item::Desktop => Icon::Logout,
+            Item::Power => Icon::PowerSettingsNew,
             Item::Separator => Icon::Menu,
         }
     }
 }
 
-pub(super) const ITEMS: [Item; 11] = [
+pub(super) const ITEMS: [Item; 12] = [
     Item::Go(Page::Collection),
     Item::Go(Page::Downloads),
     Item::Go(Page::WineManager),
@@ -67,6 +71,7 @@ pub(super) const ITEMS: [Item; 11] = [
     Item::Go(Page::Settings),
     Item::Separator,
     Item::Desktop,
+    Item::Power,
 ];
 
 fn step(from: usize, down: bool) -> usize {
@@ -105,6 +110,7 @@ impl CollectionView {
                     }
                     Item::AddGame => self.console_add_game(window, cx),
                     Item::Desktop => self.set_console(false, window, cx),
+                    Item::Power => self.console_power_menu(cx),
                     Item::Separator => {}
                 }
             }
@@ -116,7 +122,8 @@ impl CollectionView {
     pub(super) fn render_sidebar(&self, cx: &App) -> Option<AnyElement> {
         let focused = self.console.sidebar?;
         let downloads = crate::services::try_downloads(cx).and_then(|s| super::super::nav::downloads_meta(Some(s.read(cx))));
-        let mut list = div().flex().flex_col().gap(u(6.));
+        // Sized so every item fits the 800-unit console height (the list does not scroll).
+        let mut list = div().flex().flex_col().gap(u(4.));
         for (i, item) in ITEMS.iter().enumerate() {
             if *item == Item::Separator {
                 list = list.child(div().my(u(10.)).mx(u(18.)).h(px(1.)).bg(theme::white_a(0.1)));
@@ -137,7 +144,7 @@ impl CollectionView {
             };
             list = list.child(
                 kit::row_base(on)
-                    .h(u(60.))
+                    .h(u(54.))
                     .child(icon(item.icon(), u(26.), if on { fg } else { theme::text_muted().into() }))
                     .child(
                         div()
