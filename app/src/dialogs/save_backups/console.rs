@@ -6,7 +6,7 @@ use gpui_kit::*;
 use heronite_emulation::ludusavi::restore::FileKind;
 use heronite_i18n::{tr, trn};
 
-use super::render::{backup_line, group_facts, group_help, group_title, groups, overwrite_line, short_path, source_name, target_line};
+use super::render::{backup_line, group_facts, group_help, group_title, overwrite_line, short_path, source_name, target_line};
 use super::{BackupKey, Load, SaveBackupsView, Stage};
 use crate::console::list::{Outcome, Row, Value};
 use crate::console::osk::{Osk, OskEvent};
@@ -120,10 +120,11 @@ impl SaveBackupsView {
                 }
                 rows.push(Row::action("sb-refresh", tr!("Refresh")).icon(Icon::Refresh).enabled(!busy));
             }
-            Stage::Plan(plan) => {
+            Stage::Plan(preview) => {
+                let plan = &preview.plan;
                 rows.push(Row::header(tr!("Files to restore")));
-                for g in groups(plan, &l.target) {
-                    let mut desc = group_facts(&g);
+                for g in &preview.groups {
+                    let mut desc = group_facts(g);
                     if let Some((dir, _)) = g.folders.first() {
                         desc = format!("{desc} \u{b7} {dir}");
                     }

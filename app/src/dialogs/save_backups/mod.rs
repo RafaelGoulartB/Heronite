@@ -28,6 +28,7 @@ use heronite_launch::SystemProbe;
 
 use super::ludusavi_backup::{describe, Outcome};
 use super::settings_panel::logic::{GameFacts, RunKind};
+use render::{groups, Group};
 
 /// A restore copies the whole backup; give big ones time.
 const RESTORE_TIMEOUT: Duration = Duration::from_secs(600);
@@ -78,6 +79,19 @@ impl BackupKey {
     }
 }
 
+/// A previewed restore and its groups, summed up once (not on every frame).
+pub(crate) struct Preview {
+    plan: RestorePlan,
+    groups: Vec<Group>,
+}
+
+impl Preview {
+    fn new(plan: RestorePlan) -> Self {
+        let groups = groups(&plan, &plan.request.target);
+        Self { plan, groups }
+    }
+}
+
 enum Load {
     Idle,
     Loading,
@@ -90,7 +104,7 @@ enum Stage {
     List,
     Planning,
     /// Preview: the user picks the files.
-    Plan(Box<RestorePlan>),
+    Plan(Box<Preview>),
     Restoring,
     Done(RestoreOutcome),
 }
@@ -369,7 +383,7 @@ impl SaveBackupsView {
             RESTORE_TIMEOUT,
             move |env| plan_restore(env, &tool, request),
             |v, result, _| match result {
-                Ok(plan) => v.stage = Stage::Plan(Box::new(plan)),
+                Ok(plan) => v.stage = Stage::Plan(Box::new(Preview::new(plan))),
                 Err(e) => {
                     v.stage = Stage::List;
                     v.notice = Some((e, true));
@@ -384,10 +398,13 @@ impl SaveBackupsView {
         if kind == FileKind::Unmapped {
             return;
         }
-        if let Stage::Plan(plan) = &mut self.stage {
-            let on = !plan.files.iter().any(|f| f.kind == kind && f.selected);
-            for f in plan.files.iter_mut().filter(|f| f.kind == kind) {
+        if let Stage::Plan(preview) = &mut self.stage {
+            let on = !preview.plan.files.iter().any(|f| f.kind == kind && f.selected);
+            for f in preview.plan.files.iter_mut().filter(|f| f.kind == kind) {
                 f.selected = on;
+            }
+            for g in preview.groups.iter_mut().filter(|g| g.kind == kind) {
+                g.selected = on;
             }
         }
         cx.notify();
@@ -403,18 +420,19 @@ impl SaveBackupsView {
 
     /// Restores the files picked in the preview.
     pub(crate) fn confirm_restore(&mut self, cx: &mut Context<Self>) {
-        let Stage::Plan(plan) = &self.stage else { return };
+        if !matches!(self.stage, Stage::Plan(_)) {
+            return;
+        }
         if self.running_now(cx) {
             self.notice = Some((tr!("Close the game before restoring a save.").into(), true));
             cx.notify();
             return;
         }
         let Some(tool) = self.loaded().map(|l| l.tool.clone()) else { return };
-        let plan = (**plan).clone();
-        let back = plan.clone();
+        let Stage::Plan(preview) = std::mem::replace(&mut self.stage, Stage::Restoring) else { return };
+        let plan = preview.plan.clone();
         let app_name = self.game.app_name.clone();
         let steam = self.steam_app_id.clone();
-        self.stage = Stage::Restoring;
         self.notice = None;
         cx.notify();
         self.background(
@@ -436,7 +454,15 @@ impl SaveBackupsView {
                 Err(e) => {
                     log::error!("Ludusavi restore failed: {e}");
                     v.notice = Some((e, true));
-                    v.stage = Stage::Plan(Box::new(back));
+                    // A restore stopped part-way keeps its undo copy: back to
+                    // the list, where Undo is.
+                    let latest = undo::latest(&v.paths.save_restore_undo(), &v.game.app_name);
+                    let mut kept = false;
+                    if let Load::Ready(l) = &mut v.load {
+                        kept = latest.as_ref().map(|r| &r.dir) != l.undo.as_ref().map(|r| &r.dir);
+                        l.undo = latest;
+                    }
+                    v.stage = if kept { Stage::List } else { Stage::Plan(preview) };
                 }
             },
         );
@@ -454,12 +480,18 @@ impl SaveBackupsView {
             cx.notify();
             return;
         }
+        let steam = self.steam_app_id.clone();
         self.working = true;
         cx.notify();
         self.background(
             cx,
             RESTORE_TIMEOUT,
-            move |_| undo::undo(&record).map_err(|e| format!("{e:#}")),
+            move |_| {
+                if steam.as_deref().is_some_and(steam_game_running) {
+                    return Err(tr!("Close the game before restoring a save.").to_string());
+                }
+                undo::undo(&record).map_err(|e| format!("{e:#}"))
+            },
             |v, result, _| {
                 v.working = false;
                 v.notice = Some(match result {

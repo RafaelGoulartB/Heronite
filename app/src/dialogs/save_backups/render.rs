@@ -520,16 +520,15 @@ impl SaveBackupsView {
             .into_any_element()
     }
 
-    fn render_plan(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let (Stage::Plan(plan), Some(l)) = (&self.stage, self.loaded()) else { return div().into_any_element() };
-        let plan: RestorePlan = (**plan).clone();
+    fn render_plan(&self, cx: &mut Context<Self>) -> AnyElement {
+        let (Stage::Plan(preview), Some(l)) = (&self.stage, self.loaded()) else { return div().into_any_element() };
+        let (plan, groups) = (&preview.plan, &preview.groups);
         let when = l
             .sources
             .get(self.source)
             .and_then(|s| s.backups.iter().find(|b| b.id == plan.request.backup_id))
             .map(|b| format_time(&b.when))
             .unwrap_or_else(|| plan.request.backup_id.clone());
-        let groups = groups(&plan, &l.target);
         let selected = plan.selected().count();
 
         let mut col = div().flex().flex_col().gap(px(10.));
@@ -537,7 +536,7 @@ impl SaveBackupsView {
             col =
                 col.child(card_box().py(px(12.)).child(meta_text(tr!("Nothing in this backup belongs in the game's prefix or folders."))));
         }
-        for g in &groups {
+        for g in groups {
             col = col.child(self.group_card(g, cx));
         }
         let actions = div()
@@ -560,7 +559,7 @@ impl SaveBackupsView {
             .child(self.render_target(l))
             .child(caption(tr!("Restore the backup of {when}", when)))
             .child(col)
-            .child(div().mt(px(10.)).mx(px(6.)).child(meta_text(overwrite_line(&plan))))
+            .child(div().mt(px(10.)).mx(px(6.)).child(meta_text(overwrite_line(plan))))
             .child(actions)
             .into_any_element()
     }
