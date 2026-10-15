@@ -37,6 +37,7 @@ mod steam_copy;
 mod system_glue;
 mod timeline;
 mod update_banner;
+mod view_filters;
 mod welcome;
 pub use screenshots::screenshots_global;
 pub mod stage;
@@ -69,6 +70,10 @@ pub struct CollectionView {
     lib: Option<Arc<Library>>,
     wiki: Arc<WikiCache>,
     ui: UiState,
+    /// Custom categories (`games.customCategories`), loaded with the library.
+    categories: heronite_data::categories::Categories,
+    /// Games with an update waiting (app names), for "Only with updates".
+    update_apps: std::collections::HashSet<String>,
     search: String,
     search_input: Entity<InputState>,
     open_menu: Option<Menu>,
@@ -80,6 +85,8 @@ pub struct CollectionView {
     /// Smooth mouse-wheel scrolling of the game list.
     wheel: WheelScroll,
     facet_flyout: Option<FacetKind>,
+    /// The View menu's Category flyout is open.
+    category_flyout: bool,
     refreshing: bool,
     runtime: Arc<GameRuntime>,
     /// app_name -> started tracking (Launching/Running).
@@ -180,6 +187,8 @@ impl CollectionView {
             lib: None,
             wiki: Arc::new(WikiCache::default()),
             ui,
+            categories: Default::default(),
+            update_apps: Default::default(),
             search: String::new(),
             search_input,
             open_menu: None,
@@ -188,6 +197,7 @@ impl CollectionView {
             menu_parts: 0,
             wheel: WheelScroll::default(),
             facet_flyout: None,
+            category_flyout: false,
             refreshing: false,
             runtime,
             playing: HashMap::new(),

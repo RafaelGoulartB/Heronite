@@ -336,21 +336,46 @@ pub struct ViewQuery {
     pub install: InstallFilter,
     pub facets: FacetFilters,
     pub sort: SortMode,
+    /// The sort's order turned around (Z-A, least played, played longest ago).
+    pub descending: bool,
+    pub favourites_only: bool,
+    /// Games that run without a connection ([`runs_offline`]).
+    pub offline_only: bool,
 }
 
-/// Search of the Collection screen: the trimmed, lower-cased query must be a
-/// substring of the lower-cased title (nothing else is searched).
-pub fn matches_search(game: &CollectionGame, query_lower: &str) -> bool {
-    query_lower.is_empty() || game.title_lower.contains(query_lower)
+/// Whether the game plays without a connection: the library's
+/// `canRunOffline` (set per game for Epic, always on for GOG, Amazon and
+/// local programs, off for browser games). Emulated games, which have no
+/// such flag, run offline.
+pub fn runs_offline(game: &CollectionGame) -> bool {
+    match game.game.rest.get("canRunOffline").and_then(serde_json::Value::as_bool) {
+        Some(flag) => flag,
+        None => game.launch_kind.as_deref() == Some("emulator"),
+    }
+}
+
+/// Search of the Collection screen: every word of the query must match the
+/// title or the store's own title, ignoring case and accents, with the
+/// palette's tiers (exact, prefix, word start, inside a word, letters in
+/// order). `None` when it does not match; higher is better.
+pub fn search_score(game: &CollectionGame, tokens: &[&str]) -> Option<i32> {
+    let title = crate::fuzzy::fold(&game.title);
+    let store_title = crate::fuzzy::fold(&game.game.title);
+    let alt = if store_title == title { "" } else { store_title.as_str() };
+    crate::fuzzy::score_entry(tokens, &crate::fuzzy::Haystack { title: &title, alt, keywords: "" })
 }
 
 /// The sort comparator of `index.tsx`:
 /// - `playtime`: more minutes first; ties by title;
 /// - `lastPlayed`: most recent first, games never played last (ties by title);
 /// - always: title with `localeCompare`.
-pub fn compare_games(a: &CollectionGame, b: &CollectionGame, sort: SortMode) -> Ordering {
+///
+/// `descending` turns the sort's own key around; ties stay A-Z and games
+/// never played stay last.
+pub fn compare_games(a: &CollectionGame, b: &CollectionGame, sort: SortMode, descending: bool) -> Ordering {
+    let turn = |o: Ordering| if descending { o.reverse() } else { o };
     if sort == SortMode::Playtime {
-        let delta = b.playtime_minutes.cmp(&a.playtime_minutes);
+        let delta = turn(b.playtime_minutes.cmp(&a.playtime_minutes));
         if delta != Ordering::Equal {
             return delta;
         }
@@ -365,25 +390,48 @@ pub fn compare_games(a: &CollectionGame, b: &CollectionGame, sort: SortMode) -> 
             if b_last.is_empty() {
                 return Ordering::Less;
             }
-            let delta = b_last.cmp(a_last);
+            let delta = turn(b_last.cmp(a_last));
             if delta != Ordering::Equal {
                 return delta;
             }
         }
     }
-    locale_cmp(&a.title, &b.title)
+    let by_title = locale_cmp(&a.title, &b.title);
+    if sort == SortMode::Title {
+        turn(by_title)
+    } else {
+        by_title
+    }
 }
 
-/// Install filter + search + facets, then sort (stable).
+/// Install filter + search + facets + the "only" switches, then sort
+/// (stable).
 pub fn filter_games(games: &[Game], query: &ViewQuery) -> Vec<Game> {
-    let needle = query.search.trim().to_lowercase();
-    let mut out: Vec<Game> = games
+    filter_games_where(games, query, &|_| true)
+}
+
+/// [`filter_games`] with one more condition from the app (categories, games
+/// with an update). While searching, the best matches come first and the
+/// sort orders the ties.
+pub fn filter_games_where(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&CollectionGame) -> bool) -> Vec<Game> {
+    let folded = crate::fuzzy::fold(query.search.trim());
+    let tokens = crate::fuzzy::tokens(&folded);
+    let mut out: Vec<(i32, Game)> = games
         .iter()
-        .filter(|g| matches_search(g, &needle) && query.install.matches(g.installed) && matches_facets(g, &query.facets))
-        .cloned()
+        .filter(|g| {
+            query.install.matches(g.installed)
+                && (!query.favourites_only || g.favourite)
+                && (!query.offline_only || runs_offline(g))
+                && matches_facets(g, &query.facets)
+                && keep(g)
+        })
+        .filter_map(|g| {
+            let score = if tokens.is_empty() { Some(0) } else { search_score(g, &tokens) };
+            score.map(|s| (s, g.clone()))
+        })
         .collect();
-    out.sort_by(|a, b| compare_games(a, b, query.sort));
-    out
+    out.sort_by(|(sa, a), (sb, b)| sb.cmp(sa).then_with(|| compare_games(a, b, query.sort, query.descending)));
+    out.into_iter().map(|(_, g)| g).collect()
 }
 
 /// A section of the grouped list.
@@ -610,6 +658,73 @@ mod tests {
         );
         assert_eq!(options.genre.len(), 2);
         assert!(options.series.is_empty());
+    }
+
+    #[test]
+    fn descending_turns_the_sort_key_around() {
+        let games = vec![
+            g("a", "Zelda", |s| {
+                s.minutes = 10;
+                s.last_played = Some("2026-01-01T00:00:00.000Z".into());
+            }),
+            g("b", "alpha", |s| s.minutes = 10),
+            g("c", "Beta", |s| {
+                s.minutes = 300;
+                s.last_played = Some("2026-05-01T00:00:00.000Z".into());
+            }),
+        ];
+        let titles = |sort| {
+            let q = ViewQuery { sort, descending: true, ..Default::default() };
+            filter_games(&games, &q).iter().map(|g| g.title.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(titles(SortMode::Title), ["Zelda", "Beta", "alpha"]);
+        // least played first; the 10m tie stays A-Z
+        assert_eq!(titles(SortMode::Playtime), ["alpha", "Zelda", "Beta"]);
+        // played longest ago first; never played still last
+        assert_eq!(titles(SortMode::LastPlayed), ["Zelda", "Beta", "alpha"]);
+    }
+
+    #[test]
+    fn search_forgives_case_accents_and_missing_letters() {
+        let games = vec![
+            g("w", "The Witcher 3: Wild Hunt", |_| {}),
+            g("o", "Ōkami HD", |_| {}),
+            g("p", "Pokémon Legends", |_| {}),
+            g("h", "Hollow Knight", |s| s.store_title = Some("HK Game of the Year".into())),
+            g("x", "Hitman", |_| {}),
+        ];
+        let run = |q: &str| {
+            filter_games(&games, &ViewQuery { search: q.into(), ..Default::default() })
+                .iter()
+                .map(|g| g.app_name.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(run("okami"), ["o"]);
+        assert_eq!(run("POKEMON"), ["p"]);
+        assert_eq!(run("witcr"), ["w"], "letters in order");
+        assert_eq!(run("wild witcher"), ["w"], "every word, any order");
+        assert_eq!(run("year"), ["h"], "the store's own title too");
+        assert!(run("zzz").is_empty());
+        // best match first, whatever the sort says: prefixes (shorter
+        // first), then word starts
+        assert_eq!(run("h"), ["x", "h", "o", "w"]);
+    }
+
+    #[test]
+    fn only_switches_and_an_app_condition() {
+        let games = vec![
+            g("fav", "A", |s| {
+                s.favourite = true;
+                s.offline = Some(false);
+            }),
+            g("off", "B", |s| s.offline = Some(true)),
+            g("plain", "C", |_| {}),
+        ];
+        let run = |q: ViewQuery| filter_games(&games, &q).iter().map(|g| g.app_name.clone()).collect::<Vec<_>>();
+        assert_eq!(run(ViewQuery { favourites_only: true, ..Default::default() }), ["fav"]);
+        assert_eq!(run(ViewQuery { offline_only: true, ..Default::default() }), ["off"]);
+        let kept = filter_games_where(&games, &ViewQuery::default(), &|g| g.app_name != "off");
+        assert_eq!(kept.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["fav", "plain"]);
     }
 
     #[test]

@@ -186,6 +186,13 @@ impl Downloads {
             + usize::from(self.fake_update.as_ref().is_some_and(|a| !self.has_real_update(a)))
     }
 
+    /// App names of every game with an update waiting (any store).
+    pub fn update_apps(&self) -> HashSet<String> {
+        let mut all: HashSet<String> = self.updates.iter().chain(&self.gog.updates).chain(&self.amazon.updates).cloned().collect();
+        all.extend(self.fake_update.clone());
+        all
+    }
+
     fn has_real_update(&self, app_name: &str) -> bool {
         self.updates.contains(app_name) || self.gog.updates.contains(app_name) || self.amazon.updates.contains(app_name)
     }

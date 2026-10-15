@@ -31,9 +31,24 @@ fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
     })
 }
 
-pub(super) fn build_groups(lib: &Library, ui: &UiState, search: &str, is_playing: &dyn Fn(&str) -> bool) -> Vec<GroupVm> {
-    let query = ViewQuery { search: search.to_string(), install: ui.install_filter, facets: ui.facet_filters.clone(), sort: ui.sort };
-    let filtered = collection::filter_games(&lib.games, &query);
+/// `keep`: the app's own conditions (categories, games with an update).
+pub(super) fn build_groups(
+    lib: &Library,
+    ui: &UiState,
+    search: &str,
+    keep: &dyn Fn(&CollectionGame) -> bool,
+    is_playing: &dyn Fn(&str) -> bool,
+) -> Vec<GroupVm> {
+    let query = ViewQuery {
+        search: search.to_string(),
+        install: ui.install_filter,
+        facets: ui.facet_filters.clone(),
+        sort: ui.sort,
+        descending: ui.sort_descending,
+        favourites_only: ui.only.favourites,
+        offline_only: ui.only.offline,
+    };
+    let filtered = collection::filter_games_where(&lib.games, &query, keep);
     if !ui.group_by_status {
         return vec![GroupVm {
             id: "all".into(),

@@ -53,8 +53,12 @@ impl CollectionView {
     pub(super) fn refresh_groups(&mut self) {
         let Some(lib) = self.lib.clone() else { return };
         let playing = &self.playing;
+        let (ui, categories, updates) = (&self.ui, &self.categories, &self.update_apps);
+        let keep = |g: &heronite_data::CollectionGame| {
+            categories.matches(&ui.categories, &g.runner, &g.app_name) && (!ui.only.updates || updates.contains(&g.app_name))
+        };
         let groups =
-            data::build_groups(&lib, &self.ui, &self.search, &|key| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name)));
+            data::build_groups(&lib, ui, &self.search, &keep, &|key| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name)));
         self.set_groups(groups);
         self.refresh_focus();
     }

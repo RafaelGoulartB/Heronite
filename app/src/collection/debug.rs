@@ -10,7 +10,8 @@ use super::{context_menu, CollectionView};
 
 impl CollectionView {
     /// `HERONITE_DEBUG_MENU=<card key>` opens its context menu (with the
-    /// status flyout), `HERONITE_DEBUG_DROPDOWN=view|nav|facets|stores`
+    /// status flyout; `HERONITE_DEBUG_MENU_CATEGORIES=1` for the categories
+    /// one), `HERONITE_DEBUG_DROPDOWN=view|nav|facets|categories|stores`
     /// opens a header menu, `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
     /// the first render that has a window (`open_pending_debug_dialog`).
     pub(super) fn apply_debug_env(&mut self) {
@@ -18,8 +19,10 @@ impl CollectionView {
             self.context_menu = Some(context_menu::ContextMenuState {
                 key: key.into(),
                 position: point(px(200.), px(160.)),
-                status_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_none(),
+                status_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_none()
+                    && crate::env::value("HERONITE_DEBUG_MENU_CATEGORIES").is_none(),
                 install_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_some(),
+                categories_open: crate::env::value("HERONITE_DEBUG_MENU_CATEGORIES").is_some(),
             });
         }
         if let Some(which) = crate::env::value("HERONITE_DEBUG_DIALOG") {
@@ -31,6 +34,10 @@ impl CollectionView {
                 "nav" => Some(Menu::Nav),
                 "facets" => {
                     self.facet_flyout = Some(FacetKind::Developer);
+                    Some(Menu::View)
+                }
+                "categories" => {
+                    self.category_flyout = true;
                     Some(Menu::View)
                 }
                 "stores" => {
@@ -50,6 +57,7 @@ impl CollectionView {
                 self.open_settings_section(section.unwrap_or(crate::pages::settings::Section::Appearance), window, cx);
             }
             "statuses" => self.open_manage_statuses(window, cx),
+            "categories" => self.open_manage_categories(window, cx),
             w if w == "onboarding" || w.starts_with("onboarding:") => {
                 let step = w.strip_prefix("onboarding:").and_then(crate::dialogs::onboarding::Step::parse);
                 self.open_onboarding_at(step, cx);

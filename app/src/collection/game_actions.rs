@@ -29,6 +29,11 @@ pub(super) enum GameAction {
     InstallWay(WayKind),
     /// Sets this status (`CompletionStatus::id`).
     Status(String),
+    /// Puts the game in this custom category, or takes it out.
+    Category {
+        name: String,
+        on: bool,
+    },
     Favourite,
     OpenFolder,
     Settings,
@@ -196,6 +201,20 @@ impl CollectionView {
                 );
             }
         }
+        for name in self.categories.names() {
+            let on = self.categories.contains(name, &game.runner, &game.app_name);
+            let label = if on { tr!("Remove from category: {name}", name) } else { tr!("Add to category: {name}", name) };
+            v.push(
+                GameActionItem::new(
+                    A::Category { name: name.to_string(), on: !on },
+                    format!("cat-{name}"),
+                    label,
+                    Icon::Label,
+                    "category categories tag group categoria categorias grupo",
+                )
+                .palette_only(),
+            );
+        }
         v
     }
 
@@ -207,6 +226,7 @@ impl CollectionView {
             A::Primary => self.install_or_play(key, window, cx),
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
             A::Status(id) => self.set_status(key, id.clone(), cx),
+            A::Category { name, on } => self.set_game_category(key, name, *on, cx),
             A::Favourite => {
                 self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_favourite(paths, &g.app_name, &g.title))
             }

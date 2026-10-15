@@ -177,7 +177,10 @@ impl CollectionView {
             return s.clone();
         }
         let svc = crate::services::downloads(cx);
-        self.epic.subs.push(cx.observe(&svc, |_, _, cx| cx.notify()));
+        self.epic.subs.push(cx.observe(&svc, |this, svc, cx| {
+            this.sync_update_apps(&svc, cx);
+            cx.notify();
+        }));
         self.epic.subs.push(cx.subscribe(&svc, |this, _, ev: &DownloadsEvent, cx| {
             match ev {
                 DownloadsEvent::LibraryChanged => this.reload(cx),

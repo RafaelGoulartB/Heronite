@@ -1,5 +1,5 @@
 //! Right-click menu of a card (`CollectionContextMenu`): glass menu (radius
-//! 14, items radius 10) with the status flyout.
+//! 14, items radius 10) with the status and categories flyouts.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -19,6 +19,8 @@ pub(super) struct ContextMenuState {
     pub status_open: bool,
     /// Flyout of the Install row (the other ways to install).
     pub install_open: bool,
+    /// Flyout of the Categories row.
+    pub categories_open: bool,
 }
 
 pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
@@ -57,7 +59,7 @@ pub(super) fn place_flyout(fly: Div, left: bool) -> Div {
 
 impl CollectionView {
     pub(super) fn open_context_menu(&mut self, key: SharedString, position: Point<Pixels>, cx: &mut Context<Self>) {
-        self.context_menu = Some(ContextMenuState { key, position, status_open: false, install_open: false });
+        self.context_menu = Some(ContextMenuState { key, position, status_open: false, install_open: false, categories_open: false });
         cx.notify();
     }
 
@@ -95,13 +97,15 @@ impl CollectionView {
         let lib = self.lib.clone()?;
         let game = lib.get(&state.key)?.clone();
         let key = state.key.clone();
-        let (position, status_open, install_open) = (state.position, state.status_open, state.install_open);
+        let (position, status_open, install_open, categories_open) =
+            (state.position, state.status_open, state.install_open, state.categories_open);
         let playing = self.playing.contains_key(&game.app_name);
         let viewport = window.viewport_size();
         let flyout_left = f32::from(viewport.width - position.x) < 280. + 240.;
 
         let mut menu = paper().min_w(px(240.));
         menu = menu.child(Self::status_row(&lib, &game, &key, status_open, flyout_left, cx));
+        menu = menu.child(self.categories_row(&game, &key, categories_open, flyout_left, cx));
         menu = menu.child(self.primary_row(&game, &key, playing, install_open, flyout_left, cx));
         // Everything else comes from the game's action list (shared with the
         // command palette, see `game_actions.rs`).
@@ -132,6 +136,7 @@ impl CollectionView {
                         if let Some(m) = this.context_menu.as_mut() {
                             m.status_open = true;
                             m.install_open = false;
+                            m.categories_open = false;
                         }
                         cx.notify();
                     }
@@ -160,6 +165,59 @@ impl CollectionView {
         status_row
     }
 
+    /// "Categories" row with its flyout: every category with a check (a
+    /// click puts the game in or out, the menu stays open), then "Manage
+    /// categories…".
+    fn categories_row(&self, game: &CollectionGame, key: &SharedString, open: bool, flyout_left: bool, cx: &mut Context<Self>) -> Div {
+        let mut row = div().relative().child(
+            item("cm-categories")
+                .child(icon(Icon::Label, px(18.), theme::text_muted()))
+                .child(tr!("Categories"))
+                .child(div().flex_1())
+                .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()))
+                .on_hover(cx.listener(|this, h: &bool, _, cx| {
+                    if *h {
+                        if let Some(m) = this.context_menu.as_mut() {
+                            m.categories_open = true;
+                            m.status_open = false;
+                            m.install_open = false;
+                        }
+                        cx.notify();
+                    }
+                })),
+        );
+        if !open {
+            return row;
+        }
+        let mut fly = paper().py(px(6.)).min_w(px(220.)).max_h(px(420.));
+        let mut list = div().id("cm-cat-list").flex().flex_col().gap(px(2.)).overflow_y_scroll().max_h(px(330.));
+        if self.categories.is_empty() {
+            list = list
+                .child(div().px(px(12.)).py(px(6.)).text_size(px(13.)).text_color(theme::text_muted()).child(tr!("No categories yet.")));
+        }
+        for (i, name) in self.categories.names().enumerate() {
+            let on = self.categories.contains(name, &game.runner, &game.app_name);
+            let (k, name) = (key.clone(), name.to_string());
+            list = list.child(
+                item(SharedString::from(format!("cm-cat-{i}")))
+                    .py(px(8.))
+                    .child(crate::ui::controls::mini_checkbox(SharedString::from(format!("cm-cat-{i}-sw")), on, false).mt(px(0.)))
+                    .child(div().min_w_0().truncate().child(name.clone()))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_game_category(&k, &name, !on, cx))),
+            );
+        }
+        fly = fly.child(list).child(
+            item("cm-cat-manage")
+                .py(px(8.))
+                .child(icon(Icon::Add, px(18.), theme::text_muted()))
+                .child(tr!("Manage categories…"))
+                .on_click(cx.listener(|this, _, window, cx| this.open_manage_categories(window, cx))),
+        );
+        let fly = place_flyout(div().absolute().top(px(-6.)).occlude().child(fly), flyout_left);
+        row = row.child(fly);
+        row
+    }
+
     /// Play / Stop / Install; a not installed game with other ways to
     /// install gets them in a flyout (same as the arrow of the focus panel).
     fn primary_row(
@@ -186,6 +244,7 @@ impl CollectionView {
                     if let Some(m) = this.context_menu.as_mut() {
                         m.status_open = false;
                         m.install_open = more;
+                        m.categories_open = false;
                     }
                     cx.notify();
                 }
@@ -211,9 +270,10 @@ impl CollectionView {
         let (k, action) = (key.clone(), a.action);
         item(SharedString::from(format!("cm-{}", a.id)))
             .on_hover(cx.listener(|this, h: &bool, _, cx| {
-                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open)) {
+                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open)) {
                     m.status_open = false;
                     m.install_open = false;
+                    m.categories_open = false;
                     cx.notify();
                 }
             }))

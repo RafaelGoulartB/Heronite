@@ -18,6 +18,7 @@ use crate::images::to_chain;
 struct Loaded {
     lib: Library,
     wiki: WikiCache,
+    categories: heronite_data::categories::Categories,
     covers: HashMap<SharedString, Vec<ImageRef>>,
     stages: HashMap<SharedString, Vec<ImageRef>>,
 }
@@ -26,6 +27,7 @@ fn load_all(data_paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Load
     let t = Instant::now();
     let lib = Library::load_with(data_paths, include_hidden)?;
     let wiki = WikiCache::load(data_paths);
+    let categories = heronite_data::categories::Categories::load(data_paths);
     let shots = (!lib.settings.screenshots.folder.is_empty()).then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
     let ctx = ArtContext::new(data_paths, shots.as_deref());
     let mut covers = HashMap::new();
@@ -36,7 +38,7 @@ fn load_all(data_paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Load
         stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, covers, stages })
+    Ok(Loaded { lib, wiki, categories, covers, stages })
 }
 
 impl CollectionView {
@@ -107,6 +109,8 @@ impl CollectionView {
         self.cover_chains = l.covers;
         self.stage_chains = l.stages;
         self.wiki = Arc::new(l.wiki);
+        self.categories = l.categories;
+        self.prune_category_filter();
         // The first games of a new setup (Steam import) get a selection too.
         let before = self.lib.as_ref().map_or(0, |lib| lib.games.len());
         let was_empty = before == 0;

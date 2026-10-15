@@ -4,6 +4,7 @@
 //! ranks them (see [`super::view`]).
 
 use gpui_kit::SharedString;
+use heronite_data::categories::{Categories, UNCATEGORIZED};
 use heronite_data::collection::{FacetOptions, FACET_KINDS};
 use heronite_data::ui_state::UiState;
 use heronite_data::{FacetKind, InstallFilter, SortMode};
@@ -11,6 +12,7 @@ use heronite_i18n::{tr, trn};
 
 use super::matching::{fold, Haystack};
 use crate::collection::game_actions::{GameAction, GameActionItem};
+use crate::collection::view_filters::{category_label, Only};
 use crate::icons::Icon;
 use crate::pages::commands::PageCommand;
 use crate::pages::settings::Section;
@@ -67,6 +69,12 @@ pub(super) enum ViewCmd {
     ClearFilters,
     /// Selects (or, when it is the active one, clears) a facet value.
     Facet(FacetKind, String),
+    SortDirection,
+    /// Turns one "Only" switch on or off.
+    Only(Only, bool),
+    /// Selects or clears a category of the filter.
+    Category(String),
+    ManageCategories,
 }
 
 /// What a game entry can do besides being selected.
@@ -346,7 +354,7 @@ fn facet_keywords(k: FacetKind) -> &'static str {
 
 /// The Collection's View menu (sort, show, grouping, hidden games, facet
 /// filters) as commands, for the state in `ui`.
-pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions) -> Vec<Entry> {
+pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Categories) -> Vec<Entry> {
     let mut v = Vec::new();
     let cmd = |c: ViewCmd, id: String, title: &str, sub: &str, icon: Icon, kw: &str| {
         Entry::new(Kind::Action, Act::View(c), id, title, sub, icon, kw)
@@ -369,6 +377,74 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions) -> Vec<Entry> {
         }
         v.push(e);
     }
+    v.push(cmd(
+        ViewCmd::SortDirection,
+        "view:sort:direction".into(),
+        if ui.sort_descending { tr!("Sort ascending") } else { tr!("Sort descending") },
+        tr!("Order of the Collection list"),
+        if ui.sort_descending { Icon::ArrowUpward } else { Icon::ArrowDownward },
+        "order reverse direction ascending descending ordem inverter crescente decrescente",
+    ));
+    for (only, on_title, off_title, kw) in [
+        (
+            Only::Favourites,
+            tr!("Show favourites only"),
+            tr!("Stop showing favourites only"),
+            "favourite favorite star favoritos estrela somente apenas",
+        ),
+        (
+            Only::Updates,
+            tr!("Show games with an update only"),
+            tr!("Stop showing games with an update only"),
+            "update updates pending atualizacao atualizacoes somente apenas",
+        ),
+        (
+            Only::Offline,
+            tr!("Show games that run offline only"),
+            tr!("Stop showing games that run offline only"),
+            "offline internet connection sem conexao somente apenas",
+        ),
+    ] {
+        let on = match only {
+            Only::Favourites => ui.only.favourites,
+            Only::Updates => ui.only.updates,
+            Only::Offline => ui.only.offline,
+        };
+        v.push(cmd(
+            ViewCmd::Only(only, !on),
+            format!("view:only:{only:?}"),
+            if on { off_title } else { on_title },
+            tr!("Collection list"),
+            Icon::Tune,
+            &format!("filter view filtro visualizacao {kw}"),
+        ));
+    }
+    if !categories.is_empty() {
+        for name in categories.names().map(str::to_owned).chain([UNCATEGORIZED.to_owned()]) {
+            let label = category_label(&name);
+            let title = if ui.categories.contains(&name) {
+                tr!("Remove filter Category: {value}", value = label)
+            } else {
+                tr!("Filter Category: {value}", value = label)
+            };
+            v.push(cmd(
+                ViewCmd::Category(name.clone()),
+                format!("view:category:{name}"),
+                &title,
+                tr!("Collection list"),
+                Icon::Label,
+                "category categories filter categoria categorias filtro",
+            ));
+        }
+    }
+    v.push(cmd(
+        ViewCmd::ManageCategories,
+        "view:categories".into(),
+        tr!("Manage categories…"),
+        tr!("Add, rename or remove categories"),
+        Icon::Label,
+        "category categories tags groups new categoria categorias grupos nova",
+    ));
     for (f, id, title) in [
         (InstallFilter::All, "all", tr!("Show all games")),
         (InstallFilter::Installed, "installed", tr!("Show installed games only")),
@@ -409,11 +485,11 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions) -> Vec<Entry> {
         ViewCmd::ClearFilters,
         "view:clear".into(),
         tr!("Clear filters"),
-        tr!("Series, developer, publisher, genre, platform"),
+        tr!("Category, series, developer, publisher, genre, platform"),
         Icon::Close,
         "reset filters facets limpar filtros redefinir",
     );
-    if !ui.facet_filters.is_active() {
+    if !ui.facet_filters.is_active() && ui.categories.is_empty() {
         clear.disable(tr!("No filter is active"));
     }
     v.push(clear);
@@ -737,7 +813,7 @@ mod tests {
     #[test]
     fn view_entries_follow_the_ui_state() {
         let ui = UiState { sort: SortMode::Playtime, group_by_status: true, ..Default::default() };
-        let v = view_entries(&ui, &FacetOptions::default());
+        let v = view_entries(&ui, &FacetOptions::default(), &Categories::default());
         let get = |id: &str| v.iter().find(|e| e.id.as_ref() == id).unwrap();
         assert!(get("view:sort:playtime").disabled.is_some());
         assert!(get("view:sort:title").disabled.is_none());
@@ -745,6 +821,9 @@ mod tests {
         assert_eq!(get("view:group").title.as_ref(), "Stop grouping by status");
         assert_eq!(get("view:hidden").title.as_ref(), "Show hidden games");
         assert!(get("view:clear").disabled.is_some());
+        assert_eq!(get("view:sort:direction").title.as_ref(), "Sort descending");
+        assert_eq!(get("view:only:Favourites").act, Act::View(ViewCmd::Only(Only::Favourites, true)));
+        assert!(!v.iter().any(|e| e.id.starts_with("view:category:")), "no categories, no category filters");
     }
 
     #[test]

@@ -127,6 +127,14 @@ impl CollectionView {
         if g.runner == "sideload" && !playing {
             manage.push(Row::action("x:remove", tr!("Remove from Collection\u{2026}")).icon(Icon::DeleteForever).danger());
         }
+        // One switch per custom category (made on the desktop's View menu).
+        if !self.categories.is_empty() {
+            rows.push(Row::header(tr!("Categories")));
+            for name in self.categories.names() {
+                let on = self.categories.contains(name, &g.runner, &g.app_name);
+                rows.push(Row::toggle(SharedString::from(format!("cat:{name}")), name.to_string(), on).icon(Icon::Label));
+            }
+        }
         rows.push(Row::header(tr!("Manage")));
         rows.extend(manage);
         rows
@@ -320,6 +328,7 @@ impl CollectionView {
                     }
                     self.reload(cx);
                 }
+                (id, Value::Toggle(on)) if id.starts_with("cat:") => self.set_game_category(key, &id["cat:".len()..], on, cx),
                 _ => {}
             },
             Outcome::Moved | Outcome::Edge(_) => {}

@@ -1,13 +1,14 @@
 //! The console library: **Home** (the focused game large over its art, with
 //! shelves below — Continue playing, Favourites, Installed and one per
 //! status) and **Library** (every game in a cover grid, with Show / Sort /
-//! Status / Search filters). LB / RB switch between them.
+//! Status / Category / Search filters). LB / RB switch between them.
 //!
 //! Its filters are console-only state: they never change the desktop
 //! Collection's filters.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::categories::{Categories, UNCATEGORIZED};
 use heronite_data::{CollectionGame, Library};
 
 use super::super::CollectionView;
@@ -58,6 +59,8 @@ pub(super) struct LibraryNav {
     show: usize,
     sort: usize,
     status: usize,
+    /// Index in [`category_options`].
+    category: usize,
     search: String,
     scroll: Glide,
     reveal: bool,
@@ -74,6 +77,7 @@ impl Default for LibraryNav {
             show: 0,
             sort: 0,
             status: 0,
+            category: 0,
             search: String::new(),
             scroll: Glide::new(Axis::Y),
             reveal: false,
@@ -85,6 +89,19 @@ impl Default for LibraryNav {
 
 const SHOW: [&str; 4] = [n_!("All games"), n_!("Installed"), n_!("Favourites"), n_!("Not installed")];
 const SORT: [&str; 3] = [n_!("A\u{2013}Z"), n_!("Last played"), n_!("Most played")];
+/// Chips of the Library's filter bar (the last one is Search).
+const CHIPS: usize = 5;
+
+/// The Category chip's values: any, each category, then the games in none
+/// (only "any" while there are no categories).
+fn category_options(cats: &Categories) -> Vec<Option<String>> {
+    let mut v = vec![None];
+    if !cats.is_empty() {
+        v.extend(cats.names().map(|n| Some(n.to_string())));
+        v.push(Some(UNCATEGORIZED.to_string()));
+    }
+    v
+}
 
 pub(super) struct Shelf {
     pub title: SharedString,
@@ -123,10 +140,13 @@ impl LibraryNav {
             .collect()
     }
 
-    /// The games the grid shows, in order.
-    pub(super) fn keys(&self, lib: &Library) -> Vec<SharedString> {
-        let query = self.search.trim().to_lowercase();
+    /// The games the grid shows, in order (best search matches first).
+    pub(super) fn keys(&self, lib: &Library, cats: &Categories) -> Vec<SharedString> {
+        let folded = heronite_data::fuzzy::fold(self.search.trim());
+        let tokens = heronite_data::fuzzy::tokens(&folded);
         let status = self.status.checked_sub(1).and_then(|i| lib.statuses.get(i)).map(|s| s.id.clone());
+        let category: std::collections::BTreeSet<String> =
+            category_options(cats).get(self.category).cloned().flatten().into_iter().collect();
         let mut games: Vec<&CollectionGame> = lib
             .games
             .iter()
@@ -138,22 +158,34 @@ impl LibraryNav {
                 _ => true,
             })
             .filter(|g| status.as_ref().is_none_or(|s| &g.status_id == s))
-            .filter(|g| query.is_empty() || g.title_lower.contains(&query))
+            .filter(|g| cats.matches(&category, &g.runner, &g.app_name))
             .collect();
         match self.sort {
             1 => games.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.title_lower.cmp(&b.title_lower))),
             2 => games.sort_by(|a, b| b.playtime_minutes.cmp(&a.playtime_minutes).then_with(|| a.title_lower.cmp(&b.title_lower))),
             _ => games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower)),
         }
+        if !tokens.is_empty() {
+            // Same search as the desktop Collection; stable, so the sort orders ties.
+            let mut scored: Vec<(i32, &CollectionGame)> =
+                games.into_iter().filter_map(|g| heronite_data::collection::search_score(g, &tokens).map(|s| (s, g))).collect();
+            scored.sort_by_key(|s| std::cmp::Reverse(s.0));
+            games = scored.into_iter().map(|(_, g)| g).collect();
+        }
         keys(games)
     }
 
-    fn chips(&self, lib: &Library) -> [(SharedString, SharedString); 4] {
+    fn chips(&self, lib: &Library, cats: &Categories) -> [(SharedString, SharedString); CHIPS] {
         let status = Self::status_options(lib);
+        let category = match category_options(cats).get(self.category).cloned().flatten() {
+            None => tr!("Any category").to_string(),
+            Some(name) => super::super::view_filters::category_label(&name),
+        };
         [
             (tr!("Show").into(), tr(SHOW[self.show]).into()),
             (tr!("Sort").into(), tr(SORT[self.sort]).into()),
             (tr!("Status").into(), status.get(self.status).cloned().unwrap_or_default()),
+            (tr!("Category").into(), category.into()),
             (tr!("Search").into(), if self.search.is_empty() { "\u{2014}".into() } else { self.search.clone().into() }),
         ]
     }
@@ -444,7 +476,7 @@ impl CollectionView {
             return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
         };
         let cols = self.library_cols(window);
-        let keys = self.console.library.keys(&lib);
+        let keys = self.console.library.keys(&lib, &self.categories);
         let tile_h = TILE_W * self.cover_aspect;
         let nav = &mut self.console.library;
         nav.cols = cols;
@@ -460,7 +492,7 @@ impl CollectionView {
             nav.scroll.go(Goal::Reveal { ix: nav.index / cols, margin: tile_h * 0.35 });
         }
         let (index, toolbar) = (nav.index, nav.toolbar);
-        let chips = nav.chips(&lib);
+        let chips = nav.chips(&lib, &self.categories);
         let glide = nav.scroll.clone();
         let scroll = glide.handle().clone();
         let focused = keys.get(index).cloned();
@@ -541,19 +573,21 @@ impl CollectionView {
 
     pub(super) fn library_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(lib) = self.lib.clone() else { return false };
-        let keys = self.console.library.keys(&lib);
+        let keys = self.console.library.keys(&lib, &self.categories);
         let status_n = lib.statuses.len() + 1;
+        let category_n = category_options(&self.categories).len();
         let nav = &mut self.console.library;
         let cols = nav.cols.max(1);
         if let Some(chip) = nav.toolbar {
             match pad {
                 Pad::Left => nav.toolbar = Some(chip.saturating_sub(1)),
-                Pad::Right => nav.toolbar = Some((chip + 1).min(3)),
+                Pad::Right => nav.toolbar = Some((chip + 1).min(CHIPS - 1)),
                 Pad::Down if !keys.is_empty() => nav.toolbar = None,
                 Pad::A => match chip {
                     0 => nav.show = (nav.show + 1) % SHOW.len(),
                     1 => nav.sort = (nav.sort + 1) % SORT.len(),
                     2 => nav.status = (nav.status + 1) % status_n,
+                    3 => nav.category = (nav.category + 1) % category_n,
                     _ => {
                         self.open_console_search(window, cx);
                         return true;
@@ -563,6 +597,7 @@ impl CollectionView {
                     0 => nav.show = 0,
                     1 => nav.sort = 0,
                     2 => nav.status = 0,
+                    3 => nav.category = 0,
                     _ => nav.search.clear(),
                 },
                 Pad::Y => {

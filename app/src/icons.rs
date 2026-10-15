@@ -4,6 +4,8 @@
 pub enum Icon {
     Add,
     AccessTime,
+    ArrowDownward,
+    ArrowUpward,
     Cancel,
     Check,
     ChevronLeft,
@@ -24,6 +26,7 @@ pub enum Icon {
     Fullscreen,
     FullscreenExit,
     History,
+    Label,
     Menu,
     OpenInNew,
     PlayArrow,
@@ -85,6 +88,8 @@ impl Icon {
         match self {
             Add => "icons/add.svg",
             AccessTime => "icons/access-time.svg",
+            ArrowDownward => "icons/arrow-downward.svg",
+            ArrowUpward => "icons/arrow-upward.svg",
             Cancel => "icons/cancel.svg",
             Check => "icons/check.svg",
             ChevronLeft => "icons/chevron-left.svg",
@@ -105,6 +110,7 @@ impl Icon {
             Fullscreen => "icons/fullscreen.svg",
             FullscreenExit => "icons/fullscreen-exit.svg",
             History => "icons/history.svg",
+            Label => "icons/label.svg",
             BarChart => "icons/bar-chart.svg",
             Tv => "icons/tv.svg",
             Moon => "icons/moon.svg",

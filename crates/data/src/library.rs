@@ -717,18 +717,28 @@ pub(crate) mod tests_support {
         pub series: Option<String>,
         pub status: Option<String>,
         pub runner: Option<String>,
+        pub favourite: bool,
+        /// `canRunOffline` of the GameInfo.
+        pub offline: Option<bool>,
+        /// The store's own title, when the Collection shows another one.
+        pub store_title: Option<String>,
     }
 
     pub fn game(app: &str, title: &str, f: impl FnOnce(&mut Spec)) -> Arc<CollectionGame> {
         let mut spec = Spec::default();
         f(&mut spec);
-        let info = GameInfo {
+        let mut info = GameInfo {
             runner: spec.runner.clone().unwrap_or_else(|| "sideload".into()),
             app_name: app.into(),
-            title: title.into(),
+            title: spec.store_title.clone().unwrap_or_else(|| title.into()),
             is_installed: spec.installed,
             ..Default::default()
         };
+        if let Some(offline) = spec.offline {
+            info.rest.insert("canRunOffline".into(), offline.into());
+        }
+        // The Collection title wins over the store's, as metadata would.
+        let overrides = spec.store_title.is_some().then(|| GameOverride { title: Some(title.into()), ..Default::default() });
         let metadata = (!spec.developers.is_empty() || !spec.genres.is_empty() || spec.series.is_some()).then(|| {
             Arc::new(CollectionGameMetadata {
                 app_name: app.into(),
@@ -752,13 +762,13 @@ pub(crate) mod tests_support {
         Arc::new(CollectionGame::build(BuildInputs {
             game: info,
             steam: None,
-            overrides: None,
+            overrides,
             meta,
             metadata,
             art: None,
             timestamp: Some(&timestamp),
             sessions: None,
-            favourite: false,
+            favourite: spec.favourite,
             recent: false,
             hidden: false,
             statuses: &statuses,
