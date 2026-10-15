@@ -8,6 +8,7 @@
 //!   formats.
 //! * [`steam`]: `steam://` URIs and installed-app detection.
 
+pub mod anticheat_data;
 pub mod companions;
 pub mod dxvk;
 pub mod emulators;
