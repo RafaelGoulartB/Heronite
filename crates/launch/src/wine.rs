@@ -204,6 +204,9 @@ pub fn build_wine_plan(
     env.extend(setup_env_vars(s, None, probe));
     env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
     env.insert("PROTON_VERB".into(), "waitforexitandrun".into());
+    if let Err(err) = crate::lsfg::apply(&mut env, &s.lsfg, &ctx.global, probe) {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
 
     let runner_bin = wine.runner_bin();
     let mut parts: Vec<String> = Vec::new();

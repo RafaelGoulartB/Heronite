@@ -26,6 +26,7 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use heronite_i18n::tr;
 
+mod lsfg;
 mod steam;
 
 type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
@@ -293,6 +294,7 @@ impl SettingsPanel {
                 false,
             ));
         }
+        v.extend(self.c_lsfg(false));
         if native {
             let current = match self.settings.get("steamRuntime") {
                 Some(Value::String(s)) if !s.is_empty() => s.clone(),

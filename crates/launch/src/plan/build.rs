@@ -138,6 +138,9 @@ pub(crate) fn native_plan(
     }
     let mut env = setup_wrapper_env_vars(&game.app_name, runner);
     env.extend(setup_env_vars(settings, game.install.install_path.as_deref(), probe));
+    if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
 
     let mut parts = wp.wrappers;
     parts.push(executable.to_string());

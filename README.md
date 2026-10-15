@@ -63,7 +63,8 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 - **Epic Games:** log in, install, update, repair, move, and uninstall games, manage DLC, and sync cloud saves. Downloads run through a queue you can reorder.
 - **GOG:** log in, and your GOG games appear in the Collection. Install them (Windows or native Linux builds, with the language and DLCs you choose), update, repair, move, import, and uninstall them, and sync cloud saves. Downloads share the same queue.
 - **Amazon Games:** log in, and the games of your Amazon account (Prime Gaming included) appear in the Collection. Install, update, verify, move, import, and uninstall them through the same queue.
-- **Wine and Proton:** each Windows game gets Heroic's full settings (Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, launch options, environment variables). The Wine Manager downloads and updates Proton from six sources: Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM and Proton-Sarek. It only asks GitHub for a source's list when that source has something new.
+- **Wine and Proton:** each Windows game gets Heroic's full settings (Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, launch options, environment variables).
+- **Frame generation:** turn on Lossless Scaling frame generation (through lsfg-vk) for any game, Steam games included, with its multiplier, flow scale, performance mode and HDR, or one of lsfg-vk's own profiles. The Wine Manager downloads and updates Proton from six sources: Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM and Proton-Sarek. It only asks GitHub for a source's list when that source has something new.
 - **Emulators:** detect installed emulators (PATH, Flatpak, AppImages) or add your own with profiles and RetroArch cores. Scan ROM folders to import games, with multi-disc games merged into one entry, and continue from a save state.
 
 <table>

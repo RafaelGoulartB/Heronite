@@ -93,6 +93,8 @@ pub struct GameSettings {
     /// `disableUMU`: only `Some(true)` disables umu.
     pub disable_umu: Option<bool>,
     pub gamescope: Gamescope,
+    /// `heroniteLsfg*`: Lossless Scaling frame generation.
+    pub lsfg: crate::lsfg::Lsfg,
 }
 
 fn truthy(v: Option<&Value>) -> bool {
@@ -225,6 +227,7 @@ impl GameSettings {
                 _ => None,
             },
             gamescope: gs,
+            lsfg: crate::lsfg::Lsfg::from_map(m),
         }
     }
 }

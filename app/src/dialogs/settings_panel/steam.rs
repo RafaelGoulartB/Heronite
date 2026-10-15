@@ -159,6 +159,7 @@ impl SettingsPanel {
             return;
         }
         self.settings.insert(key.to_string(), value);
+        self.steam_lsfg_dll();
         let line = options::build(&self.settings, &wrap::path(&self.paths).to_string_lossy());
         self.steam_send_line(line, cx);
     }
@@ -687,7 +688,7 @@ impl SettingsPanel {
             ));
         }
         col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
-        col
+        col.child(self.lsfg_section(off, cx))
     }
 
     pub(super) fn steam_gamescope_tab(&mut self, cx: &mut Context<Self>) -> Div {

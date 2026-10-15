@@ -115,6 +115,9 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
             env.insert("GAMEID".into(), id);
         }
     }
+    if let Err(err) = crate::lsfg::apply(&mut env, &s.lsfg, &ctx.global, probe) {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
     env.insert("LEGENDARY_CONFIG_PATH".into(), ctx.paths.legendary_config_dir().to_string_lossy().into_owned());
 
     // Arguments, in the order legendary's command object is flattened.

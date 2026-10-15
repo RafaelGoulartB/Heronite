@@ -14,6 +14,7 @@ mod console;
 mod gamescope;
 mod general;
 pub mod logic;
+mod lsfg;
 mod other;
 mod parts;
 mod prefix_menu;
@@ -154,6 +155,10 @@ pub struct SettingsPanel {
     pub(super) gpu_count: usize,
     pub(super) gamescope_installed: bool,
     pub(super) runtimes: (bool, bool),
+    /// Frame generation on this machine (`None` while looked for).
+    pub(super) lsfg: Option<heronite_launch::lsfg::Install>,
+    /// `lsfg-vk-ui`, when installed.
+    pub(super) lsfg_ui: Option<String>,
     pub(super) env_error: String,
     pub(super) saves: SavesState,
     /// Steam games: what Steam has (the settings map mirrors its launch options).
@@ -246,6 +251,8 @@ impl SettingsPanel {
             gamescope_installed: crate::env::flag("HERONITE_DEBUG_GAMESCOPE")
                 || heronite_launch::Probe::which(&heronite_launch::SystemProbe, "gamescope").is_some(),
             runtimes,
+            lsfg: None,
+            lsfg_ui: None,
             env_error: String::new(),
             saves: SavesState::default(),
             steam: steam_app.map(steam::SteamState::new),
@@ -266,6 +273,7 @@ impl SettingsPanel {
         if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
             this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
+        this.load_lsfg(cx);
         if this.is_steam() {
             // Debug settings are applied once Steam was read.
             this.load_steam(cx);

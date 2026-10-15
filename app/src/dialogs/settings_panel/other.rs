@@ -1,4 +1,4 @@
-//! "Other" tab: overlays, GameMode, runtimes.
+//! "Other" tab: overlays, GameMode, frame generation, runtimes.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -68,6 +68,7 @@ impl SettingsPanel {
             ));
         }
         col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
+        col = col.child(self.lsfg_section(false, cx));
         if native {
             col = col.child(heading(tr!("Runtime"))).child(rows().field_help(
                 self.steam_runtime_field(cx),

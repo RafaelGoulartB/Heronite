@@ -21,6 +21,7 @@ pub mod legendary_install;
 pub mod library;
 pub mod log_reader;
 pub mod log_writer;
+pub mod lsfg;
 pub mod native;
 pub mod net;
 pub mod nile;

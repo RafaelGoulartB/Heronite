@@ -189,6 +189,7 @@ impl SettingsPanel {
                 Some(tr!("NVIDIA Optimus / AMD switchable graphics; OpenGL and Vulkan games only")),
             ));
         }
+        v.extend(self.c_lsfg(true));
         v
     }
 

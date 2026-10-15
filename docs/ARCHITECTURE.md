@@ -69,7 +69,9 @@ calls them from `cx.background_spawn` or worker threads.
   writes sessions and playtime (with checkpoints while the game runs).
   `log_writer` writes the launcher and game logs. `prepare` does the work
   around a launch (cloud saves, runtimes); `first_launch` sets up a game the
-  first time it runs in a Wine prefix.
+  first time it runs in a Wine prefix. `lsfg` finds lsfg-vk (Lossless
+  Scaling frame generation), the Lossless Scaling DLL and lsfg-vk's profiles,
+  and adds the frame generation variables to a launch.
 - **heronite-epic:** `cmd` runs legendary. `manager` + `queue` are the
   download queue (`store/download-manager.json`), shared by every store: an
   element's `params.runner` picks the job (legendary, gogdl or nile), and
