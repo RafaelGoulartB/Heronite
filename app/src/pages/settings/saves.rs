@@ -50,6 +50,11 @@ impl State {
         Self { detected: None, detecting: false, binary, folder, details_open: None, format_open: false, compression_open: false }
     }
 
+    /// What detection found (`None` while detecting or when not found).
+    pub(super) fn detected(&self) -> Option<&LudusaviDetected> {
+        self.detected.as_ref().and_then(Option::as_ref)
+    }
+
     /// Section shown: looks for Ludusavi once (it runs `ludusavi --version`,
     /// so never at page creation).
     pub fn shown(page: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
@@ -88,7 +93,7 @@ fn detect_with(preferred: String, window: &mut Window, cx: &mut Context<Settings
     .detach();
 }
 
-fn save(d: &mut SettingsPage, patch: LudusaviSettingsPatch, cx: &mut Context<SettingsPage>) {
+pub(super) fn save(d: &mut SettingsPage, patch: LudusaviSettingsPatch, cx: &mut Context<SettingsPage>) {
     let res = set_ludusavi_settings(&d.ctx.data_paths, &patch);
     d.saved(res, cx);
 }
@@ -280,7 +285,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .into_any_element()
 }
 
-/// Console mode rows of Backups: Ludusavi, then the Collection backup.
+/// Console mode rows of Backups: Ludusavi, restoring, then the Collection backup.
 pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
     use crate::icons::Icon;
@@ -314,6 +319,7 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     if let Some(e) = &l.last_error {
         rows.push(Row::info("lu-error", e.clone(), "").danger());
     }
+    rows.extend(super::saves_restore::console_rows(d));
     rows.extend(super::backup::console_rows(d, cx));
     rows
 }
@@ -352,6 +358,7 @@ pub(super) fn console_apply(
                 save(d, LudusaviSettingsPatch { backup_path: Some(path), ..Default::default() }, cx);
             });
         }
+        _ if super::saves_restore::console_apply(d, &outcome, window, cx) => {}
         _ => super::backup::console_apply(d, outcome, window, cx),
     }
     cx.notify();

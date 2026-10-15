@@ -29,6 +29,7 @@ pub mod logs;
 mod metadata;
 mod palette;
 mod saves;
+mod saves_restore;
 mod screenshots;
 mod section;
 pub mod sysinfo;
@@ -92,6 +93,7 @@ pub struct SettingsPage {
     metadata: metadata::State,
     backup: backup::State,
     saves: saves::State,
+    saves_restore: saves_restore::State,
     section: Section,
     global: Option<Entity<SettingsPanel>>,
     defaults: Option<Entity<SettingsPanel>>,
@@ -136,6 +138,7 @@ impl SettingsPage {
             metadata,
             backup,
             saves,
+            saves_restore: Default::default(),
             library: library::State::new(&ctx),
             advanced: advanced::State::default(),
             about: about::State::default(),
@@ -354,6 +357,7 @@ impl SettingsPage {
                     .flex()
                     .flex_col()
                     .child(saves::render(self, window, cx))
+                    .child(div().mt(px(12.)).child(saves_restore::render(self, window, cx)))
                     .child(div().mt(px(12.)).child(backup::render(self, window, cx)))
                     .into_any_element();
                 Self::collection_section(body, self.error.clone())
