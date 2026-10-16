@@ -39,6 +39,8 @@ pub(super) struct ViewMenu {
     with_tokens: bool,
     /// Name box of "Save view", while it is open.
     naming: Option<(Entity<InputState>, Subscription)>,
+    /// The Views select is open.
+    select_open: bool,
     /// The Views section lists the views to rename, update, move or delete.
     editing: bool,
     /// Name box of the view being renamed (its index).
@@ -80,6 +82,7 @@ impl ViewMenu {
             highlight: 0,
             with_tokens: false,
             naming: None,
+            select_open: false,
             editing: false,
             renaming: None,
             room: 600.,
@@ -92,9 +95,13 @@ impl ViewMenu {
         self.editing = on;
     }
 
+    pub(super) fn set_select_open(&mut self, on: bool) {
+        self.select_open = on;
+    }
+
     /// Typing (or naming a view) keeps the menu open when the pointer leaves.
     pub(super) fn holds_open(&self) -> bool {
-        self.focused || !self.query.is_empty() || self.naming.is_some() || self.editing
+        self.focused || !self.query.is_empty() || self.naming.is_some() || self.editing || self.select_open
     }
 }
 
@@ -312,6 +319,7 @@ impl CollectionView {
             self.view_menu.naming = None;
             self.view_menu.editing = false;
             self.view_menu.renaming = None;
+            self.view_menu.select_open = false;
         }
         let with_tokens = self.ui.active_filters() > 0 || self.ui.show_hidden;
         if with_tokens != self.view_menu.with_tokens {
@@ -330,7 +338,9 @@ impl CollectionView {
         let menu = &self.view_menu;
         match ks.key.as_str() {
             "escape" => {
-                if menu.naming.is_some() || menu.renaming.is_some() {
+                if menu.select_open {
+                    self.view_menu.select_open = false;
+                } else if menu.naming.is_some() || menu.renaming.is_some() {
                     self.cancel_view_naming(cx);
                 } else if menu.editing {
                     self.view_menu.editing = false;

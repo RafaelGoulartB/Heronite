@@ -16,9 +16,17 @@ use super::Pick;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::dropdown::menu_panel;
+use crate::ui::fields::{select_menu_field, SelectOption};
 use crate::ui::icon;
 
 const W: f32 = 404.;
+
+/// The actions listed after the views in their select.
+#[derive(Clone, Copy)]
+enum ViewAction {
+    Save,
+    Edit,
+}
 /// Inner padding of the panel's sections.
 const PAD: f32 = 12.;
 
@@ -189,44 +197,77 @@ impl CollectionView {
 
     fn vm_views(&self, cx: &mut Context<Self>) -> Div {
         let editing = self.view_menu.editing;
-        let action = div()
-            .id("vm-views-edit")
-            .cursor_pointer()
-            .text_size(px(12.))
-            .text_color(theme::accent())
-            .hover(|s| s.text_color(white()))
-            .child(if editing { tr!("Done") } else { tr!("Edit") })
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.view_menu.editing = !this.view_menu.editing;
-                this.view_menu.renaming = None;
-                this.view_menu.naming = None;
-                cx.notify();
-            }));
-        let empty = self.ui.saved_views.is_empty();
-        let header = section_head(tr!("Views")).when(!empty || editing, |d| d.child(action));
-        let body = if editing { self.vm_views_edit(cx) } else { self.vm_views_pick(cx) };
+        let done = editing.then(|| {
+            div()
+                .id("vm-views-done")
+                .cursor_pointer()
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .hover(|s| s.text_color(white()))
+                .child(tr!("Done"))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.view_menu.editing = false;
+                    this.view_menu.renaming = None;
+                    cx.notify();
+                }))
+        });
+        let header = section_head(tr!("Views")).children(done);
+        let body = if editing { self.vm_views_edit(cx) } else { self.vm_views_select(cx) };
         div().flex().flex_col().gap(px(8.)).child(header).child(body)
     }
 
-    /// The views as pills (a click applies one), "Save view" and its name box.
-    fn vm_views_pick(&self, cx: &mut Context<Self>) -> Div {
-        let mut current = false;
-        let chips: Vec<_> = self
-            .view_cards()
-            .into_iter()
+    /// The views in a select (the one shown now, else "Custom"), with "Save
+    /// current view…" and "Edit views…" under them; the name box below.
+    fn vm_views_select(&self, cx: &mut Context<Self>) -> Div {
+        let cards = self.view_cards();
+        let current = cards.iter().position(|v| self.ui.shows_view(&v.filters));
+        let manage_group: SharedString = tr!("Manage").into();
+        let mut options: Vec<SelectOption> = cards
+            .iter()
             .enumerate()
-            .map(|(i, v)| {
-                let on = self.ui.shows_view(&v.filters);
-                current |= on;
-                let filters = v.filters;
-                pill(("vm-view", i))
-                    .border_color(if on { theme::accent_tint_border() } else { theme::white_a(0.) })
-                    .when(on, |d| d.bg(theme::accent_tint()).text_color(white()))
-                    .child(dot(v.color))
-                    .child(div().flex_none().whitespace_nowrap().child(v.name))
-                    .on_click(cx.listener(move |this, _, _, cx| this.apply_view_filters(&filters, cx)))
-            })
+            .map(|(i, v)| SelectOption { label: v.name.clone().into(), selected: current == Some(i), ..Default::default() })
             .collect();
+        let mut actions = Vec::new();
+        if current.is_none() {
+            actions.push(ViewAction::Save);
+            options
+                .push(SelectOption { label: tr!("Save current view…").into(), group: Some(manage_group.clone()), ..Default::default() });
+        }
+        if !cards.is_empty() {
+            actions.push(ViewAction::Edit);
+            options.push(SelectOption { label: tr!("Edit views…").into(), group: Some(manage_group), ..Default::default() });
+        }
+        let value: SharedString = match current {
+            Some(i) => cards[i].name.clone().into(),
+            None => tr!("Custom").into(),
+        };
+        let filters: Vec<_> = cards.into_iter().map(|v| v.filters).collect();
+        let select = select_menu_field(
+            "vm-views",
+            None,
+            value,
+            false,
+            self.view_menu.select_open,
+            options,
+            None,
+            cx,
+            |this, _, cx| {
+                this.view_menu.select_open = !this.view_menu.select_open;
+                cx.notify();
+            },
+            move |this, i, window, cx| {
+                this.view_menu.select_open = false;
+                match filters.get(i) {
+                    Some(f) => this.apply_view_filters(f, cx),
+                    None => match actions.get(i - filters.len()) {
+                        Some(ViewAction::Save) => this.start_naming_view(window, cx),
+                        Some(ViewAction::Edit) => this.view_menu.editing = true,
+                        None => {}
+                    },
+                }
+                cx.notify();
+            },
+        );
         let naming = self.view_menu.naming.as_ref().map(|(input, _)| {
             name_row(input)
                 .child(
@@ -235,27 +276,7 @@ impl CollectionView {
                 )
                 .child(icon_button("vm-view-cancel", Icon::Close, true).on_click(cx.listener(|this, _, _, cx| this.cancel_view_naming(cx))))
         });
-        // Saving is offered while the menu shows something no view has.
-        let add = (!current && naming.is_none()).then(|| {
-            pill("vm-view-new")
-                .bg(theme::white_a(0.))
-                .border_dashed()
-                .border_color(theme::white_a(0.18))
-                .text_color(theme::text_muted())
-                .hover(|s| s.text_color(white()).border_color(theme::accent_tint_border()))
-                .child(icon(Icon::Add, px(14.), theme::text_muted()))
-                .child(tr!("Save view"))
-                .on_click(cx.listener(|this, _, window, cx| this.start_naming_view(window, cx)))
-        });
-        let hint =
-            (chips.is_empty() && naming.is_none()).then(|| hint_text(tr!("Save the filters, sort and grouping you use often.")).px(px(4.)));
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .children(hint)
-            .child(div().flex().flex_wrap().gap(px(6.)).children(chips).children(add))
-            .children(naming)
+        div().flex().flex_col().gap(px(8.)).child(select).children(naming)
     }
 
     /// One row per view: rename, store the current state, move, delete.
