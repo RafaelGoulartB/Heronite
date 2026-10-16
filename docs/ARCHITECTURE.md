@@ -74,7 +74,9 @@ calls them from `cx.background_spawn` or worker threads.
   and adds the frame generation variables to a launch. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
-  a fallback). `umu_ids` picks the
+  a fallback). `actions` turns a game's own actions (`heronite_data::game_actions`,
+  `local_library/actions.json`) into something to open, spawn or launch as
+  the game's session. `umu_ids` picks the
   `GAMEID` of a umu launch (protonfixes) from the user's id, the umu
   database (downloaded weekly), Heroic's cache, the metadata's Steam id or
   the title; `keep_awake` adds the logind lock the runtime holds while the

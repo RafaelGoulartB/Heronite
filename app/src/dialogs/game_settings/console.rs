@@ -39,9 +39,7 @@ impl GameSettingsDialog {
     fn console_tabs(&self) -> Vec<Tab> {
         let mut t = self
             .with_saves_tab(self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default());
-        if self.launch.is_some() {
-            t.push(Tab::Launch);
-        }
+        t.push(Tab::Launch);
         t.push(Tab::Details);
         t.push(Tab::Images);
         t
@@ -70,6 +68,23 @@ impl GameSettingsDialog {
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         match self.tab {
             Tab::Launch => {
+                // The action editor takes the whole tab.
+                let mut rows = Vec::new();
+                if self.actions.editor.is_none() {
+                    rows.push(Row::header(tr!("Play")));
+                    rows.extend(if self.launch.is_some() { self.console_local_play_rows(cx) } else { vec![self.console_play_row()] });
+                }
+                rows.extend(self.console_action_rows(cx));
+                rows
+            }
+            _ => self.console_info_rows(cx),
+        }
+    }
+
+    /// How a local game starts: an executable and "run as", or a command.
+    fn console_local_play_rows(&self, cx: &App) -> Vec<Row> {
+        {
+            {
                 let Some(l) = self.launch.as_ref() else { return Vec::new() };
                 let exe = l.executable.read(cx).value().to_string();
                 let dirty = l.dirty(cx);
@@ -117,6 +132,11 @@ impl GameSettingsDialog {
                     save,
                 ]
             }
+        }
+    }
+
+    fn console_info_rows(&self, cx: &App) -> Vec<Row> {
+        match self.tab {
             Tab::Details => {
                 let d = &self.details;
                 let form = self.read_form(cx);
@@ -375,6 +395,7 @@ impl PadTarget for GameSettingsDialog {
                 self.console_set_tab(tabs[next], window, cx);
                 return true;
             }
+            Pad::B if self.tab == Tab::Launch && self.close_action_editor(cx) => return true,
             Pad::B => {
                 cx.emit(DialogEvent::Close);
                 return true;
@@ -395,6 +416,8 @@ impl PadTarget for GameSettingsDialog {
         }
         let rows = self.console_rows(cx);
         match self.console_list.on_pad(pad, &rows) {
+            Outcome::Activate(id) if self.console_action_activate(&id, window, cx) => {}
+            Outcome::Changed(id, value) if self.console_action_changed(&id, &value, cx) => {}
             Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "run-as" => {
                 let exe = self.launch.as_ref().map(|l| l.executable.read(cx).value().to_string()).unwrap_or_default();
                 if let Some(l) = self.launch.as_mut() {

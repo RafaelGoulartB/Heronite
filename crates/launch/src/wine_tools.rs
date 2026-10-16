@@ -59,6 +59,20 @@ pub fn build_tool_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameS
     Ok(ToolCommand { command, notes })
 }
 
+/// A Windows program with arguments in the game's prefix, with the game's
+/// Wine (a game's own actions, see [`crate::actions`]).
+pub fn run_exe_command(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    settings: &GameSettings,
+    exe: &str,
+    args: &[String],
+) -> Result<ToolCommand, String> {
+    let mut built = build_tool_command(ctx, probe, settings, &WineTool::RunExe(exe.to_string()))?;
+    built.command.args.extend(args.iter().cloned());
+    Ok(built)
+}
+
 /// `Winetricks.install`: `winetricks -q <component>` without the GUI, in the
 /// game's prefix.
 pub fn winetricks_install_command(

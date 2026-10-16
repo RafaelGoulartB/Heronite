@@ -44,7 +44,7 @@ impl CollectionView {
         }
     }
 
-    fn game_for(&self, key: &str) -> Option<heronite_data::collection::Game> {
+    pub(super) fn game_for(&self, key: &str) -> Option<heronite_data::collection::Game> {
         self.lib.as_ref()?.get(key).cloned()
     }
 

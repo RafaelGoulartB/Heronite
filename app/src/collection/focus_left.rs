@@ -116,8 +116,8 @@ impl CollectionView {
                     div().min_w_0().truncate().font_weight(theme::W_REGULAR).text_size(px(13.)).text_color(rgb(0x5a5f66)).child(o)
                 }))
         });
-        // Installed Epic game with other ways to start: an arrow with them.
-        let more = if vm.installed && !vm.playing { self.launch_more_button(cx) } else { None };
+        // Installed, with other ways to start or actions: an arrow with them.
+        let more = if vm.installed && !vm.playing { self.launch_more_button(&vm.key, cx) } else { None };
         let play = match (play, more) {
             (Some(play), Some(more)) => {
                 let row = div()

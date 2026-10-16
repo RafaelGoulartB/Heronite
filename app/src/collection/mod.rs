@@ -38,6 +38,7 @@ mod steam_copy;
 mod system_glue;
 mod timeline;
 mod update_banner;
+mod user_actions;
 mod view_filters;
 mod welcome;
 pub use screenshots::screenshots_global;
@@ -73,6 +74,8 @@ pub struct CollectionView {
     ui: UiState,
     /// Custom categories (`games.customCategories`), loaded with the library.
     categories: heronite_data::categories::Categories,
+    /// The actions users added to their games, by game key, loaded with the library.
+    user_actions: std::collections::HashMap<String, Vec<heronite_data::game_actions::Action>>,
     /// Games with an update waiting (app names), for "Only with updates".
     update_apps: std::collections::HashSet<String>,
     search: String,
@@ -189,6 +192,7 @@ impl CollectionView {
             wiki: Arc::new(WikiCache::default()),
             ui,
             categories: Default::default(),
+            user_actions: Default::default(),
             update_apps: Default::default(),
             search: String::new(),
             search_input,

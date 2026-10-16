@@ -1,7 +1,9 @@
 //! `GameSettingsDialog` ("Game settings"): Images, Details and Launch tabs for
 //! one game, plus Heroic's own settings tabs.
 
+mod actions;
 mod console;
+mod console_actions;
 mod details;
 mod images;
 mod launch;
@@ -26,6 +28,7 @@ use super::{DialogCtx, DialogEvent};
 use crate::theme;
 use crate::ui::controls::{action_button, button, close_button, dialog_title, kicker, tabs, ButtonKind};
 use crate::ui::dialog::{drawer, DrawerProps};
+use actions::ActionsState;
 use details::{form_from, Details, Form};
 use launch::LaunchState;
 
@@ -122,6 +125,8 @@ pub struct GameSettingsDialog {
     details: Details,
     initial: Form,
     launch: Option<LaunchState>,
+    /// The game's own actions (Launch tab).
+    actions: ActionsState,
     /// Heroic settings: the view and the tabs this game has.
     panel: Option<(Entity<SettingsPanel>, Vec<Section>)>,
     /// The Saves tab, for games that run here or through Steam.
@@ -143,6 +148,7 @@ impl GameSettingsDialog {
         let initial = form_from(&game.title, game.metadata.as_deref(), game.meta.as_deref());
         let details = Self::build_details(&ctx, &initial, window, cx);
         let launch = Self::build_launch(&game, window, cx);
+        let actions = Self::build_actions(&game, &ctx.data_paths);
         let facts = GameFacts::of(&game);
         let sections = facts.sections();
         let panel = (!sections.is_empty()).then(|| {
@@ -157,7 +163,6 @@ impl GameSettingsDialog {
             view
         });
         let tab = match tab {
-            Tab::Launch if launch.is_none() => Tab::Images,
             Tab::Backups if backups.is_none() => Tab::Images,
             t if t.section().is_some_and(|s| !panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s))) => Tab::Images,
             t => t,
@@ -177,6 +182,7 @@ impl GameSettingsDialog {
             details,
             initial,
             launch,
+            actions,
             panel,
             backups,
             game,
@@ -191,6 +197,10 @@ impl GameSettingsDialog {
             this.show_backups(cx);
         }
         this.debug_set_art(cx);
+        // `HERONITE_DEBUG_ACTION_EDIT=new|<id>`: the Launch tab's action editor starts open.
+        if let Some(which) = crate::env::value("HERONITE_DEBUG_ACTION_EDIT") {
+            this.edit_action((which != "new").then_some(which), window, cx);
+        }
         this
     }
 
@@ -264,10 +274,8 @@ impl Render for GameSettingsDialog {
             return self.render_console(window, cx);
         }
         self.images.update(cx, |im, _| im.frame(window));
-        let mut items = vec![(Tab::Images, Tab::Images.label()), (Tab::Details, Tab::Details.label())];
-        if self.launch.is_some() {
-            items.push((Tab::Launch, Tab::Launch.label()));
-        }
+        let items0 = [Tab::Images, Tab::Details, Tab::Launch];
+        let mut items: Vec<(Tab, &'static str)> = items0.iter().map(|t| (*t, t.label())).collect();
         let sections: Vec<Tab> =
             self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default();
         items.extend(self.with_saves_tab(sections).into_iter().map(|t| (t, t.label())));

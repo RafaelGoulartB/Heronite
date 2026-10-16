@@ -74,6 +74,8 @@ pub enum Icon {
     Palette,
     PhotoCamera,
     Inbox,
+    /// A game action that runs a command.
+    Terminal,
     /// Mouse pointer of the getting-started previews.
     Cursor,
     /// Multi-colour 32px circle buttons (rendered with `img`, not `svg`).
@@ -124,6 +126,7 @@ impl Icon {
             Palette => "icons/palette.svg",
             PhotoCamera => "icons/photo-camera.svg",
             Inbox => "icons/inbox.svg",
+            Terminal => "icons/terminal.svg",
             Cursor => "icons/cursor.svg",
             Menu => "icons/menu.svg",
             OpenInNew => "icons/open-in-new.svg",
