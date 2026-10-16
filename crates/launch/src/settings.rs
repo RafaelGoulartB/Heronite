@@ -93,6 +93,16 @@ pub struct GameSettings {
     /// `disableUMU`: only `Some(true)` disables umu.
     pub disable_umu: Option<bool>,
     pub gamescope: Gamescope,
+    /// `heroniteLsfg*`: Lossless Scaling frame generation.
+    pub lsfg: crate::lsfg::Lsfg,
+    /// `heronitePreferSdl`: Proton reads controllers through SDL.
+    pub prefer_sdl: bool,
+    /// `heroniteKeepAwake` (see [`crate::keep_awake`]).
+    pub keep_awake: bool,
+    /// The Epic game's chosen way to start (`lastUsedLaunchOption`).
+    pub launch_option: Option<crate::launch_option::LaunchOption>,
+    /// `heroniteUmuId`: the umu id the user set (see [`crate::umu_ids`]).
+    pub umu_id: String,
 }
 
 fn truthy(v: Option<&Value>) -> bool {
@@ -225,6 +235,12 @@ impl GameSettings {
                 _ => None,
             },
             gamescope: gs,
+            lsfg: crate::lsfg::Lsfg::from_map(m),
+            prefer_sdl: b(crate::env::KEY_PREFER_SDL),
+            // On unless the game or the defaults turned it off.
+            keep_awake: m.get(crate::keep_awake::KEY).map(|v| truthy(Some(v))).unwrap_or(true),
+            launch_option: m.get(crate::launch_option::KEY).and_then(crate::launch_option::LaunchOption::from_value),
+            umu_id: text(m.get(crate::umu_ids::KEY)).trim().to_string(),
         }
     }
 }

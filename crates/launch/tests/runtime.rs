@@ -642,6 +642,22 @@ fn a_game_that_is_still_preparing_has_nothing_to_checkpoint() {
     r.launcher.stop("g");
 }
 
+#[test]
+fn the_keep_awake_lock_lives_as_long_as_the_game() {
+    let r = rig();
+    let mut plan = process_plan("/games/run.sh", &[]);
+    plan.keep_awake = Some(Command { program: "/usr/bin/systemd-inhibit".into(), ..Default::default() });
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    wait_until("the lock", || r.spawner.spawned().len() == 2);
+    assert_eq!(r.spawner.spawned()[1].program, "/usr/bin/systemd-inhibit");
+    assert!(!r.spawner.handle(1).unwrap().lock().unwrap().terminated);
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "released with the game");
+}
+
 // ---------------------------------------------------------------------------
 // Programs alongside the game
 // ---------------------------------------------------------------------------

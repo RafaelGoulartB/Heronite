@@ -20,6 +20,13 @@ pub struct UiState {
     pub install_filter: InstallFilter,
     pub facet_filters: FacetFilters,
     pub sort: SortMode,
+    /// The sort turned around (View menu's arrow).
+    pub sort_descending: bool,
+    /// The View menu's "Only" switches.
+    pub only: OnlyFilters,
+    /// Selected custom categories (`heronite_data::categories`;
+    /// `categories::UNCATEGORIZED` for the games in none). Empty: all games.
+    pub categories: BTreeSet<String>,
     pub sidebar_hidden: bool,
     /// Ids of the collapsed status groups (`ungrouped` for "Other").
     pub collapsed_groups: BTreeSet<String>,
@@ -44,6 +51,9 @@ impl Default for UiState {
             install_filter: InstallFilter::All,
             facet_filters: FacetFilters::default(),
             sort: SortMode::Title,
+            sort_descending: false,
+            only: OnlyFilters::default(),
+            categories: BTreeSet::new(),
             sidebar_hidden: false,
             collapsed_groups: BTreeSet::new(),
             focused_game: None,
@@ -76,6 +86,12 @@ impl UiState {
                 store: text(FacetKind::Store),
             };
         }
+        let flag = |key: &str| value.get(key).and_then(Value::as_bool).unwrap_or(false);
+        state.sort_descending = flag("sortDescending");
+        state.only = OnlyFilters { favourites: flag("onlyFavourites"), updates: flag("onlyUpdates"), offline: flag("onlyOffline") };
+        if let Some(list) = value.get("categories").and_then(Value::as_array) {
+            state.categories = list.iter().filter_map(|v| v.as_str().filter(|s| !s.is_empty()).map(str::to_owned)).collect();
+        }
         state.sidebar_hidden = value.get("sidebarHidden").and_then(Value::as_bool).unwrap_or(false);
         if let Some(list) = value.get("collapsedGroups").and_then(Value::as_array) {
             state.collapsed_groups = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
@@ -103,6 +119,11 @@ impl UiState {
                 "store": facets.store,
             },
             "sort": self.sort,
+            "sortDescending": self.sort_descending,
+            "onlyFavourites": self.only.favourites,
+            "onlyUpdates": self.only.updates,
+            "onlyOffline": self.only.offline,
+            "categories": self.categories,
             "sidebarHidden": self.sidebar_hidden,
             "collapsedGroups": self.collapsed_groups,
             "focusedGame": self.focused_game,
@@ -156,6 +177,29 @@ impl UiState {
     pub fn clear_facets(&mut self) {
         self.facet_filters = FacetFilters::default();
     }
+
+    /// Selects or clears one category of the filter.
+    pub fn toggle_category(&mut self, name: &str) {
+        if !self.categories.remove(name) {
+            self.categories.insert(name.to_owned());
+        }
+    }
+}
+
+/// The View menu's "Only" switches.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OnlyFilters {
+    pub favourites: bool,
+    /// Installed games with an update waiting.
+    pub updates: bool,
+    /// Games that run without a connection.
+    pub offline: bool,
+}
+
+impl OnlyFilters {
+    pub fn is_active(&self) -> bool {
+        self.favourites || self.updates || self.offline
+    }
 }
 
 #[cfg(test)]
@@ -192,8 +236,14 @@ mod tests {
             show_hidden: true,
             console_mode: true,
             palette_recent: vec!["go:downloads".into(), "game:sideload_steam_400:primary".into()],
+            sort_descending: true,
+            only: OnlyFilters { favourites: true, updates: false, offline: true },
             ..Default::default()
         };
+        state.toggle_category("RPG");
+        state.toggle_category(crate::categories::UNCATEGORIZED);
+        state.toggle_category("Gone");
+        state.toggle_category("Gone");
         state.toggle_facet(FacetKind::Genre, "RPG");
         assert!(state.toggle_group("beaten"));
         assert!(state.toggle_group("ungrouped"));
@@ -208,6 +258,8 @@ mod tests {
         assert_eq!(on_disk["installFilter"], "installed");
         assert_eq!(on_disk["showHidden"], true);
         assert_eq!(on_disk["consoleMode"], true);
+        assert_eq!(on_disk["onlyOffline"], true);
+        assert_eq!(on_disk["categories"], json!([crate::categories::UNCATEGORIZED, "RPG"]));
         state.clear_facets();
         assert!(!state.facet_filters.is_active());
     }

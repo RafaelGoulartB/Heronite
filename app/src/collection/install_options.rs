@@ -84,6 +84,7 @@ fn prefill(game: &CollectionGame) -> Prefill {
         title: game.title.clone(),
         square: pick(&game.game.art_square, art.and_then(|a| a.cover_url.as_ref())),
         hero: pick(&game.game.art_cover, art.and_then(|a| a.hero_url.as_ref())),
+        convert: false,
     }
 }
 
@@ -99,6 +100,22 @@ impl CollectionView {
             }
         }
         self.primary_action(key, cx);
+    }
+
+    /// An emulated game becomes a PC game (a native port or a PC version):
+    /// the install form, converting the entry in place (playtime and status
+    /// stay).
+    pub(super) fn open_play_as_pc(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
+        if game.runner != "sideload" {
+            return;
+        }
+        let Some(ctx) = self.dialog_ctx() else { return };
+        self.context_menu = None;
+        self.open_menu = None;
+        let fill = Prefill { convert: true, ..prefill(&game) };
+        let view = cx.new(|cx| crate::dialogs::add_game::AddGameDialog::new(ctx, Mode::Install(fill), window, cx));
+        self.open_dialog(view, cx);
     }
 
     pub(super) fn open_manual_install(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {

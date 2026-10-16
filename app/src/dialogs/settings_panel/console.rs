@@ -26,7 +26,10 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use heronite_i18n::tr;
 
+mod lsfg;
 mod steam;
+mod tweaks;
+mod winetricks;
 
 type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
 type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel>)>;
@@ -94,6 +97,9 @@ impl SettingsPanel {
     }
 
     fn console_items(&self, cx: &App) -> Vec<Item> {
+        if self.winetricks_open() {
+            return self.c_winetricks(cx);
+        }
         let mut v = match self.section {
             Section::Proton => self.c_proton(),
             Section::Other if self.is_steam() => self.c_steam_other(cx),
@@ -207,6 +213,7 @@ impl SettingsPanel {
             Some(tr!("Lets DLSS work on NVIDIA GPUs")),
             !dxvk_on || busy,
         ));
+        v.extend(self.c_fixes(cx));
         v.push(Self::c_header(tr!("Sync and compatibility")));
         v.push(self.c_toggle("enableEsync", false, "Esync", Some(tr!("Less wineserver overhead in CPU-heavy games")), false));
         v.push(self.c_toggle("enableFsync", false, "Fsync", Some(tr!("Less wineserver overhead on supported kernels")), false));
@@ -234,9 +241,7 @@ impl SettingsPanel {
             v.push(Self::c_header(tr!("Tools")));
             let idle = self.tool_busy.is_none();
             v.push(Self::c_do("winecfg", "Winecfg", Icon::Tune, idle, |this, _, cx| this.run_tool("winecfg", WineTool::Winecfg, cx)));
-            v.push(Self::c_do("winetricks", "Winetricks", Icon::Build, idle, |this, _, cx| {
-                this.run_tool("winetricks", WineTool::Winetricks, cx)
-            }));
+            v.push(Self::c_do("winetricks", "Winetricks", Icon::Build, idle, |this, window, cx| this.open_winetricks(window, cx)));
             v.push(Self::c_do("runexe", tr!("Run a program in the prefix\u{2026}"), Icon::PlayArrow, idle, |this, window, cx| {
                 this.console_pick_file(
                     tr!("Run a program in the prefix"),
@@ -293,6 +298,8 @@ impl SettingsPanel {
                 false,
             ));
         }
+        v.extend(self.c_lsfg(false));
+        v.extend(self.c_controls(false));
         if native {
             let current = match self.settings.get("steamRuntime") {
                 Some(Value::String(s)) if !s.is_empty() => s.clone(),
@@ -334,6 +341,21 @@ impl SettingsPanel {
         v.push(Self::c_do(&format!("add-{}", t.id), label, Icon::Add, true, move |this, window, cx| {
             this.console_pair_edit(t, None, window, cx)
         }));
+        if t.env {
+            let mut paste = Self::c_do("env-text", tr!("Type several at once\u{2026}"), Icon::Edit, true, |this, window, cx| {
+                // One line: values with spaces are quoted so they read back whole.
+                let current = pairs(this.settings.get(ENV.setting), ENV.k1, ENV.k2)
+                    .iter()
+                    .map(|(k, v)| format!("{k}={}", shlex::try_quote(v).map(|q| q.into_owned()).unwrap_or_else(|_| v.clone())))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                this.console_osk(tr!("Environment Variables"), &current, window, cx, |this, text, _, cx| {
+                    this.apply_env_text(&text, cx);
+                });
+            });
+            paste.row = paste.row.desc(tr!("NAME=value pairs separated by spaces, like PROTON_NO_ESYNC=1 DXVK_ASYNC=1; replaces the list"));
+            v.push(paste);
+        }
         if t.env && !self.env_error.is_empty() {
             v.push(Self::c_info("env-error", tr!("Problem"), self.env_error.clone()));
         }
@@ -421,6 +443,13 @@ impl SettingsPanel {
         if game && legendary {
             v.push(self.c_toggle("offlineMode", false, tr!("Run the game offline"), None, false));
         }
+        if game && !self.launch_options.is_empty() {
+            let (names, index) = self.launch_option_choices();
+            v.push(item(
+                Row::choice("c:launch-option", tr!("Start with"), names, index).icon(Icon::PlayArrow),
+                Act::Choice(Rc::new(|this, i, cx| this.pick_launch_option(i, cx))),
+            ));
+        }
         v.push(self.c_toggle("verboseLogs", true, tr!("Verbose logs"), None, false));
         if game && !sideload {
             v.push(self.c_path("targetExe", tr!("Alternative executable"), false, cx));
@@ -442,6 +471,7 @@ impl SettingsPanel {
         if game {
             v.extend(self.c_companions());
         }
+        v.extend(self.c_presets(false));
         v.extend(self.c_pairs(WRAPPERS));
         v.extend(self.c_pairs(ENV));
         let wine = self.wine_version();
@@ -812,6 +842,11 @@ impl PadTarget for SettingsPanel {
     fn on_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.console_layer.pad(pad, window, cx) {
             cx.notify();
+            return true;
+        }
+        // B leaves the Winetricks page (not while it installs).
+        if pad == Pad::B && self.winetricks_open() {
+            self.close_winetricks(cx);
             return true;
         }
         let items = self.console_items(cx);

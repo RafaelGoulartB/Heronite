@@ -33,6 +33,16 @@ pub fn build_plan_with_settings(
         "nile" => crate::nile::build(ctx, probe, game, settings, opts),
         other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),
     };
+    // Before the companions: they join the game's container with its GAMEID.
+    let keys = crate::umu_ids::GameKeys {
+        runner: &game.runner,
+        app_name: &game.app_name,
+        title: &game.title,
+        steam_app_id: meta.and_then(|m| m.steam_app_id.as_deref()),
+        user_id: &settings.umu_id,
+    };
+    crate::umu_ids::attach(&mut plan, ctx, keys);
+    crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
     crate::scripts::attach(&mut plan, probe, game, settings);
     crate::companions::attach(&mut plan, ctx, probe, game, settings);
     plan
@@ -95,6 +105,14 @@ fn executable_plan(
     settings: &GameSettings,
     opts: &LaunchOptions,
 ) -> LaunchPlan {
+    // A Linux game started by a command in its folder (targetExe still wins).
+    if settings.target_exe.is_empty() {
+        if let Some((command, folder)) = heronite_data::sideload::command_of(game) {
+            let mut extra = split_args(&settings.launcher_args);
+            extra.extend(opts.extra_args.iter().cloned());
+            return command_plan(ctx, probe, game, settings, command, folder, extra);
+        }
+    }
     // targetExe wins; otherwise what install-state would have stored:
     // the first existing of (remapped executable, install.executable).
     let install_exe = game.install.executable.as_deref();
@@ -114,6 +132,53 @@ fn executable_plan(
     }
 
     native_plan(ctx, probe, game, settings, &executable, extra, "sideload")
+}
+
+/// A Linux game started by a shell command inside its folder: `sh -c` runs
+/// the command with the game's arguments appended (`"$@"`), under the same
+/// wrappers and environment as a native executable.
+fn command_plan(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    game: &GameInfo,
+    settings: &GameSettings,
+    command: &str,
+    folder: &str,
+    extra: Vec<String>,
+) -> LaunchPlan {
+    let program_file = match crate::native::check_command(command, folder, probe) {
+        Ok(file) => file,
+        Err(why) => return LaunchPlan::Unavailable(why),
+    };
+    let umu = settings.steam_runtime.as_ref().map(|_| crate::wine::umu_path(ctx, probe));
+    let umu_missing = umu.as_deref().is_some_and(|u| !probe.exists(u));
+    let wp = build_wrappers(settings, probe, umu.as_deref());
+    if let Some(err) = wp.error {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
+    let mut env = setup_wrapper_env_vars(&game.app_name, "sideload");
+    env.extend(setup_env_vars(settings, Some(folder), probe));
+    if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
+    let mut parts = wp.wrappers;
+    parts.extend(["/bin/sh".to_string(), "-c".to_string(), format!("{command} \"$@\""), "sh".to_string()]);
+    parts.extend(extra);
+    let program = parts.remove(0);
+    LaunchPlan::Native(ProcessPlan {
+        command: Command { program, args: parts, env, cwd: Some(folder.to_string()) },
+        stop: StopSpec { kill_patterns: command_program(command).into_iter().collect(), commands: vec![] },
+        // An AppImage or script copied without the executable bit gets it, as executables do.
+        make_executable: program_file.filter(|p| !probe.is_executable(p)),
+        prep: PrepSpec { umu: umu_missing, ..Default::default() },
+        ..Default::default()
+    })
+}
+
+/// The program a command starts, for stopping it: the first word that is not
+/// `env` or a `NAME=value` assignment, without its folder.
+fn command_program(command: &str) -> Option<String> {
+    crate::native::command_program(command).map(|w| node_basename(&w)).filter(|w| !w.is_empty())
 }
 
 /// A Linux program started directly: Heroic's wrappers and environment, no
@@ -138,6 +203,9 @@ pub(crate) fn native_plan(
     }
     let mut env = setup_wrapper_env_vars(&game.app_name, runner);
     env.extend(setup_env_vars(settings, game.install.install_path.as_deref(), probe));
+    if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
 
     let mut parts = wp.wrappers;
     parts.push(executable.to_string());

@@ -5,12 +5,13 @@
 //! observe it.
 //!
 //! `Downloads` is split by responsibility: `queue` (install/update/queue
-//! control), `ops` (one-off operations), `updates` (library refresh and
+//! control, pausing while offline with `connectivity`), `ops` (one-off operations), `updates` (library refresh and
 //! auto-update), `eos` (EOS overlay), `account` (Epic login/logout), `stores`
 //! (GOG and Amazon Games: accounts, refreshes, operations) and `debug`
 //! (`HERONITE_DEBUG_*` hooks).
 
 mod account;
+mod connectivity;
 mod debug;
 mod eos;
 mod gog_saves;
@@ -18,6 +19,7 @@ mod launch_setup;
 mod library_file;
 mod ops;
 mod queue;
+mod relocate;
 mod stores;
 mod types;
 mod updates;
@@ -48,6 +50,8 @@ pub struct Downloads {
     manager: DownloadManager,
     snapshot: Snapshot,
     progress: HashMap<String, Progress>,
+    /// Pauses the queue while the connection is down.
+    offline: connectivity::OfflineWatch,
     updates: HashSet<String>,
     /// `HERONITE_DEBUG_FAKE_UPDATE=<appName>`: shows an update for screenshots.
     fake_update: Option<String>,
@@ -113,6 +117,7 @@ impl Downloads {
             manager,
             snapshot,
             progress: HashMap::new(),
+            offline: Default::default(),
             updates: HashSet::new(),
             fake_update: crate::env::value("HERONITE_DEBUG_FAKE_UPDATE"),
             busy: HashMap::new(),
@@ -145,6 +150,7 @@ impl Downloads {
             this.debug_queue_install(&app, cx);
         } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             this.spawn_idle_jobs(cx);
+            this.spawn_offline_watch(cx);
         }
         this
     }
@@ -179,6 +185,13 @@ impl Downloads {
             + self.gog.updates.len()
             + self.amazon.updates.len()
             + usize::from(self.fake_update.as_ref().is_some_and(|a| !self.has_real_update(a)))
+    }
+
+    /// App names of every game with an update waiting (any store).
+    pub fn update_apps(&self) -> HashSet<String> {
+        let mut all: HashSet<String> = self.updates.iter().chain(&self.gog.updates).chain(&self.amazon.updates).cloned().collect();
+        all.extend(self.fake_update.clone());
+        all
     }
 
     fn has_real_update(&self, app_name: &str) -> bool {

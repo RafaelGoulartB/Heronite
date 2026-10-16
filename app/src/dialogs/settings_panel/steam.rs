@@ -159,6 +159,7 @@ impl SettingsPanel {
             return;
         }
         self.settings.insert(key.to_string(), value);
+        self.steam_lsfg_dll();
         let line = options::build(&self.settings, &wrap::path(&self.paths).to_string_lossy());
         self.steam_send_line(line, cx);
     }
@@ -624,8 +625,8 @@ impl SettingsPanel {
             .child(self.outline_button("steam-winecfg", &label("winecfg", "Winecfg"), can_run, cx, |this, _, cx| {
                 this.run_tool("winecfg", WineTool::Winecfg, cx)
             }))
-            .child(self.outline_button("steam-winetricks", &label("winetricks", "Winetricks"), can_run, cx, |this, _, cx| {
-                this.run_tool("winetricks", WineTool::Winetricks, cx)
+            .child(self.outline_button("steam-winetricks", &label("winetricks", "Winetricks"), can_run, cx, |this, window, cx| {
+                this.open_winetricks(window, cx)
             }))
             .child(self.outline_button("steam-runexe", &label("runexe", tr!("Run .exe in prefix")), can_run, cx, |_, window, cx| {
                 choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
@@ -687,7 +688,10 @@ impl SettingsPanel {
             ));
         }
         col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
-        col
+        col = col.child(self.lsfg_section(off, cx));
+        // Steam keeps the computer awake itself while a game runs.
+        let sdl = rows().child(self.sdl_row(off, cx));
+        col.child(heading(tr!("Controllers and power"))).child(sdl.card())
     }
 
     pub(super) fn steam_gamescope_tab(&mut self, cx: &mut Context<Self>) -> Div {
@@ -740,7 +744,7 @@ impl SettingsPanel {
                     vec![help(tr!("Steam runs the scripts through a small script of Heronite's, so they run however the game starts."))],
                 );
             col = col.child(heading(tr!("Launch"))).child(launch.card());
-            col = col.child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
+            col = col.child(self.presets_section(off, cx)).child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
             let mut dx = rows().child(self.toggle_row(
                 "dxvk-fps",
                 "enableDXVKFpsLimit",

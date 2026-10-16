@@ -236,6 +236,10 @@ pub fn uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) 
             Err(err) => OpResult::err(format!("{err:#}")),
         };
     }
+    // A folder already gone has nothing to delete: legendary only drops the record.
+    if install_folder_missing(data_paths, app_name) {
+        return force_uninstall(data_paths, legendary, app_name);
+    }
     match legendary.run(&["uninstall", app_name, "-y"], &[]) {
         Err(err) => OpResult::err(format!("{err:#}")),
         Ok(out) if out.success() => {
@@ -246,6 +250,13 @@ pub fn uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) 
     }
 }
 
+/// legendary records the game at a folder that no longer exists.
+fn install_folder_missing(data_paths: &DataPaths, app_name: &str) -> bool {
+    let installed = heronite_data::json_store::read_value(&data_paths.legendary_config_dir().join("installed.json")).unwrap_or(Value::Null);
+    let path = installed.get(app_name).and_then(|e| e.get("install_path")).and_then(Value::as_str).unwrap_or_default();
+    !path.is_empty() && !Path::new(path).exists()
+}
+
 /// `forceUninstall`: forget the install in `installed.json` but keep the files.
 pub fn force_uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> OpResult {
     match legendary.run(&["uninstall", app_name, "-y", "--keep-files"], &[]) {
@@ -253,6 +264,41 @@ pub fn force_uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: 
         Ok(out) if out.success() => {
             let _ = library::write_library(data_paths);
             OpResult::ok(tr!("Removed from the installed games"))
+        }
+        Ok(out) => OpResult::err(out.error_lines()),
+    }
+}
+
+/// The game's folder was moved or renamed outside the app: checks that
+/// `folder` holds the game, then has legendary point the install at it
+/// without moving anything. legendary keeps the folder's own name (only the
+/// parent changes), so a renamed folder is refused with a hint.
+pub fn relocate(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, folder: &str) -> OpResult {
+    let folder = folder.trim().trim_end_matches('/');
+    let dir = Path::new(folder);
+    if !dir.is_dir() {
+        return OpResult::err(tr!("The folder does not exist"));
+    }
+    let installed = heronite_data::json_store::read_value(&data_paths.legendary_config_dir().join("installed.json")).unwrap_or(Value::Null);
+    let Some(entry) = installed.get(app_name) else { return OpResult::err(tr!("The game is not installed")) };
+    let old = entry.get("install_path").and_then(Value::as_str).unwrap_or_default();
+    let old_name = Path::new(old.trim_end_matches('/')).file_name();
+    if old_name.is_some() && dir.file_name() != old_name {
+        let name = old_name.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        return OpResult::err(tr!("Epic games keep the name of their folder: pick a folder named {name}, or rename it back.", name));
+    }
+    let exe = entry.get("executable").and_then(Value::as_str).unwrap_or_default().replace('\\', "/");
+    if !exe.is_empty() && !dir.join(&exe).exists() {
+        return OpResult::err(tr!("That folder does not have the game's {exe}", exe));
+    }
+    let Some(parent) = dir.parent().map(|p| p.to_string_lossy().into_owned()) else {
+        return OpResult::err(tr!("The folder does not exist"));
+    };
+    match legendary.run(&["move", app_name, &parent, "--skip-move"], &[]) {
+        Err(err) => OpResult::err(format!("{err:#}")),
+        Ok(out) if out.success() => {
+            let _ = library::write_library(data_paths);
+            OpResult::ok(tr!("Install location changed"))
         }
         Ok(out) => OpResult::err(out.error_lines()),
     }
@@ -543,6 +589,32 @@ mod tests {
         assert_eq!(c[0], "uninstall Calluna -y");
         assert_eq!(c[1], "uninstall Calluna -y --keep-files");
         assert_eq!(c[2], format!("import Calluna {} --with-dlcs --platform Windows", game_dir.display()));
+    }
+
+    #[test]
+    fn relocate_checks_the_folder_then_tells_legendary() {
+        let dir = tempfile::tempdir().unwrap();
+        let (job, data_paths) = job(dir.path(), "true");
+        std::fs::write(
+            data_paths.legendary_config_dir().join("installed.json"),
+            r#"{"Calluna": {"install_path": "/old/Control", "executable": "Bin\\Control.exe"}}"#,
+        )
+        .unwrap();
+        let moved = dir.path().join("disk2/Control");
+        std::fs::create_dir_all(moved.join("Bin")).unwrap();
+        // Not the game yet: its executable is missing.
+        assert!(!relocate(&data_paths, &job.legendary, "Calluna", moved.to_str().unwrap()).ok);
+        std::fs::write(moved.join("Bin/Control.exe"), "").unwrap();
+        let renamed = dir.path().join("disk2/Ctrl");
+        std::fs::create_dir_all(&renamed).unwrap();
+        let r = relocate(&data_paths, &job.legendary, "Calluna", renamed.to_str().unwrap());
+        assert!(!r.ok && r.message.contains("Control"), "a renamed folder is refused: {}", r.message);
+        assert!(!relocate(&data_paths, &job.legendary, "Other", moved.to_str().unwrap()).ok, "not installed");
+        assert!(!relocate(&data_paths, &job.legendary, "Calluna", "/nonexistent-dir/Control").ok);
+        assert!(calls(dir.path()).is_empty(), "nothing ran yet");
+        let r = relocate(&data_paths, &job.legendary, "Calluna", &format!("{}/", moved.display()));
+        assert!(r.ok, "{}", r.message);
+        assert_eq!(calls(dir.path()), [format!("move Calluna {} --skip-move", moved.parent().unwrap().display())]);
     }
 
     #[test]

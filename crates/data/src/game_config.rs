@@ -177,10 +177,25 @@ const INHERITED_KEYS: [&str; 24] = [
     "targetExe",
 ];
 const INHERITED_KEYS_2: [&str; 5] = ["useGameMode", "battlEyeRuntime", "eacRuntime", "beforeLaunchScriptPath", "afterLaunchScriptPath"];
-// `heroniteSharedFolders` ("Folders visible to Proton") and
-// `heroniteMangohudFpsLimit` are Heronite's.
-const INHERITED_KEYS_3: [&str; 5] =
-    ["gamescope", "verboseLogs", "advertiseAvxForRosetta", "heroniteSharedFolders", "heroniteMangohudFpsLimit"];
+// `heroniteSharedFolders` ("Folders visible to Proton"),
+// `heroniteMangohudFpsLimit`, `heroniteLsfg*` (frame generation),
+// `heronitePreferSdl` and `heroniteKeepAwake` are Heronite's. A game's
+// `heroniteUmuId` is its own and never inherited.
+const INHERITED_KEYS_3: [&str; 13] = [
+    "gamescope",
+    "verboseLogs",
+    "advertiseAvxForRosetta",
+    "heroniteSharedFolders",
+    "heroniteMangohudFpsLimit",
+    "heroniteLsfg",
+    "heroniteLsfgMultiplier",
+    "heroniteLsfgFlowScale",
+    "heroniteLsfgPerformance",
+    "heroniteLsfgHdr",
+    "heroniteLsfgProfile",
+    "heronitePreferSdl",
+    "heroniteKeepAwake",
+];
 
 /// The defaults of `GameConfigV0.getSettings()` before the game's own section
 /// is laid over them. `is_new_file`: the game has no config file yet

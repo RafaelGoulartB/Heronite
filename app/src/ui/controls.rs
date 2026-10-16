@@ -18,11 +18,11 @@ fn knob_shadow() -> Vec<BoxShadow> {
 
 /// Accent fill (fading in) and white knob (sliding) of a switch `w` wide
 /// with a `knob` circle inset by `inset`.
-fn switch_fx(key: String, on: bool, w: f32, knob: f32, inset: f32) -> AnyElement {
+fn switch_fx(key: String, on: bool, fill: Hsla, w: f32, knob: f32, inset: f32) -> AnyElement {
     let travel = w - knob - 2. * inset;
     let build = move |fx: Div, t: f32| {
         let t = t.clamp(0., 1.);
-        fx.child(div().absolute().inset_0().rounded_full().bg(theme::accent()).opacity(t)).child(
+        fx.child(div().absolute().inset_0().rounded_full().bg(fill).opacity(t)).child(
             div().absolute().top(px(inset)).left(px(inset + travel * t)).size(px(knob)).rounded_full().bg(white()).shadow(knob_shadow()),
         )
     };
@@ -39,7 +39,7 @@ fn switch_fx(key: String, on: bool, w: f32, knob: f32, inset: f32) -> AnyElement
     }
 }
 
-fn switch_box(id: impl Into<ElementId>, on: bool, disabled: bool, w: f32, h: f32, knob: f32, inset: f32) -> Stateful<Div> {
+fn switch_box(id: impl Into<ElementId>, on: bool, disabled: bool, fill: Hsla, w: f32, h: f32, knob: f32, inset: f32) -> Stateful<Div> {
     let id: ElementId = id.into();
     let key = format!("{id}");
     div()
@@ -52,19 +52,25 @@ fn switch_box(id: impl Into<ElementId>, on: bool, disabled: bool, w: f32, h: f32
         .bg(theme::toggle_off())
         .when(disabled, |d| d.opacity(0.4).cursor_not_allowed())
         .when(!disabled, |d| d.cursor_pointer())
-        .child(switch_fx(key, on, w, knob, inset))
+        .child(switch_fx(key, on, fill, w, knob, inset))
 }
 
 /// Toggle switch (40x24 pill, 18px knob): off `rgba(255,255,255,.16)`, on =
 /// accent. The caller adds `.on_click(..)`. Disabled is drawn at 40% opacity.
 pub fn toggle(id: impl Into<ElementId>, on: bool, disabled: bool) -> Stateful<Div> {
-    switch_box(id, on, disabled, theme::TOGGLE_W, theme::TOGGLE_H, theme::TOGGLE_KNOB, 3.)
+    switch_box(id, on, disabled, theme::accent().into(), theme::TOGGLE_W, theme::TOGGLE_H, theme::TOGGLE_KNOB, 3.)
+}
+
+/// A [`toggle`] that is on but has no effect yet (something it needs is
+/// missing): grey instead of the accent, still clickable.
+pub fn toggle_inactive(id: impl Into<ElementId>, on: bool) -> Stateful<Div> {
+    switch_box(id, on, false, theme::white_a(0.3), theme::TOGGLE_W, theme::TOGGLE_H, theme::TOGGLE_KNOB, 3.)
 }
 
 /// Compact switch (30x18) for dense lists (ROM / emulator pickers): the caller
 /// adds the click handler and the label next to it.
 pub fn mini_checkbox(id: impl Into<ElementId>, checked: bool, disabled: bool) -> Stateful<Div> {
-    switch_box(id, checked, disabled, 30., 18., 12., 3.).mt(px(2.))
+    switch_box(id, checked, disabled, theme::accent().into(), 30., 18., 12., 3.).mt(px(2.))
 }
 
 /// A settings row (see [`row`]) whose control is a toggle; the whole row is

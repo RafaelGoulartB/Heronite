@@ -25,6 +25,7 @@ pub mod cmd;
 pub mod disk;
 pub mod eos_overlay;
 pub mod info;
+pub mod launch_options;
 pub mod library;
 pub mod manager;
 pub mod moves;

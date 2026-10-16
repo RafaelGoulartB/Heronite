@@ -8,6 +8,7 @@
 //!   formats.
 //! * [`steam`]: `steam://` URIs and installed-app detection.
 
+pub mod anticheat_data;
 pub mod companions;
 pub mod dxvk;
 pub mod emulators;
@@ -15,12 +16,15 @@ pub mod env;
 pub mod first_launch;
 pub mod gog;
 pub mod install_state;
+pub mod keep_awake;
 pub mod known_fixes;
+pub mod launch_option;
 pub mod legendary;
 pub mod legendary_install;
 pub mod library;
 pub mod log_reader;
 pub mod log_writer;
+pub mod lsfg;
 pub mod native;
 pub mod net;
 pub mod nile;
@@ -38,10 +42,12 @@ pub mod shared_folders;
 pub mod steam;
 pub mod store_tools;
 pub mod tools;
+pub mod umu_ids;
 pub mod vdf;
 pub mod wake;
 pub mod wine;
 pub mod wine_tools;
+pub mod winetricks;
 
 pub use plan::{build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 pub use probe::{Probe, SystemProbe};

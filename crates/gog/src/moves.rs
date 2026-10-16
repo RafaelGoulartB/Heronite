@@ -65,6 +65,28 @@ pub fn move_install(paths: &DataPaths, app_name: &str, new_base: &str, cancel: &
     Ok(entry.install_path)
 }
 
+/// The game's folder was moved or renamed outside the app: checks that
+/// `folder` holds the game (its `goggame-<id>.info`, or a Linux build's
+/// `gameinfo` / `start.sh`) and points the install at it. Returns the new
+/// install path.
+pub fn relocate(paths: &DataPaths, app_name: &str, folder: &str) -> Result<String> {
+    let Some(mut entry) = installed::get(paths, app_name) else { bail!(tr!("{app} is not installed", app = app_name)) };
+    let folder = folder.trim().trim_end_matches('/');
+    let dir = Path::new(folder);
+    if !dir.is_dir() {
+        bail!(tr!("{path} does not exist", path = folder));
+    }
+    let info = dir.join(format!("goggame-{app_name}.info")).is_file();
+    let linux = entry.platform == "linux" && (dir.join("gameinfo").is_file() || dir.join("start.sh").is_file());
+    if !info && !linux {
+        bail!(tr!("That folder does not look like this game's install (goggame-{app}.info is missing)", app = app_name));
+    }
+    entry.install_path = folder.to_string();
+    installed::upsert(paths, &entry)?;
+    library::sync_install_state(paths, app_name, dir.file_name().and_then(|n| n.to_str()));
+    Ok(entry.install_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +135,24 @@ mod tests {
         assert!(move_install(&paths, "nope", "/tmp/x", &cancel, &mut |_| {}).is_err());
         assert!(game.join("a.bin").exists());
         assert_eq!(installed::get(&paths, "42").unwrap().install_path, game.display().to_string());
+    }
+
+    #[test]
+    fn relocate_points_the_record_at_a_folder_moved_by_hand() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        let game = install(&paths, dir.path());
+        let moved = dir.path().join("elsewhere/Renamed Game");
+        std::fs::create_dir_all(&moved).unwrap();
+        std::fs::rename(&game, &moved).unwrap();
+        // Not this game's folder until its info file is there.
+        assert!(relocate(&paths, "42", &moved.display().to_string()).is_err());
+        std::fs::write(moved.join("goggame-42.info"), "{}").unwrap();
+        assert!(relocate(&paths, "42", "/nonexistent-dir").is_err());
+        assert!(relocate(&paths, "7", &moved.display().to_string()).is_err(), "not installed");
+        let now = relocate(&paths, "42", &format!("{}/", moved.display())).unwrap();
+        assert_eq!(now, moved.display().to_string());
+        assert_eq!(installed::get(&paths, "42").unwrap().install_path, now);
+        assert!(moved.join("a.bin").exists(), "nothing was moved or deleted");
     }
 }

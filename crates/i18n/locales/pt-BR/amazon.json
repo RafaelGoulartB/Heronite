@@ -22,5 +22,6 @@
   "nile exited with {code}": "O nile terminou com {code}",
   "nile finished, but the game was not installed": "O nile terminou, mas o jogo não foi instalado",
   "nile gave an unexpected answer when checking for updates": "O nile deu uma resposta inesperada ao verificar atualizações",
-  "nile was not found": "O nile não foi encontrado"
+  "nile was not found": "O nile não foi encontrado",
+  "That folder does not look like this game's install (fuel.json is missing)": "Essa pasta não parece ser a instalação deste jogo (falta o fuel.json)"
 }

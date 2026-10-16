@@ -29,5 +29,6 @@
   "Cloud saves could not be synced: {error}": "Não foi possível sincronizar os saves na nuvem: {error}",
   "GOG answered with HTTP {status}": "A GOG respondeu com HTTP {status}",
   "This game has no cloud saves": "Este jogo não tem saves na nuvem",
-  "This game has no Wine prefix yet; choose one in its Wine settings": "Este jogo ainda não tem um prefixo do Wine; escolha um nas configurações do Wine dele"
+  "This game has no Wine prefix yet; choose one in its Wine settings": "Este jogo ainda não tem um prefixo do Wine; escolha um nas configurações do Wine dele",
+  "That folder does not look like this game's install (goggame-{app}.info is missing)": "Essa pasta não parece ser a instalação deste jogo (falta o goggame-{app}.info)"
 }

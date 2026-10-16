@@ -8,7 +8,8 @@
 //!   `heronite-rs://launch?appName=..&runner=..[&arg=..][&altExe=..][&gui=false]`
 //!   (Heroic's URL forms under this app's own scheme; `heroic://` stays Heroic's).
 //!
-//! `--no-gui` (Heroic's flag) means "do not show the window".
+//! `--no-gui` means "do not show the window". `--console` and `--fullscreen`
+//! show it in console mode and/or fullscreen.
 
 /// Runners Heroic's protocol accepts; we also know `zoom`.
 pub const RUNNERS: [&str; 5] = ["legendary", "gog", "nile", "sideload", "zoom"];
@@ -42,6 +43,10 @@ pub struct Cli {
     pub launch: Option<LaunchRequest>,
     /// `--no-gui`.
     pub no_gui: bool,
+    /// `--console`: switch to console mode.
+    pub console: bool,
+    /// `--fullscreen`: the window fills the screen.
+    pub fullscreen: bool,
     pub help: bool,
     /// Problems worth telling the user (unusable `--launch`).
     pub errors: Vec<String>,
@@ -55,6 +60,8 @@ Usage:
   heronite-rs --launch <runner>_<app> launch a game (also: --launch <runner> <app>, --launch <app>)
   heronite-rs [--no-gui] <url>        launch from heronite-rs://launch?appName=..&runner=..
   --no-gui                            do not show the window (the process exits when the game ends)
+  --console                           open in console mode (it stays on until you leave it)
+  --fullscreen                        open the window fullscreen (F11 switches back)
   -h, --help                          this text
 ";
 
@@ -142,6 +149,8 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
         let a = &args[i];
         match a.as_str() {
             "--no-gui" => cli.no_gui = true,
+            "--console" => cli.console = true,
+            "--fullscreen" => cli.fullscreen = true,
             "-h" | "--help" => cli.help = true,
             "--launch" => {
                 let first = args.get(i + 1).filter(|s| !s.starts_with("--"));
@@ -195,6 +204,12 @@ impl Cli {
             None => self.no_gui,
         }
     }
+
+    /// `--console` / `--fullscreen` ask for the window (over "start
+    /// minimized"); hiding it still wins.
+    pub fn wants_window(&self) -> bool {
+        self.console || self.fullscreen
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +251,21 @@ mod tests {
         assert!(!p(&[]).hide_window(true), "the setting only applies to launches");
         assert!(p(&["--launch", "gog_1"]).hide_window(true));
         assert!(!p(&["--launch", "gog_1"]).hide_window(false));
+    }
+
+    #[test]
+    fn console_and_fullscreen() {
+        let c = p(&["--console", "--fullscreen"]);
+        assert!(c.console && c.fullscreen && c.wants_window());
+        assert!(!p(&[]).wants_window());
+        assert!(p(&["--fullscreen"]).wants_window());
+        // they mix with a launch and do not eat its arguments
+        let c = p(&["--console", "--launch", "gog", "1"]);
+        assert!(c.console);
+        assert_eq!(c.launch, Some(req(Some("gog"), "1")));
+        let c = p(&["--launch", "gog_1", "--fullscreen"]);
+        assert!(c.fullscreen);
+        assert_eq!(c.launch, Some(req(Some("gog"), "1")));
     }
 
     #[test]

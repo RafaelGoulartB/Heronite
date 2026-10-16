@@ -15,10 +15,12 @@
 //! [`Parsed::editable`]: rebuilding it from fields would change what it does.
 //!
 //! Setting keys are Heroic's where the meaning is the same (`showMangohud`,
-//! `gamescope`, `enviromentOptions`...), plus [`KEY_NVAPI`] and
-//! [`KEY_WINED3D`].
+//! `gamescope`, `enviromentOptions`...), plus [`KEY_NVAPI`],
+//! [`KEY_WINED3D`] and the frame generation keys of [`lsfg`] (written as
+//! lsfg-vk 2's variables).
 
 use heronite_launch::env::gamescope_args;
+use heronite_launch::lsfg::{self, Layer};
 use heronite_launch::settings::GameSettings;
 use serde_json::{json, Map, Value};
 
@@ -35,13 +37,14 @@ pub const KEY_NVAPI: &str = "steamEnableNvapi";
 pub const KEY_WINED3D: &str = "steamUseWined3d";
 
 /// Switches set by `VAR=1`.
-const SWITCHES: [(&str, &str); 6] = [
+const SWITCHES: [(&str, &str); 7] = [
     ("enableWineWayland", "PROTON_ENABLE_WAYLAND"),
     ("enableHDR", "PROTON_ENABLE_HDR"),
     ("enableWoW64", "PROTON_USE_WOW64"),
     (KEY_NVAPI, "PROTON_ENABLE_NVAPI"),
     (KEY_WINED3D, "PROTON_USE_WINED3D"),
     ("verboseLogs", "PROTON_LOG"),
+    (heronite_launch::env::KEY_PREFER_SDL, "PROTON_PREFER_SDL"),
 ];
 /// Switches that are on unless `VAR=1`.
 const INVERTED: [(&str, &str); 2] = [("enableEsync", "PROTON_NO_ESYNC"), ("enableFsync", "PROTON_NO_FSYNC")];
@@ -78,6 +81,14 @@ pub fn defaults() -> Settings {
     s.insert("enviromentOptions".into(), json!([]));
     s.insert("wrapperOptions".into(), json!([]));
     s.insert("gamescope".into(), gamescope_value(&Gamescope::default()));
+    for key in [lsfg::KEY_ENABLED, lsfg::KEY_PERFORMANCE, lsfg::KEY_HDR] {
+        s.insert(key.into(), Value::Bool(false));
+    }
+    s.insert(lsfg::KEY_MULTIPLIER.into(), json!(lsfg::DEFAULT_MULTIPLIER));
+    s.insert(lsfg::KEY_FLOW_SCALE.into(), json!(lsfg::DEFAULT_FLOW_SCALE));
+    for key in [lsfg::KEY_PROFILE, lsfg::KEY_DLL] {
+        s.insert(key.into(), Value::String(String::new()));
+    }
     s
 }
 
@@ -184,7 +195,8 @@ fn read_wrappers(tokens: &[String], s: &mut Settings) -> Option<bool> {
 }
 
 /// Sorts the leading variables into switches and plain variables.
-fn read_env(env: Vec<(String, String)>, gamescope_on: bool, s: &mut Settings) {
+fn read_env(mut env: Vec<(String, String)>, gamescope_on: bool, s: &mut Settings) {
+    read_lsfg(&mut env, s);
     let has = |k: &str, v: &str| env.iter().any(|(key, value)| key == k && value == v);
     let prime = PRIME.iter().all(|(k, v)| has(k, v));
     let mangohud_on = s.get("showMangohud") == Some(&Value::Bool(true));
@@ -212,6 +224,50 @@ fn read_env(env: Vec<(String, String)>, gamescope_on: bool, s: &mut Settings) {
     if !gamescope_on {
         s.insert("gamescope".into(), gamescope_value(&Gamescope::default()));
     }
+}
+
+/// Takes the frame generation variables this module writes out of `env`:
+/// `LSFGVK_ENV=1` with the values, or `LSFGVK_PROFILE`. A value the panel
+/// cannot show stays a plain variable.
+fn read_lsfg(env: &mut Vec<(String, String)>, s: &mut Settings) {
+    let get = |k: &str| env.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
+    let profile = get("LSFGVK_PROFILE").filter(|p| !p.is_empty());
+    let by_env = get("LSFGVK_ENV").as_deref() == Some("1");
+    if !by_env && profile.is_none() {
+        return;
+    }
+    let mut taken: Vec<&str> = vec!["LSFGVK_ENV", "LSFGVK_PROFILE"];
+    s.insert(lsfg::KEY_ENABLED.into(), Value::Bool(true));
+    if let Some(dll) = get("LSFGVK_DLL_PATH").filter(|d| !d.is_empty()) {
+        s.insert(lsfg::KEY_DLL.into(), Value::String(dll));
+        taken.push("LSFGVK_DLL_PATH");
+    }
+    match profile {
+        // With both, lsfg-vk uses the variables.
+        Some(p) if !by_env => {
+            s.insert(lsfg::KEY_PROFILE.into(), Value::String(p));
+        }
+        _ => {
+            if let Some(n) = get("LSFGVK_MULTIPLIER").and_then(|v| v.parse::<u32>().ok()).filter(|n| lsfg::MULTIPLIERS.contains(n)) {
+                s.insert(lsfg::KEY_MULTIPLIER.into(), json!(n));
+                taken.push("LSFGVK_MULTIPLIER");
+            }
+            let flow = get("LSFGVK_FLOW_SCALE").and_then(|v| v.parse::<f32>().ok()).map(|f| (f * 100.0).round() as u32);
+            if let Some(pct) = flow.filter(|p| (25..=100).contains(p)) {
+                s.insert(lsfg::KEY_FLOW_SCALE.into(), json!(pct));
+                taken.push("LSFGVK_FLOW_SCALE");
+            }
+            if let Some(v @ ("0" | "1")) = get("LSFGVK_PERFORMANCE_MODE").as_deref() {
+                s.insert(lsfg::KEY_PERFORMANCE.into(), Value::Bool(v == "1"));
+                taken.push("LSFGVK_PERFORMANCE_MODE");
+            }
+            if get("LSFGVK_COLOR_SPACE").as_deref() == Some("hdr10") && get("LSFGVK_TRANSFER_FUNCTION").as_deref() == Some("pq") {
+                s.insert(lsfg::KEY_HDR.into(), Value::Bool(true));
+                taken.extend(["LSFGVK_COLOR_SPACE", "LSFGVK_TRANSFER_FUNCTION"]);
+            }
+        }
+    }
+    env.retain(|(k, _)| !taken.contains(&k.as_str()));
 }
 
 fn is_number(s: &str) -> bool {
@@ -354,6 +410,15 @@ pub fn build(settings: &Settings, wrap: &str) -> String {
     let user_mangohud_config = g.env_options.iter().any(|(k, _)| k == MANGOHUD_CONFIG);
     if g.show_mangohud && !user_mangohud_config && g.mangohud_fps_limit.parse::<u32>().is_ok_and(|n| n > 0) {
         set(MANGOHUD_CONFIG, &format!("read_cfg,fps_limit={}", g.mangohud_fps_limit));
+    }
+    if g.lsfg.enabled {
+        let dll = settings.get(lsfg::KEY_DLL).and_then(Value::as_str).filter(|d| !d.is_empty());
+        let vars = lsfg::env_for(&g.lsfg, Layer::V2, dll, !g.lsfg.profile.is_empty());
+        // `LSFGVK_ENV` / `LSFGVK_PROFILE` first: they say what the others are.
+        let (lead, rest): (Vec<_>, Vec<_>) = vars.iter().partition(|(k, _)| matches!(k.as_str(), "LSFGVK_ENV" | "LSFGVK_PROFILE"));
+        for (k, v) in lead.into_iter().chain(rest) {
+            set(k, v);
+        }
     }
     for (k, v) in &g.env_options {
         set(k, v);
@@ -545,6 +610,30 @@ mod tests {
         // Without MangoHud on, its config is a plain variable.
         assert_eq!(p.settings["heroniteMangohudFpsLimit"], "");
         assert_eq!(env(&p).len(), 4);
+    }
+
+    #[test]
+    fn frame_generation_reads_back() {
+        let ours = "LSFGVK_ENV=1 LSFGVK_FLOW_SCALE=0.75 LSFGVK_MULTIPLIER=3 LSFGVK_PERFORMANCE_MODE=1 %command%";
+        let p = parse(ours);
+        assert_eq!(p.settings["heroniteLsfg"], true);
+        assert_eq!(p.settings["heroniteLsfgMultiplier"], 3);
+        assert_eq!(p.settings["heroniteLsfgFlowScale"], 75);
+        assert_eq!(p.settings["heroniteLsfgPerformance"], true);
+        assert!(env(&p).is_empty());
+        assert_eq!(roundtrip(ours), ours);
+        let hdr = "LSFGVK_ENV=1 LSFGVK_COLOR_SPACE=hdr10 LSFGVK_DLL_PATH=/d/lsfg-vk.dll LSFGVK_FLOW_SCALE=1.00 \
+                   LSFGVK_MULTIPLIER=2 LSFGVK_PERFORMANCE_MODE=0 LSFGVK_TRANSFER_FUNCTION=pq %command%";
+        assert_eq!(roundtrip(hdr), hdr);
+        let profile = "LSFGVK_PROFILE='4x FG' %command%";
+        assert_eq!(parse(profile).settings["heroniteLsfgProfile"], "4x FG");
+        assert_eq!(roundtrip(profile), profile);
+        // Values the panel cannot show stay plain variables.
+        let odd = parse("LSFGVK_ENV=1 LSFGVK_MULTIPLIER=12 LSFGVK_COLOR_SPACE=scrgb %command%");
+        assert_eq!(odd.settings["heroniteLsfgMultiplier"], 2);
+        assert_eq!(env(&odd), [("LSFGVK_MULTIPLIER".into(), "12".into()), ("LSFGVK_COLOR_SPACE".into(), "scrgb".into())]);
+        // Without LSFGVK_ENV the variables are someone else's.
+        assert_eq!(parse("LSFGVK_MULTIPLIER=3 %command%").settings["heroniteLsfg"], false);
     }
 
     #[test]

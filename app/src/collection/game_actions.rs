@@ -25,14 +25,23 @@ use heronite_i18n::tr;
 pub(super) enum GameAction {
     /// Play, Stop or Install: the focus panel's main button.
     Primary,
+    /// Play an Epic game with one of its ways to start (`None`: the default).
+    PlayWith(Option<heronite_epic::launch_options::LaunchOption>),
     /// One of the other ways to install (the Install flyout).
     InstallWay(WayKind),
     /// Sets this status (`CompletionStatus::id`).
     Status(String),
+    /// Puts the game in this custom category, or takes it out.
+    Category {
+        name: String,
+        on: bool,
+    },
     Favourite,
     OpenFolder,
     Settings,
     EditGame,
+    /// An emulated game played as a PC game from now on (a native port).
+    PlayAsPc,
     Metadata,
     Hide,
     RemoveRecent,
@@ -107,6 +116,25 @@ impl CollectionView {
             (tr!("Install"), Icon::Download, "download get setup instalar baixar")
         };
         v.push(item(A::Primary, "primary", label, ic, kw).palette_only());
+        // The focused Epic game's other ways to start (read with its facts).
+        if game.installed && !playing && self.selected.as_deref() == Some(game.key.as_str()) {
+            for (i, choice) in super::launch_options::choices(&self.facts.launch_options).into_iter().enumerate() {
+                if self.facts.launch_options.is_empty() {
+                    break;
+                }
+                let label = tr!("Play with: {option}", option = super::launch_options::choice_label(&choice));
+                v.push(
+                    GameActionItem::new(
+                        A::PlayWith(choice),
+                        format!("play-with-{i}"),
+                        label,
+                        Icon::PlayArrow,
+                        "launch option mode vr editor dlc jogar opcao modo",
+                    )
+                    .palette_only(),
+                );
+            }
+        }
         if !playing {
             v.extend(self.install_way_actions(game, cx));
         }
@@ -129,13 +157,16 @@ impl CollectionView {
             )
         });
         if game.installed {
-            v.push(item(
-                A::OpenFolder,
-                "folder",
-                tr!("Open install folder"),
-                Icon::FolderOpen,
-                "directory files browse pasta diretorio arquivos abrir",
-            ));
+            // A folder that is gone cannot be opened (the store actions offer to find it).
+            if !game.install_folder_missing() {
+                v.push(item(
+                    A::OpenFolder,
+                    "folder",
+                    tr!("Open install folder"),
+                    Icon::FolderOpen,
+                    "directory files browse pasta diretorio arquivos abrir",
+                ));
+            }
             v.push(item(
                 A::Settings,
                 "settings",
@@ -152,6 +183,15 @@ impl CollectionView {
                 tr!("Edit game"),
                 Icon::Edit,
                 "change executable path editar alterar executavel caminho",
+            ));
+        }
+        if game.runner == "sideload" && game.launch_kind.as_deref() == Some("emulator") {
+            v.push(item(
+                A::PlayAsPc,
+                "as-pc",
+                tr!("Play as a PC game\u{2026}"),
+                Icon::SportsEsports,
+                "native port pc version executable linux windows nativo versao pc executavel",
             ));
         }
         v.push(item(
@@ -196,6 +236,20 @@ impl CollectionView {
                 );
             }
         }
+        for name in self.categories.names() {
+            let on = self.categories.contains(name, &game.runner, &game.app_name);
+            let label = if on { tr!("Remove from category: {name}", name) } else { tr!("Add to category: {name}", name) };
+            v.push(
+                GameActionItem::new(
+                    A::Category { name: name.to_string(), on: !on },
+                    format!("cat-{name}"),
+                    label,
+                    Icon::Label,
+                    "category categories tag group categoria categorias grupo",
+                )
+                .palette_only(),
+            );
+        }
         v
     }
 
@@ -205,8 +259,10 @@ impl CollectionView {
         self.context_menu = None;
         match action {
             A::Primary => self.install_or_play(key, window, cx),
+            A::PlayWith(choice) => self.play_with(key, choice.clone(), cx),
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
             A::Status(id) => self.set_status(key, id.clone(), cx),
+            A::Category { name, on } => self.set_game_category(key, name, *on, cx),
             A::Favourite => {
                 self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_favourite(paths, &g.app_name, &g.title))
             }
@@ -222,6 +278,7 @@ impl CollectionView {
             A::EditGame => {
                 self.open_edit_game(key, window, cx);
             }
+            A::PlayAsPc => self.open_play_as_pc(key, window, cx),
             A::Metadata => self.open_metadata_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
             A::Details => self.open_details(key, cx),

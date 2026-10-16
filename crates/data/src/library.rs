@@ -228,6 +228,14 @@ impl CollectionGame {
         self.installed && !self.via_steam
     }
 
+    /// The store records the game's own install at a folder that is no
+    /// longer there (deleted, moved or renamed outside the app). One `stat`.
+    pub fn install_folder_missing(&self) -> bool {
+        matches!(self.runner.as_str(), "legendary" | "gog" | "nile")
+            && self.store_installed()
+            && self.game.install.install_path.as_deref().map(str::trim).is_some_and(|p| !p.is_empty() && !std::path::Path::new(p).exists())
+    }
+
     /// The Steam app id of the game's installed Steam copy, if any (a Steam
     /// entry, or the Steam twin of another entry).
     pub fn steam_installed_id(&self) -> Option<&str> {
@@ -306,6 +314,13 @@ struct RawGame {
     /// differently.
     #[serde(rename = "thirdPartyManagedApp")]
     third_party_managed_app: Option<String>,
+    /// Kept in `GameInfo::rest`: the View menu's "Run offline".
+    #[serde(rename = "canRunOffline")]
+    can_run_offline: Option<bool>,
+    /// Kept in `GameInfo::rest`: a Linux game started by a command
+    /// (`crate::sideload::COMMAND_KEY`).
+    #[serde(rename = "heroniteCommand")]
+    command: Option<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -348,6 +363,12 @@ impl From<RawGame> for GameInfo {
                 }
                 if let Some(app) = g.third_party_managed_app.filter(|s| !s.is_empty()) {
                     rest.insert("thirdPartyManagedApp".to_string(), Value::String(app));
+                }
+                if let Some(b) = g.can_run_offline {
+                    rest.insert("canRunOffline".to_string(), Value::Bool(b));
+                }
+                if let Some(c) = g.command.filter(|s| !s.trim().is_empty()) {
+                    rest.insert(crate::sideload::COMMAND_KEY.to_string(), Value::String(c));
                 }
                 rest
             },
@@ -717,18 +738,28 @@ pub(crate) mod tests_support {
         pub series: Option<String>,
         pub status: Option<String>,
         pub runner: Option<String>,
+        pub favourite: bool,
+        /// `canRunOffline` of the GameInfo.
+        pub offline: Option<bool>,
+        /// The store's own title, when the Collection shows another one.
+        pub store_title: Option<String>,
     }
 
     pub fn game(app: &str, title: &str, f: impl FnOnce(&mut Spec)) -> Arc<CollectionGame> {
         let mut spec = Spec::default();
         f(&mut spec);
-        let info = GameInfo {
+        let mut info = GameInfo {
             runner: spec.runner.clone().unwrap_or_else(|| "sideload".into()),
             app_name: app.into(),
-            title: title.into(),
+            title: spec.store_title.clone().unwrap_or_else(|| title.into()),
             is_installed: spec.installed,
             ..Default::default()
         };
+        if let Some(offline) = spec.offline {
+            info.rest.insert("canRunOffline".into(), offline.into());
+        }
+        // The Collection title wins over the store's, as metadata would.
+        let overrides = spec.store_title.is_some().then(|| GameOverride { title: Some(title.into()), ..Default::default() });
         let metadata = (!spec.developers.is_empty() || !spec.genres.is_empty() || spec.series.is_some()).then(|| {
             Arc::new(CollectionGameMetadata {
                 app_name: app.into(),
@@ -752,13 +783,13 @@ pub(crate) mod tests_support {
         Arc::new(CollectionGame::build(BuildInputs {
             game: info,
             steam: None,
-            overrides: None,
+            overrides,
             meta,
             metadata,
             art: None,
             timestamp: Some(&timestamp),
             sessions: None,
-            favourite: false,
+            favourite: spec.favourite,
             recent: false,
             hidden: false,
             statuses: &statuses,
@@ -800,6 +831,26 @@ mod tests {
         assert!(lib.games.is_empty());
         assert_eq!(lib.statuses.len(), 9);
         assert!(!lib.changed_on_disk());
+    }
+
+    #[test]
+    fn the_flags_filters_and_launches_read_survive_loading() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        fs::create_dir_all(paths.sideload_library().parent().unwrap()).unwrap();
+        fs::write(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"port","title":"Port","is_installed":true,"canRunOffline":true,
+               "heroniteCommand":"./start.sh","install":{"install_path":"/g/port","platform":"linux"}},
+              {"runner":"sideload","app_name":"web","title":"Web","canRunOffline":false,"install":{}}]}"#,
+        )
+        .unwrap();
+        let lib = Library::load(&paths).unwrap();
+        let port = lib.get("sideload_port").unwrap();
+        assert!(crate::collection::runs_offline(port));
+        assert_eq!(crate::sideload::command_of(&port.game), Some(("./start.sh", "/g/port")));
+        assert!(!crate::collection::runs_offline(lib.get("sideload_web").unwrap()));
     }
 
     #[test]

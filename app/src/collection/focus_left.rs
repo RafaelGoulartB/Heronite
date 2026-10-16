@@ -80,6 +80,8 @@ impl CollectionView {
             (tr!("Install"), Icon::Download)
         };
         let key = vm.key.clone();
+        // The way to start Play uses, when it is not the default.
+        let option = (vm.installed && !vm.playing).then(|| self.facts.launch_current.as_ref().map(|o| o.label().to_string())).flatten();
         let play = (!hide_play).then(|| {
             div()
                 .id("focus-play")
@@ -110,7 +112,27 @@ impl CollectionView {
                 }))
                 .child(icon(ic, px(20.), rgb(0x161616)))
                 .child(label)
+                .children(option.map(|o| {
+                    div().min_w_0().truncate().font_weight(theme::W_REGULAR).text_size(px(13.)).text_color(rgb(0x5a5f66)).child(o)
+                }))
         });
+        // Installed Epic game with other ways to start: an arrow with them.
+        let more = if vm.installed && !vm.playing { self.launch_more_button(cx) } else { None };
+        let play = match (play, more) {
+            (Some(play), Some(more)) => {
+                let row = div()
+                    .relative()
+                    .flex()
+                    .gap(px(8.))
+                    .w_full()
+                    .child(play.flex_1().w_auto())
+                    .child(more)
+                    .children(self.launch_menu(&vm.key, cx))
+                    .into_any_element();
+                return div().flex().flex_col().gap(px(8.)).child(row).children(epic_el).into_any_element();
+            }
+            (play, _) => play,
+        };
         // Not installed: an arrow with the other ways to install next to it.
         let game = self.lib.as_ref().and_then(|l| l.get(&vm.key)).cloned().filter(|_| !vm.playing && !vm.installed);
         let play = match (play, game) {

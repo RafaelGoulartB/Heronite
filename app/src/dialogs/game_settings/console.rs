@@ -72,7 +72,32 @@ impl GameSettingsDialog {
             Tab::Launch => {
                 let Some(l) = self.launch.as_ref() else { return Vec::new() };
                 let exe = l.executable.read(cx).value().to_string();
-                let dirty = exe != l.initial_exe || l.run_as != l.initial_run_as;
+                let dirty = l.dirty(cx);
+                let start = Row::choice(
+                    "start",
+                    tr!("Start with"),
+                    vec![tr!("An executable").into(), tr!("A command").into()],
+                    usize::from(l.by_command),
+                );
+                let save = Row::action("save-launch", if l.saved && !dirty { tr!("Saved") } else { tr!("Save") })
+                    .icon(Icon::Save)
+                    .enabled(dirty && l.can_save(cx) && self.busy.is_none());
+                if l.by_command {
+                    use super::launch::LaunchState;
+                    let mut command = Row::text("command", tr!("Command"), LaunchState::text(&l.command, cx)).icon(Icon::Edit);
+                    command = match l.command_problem(cx) {
+                        Some(p) => command.desc(p),
+                        None => {
+                            command.desc(tr!("Runs inside the game folder, like a terminal opened there. Example: ./start.sh --fullscreen"))
+                        }
+                    };
+                    return vec![
+                        start,
+                        Row::text("folder", tr!("Game folder"), LaunchState::text(&l.folder, cx)).icon(Icon::FolderOpen),
+                        command,
+                        save,
+                    ];
+                }
                 let detected = match l.detected {
                     ExecutableKind::Linux => tr!("Linux program"),
                     ExecutableKind::Windows => tr!("Windows program"),
@@ -82,15 +107,14 @@ impl GameSettingsDialog {
                     if l.effective == Platform::Linux { tr!("runs natively on Linux") } else { tr!("runs through Wine / Proton") };
                 let index = RUN_AS.iter().position(|(v, _)| *v == l.run_as).unwrap_or(0);
                 vec![
+                    start,
                     Row::text("exe", tr!("Executable"), exe.clone()).icon(Icon::Description).desc(if l.exists {
                         tr!("{detected}, {effective}", detected, effective)
                     } else {
                         tr!("File not found").into()
                     }),
                     Row::choice("run-as", tr!("Run as"), RUN_AS.iter().map(|(_, t)| SharedString::from(tr(t))).collect(), index),
-                    Row::action("save-launch", if l.saved && !dirty { tr!("Saved") } else { tr!("Save") })
-                        .icon(Icon::Save)
-                        .enabled(dirty && !exe.trim().is_empty() && self.busy.is_none()),
+                    save,
                 ]
             }
             Tab::Details => {
@@ -165,6 +189,38 @@ impl GameSettingsDialog {
                         let values = t.split([',', ';']).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
                         d.tags[i].update(cx, |tf, cx| tf.set_values(values, cx));
                     }
+                }
+            }
+            cx.notify();
+        });
+        self.layer.open(&osk, sub);
+    }
+
+    fn pick_launch_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let start = self.launch.as_ref().map(|l| std::path::PathBuf::from(l.folder.read(cx).value().to_string()));
+        let browser = cx.new(|cx| Browser::new(tr!("Game folder"), PickKind::Folder, start.as_deref(), cx));
+        let sub = cx.subscribe_in(&browser, window, |this, _, ev: &BrowserEvent, window, cx| {
+            this.layer.close();
+            if let BrowserEvent::Picked(p) = ev {
+                if let Some(l) = this.launch.as_mut() {
+                    l.folder.update(cx, |s, cx| s.set_value(p.display().to_string(), window, cx));
+                    l.saved = false;
+                }
+            }
+            cx.notify();
+        });
+        self.layer.open(&browser, sub);
+    }
+
+    fn edit_launch_command(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let current = self.launch.as_ref().map(|l| l.command.read(cx).value().to_string()).unwrap_or_default();
+        let osk = cx.new(|_| Osk::new(tr!("Command").to_string(), &current));
+        let sub = cx.subscribe_in(&osk, window, |this, _, ev: &OskEvent, window, cx| {
+            this.layer.close();
+            if let OskEvent::Done(text) = ev {
+                if let Some(l) = this.launch.as_mut() {
+                    l.command.update(cx, |s, cx| s.set_value(text.clone(), window, cx));
+                    l.saved = false;
                 }
             }
             cx.notify();
@@ -347,8 +403,11 @@ impl PadTarget for GameSettingsDialog {
                 }
                 self.refresh_launch(&exe);
             }
+            Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "start" => self.set_launch_by_command(index == 1, cx),
             Outcome::Activate(id) => match id.as_ref() {
                 "exe" => self.pick_executable(window, cx),
+                "folder" => self.pick_launch_folder(window, cx),
+                "command" => self.edit_launch_command(window, cx),
                 "save-launch" => self.save_launch(cx),
                 "save-details" => self.save_details(cx),
                 "img-reset" => self.reset_all_images(cx),

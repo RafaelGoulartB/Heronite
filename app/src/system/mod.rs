@@ -4,6 +4,7 @@
 pub mod cli;
 mod hub;
 pub mod notify;
+pub mod power;
 pub mod settings;
 pub mod shortcuts;
 pub mod signals;

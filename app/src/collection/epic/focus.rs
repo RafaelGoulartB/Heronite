@@ -183,6 +183,24 @@ impl CollectionView {
         if busy || queued {
             return v;
         }
+        // The folder is gone: only telling where it went, or forgetting it, can work.
+        if game.install_folder_missing() {
+            v.push(item(
+                EpicAction::Relocate,
+                "relocate",
+                Icon::FolderOpen,
+                tr!("Change install location\u{2026}"),
+                "locate path moved renamed folder missing localizar caminho movido renomeado pasta sumiu",
+            ));
+            v.push(item(
+                EpicAction::Forget,
+                "forget",
+                Icon::DeleteOutline,
+                tr!("Remove from installed games\u{2026}"),
+                "missing deleted folder forget uninstall pasta apagada sumiu esquecer desinstalar",
+            ));
+            return v;
+        }
         if !third_party {
             if update {
                 v.push(item(EpicAction::Update, "update", Icon::Update, tr!("Update"), "upgrade patch atualizar atualizacao"));
@@ -195,6 +213,13 @@ impl CollectionView {
                 "check fix integrity verificar reparar integridade",
             ));
             v.push(item(EpicAction::Move, "move", Icon::Folder, tr!("Move install"), "relocate folder disk mover instalacao pasta disco"));
+            v.push(item(
+                EpicAction::Relocate,
+                "relocate",
+                Icon::FolderOpen,
+                tr!("Change install location\u{2026}"),
+                "locate path moved renamed folder localizar caminho movido renomeado pasta",
+            ));
         }
         if has_dlcs && !third_party {
             v.push(item(EpicAction::Modify, "modify", Icon::Tune, tr!("Modify installation"), "dlc content modificar instalacao conteudo"));
@@ -238,6 +263,8 @@ impl CollectionView {
             EpicAction::Modify => Some(Request::Modify(k)),
             EpicAction::Eos => Some(Request::EosToggle(k)),
             EpicAction::Uninstall => Some(Request::Uninstall(k)),
+            EpicAction::Relocate => Some(Request::Relocate(k)),
+            EpicAction::Forget => Some(Request::Forget(k)),
             EpicAction::Update => {
                 self.epic_update(key, cx);
                 None

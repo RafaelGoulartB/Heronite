@@ -62,6 +62,12 @@ impl SettingsPanel {
         if game && legendary {
             general = general.child(self.toggle_row("offline", "offlineMode", false, tr!("Run Game Offline"), None, false, cx));
         }
+        if game && !self.launch_options.is_empty() {
+            general = general.field_help(
+                self.launch_option_select(cx),
+                vec![help(tr!("How Play starts the game: a mode it offers, or a playable DLC."))],
+            );
+        }
         general = general.child(self.toggle_row("verbose", "verboseLogs", true, tr!("Enable verbose logs"), None, false, cx));
         if game && !sideload {
             general = general.field(self.path_row(
@@ -114,7 +120,7 @@ impl SettingsPanel {
         if self.is_game() {
             col = col.child(self.companions_section(cx));
         }
-        col = col.child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
+        col = col.child(self.presets_section(false, cx)).child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
 
         // Legacy options (a tab of its own in Heroic).
         let wine = self.wine_version();
@@ -148,6 +154,11 @@ impl SettingsPanel {
     }
 
     pub(super) fn pair_table(&mut self, t: PairTable, cx: &mut Context<Self>) -> Div {
+        if t.env {
+            if let Some(text) = self.env_text.clone() {
+                return self.env_text_editor(&text, cx);
+            }
+        }
         let rows_data = pairs(self.settings.get(t.setting), t.k1, t.k2);
         let editing = self.input_text(t.in1, cx).trim().to_string();
         let exists = rows_data.iter().any(|(a, _)| *a == editing);
@@ -200,7 +211,20 @@ impl SettingsPanel {
                 cx.listener(move |this, _, window, cx| this.pair_add(t, window, cx)),
             ));
         card_rows = card_rows.child(add);
-        let mut col = column().child(heading(tr(t.title).trim_end_matches(':'))).child(card_rows.card());
+        let mut title_row = div().flex().items_end().justify_between().child(heading(tr(t.title).trim_end_matches(':')));
+        if t.env {
+            title_row = title_row.child(
+                action_button(
+                    "env-as-text",
+                    ButtonKind::Ghost,
+                    tr!("Edit as text"),
+                    true,
+                    cx.listener(|this, _, window, cx| this.open_env_text(window, cx)),
+                )
+                .mb(px(4.)),
+            );
+        }
+        let mut col = column().child(title_row).child(card_rows.card());
         if t.env && !self.env_error.is_empty() {
             col = col.child(danger_text(&self.env_error).px(px(6.)));
         }
@@ -210,6 +234,72 @@ impl SettingsPanel {
             tr!("Warning: Make sure to quote args with spaces! E.g.: \"path/with spaces/\". Arguments example: --arg; --extra-file=\"file-path/ with/spaces\"")
         };
         col.child(help(note).px(px(6.)))
+    }
+
+    /// Opens the variables as text, one `NAME=value` per line.
+    pub(super) fn open_env_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let current = logic::env_block(&pairs(self.settings.get(ENV.setting), ENV.k1, ENV.k2));
+        self.env_text = Some(crate::ui::fields::new_textarea(window, cx, &current, 8));
+        self.env_error.clear();
+        cx.notify();
+    }
+
+    /// Replaces every variable with the text's. `false` (and the reason in
+    /// `env_error`) when a line is not `NAME=value`.
+    pub(super) fn apply_env_text(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
+        match logic::parse_env_block(text) {
+            Ok(rows) => {
+                self.env_error.clear();
+                self.set(ENV.setting, pairs_to_value(&rows, ENV.k1, ENV.k2), cx);
+                true
+            }
+            Err(why) => {
+                self.env_error = why;
+                cx.notify();
+                false
+            }
+        }
+    }
+
+    fn env_text_editor(&mut self, text: &Entity<gpui_kit::component::input::TextareaState>, cx: &mut Context<Self>) -> Div {
+        let box_ = div().flex().flex_col().gap(px(10.)).py(px(12.)).child(crate::ui::fields::textarea_box(text, 8)).child(
+            div()
+                .flex()
+                .gap(px(8.))
+                .justify_end()
+                .child(action_button(
+                    "env-text-cancel",
+                    ButtonKind::Ghost,
+                    tr!("Cancel"),
+                    true,
+                    cx.listener(|this, _, _, cx| {
+                        this.env_text = None;
+                        this.env_error.clear();
+                        cx.notify();
+                    }),
+                ))
+                .child(action_button(
+                    "env-text-apply",
+                    ButtonKind::Primary,
+                    tr!("Apply"),
+                    true,
+                    cx.listener(|this, _, _, cx| {
+                        let Some(text) = this.env_text.clone() else { return };
+                        let value = text.read(cx).value().to_string();
+                        if this.apply_env_text(&value, cx) {
+                            this.env_text = None;
+                        }
+                        cx.notify();
+                    }),
+                )),
+        );
+        let mut col = column().child(heading(tr(ENV.title))).child(rows().child(box_).card());
+        if !self.env_error.is_empty() {
+            col = col.child(danger_text(&self.env_error).px(px(6.)));
+        }
+        col.child(help(tr!(
+            "One NAME=value per line. A line copied from ProtonDB like PROTON_NO_ESYNC=1 DXVK_ASYNC=1 %command% works too. Applying replaces the list."
+        )).px(px(6.)))
     }
 
     pub(super) fn pair_remove(&mut self, t: PairTable, index: usize, cx: &mut Context<Self>) {
@@ -248,5 +338,39 @@ impl SettingsPanel {
         self.set_input(t.in1, "", window, cx);
         self.set_input(t.in2, "", window, cx);
         cx.notify();
+    }
+}
+
+impl SettingsPanel {
+    /// `lastUsedLaunchOption` as stored, if it is still one of the game's.
+    fn launch_option_current(&self) -> Option<heronite_launch::launch_option::LaunchOption> {
+        self.settings
+            .get(heronite_launch::launch_option::KEY)
+            .and_then(heronite_launch::launch_option::LaunchOption::from_value)
+            .filter(|o| self.launch_options.contains(o))
+    }
+
+    /// The menu's names (the default first) and the current one.
+    pub(super) fn launch_option_choices(&self) -> (Vec<SharedString>, usize) {
+        let current = self.launch_option_current();
+        let names = std::iter::once(SharedString::from(tr!("Default")))
+            .chain(self.launch_options.iter().map(|o| SharedString::from(o.label().to_string())))
+            .collect();
+        let index = current.and_then(|c| self.launch_options.iter().position(|o| *o == c)).map_or(0, |i| i + 1);
+        (names, index)
+    }
+
+    /// `i`: 0 is the default, then the options in order.
+    pub(super) fn pick_launch_option(&mut self, i: usize, cx: &mut Context<Self>) {
+        let value = i.checked_sub(1).and_then(|i| self.launch_options.get(i)).map(|o| o.to_value()).unwrap_or(serde_json::Value::Null);
+        self.set(heronite_launch::launch_option::KEY, value, cx);
+    }
+
+    fn launch_option_select(&self, cx: &mut Context<Self>) -> Div {
+        let (names, index) = self.launch_option_choices();
+        let options = names.iter().enumerate().map(|(i, n)| (n.clone(), i == index)).collect();
+        self.select_row("launch-option", Some(tr!("Start with")), names[index].to_string(), options, false, cx, |this, i, _, cx| {
+            this.pick_launch_option(i, cx)
+        })
     }
 }

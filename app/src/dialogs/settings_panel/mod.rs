@@ -11,17 +11,21 @@
 mod advanced;
 mod companions;
 mod console;
+mod fixes;
 mod gamescope;
 mod general;
 pub mod logic;
+mod lsfg;
 mod other;
 mod parts;
 mod prefix_menu;
+mod presets;
 mod protondb;
 mod saves;
 mod shared_folders;
 mod steam;
 mod wine;
+mod winetricks;
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -79,6 +83,8 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("dxvkFps", s("DXVKFpsCap"), n_!("Positive integer value (e.g. 30, 60, ...)")),
     ("mangohudFps", Bind::Digits { key: "heroniteMangohudFpsLimit" }, n_!("No limit")),
     ("savesPath", s("savesPath"), n_!("Select the exact save games folder")),
+    ("umuId", s("heroniteUmuId"), n_!("Automatic")),
+    ("preset.name", Bind::Scratch, n_!("Preset name")),
     ("gs.gameWidth", Bind::Gamescope { field: "gameWidth", digits: true }, ""),
     ("gs.gameHeight", Bind::Gamescope { field: "gameHeight", digits: true }, ""),
     ("gs.upscaleWidth", Bind::Gamescope { field: "upscaleWidth", digits: true }, ""),
@@ -98,6 +104,7 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("wrap.args", Bind::Scratch, n_!("Wrapper Arguments")),
     ("steamLine", Bind::SteamLine, n_!("Empty: Steam's defaults")),
     ("select.filter", Bind::Scratch, n_!("Search\u{2026}")),
+    ("wt.search", Bind::Scratch, n_!("Search components\u{2026}")),
 ];
 
 /// Outcome line shown under a tab (tool started, sync result, errors).
@@ -145,6 +152,10 @@ pub struct SettingsPanel {
     pub(super) notice: Option<Notice>,
     /// Name of the Wine tool running.
     pub(super) tool_busy: Option<&'static str>,
+    /// The Winetricks page, while open (it takes the tab's place).
+    winetricks: Option<winetricks::WinetricksPage>,
+    /// An Epic game's other ways to start (Advanced tab).
+    pub(super) launch_options: Vec<heronite_launch::launch_option::LaunchOption>,
     /// Console mode: focused row, open keyboard / picker, rows focused.
     console_list: crate::console::list::ListNav,
     console_layer: crate::console::Layer,
@@ -154,7 +165,17 @@ pub struct SettingsPanel {
     pub(super) gpu_count: usize,
     pub(super) gamescope_installed: bool,
     pub(super) runtimes: (bool, bool),
+    /// Frame generation on this machine (`None` while looked for).
+    pub(super) lsfg: Option<heronite_launch::lsfg::Install>,
+    /// `lsfg-vk-ui`, when installed.
+    pub(super) lsfg_ui: Option<String>,
+    /// The umu database, for the Game fixes section (`None` while read).
+    pub(super) umu: Option<fixes::UmuData>,
+    /// The launch presets of every game.
+    pub(super) presets: Vec<heronite_data::launch_presets::Preset>,
     pub(super) env_error: String,
+    /// The environment variables edited as text (`NAME=value` lines), while open.
+    pub(super) env_text: Option<Entity<gpui_kit::component::input::TextareaState>>,
     pub(super) saves: SavesState,
     /// Steam games: what Steam has (the settings map mirrors its launch options).
     steam: Option<steam::SteamState>,
@@ -211,7 +232,7 @@ impl SettingsPanel {
                     _ => {}
                 }));
             }
-            if *id == "select.filter" {
+            if *id == "select.filter" || *id == "wt.search" {
                 // The open menu narrows as the search changes.
                 subs.push(cx.subscribe_in(&input, window, |_, _, ev: &InputEvent, _, cx| {
                     if matches!(ev, InputEvent::Change) {
@@ -241,12 +262,19 @@ impl SettingsPanel {
             inputs,
             notice: None,
             tool_busy: None,
+            winetricks: None,
+            launch_options: Vec::new(),
             tool_toggle: None,
             gpu_count: logic::count_gpus(),
             gamescope_installed: crate::env::flag("HERONITE_DEBUG_GAMESCOPE")
                 || heronite_launch::Probe::which(&heronite_launch::SystemProbe, "gamescope").is_some(),
             runtimes,
+            lsfg: None,
+            lsfg_ui: None,
+            umu: None,
+            presets: Vec::new(),
             env_error: String::new(),
+            env_text: None,
             saves: SavesState::default(),
             steam: steam_app.map(steam::SteamState::new),
             protondb: protondb::ProtonDb::Off,
@@ -266,6 +294,11 @@ impl SettingsPanel {
         if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
             this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
+        this.load_lsfg(cx);
+        this.load_presets(cx);
+        if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
+            this.load_umu(cx);
+        }
         if this.is_steam() {
             // Debug settings are applied once Steam was read.
             this.load_steam(cx);
@@ -273,6 +306,9 @@ impl SettingsPanel {
             return this;
         }
         this.load_wine_list(cx);
+        if let Some(app) = this.facts().filter(|f| f.runner == "legendary").map(|f| f.app_name.clone()) {
+            this.launch_options = heronite_epic::launch_options::list(&this.paths, &app);
+        }
         if this.facts().is_some_and(|f| f.is_gog()) {
             // A manual sync runs in the service: redraw when it starts and ends.
             let service = crate::services::downloads(cx);
@@ -283,6 +319,14 @@ impl SettingsPanel {
         }
         this.maybe_detect_saves(window, cx);
         this.apply_debug_settings(cx);
+        // `HERONITE_DEBUG_ENV_TEXT=1`: the variables start open as text.
+        if crate::env::flag("HERONITE_DEBUG_ENV_TEXT") {
+            this.open_env_text(window, cx);
+        }
+        // `HERONITE_DEBUG_WINETRICKS=1`: the Winetricks page starts open.
+        if crate::env::flag("HERONITE_DEBUG_WINETRICKS") && this.is_game() {
+            this.open_winetricks(window, cx);
+        }
         this
     }
 
@@ -547,6 +591,7 @@ impl Render for SettingsPanel {
             return self.render_console(window, cx);
         }
         let content = match self.section {
+            Section::Wine | Section::Proton if self.winetricks_open() => self.winetricks_tab(cx),
             Section::Proton => self.proton_tab(cx),
             Section::Other if self.is_steam() => self.steam_other_tab(cx),
             Section::Advanced if self.is_steam() => self.steam_advanced_tab(cx),

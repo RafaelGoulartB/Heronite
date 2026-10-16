@@ -29,6 +29,9 @@ pub struct Message {
     pub launch: Option<LaunchRequest>,
     /// `--no-gui` on the second invocation.
     pub no_gui: bool,
+    /// `--console` / `--fullscreen` on the second invocation.
+    pub console: bool,
+    pub fullscreen: bool,
 }
 
 impl Message {
@@ -42,7 +45,7 @@ impl Message {
                 "guiFalse": r.gui_false,
             })
         });
-        json!({ "v": 1, "launch": launch, "noGui": self.no_gui }).to_string()
+        json!({ "v": 1, "launch": launch, "noGui": self.no_gui, "console": self.console, "fullscreen": self.fullscreen }).to_string()
     }
 
     pub fn from_line(line: &str) -> Option<Message> {
@@ -61,7 +64,8 @@ impl Message {
             }),
             _ => None,
         };
-        Some(Message { launch, no_gui: v.get("noGui").and_then(Value::as_bool).unwrap_or(false) })
+        let flag = |k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
+        Some(Message { launch, no_gui: flag("noGui"), console: flag("console"), fullscreen: flag("fullscreen") })
     }
 }
 
@@ -264,6 +268,8 @@ mod tests {
                 gui_false: true,
             }),
             no_gui: true,
+            console: true,
+            fullscreen: true,
         }
     }
 

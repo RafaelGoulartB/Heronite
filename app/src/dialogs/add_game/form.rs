@@ -237,6 +237,8 @@ impl AddGameDialog {
                         cx.notify();
                     }))
                     .into_any_element()]));
+        } else if self.platform == SideloadPlatform::Linux {
+            right = right.child(self.linux_start(cx));
         } else {
             let exe = text_of(&self.exe, cx);
             let has = !exe.is_empty();
@@ -268,6 +270,69 @@ impl AddGameDialog {
         }
 
         div().flex().gap(px(24.)).child(left).child(right)
+    }
+
+    /// Linux: the game's folder, then how it starts (an executable, or a
+    /// command run inside the folder).
+    fn linux_start(&mut self, cx: &mut Context<Self>) -> Div {
+        let folder = text_of(&self.folder, cx);
+        let has_folder = !folder.trim().is_empty();
+        let mut col = div().flex().flex_col().gap(px(16.)).child(path_field(
+            "ag-folder-pick",
+            Some(tr!("Game folder")),
+            &self.folder,
+            has_folder,
+            false,
+            cx.listener(move |this, _, window, cx| {
+                if has_folder {
+                    this.folder.update(cx, |s, cx| s.set_value("", window, cx));
+                } else {
+                    choose_path(window, cx, true, tr!("Select the game folder"), |this: &mut Self, path, window, cx| {
+                        this.folder.update(cx, |s, cx| s.set_value(path, window, cx));
+                    });
+                }
+            }),
+        ));
+        let weak = cx.entity().downgrade();
+        col = col.child(div().flex().flex_col().child(field_label(tr!("Start with"))).child(crate::ui::controls::tabs(
+            "ag-start",
+            &[(false, tr!("An executable")), (true, tr!("A command"))],
+            self.by_command,
+            move |by_command, _, cx| {
+                weak.update(cx, |this, cx| {
+                    this.by_command = by_command;
+                    this.error.clear();
+                    cx.notify();
+                })
+                .ok();
+            },
+        )));
+        if self.by_command {
+            col = col
+                .child(labeled(tr!("Command"), input_box(&self.command, false)))
+                .child(meta_text(tr!("Runs inside the game folder, like a terminal opened there. Example: ./start.sh --fullscreen")));
+        } else {
+            let exe = text_of(&self.exe, cx);
+            let has = !exe.is_empty();
+            col = col.child(path_field(
+                "ag-exe-pick",
+                Some(tr!("Select Executable")),
+                &self.exe,
+                has,
+                false,
+                cx.listener(move |this, _, window, cx| {
+                    if has {
+                        this.exe.update(cx, |s, cx| s.set_value("", window, cx));
+                    } else {
+                        choose_path(window, cx, false, tr!("Select Executable"), |this: &mut Self, path, window, cx| {
+                            this.exe.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+                            this.fill_folder_from(&path, window, cx);
+                        });
+                    }
+                }),
+            ));
+        }
+        col
     }
 
     pub(super) fn remove_confirmation(&self, cx: &mut Context<Self>) -> Div {

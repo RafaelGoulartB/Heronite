@@ -38,15 +38,14 @@ impl Downloads {
     /// Heroic starts the queue 5 s after launch; the update check (network) a
     /// little later, then periodically while the app lives.
     pub(super) fn spawn_idle_jobs(&mut self, cx: &mut Context<Self>) {
-        let manager = self.manager.clone();
         let data_paths = self.data_paths.clone();
         // An install move cut short by a quit / kill is finished first; the
         // queue starts after it (two legendary runs would both write installed.json).
         let move_first = self.resume_interrupted_move(cx);
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_secs(5)).await;
-            if !move_first {
-                manager.start();
+            if !move_first && this.update(cx, |this, cx| this.start_queue_when_online(cx)).is_err() {
+                return;
             }
             cx.background_executor().timer(Duration::from_secs(15)).await;
             let mut first = true;

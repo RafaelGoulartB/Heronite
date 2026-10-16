@@ -1,6 +1,7 @@
-//! Case- and diacritic-insensitive matching for the command palette.
+//! Case- and diacritic-insensitive matching, shared by the command palette
+//! and the Collection's search.
 //!
-//! Every searchable text is folded once when the palette opens (see
+//! The palette folds every searchable text once when it opens (see
 //! [`fold`]); a keystroke only folds the query and scores the entries without
 //! allocating per entry. Scores come in tiers so the ranking reads naturally:
 //! exact > prefix > word start > substring > fuzzy (letters in order).
@@ -10,9 +11,9 @@ const TIER_EXACT: i32 = 1000;
 /// Text starts with the token.
 const TIER_PREFIX: i32 = 900;
 /// A word of the text starts with the token.
-pub(super) const TIER_WORD: i32 = 800;
+pub const TIER_WORD: i32 = 800;
 /// The token appears inside a word.
-pub(super) const TIER_SUBSTR: i32 = 600;
+pub const TIER_SUBSTR: i32 = 600;
 /// The token's letters appear in order (e.g. "wnmg" -> "wine manager").
 const TIER_FUZZY: i32 = 100;
 
@@ -60,7 +61,7 @@ fn fold_into(s: &str, out: &mut String) {
 }
 
 /// Folded copy of `s`.
-pub(super) fn fold(s: &str) -> String {
+pub fn fold(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     fold_into(s, &mut out);
     out
@@ -144,7 +145,7 @@ pub fn tokens(folded: &str) -> Vec<&str> {
 }
 
 /// Searchable fields of an entry, all folded.
-pub(super) struct Haystack<'a> {
+pub struct Haystack<'a> {
     pub title: &'a str,
     /// Other names (a game's store title).
     pub alt: &'a str,
@@ -155,7 +156,7 @@ pub(super) struct Haystack<'a> {
 /// Score of an entry for all `tokens` (each must match somewhere): the
 /// average of the best score of every token. The title counts fully, other
 /// names slightly less, keywords much less.
-pub(super) fn score_entry(tokens: &[&str], h: &Haystack) -> Option<i32> {
+pub fn score_entry(tokens: &[&str], h: &Haystack) -> Option<i32> {
     if tokens.is_empty() {
         return None;
     }

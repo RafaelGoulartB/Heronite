@@ -122,6 +122,23 @@ pub struct SideloadSpec {
     /// "Install manually" into this entry: it becomes an executable game,
     /// even when it was an emulated one (an edit keeps the emulator).
     pub install: bool,
+    /// The game's folder (`install.install_path`). Empty: the executable's
+    /// folder.
+    pub install_folder: String,
+    /// Linux games started by a shell command run inside `install_folder`
+    /// instead of an executable ([`COMMAND_KEY`]).
+    pub command: String,
+}
+
+/// The shell command that starts a Linux game, run inside its folder.
+pub const COMMAND_KEY: &str = "heroniteCommand";
+
+/// `(command, folder)` of a game started by a command (see
+/// [`SideloadSpec::command`]).
+pub fn command_of(game: &crate::models::GameInfo) -> Option<(&str, &str)> {
+    let command = game.rest.get(COMMAND_KEY).and_then(Value::as_str).map(str::trim).filter(|c| !c.is_empty())?;
+    let folder = game.install.install_path.as_deref().map(str::trim).filter(|f| !f.is_empty())?;
+    Some((command, folder))
 }
 
 #[derive(Clone, Debug)]
@@ -147,15 +164,19 @@ fn build_game(spec: &SideloadSpec) -> Map<String, Value> {
     g.insert("runner".into(), json!("sideload"));
     g.insert("app_name".into(), json!(spec.app_name));
     g.insert("title".into(), json!(spec.title));
-    g.insert(
-        "install".into(),
-        json!({
-            "executable": spec.executable,
-            "platform": spec.platform.install_platform(),
-            "is_dlc": false,
-        }),
-    );
-    if !spec.executable.is_empty() {
+    let mut install = json!({
+        "executable": spec.executable,
+        "platform": spec.platform.install_platform(),
+        "is_dlc": false,
+    });
+    let folder = spec.install_folder.trim().trim_end_matches('/');
+    if !folder.is_empty() {
+        install["install_path"] = json!(folder);
+    }
+    g.insert("install".into(), install);
+    if !folder.is_empty() {
+        g.insert("folder_name".into(), json!(folder));
+    } else if !spec.executable.is_empty() {
         g.insert("folder_name".into(), json!(dirname(&spec.executable)));
     }
     g.insert("art_cover".into(), json!(spec.art_cover));
@@ -168,6 +189,9 @@ fn build_game(spec: &SideloadSpec) -> Map<String, Value> {
     if spec.platform != SideloadPlatform::Browser {
         g.insert("is_linux_native".into(), json!(spec.platform == SideloadPlatform::Linux));
     }
+    if spec.platform == SideloadPlatform::Linux && !spec.command.trim().is_empty() {
+        g.insert(COMMAND_KEY.into(), json!(spec.command.trim()));
+    }
     g
 }
 
@@ -176,7 +200,7 @@ fn build_game(spec: &SideloadSpec) -> Map<String, Value> {
 /// executable, `is_linux_native` for a web page) are dropped, and empty art
 /// never wipes art the game already has.
 fn merge_into(current: &mut Map<String, Value>, game: Map<String, Value>) {
-    for key in ["folder_name", "is_linux_native"] {
+    for key in ["folder_name", "is_linux_native", COMMAND_KEY] {
         if !game.contains_key(key) {
             current.shift_remove(key);
         }
@@ -210,26 +234,31 @@ fn looks_like_steam_binary(path: &str) -> bool {
 /// with the sideload entry (the executable is what the Collection launches).
 fn apply_local_meta(paths: &DataPaths, spec: &SideloadSpec) -> Result<()> {
     let executable = spec.executable.trim().to_string();
+    // A game started by a command runs like an executable one.
+    let runnable = !executable.is_empty() || (spec.platform == SideloadPlatform::Linux && !spec.command.trim().is_empty());
     // Decide before touching the file: a skipped game must not even rewrite it.
     let current: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let existing = current.games.get(&spec.app_name);
-    if executable.is_empty() && existing.is_none() {
+    if !runnable && existing.is_none() {
         return Ok(());
     }
     if let Some(e) = existing {
-        if e.launch_kind == "steam-uri" && (executable.is_empty() || looks_like_steam_binary(&executable)) {
+        if e.launch_kind == "steam-uri" && (!runnable || looks_like_steam_binary(&executable)) {
             return Ok(());
         }
     }
     // Installing into an emulated entry: the emulator's arguments go away.
-    let emulator_args = existing
-        .filter(|e| spec.install && !executable.is_empty() && e.launch_kind == "emulator")
-        .map(|e| e.launcher_args.clone().unwrap_or_default());
+    let emulator_args =
+        existing.filter(|e| spec.install && runnable && e.launch_kind == "emulator").map(|e| e.launcher_args.clone().unwrap_or_default());
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
         let existing = file.games.get(&spec.app_name).cloned();
         let mut meta = existing.clone().unwrap_or_default();
         if emulator_args.is_some() {
             meta.launcher_args = None;
+            // No longer an emulated game: it reads as a local one.
+            if meta.source == "emulator" {
+                meta.source = "manual".into();
+            }
         }
         meta.app_name = spec.app_name.clone();
         meta.runner = "sideload".into();
@@ -239,7 +268,7 @@ fn apply_local_meta(paths: &DataPaths, spec: &SideloadSpec) -> Result<()> {
         if meta.source.is_empty() {
             meta.source = "manual".into();
         }
-        meta.launch_kind = if !executable.is_empty() {
+        meta.launch_kind = if runnable {
             if meta.launch_kind == "emulator" && !spec.install {
                 "emulator".into()
             } else {
@@ -417,6 +446,8 @@ mod tests {
             launch_full_screen: false,
             run_as: None,
             install: false,
+            install_folder: String::new(),
+            command: String::new(),
         }
     }
 
@@ -618,6 +649,43 @@ mod tests {
         let config = json_store::read_value(&paths.game_config("g")).unwrap();
         assert_eq!(config["g"]["launcherArgs"], "");
         assert_eq!(config["g"]["showFps"], true);
+    }
+
+    #[test]
+    fn an_emulated_game_can_become_a_linux_game_started_by_a_command() {
+        let (_d, paths) = setup();
+        fs::create_dir_all(paths.local_meta().parent().unwrap()).unwrap();
+        fs::write(
+            paths.local_meta(),
+            "{\n\t\"games\": {\n\t\t\"g\": {\n\t\t\t\"appName\": \"g\",\n\t\t\t\"runner\": \"sideload\",\n\t\t\t\"source\": \"emulator\",\n\t\t\t\"launchKind\": \"emulator\",\n\t\t\t\"launcherArgs\": \"--no-gui {ImagePath}\",\n\t\t\t\"title\": \"GoW3\"\n\t\t}\n\t}\n}",
+        )
+        .unwrap();
+        let mut s = spec("g", "", SideloadPlatform::Linux);
+        s.install = true;
+        s.install_folder = "/games/gow3/".into();
+        s.command = "  ./gow3 --fullscreen ".into();
+        let out = save_game(&paths, &s).unwrap();
+        assert_eq!(out.game["install"]["install_path"], "/games/gow3");
+        assert_eq!(out.game["folder_name"], "/games/gow3");
+        assert_eq!(out.game[COMMAND_KEY], "./gow3 --fullscreen");
+        let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        assert_eq!(metas.games["g"].launch_kind, "executable", "a command game runs like an executable one");
+        assert_eq!(metas.games["g"].remapped_executable, None);
+        assert_eq!(metas.games["g"].launcher_args, None, "the emulator's arguments go away");
+        assert_eq!(metas.games["g"].source, "manual", "it no longer reads as an emulated game");
+        let game: crate::models::GameInfo = serde_json::from_value(out.game).unwrap();
+        assert_eq!(command_of(&game), Some(("./gow3 --fullscreen", "/games/gow3")));
+
+        // Back to an executable: the command is dropped, the folder stays.
+        let mut s = spec("g", "/games/gow3/gow3", SideloadPlatform::Linux);
+        s.install_folder = "/games/gow3".into();
+        let out = save_game(&paths, &s).unwrap();
+        assert!(out.game.get(COMMAND_KEY).is_none());
+        assert_eq!(out.game["install"]["install_path"], "/games/gow3");
+        // A command is a Linux thing only.
+        let mut s = spec("w", "/w/game.exe", SideloadPlatform::Windows);
+        s.command = "./x".into();
+        assert!(save_game(&paths, &s).unwrap().game.get(COMMAND_KEY).is_none());
     }
 
     #[test]

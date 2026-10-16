@@ -101,6 +101,46 @@ fn native_missing_executable_and_missing_tool_are_unavailable() {
 }
 
 #[test]
+fn a_linux_game_started_by_a_command_runs_it_in_its_folder() {
+    let mut game = sideload("g", "", "linux");
+    game.install.install_path = Some("/games/gow3".into());
+    game.rest.insert(heronite_data::sideload::COMMAND_KEY.into(), json!("env DXVK_HUD=1 ./gow3 --fullscreen"));
+    let m = meta("executable");
+    let none = FakeProbe::new("/h");
+    let plan = build_plan_with_settings(&ctx(json!({})), &none, &game, Some(&m), &settings(json!({})), &Default::default());
+    assert_eq!(plan, LaunchPlan::Unavailable("Game folder not found: /games/gow3".into()));
+
+    let probe = FakeProbe::new("/h").with_file("/games/gow3", b"").with_file("/games/gow3/gow3", b"\x7fELF");
+    let plan = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &game,
+        Some(&m),
+        &settings(json!({"launcherArgs": "-windowed"})),
+        &Default::default(),
+    );
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.program, "/bin/sh");
+    assert_eq!(p.command.args, ["-c", "env DXVK_HUD=1 ./gow3 --fullscreen \"$@\"", "sh", "-windowed"]);
+    assert_eq!(p.command.cwd.as_deref(), Some("/games/gow3"));
+    assert_eq!(p.stop.kill_patterns, ["gow3"]);
+
+    // An alternative executable in the settings still wins.
+    let probe = probe.with_file("/games/gow3/other", b"#!/bin/sh");
+    let plan = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &game,
+        Some(&LocalGameMeta { run_as: Some("linux".into()), ..meta("executable") }),
+        &settings(json!({"targetExe": "/games/gow3/other"})),
+        &Default::default(),
+    );
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.args, Vec::<String>::new());
+    assert!(p.command.program.ends_with("other"));
+}
+
+#[test]
 fn windows_exe_uses_umu_with_proton_path() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
     let plan = build_plan_with_settings(
@@ -123,6 +163,40 @@ fn windows_exe_uses_umu_with_proton_path() {
     assert_eq!(c.env["GAMEID"], "umu-0");
     assert_eq!(c.env["PROTON_VERB"], "waitforexitandrun");
     assert_eq!(c.env["PROTON_PREFER_SDL"], "1");
+}
+
+#[test]
+fn heronite_switches_reach_a_umu_launch() {
+    let game = sideload("g", "/games/win/game.exe", "Windows");
+    let mut c = ctx(json!({}));
+    c.umu_database = vec![crate::umu_ids::Entry { title: "Game".into(), umu_id: "umu-55".into(), ..Default::default() }];
+    let probe = proton_probe().with_bin("systemd-inhibit", "/usr/bin/systemd-inhibit");
+    let s = settings(json!({
+        "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"},
+        "winePrefix": "/pfx", "heronitePreferSdl": true, "heroniteKeepAwake": true
+    }));
+    let m = LocalGameMeta { steam_app_id: Some("55".into()), ..meta("executable") };
+    let plan = build_plan_with_settings(&c, &probe, &game, Some(&m), &s, &Default::default());
+    let LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
+    assert_eq!(process.command.env["GAMEID"], "umu-55", "the metadata's Steam id is in the database");
+    assert_eq!(process.command.env["PROTON_PREFER_SDL"], "1");
+    assert_eq!(process.keep_awake.as_ref().unwrap().program, "/usr/bin/systemd-inhibit");
+    // The game's own id wins; without the switches nothing is added.
+    let mine = settings(json!({
+        "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"},
+        "winePrefix": "/pfx", "heroniteUmuId": "1091500", "heroniteKeepAwake": false
+    }));
+    let plan = build_plan_with_settings(&c, &probe, &game, Some(&m), &mine, &Default::default());
+    let LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
+    assert_eq!(process.command.env["GAMEID"], "umu-1091500");
+    assert!(!process.command.env.contains_key("PROTON_PREFER_SDL"));
+    assert!(process.keep_awake.is_none(), "turned off");
+    // Never set: on by default.
+    let unset = settings(json!({"wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"}, "winePrefix": "/pfx"}));
+    let LaunchPlan::Wine { process, .. } = build_plan_with_settings(&c, &probe, &game, Some(&m), &unset, &Default::default()) else {
+        panic!()
+    };
+    assert!(process.keep_awake.is_some());
 }
 
 #[test]

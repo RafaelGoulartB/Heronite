@@ -21,7 +21,7 @@ use crate::info::{self, os_name};
 use crate::installed::{self, Installed};
 use crate::{library, updates};
 
-pub use crate::moves::move_install;
+pub use crate::moves::{move_install, relocate};
 
 const DEFAULT_LANGUAGE: &str = "en-US";
 
@@ -246,17 +246,25 @@ pub fn repair(paths: &DataPaths, gogdl: &Gogdl, app_name: &str, cancel: &Cancel,
 }
 
 /// Deletes the game's files and gogdl's records. Never runs the game's own
-/// uninstaller.
+/// uninstaller. A folder that is already gone only drops the records.
 pub fn uninstall(paths: &DataPaths, app_name: &str) -> Result<()> {
-    let config_dir = paths.gogdl_config_dir();
     if let Some(entry) = installed::get(paths, app_name) {
         let folder = Path::new(&entry.install_path);
         let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
         if entry.install_path.is_empty() || !safe_to_remove(folder, home.as_deref()) {
             bail!(tr!("Refusing to delete the game at {path}", path = entry.install_path));
         }
-        remove_tree(folder).map_err(|e| anyhow!(tr!("Could not delete {path}: {error}", path = entry.install_path, error = e)))?;
+        if folder.exists() {
+            remove_tree(folder).map_err(|e| anyhow!(tr!("Could not delete {path}: {error}", path = entry.install_path, error = e)))?;
+        }
     }
+    forget(paths, app_name)
+}
+
+/// Takes the game off the installed list and drops gogdl's records of it,
+/// leaving any files where they are (a folder deleted or moved by hand).
+pub fn forget(paths: &DataPaths, app_name: &str) -> Result<()> {
+    let config_dir = paths.gogdl_config_dir();
     let _ = std::fs::remove_file(manifest_file(&config_dir, app_name));
     let _ = remove_tree(&support_dir(&config_dir, app_name));
     installed::remove(paths, app_name)?;
@@ -532,6 +540,29 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert_eq!(library::game_info(&paths, "42").unwrap()["is_installed"], false);
         // Nothing left to do is fine.
         uninstall(&paths, "42").unwrap();
+    }
+
+    #[test]
+    fn uninstall_and_forget_work_when_the_folder_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        for app in ["1", "2"] {
+            let mut e = Installed::new(app);
+            e.install_path = dir.path().join(format!("gone-{app}")).display().to_string();
+            installed::upsert(&paths, &e).unwrap();
+        }
+        uninstall(&paths, "1").unwrap();
+        assert!(installed::get(&paths, "1").is_none());
+        // Forgetting keeps the files of a folder that is there.
+        let kept = dir.path().join("kept");
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::write(kept.join("save.dat"), "x").unwrap();
+        let mut e = installed::get(&paths, "2").unwrap();
+        e.install_path = kept.display().to_string();
+        installed::upsert(&paths, &e).unwrap();
+        forget(&paths, "2").unwrap();
+        assert!(installed::get(&paths, "2").is_none());
+        assert!(kept.join("save.dat").exists());
     }
 
     #[test]

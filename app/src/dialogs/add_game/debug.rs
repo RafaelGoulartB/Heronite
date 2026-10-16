@@ -27,6 +27,14 @@ impl AddGameDialog {
                     self.platform = SideloadPlatform::Linux;
                     self.platform_manual = true;
                 }
+                "command" => {
+                    set(&self.title, "Native Port", window, cx);
+                    set(&self.folder, "/tmp/hr-port", window, cx);
+                    set(&self.command, "./start.sh --fullscreen", window, cx);
+                    self.platform = SideloadPlatform::Linux;
+                    self.platform_manual = true;
+                    self.by_command = true;
+                }
                 "browser" => {
                     set(&self.title, "Browser Quest", window, cx);
                     set(&self.url, "https://browserquest.example.com/play", window, cx);

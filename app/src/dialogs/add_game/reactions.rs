@@ -41,6 +41,16 @@ impl AddGameDialog {
         }
     }
 
+    /// A picked executable gives the game folder when none was chosen yet.
+    pub(super) fn fill_folder_from(&mut self, executable: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.platform != SideloadPlatform::Linux || !text_of(&self.folder, cx).trim().is_empty() {
+            return;
+        }
+        if let Some(folder) = install_folder(executable) {
+            self.folder.update(cx, |s, cx| s.set_value(folder, window, cx));
+        }
+    }
+
     pub(super) fn set_platform(&mut self, platform: SideloadPlatform, cx: &mut Context<Self>) {
         self.platform = platform;
         self.platform_manual = true;

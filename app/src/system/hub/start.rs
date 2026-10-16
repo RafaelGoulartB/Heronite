@@ -15,7 +15,7 @@ use super::debug::debug_hooks;
 use super::events::{on_event, on_message, on_tray_cmd};
 use super::launch::launch;
 use super::quit::graceful_quit;
-use super::window::{on_window_closed, show_window};
+use super::window::{apply_window_flags, on_window_closed, show_window};
 use super::{hub, Hub, State};
 use crate::runtime::GameRuntime;
 use crate::system::cli::Cli;
@@ -51,7 +51,8 @@ pub fn init(
     let debug_hidden = crate::env::flag("HERONITE_DEBUG_START_HIDDEN");
     let hide = cli.hide_window(settings.hide_window_on_protocol_launch);
     let start_in_tray = (settings.start_in_tray && tray_alive) || debug_hidden;
-    let want_window = !(hide || start_in_tray);
+    // `--console` / `--fullscreen` show the window even when it would start in the tray.
+    let want_window = !hide && (cli.wants_window() || !start_in_tray);
     // Nothing would keep the app reachable: show the window after all.
     let unreachable = !want_window && !tray_alive && cli.launch.is_none() && !debug_hidden;
 
@@ -67,6 +68,8 @@ pub fn init(
         hiding: false,
         quitting: false,
         fake_launch: crate::env::flag("HERONITE_DEBUG_FAKE_LAUNCH"),
+        // The first window opens fullscreen right away.
+        fullscreen: cli.fullscreen && !hide,
         settings,
         settings_stamp: data_paths.global_config().metadata().and_then(|m| m.modified()).ok(),
     }))));
@@ -123,6 +126,9 @@ pub fn init(
 
     if want_window || unreachable {
         show_window(cx);
+    }
+    if !hide {
+        apply_window_flags(cx, cli.console, false);
     }
     if let Some(req) = cli.launch {
         launch(cx, req, hide, false);

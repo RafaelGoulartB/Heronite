@@ -136,7 +136,7 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
         return primary(None, None);
     }
     let socket = socket_path(&heronite_data::DataPaths::detect().root);
-    let msg = Message { launch: cli.launch.clone(), no_gui: cli.no_gui };
+    let msg = Message { launch: cli.launch.clone(), no_gui: cli.no_gui, console: cli.console, fullscreen: cli.fullscreen };
     for _ in 0..2 {
         match forward(&socket, &msg) {
             Ok(Forward::Delivered) => {

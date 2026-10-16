@@ -668,7 +668,7 @@ mod tests {
         use heronite_data::collection::{FacetOption, FacetOptions};
         let mut e = corpus();
         let facets = FacetOptions { genre: vec![FacetOption { value: "Roguelike".into(), count: 3 }], ..Default::default() };
-        e.extend(view_entries(&Default::default(), &facets));
+        e.extend(view_entries(&Default::default(), &facets, &Default::default()));
         let r = search(&e, "", Filter::Actions, &[]);
         assert!(!titles(&e, &r).iter().any(|t| t.contains("Roguelike")));
         let r = search(&e, "roguelike", Filter::All, &[]);

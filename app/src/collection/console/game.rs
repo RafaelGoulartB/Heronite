@@ -75,6 +75,13 @@ impl CollectionView {
             rows.push(Row::choice("status", tr!("Status"), names, index).icon(Icon::Flag));
         }
         rows.push(Row::toggle("favourite", tr!("Favourite"), g.favourite).icon(Icon::Favorite));
+        // An Epic game's other ways to start; Play uses the one picked.
+        if g.installed && !self.facts.launch_options.is_empty() && self.selected.as_deref() == Some(g.key.as_str()) {
+            let choices = super::super::launch_options::choices(&self.facts.launch_options);
+            let names = choices.iter().map(|c| SharedString::from(super::super::launch_options::choice_label(c))).collect();
+            let index = choices.iter().position(|c| *c == self.facts.launch_current).unwrap_or(0);
+            rows.push(Row::choice("launch-option", tr!("Start with"), names, index).icon(Icon::PlayArrow));
+        }
         if g.installed {
             rows.push(
                 Row::action("settings", tr!("Game settings"))
@@ -111,6 +118,13 @@ impl CollectionView {
         if g.runner == "sideload" && !playing && !matches!(g.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
             manage.push(Row::action("x:edit", tr!("Edit game")).icon(Icon::Edit));
         }
+        if g.runner == "sideload" && !playing && g.launch_kind.as_deref() == Some("emulator") {
+            manage.push(
+                Row::action("x:as-pc", tr!("Play as a PC game\u{2026}"))
+                    .icon(Icon::SportsEsports)
+                    .desc(tr!("A native port or a PC version, instead of the emulator")),
+            );
+        }
         if !playing && g.steam_also_playable().is_some() {
             manage.push(Row::action("x:steam-play", tr!("Play with Steam")).icon(Icon::PlayArrow));
         }
@@ -126,6 +140,14 @@ impl CollectionView {
         }
         if g.runner == "sideload" && !playing {
             manage.push(Row::action("x:remove", tr!("Remove from Collection\u{2026}")).icon(Icon::DeleteForever).danger());
+        }
+        // One switch per custom category (made on the desktop's View menu).
+        if !self.categories.is_empty() {
+            rows.push(Row::header(tr!("Categories")));
+            for name in self.categories.names() {
+                let on = self.categories.contains(name, &g.runner, &g.app_name);
+                rows.push(Row::toggle(SharedString::from(format!("cat:{name}")), name.to_string(), on).icon(Icon::Label));
+            }
         }
         rows.push(Row::header(tr!("Manage")));
         rows.extend(manage);
@@ -292,6 +314,7 @@ impl CollectionView {
                 "x:edit" => {
                     self.open_edit_game(key, window, cx);
                 }
+                "x:as-pc" => self.open_play_as_pc(key, window, cx),
                 "settings" => self.console_game_settings(key, window, cx),
                 "playtime" => self.console_edit_playtime(key, window, cx),
                 "recent" => {
@@ -303,6 +326,10 @@ impl CollectionView {
                 _ => {}
             },
             Outcome::Changed(id, value) => match (id.as_ref(), value) {
+                ("launch-option", Value::Choice { index, .. }) => {
+                    let choice = super::super::launch_options::choices(&self.facts.launch_options).into_iter().nth(index).flatten();
+                    self.set_launch_option(key, choice, cx);
+                }
                 ("status", Value::Choice { index, .. }) => {
                     if let Some(st) = self.lib.as_ref().and_then(|l| l.statuses.get(index)).cloned() {
                         self.set_status(key, st.id, cx);
@@ -320,6 +347,7 @@ impl CollectionView {
                     }
                     self.reload(cx);
                 }
+                (id, Value::Toggle(on)) if id.starts_with("cat:") => self.set_game_category(key, &id["cat:".len()..], on, cx),
                 _ => {}
             },
             Outcome::Moved | Outcome::Edge(_) => {}

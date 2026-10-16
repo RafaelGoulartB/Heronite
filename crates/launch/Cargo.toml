@@ -17,6 +17,7 @@ shlex = "1"
 libc = "0.2"
 regex = "1"
 ureq = "3"
+toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,6 +1,6 @@
 //! Command palette (Ctrl K): one box to reach pages, actions and games.
 //!
-//! * `matching`: folded fuzzy scoring. `sources`: what can be found.
+//! * `matching` (`heronite_data::fuzzy`): folded fuzzy scoring. `sources`: what can be found.
 //!   `rank`: query -> grouped results (pure, unit tested). `view`: the overlay.
 //! * This file is the glue with [`CollectionView`]: opening and closing, the
 //!   keys (palette navigation while open, global shortcuts while closed) and
@@ -21,7 +21,6 @@
 //! none); `HERONITE_DEBUG_PALETTE=<query>@pages|actions|games` also picks the
 //! filter, and `HERONITE_DEBUG_PALETTE_KEYS=down,right,...` feeds it keys.
 
-mod matching;
 mod rank;
 mod sources;
 mod view;
@@ -31,6 +30,8 @@ use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::collect_facet_options;
+// The matching is shared with the Collection's search.
+use heronite_data::fuzzy as matching;
 use heronite_i18n::tr;
 
 use self::sources::{Act, GameRow, ViewCmd};
@@ -157,7 +158,7 @@ impl CollectionView {
         }
         v.extend(self.page_commands(cx).iter().map(|(page, c)| sources::page_entry(*page, c)));
         let Some(lib) = self.lib.clone() else { return v };
-        v.extend(sources::view_entries(&self.ui, &collect_facet_options(&lib.games)));
+        v.extend(sources::view_entries(&self.ui, &collect_facet_options(&lib.games), &self.categories));
         let mut games: Vec<_> = lib.games.iter().collect();
         games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower).then(a.key.cmp(&b.key)));
         v.reserve(games.len());
@@ -183,6 +184,12 @@ impl CollectionView {
     /// Every keystroke of the window, before anything else sees it. Returns
     /// whether it was taken.
     fn palette_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // F11: fullscreen on / off, in both modes (`--fullscreen` starts there).
+        let plain = !ks.modifiers.control && !ks.modifiers.alt && !ks.modifiers.platform && !ks.modifiers.shift;
+        if ks.key == "f11" && plain {
+            window.toggle_fullscreen();
+            return true;
+        }
         if crate::console::active() {
             return self.console_key(ks, window, cx);
         }
@@ -322,10 +329,15 @@ impl CollectionView {
             ViewCmd::ShowHidden => self.set_show_hidden(!self.ui.show_hidden, cx),
             ViewCmd::ClearFilters => {
                 self.ui.clear_facets();
+                self.ui.categories.clear();
                 self.save_ui();
                 self.refresh_groups();
             }
             ViewCmd::Facet(kind, value) => self.toggle_facet(kind.as_str(), &value),
+            ViewCmd::SortDirection => self.toggle_sort_direction(cx),
+            ViewCmd::Only(only, on) => self.set_only(only, on, cx),
+            ViewCmd::Category(name) => self.toggle_category_filter(&name, cx),
+            ViewCmd::ManageCategories => self.open_manage_categories(window, cx),
         }
         self.reveal_selected();
         cx.notify();

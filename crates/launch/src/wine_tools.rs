@@ -286,6 +286,7 @@ mod tests {
             ui_language: None,
             known_fixes: None,
             umu_ids: None,
+            umu_database: Vec::new(),
         }
     }
 

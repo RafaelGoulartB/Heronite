@@ -291,6 +291,14 @@ fn spawn_tools_update(paths: DataPaths) {
         if let Err(e) = heronite_launch::known_fixes::update_if_needed(&paths, &SystemNet, &|| false) {
             log::warn!("{e}");
         }
+        // The anti-cheat list behind the focus panel's "On Linux".
+        if let Err(e) = heronite_launch::anticheat_data::update_if_needed(&paths, &SystemNet, &|| false) {
+            log::warn!("{e}");
+        }
+        // The umu ids of games (protonfixes), refreshed once a week.
+        if let Err(e) = heronite_launch::umu_ids::update_if_needed(&paths, &SystemNet) {
+            log::warn!("{e}");
+        }
     });
     if let Err(e) = spawned {
         log::warn!("could not start the tools update: {e}");
