@@ -144,7 +144,8 @@ pub fn drawer(
                 .overflow_y_scroll()
                 .px(px(20.))
                 .py(px(16.))
-                .child(body),
+                // `HERONITE_DEBUG_DIALOG_SCROLL=<px>`: the body starts scrolled (captures).
+                .child(div().when_some(crate::env::parse::<f32>("HERONITE_DEBUG_DIALOG_SCROLL"), |d, y| d.mt(px(-y))).child(body)),
         );
     if let Some(footer) = footer {
         panel = panel.child(
