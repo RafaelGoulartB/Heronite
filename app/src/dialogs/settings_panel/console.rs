@@ -101,7 +101,13 @@ impl SettingsPanel {
         item(Row::info(SharedString::from(format!("i:{id}")), label.to_string(), value), Act::None)
     }
 
-    pub(super) fn c_do(id: &str, label: &str, ic: Icon, enabled: bool, run: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static) -> Item {
+    pub(super) fn c_do(
+        id: &str,
+        label: &str,
+        ic: Icon,
+        enabled: bool,
+        run: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Item {
         item(Row::action(SharedString::from(format!("d:{id}")), label.to_string()).icon(ic).enabled(enabled), Act::Do(Rc::new(run)))
     }
 

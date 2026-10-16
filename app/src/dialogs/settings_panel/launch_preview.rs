@@ -107,8 +107,18 @@ impl SettingsPanel {
         let col = column().child(heading(tr!("How the game starts")));
         let state = &self.preview;
         let Some(p) = state.preview.as_ref().filter(|_| state.open) else {
-            let button = action_button("preview-show", ButtonKind::Glass, tr!("Show").to_string(), !state.busy, cx.listener(|this, _, _, cx| this.open_preview(cx)));
-            let r = crate::ui::controls::row(tr!("Command and variables"), Some(tr!("What a launch runs now, and the setting each variable comes from")), button);
+            let button = action_button(
+                "preview-show",
+                ButtonKind::Glass,
+                tr!("Show").to_string(),
+                !state.busy,
+                cx.listener(|this, _, _, cx| this.open_preview(cx)),
+            );
+            let r = crate::ui::controls::row(
+                tr!("Command and variables"),
+                Some(tr!("What a launch runs now, and the setting each variable comes from")),
+                button,
+            );
             return col.child(rows().child(r).card());
         };
         let mut card = rows();
@@ -126,7 +136,12 @@ impl SettingsPanel {
             );
             let (mine, always): (Vec<&Var>, Vec<&Var>) = p.vars.iter().partition(|v| v.source != Source::Always);
             if !mine.is_empty() {
-                let list = div().flex().flex_col().gap(px(4.)).py(px(12.)).child(crate::ui::fields::field_label(tr!("From your settings").to_string()));
+                let list = div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .py(px(12.))
+                    .child(crate::ui::fields::field_label(tr!("From your settings").to_string()));
                 card = card.child(grouped(list, &mine));
             }
             if !always.is_empty() {
@@ -137,16 +152,12 @@ impl SettingsPanel {
                     trn!(always.len(), "And {n} variable every launch gets", "And {n} variables every launch gets")
                 };
                 let mut list = div().flex().flex_col().gap(px(4.)).py(px(12.)).child(
-                    div()
-                        .id("preview-all")
-                        .cursor_pointer()
-                        .text_size(px(12.))
-                        .text_color(theme::accent())
-                        .child(label)
-                        .on_click(cx.listener(|this, _, _, cx| {
+                    div().id("preview-all").cursor_pointer().text_size(px(12.)).text_color(theme::accent()).child(label).on_click(
+                        cx.listener(|this, _, _, cx| {
                             this.preview.show_all = !this.preview.show_all;
                             cx.notify();
-                        })),
+                        }),
+                    ),
                 );
                 if shown {
                     list = list.children(always.iter().map(|v| var_line(v)));
@@ -221,13 +232,19 @@ pub(super) fn source_label(s: &Source) -> String {
 }
 
 /// Builds the plan a launch would run with `settings` (blocking).
-fn compute(paths: &heronite_data::DataPaths, home: &str, settings: heronite_data::game_config::Settings, game: &heronite_data::collection::Game) -> Preview {
+fn compute(
+    paths: &heronite_data::DataPaths,
+    home: &str,
+    settings: heronite_data::game_config::Settings,
+    game: &heronite_data::collection::Game,
+) -> Preview {
     let ctx = PlanContext::load(paths);
     // As a launch reads them: every global default under the game's values.
     let mut merged = ctx.global.defaults.clone();
     merged.extend(settings);
     let s = GameSettings::from_map(&merged, home);
-    let plan = heronite_launch::build_plan_with_settings(&ctx, &SystemProbe, &game.game, game.meta.as_deref(), &s, &LaunchOptions::default());
+    let plan =
+        heronite_launch::build_plan_with_settings(&ctx, &SystemProbe, &game.game, game.meta.as_deref(), &s, &LaunchOptions::default());
     describe(&plan, &s)
 }
 
@@ -333,17 +350,27 @@ impl SettingsPanel {
         }
         let mut v: Vec<Item> = vec![Self::c_header(tr!("How the game starts"))];
         let Some(p) = self.preview.preview.as_ref().filter(|_| self.preview.open) else {
-            v.push(Self::c_do("preview-show", tr!("Show the command and variables"), Icon::PlayArrow, !self.preview.busy, |this, _, cx| this.open_preview(cx)));
+            v.push(Self::c_do(
+                "preview-show",
+                tr!("Show the command and variables"),
+                Icon::PlayArrow,
+                !self.preview.busy,
+                |this, _, cx| this.open_preview(cx),
+            ));
             return v;
         };
         if let Some(err) = &p.error {
-            v.push(super::console::item(Row::info("i:preview-error", tr!("Cannot start"), "").danger().desc(err.clone()), super::console::Act::None));
+            v.push(super::console::item(
+                Row::info("i:preview-error", tr!("Cannot start"), "").danger().desc(err.clone()),
+                super::console::Act::None,
+            ));
             return v;
         }
         v.push(Self::c_info("preview-command", tr!("Command"), p.command.clone()));
         for (i, var) in p.vars.iter().filter(|x| x.source != Source::Always).enumerate() {
             v.push(super::console::item(
-                Row::info(SharedString::from(format!("i:preview-var-{i}")), var.name.clone(), var.value.clone()).desc(source_label(&var.source)),
+                Row::info(SharedString::from(format!("i:preview-var-{i}")), var.name.clone(), var.value.clone())
+                    .desc(source_label(&var.source)),
                 super::console::Act::None,
             ));
         }

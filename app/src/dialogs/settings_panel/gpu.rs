@@ -30,10 +30,27 @@ pub(super) type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<Setting
 /// One row of the tab.
 pub(super) enum GpuRow {
     Header(&'static str),
-    Toggle { key: &'static str, label: &'static str, desc: String, enabled: bool },
+    Toggle {
+        key: &'static str,
+        label: &'static str,
+        desc: String,
+        enabled: bool,
+    },
     /// `options`: `(label, note)`.
-    Choice { id: &'static str, label: &'static str, desc: String, options: Vec<(String, Option<String>)>, selected: usize, enabled: bool, pick: Pick },
-    Info { id: &'static str, label: String, value: String },
+    Choice {
+        id: &'static str,
+        label: &'static str,
+        desc: String,
+        options: Vec<(String, Option<String>)>,
+        selected: usize,
+        enabled: bool,
+        pick: Pick,
+    },
+    Info {
+        id: &'static str,
+        label: String,
+        value: String,
+    },
 }
 
 impl SettingsPanel {
@@ -394,7 +411,12 @@ impl SettingsPanel {
                 let options = options
                     .into_iter()
                     .enumerate()
-                    .map(|(i, (label, note))| SelectOption { label: label.into(), selected: i == selected, group: None, note: note.map(Into::into) })
+                    .map(|(i, (label, note))| SelectOption {
+                        label: label.into(),
+                        selected: i == selected,
+                        group: None,
+                        note: note.map(Into::into),
+                    })
                     .collect();
                 let select = self.select_menu_row(id, Some(label), shown, options, !enabled, cx, move |this, i, _, cx| pick(this, i, cx));
                 c.field_help(select, vec![help(&desc)])

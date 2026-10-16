@@ -341,7 +341,8 @@ impl Render for GameSettingsDialog {
             ));
         }
         // The panel's tab: its changed settings back to the game defaults.
-        let changed_panel = self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.tab.section().is_some() && p.read(cx).tab_changed());
+        let changed_panel =
+            self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.tab.section().is_some() && p.read(cx).tab_changed());
         if let Some(panel) = changed_panel {
             right = right.child(action_button(
                 "gs-reset-tab",

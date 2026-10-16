@@ -255,7 +255,16 @@ impl SettingsPanel {
             .flex_none()
             .size(px(16.))
             .cursor_pointer()
-            .child(div().absolute().top(px(5.)).left(px(5.)).size(px(6.)).rounded_full().bg(theme::accent()).group_hover(hover.clone(), |s| s.opacity(0.)))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(5.))
+                    .left(px(5.))
+                    .size(px(6.))
+                    .rounded_full()
+                    .bg(theme::accent())
+                    .group_hover(hover.clone(), |s| s.opacity(0.)),
+            )
             .child(
                 div()
                     .absolute()

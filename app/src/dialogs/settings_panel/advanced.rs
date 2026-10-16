@@ -214,7 +214,8 @@ impl SettingsPanel {
                 cx.listener(move |this, _, window, cx| this.pair_add(t, window, cx)),
             ));
         card_rows = card_rows.child(add);
-        let mut title_row = div().flex().items_end().justify_between().child(self.marked_heading(tr(t.title).trim_end_matches(':'), t.setting, cx));
+        let mut title_row =
+            div().flex().items_end().justify_between().child(self.marked_heading(tr(t.title).trim_end_matches(':'), t.setting, cx));
         if t.env {
             title_row = title_row.child(
                 action_button(

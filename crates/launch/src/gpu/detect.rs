@@ -91,7 +91,12 @@ impl Machine {
                     .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
                     .unwrap_or_default();
                 Some(Card {
-                    name: display_name(c.vendor_id, c.device_id, pci_name(&ids, c.vendor_id, c.device_id).as_deref(), vk.map(|d| d.name.as_str())),
+                    name: display_name(
+                        c.vendor_id,
+                        c.device_id,
+                        pci_name(&ids, c.vendor_id, c.device_id).as_deref(),
+                        vk.map(|d| d.name.as_str()),
+                    ),
                     integrated: vk.and_then(|d| d.integrated),
                     slot,
                     vendor_id: c.vendor_id,
@@ -104,7 +109,8 @@ impl Machine {
         cards.sort_by(|a, b| b.primary.cmp(&a.primary).then_with(|| a.slot.cmp(&b.slot)));
         let dirs = crate::probe::implicit_layer_dirs(probe);
         let manifest_has = |file: &str, text: &str| {
-            dirs.iter().any(|d| probe.read_head(&format!("{d}/{file}"), 1 << 16).is_some_and(|b| String::from_utf8_lossy(&b).contains(text)))
+            dirs.iter()
+                .any(|d| probe.read_head(&format!("{d}/{file}"), 1 << 16).is_some_and(|b| String::from_utf8_lossy(&b).contains(text)))
         };
         Self {
             smooth_motion: manifest_has("nvidia_layers.json", "NVPRESENT_ENABLE_SMOOTH_MOTION"),
@@ -144,7 +150,9 @@ pub struct CardIds {
 
 /// The card at `slot` (`None`: no display card there).
 pub fn card_at(slot: &str, probe: &dyn Probe) -> Option<CardIds> {
-    let read = |file: &str| probe.read_head(&format!("/sys/bus/pci/devices/{slot}/{file}"), 32).map(|b| String::from_utf8_lossy(&b).trim().to_string());
+    let read = |file: &str| {
+        probe.read_head(&format!("/sys/bus/pci/devices/{slot}/{file}"), 32).map(|b| String::from_utf8_lossy(&b).trim().to_string())
+    };
     let hex = |file: &str| read(file).and_then(|t| u16::from_str_radix(t.trim_start_matches("0x"), 16).ok());
     Some(CardIds { vendor_id: hex("vendor")?, device_id: hex("device")?, primary: read("boot_vga").as_deref() == Some("1") })
 }
@@ -169,7 +177,9 @@ fn drm_slots() -> Vec<String> {
     let Ok(dir) = std::fs::read_dir("/sys/class/drm") else { return Vec::new() };
     let mut out: Vec<String> = dir
         .flatten()
-        .filter(|e| e.file_name().to_string_lossy().strip_prefix("card").is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())))
+        .filter(|e| {
+            e.file_name().to_string_lossy().strip_prefix("card").is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        })
         .filter_map(|e| std::fs::canonicalize(e.path().join("device")).ok())
         .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
         .filter(|slot| slot.matches(':').count() == 2)
@@ -254,7 +264,8 @@ pub struct VulkanDevice {
 /// The devices `vulkaninfo --summary` lists (nothing when it is missing
 /// or does not answer within a few seconds).
 fn vulkan_devices() -> Vec<VulkanDevice> {
-    let Ok(mut child) = Command::new("vulkaninfo").arg("--summary").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
+    let Ok(mut child) =
+        Command::new("vulkaninfo").arg("--summary").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
     else {
         return Vec::new();
     };
