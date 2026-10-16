@@ -199,6 +199,7 @@ impl CollectionView {
             self.focus_scroll.set_offset(point(px(0.), px(0.)));
         }
         self.selected = Some(key.clone());
+        self.grid.drawer_closed = false;
         if persist {
             self.ui.focused_game = Some(key.to_string());
             self.save_ui();

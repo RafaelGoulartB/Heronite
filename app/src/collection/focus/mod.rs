@@ -154,7 +154,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
     let details = details_panel(&vm.details, &active_facets, actions.on_facet, actions.on_open_folder);
     let sections = Sections {
         screenshots,
-        overview: overview(&vm, &html_images, panel_w),
+        overview: overview(&vm, &html_images, main_column_width(panel_w)),
         timeline,
         related: (!vm.related.is_empty()).then(|| related_panel(&vm.related, &cover_for, actions.on_select)),
         top: extras.top,
@@ -235,6 +235,39 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         .into_any_element()
 }
 
+/// What [`stacked_details`] shows besides the view model.
+pub(super) struct StackedProps {
+    pub vm: FocusVm,
+    pub cover_for: CoverFor,
+    pub html_images: CoverFor,
+    /// Width of the column, in logical px.
+    pub width: f32,
+    pub active_facets: Vec<(&'static str, SharedString)>,
+    pub screenshots: Option<AnyElement>,
+    pub timeline: Option<AnyElement>,
+    pub extras: FocusExtras,
+}
+
+/// The details of the focus panel in one column (the grid's drawer): no
+/// title and no left column, which the caller lays out itself.
+pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div {
+    let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras } = props;
+    let lay = Layout { narrow: true, left_w: 0., stacked: true, main_w: width, side_w: width, offset: 0. };
+    let details = details_panel(&vm.details, &active_facets, actions.on_facet, actions.on_open_folder);
+    body(
+        &lay,
+        Sections {
+            screenshots,
+            overview: overview(&vm, &html_images, width),
+            timeline,
+            related: (!vm.related.is_empty()).then(|| related_panel(&vm.related, &cover_for, actions.on_select)),
+            top: extras.top,
+            details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
+            hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
+        },
+    )
+}
+
 /// Title and meta line.
 fn header(vm: &FocusVm, title_size: f32) -> Div {
     div()
@@ -267,9 +300,10 @@ struct Sections {
     hltb: Option<Div>,
 }
 
-fn overview(vm: &FocusVm, html_images: &CoverFor, panel_w: f32) -> Div {
+/// `column_w`: width the description images are sized for.
+fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
     div().flex().flex_col().child(h3(tr!("Overview"))).child(match &vm.overview_html {
-        Some(blocks) => render_html(blocks, &**html_images, main_column_width(panel_w)).into_any_element(),
+        Some(blocks) => render_html(blocks, &**html_images, column_w).into_any_element(),
         None => div()
             .max_w(px(72. * 7.6))
             .text_size(px(15.2))

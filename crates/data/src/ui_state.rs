@@ -43,7 +43,17 @@ pub struct UiState {
     pub console_mode: bool,
     /// Ids of the command palette items run lately, most recent first.
     pub palette_recent: Vec<String>,
+    /// The Collection shows the full-window grid instead of the list next to
+    /// the focus panel.
+    pub grid_view: bool,
+    /// Smallest cover width of the grid, in logical px ([`GRID_COVER_W`]).
+    pub grid_cover_w: f32,
+    /// The grid shows each game's title under its cover.
+    pub grid_titles: bool,
 }
+
+/// Range and default of [`UiState::grid_cover_w`].
+pub const GRID_COVER_W: (f32, f32, f32) = (110., 240., 150.);
 
 impl Default for UiState {
     fn default() -> Self {
@@ -61,6 +71,9 @@ impl Default for UiState {
             show_hidden: false,
             console_mode: false,
             palette_recent: Vec::new(),
+            grid_view: false,
+            grid_cover_w: GRID_COVER_W.2,
+            grid_titles: false,
         }
     }
 }
@@ -103,6 +116,11 @@ impl UiState {
         if let Some(list) = value.get("paletteRecent").and_then(Value::as_array) {
             state.palette_recent = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
         }
+        state.grid_view = flag("gridView");
+        if let Some(w) = value.get("gridCoverWidth").and_then(Value::as_f64).filter(|w| w.is_finite()) {
+            state.grid_cover_w = (w as f32).clamp(GRID_COVER_W.0, GRID_COVER_W.1);
+        }
+        state.grid_titles = flag("gridTitles");
         state
     }
 
@@ -131,6 +149,9 @@ impl UiState {
             "showHidden": self.show_hidden,
             "consoleMode": self.console_mode,
             "paletteRecent": self.palette_recent,
+            "gridView": self.grid_view,
+            "gridCoverWidth": self.grid_cover_w,
+            "gridTitles": self.grid_titles,
         })
     }
 
@@ -238,6 +259,9 @@ mod tests {
             palette_recent: vec!["go:downloads".into(), "game:sideload_steam_400:primary".into()],
             sort_descending: true,
             only: OnlyFilters { favourites: true, updates: false, offline: true },
+            grid_view: true,
+            grid_cover_w: 180.,
+            grid_titles: true,
             ..Default::default()
         };
         state.toggle_category("RPG");
@@ -259,9 +283,18 @@ mod tests {
         assert_eq!(on_disk["showHidden"], true);
         assert_eq!(on_disk["consoleMode"], true);
         assert_eq!(on_disk["onlyOffline"], true);
+        assert_eq!(on_disk["gridView"], true);
         assert_eq!(on_disk["categories"], json!([crate::categories::UNCATEGORIZED, "RPG"]));
         state.clear_facets();
         assert!(!state.facet_filters.is_active());
+    }
+
+    #[test]
+    fn grid_cover_width_is_clamped() {
+        let state = UiState::from_value(&json!({ "gridCoverWidth": 9000 }));
+        assert_eq!(state.grid_cover_w, GRID_COVER_W.1);
+        let state = UiState::from_value(&json!({ "gridCoverWidth": "big" }));
+        assert_eq!(state.grid_cover_w, GRID_COVER_W.2);
     }
 
     #[test]

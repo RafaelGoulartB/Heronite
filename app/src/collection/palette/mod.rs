@@ -326,6 +326,7 @@ impl CollectionView {
                 self.save_ui();
                 self.refresh_groups();
             }
+            ViewCmd::GridView => self.set_grid_view(!self.ui.grid_view, cx),
             ViewCmd::ShowHidden => self.set_show_hidden(!self.ui.show_hidden, cx),
             ViewCmd::ClearFilters => {
                 self.ui.clear_facets();

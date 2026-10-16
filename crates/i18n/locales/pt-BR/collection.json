@@ -241,5 +241,12 @@
   "How the game starts normally": "Como o jogo inicia normalmente",
   "Play with": "Jogar com",
   "Play with: {option}": "Jogar com: {option}",
-  "Starts this DLC instead of the game": "Inicia esta DLC no lugar do jogo"
+  "Starts this DLC instead of the game": "Inicia esta DLC no lugar do jogo",
+  "Focus": "Foco",
+  "Grid": "Grade",
+  "Open game page": "Abrir página do jogo",
+  "Show as list with details": "Mostrar como lista com detalhes",
+  "The list next to the selected game's page": "A lista ao lado da página do jogo selecionado",
+  "Show as grid": "Mostrar como grade",
+  "Covers across the window, the game in a side panel": "Capas em toda a janela, o jogo num painel lateral"
 }

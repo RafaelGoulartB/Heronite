@@ -16,6 +16,8 @@ mod focus;
 mod focus_left;
 mod game_actions;
 mod game_facts;
+mod grid;
+mod grid_drawer;
 mod header;
 mod html;
 mod install_options;
@@ -124,6 +126,10 @@ pub struct CollectionView {
     groups: Vec<GroupVm>,
     items: Vec<ListItem>,
     columns: usize,
+    /// Card width of the list or the grid, in logical px.
+    card_w: f32,
+    /// Grid view state (`grid.rs`).
+    grid: grid::GridUi,
     list_state: ListState,
     selected: Option<SharedString>,
     hovered: Option<SharedString>,
@@ -229,6 +235,8 @@ impl CollectionView {
             groups: Vec::new(),
             items: Vec::new(),
             columns: 3,
+            card_w: theme::CARD_W,
+            grid: Default::default(),
             list_state,
             selected: None,
             hovered: None,
@@ -291,8 +299,8 @@ impl CollectionView {
         self.search_input.update(cx, |s, cx| s.set_placeholder(heronite_i18n::tr!("Search games"), window, cx));
     }
 
-    fn on_key_down(&mut self, ev: &KeyDownEvent, cx: &mut Context<Self>) {
-        if self.shots_key(ev, cx) {
+    fn on_key_down(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.shots_key(ev, cx) || self.grid_key(ev, window, cx) {
             cx.notify();
             return;
         }
@@ -343,13 +351,18 @@ impl CollectionView {
         }
         let vw = f32::from(window.viewport_size().width);
         let scale = window.scale_factor();
-        let (list_w, columns) = Self::list_column_width(vw);
+        let (list_w, columns) = self.list_layout(vw);
         if columns != self.columns {
             self.columns = columns;
             self.rebuild_items();
         }
+        if std::mem::take(&mut self.grid.reveal) {
+            self.reveal_selected();
+        }
 
-        let header = self.render_header(list_w, window, cx);
+        // The grid keeps the search as wide as next to the list.
+        let header_w = if self.ui.grid_view { theme::LIST_COL_W.min(vw * 0.35) } else { list_w };
+        let header = self.render_header(header_w, window, cx);
         let page_el = self.render_page(cx);
         let on_page = page_el.is_some();
         let stage_el = match self.stage_image(window) {
@@ -362,6 +375,8 @@ impl CollectionView {
             self.render_welcome(vw, vh - 42., cx)
         } else if let Some(err) = self.lib.is_none().then(|| self.welcome.load_error.clone()).flatten() {
             self.render_load_error(err, cx)
+        } else if self.ui.grid_view {
+            self.render_grid_body(list_w, vw, vh, scale, cx)
         } else {
             let list_column = self.render_list_column(list_w, cx);
             let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
@@ -373,7 +388,7 @@ impl CollectionView {
         div()
             .id("collection")
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| this.on_key_down(ev, cx)))
+            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| this.on_key_down(ev, window, cx)))
             // Capture phase: runs before children, so a clicked input (search,
             // dialog fields) takes focus right after; clicks elsewhere blur it.
             .capture_any_mouse_down(cx.listener(|this, _, window, cx| {
