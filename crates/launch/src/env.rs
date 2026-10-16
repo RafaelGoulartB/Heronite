@@ -11,10 +11,14 @@ use std::path::Path;
 use heronite_i18n::tr;
 use regex::Regex;
 
+use crate::fps_limit::{self, Applied, Method, Tools};
 use crate::probe::Probe;
 use crate::settings::{GameSettings, Gamescope};
 
 pub type Env = BTreeMap<String, String>;
+
+/// DXVK's frame limit (DirectX 8-11) and VKD3D-Proton's (DirectX 12).
+pub const DXVK_FRAME_RATE: [&str; 2] = ["DXVK_FRAME_RATE", "VKD3D_FRAME_RATE"];
 
 /// `heronitePreferSdl`: `PROTON_PREFER_SDL=1`, controllers through SDL
 /// instead of hidraw (fixes undetected controllers, swapped buttons and
@@ -22,12 +26,7 @@ pub type Env = BTreeMap<String, String>;
 pub const KEY_PREFER_SDL: &str = "heronitePreferSdl";
 
 pub fn setup_env_vars(s: &GameSettings, install_path: Option<&str>, probe: &dyn Probe) -> Env {
-    let mut ret = Env::new();
-    if s.nvidia_prime {
-        ret.insert("DRI_PRIME".into(), "1".into());
-        ret.insert("__NV_PRIME_RENDER_OFFLOAD".into(), "1".into());
-        ret.insert("__GLX_VENDOR_LIBRARY_NAME".into(), "nvidia".into());
-    }
+    let mut ret = crate::gpu::env(&crate::gpu::for_launch(&s.gpu, probe), probe);
     if let Some(p) = install_path.filter(|p| !p.is_empty()) {
         // Used by the Steam runtime to mount the game directory.
         ret.insert("STEAM_COMPAT_INSTALL_PATH".into(), p.into());
@@ -39,8 +38,9 @@ pub fn setup_env_vars(s: &GameSettings, install_path: Option<&str>, probe: &dyn 
     for (k, v) in &s.env_options {
         ret.insert(k.clone(), v.clone());
     }
-    if let Some(config) = mangohud_config(s, ret.get(MANGOHUD_CONFIG).cloned().or_else(|| probe.env_var(MANGOHUD_CONFIG))) {
-        ret.insert(MANGOHUD_CONFIG.into(), config);
+    if let Some(a) = s.fps_limit.applied(&Tools::detect(s, probe)).filter(|a| a.by(Method::MangoHud)) {
+        let existing = ret.get(MANGOHUD_CONFIG).cloned().or_else(|| probe.env_var(MANGOHUD_CONFIG));
+        ret.insert(MANGOHUD_CONFIG.into(), fps_limit::mangohud_config(&a, s.show_mangohud, existing.as_deref()));
     }
     // Fixes the std::log_error crash in Fall Guys (Heroic does the same).
     if probe.env_var("LD_PRELOAD").is_none() && !ret.contains_key("LD_PRELOAD") {
@@ -50,21 +50,6 @@ pub fn setup_env_vars(s: &GameSettings, install_path: Option<&str>, probe: &dyn 
 }
 
 const MANGOHUD_CONFIG: &str = "MANGOHUD_CONFIG";
-
-/// `MANGOHUD_CONFIG` with the game's FPS limit, `None` when MangoHud is off
-/// or there is no limit. Without `read_cfg` MangoHud would ignore the user's
-/// config file; a `MANGOHUD_CONFIG` the user set already says whether it is
-/// read, so the limit is only appended to it.
-fn mangohud_config(s: &GameSettings, existing: Option<String>) -> Option<String> {
-    let limit = s.mangohud_fps_limit.parse::<u32>().ok().filter(|n| *n > 0)?;
-    if !s.show_mangohud {
-        return None;
-    }
-    Some(match existing.filter(|c| !c.trim().is_empty()) {
-        Some(c) => format!("{},fps_limit={limit}", c.trim_end_matches(',')),
-        None => format!("read_cfg,fps_limit={limit}"),
-    })
-}
 
 pub fn setup_wrapper_env_vars(app_name: &str, runner: &str) -> Env {
     let mut ret = Env::new();
@@ -170,8 +155,10 @@ pub fn setup_wine_env_vars(s: &GameSettings, game_id: &str, runtime_dir: &str, p
     if s.show_fps {
         ret.insert("DXVK_HUD".into(), "fps".into());
     }
-    if s.enable_dxvk_fps_limit {
-        ret.insert("DXVK_FRAME_RATE".into(), s.dxvk_fps_cap.clone());
+    if let Some(a) = s.fps_limit.applied(&Tools::detect(s, probe)).filter(|a| a.by(Method::Dxvk)) {
+        for var in DXVK_FRAME_RATE {
+            ret.insert(var.into(), a.limit.to_string());
+        }
     }
     if s.enable_fsr {
         ret.insert("WINE_FULLSCREEN_FSR".into(), "1".into());
@@ -227,6 +214,8 @@ pub fn setup_wine_env_vars(s: &GameSettings, game_id: &str, runtime_dir: &str, p
         ret.insert("DXVK_ENABLE_NVAPI".into(), "1".into());
         ret.insert("DXVK_NVAPI_ALLOW_OTHER_DRIVERS".into(), "1".into());
     }
+    let user_dxvk_config = s.env_options.iter().rev().find(|(k, _)| k == crate::gpu::DXVK_CONFIG).map(|(_, v)| v.as_str());
+    ret.extend(crate::gpu::wine_env(&crate::gpu::for_launch(&s.gpu, probe), is_proton, user_dxvk_config));
     if s.eac_runtime {
         ret.insert("PROTON_EAC_RUNTIME".into(), join(runtime_dir, "eac_runtime"));
     }
@@ -308,12 +297,17 @@ pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option
     let mut mangohud: Vec<String> = Vec::new();
     let mut gamemode: Option<String> = None;
     let mut gamescope: Vec<String> = Vec::new();
+    let limit = s.fps_limit.applied(&Tools::detect(s, probe));
+    let limit_by = |m: Method| limit.filter(|a| a.by(m));
 
     if s.show_mangohud && probe.env_var("SteamDeck").as_deref() != Some("1") {
         match probe.which("mangohud") {
             Some(bin) => mangohud = vec![bin, "--dlsym".into()],
             None => error = Some(tr!("Mangohud is enabled, but `mangohud` executable could not be found on $PATH").to_string()),
         }
+    } else if limit_by(Method::MangoHud).is_some() {
+        // Only limits: the overlay stays hidden (`no_display`).
+        mangohud = probe.which("mangohud").map(|bin| vec![bin, "--dlsym".into()]).unwrap_or_default();
     }
     if s.use_game_mode {
         match probe.which("gamemoderun") {
@@ -326,11 +320,12 @@ pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option
         }
     }
     let g = &s.gamescope;
-    if (g.enable_limiter || g.enable_upscaling) && probe.env_var("SteamDeck").as_deref() != Some("1") {
+    let gs_limit = limit_by(Method::Gamescope);
+    if (g.enable_upscaling || gs_limit.is_some()) && probe.env_var("SteamDeck").as_deref() != Some("1") {
         if let Some(bin) = probe.which("gamescope") {
             let old = probe.gamescope_is_old(&bin);
             gamescope.push(bin);
-            gamescope.extend(gamescope_args(g, old, s.show_mangohud));
+            gamescope.extend(gamescope_args(g, old, s.show_mangohud, gs_limit.as_ref()));
         } else {
             log::warn!("Gamescope is enabled, but `gamescope` executable could not be found on $PATH");
         }
@@ -359,7 +354,8 @@ pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option
 /// Gamescope's options for the game's settings, ending with `--` (the game
 /// command follows). `old`: gamescope before 3.12, which has other upscaling
 /// flags. `mangoapp`: MangoHud runs inside gamescope instead of as a wrapper.
-pub fn gamescope_args(g: &Gamescope, old: bool, mangoapp: bool) -> Vec<String> {
+/// `limit`: the FPS limit, when gamescope applies it.
+pub fn gamescope_args(g: &Gamescope, old: bool, mangoapp: bool, limit: Option<&Applied>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     if g.enable_upscaling {
         if !g.game_width.is_empty() {
@@ -390,12 +386,10 @@ pub fn gamescope_args(g: &Gamescope, old: bool, mangoapp: bool) -> Vec<String> {
             _ => {}
         }
     }
-    if g.enable_limiter {
-        if !g.fps_limiter.is_empty() {
-            out.extend(["-r".into(), g.fps_limiter.clone()]);
-        }
-        if !g.fps_limiter_no_focus.is_empty() {
-            out.extend(["-o".into(), g.fps_limiter_no_focus.clone()]);
+    if let Some(a) = limit {
+        out.extend(["-r".into(), a.limit.to_string()]);
+        if a.no_focus > 0 {
+            out.extend(["-o".into(), a.no_focus.to_string()]);
         }
     }
     if g.enable_force_grab_cursor {
@@ -493,23 +487,60 @@ mod tests {
 
     #[test]
     fn mangohud_fps_limit_keeps_the_users_config() {
-        let probe = FakeProbe::new("/h");
-        let on = settings(json!({"showMangohud": true, "heroniteMangohudFpsLimit": " 60 "}));
+        let probe = FakeProbe::new("/h").with_bin("mangohud", "/usr/bin/mangohud");
+        let on = settings(json!({"showMangohud": true, "heroniteFpsLimit": "60", "heroniteFpsLimitMethod": "mangohud"}));
         assert_eq!(setup_env_vars(&on, None, &probe)["MANGOHUD_CONFIG"], "read_cfg,fps_limit=60");
         let user = settings(json!({
             "showMangohud": true, "heroniteMangohudFpsLimit": "45",
             "enviromentOptions": [{"key":"MANGOHUD_CONFIG","value":"fps,frametime"}]
         }));
         assert_eq!(setup_env_vars(&user, None, &probe)["MANGOHUD_CONFIG"], "fps,frametime,fps_limit=45");
-        let inherited = FakeProbe::new("/h").with_env("MANGOHUD_CONFIG", "read_cfg,cpu_temp");
+        let inherited = probe.clone().with_env("MANGOHUD_CONFIG", "read_cfg,cpu_temp");
         assert_eq!(setup_env_vars(&on, None, &inherited)["MANGOHUD_CONFIG"], "read_cfg,cpu_temp,fps_limit=60");
         for off in [
-            json!({"showMangohud": false, "heroniteMangohudFpsLimit": "60"}),
-            json!({"showMangohud": true, "heroniteMangohudFpsLimit": ""}),
-            json!({"showMangohud": true, "heroniteMangohudFpsLimit": "0"}),
+            json!({"showMangohud": true, "heroniteFpsLimit": "", "heroniteFpsLimitMethod": "mangohud"}),
+            json!({"showMangohud": true, "heroniteFpsLimit": "0", "heroniteFpsLimitMethod": "mangohud"}),
+            json!({"showMangohud": true, "heroniteFpsLimit": "60", "heroniteFpsLimitMethod": "dxvk", "wineVersion": {"bin": "/p/proton", "name": "P", "type": "proton"}}),
         ] {
             assert!(!setup_env_vars(&settings(off), None, &probe).contains_key("MANGOHUD_CONFIG"));
         }
+    }
+
+    #[test]
+    fn mangohud_limits_with_the_overlay_hidden() {
+        let s = settings(json!({"heroniteFpsLimit": "50", "heroniteFpsLimitSmooth": true}));
+        let probe = FakeProbe::new("/h").with_bin("mangohud", "/usr/bin/mangohud");
+        assert_eq!(setup_env_vars(&s, None, &probe)["MANGOHUD_CONFIG"], "read_cfg,no_display,fps_limit=50,fps_limit_method=early");
+        let w = build_wrappers(&s, &probe, None);
+        assert!(w.error.is_none());
+        assert_eq!(w.wrappers, ["/usr/bin/mangohud", "--dlsym"]);
+    }
+
+    #[test]
+    fn one_limiter_per_launch() {
+        let proton = json!({"bin": "/t/GE-Proton9/proton", "name": "GE-Proton9", "type": "proton"});
+        let s = settings(json!({"wineVersion": proton, "heroniteFpsLimit": "60"}));
+        let mangohud = FakeProbe::new("/h").with_bin("mangohud", "/usr/bin/mangohud");
+        // Automatic: MangoHud when installed, else DXVK / VKD3D-Proton.
+        assert!(setup_env_vars(&s, None, &mangohud).contains_key("MANGOHUD_CONFIG"));
+        assert!(!setup_wine_env_vars(&s, "0", "/r", &mangohud).contains_key("DXVK_FRAME_RATE"));
+        let bare = FakeProbe::new("/h");
+        assert!(!setup_env_vars(&s, None, &bare).contains_key("MANGOHUD_CONFIG"));
+        let e = setup_wine_env_vars(&s, "0", "/r", &bare);
+        assert_eq!((e["DXVK_FRAME_RATE"].as_str(), e["VKD3D_FRAME_RATE"].as_str()), ("60", "60"));
+        // gamescope running the game limits it; nothing else does.
+        let gs = settings(json!({"wineVersion": proton, "heroniteFpsLimit": "60", "heroniteFpsLimitNoFocus": "15",
+            "gamescope": {"enableUpscaling": true, "windowType": "windowed"}}));
+        let both = mangohud.clone().with_bin("gamescope", "/usr/bin/gamescope");
+        assert!(!setup_env_vars(&gs, None, &both).contains_key("MANGOHUD_CONFIG"));
+        assert!(!setup_wine_env_vars(&gs, "0", "/r", &both).contains_key("DXVK_FRAME_RATE"));
+        let w = build_wrappers(&gs, &both, None).wrappers;
+        assert_eq!(w, ["/usr/bin/gamescope", "-r", "60", "-o", "15", "--"]);
+        // gamescope picked for the limit alone still runs the game.
+        let picked = settings(json!({"heroniteFpsLimit": "30", "heroniteFpsLimitMethod": "gamescope"}));
+        assert_eq!(build_wrappers(&picked, &both, None).wrappers, ["/usr/bin/gamescope", "-r", "30", "--"]);
+        // Without gamescope the pick falls back to the automatic limiter.
+        assert_eq!(build_wrappers(&picked, &mangohud, None).wrappers, ["/usr/bin/mangohud", "--dlsym"]);
     }
 
     #[test]

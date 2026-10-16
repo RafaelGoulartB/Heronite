@@ -27,6 +27,10 @@ pub(super) enum GameAction {
     Primary,
     /// Play an Epic game with one of its ways to start (`None`: the default).
     PlayWith(Option<heronite_epic::launch_options::LaunchOption>),
+    /// Runs one of the actions the user added to the game (by id).
+    User(String),
+    /// The game settings on the Actions tab, where the actions are edited.
+    EditActions,
     /// One of the other ways to install (the Install flyout).
     InstallWay(WayKind),
     /// Sets this status (`CompletionStatus::id`).
@@ -135,6 +139,27 @@ impl CollectionView {
                 );
             }
         }
+        for a in self.actions_of(&game.key).to_vec() {
+            // One that plays waits for the game to end.
+            if a.plays() && playing {
+                continue;
+            }
+            // The context menu has them in the flyout of its Play row.
+            v.push(
+                GameActionItem::new(
+                    A::User(a.id.clone()),
+                    format!("action-{}", a.id),
+                    a.name.clone(),
+                    crate::ui::game_actions::icon_of(&a),
+                    "action run open tool mod acao executar abrir ferramenta",
+                )
+                .palette_only(),
+            );
+        }
+        v.push(
+            item(A::EditActions, "edit-actions", tr!("Edit actions\u{2026}"), Icon::Edit, "actions add launch acoes adicionar iniciar")
+                .palette_only(),
+        );
         if !playing {
             v.extend(self.install_way_actions(game, cx));
         }
@@ -260,6 +285,8 @@ impl CollectionView {
         match action {
             A::Primary => self.install_or_play(key, window, cx),
             A::PlayWith(choice) => self.play_with(key, choice.clone(), cx),
+            A::User(id) => self.run_user_action(key, id, cx),
+            A::EditActions => self.open_actions_editor(key, window, cx),
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
             A::Status(id) => self.set_status(key, id.clone(), cx),
             A::Category { name, on } => self.set_game_category(key, name, *on, cx),

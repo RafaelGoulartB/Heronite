@@ -26,6 +26,8 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use heronite_i18n::tr;
 
+mod fps;
+mod gpu;
 mod lsfg;
 mod steam;
 mod tweaks;
@@ -36,7 +38,7 @@ type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel
 
 /// What a row does.
 #[derive(Clone)]
-enum Act {
+pub(super) enum Act {
     None,
     Toggle(&'static str, bool),
     GsToggle(&'static str),
@@ -48,13 +50,20 @@ enum Act {
     Do(Run),
 }
 
-struct Item {
+pub(super) struct Item {
     row: Row,
     act: Act,
 }
 
-fn item(row: Row, act: Act) -> Item {
+pub(super) fn item(row: Row, act: Act) -> Item {
     Item { row, act }
+}
+
+impl Item {
+    fn desc_item(mut self, d: &str) -> Self {
+        self.row = self.row.desc(d.to_string());
+        self
+    }
 }
 
 impl SettingsPanel {
@@ -84,15 +93,21 @@ impl SettingsPanel {
         )
     }
 
-    fn c_header(text: &str) -> Item {
+    pub(super) fn c_header(text: &str) -> Item {
         item(Row::header(text.to_string()), Act::None)
     }
 
-    fn c_info(id: &str, label: &str, value: impl Into<SharedString>) -> Item {
+    pub(super) fn c_info(id: &str, label: &str, value: impl Into<SharedString>) -> Item {
         item(Row::info(SharedString::from(format!("i:{id}")), label.to_string(), value), Act::None)
     }
 
-    fn c_do(id: &str, label: &str, ic: Icon, enabled: bool, run: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static) -> Item {
+    pub(super) fn c_do(
+        id: &str,
+        label: &str,
+        ic: Icon,
+        enabled: bool,
+        run: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> Item {
         item(Row::action(SharedString::from(format!("d:{id}")), label.to_string()).icon(ic).enabled(enabled), Act::Do(Rc::new(run)))
     }
 
@@ -101,13 +116,14 @@ impl SettingsPanel {
             return self.c_winetricks(cx);
         }
         let mut v = match self.section {
-            Section::Proton => self.c_proton(),
-            Section::Other if self.is_steam() => self.c_steam_other(cx),
-            Section::Advanced if self.is_steam() => self.c_steam_advanced(cx),
-            Section::Wine => self.c_wine(cx),
-            Section::Other => self.c_other(cx),
-            Section::Advanced => self.c_advanced(cx),
-            Section::Gamescope => self.c_gamescope(cx),
+            Section::Compatibility if self.is_steam() => self.c_proton(),
+            Section::Performance if self.is_steam() => self.c_steam_other(cx),
+            Section::Launch if self.is_steam() => self.c_steam_advanced(cx),
+            Section::Gpu if self.is_steam() => self.c_steam_gpu(),
+            Section::Compatibility => self.c_wine(cx),
+            Section::Performance => self.c_other(cx),
+            Section::Gpu => self.c_gpu(false),
+            Section::Launch => self.c_advanced(cx),
             Section::Saves => self.c_saves(cx),
             Section::General => match self.global_view {
                 GlobalView::General => self.c_general(cx),
@@ -123,6 +139,19 @@ impl SettingsPanel {
         };
         if let Some(n) = &self.notice {
             v.push(Self::c_info("notice", if n.error { tr!("Problem") } else { tr!("Done") }, n.text.clone()));
+        }
+        for i in &mut v {
+            i.row.changed = self.console_changed(&i.row.id).is_some();
+        }
+        if !self.console_tab_changes().is_empty() {
+            v.insert(
+                0,
+                Self::c_do("reset-tab", tr!("Reset this tab"), Icon::Replay, true, |this, _, cx| {
+                    let groups = this.console_tab_changes();
+                    this.reset(&groups, cx);
+                })
+                .desc_item(tr!("The marked settings go back to the game defaults")),
+            );
         }
         v
     }
@@ -187,13 +216,13 @@ impl SettingsPanel {
         v.push(self.c_path("winePrefix", tr!("Prefix"), true, cx));
         let busy = self.tool_toggle.is_some();
         let dxvk_on = self.flag("autoInstallDxvk", false);
-        v.push(Self::c_header(tr!("Graphics")));
+        v.push(Self::c_header(tr!("Graphics and libraries")));
         if logic::offers_dxvk(&wine) {
             v.push(self.c_toggle(
                 "autoInstallDxvk",
                 false,
-                tr!("Auto install / update DXVK"),
-                Some(tr!("Vulkan layer for DirectX 9-11 games")),
+                "DXVK",
+                Some(tr!("DirectX 9 to 11 through Vulkan, installed and kept up to date in the prefix")),
                 self.flag("autoInstallDxvkNvapi", false) || self.flag("autoInstallVkd3d", false) || busy,
             ));
         }
@@ -201,42 +230,42 @@ impl SettingsPanel {
             v.push(self.c_toggle(
                 "autoInstallVkd3d",
                 false,
-                tr!("Auto install / update VKD3D"),
-                Some(tr!("Vulkan layer for DirectX 12 games (needs DXVK)")),
+                "VKD3D",
+                Some(tr!("DirectX 12 through Vulkan (needs DXVK)")),
                 !dxvk_on || busy,
             ));
         }
         v.push(self.c_toggle(
             "autoInstallDxvkNvapi",
             false,
-            tr!("Auto install / update DXVK-NVAPI"),
-            Some(tr!("Lets DLSS work on NVIDIA GPUs")),
+            "DXVK-NVAPI",
+            Some(tr!("DLSS and other NVIDIA features (needs DXVK)")),
             !dxvk_on || busy,
         ));
+        if self.is_game() && logic::offers_system_libs(&wine) {
+            v.push(self.c_toggle(
+                "preferSystemLibs",
+                false,
+                tr!("Prefer system libraries"),
+                Some(tr!("Uses this computer's libraries instead of the ones shipped with this Wine build")),
+                false,
+            ));
+        }
         v.extend(self.c_fixes(cx));
-        v.push(Self::c_header(tr!("Sync and compatibility")));
-        v.push(self.c_toggle("enableEsync", false, "Esync", Some(tr!("Less wineserver overhead in CPU-heavy games")), false));
-        v.push(self.c_toggle("enableFsync", false, "Fsync", Some(tr!("Less wineserver overhead on supported kernels")), false));
+        v.push(Self::c_header(tr!("Sync")));
+        v.push(self.c_sync(false));
+        v.push(Self::c_header(tr!("Experimental")));
         v.push(self.c_toggle(
             "enableWineWayland",
             false,
-            tr!("Wine-Wayland (experimental)"),
-            Some(tr!("The Wine version needs to support it")),
+            tr!("Wayland driver"),
+            Some(tr!("Runs the game on Wayland instead of X11; needs a Wine build that has it")),
             false,
         ));
         if self.flag("enableWineWayland", false) {
-            v.push(self.c_toggle("enableHDR", false, tr!("HDR"), Some(tr!("The display and the game must support it")), false));
+            v.push(self.c_toggle("enableHDR", false, "HDR", Some(tr!("The screen and the game must support it")), false));
         }
-        v.push(self.c_toggle("enableWoW64", false, tr!("WoW64 (experimental)"), Some(tr!("32-bit games on 64-bit Wine")), false));
-        v.push(self.c_toggle("enableFSR", false, tr!("FSR hack"), Some(tr!("The Wine version needs to support it")), false));
-        if self.flag("enableFSR", false) {
-            let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
-            let opts = (1..=5).map(|n| SharedString::from(n.to_string())).collect();
-            v.push(item(
-                Row::choice("c:sharp", tr!("FSR sharpness"), opts, (sharp - 1) as usize),
-                Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx))),
-            ));
-        }
+        v.push(self.c_toggle("enableWoW64", false, "WoW64", Some(tr!("32-bit games on 64-bit Wine; can break older games")), false));
         if self.is_game() {
             v.push(Self::c_header(tr!("Tools")));
             let idle = self.tool_busy.is_none();
@@ -253,79 +282,81 @@ impl SettingsPanel {
             }));
             v.push(Self::c_do("openpfx", tr!("Open prefix folder"), Icon::FolderOpen, true, |this, _, cx| this.open_wine_prefix(cx)));
         }
+        if self.is_game() {
+            let note = |on: bool, installed: bool| (on && !installed).then(|| tr!("Downloaded before the next launch"));
+            v.push(Self::c_header(tr!("Anti-cheat runtimes")));
+            let be = note(self.flag("battlEyeRuntime", false), self.runtimes.0);
+            let eac = note(self.flag("eacRuntime", false), self.runtimes.1);
+            v.push(self.c_toggle("battlEyeRuntime", false, "BattlEye", be, false));
+            v.push(self.c_toggle("eacRuntime", false, "Easy Anti-Cheat", eac, false));
+        }
+        v
+    }
+
+    /// Esync and Fsync as one choice (see `sync_select`).
+    fn c_sync(&self, steam: bool) -> Item {
+        let (esync, fsync) = (self.flag("enableEsync", steam), self.flag("enableFsync", steam));
+        let index = if fsync {
+            0
+        } else if esync {
+            1
+        } else {
+            2
+        };
+        let opts = vec!["Fsync".into(), "Esync".into(), tr!("Off").into()];
+        let enabled = !(steam && !self.steam_fields_editable());
+        item(
+            Row::choice("c:sync", tr!("Sync"), opts, index)
+                .desc(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))
+                .enabled(enabled),
+            Act::Choice(Rc::new(|this, i, cx| {
+                let (e, f) = [(true, true), (true, false), (false, false)][i];
+                this.set_all(vec![("enableEsync", Value::Bool(e)), ("enableFsync", Value::Bool(f))], cx);
+            })),
+        )
+    }
+
+    /// Wine's FSR in fullscreen and its sharpness.
+    fn c_fsr(&self) -> Vec<Item> {
+        let mut v = vec![self.c_toggle(
+            "enableFSR",
+            false,
+            tr!("Wine FSR"),
+            Some(tr!("Upscales fullscreen games running below the screen's resolution (needs a Wine build with the FSR hack)")),
+            false,
+        )];
+        if self.flag("enableFSR", false) {
+            let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
+            let opts = (1..=5).map(|n| SharedString::from(n.to_string())).collect();
+            v.push(item(
+                Row::choice("c:sharp", tr!("FSR sharpness"), opts, (sharp - 1) as usize),
+                Act::Choice(Rc::new(|this, i, cx| this.set("maxSharpness", json!(i as i64 + 1), cx))),
+            ));
+        }
         v
     }
 
     fn c_other(&self, cx: &App) -> Vec<Item> {
         let native = self.native();
-        let wine = self.wine_version();
-        let mut v = vec![Self::c_header(tr!("Overlays and performance"))];
+        let mut v = vec![Self::c_header(tr!("On screen"))];
         if !native {
-            v.push(self.c_toggle("showFps", false, tr!("Show FPS (DX9, 10 and 11)"), None, false));
+            v.push(self.c_toggle("showFps", false, tr!("FPS counter"), Some(tr!("A small counter for DirectX 9 to 11 games")), false));
         }
         v.push(self.c_toggle(
             "showMangohud",
             false,
             "MangoHud",
-            Some(tr!("FPS, temperatures and load overlay (needs MangoHud installed)")),
+            Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
             false,
         ));
-        if self.flag("showMangohud", false) {
-            v.push(self.c_text("mangohudFps", tr!("MangoHud FPS limit"), cx));
-        }
-        v.push(self.c_toggle(
-            "useGameMode",
-            false,
-            "GameMode",
-            Some(tr!("Feral GameMode system tweaks (needs GameMode installed)")),
-            false,
-        ));
-        if !native && logic::offers_system_libs(&wine) {
-            v.push(self.c_toggle(
-                "preferSystemLibs",
-                false,
-                tr!("Prefer system libraries"),
-                Some(tr!("Ignore the libraries shipped with this Wine build")),
-                false,
-            ));
-        }
-        if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
-            v.push(self.c_toggle(
-                "nvidiaPrime",
-                false,
-                tr!("Use the dedicated GPU"),
-                Some(tr!("NVIDIA Optimus / AMD switchable graphics; OpenGL and Vulkan games only")),
-                false,
-            ));
-        }
+        v.extend(self.c_fps(false));
         v.extend(self.c_lsfg(false));
-        v.extend(self.c_controls(false));
-        if native {
-            let current = match self.settings.get("steamRuntime") {
-                Some(Value::String(s)) if !s.is_empty() => s.clone(),
-                _ => "none".to_string(),
-            };
-            let mut opts: Vec<SharedString> = vec![tr!("None").into()];
-            opts.extend(logic::STEAM_RUNTIMES.iter().map(|(_, n)| SharedString::from(*n)));
-            let index = logic::STEAM_RUNTIMES.iter().position(|(id, _)| *id == current).map_or(0, |i| i + 1);
-            v.push(Self::c_header(tr!("Runtime")));
-            v.push(item(
-                Row::choice("c:runtime", tr!("Steam Runtime"), opts, index),
-                Act::Choice(Rc::new(|this, i, cx| {
-                    let val = if i == 0 { Value::Bool(false) } else { Value::String(logic::STEAM_RUNTIMES[i - 1].0.into()) };
-                    this.set("steamRuntime", val, cx);
-                })),
-            ));
-        } else {
-            let note = |on: bool, installed: bool, name: &'static str| {
-                (on && !installed).then(|| tr!("The {name} runtime is not installed yet", name))
-            };
-            v.push(Self::c_header(tr!("Anti-cheat")));
-            let be = note(self.flag("battlEyeRuntime", false), self.runtimes.0, "BattlEye");
-            let eac = note(self.flag("eacRuntime", false), self.runtimes.1, "EAC");
-            v.push(self.c_toggle("battlEyeRuntime", false, tr!("BattlEye runtime"), be.as_deref(), false));
-            v.push(self.c_toggle("eacRuntime", false, tr!("EasyAntiCheat runtime"), eac.as_deref(), false));
+        v.push(Self::c_header(tr!("Image")));
+        if !native {
+            v.extend(self.c_fsr());
         }
+        v.extend(self.c_gamescope(cx));
+        v.extend(self.c_system(false));
         v
     }
 
@@ -474,27 +505,33 @@ impl SettingsPanel {
         v.extend(self.c_presets(false));
         v.extend(self.c_pairs(WRAPPERS));
         v.extend(self.c_pairs(ENV));
-        let wine = self.wine_version();
-        let show_dxvk_fps = !self.native() && !wine.bin.contains("toolkit") && !wine.name.ends_with("-DXMT");
-        let show_umu = game && !self.native() && wine.kind == "proton";
-        if show_dxvk_fps || show_umu {
+        v.extend(self.c_preview());
+        if game && !self.native() && self.wine_version().kind == "proton" {
             v.push(Self::c_header(tr!("Legacy (mostly deprecated)")));
-            if show_dxvk_fps {
-                v.push(self.c_toggle("enableDXVKFpsLimit", false, tr!("Limit DirectX games FPS"), None, false));
-                if self.flag("enableDXVKFpsLimit", false) {
-                    v.push(self.c_text("dxvkFps", tr!("FPS limit"), cx));
-                }
-            }
-            if show_umu {
-                v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
-            }
+            v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
+        }
+        if self.native() {
+            let current = match self.settings.get("steamRuntime") {
+                Some(Value::String(s)) if !s.is_empty() => s.clone(),
+                _ => "none".to_string(),
+            };
+            let mut opts: Vec<SharedString> = vec![tr!("None").into()];
+            opts.extend(logic::STEAM_RUNTIMES.iter().map(|(_, n)| SharedString::from(*n)));
+            let index = logic::STEAM_RUNTIMES.iter().position(|(id, _)| *id == current).map_or(0, |i| i + 1);
+            v.push(item(
+                Row::choice("c:runtime", tr!("Steam Runtime"), opts, index),
+                Act::Choice(Rc::new(|this, i, cx| {
+                    let val = if i == 0 { Value::Bool(false) } else { Value::String(logic::STEAM_RUNTIMES[i - 1].0.into()) };
+                    this.set("steamRuntime", val, cx);
+                })),
+            ));
         }
         v
     }
 
     fn c_gamescope(&self, cx: &App) -> Vec<Item> {
         if !self.gamescope_installed {
-            return vec![Self::c_info("gs-missing", "Gamescope", tr!("Not found on the PATH"))];
+            return vec![Self::c_info("gs-missing", "gamescope", tr!("Not installed"))];
         }
         let g = self.gamescope();
         let gs_choice = |id: &'static str, field: &'static str, label: &str, table: &'static [(&'static str, &'static str)]| {
@@ -509,22 +546,17 @@ impl SettingsPanel {
         let gs_toggle = |field: &'static str, label: &str| {
             item(Row::toggle(SharedString::from(format!("g:{field}")), label.to_string(), self.gs_flag(field)), Act::GsToggle(field))
         };
-        let mut v = vec![gs_toggle("enableUpscaling", tr!("Upscaling"))];
+        let mut v = vec![gs_toggle("enableUpscaling", tr!("gamescope upscaling"))];
         if self.gs_flag("enableUpscaling") {
             v.push(gs_choice("c:gs-method", "upscaleMethod", tr!("Upscale method"), &UPSCALE_METHODS));
             v.push(self.c_text("gs.gameWidth", tr!("Game width"), cx));
             v.push(self.c_text("gs.gameHeight", tr!("Game height"), cx));
-            v.push(self.c_text("gs.upscaleWidth", tr!("Upscale width"), cx));
-            v.push(self.c_text("gs.upscaleHeight", tr!("Upscale height"), cx));
-            v.push(gs_choice("c:gs-window", "windowType", tr!("Window type"), &WINDOW_TYPES));
+            v.push(self.c_text("gs.upscaleWidth", tr!("Screen width"), cx));
+            v.push(self.c_text("gs.upscaleHeight", tr!("Screen height"), cx));
+            v.push(gs_choice("c:gs-window", "windowType", tr!("Window"), &WINDOW_TYPES));
+            v.push(gs_toggle("enableForceGrabCursor", tr!("Keep the mouse in the game")));
+            v.push(self.c_text("gs.additionalOptions", tr!("Extra gamescope options"), cx));
         }
-        v.push(gs_toggle("enableLimiter", tr!("FPS limiter")));
-        if self.gs_flag("enableLimiter") {
-            v.push(self.c_text("gs.fpsLimiter", tr!("FPS limit"), cx));
-            v.push(self.c_text("gs.fpsLimiterNoFocus", tr!("FPS limit without focus"), cx));
-        }
-        v.push(gs_toggle("enableForceGrabCursor", tr!("Force grab cursor")));
-        v.push(self.c_text("gs.additionalOptions", tr!("Additional options"), cx));
         v
     }
 
@@ -862,6 +894,15 @@ impl PadTarget for SettingsPanel {
             }
             return false;
         }
+        if pad == Pad::Y {
+            // Resets the focused setting when it differs from the defaults.
+            let group = self.console_list.focused(&rows).and_then(|r| self.console_changed(&r.id));
+            if let Some(g) = group {
+                self.reset(&[g], cx);
+                return true;
+            }
+            return false;
+        }
         let outcome = self.console_list.on_pad(pad, &rows);
         match outcome {
             Outcome::Changed(id, value) => match (act(&id), value) {
@@ -897,6 +938,12 @@ impl PadTarget for SettingsPanel {
         if let Some(h) = self.console_layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::X, tr!("Clear"))]
+        let mut v = vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::X, tr!("Clear"))];
+        let items = self.console_items(cx);
+        let rows: Vec<Row> = items.into_iter().map(|i| i.row).collect();
+        if self.console_list.focused(&rows).is_some_and(|r| r.changed) {
+            v.push(hint(Btn::Y, tr!("Reset")));
+        }
+        v
     }
 }

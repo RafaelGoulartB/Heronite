@@ -1,4 +1,6 @@
-//! "Wine" tab: Wine version, prefix, DXVK/VKD3D, sync options and tools.
+//! "Compatibility" tab of games run through Wine: the Wine / Proton build,
+//! the prefix and its tools, DXVK & co., sync, experimental drivers and the
+//! anti-cheat runtimes (Heroic's Wine tab).
 
 use std::path::Path;
 
@@ -11,7 +13,7 @@ use heronite_launch::settings::GameSettings;
 use heronite_launch::tools::Tool;
 use heronite_launch::wine_tools::{build_tool_command, WineTool};
 use heronite_launch::{PlanContext, SystemProbe};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use super::logic::{self, RunKind};
 use super::parts::{column, danger_text, heading, help, rows};
@@ -26,13 +28,12 @@ impl SettingsPanel {
         matches!(&self.target, Target::Game(f) if f.run_kind == RunKind::Native)
     }
 
-    pub(super) fn wine_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+    pub(super) fn compat_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let wine = self.wine_version();
-        let crossover = wine.kind == "crossover";
         let mut col = column();
-        if crossover {
+        if wine.kind == "crossover" {
             let top =
-                rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some(tr!("CrossOver Bottle")), None));
+                rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some(tr!("CrossOver bottle")), None, cx));
             return col.child(top.card());
         }
         // The same sections as a Steam game's Proton tab: the build, then the prefix.
@@ -46,14 +47,15 @@ impl SettingsPanel {
         };
         prefix = prefix.field_help(
             self.path_row("winePrefix", Some(folder_label), true, tr!("Select WinePrefix Folder"), false, cx),
-            vec![help(
-                tr!("Wine uses what is called a WINEPREFIX to encapsulate Windows applications. This prefix contains the Wine configuration files and a reproduction of the file hierarchy of C: (the main disk on a Windows OS). In this reproduction of the C: drive, your game save files and dependencies installed via winetricks are stored."),
-            )],
+            vec![help(tr!("The game's own Windows drive: its settings, saves and what winetricks installs."))],
         );
         if self.is_game() {
             prefix = prefix.child(self.tools_row(cx));
         }
         col = col.child(heading(tr!("Prefix"))).child(prefix.card());
+        if self.shows_game_fixes() {
+            col = col.child(self.game_fixes_section(cx));
+        }
 
         let dxvk = logic::offers_dxvk(&wine);
         let dxvk_on = self.flag("autoInstallDxvk", false);
@@ -65,8 +67,8 @@ impl SettingsPanel {
                 "auto-dxvk",
                 "autoInstallDxvk",
                 false,
-                tr!("Auto Install/Update DXVK on Prefix"),
-                Some(tr!("DXVK is a Vulkan-based translational layer for DirectX 9, 10 and 11 games. Enabling may improve compatibility. Might cause issues especially for older DirectX games.")),
+                "DXVK",
+                Some(tr!("DirectX 9 to 11 through Vulkan, installed and kept up to date in the prefix")),
                 self.flag("autoInstallDxvkNvapi", false) || self.flag("autoInstallVkd3d", false) || tools_busy,
                 cx,
             ));
@@ -76,8 +78,8 @@ impl SettingsPanel {
                 "auto-vkd3d",
                 "autoInstallVkd3d",
                 false,
-                tr!("Auto Install/Update VKD3D on Prefix"),
-                Some(tr!("VKD3D is a Vulkan-based translational layer for DirectX 12 games. Enabling may improve compatibility significantly. Has no effect on older DirectX games, it requires DXVK.")),
+                "VKD3D",
+                Some(tr!("DirectX 12 through Vulkan (needs DXVK)")),
                 !dxvk_on || tools_busy,
                 cx,
             ));
@@ -86,91 +88,104 @@ impl SettingsPanel {
             "auto-dxvk-nvapi",
             "autoInstallDxvkNvapi",
             false,
-            tr!("Auto Install/Update DXVK-NVAPI on Prefix"),
-            Some(tr!("DXVK-NVAPI is an implementation of NVAPI built on top of DXVK and the linux native NVAPI, it allows for the usage of DLSS on Nvidia GPUs.")),
+            "DXVK-NVAPI",
+            Some(tr!("DLSS and other NVIDIA features (needs DXVK)")),
             !dxvk_on || tools_busy,
             cx,
         ));
-        col = col.child(heading(tr!("Graphics"))).child(graphics.card());
-        if self.shows_game_fixes() {
-            col = col.child(self.game_fixes_section(cx));
-        }
-
-        let mut sync = rows()
-            .child(self.toggle_row(
-                "esync",
-                "enableEsync",
+        if self.is_game() && !self.native() && logic::offers_system_libs(&wine) {
+            graphics = graphics.child(self.toggle_row(
+                "system-libs",
+                "preferSystemLibs",
                 false,
-                tr!("Enable Esync"),
-                Some(tr!("Esync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance.")),
-                false,
-                cx,
-            ))
-            .child(self.toggle_row(
-                "fsync",
-                "enableFsync",
-                false,
-                tr!("Enable Fsync"),
-                Some(tr!("Fsync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance on supported Linux kernels.")),
-                false,
-                cx,
-            ))
-            .child(self.toggle_row(
-                "wayland",
-                "enableWineWayland",
-                false,
-                tr!("Enable Wine-Wayland (Experimental) (Wine version needs to support it)"),
-                Some(tr!("The Wine-Wayland experimental driver allows games to run natively under the Wayland display protocol. Enabling might break some games.")),
+                tr!("Prefer system libraries"),
+                Some(tr!("Uses this computer's libraries instead of the ones shipped with this Wine build")),
                 false,
                 cx,
             ));
+        }
+        col = col.child(heading(tr!("Graphics and libraries"))).child(graphics.card());
+
+        let sync = rows().field_help(
+            self.sync_select(false, cx),
+            vec![help(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))],
+        );
+        col = col.child(heading(tr!("Sync"))).child(sync.card());
+
+        let mut experimental = rows().child(self.toggle_row(
+            "wayland",
+            "enableWineWayland",
+            false,
+            tr!("Wayland driver"),
+            Some(tr!("Runs the game on Wayland instead of X11; needs a Wine build that has it")),
+            false,
+            cx,
+        ));
         if self.flag("enableWineWayland", false) {
-            sync = sync.child(self.toggle_row(
+            experimental = experimental.child(self.toggle_row(
                 "hdr",
                 "enableHDR",
                 false,
-                tr!("Enable HDR"),
-                Some(tr!("HDR enhances colors by providing brighter highlights and deeper contrasts. For HDR to work, both the display and the game must support it.")),
+                "HDR",
+                Some(tr!("The screen and the game must support it")),
                 false,
                 cx,
             ));
         }
-        sync = sync
-            .child(self.toggle_row(
-                "wow64",
-                "enableWoW64",
-                false,
-                tr!("Enable WoW64 (Experimental)"),
-                Some(tr!("The Wine WoW64 mode allows 32-bit Windows games to be run on 64-bit Wine. Enabling may improve performance, but could also break older 32-bit games.")),
-                false,
-                cx,
-            ))
-            .child(self.toggle_row(
-                "fsr",
-                "enableFSR",
-                false,
-                tr!("Enable FSR Hack (Wine version needs to support it)"),
-                Some(tr!("AMD's FSR helps boost framerate by upscaling lower resolutions in Fullscreen Mode. Image quality increases from 5 to 1 at the cost of a slight performance hit. Enabling may improve performance.")),
-                false,
-                cx,
-            ));
-        if self.flag("enableFSR", false) {
-            let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
-            sync = sync.field(self.select_row(
-                "fsr-sharpness",
-                Some(tr!("FSR Sharpness Strength")),
-                sharp.to_string(),
-                (1..=5).map(|n| (SharedString::from(n.to_string()), n == sharp)).collect(),
-                false,
-                cx,
-                |this, i, _, cx| this.set("maxSharpness", json!(i as i64 + 1), cx),
-            ));
+        experimental = experimental.child(self.toggle_row(
+            "wow64",
+            "enableWoW64",
+            false,
+            "WoW64",
+            Some(tr!("32-bit games on 64-bit Wine; can break older games")),
+            false,
+            cx,
+        ));
+        col = col.child(heading(tr!("Experimental"))).child(experimental.card());
+        if self.is_game() && !self.native() {
+            col = col.child(self.anticheat_section(cx));
         }
-        col = col.child(heading(tr!("Sync and compatibility"))).child(sync.card());
         if !self.is_game() {
             col = col.child(self.shared_folders_section(cx));
         }
         col
+    }
+
+    /// Esync and Fsync as one choice: Fsync (both on: Fsync wins where the
+    /// kernel has it), Esync, or neither.
+    pub(super) fn sync_select(&self, disabled: bool, cx: &mut Context<Self>) -> Div {
+        let default = self.is_steam();
+        let (esync, fsync) = (self.flag("enableEsync", default), self.flag("enableFsync", default));
+        let current = if fsync {
+            0
+        } else if esync {
+            1
+        } else {
+            2
+        };
+        let names = ["Fsync", "Esync", tr!("Off")];
+        let items = names.iter().enumerate().map(|(i, n)| (SharedString::from(*n), i == current)).collect();
+        self.select_row("sync", None, names[current].to_string(), items, disabled, cx, |this, i, _, cx| {
+            let (e, f) = [(true, true), (true, false), (false, false)][i];
+            this.set_all(vec![("enableEsync", Value::Bool(e)), ("enableFsync", Value::Bool(f))], cx);
+        })
+    }
+
+    /// BattlEye and EasyAntiCheat runtimes (downloaded before the next launch).
+    fn anticheat_section(&self, cx: &mut Context<Self>) -> Div {
+        let note = |on: bool, installed: bool| (on && !installed).then(|| tr!("Downloaded before the next launch"));
+        let be = note(self.flag("battlEyeRuntime", false), self.runtimes.0);
+        let eac = note(self.flag("eacRuntime", false), self.runtimes.1);
+        let anti = rows().child(self.toggle_row("battleye", "battlEyeRuntime", false, "BattlEye", be, false, cx)).child(self.toggle_row(
+            "eac",
+            "eacRuntime",
+            false,
+            "Easy Anti-Cheat",
+            eac,
+            false,
+            cx,
+        ));
+        column().child(heading(tr!("Anti-cheat runtimes"))).child(anti.card())
     }
 
     fn wine_version_field(&self, cx: &mut Context<Self>) -> Div {
@@ -190,15 +205,10 @@ impl SettingsPanel {
                 note: (self.global_wine.as_deref() == Some(w.name.as_str())).then(|| tr!("default").into()),
             })
             .collect();
-        let field = self.select_menu_row(
-            "wine-version",
-            Some(tr!("Wine / Proton version")),
-            shown,
-            items,
-            loading && list.is_empty(),
-            cx,
-            |this, i, _, cx| this.pick_wine(i, cx),
-        );
+        let field =
+            self.select_menu_row("wine-version", Some(tr!("Version")), shown, items, loading && list.is_empty(), cx, |this, i, _, cx| {
+                this.pick_wine(i, cx)
+            });
         let mut col = column().gap(px(6.)).child(field);
         if !loading && list.is_empty() {
             col = col.child(danger_text(tr!("No Wine version was found, download one from the Wine Manager")));
@@ -206,14 +216,7 @@ impl SettingsPanel {
         if !list.is_empty() && !Path::new(&current.bin).exists() {
             col = col.child(danger_text(tr!("Wine Path is invalid, please select another one.")));
         }
-        if !self.flag("showValveProton", false) {
-            col = col.child(help(tr!(
-                "Valve Proton versions ignored: Valve versions of Proton are ignored by default, enable them in the General settings"
-            )));
-        }
-        col = col.child(help(&tr!("Wine Path: {path}", path = current.bin))).child(help(
-            tr!("Heronite searches for versions of Wine, Proton, and CrossOver in: ~/.local/share/heronite/tools/wine, ~/.local/share/heronite/tools/proton, ~/.steam/root/compatibilitytools.d, ~/.steam/steamapps/common, ~/.local/share/lutris/runners/wine, ~/.var/app/com.valvesoftware.Steam (Steam Flatpak) and /usr/share/steam. For other places, use a symbolic link to one of these folders."),
-        ));
+        col = col.child(help(&current.bin));
         let rec = self.wine_recommendation(&options, &current);
         if let Some(row) = self.protondb_row(rec, cx, Self::pick_wine) {
             col = col.child(div().border_t_1().border_color(theme::white_a(0.06)).mt(px(4.)).child(row));
@@ -262,32 +265,24 @@ impl SettingsPanel {
         let idle = busy.is_none();
         let label =
             |name: &'static str, text: &'static str| if busy == Some(name) { tr!("{text} (running)", text) } else { text.to_string() };
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .py(px(12.))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap(px(8.))
-                    .child(self.outline_button("tool-winecfg", &label("winecfg", "Winecfg"), idle, cx, |this, _, cx| {
-                        this.run_tool("winecfg", WineTool::Winecfg, cx)
-                    }))
-                    .child(self.outline_button("tool-winetricks", &label("winetricks", "Winetricks"), idle, cx, |this, window, cx| {
-                        this.open_winetricks(window, cx)
-                    }))
-                    .child(self.outline_button("tool-runexe", &label("runexe", tr!("Run .exe in prefix")), idle, cx, |_, window, cx| {
-                        choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
-                            this.run_tool("runexe", WineTool::RunExe(path), cx)
-                        });
-                    }))
-                    .child(
-                        self.outline_button("tool-openpfx", tr!("Open prefix folder"), true, cx, |this, _, cx| this.open_wine_prefix(cx)),
-                    ),
-            )
-            .child(help(tr!("Tools run with this game's Wine version and prefix.")))
+        div().flex().flex_col().gap(px(8.)).py(px(12.)).child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(8.))
+                .child(self.outline_button("tool-winecfg", &label("winecfg", "Winecfg"), idle, cx, |this, _, cx| {
+                    this.run_tool("winecfg", WineTool::Winecfg, cx)
+                }))
+                .child(self.outline_button("tool-winetricks", &label("winetricks", "Winetricks"), idle, cx, |this, window, cx| {
+                    this.open_winetricks(window, cx)
+                }))
+                .child(self.outline_button("tool-runexe", &label("runexe", tr!("Run .exe in prefix")), idle, cx, |_, window, cx| {
+                    choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                        this.run_tool("runexe", WineTool::RunExe(path), cx)
+                    });
+                }))
+                .child(self.outline_button("tool-openpfx", tr!("Open prefix folder"), true, cx, |this, _, cx| this.open_wine_prefix(cx))),
+        )
     }
 
     /// Starts a Wine tool for this game: builds the command off the UI thread

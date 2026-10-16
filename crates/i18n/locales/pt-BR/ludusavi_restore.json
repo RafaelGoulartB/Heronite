@@ -14,7 +14,6 @@
   "Change…": "Alterar…",
   "Choose at least one file to restore.": "Escolha ao menos um arquivo para restaurar.",
   "Close the game before restoring a save.": "Feche o jogo antes de restaurar um save.",
-  "Copies from another prefix or Steam library on this PC. They are written back where they were, not into the game.": "Cópias de outro prefixo ou biblioteca da Steam neste PC. Voltam para onde estavam, não para o jogo.",
   "Delete": "Apagar",
   "Delete “{name}”? This cannot be undone.": "Apagar “{name}”? Não dá para desfazer.",
   "Differential backups": "Backups diferenciais",
@@ -108,5 +107,6 @@
   "{n} replace files on this PC": "{n} substituem arquivos deste PC",
   "{n} replaces a file on this PC": "{n} substitui um arquivo deste PC",
   "{n} was already the same.": "{n} já estava igual.",
-  "{n} were already the same.": "{n} já estavam iguais."
+  "{n} were already the same.": "{n} já estavam iguais.",
+  "Copies from another prefix or Steam library; they restore to where they came from.": "Cópias de outro prefixo ou biblioteca da Steam; são restauradas para onde estavam."
 }

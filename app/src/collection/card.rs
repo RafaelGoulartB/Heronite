@@ -1,5 +1,6 @@
-//! `CollectionCard` in the focused layout: 125px cover (2/3), radius 6,
-//! soft shadow, playtime label below, hover bar with the play button.
+//! `CollectionCard`: cover (125px in the list, the grid's width in the grid),
+//! radius 6, soft shadow, playtime label below (the title above it when the
+//! grid shows titles), hover bar with the play button.
 
 use std::time::Duration;
 
@@ -17,7 +18,10 @@ pub(super) struct CardState<'a> {
     pub cover: Option<ImageSource>,
     /// No source of the cover chain loaded: the card shows the title.
     pub no_art: bool,
+    pub width: f32,
     pub cover_h: f32,
+    /// The title under the cover (grid).
+    pub title: bool,
     pub selected: bool,
     pub hovered: bool,
     /// The pointer just left this card: play the bar's slide-out.
@@ -133,14 +137,14 @@ pub fn card(
         .id(ElementId::Name(format!("card-{}", vm.key).into()))
         .flex()
         .flex_col()
-        .w(px(theme::CARD_W))
+        .w(px(s.width))
         .cursor_pointer()
         .on_click(on_select)
         .on_hover(on_hover)
         .child(
             div()
                 .relative()
-                .w(px(theme::CARD_W))
+                .w(px(s.width))
                 .h(px(s.cover_h))
                 .rounded(px(6.))
                 .shadow(vec![shadow])
@@ -163,7 +167,19 @@ pub fn card(
                 }))
                 .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(6.)).overflow_hidden().child(bar))),
         )
-        .child(playtime_label(vm))
+        .when(s.title, |d| {
+            d.child(
+                div()
+                    .mt(px(7.))
+                    .px(px(1.))
+                    .truncate()
+                    .text_size(px(13.))
+                    .font_weight(theme::W_500)
+                    .text_color(theme::white_a(0.88))
+                    .child(vm.title.clone()),
+            )
+        })
+        .child(playtime_label(vm).when(s.title, |d| d.mt(px(1.))))
         .into_any_element()
 }
 

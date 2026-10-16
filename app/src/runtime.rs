@@ -150,6 +150,44 @@ impl GameRuntime {
         self.start(game, plan)
     }
 
+    /// Starts one of the game's own actions (`heronite_data::game_actions`):
+    /// opens it, spawns it, or launches it as the game's session.
+    pub fn run_action(&self, game: &CollectionGame, action: &heronite_data::game_actions::Action) -> Result<(), String> {
+        use heronite_launch::actions::{build, ActionRun};
+        let ctx = PlanContext::load(&self.paths);
+        let probe = SystemProbe;
+        let mut info = (*game.game).clone();
+        let mut settings = heronite_launch::settings::load_game_settings(&self.paths, &game.app_name, &ctx.global, &probe);
+        // A Steam game: its folder and, for Windows programs, Steam's prefix
+        // with the Proton build that last ran it.
+        if let Some(app_id) = game.steam_launch_id.as_deref() {
+            let locator = SteamLocator::detect(&ctx.global, &probe);
+            if info.install.install_path.as_deref().is_none_or(|p| p.trim().is_empty()) {
+                info.install.install_path = locator.install_dir(app_id).map(|d| d.to_string_lossy().into_owned());
+            }
+            if let Some(prefix) = heronite_steam::files::prefix(&locator, app_id) {
+                if let Some(proton) = prefix.proton {
+                    settings.wine_version = heronite_launch::settings::WineVersion {
+                        bin: proton.join("proton").to_string_lossy().into_owned(),
+                        name: prefix.proton_version,
+                        kind: "proton".into(),
+                        ..Default::default()
+                    };
+                    settings.wine_prefix = prefix.compatdata.to_string_lossy().into_owned();
+                }
+            }
+        }
+        log::info!("action \"{}\" of {} ({})", action.name, game.title, game.app_name);
+        match build(&ctx, &probe, &info, &settings, action)? {
+            ActionRun::Open(target) => {
+                crate::ui::open_external(&target);
+                Ok(())
+            }
+            ActionRun::Spawn(c) => spawn_detached(&c),
+            ActionRun::Play(plan) => self.start(game, *plan).map(|_| ()),
+        }
+    }
+
     /// "Play with Steam": the Steam copy of a game whose own copy is installed too.
     pub fn play_with_steam(&self, game: &CollectionGame) -> Result<(), String> {
         let app_id = game.steam_also_playable().ok_or_else(|| tr!("This game has no Steam copy installed.").to_string())?;
@@ -303,4 +341,22 @@ fn spawn_tools_update(paths: DataPaths) {
     if let Err(e) = spawned {
         log::warn!("could not start the tools update: {e}");
     }
+}
+
+/// Starts `c` without waiting for it; a thread reaps it when it exits.
+fn spawn_detached(c: &heronite_launch::Command) -> Result<(), String> {
+    let mut cmd = std::process::Command::new(&c.program);
+    cmd.args(&c.args)
+        .envs(&c.env)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    if let Some(dir) = &c.cwd {
+        cmd.current_dir(dir);
+    }
+    let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }

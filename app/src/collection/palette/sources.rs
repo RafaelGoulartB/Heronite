@@ -65,6 +65,8 @@ pub(super) enum ViewCmd {
     Sort(SortMode),
     Show(InstallFilter),
     GroupByStatus,
+    /// Focus (list + details) or the grid.
+    GridView,
     ShowHidden,
     ClearFilters,
     /// Selects (or, when it is the active one, clears) a facet value.
@@ -471,6 +473,19 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         tr!("Collection list"),
         Icon::Flag,
         "view status groups sections agrupar grupos secoes",
+    ));
+    let (grid, grid_sub, grid_icon) = if ui.grid_view {
+        (tr!("Show as list with details"), tr!("The list next to the selected game's page"), Icon::ViewSidebar)
+    } else {
+        (tr!("Show as grid"), tr!("Covers across the window, the game in a side panel"), Icon::GridView)
+    };
+    v.push(cmd(
+        ViewCmd::GridView,
+        "view:grid".into(),
+        grid,
+        grid_sub,
+        grid_icon,
+        "view grid layout covers focus list mode visualizacao grade capas lista modo foco",
     ));
     let hidden = if ui.show_hidden { tr!("Stop showing hidden games") } else { tr!("Show hidden games") };
     v.push(cmd(

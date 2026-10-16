@@ -28,7 +28,18 @@ impl CollectionView {
     }
 
     pub(super) fn cover_h(&self) -> f32 {
-        theme::CARD_W * self.cover_aspect
+        self.card_w * self.cover_aspect
+    }
+
+    /// Size the covers are requested at. The grid's cards change width with
+    /// the window and the drawer: steps of 16px keep a resize from decoding
+    /// every cover again for each pixel (the image scales to the card).
+    fn cover_request(&self) -> (f32, f32) {
+        if !self.ui.grid_view {
+            return (self.card_w, self.cover_h());
+        }
+        let w = (self.card_w / 16.).ceil() * 16.;
+        (w, w * self.cover_aspect)
     }
     /// Cover texture for `key` at `w`×`h` logical px (requested on demand).
     pub(super) fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
@@ -59,7 +70,8 @@ impl CollectionView {
                         cx.notify();
                     }),
                 );
-                div().pl(px(13.6)).pr(px(16.)).child(header).into_any_element()
+                let m = self.list_metrics();
+                div().pl(px(m.pad_l)).pr(px(m.pad_r)).child(header).into_any_element()
             }
             ListItem::Row { group, start } => {
                 let cards: Vec<Arc<CardVm>> = {
@@ -67,13 +79,14 @@ impl CollectionView {
                     g.cards[start..(start + self.columns).min(g.cards.len())].to_vec()
                 };
                 let last_row = start + cards.len() == self.groups[group].cards.len();
+                let m = self.list_metrics();
                 let mut row = div()
                     .flex()
-                    .pl(px(13.6))
-                    .pr(px(16.))
-                    .gap(px(theme::CARD_GAP_X))
+                    .pl(px(m.pad_l))
+                    .pr(px(m.pad_r))
+                    .gap(px(m.gap_x))
                     .pt(px(if start == 0 { 7.2 } else { 0. }))
-                    .pb(px(if last_row { 5.6 + 13.6 } else { theme::CARD_GAP_Y }));
+                    .pb(px(if last_row { 5.6 + 13.6 } else { m.gap_y }));
                 let scale = window.scale_factor();
                 for c in cards {
                     row = row.child(self.render_card(c, scale, cx));
@@ -87,15 +100,18 @@ impl CollectionView {
     fn render_card(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
         let key = c.key.clone();
         let cover_h = self.cover_h();
-        let cover = self.cover(&c.cover_key, theme::CARD_W, cover_h, scale, 100);
-        let no_art = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, theme::CARD_W, cover_h, scale));
+        let (rw, rh) = self.cover_request();
+        let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
+        let no_art = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));
         let (k1, k2, k3, k4) = (key.clone(), key.clone(), key.clone(), key.clone());
         let el = card::card(
             card::CardState {
                 vm: &c,
                 cover,
                 no_art,
+                width: self.card_w,
                 cover_h,
+                title: self.ui.grid_view && self.ui.grid_titles,
                 selected: self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
                 leaving: self.leaving.as_ref() == Some(&key),
@@ -196,19 +212,24 @@ impl CollectionView {
         );
         // Games exist, but the search and the filters leave none.
         let no_match = self.lib.as_ref().is_some_and(|lib| !lib.games.is_empty()) && self.groups.iter().all(|g| g.cards.is_empty());
+        let m = self.list_metrics();
         let sticky = self.sticky().map(|(g, shift)| {
-            div().absolute().top(px(shift)).left(px(13.6)).right(px(16.)).child(list::group_header(&self.groups[g], true))
+            div().absolute().top(px(shift)).left(px(m.pad_l)).right(px(m.pad_r)).child(list::group_header(&self.groups[g], true))
         });
+        let grid = self.ui.grid_view;
         div()
             .relative()
             .w(px(list_w))
             .h_full()
             .flex_none()
-            .bg(linear_gradient(
-                90.,
-                linear_color_stop(theme::rgb_a(7, 9, 12, 0.28), 0.),
-                linear_color_stop(theme::rgb_a(7, 9, 12, 0.1), 0.72),
-            ))
+            // The grid sits on the stage's own scrims.
+            .when(!grid, |d| {
+                d.bg(linear_gradient(
+                    90.,
+                    linear_color_stop(theme::rgb_a(7, 9, 12, 0.28), 0.),
+                    linear_color_stop(theme::rgb_a(7, 9, 12, 0.1), 0.72),
+                ))
+            })
             .child(list_el)
             .child(wheel_layer)
             .children(sticky)

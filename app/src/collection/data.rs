@@ -163,6 +163,8 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         installed: g.installed,
         playing,
         favourite: g.favourite,
+        playtime: fd.playtime.clone().into(),
+        last_played: fd.last_played.clone().map(Into::into),
     }
 }
 

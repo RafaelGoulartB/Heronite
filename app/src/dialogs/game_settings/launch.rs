@@ -258,7 +258,14 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
+    /// The Actions tab: Play (its program, for local games) and the game's other actions.
     pub(super) fn launch_tab(&mut self, cx: &mut Context<Self>) -> Div {
+        let play = if self.launch.is_some() { self.local_play(cx) } else { self.play_card() };
+        div().flex().flex_col().gap(px(6.)).child(play).child(self.actions_section(cx))
+    }
+
+    /// How a local game starts: an executable and "run as", or a command.
+    fn local_play(&mut self, cx: &mut Context<Self>) -> Div {
         let Some(l) = self.launch.as_ref() else { return div() };
         let dirty = l.dirty(cx);
         let can_save = l.can_save(cx);
@@ -335,7 +342,7 @@ impl GameSettingsDialog {
             row(tr!("Current"), None, div().text_size(px(13.)).text_color(theme::text_muted()).child(effective)).into_any_element(),
         ]);
         let how = card([block(select)]);
-        let mut col = div().flex().flex_col().gap(px(6.)).child(start);
+        let mut col = div().flex().flex_col().gap(px(6.)).child(caption(tr!("Play"))).child(start);
         if by_command {
             let problem = l.command_problem(cx);
             let folder_row = block(labeled(

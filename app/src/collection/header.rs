@@ -203,6 +203,7 @@ impl CollectionView {
                     .children(self.onboarding_button(cx)),
             )
             .child(div().flex().flex_1().min_w_0().items_center().gap(px(6.)).overflow_hidden().children(self.filter_chips(cx)))
+            .child(self.view_mode_controls(cx))
             .child(div().flex().flex_none().items_center().gap(px(2.)).children(self.bulk_chip(cx)).child(refresh).children(close))
     }
 
@@ -376,9 +377,10 @@ impl CollectionView {
         })
     }
 
-    /// Closes the focus panel (deselects the game); only shown while it is open.
+    /// Closes the focus panel (deselects the game); only shown while it is
+    /// open (the grid's drawer has its own).
     fn focus_close_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
-        self.focus.is_some().then(|| {
+        (self.focus.is_some() && !self.ui.grid_view).then(|| {
             tool_button("hdr-focus-close", Icon::Close, false).on_click(cx.listener(|this, _, _, cx| {
                 this.focus = None;
                 this.selected = None;

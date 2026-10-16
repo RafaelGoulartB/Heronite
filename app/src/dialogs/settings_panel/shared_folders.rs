@@ -52,7 +52,7 @@ impl SettingsPanel {
         column()
             .child(heading(tr!("Folders visible to Proton")))
             .child(help(
-                tr!("Games and installers run with Proton (umu) inside the Steam Linux Runtime, which only sees your home folder, /mnt, /media and /run/media. Add other folders here (for example a second drive mounted at /data) so file pickers and games can reach them. Each folder also gets a drive letter (D:, E:, ...) in the prefix the next time something runs in it."),
+                tr!("Proton (umu) only sees your home, /mnt, /media and /run/media. Add other drives here; each one gets a drive letter in the prefix."),
             ).px(px(6.)))
             .child(list.card())
     }

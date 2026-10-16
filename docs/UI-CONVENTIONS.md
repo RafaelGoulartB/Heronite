@@ -108,7 +108,8 @@ decision): faint, no bar fill. Over the list column: ☰ (`tool_button`, radius 
 search pill (`search_fill`, accent ring while focused, clear button) and the View button (`Icon::Tune`, accent while
 anything is filtered) whose single menu holds Show (segmented), Sort by (segmented), Group by status / Show hidden
 games (switches), Filter by (facet rows with a flyout to the right) and Manage statuses. Each active filter appears
-as a removable `filter_chip` after it. Right: bulk metadata, refresh, close focus. Header menus open on click or
+as a removable `filter_chip` after it. Right: in the grid the cover size slider and the "Aa" titles switch, the
+Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view only). Header menus open on click or
 after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The ☰ menu (`nav.rs`) is a list:
 pages grouped (Collection, Downloads, Statistics | Stores, Wine Manager, Emulators), then Add game, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right. "Stores" is one
@@ -128,6 +129,17 @@ imported fields (`open_links::game_folders`): Steam games → the folder of thei
 Folder" + "ROM Folder"; others → the stored path only when it exists (Playnite's Windows paths are dropped). ProtonDB needs a
 Steam id: the game's, the metadata's, else a strict Steam search by title (`covers::steam_app_id_exact`, same name or name +
 edition words, cached in `~/.cache/heronite/protondb/titles.json`); emulated games have no "On Linux" row.
+
+**Grid view** (`collection/grid.rs`, `grid_drawer.rs`, by user decision): the header's Focus / Grid switch (also in the
+palette) shows the covers across the whole window instead of the list next to the focus panel. Same groups, sticky
+headers, cards, context menu and stage; the cards share each row's width (`grid_columns`: at least `gridCoverWidth`,
+110-240, set by the header slider; covers are requested in 16px steps). The selected game opens in a glass drawer on the
+right (460px at most, inset 10px, the grid narrows beside it): sharp hero art on top with a close button, the cover
+reaching into it next to the title and meta line, then the focus panel's own pieces (Play, status row, rating, facts
+card), three tiles (Played, Last played, Sessions) and the details stacked in one column (`focus::stacked_details`),
+ending in "Open game page" (back to the Focus view). Keys while nothing floats over it: arrows move the selection
+(the drawer follows), Enter plays an installed game, Esc closes the drawer (the selection stays; selecting a game opens
+it again). `ui-state.json` keeps `gridView`, `gridCoverWidth` and `gridTitles`. Console mode is not affected.
 
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
@@ -157,10 +169,21 @@ slots (build the header with `kicker`, `dialog_title`, `close_button`).
   `select_field`'s list is a scrollable glass menu; labels are 12px muted.
 
 **Game settings drawer** (`dialogs/game_settings/`): the first `drawer` caller. Tabs are
-segmented pills in the header slot; each tab is a stack of `caption` + `card`. The Heroic
+segmented pills in the header slot; each tab is a stack of `caption` + `card`. The tabs are the same for
+every game, by what the user wants to change: Game (images + details), Launch (Play, the actions,
+the panel's launch settings), Compatibility (Wine / Proton), Performance (overlays, FPS limit, frame
+generation, image, system) and Saves (Ludusavi backups + cloud saves); a tab only goes away when the
+game has nothing for it. Descriptions are one short line saying the effect; paths and rare warnings
+only show when they matter. The Heroic
 panels (`dialogs/settings_panel`) build their cards with `parts::rows()` (`.child(toggle_row)`,
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →
-Game defaults can host them too.
+Game defaults can host them too. A setting that differs from the game defaults gets a 6px accent dot
+in the card's left margin (it turns into a reset arrow under the pointer), and the dialog a
+"Reset this tab" button next to Done while the tab has changes (`settings_panel/changes.rs`;
+console: a dot after the label, Y resets, a "Reset this tab" row). A new setting is one entry of its
+`GROUPS`, keyed by the row, input or setting id. The Launch tab ends with "How the game starts"
+(`launch_preview.rs`): the command and variables of a launch built from the settings on screen, grouped
+by the setting each comes from (`HERONITE_DEBUG_PREVIEW=1` opens it).
 
 **Pages** (`pages/mod.rs`, ☰ pages other than Settings): `sheet(id, title, lead, actions, max_w, window, close, column)`
 = glass sheet inset 12px under the slim header (title Rubik 26 + lead, optional header actions, round close =

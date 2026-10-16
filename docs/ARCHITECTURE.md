@@ -71,7 +71,16 @@ calls them from `cx.background_spawn` or worker threads.
   around a launch (cloud saves, runtimes); `first_launch` sets up a game the
   first time it runs in a Wine prefix. `lsfg` finds lsfg-vk (Lossless
   Scaling frame generation), the Lossless Scaling DLL and lsfg-vk's profiles,
-  and adds the frame generation variables to a launch. `umu_ids` picks the
+  and adds the frame generation variables to a launch. `fps_limit` holds a
+  game's one FPS limit and picks the one limiter that applies it (MangoHud,
+  DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
+  a fallback). `gpu` holds a game's graphics card settings (the card that draws it,
+  NVIDIA Smooth Motion and Reflex, the DLSS / FSR 4 / XeSS upgrades of GE-Proton and
+  Proton-CachyOS, Mesa's Anti-Lag and glthread, vsync and what DXVK tells DirectX games)
+  as variables, and `gpu::detect` finds the cards (sysfs, `vulkaninfo`, `pci.ids`) and the
+  driver layers they need. `actions` turns a game's own actions (`heronite_data::game_actions`,
+  `local_library/actions.json`) into something to open, spawn or launch as
+  the game's session. `umu_ids` picks the
   `GAMEID` of a umu launch (protonfixes) from the user's id, the umu
   database (downloaded weekly), Heroic's cache, the metadata's Steam id or
   the title; `keep_awake` adds the logind lock the runtime holds while the
@@ -125,7 +134,7 @@ calls them from `cx.background_spawn` or worker threads.
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
 | `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `update/` (app updates: checks, download, restart), `steam_library` (reads the Steam library while Steam runs), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
-| `collection/` | the main screen (`CollectionView`): list, header, focus panel, stage, context menu, command palette, screenshots, and the glue to dialogs and services; `welcome` is the empty Collection of a new setup (it checks Steam every few seconds while it shows); `onboarding` hosts the getting-started checklist (`dialogs/onboarding`: steps, looping previews drawn from the user's covers), which opens by itself once per setup and from the bulb in the header (`onboarding.json` in the app state) |
+| `collection/` | the main screen (`CollectionView`): list, header, focus panel, grid view (`grid`, `grid_drawer`), stage, context menu, command palette, screenshots, and the glue to dialogs and services; `welcome` is the empty Collection of a new setup (it checks Steam every few seconds while it shows); `onboarding` hosts the getting-started checklist (`dialogs/onboarding`: steps, looping previews drawn from the user's covers), which opens by itself once per setup and from the bulb in the header (`onboarding.json` in the app state) |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, Wine Manager, Emulators); they talk back through `PageEvent` |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar` |

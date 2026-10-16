@@ -468,7 +468,7 @@ impl SettingsPanel {
         let snap = self.steam.as_ref().and_then(SteamState::ready).expect("unlocked means read");
         let text = match snap.access {
             Access::Client => {
-                tr!("Saved in Steam right away. They apply however the game starts: from Heronite, the Steam library or Big Picture.")
+                tr!("Saved in Steam right away; used however the game starts.")
             }
             _ => tr!("Steam is closed: the change is saved in its files and Steam uses it from its next start."),
         };
@@ -542,61 +542,66 @@ impl SettingsPanel {
         let tool = self.select_menu_row("steam-tool", Some(tr!("Compatibility tool")), shown, items, locked, cx, |this, i, _, cx| {
             this.pick_steam_tool(i, cx)
         });
-        let mut card = rows().field_help(
-            tool,
-            vec![help(tr!("The build Steam runs the game with. GE-Proton and other builds in Steam's compatibilitytools.d folder are listed too, and the Wine Manager's while \"Install Proton into Steam\" is on; Steam only sees a new build after it restarts."))],
-        );
+        let mut card =
+            rows().field_help(tool, vec![help(tr!("The build Steam runs the game with. Steam sees a new build after it restarts."))]);
         if let Some(row) = self.protondb_row(rec.filter(|_| !locked), cx, |this, i, cx| this.pick_steam_tool(i, cx)) {
             card = card.child(row);
         }
         col = col.child(heading("Proton")).child(card.card());
         if self.steam.as_ref().is_some_and(|s| s.editable) {
-            col = col.child(heading(tr!("Proton options"))).child(self.proton_switches(cx).card()).child(
-                help(tr!(
-                    "They only affect games Steam runs through Proton. Wayland, HDR and WoW64 need Proton 10 or newer, or GE-Proton."
-                ))
-                .px(px(6.)),
+            let off = !self.steam_fields_editable();
+            let sync = rows().field_help(
+                self.sync_select(off, cx),
+                vec![help(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))],
             );
+            col = col
+                .child(heading(tr!("Graphics and libraries")))
+                .child(self.proton_graphics(off, cx).card())
+                .child(heading(tr!("Sync")))
+                .child(sync.card())
+                .child(heading(tr!("Experimental")))
+                .child(self.proton_experimental(off, cx).card());
         }
         col.child(heading(tr!("Prefix"))).child(self.steam_prefix_card(cx))
     }
 
-    fn proton_switches(&self, cx: &mut Context<Self>) -> super::parts::Rows {
-        let off = !self.steam_fields_editable();
-        let mut r = rows()
-            .child(self.toggle_row("p-esync", "enableEsync", true, tr!("Enable Esync"), None, off, cx))
-            .child(self.toggle_row("p-fsync", "enableFsync", true, tr!("Enable Fsync"), None, off, cx))
-            .child(self.toggle_row("p-wayland", "enableWineWayland", false, tr!("Wayland driver (experimental)"), None, off, cx));
-        if self.flag("enableWineWayland", false) || self.flag("enableHDR", false) {
-            r = r.child(self.toggle_row(
-                "p-hdr",
-                "enableHDR",
-                false,
-                tr!("Enable HDR"),
-                Some(tr!("HDR enhances colors by providing brighter highlights and deeper contrasts. For HDR to work, both the display and the game must support it.")),
-                off,
-                cx,
-            ));
-        }
-        r.child(self.toggle_row("p-wow64", "enableWoW64", false, tr!("Enable WoW64 (Experimental)"), None, off, cx))
-            .child(self.toggle_row(
-                "p-nvapi",
-                options::KEY_NVAPI,
-                false,
-                tr!("Enable NVAPI"),
-                Some(tr!("Lets DLSS and other NVIDIA features work on NVIDIA GPUs.")),
-                off,
-                cx,
-            ))
+    fn proton_graphics(&self, off: bool, cx: &mut Context<Self>) -> super::parts::Rows {
+        rows()
+            .child(self.toggle_row("p-nvapi", options::KEY_NVAPI, false, "NVAPI", Some(tr!("DLSS and other NVIDIA features")), off, cx))
             .child(self.toggle_row(
                 "p-wined3d",
                 options::KEY_WINED3D,
                 false,
-                tr!("Use WineD3D instead of DXVK and VKD3D"),
-                Some(tr!("OpenGL-based; slower, but can help games that misbehave with Vulkan.")),
+                "WineD3D",
+                Some(tr!("OpenGL instead of DXVK and VKD3D: slower, but can help games that misbehave on Vulkan")),
                 off,
                 cx,
             ))
+    }
+
+    /// Wayland, HDR and WoW64 (Proton 10 or newer, or GE-Proton).
+    fn proton_experimental(&self, off: bool, cx: &mut Context<Self>) -> super::parts::Rows {
+        let mut r = rows().child(self.toggle_row(
+            "p-wayland",
+            "enableWineWayland",
+            false,
+            tr!("Wayland driver"),
+            Some(tr!("Proton 10 or newer, or GE-Proton")),
+            off,
+            cx,
+        ));
+        if self.flag("enableWineWayland", false) || self.flag("enableHDR", false) {
+            r = r.child(self.toggle_row("p-hdr", "enableHDR", false, "HDR", Some(tr!("The screen and the game must support it")), off, cx));
+        }
+        r.child(self.toggle_row(
+            "p-wow64",
+            "enableWoW64",
+            false,
+            "WoW64",
+            Some(tr!("32-bit games on 64-bit Wine; can break older games")),
+            off,
+            cx,
+        ))
     }
 
     fn steam_prefix_card(&mut self, cx: &mut Context<Self>) -> Div {
@@ -641,68 +646,28 @@ impl SettingsPanel {
         rows().child(col).card()
     }
 
-    pub(super) fn steam_other_tab(&mut self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn steam_perf_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let mut col = column().child(self.steam_banner(cx));
         if !self.steam.as_ref().is_some_and(|s| s.editable) {
             return col;
         }
         let off = !self.steam_fields_editable();
-        let mut overlays = rows()
-            .child(self.toggle_row("show-fps", "showFps", false, tr!("Show FPS (DX9, 10 and 11)"), None, off, cx))
-            .child(self.toggle_row(
-                "mangohud",
-                "showMangohud",
-                false,
-                tr!("Enable Mangohud (Mangohud needs to be installed)"),
-                Some(tr!("MangoHUD is an overlay that displays and monitors FPS, temperatures, CPU/GPU load and other system resources.")),
-                off,
-                cx,
-            ));
-        if self.flag("showMangohud", false) {
-            overlays = overlays.field(self.text_row(
-                "mangohudFps",
-                Some(tr!("FPS limit")),
-                Some(tr!("MangoHud's frame rate cap. Works with Vulkan, OpenGL and DirectX games. Leave empty for no limit.")),
-            ));
-        }
-        overlays = overlays.child(self.toggle_row(
-            "gamemode",
-            "useGameMode",
-            false,
-            tr!("Use GameMode (Feral Game Mode needs to be installed)"),
-            Some(tr!(
-                "Feral GameMode applies automatic and temporary tweaks to the system when running games. Enabling may improve performance."
-            )),
-            off,
-            cx,
-        ));
-        if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
-            overlays = overlays.child(self.toggle_row(
-                "nvidia-prime",
-                "nvidiaPrime",
-                false,
-                tr!("Force use of NVIDIA Optimus or AMD Dynamic Switchable Graphics dGPU. ONLY use this for OpenGL and Vulkan games."),
-                Some(tr!("Use dedicated graphics card to render game on multi-GPU systems. Only needed on gaming laptops or desktops that use a headless GPU for rendering (NVIDIA Optimus, AMD Dynamic Switchable Graphics).")),
-                off,
-                cx,
-            ));
-        }
-        col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
-        col = col.child(self.lsfg_section(off, cx));
-        // Steam keeps the computer awake itself while a game runs.
-        let sdl = rows().child(self.sdl_row(off, cx));
-        col.child(heading(tr!("Controllers and power"))).child(sdl.card())
+        col = col.child(heading(tr!("On screen"))).child(self.overlay_rows(off, cx).card());
+        col = col.child(self.fps_section(off, cx)).child(self.lsfg_section(off, cx));
+        col = col.child(self.gamescope_section(rows(), off, cx));
+        col.child(heading(tr!("System"))).child(self.game_system_rows(off, cx).card())
     }
 
-    pub(super) fn steam_gamescope_tab(&mut self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn steam_gpu_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let col = column().child(self.steam_banner(cx));
-        if !self.steam_fields_editable() {
+        if !self.steam.as_ref().is_some_and(|s| s.editable) {
             return col;
         }
-        col.child(self.gamescope_tab(cx))
+        let off = !self.steam_fields_editable();
+        col.child(self.gpu_tab(off, cx))
     }
 
-    pub(super) fn steam_advanced_tab(&mut self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn steam_launch_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let mut col = column().child(self.steam_banner(cx));
         if self.steam.as_ref().is_some_and(|s| s.editable) {
             let off = !self.steam_fields_editable();
@@ -712,56 +677,29 @@ impl SettingsPanel {
             if !err.is_empty() {
                 notes.push(danger_text(err));
             }
-            notes.push(help(tr!("Use the Game Arguments to be called after the launch command, for instance: -nolauncher to skip the launcher in some games, etc.")));
-            let launch = rows()
-                .child(self.toggle_row(
-                    "p-log",
-                    "verboseLogs",
-                    false,
-                    tr!("Proton logs"),
-                    Some(tr!("Proton writes steam-<app id>.log in your home folder.")),
-                    off,
-                    cx,
-                ))
-                .field_help(self.text_row("launcherArgs", Some(tr!("Game Arguments (appended to game launch command)")), None), notes)
-                .field(self.path_row(
-                    "beforeScript",
-                    Some(tr!("Select a script to run before the game is launched")),
-                    false,
-                    tr!("Select script ..."),
-                    true,
-                    cx,
-                ))
-                .field_help(
-                    self.path_row(
-                        "afterScript",
-                        Some(tr!("Select a script to run after the game exits")),
-                        false,
-                        tr!("Select script ..."),
-                        true,
-                        cx,
-                    ),
-                    vec![help(tr!("Steam runs the scripts through a small script of Heronite's, so they run however the game starts."))],
-                );
-            col = col.child(heading(tr!("Launch"))).child(launch.card());
-            col = col.child(self.presets_section(off, cx)).child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
-            let mut dx = rows().child(self.toggle_row(
-                "dxvk-fps",
-                "enableDXVKFpsLimit",
+            notes.push(help(tr!("Added after the game's command, like -nolauncher")));
+            let launch = rows().field_help(self.text_row("launcherArgs", Some(tr!("Game arguments")), None, cx), notes);
+            col = col.child(heading(tr!("Starting"))).child(launch.card());
+            col = col.child(self.scripts_section(true, cx));
+            let logs = rows().child(self.toggle_row(
+                "p-log",
+                "verboseLogs",
                 false,
-                tr!("Limit DirectX Games FPS"),
-                Some(tr!("Sets a frame rate cap for DirectX Games (9-12)")),
+                tr!("Proton logs"),
+                Some(tr!("Writes steam-<app id>.log in your home folder")),
                 off,
                 cx,
             ));
-            if self.flag("enableDXVKFpsLimit", false) {
-                dx = dx.field(self.text_row("dxvkFps", None, None));
-            }
-            col = col.child(heading("DirectX")).child(dx.card());
+            col = col
+                .child(heading(tr!("Advanced")))
+                .child(logs.card())
+                .child(self.presets_section(off, cx))
+                .child(self.pair_table(WRAPPERS, cx))
+                .child(self.pair_table(ENV, cx));
         }
         let line = rows().field_help(
-            self.text_row("steamLine", Some(tr!("Steam launch options")), None),
-            vec![help(tr!("The line Steam runs the game with (Properties → General in Steam). The settings in these tabs write it; you can also edit it here."))],
+            self.text_row("steamLine", Some(tr!("Steam launch options")), None, cx),
+            vec![help(tr!("What these tabs write in Steam (Properties → General). You can edit it here too."))],
         );
         col.child(heading("Steam")).child(line.card())
     }

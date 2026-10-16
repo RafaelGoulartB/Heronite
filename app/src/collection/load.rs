@@ -19,6 +19,7 @@ struct Loaded {
     lib: Library,
     wiki: WikiCache,
     categories: heronite_data::categories::Categories,
+    actions: HashMap<String, Vec<heronite_data::game_actions::Action>>,
     covers: HashMap<SharedString, Vec<ImageRef>>,
     stages: HashMap<SharedString, Vec<ImageRef>>,
 }
@@ -28,6 +29,7 @@ fn load_all(data_paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Load
     let lib = Library::load_with(data_paths, include_hidden)?;
     let wiki = WikiCache::load(data_paths);
     let categories = heronite_data::categories::Categories::load(data_paths);
+    let actions = heronite_data::game_actions::load(data_paths);
     let shots = (!lib.settings.screenshots.folder.is_empty()).then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
     let ctx = ArtContext::new(data_paths, shots.as_deref());
     let mut covers = HashMap::new();
@@ -38,7 +40,7 @@ fn load_all(data_paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Load
         stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, categories, covers, stages })
+    Ok(Loaded { lib, wiki, categories, actions, covers, stages })
 }
 
 impl CollectionView {
@@ -110,6 +112,7 @@ impl CollectionView {
         self.stage_chains = l.stages;
         self.wiki = Arc::new(l.wiki);
         self.categories = l.categories;
+        self.user_actions = l.actions;
         self.prune_category_filter();
         if !first {
             self.refresh_launch_options(cx);

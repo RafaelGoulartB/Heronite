@@ -36,17 +36,6 @@ enum Field {
 }
 
 impl GameSettingsDialog {
-    fn console_tabs(&self) -> Vec<Tab> {
-        let mut t = self
-            .with_saves_tab(self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default());
-        if self.launch.is_some() {
-            t.push(Tab::Launch);
-        }
-        t.push(Tab::Details);
-        t.push(Tab::Images);
-        t
-    }
-
     fn console_set_tab(&mut self, tab: Tab, window: &mut Window, cx: &mut Context<Self>) {
         self.tab = tab;
         self.console_list.reset();
@@ -56,7 +45,7 @@ impl GameSettingsDialog {
                 p.console_reset();
             });
         }
-        if tab == Tab::Backups {
+        if tab == Tab::Saves {
             if let Some(view) = &self.backups {
                 view.update(cx, |v, cx| {
                     v.console_reset();
@@ -69,7 +58,24 @@ impl GameSettingsDialog {
 
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         match self.tab {
-            Tab::Launch => {
+            Tab::Actions => {
+                // The action editor takes the whole tab.
+                let mut rows = Vec::new();
+                if self.actions.editor.is_none() {
+                    rows.push(Row::header(tr!("Play")));
+                    rows.extend(if self.launch.is_some() { self.console_local_play_rows(cx) } else { vec![self.console_play_row()] });
+                }
+                rows.extend(self.console_action_rows(cx));
+                rows
+            }
+            _ => self.console_info_rows(cx),
+        }
+    }
+
+    /// How a local game starts: an executable and "run as", or a command.
+    fn console_local_play_rows(&self, cx: &App) -> Vec<Row> {
+        {
+            {
                 let Some(l) = self.launch.as_ref() else { return Vec::new() };
                 let exe = l.executable.read(cx).value().to_string();
                 let dirty = l.dirty(cx);
@@ -117,11 +123,25 @@ impl GameSettingsDialog {
                     save,
                 ]
             }
-            Tab::Details => {
+        }
+    }
+
+    fn console_info_rows(&self, cx: &App) -> Vec<Row> {
+        match self.tab {
+            Tab::Game => {
+                let custom = self.art.cover_url.is_some() || self.art.hero_url.is_some();
                 let d = &self.details;
                 let form = self.read_form(cx);
                 let dirty = form != self.initial;
                 let mut rows = vec![
+                    Row::header(tr!("Images")),
+                    Row::info("img-cover", tr!("Cover"), if self.art.cover_url.is_some() { tr!("Custom") } else { tr!("Default") }),
+                    Row::info("img-hero", tr!("Background"), if self.art.hero_url.is_some() { tr!("Custom") } else { tr!("Default") }),
+                    Row::action("img-reset", tr!("Use the default images"))
+                        .icon(Icon::Replay)
+                        .enabled(custom && self.busy.is_none())
+                        .desc(tr!("Choosing new images from the web needs desktop mode")),
+                    Row::header(tr!("Details")),
                     Row::text("f:name", tr!("Name"), d.name.read(cx).value().to_string()),
                     Row::text("f:release", tr!("Release date"), d.release.read(cx).value().to_string()),
                     Row::text("f:score", tr!("Critic score"), d.score.read(cx).value().to_string()),
@@ -141,17 +161,6 @@ impl GameSettingsDialog {
                         .enabled(dirty && self.busy.is_none()),
                 );
                 rows
-            }
-            Tab::Images => {
-                let custom = self.art.cover_url.is_some() || self.art.hero_url.is_some();
-                vec![
-                    Row::info("img-cover", tr!("Cover"), if self.art.cover_url.is_some() { tr!("Custom") } else { tr!("Default") }),
-                    Row::info("img-hero", tr!("Background"), if self.art.hero_url.is_some() { tr!("Custom") } else { tr!("Default") }),
-                    Row::action("img-reset", tr!("Use the default images"))
-                        .icon(Icon::Replay)
-                        .enabled(custom && self.busy.is_none())
-                        .desc(tr!("Choosing new images from the web needs desktop mode")),
-                ]
             }
             _ => Vec::new(),
         }
@@ -265,7 +274,7 @@ impl GameSettingsDialog {
             self.images.update(cx, |im, _| im.get("gs-console-cover", cover_chain, 110. * s * scale, 150. * s * scale))
         };
 
-        let tabs = self.console_tabs();
+        let tabs = self.tab_list();
         let active = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
         let labels: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
         let mut meta = vec![
@@ -321,7 +330,7 @@ impl GameSettingsDialog {
 
         let body: AnyElement = match (self.tab.section(), &self.panel) {
             (Some(_), Some((panel, _))) => div().flex().flex_col().size_full().child(panel.clone()).into_any_element(),
-            _ if self.tab == Tab::Backups && self.backups.is_some() => {
+            _ if self.tab == Tab::Saves && self.backups.is_some() => {
                 div().flex().flex_col().size_full().children(self.backups.clone()).into_any_element()
             }
             _ => {
@@ -361,12 +370,12 @@ impl PadTarget for GameSettingsDialog {
             return true;
         }
         // The Saves tab's keyboard and backup menu keep B and the bumpers.
-        if let (Tab::Backups, Some(view)) = (self.tab, self.backups.clone()) {
+        if let (Tab::Saves, Some(view)) = (self.tab, self.backups.clone()) {
             if view.read(cx).captures(pad) {
                 return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
             }
         }
-        let tabs = self.console_tabs();
+        let tabs = self.tab_list();
         let i = tabs.iter().position(|t| *t == self.tab).unwrap_or(0);
         match pad {
             Pad::LB | Pad::RB => {
@@ -375,6 +384,7 @@ impl PadTarget for GameSettingsDialog {
                 self.console_set_tab(tabs[next], window, cx);
                 return true;
             }
+            Pad::B if self.tab == Tab::Actions && self.close_action_editor(cx) => return true,
             Pad::B => {
                 cx.emit(DialogEvent::Close);
                 return true;
@@ -387,7 +397,7 @@ impl PadTarget for GameSettingsDialog {
             }
             return false;
         }
-        if self.tab == Tab::Backups {
+        if self.tab == Tab::Saves {
             if let Some(view) = self.backups.clone() {
                 return view.update(cx, |v, cx| v.on_pad(pad, window, cx));
             }
@@ -395,6 +405,8 @@ impl PadTarget for GameSettingsDialog {
         }
         let rows = self.console_rows(cx);
         match self.console_list.on_pad(pad, &rows) {
+            Outcome::Activate(id) if self.console_action_activate(&id, window, cx) => {}
+            Outcome::Changed(id, value) if self.console_action_changed(&id, &value, cx) => {}
             Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "run-as" => {
                 let exe = self.launch.as_ref().map(|l| l.executable.read(cx).value().to_string()).unwrap_or_default();
                 if let Some(l) = self.launch.as_mut() {
@@ -434,7 +446,7 @@ impl PadTarget for GameSettingsDialog {
         if let Some(h) = self.layer.hints(cx) {
             return h;
         }
-        if let (Tab::Backups, Some(view)) = (self.tab, &self.backups) {
+        if let (Tab::Saves, Some(view)) = (self.tab, &self.backups) {
             let mut h = view.read(cx).hints(cx);
             h.push(hint(Btn::Bumpers, tr!("Tabs")));
             h.push(hint(Btn::B, tr!("Done")));

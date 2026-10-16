@@ -1,5 +1,6 @@
-//! "Advanced" tab: logs, alternative exe, launcher arguments, scripts,
-//! wrappers, environment variables, language, and the legacy options.
+//! The panel's "Launch" section (Heroic's Advanced tab): arguments, offline
+//! and updates, language, scripts, programs alongside, then the advanced
+//! part (alternative exe, logs, runtime, umu, presets, wrappers, variables).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -49,108 +50,110 @@ pub(super) const WRAPPERS: PairTable = PairTable {
 };
 
 impl SettingsPanel {
-    pub(super) fn advanced_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+    /// The game's launch settings (Heroic's Advanced tab); the Launch tab of
+    /// the game settings shows them under Play and the actions.
+    pub(super) fn launch_opts_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let sideload = self.facts().is_some_and(|f| f.is_sideload());
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
         let game = self.is_game();
+        let native = self.native();
         let mut col = column();
-        let mut general = rows();
-        if game && !sideload {
-            general =
-                general.child(self.toggle_row("ignore-updates", "ignoreGameUpdates", false, tr!("Ignore game updates"), None, false, cx));
-        }
-        if game && legendary {
-            general = general.child(self.toggle_row("offline", "offlineMode", false, tr!("Run Game Offline"), None, false, cx));
-        }
-        if game && !self.launch_options.is_empty() {
-            general = general.field_help(
-                self.launch_option_select(cx),
-                vec![help(tr!("How Play starts the game: a mode it offers, or a playable DLC."))],
-            );
-        }
-        general = general.child(self.toggle_row("verbose", "verboseLogs", true, tr!("Enable verbose logs"), None, false, cx));
-        if game && !sideload {
-            general = general.field(self.path_row(
-                "targetExe",
-                Some(tr!("Select an alternative EXE to run")),
-                false,
-                tr!("Select EXE"),
-                true,
-                cx,
-            ));
-        }
-        if !sideload {
-            general = general.field_help(
-                self.text_row("language", Some(tr!("Prefered Language (Language Code)")), None),
-                vec![help(tr!("Leave blank to use the app's language. Not all games support this configuration, some have in-game language setting. Valid language codes are game-dependant."))],
-            );
-        }
-        col = col.child(heading(tr!("General"))).child(general.card());
 
-        let mut launch = rows();
+        let mut start = rows();
+        if game && !self.launch_options.is_empty() {
+            start = start.field_help(self.launch_option_select(cx), vec![help(tr!("A mode the game offers, or a playable DLC"))]);
+        }
         if game {
-            let args = self.input_text("launcherArgs", cx);
-            let err = launcher_args_error(&args);
+            let err = launcher_args_error(&self.input_text("launcherArgs", cx));
             let mut notes = Vec::new();
             if !err.is_empty() {
                 notes.push(danger_text(err));
             }
-            notes.push(help(tr!("Use the Game Arguments to be called after the launch command, for instance: -nolauncher to skip the launcher in some games, etc.")));
-            launch = launch
-                .field_help(self.text_row("launcherArgs", Some(tr!("Game Arguments (appended to game launch command)")), None), notes);
+            notes.push(help(tr!("Added after the game's command, like -nolauncher")));
+            start = start.field_help(self.text_row("launcherArgs", Some(tr!("Game arguments")), None, cx), notes);
         }
-        launch = launch
-            .field(self.path_row(
-                "beforeScript",
-                Some(tr!("Select a script to run before the game is launched")),
+        if game && legendary {
+            start = start.child(self.toggle_row(
+                "offline",
+                "offlineMode",
                 false,
-                tr!("Select script ..."),
-                true,
-                cx,
-            ))
-            .field(self.path_row(
-                "afterScript",
-                Some(tr!("Select a script to run after the game exits")),
+                tr!("Play offline"),
+                Some(tr!("Starts without signing in to Epic")),
                 false,
-                tr!("Select script ..."),
-                true,
                 cx,
             ));
-        col = col.child(heading(tr!("Launch"))).child(launch.card());
-        if self.is_game() {
+        }
+        if game && !sideload {
+            start = start.child(self.toggle_row(
+                "ignore-updates",
+                "ignoreGameUpdates",
+                false,
+                tr!("Ignore updates"),
+                Some(tr!("Play even when an update is waiting")),
+                false,
+                cx,
+            ));
+        }
+        if !sideload {
+            start = start.field_help(
+                self.text_row("language", Some(tr!("Game language")), None, cx),
+                vec![help(tr!("A code like en or pt-BR; empty: the app's language. Not every game reads it."))],
+            );
+        }
+        col = col.child(heading(tr!("Starting"))).child(start.card());
+        col = col.child(self.scripts_section(false, cx));
+        if game {
             col = col.child(self.companions_section(cx));
         }
-        col = col.child(self.presets_section(false, cx)).child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
 
-        // Legacy options (a tab of its own in Heroic).
-        let wine = self.wine_version();
-        let show_dxvk_fps = !self.native() && !wine.bin.contains("toolkit") && !wine.name.ends_with("-DXMT");
-        let show_umu = game && !self.native() && wine.kind == "proton";
-        if show_dxvk_fps || show_umu {
-            let mut legacy = rows();
-            if show_dxvk_fps {
-                legacy = legacy.child(self.toggle_row(
-                    "dxvk-fps",
-                    "enableDXVKFpsLimit",
-                    false,
-                    tr!("Limit DirectX Games FPS"),
-                    Some(tr!("Sets a frame rate cap for DirectX Games (9-12)")),
-                    false,
-                    cx,
-                ));
-                if self.flag("enableDXVKFpsLimit", false) {
-                    legacy = legacy.field(self.text_row("dxvkFps", None, None));
-                }
-            }
-            if show_umu {
-                legacy = legacy.child(self.toggle_row("disable-umu", "disableUMU", false, tr!("Disable umu"), None, false, cx));
-            }
-            col = col
-                .child(heading(tr!("Legacy")))
-                .child(help(tr!("Warning: The settings on this tab are mostly deprecated and might not work at all.")).px(px(6.)))
-                .child(legacy.card());
+        let mut advanced = rows();
+        if game && !sideload {
+            advanced = advanced.field(self.path_row("targetExe", Some(tr!("Alternative executable")), false, tr!("Select EXE"), true, cx));
         }
-        col
+        advanced = advanced.child(self.toggle_row(
+            "verbose",
+            "verboseLogs",
+            true,
+            tr!("Detailed logs"),
+            Some(tr!("More detail in the game's log, for troubleshooting")),
+            false,
+            cx,
+        ));
+        if native {
+            advanced = advanced.field_help(
+                self.steam_runtime_field(cx),
+                vec![help(tr!("Steam's libraries for Linux games; can help a game that misses some"))],
+            );
+        }
+        if game && !native && self.wine_version().kind == "proton" {
+            advanced = advanced.child(self.toggle_row(
+                "disable-umu",
+                "disableUMU",
+                false,
+                tr!("Disable umu"),
+                Some(tr!("Runs Proton directly, without umu and its game fixes")),
+                false,
+                cx,
+            ));
+        }
+        col.child(heading(tr!("Advanced")))
+            .child(advanced.card())
+            .child(self.presets_section(false, cx))
+            .child(self.pair_table(WRAPPERS, cx))
+            .child(self.pair_table(ENV, cx))
+            .when(self.has_preview(), |c| c.child(self.preview_section(cx)))
+    }
+
+    /// The user's scripts before the game starts and after it exits.
+    /// `steam`: Steam runs them through Heronite's wrapper script.
+    pub(super) fn scripts_section(&mut self, steam: bool, cx: &mut Context<Self>) -> Div {
+        let mut r = rows()
+            .field(self.path_row("beforeScript", Some(tr!("Before the game starts")), false, tr!("Select script ..."), true, cx))
+            .field(self.path_row("afterScript", Some(tr!("After the game exits")), false, tr!("Select script ..."), true, cx));
+        if steam {
+            r = r.child(help(tr!("Steam runs them through a small Heronite script, however the game starts.")).pb(px(12.)));
+        }
+        column().child(heading(tr!("Scripts"))).child(r.card())
     }
 
     pub(super) fn pair_table(&mut self, t: PairTable, cx: &mut Context<Self>) -> Div {
@@ -211,7 +214,8 @@ impl SettingsPanel {
                 cx.listener(move |this, _, window, cx| this.pair_add(t, window, cx)),
             ));
         card_rows = card_rows.child(add);
-        let mut title_row = div().flex().items_end().justify_between().child(heading(tr(t.title).trim_end_matches(':')));
+        let mut title_row =
+            div().flex().items_end().justify_between().child(self.marked_heading(tr(t.title).trim_end_matches(':'), t.setting, cx));
         if t.env {
             title_row = title_row.child(
                 action_button(
@@ -231,7 +235,7 @@ impl SettingsPanel {
         let note = if t.env {
             tr!("Set environment variables to append to the command. Do NOT include the \"=\" sign, e.g: for a setting like \"MY_FLAG=123\", set MY_FLAG in NAME and 123 in VALUE.")
         } else {
-            tr!("Warning: Make sure to quote args with spaces! E.g.: \"path/with spaces/\". Arguments example: --arg; --extra-file=\"file-path/ with/spaces\"")
+            tr!("Quote arguments with spaces, like \"my folder/game.ini\"")
         };
         col.child(help(note).px(px(6.)))
     }
@@ -293,7 +297,7 @@ impl SettingsPanel {
                     }),
                 )),
         );
-        let mut col = column().child(heading(tr(ENV.title))).child(rows().child(box_).card());
+        let mut col = column().child(self.marked_heading(tr(ENV.title), ENV.setting, cx)).child(rows().child(box_).card());
         if !self.env_error.is_empty() {
             col = col.child(danger_text(&self.env_error).px(px(6.)));
         }

@@ -51,6 +51,17 @@ impl CollectionView {
             (tr!("Install"), Icon::Download)
         };
         let mut rows = vec![Row::action("primary", label).icon(ic)];
+        // The actions the user added; one that plays waits for the game to end.
+        for a in self.actions_of(&g.key) {
+            if a.plays() && playing {
+                continue;
+            }
+            rows.push(
+                Row::action(SharedString::from(format!("ua:{}", a.id)), a.name.clone())
+                    .icon(crate::ui::game_actions::icon_of(a))
+                    .desc(crate::ui::game_actions::menu_note(a)),
+            );
+        }
         if !playing
             && super::super::install_options::can_install_manually(g)
             && super::super::install_options::store_install_label(g).is_some()
@@ -302,6 +313,7 @@ impl CollectionView {
                     }
                 });
             }
+            Outcome::Activate(id) if id.starts_with("ua:") => self.run_user_action(key, &id["ua:".len()..], cx),
             Outcome::Activate(id) => match id.as_ref() {
                 "primary" => self.install_or_play(key, window, cx),
                 "x:manual-install" => self.open_manual_install(key, window, cx),

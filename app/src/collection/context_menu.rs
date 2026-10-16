@@ -237,7 +237,9 @@ impl CollectionView {
         } else {
             (tr!("Install"), Icon::Download)
         };
-        let more = !playing && super::install_options::has_more_ways(game);
+        // Not installed: the other ways to install; installed: the game's actions.
+        let ways = !playing && super::install_options::has_more_ways(game);
+        let more = ways || (!playing && game.installed && !self.actions_of(key).is_empty());
         let mut row = item("cm-primary")
             .on_hover(cx.listener(move |this, h: &bool, _, cx| {
                 if *h {
@@ -260,7 +262,7 @@ impl CollectionView {
         }
         let mut wrap = div().relative().child(row);
         if more && install_open {
-            wrap = wrap.child(self.install_flyout(game, flyout_left, cx));
+            wrap = wrap.child(if ways { self.install_flyout(game, flyout_left, cx) } else { self.actions_flyout(key, flyout_left, cx) });
         }
         wrap
     }

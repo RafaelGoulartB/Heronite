@@ -49,11 +49,13 @@ pub struct Row {
     pub enabled: bool,
     pub danger: bool,
     pub icon: Option<Icon>,
+    /// Differs from the defaults: a small dot after the label.
+    pub changed: bool,
 }
 
 impl Row {
     fn new(id: impl Into<SharedString>, label: impl Into<SharedString>, value: Value) -> Self {
-        Self { id: id.into(), label: label.into(), desc: None, value, enabled: true, danger: false, icon: None }
+        Self { id: id.into(), label: label.into(), desc: None, value, enabled: true, danger: false, icon: None, changed: false }
     }
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
         Self::new(id, label, Value::Action)
@@ -301,7 +303,14 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
                 .flex_1()
                 .min_w_0()
                 .py(u(10.))
-                .child(div().text_size(u(18.)).text_color(label_color).truncate().child(r.label.clone()))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(u(8.))
+                        .child(div().text_size(u(18.)).text_color(label_color).truncate().child(r.label.clone()))
+                        .when(r.changed, |d| d.child(div().flex_none().size(u(7.)).rounded_full().bg(theme::accent()))),
+                )
                 .children(
                     r.desc
                         .clone()

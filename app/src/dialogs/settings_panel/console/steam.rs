@@ -17,7 +17,7 @@ use crate::icons::Icon;
 
 impl SettingsPanel {
     /// Where the settings go, or why they cannot change, plus "read again".
-    fn c_steam_status(&self) -> Vec<Item> {
+    pub(super) fn c_steam_status(&self) -> Vec<Item> {
         let (text, error) = self.steam_status();
         let mut v = vec![Self::c_info("steam-status", if error { tr!("Problem") } else { "Steam" }, text)];
         if !self.steam.as_ref().is_some_and(|s| s.editable) {
@@ -119,26 +119,22 @@ impl SettingsPanel {
         let rec = self.steam_recommendation(&options).filter(|_| self.steam_locked().is_none());
         v.extend(self.c_protondb(rec, |this, i, cx| this.pick_steam_tool(i, cx)));
         if self.steam.as_ref().is_some_and(|s| s.editable) {
-            v.push(Self::c_header(tr!("Proton options")));
-            v.push(self.c_steam_toggle("enableEsync", true, "Esync", None));
-            v.push(self.c_steam_toggle("enableFsync", true, "Fsync", None));
-            v.push(self.c_steam_toggle(
-                "enableWineWayland",
-                false,
-                tr!("Wayland driver (experimental)"),
-                Some(tr!("Proton 10 or newer, or GE-Proton")),
-            ));
-            if self.flag("enableWineWayland", false) || self.flag("enableHDR", false) {
-                v.push(self.c_steam_toggle("enableHDR", false, tr!("HDR"), Some(tr!("The display and the game must support it"))));
-            }
-            v.push(self.c_steam_toggle("enableWoW64", false, tr!("WoW64 (experimental)"), Some(tr!("32-bit games on 64-bit Wine"))));
-            v.push(self.c_steam_toggle(options::KEY_NVAPI, false, tr!("Enable NVAPI"), Some(tr!("DLSS and other NVIDIA features"))));
+            v.push(Self::c_header(tr!("Graphics and libraries")));
+            v.push(self.c_steam_toggle(options::KEY_NVAPI, false, "NVAPI", Some(tr!("DLSS and other NVIDIA features"))));
             v.push(self.c_steam_toggle(
                 options::KEY_WINED3D,
                 false,
-                tr!("Use WineD3D instead of DXVK and VKD3D"),
-                Some(tr!("OpenGL-based; slower, but can help games that misbehave with Vulkan.")),
+                "WineD3D",
+                Some(tr!("OpenGL instead of DXVK and VKD3D: slower, but can help games that misbehave on Vulkan")),
             ));
+            v.push(Self::c_header(tr!("Sync")));
+            v.push(self.c_sync(true));
+            v.push(Self::c_header(tr!("Experimental")));
+            v.push(self.c_steam_toggle("enableWineWayland", false, tr!("Wayland driver"), Some(tr!("Proton 10 or newer, or GE-Proton"))));
+            if self.flag("enableWineWayland", false) || self.flag("enableHDR", false) {
+                v.push(self.c_steam_toggle("enableHDR", false, "HDR", Some(tr!("The screen and the game must support it"))));
+            }
+            v.push(self.c_steam_toggle("enableWoW64", false, "WoW64", Some(tr!("32-bit games on 64-bit Wine; can break older games"))));
         }
         v.push(Self::c_header(tr!("Prefix")));
         let prefix = self.steam_drive_c();
@@ -167,35 +163,28 @@ impl SettingsPanel {
         if !self.steam.as_ref().is_some_and(|s| s.editable) {
             return v;
         }
-        v.push(Self::c_header(tr!("Overlays and performance")));
-        v.push(self.c_steam_toggle("showFps", false, tr!("Show FPS (DX9, 10 and 11)"), None));
+        v.push(Self::c_header(tr!("On screen")));
+        v.push(self.c_steam_toggle("showFps", false, tr!("FPS counter"), Some(tr!("A small counter for DirectX 9 to 11 games"))));
         v.push(self.c_steam_toggle(
             "showMangohud",
             false,
             "MangoHud",
-            Some(tr!("FPS, temperatures and load overlay (needs MangoHud installed)")),
+            Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
         ));
-        if self.flag("showMangohud", false) {
-            v.push(self.c_text("mangohudFps", tr!("MangoHud FPS limit"), cx));
-        }
-        v.push(self.c_steam_toggle("useGameMode", false, "GameMode", Some(tr!("Feral GameMode system tweaks (needs GameMode installed)"))));
-        if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
-            v.push(self.c_steam_toggle(
-                "nvidiaPrime",
-                false,
-                tr!("Use the dedicated GPU"),
-                Some(tr!("NVIDIA Optimus / AMD switchable graphics; OpenGL and Vulkan games only")),
-            ));
-        }
+        v.extend(self.c_fps(true));
         v.extend(self.c_lsfg(true));
-        v.extend(self.c_controls(true));
+        if self.steam_fields_editable() {
+            v.push(Self::c_header(tr!("Image")));
+            v.extend(self.c_gamescope(cx));
+        }
+        v.extend(self.c_system(true));
         v
     }
 
     pub(super) fn c_steam_advanced(&self, cx: &App) -> Vec<Item> {
         let mut v = self.c_steam_status();
         if self.steam.as_ref().is_some_and(|s| s.editable) {
-            v.push(Self::c_header(tr!("Launch")));
+            v.push(Self::c_header(tr!("Starting")));
             v.push(self.c_steam_toggle(
                 "verboseLogs",
                 false,
@@ -211,11 +200,6 @@ impl SettingsPanel {
             v.extend(self.c_presets(true));
             v.extend(self.c_pairs(WRAPPERS));
             v.extend(self.c_pairs(ENV));
-            v.push(Self::c_header("DirectX"));
-            v.push(self.c_steam_toggle("enableDXVKFpsLimit", false, tr!("Limit DirectX games FPS"), None));
-            if self.flag("enableDXVKFpsLimit", false) {
-                v.push(self.c_text("dxvkFps", tr!("FPS limit"), cx));
-            }
         }
         v.push(Self::c_header("Steam"));
         v.push(self.c_text("steamLine", tr!("Steam launch options"), cx));

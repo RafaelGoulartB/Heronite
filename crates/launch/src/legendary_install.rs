@@ -67,18 +67,25 @@ pub(crate) fn install_binary(name: &str, url: &str, target: &Path, net: &dyn Net
     };
     net.download(url, &part, cancel).map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading {name} failed: {e}") }))?;
     fs::set_permissions(&part, fs::Permissions::from_mode(0o755)).map_err(|e| fail(format!("making {name} executable: {e}")))?;
-    let runs = Command::new(&part)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !runs {
+    if !runs_version(&part) {
         return Err(fail(format!("the downloaded {name} does not run")));
     }
     fs::rename(&part, target).map_err(|e| fail(format!("installing {name}: {e}")))
+}
+
+/// Whether `bin --version` exits well. A file just written can be "busy"
+/// (`ETXTBSY`) for a moment when another thread forks while it was open for
+/// writing (the child holds the descriptor until it execs): try again then.
+fn runs_version(bin: &Path) -> bool {
+    const ETXTBSY: i32 = 26;
+    for _ in 0..20 {
+        match Command::new(bin).arg("--version").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
+            Ok(s) => return s.success(),
+            Err(e) if e.raw_os_error() == Some(ETXTBSY) => std::thread::sleep(std::time::Duration::from_millis(25)),
+            Err(_) => return false,
+        }
+    }
+    false
 }
 
 #[cfg(test)]

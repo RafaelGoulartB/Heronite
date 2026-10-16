@@ -121,10 +121,10 @@ impl SettingsPanel {
                 crate::ui::open_external(umu_ids::WEBSITE)
             }));
         let card = rows().field_help(
-            self.text_row("umuId", Some(tr!("umu ID")), None),
+            self.text_row("umuId", Some(tr!("umu ID")), None, cx),
             vec![
                 help(&self.umu_status()),
-                help(tr!("Proton builds with protonfixes (GE-Proton, UMU-Proton, Proton-CachyOS, Proton-EM) apply the fixes written for each game, picked by this ID. Heronite finds it by itself: set one only when it is missing or wrong.")),
+                help(tr!("GE-Proton and other builds with protonfixes apply per-game fixes picked by this ID. Found by itself; set it only if it is missing or wrong.")),
                 buttons,
             ],
         );

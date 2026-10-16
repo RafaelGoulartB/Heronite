@@ -67,7 +67,7 @@ impl CollectionView {
     }
 
     /// Play / Stop / Install, or the Epic install progress that replaces it.
-    fn play_area(&mut self, vm: &FocusVm, epic: Option<FocusEpic>, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn play_area(&mut self, vm: &FocusVm, epic: Option<FocusEpic>, cx: &mut Context<Self>) -> AnyElement {
         let (epic_el, hide_play) = match epic {
             Some(e) => (Some(e.element), e.replaces_play),
             None => (None, false),
@@ -116,8 +116,8 @@ impl CollectionView {
                     div().min_w_0().truncate().font_weight(theme::W_REGULAR).text_size(px(13.)).text_color(rgb(0x5a5f66)).child(o)
                 }))
         });
-        // Installed Epic game with other ways to start: an arrow with them.
-        let more = if vm.installed && !vm.playing { self.launch_more_button(cx) } else { None };
+        // Installed, with other ways to start or actions: an arrow with them.
+        let more = if vm.installed && !vm.playing { self.launch_more_button(&vm.key, cx) } else { None };
         let play = match (play, more) {
             (Some(play), Some(more)) => {
                 let row = div()
@@ -156,7 +156,7 @@ impl CollectionView {
     }
 
     /// Status selector, favourite, metadata and game settings.
-    fn focus_status_row(&mut self, vm: &FocusVm, vh: f32, cx: &mut Context<Self>) -> Div {
+    pub(super) fn focus_status_row(&mut self, vm: &FocusVm, vh: f32, cx: &mut Context<Self>) -> Div {
         let open = self.facts.status_open;
         let (name, color) = match &vm.status {
             Some(s) => (s.name.clone(), s.color),
@@ -254,7 +254,7 @@ impl CollectionView {
     }
 
     /// "Your rating" and five clickable stars (clicking the current rating clears it).
-    fn rating_row(&self, key: &SharedString, cx: &mut Context<Self>) -> Div {
+    pub(super) fn rating_row(&self, key: &SharedString, cx: &mut Context<Self>) -> Div {
         let rating = self.facts.rating(key);
         let shown = self.facts.rating_hover.or(rating).unwrap_or(0);
         let mut stars = div().flex().items_center().gap(px(2.));
@@ -297,7 +297,7 @@ impl CollectionView {
     }
 
     /// Score, library, last save backup and Linux compatibility.
-    fn facts_card(&self, vm: &FocusVm, cx: &mut Context<Self>) -> Div {
+    pub(super) fn facts_card(&self, vm: &FocusVm, cx: &mut Context<Self>) -> Div {
         let mut rows: Vec<AnyElement> = Vec::new();
         if let Some(score) = &vm.score {
             rows.push(fact_row(tr!("Score"), div().child(score.clone())).into_any_element());

@@ -17,6 +17,10 @@ pub trait Probe: Send + Sync {
     fn is_executable(&self, path: &str) -> bool {
         self.exists(path)
     }
+    /// Names of the entries of a folder (nothing when it cannot be read).
+    fn list_dir(&self, _path: &str) -> Vec<String> {
+        Vec::new()
+    }
     /// Whether the gamescope at `bin` predates 3.12 (`--help` lacks `--filter`).
     /// Only consulted when the game enables gamescope.
     fn gamescope_is_old(&self, _bin: &str) -> bool {
@@ -72,6 +76,10 @@ impl Probe for SystemProbe {
         is_executable_file(Path::new(path))
     }
 
+    fn list_dir(&self, path: &str) -> Vec<String> {
+        std::fs::read_dir(path).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default()
+    }
+
     fn gamescope_is_old(&self, bin: &str) -> bool {
         // Same heuristic as Heroic (and Lutris): >= 3.12 documents `-F, --filter`.
         match std::process::Command::new(bin).arg("--help").output() {
@@ -82,6 +90,25 @@ impl Probe for SystemProbe {
             Err(_) => false,
         }
     }
+}
+
+/// The folders the Vulkan loader reads implicit layer manifests from
+/// (`$XDG_CONFIG_HOME`, `/etc`, `$XDG_DATA_HOME`, `$XDG_DATA_DIRS`), each
+/// ending in `vulkan/implicit_layer.d`.
+pub fn implicit_layer_dirs(probe: &dyn Probe) -> Vec<String> {
+    let home = probe.home();
+    let var = |k: &str| probe.env_var(k).filter(|v| !v.is_empty());
+    let mut dirs: Vec<String> = vec![
+        var("XDG_CONFIG_HOME").unwrap_or_else(|| format!("{home}/.config")),
+        "/etc/xdg".into(),
+        "/etc".into(),
+        var("XDG_DATA_HOME").unwrap_or_else(|| format!("{home}/.local/share")),
+    ];
+    // An AppImage may replace XDG_DATA_DIRS: the system folders are always looked at.
+    let data_dirs = var("XDG_DATA_DIRS").unwrap_or_default();
+    dirs.extend(data_dirs.split(':').filter(|d| !d.is_empty()).map(str::to_string));
+    dirs.extend(["/usr/local/share".to_string(), "/usr/share".to_string()]);
+    dirs.into_iter().map(|d| format!("{}/vulkan/implicit_layer.d", d.trim_end_matches('/'))).collect()
 }
 
 pub fn dirs_home() -> String {
@@ -153,6 +180,18 @@ impl Probe for FakeProbe {
     }
     fn is_executable(&self, path: &str) -> bool {
         self.paths.contains(path) && !self.not_executable.contains(path)
+    }
+    fn list_dir(&self, path: &str) -> Vec<String> {
+        let prefix = format!("{}/", path.trim_end_matches('/'));
+        let mut out: Vec<String> = self
+            .paths
+            .iter()
+            .filter_map(|p| p.strip_prefix(&prefix))
+            .map(|rest| rest.split('/').next().unwrap_or(rest).to_string())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
     }
     fn gamescope_is_old(&self, _bin: &str) -> bool {
         self.old_gamescope

@@ -9,11 +9,15 @@
 //! tab.
 
 mod advanced;
+mod changes;
 mod companions;
 mod console;
 mod fixes;
+mod fps_limit;
 mod gamescope;
 mod general;
+mod gpu;
+mod launch_preview;
 pub mod logic;
 mod lsfg;
 mod other;
@@ -57,14 +61,14 @@ pub enum Target {
 enum Bind {
     /// A string setting.
     Str { key: &'static str, trim: bool },
-    /// A string setting holding a whole number (digits only).
-    Digits { key: &'static str },
     /// A field of the `gamescope` object; `digits`: numbers only.
     Gamescope { field: &'static str, digits: bool },
     /// Scratch input (a "new row" form), never saved by itself.
     Scratch,
     /// A Steam game's launch options as text (saved on Enter or blur).
     SteamLine,
+    /// A number of the FPS limit (`heronite_launch::fps_limit`), digits only.
+    Fps { key: &'static str },
 }
 
 const fn s(key: &'static str) -> Bind {
@@ -73,15 +77,15 @@ const fn s(key: &'static str) -> Bind {
 
 /// `(input id, binding, placeholder)`.
 const INPUTS: &[(&str, Bind, &str)] = &[
-    ("launcherArgs", Bind::Str { key: "launcherArgs", trim: false }, n_!("Put here the Launcher Arguments")),
+    ("launcherArgs", Bind::Str { key: "launcherArgs", trim: false }, n_!("Like -nolauncher")),
     ("winePrefix", s("winePrefix"), ""),
     ("crossoverBottle", s("wineCrossoverBottle"), ""),
     ("targetExe", s("targetExe"), n_!("Select EXE...")),
     ("beforeScript", s("beforeLaunchScriptPath"), n_!("Select script ...")),
     ("afterScript", s("afterLaunchScriptPath"), n_!("Select script ...")),
-    ("language", Bind::Str { key: "language", trim: true }, n_!("2-char or 4-char code (i.e.: \"fr\" or \"pt-BR\")")),
-    ("dxvkFps", s("DXVKFpsCap"), n_!("Positive integer value (e.g. 30, 60, ...)")),
-    ("mangohudFps", Bind::Digits { key: "heroniteMangohudFpsLimit" }, n_!("No limit")),
+    ("language", Bind::Str { key: "language", trim: true }, n_!("Like pt-BR")),
+    ("fps.limit", Bind::Fps { key: heronite_launch::fps_limit::KEY_LIMIT }, n_!("No limit")),
+    ("fps.noFocus", Bind::Fps { key: heronite_launch::fps_limit::KEY_NO_FOCUS }, n_!("No limit")),
     ("savesPath", s("savesPath"), n_!("Select the exact save games folder")),
     ("umuId", s("heroniteUmuId"), n_!("Automatic")),
     ("preset.name", Bind::Scratch, n_!("Preset name")),
@@ -89,8 +93,6 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("gs.gameHeight", Bind::Gamescope { field: "gameHeight", digits: true }, ""),
     ("gs.upscaleWidth", Bind::Gamescope { field: "upscaleWidth", digits: true }, ""),
     ("gs.upscaleHeight", Bind::Gamescope { field: "upscaleHeight", digits: true }, ""),
-    ("gs.fpsLimiter", Bind::Gamescope { field: "fpsLimiter", digits: true }, ""),
-    ("gs.fpsLimiterNoFocus", Bind::Gamescope { field: "fpsLimiterNoFocus", digits: true }, ""),
     ("gs.additionalOptions", Bind::Gamescope { field: "additionalOptions", digits: false }, ""),
     ("defaultInstallPath", s("defaultInstallPath"), ""),
     ("defaultWinePrefixDir", s("defaultWinePrefixDir"), ""),
@@ -162,8 +164,12 @@ pub struct SettingsPanel {
     console_active: bool,
     /// Setting whose DXVK/VKD3D/NVAPI install or removal is running.
     pub(super) tool_toggle: Option<&'static str>,
-    pub(super) gpu_count: usize,
+    /// The graphics cards and driver layers (`None` while looked at).
+    pub(super) machine: Option<std::sync::Arc<heronite_launch::gpu::detect::Machine>>,
+    /// What the game's Proton offers the GPU tab: `(its bin, features)`.
+    pub(super) proton_features: Option<(String, heronite_launch::gpu::detect::ProtonFeatures)>,
     pub(super) gamescope_installed: bool,
+    pub(super) mangohud_installed: bool,
     pub(super) runtimes: (bool, bool),
     /// Frame generation on this machine (`None` while looked for).
     pub(super) lsfg: Option<heronite_launch::lsfg::Install>,
@@ -183,6 +189,11 @@ pub struct SettingsPanel {
     protondb: protondb::ProtonDb,
     /// Name of the Wine version new games get (marked in a game's menu).
     pub(super) global_wine: Option<String>,
+    /// What the game would have without its own values (`None` for the
+    /// defaults themselves): the base of the changed marks.
+    inherited: Option<Settings>,
+    /// "How the game starts" (Launch tab).
+    preview: launch_preview::PreviewState,
     debounce: HashMap<&'static str, Task<()>>,
     queue: Vec<(String, Value)>,
     writing: bool,
@@ -209,7 +220,7 @@ impl SettingsPanel {
             let input = new_input(window, cx, &initial, tr(placeholder));
             if !matches!(bind, Bind::Scratch) {
                 let id: &'static str = id;
-                let digits = matches!(bind, Bind::Gamescope { digits: true, .. } | Bind::Digits { .. });
+                let digits = matches!(bind, Bind::Gamescope { digits: true, .. } | Bind::Fps { .. });
                 subs.push(cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, window, cx| match ev {
                     InputEvent::Change => {
                         if matches!(bind, Bind::SteamLine) {
@@ -242,6 +253,11 @@ impl SettingsPanel {
             }
             inputs.insert(*id, input);
         }
+        let inherited = match &target {
+            _ if steam_app.is_some() => Some(heronite_steam::options::defaults()),
+            Target::Game(_) => Some(game_config::default_game_settings(&game_config::load_global(&paths, &home), false, &home)),
+            Target::Defaults => None,
+        };
         let tools = paths.tools_dir();
         let runtimes = (tools.join("runtimes/battleye_runtime").exists(), tools.join("runtimes/eac_runtime").exists());
         let mut this = Self {
@@ -253,10 +269,12 @@ impl SettingsPanel {
             settings,
             wine_list: None,
             prefix_list: None,
-            // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version`: that menu starts open.
+            // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version|fps-method|gpu-device`: that menu starts open.
             open_select: match crate::env::value("HERONITE_DEBUG_OPEN_SELECT").as_deref() {
                 Some("steam-tool") => Some("steam-tool"),
                 Some("wine-version") => Some("wine-version"),
+                Some("fps-method") => Some("fps-method"),
+                Some("gpu-device") => Some("gpu-device"),
                 _ => None,
             },
             inputs,
@@ -265,9 +283,13 @@ impl SettingsPanel {
             winetricks: None,
             launch_options: Vec::new(),
             tool_toggle: None,
-            gpu_count: logic::count_gpus(),
+            machine: None,
+            proton_features: None,
             gamescope_installed: crate::env::flag("HERONITE_DEBUG_GAMESCOPE")
                 || heronite_launch::Probe::which(&heronite_launch::SystemProbe, "gamescope").is_some(),
+            // `HERONITE_DEBUG_NO_MANGOHUD=1`: as if MangoHud were not installed.
+            mangohud_installed: !crate::env::flag("HERONITE_DEBUG_NO_MANGOHUD")
+                && heronite_launch::Probe::which(&heronite_launch::SystemProbe, "mangohud").is_some(),
             runtimes,
             lsfg: None,
             lsfg_ui: None,
@@ -279,6 +301,8 @@ impl SettingsPanel {
             steam: steam_app.map(steam::SteamState::new),
             protondb: protondb::ProtonDb::Off,
             global_wine: None,
+            inherited,
+            preview: Default::default(),
             debounce: HashMap::new(),
             queue: Vec::new(),
             writing: false,
@@ -295,6 +319,7 @@ impl SettingsPanel {
             this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
         this.load_lsfg(cx);
+        this.load_gpu(cx);
         this.load_presets(cx);
         if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
             this.load_umu(cx);
@@ -322,6 +347,10 @@ impl SettingsPanel {
         // `HERONITE_DEBUG_ENV_TEXT=1`: the variables start open as text.
         if crate::env::flag("HERONITE_DEBUG_ENV_TEXT") {
             this.open_env_text(window, cx);
+        }
+        // `HERONITE_DEBUG_PREVIEW=1`: "How the game starts" starts open.
+        if crate::env::flag("HERONITE_DEBUG_PREVIEW") && this.has_preview() {
+            this.open_preview(cx);
         }
         // `HERONITE_DEBUG_WINETRICKS=1`: the Winetricks page starts open.
         if crate::env::flag("HERONITE_DEBUG_WINETRICKS") && this.is_game() {
@@ -441,6 +470,32 @@ impl SettingsPanel {
         self.settings.insert(key.to_string(), value.clone());
         self.queue.push((key.to_string(), value));
         self.flush(cx);
+        if key == "wineVersion" {
+            self.load_proton_features(cx);
+        }
+        self.refresh_preview(cx);
+        cx.notify();
+    }
+
+    /// [`set`](Self::set) for several keys, saved together (a Steam game's
+    /// launch options are rebuilt once).
+    pub(super) fn set_all(&mut self, values: Vec<(&str, Value)>, cx: &mut Context<Self>) {
+        let mut changed: Vec<(&str, Value)> = values.into_iter().filter(|(k, v)| self.settings.get(*k) != Some(v)).collect();
+        let Some((last_key, last)) = changed.pop() else { return };
+        if self.is_steam() {
+            if self.steam_fields_editable() {
+                for (k, v) in changed {
+                    self.settings.insert(k.to_string(), v);
+                }
+            }
+            return self.steam_set(last_key, last, cx);
+        }
+        for (k, v) in changed.into_iter().chain([(last_key, last)]) {
+            self.settings.insert(k.to_string(), v.clone());
+            self.queue.push((k.to_string(), v));
+        }
+        self.flush(cx);
+        self.refresh_preview(cx);
         cx.notify();
     }
 
@@ -517,18 +572,19 @@ impl SettingsPanel {
                     self.set(key, Value::String(v), cx);
                 }
             }
-            Bind::Digits { key } => {
-                let v = logic::digits_only(&raw);
-                if v != self.text(key) {
-                    self.set(key, Value::String(v), cx);
-                }
-            }
             Bind::Gamescope { field, digits } => {
                 let v = if digits { logic::digits_only(&raw) } else { raw };
                 let current = value_text(self.gamescope().get(field));
                 if v != current {
                     self.set_gamescope(field, Value::String(v), cx);
                 }
+            }
+            Bind::Fps { key } => {
+                let n: u32 = logic::digits_only(&raw).parse().unwrap_or(0);
+                self.update_fps(cx, |f| match key {
+                    heronite_launch::fps_limit::KEY_NO_FOCUS => f.no_focus = n,
+                    _ => f.limit = n,
+                });
             }
             Bind::SteamLine => self.steam_commit_line(raw, cx),
             Bind::Scratch => {}
@@ -570,8 +626,17 @@ impl SettingsPanel {
 /// What input `bind` shows for `settings`.
 fn bound_text(settings: &Settings, bind: &Bind) -> String {
     match bind {
-        Bind::Str { key, .. } | Bind::Digits { key } => value_text(settings.get(*key)),
+        Bind::Str { key, .. } => value_text(settings.get(*key)),
         Bind::Gamescope { field, .. } => value_text(settings.get("gamescope").and_then(|g| g.get(*field))),
+        Bind::Fps { key } => {
+            let f = heronite_launch::fps_limit::FpsLimit::from_map(settings);
+            let n = if *key == heronite_launch::fps_limit::KEY_NO_FOCUS { f.no_focus } else { f.limit };
+            if n == 0 {
+                String::new()
+            } else {
+                n.to_string()
+            }
+        }
         Bind::Scratch | Bind::SteamLine => String::new(),
     }
 }
@@ -591,16 +656,16 @@ impl Render for SettingsPanel {
             return self.render_console(window, cx);
         }
         let content = match self.section {
-            Section::Wine | Section::Proton if self.winetricks_open() => self.winetricks_tab(cx),
-            Section::Proton => self.proton_tab(cx),
-            Section::Other if self.is_steam() => self.steam_other_tab(cx),
-            Section::Advanced if self.is_steam() => self.steam_advanced_tab(cx),
-            Section::Gamescope if self.is_steam() => self.steam_gamescope_tab(cx),
+            Section::Compatibility if self.winetricks_open() => self.winetricks_tab(cx),
+            Section::Compatibility if self.is_steam() => self.proton_tab(cx),
+            Section::Performance if self.is_steam() => self.steam_perf_tab(cx),
+            Section::Launch if self.is_steam() => self.steam_launch_tab(cx),
+            Section::Gpu if self.is_steam() => self.steam_gpu_tab(cx),
             Section::General => self.general_tab(window, cx),
-            Section::Wine => self.wine_tab(window, cx),
-            Section::Other => self.other_tab(cx),
-            Section::Advanced => self.advanced_tab(window, cx),
-            Section::Gamescope => self.gamescope_tab(cx),
+            Section::Compatibility => self.compat_tab(window, cx),
+            Section::Performance => self.perf_tab(cx),
+            Section::Gpu => self.gpu_tab(false, cx),
+            Section::Launch => self.launch_opts_tab(window, cx),
             Section::Saves => self.saves_tab(window, cx),
         };
         let mut footer = div()
@@ -633,9 +698,7 @@ impl Render for SettingsPanel {
             .flex_col()
             .gap(px(8.))
             .when(!self.is_game() && self.section != Section::General, |d| {
-                d.child(parts::hint(
-                    tr!("Changes in this section only apply as default values when installing games. If you want to change the settings of an already installed game, use the Settings button in the game page."),
-                ))
+                d.child(parts::hint(tr!("Defaults for games installed from now on. To change a game you already have, open its settings.")))
             })
             .child(content)
             .children(notice)

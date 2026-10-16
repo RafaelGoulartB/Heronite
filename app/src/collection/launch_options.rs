@@ -97,9 +97,10 @@ impl CollectionView {
         self.primary_action(key, cx);
     }
 
-    /// The arrow next to Play, for an Epic game with other ways to start.
-    pub(super) fn launch_more_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
-        if self.facts.launch_options.is_empty() {
+    /// The arrow next to Play of an installed game with another way to start
+    /// than Play: an Epic game's launch options or the user's actions.
+    pub(super) fn launch_more_button(&self, key: &str, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        if self.facts.launch_options.is_empty() && self.actions_of(key).is_empty() {
             return None;
         }
         let open = self.facts.launch_menu_open;
@@ -124,36 +125,82 @@ impl CollectionView {
         )
     }
 
-    /// The ways to start under Play; the one Play uses has a check.
+    /// The menu under the arrow: Play (an Epic game's ways to start, the one
+    /// Play uses checked), the game's own actions, and where to edit them.
     pub(super) fn launch_menu(&mut self, key: &SharedString, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.facts.launch_menu_open {
             return None;
         }
-        let current = self.facts.launch_current.clone();
-        let rows =
-            choices(&self.facts.launch_options).into_iter().enumerate().map(|(i, choice)| {
+        let heading =
+            |text: &str| div().px(px(10.)).pt(px(4.)).pb(px(4.)).text_size(px(12.)).text_color(theme::text_muted()).child(text.to_string());
+        let row =
+            |id: String, active: bool, ic: Icon, tint: Rgba, label: String, desc: String| {
+                crate::ui::dropdown::menu_item(SharedString::from(id), active).child(icon(ic, px(18.), tint)).child(
+                    div().flex().flex_col().min_w_0().child(div().truncate().child(label)).when(!desc.is_empty(), |d| {
+                        d.child(div().text_size(px(12.)).text_color(theme::text_muted()).truncate().child(desc))
+                    }),
+                )
+            };
+        let mut menu = crate::ui::dropdown::menu_panel(300.);
+        if self.facts.launch_options.is_empty() {
+            let k = key.to_string();
+            menu = menu.child(heading(tr!("Play"))).child(
+                row(
+                    "focus-launch-play".into(),
+                    false,
+                    Icon::PlayArrow,
+                    theme::accent(),
+                    tr!("Play").into(),
+                    tr!("How the game starts normally").into(),
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.facts.launch_menu_open = false;
+                    this.primary_action(&k, cx);
+                    cx.notify();
+                })),
+            );
+        } else {
+            let current = self.facts.launch_current.clone();
+            menu = menu.child(heading(tr!("Play with")));
+            for (i, choice) in choices(&self.facts.launch_options).into_iter().enumerate() {
                 let on = choice == current;
-                let label = choice_label(&choice);
                 let desc = match &choice {
                     None => tr!("How the game starts normally").to_string(),
                     Some(LaunchOption::Basic { parameters, .. }) => parameters.clone(),
                     Some(LaunchOption::Dlc { .. }) => tr!("Starts this DLC instead of the game").to_string(),
                 };
+                let (ic, tint) = if on { (Icon::Check, theme::accent()) } else { (Icon::PlayArrow, theme::text_muted()) };
                 let k = key.to_string();
-                crate::ui::dropdown::menu_item(SharedString::from(format!("focus-launch-{i}")), on)
-                    .child(icon(
-                        if on { Icon::Check } else { Icon::PlayArrow },
-                        px(18.),
-                        if on { theme::accent() } else { theme::text_muted() },
-                    ))
-                    .child(div().flex().flex_col().min_w_0().child(label).when(!desc.is_empty(), |d| {
-                        d.child(div().text_size(px(12.)).text_color(theme::text_muted()).truncate().child(desc))
-                    }))
-                    .on_click(cx.listener(move |this, _, _, cx| this.play_with(&k, choice.clone(), cx)))
-            });
-        let menu = crate::ui::dropdown::menu_panel(280.)
-            .child(div().px(px(10.)).pt(px(4.)).pb(px(4.)).text_size(px(12.)).text_color(theme::text_muted()).child(tr!("Play with")))
-            .children(rows);
+                menu = menu.child(
+                    row(format!("focus-launch-{i}"), on, ic, tint, choice_label(&choice), desc)
+                        .on_click(cx.listener(move |this, _, _, cx| this.play_with(&k, choice.clone(), cx))),
+                );
+            }
+        }
+        let actions = self.actions_of(key).to_vec();
+        if !actions.is_empty() {
+            menu = menu.child(crate::ui::dropdown::menu_separator()).child(heading(tr!("Actions")));
+            for a in actions {
+                let (k, id) = (key.to_string(), a.id.clone());
+                menu = menu.child(
+                    row(
+                        format!("focus-action-{}", a.id),
+                        false,
+                        crate::ui::game_actions::icon_of(&a),
+                        theme::text_muted(),
+                        a.name.clone(),
+                        crate::ui::game_actions::menu_note(&a),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| this.run_user_action(&k, &id, cx))),
+                );
+            }
+        }
+        let k = key.to_string();
+        let edit_label = if self.actions_of(key).is_empty() { tr!("Add an action\u{2026}") } else { tr!("Edit actions\u{2026}") };
+        menu = menu.child(crate::ui::dropdown::menu_separator()).child(
+            row("focus-action-edit".into(), false, Icon::Edit, theme::text_muted(), edit_label.into(), String::new())
+                .on_click(cx.listener(move |this, _, window, cx| this.open_actions_editor(&k, window, cx))),
+        );
         let close = cx.listener(|this, _, _, cx| {
             this.facts.launch_menu_open = false;
             cx.notify();

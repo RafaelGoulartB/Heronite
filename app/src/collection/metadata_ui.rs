@@ -44,7 +44,7 @@ impl CollectionView {
         }
     }
 
-    fn game_for(&self, key: &str) -> Option<heronite_data::collection::Game> {
+    pub(super) fn game_for(&self, key: &str) -> Option<heronite_data::collection::Game> {
         self.lib.as_ref()?.get(key).cloned()
     }
 
@@ -70,7 +70,7 @@ impl CollectionView {
 
     /// Focus footer: "Game settings".
     pub(super) fn open_game_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_game_settings_tab(GameTab::Images, window, cx);
+        self.open_game_settings_tab(GameTab::Game, window, cx);
     }
 
     /// Games the wizard checks: the ones the list currently shows.
@@ -146,13 +146,13 @@ impl CollectionView {
     pub(super) fn open_metadata_debug(&mut self, which: &str, window: &mut Window, cx: &mut Context<Self>) {
         match which {
             "metadata" => self.open_metadata(window, cx),
-            "gamesettings" => self.open_game_settings_tab(GameTab::Images, window, cx),
-            "gamesettings:details" => self.open_game_settings_tab(GameTab::Details, window, cx),
-            "gamesettings:launch" => self.open_game_settings_tab(GameTab::Launch, window, cx),
+            "gamesettings" => self.open_game_settings_tab(GameTab::Game, window, cx),
+            "gamesettings:details" => self.open_game_settings_tab(GameTab::Game, window, cx),
+            "gamesettings:launch" => self.open_game_settings_tab(GameTab::Actions, window, cx),
             "webimage" => {
                 let Some(key) = self.selected.clone() else { return };
                 let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
-                let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, GameTab::Images, window, cx));
+                let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, GameTab::Game, window, cx));
                 view.update(cx, |v, cx| v.debug_open_web(window, cx));
                 self.open_dialog(view, cx);
             }

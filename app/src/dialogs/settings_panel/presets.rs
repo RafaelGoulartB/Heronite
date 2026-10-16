@@ -111,10 +111,16 @@ impl SettingsPanel {
         if !self.presets.is_empty() {
             let items = self.presets.iter().map(|p| (SharedString::from(format!("{} \u{b7} {}", p.name, summary(p))), false)).collect();
             card = card.field_help(
-                self.select_row("preset-apply", Some(tr!("Apply a preset")), tr!("Choose a preset\u{2026}").into(), items, disabled, cx, |this, i, _, cx| {
-                    this.apply_preset(i, cx)
-                }),
-                vec![help(tr!("Adds the preset's environment variables, wrappers and game arguments to this game. Values the game already has are kept or updated, never doubled."))],
+                self.select_row(
+                    "preset-apply",
+                    Some(tr!("Apply a preset")),
+                    tr!("Choose a preset\u{2026}").into(),
+                    items,
+                    disabled,
+                    cx,
+                    |this, i, _, cx| this.apply_preset(i, cx),
+                ),
+                vec![help(tr!("Adds its variables, wrappers and arguments to this game, without duplicates."))],
             );
         }
         let save = div().flex().items_center().gap(px(8.)).child(div().flex_1().child(input_box(&self.input("preset.name"), false))).child(
@@ -132,9 +138,7 @@ impl SettingsPanel {
         );
         card = card.field_help(
             save,
-            vec![help(tr!(
-                "Saves this game's environment variables, wrappers and game arguments under a name, to apply them to other games."
-            ))],
+            vec![help(tr!("Saves this game's variables, wrappers and arguments under a name, to reuse in other games."))],
         );
         for (i, p) in self.presets.iter().enumerate() {
             let name = p.name.clone();

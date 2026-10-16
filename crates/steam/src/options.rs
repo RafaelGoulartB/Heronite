@@ -16,10 +16,15 @@
 //!
 //! Setting keys are Heroic's where the meaning is the same (`showMangohud`,
 //! `gamescope`, `enviromentOptions`...), plus [`KEY_NVAPI`],
-//! [`KEY_WINED3D`] and the frame generation keys of [`lsfg`] (written as
-//! lsfg-vk 2's variables).
+//! [`KEY_WINED3D`], the frame generation keys of [`lsfg`] (written as
+//! lsfg-vk 2's variables) and the FPS limit of [`fps_limit`] (written as the
+//! variables or gamescope options of its limiter; the line only says which
+//! limiter, so it reads back as that one, never as "automatic"), and the
+//! graphics card settings of [`gpu`] (their variables).
 
-use heronite_launch::env::gamescope_args;
+use heronite_launch::env::{gamescope_args, DXVK_FRAME_RATE};
+use heronite_launch::fps_limit::{self, FpsLimit, Method, Tools};
+use heronite_launch::gpu;
 use heronite_launch::lsfg::{self, Layer};
 use heronite_launch::settings::GameSettings;
 use serde_json::{json, Map, Value};
@@ -49,9 +54,8 @@ const SWITCHES: [(&str, &str); 7] = [
 /// Switches that are on unless `VAR=1`.
 const INVERTED: [(&str, &str); 2] = [("enableEsync", "PROTON_NO_ESYNC"), ("enableFsync", "PROTON_NO_FSYNC")];
 /// What "use the dedicated GPU" sets (`setupEnvVars` with `nvidiaPrime`).
-const PRIME: [(&str, &str); 3] = [("DRI_PRIME", "1"), ("__NV_PRIME_RENDER_OFFLOAD", "1"), ("__GLX_VENDOR_LIBRARY_NAME", "nvidia")];
+const PRIME: [(&str, &str); 3] = gpu::PRIME;
 const DXVK_HUD: &str = "DXVK_HUD";
-const DXVK_FRAME_RATE: &str = "DXVK_FRAME_RATE";
 const MANGOHUD_CONFIG: &str = "MANGOHUD_CONFIG";
 const KNOWN_WRAPPERS: [&str; 4] = [WRAP_NAME, "gamescope", "mangohud", "gamemoderun"];
 
@@ -72,12 +76,13 @@ pub fn defaults() -> Settings {
     for (key, _) in INVERTED {
         s.insert(key.into(), Value::Bool(true));
     }
-    for key in ["showFps", "enableDXVKFpsLimit", "nvidiaPrime", "showMangohud", "useGameMode"] {
+    for key in ["showFps", "nvidiaPrime", "showMangohud", "useGameMode", fps_limit::KEY_SMOOTH] {
         s.insert(key.into(), Value::Bool(false));
     }
-    for key in ["DXVKFpsCap", "heroniteMangohudFpsLimit", "launcherArgs", "beforeLaunchScriptPath", "afterLaunchScriptPath"] {
+    for key in [fps_limit::KEY_LIMIT, fps_limit::KEY_NO_FOCUS, "launcherArgs", "beforeLaunchScriptPath", "afterLaunchScriptPath"] {
         s.insert(key.into(), Value::String(String::new()));
     }
+    s.insert(fps_limit::KEY_METHOD.into(), Value::String(Method::Auto.id().into()));
     s.insert("enviromentOptions".into(), json!([]));
     s.insert("wrapperOptions".into(), json!([]));
     s.insert("gamescope".into(), gamescope_value(&Gamescope::default()));
@@ -89,6 +94,7 @@ pub fn defaults() -> Settings {
     for key in [lsfg::KEY_PROFILE, lsfg::KEY_DLL] {
         s.insert(key.into(), Value::String(String::new()));
     }
+    gpu::launch_options_defaults(&mut s);
     s
 }
 
@@ -161,9 +167,13 @@ fn read_wrappers(tokens: &[String], s: &mut Settings) -> Option<bool> {
             }
             "gamescope" => {
                 let end = i + 1 + tokens[i + 1..].iter().position(|t| t == "--")?;
-                let (g, mangoapp) = read_gamescope(&tokens[i + 1..end]);
+                let (g, mangoapp, limit) = read_gamescope(&tokens[i + 1..end]);
                 if mangoapp {
                     s.insert("showMangohud".into(), Value::Bool(true));
+                }
+                if let Some((fps, no_focus)) = limit {
+                    set_limit(s, Method::Gamescope, fps, false);
+                    s.insert(fps_limit::KEY_NO_FOCUS.into(), Value::String(no_focus));
                 }
                 s.insert("gamescope".into(), gamescope_value(&g));
                 gamescope_on = true;
@@ -197,9 +207,12 @@ fn read_wrappers(tokens: &[String], s: &mut Settings) -> Option<bool> {
 /// Sorts the leading variables into switches and plain variables.
 fn read_env(mut env: Vec<(String, String)>, gamescope_on: bool, s: &mut Settings) {
     read_lsfg(&mut env, s);
+    gpu::read_launch_options(&mut env, s);
     let has = |k: &str, v: &str| env.iter().any(|(key, value)| key == k && value == v);
     let prime = PRIME.iter().all(|(k, v)| has(k, v));
     let mangohud_on = s.get("showMangohud") == Some(&Value::Bool(true));
+    // `DXVK_FRAME_RATE` and `VKD3D_FRAME_RATE` with the same value are one limit.
+    let mut dxvk: Option<String> = None;
     let mut rest: Vec<Value> = Vec::new();
     for (key, value) in env {
         let one = value == "1";
@@ -209,11 +222,14 @@ fn read_env(mut env: Vec<(String, String)>, gamescope_on: bool, s: &mut Settings
             s.insert((*name).into(), Value::Bool(false));
         } else if key == DXVK_HUD && value == "fps" {
             s.insert("showFps".into(), Value::Bool(true));
-        } else if key == DXVK_FRAME_RATE && is_number(&value) {
-            s.insert("enableDXVKFpsLimit".into(), Value::Bool(true));
-            s.insert("DXVKFpsCap".into(), Value::String(value));
-        } else if let Some(limit) = (key == MANGOHUD_CONFIG && mangohud_on).then(|| mangohud_limit(&value)).flatten() {
-            s.insert("heroniteMangohudFpsLimit".into(), Value::String(limit));
+        } else if DXVK_FRAME_RATE.contains(&key.as_str()) && is_number(&value) && (dxvk.as_ref() == Some(&value) || !limited(s)) {
+            set_limit(s, Method::Dxvk, value.clone(), false);
+            dxvk = Some(value);
+        } else if let Some((limit, smooth, hud)) =
+            (key == MANGOHUD_CONFIG && mangohud_on && !limited(s)).then(|| fps_limit::read_mangohud_config(&value)).flatten()
+        {
+            set_limit(s, Method::MangoHud, limit.to_string(), smooth);
+            s.insert("showMangohud".into(), Value::Bool(hud));
         } else if prime && PRIME.iter().any(|(k, v)| *k == key && *v == value) {
             s.insert("nvidiaPrime".into(), Value::Bool(true));
         } else {
@@ -274,17 +290,22 @@ fn is_number(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// The limit of a `MANGOHUD_CONFIG` this module wrote.
-fn mangohud_limit(config: &str) -> Option<String> {
-    let limit = config.strip_prefix("read_cfg,").unwrap_or(config).strip_prefix("fps_limit=")?;
-    is_number(limit).then(|| limit.to_string())
+/// Whether the line already gave the FPS limit (a second limiter stays a
+/// plain variable: the panel shows one).
+fn limited(s: &Settings) -> bool {
+    FpsLimit::from_map(s).is_on()
+}
+
+fn set_limit(s: &mut Settings, method: Method, fps: String, smooth: bool) {
+    s.insert(fps_limit::KEY_LIMIT.into(), Value::String(fps));
+    s.insert(fps_limit::KEY_METHOD.into(), Value::String(method.id().into()));
+    s.insert(fps_limit::KEY_SMOOTH.into(), Value::Bool(smooth));
 }
 
 /// The gamescope part of the settings (Heroic's `gamescope` object).
 #[derive(Debug, Clone, PartialEq)]
 struct Gamescope {
     upscaling: bool,
-    limiter: bool,
     grab_cursor: bool,
     window_type: &'static str,
     game_width: String,
@@ -292,8 +313,6 @@ struct Gamescope {
     upscale_width: String,
     upscale_height: String,
     method: String,
-    fps: String,
-    fps_no_focus: String,
     additional: String,
 }
 
@@ -301,7 +320,6 @@ impl Default for Gamescope {
     fn default() -> Self {
         Self {
             upscaling: false,
-            limiter: false,
             grab_cursor: false,
             window_type: "fullscreen",
             game_width: String::new(),
@@ -309,8 +327,6 @@ impl Default for Gamescope {
             upscale_width: String::new(),
             upscale_height: String::new(),
             method: "fsr".into(),
-            fps: String::new(),
-            fps_no_focus: String::new(),
             additional: String::new(),
         }
     }
@@ -319,7 +335,7 @@ impl Default for Gamescope {
 fn gamescope_value(g: &Gamescope) -> Value {
     json!({
         "enableUpscaling": g.upscaling,
-        "enableLimiter": g.limiter,
+        "enableLimiter": false,
         "enableForceGrabCursor": g.grab_cursor,
         "windowType": g.window_type,
         "gameWidth": g.game_width,
@@ -327,15 +343,18 @@ fn gamescope_value(g: &Gamescope) -> Value {
         "upscaleWidth": g.upscale_width,
         "upscaleHeight": g.upscale_height,
         "upscaleMethod": g.method,
-        "fpsLimiter": g.fps,
-        "fpsLimiterNoFocus": g.fps_no_focus,
+        "fpsLimiter": "",
+        "fpsLimiterNoFocus": "",
         "additionalOptions": g.additional,
     })
 }
 
-/// Gamescope's options (between `gamescope` and `--`); `.1`: `--mangoapp`.
-fn read_gamescope(args: &[String]) -> (Gamescope, bool) {
+/// Gamescope's options (between `gamescope` and `--`); `.1`: `--mangoapp`;
+/// `.2`: its FPS limit and the one without focus (`-o` alone stays an
+/// option of its own).
+fn read_gamescope(args: &[String]) -> (Gamescope, bool, Option<(String, String)>) {
     let mut g = Gamescope { window_type: "windowed", method: String::new(), ..Default::default() };
+    let (mut fps, mut fps_no_focus) = (String::new(), String::new());
     let mut mangoapp = false;
     let mut extra: Vec<String> = Vec::new();
     let mut i = 0;
@@ -346,8 +365,8 @@ fn read_gamescope(args: &[String]) -> (Gamescope, bool) {
             "-h" => Some(&mut g.game_height),
             "-W" => Some(&mut g.upscale_width),
             "-H" => Some(&mut g.upscale_height),
-            "-r" => Some(&mut g.fps),
-            "-o" => Some(&mut g.fps_no_focus),
+            "-r" => Some(&mut fps),
+            "-o" => Some(&mut fps_no_focus),
             _ => None,
         };
         match (field, value.as_deref()) {
@@ -373,17 +392,38 @@ fn read_gamescope(args: &[String]) -> (Gamescope, bool) {
         i += 1;
     }
     let sized = [&g.game_width, &g.game_height, &g.upscale_width, &g.upscale_height].iter().any(|v| !v.is_empty());
-    g.limiter = !g.fps.is_empty() || !g.fps_no_focus.is_empty();
-    g.upscaling = sized || !g.method.is_empty() || g.window_type != "windowed" || !g.limiter;
+    let limit = fps.parse::<u32>().is_ok_and(|n| n > 0);
+    if !limit && !fps_no_focus.is_empty() {
+        extra.extend(["-o".into(), fps_no_focus.clone()]);
+    }
+    if !limit && !fps.is_empty() {
+        extra.extend(["-r".into(), fps.clone()]);
+    }
+    // gamescope runs for something else than the limit: keep it running.
+    g.upscaling = sized || !g.method.is_empty() || g.window_type != "windowed" || !limit;
     g.additional = join(&extra);
-    (g, mangoapp)
+    (g, mangoapp, limit.then_some((fps, fps_no_focus)))
+}
+
+/// What can limit the frame rate from a launch options line: the pick is
+/// written as it is (Steam may be a Flatpak with tools of its own), except
+/// MangoHud inside gamescope, which cannot limit.
+fn steam_tools(g: &GameSettings) -> Tools {
+    Tools { gamescope_runs: g.gamescope.enable_upscaling, gamescope: true, mangohud: true, dxvk: true }
 }
 
 /// The line for `settings`; `wrap` is the path of [`crate::wrap`]'s script.
 /// Empty when everything is at Steam's defaults.
 pub fn build(settings: &Settings, wrap: &str) -> String {
+    build_with(settings, wrap, &heronite_launch::SystemProbe)
+}
+
+/// [`build`] on `probe`'s machine (the picked graphics card is read from it).
+pub fn build_with(settings: &Settings, wrap: &str, probe: &dyn heronite_launch::Probe) -> String {
     let g = GameSettings::from_map(settings, "");
     let flag = |key: &str| settings.get(key) == Some(&Value::Bool(true));
+    let limit = g.fps_limit.applied(&steam_tools(&g));
+    let limit_by = |m: Method| limit.filter(|a| a.by(m));
     let mut out: Vec<String> = Vec::new();
     let mut set = |key: &str, value: &str| out.push(format!("{key}={}", quote(value)));
     for (key, var) in INVERTED {
@@ -399,17 +439,20 @@ pub fn build(settings: &Settings, wrap: &str) -> String {
     if g.show_fps {
         set(DXVK_HUD, "fps");
     }
-    if g.enable_dxvk_fps_limit && is_number(g.dxvk_fps_cap.trim()) {
-        set(DXVK_FRAME_RATE, g.dxvk_fps_cap.trim());
-    }
-    if g.nvidia_prime {
-        for (k, v) in PRIME {
-            set(k, v);
+    if let Some(a) = limit_by(Method::Dxvk) {
+        for var in DXVK_FRAME_RATE {
+            set(var, &a.limit.to_string());
         }
     }
+    let user_dxvk_config = g.env_options.iter().rev().find(|(k, _)| k == gpu::DXVK_CONFIG).map(|(_, v)| v.as_str());
+    let gpu_vars = gpu::launch_options_vars(&g.gpu, probe, user_dxvk_config);
+    for (k, v) in &gpu_vars {
+        set(k, v);
+    }
     let user_mangohud_config = g.env_options.iter().any(|(k, _)| k == MANGOHUD_CONFIG);
-    if g.show_mangohud && !user_mangohud_config && g.mangohud_fps_limit.parse::<u32>().is_ok_and(|n| n > 0) {
-        set(MANGOHUD_CONFIG, &format!("read_cfg,fps_limit={}", g.mangohud_fps_limit));
+    let mangohud_limit = limit_by(Method::MangoHud);
+    if let Some(a) = mangohud_limit.filter(|_| !user_mangohud_config) {
+        set(MANGOHUD_CONFIG, &fps_limit::mangohud_config(&a, g.show_mangohud, None));
     }
     if g.lsfg.enabled {
         let dll = settings.get(lsfg::KEY_DLL).and_then(Value::as_str).filter(|d| !d.is_empty());
@@ -421,6 +464,10 @@ pub fn build(settings: &Settings, wrap: &str) -> String {
         }
     }
     for (k, v) in &g.env_options {
+        // Merged into the graphics card's own.
+        if k == gpu::DXVK_CONFIG && gpu_vars.iter().any(|(var, _)| var == gpu::DXVK_CONFIG) {
+            continue;
+        }
         set(k, v);
     }
     let mut words: Vec<String> = Vec::new();
@@ -434,16 +481,17 @@ pub fn build(settings: &Settings, wrap: &str) -> String {
         }
         words.push("--".into());
     }
-    let gamescope_on = g.gamescope.enable_upscaling || g.gamescope.enable_limiter;
+    let gamescope_limit = limit_by(Method::Gamescope);
+    let gamescope_on = g.gamescope.enable_upscaling || gamescope_limit.is_some();
     if gamescope_on {
         words.push("gamescope".into());
-        words.extend(gamescope_args(&g.gamescope, false, g.show_mangohud));
+        words.extend(gamescope_args(&g.gamescope, false, g.show_mangohud, gamescope_limit.as_ref()));
     }
     for w in &g.wrapper_options {
         words.push(w.exe.clone());
         words.extend(split(&w.args));
     }
-    if g.show_mangohud && !gamescope_on {
+    if (g.show_mangohud || mangohud_limit.is_some()) && !gamescope_on {
         words.push("mangohud".into());
     }
     if g.use_game_mode {
@@ -545,6 +593,23 @@ mod tests {
     }
 
     #[test]
+    fn graphics_card_settings_read_back() {
+        let line = "NVPRESENT_ENABLE_SMOOTH_MOTION=1 PROTON_DLSS_UPGRADE=1 \
+             DXVK_CONFIG='dxgi.customVendorId=10de;d3d11.maxFeatureLevel=11_0' %command%";
+        let p = parse(line);
+        assert_eq!(p.settings[gpu::KEY_SMOOTH_MOTION], true);
+        assert_eq!(p.settings[gpu::KEY_DLSS_UPGRADE], true);
+        assert_eq!(p.settings[gpu::KEY_VENDOR], "nvidia");
+        assert_eq!(env(&p), [("DXVK_CONFIG".to_string(), "d3d11.maxFeatureLevel=11_0".to_string())]);
+        // Rebuilt by name; the user's DXVK options join ours in one variable.
+        // A machine without cards: every option applies.
+        assert_eq!(
+            build_with(&p.settings, WRAP, &heronite_launch::probe::FakeProbe::new("/h")),
+            "DXVK_CONFIG='dxgi.customVendorId=10de;d3d11.maxFeatureLevel=11_0' NVPRESENT_ENABLE_SMOOTH_MOTION=1 PROTON_DLSS_UPGRADE=1 %command%"
+        );
+    }
+
+    #[test]
     fn reads_switches_wrappers_and_arguments() {
         let p = parse(
             "PROTON_NO_ESYNC=1 PROTON_ENABLE_WAYLAND=1 PROTON_LOG=1 DXVK_HUD=fps DXVK_FRAME_RATE=60 MANGOHUD=1 \
@@ -557,8 +622,8 @@ mod tests {
         assert_eq!(s["enableWineWayland"], true);
         assert_eq!(s["verboseLogs"], true);
         assert_eq!(s["showFps"], true);
-        assert_eq!(s["enableDXVKFpsLimit"], true);
-        assert_eq!(s["DXVKFpsCap"], "60");
+        assert_eq!(s[fps_limit::KEY_LIMIT], "60");
+        assert_eq!(s[fps_limit::KEY_METHOD], "dxvk");
         assert_eq!(s["showMangohud"], true);
         assert_eq!(s["useGameMode"], true);
         assert_eq!(env(&p), [("MANGOHUD".into(), "1".into()), ("WINEDLLOVERRIDES".into(), "winmm=n,b".into())]);
@@ -588,11 +653,12 @@ mod tests {
         assert_eq!(s["afterLaunchScriptPath"], "/s/a");
         let g = &s["gamescope"];
         assert_eq!(g["enableUpscaling"], true);
-        assert_eq!(g["enableLimiter"], true);
         assert_eq!(g["windowType"], "borderless");
         assert_eq!(g["upscaleWidth"], "1920");
-        assert_eq!(g["fpsLimiterNoFocus"], "30");
         assert_eq!(g["upscaleMethod"], "");
+        // A limit without focus alone is not an FPS limit: it stays an option.
+        assert_eq!(g["additionalOptions"], "-o 30");
+        assert_eq!(s[fps_limit::KEY_LIMIT], "");
         assert_eq!(s["showMangohud"], false);
         // Bare gamescope stays on, with its unknown options kept.
         let p = parse("gamescope --hdr-enabled -- %command%");
@@ -608,8 +674,43 @@ mod tests {
         assert_eq!(p.settings["enableEsync"], true);
         assert_eq!(p.settings["showFps"], false);
         // Without MangoHud on, its config is a plain variable.
-        assert_eq!(p.settings["heroniteMangohudFpsLimit"], "");
+        assert_eq!(p.settings[fps_limit::KEY_LIMIT], "");
         assert_eq!(env(&p).len(), 4);
+    }
+
+    #[test]
+    fn fps_limit_reads_back_as_its_limiter() {
+        for line in [
+            "DXVK_FRAME_RATE=60 VKD3D_FRAME_RATE=60 %command%",
+            "MANGOHUD_CONFIG=read_cfg,no_display,fps_limit=60,fps_limit_method=early mangohud %command%",
+            "MANGOHUD_CONFIG=read_cfg,fps_limit=60 mangohud %command%",
+            "gamescope -r 60 -o 15 -- %command%",
+            "gamescope -W 2560 -H 1440 -F fsr -f -r 60 -- %command%",
+        ] {
+            assert_eq!(roundtrip(line), line);
+        }
+        let hidden = parse("MANGOHUD_CONFIG=read_cfg,no_display,fps_limit=60,fps_limit_method=early mangohud %command%").settings;
+        assert_eq!(
+            (&hidden[fps_limit::KEY_METHOD], &hidden["showMangohud"], &hidden[fps_limit::KEY_SMOOTH]),
+            (&json!("mangohud"), &json!(false), &json!(true))
+        );
+        let gs = parse("gamescope -r 60 -o 15 -- %command%").settings;
+        assert_eq!((&gs[fps_limit::KEY_METHOD], &gs[fps_limit::KEY_NO_FOCUS]), (&json!("gamescope"), &json!("15")));
+        assert_eq!(gs["gamescope"]["enableUpscaling"], false);
+        // Older lines: DXVK's variable alone gains VKD3D-Proton's.
+        assert_eq!(roundtrip("DXVK_FRAME_RATE=60 %command%"), "DXVK_FRAME_RATE=60 VKD3D_FRAME_RATE=60 %command%");
+        // A second limiter is a plain variable.
+        let two = parse("MANGOHUD_CONFIG=read_cfg,fps_limit=90 DXVK_FRAME_RATE=60 mangohud %command%");
+        assert_eq!(two.settings[fps_limit::KEY_LIMIT], "90");
+        assert_eq!(env(&two), [("DXVK_FRAME_RATE".into(), "60".into())]);
+        // Automatic writes the limiter it picks: MangoHud, hidden.
+        let mut auto = defaults();
+        auto.insert(fps_limit::KEY_LIMIT.into(), json!("60"));
+        assert_eq!(build(&auto, WRAP), "MANGOHUD_CONFIG=read_cfg,no_display,fps_limit=60 mangohud %command%");
+        // MangoHud cannot limit inside gamescope: gamescope does.
+        auto.insert(fps_limit::KEY_METHOD.into(), json!("mangohud"));
+        auto.insert("gamescope".into(), json!({"enableUpscaling": true, "windowType": "fullscreen"}));
+        assert_eq!(build(&auto, WRAP), "gamescope -f -r 60 -- %command%");
     }
 
     #[test]

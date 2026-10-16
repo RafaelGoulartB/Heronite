@@ -14,11 +14,7 @@ use heronite_i18n::tr;
 
 impl CollectionView {
     pub(super) fn render_focus_panel(&mut self, vw: f32, vh: f32, list_w: f32, scale: f32, cx: &mut Context<Self>) -> AnyElement {
-        let weak = cx.entity().downgrade();
-        let active_facets: Vec<(&'static str, SharedString)> = heronite_data::collection::FACET_KINDS
-            .iter()
-            .filter_map(|k| self.ui.facet_filters.get(*k).map(|v| (k.as_str(), SharedString::from(v.to_string()))))
-            .collect();
+        let active_facets = self.active_facets();
         let Some(vm) = self.focus.clone() else {
             return div()
                 .size_full()
@@ -32,8 +28,7 @@ impl CollectionView {
         };
         let vm = self.with_folder_rows(vm);
         let covers = self.focus_covers(&vm, scale);
-        let html_images = self.focus_html_images(&vm, vw, list_w, scale);
-        let (w1, w2, w3) = (weak.clone(), weak.clone(), weak.clone());
+        let html_images = self.focus_html_images(&vm, focus::main_column_width(vw - list_w), scale);
         let lay = focus::layout(vw - list_w);
         let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
         let left = self.focus_left(&vm, &lay, epic_focus, scale, vh, cx);
@@ -54,33 +49,48 @@ impl CollectionView {
                 timeline,
                 extras: focus_extras,
             },
-            focus::FocusActions {
-                on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
-                on_facet: Rc::new(move |f, v, _, cx| {
-                    w1.update(cx, |this, cx| {
-                        this.toggle_facet(f, &v);
-                        cx.notify();
-                    })
-                    .ok();
-                }),
-                on_select: Rc::new(move |k, _, cx| {
-                    w2.update(cx, |this, cx| {
-                        this.select(k, true);
-                        this.reveal_selected();
-                        cx.notify();
-                    })
-                    .ok();
-                }),
-                on_open_folder: Rc::new(move |path, _, cx| {
-                    w3.update(cx, |this, cx| this.open_folder(path.to_string().into(), cx)).ok();
-                }),
-            },
+            self.focus_actions(cx),
         )
+    }
+
+    /// The filters set by facet, for the Details chips.
+    pub(super) fn active_facets(&self) -> Vec<(&'static str, SharedString)> {
+        heronite_data::collection::FACET_KINDS
+            .iter()
+            .filter_map(|k| self.ui.facet_filters.get(*k).map(|v| (k.as_str(), SharedString::from(v.to_string()))))
+            .collect()
+    }
+
+    /// Callbacks of the details into the view (focus panel and grid drawer).
+    pub(super) fn focus_actions(&self, cx: &mut Context<Self>) -> focus::FocusActions {
+        let weak = cx.entity().downgrade();
+        let (w1, w2, w3) = (weak.clone(), weak.clone(), weak);
+        focus::FocusActions {
+            on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
+            on_facet: Rc::new(move |f, v, _, cx| {
+                w1.update(cx, |this, cx| {
+                    this.toggle_facet(f, &v);
+                    cx.notify();
+                })
+                .ok();
+            }),
+            on_select: Rc::new(move |k, _, cx| {
+                w2.update(cx, |this, cx| {
+                    this.select(k, true);
+                    this.reveal_selected();
+                    cx.notify();
+                })
+                .ok();
+            }),
+            on_open_folder: Rc::new(move |path, _, cx| {
+                w3.update(cx, |this, cx| this.open_folder(path.to_string().into(), cx)).ok();
+            }),
+        }
     }
 
     /// Details with the folders found on disk (install, or emulator + ROM)
     /// after "Playtime".
-    fn with_folder_rows(&self, mut vm: super::vm::FocusVm) -> super::vm::FocusVm {
+    pub(super) fn with_folder_rows(&self, mut vm: super::vm::FocusVm) -> super::vm::FocusVm {
         let rows = self.facts.folders.iter().enumerate().map(|(i, (kind, path))| super::vm::DetailRow {
             label: kind.label().into(),
             value: super::vm::DetailValue::Folder {
@@ -95,7 +105,7 @@ impl CollectionView {
     }
 
     /// Covers of the related games (the game's own is in the left column).
-    fn focus_covers(&mut self, vm: &super::vm::FocusVm, scale: f32) -> HashMap<SharedString, ImageSource> {
+    pub(super) fn focus_covers(&mut self, vm: &super::vm::FocusVm, scale: f32) -> HashMap<SharedString, ImageSource> {
         let mut covers: HashMap<SharedString, ImageSource> = HashMap::new();
         for g in &vm.related {
             for c in &g.games {
@@ -107,11 +117,10 @@ impl CollectionView {
         covers
     }
 
-    /// Images inside the overview HTML, by URL.
-    fn focus_html_images(&mut self, vm: &super::vm::FocusVm, vw: f32, list_w: f32, scale: f32) -> HashMap<String, ImageSource> {
+    /// Images inside the overview HTML, by URL, sized for a `column` wide text.
+    pub(super) fn focus_html_images(&mut self, vm: &super::vm::FocusVm, column: f32, scale: f32) -> HashMap<String, ImageSource> {
         let mut html_images: HashMap<String, ImageSource> = HashMap::new();
         let Some(blocks) = vm.overview_html.as_ref() else { return html_images };
-        let column = focus::main_column_width(vw - list_w);
         for b in blocks.iter() {
             if let html::Block::Image { url, width, height } = b {
                 let (w, h) = focus::html_image_size(*width, *height, column);
