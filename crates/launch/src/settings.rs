@@ -29,7 +29,6 @@ pub struct Wrapper {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Gamescope {
     pub enable_upscaling: bool,
-    pub enable_limiter: bool,
     pub enable_force_grab_cursor: bool,
     pub window_type: String,
     pub game_width: String,
@@ -37,8 +36,6 @@ pub struct Gamescope {
     pub upscale_width: String,
     pub upscale_height: String,
     pub upscale_method: String,
-    pub fps_limiter: String,
-    pub fps_limiter_no_focus: String,
     pub additional_options: String,
 }
 
@@ -62,8 +59,6 @@ pub struct GameSettings {
     pub use_game_mode: bool,
     pub show_fps: bool,
     pub show_mangohud: bool,
-    /// `heroniteMangohudFpsLimit`: MangoHud's `fps_limit`; empty = no limit.
-    pub mangohud_fps_limit: String,
     pub nvidia_prime: bool,
     pub enable_esync: bool,
     pub enable_fsync: bool,
@@ -72,8 +67,8 @@ pub struct GameSettings {
     pub enable_wow64: bool,
     pub enable_fsr: bool,
     pub max_sharpness: Option<i64>,
-    pub enable_dxvk_fps_limit: bool,
-    pub dxvk_fps_cap: String,
+    /// The FPS limit and its limiter (see [`crate::fps_limit`]).
+    pub fps_limit: crate::fps_limit::FpsLimit,
     /// `autoInstallDxvk`: copy DXVK into Wine prefixes before launching.
     pub auto_install_dxvk: bool,
     pub auto_install_dxvk_nvapi: bool,
@@ -169,7 +164,6 @@ impl GameSettings {
         let gs = match m.get("gamescope") {
             Some(Value::Object(g)) => Gamescope {
                 enable_upscaling: truthy(g.get("enableUpscaling")),
-                enable_limiter: truthy(g.get("enableLimiter")),
                 enable_force_grab_cursor: truthy(g.get("enableForceGrabCursor")),
                 window_type: text(g.get("windowType")),
                 game_width: text(g.get("gameWidth")),
@@ -177,8 +171,6 @@ impl GameSettings {
                 upscale_width: text(g.get("upscaleWidth")),
                 upscale_height: text(g.get("upscaleHeight")),
                 upscale_method: text(g.get("upscaleMethod")),
-                fps_limiter: text(g.get("fpsLimiter")),
-                fps_limiter_no_focus: text(g.get("fpsLimiterNoFocus")),
                 additional_options: text(g.get("additionalOptions")),
             },
             _ => Gamescope::default(),
@@ -207,7 +199,6 @@ impl GameSettings {
             use_game_mode: b("useGameMode"),
             show_fps: b("showFps"),
             show_mangohud: b("showMangohud"),
-            mangohud_fps_limit: text(m.get("heroniteMangohudFpsLimit")).trim().to_string(),
             nvidia_prime: b("nvidiaPrime"),
             enable_esync: b("enableEsync"),
             enable_fsync: b("enableFsync"),
@@ -216,8 +207,7 @@ impl GameSettings {
             enable_wow64: b("enableWoW64"),
             enable_fsr: b("enableFSR"),
             max_sharpness: m.get("maxSharpness").and_then(Value::as_i64),
-            enable_dxvk_fps_limit: b("enableDXVKFpsLimit"),
-            dxvk_fps_cap: text(m.get("DXVKFpsCap")),
+            fps_limit: crate::fps_limit::FpsLimit::from_map(m),
             auto_install_dxvk: b("autoInstallDxvk"),
             auto_install_dxvk_nvapi: b("autoInstallDxvkNvapi"),
             auto_install_vkd3d: b("autoInstallVkd3d"),

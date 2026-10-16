@@ -1,5 +1,5 @@
-//! "Other" tab: overlays, GameMode, frame generation, controllers and
-//! power, runtimes.
+//! "Other" tab: overlays, GameMode, FPS limit, frame generation,
+//! controllers and power, runtimes.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -28,13 +28,6 @@ impl SettingsPanel {
             false,
             cx,
         ));
-        if self.flag("showMangohud", false) {
-            overlays = overlays.field(self.text_row(
-                "mangohudFps",
-                Some(tr!("FPS limit")),
-                Some(tr!("MangoHud's frame rate cap. Works with Vulkan, OpenGL and DirectX games. Leave empty for no limit.")),
-            ));
-        }
         overlays = overlays.child(self.toggle_row(
             "gamemode",
             "useGameMode",
@@ -69,6 +62,7 @@ impl SettingsPanel {
             ));
         }
         col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
+        col = col.child(self.fps_section(false, cx));
         col = col.child(self.lsfg_section(false, cx));
         let mut system = rows().child(self.toggle_row(
             "keep-awake",

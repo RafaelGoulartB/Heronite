@@ -162,7 +162,7 @@ impl SettingsPanel {
         v
     }
 
-    pub(super) fn c_steam_other(&self, cx: &App) -> Vec<Item> {
+    pub(super) fn c_steam_other(&self) -> Vec<Item> {
         let mut v = self.c_steam_status();
         if !self.steam.as_ref().is_some_and(|s| s.editable) {
             return v;
@@ -175,9 +175,6 @@ impl SettingsPanel {
             "MangoHud",
             Some(tr!("FPS, temperatures and load overlay (needs MangoHud installed)")),
         ));
-        if self.flag("showMangohud", false) {
-            v.push(self.c_text("mangohudFps", tr!("MangoHud FPS limit"), cx));
-        }
         v.push(self.c_steam_toggle("useGameMode", false, "GameMode", Some(tr!("Feral GameMode system tweaks (needs GameMode installed)"))));
         if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
             v.push(self.c_steam_toggle(
@@ -187,6 +184,7 @@ impl SettingsPanel {
                 Some(tr!("NVIDIA Optimus / AMD switchable graphics; OpenGL and Vulkan games only")),
             ));
         }
+        v.extend(self.c_fps(true));
         v.extend(self.c_lsfg(true));
         v.extend(self.c_controls(true));
         v
@@ -211,11 +209,6 @@ impl SettingsPanel {
             v.extend(self.c_presets(true));
             v.extend(self.c_pairs(WRAPPERS));
             v.extend(self.c_pairs(ENV));
-            v.push(Self::c_header("DirectX"));
-            v.push(self.c_steam_toggle("enableDXVKFpsLimit", false, tr!("Limit DirectX games FPS"), None));
-            if self.flag("enableDXVKFpsLimit", false) {
-                v.push(self.c_text("dxvkFps", tr!("FPS limit"), cx));
-            }
         }
         v.push(Self::c_header("Steam"));
         v.push(self.c_text("steamLine", tr!("Steam launch options"), cx));

@@ -6,7 +6,8 @@ use serde_json::Value;
 
 use super::parts::{column, danger_text, heading, help, rows};
 use super::SettingsPanel;
-use crate::ui::controls::toggle_row;
+use crate::theme;
+use crate::ui::controls::{row, toggle_row};
 use crate::ui::fields::{field_label, input_box};
 use heronite_i18n::{n_, tr};
 
@@ -105,17 +106,11 @@ impl SettingsPanel {
                 ))
                 .field(self.gs_select("gs-window", "windowType", tr!("Window Type"), &WINDOW_TYPES, cx));
         }
-        up = up.child(self.gs_toggle("gs-limiter", "enableLimiter", tr!("Enable FPS Limiter"), None, cx));
-        if self.gs_flag("enableLimiter") {
-            up = up.field(pair(
-                self.gs_input("gs.fpsLimiter", tr!("FPS Limiter"), tr!("The frame rate limit gamescope should limit per second.")),
-                self.gs_input(
-                    "gs.fpsLimiterNoFocus",
-                    tr!("FPS Limiter (No Focus)"),
-                    tr!("The frame rate limit gamescope should limit per second if the game is not focused."),
-                ),
-            ));
-        }
+        up = up.child(row(
+            tr!("FPS limit"),
+            Some(tr!("Set in the Other tab, where one limiter is picked for the game.")),
+            div().text_size(px(13.)).text_color(theme::text_dim()).child(self.fps_summary()),
+        ));
         let other = up
             .child(self.gs_toggle(
                 "gs-grab",

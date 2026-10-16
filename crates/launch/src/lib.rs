@@ -14,6 +14,7 @@ pub mod dxvk;
 pub mod emulators;
 pub mod env;
 pub mod first_launch;
+pub mod fps_limit;
 pub mod gog;
 pub mod install_state;
 pub mod keep_awake;

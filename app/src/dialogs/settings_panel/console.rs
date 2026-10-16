@@ -26,6 +26,7 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use heronite_i18n::tr;
 
+mod fps;
 mod lsfg;
 mod steam;
 mod tweaks;
@@ -102,10 +103,10 @@ impl SettingsPanel {
         }
         let mut v = match self.section {
             Section::Proton => self.c_proton(),
-            Section::Other if self.is_steam() => self.c_steam_other(cx),
+            Section::Other if self.is_steam() => self.c_steam_other(),
             Section::Advanced if self.is_steam() => self.c_steam_advanced(cx),
             Section::Wine => self.c_wine(cx),
-            Section::Other => self.c_other(cx),
+            Section::Other => self.c_other(),
             Section::Advanced => self.c_advanced(cx),
             Section::Gamescope => self.c_gamescope(cx),
             Section::Saves => self.c_saves(cx),
@@ -256,7 +257,7 @@ impl SettingsPanel {
         v
     }
 
-    fn c_other(&self, cx: &App) -> Vec<Item> {
+    fn c_other(&self) -> Vec<Item> {
         let native = self.native();
         let wine = self.wine_version();
         let mut v = vec![Self::c_header(tr!("Overlays and performance"))];
@@ -270,9 +271,6 @@ impl SettingsPanel {
             Some(tr!("FPS, temperatures and load overlay (needs MangoHud installed)")),
             false,
         ));
-        if self.flag("showMangohud", false) {
-            v.push(self.c_text("mangohudFps", tr!("MangoHud FPS limit"), cx));
-        }
         v.push(self.c_toggle(
             "useGameMode",
             false,
@@ -298,6 +296,7 @@ impl SettingsPanel {
                 false,
             ));
         }
+        v.extend(self.c_fps(false));
         v.extend(self.c_lsfg(false));
         v.extend(self.c_controls(false));
         if native {
@@ -474,20 +473,9 @@ impl SettingsPanel {
         v.extend(self.c_presets(false));
         v.extend(self.c_pairs(WRAPPERS));
         v.extend(self.c_pairs(ENV));
-        let wine = self.wine_version();
-        let show_dxvk_fps = !self.native() && !wine.bin.contains("toolkit") && !wine.name.ends_with("-DXMT");
-        let show_umu = game && !self.native() && wine.kind == "proton";
-        if show_dxvk_fps || show_umu {
+        if game && !self.native() && self.wine_version().kind == "proton" {
             v.push(Self::c_header(tr!("Legacy (mostly deprecated)")));
-            if show_dxvk_fps {
-                v.push(self.c_toggle("enableDXVKFpsLimit", false, tr!("Limit DirectX games FPS"), None, false));
-                if self.flag("enableDXVKFpsLimit", false) {
-                    v.push(self.c_text("dxvkFps", tr!("FPS limit"), cx));
-                }
-            }
-            if show_umu {
-                v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
-            }
+            v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
         }
         v
     }
@@ -518,11 +506,7 @@ impl SettingsPanel {
             v.push(self.c_text("gs.upscaleHeight", tr!("Upscale height"), cx));
             v.push(gs_choice("c:gs-window", "windowType", tr!("Window type"), &WINDOW_TYPES));
         }
-        v.push(gs_toggle("enableLimiter", tr!("FPS limiter")));
-        if self.gs_flag("enableLimiter") {
-            v.push(self.c_text("gs.fpsLimiter", tr!("FPS limit"), cx));
-            v.push(self.c_text("gs.fpsLimiterNoFocus", tr!("FPS limit without focus"), cx));
-        }
+        v.push(item(Row::info("i:gs-fps", tr!("FPS limit"), self.fps_summary()).desc(tr!("Set in the Other tab")), Act::None));
         v.push(gs_toggle("enableForceGrabCursor", tr!("Force grab cursor")));
         v.push(self.c_text("gs.additionalOptions", tr!("Additional options"), cx));
         v

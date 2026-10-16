@@ -71,7 +71,10 @@ calls them from `cx.background_spawn` or worker threads.
   around a launch (cloud saves, runtimes); `first_launch` sets up a game the
   first time it runs in a Wine prefix. `lsfg` finds lsfg-vk (Lossless
   Scaling frame generation), the Lossless Scaling DLL and lsfg-vk's profiles,
-  and adds the frame generation variables to a launch. `umu_ids` picks the
+  and adds the frame generation variables to a launch. `fps_limit` holds a
+  game's one FPS limit and picks the one limiter that applies it (MangoHud,
+  DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
+  a fallback). `umu_ids` picks the
   `GAMEID` of a umu launch (protonfixes) from the user's id, the umu
   database (downloaded weekly), Heroic's cache, the metadata's Steam id or
   the title; `keep_awake` adds the logind lock the runtime holds while the

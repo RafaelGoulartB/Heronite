@@ -12,6 +12,7 @@ mod advanced;
 mod companions;
 mod console;
 mod fixes;
+mod fps_limit;
 mod gamescope;
 mod general;
 pub mod logic;
@@ -57,14 +58,14 @@ pub enum Target {
 enum Bind {
     /// A string setting.
     Str { key: &'static str, trim: bool },
-    /// A string setting holding a whole number (digits only).
-    Digits { key: &'static str },
     /// A field of the `gamescope` object; `digits`: numbers only.
     Gamescope { field: &'static str, digits: bool },
     /// Scratch input (a "new row" form), never saved by itself.
     Scratch,
     /// A Steam game's launch options as text (saved on Enter or blur).
     SteamLine,
+    /// A number of the FPS limit (`heronite_launch::fps_limit`), digits only.
+    Fps { key: &'static str },
 }
 
 const fn s(key: &'static str) -> Bind {
@@ -80,8 +81,8 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("beforeScript", s("beforeLaunchScriptPath"), n_!("Select script ...")),
     ("afterScript", s("afterLaunchScriptPath"), n_!("Select script ...")),
     ("language", Bind::Str { key: "language", trim: true }, n_!("2-char or 4-char code (i.e.: \"fr\" or \"pt-BR\")")),
-    ("dxvkFps", s("DXVKFpsCap"), n_!("Positive integer value (e.g. 30, 60, ...)")),
-    ("mangohudFps", Bind::Digits { key: "heroniteMangohudFpsLimit" }, n_!("No limit")),
+    ("fps.limit", Bind::Fps { key: heronite_launch::fps_limit::KEY_LIMIT }, n_!("No limit")),
+    ("fps.noFocus", Bind::Fps { key: heronite_launch::fps_limit::KEY_NO_FOCUS }, n_!("No limit")),
     ("savesPath", s("savesPath"), n_!("Select the exact save games folder")),
     ("umuId", s("heroniteUmuId"), n_!("Automatic")),
     ("preset.name", Bind::Scratch, n_!("Preset name")),
@@ -89,8 +90,6 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("gs.gameHeight", Bind::Gamescope { field: "gameHeight", digits: true }, ""),
     ("gs.upscaleWidth", Bind::Gamescope { field: "upscaleWidth", digits: true }, ""),
     ("gs.upscaleHeight", Bind::Gamescope { field: "upscaleHeight", digits: true }, ""),
-    ("gs.fpsLimiter", Bind::Gamescope { field: "fpsLimiter", digits: true }, ""),
-    ("gs.fpsLimiterNoFocus", Bind::Gamescope { field: "fpsLimiterNoFocus", digits: true }, ""),
     ("gs.additionalOptions", Bind::Gamescope { field: "additionalOptions", digits: false }, ""),
     ("defaultInstallPath", s("defaultInstallPath"), ""),
     ("defaultWinePrefixDir", s("defaultWinePrefixDir"), ""),
@@ -164,6 +163,7 @@ pub struct SettingsPanel {
     pub(super) tool_toggle: Option<&'static str>,
     pub(super) gpu_count: usize,
     pub(super) gamescope_installed: bool,
+    pub(super) mangohud_installed: bool,
     pub(super) runtimes: (bool, bool),
     /// Frame generation on this machine (`None` while looked for).
     pub(super) lsfg: Option<heronite_launch::lsfg::Install>,
@@ -209,7 +209,7 @@ impl SettingsPanel {
             let input = new_input(window, cx, &initial, tr(placeholder));
             if !matches!(bind, Bind::Scratch) {
                 let id: &'static str = id;
-                let digits = matches!(bind, Bind::Gamescope { digits: true, .. } | Bind::Digits { .. });
+                let digits = matches!(bind, Bind::Gamescope { digits: true, .. } | Bind::Fps { .. });
                 subs.push(cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, window, cx| match ev {
                     InputEvent::Change => {
                         if matches!(bind, Bind::SteamLine) {
@@ -253,10 +253,11 @@ impl SettingsPanel {
             settings,
             wine_list: None,
             prefix_list: None,
-            // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version`: that menu starts open.
+            // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version|fps-method`: that menu starts open.
             open_select: match crate::env::value("HERONITE_DEBUG_OPEN_SELECT").as_deref() {
                 Some("steam-tool") => Some("steam-tool"),
                 Some("wine-version") => Some("wine-version"),
+                Some("fps-method") => Some("fps-method"),
                 _ => None,
             },
             inputs,
@@ -268,6 +269,9 @@ impl SettingsPanel {
             gpu_count: logic::count_gpus(),
             gamescope_installed: crate::env::flag("HERONITE_DEBUG_GAMESCOPE")
                 || heronite_launch::Probe::which(&heronite_launch::SystemProbe, "gamescope").is_some(),
+            // `HERONITE_DEBUG_NO_MANGOHUD=1`: as if MangoHud were not installed.
+            mangohud_installed: !crate::env::flag("HERONITE_DEBUG_NO_MANGOHUD")
+                && heronite_launch::Probe::which(&heronite_launch::SystemProbe, "mangohud").is_some(),
             runtimes,
             lsfg: None,
             lsfg_ui: None,
@@ -444,6 +448,27 @@ impl SettingsPanel {
         cx.notify();
     }
 
+    /// [`set`](Self::set) for several keys, saved together (a Steam game's
+    /// launch options are rebuilt once).
+    pub(super) fn set_all(&mut self, values: Vec<(&str, Value)>, cx: &mut Context<Self>) {
+        let mut changed: Vec<(&str, Value)> = values.into_iter().filter(|(k, v)| self.settings.get(*k) != Some(v)).collect();
+        let Some((last_key, last)) = changed.pop() else { return };
+        if self.is_steam() {
+            if self.steam_fields_editable() {
+                for (k, v) in changed {
+                    self.settings.insert(k.to_string(), v);
+                }
+            }
+            return self.steam_set(last_key, last, cx);
+        }
+        for (k, v) in changed.into_iter().chain([(last_key, last)]) {
+            self.settings.insert(k.to_string(), v.clone());
+            self.queue.push((k.to_string(), v));
+        }
+        self.flush(cx);
+        cx.notify();
+    }
+
     pub(super) fn toggle(&mut self, key: &'static str, default: bool, cx: &mut Context<Self>) {
         let tool = wine::prefix_tool(key);
         if tool.is_some() && self.tool_toggle.is_some() {
@@ -517,18 +542,19 @@ impl SettingsPanel {
                     self.set(key, Value::String(v), cx);
                 }
             }
-            Bind::Digits { key } => {
-                let v = logic::digits_only(&raw);
-                if v != self.text(key) {
-                    self.set(key, Value::String(v), cx);
-                }
-            }
             Bind::Gamescope { field, digits } => {
                 let v = if digits { logic::digits_only(&raw) } else { raw };
                 let current = value_text(self.gamescope().get(field));
                 if v != current {
                     self.set_gamescope(field, Value::String(v), cx);
                 }
+            }
+            Bind::Fps { key } => {
+                let n: u32 = logic::digits_only(&raw).parse().unwrap_or(0);
+                self.update_fps(cx, |f| match key {
+                    heronite_launch::fps_limit::KEY_NO_FOCUS => f.no_focus = n,
+                    _ => f.limit = n,
+                });
             }
             Bind::SteamLine => self.steam_commit_line(raw, cx),
             Bind::Scratch => {}
@@ -570,8 +596,17 @@ impl SettingsPanel {
 /// What input `bind` shows for `settings`.
 fn bound_text(settings: &Settings, bind: &Bind) -> String {
     match bind {
-        Bind::Str { key, .. } | Bind::Digits { key } => value_text(settings.get(*key)),
+        Bind::Str { key, .. } => value_text(settings.get(*key)),
         Bind::Gamescope { field, .. } => value_text(settings.get("gamescope").and_then(|g| g.get(*field))),
+        Bind::Fps { key } => {
+            let f = heronite_launch::fps_limit::FpsLimit::from_map(settings);
+            let n = if *key == heronite_launch::fps_limit::KEY_NO_FOCUS { f.no_focus } else { f.limit };
+            if n == 0 {
+                String::new()
+            } else {
+                n.to_string()
+            }
+        }
         Bind::Scratch | Bind::SteamLine => String::new(),
     }
 }

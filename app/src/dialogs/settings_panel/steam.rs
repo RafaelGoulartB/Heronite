@@ -658,13 +658,6 @@ impl SettingsPanel {
                 off,
                 cx,
             ));
-        if self.flag("showMangohud", false) {
-            overlays = overlays.field(self.text_row(
-                "mangohudFps",
-                Some(tr!("FPS limit")),
-                Some(tr!("MangoHud's frame rate cap. Works with Vulkan, OpenGL and DirectX games. Leave empty for no limit.")),
-            ));
-        }
         overlays = overlays.child(self.toggle_row(
             "gamemode",
             "useGameMode",
@@ -688,6 +681,7 @@ impl SettingsPanel {
             ));
         }
         col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
+        col = col.child(self.fps_section(off, cx));
         col = col.child(self.lsfg_section(off, cx));
         // Steam keeps the computer awake itself while a game runs.
         let sdl = rows().child(self.sdl_row(off, cx));
@@ -745,19 +739,6 @@ impl SettingsPanel {
                 );
             col = col.child(heading(tr!("Launch"))).child(launch.card());
             col = col.child(self.presets_section(off, cx)).child(self.pair_table(WRAPPERS, cx)).child(self.pair_table(ENV, cx));
-            let mut dx = rows().child(self.toggle_row(
-                "dxvk-fps",
-                "enableDXVKFpsLimit",
-                false,
-                tr!("Limit DirectX Games FPS"),
-                Some(tr!("Sets a frame rate cap for DirectX Games (9-12)")),
-                off,
-                cx,
-            ));
-            if self.flag("enableDXVKFpsLimit", false) {
-                dx = dx.field(self.text_row("dxvkFps", None, None));
-            }
-            col = col.child(heading("DirectX")).child(dx.card());
         }
         let line = rows().field_help(
             self.text_row("steamLine", Some(tr!("Steam launch options")), None),

@@ -124,27 +124,8 @@ impl SettingsPanel {
 
         // Legacy options (a tab of its own in Heroic).
         let wine = self.wine_version();
-        let show_dxvk_fps = !self.native() && !wine.bin.contains("toolkit") && !wine.name.ends_with("-DXMT");
-        let show_umu = game && !self.native() && wine.kind == "proton";
-        if show_dxvk_fps || show_umu {
-            let mut legacy = rows();
-            if show_dxvk_fps {
-                legacy = legacy.child(self.toggle_row(
-                    "dxvk-fps",
-                    "enableDXVKFpsLimit",
-                    false,
-                    tr!("Limit DirectX Games FPS"),
-                    Some(tr!("Sets a frame rate cap for DirectX Games (9-12)")),
-                    false,
-                    cx,
-                ));
-                if self.flag("enableDXVKFpsLimit", false) {
-                    legacy = legacy.field(self.text_row("dxvkFps", None, None));
-                }
-            }
-            if show_umu {
-                legacy = legacy.child(self.toggle_row("disable-umu", "disableUMU", false, tr!("Disable umu"), None, false, cx));
-            }
+        if game && !self.native() && wine.kind == "proton" {
+            let legacy = rows().child(self.toggle_row("disable-umu", "disableUMU", false, tr!("Disable umu"), None, false, cx));
             col = col
                 .child(heading(tr!("Legacy")))
                 .child(help(tr!("Warning: The settings on this tab are mostly deprecated and might not work at all.")).px(px(6.)))
