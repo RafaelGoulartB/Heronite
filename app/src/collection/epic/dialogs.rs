@@ -183,6 +183,92 @@ impl CollectionView {
         self.open_dialog(view, cx);
     }
 
+    /// Points the install at the folder the game is in now (moved or renamed
+    /// by hand; nothing is moved). `missing`: Play found the folder gone, so
+    /// forgetting the install is offered too.
+    pub(super) fn epic_open_relocate(&mut self, key: &str, missing: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.epic_game(key) else { return };
+        if self.epic_busy_guard(cx, tr!("Changing the install location is not possible while a game is being installed.")) {
+            return;
+        }
+        let current = game.game.install.install_path.clone().unwrap_or_default();
+        let (title, message) = if missing {
+            (
+                tr!("Game folder not found"),
+                tr!(
+                    "{title} is no longer at {path}.\nIf you moved or renamed its folder, pick where it is now. If you deleted it, remove it from the installed games: it stays in your library, ready to install again.",
+                    title = game.title,
+                    path = current
+                ),
+            )
+        } else {
+            (
+                tr!("Change install location"),
+                tr!(
+                    "{title}\nPick the folder the game is in now. Nothing is moved: this is for a folder you moved or renamed yourself.",
+                    title = game.title
+                ),
+            )
+        };
+        let mut spec = Confirm::new("epic-relocate", title, message);
+        // Start from what still exists of the old path.
+        let start =
+            std::path::Path::new(&current).ancestors().find(|p| p.is_dir()).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+        spec.path = Some((tr!("Game folder").into(), start, tr!("Choose the game folder").into()));
+        spec.confirm = Some(tr!("Use this folder").into());
+        let (runner, app) = (game.runner.clone(), game.app_name.clone());
+        if missing {
+            let (runner, app) = (runner.clone(), app.clone());
+            spec.secondary = Some((
+                tr!("Remove from installed games").into(),
+                Rc::new(move |cx: &mut App| {
+                    let svc = crate::services::downloads(cx);
+                    svc.update(cx, |s, cx| s.forget_install(&runner, &app, cx));
+                }),
+            ));
+        }
+        let view = cx.new(|cx| {
+            EpicConfirmDialog::new(
+                spec,
+                move |choice, cx| {
+                    let svc = crate::services::downloads(cx);
+                    svc.update(cx, |s, cx| s.relocate(&runner, &app, &choice.path, cx));
+                },
+                window,
+                cx,
+            )
+        });
+        self.open_dialog(view, cx);
+    }
+
+    /// Takes a game whose folder is gone off the installed games.
+    pub(super) fn epic_open_forget(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.epic_game(key) else { return };
+        if self.epic_busy_guard(cx, tr!("Changing the installed games is not possible while a game is being installed.")) {
+            return;
+        }
+        let mut spec = Confirm::new(
+            "epic-forget",
+            tr!("Remove from installed games"),
+            tr!("{title}\nThe game leaves the installed games and stays in your library. No file is deleted.", title = game.title),
+        );
+        spec.confirm = Some(tr!("Remove").into());
+        spec.danger = true;
+        let (runner, app) = (game.runner.clone(), game.app_name.clone());
+        let view = cx.new(|cx| {
+            EpicConfirmDialog::new(
+                spec,
+                move |_, cx| {
+                    let svc = crate::services::downloads(cx);
+                    svc.update(cx, |s, cx| s.forget_install(&runner, &app, cx));
+                },
+                window,
+                cx,
+            )
+        });
+        self.open_dialog(view, cx);
+    }
+
     pub(super) fn epic_open_verify(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
         if self.epic_busy_guard(cx, tr!("Verifying a game is not possible while an Epic game is being installed.")) {

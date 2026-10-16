@@ -44,6 +44,12 @@ pub enum Request {
     EosInstall(String),
     /// Enable / disable the EOS Overlay for the game's prefix.
     EosToggle(String),
+    /// Point the install at the folder the game was moved to.
+    Relocate(String),
+    /// Take the game off the installed games, keeping its files.
+    Forget(String),
+    /// Play was pressed but the game's folder is gone.
+    FolderMissing(String),
 }
 
 /// The Epic items of a game's actions (context menu and palette).
@@ -59,6 +65,10 @@ pub(super) enum EpicAction {
     Eos,
     /// Cloud saves sync.
     Sync,
+    /// The folder was moved by hand: tell the store where it is.
+    Relocate,
+    /// The folder is gone: off the installed games.
+    Forget,
     Uninstall,
 }
 
@@ -210,6 +220,9 @@ impl CollectionView {
             Request::Verify(key) => self.epic_open_verify(&key, window, cx),
             Request::UpdatePrompt(key) => self.epic_open_update_prompt(&key, window, cx),
             Request::Modify(key) => self.epic_open_modify(&key, cx),
+            Request::Relocate(key) => self.epic_open_relocate(&key, false, window, cx),
+            Request::FolderMissing(key) => self.epic_open_relocate(&key, true, window, cx),
+            Request::Forget(key) => self.epic_open_forget(&key, window, cx),
             Request::EosInstall(app) => self.epic_open_eos_install(&app, window, cx),
             Request::EosToggle(key) => {
                 if let Some(game) = self.epic_game(&key) {
@@ -262,6 +275,8 @@ impl CollectionView {
             self.epic.pending = Some(Request::OpenDownloads);
         } else if !game.installed {
             self.epic.pending = Some(Request::Install { key: game.key.clone(), import: false });
+        } else if game.install_folder_missing() {
+            self.epic.pending = Some(Request::FolderMissing(game.key.clone()));
         } else if update {
             self.epic.pending = Some(Request::UpdatePrompt(game.key.clone()));
         } else {

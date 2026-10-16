@@ -70,11 +70,11 @@ fn refresh_blocking(paths: &DataPaths, store: Store) -> anyhow::Result<Local> {
     Ok(read_local(paths, store))
 }
 
-fn failed(err: anyhow::Error) -> OpResult {
+pub(super) fn failed(err: anyhow::Error) -> OpResult {
     OpResult { ok: false, aborted: false, message: format!("{err:#}") }
 }
 
-fn done(message: &str) -> OpResult {
+pub(super) fn done(message: &str) -> OpResult {
     OpResult { ok: true, aborted: false, message: message.to_string() }
 }
 

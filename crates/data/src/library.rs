@@ -228,6 +228,14 @@ impl CollectionGame {
         self.installed && !self.via_steam
     }
 
+    /// The store records the game's own install at a folder that is no
+    /// longer there (deleted, moved or renamed outside the app). One `stat`.
+    pub fn install_folder_missing(&self) -> bool {
+        matches!(self.runner.as_str(), "legendary" | "gog" | "nile")
+            && self.store_installed()
+            && self.game.install.install_path.as_deref().map(str::trim).is_some_and(|p| !p.is_empty() && !std::path::Path::new(p).exists())
+    }
+
     /// The Steam app id of the game's installed Steam copy, if any (a Steam
     /// entry, or the Steam twin of another entry).
     pub fn steam_installed_id(&self) -> Option<&str> {

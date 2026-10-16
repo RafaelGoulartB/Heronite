@@ -151,6 +151,28 @@ fn copy_file(from: &Path, to: &Path, cancel: &Cancel, progress: &mut dyn FnMut(u
     Ok(())
 }
 
+/// The game's folder was moved or renamed outside the app: checks that
+/// `folder` holds the game (its `fuel.json`) and points nile's record at it.
+/// Returns the new install path.
+pub fn relocate(paths: &DataPaths, app_name: &str, folder: &str) -> Result<String> {
+    if installed::get(paths, app_name).is_none() {
+        bail!(tr!("The game is not installed"));
+    }
+    let folder = folder.trim().trim_end_matches('/');
+    let dir = Path::new(folder);
+    if !dir.is_dir() {
+        bail!(tr!("The install folder {path} does not exist", path = folder));
+    }
+    if !dir.join("fuel.json").is_file() {
+        bail!(tr!("That folder does not look like this game's install (fuel.json is missing)"));
+    }
+    installed::set_path(paths, app_name, folder)?;
+    if let Err(err) = library::write_library(paths) {
+        log::warn!("rebuilding the Amazon library: {err:#}");
+    }
+    Ok(folder.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,5 +275,24 @@ mod tests {
         assert!(move_install(&env.paths, "nope", &base.to_string_lossy(), &Cancel::new(), &mut |_| {}).is_err());
         assert!(old.join("run.exe").exists());
         assert_eq!(installed::get(&env.paths, ID).unwrap().path, old.to_string_lossy());
+    }
+
+    #[test]
+    fn relocate_points_nile_at_a_folder_moved_by_hand() {
+        let env = Env::new();
+        let game = setup(&env);
+        let moved = env.root().join("disk2").join("Cool");
+        fs::create_dir_all(moved.parent().unwrap()).unwrap();
+        fs::rename(&game, &moved).unwrap();
+        // Not the game until its fuel.json is there.
+        assert!(relocate(&env.paths, ID, &moved.to_string_lossy()).is_err());
+        fs::write(moved.join("fuel.json"), "{}").unwrap();
+        assert!(relocate(&env.paths, "missing", &moved.to_string_lossy()).is_err());
+        assert!(relocate(&env.paths, ID, "/nonexistent-dir").is_err());
+        let now = relocate(&env.paths, ID, &format!("{}/", moved.display())).unwrap();
+        assert_eq!(now, moved.to_string_lossy());
+        let doc = json_store::read_value(&installed::file(&env.paths)).unwrap();
+        assert_eq!(doc[1]["path"], now.as_str());
+        assert_eq!(doc[1]["custom"], true, "other keys are kept");
     }
 }

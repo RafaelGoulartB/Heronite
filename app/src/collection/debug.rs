@@ -58,6 +58,10 @@ impl CollectionView {
             }
             "statuses" => self.open_manage_statuses(window, cx),
             "categories" => self.open_manage_categories(window, cx),
+            // What Play shows for a store game whose folder is gone.
+            w if w.starts_with("folder-missing:") => {
+                self.epic.pending = Some(super::epic::Request::FolderMissing(w["folder-missing:".len()..].to_string()));
+            }
             w if w == "onboarding" || w.starts_with("onboarding:") => {
                 let step = w.strip_prefix("onboarding:").and_then(crate::dialogs::onboarding::Step::parse);
                 self.open_onboarding_at(step, cx);

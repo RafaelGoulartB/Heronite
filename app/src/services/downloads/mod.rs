@@ -19,6 +19,7 @@ mod launch_setup;
 mod library_file;
 mod ops;
 mod queue;
+mod relocate;
 mod stores;
 mod types;
 mod updates;

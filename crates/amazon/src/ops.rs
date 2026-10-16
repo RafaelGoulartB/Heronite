@@ -20,7 +20,7 @@ use regex::Regex;
 use crate::cmd::{Cancel, Nile};
 use crate::{installed, library, updates};
 
-pub use crate::moves::move_install;
+pub use crate::moves::{move_install, relocate};
 
 /// Install and update jobs of the download queue.
 pub struct NileJob {
@@ -197,6 +197,18 @@ pub fn uninstall(paths: &DataPaths, nile: &Nile, app_name: &str) -> Result<()> {
         installed::remove(paths, app_name)?;
         remove_manifest(nile, app_name);
     }
+    if let Err(err) = library::write_library(paths) {
+        log::warn!("rebuilding the Amazon library: {err:#}");
+    }
+    updates::forget(paths, app_name);
+    Ok(())
+}
+
+/// Takes the game off the installed list (and drops nile's manifest of it)
+/// without touching any folder: for a folder deleted or moved by hand.
+pub fn forget(paths: &DataPaths, nile: &Nile, app_name: &str) -> Result<()> {
+    installed::remove(paths, app_name)?;
+    remove_manifest(nile, app_name);
     if let Err(err) = library::write_library(paths) {
         log::warn!("rebuilding the Amazon library: {err:#}");
     }

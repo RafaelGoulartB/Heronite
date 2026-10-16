@@ -39,12 +39,22 @@ impl CollectionView {
         if busy || queued {
             return rows;
         }
+        if game.install_folder_missing() {
+            rows.push(
+                Row::action("epic:relocate", tr!("Change install location\u{2026}"))
+                    .icon(Icon::FolderOpen)
+                    .desc(tr!("The game's folder is missing")),
+            );
+            rows.push(Row::action("epic:forget", tr!("Remove from installed games\u{2026}")).icon(Icon::DeleteOutline).danger());
+            return rows;
+        }
         if !flags.third_party {
             if update {
                 rows.push(Row::action("epic:update", tr!("Update")).icon(Icon::Update));
             }
             rows.push(Row::action("epic:verify", tr!("Verify and repair")).icon(Icon::Build));
             rows.push(Row::action("epic:move", tr!("Move install")).icon(Icon::Folder));
+            rows.push(Row::action("epic:relocate", tr!("Change install location\u{2026}")).icon(Icon::FolderOpen));
         }
         if flags.has_dlcs && !flags.third_party {
             rows.push(
@@ -76,6 +86,8 @@ impl CollectionView {
             "epic:modify" => Some(Request::Modify(k)),
             "epic:eos" => Some(Request::EosToggle(k)),
             "epic:uninstall" => Some(Request::Uninstall(k)),
+            "epic:relocate" => Some(Request::Relocate(k)),
+            "epic:forget" => Some(Request::Forget(k)),
             "epic:update" => {
                 self.epic_direct(key, cx);
                 None

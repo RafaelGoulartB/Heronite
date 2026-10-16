@@ -134,13 +134,16 @@ impl CollectionView {
             )
         });
         if game.installed {
-            v.push(item(
-                A::OpenFolder,
-                "folder",
-                tr!("Open install folder"),
-                Icon::FolderOpen,
-                "directory files browse pasta diretorio arquivos abrir",
-            ));
+            // A folder that is gone cannot be opened (the store actions offer to find it).
+            if !game.install_folder_missing() {
+                v.push(item(
+                    A::OpenFolder,
+                    "folder",
+                    tr!("Open install folder"),
+                    Icon::FolderOpen,
+                    "directory files browse pasta diretorio arquivos abrir",
+                ));
+            }
             v.push(item(
                 A::Settings,
                 "settings",
