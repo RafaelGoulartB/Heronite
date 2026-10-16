@@ -275,8 +275,8 @@ impl SettingsPanel {
                     .child(self.outline_button("tool-winecfg", &label("winecfg", "Winecfg"), idle, cx, |this, _, cx| {
                         this.run_tool("winecfg", WineTool::Winecfg, cx)
                     }))
-                    .child(self.outline_button("tool-winetricks", &label("winetricks", "Winetricks"), idle, cx, |this, _, cx| {
-                        this.run_tool("winetricks", WineTool::Winetricks, cx)
+                    .child(self.outline_button("tool-winetricks", &label("winetricks", "Winetricks"), idle, cx, |this, window, cx| {
+                        this.open_winetricks(window, cx)
                     }))
                     .child(self.outline_button("tool-runexe", &label("runexe", tr!("Run .exe in prefix")), idle, cx, |_, window, cx| {
                         choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {

@@ -148,9 +148,7 @@ impl SettingsPanel {
         }
         let can_run = self.tool_busy.is_none() && self.steam_tool_settings().is_some();
         v.push(Self::c_do("steam-winecfg", "Winecfg", Icon::Tune, can_run, |this, _, cx| this.run_tool("winecfg", WineTool::Winecfg, cx)));
-        v.push(Self::c_do("steam-winetricks", "Winetricks", Icon::Build, can_run, |this, _, cx| {
-            this.run_tool("winetricks", WineTool::Winetricks, cx)
-        }));
+        v.push(Self::c_do("steam-winetricks", "Winetricks", Icon::Build, can_run, |this, window, cx| this.open_winetricks(window, cx)));
         v.push(Self::c_do("steam-runexe", tr!("Run a program in the prefix\u{2026}"), Icon::PlayArrow, can_run, |this, window, cx| {
             this.console_pick_file(
                 tr!("Run a program in the prefix"),

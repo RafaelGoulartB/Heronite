@@ -625,8 +625,8 @@ impl SettingsPanel {
             .child(self.outline_button("steam-winecfg", &label("winecfg", "Winecfg"), can_run, cx, |this, _, cx| {
                 this.run_tool("winecfg", WineTool::Winecfg, cx)
             }))
-            .child(self.outline_button("steam-winetricks", &label("winetricks", "Winetricks"), can_run, cx, |this, _, cx| {
-                this.run_tool("winetricks", WineTool::Winetricks, cx)
+            .child(self.outline_button("steam-winetricks", &label("winetricks", "Winetricks"), can_run, cx, |this, window, cx| {
+                this.open_winetricks(window, cx)
             }))
             .child(self.outline_button("steam-runexe", &label("runexe", tr!("Run .exe in prefix")), can_run, cx, |_, window, cx| {
                 choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {

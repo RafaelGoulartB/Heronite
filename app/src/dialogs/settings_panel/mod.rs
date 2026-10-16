@@ -25,6 +25,7 @@ mod saves;
 mod shared_folders;
 mod steam;
 mod wine;
+mod winetricks;
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -103,6 +104,7 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("wrap.args", Bind::Scratch, n_!("Wrapper Arguments")),
     ("steamLine", Bind::SteamLine, n_!("Empty: Steam's defaults")),
     ("select.filter", Bind::Scratch, n_!("Search\u{2026}")),
+    ("wt.search", Bind::Scratch, n_!("Search components\u{2026}")),
 ];
 
 /// Outcome line shown under a tab (tool started, sync result, errors).
@@ -150,6 +152,8 @@ pub struct SettingsPanel {
     pub(super) notice: Option<Notice>,
     /// Name of the Wine tool running.
     pub(super) tool_busy: Option<&'static str>,
+    /// The Winetricks page, while open (it takes the tab's place).
+    winetricks: Option<winetricks::WinetricksPage>,
     /// Console mode: focused row, open keyboard / picker, rows focused.
     console_list: crate::console::list::ListNav,
     console_layer: crate::console::Layer,
@@ -224,7 +228,7 @@ impl SettingsPanel {
                     _ => {}
                 }));
             }
-            if *id == "select.filter" {
+            if *id == "select.filter" || *id == "wt.search" {
                 // The open menu narrows as the search changes.
                 subs.push(cx.subscribe_in(&input, window, |_, _, ev: &InputEvent, _, cx| {
                     if matches!(ev, InputEvent::Change) {
@@ -254,6 +258,7 @@ impl SettingsPanel {
             inputs,
             notice: None,
             tool_busy: None,
+            winetricks: None,
             tool_toggle: None,
             gpu_count: logic::count_gpus(),
             gamescope_installed: crate::env::flag("HERONITE_DEBUG_GAMESCOPE")
@@ -305,6 +310,10 @@ impl SettingsPanel {
         }
         this.maybe_detect_saves(window, cx);
         this.apply_debug_settings(cx);
+        // `HERONITE_DEBUG_WINETRICKS=1`: the Winetricks page starts open.
+        if crate::env::flag("HERONITE_DEBUG_WINETRICKS") && this.is_game() {
+            this.open_winetricks(window, cx);
+        }
         this
     }
 
@@ -569,6 +578,7 @@ impl Render for SettingsPanel {
             return self.render_console(window, cx);
         }
         let content = match self.section {
+            Section::Wine | Section::Proton if self.winetricks_open() => self.winetricks_tab(cx),
             Section::Proton => self.proton_tab(cx),
             Section::Other if self.is_steam() => self.steam_other_tab(cx),
             Section::Advanced if self.is_steam() => self.steam_advanced_tab(cx),

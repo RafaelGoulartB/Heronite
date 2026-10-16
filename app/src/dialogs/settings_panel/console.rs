@@ -29,6 +29,7 @@ use heronite_i18n::tr;
 mod lsfg;
 mod steam;
 mod tweaks;
+mod winetricks;
 
 type Pick = Rc<dyn Fn(&mut SettingsPanel, usize, &mut Context<SettingsPanel>)>;
 type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel>)>;
@@ -96,6 +97,9 @@ impl SettingsPanel {
     }
 
     fn console_items(&self, cx: &App) -> Vec<Item> {
+        if self.winetricks_open() {
+            return self.c_winetricks(cx);
+        }
         let mut v = match self.section {
             Section::Proton => self.c_proton(),
             Section::Other if self.is_steam() => self.c_steam_other(cx),
@@ -237,9 +241,7 @@ impl SettingsPanel {
             v.push(Self::c_header(tr!("Tools")));
             let idle = self.tool_busy.is_none();
             v.push(Self::c_do("winecfg", "Winecfg", Icon::Tune, idle, |this, _, cx| this.run_tool("winecfg", WineTool::Winecfg, cx)));
-            v.push(Self::c_do("winetricks", "Winetricks", Icon::Build, idle, |this, _, cx| {
-                this.run_tool("winetricks", WineTool::Winetricks, cx)
-            }));
+            v.push(Self::c_do("winetricks", "Winetricks", Icon::Build, idle, |this, window, cx| this.open_winetricks(window, cx)));
             v.push(Self::c_do("runexe", tr!("Run a program in the prefix\u{2026}"), Icon::PlayArrow, idle, |this, window, cx| {
                 this.console_pick_file(
                     tr!("Run a program in the prefix"),
@@ -818,6 +820,11 @@ impl PadTarget for SettingsPanel {
     fn on_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.console_layer.pad(pad, window, cx) {
             cx.notify();
+            return true;
+        }
+        // B leaves the Winetricks page (not while it installs).
+        if pad == Pad::B && self.winetricks_open() {
+            self.close_winetricks(cx);
             return true;
         }
         let items = self.console_items(cx);
