@@ -225,7 +225,12 @@ impl CollectionView {
         let mut options: Vec<SelectOption> = cards
             .iter()
             .enumerate()
-            .map(|(i, v)| SelectOption { label: v.name.clone().into(), selected: current == Some(i), ..Default::default() })
+            .map(|(i, v)| SelectOption {
+                label: v.name.clone().into(),
+                selected: current == Some(i),
+                dot: Some(v.color),
+                ..Default::default()
+            })
             .collect();
         let mut actions = Vec::new();
         if current.is_none() {
