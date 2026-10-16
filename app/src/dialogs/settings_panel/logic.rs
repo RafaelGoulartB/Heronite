@@ -22,6 +22,8 @@ pub enum Section {
     Compatibility,
     /// Overlays, the FPS limit, frame generation, gamescope.
     Performance,
+    /// The graphics card: which one, its driver's features, upscalers.
+    Gpu,
     /// The store's cloud saves.
     Saves,
 }
@@ -33,6 +35,7 @@ impl Section {
             Section::Launch => tr!("Launch"),
             Section::Compatibility => tr!("Compatibility"),
             Section::Performance => tr!("Performance"),
+            Section::Gpu => tr!("GPU"),
             Section::Saves => tr!("Cloud saves"),
         }
     }
@@ -63,6 +66,8 @@ pub struct GameFacts {
     pub steam_app_id: Option<String>,
     /// The Steam id ProtonDB knows the game by (its own or the metadata's).
     pub protondb_id: Option<String>,
+    /// The game itself, to show how it starts.
+    pub game: Option<Game>,
 }
 
 impl GameFacts {
@@ -116,6 +121,7 @@ impl GameFacts {
             cloud_saves,
             protondb_id,
             steam_app_id,
+            game: Some(game.clone()),
         }
     }
 
@@ -147,8 +153,8 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
     let mut out = vec![Section::Launch];
     match run_kind {
         RunKind::None => return Vec::new(),
-        RunKind::Steam | RunKind::Wine => out.extend([Section::Compatibility, Section::Performance]),
-        RunKind::Native => out.push(Section::Performance),
+        RunKind::Steam | RunKind::Wine => out.extend([Section::Compatibility, Section::Performance, Section::Gpu]),
+        RunKind::Native => out.extend([Section::Performance, Section::Gpu]),
     }
     if run_kind == RunKind::Wine && matches!(runner, "legendary" | "gog") && cloud_saves_tab {
         out.push(Section::Saves);
@@ -157,7 +163,7 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
 }
 
 /// Tabs of the global "Game defaults" editor.
-pub const DEFAULT_SECTIONS: [Section; 3] = [Section::Compatibility, Section::Performance, Section::Launch];
+pub const DEFAULT_SECTIONS: [Section; 4] = [Section::Compatibility, Section::Performance, Section::Gpu, Section::Launch];
 
 /// Wine name as Heroic lists it (`WineVersionListItem`).
 pub fn display_wine_name(name: &str) -> String {
@@ -363,20 +369,6 @@ pub fn offers_system_libs(w: &WineInstallation) -> bool {
     w.kind != "proton" && w.kind != "crossover" && !w.bin.starts_with("/usr")
 }
 
-/// Number of GPUs (`/sys/class/drm/card<N>`), for the NVIDIA PRIME option.
-pub fn count_gpus() -> usize {
-    std::fs::read_dir("/sys/class/drm")
-        .map(|d| {
-            d.flatten()
-                .filter(|e| {
-                    let n = e.file_name().to_string_lossy().into_owned();
-                    n.strip_prefix("card").is_some_and(|r| !r.is_empty() && r.chars().all(|c| c.is_ascii_digit()))
-                })
-                .count()
-        })
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -388,14 +380,14 @@ mod tests {
     #[test]
     fn sections_follow_gamessettings() {
         use Section::*;
-        assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Saves]);
-        assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance]);
-        assert_eq!(sections_for(RunKind::Native, "sideload", false), [Launch, Performance]);
+        assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Gpu, Saves]);
+        assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance, Gpu]);
+        assert_eq!(sections_for(RunKind::Native, "sideload", false), [Launch, Performance, Gpu]);
         assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
         assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));
         assert!(!sections_for(RunKind::Wine, "gog", false).contains(&Section::Saves));
-        assert_eq!(sections_for(RunKind::Steam, "sideload", true), [Launch, Compatibility, Performance]);
+        assert_eq!(sections_for(RunKind::Steam, "sideload", true), [Launch, Compatibility, Performance, Gpu]);
     }
 
     #[test]

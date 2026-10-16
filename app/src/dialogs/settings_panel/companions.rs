@@ -6,7 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_launch::companions::{parse, to_value, Companion, KEY};
 
-use super::parts::{column, heading, help, rows};
+use super::parts::{column, help, rows};
 use super::SettingsPanel;
 use crate::icons::Icon;
 use crate::theme;
@@ -141,7 +141,7 @@ impl SettingsPanel {
                 this.add_companion(path, cx)
             });
         })));
-        column().child(heading(tr!("Programs alongside the game"))).child(list.card()).child(
+        column().child(self.marked_heading(tr!("Programs alongside the game"), "companions", cx)).child(list.card()).child(
             help(tr!("Trainers and tools started with the game and closed with it. Windows programs run in the game's prefix.")).px(px(6.)),
         )
     }

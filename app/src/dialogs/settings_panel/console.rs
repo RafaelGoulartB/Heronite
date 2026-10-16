@@ -27,6 +27,7 @@ use crate::icons::Icon;
 use heronite_i18n::tr;
 
 mod fps;
+mod gpu;
 mod lsfg;
 mod steam;
 mod tweaks;
@@ -37,7 +38,7 @@ type Run = Rc<dyn Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel
 
 /// What a row does.
 #[derive(Clone)]
-enum Act {
+pub(super) enum Act {
     None,
     Toggle(&'static str, bool),
     GsToggle(&'static str),
@@ -49,13 +50,20 @@ enum Act {
     Do(Run),
 }
 
-struct Item {
+pub(super) struct Item {
     row: Row,
     act: Act,
 }
 
-fn item(row: Row, act: Act) -> Item {
+pub(super) fn item(row: Row, act: Act) -> Item {
     Item { row, act }
+}
+
+impl Item {
+    fn desc_item(mut self, d: &str) -> Self {
+        self.row = self.row.desc(d.to_string());
+        self
+    }
 }
 
 impl SettingsPanel {
@@ -85,15 +93,15 @@ impl SettingsPanel {
         )
     }
 
-    fn c_header(text: &str) -> Item {
+    pub(super) fn c_header(text: &str) -> Item {
         item(Row::header(text.to_string()), Act::None)
     }
 
-    fn c_info(id: &str, label: &str, value: impl Into<SharedString>) -> Item {
+    pub(super) fn c_info(id: &str, label: &str, value: impl Into<SharedString>) -> Item {
         item(Row::info(SharedString::from(format!("i:{id}")), label.to_string(), value), Act::None)
     }
 
-    fn c_do(id: &str, label: &str, ic: Icon, enabled: bool, run: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static) -> Item {
+    pub(super) fn c_do(id: &str, label: &str, ic: Icon, enabled: bool, run: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static) -> Item {
         item(Row::action(SharedString::from(format!("d:{id}")), label.to_string()).icon(ic).enabled(enabled), Act::Do(Rc::new(run)))
     }
 
@@ -105,8 +113,10 @@ impl SettingsPanel {
             Section::Compatibility if self.is_steam() => self.c_proton(),
             Section::Performance if self.is_steam() => self.c_steam_other(cx),
             Section::Launch if self.is_steam() => self.c_steam_advanced(cx),
+            Section::Gpu if self.is_steam() => self.c_steam_gpu(),
             Section::Compatibility => self.c_wine(cx),
             Section::Performance => self.c_other(cx),
+            Section::Gpu => self.c_gpu(false),
             Section::Launch => self.c_advanced(cx),
             Section::Saves => self.c_saves(cx),
             Section::General => match self.global_view {
@@ -123,6 +133,19 @@ impl SettingsPanel {
         };
         if let Some(n) = &self.notice {
             v.push(Self::c_info("notice", if n.error { tr!("Problem") } else { tr!("Done") }, n.text.clone()));
+        }
+        for i in &mut v {
+            i.row.changed = self.console_changed(&i.row.id).is_some();
+        }
+        if !self.console_tab_changes().is_empty() {
+            v.insert(
+                0,
+                Self::c_do("reset-tab", tr!("Reset this tab"), Icon::Replay, true, |this, _, cx| {
+                    let groups = this.console_tab_changes();
+                    this.reset(&groups, cx);
+                })
+                .desc_item(tr!("The marked settings go back to the game defaults")),
+            );
         }
         v
     }
@@ -476,6 +499,7 @@ impl SettingsPanel {
         v.extend(self.c_presets(false));
         v.extend(self.c_pairs(WRAPPERS));
         v.extend(self.c_pairs(ENV));
+        v.extend(self.c_preview());
         if game && !self.native() && self.wine_version().kind == "proton" {
             v.push(Self::c_header(tr!("Legacy (mostly deprecated)")));
             v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
@@ -864,6 +888,15 @@ impl PadTarget for SettingsPanel {
             }
             return false;
         }
+        if pad == Pad::Y {
+            // Resets the focused setting when it differs from the defaults.
+            let group = self.console_list.focused(&rows).and_then(|r| self.console_changed(&r.id));
+            if let Some(g) = group {
+                self.reset(&[g], cx);
+                return true;
+            }
+            return false;
+        }
         let outcome = self.console_list.on_pad(pad, &rows);
         match outcome {
             Outcome::Changed(id, value) => match (act(&id), value) {
@@ -899,6 +932,12 @@ impl PadTarget for SettingsPanel {
         if let Some(h) = self.console_layer.hints(cx) {
             return h;
         }
-        vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::X, tr!("Clear"))]
+        let mut v = vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change")), hint(Btn::X, tr!("Clear"))];
+        let items = self.console_items(cx);
+        let rows: Vec<Row> = items.into_iter().map(|i| i.row).collect();
+        if self.console_list.focused(&rows).is_some_and(|r| r.changed) {
+            v.push(hint(Btn::Y, tr!("Reset")));
+        }
+        v
     }
 }

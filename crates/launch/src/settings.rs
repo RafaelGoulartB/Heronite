@@ -59,7 +59,6 @@ pub struct GameSettings {
     pub use_game_mode: bool,
     pub show_fps: bool,
     pub show_mangohud: bool,
-    pub nvidia_prime: bool,
     pub enable_esync: bool,
     pub enable_fsync: bool,
     pub enable_wine_wayland: bool,
@@ -90,6 +89,8 @@ pub struct GameSettings {
     pub gamescope: Gamescope,
     /// `heroniteLsfg*`: Lossless Scaling frame generation.
     pub lsfg: crate::lsfg::Lsfg,
+    /// `heroniteGpu*` and `nvidiaPrime`: the graphics card settings.
+    pub gpu: crate::gpu::Gpu,
     /// `heronitePreferSdl`: Proton reads controllers through SDL.
     pub prefer_sdl: bool,
     /// `heroniteKeepAwake` (see [`crate::keep_awake`]).
@@ -199,7 +200,6 @@ impl GameSettings {
             use_game_mode: b("useGameMode"),
             show_fps: b("showFps"),
             show_mangohud: b("showMangohud"),
-            nvidia_prime: b("nvidiaPrime"),
             enable_esync: b("enableEsync"),
             enable_fsync: b("enableFsync"),
             enable_wine_wayland: b("enableWineWayland"),
@@ -226,6 +226,7 @@ impl GameSettings {
             },
             gamescope: gs,
             lsfg: crate::lsfg::Lsfg::from_map(m),
+            gpu: crate::gpu::Gpu::from_map(m),
             prefer_sdl: b(crate::env::KEY_PREFER_SDL),
             // On unless the game or the defaults turned it off.
             keep_awake: m.get(crate::keep_awake::KEY).map(|v| truthy(Some(v))).unwrap_or(true),

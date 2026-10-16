@@ -142,23 +142,10 @@ const MANIFESTS: [(&str, Layer); 3] = [
 ];
 
 /// The installed layer, from the implicit layer folders the Vulkan loader
-/// reads (`$XDG_CONFIG_HOME`, `/etc`, `$XDG_DATA_HOME`, `$XDG_DATA_DIRS`).
+/// reads.
 pub fn layer(probe: &dyn Probe) -> Option<Layer> {
-    let home = probe.home();
-    let var = |k: &str| probe.env_var(k).filter(|v| !v.is_empty());
-    let mut dirs: Vec<String> = vec![
-        var("XDG_CONFIG_HOME").unwrap_or_else(|| format!("{home}/.config")),
-        "/etc/xdg".into(),
-        "/etc".into(),
-        var("XDG_DATA_HOME").unwrap_or_else(|| format!("{home}/.local/share")),
-    ];
-    // An AppImage may replace XDG_DATA_DIRS: the system folders are always looked at.
-    let data_dirs = var("XDG_DATA_DIRS").unwrap_or_default();
-    dirs.extend(data_dirs.split(':').filter(|d| !d.is_empty()).map(str::to_string));
-    dirs.extend(["/usr/local/share".to_string(), "/usr/share".to_string()]);
-    MANIFESTS.iter().find_map(|(name, layer)| {
-        dirs.iter().any(|d| probe.exists(&format!("{}/vulkan/implicit_layer.d/{name}", d.trim_end_matches('/')))).then_some(*layer)
-    })
+    let dirs = crate::probe::implicit_layer_dirs(probe);
+    MANIFESTS.iter().find_map(|(name, layer)| dirs.iter().any(|d| probe.exists(&format!("{d}/{name}"))).then_some(*layer))
 }
 
 fn dll_name(layer: Layer) -> &'static str {

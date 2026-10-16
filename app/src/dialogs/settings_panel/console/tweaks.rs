@@ -14,24 +14,14 @@ use crate::console::sheet::{Sheet, SheetEvent};
 use crate::icons::Icon;
 
 impl SettingsPanel {
-    /// `steam`: only the SDL switch (Steam keeps the computer awake itself).
-    /// GameMode, the dedicated GPU, keeping the computer awake, controllers.
-    /// `steam`: a Steam game (Steam keeps the computer awake itself).
+    /// GameMode, keeping the computer awake, controllers. `steam`: a Steam
+    /// game (Steam keeps the computer awake itself).
     pub(super) fn c_system(&self, steam: bool) -> Vec<Item> {
         let disabled = steam && !self.steam_fields_editable();
         let mut v = vec![
             Self::c_header(tr!("System")),
             self.c_toggle("useGameMode", false, "GameMode", Some(tr!("System tweaks while the game runs (needs GameMode)")), disabled),
         ];
-        if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
-            v.push(self.c_toggle(
-                "nvidiaPrime",
-                false,
-                tr!("Use the dedicated GPU"),
-                Some(tr!("For computers with two GPUs, like gaming laptops. OpenGL and Vulkan games only")),
-                disabled,
-            ));
-        }
         if !steam {
             v.push(self.c_toggle(
                 heronite_launch::keep_awake::KEY,

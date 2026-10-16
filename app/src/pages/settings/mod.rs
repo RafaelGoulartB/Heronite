@@ -118,6 +118,7 @@ impl SettingsPage {
         let defaults_section = match parts.next() {
             Some("performance" | "other" | "gamescope") => HSection::Performance,
             Some("launch" | "advanced") => HSection::Launch,
+            Some("gpu") => HSection::Gpu,
             _ => DEFAULT_SECTIONS[0],
         };
         let (settings, chain) = match cx.has_global::<Offer>().then(|| cx.remove_global::<Offer>()) {

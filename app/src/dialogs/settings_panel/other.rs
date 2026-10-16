@@ -75,7 +75,7 @@ impl SettingsPanel {
         r
     }
 
-    /// GameMode, the dedicated GPU, keeping the computer awake, controllers.
+    /// GameMode, keeping the computer awake, controllers.
     pub(super) fn game_system_rows(&self, disabled: bool, cx: &mut Context<Self>) -> Rows {
         let mut r = rows().child(self.toggle_row(
             "gamemode",
@@ -86,17 +86,6 @@ impl SettingsPanel {
             disabled,
             cx,
         ));
-        if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
-            r = r.child(self.toggle_row(
-                "nvidia-prime",
-                "nvidiaPrime",
-                false,
-                tr!("Use the dedicated GPU"),
-                Some(tr!("For computers with two GPUs, like gaming laptops. OpenGL and Vulkan games only")),
-                disabled,
-                cx,
-            ));
-        }
         // Steam keeps the computer awake itself while a game runs.
         if !self.is_steam() {
             r = r.child(self.toggle_row(

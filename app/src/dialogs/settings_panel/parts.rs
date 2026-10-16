@@ -10,6 +10,10 @@ use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_
 
 /// Menus longer than this get a search box.
 const SEARCH_FROM: usize = 8;
+/// Top of the changed dot's 16 px target: by the label of a switch row
+/// (11 px padding), and by the label over a field.
+pub(super) const ROW_DOT: f32 = 12.;
+const FIELD_DOT: f32 = 0.;
 
 /// Info callout (`.defaults-hint`): a quiet glass box.
 pub fn hint(text: &str) -> Div {
@@ -102,17 +106,19 @@ impl SettingsPanel {
         } else {
             row = row.on_click(cx.listener(move |this, _, _, cx| this.toggle(key, default, cx)));
         }
-        row.into_any_element()
+        let group = if super::changes::group(id).is_some() { id } else { key };
+        self.marked(group, ROW_DOT, row, cx).into_any_element()
     }
 
     /// Labelled text input bound to input `id`.
-    pub(super) fn text_row(&self, id: &'static str, label: Option<&str>, help_text: Option<&str>) -> Div {
-        div()
+    pub(super) fn text_row(&self, id: &'static str, label: Option<&str>, help_text: Option<&str>, cx: &mut Context<Self>) -> Div {
+        let field = div()
             .flex()
             .flex_col()
             .children(label.map(|l| field_label(l.to_string())))
             .child(input_box(&self.input(id), false))
-            .children(help_text.map(|t| help(t).pt(px(5.))))
+            .children(help_text.map(|t| help(t).pt(px(5.))));
+        self.marked(id, FIELD_DOT, field, cx)
     }
 
     /// `PathSelectionBox`: input + folder/clear icon. `deletable`: the icon
@@ -128,7 +134,7 @@ impl SettingsPanel {
     ) -> Div {
         let input = self.input(id);
         let has = deletable && !input.read(cx).value().is_empty();
-        path_field(
+        let field = path_field(
             SharedString::from(format!("{id}-pick")),
             label,
             &input,
@@ -145,7 +151,8 @@ impl SettingsPanel {
                     });
                 }
             }),
-        )
+        );
+        self.marked(id, FIELD_DOT, field, cx)
     }
 
     /// `SelectField`; `options` are `(label, selected)`.
@@ -159,7 +166,7 @@ impl SettingsPanel {
         cx: &mut Context<Self>,
         on_pick: impl Fn(&mut Self, usize, &mut Window, &mut Context<Self>) + 'static,
     ) -> Div {
-        select_field(
+        let field = select_field(
             id,
             label,
             current,
@@ -176,7 +183,8 @@ impl SettingsPanel {
                 on_pick(this, i, window, cx);
                 cx.notify();
             },
-        )
+        );
+        self.marked(id, FIELD_DOT, field, cx)
     }
 
     /// [`select_row`](Self::select_row) with groups and notes; long lists
@@ -193,7 +201,7 @@ impl SettingsPanel {
     ) -> Div {
         let searchable = options.len() > SEARCH_FROM;
         let filter = searchable.then(|| self.input("select.filter"));
-        select_menu_field(
+        let field = select_menu_field(
             id,
             label,
             current,
@@ -216,7 +224,8 @@ impl SettingsPanel {
                 on_pick(this, i, window, cx);
                 cx.notify();
             },
-        )
+        );
+        self.marked(id, FIELD_DOT, field, cx)
     }
 
     pub(super) fn outline_button(

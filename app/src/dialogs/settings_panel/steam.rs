@@ -658,6 +658,15 @@ impl SettingsPanel {
         col.child(heading(tr!("System"))).child(self.game_system_rows(off, cx).card())
     }
 
+    pub(super) fn steam_gpu_tab(&mut self, cx: &mut Context<Self>) -> Div {
+        let col = column().child(self.steam_banner(cx));
+        if !self.steam.as_ref().is_some_and(|s| s.editable) {
+            return col;
+        }
+        let off = !self.steam_fields_editable();
+        col.child(self.gpu_tab(off, cx))
+    }
+
     pub(super) fn steam_launch_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let mut col = column().child(self.steam_banner(cx));
         if self.steam.as_ref().is_some_and(|s| s.editable) {
@@ -669,7 +678,7 @@ impl SettingsPanel {
                 notes.push(danger_text(err));
             }
             notes.push(help(tr!("Added after the game's command, like -nolauncher")));
-            let launch = rows().field_help(self.text_row("launcherArgs", Some(tr!("Game arguments")), None), notes);
+            let launch = rows().field_help(self.text_row("launcherArgs", Some(tr!("Game arguments")), None, cx), notes);
             col = col.child(heading(tr!("Starting"))).child(launch.card());
             col = col.child(self.scripts_section(true, cx));
             let logs = rows().child(self.toggle_row(
@@ -689,7 +698,7 @@ impl SettingsPanel {
                 .child(self.pair_table(ENV, cx));
         }
         let line = rows().field_help(
-            self.text_row("steamLine", Some(tr!("Steam launch options")), None),
+            self.text_row("steamLine", Some(tr!("Steam launch options")), None, cx),
             vec![help(tr!("What these tabs write in Steam (Properties → General). You can edit it here too."))],
         );
         col.child(heading("Steam")).child(line.card())

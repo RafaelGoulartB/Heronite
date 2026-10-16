@@ -33,7 +33,7 @@ impl SettingsPanel {
         let mut col = column();
         if wine.kind == "crossover" {
             let top =
-                rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some(tr!("CrossOver bottle")), None));
+                rows().field(self.wine_version_field(cx)).field(self.text_row("crossoverBottle", Some(tr!("CrossOver bottle")), None, cx));
             return col.child(top.card());
         }
         // The same sections as a Steam game's Proton tab: the build, then the prefix.

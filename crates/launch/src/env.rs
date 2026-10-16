@@ -26,12 +26,7 @@ pub const DXVK_FRAME_RATE: [&str; 2] = ["DXVK_FRAME_RATE", "VKD3D_FRAME_RATE"];
 pub const KEY_PREFER_SDL: &str = "heronitePreferSdl";
 
 pub fn setup_env_vars(s: &GameSettings, install_path: Option<&str>, probe: &dyn Probe) -> Env {
-    let mut ret = Env::new();
-    if s.nvidia_prime {
-        ret.insert("DRI_PRIME".into(), "1".into());
-        ret.insert("__NV_PRIME_RENDER_OFFLOAD".into(), "1".into());
-        ret.insert("__GLX_VENDOR_LIBRARY_NAME".into(), "nvidia".into());
-    }
+    let mut ret = crate::gpu::env(&crate::gpu::for_launch(&s.gpu, probe), probe);
     if let Some(p) = install_path.filter(|p| !p.is_empty()) {
         // Used by the Steam runtime to mount the game directory.
         ret.insert("STEAM_COMPAT_INSTALL_PATH".into(), p.into());
@@ -219,6 +214,8 @@ pub fn setup_wine_env_vars(s: &GameSettings, game_id: &str, runtime_dir: &str, p
         ret.insert("DXVK_ENABLE_NVAPI".into(), "1".into());
         ret.insert("DXVK_NVAPI_ALLOW_OTHER_DRIVERS".into(), "1".into());
     }
+    let user_dxvk_config = s.env_options.iter().rev().find(|(k, _)| k == crate::gpu::DXVK_CONFIG).map(|(_, v)| v.as_str());
+    ret.extend(crate::gpu::wine_env(&crate::gpu::for_launch(&s.gpu, probe), is_proton, user_dxvk_config));
     if s.eac_runtime {
         ret.insert("PROTON_EAC_RUNTIME".into(), join(runtime_dir, "eac_runtime"));
     }

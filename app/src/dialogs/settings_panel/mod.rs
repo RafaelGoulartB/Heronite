@@ -9,12 +9,15 @@
 //! tab.
 
 mod advanced;
+mod changes;
 mod companions;
 mod console;
 mod fixes;
 mod fps_limit;
 mod gamescope;
 mod general;
+mod launch_preview;
+mod gpu;
 pub mod logic;
 mod lsfg;
 mod other;
@@ -161,7 +164,10 @@ pub struct SettingsPanel {
     console_active: bool,
     /// Setting whose DXVK/VKD3D/NVAPI install or removal is running.
     pub(super) tool_toggle: Option<&'static str>,
-    pub(super) gpu_count: usize,
+    /// The graphics cards and driver layers (`None` while looked at).
+    pub(super) machine: Option<std::sync::Arc<heronite_launch::gpu::detect::Machine>>,
+    /// What the game's Proton offers the GPU tab: `(its bin, features)`.
+    pub(super) proton_features: Option<(String, heronite_launch::gpu::detect::ProtonFeatures)>,
     pub(super) gamescope_installed: bool,
     pub(super) mangohud_installed: bool,
     pub(super) runtimes: (bool, bool),
@@ -183,6 +189,11 @@ pub struct SettingsPanel {
     protondb: protondb::ProtonDb,
     /// Name of the Wine version new games get (marked in a game's menu).
     pub(super) global_wine: Option<String>,
+    /// What the game would have without its own values (`None` for the
+    /// defaults themselves): the base of the changed marks.
+    inherited: Option<Settings>,
+    /// "How the game starts" (Launch tab).
+    preview: launch_preview::PreviewState,
     debounce: HashMap<&'static str, Task<()>>,
     queue: Vec<(String, Value)>,
     writing: bool,
@@ -242,6 +253,11 @@ impl SettingsPanel {
             }
             inputs.insert(*id, input);
         }
+        let inherited = match &target {
+            _ if steam_app.is_some() => Some(heronite_steam::options::defaults()),
+            Target::Game(_) => Some(game_config::default_game_settings(&game_config::load_global(&paths, &home), false, &home)),
+            Target::Defaults => None,
+        };
         let tools = paths.tools_dir();
         let runtimes = (tools.join("runtimes/battleye_runtime").exists(), tools.join("runtimes/eac_runtime").exists());
         let mut this = Self {
@@ -253,11 +269,12 @@ impl SettingsPanel {
             settings,
             wine_list: None,
             prefix_list: None,
-            // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version|fps-method`: that menu starts open.
+            // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version|fps-method|gpu-device`: that menu starts open.
             open_select: match crate::env::value("HERONITE_DEBUG_OPEN_SELECT").as_deref() {
                 Some("steam-tool") => Some("steam-tool"),
                 Some("wine-version") => Some("wine-version"),
                 Some("fps-method") => Some("fps-method"),
+                Some("gpu-device") => Some("gpu-device"),
                 _ => None,
             },
             inputs,
@@ -266,7 +283,8 @@ impl SettingsPanel {
             winetricks: None,
             launch_options: Vec::new(),
             tool_toggle: None,
-            gpu_count: logic::count_gpus(),
+            machine: None,
+            proton_features: None,
             gamescope_installed: crate::env::flag("HERONITE_DEBUG_GAMESCOPE")
                 || heronite_launch::Probe::which(&heronite_launch::SystemProbe, "gamescope").is_some(),
             // `HERONITE_DEBUG_NO_MANGOHUD=1`: as if MangoHud were not installed.
@@ -283,6 +301,8 @@ impl SettingsPanel {
             steam: steam_app.map(steam::SteamState::new),
             protondb: protondb::ProtonDb::Off,
             global_wine: None,
+            inherited,
+            preview: Default::default(),
             debounce: HashMap::new(),
             queue: Vec::new(),
             writing: false,
@@ -299,6 +319,7 @@ impl SettingsPanel {
             this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
         this.load_lsfg(cx);
+        this.load_gpu(cx);
         this.load_presets(cx);
         if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
             this.load_umu(cx);
@@ -326,6 +347,10 @@ impl SettingsPanel {
         // `HERONITE_DEBUG_ENV_TEXT=1`: the variables start open as text.
         if crate::env::flag("HERONITE_DEBUG_ENV_TEXT") {
             this.open_env_text(window, cx);
+        }
+        // `HERONITE_DEBUG_PREVIEW=1`: "How the game starts" starts open.
+        if crate::env::flag("HERONITE_DEBUG_PREVIEW") && this.has_preview() {
+            this.open_preview(cx);
         }
         // `HERONITE_DEBUG_WINETRICKS=1`: the Winetricks page starts open.
         if crate::env::flag("HERONITE_DEBUG_WINETRICKS") && this.is_game() {
@@ -445,6 +470,10 @@ impl SettingsPanel {
         self.settings.insert(key.to_string(), value.clone());
         self.queue.push((key.to_string(), value));
         self.flush(cx);
+        if key == "wineVersion" {
+            self.load_proton_features(cx);
+        }
+        self.refresh_preview(cx);
         cx.notify();
     }
 
@@ -466,6 +495,7 @@ impl SettingsPanel {
             self.queue.push((k.to_string(), v));
         }
         self.flush(cx);
+        self.refresh_preview(cx);
         cx.notify();
     }
 
@@ -630,9 +660,11 @@ impl Render for SettingsPanel {
             Section::Compatibility if self.is_steam() => self.proton_tab(cx),
             Section::Performance if self.is_steam() => self.steam_perf_tab(cx),
             Section::Launch if self.is_steam() => self.steam_launch_tab(cx),
+            Section::Gpu if self.is_steam() => self.steam_gpu_tab(cx),
             Section::General => self.general_tab(window, cx),
             Section::Compatibility => self.compat_tab(window, cx),
             Section::Performance => self.perf_tab(cx),
+            Section::Gpu => self.gpu_tab(false, cx),
             Section::Launch => self.launch_opts_tab(window, cx),
             Section::Saves => self.saves_tab(window, cx),
         };

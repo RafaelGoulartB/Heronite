@@ -74,7 +74,11 @@ calls them from `cx.background_spawn` or worker threads.
   and adds the frame generation variables to a launch. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
-  a fallback). `actions` turns a game's own actions (`heronite_data::game_actions`,
+  a fallback). `gpu` holds a game's graphics card settings (the card that draws it,
+  NVIDIA Smooth Motion and Reflex, the DLSS / FSR 4 / XeSS upgrades of GE-Proton and
+  Proton-CachyOS, Mesa's Anti-Lag and glthread, vsync and what DXVK tells DirectX games)
+  as variables, and `gpu::detect` finds the cards (sysfs, `vulkaninfo`, `pci.ids`) and the
+  driver layers they need. `actions` turns a game's own actions (`heronite_data::game_actions`,
   `local_library/actions.json`) into something to open, spawn or launch as
   the game's session. `umu_ids` picks the
   `GAMEID` of a umu launch (protonfixes) from the user's id, the umu

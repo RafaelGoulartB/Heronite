@@ -38,6 +38,7 @@ const GROUPS: [(&str, &[CSec]); 4] = [
         &[
             CSec::Defaults(HSection::Compatibility),
             CSec::Defaults(HSection::Performance),
+            CSec::Defaults(HSection::Gpu),
             CSec::Defaults(HSection::Launch),
             CSec::Panel(Section::Downloads),
             CSec::Rows(Section::Library),

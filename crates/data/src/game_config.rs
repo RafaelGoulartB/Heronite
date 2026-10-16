@@ -179,10 +179,11 @@ const INHERITED_KEYS: [&str; 24] = [
 const INHERITED_KEYS_2: [&str; 5] = ["useGameMode", "battlEyeRuntime", "eacRuntime", "beforeLaunchScriptPath", "afterLaunchScriptPath"];
 // `heroniteSharedFolders` ("Folders visible to Proton"),
 // `heroniteMangohudFpsLimit`, `heroniteFpsLimit*` (the FPS limit),
-// `heroniteLsfg*` (frame generation), `heronitePreferSdl` and
+// `heroniteLsfg*` (frame generation), `heroniteGpu*` (the graphics card
+// settings, `heronite_launch::gpu`), `heronitePreferSdl` and
 // `heroniteKeepAwake` are Heronite's. A game's `heroniteUmuId` is its own and
 // never inherited.
-const INHERITED_KEYS_3: [&str; 17] = [
+const INHERITED_KEYS_3: [&str; 32] = [
     "gamescope",
     "verboseLogs",
     "advertiseAvxForRosetta",
@@ -200,6 +201,21 @@ const INHERITED_KEYS_3: [&str; 17] = [
     "heroniteLsfgProfile",
     "heronitePreferSdl",
     "heroniteKeepAwake",
+    "heroniteGpuDevice",
+    "heroniteGpuSmoothMotion",
+    "heroniteGpuReflex",
+    "heroniteGpuShaderCache",
+    "heroniteGpuDlssUpgrade",
+    "heroniteGpuDlssPreset",
+    "heroniteGpuDlssIndicator",
+    "heroniteGpuFsr4Upgrade",
+    "heroniteGpuFsr4Indicator",
+    "heroniteGpuXessUpgrade",
+    "heroniteGpuAntiLag",
+    "heroniteGpuGlthread",
+    "heroniteGpuVsync",
+    "heroniteGpuVendor",
+    "heroniteGpuVram",
 ];
 
 /// The defaults of `GameConfigV0.getSettings()` before the game's own section

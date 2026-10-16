@@ -121,7 +121,7 @@ impl SettingsPanel {
                 crate::ui::open_external(umu_ids::WEBSITE)
             }));
         let card = rows().field_help(
-            self.text_row("umuId", Some(tr!("umu ID")), None),
+            self.text_row("umuId", Some(tr!("umu ID")), None, cx),
             vec![
                 help(&self.umu_status()),
                 help(tr!("GE-Proton and other builds with protonfixes apply per-game fixes picked by this ID. Found by itself; set it only if it is missing or wrong.")),

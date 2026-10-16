@@ -19,10 +19,12 @@
 //! [`KEY_WINED3D`], the frame generation keys of [`lsfg`] (written as
 //! lsfg-vk 2's variables) and the FPS limit of [`fps_limit`] (written as the
 //! variables or gamescope options of its limiter; the line only says which
-//! limiter, so it reads back as that one, never as "automatic").
+//! limiter, so it reads back as that one, never as "automatic"), and the
+//! graphics card settings of [`gpu`] (their variables).
 
 use heronite_launch::env::{gamescope_args, DXVK_FRAME_RATE};
 use heronite_launch::fps_limit::{self, FpsLimit, Method, Tools};
+use heronite_launch::gpu;
 use heronite_launch::lsfg::{self, Layer};
 use heronite_launch::settings::GameSettings;
 use serde_json::{json, Map, Value};
@@ -52,7 +54,7 @@ const SWITCHES: [(&str, &str); 7] = [
 /// Switches that are on unless `VAR=1`.
 const INVERTED: [(&str, &str); 2] = [("enableEsync", "PROTON_NO_ESYNC"), ("enableFsync", "PROTON_NO_FSYNC")];
 /// What "use the dedicated GPU" sets (`setupEnvVars` with `nvidiaPrime`).
-const PRIME: [(&str, &str); 3] = [("DRI_PRIME", "1"), ("__NV_PRIME_RENDER_OFFLOAD", "1"), ("__GLX_VENDOR_LIBRARY_NAME", "nvidia")];
+const PRIME: [(&str, &str); 3] = gpu::PRIME;
 const DXVK_HUD: &str = "DXVK_HUD";
 const MANGOHUD_CONFIG: &str = "MANGOHUD_CONFIG";
 const KNOWN_WRAPPERS: [&str; 4] = [WRAP_NAME, "gamescope", "mangohud", "gamemoderun"];
@@ -92,6 +94,7 @@ pub fn defaults() -> Settings {
     for key in [lsfg::KEY_PROFILE, lsfg::KEY_DLL] {
         s.insert(key.into(), Value::String(String::new()));
     }
+    gpu::launch_options_defaults(&mut s);
     s
 }
 
@@ -204,6 +207,7 @@ fn read_wrappers(tokens: &[String], s: &mut Settings) -> Option<bool> {
 /// Sorts the leading variables into switches and plain variables.
 fn read_env(mut env: Vec<(String, String)>, gamescope_on: bool, s: &mut Settings) {
     read_lsfg(&mut env, s);
+    gpu::read_launch_options(&mut env, s);
     let has = |k: &str, v: &str| env.iter().any(|(key, value)| key == k && value == v);
     let prime = PRIME.iter().all(|(k, v)| has(k, v));
     let mangohud_on = s.get("showMangohud") == Some(&Value::Bool(true));
@@ -411,6 +415,11 @@ fn steam_tools(g: &GameSettings) -> Tools {
 /// The line for `settings`; `wrap` is the path of [`crate::wrap`]'s script.
 /// Empty when everything is at Steam's defaults.
 pub fn build(settings: &Settings, wrap: &str) -> String {
+    build_with(settings, wrap, &heronite_launch::SystemProbe)
+}
+
+/// [`build`] on `probe`'s machine (the picked graphics card is read from it).
+pub fn build_with(settings: &Settings, wrap: &str, probe: &dyn heronite_launch::Probe) -> String {
     let g = GameSettings::from_map(settings, "");
     let flag = |key: &str| settings.get(key) == Some(&Value::Bool(true));
     let limit = g.fps_limit.applied(&steam_tools(&g));
@@ -435,10 +444,10 @@ pub fn build(settings: &Settings, wrap: &str) -> String {
             set(var, &a.limit.to_string());
         }
     }
-    if g.nvidia_prime {
-        for (k, v) in PRIME {
-            set(k, v);
-        }
+    let user_dxvk_config = g.env_options.iter().rev().find(|(k, _)| k == gpu::DXVK_CONFIG).map(|(_, v)| v.as_str());
+    let gpu_vars = gpu::launch_options_vars(&g.gpu, probe, user_dxvk_config);
+    for (k, v) in &gpu_vars {
+        set(k, v);
     }
     let user_mangohud_config = g.env_options.iter().any(|(k, _)| k == MANGOHUD_CONFIG);
     let mangohud_limit = limit_by(Method::MangoHud);
@@ -455,6 +464,10 @@ pub fn build(settings: &Settings, wrap: &str) -> String {
         }
     }
     for (k, v) in &g.env_options {
+        // Merged into the graphics card's own.
+        if k == gpu::DXVK_CONFIG && gpu_vars.iter().any(|(var, _)| var == gpu::DXVK_CONFIG) {
+            continue;
+        }
         set(k, v);
     }
     let mut words: Vec<String> = Vec::new();
@@ -577,6 +590,23 @@ mod tests {
         assert!(p.editable);
         assert_eq!(p.settings, defaults());
         assert_eq!(build(&defaults(), WRAP), "");
+    }
+
+    #[test]
+    fn graphics_card_settings_read_back() {
+        let line = "NVPRESENT_ENABLE_SMOOTH_MOTION=1 PROTON_DLSS_UPGRADE=1 \
+             DXVK_CONFIG='dxgi.customVendorId=10de;d3d11.maxFeatureLevel=11_0' %command%";
+        let p = parse(line);
+        assert_eq!(p.settings[gpu::KEY_SMOOTH_MOTION], true);
+        assert_eq!(p.settings[gpu::KEY_DLSS_UPGRADE], true);
+        assert_eq!(p.settings[gpu::KEY_VENDOR], "nvidia");
+        assert_eq!(env(&p), [("DXVK_CONFIG".to_string(), "d3d11.maxFeatureLevel=11_0".to_string())]);
+        // Rebuilt by name; the user's DXVK options join ours in one variable.
+        // A machine without cards: every option applies.
+        assert_eq!(
+            build_with(&p.settings, WRAP, &heronite_launch::probe::FakeProbe::new("/h")),
+            "DXVK_CONFIG='dxgi.customVendorId=10de;d3d11.maxFeatureLevel=11_0' NVPRESENT_ENABLE_SMOOTH_MOTION=1 PROTON_DLSS_UPGRADE=1 %command%"
+        );
     }
 
     #[test]

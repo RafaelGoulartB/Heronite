@@ -70,7 +70,7 @@ impl SettingsPanel {
                 notes.push(danger_text(err));
             }
             notes.push(help(tr!("Added after the game's command, like -nolauncher")));
-            start = start.field_help(self.text_row("launcherArgs", Some(tr!("Game arguments")), None), notes);
+            start = start.field_help(self.text_row("launcherArgs", Some(tr!("Game arguments")), None, cx), notes);
         }
         if game && legendary {
             start = start.child(self.toggle_row(
@@ -96,7 +96,7 @@ impl SettingsPanel {
         }
         if !sideload {
             start = start.field_help(
-                self.text_row("language", Some(tr!("Game language")), None),
+                self.text_row("language", Some(tr!("Game language")), None, cx),
                 vec![help(tr!("A code like en or pt-BR; empty: the app's language. Not every game reads it."))],
             );
         }
@@ -141,6 +141,7 @@ impl SettingsPanel {
             .child(self.presets_section(false, cx))
             .child(self.pair_table(WRAPPERS, cx))
             .child(self.pair_table(ENV, cx))
+            .when(self.has_preview(), |c| c.child(self.preview_section(cx)))
     }
 
     /// The user's scripts before the game starts and after it exits.
@@ -213,7 +214,7 @@ impl SettingsPanel {
                 cx.listener(move |this, _, window, cx| this.pair_add(t, window, cx)),
             ));
         card_rows = card_rows.child(add);
-        let mut title_row = div().flex().items_end().justify_between().child(heading(tr(t.title).trim_end_matches(':')));
+        let mut title_row = div().flex().items_end().justify_between().child(self.marked_heading(tr(t.title).trim_end_matches(':'), t.setting, cx));
         if t.env {
             title_row = title_row.child(
                 action_button(
@@ -295,7 +296,7 @@ impl SettingsPanel {
                     }),
                 )),
         );
-        let mut col = column().child(heading(tr(ENV.title))).child(rows().child(box_).card());
+        let mut col = column().child(self.marked_heading(tr(ENV.title), ENV.setting, cx)).child(rows().child(box_).card());
         if !self.env_error.is_empty() {
             col = col.child(danger_text(&self.env_error).px(px(6.)));
         }

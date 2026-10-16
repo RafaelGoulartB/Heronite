@@ -17,7 +17,7 @@ use crate::icons::Icon;
 
 impl SettingsPanel {
     /// Where the settings go, or why they cannot change, plus "read again".
-    fn c_steam_status(&self) -> Vec<Item> {
+    pub(super) fn c_steam_status(&self) -> Vec<Item> {
         let (text, error) = self.steam_status();
         let mut v = vec![Self::c_info("steam-status", if error { tr!("Problem") } else { "Steam" }, text)];
         if !self.steam.as_ref().is_some_and(|s| s.editable) {

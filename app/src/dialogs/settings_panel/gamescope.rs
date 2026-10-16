@@ -31,15 +31,20 @@ impl SettingsPanel {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let on = self.gs_flag(field);
-        let row = toggle_row(id, label.to_string(), help_text, on);
+        let mut row = toggle_row(id, label.to_string(), help_text, on);
         if disabled {
-            return row.opacity(0.4).cursor_not_allowed().into_any_element();
+            row = row.opacity(0.4).cursor_not_allowed();
+        } else {
+            row = row.on_click(cx.listener(move |this, _, _, cx| {
+                let now = this.gs_flag(field);
+                this.set_gamescope(field, Value::Bool(!now), cx)
+            }));
         }
-        row.on_click(cx.listener(move |this, _, _, cx| {
-            let now = this.gs_flag(field);
-            this.set_gamescope(field, Value::Bool(!now), cx)
-        }))
-        .into_any_element()
+        // The first switch stands for all of gamescope's settings.
+        if id == "gs-upscaling" {
+            return self.marked("gamescope", super::parts::ROW_DOT, row, cx).into_any_element();
+        }
+        row.into_any_element()
     }
 
     fn gs_input(&self, id: &'static str, label: &str, help_text: &str) -> Div {

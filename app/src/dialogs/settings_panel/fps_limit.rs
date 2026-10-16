@@ -9,7 +9,7 @@ use heronite_i18n::tr;
 use heronite_launch::fps_limit::{self, FpsLimit, Method, Tools};
 use serde_json::{json, Value};
 
-use super::parts::{heading, help, rows};
+use super::parts::{help, rows};
 use super::SettingsPanel;
 use crate::theme;
 use crate::ui::controls::{row, tabs};
@@ -134,7 +134,7 @@ impl SettingsPanel {
                 _ => {}
             }
         }
-        div().flex().flex_col().gap(px(6.)).child(heading(tr!("FPS limit"))).child(card.card())
+        div().flex().flex_col().gap(px(6.)).child(self.marked_heading(tr!("FPS limit"), "fps", cx)).child(card.card())
     }
 
     fn fps_method_select(&self, f: &FpsLimit, effective: Option<Method>, disabled: bool, cx: &mut Context<Self>) -> Div {

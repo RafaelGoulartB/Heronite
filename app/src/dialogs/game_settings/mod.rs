@@ -42,6 +42,7 @@ pub enum Tab {
     Launch,
     Compatibility,
     Performance,
+    Gpu,
     /// The Ludusavi backups.
     Saves,
     /// The store's cloud saves.
@@ -55,6 +56,7 @@ impl Tab {
             Tab::Launch => Some(Section::Launch),
             Tab::Compatibility => Some(Section::Compatibility),
             Tab::Performance => Some(Section::Performance),
+            Tab::Gpu => Some(Section::Gpu),
             Tab::CloudSaves => Some(Section::Saves),
             _ => None,
         }
@@ -65,6 +67,7 @@ impl Tab {
             Section::Launch => Tab::Launch,
             Section::Compatibility => Tab::Compatibility,
             Section::Performance => Tab::Performance,
+            Section::Gpu => Tab::Gpu,
             Section::Saves => Tab::CloudSaves,
             Section::General => Tab::Game,
         }
@@ -77,6 +80,7 @@ impl Tab {
             Tab::Launch => tr!("Launch"),
             Tab::Compatibility => tr!("Compatibility"),
             Tab::Performance => tr!("Performance"),
+            Tab::Gpu => tr!("GPU"),
             Tab::Saves => tr!("Saves"),
             Tab::CloudSaves => tr!("Cloud saves"),
         }
@@ -201,7 +205,7 @@ impl GameSettingsDialog {
     fn tab_list(&self) -> Vec<Tab> {
         let has = |s: Section| self.panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s));
         let mut t = vec![Tab::Game, Tab::Actions];
-        t.extend([Tab::Launch, Tab::Compatibility, Tab::Performance].into_iter().filter(|t| t.section().is_some_and(has)));
+        t.extend([Tab::Launch, Tab::Compatibility, Tab::Performance, Tab::Gpu].into_iter().filter(|t| t.section().is_some_and(has)));
         if self.backups.is_some() {
             t.push(Tab::Saves);
         }
@@ -334,6 +338,17 @@ impl Render for GameSettingsDialog {
                 if self.busy == Some(Busy::Details) { tr!("Saving…") } else { tr!("Save") },
                 self.busy.is_none() && dirty,
                 cx.listener(|this, _, _, cx| this.save_details(cx)),
+            ));
+        }
+        // The panel's tab: its changed settings back to the game defaults.
+        let changed_panel = self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.tab.section().is_some() && p.read(cx).tab_changed());
+        if let Some(panel) = changed_panel {
+            right = right.child(action_button(
+                "gs-reset-tab",
+                ButtonKind::Ghost,
+                tr!("Reset this tab"),
+                true,
+                cx.listener(move |_, _, _, cx| panel.update(cx, |p, cx| p.reset_tab(cx))),
             ));
         }
         right = right.child(
