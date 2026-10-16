@@ -9,13 +9,16 @@ use serde_json::Value;
 pub struct SysSettings {
     /// Closing the window keeps the app in the tray.
     pub exit_to_tray: bool,
-    /// Start without a window (needs the tray).
+    /// Start without a window when started with the session (`--autostart`,
+    /// needs the tray).
     pub start_in_tray: bool,
     pub no_tray_icon: bool,
     /// Close the window when a game starts (needs the tray).
     pub minimize_on_launch: bool,
     pub dark_tray_icon: bool,
     pub hide_window_on_protocol_launch: bool,
+    /// Keep an XDG autostart entry (see `system::autostart`).
+    pub start_with_system: bool,
     /// Entries of the tray's recent games (Heroic: `maxRecentGames || 5`).
     pub max_recent: usize,
 }
@@ -31,6 +34,7 @@ impl SysSettings {
             minimize_on_launch: flag("minimizeOnLaunch"),
             dark_tray_icon: flag("darkTrayIcon"),
             hide_window_on_protocol_launch: flag("hideWindowOnProtocolLaunch"),
+            start_with_system: flag("startWithSystem"),
             max_recent,
         }
     }

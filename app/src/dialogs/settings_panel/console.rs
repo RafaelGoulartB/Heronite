@@ -668,7 +668,7 @@ impl SettingsPanel {
 
     fn c_general(&self, cx: &App) -> Vec<Item> {
         let no_tray = self.flag("noTrayIcon", false);
-        let exit_to_tray = self.flag("exitToTray", false);
+        let with_system = self.flag("startWithSystem", false);
         let app_paths = heronite_data::AppPaths::for_data(&self.paths);
         let (choices, names, selected) = super::general::language_options(&app_paths);
         let mut v = vec![
@@ -685,14 +685,17 @@ impl SettingsPanel {
             self.c_path("defaultInstallPath", tr!("Default install folder"), true, cx),
             self.c_path("defaultWinePrefixDir", tr!("Folder for new Wine prefixes"), true, cx),
             self.c_path("defaultSteamPath", tr!("Steam folder"), true, cx),
-            Self::c_header(tr!("Launching")),
-            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
-            Self::c_header(tr!("System")),
-            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon (needs restart)"), None, false),
+            Self::c_header(tr!("Startup")),
+            self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false),
+            self.c_toggle("startInTray", false, tr!("Start minimized"), None, !with_system || no_tray),
+            Self::c_header(tr!("System Tray")),
             self.c_toggle("exitToTray", false, tr!("Exit to tray"), None, no_tray),
-            self.c_toggle("startInTray", false, tr!("Start minimized"), None, !exit_to_tray || no_tray),
             self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon (needs restart)"), None, no_tray),
+            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon (needs restart)"), None, false),
+            Self::c_header(tr!("When a game starts")),
+            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
             self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite-rs:// launches"), None, false),
+            Self::c_header(tr!("Game Shortcuts")),
             self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
             self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
             self.c_toggle("addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false),

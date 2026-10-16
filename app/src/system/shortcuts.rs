@@ -105,8 +105,8 @@ fn configured_steam_path(data_paths: &DataPaths) -> PathBuf {
     steam::clean_steam_path(g.get("defaultSteamPath").and_then(Value::as_str).unwrap_or(""))
 }
 
-/// The executable shortcuts point at.
-fn own_exe() -> PathBuf {
+/// The executable shortcuts (and the autostart entry) point at.
+pub(crate) fn own_exe() -> PathBuf {
     // In an AppImage the executable lives in a mount that is gone after the
     // app quits; the AppImage file itself is what shortcuts must start.
     if let Some(appimage) = std::env::var_os("APPIMAGE").filter(|p| !p.is_empty()) {

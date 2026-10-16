@@ -473,6 +473,14 @@ impl SettingsPanel {
         if key == "wineVersion" {
             self.load_proton_features(cx);
         }
+        if key == "startWithSystem" {
+            let on = self.flag(key, false);
+            cx.background_spawn(async move { crate::system::autostart::sync(on) }).detach();
+            // "Start minimized" only means something with it.
+            if !on {
+                self.set("startInTray", Value::Bool(false), cx);
+            }
+        }
         self.refresh_preview(cx);
         cx.notify();
     }

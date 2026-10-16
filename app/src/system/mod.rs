@@ -1,6 +1,7 @@
 //! Integration with the desktop: launching games from outside (CLI, protocol
 //! URLs, single instance), shortcuts, tray icon and window lifecycle.
 
+pub mod autostart;
 pub mod cli;
 mod hub;
 pub mod notify;

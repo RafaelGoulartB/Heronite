@@ -34,6 +34,11 @@ pub fn init(
 ) {
     let data_paths = DataPaths::detect();
     let settings = SysSettings::load(&data_paths);
+    // Points the entry at this executable (a new AppImage may live elsewhere).
+    // Only when on: a run against another data folder must not remove it.
+    if settings.start_with_system {
+        std::thread::spawn(|| crate::system::autostart::sync(true));
+    }
     let (runtime, events) = GameRuntime::new(data_paths.clone());
     let runtime = Arc::new(runtime);
     // Post-game work (backup, capture session) runs here, with or without a window.
@@ -50,7 +55,8 @@ pub fn init(
 
     let debug_hidden = crate::env::flag("HERONITE_DEBUG_START_HIDDEN");
     let hide = cli.hide_window(settings.hide_window_on_protocol_launch);
-    let start_in_tray = (settings.start_in_tray && tray_alive) || debug_hidden;
+    // "Start minimized" only for the start that comes with the session.
+    let start_in_tray = (cli.autostart && settings.start_in_tray && tray_alive) || debug_hidden;
     // `--console` / `--fullscreen` show the window even when it would start in the tray.
     let want_window = !hide && (cli.wants_window() || !start_in_tray);
     // Nothing would keep the app reachable: show the window after all.

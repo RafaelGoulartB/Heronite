@@ -137,8 +137,6 @@ impl SettingsPanel {
                     "This path lets Heronite determine what version of Proton Steam uses, for adding non-Steam games to Steam."
                 ))],
             );
-        let launch =
-            rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false, cx));
         let wine = rows()
             .child(self.toggle_row(
                 "valve-proton",
@@ -163,26 +161,56 @@ impl SettingsPanel {
             .child(rows().field(self.language_field(cx)).card())
             .child(heading(tr!("Folders")))
             .child(folders.card())
-            .child(heading(tr!("Launching")))
-            .child(launch.card())
-            .child(heading(tr!("System")))
-            .child(self.system_rows(cx).card())
+            .child(heading(tr!("Startup")))
+            .child(self.startup_rows(cx).card())
+            .child(heading(tr!("System Tray")))
+            .child(self.tray_rows(cx).card())
+            .child(heading(tr!("When a game starts")))
+            .child(self.game_start_rows(cx).card())
+            .child(heading(tr!("Game Shortcuts")))
+            .child(self.shortcut_rows(cx).card())
             .child(heading(tr!("Wine and Proton")))
             .child(wine.card())
             .child(heading(tr!("Custom Wine/Proton Paths")))
             .child(self.custom_wine_paths(cx))
     }
 
-    /// Tray, protocol-launch and shortcut settings (`system/`).
-    fn system_rows(&self, cx: &mut Context<Self>) -> Rows {
+    /// Starting with the session and without the window (`system/`).
+    fn startup_rows(&self, cx: &mut Context<Self>) -> Rows {
         let no_tray = self.flag("noTrayIcon", false);
-        let exit_to_tray = self.flag("exitToTray", false);
+        let with_system = self.flag("startWithSystem", false);
         rows()
-            .child(self.toggle_row("no-tray", "noTrayIcon", false, tr!("Hide System Tray Icon (requires restart)"), None, false, cx))
-            .child(self.toggle_row("exit-to-tray", "exitToTray", false, tr!("Exit to System Tray"), None, no_tray, cx))
-            .child(self.toggle_row("start-in-tray", "startInTray", false, tr!("Start Minimized"), None, !exit_to_tray || no_tray, cx))
-            .child(self.toggle_row("dark-tray", "darkTrayIcon", false, tr!("Use Dark Tray Icon (needs restart)"), None, no_tray, cx))
             .child(self.toggle_row(
+                "start-with-system",
+                "startWithSystem",
+                false,
+                tr!("Start with the system"),
+                Some(tr!("Opens Heronite when you log in.")),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "start-in-tray",
+                "startInTray",
+                false,
+                tr!("Start Minimized"),
+                Some(tr!("When Heronite opens with the system, it stays in the tray without the window.")),
+                !with_system || no_tray,
+                cx,
+            ))
+    }
+
+    fn tray_rows(&self, cx: &mut Context<Self>) -> Rows {
+        let no_tray = self.flag("noTrayIcon", false);
+        rows()
+            .child(self.toggle_row("exit-to-tray", "exitToTray", false, tr!("Exit to System Tray"), None, no_tray, cx))
+            .child(self.toggle_row("dark-tray", "darkTrayIcon", false, tr!("Use Dark Tray Icon (needs restart)"), None, no_tray, cx))
+            .child(self.toggle_row("no-tray", "noTrayIcon", false, tr!("Hide System Tray Icon (requires restart)"), None, false, cx))
+    }
+
+    fn game_start_rows(&self, cx: &mut Context<Self>) -> Rows {
+        rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false, cx)).child(
+            self.toggle_row(
                 "hide-on-protocol",
                 "hideWindowOnProtocolLaunch",
                 false,
@@ -190,7 +218,13 @@ impl SettingsPanel {
                 Some(tr!("Keeps the window hidden when a game is launched from an external shortcut, like the 'Add to Steam' feature.")),
                 false,
                 cx,
-            ))
+            ),
+        )
+    }
+
+    /// Shortcuts made when a game is added (`system/shortcuts.rs`).
+    fn shortcut_rows(&self, cx: &mut Context<Self>) -> Rows {
+        rows()
             .child(self.toggle_row(
                 "shortcuts-desktop",
                 "addDesktopShortcuts",

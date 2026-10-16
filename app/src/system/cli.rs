@@ -47,6 +47,9 @@ pub struct Cli {
     pub console: bool,
     /// `--fullscreen`: the window fills the screen.
     pub fullscreen: bool,
+    /// `--autostart`: started with the session (the autostart entry); only
+    /// then does "Start minimized" apply.
+    pub autostart: bool,
     pub help: bool,
     /// Problems worth telling the user (unusable `--launch`).
     pub errors: Vec<String>,
@@ -62,6 +65,7 @@ Usage:
   --no-gui                            do not show the window (the process exits when the game ends)
   --console                           open in console mode (it stays on until you leave it)
   --fullscreen                        open the window fullscreen (F11 switches back)
+  --autostart                         started with the system (\"Start minimized\" applies)
   -h, --help                          this text
 ";
 
@@ -151,6 +155,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
             "--no-gui" => cli.no_gui = true,
             "--console" => cli.console = true,
             "--fullscreen" => cli.fullscreen = true,
+            "--autostart" => cli.autostart = true,
             "-h" | "--help" => cli.help = true,
             "--launch" => {
                 let first = args.get(i + 1).filter(|s| !s.starts_with("--"));
@@ -258,6 +263,7 @@ mod tests {
         let c = p(&["--console", "--fullscreen"]);
         assert!(c.console && c.fullscreen && c.wants_window());
         assert!(!p(&[]).wants_window());
+        assert!(p(&["--autostart"]).autostart && !p(&[]).autostart);
         assert!(p(&["--fullscreen"]).wants_window());
         // they mix with a launch and do not eat its arguments
         let c = p(&["--console", "--launch", "gog", "1"]);
