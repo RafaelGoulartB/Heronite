@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 use serde_json::{json, Value};
 
-use crate::collection::{FacetFilters, FacetKind, InstallFilter, SortMode};
+use crate::collection::{FacetFilters, FacetKind, InstallFilter, SortMode, FACET_KINDS};
 use crate::json_store;
 use crate::paths::AppPaths;
 
@@ -27,6 +27,10 @@ pub struct UiState {
     /// Selected custom categories (`heronite_data::categories`;
     /// `categories::UNCATEGORIZED` for the games in none). Empty: all games.
     pub categories: BTreeSet<String>,
+    /// Ids of the selected completion statuses. Empty: all games.
+    pub statuses: BTreeSet<String>,
+    /// The View menu's own views, in the order they were saved.
+    pub saved_views: Vec<SavedView>,
     pub sidebar_hidden: bool,
     /// Ids of the collapsed status groups (`ungrouped` for "Other").
     pub collapsed_groups: BTreeSet<String>,
@@ -64,6 +68,8 @@ impl Default for UiState {
             sort_descending: false,
             only: OnlyFilters::default(),
             categories: BTreeSet::new(),
+            statuses: BTreeSet::new(),
+            saved_views: Vec::new(),
             sidebar_hidden: false,
             collapsed_groups: BTreeSet::new(),
             focused_game: None,
@@ -82,29 +88,17 @@ impl UiState {
     /// Parses the stored document leniently.
     pub fn from_value(value: &Value) -> Self {
         let mut state = Self::default();
-        if let Some(v) = value.get("installFilter").and_then(Value::as_str).and_then(InstallFilter::parse) {
-            state.install_filter = v;
-        }
-        if let Some(v) = value.get("sort").and_then(Value::as_str).and_then(SortMode::parse) {
-            state.sort = v;
-        }
-        if let Some(obj) = value.get("facetFilters").and_then(Value::as_object) {
-            let text = |kind: FacetKind| obj.get(kind.as_str()).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned);
-            state.facet_filters = FacetFilters {
-                series: text(FacetKind::Series),
-                developer: text(FacetKind::Developer),
-                publisher: text(FacetKind::Publisher),
-                genre: text(FacetKind::Genre),
-                platform: text(FacetKind::Platform),
-                store: text(FacetKind::Store),
-            };
+        state.apply_view(&ViewFilters::from_value(value));
+        if let Some(list) = value.get("savedViews").and_then(Value::as_array) {
+            state.saved_views = list
+                .iter()
+                .filter_map(|v| {
+                    let name = v.get("name").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())?;
+                    Some(SavedView { name: name.to_owned(), filters: ViewFilters::from_value(v) })
+                })
+                .collect();
         }
         let flag = |key: &str| value.get(key).and_then(Value::as_bool).unwrap_or(false);
-        state.sort_descending = flag("sortDescending");
-        state.only = OnlyFilters { favourites: flag("onlyFavourites"), updates: flag("onlyUpdates"), offline: flag("onlyOffline") };
-        if let Some(list) = value.get("categories").and_then(Value::as_array) {
-            state.categories = list.iter().filter_map(|v| v.as_str().filter(|s| !s.is_empty()).map(str::to_owned)).collect();
-        }
         state.sidebar_hidden = value.get("sidebarHidden").and_then(Value::as_bool).unwrap_or(false);
         if let Some(list) = value.get("collapsedGroups").and_then(Value::as_array) {
             state.collapsed_groups = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
@@ -125,23 +119,8 @@ impl UiState {
     }
 
     pub fn to_value(&self) -> Value {
-        let facets = &self.facet_filters;
-        json!({
-            "installFilter": self.install_filter,
-            "facetFilters": {
-                "series": facets.series,
-                "developer": facets.developer,
-                "publisher": facets.publisher,
-                "genre": facets.genre,
-                "platform": facets.platform,
-                "store": facets.store,
-            },
-            "sort": self.sort,
-            "sortDescending": self.sort_descending,
-            "onlyFavourites": self.only.favourites,
-            "onlyUpdates": self.only.updates,
-            "onlyOffline": self.only.offline,
-            "categories": self.categories,
+        let mut doc = json!({
+            "savedViews": self.saved_views.iter().map(SavedView::to_value).collect::<Vec<_>>(),
             "sidebarHidden": self.sidebar_hidden,
             "collapsedGroups": self.collapsed_groups,
             "focusedGame": self.focused_game,
@@ -152,7 +131,11 @@ impl UiState {
             "gridView": self.grid_view,
             "gridCoverWidth": self.grid_cover_w,
             "gridTitles": self.grid_titles,
-        })
+        });
+        if let (Value::Object(doc), Value::Object(view)) = (&mut doc, self.view_filters().to_value()) {
+            doc.extend(view);
+        }
+        doc
     }
 
     /// Loads the state; a missing or unreadable file gives the defaults.
@@ -204,6 +187,162 @@ impl UiState {
         if !self.categories.remove(name) {
             self.categories.insert(name.to_owned());
         }
+    }
+
+    /// Selects or clears one completion status of the filter.
+    pub fn toggle_status(&mut self, id: &str) {
+        if !self.statuses.remove(id) {
+            self.statuses.insert(id.to_owned());
+        }
+    }
+
+    /// The filters and the sort, as a view stores them.
+    pub fn view_filters(&self) -> ViewFilters {
+        ViewFilters {
+            install_filter: self.install_filter,
+            sort: self.sort,
+            sort_descending: self.sort_descending,
+            only: self.only,
+            facet_filters: self.facet_filters.clone(),
+            categories: self.categories.clone(),
+            statuses: self.statuses.clone(),
+        }
+    }
+
+    /// Sets the filters and the sort of a view; grouping and "Show hidden
+    /// games" stay as they are.
+    pub fn apply_view(&mut self, view: &ViewFilters) {
+        self.install_filter = view.install_filter;
+        self.sort = view.sort;
+        self.sort_descending = view.sort_descending;
+        self.only = view.only;
+        self.facet_filters = view.facet_filters.clone();
+        self.categories = view.categories.clone();
+        self.statuses = view.statuses.clone();
+    }
+
+    /// Whether the Collection shows exactly `view` now.
+    pub fn shows_view(&self, view: &ViewFilters) -> bool {
+        self.install_filter == view.install_filter
+            && self.sort == view.sort
+            && self.sort_descending == view.sort_descending
+            && self.only == view.only
+            && self.categories == view.categories
+            && self.statuses == view.statuses
+            && self.facet_filters.same_as(&view.facet_filters)
+    }
+
+    /// Filters that hide games (install, "Only" switches, categories,
+    /// statuses and facet values), counted one per value.
+    pub fn active_filters(&self) -> usize {
+        usize::from(self.install_filter != InstallFilter::All)
+            + usize::from(self.only.favourites)
+            + usize::from(self.only.updates)
+            + usize::from(self.only.offline)
+            + self.categories.len()
+            + self.statuses.len()
+            + self.facet_filters.len()
+    }
+
+    /// Clears every filter of [`active_filters`](Self::active_filters); the sort stays.
+    pub fn clear_filters(&mut self) {
+        self.install_filter = InstallFilter::All;
+        self.only = OnlyFilters::default();
+        self.facet_filters = FacetFilters::default();
+        self.categories.clear();
+        self.statuses.clear();
+    }
+}
+
+/// What a view of the View menu sets: the filters and the sort.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ViewFilters {
+    pub install_filter: InstallFilter,
+    pub sort: SortMode,
+    pub sort_descending: bool,
+    pub only: OnlyFilters,
+    pub facet_filters: FacetFilters,
+    pub categories: BTreeSet<String>,
+    pub statuses: BTreeSet<String>,
+}
+
+impl ViewFilters {
+    /// Reads the keys [`UiState`] stores them under, leniently. A facet kind
+    /// may hold one value (as Heronite stored it) or a list.
+    pub fn from_value(value: &Value) -> Self {
+        let mut v = Self::default();
+        if let Some(f) = value.get("installFilter").and_then(Value::as_str).and_then(InstallFilter::parse) {
+            v.install_filter = f;
+        }
+        if let Some(sort) = value.get("sort").and_then(Value::as_str).and_then(SortMode::parse) {
+            v.sort = sort;
+        }
+        if let Some(obj) = value.get("facetFilters").and_then(Value::as_object) {
+            for kind in FACET_KINDS {
+                let values: Vec<&str> = match obj.get(kind.as_str()) {
+                    Some(Value::String(s)) => vec![s.as_str()],
+                    Some(Value::Array(list)) => list.iter().filter_map(Value::as_str).collect(),
+                    _ => Vec::new(),
+                };
+                for value in values.into_iter().filter(|s| !s.trim().is_empty()) {
+                    if !v.facet_filters.contains(kind, value) {
+                        v.facet_filters = v.facet_filters.toggled(kind, value);
+                    }
+                }
+            }
+        }
+        let flag = |key: &str| value.get(key).and_then(Value::as_bool).unwrap_or(false);
+        v.sort_descending = flag("sortDescending");
+        v.only = OnlyFilters { favourites: flag("onlyFavourites"), updates: flag("onlyUpdates"), offline: flag("onlyOffline") };
+        let names = |key: &str| -> BTreeSet<String> {
+            value
+                .get(key)
+                .and_then(Value::as_array)
+                .map(|list| list.iter().filter_map(|v| v.as_str().filter(|s| !s.is_empty()).map(str::to_owned)).collect())
+                .unwrap_or_default()
+        };
+        v.categories = names("categories");
+        v.statuses = names("statuses");
+        v
+    }
+
+    pub fn to_value(&self) -> Value {
+        let facets = &self.facet_filters;
+        json!({
+            "installFilter": self.install_filter,
+            "facetFilters": {
+                "series": facets.series,
+                "developer": facets.developer,
+                "publisher": facets.publisher,
+                "genre": facets.genre,
+                "platform": facets.platform,
+                "store": facets.store,
+            },
+            "sort": self.sort,
+            "sortDescending": self.sort_descending,
+            "onlyFavourites": self.only.favourites,
+            "onlyUpdates": self.only.updates,
+            "onlyOffline": self.only.offline,
+            "categories": self.categories,
+            "statuses": self.statuses,
+        })
+    }
+}
+
+/// A view the user saved from the View menu.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SavedView {
+    pub name: String,
+    pub filters: ViewFilters,
+}
+
+impl SavedView {
+    fn to_value(&self) -> Value {
+        let mut v = self.filters.to_value();
+        if let Value::Object(obj) = &mut v {
+            obj.insert("name".into(), Value::String(self.name.clone()));
+        }
+        v
     }
 }
 
@@ -275,7 +414,7 @@ mod tests {
         state.save(&paths).unwrap();
         let loaded = UiState::load(&paths);
         assert_eq!(loaded, state);
-        assert_eq!(loaded.facet_filters.genre.as_deref(), Some("RPG"));
+        assert_eq!(loaded.facet_filters.genre, ["RPG"]);
         assert_eq!(loaded.collapsed_groups.iter().collect::<Vec<_>>(), ["ungrouped"]);
         let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
         assert_eq!(on_disk["sort"], "lastPlayed");
@@ -287,6 +426,46 @@ mod tests {
         assert_eq!(on_disk["categories"], json!([crate::categories::UNCATEGORIZED, "RPG"]));
         state.clear_facets();
         assert!(!state.facet_filters.is_active());
+    }
+
+    #[test]
+    fn facet_filters_read_one_value_or_a_list() {
+        let state = UiState::from_value(&json!({ "facetFilters": { "genre": "RPG", "developer": ["Valve", "valve ", "", "Remedy"] } }));
+        assert_eq!(state.facet_filters.genre, ["RPG"]);
+        assert_eq!(state.facet_filters.developer, ["Valve", "Remedy"]);
+        assert_eq!(state.to_value()["facetFilters"]["genre"], json!(["RPG"]));
+    }
+
+    #[test]
+    fn views_save_apply_and_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        let mut state = UiState { group_by_status: false, show_hidden: true, ..Default::default() };
+        state.toggle_status("beaten");
+        state.toggle_facet(FacetKind::Genre, "RPG");
+        state.toggle_facet(FacetKind::Genre, "Indie");
+        state.only.favourites = true;
+        state.sort = SortMode::Playtime;
+        assert_eq!(state.active_filters(), 4);
+        state.saved_views.push(SavedView { name: "Done RPGs".into(), filters: state.view_filters() });
+        state.save(&paths).unwrap();
+        let mut loaded = UiState::load(&paths);
+        assert_eq!(loaded, state);
+        let view = loaded.saved_views[0].filters.clone();
+        loaded.clear_filters();
+        assert_eq!(loaded.active_filters(), 0);
+        assert_eq!(loaded.sort, SortMode::Playtime);
+        assert!(!loaded.shows_view(&view));
+        loaded.apply_view(&view);
+        assert!(loaded.shows_view(&view));
+        assert!(!loaded.group_by_status && loaded.show_hidden, "a view keeps grouping and hidden games");
+        // the same values in another order still match
+        loaded.facet_filters = loaded.facet_filters.toggled(FacetKind::Genre, "rpg").toggled(FacetKind::Genre, "RPG");
+        assert!(loaded.shows_view(&view));
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert_eq!(on_disk["savedViews"][0]["name"], "Done RPGs");
+        assert_eq!(on_disk["savedViews"][0]["statuses"], json!(["beaten"]));
+        assert_eq!(on_disk["statuses"], json!(["beaten"]));
     }
 
     #[test]
