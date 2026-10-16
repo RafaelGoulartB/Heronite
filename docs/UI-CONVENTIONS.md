@@ -109,7 +109,7 @@ search pill (`search_fill`, accent ring while focused, clear button) and the Vie
 anything is filtered). Its menu (`collection/view_menu/`) starts with a search box: the active filters sit in it as
 tokens (click or Backspace removes one) and typing lists matching values of every kind (Only, Status, Category,
 Store, Genre, Developer, Publisher, Series, Platform) with counts, four per kind until `kind:` narrows it; ↑ ↓ and
-Enter pick. Below, when nothing is typed: Views (built-in by status slug, plus the user's saved ones), Sort
+Enter pick. Below, when nothing is typed: Views (pills; built-in by status slug, plus the user's saved ones with ×), Sort
 (segmented + direction), Group by (None | Status), Show (segmented with counts), Only (Favourites, Update, Offline,
 Hidden tiles) and Browse (one chip per kind, fills `kind:`); the footer has the count, Reset all and Statuses…. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or

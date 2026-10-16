@@ -251,15 +251,11 @@
   "Views": "Visões",
   "Playing now": "Jogando agora",
   "Backlog": "Pendentes",
-  "{statuses}, installed": "{statuses}, instalados",
-  "Most played first": "Mais jogados primeiro",
-  "{n} filter": "{n} filtro",
-  "{n} filters": "{n} filtros",
   "Name of the view": "Nome da visão",
-  "Save current as a view": "Salvar a atual como visão",
   "Group by": "Agrupar por",
   "Offline": "Offline",
   "Reset all": "Limpar tudo",
   "Statuses…": "Status…",
-  "{shown} of {total} games": "{shown} de {total} jogos"
+  "{shown} of {total} games": "{shown} de {total} jogos",
+  "Save view": "Salvar visão"
 }

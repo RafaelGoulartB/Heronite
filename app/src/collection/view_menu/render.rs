@@ -188,90 +188,57 @@ impl CollectionView {
     }
 
     fn vm_views(&self, cx: &mut Context<Self>) -> Div {
-        let cards: Vec<Stateful<Div>> = self
-            .view_cards()
-            .into_iter()
-            .enumerate()
-            .map(|(i, v)| {
-                let on = self.ui.shows_view(&v.filters);
-                let filters = v.filters.clone();
-                div()
-                    .id(("vm-view", i))
-                    .relative()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .flex_1()
-                    .min_w_0()
-                    .px(px(12.))
-                    .py(px(10.))
-                    .rounded(px(12.))
-                    .border_1()
-                    .cursor_pointer()
-                    .border_color(if on { theme::accent_tint_border() } else { theme::white_a(0.06) })
-                    .bg(if on { theme::accent_tint() } else { theme::white_a(0.05) })
-                    .hover(|s| s.bg(theme::white_a(0.09)))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_none()
-                            .items_center()
-                            .justify_center()
-                            .size(px(28.))
-                            .rounded(px(8.))
-                            .bg(Rgba { a: 0.16, ..v.color })
-                            .child(icon(v.icon, px(16.), v.color)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .min_w_0()
-                            .flex_1()
-                            .child(div().truncate().text_size(px(13.5)).text_color(white()).child(v.name))
-                            .child(div().truncate().text_size(px(11.5)).text_color(theme::text_dim()).child(v.sub)),
-                    )
-                    .children(v.saved.map(|index| {
-                        div()
-                            .id(("vm-view-del", i))
-                            .flex()
-                            .flex_none()
-                            .items_center()
-                            .justify_center()
-                            .size(px(20.))
-                            .rounded_full()
-                            .hover(|s| s.bg(theme::white_a(0.12)))
-                            .child(icon(Icon::Close, px(12.), theme::white_a(0.55)))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                cx.stop_propagation();
-                                this.delete_view(index, cx);
-                            }))
-                    }))
-                    .on_click(cx.listener(move |this, _, _, cx| this.apply_view_filters(&filters, cx)))
-            })
-            .collect();
-        // Two per row; an odd last card keeps half the width.
-        let mut rows = Vec::new();
-        let mut cards = cards.into_iter();
-        while let Some(first) = cards.next() {
-            let second = cards.next().map(IntoElement::into_any_element).unwrap_or_else(|| div().flex_1().into_any_element());
-            rows.push(div().flex().gap(px(8.)).child(first).child(second));
-        }
-        let save: AnyElement = match &self.view_menu.naming {
-            Some((input, _)) => div()
+        let chips = self.view_cards().into_iter().enumerate().map(|(i, v)| {
+            let on = self.ui.shows_view(&v.filters);
+            let filters = v.filters.clone();
+            pill(("vm-view", i))
+                .border_color(if on { theme::accent_tint_border() } else { theme::white_a(0.) })
+                .when(on, |d| d.bg(theme::accent_tint()).text_color(white()))
+                .child(dot(v.color))
+                .child(div().flex_none().whitespace_nowrap().child(v.name))
+                .children(v.saved.map(|index| {
+                    div()
+                        .id(("vm-view-del", i))
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .justify_center()
+                        .size(px(18.))
+                        .rounded_full()
+                        .hover(|s| s.bg(theme::white_a(0.14)))
+                        .child(icon(Icon::Close, px(12.), theme::white_a(0.55)))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.delete_view(index, cx);
+                        }))
+                }))
+                .on_click(cx.listener(move |this, _, _, cx| this.apply_view_filters(&filters, cx)))
+        });
+        let naming = self.view_menu.naming.is_some();
+        let add = (!naming).then(|| {
+            pill("vm-view-new")
+                .bg(theme::white_a(0.))
+                .border_dashed()
+                .border_color(theme::white_a(0.18))
+                .text_color(theme::text_muted())
+                .child(icon(Icon::Add, px(14.), theme::text_muted()))
+                .child(tr!("Save view"))
+                .on_click(cx.listener(|this, _, window, cx| this.start_naming_view(window, cx)))
+        });
+        let name_box = self.view_menu.naming.as_ref().map(|(input, _)| {
+            div()
                 .flex()
                 .items_center()
                 .gap(px(8.))
-                .w_full()
                 .child(
                     div()
-                        .flex_1()
-                        .h(px(36.))
-                        .px(px(12.))
                         .flex()
+                        .flex_1()
                         .items_center()
-                        .rounded(px(10.))
-                        .bg(theme::input_fill())
+                        .h(theme::TOOL_BTN)
+                        .px(px(12.))
+                        .rounded_full()
+                        .bg(theme::search_fill_hover())
                         .border_1()
                         .border_color(theme::input_border_focus())
                         .text_size(px(13.5))
@@ -281,29 +248,8 @@ impl CollectionView {
                     crate::ui::controls::button_sm("vm-view-save", crate::ui::controls::ButtonKind::Primary, tr!("Save"))
                         .on_click(cx.listener(|this, _, window, cx| this.save_named_view(window, cx))),
                 )
-                .into_any_element(),
-            None => div()
-                .id("vm-view-new")
-                .flex()
-                .items_center()
-                .justify_center()
-                .gap(px(6.))
-                .w_full()
-                .h(px(36.))
-                .rounded(px(12.))
-                .border_1()
-                .border_dashed()
-                .border_color(theme::white_a(0.16))
-                .text_size(px(13.))
-                .text_color(theme::text_muted())
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.05)).text_color(white()))
-                .child(icon(Icon::Add, px(15.), theme::text_muted()))
-                .child(tr!("Save current as a view"))
-                .on_click(cx.listener(|this, _, window, cx| this.start_naming_view(window, cx)))
-                .into_any_element(),
-        };
-        section(tr!("Views")).child(div().flex().flex_col().gap(px(8.)).children(rows).child(save))
+        });
+        section(tr!("Views")).child(div().flex().flex_wrap().gap(px(6.)).children(chips).children(add)).children(name_box)
     }
 
     fn vm_sort(&self, cx: &mut Context<Self>) -> Div {
@@ -416,25 +362,12 @@ impl CollectionView {
     fn vm_browse(&self, cx: &mut Context<Self>) -> Div {
         let kinds = Kind::ALL.into_iter().filter(|k| *k != Kind::Only && (*k != Kind::Category || !self.categories.is_empty()));
         section(tr!("Browse")).child(div().flex().flex_wrap().gap(px(6.)).children(kinds.enumerate().map(|(i, kind)| {
-            div()
-                .id(("vm-browse", i))
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .h(px(30.))
-                .px(px(11.))
-                .rounded_full()
-                .bg(theme::white_a(0.05))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.1)))
-                .text_size(px(12.5))
-                .text_color(theme::text_primary())
-                .child(icon(kind.icon(), px(14.), theme::text_muted()))
-                .child(kind.label())
-                .on_click(cx.listener(move |this, _, window, cx| {
+            pill(("vm-browse", i)).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
+                move |this, _, window, cx| {
                     let text = choices::scoped_query(kind, "");
                     this.set_view_query(&text, window, cx);
-                }))
+                },
+            ))
         })))
     }
 
@@ -481,6 +414,27 @@ fn section(label: &'static str) -> Div {
         .flex_col()
         .gap(px(8.))
         .child(div().px(px(4.)).text_size(px(11.5)).text_color(theme::text_dim()).child(label.to_uppercase()))
+}
+
+/// Faint 30px pill of the Views and Browse rows (as the header's chips).
+fn pill(id: impl Into<ElementId>) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(6.))
+        .h(px(30.))
+        .px(px(11.))
+        .max_w(px(W - PAD * 2.))
+        .rounded_full()
+        .border_1()
+        .border_color(theme::white_a(0.))
+        .bg(theme::white_a(0.05))
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::white_a(0.1)))
+        .text_size(px(12.5))
+        .text_color(theme::text_primary())
 }
 
 /// Results row (checkbox, label, count); `lit`: picked by Enter.
