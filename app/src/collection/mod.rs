@@ -19,6 +19,7 @@ mod game_facts;
 mod header;
 mod html;
 mod install_options;
+mod launch_options;
 mod list;
 mod list_view;
 mod load;

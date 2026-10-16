@@ -154,6 +154,8 @@ pub struct SettingsPanel {
     pub(super) tool_busy: Option<&'static str>,
     /// The Winetricks page, while open (it takes the tab's place).
     winetricks: Option<winetricks::WinetricksPage>,
+    /// An Epic game's other ways to start (Advanced tab).
+    pub(super) launch_options: Vec<heronite_launch::launch_option::LaunchOption>,
     /// Console mode: focused row, open keyboard / picker, rows focused.
     console_list: crate::console::list::ListNav,
     console_layer: crate::console::Layer,
@@ -259,6 +261,7 @@ impl SettingsPanel {
             notice: None,
             tool_busy: None,
             winetricks: None,
+            launch_options: Vec::new(),
             tool_toggle: None,
             gpu_count: logic::count_gpus(),
             gamescope_installed: crate::env::flag("HERONITE_DEBUG_GAMESCOPE")
@@ -300,6 +303,9 @@ impl SettingsPanel {
             return this;
         }
         this.load_wine_list(cx);
+        if let Some(app) = this.facts().filter(|f| f.runner == "legendary").map(|f| f.app_name.clone()) {
+            this.launch_options = heronite_epic::launch_options::list(&this.paths, &app);
+        }
         if this.facts().is_some_and(|f| f.is_gog()) {
             // A manual sync runs in the service: redraw when it starts and ends.
             let service = crate::services::downloads(cx);

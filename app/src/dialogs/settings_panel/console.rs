@@ -428,6 +428,13 @@ impl SettingsPanel {
         if game && legendary {
             v.push(self.c_toggle("offlineMode", false, tr!("Run the game offline"), None, false));
         }
+        if game && !self.launch_options.is_empty() {
+            let (names, index) = self.launch_option_choices();
+            v.push(item(
+                Row::choice("c:launch-option", tr!("Start with"), names, index).icon(Icon::PlayArrow),
+                Act::Choice(Rc::new(|this, i, cx| this.pick_launch_option(i, cx))),
+            ));
+        }
         v.push(self.c_toggle("verboseLogs", true, tr!("Verbose logs"), None, false));
         if game && !sideload {
             v.push(self.c_path("targetExe", tr!("Alternative executable"), false, cx));

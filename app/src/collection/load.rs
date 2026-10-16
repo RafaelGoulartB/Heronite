@@ -111,6 +111,9 @@ impl CollectionView {
         self.wiki = Arc::new(l.wiki);
         self.categories = l.categories;
         self.prune_category_filter();
+        if !first {
+            self.refresh_launch_options(cx);
+        }
         // The first games of a new setup (Steam import) get a selection too.
         let before = self.lib.as_ref().map_or(0, |lib| lib.games.len());
         let was_empty = before == 0;

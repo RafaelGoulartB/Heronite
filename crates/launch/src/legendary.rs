@@ -121,10 +121,23 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     }
     env.insert("LEGENDARY_CONFIG_PATH".into(), ctx.paths.legendary_config_dir().to_string_lossy().into_owned());
 
+    // The chosen way to start: a playable DLC is launched itself; a basic
+    // option adds its arguments before the user's own.
+    use crate::launch_option::LaunchOption;
+    let (launched, option_args) = match &s.launch_option {
+        Some(LaunchOption::Dlc { app_name, .. }) => (app_name.as_str(), String::new()),
+        Some(LaunchOption::Basic { parameters, .. }) => (app, parameters.clone()),
+        None => (app, String::new()),
+    };
     // Arguments, in the order legendary's command object is flattened.
-    let mut args: Vec<String> = vec!["launch".into(), app.into()];
-    let extra =
-        opts.extra_args.iter().cloned().chain(Some(s.launcher_args.clone())).filter(|a| !a.is_empty()).collect::<Vec<_>>().join(" ");
+    let mut args: Vec<String> = vec!["launch".into(), launched.into()];
+    let extra = Some(option_args)
+        .into_iter()
+        .chain(opts.extra_args.iter().cloned())
+        .chain(Some(s.launcher_args.clone()))
+        .filter(|a| !a.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
     if !extra.is_empty() {
         args.extend(shlex::split(&extra).unwrap_or_else(|| extra.split_whitespace().map(str::to_string).collect()));
     }
@@ -167,7 +180,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
         args.push("--ubisoft".into());
     }
 
-    let stop = StopSpec { kill_patterns: vec![app.to_string()], commands: vec![wine.shutdown_command(&env)] };
+    let stop = StopSpec { kill_patterns: vec![launched.to_string()], commands: vec![wine.shutdown_command(&env)] };
     // Heroic creates a missing prefix (`verifyWinePrefix`) before anything
     // else touches it, so DXVK can be installed into it.
     let (create_dirs, pre_commands) =
@@ -376,6 +389,24 @@ mod tests {
         let anyway = LaunchOptions { skip_version_check: true, ..Default::default() };
         let process = legendary_process(&p, &s, &anyway);
         assert!(process.command.args.contains(&"--skip-version-check".to_string()));
+    }
+
+    #[test]
+    fn the_chosen_launch_option_changes_what_starts() {
+        let p = probe();
+        let args = |s: Value| legendary_process(&p, &settings(s), &Default::default()).command.args;
+        let plain = args(json!({"launcherArgs": "-dx11"}));
+        assert_eq!(&plain[..3], ["launch", "Calluna", "-dx11"]);
+        let vr =
+            args(json!({"launcherArgs": "-dx11", "lastUsedLaunchOption": {"type": "basic", "name": "VR", "parameters": "--launchvr -x"}}));
+        assert_eq!(&vr[..5], ["launch", "Calluna", "--launchvr", "-x", "-dx11"], "the option's arguments come first");
+        let dlc = legendary_process(
+            &p,
+            &settings(json!({"lastUsedLaunchOption": {"type": "dlc", "dlcAppName": "Editor", "dlcTitle": "Editor"}})),
+            &Default::default(),
+        );
+        assert_eq!(&dlc.command.args[..2], ["launch", "Editor"], "a playable DLC is launched itself");
+        assert_eq!(dlc.stop.kill_patterns, ["Editor"]);
     }
 
     #[test]

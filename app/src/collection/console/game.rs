@@ -75,6 +75,13 @@ impl CollectionView {
             rows.push(Row::choice("status", tr!("Status"), names, index).icon(Icon::Flag));
         }
         rows.push(Row::toggle("favourite", tr!("Favourite"), g.favourite).icon(Icon::Favorite));
+        // An Epic game's other ways to start; Play uses the one picked.
+        if g.installed && !self.facts.launch_options.is_empty() && self.selected.as_deref() == Some(g.key.as_str()) {
+            let choices = super::super::launch_options::choices(&self.facts.launch_options);
+            let names = choices.iter().map(|c| SharedString::from(super::super::launch_options::choice_label(c))).collect();
+            let index = choices.iter().position(|c| *c == self.facts.launch_current).unwrap_or(0);
+            rows.push(Row::choice("launch-option", tr!("Start with"), names, index).icon(Icon::PlayArrow));
+        }
         if g.installed {
             rows.push(
                 Row::action("settings", tr!("Game settings"))
@@ -319,6 +326,10 @@ impl CollectionView {
                 _ => {}
             },
             Outcome::Changed(id, value) => match (id.as_ref(), value) {
+                ("launch-option", Value::Choice { index, .. }) => {
+                    let choice = super::super::launch_options::choices(&self.facts.launch_options).into_iter().nth(index).flatten();
+                    self.set_launch_option(key, choice, cx);
+                }
                 ("status", Value::Choice { index, .. }) => {
                     if let Some(st) = self.lib.as_ref().and_then(|l| l.statuses.get(index)).cloned() {
                         self.set_status(key, st.id, cx);

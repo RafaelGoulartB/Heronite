@@ -468,5 +468,6 @@
   "{verb} could not be installed: {why}": "Não foi possível instalar {verb}: {why}",
   "{verb} installed in the prefix.": "{verb} instalado no prefixo.",
   "{verb}: installation canceled.": "{verb}: instalação cancelada.",
-  "Search components…": "Buscar componentes…"
+  "Search components…": "Buscar componentes…",
+  "How Play starts the game: a mode it offers, or a playable DLC.": "Como o Jogar inicia o jogo: um modo que ele oferece ou uma DLC jogável."
 }

@@ -18,6 +18,7 @@ pub mod gog;
 pub mod install_state;
 pub mod keep_awake;
 pub mod known_fixes;
+pub mod launch_option;
 pub mod legendary;
 pub mod legendary_install;
 pub mod library;

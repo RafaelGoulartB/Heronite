@@ -62,6 +62,12 @@ impl SettingsPanel {
         if game && legendary {
             general = general.child(self.toggle_row("offline", "offlineMode", false, tr!("Run Game Offline"), None, false, cx));
         }
+        if game && !self.launch_options.is_empty() {
+            general = general.field_help(
+                self.launch_option_select(cx),
+                vec![help(tr!("How Play starts the game: a mode it offers, or a playable DLC."))],
+            );
+        }
         general = general.child(self.toggle_row("verbose", "verboseLogs", true, tr!("Enable verbose logs"), None, false, cx));
         if game && !sideload {
             general = general.field(self.path_row(
@@ -248,5 +254,39 @@ impl SettingsPanel {
         self.set_input(t.in1, "", window, cx);
         self.set_input(t.in2, "", window, cx);
         cx.notify();
+    }
+}
+
+impl SettingsPanel {
+    /// `lastUsedLaunchOption` as stored, if it is still one of the game's.
+    fn launch_option_current(&self) -> Option<heronite_launch::launch_option::LaunchOption> {
+        self.settings
+            .get(heronite_launch::launch_option::KEY)
+            .and_then(heronite_launch::launch_option::LaunchOption::from_value)
+            .filter(|o| self.launch_options.contains(o))
+    }
+
+    /// The menu's names (the default first) and the current one.
+    pub(super) fn launch_option_choices(&self) -> (Vec<SharedString>, usize) {
+        let current = self.launch_option_current();
+        let names = std::iter::once(SharedString::from(tr!("Default")))
+            .chain(self.launch_options.iter().map(|o| SharedString::from(o.label().to_string())))
+            .collect();
+        let index = current.and_then(|c| self.launch_options.iter().position(|o| *o == c)).map_or(0, |i| i + 1);
+        (names, index)
+    }
+
+    /// `i`: 0 is the default, then the options in order.
+    pub(super) fn pick_launch_option(&mut self, i: usize, cx: &mut Context<Self>) {
+        let value = i.checked_sub(1).and_then(|i| self.launch_options.get(i)).map(|o| o.to_value()).unwrap_or(serde_json::Value::Null);
+        self.set(heronite_launch::launch_option::KEY, value, cx);
+    }
+
+    fn launch_option_select(&self, cx: &mut Context<Self>) -> Div {
+        let (names, index) = self.launch_option_choices();
+        let options = names.iter().enumerate().map(|(i, n)| (n.clone(), i == index)).collect();
+        self.select_row("launch-option", Some(tr!("Start with")), names[index].to_string(), options, false, cx, |this, i, _, cx| {
+            this.pick_launch_option(i, cx)
+        })
     }
 }

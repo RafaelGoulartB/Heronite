@@ -67,6 +67,11 @@ pub(super) struct Facts {
     pub status_open: bool,
     /// The other ways to install, under the Install button.
     pub install_menu_open: bool,
+    /// An Epic game's other ways to start, the one Play uses, and their menu
+    /// under the Play button's arrow.
+    pub launch_options: Vec<heronite_epic::launch_options::LaunchOption>,
+    pub launch_current: Option<heronite_epic::launch_options::LaunchOption>,
+    pub launch_menu_open: bool,
     /// Days of the timeline shown.
     pub timeline_days: usize,
     /// Timeline of the focused game and what it was built from.
@@ -114,6 +119,10 @@ impl CollectionView {
         self.facts.status_open = crate::env::value("HERONITE_DEBUG_FOCUS_STATUS").is_some();
         // `HERONITE_DEBUG_INSTALL_MENU=1`: the other ways to install.
         self.facts.install_menu_open = crate::env::value("HERONITE_DEBUG_INSTALL_MENU").is_some();
+        // `HERONITE_DEBUG_LAUNCH_MENU=1`: the ways to start, under Play.
+        self.facts.launch_menu_open = crate::env::value("HERONITE_DEBUG_LAUNCH_MENU").is_some();
+        self.facts.launch_options.clear();
+        self.facts.launch_current = None;
         self.facts.timeline_days = TIMELINE_DAYS;
         let (Some(lib), Some(key)) = (self.lib.clone(), target) else { return };
         let Some(game) = lib.get(&key).cloned() else { return };
@@ -121,6 +130,7 @@ impl CollectionView {
     }
 
     fn load_facts(&mut self, key: SharedString, game: Arc<CollectionGame>, cx: &mut Context<Self>) {
+        self.load_launch_options(key.clone(), game.clone(), cx);
         let paths = self.data_paths.clone();
         let cache = self.app_paths.cache.join("protondb");
         let emulated = game.launch_kind.as_deref() == Some("emulator");

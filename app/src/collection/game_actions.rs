@@ -25,6 +25,8 @@ use heronite_i18n::tr;
 pub(super) enum GameAction {
     /// Play, Stop or Install: the focus panel's main button.
     Primary,
+    /// Play an Epic game with one of its ways to start (`None`: the default).
+    PlayWith(Option<heronite_epic::launch_options::LaunchOption>),
     /// One of the other ways to install (the Install flyout).
     InstallWay(WayKind),
     /// Sets this status (`CompletionStatus::id`).
@@ -114,6 +116,25 @@ impl CollectionView {
             (tr!("Install"), Icon::Download, "download get setup instalar baixar")
         };
         v.push(item(A::Primary, "primary", label, ic, kw).palette_only());
+        // The focused Epic game's other ways to start (read with its facts).
+        if game.installed && !playing && self.selected.as_deref() == Some(game.key.as_str()) {
+            for (i, choice) in super::launch_options::choices(&self.facts.launch_options).into_iter().enumerate() {
+                if self.facts.launch_options.is_empty() {
+                    break;
+                }
+                let label = tr!("Play with: {option}", option = super::launch_options::choice_label(&choice));
+                v.push(
+                    GameActionItem::new(
+                        A::PlayWith(choice),
+                        format!("play-with-{i}"),
+                        label,
+                        Icon::PlayArrow,
+                        "launch option mode vr editor dlc jogar opcao modo",
+                    )
+                    .palette_only(),
+                );
+            }
+        }
         if !playing {
             v.extend(self.install_way_actions(game, cx));
         }
@@ -238,6 +259,7 @@ impl CollectionView {
         self.context_menu = None;
         match action {
             A::Primary => self.install_or_play(key, window, cx),
+            A::PlayWith(choice) => self.play_with(key, choice.clone(), cx),
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
             A::Status(id) => self.set_status(key, id.clone(), cx),
             A::Category { name, on } => self.set_game_category(key, name, *on, cx),
