@@ -314,6 +314,9 @@ struct RawGame {
     /// differently.
     #[serde(rename = "thirdPartyManagedApp")]
     third_party_managed_app: Option<String>,
+    /// Kept in `GameInfo::rest`: the View menu's "Run offline".
+    #[serde(rename = "canRunOffline")]
+    can_run_offline: Option<bool>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -356,6 +359,9 @@ impl From<RawGame> for GameInfo {
                 }
                 if let Some(app) = g.third_party_managed_app.filter(|s| !s.is_empty()) {
                     rest.insert("thirdPartyManagedApp".to_string(), Value::String(app));
+                }
+                if let Some(b) = g.can_run_offline {
+                    rest.insert("canRunOffline".to_string(), Value::Bool(b));
                 }
                 rest
             },
@@ -818,6 +824,25 @@ mod tests {
         assert!(lib.games.is_empty());
         assert_eq!(lib.statuses.len(), 9);
         assert!(!lib.changed_on_disk());
+    }
+
+    #[test]
+    fn the_offline_flag_survives_loading() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        fs::create_dir_all(paths.sideload_library().parent().unwrap()).unwrap();
+        fs::write(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"port","title":"Port","is_installed":true,"canRunOffline":true,
+               "install":{"install_path":"/g/port","platform":"linux"}},
+              {"runner":"sideload","app_name":"web","title":"Web","canRunOffline":false,"install":{}}]}"#,
+        )
+        .unwrap();
+        let lib = Library::load(&paths).unwrap();
+        let port = lib.get("sideload_port").unwrap();
+        assert!(crate::collection::runs_offline(port));
+        assert!(!crate::collection::runs_offline(lib.get("sideload_web").unwrap()));
     }
 
     #[test]
