@@ -38,6 +38,8 @@ pub(super) enum GameAction {
     OpenFolder,
     Settings,
     EditGame,
+    /// An emulated game played as a PC game from now on (a native port).
+    PlayAsPc,
     Metadata,
     Hide,
     RemoveRecent,
@@ -162,6 +164,15 @@ impl CollectionView {
                 "change executable path editar alterar executavel caminho",
             ));
         }
+        if game.runner == "sideload" && game.launch_kind.as_deref() == Some("emulator") {
+            v.push(item(
+                A::PlayAsPc,
+                "as-pc",
+                tr!("Play as a PC game\u{2026}"),
+                Icon::SportsEsports,
+                "native port pc version executable linux windows nativo versao pc executavel",
+            ));
+        }
         v.push(item(
             A::Metadata,
             "metadata",
@@ -245,6 +256,7 @@ impl CollectionView {
             A::EditGame => {
                 self.open_edit_game(key, window, cx);
             }
+            A::PlayAsPc => self.open_play_as_pc(key, window, cx),
             A::Metadata => self.open_metadata_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
             A::Details => self.open_details(key, cx),

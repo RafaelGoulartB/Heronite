@@ -235,5 +235,7 @@
   "Uncategorized": "Sem categoria",
   "{n} selected": "{n} selecionadas",
   "That name is reserved": "Esse nome é reservado",
-  "The category needs a name": "A categoria precisa de um nome"
+  "The category needs a name": "A categoria precisa de um nome",
+  "A native port or a PC version, instead of the emulator": "Um port nativo ou uma versão de PC, em vez do emulador",
+  "Play as a PC game…": "Jogar como jogo de PC…"
 }

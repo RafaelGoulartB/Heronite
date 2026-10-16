@@ -317,6 +317,10 @@ struct RawGame {
     /// Kept in `GameInfo::rest`: the View menu's "Run offline".
     #[serde(rename = "canRunOffline")]
     can_run_offline: Option<bool>,
+    /// Kept in `GameInfo::rest`: a Linux game started by a command
+    /// (`crate::sideload::COMMAND_KEY`).
+    #[serde(rename = "heroniteCommand")]
+    command: Option<String>,
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -362,6 +366,9 @@ impl From<RawGame> for GameInfo {
                 }
                 if let Some(b) = g.can_run_offline {
                     rest.insert("canRunOffline".to_string(), Value::Bool(b));
+                }
+                if let Some(c) = g.command.filter(|s| !s.trim().is_empty()) {
+                    rest.insert(crate::sideload::COMMAND_KEY.to_string(), Value::String(c));
                 }
                 rest
             },
@@ -827,7 +834,7 @@ mod tests {
     }
 
     #[test]
-    fn the_offline_flag_survives_loading() {
+    fn the_flags_filters_and_launches_read_survive_loading() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         fs::create_dir_all(paths.sideload_library().parent().unwrap()).unwrap();
@@ -835,13 +842,14 @@ mod tests {
             paths.sideload_library(),
             r#"{"games":[
               {"runner":"sideload","app_name":"port","title":"Port","is_installed":true,"canRunOffline":true,
-               "install":{"install_path":"/g/port","platform":"linux"}},
+               "heroniteCommand":"./start.sh","install":{"install_path":"/g/port","platform":"linux"}},
               {"runner":"sideload","app_name":"web","title":"Web","canRunOffline":false,"install":{}}]}"#,
         )
         .unwrap();
         let lib = Library::load(&paths).unwrap();
         let port = lib.get("sideload_port").unwrap();
         assert!(crate::collection::runs_offline(port));
+        assert_eq!(crate::sideload::command_of(&port.game), Some(("./start.sh", "/g/port")));
         assert!(!crate::collection::runs_offline(lib.get("sideload_web").unwrap()));
     }
 

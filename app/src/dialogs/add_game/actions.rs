@@ -27,17 +27,29 @@ impl AddGameDialog {
         let exe = text_of(&self.exe, cx).trim().to_string();
         let url = normalize_url(&text_of(&self.url, cx));
         let platform = self.platform;
-        if let Some(msg) = missing_field(&title, platform, &exe, &url) {
+        let folder = text_of(&self.folder, cx).trim().to_string();
+        let command = text_of(&self.command, cx).trim().to_string();
+        let start = self.start(&exe, &folder, &command);
+        let by_command = matches!(start, Start::Command { .. });
+        if let Some(msg) = missing_field(&title, platform, start, &url) {
             self.error = msg.to_string();
             cx.notify();
             return;
+        }
+        // A command that cannot start (a typo in the path) is caught here, not at Play.
+        if let Start::Command { folder, command } = start {
+            if let Err(why) = heronite_launch::native::check_command(command, folder, &SystemProbe) {
+                self.error = why;
+                cx.notify();
+                return;
+            }
         }
         let (art_cover, art_square) = art_pair(&text_of(&self.square, cx), &text_of(&self.hero, cx));
         let browser = platform == SideloadPlatform::Browser;
         let spec = SideloadSpec {
             app_name: self.app_name.clone(),
             title,
-            executable: if browser { String::new() } else { exe.clone() },
+            executable: if browser || by_command { String::new() } else { exe.clone() },
             platform,
             art_cover,
             art_square,
@@ -46,6 +58,8 @@ impl AddGameDialog {
             launch_full_screen: browser && self.fullscreen,
             run_as: None,
             install: matches!(self.mode, Mode::Install(_)),
+            install_folder: if platform == SideloadPlatform::Linux { folder } else { String::new() },
+            command: if by_command { command } else { String::new() },
         };
         let new_wine = (!self.is_edit() && platform == SideloadPlatform::Windows)
             .then(|| (text_of(&self.prefix, cx).trim().to_string(), self.wine.as_ref().map(wine_to_value), self.bottle.clone()));
@@ -57,7 +71,7 @@ impl AddGameDialog {
             let res = cx
                 .background_spawn(async move {
                     let mut spec = spec;
-                    if !browser {
+                    if !browser && !by_command {
                         let detected = detect_platform(&spec.executable, &SystemProbe);
                         spec.run_as = run_as_for(spec.platform, detected, existing_run_as.as_deref());
                     }

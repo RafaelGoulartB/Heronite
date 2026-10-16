@@ -97,6 +97,7 @@ impl CollectionView {
                 }
             }
             w if w.starts_with("manual-install:") => self.open_manual_install(&w["manual-install:".len()..], window, cx),
+            w if w.starts_with("play-as-pc:") => self.open_play_as_pc(&w["play-as-pc:".len()..], window, cx),
             w if w.starts_with("local-uninstall:") => self.open_sideload_uninstall(&w["local-uninstall:".len()..], window, cx),
             w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => {
                 self.open_extras_debug(which.as_str(), window, cx)

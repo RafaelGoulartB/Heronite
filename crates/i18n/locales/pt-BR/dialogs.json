@@ -252,5 +252,17 @@
   "{total}, showing the last {shown}": "{total}, mostrando os últimos {shown}",
   "Running the script before launch...": "Executando o script antes de iniciar...",
   "Script not found: {program}": "Script não encontrado: {program}",
-  "Program not found: {path}": "Programa não encontrado: {path}"
+  "Program not found: {path}": "Programa não encontrado: {path}",
+  "A command": "Um comando",
+  "An executable": "Um executável",
+  "Command": "Comando",
+  "Play as a PC game": "Jogar como jogo de PC",
+  "Play this game as a PC game (a native port or a PC version) instead of through its emulator: choose how it starts. Its playtime, status and art stay.": "Jogue este jogo como jogo de PC (um port nativo ou uma versão de PC) em vez de pelo emulador: escolha como ele inicia. O tempo de jogo, o status e a arte continuam.",
+  "Runs inside the game folder, like a terminal opened there. Example: ./start.sh --fullscreen": "Roda dentro da pasta do jogo, como um terminal aberto ali. Exemplo: ./start.sh --fullscreen",
+  "Select the game folder": "Selecione a pasta do jogo",
+  "Select the game folder to continue.": "Selecione a pasta do jogo para continuar.",
+  "Start with": "Iniciar com",
+  "The folder the game is in": "A pasta onde o jogo está",
+  "Type the command that starts the game": "Digite o comando que inicia o jogo",
+  "Type the command that starts the game to continue.": "Digite o comando que inicia o jogo para continuar."
 }

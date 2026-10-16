@@ -33,6 +33,7 @@ enum TextField {
     Title,
     Url,
     UserAgent,
+    Command,
     Art(Slot),
 }
 
@@ -40,6 +41,7 @@ enum TextField {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Pick {
     Executable,
+    Folder,
     Prefix,
     Installer,
     Art(Slot),
@@ -121,13 +123,35 @@ impl AddGameDialog {
             );
             rows.push(Row::toggle("fullscreen", tr!("Launch fullscreen"), self.fullscreen).desc(tr!("Press F11 to exit.")));
         } else {
-            let exe = text_of(&self.exe, cx);
-            let mut r = Row::text("exe", tr!("Executable"), short_path(exe.trim())).icon(Icon::FolderOpen);
-            r = match install_folder(&exe) {
-                Some(f) => r.desc(tr!("{exe}\nInstall folder: {folder}", exe, folder = f)),
-                None => r.desc(tr!("Choose the program that starts the game.")),
-            };
-            rows.push(r);
+            let linux = self.platform == SideloadPlatform::Linux;
+            if linux {
+                rows.push(
+                    Row::text("folder", tr!("Game folder"), short_path(text_of(&self.folder, cx).trim()))
+                        .icon(Icon::FolderOpen)
+                        .desc(tr!("The folder the game is in")),
+                );
+                rows.push(Row::choice(
+                    "start",
+                    tr!("Start with"),
+                    vec![tr!("An executable").into(), tr!("A command").into()],
+                    usize::from(self.by_command),
+                ));
+            }
+            if linux && self.by_command {
+                rows.push(
+                    Row::text("command", tr!("Command"), text_of(&self.command, cx).trim())
+                        .icon(Icon::Edit)
+                        .desc(tr!("Runs inside the game folder, like a terminal opened there. Example: ./start.sh --fullscreen")),
+                );
+            } else {
+                let exe = text_of(&self.exe, cx);
+                let mut r = Row::text("exe", tr!("Executable"), short_path(exe.trim())).icon(Icon::FolderOpen);
+                r = match install_folder(&exe) {
+                    Some(f) => r.desc(tr!("{exe}\nInstall folder: {folder}", exe, folder = f)),
+                    None => r.desc(tr!("Choose the program that starts the game.")),
+                };
+                rows.push(r);
+            }
         }
 
         rows.push(Row::header(tr!("Art")));
@@ -199,7 +223,8 @@ impl AddGameDialog {
             );
         }
         let (exe, url) = (text_of(&self.exe, cx), normalize_url(&text_of(&self.url, cx)));
-        let valid = missing_field(&title, self.platform, &exe, &url).is_none();
+        let (folder, command) = (text_of(&self.folder, cx), text_of(&self.command, cx));
+        let valid = missing_field(&title, self.platform, self.start(&exe, &folder, &command), &url).is_none();
         let finish = match (edit, self.saving) {
             (false, false) => tr!("Add game"),
             (true, false) => tr!("Save"),
@@ -231,7 +256,8 @@ impl AddGameDialog {
             return None;
         }
         let url = normalize_url(&text_of(&self.url, cx));
-        missing_hint(&text_of(&self.title, cx), self.platform, &text_of(&self.exe, cx), &url)
+        let (exe, folder, command) = (text_of(&self.exe, cx), text_of(&self.folder, cx), text_of(&self.command, cx));
+        missing_hint(&text_of(&self.title, cx), self.platform, self.start(&exe, &folder, &command), &url)
             .map(|m| (SharedString::from(m), theme::console_btn_y().into()))
     }
 
@@ -348,6 +374,7 @@ impl AddGameDialog {
             TextField::Title => (tr!("Title"), text_of(&self.title, cx)),
             TextField::Url => (tr!("Game URL"), text_of(&self.url, cx)),
             TextField::UserAgent => (tr!("Custom user agent"), text_of(&self.user_agent, cx)),
+            TextField::Command => (tr!("Command"), text_of(&self.command, cx)),
             TextField::Art(Slot::Square) => (tr!("Cover art address"), text_of(&self.square, cx)),
             TextField::Art(Slot::Cover) => (tr!("Background art address"), text_of(&self.hero, cx)),
         };
@@ -376,6 +403,7 @@ impl AddGameDialog {
             }
             TextField::Url => set(&self.url.clone(), text, window, cx),
             TextField::UserAgent => set(&self.user_agent.clone(), text, window, cx),
+            TextField::Command => set(&self.command.clone(), text, window, cx),
             TextField::Art(slot) => set(&self.art_input(slot), text, window, cx),
         }
     }
@@ -390,7 +418,15 @@ impl AddGameDialog {
 
     fn open_browser(&mut self, what: Pick, window: &mut Window, cx: &mut Context<Self>) {
         let (title, kind, start) = match what {
-            Pick::Executable => (tr!("Select the executable"), PickKind::File(Vec::new()), text_of(&self.exe, cx)),
+            Pick::Executable => (tr!("Select the executable"), PickKind::File(Vec::new()), {
+                let exe = text_of(&self.exe, cx);
+                if exe.trim().is_empty() {
+                    text_of(&self.folder, cx)
+                } else {
+                    exe
+                }
+            }),
+            Pick::Folder => (tr!("Select the game folder"), PickKind::Folder, text_of(&self.folder, cx)),
             Pick::Prefix => (tr!("Select the Wine prefix folder"), PickKind::Folder, text_of(&self.prefix, cx)),
             Pick::Installer => (tr!("Select the setup program to run"), PickKind::File(Vec::new()), String::new()),
             Pick::Art(_) => {
@@ -407,7 +443,9 @@ impl AddGameDialog {
                     Pick::Executable => {
                         this.exe.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
                         this.executable_changed(&path);
+                        this.fill_folder_from(&path, window, cx);
                     }
+                    Pick::Folder => this.folder.update(cx, |s, cx| s.set_value(path, window, cx)),
                     Pick::Prefix => this.prefix.update(cx, |s, cx| s.set_value(path, window, cx)),
                     Pick::Installer => this.run_installer(path, cx),
                     Pick::Art(slot) => this.art_input(slot).update(cx, |s, cx| s.set_value(file_url(&path), window, cx)),
@@ -488,6 +526,7 @@ impl PadTarget for AddGameDialog {
                 ("platform", Value::Choice { index, .. }) => self.set_platform(PLATFORMS[index.min(PLATFORMS.len() - 1)], cx),
                 ("wine", Value::Choice { index, .. }) => self.wine = self.wine_choices().get(index).cloned().or_else(|| self.wine.clone()),
                 ("fullscreen", Value::Toggle(on)) => self.fullscreen = on,
+                ("start", Value::Choice { index, .. }) => self.by_command = index == 1,
                 ("shared", Value::Toggle(on)) => self.set_shared_prefix(on, window, cx),
                 ("remove-prefix", Value::Toggle(on)) => self.remove_prefix_too = on,
                 _ => {}
@@ -497,6 +536,8 @@ impl PadTarget for AddGameDialog {
                 "url" => self.open_text(TextField::Url, window, cx),
                 "ua" => self.open_text(TextField::UserAgent, window, cx),
                 "exe" => self.open_browser(Pick::Executable, window, cx),
+                "folder" => self.open_browser(Pick::Folder, window, cx),
+                "command" => self.open_text(TextField::Command, window, cx),
                 "prefix" => self.open_browser(Pick::Prefix, window, cx),
                 "installer" => self.open_browser(Pick::Installer, window, cx),
                 "find-art" => self.find_art(window, cx),

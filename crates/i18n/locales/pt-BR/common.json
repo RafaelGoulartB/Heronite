@@ -223,5 +223,10 @@
   "Refresh": "Atualizar",
   "Release date": "Data de lançamento",
   "Source": "Fonte",
-  "The legendary binary was not found": "O binário do legendary não foi encontrado"
+  "The legendary binary was not found": "O binário do legendary não foi encontrado",
+  "Game folder not found: {folder}": "Pasta do jogo não encontrada: {folder}",
+  "To run {program} from the game folder, write ./{program}": "Para rodar {program} da pasta do jogo, escreva ./{program}",
+  "{program} is not in the game folder": "{program} não está na pasta do jogo",
+  "{program} is not in the game folder. Did you mean {full}? (./ means \"inside the game folder\")": "{program} não está na pasta do jogo. Você quis dizer {full}? (./ significa \"dentro da pasta do jogo\")",
+  "{program} was not found: it is not installed": "{program} não foi encontrado: não está instalado"
 }

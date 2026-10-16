@@ -60,6 +60,10 @@ pub fn next_install_state(
         return InstallState { is_installed: exe_ok && roms_ok, executable: if exe_ok { executable } else { String::new() } };
     }
 
+    // Started by a command: installed while its folder is there.
+    if let Some((_, folder)) = heronite_data::sideload::command_of(game) {
+        return InstallState { is_installed: probe.exists(folder), executable: game.install.executable.clone().unwrap_or_default() };
+    }
     let executable = local_exe();
     if meta.launch_kind == "executable" || !executable.is_empty() {
         return InstallState { is_installed: !executable.is_empty(), executable };

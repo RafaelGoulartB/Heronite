@@ -101,6 +101,46 @@ fn native_missing_executable_and_missing_tool_are_unavailable() {
 }
 
 #[test]
+fn a_linux_game_started_by_a_command_runs_it_in_its_folder() {
+    let mut game = sideload("g", "", "linux");
+    game.install.install_path = Some("/games/gow3".into());
+    game.rest.insert(heronite_data::sideload::COMMAND_KEY.into(), json!("env DXVK_HUD=1 ./gow3 --fullscreen"));
+    let m = meta("executable");
+    let none = FakeProbe::new("/h");
+    let plan = build_plan_with_settings(&ctx(json!({})), &none, &game, Some(&m), &settings(json!({})), &Default::default());
+    assert_eq!(plan, LaunchPlan::Unavailable("Game folder not found: /games/gow3".into()));
+
+    let probe = FakeProbe::new("/h").with_file("/games/gow3", b"").with_file("/games/gow3/gow3", b"\x7fELF");
+    let plan = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &game,
+        Some(&m),
+        &settings(json!({"launcherArgs": "-windowed"})),
+        &Default::default(),
+    );
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.program, "/bin/sh");
+    assert_eq!(p.command.args, ["-c", "env DXVK_HUD=1 ./gow3 --fullscreen \"$@\"", "sh", "-windowed"]);
+    assert_eq!(p.command.cwd.as_deref(), Some("/games/gow3"));
+    assert_eq!(p.stop.kill_patterns, ["gow3"]);
+
+    // An alternative executable in the settings still wins.
+    let probe = probe.with_file("/games/gow3/other", b"#!/bin/sh");
+    let plan = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &game,
+        Some(&LocalGameMeta { run_as: Some("linux".into()), ..meta("executable") }),
+        &settings(json!({"targetExe": "/games/gow3/other"})),
+        &Default::default(),
+    );
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.args, Vec::<String>::new());
+    assert!(p.command.program.ends_with("other"));
+}
+
+#[test]
 fn windows_exe_uses_umu_with_proton_path() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
     let plan = build_plan_with_settings(

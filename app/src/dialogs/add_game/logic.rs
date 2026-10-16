@@ -107,34 +107,51 @@ pub enum Missing {
     Title,
     Url,
     Executable,
+    Folder,
+    Command,
 }
 
-pub fn missing(title: &str, platform: SideloadPlatform, executable: &str, url: &str) -> Option<Missing> {
+/// How a Linux or Windows game starts: a program, or (Linux) a command run
+/// inside the game's folder.
+#[derive(Clone, Copy, Debug)]
+pub enum Start<'a> {
+    Executable(&'a str),
+    Command { folder: &'a str, command: &'a str },
+}
+
+pub fn missing(title: &str, platform: SideloadPlatform, start: Start, url: &str) -> Option<Missing> {
     if title.trim().is_empty() {
         return Some(Missing::Title);
     }
-    match platform {
-        SideloadPlatform::Browser if url.trim().is_empty() => Some(Missing::Url),
-        SideloadPlatform::Linux | SideloadPlatform::Windows if executable.trim().is_empty() => Some(Missing::Executable),
+    match (platform, start) {
+        (SideloadPlatform::Browser, _) if url.trim().is_empty() => Some(Missing::Url),
+        (SideloadPlatform::Browser, _) => None,
+        (_, Start::Executable(exe)) if exe.trim().is_empty() => Some(Missing::Executable),
+        (_, Start::Command { folder, .. }) if folder.trim().is_empty() => Some(Missing::Folder),
+        (_, Start::Command { command, .. }) if command.trim().is_empty() => Some(Missing::Command),
         _ => None,
     }
 }
 
 /// Why the form cannot be saved yet (empty when it can).
-pub fn missing_field(title: &str, platform: SideloadPlatform, executable: &str, url: &str) -> Option<&'static str> {
-    missing(title, platform, executable, url).map(|m| match m {
+pub fn missing_field(title: &str, platform: SideloadPlatform, start: Start, url: &str) -> Option<&'static str> {
+    missing(title, platform, start, url).map(|m| match m {
         Missing::Title => tr!("Add a title"),
         Missing::Url => tr!("Add the game URL"),
         Missing::Executable => tr!("Select the executable"),
+        Missing::Folder => tr!("Select the game folder"),
+        Missing::Command => tr!("Type the command that starts the game"),
     })
 }
 
 /// [`missing_field`] as a sentence for the status line.
-pub fn missing_hint(title: &str, platform: SideloadPlatform, executable: &str, url: &str) -> Option<&'static str> {
-    missing(title, platform, executable, url).map(|m| match m {
+pub fn missing_hint(title: &str, platform: SideloadPlatform, start: Start, url: &str) -> Option<&'static str> {
+    missing(title, platform, start, url).map(|m| match m {
         Missing::Title => tr!("Add a title to continue."),
         Missing::Url => tr!("Add the game URL to continue."),
         Missing::Executable => tr!("Select the executable to continue."),
+        Missing::Folder => tr!("Select the game folder to continue."),
+        Missing::Command => tr!("Type the command that starts the game to continue."),
     })
 }
 
@@ -233,11 +250,16 @@ mod tests {
     #[test]
     fn form_needs_title_and_what_to_run() {
         use SideloadPlatform::*;
-        assert_eq!(missing_field(" ", Linux, "/x", ""), Some(tr!("Add a title")));
-        assert_eq!(missing_field("G", Windows, " ", ""), Some(tr!("Select the executable")));
-        assert_eq!(missing_field("G", Browser, "", ""), Some(tr!("Add the game URL")));
-        assert_eq!(missing_field("G", Browser, "", "x.com"), None);
-        assert_eq!(missing_field("G", Linux, "/x", ""), None);
+        let exe = Start::Executable;
+        assert_eq!(missing_field(" ", Linux, exe("/x"), ""), Some(tr!("Add a title")));
+        assert_eq!(missing_field("G", Windows, exe(" "), ""), Some(tr!("Select the executable")));
+        assert_eq!(missing_field("G", Browser, exe(""), ""), Some(tr!("Add the game URL")));
+        assert_eq!(missing_field("G", Browser, exe(""), "x.com"), None);
+        assert_eq!(missing_field("G", Linux, exe("/x"), ""), None);
+        let cmd = |folder, command| Start::Command { folder, command };
+        assert_eq!(missing_field("G", Linux, cmd("", "./run"), ""), Some(tr!("Select the game folder")));
+        assert_eq!(missing_field("G", Linux, cmd("/g", " "), ""), Some(tr!("Type the command that starts the game")));
+        assert_eq!(missing_field("G", Linux, cmd("/g", "./run"), ""), None);
     }
 
     #[test]

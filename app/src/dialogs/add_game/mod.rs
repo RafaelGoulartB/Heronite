@@ -54,6 +54,9 @@ pub struct Prefill {
     pub title: String,
     pub square: String,
     pub hero: String,
+    /// An emulated game becoming a PC game (a native port or a PC version):
+    /// same form, its own title and note.
+    pub convert: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -72,6 +75,11 @@ pub struct AddGameDialog {
     square: Entity<InputState>,
     hero: Entity<InputState>,
     exe: Entity<InputState>,
+    /// Linux: the game's folder, and the command run in it when the game is
+    /// started by a command (`by_command`) instead of an executable.
+    folder: Entity<InputState>,
+    command: Entity<InputState>,
+    by_command: bool,
     url: Entity<InputState>,
     user_agent: Entity<InputState>,
     prefix: Entity<InputState>,
@@ -138,6 +146,7 @@ impl AddGameDialog {
             (String::new(), String::new(), String::new(), String::new(), String::new(), String::new(), false);
         let mut platform = SideloadPlatform::Windows;
         let mut existing_run_as = None;
+        let (mut folder, mut command) = (String::new(), String::new());
         if let Some(game) = &edited {
             let g = &game.game;
             title = g.title.clone();
@@ -149,6 +158,8 @@ impl AddGameDialog {
             ua = extra_str(g, "customUserAgent");
             fullscreen = g.rest.get("launchFullScreen").and_then(Value::as_bool).unwrap_or(false);
             existing_run_as = game.meta.as_ref().and_then(|m| m.run_as.clone());
+            folder = g.install.install_path.clone().unwrap_or_default();
+            command = extra_str(g, sideload::COMMAND_KEY);
             platform = if !url.is_empty() || g.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("browser")) {
                 SideloadPlatform::Browser
             } else {
@@ -159,6 +170,10 @@ impl AddGameDialog {
             };
         }
         if let Mode::Install(p) = &mode {
+            // A port usually runs natively; picking a Windows program switches it.
+            if p.convert {
+                platform = SideloadPlatform::Linux;
+            }
             title = p.title.clone();
             square = p.square.clone();
             hero = if p.hero != p.square { p.hero.clone() } else { String::new() };
@@ -181,6 +196,9 @@ impl AddGameDialog {
         let square_in = new_input(window, cx, &square, tr!("Paste an URL of an Image or select one from your computer"));
         let hero_in = new_input(window, cx, &hero, tr!("Paste an URL of an Image or select one from your computer"));
         let exe_in = new_input(window, cx, &exe, tr!("Select Executable"));
+        let by_command = !command.is_empty();
+        let folder_in = new_input(window, cx, &folder, tr!("The folder the game is in"));
+        let command_in = new_input(window, cx, &command, "./start.sh");
         let url_in = new_input(window, cx, &url, tr!("Paste the Game URL here"));
         let ua_in = new_input(window, cx, &ua, tr!("Write a custom user agent here to be used on this browser app/game"));
         let prefix_in = new_input(window, cx, &suggested, "");
@@ -200,7 +218,7 @@ impl AddGameDialog {
             InputEvent::Blur => this.auto_find_art(window, cx),
             _ => {}
         }));
-        for input in [&square_in, &hero_in, &url_in, &ua_in, &prefix_in] {
+        for input in [&square_in, &hero_in, &url_in, &ua_in, &prefix_in, &folder_in, &command_in] {
             subs.push(cx.subscribe_in(input, window, |_, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
@@ -232,6 +250,9 @@ impl AddGameDialog {
             square: square_in,
             hero: hero_in,
             exe: exe_in,
+            folder: folder_in,
+            command: command_in,
+            by_command,
             url: url_in,
             user_agent: ua_in,
             prefix: prefix_in,
@@ -279,9 +300,21 @@ impl AddGameDialog {
                 "Important! Are you adding a game from Epic, GOG or Amazon? Do NOT use this feature for that. Log into the store from the menu, look for the game in your library and use Install / Import instead."
             )),
             Mode::Edit(_) => None,
+            Mode::Install(Prefill { convert: true, .. }) => Some(tr!(
+                "Play this game as a PC game (a native port or a PC version) instead of through its emulator: choose how it starts. Its playtime, status and art stay."
+            )),
             Mode::Install(_) => Some(tr!(
                 "Install this game without its store: use Run Installer First to run its setup program in the prefix below, then select the installed game's executable. Or select the executable of a copy you already have."
             )),
+        }
+    }
+
+    /// How the game starts, as the form has it now.
+    fn start<'a>(&self, exe: &'a str, folder: &'a str, command: &'a str) -> Start<'a> {
+        if self.platform == SideloadPlatform::Linux && self.by_command {
+            Start::Command { folder, command }
+        } else {
+            Start::Executable(exe)
         }
     }
 
@@ -289,6 +322,7 @@ impl AddGameDialog {
         match self.mode {
             Mode::Add => tr!("Add game"),
             Mode::Edit(_) => tr!("Edit game"),
+            Mode::Install(Prefill { convert: true, .. }) => tr!("Play as a PC game"),
             Mode::Install(_) => tr!("Install game"),
         }
     }
