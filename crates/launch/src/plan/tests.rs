@@ -184,13 +184,19 @@ fn heronite_switches_reach_a_umu_launch() {
     // The game's own id wins; without the switches nothing is added.
     let mine = settings(json!({
         "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"},
-        "winePrefix": "/pfx", "heroniteUmuId": "1091500"
+        "winePrefix": "/pfx", "heroniteUmuId": "1091500", "heroniteKeepAwake": false
     }));
     let plan = build_plan_with_settings(&c, &probe, &game, Some(&m), &mine, &Default::default());
     let LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
     assert_eq!(process.command.env["GAMEID"], "umu-1091500");
     assert!(!process.command.env.contains_key("PROTON_PREFER_SDL"));
-    assert!(process.keep_awake.is_none());
+    assert!(process.keep_awake.is_none(), "turned off");
+    // Never set: on by default.
+    let unset = settings(json!({"wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"}, "winePrefix": "/pfx"}));
+    let LaunchPlan::Wine { process, .. } = build_plan_with_settings(&c, &probe, &game, Some(&m), &unset, &Default::default()) else {
+        panic!()
+    };
+    assert!(process.keep_awake.is_some());
 }
 
 #[test]

@@ -21,7 +21,7 @@ impl SettingsPanel {
         if !steam {
             v.push(self.c_toggle(
                 heronite_launch::keep_awake::KEY,
-                false,
+                true,
                 tr!("Keep the computer awake while playing"),
                 Some(tr!("No suspend or idle while the game runs (a controller does not count as activity)")),
                 false,

@@ -1,4 +1,5 @@
-//! "Keep the computer awake" (`heroniteKeepAwake`): while the game runs,
+//! "Keep the computer awake" (`heroniteKeepAwake`, on unless turned off):
+//! while the game runs,
 //! logind is told not to suspend or go idle, as a video player does. Useful
 //! with a controller, whose input the desktop does not count as activity.
 //!

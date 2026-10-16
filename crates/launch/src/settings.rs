@@ -235,7 +235,8 @@ impl GameSettings {
             gamescope: gs,
             lsfg: crate::lsfg::Lsfg::from_map(m),
             prefer_sdl: b(crate::env::KEY_PREFER_SDL),
-            keep_awake: b(crate::keep_awake::KEY),
+            // On unless the game or the defaults turned it off.
+            keep_awake: m.get(crate::keep_awake::KEY).map(|v| truthy(Some(v))).unwrap_or(true),
             umu_id: text(m.get(crate::umu_ids::KEY)).trim().to_string(),
         }
     }

@@ -73,7 +73,7 @@ impl SettingsPanel {
         let mut system = rows().child(self.toggle_row(
             "keep-awake",
             heronite_launch::keep_awake::KEY,
-            false,
+            true,
             tr!("Keep the computer awake while playing"),
             Some(tr!("Stops the computer from suspending or going idle while the game runs. Useful with a controller, which the system does not count as activity.")),
             false,
