@@ -66,7 +66,7 @@ impl SettingsPanel {
     pub(super) fn lsfg_section(&mut self, disabled: bool, cx: &mut Context<Self>) -> Div {
         let s = self.lsfg_settings();
         let label = tr!("Lossless Scaling frame generation");
-        let about = tr!("Shows generated frames between the game's own, for smoother motion with a little more input latency. Works with Vulkan games and DirectX games through DXVK or VKD3D-Proton, not OpenGL. Needs lsfg-vk and Lossless Scaling.");
+        let about = tr!("Generated frames between the game's own: smoother, a bit more latency. Vulkan and DirectX games (not OpenGL); needs lsfg-vk and Lossless Scaling.");
         let missing = s.enabled.then(|| self.lsfg_missing()).flatten();
         let mut card = rows().child(match missing {
             Some(m) => inactive_row(label, about, m, disabled, cx),
@@ -95,8 +95,7 @@ impl SettingsPanel {
             let mut items = vec![(here.clone(), !uses_profile)];
             items.extend(profiles.iter().map(|p| (profile_label(p), uses_profile && *p == s.profile)));
             let shown = if uses_profile { profile_label(&s.profile) } else { here };
-            let mut notes =
-                vec![help(tr!("The values below, or a profile of lsfg-vk's own settings. Profiles are edited in lsfg-vk-ui, and changes apply while the game runs."))];
+            let mut notes = vec![help(tr!("These values, or a profile from lsfg-vk-ui (its changes apply while playing)."))];
             if !s.profile.is_empty() && !uses_profile {
                 notes.push(help(&tr!("The profile {name} is gone: the values below are used.", name = s.profile)));
             }
@@ -127,13 +126,13 @@ impl SettingsPanel {
                 cx,
                 |this, i, _, cx| this.set(lsfg::KEY_MULTIPLIER, json!(lsfg::MULTIPLIERS[i]), cx),
             ),
-            vec![help(tr!("Frames shown for each frame the game draws: 2× turns 60 FPS into 120. Cap the game's own frame rate for the smoothest result."))],
+            vec![help(tr!("2× turns 60 FPS into 120. Set an FPS limit for the most even frames."))],
         )
         .field_help(
             self.select_row("lsfg-flow", Some(tr!("Flow scale")), format!("{}%", s.flow_scale), flows, disabled, cx, |this, i, _, cx| {
                 this.set(lsfg::KEY_FLOW_SCALE, json!(lsfg::FLOW_SCALES[i]), cx)
             }),
-            vec![help(tr!("Resolution of the motion estimation. Lower is faster and less precise; a good start is 100% at 1080p, 75% at 1440p and 50% at 4K."))],
+            vec![help(tr!("Lower is lighter and less precise: about 100% at 1080p, 75% at 1440p, 50% at 4K."))],
         )
         .child(self.toggle_row(
             "lsfg-performance",
@@ -144,7 +143,15 @@ impl SettingsPanel {
             disabled,
             cx,
         ))
-        .child(self.toggle_row("lsfg-hdr", lsfg::KEY_HDR, false, "HDR", Some(tr!("Turn on when the game outputs HDR.")), disabled, cx))
+        .child(self.toggle_row(
+            "lsfg-hdr",
+            lsfg::KEY_HDR,
+            false,
+            "HDR",
+            Some(tr!("Turn on when the game outputs HDR.")),
+            disabled,
+            cx,
+        ))
     }
 }
 

@@ -15,15 +15,29 @@ use crate::icons::Icon;
 
 impl SettingsPanel {
     /// `steam`: only the SDL switch (Steam keeps the computer awake itself).
-    pub(super) fn c_controls(&self, steam: bool) -> Vec<Item> {
+    /// GameMode, the dedicated GPU, keeping the computer awake, controllers.
+    /// `steam`: a Steam game (Steam keeps the computer awake itself).
+    pub(super) fn c_system(&self, steam: bool) -> Vec<Item> {
         let disabled = steam && !self.steam_fields_editable();
-        let mut v = vec![Self::c_header(tr!("Controllers and power"))];
+        let mut v = vec![
+            Self::c_header(tr!("System")),
+            self.c_toggle("useGameMode", false, "GameMode", Some(tr!("System tweaks while the game runs (needs GameMode)")), disabled),
+        ];
+        if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
+            v.push(self.c_toggle(
+                "nvidiaPrime",
+                false,
+                tr!("Use the dedicated GPU"),
+                Some(tr!("For computers with two GPUs, like gaming laptops. OpenGL and Vulkan games only")),
+                disabled,
+            ));
+        }
         if !steam {
             v.push(self.c_toggle(
                 heronite_launch::keep_awake::KEY,
                 true,
-                tr!("Keep the computer awake while playing"),
-                Some(tr!("No suspend or idle while the game runs (a controller does not count as activity)")),
+                tr!("Keep the computer awake"),
+                Some(tr!("A controller does not count as activity, so the computer could sleep mid-game")),
                 false,
             ));
         }
@@ -31,8 +45,8 @@ impl SettingsPanel {
             v.push(self.c_toggle(
                 heronite_launch::env::KEY_PREFER_SDL,
                 false,
-                tr!("Use SDL for controllers"),
-                Some(tr!("Fixes undetected controllers, swapped buttons or double input")),
+                tr!("Read controllers through SDL"),
+                Some(tr!("Fixes a controller the game misses or buttons that repeat; PlayStation extras (gyro, touchpad) stop working")),
                 disabled,
             ));
         }

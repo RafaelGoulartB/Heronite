@@ -200,7 +200,7 @@ pub(super) fn group_help(kind: FileKind) -> Option<&'static str> {
             "The whole registry of the prefix: restoring it also rolls back the settings of everything else installed there. Only pick it if the game keeps its save in the registry."
         )),
         FileKind::Outside => {
-            Some(tr!("Copies from another prefix or Steam library on this PC. They are written back where they were, not into the game."))
+            Some(tr!("Copies from another prefix or Steam library; they restore to where they came from."))
         }
         FileKind::Unmapped => Some(tr!("Windows paths on another drive. They cannot be restored here.")),
     }

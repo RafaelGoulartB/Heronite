@@ -141,10 +141,9 @@ impl SettingsPanel {
                 this.add_companion(path, cx)
             });
         })));
-        column()
-            .child(heading(tr!("Programs alongside the game")))
-            .child(list.card())
-            .child(help(tr!("Trainers, mod tools and other programs to run while you play. Windows programs run in the game's prefix with its Wine or Proton, so they can see the game. They close when the game exits.")).px(px(6.)))
+        column().child(heading(tr!("Programs alongside the game"))).child(list.card()).child(
+            help(tr!("Trainers and tools started with the game and closed with it. Windows programs run in the game's prefix.")).px(px(6.)),
+        )
     }
 }
 

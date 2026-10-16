@@ -74,13 +74,13 @@ const fn s(key: &'static str) -> Bind {
 
 /// `(input id, binding, placeholder)`.
 const INPUTS: &[(&str, Bind, &str)] = &[
-    ("launcherArgs", Bind::Str { key: "launcherArgs", trim: false }, n_!("Put here the Launcher Arguments")),
+    ("launcherArgs", Bind::Str { key: "launcherArgs", trim: false }, n_!("Like -nolauncher")),
     ("winePrefix", s("winePrefix"), ""),
     ("crossoverBottle", s("wineCrossoverBottle"), ""),
     ("targetExe", s("targetExe"), n_!("Select EXE...")),
     ("beforeScript", s("beforeLaunchScriptPath"), n_!("Select script ...")),
     ("afterScript", s("afterLaunchScriptPath"), n_!("Select script ...")),
-    ("language", Bind::Str { key: "language", trim: true }, n_!("2-char or 4-char code (i.e.: \"fr\" or \"pt-BR\")")),
+    ("language", Bind::Str { key: "language", trim: true }, n_!("Like pt-BR")),
     ("fps.limit", Bind::Fps { key: heronite_launch::fps_limit::KEY_LIMIT }, n_!("No limit")),
     ("fps.noFocus", Bind::Fps { key: heronite_launch::fps_limit::KEY_NO_FOCUS }, n_!("No limit")),
     ("savesPath", s("savesPath"), n_!("Select the exact save games folder")),
@@ -626,16 +626,14 @@ impl Render for SettingsPanel {
             return self.render_console(window, cx);
         }
         let content = match self.section {
-            Section::Wine | Section::Proton if self.winetricks_open() => self.winetricks_tab(cx),
-            Section::Proton => self.proton_tab(cx),
-            Section::Other if self.is_steam() => self.steam_other_tab(cx),
-            Section::Advanced if self.is_steam() => self.steam_advanced_tab(cx),
-            Section::Gamescope if self.is_steam() => self.steam_gamescope_tab(cx),
+            Section::Compatibility if self.winetricks_open() => self.winetricks_tab(cx),
+            Section::Compatibility if self.is_steam() => self.proton_tab(cx),
+            Section::Performance if self.is_steam() => self.steam_perf_tab(cx),
+            Section::Launch if self.is_steam() => self.steam_launch_tab(cx),
             Section::General => self.general_tab(window, cx),
-            Section::Wine => self.wine_tab(window, cx),
-            Section::Other => self.other_tab(cx),
-            Section::Advanced => self.advanced_tab(window, cx),
-            Section::Gamescope => self.gamescope_tab(cx),
+            Section::Compatibility => self.compat_tab(window, cx),
+            Section::Performance => self.perf_tab(cx),
+            Section::Launch => self.launch_opts_tab(window, cx),
             Section::Saves => self.saves_tab(window, cx),
         };
         let mut footer = div()
@@ -668,9 +666,7 @@ impl Render for SettingsPanel {
             .flex_col()
             .gap(px(8.))
             .when(!self.is_game() && self.section != Section::General, |d| {
-                d.child(parts::hint(
-                    tr!("Changes in this section only apply as default values when installing games. If you want to change the settings of an already installed game, use the Settings button in the game page."),
-                ))
+                d.child(parts::hint(tr!("Defaults for games installed from now on. To change a game you already have, open its settings.")))
             })
             .child(content)
             .children(notice)

@@ -9,30 +9,31 @@ use heronite_launch::SystemProbe;
 use heronite_wine::WineInstallation;
 use serde_json::{json, Value};
 
-/// Tabs of the Heroic settings (the General one only exists for the global
-/// dialog).
+/// Tabs of the game settings, by what the user wants to change (the General
+/// one only exists for the global settings). Heroic's tabs are spread over
+/// them: Wine (or a Steam game's Proton) is Compatibility, Other and Gamescope
+/// are Performance, Advanced is Launch.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Section {
     General,
-    Wine,
-    Other,
-    Advanced,
-    Gamescope,
+    /// How the game starts: arguments, scripts, programs alongside, variables.
+    Launch,
+    /// Wine / Proton, the prefix and what makes Windows games run.
+    Compatibility,
+    /// Overlays, the FPS limit, frame generation, gamescope.
+    Performance,
+    /// The store's cloud saves.
     Saves,
-    /// Steam games: Steam's compatibility tool and Proton options.
-    Proton,
 }
 
 impl Section {
     pub fn label(self) -> &'static str {
         match self {
             Section::General => tr!("General"),
-            Section::Wine => tr!("Wine"),
-            Section::Other => tr!("Other"),
-            Section::Advanced => tr!("Advanced"),
-            Section::Gamescope => tr!("Gamescope"),
+            Section::Launch => tr!("Launch"),
+            Section::Compatibility => tr!("Compatibility"),
+            Section::Performance => tr!("Performance"),
             Section::Saves => tr!("Cloud saves"),
-            Section::Proton => "Proton",
         }
     }
 }
@@ -131,38 +132,32 @@ impl GameFacts {
         sections_for(self.run_kind, &self.runner, self.cloud_saves)
     }
 
-    /// The tab Heroic opens first (`getStartingTab`).
+    /// The tab the game settings open on (Heroic's `getStartingTab`).
     pub fn start_section(&self) -> Option<Section> {
         match self.run_kind {
-            RunKind::Wine => Some(Section::Wine),
-            RunKind::Native => Some(Section::Other),
-            RunKind::Steam => Some(Section::Proton),
+            RunKind::Wine | RunKind::Steam => Some(Section::Compatibility),
+            RunKind::Native => Some(Section::Performance),
             RunKind::None => None,
         }
     }
 }
 
+/// The panel's sections of a game, in tab order.
 pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> Vec<Section> {
-    let mut out = Vec::new();
+    let mut out = vec![Section::Launch];
     match run_kind {
-        RunKind::None => return out,
-        RunKind::Steam => return vec![Section::Proton, Section::Other, Section::Advanced, Section::Gamescope],
-        RunKind::Wine => {
-            out.push(Section::Wine);
-            out.push(Section::Other);
-        }
-        RunKind::Native => out.push(Section::Other),
+        RunKind::None => return Vec::new(),
+        RunKind::Steam | RunKind::Wine => out.extend([Section::Compatibility, Section::Performance]),
+        RunKind::Native => out.push(Section::Performance),
     }
-    out.push(Section::Advanced);
-    if matches!(runner, "legendary" | "gog") && cloud_saves_tab {
+    if run_kind == RunKind::Wine && matches!(runner, "legendary" | "gog") && cloud_saves_tab {
         out.push(Section::Saves);
     }
-    out.push(Section::Gamescope);
     out
 }
 
 /// Tabs of the global "Game defaults" editor.
-pub const DEFAULT_SECTIONS: [Section; 4] = [Section::Wine, Section::Other, Section::Advanced, Section::Gamescope];
+pub const DEFAULT_SECTIONS: [Section; 3] = [Section::Compatibility, Section::Performance, Section::Launch];
 
 /// Wine name as Heroic lists it (`WineVersionListItem`).
 pub fn display_wine_name(name: &str) -> String {
@@ -392,20 +387,15 @@ mod tests {
 
     #[test]
     fn sections_follow_gamessettings() {
-        assert_eq!(
-            sections_for(RunKind::Wine, "legendary", true),
-            [Section::Wine, Section::Other, Section::Advanced, Section::Saves, Section::Gamescope]
-        );
-        assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Section::Wine, Section::Other, Section::Advanced, Section::Gamescope]);
-        assert_eq!(sections_for(RunKind::Native, "sideload", false), [Section::Other, Section::Advanced, Section::Gamescope]);
+        use Section::*;
+        assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Saves]);
+        assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance]);
+        assert_eq!(sections_for(RunKind::Native, "sideload", false), [Launch, Performance]);
         assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
         assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));
         assert!(!sections_for(RunKind::Wine, "gog", false).contains(&Section::Saves));
-        assert_eq!(
-            sections_for(RunKind::Steam, "sideload", true),
-            [Section::Proton, Section::Other, Section::Advanced, Section::Gamescope]
-        );
+        assert_eq!(sections_for(RunKind::Steam, "sideload", true), [Launch, Compatibility, Performance]);
     }
 
     #[test]

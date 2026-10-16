@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --g-bg:#0f1319; --g-sheet:#161b24; --g-card:rgba(255,255,255,.045); --g-line:rgba(255,255,255,.08);
+          --g-text:#e8ecf2; --g-mute:#9aa4b2; --g-dim:#6f7987; --g-acc:#8fd3e8; --g-warn:#e8c07a; }
+  body { margin:0; }
+  .wrap { font-family: var(--font-sans, system-ui, sans-serif); color: var(--foreground, #e8ecf2); display:flex; flex-direction:column; gap:28px; }
+  h2 { font-size:18px; margin:0 0 6px; }
+  h3 { font-size:15px; margin:0 0 6px; }
+  p.lead { margin:0; color: var(--muted-foreground, #9aa4b2); font-size:14px; line-height:1.5; }
+  table.m { border-collapse:collapse; width:100%; font-size:13px; }
+  table.m th, table.m td { border-bottom:1px solid var(--border, #333); padding:7px 8px; text-align:left; vertical-align:top; }
+  table.m th { color: var(--muted-foreground); font-weight:500; }
+  .yes { color: var(--success, #6fcf97); font-weight:600; }
+  .no { color: var(--muted-foreground); }
+  .opts { display:grid; grid-template-columns:1fr; gap:22px; }
+  .opt { border:1px solid var(--border,#333); border-radius: var(--radius, 12px); padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .opt .tag { display:inline-block; font-size:12px; padding:2px 9px; border-radius:99px; background: var(--accent-surface, #24333a); color: var(--accent-surface-foreground, #8fd3e8); margin-left:6px; }
+  .pros { display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:13px; line-height:1.45; }
+  .pros div b { display:block; margin-bottom:2px; }
+  /* app mock */
+  .mock { background: var(--g-bg); border-radius:16px; padding:16px; color: var(--g-text); font-family: "Nunito Sans", system-ui, sans-serif; }
+  .sheet { background: var(--g-sheet); border-radius:20px; border:1px solid var(--g-line); padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .hdr { display:flex; gap:12px; align-items:center; }
+  .cov { width:38px; height:52px; border-radius:8px; background: linear-gradient(160deg,#b8322f,#2a1a1f 70%,#ddd); flex:none; }
+  .kick { font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--g-acc); }
+  .ttl { font-size:19px; font-weight:800; }
+  .meta { font-size:12px; color: var(--g-mute); }
+  .seg { display:flex; gap:2px; padding:4px; background: rgba(0,0,0,.28); border-radius:18px; width:max-content; max-width:100%; flex-wrap:wrap; }
+  .seg span { font-size:12.5px; padding:6px 12px; border-radius:99px; color: var(--g-mute); position:relative; }
+  .seg span.on { background: rgba(255,255,255,.14); color:#fff; }
+  .seg span .dot { position:absolute; top:5px; right:5px; width:6px; height:6px; border-radius:50%; background: var(--g-acc); }
+  .cap { font-size:11.5px; color: var(--g-dim); margin:4px 4px -4px; }
+  .card { background: var(--g-card); border:1px solid var(--g-line); border-radius:14px; padding:2px 14px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:14px; padding:9px 0; border-top:1px solid var(--g-line); }
+  .row:first-child { border-top:none; }
+  .row .l { font-size:13.5px; }
+  .row .d { font-size:11.5px; color: var(--g-dim); margin-top:1px; }
+  .sw { width:34px; height:20px; border-radius:99px; background: rgba(255,255,255,.15); position:relative; flex:none; }
+  .sw::after { content:""; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#cfd6df; }
+  .sw.on { background: var(--g-acc); } .sw.on::after { left:17px; background:#fff; }
+  .sel { font-size:12.5px; background: rgba(0,0,0,.25); border:1px solid var(--g-line); border-radius:10px; padding:6px 10px; color: var(--g-text); white-space:nowrap; }
+  .chip { font-size:11.5px; padding:2px 8px; border-radius:99px; background: rgba(255,255,255,.08); color: var(--g-mute); white-space:nowrap; }
+  .chip.acc { background: rgba(143,211,232,.16); color: var(--g-acc); }
+  .chip.warn { background: rgba(232,192,122,.16); color: var(--g-warn); }
+  .mini { display:flex; gap:6px; flex-wrap:wrap; }
+  .more { font-size:12px; color: var(--g-acc); padding:8px 0; }
+  .two { display:grid; grid-template-columns: 170px 1fr; gap:14px; }
+  .nav { display:flex; flex-direction:column; gap:2px; font-size:13px; }
+  .nav .g { font-size:10.5px; color: var(--g-dim); margin:10px 8px 3px; text-transform:uppercase; letter-spacing:.05em; }
+  .nav .i { padding:7px 10px; border-radius:10px; color: var(--g-mute); display:flex; justify-content:space-between; }
+  .nav .i.on { background: rgba(143,211,232,.14); color:#fff; }
+  .search { font-size:12.5px; color: var(--g-dim); background: rgba(0,0,0,.28); border:1px solid var(--g-line); border-radius:99px; padding:7px 12px; }
+  .ov { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .tile { background: var(--g-card); border:1px solid var(--g-line); border-radius:14px; padding:11px 13px; display:flex; flex-direction:column; gap:6px; }
+  .tile .h { display:flex; justify-content:space-between; font-size:13px; font-weight:700; }
+  .tile .h span { font-weight:400; color: var(--g-acc); font-size:12px; }
+  .ba { display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:12.5px; }
+  .ba div { border:1px solid var(--border,#333); border-radius:10px; padding:10px 12px; line-height:1.45; }
+  .ba .before { color: var(--muted-foreground); }
+  @media (max-width:600px){ .two{grid-template-columns:1fr} .ov,.pros,.ba{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<section>
+  <h2>Hoje: 9 abas, organizadas por como o Heroic é feito por dentro</h2>
+  <p class="lead">As abas seguem os nomes técnicos do Heroic (Wine, Other, Advanced, Gamescope). O limite de FPS fica em Other, o FSR hack em Wine, o upscaling em Gamescope, o offline em Advanced. Cada tipo de jogo mostra outro conjunto de abas.</p>
+  <table class="m" style="margin-top:10px">
+    <tr><th>Tipo</th><th>Abas hoje</th><th>Qtd.</th></tr>
+    <tr><td>Epic / GOG (Windows)</td><td>Images · Details · Launch · Wine · Other · Advanced · Saves · Cloud saves · Gamescope</td><td>9</td></tr>
+    <tr><td>Steam</td><td>Images · Details · Launch · Proton · Other · Advanced · Saves · Gamescope</td><td>8</td></tr>
+    <tr><td>Local Linux</td><td>Images · Details · Launch · Other · Advanced · Saves · Gamescope</td><td>7</td></tr>
+    <tr><td>Emulador</td><td>Images · Details · Launch · Saves</td><td>4</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2>Nova estrutura: 5 abas por objetivo, iguais para todos</h2>
+  <p class="lead">A pergunta de cada aba é a do usuário: <i>como o jogo aparece</i>, <i>como ele inicia</i>, <i>como roda no Linux</i>, <i>como fica a imagem</i>, <i>onde ficam os saves</i>. Uma aba só some quando não tem nada para aquele jogo.</p>
+  <table class="m" style="margin-top:10px">
+    <tr><th>Aba</th><th>O que entra (vindo de onde)</th><th>Epic/GOG</th><th>Steam</th><th>Linux</th><th>Emulador</th></tr>
+    <tr><td><b>Jogo</b></td><td>Capa e fundo (Images) + nome, datas, nota, tags, notas (Details)</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+    <tr><td><b>Iniciar</b></td><td>Como o Play inicia (Launch, modo Epic, linha da Steam, ROM), argumentos, outras ações, scripts antes/depois, programas junto, offline, ignorar updates, idioma · <i>Avançado</i>: exe alternativo, variáveis, wrappers, presets, logs</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+    <tr><td><b>Compatibilidade</b></td><td>Wine/Proton + ProtonDB, prefixo e ferramentas, correções (umu), DXVK/VKD3D/NVAPI, sincronização, anti-cheat, pastas visíveis, runtime · <i>Experimental</i>: Wayland, HDR, WoW64</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">runtime só →<br>vai p/ Iniciar</td><td class="no">—</td></tr>
+    <tr><td><b>Desempenho</b></td><td>Overlay (MangoHud / FPS simples), limite de FPS, geração de quadros, gamescope (upscaling, janela), FSR hack, GameMode, GPU dedicada, manter acordado, controles</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
+    <tr><td><b>Saves</b></td><td>Nuvem da loja (Cloud saves) + backup Ludusavi, numa aba só</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+  </table>
+  <p class="lead" style="margin-top:8px">Resultado: 9 → 5 abas no máximo (numa linha só), 3 para emuladores. A ordem e os nomes são os mesmos em qualquer jogo.</p>
+</section>
+
+<section class="opts">
+  <h2 style="margin-bottom:-8px">Três jeitos de mostrar</h2>
+
+  <!-- A -->
+  <div class="opt">
+    <h3>A · Gaveta com 5 abas <span class="tag">menor mudança</span></h3>
+    <div class="mock"><div class="sheet" style="max-width:520px">
+      <div class="hdr"><div class="cov"></div><div><div class="kick">Game settings</div><div class="ttl">Control</div><div class="meta">Epic · Instalado · 41,9 GiB</div></div></div>
+      <div class="seg"><span>Jogo</span><span>Iniciar<i class="dot"></i></span><span>Compatibilidade</span><span class="on">Desempenho<i class="dot"></i></span><span>Saves</span></div>
+      <div class="cap">Overlay e limite</div>
+      <div class="card">
+        <div class="row"><div><div class="l">Overlay</div><div class="d">FPS e temperaturas na tela</div></div><span class="sel">MangoHud ▾</span></div>
+        <div class="row"><div><div class="l">FPS máximo</div><div class="d">Automático · MangoHud</div></div><span class="sel">60</span></div>
+        <div class="row"><div><div class="l">Geração de quadros</div><div class="d">lsfg-vk · 2× (60 → 120)</div></div><div class="sw on"></div></div>
+      </div>
+      <div class="cap">Imagem</div>
+      <div class="card">
+        <div class="row"><div><div class="l">Upscaling</div><div class="d">gamescope, FSR, 1080p → 1440p</div></div><span class="sel">gamescope FSR ▾</span></div>
+        <div class="row"><div><div class="l">GPU dedicada</div></div><div class="sw"></div></div>
+      </div>
+      <div class="more">Mostrar mais (GameMode, manter acordado, controles) ▾</div>
+    </div></div>
+    <div class="pros">
+      <div><b>A favor</b>Reaproveita a gaveta e o modo console quase sem mudar. Ponto azul na aba = tem algo diferente do padrão.</div>
+      <div><b>Contra</b>Dentro de cada aba ainda há bastante rolagem; não dá para buscar uma opção.</div>
+    </div>
+  </div>
+
+  <!-- B -->
+  <div class="opt">
+    <h3>B · Janela larga com menu lateral e busca <span class="tag">recomendado</span></h3>
+    <div class="mock"><div class="sheet">
+      <div class="hdr"><div class="cov"></div><div style="flex:1"><div class="kick">Game settings</div><div class="ttl">Control</div><div class="meta">Epic · Instalado · 41,9 GiB</div></div><div class="search" style="width:190px">⌕ Buscar opção…</div></div>
+      <div class="two">
+        <div class="nav">
+          <div class="i">Jogo</div>
+          <div class="i">Iniciar <span class="chip acc">2 ações</span></div>
+          <div class="i">Compatibilidade</div>
+          <div class="i on">Desempenho <span class="chip acc">●</span></div>
+          <div class="i">Saves</div>
+          <div class="g">Atalhos</div>
+          <div class="i">Winetricks</div>
+          <div class="i">Abrir prefixo</div>
+          <div class="i">Ver log</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="cap">Overlay e limite</div>
+          <div class="card">
+            <div class="row"><div><div class="l">Overlay</div></div><span class="sel">MangoHud ▾</span></div>
+            <div class="row"><div><div class="l">FPS máximo</div><div class="d">Automático · MangoHud</div></div><span class="sel">60</span></div>
+            <div class="row"><div><div class="l">Geração de quadros</div><div class="d">2× · 60 → 120</div></div><div class="sw on"></div></div>
+          </div>
+          <div class="cap">Imagem</div>
+          <div class="card">
+            <div class="row"><div><div class="l">Upscaling</div><div class="d">1080p → 1440p</div></div><span class="sel">gamescope FSR ▾</span></div>
+            <div class="row"><div><div class="l">GPU dedicada</div></div><div class="sw"></div></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <div class="pros">
+      <div><b>A favor</b>Cabe mais coisa sem ficar apertado; a busca acha "fsync" ou "MangoHud" em qualquer aba; atalhos frequentes ficam sempre à mão. Escala bem quando novas opções chegarem (aba GPU, etc.).</div>
+      <div><b>Contra</b>Troca a gaveta por uma janela maior (como a página de Configurações); mais trabalho de implementação.</div>
+    </div>
+  </div>
+
+  <!-- C -->
+  <div class="opt">
+    <h3>C · Visão geral primeiro <span class="tag">mais visual</span></h3>
+    <div class="mock"><div class="sheet" style="max-width:560px">
+      <div class="hdr"><div class="cov"></div><div><div class="kick">Game settings</div><div class="ttl">Control</div><div class="meta">Epic · Instalado · 41,9 GiB</div></div></div>
+      <div class="seg"><span class="on">Visão geral</span><span>Jogo</span><span>Iniciar</span><span>Compatibilidade</span><span>Desempenho</span><span>Saves</span></div>
+      <div class="ov">
+        <div class="tile"><div class="h">Iniciar <span>Editar</span></div><div class="mini"><span class="chip">Epic · padrão</span><span class="chip acc">2 ações</span><span class="chip">offline: não</span></div></div>
+        <div class="tile"><div class="h">Compatibilidade <span>Editar</span></div><div class="mini"><span class="chip acc">GE-Proton-latest</span><span class="chip">ProtonDB Platinum</span><span class="chip">DXVK-NVAPI</span></div></div>
+        <div class="tile"><div class="h">Desempenho <span>Editar</span></div><div class="mini"><span class="chip acc">MangoHud</span><span class="chip acc">60 FPS</span><span class="chip acc">lsfg 2×</span></div></div>
+        <div class="tile"><div class="h">Saves <span>Editar</span></div><div class="mini"><span class="chip">Nuvem: auto</span><span class="chip warn">Backup: nunca</span></div></div>
+      </div>
+    </div></div>
+    <div class="pros">
+      <div><b>A favor</b>Em um olhar dá para ver tudo que está ligado no jogo; bom para diagnosticar "por que esse jogo está diferente".</div>
+      <div><b>Contra</b>Uma aba a mais; a visão geral precisa ser mantida em dia a cada opção nova.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Menos texto, mesma informação</h2>
+  <p class="lead">Regra: título curto + uma linha de descrição dizendo o efeito. Explicação longa, caminho de arquivo e aviso raro só aparecem quando importam.</p>
+  <div class="ba" style="margin-top:10px">
+    <div class="before"><b>Hoje</b><br>Enable Esync — "Esync aims to reduce wineserver overhead in CPU-intensive games. Enabling may improve performance."<br>Enable Fsync — "Fsync aims to reduce…"</div>
+    <div><b>Proposta</b><br>Sincronização · <span class="chip">Fsync ▾</span><br>"Menos uso de CPU. Fsync é o mais rápido; NTSync quando o kernel tiver."</div>
+    <div class="before">Show FPS (DX9, 10 and 11) + Enable Mangohud (Mangohud needs to be installed) — "MangoHUD is an overlay that displays…"</div>
+    <div>Overlay · <span class="chip">Nenhum / FPS simples / MangoHud ▾</span><br>"FPS e temperaturas na tela." (aviso só se o MangoHud faltar)</div>
+    <div class="before">DXVK / VKD3D / DXVK-NVAPI com parágrafos de 2 linhas cada</div>
+    <div>Tradução gráfica: <span class="chip">DirectX 9–11</span> <span class="chip">DirectX 12</span> <span class="chip">DLSS (NVIDIA)</span> — três chaves numa linha</div>
+    <div class="before">"Heronite searches for versions of Wine, Proton and CrossOver in: ~/.local/…, ~/.steam/…, (8 caminhos)"</div>
+    <div>Some da tela; fica na Wine Manager. Embaixo da versão só o nome e, ao passar o mouse, o caminho.</div>
+    <div class="before">Wayland, HDR, WoW64 soltos entre opções comuns</div>
+    <div>Grupo "Experimental" recolhido por padrão, com contador "2 ligadas".</div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

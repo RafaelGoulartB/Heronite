@@ -116,9 +116,8 @@ impl SettingsPage {
         let mut parts = debug.as_deref().unwrap_or("").split(':').skip(1);
         let section = take_requested_section(cx).or_else(|| parts.next().and_then(Section::parse)).unwrap_or(Section::General);
         let defaults_section = match parts.next() {
-            Some("other") => HSection::Other,
-            Some("advanced") => HSection::Advanced,
-            Some("gamescope") => HSection::Gamescope,
+            Some("performance" | "other" | "gamescope") => HSection::Performance,
+            Some("launch" | "advanced") => HSection::Launch,
             _ => DEFAULT_SECTIONS[0],
         };
         let (settings, chain) = match cx.has_global::<Offer>().then(|| cx.remove_global::<Offer>()) {

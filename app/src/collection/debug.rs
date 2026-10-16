@@ -78,13 +78,11 @@ impl CollectionView {
             | "gamesettings:backups") => {
                 use crate::dialogs::game_settings::Tab;
                 let tab = match w {
-                    "gamesettings:wine" => Tab::Wine,
-                    "gamesettings:proton" => Tab::Proton,
-                    "gamesettings:other" => Tab::Other,
-                    "gamesettings:advanced" => Tab::Advanced,
-                    "gamesettings:saves" => Tab::Saves,
-                    "gamesettings:backups" => Tab::Backups,
-                    _ => Tab::Gamescope,
+                    "gamesettings:wine" | "gamesettings:proton" => Tab::Compatibility,
+                    "gamesettings:advanced" => Tab::Launch,
+                    "gamesettings:saves" => Tab::CloudSaves,
+                    "gamesettings:backups" => Tab::Saves,
+                    _ => Tab::Performance,
                 };
                 self.open_game_settings_tab(tab, window, cx);
             }

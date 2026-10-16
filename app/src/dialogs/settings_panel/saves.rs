@@ -113,8 +113,7 @@ impl SettingsPanel {
             return column().child(hint(tr!("This game does not support Cloud Saves.")));
         }
         let has_path = !self.text("savesPath").is_empty();
-        let mut col = column()
-            .child(hint(tr!("Cloud Saves feature is in Beta, please backup your saves before syncing (in case something goes wrong)")));
+        let mut col = column().child(hint(tr!("Cloud saves are in beta: back up your saves before syncing.")));
         if self.saves.detecting {
             return col.child(help(tr!("Trying to detect the correct save folder\u{2026}")).px(px(6.)));
         }
@@ -133,8 +132,8 @@ impl SettingsPanel {
             self.path_row("savesPath", Some(tr!("Saves folder")), true, tr!("Choose the saves directory"), true, cx),
             vec![
                 div().child(retry),
-                help(tr!("Heronite tries to guess the right save folder and this will work on the majority of cases. In case the folder is wrong, use the box above to change it.")),
-                help(tr!("In case you change the prefix folder for Wine or Proton, check the path again since Proton uses a different prefix (/pfx) and username (steamuser): clear the path and click retry.")),
+                help(tr!("Found by itself in most games; change it above if it is wrong.")),
+                help(tr!("After changing the prefix, clear this path and detect it again: Proton uses /pfx and the user steamuser.")),
             ],
         );
         col = col.child(heading(tr!("Location"))).child(folder.card());
@@ -142,7 +141,7 @@ impl SettingsPanel {
         let mode = self.saves.mode;
         let select = self.select_row(
             "saves-mode",
-            Some(tr!("Manual Sync Saves")),
+            Some(tr!("Sync now")),
             tr(MODES[mode].0).to_string(),
             MODES.iter().enumerate().map(|(i, (l, _))| (SharedString::from(tr(l)), i == mode)).collect(),
             !has_path,
@@ -162,7 +161,7 @@ impl SettingsPanel {
         ));
         let mut sync_rows = rows().field_help(
             sync,
-            vec![help(tr!("Manual Sync: Sync downloads and uploads what changed. Force Download and Force Upload ignore the version that is locally or on the cloud."))],
+            vec![help(tr!("Sync sends and gets what changed; Force download or upload replaces one side with the other."))],
         );
         if let Some(lines) = self.saves.output.clone() {
             let mut out = div()
@@ -187,8 +186,8 @@ impl SettingsPanel {
             "autosync",
             "autoSyncSaves",
             false,
-            tr!("Autosync Saves"),
-            Some(tr!("Autosync Saves will sync the saves every time you start a game and after finishing playing.")),
+            tr!("Sync automatically"),
+            Some(tr!("Syncs when the game starts and after it exits.")),
             !has_path,
             cx,
         ));
@@ -197,7 +196,7 @@ impl SettingsPanel {
                 "quick-saves",
                 "enableQuickSavesMenu",
                 false,
-                tr!("Enable Quick Save-Sync Menu on game page"),
+                tr!("Quick sync menu on the game page"),
                 None,
                 false,
                 cx,
@@ -312,7 +311,7 @@ impl SettingsPanel {
         let mode = self.saves.mode;
         let select = self.select_row(
             "saves-mode",
-            Some(tr!("Manual Sync Saves")),
+            Some(tr!("Sync now")),
             tr(GOG_MODES[mode].0).to_string(),
             GOG_MODES.iter().enumerate().map(|(i, (l, _))| (SharedString::from(tr(l)), i == mode)).collect(),
             !has_places,
@@ -331,7 +330,7 @@ impl SettingsPanel {
         ));
         let sync_rows = rows().field_help(
             sync,
-            vec![help(tr!("Manual Sync: Sync downloads and uploads what changed. Force Download and Force Upload ignore the version that is locally or on the cloud."))],
+            vec![help(tr!("Sync sends and gets what changed; Force download or upload replaces one side with the other."))],
         );
         // Offline or unreadable: the launcher still tries around a launch.
         let no_cloud = matches!(&self.saves.gog.locations, Some(Ok(list)) if list.is_empty());
@@ -339,13 +338,13 @@ impl SettingsPanel {
             "autosync",
             "autoSyncSaves",
             false,
-            tr!("Autosync Saves"),
-            Some(tr!("Autosync Saves will sync the saves every time you start a game and after finishing playing.")),
+            tr!("Sync automatically"),
+            Some(tr!("Syncs when the game starts and after it exits.")),
             no_cloud,
             cx,
         ));
         column()
-            .child(hint(tr!("Cloud Saves feature is in Beta, please backup your saves before syncing (in case something goes wrong)")))
+            .child(hint(tr!("Cloud saves are in beta: back up your saves before syncing.")))
             .child(heading(tr!("Location")))
             .child(places.card())
             .child(heading(tr!("Sync")))

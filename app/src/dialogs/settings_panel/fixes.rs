@@ -124,7 +124,7 @@ impl SettingsPanel {
             self.text_row("umuId", Some(tr!("umu ID")), None),
             vec![
                 help(&self.umu_status()),
-                help(tr!("Proton builds with protonfixes (GE-Proton, UMU-Proton, Proton-CachyOS, Proton-EM) apply the fixes written for each game, picked by this ID. Heronite finds it by itself: set one only when it is missing or wrong.")),
+                help(tr!("GE-Proton and other builds with protonfixes apply per-game fixes picked by this ID. Found by itself; set it only if it is missing or wrong.")),
                 buttons,
             ],
         );

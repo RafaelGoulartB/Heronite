@@ -34,66 +34,58 @@ use launch::LaunchState;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
-    Images,
-    Details,
+    /// Images and details.
+    Game,
+    /// Play (and, for local games, what it starts) and the user's actions.
+    Actions,
+    /// The panel's launch settings.
     Launch,
-    /// Heroic's game settings (`settings_panel`).
-    Wine,
-    Other,
-    Advanced,
+    Compatibility,
+    Performance,
+    /// The Ludusavi backups.
     Saves,
-    Gamescope,
-    /// Steam games' Proton tab.
-    Proton,
-    /// Ludusavi backups and restore (`save_backups`).
-    Backups,
+    /// The store's cloud saves.
+    CloudSaves,
 }
 
 impl Tab {
-    /// The Heroic settings section this tab shows.
+    /// The panel section this tab shows.
     fn section(self) -> Option<Section> {
         match self {
-            Tab::Wine => Some(Section::Wine),
-            Tab::Other => Some(Section::Other),
-            Tab::Advanced => Some(Section::Advanced),
-            Tab::Saves => Some(Section::Saves),
-            Tab::Gamescope => Some(Section::Gamescope),
-            Tab::Proton => Some(Section::Proton),
+            Tab::Launch => Some(Section::Launch),
+            Tab::Compatibility => Some(Section::Compatibility),
+            Tab::Performance => Some(Section::Performance),
+            Tab::CloudSaves => Some(Section::Saves),
             _ => None,
         }
     }
 
     fn of_section(s: Section) -> Tab {
         match s {
-            Section::Wine => Tab::Wine,
-            Section::Other => Tab::Other,
-            Section::Advanced => Tab::Advanced,
-            Section::Saves => Tab::Saves,
-            Section::Gamescope => Tab::Gamescope,
-            Section::Proton => Tab::Proton,
-            Section::General => Tab::Images,
+            Section::Launch => Tab::Launch,
+            Section::Compatibility => Tab::Compatibility,
+            Section::Performance => Tab::Performance,
+            Section::Saves => Tab::CloudSaves,
+            Section::General => Tab::Game,
         }
     }
 
     fn label(self) -> &'static str {
         match self {
-            Tab::Images => tr!("Images"),
-            Tab::Details => tr!("Details"),
+            Tab::Game => tr!("Game"),
+            Tab::Actions => tr!("Actions"),
             Tab::Launch => tr!("Launch"),
-            Tab::Wine => tr!("Wine"),
-            Tab::Other => tr!("Other"),
-            Tab::Advanced => tr!("Advanced"),
-            Tab::Saves => tr!("Cloud saves"),
-            Tab::Gamescope => tr!("Gamescope"),
-            Tab::Proton => "Proton",
-            Tab::Backups => tr!("Saves"),
+            Tab::Compatibility => tr!("Compatibility"),
+            Tab::Performance => tr!("Performance"),
+            Tab::Saves => tr!("Saves"),
+            Tab::CloudSaves => tr!("Cloud saves"),
         }
     }
 
-    /// The tab Heroic opens first for this game (its Wine or Other tab, Proton
-    /// for Steam games), or Images when the game has no Heroic settings.
+    /// The tab the settings open on: Compatibility for games run through
+    /// Wine or Proton, Performance for Linux games, Game otherwise.
     pub fn settings_start(game: &Game) -> Tab {
-        GameFacts::of(game).start_section().map(Tab::of_section).unwrap_or(Tab::Images)
+        GameFacts::of(game).start_section().map(Tab::of_section).unwrap_or(Tab::Game)
     }
 }
 
@@ -162,9 +154,10 @@ impl GameSettingsDialog {
             cx.observe(&view, |_, _, cx| cx.notify()).detach();
             view
         });
+        let has = |s: Section| panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s));
         let tab = match tab {
-            Tab::Backups if backups.is_none() => Tab::Images,
-            t if t.section().is_some_and(|s| !panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s))) => Tab::Images,
+            Tab::Saves if backups.is_none() => Tab::Game,
+            t if t.section().is_some_and(|s| !has(s)) => Tab::Game,
             t => t,
         };
 
@@ -193,7 +186,7 @@ impl GameSettingsDialog {
         if let Some(text) = this.launch.as_ref().map(|l| l.initial_exe.clone()) {
             this.refresh_launch(&text);
         }
-        if this.tab == Tab::Backups {
+        if this.tab == Tab::Saves {
             this.show_backups(cx);
         }
         this.debug_set_art(cx);
@@ -204,14 +197,18 @@ impl GameSettingsDialog {
         this
     }
 
-    /// `tabs` with the Saves tab (Ludusavi backups) next to Cloud saves, or
-    /// last when the game has no Cloud saves tab.
-    fn with_saves_tab(&self, mut tabs: Vec<Tab>) -> Vec<Tab> {
+    /// The tabs: Game and Actions always, then what the game has.
+    fn tab_list(&self) -> Vec<Tab> {
+        let has = |s: Section| self.panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s));
+        let mut t = vec![Tab::Game, Tab::Actions];
+        t.extend([Tab::Launch, Tab::Compatibility, Tab::Performance].into_iter().filter(|t| t.section().is_some_and(has)));
         if self.backups.is_some() {
-            let at = tabs.iter().position(|t| *t == Tab::Saves).unwrap_or(tabs.len());
-            tabs.insert(at, Tab::Backups);
+            t.push(Tab::Saves);
         }
-        tabs
+        if has(Section::Saves) {
+            t.push(Tab::CloudSaves);
+        }
+        t
     }
 
     /// Reads the backups the first time the Saves tab shows.
@@ -274,39 +271,31 @@ impl Render for GameSettingsDialog {
             return self.render_console(window, cx);
         }
         self.images.update(cx, |im, _| im.frame(window));
-        let items0 = [Tab::Images, Tab::Details, Tab::Launch];
-        let mut items: Vec<(Tab, &'static str)> = items0.iter().map(|t| (*t, t.label())).collect();
-        let sections: Vec<Tab> =
-            self.panel.as_ref().map(|(_, secs)| secs.iter().map(|s| Tab::of_section(*s)).collect()).unwrap_or_default();
-        items.extend(self.with_saves_tab(sections).into_iter().map(|t| (t, t.label())));
+        let items: Vec<(Tab, &'static str)> = self.tab_list().into_iter().map(|t| (t, t.label())).collect();
         let entity = cx.entity().downgrade();
-        let panel = self.panel.as_ref().map(|(p, _)| p.clone());
+        let panel = self.panel.clone();
         let tab_bar = tabs("gs", &items, self.tab, move |t, window, cx| {
-            if let (Some(section), Some(panel)) = (t.section(), panel.as_ref()) {
-                panel.update(cx, |p, cx| p.set_section(section, window, cx));
+            if let (Some(section), Some((panel, secs))) = (t.section(), panel.as_ref()) {
+                if secs.contains(&section) {
+                    panel.update(cx, |p, cx| p.set_section(section, window, cx));
+                }
             }
             entity
                 .update(cx, |this, cx| {
                     this.tab = t;
-                    if t == Tab::Backups {
+                    if t == Tab::Saves {
                         this.show_backups(cx);
                     }
                     cx.notify();
                 })
                 .ok();
         });
+        let panel_view = self.panel.as_ref().map(|(p, _)| p.clone());
         let content = match self.tab {
-            Tab::Images => self.images_tab(cx),
-            Tab::Details => self.details_tab(),
-            Tab::Launch => self.launch_tab(cx),
-            Tab::Backups => match &self.backups {
-                Some(view) => div().child(view.clone()),
-                None => div(),
-            },
-            _ => match &self.panel {
-                Some((panel, _)) => div().child(panel.clone()),
-                None => div(),
-            },
+            Tab::Game => div().flex().flex_col().gap(px(6.)).child(self.images_tab(cx)).child(self.details_tab()),
+            Tab::Actions => self.launch_tab(cx),
+            Tab::Saves => div().children(self.backups.clone()),
+            _ => div().children(panel_view),
         };
         let mut body = div().flex().flex_col().gap(px(10.)).child(content);
         if !self.error.is_empty() {
@@ -324,8 +313,8 @@ impl Render for GameSettingsDialog {
 
         let dirty = self.read_form(cx) != self.initial;
         // "Use defaults" only where a reset exists: the custom images.
-        let can_reset = self.tab == Tab::Images && self.busy.is_none() && (self.art.cover_url.is_some() || self.art.hero_url.is_some());
-        let left = div().child(if self.tab == Tab::Images {
+        let can_reset = self.tab == Tab::Game && self.busy.is_none() && (self.art.cover_url.is_some() || self.art.hero_url.is_some());
+        let left = div().child(if self.tab == Tab::Game {
             action_button(
                 "gs-defaults",
                 ButtonKind::Ghost,
@@ -338,7 +327,7 @@ impl Render for GameSettingsDialog {
             div().into_any_element()
         });
         let mut right = div().flex().items_center().gap(px(8.));
-        if self.tab == Tab::Details {
+        if self.tab == Tab::Game {
             right = right.child(action_button(
                 "gs-save",
                 ButtonKind::Primary,
@@ -348,7 +337,7 @@ impl Render for GameSettingsDialog {
             ));
         }
         right = right.child(
-            button("gs-close", if self.tab == Tab::Details { ButtonKind::Glass } else { ButtonKind::Primary }, tr!("Done"))
+            button("gs-close", if self.tab == Tab::Game && dirty { ButtonKind::Glass } else { ButtonKind::Primary }, tr!("Done"))
                 .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
         );
         let footer = div().flex().w_full().items_center().justify_between().child(left).child(right);

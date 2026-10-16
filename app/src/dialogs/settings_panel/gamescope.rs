@@ -1,22 +1,18 @@
-//! "Gamescope" tab.
+//! gamescope's part of the Performance tab ("Image").
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::Value;
 
-use super::parts::{column, danger_text, heading, help, rows};
+use super::parts::{column, heading, help, Rows};
 use super::SettingsPanel;
 use crate::theme;
 use crate::ui::controls::{row, toggle_row};
 use crate::ui::fields::{field_label, input_box};
 use heronite_i18n::{n_, tr};
 
-pub(super) const UPSCALE_METHODS: [(&str, &str); 4] = [
-    ("fsr", "AMD FidelityFX\u{2122} Super Resolution 1.0 (FSR)"),
-    ("nis", "NVIDIA Image Scale (NIS)"),
-    ("integer", n_!("Interger Upscale")),
-    ("stretch", n_!("Stretch Image")),
-];
+pub(super) const UPSCALE_METHODS: [(&str, &str); 4] =
+    [("fsr", "AMD FSR 1"), ("nis", "NVIDIA NIS"), ("integer", n_!("Integer scaling")), ("stretch", n_!("Stretch"))];
 pub(super) const WINDOW_TYPES: [(&str, &str); 3] =
     [("fullscreen", n_!("Fullscreen")), ("borderless", n_!("Borderless")), ("windowed", n_!("Windowed"))];
 
@@ -25,14 +21,25 @@ impl SettingsPanel {
         matches!(self.gamescope().get(field), Some(Value::Bool(true)))
     }
 
-    fn gs_toggle(&self, id: &'static str, field: &'static str, label: &str, help_text: Option<&str>, cx: &mut Context<Self>) -> AnyElement {
+    fn gs_toggle(
+        &self,
+        id: &'static str,
+        field: &'static str,
+        label: &str,
+        help_text: Option<&str>,
+        disabled: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let on = self.gs_flag(field);
-        toggle_row(id, label.to_string(), help_text, on)
-            .on_click(cx.listener(move |this, _, _, cx| {
-                let now = this.gs_flag(field);
-                this.set_gamescope(field, Value::Bool(!now), cx)
-            }))
-            .into_any_element()
+        let row = toggle_row(id, label.to_string(), help_text, on);
+        if disabled {
+            return row.opacity(0.4).cursor_not_allowed().into_any_element();
+        }
+        row.on_click(cx.listener(move |this, _, _, cx| {
+            let now = this.gs_flag(field);
+            this.set_gamescope(field, Value::Bool(!now), cx)
+        }))
+        .into_any_element()
     }
 
     fn gs_input(&self, id: &'static str, label: &str, help_text: &str) -> Div {
@@ -43,7 +50,7 @@ impl SettingsPanel {
             .flex_col()
             .child(field_label(label.to_string()))
             .child(input_box(&self.input(id), false))
-            .child(help(help_text).pt(px(5.)))
+            .when(!help_text.is_empty(), |d| d.child(help(help_text).pt(px(5.))))
     }
 
     fn gs_select(
@@ -52,6 +59,7 @@ impl SettingsPanel {
         field: &'static str,
         label: &str,
         table: &'static [(&'static str, &'static str)],
+        disabled: bool,
         cx: &mut Context<Self>,
     ) -> Div {
         let g = self.gamescope();
@@ -63,63 +71,54 @@ impl SettingsPanel {
             None => current.clone(),
         };
         let items = table.iter().map(|(k, l)| (SharedString::from(tr(l)), *k == current)).collect();
-        self.select_row(id, Some(label), shown, items, false, cx, move |this, i, _, cx| {
+        self.select_row(id, Some(label), shown, items, disabled, cx, move |this, i, _, cx| {
             this.set_gamescope(field, Value::String(table[i].0.into()), cx)
         })
     }
 
-    pub(super) fn gamescope_tab(&mut self, cx: &mut Context<Self>) -> Div {
+    /// The "Image" caption and card: `rows` (Wine's FSR) then gamescope's
+    /// upscaling and window. `disabled`: a Steam game whose launch options
+    /// cannot change now.
+    pub(super) fn gamescope_section(&mut self, mut up: Rows, disabled: bool, cx: &mut Context<Self>) -> Div {
         if !self.gamescope_installed {
-            return column().child(danger_text(tr!("We could not find gamescope on the PATH. Install it or add it to the PATH.")));
+            up = up.child(row(
+                tr!("gamescope"),
+                Some(tr!("Upscaling, a fixed resolution and window modes for any game")),
+                div().text_size(px(13.)).text_color(theme::text_dim()).child(tr!("Not installed")),
+            ));
+            return column().child(heading(tr!("Image"))).child(up.card());
         }
         let pair = |a: Div, b: Div| div().flex().gap(px(12.)).child(a).child(b);
-        let mut up = rows().child(self.gs_toggle("gs-upscaling", "enableUpscaling", tr!("Enables Upscaling"), None, cx));
+        up = up.child(self.gs_toggle(
+            "gs-upscaling",
+            "enableUpscaling",
+            tr!("gamescope upscaling"),
+            Some(tr!("Runs the game in gamescope at its own resolution, scaled to the screen")),
+            disabled,
+            cx,
+        ));
         if self.gs_flag("enableUpscaling") {
             up = up
-                .field_help(
-                    self.gs_select("gs-method", "upscaleMethod", tr!("Upscale Method"), &UPSCALE_METHODS, cx),
-                    vec![help(tr!("The upscaling method gamescope should use."))],
-                )
+                .field(self.gs_select("gs-method", "upscaleMethod", tr!("Upscale method"), &UPSCALE_METHODS, disabled, cx))
                 .field(pair(
-                    self.gs_input(
-                        "gs.gameWidth",
-                        tr!("Game Width"),
-                        tr!("The width resolution used by the game. A 16:9 aspect ratio is assumed by gamescope."),
-                    ),
-                    self.gs_input(
-                        "gs.gameHeight",
-                        tr!("Game Height"),
-                        tr!("The height resolution used by the game. A 16:9 aspect ratio is assumed by gamescope."),
-                    ),
+                    self.gs_input("gs.gameWidth", tr!("Game width"), tr!("What the game renders")),
+                    self.gs_input("gs.gameHeight", tr!("Game height"), ""),
                 ))
                 .field(pair(
-                    self.gs_input(
-                        "gs.upscaleWidth",
-                        tr!("Upscale Width"),
-                        tr!("The width resolution used by gamescope. A 16:9 aspect ratio is assumed."),
-                    ),
-                    self.gs_input(
-                        "gs.upscaleHeight",
-                        tr!("Upscale Height"),
-                        tr!("The height resolution used by gamescope. A 16:9 aspect ratio is assumed."),
-                    ),
+                    self.gs_input("gs.upscaleWidth", tr!("Screen width"), tr!("What you see")),
+                    self.gs_input("gs.upscaleHeight", tr!("Screen height"), ""),
                 ))
-                .field(self.gs_select("gs-window", "windowType", tr!("Window Type"), &WINDOW_TYPES, cx));
+                .field(self.gs_select("gs-window", "windowType", tr!("Window"), &WINDOW_TYPES, disabled, cx))
+                .child(self.gs_toggle(
+                    "gs-grab",
+                    "enableForceGrabCursor",
+                    tr!("Keep the mouse in the game"),
+                    Some(tr!("For games that lose the cursor or keep losing focus")),
+                    disabled,
+                    cx,
+                ))
+                .field(self.gs_input("gs.additionalOptions", tr!("Extra gamescope options"), tr!("Like --hdr-enabled")));
         }
-        up = up.child(row(
-            tr!("FPS limit"),
-            Some(tr!("Set in the Other tab, where one limiter is picked for the game.")),
-            div().text_size(px(13.)).text_color(theme::text_dim()).child(self.fps_summary()),
-        ));
-        let other = up
-            .child(self.gs_toggle(
-                "gs-grab",
-                "enableForceGrabCursor",
-                tr!("Enable Force Grab Cursor"),
-                Some(tr!("Always use relative mouse mode instead of flipping dependent on cursor visibility. (Useful for when applications keep losing focus)")),
-                cx,
-            ))
-            .field(self.gs_input("gs.additionalOptions", tr!("Additional Options"), tr!("Additional commandline flags to pass into gamescope.")));
-        column().child(heading("Gamescope")).child(other.card())
+        column().child(heading(tr!("Image"))).child(up.card())
     }
 }

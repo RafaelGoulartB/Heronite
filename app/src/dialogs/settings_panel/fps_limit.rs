@@ -251,16 +251,6 @@ impl SettingsPanel {
         )
         .when(disabled, |d| d.opacity(0.4))
     }
-
-    /// One line for the Gamescope tab: the limit and what applies it.
-    pub(super) fn fps_summary(&self) -> String {
-        let f = self.fps();
-        match (f.is_on(), self.fps_effective(&f)) {
-            (false, _) => tr!("Off").to_string(),
-            (true, Some(m)) => tr!("{fps} FPS \u{b7} {limiter}", fps = f.limit, limiter = method_name(m)),
-            (true, None) => tr!("{fps} FPS \u{b7} nothing can apply it", fps = f.limit),
-        }
-    }
 }
 
 pub(super) fn method_name(m: Method) -> &'static str {

@@ -1,100 +1,118 @@
-//! "Other" tab: overlays, GameMode, FPS limit, frame generation,
-//! controllers and power, runtimes.
+//! "Performance" tab: what is on screen (overlays), the FPS limit, frame
+//! generation, the image (gamescope, Wine's FSR) and system tweaks while
+//! playing. Heroic's Other and Gamescope tabs.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::logic;
-use super::parts::{column, heading, help, rows};
+use super::parts::{column, heading, rows, Rows};
 use super::SettingsPanel;
 use heronite_i18n::tr;
 
 impl SettingsPanel {
-    pub(super) fn other_tab(&mut self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn perf_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let native = self.native();
-        let wine = self.wine_version();
-        let mut col = column();
-        let mut overlays = rows();
+        let mut col = column().child(heading(tr!("On screen"))).child(self.overlay_rows(false, cx).card());
+        col = col.child(self.fps_section(false, cx)).child(self.lsfg_section(false, cx));
+        let mut image = rows();
         if !native {
-            overlays = overlays.child(self.toggle_row("show-fps", "showFps", false, tr!("Show FPS (DX9, 10 and 11)"), None, false, cx));
+            image = self.fsr_rows(image, cx);
         }
-        overlays = overlays.child(self.toggle_row(
+        col = col.child(self.gamescope_section(image, false, cx));
+        col.child(heading(tr!("System"))).child(self.game_system_rows(false, cx).card())
+    }
+
+    /// The FPS counter of DXVK and MangoHud.
+    pub(super) fn overlay_rows(&self, disabled: bool, cx: &mut Context<Self>) -> Rows {
+        let mut r = rows();
+        if !self.native() {
+            r = r.child(self.toggle_row(
+                "show-fps",
+                "showFps",
+                false,
+                tr!("FPS counter"),
+                Some(tr!("A small counter for DirectX 9 to 11 games")),
+                disabled,
+                cx,
+            ));
+        }
+        r.child(self.toggle_row(
             "mangohud",
             "showMangohud",
             false,
-            tr!("Enable Mangohud (Mangohud needs to be installed)"),
-            Some(tr!("MangoHUD is an overlay that displays and monitors FPS, temperatures, CPU/GPU load and other system resources.")),
+            "MangoHud",
+            Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
+            disabled,
+            cx,
+        ))
+    }
+
+    /// Wine's own FSR upscaling in fullscreen, with its sharpness.
+    fn fsr_rows(&self, mut r: Rows, cx: &mut Context<Self>) -> Rows {
+        r = r.child(self.toggle_row(
+            "fsr",
+            "enableFSR",
+            false,
+            tr!("Wine FSR"),
+            Some(tr!("Upscales fullscreen games running below the screen's resolution (needs a Wine build with the FSR hack)")),
             false,
             cx,
         ));
-        overlays = overlays.child(self.toggle_row(
+        if self.flag("enableFSR", false) {
+            let sharp = self.number("maxSharpness").unwrap_or(5).clamp(1, 5);
+            r = r.field(self.select_row(
+                "fsr-sharpness",
+                Some(tr!("FSR sharpness")),
+                sharp.to_string(),
+                (1..=5).map(|n| (SharedString::from(n.to_string()), n == sharp)).collect(),
+                false,
+                cx,
+                |this, i, _, cx| this.set("maxSharpness", json!(i as i64 + 1), cx),
+            ));
+        }
+        r
+    }
+
+    /// GameMode, the dedicated GPU, keeping the computer awake, controllers.
+    pub(super) fn game_system_rows(&self, disabled: bool, cx: &mut Context<Self>) -> Rows {
+        let mut r = rows().child(self.toggle_row(
             "gamemode",
             "useGameMode",
             false,
-            tr!("Use GameMode (Feral Game Mode needs to be installed)"),
-            Some(tr!(
-                "Feral GameMode applies automatic and temporary tweaks to the system when running games. Enabling may improve performance."
-            )),
-            false,
+            "GameMode",
+            Some(tr!("System tweaks while the game runs (needs GameMode)")),
+            disabled,
             cx,
         ));
-        if !native && logic::offers_system_libs(&wine) {
-            overlays = overlays.child(self.toggle_row(
-                "system-libs",
-                "preferSystemLibs",
-                false,
-                tr!("Prefer system libraries"),
-                Some(tr!("Custom Wine versions (Wine-GE, Wine-Lutris) are shipped with their library dependencies. By enabling this option, these shipped libraries will be ignored and Wine will load system libraries instead. Warning! Issues may occur if dependencies are not met.")),
-                false,
-                cx,
-            ));
-        }
         if self.gpu_count >= 2 || self.flag("nvidiaPrime", false) {
-            overlays = overlays.child(self.toggle_row(
+            r = r.child(self.toggle_row(
                 "nvidia-prime",
                 "nvidiaPrime",
                 false,
-                tr!("Force use of NVIDIA Optimus or AMD Dynamic Switchable Graphics dGPU. ONLY use this for OpenGL and Vulkan games."),
-                Some(tr!("Use dedicated graphics card to render game on multi-GPU systems. Only needed on gaming laptops or desktops that use a headless GPU for rendering (NVIDIA Optimus, AMD Dynamic Switchable Graphics).")),
-                false,
+                tr!("Use the dedicated GPU"),
+                Some(tr!("For computers with two GPUs, like gaming laptops. OpenGL and Vulkan games only")),
+                disabled,
                 cx,
             ));
         }
-        col = col.child(heading(tr!("Overlays and performance"))).child(overlays.card());
-        col = col.child(self.fps_section(false, cx));
-        col = col.child(self.lsfg_section(false, cx));
-        let mut system = rows().child(self.toggle_row(
-            "keep-awake",
-            heronite_launch::keep_awake::KEY,
-            true,
-            tr!("Keep the computer awake while playing"),
-            Some(tr!("Stops the computer from suspending or going idle while the game runs. Useful with a controller, which the system does not count as activity.")),
-            false,
-            cx,
-        ));
-        if !native && wine.kind == "proton" {
-            system = system.child(self.sdl_row(false, cx));
+        // Steam keeps the computer awake itself while a game runs.
+        if !self.is_steam() {
+            r = r.child(self.toggle_row(
+                "keep-awake",
+                heronite_launch::keep_awake::KEY,
+                true,
+                tr!("Keep the computer awake"),
+                Some(tr!("A controller does not count as activity, so the computer could sleep mid-game")),
+                disabled,
+                cx,
+            ));
         }
-        col = col.child(heading(tr!("Controllers and power"))).child(system.card());
-        if native {
-            col = col.child(heading(tr!("Runtime"))).child(rows().field_help(
-                self.steam_runtime_field(cx),
-                vec![help(tr!("Custom libraries provided by Steam to help run Linux and Windows (Proton) games. Enabling might improve compatibility."))],
-            ).card());
+        if self.is_steam() || (!self.native() && self.wine_version().kind == "proton") {
+            r = r.child(self.sdl_row(disabled, cx));
         }
-        if !native {
-            let note = |on: bool, installed: bool, name: &'static str| {
-                (on && !installed).then(|| tr!("The {name} runtime is not installed yet. It is downloaded before the next launch.", name))
-            };
-            let be = note(self.flag("battlEyeRuntime", false), self.runtimes.0, "BattlEye");
-            let eac = note(self.flag("eacRuntime", false), self.runtimes.1, "EAC");
-            let anti = rows()
-                .child(self.toggle_row("battleye", "battlEyeRuntime", false, tr!("BattlEye AntiCheat Runtime"), be.as_deref(), false, cx))
-                .child(self.toggle_row("eac", "eacRuntime", false, tr!("EasyAntiCheat Runtime"), eac.as_deref(), false, cx));
-            col = col.child(heading(tr!("Anti-cheat"))).child(anti.card());
-        }
-        col
+        r
     }
 
     /// `PROTON_PREFER_SDL` (Proton only).
@@ -103,14 +121,14 @@ impl SettingsPanel {
             "prefer-sdl",
             heronite_launch::env::KEY_PREFER_SDL,
             false,
-            tr!("Use SDL for controllers"),
-            Some(tr!("Can fix a controller the game does not see, swapped buttons or double input. PlayStation controllers lose their own features (adaptive triggers, gyro, touchpad).")),
+            tr!("Read controllers through SDL"),
+            Some(tr!("Fixes a controller the game misses or buttons that repeat; PlayStation extras (gyro, touchpad) stop working")),
             disabled,
             cx,
         )
     }
 
-    fn steam_runtime_field(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn steam_runtime_field(&self, cx: &mut Context<Self>) -> Div {
         let current = match self.settings.get("steamRuntime") {
             Some(Value::String(s)) if !s.is_empty() => s.clone(),
             _ => "none".to_string(),
@@ -122,7 +140,7 @@ impl SettingsPanel {
             .find(|(id, _)| *id == current)
             .map(|(_, n)| (*n).to_string())
             .unwrap_or_else(|| tr!("None").into());
-        self.select_row("steam-runtime", Some(tr!("Use Steam Runtime")), shown, items, false, cx, |this, i, _, cx| {
+        self.select_row("steam-runtime", Some(tr!("Steam Runtime")), shown, items, false, cx, |this, i, _, cx| {
             let v = if i == 0 { Value::Bool(false) } else { Value::String(logic::STEAM_RUNTIMES[i - 1].0.into()) };
             this.set("steamRuntime", v, cx);
         })

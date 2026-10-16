@@ -288,15 +288,15 @@ impl GameSettingsDialog {
             .ok();
         });
         let (target_label, target_help, browse) = match e.kind {
-            ActionKind::Program => (
-                tr!("Program"),
-                tr!("Linux programs, scripts and AppImages run directly; Windows programs (.exe) run with this game's Wine or Proton, in its prefix."),
-                true,
-            ),
+            ActionKind::Program => {
+                (tr!("Program"), tr!("Linux programs run directly; .exe files run with this game's Wine or Proton."), true)
+            }
             ActionKind::Command => {
                 (tr!("Command"), tr!("Runs in the game's folder, like a terminal opened there. Example: ./tools/patch.sh --all"), false)
             }
-            ActionKind::Open => (tr!("Address, file or folder"), tr!("Opened with your default app: a web page, a manual, the mods folder..."), true),
+            ActionKind::Open => {
+                (tr!("Address, file or folder"), tr!("Opened with your default app: a web page, a manual, the mods folder..."), true)
+            }
         };
         let target_field =
             div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(input_box(&e.target, false))).when(browse, |d| {
@@ -327,7 +327,7 @@ impl GameSettingsDialog {
                 toggle_row(
                     "gs-action-plays",
                     tr!("Counts as playing"),
-                    Some(tr!("Starts like Play, with this game's settings (Wine, MangoHud, FPS limit...). Its time counts as playtime and Stop closes it.")),
+                    Some(tr!("Starts like Play, with this game's settings; counts as playtime and Stop closes it.")),
                     e.plays,
                 )
                 .on_click(cx.listener(|this, _, _, cx| {

@@ -253,16 +253,11 @@ impl GameSettingsDialog {
             .flex()
             .flex_col()
             .gap(px(6.))
-            .child(
-                help_text(tr!(
-                    "These fields stay in Collection. Fetching metadata later will not overwrite values you edit here, unless you choose to overwrite."
-                ))
-                .px(px(6.)),
-            )
-            .child(caption(tr!("General")))
+            .child(caption(tr!("Details")))
+            .child(help_text(tr!("Fetching metadata again keeps what you edit here.")).px(px(6.)))
             .child(general)
             .child(caption(tr!("Tags")))
-            .child(help_text(tr!("Pick existing tags or type a new one and press Enter to create it.")).px(px(6.)))
+            .child(help_text(tr!("Pick a tag, or type a new one and press Enter.")).px(px(6.)))
             .child(tags)
             .child(caption(tr!("Links and notes")))
             .child(more)

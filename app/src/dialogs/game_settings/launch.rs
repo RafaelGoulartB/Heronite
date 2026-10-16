@@ -258,7 +258,7 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
-    /// Play (its program, for local games) and the game's other actions.
+    /// The Actions tab: Play (its program, for local games) and the game's other actions.
     pub(super) fn launch_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let play = if self.launch.is_some() { self.local_play(cx) } else { self.play_card() };
         div().flex().flex_col().gap(px(6.)).child(play).child(self.actions_section(cx))

@@ -40,12 +40,12 @@ impl CollectionView {
         cx.notify();
     }
 
-    /// The game settings on the Launch tab, where the actions are edited.
+    /// The game settings on the Actions tab, where the actions are edited.
     pub(super) fn open_actions_editor(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.facts.launch_menu_open = false;
         self.context_menu = None;
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
-        let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, Tab::Launch, window, cx));
+        let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, Tab::Actions, window, cx));
         self.open_dialog(view, cx);
     }
 

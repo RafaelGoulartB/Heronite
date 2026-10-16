@@ -36,10 +36,9 @@ const GROUPS: [(&str, &[CSec]); 4] = [
     (
         n_!("Games"),
         &[
-            CSec::Defaults(HSection::Wine),
-            CSec::Defaults(HSection::Other),
-            CSec::Defaults(HSection::Advanced),
-            CSec::Defaults(HSection::Gamescope),
+            CSec::Defaults(HSection::Compatibility),
+            CSec::Defaults(HSection::Performance),
+            CSec::Defaults(HSection::Launch),
             CSec::Panel(Section::Downloads),
             CSec::Rows(Section::Library),
         ],

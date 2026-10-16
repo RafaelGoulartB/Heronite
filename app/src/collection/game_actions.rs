@@ -29,7 +29,7 @@ pub(super) enum GameAction {
     PlayWith(Option<heronite_epic::launch_options::LaunchOption>),
     /// Runs one of the actions the user added to the game (by id).
     User(String),
-    /// The game settings on the Launch tab, where the actions are edited.
+    /// The game settings on the Actions tab, where the actions are edited.
     EditActions,
     /// One of the other ways to install (the Install flyout).
     InstallWay(WayKind),
