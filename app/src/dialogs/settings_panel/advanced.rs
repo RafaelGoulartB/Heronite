@@ -154,6 +154,11 @@ impl SettingsPanel {
     }
 
     pub(super) fn pair_table(&mut self, t: PairTable, cx: &mut Context<Self>) -> Div {
+        if t.env {
+            if let Some(text) = self.env_text.clone() {
+                return self.env_text_editor(&text, cx);
+            }
+        }
         let rows_data = pairs(self.settings.get(t.setting), t.k1, t.k2);
         let editing = self.input_text(t.in1, cx).trim().to_string();
         let exists = rows_data.iter().any(|(a, _)| *a == editing);
@@ -206,7 +211,20 @@ impl SettingsPanel {
                 cx.listener(move |this, _, window, cx| this.pair_add(t, window, cx)),
             ));
         card_rows = card_rows.child(add);
-        let mut col = column().child(heading(tr(t.title).trim_end_matches(':'))).child(card_rows.card());
+        let mut title_row = div().flex().items_end().justify_between().child(heading(tr(t.title).trim_end_matches(':')));
+        if t.env {
+            title_row = title_row.child(
+                action_button(
+                    "env-as-text",
+                    ButtonKind::Ghost,
+                    tr!("Edit as text"),
+                    true,
+                    cx.listener(|this, _, window, cx| this.open_env_text(window, cx)),
+                )
+                .mb(px(4.)),
+            );
+        }
+        let mut col = column().child(title_row).child(card_rows.card());
         if t.env && !self.env_error.is_empty() {
             col = col.child(danger_text(&self.env_error).px(px(6.)));
         }
@@ -216,6 +234,72 @@ impl SettingsPanel {
             tr!("Warning: Make sure to quote args with spaces! E.g.: \"path/with spaces/\". Arguments example: --arg; --extra-file=\"file-path/ with/spaces\"")
         };
         col.child(help(note).px(px(6.)))
+    }
+
+    /// Opens the variables as text, one `NAME=value` per line.
+    pub(super) fn open_env_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let current = logic::env_block(&pairs(self.settings.get(ENV.setting), ENV.k1, ENV.k2));
+        self.env_text = Some(crate::ui::fields::new_textarea(window, cx, &current, 8));
+        self.env_error.clear();
+        cx.notify();
+    }
+
+    /// Replaces every variable with the text's. `false` (and the reason in
+    /// `env_error`) when a line is not `NAME=value`.
+    pub(super) fn apply_env_text(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
+        match logic::parse_env_block(text) {
+            Ok(rows) => {
+                self.env_error.clear();
+                self.set(ENV.setting, pairs_to_value(&rows, ENV.k1, ENV.k2), cx);
+                true
+            }
+            Err(why) => {
+                self.env_error = why;
+                cx.notify();
+                false
+            }
+        }
+    }
+
+    fn env_text_editor(&mut self, text: &Entity<gpui_kit::component::input::TextareaState>, cx: &mut Context<Self>) -> Div {
+        let box_ = div().flex().flex_col().gap(px(10.)).py(px(12.)).child(crate::ui::fields::textarea_box(text, 8)).child(
+            div()
+                .flex()
+                .gap(px(8.))
+                .justify_end()
+                .child(action_button(
+                    "env-text-cancel",
+                    ButtonKind::Ghost,
+                    tr!("Cancel"),
+                    true,
+                    cx.listener(|this, _, _, cx| {
+                        this.env_text = None;
+                        this.env_error.clear();
+                        cx.notify();
+                    }),
+                ))
+                .child(action_button(
+                    "env-text-apply",
+                    ButtonKind::Primary,
+                    tr!("Apply"),
+                    true,
+                    cx.listener(|this, _, _, cx| {
+                        let Some(text) = this.env_text.clone() else { return };
+                        let value = text.read(cx).value().to_string();
+                        if this.apply_env_text(&value, cx) {
+                            this.env_text = None;
+                        }
+                        cx.notify();
+                    }),
+                )),
+        );
+        let mut col = column().child(heading(tr(ENV.title))).child(rows().child(box_).card());
+        if !self.env_error.is_empty() {
+            col = col.child(danger_text(&self.env_error).px(px(6.)));
+        }
+        col.child(help(tr!(
+            "One NAME=value per line. A line copied from ProtonDB like PROTON_NO_ESYNC=1 DXVK_ASYNC=1 %command% works too. Applying replaces the list."
+        )).px(px(6.)))
     }
 
     pub(super) fn pair_remove(&mut self, t: PairTable, index: usize, cx: &mut Context<Self>) {

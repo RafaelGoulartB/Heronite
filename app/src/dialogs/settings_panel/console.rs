@@ -341,6 +341,21 @@ impl SettingsPanel {
         v.push(Self::c_do(&format!("add-{}", t.id), label, Icon::Add, true, move |this, window, cx| {
             this.console_pair_edit(t, None, window, cx)
         }));
+        if t.env {
+            let mut paste = Self::c_do("env-text", tr!("Type several at once\u{2026}"), Icon::Edit, true, |this, window, cx| {
+                // One line: values with spaces are quoted so they read back whole.
+                let current = pairs(this.settings.get(ENV.setting), ENV.k1, ENV.k2)
+                    .iter()
+                    .map(|(k, v)| format!("{k}={}", shlex::try_quote(v).map(|q| q.into_owned()).unwrap_or_else(|_| v.clone())))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                this.console_osk(tr!("Environment Variables"), &current, window, cx, |this, text, _, cx| {
+                    this.apply_env_text(&text, cx);
+                });
+            });
+            paste.row = paste.row.desc(tr!("NAME=value pairs separated by spaces, like PROTON_NO_ESYNC=1 DXVK_ASYNC=1; replaces the list"));
+            v.push(paste);
+        }
         if t.env && !self.env_error.is_empty() {
             v.push(Self::c_info("env-error", tr!("Problem"), self.env_error.clone()));
         }

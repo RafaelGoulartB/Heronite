@@ -237,6 +237,64 @@ pub fn validate_env_key(key: &str) -> &'static str {
     }
 }
 
+/// The variables as text, one `NAME=value` per line (the bulk editor).
+pub fn env_block(rows: &[(String, String)]) -> String {
+    rows.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("\n")
+}
+
+/// Reads variables pasted as text: one `NAME=value` per line, or several on
+/// a line the way launch options are written (`A=1 B=2 %command%`, as
+/// ProtonDB reports show them). `export` and blank or `#` lines are skipped;
+/// a later line wins over an earlier one with the same name. `Err` names
+/// the first line that is not an assignment.
+pub fn parse_env_block(text: &str) -> Result<Vec<(String, String)>, String> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut put = |k: String, v: String| match out.iter().position(|(n, _)| *n == k) {
+        Some(i) => out[i].1 = v,
+        None => out.push((k, v)),
+    };
+    for (n, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        let line = line.strip_prefix("export ").map(str::trim).unwrap_or(line);
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        // Several assignments on one line (everything up to %command%).
+        let words: Vec<String> = shlex::split(line).unwrap_or_default();
+        let before_command: Vec<&String> = words.iter().take_while(|w| !w.contains("%command%")).collect();
+        let several = words.len() > 1
+            && !before_command.is_empty()
+            && before_command.iter().all(|w| w.split_once('=').is_some_and(|(k, _)| validate_env_key(k).is_empty()));
+        if several {
+            for w in before_command {
+                let (k, v) = w.split_once('=').expect("checked above");
+                put(k.to_string(), v.to_string());
+            }
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else {
+            return Err(tr!("Line {n}: \"{line}\" is not NAME=value", n = n + 1, line));
+        };
+        let k = k.trim();
+        let err = validate_env_key(k);
+        if !err.is_empty() {
+            return Err(format!("{} {err}", tr!("Line {n}:", n = n + 1)));
+        }
+        put(k.to_string(), remove_quotes(v.trim()).to_string());
+    }
+    Ok(out)
+}
+
+/// `"value"` or `'value'` -> `value`.
+fn remove_quotes(v: &str) -> &str {
+    for q in ['"', '\''] {
+        if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
+            return &v[1..v.len() - 1];
+        }
+    }
+    v
+}
+
 /// `LauncherArgs` warnings.
 pub fn launcher_args_error(args: &str) -> &'static str {
     if args.contains("%command") {
@@ -406,5 +464,24 @@ mod tests {
         assert!(!offers_system_libs(&wine("W", "/usr/bin/wine", "wine")));
         assert!(!offers_system_libs(&wine("P", "/p/proton", "proton")));
         assert_eq!(digits_only("12a3"), "123");
+    }
+
+    #[test]
+    fn env_text_reads_lines_and_protondb_launch_options() {
+        let pairs = |v: &[(&str, &str)]| v.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
+        let text = "# from ProtonDB\nPROTON_USE_WINED3D=1\n\nexport DXVK_ASYNC=1\nWINEDLLOVERRIDES=\"winmm,version=n,b\"\nMY_PATH=/a b/c";
+        assert_eq!(
+            parse_env_block(text).unwrap(),
+            pairs(&[("PROTON_USE_WINED3D", "1"), ("DXVK_ASYNC", "1"), ("WINEDLLOVERRIDES", "winmm,version=n,b"), ("MY_PATH", "/a b/c")])
+        );
+        assert_eq!(
+            parse_env_block("PROTON_NO_ESYNC=1 PROTON_NO_FSYNC=1 %command% -dx11").unwrap(),
+            pairs(&[("PROTON_NO_ESYNC", "1"), ("PROTON_NO_FSYNC", "1")])
+        );
+        assert_eq!(parse_env_block("A=1\nA=2").unwrap(), pairs(&[("A", "2")]), "the last one wins");
+        assert!(parse_env_block("A=1\njust words").unwrap_err().contains("Line 2"));
+        assert!(parse_env_block("BAD KEY=1").is_err());
+        assert_eq!(parse_env_block("").unwrap(), Vec::new());
+        assert_eq!(env_block(&pairs(&[("A", "1"), ("B", "x y")])), "A=1\nB=x y");
     }
 }

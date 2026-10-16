@@ -174,6 +174,8 @@ pub struct SettingsPanel {
     /// The launch presets of every game.
     pub(super) presets: Vec<heronite_data::launch_presets::Preset>,
     pub(super) env_error: String,
+    /// The environment variables edited as text (`NAME=value` lines), while open.
+    pub(super) env_text: Option<Entity<gpui_kit::component::input::TextareaState>>,
     pub(super) saves: SavesState,
     /// Steam games: what Steam has (the settings map mirrors its launch options).
     steam: Option<steam::SteamState>,
@@ -272,6 +274,7 @@ impl SettingsPanel {
             umu: None,
             presets: Vec::new(),
             env_error: String::new(),
+            env_text: None,
             saves: SavesState::default(),
             steam: steam_app.map(steam::SteamState::new),
             protondb: protondb::ProtonDb::Off,
@@ -316,6 +319,10 @@ impl SettingsPanel {
         }
         this.maybe_detect_saves(window, cx);
         this.apply_debug_settings(cx);
+        // `HERONITE_DEBUG_ENV_TEXT=1`: the variables start open as text.
+        if crate::env::flag("HERONITE_DEBUG_ENV_TEXT") {
+            this.open_env_text(window, cx);
+        }
         // `HERONITE_DEBUG_WINETRICKS=1`: the Winetricks page starts open.
         if crate::env::flag("HERONITE_DEBUG_WINETRICKS") && this.is_game() {
             this.open_winetricks(window, cx);
