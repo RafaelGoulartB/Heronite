@@ -12,7 +12,7 @@ impl CollectionView {
     /// status flyout; `HERONITE_DEBUG_MENU_CATEGORIES=1` for the categories
     /// one), `HERONITE_DEBUG_DROPDOWN=view|nav` opens a header menu
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
-    /// that search typed), `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
+    /// that search typed; `views`: its views in edit mode), `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
     /// the first render that has a window (`open_pending_debug_dialog`).
     pub(super) fn apply_debug_env(&mut self) {
         if let Some(key) = crate::env::value("HERONITE_DEBUG_MENU") {
@@ -37,6 +37,10 @@ impl CollectionView {
             };
             self.open_menu = match menu.as_str() {
                 "view" | "install" | "sort" | "status" => Some(Menu::View),
+                "views" => {
+                    self.view_menu.set_editing(true);
+                    Some(Menu::View)
+                }
                 "nav" => Some(Menu::Nav),
                 _ if query.is_some() => Some(Menu::View),
                 _ => None,

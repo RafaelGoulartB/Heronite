@@ -188,68 +188,161 @@ impl CollectionView {
     }
 
     fn vm_views(&self, cx: &mut Context<Self>) -> Div {
-        let chips = self.view_cards().into_iter().enumerate().map(|(i, v)| {
-            let on = self.ui.shows_view(&v.filters);
-            let filters = v.filters.clone();
-            pill(("vm-view", i))
-                .border_color(if on { theme::accent_tint_border() } else { theme::white_a(0.) })
-                .when(on, |d| d.bg(theme::accent_tint()).text_color(white()))
-                .child(dot(v.color))
-                .child(div().flex_none().whitespace_nowrap().child(v.name))
-                .children(v.saved.map(|index| {
-                    div()
-                        .id(("vm-view-del", i))
-                        .flex()
-                        .flex_none()
-                        .items_center()
-                        .justify_center()
-                        .size(px(18.))
-                        .rounded_full()
-                        .hover(|s| s.bg(theme::white_a(0.14)))
-                        .child(icon(Icon::Close, px(12.), theme::white_a(0.55)))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            cx.stop_propagation();
-                            this.delete_view(index, cx);
-                        }))
-                }))
-                .on_click(cx.listener(move |this, _, _, cx| this.apply_view_filters(&filters, cx)))
+        let editing = self.view_menu.editing;
+        let action = div()
+            .id("vm-views-edit")
+            .cursor_pointer()
+            .text_size(px(12.))
+            .text_color(theme::accent())
+            .hover(|s| s.text_color(white()))
+            .child(if editing { tr!("Done") } else { tr!("Edit") })
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.view_menu.editing = !this.view_menu.editing;
+                this.view_menu.renaming = None;
+                this.view_menu.naming = None;
+                cx.notify();
+            }));
+        let empty = self.ui.saved_views.is_empty();
+        let header = section_head(tr!("Views")).when(!empty || editing, |d| d.child(action));
+        let body = if editing { self.vm_views_edit(cx) } else { self.vm_views_pick(cx) };
+        div().flex().flex_col().gap(px(8.)).child(header).child(body)
+    }
+
+    /// The views as pills (a click applies one), "Save view" and its name box.
+    fn vm_views_pick(&self, cx: &mut Context<Self>) -> Div {
+        let mut current = false;
+        let chips: Vec<_> = self
+            .view_cards()
+            .into_iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let on = self.ui.shows_view(&v.filters);
+                current |= on;
+                let filters = v.filters;
+                pill(("vm-view", i))
+                    .border_color(if on { theme::accent_tint_border() } else { theme::white_a(0.) })
+                    .when(on, |d| d.bg(theme::accent_tint()).text_color(white()))
+                    .child(dot(v.color))
+                    .child(div().flex_none().whitespace_nowrap().child(v.name))
+                    .on_click(cx.listener(move |this, _, _, cx| this.apply_view_filters(&filters, cx)))
+            })
+            .collect();
+        let naming = self.view_menu.naming.as_ref().map(|(input, _)| {
+            name_row(input)
+                .child(
+                    crate::ui::controls::button_sm("vm-view-save", crate::ui::controls::ButtonKind::Primary, tr!("Save"))
+                        .on_click(cx.listener(|this, _, window, cx| this.save_named_view(window, cx))),
+                )
+                .child(icon_button("vm-view-cancel", Icon::Close, true).on_click(cx.listener(|this, _, _, cx| this.cancel_view_naming(cx))))
         });
-        let naming = self.view_menu.naming.is_some();
-        let add = (!naming).then(|| {
+        // Saving is offered while the menu shows something no view has.
+        let add = (!current && naming.is_none()).then(|| {
             pill("vm-view-new")
                 .bg(theme::white_a(0.))
                 .border_dashed()
                 .border_color(theme::white_a(0.18))
                 .text_color(theme::text_muted())
+                .hover(|s| s.text_color(white()).border_color(theme::accent_tint_border()))
                 .child(icon(Icon::Add, px(14.), theme::text_muted()))
                 .child(tr!("Save view"))
                 .on_click(cx.listener(|this, _, window, cx| this.start_naming_view(window, cx)))
         });
-        let name_box = self.view_menu.naming.as_ref().map(|(input, _)| {
-            div()
+        let hint =
+            (chips.is_empty() && naming.is_none()).then(|| hint_text(tr!("Save the filters, sort and grouping you use often.")).px(px(4.)));
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .children(hint)
+            .child(div().flex().flex_wrap().gap(px(6.)).children(chips).children(add))
+            .children(naming)
+    }
+
+    /// One row per view: rename, store the current state, move, delete.
+    fn vm_views_edit(&self, cx: &mut Context<Self>) -> Div {
+        let len = self.ui.saved_views.len();
+        let renaming = self.view_menu.renaming.as_ref().map(|(i, input, _)| (*i, input.clone()));
+        let rows = self.view_cards().into_iter().enumerate().map(|(i, v)| {
+            let row = div()
+                .id(("vm-view-row", i))
                 .flex()
                 .items_center()
                 .gap(px(8.))
-                .child(
-                    div()
-                        .flex()
-                        .flex_1()
-                        .items_center()
-                        .h(theme::TOOL_BTN)
-                        .px(px(12.))
-                        .rounded_full()
-                        .bg(theme::search_fill_hover())
-                        .border_1()
-                        .border_color(theme::input_border_focus())
-                        .text_size(px(13.5))
-                        .child(div().flex_1().child(Input::new(input).appearance(false))),
-                )
-                .child(
-                    crate::ui::controls::button_sm("vm-view-save", crate::ui::controls::ButtonKind::Primary, tr!("Save"))
-                        .on_click(cx.listener(|this, _, window, cx| this.save_named_view(window, cx))),
-                )
+                .h(px(40.))
+                .pl(px(10.))
+                .pr(px(4.))
+                .rounded(px(9.))
+                .hover(|s| s.bg(theme::white_a(0.05)))
+                .child(dot(v.color));
+            match &renaming {
+                Some((r, input)) if *r == i => row.child(name_row(input).flex_1()).child(
+                    icon_button(("vm-view-ok", i), Icon::Check, true)
+                        .on_click(cx.listener(|this, _, window, cx| this.commit_view_rename(window, cx))),
+                ),
+                _ => row
+                    .child(div().flex_1().min_w_0().truncate().text_size(px(13.5)).text_color(theme::text_primary()).child(v.name))
+                    .child(
+                        icon_button(("vm-view-up", i), Icon::ArrowUpward, i > 0)
+                            .on_click(cx.listener(move |this, _, _, cx| this.move_view(i, true, cx))),
+                    )
+                    .child(
+                        icon_button(("vm-view-down", i), Icon::ArrowDownward, i + 1 < len)
+                            .on_click(cx.listener(move |this, _, _, cx| this.move_view(i, false, cx))),
+                    )
+                    .child(
+                        icon_button(("vm-view-update", i), Icon::Refresh, true)
+                            .on_click(cx.listener(move |this, _, _, cx| this.update_view(i, cx))),
+                    )
+                    .child(
+                        icon_button(("vm-view-rename", i), Icon::Edit, true)
+                            .on_click(cx.listener(move |this, _, window, cx| this.start_renaming_view(i, window, cx))),
+                    )
+                    .child(
+                        icon_button(("vm-view-del", i), Icon::DeleteOutline, true)
+                            .on_click(cx.listener(move |this, _, _, cx| this.delete_view(i, cx))),
+                    ),
+            }
         });
-        section(tr!("Views")).child(div().flex().flex_wrap().gap(px(6.)).children(chips).children(add)).children(name_box)
+        let missing = self.missing_default_views().len();
+        let restore = (missing > 0).then(|| {
+            div()
+                .id("vm-views-restore")
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .px(px(4.))
+                .cursor_pointer()
+                .text_size(px(12.5))
+                .text_color(theme::accent())
+                .hover(|s| s.text_color(white()))
+                .child(icon(Icon::Replay, px(14.), theme::accent()))
+                .child(tr!("Restore default views"))
+                .on_click(cx.listener(|this, _, _, cx| this.restore_default_views(cx)))
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .p(px(4.))
+                    .rounded(px(12.))
+                    .bg(theme::white_a(0.035))
+                    .children(rows)
+                    .when(len == 0, |d| d.child(hint_text(tr!("No views. Save one from the current filters.")).p(px(8.)))),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .px(px(4.))
+                    .child(icon(Icon::Refresh, px(13.), theme::text_dim()))
+                    .child(hint_text(tr!("stores the current filters, sort and grouping in the view."))),
+            )
+            .children(restore)
     }
 
     fn vm_sort(&self, cx: &mut Context<Self>) -> Div {
@@ -409,11 +502,44 @@ impl CollectionView {
 
 /// Section of the panel: small uppercase label above its content.
 fn section(label: &'static str) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(8.))
-        .child(div().px(px(4.)).text_size(px(11.5)).text_color(theme::text_dim()).child(label.to_uppercase()))
+    div().flex().flex_col().gap(px(8.)).child(section_head(label))
+}
+
+/// A section's label row (room for an action on the right).
+fn section_head(label: &'static str) -> Div {
+    div().flex().items_center().justify_between().px(px(4.)).text_size(px(11.5)).text_color(theme::text_dim()).child(label.to_uppercase())
+}
+
+fn hint_text(text: &'static str) -> Div {
+    div().text_size(px(12.)).text_color(theme::text_dim()).child(text)
+}
+
+/// Rounded name box of a view, followed by the caller's buttons.
+fn name_row(input: &Entity<gpui_kit::component::input::InputState>) -> Div {
+    div().flex().items_center().gap(px(6.)).child(
+        div()
+            .flex()
+            .flex_1()
+            .items_center()
+            .h(theme::TOOL_BTN)
+            .px(px(12.))
+            .rounded_full()
+            .bg(theme::search_fill_hover())
+            .border_1()
+            .border_color(theme::input_border_focus())
+            .text_size(px(13.5))
+            .child(div().flex_1().child(Input::new(input).appearance(false))),
+    )
+}
+
+/// 28px round icon button; `enabled: false` greys it out and ignores clicks.
+fn icon_button(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Div> {
+    let b = div().id(id).flex().flex_none().items_center().justify_center().size(px(28.)).rounded_full();
+    if enabled {
+        b.cursor_pointer().hover(|s| s.bg(theme::white_a(0.1))).child(icon(ic, px(16.), theme::text_muted()))
+    } else {
+        b.opacity(0.3).child(icon(ic, px(16.), theme::text_muted()))
+    }
 }
 
 /// Faint 30px pill of the Views and Browse rows (as the header's chips).

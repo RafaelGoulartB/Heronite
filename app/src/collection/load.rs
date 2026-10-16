@@ -123,6 +123,7 @@ impl CollectionView {
         self.lib = Some(Arc::new(l.lib));
         if let Some(lib) = self.lib.clone() {
             self.prune_status_filter(&lib);
+            self.seed_default_views(&lib);
         }
         if self.lib.as_ref().is_some_and(|lib| lib.games.is_empty()) {
             self.start_welcome_watch(cx);

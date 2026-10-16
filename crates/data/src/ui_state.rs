@@ -29,8 +29,11 @@ pub struct UiState {
     pub categories: BTreeSet<String>,
     /// Ids of the selected completion statuses. Empty: all games.
     pub statuses: BTreeSet<String>,
-    /// The View menu's own views, in the order they were saved.
+    /// The View menu's views, in menu order.
     pub saved_views: Vec<SavedView>,
+    /// The built-in views were added to [`saved_views`](Self::saved_views)
+    /// once (after that they are the user's to edit or delete).
+    pub views_seeded: bool,
     pub sidebar_hidden: bool,
     /// Ids of the collapsed status groups (`ungrouped` for "Other").
     pub collapsed_groups: BTreeSet<String>,
@@ -70,6 +73,7 @@ impl Default for UiState {
             categories: BTreeSet::new(),
             statuses: BTreeSet::new(),
             saved_views: Vec::new(),
+            views_seeded: false,
             sidebar_hidden: false,
             collapsed_groups: BTreeSet::new(),
             focused_game: None,
@@ -99,6 +103,7 @@ impl UiState {
                 .collect();
         }
         let flag = |key: &str| value.get(key).and_then(Value::as_bool).unwrap_or(false);
+        state.views_seeded = flag("viewsSeeded");
         state.sidebar_hidden = value.get("sidebarHidden").and_then(Value::as_bool).unwrap_or(false);
         if let Some(list) = value.get("collapsedGroups").and_then(Value::as_array) {
             state.collapsed_groups = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
@@ -121,6 +126,7 @@ impl UiState {
     pub fn to_value(&self) -> Value {
         let mut doc = json!({
             "savedViews": self.saved_views.iter().map(SavedView::to_value).collect::<Vec<_>>(),
+            "viewsSeeded": self.views_seeded,
             "sidebarHidden": self.sidebar_hidden,
             "collapsedGroups": self.collapsed_groups,
             "focusedGame": self.focused_game,
@@ -196,7 +202,8 @@ impl UiState {
         }
     }
 
-    /// The filters and the sort, as a view stores them.
+    /// Everything a view stores: the filters, the sort, the grouping and
+    /// "Show hidden games".
     pub fn view_filters(&self) -> ViewFilters {
         ViewFilters {
             install_filter: self.install_filter,
@@ -206,11 +213,13 @@ impl UiState {
             facet_filters: self.facet_filters.clone(),
             categories: self.categories.clone(),
             statuses: self.statuses.clone(),
+            group_by_status: Some(self.group_by_status),
+            show_hidden: Some(self.show_hidden),
         }
     }
 
-    /// Sets the filters and the sort of a view; grouping and "Show hidden
-    /// games" stay as they are.
+    /// Sets what `view` stores (a view saved without the grouping or
+    /// "Show hidden games" leaves them as they are).
     pub fn apply_view(&mut self, view: &ViewFilters) {
         self.install_filter = view.install_filter;
         self.sort = view.sort;
@@ -219,6 +228,12 @@ impl UiState {
         self.facet_filters = view.facet_filters.clone();
         self.categories = view.categories.clone();
         self.statuses = view.statuses.clone();
+        if let Some(on) = view.group_by_status {
+            self.group_by_status = on;
+        }
+        if let Some(on) = view.show_hidden {
+            self.show_hidden = on;
+        }
     }
 
     /// Whether the Collection shows exactly `view` now.
@@ -230,6 +245,8 @@ impl UiState {
             && self.categories == view.categories
             && self.statuses == view.statuses
             && self.facet_filters.same_as(&view.facet_filters)
+            && view.group_by_status.is_none_or(|on| on == self.group_by_status)
+            && view.show_hidden.is_none_or(|on| on == self.show_hidden)
     }
 
     /// Filters that hide games (install, "Only" switches, categories,
@@ -254,7 +271,7 @@ impl UiState {
     }
 }
 
-/// What a view of the View menu sets: the filters and the sort.
+/// What a view of the View menu sets.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ViewFilters {
     pub install_filter: InstallFilter,
@@ -264,6 +281,10 @@ pub struct ViewFilters {
     pub facet_filters: FacetFilters,
     pub categories: BTreeSet<String>,
     pub statuses: BTreeSet<String>,
+    /// `None`: the view leaves it as it is.
+    pub group_by_status: Option<bool>,
+    /// `None`: the view leaves it as it is.
+    pub show_hidden: Option<bool>,
 }
 
 impl ViewFilters {
@@ -303,6 +324,8 @@ impl ViewFilters {
         };
         v.categories = names("categories");
         v.statuses = names("statuses");
+        v.group_by_status = value.get("groupByStatus").and_then(Value::as_bool);
+        v.show_hidden = value.get("showHidden").and_then(Value::as_bool);
         v
     }
 
@@ -325,6 +348,8 @@ impl ViewFilters {
             "onlyOffline": self.only.offline,
             "categories": self.categories,
             "statuses": self.statuses,
+            "groupByStatus": self.group_by_status,
+            "showHidden": self.show_hidden,
         })
     }
 }
@@ -455,10 +480,12 @@ mod tests {
         loaded.clear_filters();
         assert_eq!(loaded.active_filters(), 0);
         assert_eq!(loaded.sort, SortMode::Playtime);
+        loaded.group_by_status = true;
+        loaded.show_hidden = false;
         assert!(!loaded.shows_view(&view));
         loaded.apply_view(&view);
         assert!(loaded.shows_view(&view));
-        assert!(!loaded.group_by_status && loaded.show_hidden, "a view keeps grouping and hidden games");
+        assert!(!loaded.group_by_status && loaded.show_hidden, "a view sets grouping and hidden games");
         // the same values in another order still match
         loaded.facet_filters = loaded.facet_filters.toggled(FacetKind::Genre, "rpg").toggled(FacetKind::Genre, "RPG");
         assert!(loaded.shows_view(&view));
@@ -466,6 +493,11 @@ mod tests {
         assert_eq!(on_disk["savedViews"][0]["name"], "Done RPGs");
         assert_eq!(on_disk["savedViews"][0]["statuses"], json!(["beaten"]));
         assert_eq!(on_disk["statuses"], json!(["beaten"]));
+        // a view saved without them leaves both alone
+        let old = ViewFilters::from_value(&json!({ "sort": "playtime" }));
+        loaded.apply_view(&old);
+        assert!(!loaded.group_by_status && loaded.show_hidden);
+        assert!(loaded.shows_view(&old), "matches whatever the grouping");
     }
 
     #[test]

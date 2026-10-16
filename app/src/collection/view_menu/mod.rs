@@ -37,8 +37,12 @@ pub(super) struct ViewMenu {
     highlight: usize,
     /// The placeholder is the one for a box with tokens.
     with_tokens: bool,
-    /// Name box of "Save current as a view", while it is open.
+    /// Name box of "Save view", while it is open.
     naming: Option<(Entity<InputState>, Subscription)>,
+    /// The Views section lists the views to rename, update, move or delete.
+    editing: bool,
+    /// Name box of the view being renamed (its index).
+    renaming: Option<(usize, Entity<InputState>, Subscription)>,
     /// Height the menu may take below the header, in logical px.
     room: f32,
     /// `HERONITE_DEBUG_DROPDOWN=view:<text>`: typed on the next frame.
@@ -76,15 +80,21 @@ impl ViewMenu {
             highlight: 0,
             with_tokens: false,
             naming: None,
+            editing: false,
+            renaming: None,
             room: 600.,
             debug_query: None,
             _sub: sub,
         }
     }
 
+    pub(super) fn set_editing(&mut self, on: bool) {
+        self.editing = on;
+    }
+
     /// Typing (or naming a view) keeps the menu open when the pointer leaves.
     pub(super) fn holds_open(&self) -> bool {
-        self.focused || !self.query.is_empty() || self.naming.is_some()
+        self.focused || !self.query.is_empty() || self.naming.is_some() || self.editing
     }
 }
 
@@ -300,6 +310,8 @@ impl CollectionView {
                 self.view_menu.query.clear();
             }
             self.view_menu.naming = None;
+            self.view_menu.editing = false;
+            self.view_menu.renaming = None;
         }
         let with_tokens = self.ui.active_filters() > 0 || self.ui.show_hidden;
         if with_tokens != self.view_menu.with_tokens {
@@ -318,8 +330,10 @@ impl CollectionView {
         let menu = &self.view_menu;
         match ks.key.as_str() {
             "escape" => {
-                if menu.naming.is_some() {
-                    self.view_menu.naming = None;
+                if menu.naming.is_some() || menu.renaming.is_some() {
+                    self.cancel_view_naming(cx);
+                } else if menu.editing {
+                    self.view_menu.editing = false;
                 } else if !menu.query.is_empty() {
                     self.set_view_query("", window, cx);
                 } else {

@@ -257,5 +257,10 @@
   "Reset all": "Limpar tudo",
   "Statuses…": "Status…",
   "{shown} of {total} games": "{shown} de {total} jogos",
-  "Save view": "Salvar visão"
+  "Save view": "Salvar visão",
+  "No views. Save one from the current filters.": "Nenhuma visão. Salve uma a partir dos filtros atuais.",
+  "Restore default views": "Restaurar visões padrão",
+  "Save the filters, sort and grouping you use often.": "Salve os filtros, a ordem e o agrupamento que você mais usa.",
+  "stores the current filters, sort and grouping in the view.": "guarda os filtros, a ordem e o agrupamento atuais na visão.",
+  "“{name}” now saves the current view": "“{name}” agora guarda a visão atual"
 }
