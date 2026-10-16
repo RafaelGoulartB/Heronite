@@ -1,5 +1,5 @@
 //! The View menu's panel: search box with tokens, then either the results
-//! or Views / Sort / Group by / Show / Only / Browse, and a footer with the
+//! or Presets / Sort / Group by / Show / Only / Browse, and a footer with the
 //! count, "Reset all" and "Statuses…".
 
 use gpui_kit::component::input::Input;
@@ -211,12 +211,12 @@ impl CollectionView {
                     cx.notify();
                 }))
         });
-        let header = section_head(tr!("Views")).children(done);
+        let header = section_head(tr!("Presets")).children(done);
         let body = if editing { self.vm_views_edit(cx) } else { self.vm_views_select(cx) };
         div().flex().flex_col().gap(px(8.)).child(header).child(body)
     }
 
-    /// The views in a select (the one shown now, else "Custom"), with "Save
+    /// The presets in a select (the one shown now, else "Custom"), with "Save
     /// current view…" and "Edit views…" under them; the name box below.
     fn vm_views_select(&self, cx: &mut Context<Self>) -> Div {
         let cards = self.view_cards();
@@ -230,12 +230,11 @@ impl CollectionView {
         let mut actions = Vec::new();
         if current.is_none() {
             actions.push(ViewAction::Save);
-            options
-                .push(SelectOption { label: tr!("Save current view…").into(), group: Some(manage_group.clone()), ..Default::default() });
+            options.push(SelectOption { label: tr!("Save as preset…").into(), group: Some(manage_group.clone()), ..Default::default() });
         }
         if !cards.is_empty() {
             actions.push(ViewAction::Edit);
-            options.push(SelectOption { label: tr!("Edit views…").into(), group: Some(manage_group), ..Default::default() });
+            options.push(SelectOption { label: tr!("Edit presets…").into(), group: Some(manage_group), ..Default::default() });
         }
         let value: SharedString = match current {
             Some(i) => cards[i].name.clone().into(),
@@ -337,7 +336,7 @@ impl CollectionView {
                 .text_color(theme::accent())
                 .hover(|s| s.text_color(white()))
                 .child(icon(Icon::Replay, px(14.), theme::accent()))
-                .child(tr!("Restore default views"))
+                .child(tr!("Restore default presets"))
                 .on_click(cx.listener(|this, _, _, cx| this.restore_default_views(cx)))
         });
         div()
@@ -352,7 +351,7 @@ impl CollectionView {
                     .rounded(px(12.))
                     .bg(theme::white_a(0.035))
                     .children(rows)
-                    .when(len == 0, |d| d.child(hint_text(tr!("No views. Save one from the current filters.")).p(px(8.)))),
+                    .when(len == 0, |d| d.child(hint_text(tr!("No presets. Save one from the current filters.")).p(px(8.)))),
             )
             .child(
                 div()
@@ -361,7 +360,7 @@ impl CollectionView {
                     .gap(px(5.))
                     .px(px(4.))
                     .child(icon(Icon::Refresh, px(13.), theme::text_dim()))
-                    .child(hint_text(tr!("stores the current filters, sort and grouping in the view."))),
+                    .child(hint_text(tr!("stores the current filters, sort and grouping in the preset."))),
             )
             .children(restore)
     }

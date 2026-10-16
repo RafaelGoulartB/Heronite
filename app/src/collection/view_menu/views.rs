@@ -1,4 +1,4 @@
-//! Views: everything the menu sets (filters, sort, grouping, "Show hidden
+//! Presets (saved views): everything the menu sets (filters, sort, grouping, "Show hidden
 //! games") saved under a name and applied in one click. Four come with the
 //! app; they are added to the user's list once (by status slug, so they
 //! follow renamed statuses) and can then be edited or deleted like any other.
@@ -124,7 +124,7 @@ impl CollectionView {
     ) -> (Entity<InputState>, Subscription) {
         let input = cx.new(|cx| {
             let mut s = InputState::new(window, cx);
-            s.set_placeholder(tr!("Name of the view"), window, cx);
+            s.set_placeholder(tr!("Name of the preset"), window, cx);
             s.set_value(value.to_string(), window, cx);
             s
         });
@@ -196,7 +196,7 @@ impl CollectionView {
         view.filters = filters;
         let name = view.name.clone();
         self.save_ui();
-        self.show_toast(tr!("“{name}” now saves the current view", name), false, cx);
+        self.show_toast(tr!("“{name}” now holds the current filters", name), false, cx);
         cx.notify();
     }
 
