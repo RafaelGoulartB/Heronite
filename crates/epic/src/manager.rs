@@ -331,6 +331,7 @@ impl DownloadManager {
     /// `cancelCurrentDownload`: stops the first element and removes it (and
     /// the DLCs queued with it); optionally deletes what was downloaded.
     pub fn cancel_current(&self, remove_downloaded: bool) {
+        let mut stale = None;
         {
             let mut g = self.shared.inner.lock();
             let Some(first) = g.queue.first().cloned() else { return };
@@ -345,9 +346,7 @@ impl DownloadManager {
                 None => {
                     // Not running (paused or idle): drop it right away.
                     g.queue.retain(|e| e.params.app_name != first.params.app_name);
-                    if let Some((path, folder)) = remove {
-                        remove_partial_download(&path, &folder);
-                    }
+                    stale = remove;
                     if g.queue.is_empty() {
                         g.user_paused = false;
                         if g.state == DmState::Paused {
@@ -359,6 +358,15 @@ impl DownloadManager {
             self.persist(&g);
         }
         self.emit(Event::Changed);
+        // A multi-GB folder: neither under the lock nor on the caller's (UI) thread.
+        if let Some((path, folder)) = stale {
+            let spawned = std::thread::Builder::new().name("epic-remove-partial".into()).spawn(move || {
+                remove_partial_download(&path, &folder);
+            });
+            if let Err(err) = spawned {
+                log::error!("removing the partial download: {err}");
+            }
+        }
     }
 
     /// `removeFromQueue` for an element that is not running.
@@ -732,6 +740,35 @@ mod tests {
         // A new download starts at once.
         m.add(el("c"));
         wait_until(&m, "c done", |s| s.finished.len() == 1);
+    }
+
+    #[test]
+    fn cancelling_a_paused_download_deletes_its_folder_off_the_calling_thread() {
+        let games = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(games.path().join("a/sub")).unwrap();
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, _dir) = manager(job.clone());
+        let mut base = el("a");
+        base.params.path = games.path().to_str().unwrap().into();
+        m.add(base);
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause();
+        wait_until(&m, "paused", |s| s.state == DmState::Paused);
+        for _ in 0..400 {
+            if m.is_idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        m.cancel_current(true);
+        assert!(m.snapshot().queue.is_empty());
+        for _ in 0..400 {
+            if !games.path().join("a").exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!games.path().join("a").exists());
     }
 
     #[test]
