@@ -15,12 +15,11 @@ use super::choices::{self, Kind, Row};
 use super::Pick;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::dropdown::menu_panel;
-use crate::ui::fields::{select_menu_field, SelectOption};
+use crate::ui::dropdown::{menu_item, menu_panel, menu_separator};
 use crate::ui::icon;
 
 /// Sizes of the panel: roomy, or `compact` in a small window (the menu then
-/// takes about a quarter less height and width).
+/// takes less height and width).
 #[derive(Clone, Copy)]
 pub(super) struct Density {
     pub(super) w: f32,
@@ -30,11 +29,11 @@ pub(super) struct Density {
     pub(super) gap: f32,
     /// Between a section's title and its content.
     pub(super) head_gap: f32,
-    /// Vertical padding of a segment.
-    pub(super) seg_py: f32,
+    /// Height of the Presets select, the segments and the sort direction.
+    pub(super) row_h: f32,
+    /// Side padding of a segment.
+    pub(super) seg_px: f32,
     pub(super) text: f32,
-    /// Sort direction button.
-    pub(super) dir: f32,
     pub(super) pill_h: f32,
     pub(super) pill_px: f32,
     pub(super) tile_py: f32,
@@ -45,27 +44,27 @@ impl Density {
     const ROOMY: Density = Density {
         w: 404.,
         pad: 12.,
-        gap: 16.,
+        gap: 14.,
         head_gap: 8.,
-        seg_py: 6.,
+        row_h: 36.,
+        seg_px: 8.,
         text: 13.,
-        dir: 36.,
         pill_h: 30.,
         pill_px: 11.,
         tile_py: 9.,
-        tile_icon: 19.,
+        tile_icon: 18.,
     };
     const COMPACT: Density = Density {
         w: 360.,
         pad: 10.,
-        gap: 11.,
+        gap: 10.,
         head_gap: 6.,
-        seg_py: 4.,
+        row_h: 31.,
+        seg_px: 6.,
         text: 12.5,
-        dir: 30.,
         pill_h: 26.,
         pill_px: 9.,
-        tile_py: 6.,
+        tile_py: 7.,
         tile_icon: 16.,
     };
 }
@@ -98,11 +97,11 @@ impl CollectionView {
             .min_h_0()
             .overflow_y_scroll()
             .children(searching.then(|| self.vm_results(cx)))
-            .when(!searching, |d| {
-                d.child(self.vm_views(cx))
+            .when(!searching, |el| {
+                el.child(self.vm_views(cx))
                     .child(self.vm_show(cx))
-                    .child(self.vm_group(self.vm_density(), cx))
-                    .child(self.vm_sort(self.vm_density(), cx))
+                    .child(self.vm_group(d, cx))
+                    .child(self.vm_sort(d, cx))
                     .child(self.vm_only(cx))
                     .child(self.vm_browse(cx))
                     .child(self.vm_manage(cx))
@@ -166,9 +165,9 @@ impl CollectionView {
             .px(px(10.))
             .py(px(6.))
             .rounded(px(theme::R_TILE))
-            .bg(theme::black_a(0.28))
+            .bg(theme::card_fill())
             .border_1()
-            .border_color(if self.view_menu.focused { theme::input_border_focus() } else { theme::white_a(0.08) })
+            .border_color(if self.view_menu.focused { theme::input_border_focus() } else { theme::card_border() })
             .cursor_text()
             .on_click(cx.listener(|this, _, window, cx| this.focus_view_search(window, cx)))
             .child(icon(Icon::FaSearch, px(13.), theme::text_dim()))
@@ -273,82 +272,60 @@ impl CollectionView {
     }
 
     fn vm_views(&self, cx: &mut Context<Self>) -> Div {
-        let editing = self.view_menu.editing;
-        let done = editing.then(|| {
-            div()
-                .id("vm-views-done")
-                .cursor_pointer()
-                .text_size(px(12.))
-                .text_color(theme::accent())
-                .hover(|s| s.text_color(white()))
-                .child(tr!("Done"))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.view_menu.editing = false;
-                    this.view_menu.renaming = None;
-                    cx.notify();
-                }))
-        });
-        let header = section_head(tr!("Presets")).children(done);
-        let body = if editing { self.vm_views_edit(cx) } else { self.vm_views_select(cx) };
-        div().flex().flex_col().gap(px(self.vm_density().head_gap)).child(header).child(body)
+        let d = self.vm_density();
+        if !self.view_menu.editing {
+            return section(tr!("Presets"), d).child(self.vm_views_select(d, cx));
+        }
+        let done = div()
+            .id("vm-views-done")
+            .cursor_pointer()
+            .text_size(px(12.))
+            .text_color(theme::accent())
+            .hover(|s| s.text_color(white()))
+            .child(tr!("Done"))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.view_menu.editing = false;
+                this.view_menu.renaming = None;
+                cx.notify();
+            }));
+        div().flex().flex_col().gap(px(d.head_gap)).child(section_head(tr!("Presets")).child(done)).child(self.vm_views_edit(cx))
     }
 
-    /// The presets in a select (the one shown now, else "Custom"), with "Save
-    /// current view…" and "Edit views…" under them; the name box below.
-    fn vm_views_select(&self, cx: &mut Context<Self>) -> Div {
+    /// The preset shown now (else "Custom") in a select; its list holds the
+    /// presets, then "Save as preset…" while none matches and "Edit
+    /// presets…". The name box goes under it.
+    fn vm_views_select(&self, d: Density, cx: &mut Context<Self>) -> Div {
         let cards = self.view_cards();
         let current = cards.iter().position(|v| self.ui.shows_view(&v.filters));
-        let manage_group: SharedString = tr!("Manage").into();
-        let mut options: Vec<SelectOption> = cards
-            .iter()
-            .enumerate()
-            .map(|(i, v)| SelectOption {
-                label: v.name.clone().into(),
-                selected: current == Some(i),
-                dot: Some(v.color),
-                ..Default::default()
-            })
-            .collect();
-        let mut actions = Vec::new();
-        if current.is_none() {
-            actions.push(ViewAction::Save);
-            options.push(SelectOption { label: tr!("Save as preset…").into(), group: Some(manage_group.clone()), ..Default::default() });
-        }
-        if !cards.is_empty() {
-            actions.push(ViewAction::Edit);
-            options.push(SelectOption { label: tr!("Edit presets…").into(), group: Some(manage_group), ..Default::default() });
-        }
-        let value: SharedString = match current {
-            Some(i) => cards[i].name.clone().into(),
-            None => tr!("Custom").into(),
-        };
-        let filters: Vec<_> = cards.into_iter().map(|v| v.filters).collect();
-        let select = select_menu_field(
-            "vm-views",
-            None,
-            value,
-            false,
-            self.view_menu.select_open,
-            options,
-            None,
-            cx,
-            |this, _, cx| {
+        let open = self.view_menu.select_open;
+        let trigger = div()
+            .id("vm-views-select")
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .h(px(d.row_h))
+            .pl(px(12.))
+            .pr(px(9.))
+            .rounded_full()
+            .map(control)
+            .when(open, |s| s.bg(control_hover()))
+            .cursor_pointer()
+            .hover(|s| s.bg(control_hover()))
+            .text_size(px(d.text))
+            .text_color(theme::text_primary())
+            .children(current.map(|i| dot(cards[i].color)))
+            .child(div().flex_1().min_w_0().truncate().child(match current {
+                Some(i) => SharedString::from(cards[i].name.clone()),
+                None => tr!("Custom").into(),
+            }))
+            .child(icon(Icon::ExpandMore, px(16.), if open { theme::text_primary() } else { theme::text_dim() }))
+            .on_click(cx.listener(|this, _, _, cx| {
                 this.view_menu.select_open = !this.view_menu.select_open;
+                this.view_menu.more = None;
+                this.view_menu.more_hovered = false;
                 cx.notify();
-            },
-            move |this, i, window, cx| {
-                this.view_menu.select_open = false;
-                match filters.get(i) {
-                    Some(f) => this.apply_view_filters(f, cx),
-                    None => match actions.get(i - filters.len()) {
-                        Some(ViewAction::Save) => this.start_naming_view(window, cx),
-                        Some(ViewAction::Edit) => this.view_menu.editing = true,
-                        None => {}
-                    },
-                }
-                cx.notify();
-            },
-        );
+            }));
+        let list = open.then(|| self.vm_views_list(&cards, current, cx));
         let naming = self.view_menu.naming.as_ref().map(|(input, _)| {
             name_row(input)
                 .child(
@@ -357,7 +334,64 @@ impl CollectionView {
                 )
                 .child(icon_button("vm-view-cancel", Icon::Close, true).on_click(cx.listener(|this, _, _, cx| this.cancel_view_naming(cx))))
         });
-        div().flex().flex_col().gap(px(8.)).child(select).children(naming)
+        div().flex().flex_col().gap(px(8.)).child(div().relative().child(trigger).children(list)).children(naming)
+    }
+
+    /// The open list of the presets select, under it.
+    fn vm_views_list(&self, cards: &[super::views::ViewCard], current: Option<usize>, cx: &mut Context<Self>) -> Deferred {
+        let mut list = menu_panel(200.).w_full();
+        for (i, v) in cards.iter().enumerate() {
+            let on = current == Some(i);
+            let filters = v.filters.clone();
+            list = list.child(
+                menu_item(("vm-view-opt", i), on)
+                    .child(dot(v.color))
+                    .child(div().flex_1().min_w_0().truncate().child(v.name.clone()))
+                    .when(on, |d| d.child(icon(Icon::Check, px(15.), theme::accent())))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.view_menu.select_open = false;
+                        this.apply_view_filters(&filters, cx);
+                    })),
+            );
+        }
+        let mut actions = Vec::new();
+        if current.is_none() {
+            actions.push((ViewAction::Save, Icon::Add, tr!("Save as preset…")));
+        }
+        if !cards.is_empty() {
+            actions.push((ViewAction::Edit, Icon::Edit, tr!("Edit presets…")));
+        }
+        if !cards.is_empty() && !actions.is_empty() {
+            list = list.child(menu_separator());
+        }
+        for (i, (action, ic, label)) in actions.into_iter().enumerate() {
+            list = list.child(
+                menu_item(("vm-view-action", i), false)
+                    .child(icon(ic, px(16.), theme::text_muted()))
+                    .child(div().flex_1().child(label))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.view_menu.select_open = false;
+                        match action {
+                            ViewAction::Save => this.start_naming_view(window, cx),
+                            ViewAction::Edit => this.view_menu.editing = true,
+                        }
+                        cx.notify();
+                    })),
+            );
+        }
+        deferred(
+            div()
+                .id("vm-views-list")
+                .absolute()
+                .top(relative(1.))
+                .left_0()
+                .right_0()
+                .pt(px(4.))
+                .occlude()
+                .on_hover(cx.listener(|this, hovered: &bool, _, _| this.view_menu.more_hovered = *hovered))
+                .child(list),
+        )
+        .with_priority(40)
     }
 
     /// One row per view: rename, store the current state, move, delete.
@@ -374,7 +408,7 @@ impl CollectionView {
                 .pl(px(10.))
                 .pr(px(4.))
                 .rounded(px(9.))
-                .hover(|s| s.bg(theme::white_a(0.05)))
+                .hover(|s| s.bg(theme::menu_item_hover()))
                 .child(dot(v.color));
             match &renaming {
                 Some((r, input)) if *r == i => row.child(name_row(input).flex_1()).child(
@@ -431,7 +465,7 @@ impl CollectionView {
                     .flex_col()
                     .p(px(4.))
                     .rounded(px(12.))
-                    .bg(theme::white_a(0.035))
+                    .map(control)
                     .children(rows)
                     .when(len == 0, |d| d.child(hint_text(tr!("No presets. Save one from the current filters.")).p(px(8.)))),
             )
@@ -455,13 +489,14 @@ impl CollectionView {
             (InstallFilter::Uninstalled, tr!("Not installed"), all - installed),
         ];
         let d = self.vm_density();
-        section(tr!("Show"), d).child(seg_track("vm-show").children(items.into_iter().map(|(f, label, n)| {
+        let segments = items.into_iter().map(|(f, label, n)| {
             let on = self.ui.install_filter == f;
             seg_item(("vm-show", f as usize), on, d)
                 .child(label)
-                .child(div().text_size(px(11.)).text_color(if on { theme::text_primary() } else { theme::text_dim() }).child(n.to_string()))
+                .child(div().text_size(px(11.)).text_color(if on { theme::text_muted() } else { theme::text_dim() }).child(n.to_string()))
                 .on_click(cx.listener(move |this, _, _, cx| this.set_install_filter(f, cx)))
-        })))
+        });
+        section(tr!("Show"), d).child(seg_track("vm-show", d).children(segments))
     }
 
     fn vm_only(&self, cx: &mut Context<Self>) -> Div {
@@ -484,11 +519,10 @@ impl CollectionView {
                 .pt(px(d.tile_py + 1.))
                 .pb(px(d.tile_py - 1.))
                 .rounded(px(12.))
-                .border_1()
-                .border_color(if on { theme::accent_tint_border() } else { theme::white_a(0.) })
-                .bg(if on { theme::accent_tint() } else { theme::white_a(0.05) })
+                .map(control)
+                .when(on, |s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()))
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.09)))
+                .hover(|s| s.bg(if on { theme::accent_tint_border() } else { control_hover() }))
                 .text_size(px(11.5))
                 .text_color(if on { white().into() } else { theme::text_muted() })
                 .child(icon(ic, px(d.tile_icon), if on { theme::accent() } else { theme::text_primary() }))
@@ -564,6 +598,17 @@ fn section(label: &'static str, d: Density) -> Div {
     div().flex().flex_col().gap(px(d.head_gap)).child(section_head(label))
 }
 
+/// The look of every control of the panel (search box, presets select,
+/// segments, tiles, pills): the cards' faint fill and border.
+pub(super) fn control<E: Styled>(el: E) -> E {
+    el.bg(theme::card_fill()).border_1().border_color(theme::card_border())
+}
+
+/// Hover fill of the panel's controls (a Glass button's).
+pub(super) fn control_hover() -> Hsla {
+    theme::button_fill()
+}
+
 /// A section's label row (room for an action on the right).
 pub(super) fn section_head(label: &'static str) -> Div {
     div().flex().items_center().justify_between().px(px(4.)).text_size(px(11.5)).text_color(theme::text_dim()).child(label.to_uppercase())
@@ -601,7 +646,7 @@ fn icon_button(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Di
     }
 }
 
-/// Faint 30px pill of the Views and Browse rows (as the header's chips).
+/// Pill of the Browse and Manage rows.
 fn pill(id: impl Into<ElementId>, d: Density) -> Stateful<Div> {
     div()
         .id(id)
@@ -613,11 +658,9 @@ fn pill(id: impl Into<ElementId>, d: Density) -> Stateful<Div> {
         .px(px(d.pill_px))
         .max_w(px(d.w - d.pad * 2.))
         .rounded_full()
-        .border_1()
-        .border_color(theme::white_a(0.))
-        .bg(theme::white_a(0.05))
+        .map(control)
         .cursor_pointer()
-        .hover(|s| s.bg(theme::white_a(0.1)))
+        .hover(|s| s.bg(control_hover()))
         .text_size(px(d.text - 0.5))
         .text_color(theme::text_primary())
 }
@@ -662,9 +705,9 @@ fn dot(color: Rgba) -> Div {
     div().flex_none().size(px(8.)).rounded_full().bg(color)
 }
 
-/// Segmented control: equal parts on a faint pill.
-pub(super) fn seg_track(id: &'static str) -> Stateful<Div> {
-    div().id(id).flex().items_center().gap(px(2.)).p(px(3.)).rounded_full().bg(theme::seg_track())
+/// Segmented control: parts on a pill, as tall as the other controls.
+pub(super) fn seg_track(id: &'static str, d: Density) -> Stateful<Div> {
+    div().id(id).flex().gap(px(2.)).h(px(d.row_h)).p(px(3.)).rounded_full().map(control)
 }
 
 pub(super) fn seg_item(id: impl Into<ElementId>, on: bool, d: Density) -> Stateful<Div> {
@@ -675,9 +718,8 @@ pub(super) fn seg_item(id: impl Into<ElementId>, on: bool, d: Density) -> Statef
         .min_w_0()
         .items_center()
         .justify_center()
-        .gap(px(6.))
-        .py(px(d.seg_py))
-        .px(px(8.))
+        .gap(px(5.))
+        .px(px(d.seg_px))
         .rounded_full()
         .text_size(px(d.text))
         .whitespace_nowrap()

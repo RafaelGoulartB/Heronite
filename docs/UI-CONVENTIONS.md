@@ -109,13 +109,13 @@ search pill (`search_fill`, accent ring while focused, clear button) and the Vie
 anything is filtered). Its menu (`collection/view_menu/`) starts with a search box: the active filters sit in it as
 tokens (click or Backspace removes one) and typing lists matching values of every kind (Only, Status, Category,
 Store, Genre, Developer, Publisher, Series, Platform) with counts, four per kind until `kind:` narrows it; ↑ ↓ and
-Enter pick, and an X beside the first kind's title empties the box (back to the menu). Below, when nothing is typed: Presets (a `select_menu_field` showing the preset on screen, else "Custom"; a preset applies
+Enter pick, and an X beside the first kind's title empties the box (back to the menu). Below, when nothing is typed (every control has the cards' faint fill and border, `render::control`): Presets (a select showing the preset on screen, else "Custom", its list drawn like the "More" lists; a preset applies
 everything the menu sets: filters, sort, grouping, hidden games; four built-in ones are added to the user's list once
 and are then ordinary presets; under them "Save as preset…" while none matches and "Edit presets…", which lists them
 with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`), Show
-(segmented with counts), Group by (None | Status), Sort (segmented + direction), Only (Favourites, Update, Offline,
+(segmented with counts), Group by (None | Status | Store | More), Sort (segmented + direction), Only (Favourites, Update, Offline,
 Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…" and "Library fields…", the fields manager
-`dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments, Only tiles and Browse pills. Several
+`dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
 a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: in the grid the cover size slider and the "Aa" titles switch, the
 Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view only). Header menus open on click or

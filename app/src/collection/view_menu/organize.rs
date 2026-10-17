@@ -10,7 +10,7 @@ use heronite_i18n::tr;
 
 use super::super::data::group_icon;
 use super::super::CollectionView;
-use super::render::{hint_text, section_head, seg_item, seg_track, Density};
+use super::render::{control, control_hover, hint_text, section_head, seg_item, seg_track, Density};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::dropdown::{menu_item, menu_panel};
@@ -150,33 +150,19 @@ impl CollectionView {
 
     fn toggle_more(&mut self, which: More, cx: &mut Context<Self>) {
         self.view_menu.more = if self.view_menu.more == Some(which) { None } else { Some(which) };
+        self.view_menu.select_open = false;
         self.view_menu.more_hovered = false;
         cx.notify();
     }
 
     pub(super) fn vm_group(&self, d: Density, cx: &mut Context<Self>) -> Div {
         let current = self.ui.group_by;
-        let colors: Vec<Rgba> =
-            self.lib.as_deref().map(|l| l.statuses.iter().take(5).map(|s| theme::status_color(&s.slug)).collect()).unwrap_or_default();
-        let dots = || {
-            div().flex().flex_none().items_center().children(colors.iter().enumerate().map(|(i, c)| {
-                div()
-                    .size(px(8.))
-                    .rounded_full()
-                    .bg(*c)
-                    .border_1()
-                    .border_color(theme::rgb_a(20, 22, 30, 0.9))
-                    .when(i > 0, |d| d.ml(px(-3.)))
-            }))
-        };
+        let compact = self.view_menu.compact;
         let quick = QUICK_GROUPS.into_iter().map(|by| {
             let on = current == by;
             seg_item(("vm-group", by as usize), on, d)
                 .flex_auto()
-                .map(|s| match by {
-                    GroupBy::Status => s.child(dots()),
-                    _ => s.children(group_icon(by).filter(|_| !self.view_menu.compact).map(|ic| icon(ic, px(15.), seg_color(on)))),
-                })
+                .children(quick_group_icon(by).filter(|_| !compact).map(|ic| icon(ic, px(15.), seg_color(on))))
                 .child(group_label(by))
                 .on_click(cx.listener(move |this, _, _, cx| this.set_group_by(by, cx)))
         });
@@ -203,7 +189,7 @@ impl CollectionView {
             .flex_col()
             .gap(px(d.head_gap))
             .child(section_head(tr!("Group by")))
-            .child(div().relative().child(seg_track("vm-group").children(quick).child(more)).children(list))
+            .child(div().relative().child(seg_track("vm-group", d).children(quick).child(more)).children(list))
             .children(hint)
     }
 
@@ -242,15 +228,15 @@ impl CollectionView {
             .flex_none()
             .items_center()
             .justify_center()
-            .size(px(d.dir))
+            .size(px(d.row_h))
             .rounded_full()
-            .bg(theme::seg_track())
+            .map(control)
             .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.12)))
+            .hover(|s| s.bg(control_hover()))
             // Up for A → Z, down for "most / newest first", as the words say.
             .child(icon(
                 if (current == SortMode::Title) == descending { Icon::ArrowDownward } else { Icon::ArrowUpward },
-                px(17.),
+                px(16.),
                 theme::text_primary(),
             ))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
@@ -268,7 +254,7 @@ impl CollectionView {
                     .flex()
                     .items_center()
                     .gap(px(6.))
-                    .child(div().flex_1().min_w_0().child(seg_track("vm-sort").children(quick).child(more)))
+                    .child(div().flex_1().min_w_0().child(seg_track("vm-sort", d).children(quick).child(more)))
                     .child(dir)
                     .children(list),
             )
@@ -286,11 +272,12 @@ impl CollectionView {
     ) -> Stateful<Div> {
         let on = extra.is_some();
         let open = self.view_menu.more == Some(which);
+        let compact = self.view_menu.compact;
         seg_item(id, on, d)
             .flex_auto()
-            .when(open && !on, |s| s.bg(theme::white_a(0.08)).text_color(white()))
+            .when(open && !on, |s| s.bg(control_hover()).text_color(white()))
             .map(|s| match extra {
-                Some((ic, label)) => s.children(ic.map(|ic| icon(ic, px(15.), seg_color(true)))).child(label),
+                Some((ic, label)) => s.children(ic.filter(|_| !compact).map(|ic| icon(ic, px(15.), seg_color(true)))).child(label),
                 None => s.child(tr!("More")),
             })
             .child(icon(Icon::ExpandMore, px(16.), if on || open { theme::text_primary() } else { theme::text_dim() }))
@@ -351,6 +338,15 @@ struct MoreOption {
     icon: Icon,
     section: &'static str,
     on: bool,
+}
+
+/// Icon of a quick "Group by" segment: Status gets the flag of the Browse
+/// row (one colour, as the other segments).
+fn quick_group_icon(by: GroupBy) -> Option<Icon> {
+    match by {
+        GroupBy::Status => Some(Icon::Flag),
+        other => group_icon(other),
+    }
 }
 
 fn seg_color(on: bool) -> Hsla {
