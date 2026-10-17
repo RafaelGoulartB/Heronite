@@ -87,7 +87,7 @@ impl Drop for SessionEnd {
                 sessions.remove(&self.app_name);
             }
         }
-        let message = tr!("lost track of {title}: the launcher hit an internal error", title = self.title);
+        let message = tr!("Lost track of {title}: the launcher hit an internal error", title = self.title);
         self.shared.send(LaunchEvent::Error { app_name: self.app_name.clone(), message });
     }
 }
