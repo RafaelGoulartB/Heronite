@@ -1,10 +1,7 @@
 //! Steam games: open the `steam://` URI and follow the game through Steam's logs.
 
-use std::sync::atomic::Ordering;
-use std::time::Instant;
-
-use chrono::Utc;
 use heronite_i18n::tr;
+use std::sync::atomic::Ordering;
 
 use super::session::{fail, finish};
 use super::state::{Control, Shared};
@@ -14,16 +11,7 @@ use crate::playtime_watch::{wait_for_steam_session, SteamWaitOutcome};
 use crate::prepare::Notice;
 use crate::record;
 
-pub(super) fn run_steam(
-    shared: &Shared,
-    log: &GameLog,
-    req: &LaunchRequest,
-    control: &Control,
-    app_id: &str,
-    uri: &str,
-    started_at: chrono::DateTime<Utc>,
-    t0: Instant,
-) {
+pub(super) fn run_steam(shared: &Shared, log: &GameLog, req: &LaunchRequest, control: &Control, app_id: &str, uri: &str) {
     log.info(&format!("Opening {uri}"));
     if let Err(e) = shared.spawner.open_uri(uri) {
         return fail(
@@ -47,9 +35,10 @@ pub(super) fn run_steam(
             announced = Some(pid);
             log.info(&format!("Steam started the game (pid {pid})"));
             control.pid.store(pid, Ordering::SeqCst);
-            // Only now do we know the game is really running.
+            // Only now do we know the game is really running: the session
+            // clock starts here, not when Steam was asked to open it.
+            let started_at = control.set_playing();
             let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
-            control.set_playing();
             shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid });
         },
     );
@@ -65,7 +54,7 @@ pub(super) fn run_steam(
         }
         SteamWaitOutcome::Finished | SteamWaitOutcome::Aborted => {
             log.info("Steam game finished");
-            finish(shared, log, req, control, started_at, t0.elapsed(), None)
+            finish(shared, log, req, control, control.played(), None)
         }
     }
 }

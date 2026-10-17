@@ -188,6 +188,11 @@ pub struct Checkpointer {
 }
 
 impl Checkpointer {
+    /// A write (a checkpoint) already stored part of this session.
+    pub fn has_written(&self) -> bool {
+        self.recent_done
+    }
+
     /// `rec.ended_at` is "now" for a checkpoint and the real end for the last
     /// write. Sessions under `min_session_seconds` only touch the timestamps.
     pub fn write(&mut self, paths: &DataPaths, rec: &PlayRecord, min_session_seconds: i64) -> Result<RecordOutcome> {

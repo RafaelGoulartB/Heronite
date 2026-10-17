@@ -20,7 +20,6 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
 use heronite_data::DataPaths;
 
 use crate::first_launch::{EpicSetup, StoreSetup};
@@ -33,7 +32,10 @@ use state::{Control, Ledger, Shared};
 
 pub use fake::{FakeHandleState, FakeSpawner};
 pub use spawner::{ExitInfo, ProcessHandle, Spawner, SystemSpawner};
-pub use types::{LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices, StopOptions, SystemInfoFn, CHECKPOINT_INTERVAL};
+pub use types::{
+    failed_launch, LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices, StopOptions, SystemInfoFn, CHECKPOINT_INTERVAL,
+    FAILED_LAUNCH_WINDOW,
+};
 
 /// Tracks running games. Cheap to clone.
 #[derive(Clone)]
@@ -145,8 +147,7 @@ impl Launcher {
             stop,
             steam_pids: Arc::new(Mutex::new(BTreeSet::new())),
             title: req.title.clone(),
-            started_at: Utc::now(),
-            t0: Instant::now(),
+            clock: Default::default(),
             playing: AtomicBool::new(false),
             ledger: Mutex::new(Ledger { cp: Checkpointer::default(), finished: false }),
             wake: Default::default(),
