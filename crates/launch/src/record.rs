@@ -8,7 +8,8 @@
 //! 2. on exit, `lastPlayed` = end time, `totalPlayed` (minutes) =
 //!    `floor(sessionMinutes + previousTotal)`;
 //! 3. a session is stored unless it lasted under 5 s (source `heroic`,
-//!    deduplicated by `startedAt:elapsedSeconds`, newest 200 kept);
+//!    deduplicated by `startedAt:elapsedSeconds`, newest
+//!    [`MAX_SESSIONS_PER_GAME`] kept);
 //! 4. the game moves to the front of `games.recent` (no length cap on write).
 //!
 //! Unlike Heroic, a running session is also *checkpointed* (see
@@ -99,7 +100,8 @@ fn update_timestamps_with_base(paths: &DataPaths, rec: &PlayRecord, base: &mut O
     Ok(total)
 }
 
-/// `mergeLocalSessions`: append, drop duplicates, keep the newest 200.
+/// `mergeLocalSessions`: append, drop duplicates, keep the newest
+/// [`MAX_SESSIONS_PER_GAME`].
 pub fn add_session(paths: &DataPaths, app_name: &str, session: LocalGameSession) -> Result<bool> {
     json_store::update::<SessionsFile, _>(&paths.sessions(), |doc| {
         let list = doc.sessions.entry(app_name.to_string()).or_default();
@@ -293,20 +295,34 @@ mod tests {
     }
 
     #[test]
-    fn sessions_dedupe_and_cap_at_200_newest_first() {
+    fn sessions_dedupe_and_cap_newest_first() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         let mk =
             |i: i64| PlayRecord { app_name: "g1".into(), title: "x".into(), started_at: t(i * 60_000), ended_at: t(i * 60_000 + 30_000) };
-        for i in 0..203 {
+        // A full history, then three more sessions.
+        let max = MAX_SESSIONS_PER_GAME as i64;
+        let full: Vec<LocalGameSession> = (0..max)
+            .map(|i| LocalGameSession {
+                started_at: iso(t(i * 60_000)),
+                ended_at: iso(t(i * 60_000 + 30_000)),
+                elapsed_seconds: 30.0.into(),
+                source: "heroic".into(),
+                ..Default::default()
+            })
+            .collect();
+        let mut doc = SessionsFile::default();
+        doc.sessions.insert("g1".into(), full);
+        json_store::write(&paths.sessions(), &doc).unwrap();
+        for i in max..max + 3 {
             record_play(&paths, &mk(i), 5).unwrap();
         }
         let doc: SessionsFile = json_store::read(&paths.sessions()).unwrap();
         let list = &doc.sessions["g1"];
-        assert_eq!(list.len(), 200);
+        assert_eq!(list.len(), MAX_SESSIONS_PER_GAME);
         // Trimming sorts newest first and drops the oldest.
-        assert_eq!(list[0].started_at, iso(t(202 * 60_000)));
-        assert_eq!(list[199].started_at, iso(t(3 * 60_000)));
+        assert_eq!(list[0].started_at, iso(t((max + 2) * 60_000)));
+        assert_eq!(list[MAX_SESSIONS_PER_GAME - 1].started_at, iso(t(3 * 60_000)));
         // The same session twice is stored once.
         let before = list.len();
         assert!(!add_session(&paths, "g1", list[0].clone()).unwrap());
