@@ -147,6 +147,7 @@ impl Launcher {
             title: req.title.clone(),
             started_at: Utc::now(),
             t0: Instant::now(),
+            since_ticks: crate::procs::boot_ticks_now(),
             playing: AtomicBool::new(false),
             ledger: Mutex::new(Ledger { cp: Checkpointer::default(), finished: false }),
             wake: Default::default(),
@@ -192,11 +193,12 @@ impl Launcher {
         }
         let spawner = self.shared.spawner.clone();
         let stop = control.stop.clone();
+        let since = control.since_ticks;
         // Off the caller's thread: wineserver -k / pkill can take a moment.
         std::thread::spawn(move || {
             for pattern in &stop.kill_patterns {
                 if pattern.len() >= 3 {
-                    spawner.kill_pattern(pattern);
+                    spawner.kill_pattern(pattern, since);
                 }
             }
             for cmd in &stop.commands {

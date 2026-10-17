@@ -327,7 +327,7 @@ pub(crate) mod tests {
         fn open_uri(&self, _uri: &str) -> io::Result<()> {
             Ok(())
         }
-        fn kill_pattern(&self, _pattern: &str) {}
+        fn kill_pattern(&self, _pattern: &str, _since: u64) {}
     }
 
     #[derive(Default)]

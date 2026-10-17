@@ -22,8 +22,9 @@ impl Command {
     }
 }
 
-/// What "stop" does besides killing the tracked process tree: Heroic runs
-/// `pkill -f <pattern>` and shuts the Wine prefix down.
+/// What "stop" does besides killing the tracked process tree: it
+/// terminates the programs its patterns name (see [`crate::procs::program_matches`])
+/// and shuts the Wine prefix down.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StopSpec {
     pub kill_patterns: Vec<String>,

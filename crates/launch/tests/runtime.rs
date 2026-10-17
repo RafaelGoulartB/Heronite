@@ -158,7 +158,7 @@ fn stop_terminates_the_tree_and_runs_stop_commands() {
     assert!(r.spawner.handle(0).unwrap().lock().unwrap().terminated);
     wait_until("stop commands", || r.spawner.spawned().len() == 2);
     assert_eq!(r.spawner.spawned()[1].program, "/w/wineserver");
-    assert_eq!(r.spawner.patterns(), ["pcsx2"], "patterns shorter than 3 chars are never pkill'ed");
+    assert_eq!(r.spawner.patterns(), ["pcsx2"], "patterns shorter than 3 chars are never used");
     assert!(!r.launcher.stop("g"), "nothing left to stop");
 }
 

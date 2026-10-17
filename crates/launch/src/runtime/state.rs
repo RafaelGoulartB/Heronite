@@ -32,6 +32,9 @@ pub(super) struct Control {
     pub(super) title: String,
     pub(super) started_at: chrono::DateTime<Utc>,
     pub(super) t0: Instant,
+    /// When the launch began, in `/proc` start-time ticks: stop patterns
+    /// only reach processes started since.
+    pub(super) since_ticks: u64,
     /// The game is running (the session has playtime to checkpoint).
     pub(super) playing: AtomicBool,
     pub(super) ledger: Mutex<Ledger>,

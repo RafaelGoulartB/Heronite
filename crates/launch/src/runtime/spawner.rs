@@ -38,8 +38,10 @@ pub trait Spawner: Send + Sync {
     }
     /// Opens a URI with the desktop handler (`xdg-open`), without waiting.
     fn open_uri(&self, uri: &str) -> io::Result<()>;
-    /// `pkill -f <pattern>`.
-    fn kill_pattern(&self, pattern: &str);
+    /// Terminates the processes started at or after `since` (ticks since
+    /// boot, [`crate::procs::boot_ticks_now`]) whose program is `pattern`
+    /// ([`crate::procs::program_matches`]).
+    fn kill_pattern(&self, pattern: &str, since: u64);
     fn make_executable(&self, path: &str) -> io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         let mut perms = std::fs::metadata(path)?.permissions();
@@ -219,12 +221,11 @@ impl Spawner for SystemSpawner {
         Ok(())
     }
 
-    fn kill_pattern(&self, pattern: &str) {
-        let _ = std::process::Command::new("pkill")
-            .args(["-f", pattern])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
+    fn kill_pattern(&self, pattern: &str, since: u64) {
+        // Not `pkill -f`: that matches anywhere in any command line, so a game
+        // called `game` would take Steam or a terminal down with it.
+        for pid in crate::procs::processes_matching(pattern, since) {
+            self.procs.signal(pid, Sig::Term);
+        }
     }
 }
