@@ -44,9 +44,9 @@ impl CollectionView {
             .children(searching.then(|| self.vm_results(cx)))
             .when(!searching, |d| {
                 d.child(self.vm_views(cx))
-                    .child(self.vm_sort(cx))
-                    .child(self.vm_group(cx))
                     .child(self.vm_show(cx))
+                    .child(self.vm_group(cx))
+                    .child(self.vm_sort(cx))
                     .child(self.vm_only(cx))
                     .child(self.vm_browse(cx))
             });

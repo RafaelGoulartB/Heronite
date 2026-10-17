@@ -1,6 +1,6 @@
 //! The View menu of the header's tune button: a search box that finds any
-//! filter value (the active ones sit in it as tokens), then Presets, Sort,
-//! Group by, Show, the "Only" switches and a shortcut to list each kind.
+//! filter value (the active ones sit in it as tokens), then Presets, Show,
+//! Group by, Sort, the "Only" switches and a shortcut to list each kind.
 //! The panel is drawn in `render.rs`, what the box finds is `choices.rs`
 //! and the presets (saved views) are `views.rs`.
 

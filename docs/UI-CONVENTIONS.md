@@ -112,8 +112,8 @@ Store, Genre, Developer, Publisher, Series, Platform) with counts, four per kind
 Enter pick. Below, when nothing is typed: Presets (a `select_menu_field` showing the preset on screen, else "Custom"; a preset applies
 everything the menu sets: filters, sort, grouping, hidden games; four built-in ones are added to the user's list once
 and are then ordinary presets; under them "Save as preset…" while none matches and "Edit presets…", which lists them
-with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`), Sort
-(segmented + direction), Group by (None | Status), Show (segmented with counts), Only (Favourites, Update, Offline,
+with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`), Show
+(segmented with counts), Group by (None | Status), Sort (segmented + direction), Only (Favourites, Update, Offline,
 Hidden tiles) and Browse (one chip per kind, fills `kind:`); the footer has the count, Reset all and Statuses…. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
 a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: in the grid the cover size slider and the "Aa" titles switch, the
