@@ -110,7 +110,7 @@ impl SettingsPanel {
             self.sync_select(false, cx),
             vec![help(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))],
         );
-        col = col.child(heading(tr!("Sync"))).child(sync.card());
+        col = col.child(self.marked_heading(tr!("Sync"), "sync", cx)).child(sync.card());
 
         let mut experimental = rows().child(self.toggle_row(
             "wayland",

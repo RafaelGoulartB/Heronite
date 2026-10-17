@@ -5,15 +5,11 @@ use gpui_kit::*;
 
 use super::SettingsPanel;
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, toggle_row, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, row, toggle, ButtonKind};
 use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_field, select_menu_field, SelectOption};
 
 /// Menus longer than this get a search box.
 const SEARCH_FROM: usize = 8;
-/// Top of the changed dot's 16 px target: by the label of a switch row
-/// (11 px padding), and by the label over a field.
-pub(super) const ROW_DOT: f32 = 12.;
-const FIELD_DOT: f32 = 0.;
 
 /// Info callout (`.defaults-hint`): a quiet glass box.
 pub fn hint(text: &str) -> Div {
@@ -100,14 +96,44 @@ impl SettingsPanel {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let on = self.flag(key, default);
-        let mut row = toggle_row(id, label.to_string(), help_text, on);
+        let group = if super::changes::group(id).is_some() { id } else { key };
+        let mut row = self.switch_row(id, group, label, help_text, on, cx);
         if disabled {
             row = row.opacity(0.4).cursor_not_allowed();
         } else {
             row = row.on_click(cx.listener(move |this, _, _, cx| this.toggle(key, default, cx)));
         }
-        let group = if super::changes::group(id).is_some() { id } else { key };
-        self.marked(group, ROW_DOT, row, cx).into_any_element()
+        row.into_any_element()
+    }
+
+    /// A field with its reset button on the label line; one without a label
+    /// has it on the caption of its card instead (`marked_heading`).
+    fn marked_field(&self, id: &str, labeled: bool, field: impl IntoElement, cx: &mut Context<Self>) -> Div {
+        if labeled {
+            self.marked(id, field, cx)
+        } else {
+            div().child(field)
+        }
+    }
+
+    /// `toggle_row` with the reset button of `group` before the switch when
+    /// it changed (the caller adds the click).
+    pub(super) fn switch_row(
+        &self,
+        id: &'static str,
+        group: &str,
+        label: &str,
+        help_text: Option<&str>,
+        on: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let control = div()
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .children(self.reset_button(group, cx))
+            .child(toggle(SharedString::from(format!("{id}-sw")), on, false));
+        row(label.to_string(), help_text, control).id(id).cursor_pointer()
     }
 
     /// Labelled text input bound to input `id`.
@@ -118,7 +144,7 @@ impl SettingsPanel {
             .children(label.map(|l| field_label(l.to_string())))
             .child(input_box(&self.input(id), false))
             .children(help_text.map(|t| help(t).pt(px(5.))));
-        self.marked(id, FIELD_DOT, field, cx)
+        self.marked_field(id, label.is_some(), field, cx)
     }
 
     /// `PathSelectionBox`: input + folder/clear icon. `deletable`: the icon
@@ -152,7 +178,7 @@ impl SettingsPanel {
                 }
             }),
         );
-        self.marked(id, FIELD_DOT, field, cx)
+        self.marked_field(id, label.is_some(), field, cx)
     }
 
     /// `SelectField`; `options` are `(label, selected)`.
@@ -184,7 +210,7 @@ impl SettingsPanel {
                 cx.notify();
             },
         );
-        self.marked(id, FIELD_DOT, field, cx)
+        self.marked_field(id, label.is_some(), field, cx)
     }
 
     /// [`select_row`](Self::select_row) with groups and notes; long lists
@@ -225,7 +251,7 @@ impl SettingsPanel {
                 cx.notify();
             },
         );
-        self.marked(id, FIELD_DOT, field, cx)
+        self.marked_field(id, label.is_some(), field, cx)
     }
 
     pub(super) fn outline_button(

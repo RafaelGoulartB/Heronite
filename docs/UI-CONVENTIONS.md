@@ -185,8 +185,10 @@ game has nothing for it. Descriptions are one short line saying the effect; path
 only show when they matter. The Heroic
 panels (`dialogs/settings_panel`) build their cards with `parts::rows()` (`.child(toggle_row)`,
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →
-Game defaults can host them too. A setting that differs from the game defaults gets a 6px accent dot
-in the card's left margin (it turns into a reset arrow under the pointer), and the dialog a
+Game defaults can host them too. A setting that differs from the game defaults and is technical (its
+`Group` is made with `t(..)`: Wine version, DXVK/VKD3D, sync, FPS limit, gamescope, GPU tweaks...; not plain switches
+or text boxes) gets a bare ↺ on the right (dim, accent under the pointer): before the switch of a switch row, at the
+end of a field's label line, after the caption of a card that is one setting or holds an unlabelled field (Sync); and the dialog a
 "Reset this tab" button next to Done while the tab has changes (`settings_panel/changes.rs`;
 console: a dot after the label, Y resets, a "Reset this tab" row). A new setting is one entry of its
 `GROUPS`, keyed by the row, input or setting id. The Launch tab ends with "How the game starts"

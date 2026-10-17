@@ -558,7 +558,7 @@ impl SettingsPanel {
             col = col
                 .child(heading(tr!("Graphics and libraries")))
                 .child(self.proton_graphics(off, cx).card())
-                .child(heading(tr!("Sync")))
+                .child(self.marked_heading(tr!("Sync"), "sync", cx))
                 .child(sync.card())
                 .child(heading(tr!("Experimental")))
                 .child(self.proton_experimental(off, cx).card());
