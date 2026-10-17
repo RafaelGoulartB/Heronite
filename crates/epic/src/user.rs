@@ -130,14 +130,23 @@ pub fn login(data_paths: &DataPaths, legendary: &Legendary, input: &str) -> Resu
     }
 }
 
-/// `legendary auth --delete`, then forget the account and the cached library.
+/// `legendary auth --delete`, then forget the account and the cached library
+/// but its installed games (still on disk, still playable offline and
+/// uninstallable).
 pub fn logout(data_paths: &DataPaths, legendary: &Legendary) -> Result<()> {
     let out = legendary.run(&["auth", "--delete"], &[])?;
     if !out.success() {
         bail!(tr!("Failed to logout: {error}", error = out.error_lines()));
     }
     remove_stored_user_info(data_paths)?;
+    let library = CacheStore::library(data_paths);
+    let kept = library.path().exists().then(|| library.get("library")).flatten();
     clear_caches(data_paths, legendary);
+    if let Some(list) = kept {
+        let installed = crate::library::installed_games(data_paths);
+        library.set("library", list)?;
+        library.clear_keeping_games("library", |n| installed.contains_key(n))?;
+    }
     Ok(())
 }
 
@@ -227,6 +236,21 @@ mod tests {
         assert_eq!(info.display_name, "P");
         assert_eq!(calls(dir.path()), [format!("auth --code {CODE}")]);
         assert!(login(&data_paths, &lg, "short").is_err());
+    }
+
+    #[test]
+    fn logout_keeps_installed_games_listed() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup_user(&data_paths);
+        std::fs::write(data_paths.legendary_config_dir().join("installed.json"), r#"{"Inst": {"app_name": "Inst"}}"#).unwrap();
+        let library = CacheStore::library(&data_paths);
+        library.set("library", json!([{"app_name": "Inst"}, {"app_name": "Owned"}])).unwrap();
+        CacheStore::install_info(&data_paths).set("Owned", json!({})).unwrap();
+        let lg = Legendary::with_bin(fake(dir.path(), "true").bin, data_paths.legendary_config_dir());
+        logout(&data_paths, &lg).unwrap();
+        assert_eq!(library.get("library").unwrap(), json!([{"app_name": "Inst"}]));
+        assert!(CacheStore::install_info(&data_paths).get("Owned").is_none());
     }
 
     #[test]

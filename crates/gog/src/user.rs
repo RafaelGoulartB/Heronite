@@ -1,6 +1,8 @@
 //! The GOG account: gogdl's auth file holds the tokens, `gog_store/config.json`
 //! the name shown in the app.
 
+use std::collections::HashSet;
+
 use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::json_store;
 use heronite_data::DataPaths;
@@ -31,7 +33,8 @@ pub struct Credentials {
 }
 
 /// Names of the caches that depend on the account.
-const ACCOUNT_CACHES: [&str; 3] = ["gog_library", "gog_api_info", "gog_install_info"];
+const ACCOUNT_CACHES: [&str; 3] = [LIBRARY_CACHE, "gog_api_info", "gog_install_info"];
+const LIBRARY_CACHE: &str = "gog_library";
 
 /// Tokens present and the app's own config says logged in. No network, no process.
 pub fn is_logged_in(paths: &DataPaths) -> bool {
@@ -126,7 +129,8 @@ fn save_account(paths: &DataPaths, account: &Account, avatar_url: Option<&str>) 
 }
 
 /// Forgets the account and the data fetched with it. Installed games stay
-/// (`installed.json` and gogdl's manifests are kept).
+/// (`installed.json` and gogdl's manifests are kept), and so does their entry
+/// in the library, so they can still be played and uninstalled.
 pub fn logout(paths: &DataPaths) -> Result<()> {
     match std::fs::remove_file(paths.gog_auth()) {
         Ok(()) => {}
@@ -139,10 +143,13 @@ pub fn logout(paths: &DataPaths) -> Result<()> {
             Ok(())
         })?;
     }
+    let installed: HashSet<String> = crate::installed::load(paths).into_iter().map(|i| i.app_name).collect();
     for name in ACCOUNT_CACHES {
         let store = CacheStore::new(paths, name, None);
         if store.path().exists() {
-            if let Err(err) = store.clear() {
+            let cleared =
+                if name == LIBRARY_CACHE { store.clear_keeping_games("games", |n| installed.contains(n)) } else { store.clear() };
+            if let Err(err) = cleared {
                 log::warn!("clearing {}: {err:#}", store.path().display());
             }
         }
@@ -240,7 +247,7 @@ mod tests {
         std::fs::write(paths.gog_auth(), r#"{"46899977096215655":{}}"#).unwrap();
         std::fs::write(paths.gog_installed(), r#"{"installed":[{"appName":"1"}]}"#).unwrap();
         save_account(&paths, &Account { user_id: "1".into(), username: "p".into() }, None).unwrap();
-        CacheStore::new(&paths, "gog_library", None).set("games", json!([{"app_name": "1"}])).unwrap();
+        CacheStore::new(&paths, "gog_library", None).set("games", json!([{"app_name": "1"}, {"app_name": "2"}])).unwrap();
         CacheStore::new(&paths, "gog_api_info", None).set("gog_1", json!({})).unwrap();
         crate::updates::save(&paths, &["1".to_string()]).unwrap();
 
@@ -248,7 +255,8 @@ mod tests {
         assert!(!paths.gog_auth().exists());
         assert!(!is_logged_in(&paths));
         assert_eq!(json_store::read_value(&paths.gog_store("config")).unwrap(), json!({}));
-        assert!(CacheStore::new(&paths, "gog_library", None).get("games").is_none());
+        // The installed game stays listed; the rest of the library goes.
+        assert_eq!(CacheStore::new(&paths, "gog_library", None).get("games").unwrap(), json!([{"app_name": "1"}]));
         assert!(CacheStore::new(&paths, "gog_api_info", None).get("gog_1").is_none());
         assert!(crate::updates::cached_updates(&paths).is_empty());
         assert!(paths.gog_installed().exists());
