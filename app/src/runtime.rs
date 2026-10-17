@@ -12,7 +12,8 @@ use heronite_launch::prepare::CloudSync;
 use heronite_launch::runtime::PrepServices;
 use heronite_launch::steam::{open_steam_client_uri, SteamAction, SteamLocator};
 use heronite_launch::{
-    build_plan, LaunchEvent, LaunchOptions, LaunchPlan, LaunchRequest, Launcher, PlanContext, SystemProbe, SystemSpawner,
+    build_plan, ExitInfo, LaunchEvent, LaunchOptions, LaunchPlan, LaunchRequest, Launcher, PlanContext, StopOptions, SystemProbe,
+    SystemSpawner,
 };
 
 /// Cloud saves around a launch go through legendary or gogdl (the store
@@ -230,8 +231,11 @@ impl GameRuntime {
         Ok(played_rom)
     }
 
+    /// Closes the game. A Steam game's processes (the ones Steam's logs name
+    /// for it, never the client) are closed too; by default Stop would only
+    /// end the tracking and leave the game running.
     pub fn stop(&self, app_name: &str) -> bool {
-        self.launcher.stop(app_name)
+        self.launcher.stop_with(app_name, StopOptions { kill_steam_processes: true })
     }
 
     pub fn force_clear(&self, app_name: &str) -> bool {
@@ -253,6 +257,16 @@ impl GameRuntime {
             "legendary" => tr!("Epic games are installed from the install dialog.").into(),
             _ => tr!("This game has no install action.").into(),
         })
+    }
+}
+
+/// What a game that died right after starting (see
+/// [`heronite_launch::failed_launch`]) tells the user.
+pub fn failed_launch_message(title: &str, exit: ExitInfo) -> String {
+    match (exit.code, exit.signal) {
+        (Some(code), _) => tr!("{title} closed right after starting (exit code {code})", title, code),
+        (None, Some(signal)) => tr!("{title} crashed right after starting (signal {signal})", title, signal),
+        _ => tr!("{title} closed right after starting", title),
     }
 }
 
@@ -359,4 +373,17 @@ pub(crate) fn spawn_detached(c: &heronite_launch::Command) -> Result<(), String>
         let _ = child.wait();
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_launch_says_how_the_game_ended() {
+        let code = ExitInfo { code: Some(3), signal: None };
+        assert_eq!(failed_launch_message("Calluna", code), "Calluna closed right after starting (exit code 3)");
+        let signal = ExitInfo { code: None, signal: Some(11) };
+        assert_eq!(failed_launch_message("Calluna", signal), "Calluna crashed right after starting (signal 11)");
+    }
 }

@@ -10,6 +10,7 @@ use heronite_i18n::tr;
 use super::quit::maybe_exit_idle;
 use super::window::{close_window_keep_alive, show_window};
 use super::{hub, EXIT_CODE};
+use crate::services::launch_blocker::launch_blocker;
 use crate::system::cli::{LaunchRequest, RUNNERS};
 
 /// Keys of the library entries a request may mean, in search order.
@@ -63,8 +64,13 @@ fn fail(cx: &mut App, message: String) {
     EXIT_CODE.store(1, Ordering::Relaxed);
     let hub = hub(cx);
     let view = hub.0.borrow().window.as_ref().map(|w| w.view.clone());
-    if let Some(view) = view {
-        let _ = view.update(cx, |v, cx| v.system_toast(message, true, cx));
+    match view {
+        Some(view) => {
+            let _ = view.update(cx, |v, cx| v.system_toast(message, true, cx));
+        }
+        // Nobody sees a toast; a one-shot launch exits right after, so wait
+        // for the notification to be handed over.
+        None => crate::system::notify::send_and_wait("Heronite", message, std::time::Duration::from_secs(2)),
     }
     maybe_exit_idle(cx);
 }
@@ -91,6 +97,11 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
     if running {
         log::info!("{} is already running", game.title);
         return;
+    }
+    // The Play button deals with these in its dialogs; with no window the
+    // user is told instead (an update does not stop a launch here).
+    if let Some(message) = launch_blocker(cx, &game).and_then(|b| b.refusal(&game.title)) {
+        return fail(cx, message);
     }
     if fake {
         log::info!("[fake-launch] headless {} ({}/{})", game.title, game.runner, game.app_name);

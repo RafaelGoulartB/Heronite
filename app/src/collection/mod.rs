@@ -71,6 +71,15 @@ use header::Menu;
 use scroll::WheelScroll;
 use vm::{FocusVm, GroupVm, ListItem};
 
+/// The button a toast offers.
+#[derive(Clone)]
+enum ToastAction {
+    /// Puts back the last batch change.
+    Undo,
+    /// Opens the log of the game under this key.
+    ViewLog(String),
+}
+
 pub struct CollectionView {
     started: Instant,
     first_frame_logged: bool,
@@ -106,8 +115,8 @@ pub struct CollectionView {
     /// app_name -> started tracking (Launching/Running).
     playing: HashMap<String, bool>,
     toast: Option<(SharedString, bool)>,
-    /// The toast says what a batch change did and offers to undo it.
-    toast_undo: bool,
+    /// The button the toast offers, if any.
+    toast_action: Option<ToastAction>,
     context_menu: Option<context_menu::ContextMenuState>,
     focus_handle: FocusHandle,
     dialog: Option<AnyView>,
@@ -227,7 +236,7 @@ impl CollectionView {
             runtime,
             playing: HashMap::new(),
             toast: None,
-            toast_undo: false,
+            toast_action: None,
             toast_task: None,
             context_menu: None,
             focus_handle: cx.focus_handle(),
@@ -286,7 +295,7 @@ impl CollectionView {
 
 impl CollectionView {
     fn render_toast(&self, cx: &mut Context<Self>) -> Option<Div> {
-        let undo = self.toast_undo && self.sel.can_undo();
+        let action = self.toast_action.clone().filter(|a| !matches!(a, ToastAction::Undo) || self.sel.can_undo());
         self.toast.clone().map(|(text, error)| {
             div().absolute().bottom(px(84.)).left_0().right_0().flex().justify_center().child(
                 div()
@@ -296,7 +305,7 @@ impl CollectionView {
                     .max_w(px(620.))
                     .px(px(16.))
                     .py(px(10.))
-                    .when(undo, |d| d.py(px(6.)).pr(px(6.)))
+                    .when(action.is_some(), |d| d.py(px(6.)).pr(px(6.)))
                     .rounded(px(10.))
                     .bg(theme::rgb_a(18, 22, 28, 0.94))
                     .border_1()
@@ -304,31 +313,38 @@ impl CollectionView {
                     .text_size(px(13.33))
                     .text_color(theme::white_a(0.92))
                     .child(text)
-                    .when(undo, |d| {
-                        d.child(
-                            div()
-                                .id("toast-undo")
-                                .occlude()
-                                .flex()
-                                .flex_none()
-                                .items_center()
-                                .gap(px(8.))
-                                .h(px(30.))
-                                .px(px(12.))
-                                .rounded(px(8.))
-                                .bg(theme::accent_tint())
-                                .text_color(theme::accent())
-                                .font_weight(theme::W_BOLD)
-                                .cursor_pointer()
-                                .hover(|s| s.bg(theme::accent_tint_border()))
-                                .child(heronite_i18n::tr!("Undo"))
-                                .child(crate::ui::controls::kbd("Ctrl Z"))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.undo_batch(cx);
-                                    cx.notify();
-                                })),
-                        )
-                    }),
+                    .children(action.map(|action| {
+                        let undo = matches!(action, ToastAction::Undo);
+                        div()
+                            .id("toast-action")
+                            .occlude()
+                            .flex()
+                            .flex_none()
+                            .items_center()
+                            .gap(px(8.))
+                            .h(px(30.))
+                            .px(px(12.))
+                            .rounded(px(8.))
+                            .bg(theme::accent_tint())
+                            .text_color(theme::accent())
+                            .font_weight(theme::W_BOLD)
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::accent_tint_border()))
+                            .child(if undo { heronite_i18n::tr!("Undo") } else { heronite_i18n::tr!("View log") })
+                            .when(undo, |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                match &action {
+                                    ToastAction::Undo => {
+                                        this.undo_batch(cx);
+                                    }
+                                    ToastAction::ViewLog(key) => {
+                                        this.toast = None;
+                                        this.open_game_log(key, cx);
+                                    }
+                                }
+                                cx.notify();
+                            }))
+                    })),
             )
         })
     }

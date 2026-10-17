@@ -46,6 +46,9 @@ impl CollectionView {
 
     pub(super) fn play_with_steam(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
+        if self.refuse_busy_launch(&game, cx) {
+            return;
+        }
         if let Err(err) = self.runtime.play_with_steam(&game) {
             self.report_launch_error(err, cx);
         }

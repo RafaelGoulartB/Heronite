@@ -32,6 +32,9 @@ impl CollectionView {
             self.show_toast(tr!("{title} is already running.", title = game.title), true, cx);
             return;
         }
+        if action.plays() && self.refuse_busy_launch(&game, cx) {
+            return;
+        }
         match self.runtime.run_action(&game, &action) {
             Ok(()) if !action.plays() => self.show_toast(tr!("Starting {name}\u{2026}", name = action.name), false, cx),
             Ok(()) => {}

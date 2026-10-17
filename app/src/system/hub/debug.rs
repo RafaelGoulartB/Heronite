@@ -143,7 +143,10 @@ fn fake_session(cx: &mut App, spec: &str) {
         cx.background_executor().timer(Duration::from_secs(secs)).await;
         cx.update(|cx| {
             log::info!("[fake-session] {} exits (window: {})", game.title, has_window(cx));
-            on_event(cx, LaunchEvent::Exited { app_name: app, elapsed: Duration::from_secs(secs), exit: None, record: None });
+            on_event(
+                cx,
+                LaunchEvent::Exited { app_name: app, elapsed: Duration::from_secs(secs), exit: None, stopped: false, record: None },
+            );
         });
     })
     .detach();

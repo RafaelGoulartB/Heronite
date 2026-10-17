@@ -4,7 +4,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
 use heronite_i18n::tr;
 
 use super::companions::Companions;
@@ -57,15 +56,7 @@ fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command, log: Opt
     }
 }
 
-pub(super) fn run_process(
-    shared: &Shared,
-    log: &Arc<GameLog>,
-    req: &LaunchRequest,
-    control: &Control,
-    plan: &ProcessPlan,
-    started_at: chrono::DateTime<Utc>,
-    t0: Instant,
-) {
+pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchRequest, control: &Control, plan: &ProcessPlan) {
     for dir in &plan.create_dirs {
         if let Err(e) = shared.spawner.create_dir_all(dir) {
             log::warn!("creating {dir}: {e}");
@@ -95,7 +86,7 @@ pub(super) fn run_process(
     // Cloud saves down, umu runtime.
     match prep.before_prefix(&req.app_name, &plan.prep) {
         Flow::Go => {}
-        Flow::Cancelled => return finish_aborted(shared, log, req, t0),
+        Flow::Cancelled => return finish_aborted(shared, log, req),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
     steps.done("cloud saves and umu");
@@ -104,7 +95,7 @@ pub(super) fn run_process(
     }
     for cmd in &plan.pre_commands {
         if control.kill.load(Ordering::SeqCst) || !run_to_completion(shared, control, cmd, Some(log)) {
-            return finish_aborted(shared, log, req, t0);
+            return finish_aborted(shared, log, req);
         }
     }
     steps.done("prefix creation");
@@ -114,20 +105,20 @@ pub(super) fn run_process(
     let store = shared.store_setup.lock().unwrap().clone();
     match prep.first_launch(&plan.prep, epic.as_deref(), store.as_deref()) {
         Flow::Go => {}
-        Flow::Cancelled => return finish_aborted(shared, log, req, t0),
+        Flow::Cancelled => return finish_aborted(shared, log, req),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
     steps.done("first launch setup");
     // DXVK / VKD3D into the prefix, anti-cheat runtimes.
     match prep.after_prefix(&plan.prep) {
         Flow::Go => {}
-        Flow::Cancelled => return finish_aborted(shared, log, req, t0),
+        Flow::Cancelled => return finish_aborted(shared, log, req),
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
     steps.done("Wine tools and anti-cheat runtimes");
     if cancelled() {
         // Stopped while preparing: the game must not start afterwards.
-        return finish_aborted(shared, log, req, t0);
+        return finish_aborted(shared, log, req);
     }
     if let Some(path) = &plan.make_executable {
         if let Err(e) = shared.spawner.make_executable(path) {
@@ -138,7 +129,7 @@ pub(super) fn run_process(
     if let Some(script) = &plan.before_script {
         status(Notice::info("Running the script before launch...", tr!("Running the script before launch...")));
         if !run_script(shared, control, &*services.probe, script, log, &status) || cancelled() {
-            return finish_aborted(shared, log, req, t0);
+            return finish_aborted(shared, log, req);
         }
     }
     steps.done("script before launch");
@@ -155,8 +146,9 @@ pub(super) fn run_process(
         }
     };
     control.pid.store(handle.pid(), Ordering::SeqCst);
+    // The session clock starts here, not at the launch request.
+    let started_at = control.set_playing();
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
-    control.set_playing();
     shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid: handle.pid() });
     let mut awake = plan.keep_awake.as_ref().and_then(|cmd| match shared.spawner.spawn(cmd, None) {
         Ok(h) => Some(h),
@@ -242,14 +234,14 @@ pub(super) fn run_process(
         }
     }
     // The session ends here; saving to the cloud is not playtime.
-    let elapsed = t0.elapsed();
+    let elapsed = control.played();
     if !aborted {
         if let Some(script) = &plan.after_script {
             run_script(shared, control, &*services.probe, script, log, &status);
         }
         prep.after_exit(&req.app_name, &plan.prep);
     }
-    finish(shared, log, req, control, started_at, elapsed, exit);
+    finish(shared, log, req, control, elapsed, exit);
 }
 
 /// The duration of each preparation step.
@@ -339,12 +331,12 @@ fn run_script(
     run_to_completion(shared, control, script, Some(log))
 }
 
-fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest, t0: Instant) {
+fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest) {
     log.info("Launch stopped before the game started");
     log.close();
     // Stopped before the game even started: nothing was played.
     shared.sessions.lock().unwrap().remove(&req.app_name);
-    shared.send(LaunchEvent::Exited { app_name: req.app_name.clone(), elapsed: t0.elapsed(), exit: None, record: None });
+    shared.send(LaunchEvent::Exited { app_name: req.app_name.clone(), elapsed: Duration::ZERO, exit: None, stopped: true, record: None });
 }
 
 fn describe_exit(info: ExitInfo) -> String {

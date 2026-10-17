@@ -45,15 +45,16 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
         }
         (matches!(ev, LaunchEvent::Launching { .. }), ended, s.settings())
     };
+    // Before the post-game work, which takes the session (and its title) away.
+    if !has_window(cx) {
+        notify_without_window(cx, &ev);
+    }
     // Window-independent consumers: post-game work and the Epic service.
     if let Some(session) = crate::services::session::get(cx) {
         session.update(cx, |s, cx| s.on_launch_event(&ev, cx));
     }
     tell_downloads(cx, &ev);
     tell_compression(cx, &ev);
-    if !has_window(cx) {
-        notify_without_window(&ev);
-    }
     if launching && settings.minimize_on_launch {
         // Heroic's `minimizeOnLaunch`: needs the tray to come back from.
         close_window_keep_alive(cx);
@@ -87,9 +88,16 @@ fn tell_compression(cx: &mut App, ev: &LaunchEvent) {
 }
 
 /// With the window closed to the tray nobody sees toasts: problems of a
-/// launch (it failed, cloud saves could not be synced) become notifications.
-fn notify_without_window(ev: &LaunchEvent) {
+/// launch (it failed, cloud saves could not be synced, the game closed right
+/// after starting) become notifications.
+fn notify_without_window(cx: &App, ev: &LaunchEvent) {
     match ev {
+        LaunchEvent::Exited { app_name, elapsed, exit, stopped, .. } => {
+            if let Some(exit) = heronite_launch::failed_launch(*exit, *stopped, *elapsed) {
+                let title = hub(cx).0.borrow().runtime.session_info(app_name).map_or_else(|| app_name.clone(), |s| s.title);
+                crate::system::notify::send("Heronite", crate::runtime::failed_launch_message(&title, exit));
+            }
+        }
         LaunchEvent::Error { message, .. } => crate::system::notify::send("Heronite", message.clone()),
         LaunchEvent::Status { message, warning: true, .. } => crate::system::notify::send("Heronite", message.clone()),
         _ => {}

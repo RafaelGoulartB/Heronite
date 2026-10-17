@@ -7,7 +7,8 @@ use heronite_data::FacetKind;
 use heronite_launch::LaunchEvent;
 
 use super::vm::{self, GroupVm, ListItem};
-use super::{data, CollectionView};
+use super::{data, CollectionView, ToastAction};
+use crate::services::launch_blocker::{launch_blocker, Blocker};
 use heronite_i18n::tr;
 
 impl CollectionView {
@@ -85,7 +86,7 @@ impl CollectionView {
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
-        self.toast_undo = false;
+        self.toast_action = None;
         self.toast = Some((text.into(), error));
         self.toast_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
@@ -101,7 +102,23 @@ impl CollectionView {
     /// A toast for a batch change, with Undo (`selection.rs`).
     pub(super) fn show_undo_toast(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.show_toast(text, false, cx);
-        self.toast_undo = true;
+        self.toast_action = Some(ToastAction::Undo);
+    }
+
+    /// A game that died right after starting: says so, and offers its log.
+    fn show_failed_launch_toast(&mut self, app_name: &str, exit: heronite_launch::ExitInfo, cx: &mut Context<Self>) {
+        let Some(game) = self.lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name)).cloned() else { return };
+        self.show_toast(crate::runtime::failed_launch_message(&game.title, exit), true, cx);
+        self.toast_action = Some(ToastAction::ViewLog(game.key.clone()));
+    }
+
+    /// For launches that skip the Play button's dialogs: refuses (with a
+    /// toast) while a download or an operation owns the game's files.
+    pub(super) fn refuse_busy_launch(&mut self, game: &heronite_data::CollectionGame, cx: &mut Context<Self>) -> bool {
+        let blocker = launch_blocker(cx, game).filter(Blocker::is_busy);
+        let Some(text) = blocker.and_then(|b| b.refusal(&game.title)) else { return false };
+        self.show_toast(text, true, cx);
+        true
     }
 
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
@@ -113,9 +130,12 @@ impl CollectionView {
                 log::info!("{app_name} running as pid {pid}");
                 self.playing.insert(app_name, true);
             }
-            LaunchEvent::Exited { app_name, elapsed, .. } => {
+            LaunchEvent::Exited { app_name, elapsed, exit, stopped, .. } => {
                 log::info!("{app_name} exited after {elapsed:?}");
                 self.playing.remove(&app_name);
+                if let Some(exit) = heronite_launch::failed_launch(exit, stopped, elapsed) {
+                    self.show_failed_launch_toast(&app_name, exit, cx);
+                }
                 // Post-game work is `services::session`'s; the library only
                 // reloads what changed on disk (playtime, last played, recent).
                 self.reload(cx);
