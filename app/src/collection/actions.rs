@@ -163,6 +163,18 @@ impl CollectionView {
         }
     }
 
+    /// "Library" of the facts card: shows only the games of the store this
+    /// one comes from (Steam, Epic Games, Emulated...), in place of any other
+    /// store filter.
+    pub(super) fn filter_by_store_of(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)) else { return };
+        let Some(store) = g.facets[FacetKind::Store.index()].first().map(|i| i.value.clone()) else { return };
+        self.ui.facet_filters.store = vec![store];
+        self.save_ui();
+        self.refresh_groups();
+        cx.notify();
+    }
+
     fn set_groups(&mut self, groups: Vec<GroupVm>) {
         self.groups = groups;
         self.rebuild_items();
