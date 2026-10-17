@@ -44,6 +44,7 @@
   "Could not open the login window: {err}": "Não foi possível abrir a janela de login: {err}",
   "Could not read the download: {error}": "Não foi possível ler o arquivo baixado: {error}",
   "Could not read the sizes: {error}": "Não foi possível ler os tamanhos: {error}",
+  "Wine prefix kept: {why}": "Prefixo do Wine mantido: {why}",
   "{kind} is up to date": "{kind} está atualizado",
   "Could not replace {path}: {error}": "Não foi possível substituir {path}: {error}",
   "Could not run pkexec: {error}": "Não foi possível executar o pkexec: {error}",
