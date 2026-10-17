@@ -98,6 +98,9 @@ impl DataPaths {
     pub fn ratings(&self) -> PathBuf {
         self.j("local_library/ratings.json")
     }
+    pub fn added(&self) -> PathBuf {
+        self.j("local_library/added.json")
+    }
     /// The actions users add to their games ([`crate::game_actions`]).
     pub fn game_actions(&self) -> PathBuf {
         self.j("local_library/actions.json")

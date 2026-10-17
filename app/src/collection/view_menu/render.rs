@@ -5,7 +5,7 @@
 use gpui_kit::component::input::Input;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::{InstallFilter, SortMode};
+use heronite_data::InstallFilter;
 use heronite_i18n::tr;
 
 use super::super::header::Menu;
@@ -22,23 +22,23 @@ use crate::ui::icon;
 /// Sizes of the panel: roomy, or `compact` in a small window (the menu then
 /// takes about a quarter less height and width).
 #[derive(Clone, Copy)]
-struct Density {
-    w: f32,
+pub(super) struct Density {
+    pub(super) w: f32,
     /// Inner padding of the panel's sections.
-    pad: f32,
+    pub(super) pad: f32,
     /// Between sections.
-    gap: f32,
+    pub(super) gap: f32,
     /// Between a section's title and its content.
-    head_gap: f32,
+    pub(super) head_gap: f32,
     /// Vertical padding of a segment.
-    seg_py: f32,
-    text: f32,
+    pub(super) seg_py: f32,
+    pub(super) text: f32,
     /// Sort direction button.
-    dir: f32,
-    pill_h: f32,
-    pill_px: f32,
-    tile_py: f32,
-    tile_icon: f32,
+    pub(super) dir: f32,
+    pub(super) pill_h: f32,
+    pub(super) pill_px: f32,
+    pub(super) tile_py: f32,
+    pub(super) tile_icon: f32,
 }
 
 impl Density {
@@ -101,8 +101,8 @@ impl CollectionView {
             .when(!searching, |d| {
                 d.child(self.vm_views(cx))
                     .child(self.vm_show(cx))
-                    .child(self.vm_group(cx))
-                    .child(self.vm_sort(cx))
+                    .child(self.vm_group(self.vm_density(), cx))
+                    .child(self.vm_sort(self.vm_density(), cx))
                     .child(self.vm_only(cx))
                     .child(self.vm_browse(cx))
                     .child(self.vm_manage(cx))
@@ -113,7 +113,8 @@ impl CollectionView {
             .gap(px(0.))
             .max_h(px(self.view_menu.room))
             .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                if this.open_menu == Some(Menu::View) {
+                // The "More" list may reach past the panel.
+                if this.open_menu == Some(Menu::View) && !this.view_menu.more_hovered {
                     this.open_menu = None;
                     cx.notify();
                 }
@@ -446,67 +447,6 @@ impl CollectionView {
             .children(restore)
     }
 
-    fn vm_sort(&self, cx: &mut Context<Self>) -> Div {
-        let items = [
-            (SortMode::Title, tr!("Title"), Icon::Label),
-            (SortMode::LastPlayed, tr!("Last played"), Icon::History),
-            (SortMode::Playtime, tr!("Playtime"), Icon::AccessTime),
-        ];
-        let d = self.vm_density();
-        let seg = seg_track("vm-sort").children(items.into_iter().map(|(mode, label, ic)| {
-            let on = self.ui.sort == mode;
-            seg_item(("vm-sort", mode as usize), on, d)
-                .child(icon(ic, px(15.), if on { white().into() } else { theme::seg_text() }))
-                .child(label)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.ui.sort = mode;
-                    this.save_ui();
-                    this.refresh_groups();
-                    cx.notify();
-                }))
-        }));
-        let descending = self.ui.sort_descending;
-        let dir = div()
-            .id("vm-sort-dir")
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .size(px(d.dir))
-            .rounded_full()
-            .bg(theme::seg_track())
-            .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.12)))
-            .child(icon(if descending { Icon::ArrowDownward } else { Icon::ArrowUpward }, px(17.), theme::text_primary()))
-            .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
-        section(tr!("Sort"), d).child(div().flex().items_center().gap(px(6.)).child(seg.flex_1()).child(dir))
-    }
-
-    fn vm_group(&self, cx: &mut Context<Self>) -> Div {
-        let grouped = self.ui.group_by_status;
-        let colors: Vec<Rgba> =
-            self.lib.as_deref().map(|l| l.statuses.iter().take(5).map(|s| theme::status_color(&s.slug)).collect()).unwrap_or_default();
-        let dots = div().flex().flex_none().items_center().children(colors.into_iter().enumerate().map(|(i, c)| {
-            div().size(px(8.)).rounded_full().bg(c).border_1().border_color(theme::rgb_a(20, 22, 30, 0.9)).when(i > 0, |d| d.ml(px(-3.)))
-        }));
-        let set = |on: bool| {
-            cx.listener(move |this: &mut Self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>| {
-                if this.ui.group_by_status != on {
-                    this.ui.group_by_status = on;
-                    this.save_ui();
-                    this.refresh_groups();
-                    cx.notify();
-                }
-            })
-        };
-        let d = self.vm_density();
-        section(tr!("Group by"), d).child(
-            seg_track("vm-group")
-                .child(seg_item("vm-group-none", !grouped, d).child(tr!("None")).on_click(set(false)))
-                .child(seg_item("vm-group-status", grouped, d).child(dots).child(tr!("Status")).on_click(set(true))),
-        )
-    }
-
     fn vm_show(&self, cx: &mut Context<Self>) -> Div {
         let (all, installed) = self.show_counts();
         let items = [
@@ -625,11 +565,11 @@ fn section(label: &'static str, d: Density) -> Div {
 }
 
 /// A section's label row (room for an action on the right).
-fn section_head(label: &'static str) -> Div {
+pub(super) fn section_head(label: &'static str) -> Div {
     div().flex().items_center().justify_between().px(px(4.)).text_size(px(11.5)).text_color(theme::text_dim()).child(label.to_uppercase())
 }
 
-fn hint_text(text: &'static str) -> Div {
+pub(super) fn hint_text(text: &'static str) -> Div {
     div().text_size(px(12.)).text_color(theme::text_dim()).child(text)
 }
 
@@ -723,11 +663,11 @@ fn dot(color: Rgba) -> Div {
 }
 
 /// Segmented control: equal parts on a faint pill.
-fn seg_track(id: &'static str) -> Stateful<Div> {
+pub(super) fn seg_track(id: &'static str) -> Stateful<Div> {
     div().id(id).flex().items_center().gap(px(2.)).p(px(3.)).rounded_full().bg(theme::seg_track())
 }
 
-fn seg_item(id: impl Into<ElementId>, on: bool, d: Density) -> Stateful<Div> {
+pub(super) fn seg_item(id: impl Into<ElementId>, on: bool, d: Density) -> Stateful<Div> {
     div()
         .id(id)
         .flex()

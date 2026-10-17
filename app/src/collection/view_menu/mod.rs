@@ -5,6 +5,7 @@
 //! and the presets (saved views) are `views.rs`.
 
 mod choices;
+mod organize;
 mod render;
 mod views;
 
@@ -43,6 +44,10 @@ pub(super) struct ViewMenu {
     select_open: bool,
     /// The Views section lists the views to rename, update, move or delete.
     editing: bool,
+    /// The "More" list of Group by or Sort is open.
+    more: Option<organize::More>,
+    /// The pointer is on that list (a click there is not outside the menu).
+    more_hovered: bool,
     /// Name box of the view being renamed (its index).
     renaming: Option<(usize, Entity<InputState>, Subscription)>,
     /// Height the menu may take below the header, in logical px.
@@ -86,6 +91,8 @@ impl ViewMenu {
             naming: None,
             select_open: false,
             editing: false,
+            more: None,
+            more_hovered: false,
             renaming: None,
             room: 600.,
             compact: false,
@@ -102,9 +109,14 @@ impl ViewMenu {
         self.select_open = on;
     }
 
+    /// Opens the "More" list of Group by (`group`) or Sort.
+    pub(super) fn set_more(&mut self, group: bool) {
+        self.more = Some(if group { organize::More::Group } else { organize::More::Sort });
+    }
+
     /// Typing (or naming a view) keeps the menu open when the pointer leaves.
     pub(super) fn holds_open(&self) -> bool {
-        self.focused || !self.query.is_empty() || self.naming.is_some() || self.editing || self.select_open
+        self.focused || !self.query.is_empty() || self.naming.is_some() || self.editing || self.select_open || self.more.is_some()
     }
 }
 
@@ -325,6 +337,8 @@ impl CollectionView {
             self.view_menu.editing = false;
             self.view_menu.renaming = None;
             self.view_menu.select_open = false;
+            self.view_menu.more = None;
+            self.view_menu.more_hovered = false;
         }
         let with_tokens = self.ui.active_filters() > 0 || self.ui.show_hidden;
         if with_tokens != self.view_menu.with_tokens {
@@ -343,7 +357,9 @@ impl CollectionView {
         let menu = &self.view_menu;
         match ks.key.as_str() {
             "escape" => {
-                if menu.select_open {
+                if menu.more.is_some() {
+                    self.view_menu.more = None;
+                } else if menu.select_open {
                     self.view_menu.select_open = false;
                 } else if menu.naming.is_some() || menu.renaming.is_some() {
                     self.cancel_view_naming(cx);

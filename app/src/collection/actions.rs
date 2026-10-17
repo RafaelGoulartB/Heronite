@@ -54,8 +54,14 @@ impl CollectionView {
         let Some(lib) = self.lib.clone() else { return };
         let playing = &self.playing;
         let keep = |g: &heronite_data::CollectionGame| self.keeps_game(g, &lib.statuses);
-        let groups =
-            data::build_groups(&lib, &self.ui, &self.search, &keep, &|key| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name)));
+        let organize = heronite_data::organize::Organize {
+            extras: Some(&self.game_extras),
+            ratings: self.facts.ratings(),
+            categories: Some(&self.categories),
+            statuses: &lib.statuses,
+        };
+        let is_playing = |key: &str| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name));
+        let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &organize);
         self.set_groups(groups);
         self.refresh_focus();
     }

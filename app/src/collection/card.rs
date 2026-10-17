@@ -233,7 +233,9 @@ fn hidden_badge() -> Div {
         .child(tr!("Hidden"))
 }
 
+/// The playtime, or the value the list is sorted by (`CardVm::caption`).
 fn playtime_label(vm: &CardVm) -> Div {
+    let c = &vm.caption;
     div()
         .mt(px(6.))
         .px(px(1.))
@@ -243,8 +245,10 @@ fn playtime_label(vm: &CardVm) -> Div {
         .text_size(px(12.))
         .font_weight(theme::W_500)
         .text_color(theme::white_a(0.72))
-        // MUI's 1.5rem SvgIcon size wins over the 14px rule in Heronite.
-        .child(icon(Icon::AccessTime, px(24.), theme::white_a(0.72 * 0.78)))
+        // Material icons fill about 5/6 of their box, the drive icon all of it:
+        // both come out the height of the text.
+        .child(icon(c.icon, px(if c.icon == Icon::FaHardDrive { 14. } else { 16. }), theme::white_a(0.72 * 0.78)))
+        .when(c.muted, |d| d.text_color(theme::white_a(0.4)))
         .when(vm.playing, |d| {
             d.child(div().size(px(6.)).rounded_full().bg(theme::success()).with_animation(
                 ElementId::Name(format!("live-{}", vm.key).into()),
@@ -252,5 +256,10 @@ fn playtime_label(vm: &CardVm) -> Div {
                 |el, t| el.opacity(0.4 + 0.6 * (1. - (2. * t - 1.).abs())),
             ))
         })
-        .child(vm.playtime.clone())
+        .map(|d| match c.stars {
+            Some(n) => d.child(div().flex().items_center().children((1..=5u8).map(|i| {
+                icon(Icon::Star, px(13.), if i <= n { theme::rgb_a(244, 211, 94, 1.).into() } else { theme::white_a(0.2) })
+            }))),
+            None => d.child(div().min_w_0().truncate().child(c.text.clone())),
+        })
 }

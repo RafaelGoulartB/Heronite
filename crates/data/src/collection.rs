@@ -2,7 +2,6 @@
 //! facets and related games of `Collection/index.tsx`, `collectionFacets.ts`,
 //! `collectionTags.ts`, `relatedGames.ts` and `playtime.ts`.
 
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -10,6 +9,7 @@ use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 use crate::library::CollectionGame;
+use crate::organize::{compare_keyed, Keyed, Organize};
 use crate::models::{CollectionGameMetadata, CompletionStatus, GameInfo};
 use crate::status::{resolve_status_id, status_color, status_label, UNKNOWN_GROUP_ID};
 use crate::text::{facet_key, locale_cmp, locale_cmp_base, split_names, unique_names};
@@ -45,7 +45,8 @@ impl InstallFilter {
     }
 }
 
-/// `CollectionSort` (stored as `title` / `lastPlayed` / `playtime`).
+/// `CollectionSort` (stored as `title` / `lastPlayed` / `playtime`), and the
+/// sorts this app adds (see [`crate::organize`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SortMode {
     #[default]
@@ -55,16 +56,52 @@ pub enum SortMode {
     LastPlayed,
     #[serde(rename = "playtime")]
     Playtime,
+    /// Day the game entered the library.
+    #[serde(rename = "dateAdded")]
+    DateAdded,
+    /// Sessions recorded.
+    #[serde(rename = "timesPlayed")]
+    TimesPlayed,
+    #[serde(rename = "installSize")]
+    InstallSize,
+    #[serde(rename = "releaseDate")]
+    ReleaseDate,
+    /// The user's stars.
+    #[serde(rename = "rating")]
+    Rating,
+    #[serde(rename = "criticScore")]
+    CriticScore,
 }
 
 impl SortMode {
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "title" => Some(Self::Title),
-            "lastPlayed" => Some(Self::LastPlayed),
-            "playtime" => Some(Self::Playtime),
-            _ => None,
+    pub const ALL: [SortMode; 9] = [
+        SortMode::Title,
+        SortMode::LastPlayed,
+        SortMode::Playtime,
+        SortMode::DateAdded,
+        SortMode::TimesPlayed,
+        SortMode::InstallSize,
+        SortMode::ReleaseDate,
+        SortMode::Rating,
+        SortMode::CriticScore,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Title => "title",
+            Self::LastPlayed => "lastPlayed",
+            Self::Playtime => "playtime",
+            Self::DateAdded => "dateAdded",
+            Self::TimesPlayed => "timesPlayed",
+            Self::InstallSize => "installSize",
+            Self::ReleaseDate => "releaseDate",
+            Self::Rating => "rating",
+            Self::CriticScore => "criticScore",
         }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.as_str() == value)
     }
 }
 
@@ -452,45 +489,6 @@ pub fn search_score(game: &CollectionGame, tokens: &[&str]) -> Option<i32> {
     crate::fuzzy::score_entry(tokens, &crate::fuzzy::Haystack { title: &title, alt, keywords: "" })
 }
 
-/// The sort comparator of `index.tsx`:
-/// - `playtime`: more minutes first; ties by title;
-/// - `lastPlayed`: most recent first, games never played last (ties by title);
-/// - always: title with `localeCompare`.
-///
-/// `descending` turns the sort's own key around; ties stay A-Z and games
-/// never played stay last.
-pub fn compare_games(a: &CollectionGame, b: &CollectionGame, sort: SortMode, descending: bool) -> Ordering {
-    let turn = |o: Ordering| if descending { o.reverse() } else { o };
-    if sort == SortMode::Playtime {
-        let delta = turn(b.playtime_minutes.cmp(&a.playtime_minutes));
-        if delta != Ordering::Equal {
-            return delta;
-        }
-    }
-    if sort == SortMode::LastPlayed {
-        let a_last = a.last_played.as_deref().unwrap_or("");
-        let b_last = b.last_played.as_deref().unwrap_or("");
-        if !a_last.is_empty() || !b_last.is_empty() {
-            if a_last.is_empty() {
-                return Ordering::Greater;
-            }
-            if b_last.is_empty() {
-                return Ordering::Less;
-            }
-            let delta = turn(b_last.cmp(a_last));
-            if delta != Ordering::Equal {
-                return delta;
-            }
-        }
-    }
-    let by_title = locale_cmp(&a.title, &b.title);
-    if sort == SortMode::Title {
-        turn(by_title)
-    } else {
-        by_title
-    }
-}
-
 /// Install filter + search + facets + the "only" switches, then sort
 /// (stable).
 pub fn filter_games(games: &[Game], query: &ViewQuery) -> Vec<Game> {
@@ -501,9 +499,26 @@ pub fn filter_games(games: &[Game], query: &ViewQuery) -> Vec<Game> {
 /// with an update). While searching, the best matches come first and the
 /// sort orders the ties.
 pub fn filter_games_where(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&CollectionGame) -> bool) -> Vec<Game> {
+    filter_games_organized(games, query, keep, &Organize::default())
+}
+
+/// [`filter_games_where`] with what the sorts kept outside the games read
+/// (ratings, dates added, sizes):
+/// - title: by [`sort_name`](crate::organize::sort_name);
+/// - the others: bigger and newer first, games without a value last (never
+///   played, not rated...), ties by title.
+///
+/// `descending` turns the sort's own key around; ties stay A-Z and games
+/// without a value stay last.
+pub fn filter_games_organized(
+    games: &[Game],
+    query: &ViewQuery,
+    keep: &dyn Fn(&CollectionGame) -> bool,
+    organize: &Organize,
+) -> Vec<Game> {
     let folded = crate::fuzzy::fold(query.search.trim());
     let tokens = crate::fuzzy::tokens(&folded);
-    let mut out: Vec<(i32, Game)> = games
+    let mut out: Vec<(i32, Keyed, Game)> = games
         .iter()
         .filter(|g| {
             query.install.matches(g.installed)
@@ -514,11 +529,11 @@ pub fn filter_games_where(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&Coll
         })
         .filter_map(|g| {
             let score = if tokens.is_empty() { Some(0) } else { search_score(g, &tokens) };
-            score.map(|s| (s, g.clone()))
+            score.map(|s| (s, Keyed::of(g, query.sort, organize), g.clone()))
         })
         .collect();
-    out.sort_by(|(sa, a), (sb, b)| sb.cmp(sa).then_with(|| compare_games(a, b, query.sort, query.descending)));
-    out.into_iter().map(|(_, g)| g).collect()
+    out.sort_by(|(sa, ka, _), (sb, kb, _)| sb.cmp(sa).then_with(|| compare_keyed(ka, kb, query.sort, query.descending)));
+    out.into_iter().map(|(_, _, g)| g).collect()
 }
 
 /// A section of the grouped list.

@@ -737,6 +737,7 @@ pub(crate) mod tests_support {
         pub installed: bool,
         pub minutes: u64,
         pub last_played: Option<String>,
+        pub first_played: Option<String>,
         pub developers: Vec<String>,
         pub genres: Vec<String>,
         pub series: Option<String>,
@@ -778,7 +779,7 @@ pub(crate) mod tests_support {
             Arc::new(LocalGameMeta { app_name: app.into(), runner: "sideload".into(), completion_status_id: Some(s), ..Default::default() })
         });
         let timestamp = TimestampEntry {
-            first_played: None,
+            first_played: spec.first_played.clone(),
             last_played: spec.last_played.clone(),
             total_played: JsNum(spec.minutes as f64),
             extra: Default::default(),

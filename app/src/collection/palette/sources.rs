@@ -7,7 +7,7 @@ use gpui_kit::SharedString;
 use heronite_data::categories::{Categories, UNCATEGORIZED};
 use heronite_data::collection::{FacetOptions, FACET_KINDS};
 use heronite_data::ui_state::UiState;
-use heronite_data::{FacetKind, InstallFilter, SortMode};
+use heronite_data::{FacetKind, GroupBy, InstallFilter, SortMode};
 use heronite_i18n::{tr, trn};
 
 use super::matching::{fold, Haystack};
@@ -66,7 +66,7 @@ pub(super) enum Act {
 pub(super) enum ViewCmd {
     Sort(SortMode),
     Show(InstallFilter),
-    GroupByStatus,
+    Group(GroupBy),
     /// Focus (list + details) or the grid.
     GridView,
     ShowHidden,
@@ -379,6 +379,12 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         (SortMode::Title, "title", tr!("Sort by title")),
         (SortMode::LastPlayed, "last-played", tr!("Sort by last played")),
         (SortMode::Playtime, "playtime", tr!("Sort by playtime")),
+        (SortMode::DateAdded, "date-added", tr!("Sort by date added")),
+        (SortMode::TimesPlayed, "times-played", tr!("Sort by times played")),
+        (SortMode::InstallSize, "install-size", tr!("Sort by install size")),
+        (SortMode::ReleaseDate, "release-date", tr!("Sort by release date")),
+        (SortMode::Rating, "rating", tr!("Sort by your rating")),
+        (SortMode::CriticScore, "critic-score", tr!("Sort by critic score")),
     ] {
         let mut e = cmd(
             ViewCmd::Sort(mode),
@@ -479,15 +485,32 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         }
         v.push(e);
     }
-    let group = if ui.group_by_status { tr!("Stop grouping by status") } else { tr!("Group by status") };
-    v.push(cmd(
-        ViewCmd::GroupByStatus,
-        "view:group".into(),
-        group,
-        tr!("Collection list"),
-        Icon::Flag,
-        "view status groups sections agrupar grupos secoes",
-    ));
+    for (by, title) in [
+        (GroupBy::Status, tr!("Group by status")),
+        (GroupBy::Category, tr!("Group by category")),
+        (GroupBy::Store, tr!("Group by store")),
+        (GroupBy::Platform, tr!("Group by platform")),
+        (GroupBy::Genre, tr!("Group by genre")),
+        (GroupBy::Developer, tr!("Group by developer")),
+        (GroupBy::Series, tr!("Group by series")),
+        (GroupBy::Year, tr!("Group by release year")),
+        (GroupBy::Playtime, tr!("Group by playtime")),
+        (GroupBy::InstallSize, tr!("Group by install size")),
+        (GroupBy::None, tr!("Stop grouping")),
+    ] {
+        let mut e = cmd(
+            ViewCmd::Group(by),
+            format!("view:group:{}", by.as_str()),
+            title,
+            tr!("Collection list"),
+            if by == GroupBy::Status { Icon::Flag } else { super::super::data::group_icon(by).unwrap_or(Icon::Tune) },
+            "view groups sections agrupar grupos secoes",
+        );
+        if ui.group_by == by {
+            e.disable(tr!("Grouped like this now"));
+        }
+        v.push(e);
+    }
     let (grid, grid_sub, grid_icon) = if ui.grid_view {
         (tr!("Show as list with details"), tr!("The list next to the selected game's page"), Icon::ViewSidebar)
     } else {
@@ -841,13 +864,15 @@ mod tests {
 
     #[test]
     fn view_entries_follow_the_ui_state() {
-        let ui = UiState { sort: SortMode::Playtime, group_by_status: true, ..Default::default() };
+        let ui = UiState { sort: SortMode::Playtime, group_by: GroupBy::Status, ..Default::default() };
         let v = view_entries(&ui, &FacetOptions::default(), &Categories::default());
         let get = |id: &str| v.iter().find(|e| e.id.as_ref() == id).unwrap();
         assert!(get("view:sort:playtime").disabled.is_some());
         assert!(get("view:sort:title").disabled.is_none());
         assert!(get("view:show:all").disabled.is_some());
-        assert_eq!(get("view:group").title.as_ref(), "Stop grouping by status");
+        assert!(get("view:group:status").disabled.is_some());
+        assert_eq!(get("view:group:none").title.as_ref(), "Stop grouping");
+        assert!(get("view:sort:release-date").disabled.is_none());
         assert_eq!(get("view:hidden").title.as_ref(), "Show hidden games");
         assert!(get("view:clear").disabled.is_some());
         assert_eq!(get("view:sort:direction").title.as_ref(), "Sort descending");

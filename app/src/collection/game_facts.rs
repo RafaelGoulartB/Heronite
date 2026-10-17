@@ -91,6 +91,11 @@ pub(super) struct Facts {
 }
 
 impl Facts {
+    /// Every rating, once loaded.
+    pub fn ratings(&self) -> Option<&HashMap<String, u8>> {
+        self.ratings.as_ref()
+    }
+
     pub fn rating(&self, key: &str) -> Option<u8> {
         self.ratings.as_ref().and_then(|r| r.get(key).copied())
     }
@@ -110,6 +115,9 @@ impl CollectionView {
                     let have = this.facts.ratings.get_or_insert_with(HashMap::new);
                     for (k, v) in map {
                         have.entry(k).or_insert(v);
+                    }
+                    if this.ui.sort == heronite_data::SortMode::Rating {
+                        this.refresh_groups();
                     }
                     cx.notify();
                 })
@@ -239,6 +247,9 @@ impl CollectionView {
             Some(s) => map.insert(key.to_string(), s),
             None => map.remove(key),
         };
+        if self.ui.sort == heronite_data::SortMode::Rating {
+            self.refresh_groups();
+        }
         let (paths, key) = (self.data_paths.clone(), key.to_string());
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { ratings::set_rating(&paths, &key, stars) }).await;

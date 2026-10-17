@@ -8,11 +8,15 @@ use heronite_data::focus::focus_data;
 use heronite_data::hltb::WikiCache;
 use heronite_data::status::display_status;
 use heronite_data::ui_state::UiState;
-use heronite_data::{CollectionGame, Library, ViewQuery};
+use heronite_data::collection::Game;
+use heronite_data::organize::{self, Organize};
+use heronite_data::text::{format_timestamp, DateLocale};
+use heronite_data::{CollectionGame, GroupBy, Library, SortMode, ViewQuery};
 
 use super::vm::*;
+use crate::icons::Icon;
 use crate::theme;
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trn};
 
 fn parse_hex(hex: &str) -> Rgba {
     let h = hex.trim_start_matches('#');
@@ -20,14 +24,75 @@ fn parse_hex(hex: &str) -> Rgba {
 }
 
 fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
+    card_vm_with(g, playing, None)
+}
+
+/// A card whose caption is `caption` instead of the playtime.
+fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> Arc<CardVm> {
     Arc::new(CardVm {
         key: g.key.clone().into(),
         title: g.title.clone().into(),
-        playtime: collection::playtime_label(g.playtime_minutes).into(),
+        caption: caption.unwrap_or_else(|| Caption {
+            icon: Icon::AccessTime,
+            text: collection::playtime_label(g.playtime_minutes).into(),
+            muted: false,
+            stars: None,
+        }),
         installed: g.installed,
         playing,
         hidden: g.hidden,
         cover_key: g.key.clone().into(),
+    })
+}
+
+/// The line under a card's cover: the value the list is sorted by, so the
+/// order explains itself (the playtime for title, last played and playtime).
+fn caption(g: &CollectionGame, sort: SortMode, o: &Organize, locale: DateLocale) -> Option<Caption> {
+    let shown = |icon, text: String| Caption { icon, text: text.into(), muted: false, stars: None };
+    let missing = |icon, text: &str| Caption { icon, text: text.to_string().into(), muted: true, stars: None };
+    Some(match sort {
+        SortMode::Title | SortMode::LastPlayed | SortMode::Playtime => return None,
+        SortMode::DateAdded => match o.added(g) {
+            Some(d) => shown(Icon::Inbox, format_timestamp(d, locale)),
+            None => missing(Icon::Inbox, tr!("Unknown")),
+        },
+        SortMode::TimesPlayed => match organize::times_played(g) {
+            0 => missing(Icon::Replay, tr!("Never played")),
+            n => shown(Icon::Replay, trn!(n, "{n} session", "{n} sessions")),
+        },
+        SortMode::InstallSize => match o.size(g).filter(|_| g.installed) {
+            Some(bytes) => shown(Icon::FaHardDrive, heronite_epic::util::file_size_local(bytes as f64)),
+            None if g.installed => missing(Icon::FaHardDrive, tr!("Size unknown")),
+            None => missing(Icon::FaHardDrive, tr!("Not installed")),
+        },
+        SortMode::ReleaseDate => match g.details.release_date.as_deref().filter(|d| organize::release_ymd(d).is_some()) {
+            Some(d) => shown(Icon::Event, format_timestamp(d, locale)),
+            None => missing(Icon::Event, tr!("Unknown")),
+        },
+        SortMode::Rating => match o.rating(g) {
+            Some(stars) => Caption { icon: Icon::Star, text: SharedString::default(), muted: false, stars: Some(stars) },
+            None => missing(Icon::StarBorder, tr!("Not rated")),
+        },
+        SortMode::CriticScore => match g.details.critic_score.filter(|s| *s > 0.) {
+            Some(score) => shown(Icon::BarChart, tr!("Score {score}", score = format!("{score:.0}"))),
+            None => missing(Icon::BarChart, tr!("No score")),
+        },
+    })
+}
+
+/// The icon a section header of `by` shows instead of the status dot.
+pub(super) fn group_icon(by: GroupBy) -> Option<Icon> {
+    Some(match by {
+        GroupBy::None | GroupBy::Status => return None,
+        GroupBy::Category => Icon::Label,
+        GroupBy::Store => Icon::Storefront,
+        GroupBy::Platform => Icon::SportsEsports,
+        GroupBy::Genre => Icon::Palette,
+        GroupBy::Developer => Icon::Build,
+        GroupBy::Series => Icon::Folder,
+        GroupBy::Year => Icon::Event,
+        GroupBy::Playtime => Icon::AccessTime,
+        GroupBy::InstallSize => Icon::FaHardDrive,
     })
 }
 
@@ -52,27 +117,21 @@ pub(super) fn build_groups(
     search: &str,
     keep: &dyn Fn(&CollectionGame) -> bool,
     is_playing: &dyn Fn(&str) -> bool,
+    organize: &Organize,
 ) -> Vec<GroupVm> {
-    let filtered = collection::filter_games_where(&lib.games, &view_query(ui, search), keep);
-    if !ui.group_by_status {
-        return vec![GroupVm {
-            id: "all".into(),
-            name: "".into(),
-            color: theme::status_color("custom"),
-            cards: filtered.iter().map(|g| card_vm(g, is_playing(&g.key))).collect(),
-            collapsed: false,
-            show_header: false,
-        }];
-    }
-    collection::group_by_status(&filtered, &lib.statuses)
+    let filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
+    let card = |g: &Game| card_vm_with(g, is_playing(&g.key), caption(g, ui.sort, organize, lib.date_locale));
+    let icon = group_icon(ui.group_by);
+    organize::group_games(&filtered, ui.group_by, organize)
         .into_iter()
         .map(|sg| GroupVm {
-            collapsed: ui.collapsed_groups.contains(&sg.id),
+            collapsed: ui.group_by != GroupBy::None && ui.collapsed_groups.contains(&sg.id),
+            show_header: ui.group_by != GroupBy::None,
             id: sg.id.clone().into(),
             name: sg.name.clone().into(),
             color: sg.color.map(parse_hex).unwrap_or(theme::status_color("custom")),
-            cards: sg.games.iter().map(|g| card_vm(g, is_playing(&g.key))).collect(),
-            show_header: true,
+            icon,
+            cards: sg.games.iter().map(card).collect(),
         })
         .collect()
 }

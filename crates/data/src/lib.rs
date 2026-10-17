@@ -8,6 +8,7 @@ pub mod proc;
 pub mod temps;
 pub mod text;
 
+pub mod added;
 pub mod anticheat;
 pub mod appearance;
 pub mod art;
@@ -29,6 +30,7 @@ pub mod library;
 pub mod maintenance;
 pub mod migrate;
 pub mod onboarding;
+pub mod organize;
 pub mod playtime;
 pub mod ratings;
 pub mod screenshot_prefs;
@@ -44,6 +46,7 @@ pub mod ui_state;
 
 pub use art::{ArtContext, ImageRef};
 pub use collection::{FacetFilters, FacetKind, InstallFilter, SortMode, StatusGroup, ViewQuery};
+pub use organize::GroupBy;
 pub use library::{CollectionGame, Library};
 pub use num::JsNum;
 pub use paths::{AppPaths, DataPaths};

@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 
 use crate::collection::{FacetFilters, FacetKind, InstallFilter, SortMode, FACET_KINDS};
 use crate::json_store;
+use crate::organize::GroupBy;
 use crate::paths::AppPaths;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,9 +40,9 @@ pub struct UiState {
     pub collapsed_groups: BTreeSet<String>,
     /// `runner_appName` of the focused game.
     pub focused_game: Option<String>,
-    /// "Group by status" toggle. Heronite does not persist it (always on at
-    /// start); this app does.
-    pub group_by_status: bool,
+    /// What the list is split into sections by (Heronite only had a "Group
+    /// by status" toggle, not persisted; this app keeps it).
+    pub group_by: GroupBy,
     /// "Show hidden games" (Heroic keeps it in the renderer's localStorage
     /// `show_hidden`, so it cannot be shared): hidden games stay in the
     /// Collection, flagged.
@@ -77,7 +78,7 @@ impl Default for UiState {
             sidebar_hidden: false,
             collapsed_groups: BTreeSet::new(),
             focused_game: None,
-            group_by_status: true,
+            group_by: GroupBy::Status,
             show_hidden: false,
             console_mode: false,
             palette_recent: Vec::new(),
@@ -109,7 +110,6 @@ impl UiState {
             state.collapsed_groups = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
         }
         state.focused_game = value.get("focusedGame").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned);
-        state.group_by_status = value.get("groupByStatus").and_then(Value::as_bool).unwrap_or(true);
         state.show_hidden = value.get("showHidden").and_then(Value::as_bool).unwrap_or(false);
         state.console_mode = value.get("consoleMode").and_then(Value::as_bool).unwrap_or(false);
         if let Some(list) = value.get("paletteRecent").and_then(Value::as_array) {
@@ -130,7 +130,6 @@ impl UiState {
             "sidebarHidden": self.sidebar_hidden,
             "collapsedGroups": self.collapsed_groups,
             "focusedGame": self.focused_game,
-            "groupByStatus": self.group_by_status,
             "showHidden": self.show_hidden,
             "consoleMode": self.console_mode,
             "paletteRecent": self.palette_recent,
@@ -226,7 +225,7 @@ impl UiState {
             facet_filters: self.facet_filters.clone(),
             categories: self.categories.clone(),
             statuses: self.statuses.clone(),
-            group_by_status: Some(self.group_by_status),
+            group_by: Some(self.group_by),
             show_hidden: Some(self.show_hidden),
         }
     }
@@ -241,8 +240,8 @@ impl UiState {
         self.facet_filters = view.facet_filters.clone();
         self.categories = view.categories.clone();
         self.statuses = view.statuses.clone();
-        if let Some(on) = view.group_by_status {
-            self.group_by_status = on;
+        if let Some(by) = view.group_by {
+            self.group_by = by;
         }
         if let Some(on) = view.show_hidden {
             self.show_hidden = on;
@@ -258,7 +257,7 @@ impl UiState {
             && self.categories == view.categories
             && self.statuses == view.statuses
             && self.facet_filters.same_as(&view.facet_filters)
-            && view.group_by_status.is_none_or(|on| on == self.group_by_status)
+            && view.group_by.is_none_or(|by| by == self.group_by)
             && view.show_hidden.is_none_or(|on| on == self.show_hidden)
     }
 
@@ -295,7 +294,7 @@ pub struct ViewFilters {
     pub categories: BTreeSet<String>,
     pub statuses: BTreeSet<String>,
     /// `None`: the view leaves it as it is.
-    pub group_by_status: Option<bool>,
+    pub group_by: Option<GroupBy>,
     /// `None`: the view leaves it as it is.
     pub show_hidden: Option<bool>,
 }
@@ -337,7 +336,10 @@ impl ViewFilters {
         };
         v.categories = names("categories");
         v.statuses = names("statuses");
-        v.group_by_status = value.get("groupByStatus").and_then(Value::as_bool);
+        // `groupByStatus` is how the grouping was stored when it was a toggle.
+        v.group_by = value.get("groupBy").and_then(Value::as_str).and_then(GroupBy::parse).or_else(|| {
+            value.get("groupByStatus").and_then(Value::as_bool).map(|on| if on { GroupBy::Status } else { GroupBy::None })
+        });
         v.show_hidden = value.get("showHidden").and_then(Value::as_bool);
         v
     }
@@ -361,7 +363,7 @@ impl ViewFilters {
             "onlyOffline": self.only.offline,
             "categories": self.categories,
             "statuses": self.statuses,
-            "groupByStatus": self.group_by_status,
+            "groupBy": self.group_by.map(GroupBy::as_str),
             "showHidden": self.show_hidden,
         })
     }
@@ -427,10 +429,10 @@ mod tests {
         let paths = app_paths(dir.path());
         let mut state = UiState {
             install_filter: InstallFilter::Installed,
-            sort: SortMode::LastPlayed,
+            sort: SortMode::ReleaseDate,
             sidebar_hidden: true,
             focused_game: Some("sideload_steam_400".into()),
-            group_by_status: false,
+            group_by: GroupBy::Year,
             show_hidden: true,
             console_mode: true,
             palette_recent: vec!["go:downloads".into(), "game:sideload_steam_400:primary".into()],
@@ -455,7 +457,8 @@ mod tests {
         assert_eq!(loaded.facet_filters.genre, ["RPG"]);
         assert_eq!(loaded.collapsed_groups.iter().collect::<Vec<_>>(), ["ungrouped"]);
         let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
-        assert_eq!(on_disk["sort"], "lastPlayed");
+        assert_eq!(on_disk["sort"], "releaseDate");
+        assert_eq!(on_disk["groupBy"], "year");
         assert_eq!(on_disk["installFilter"], "installed");
         assert_eq!(on_disk["showHidden"], true);
         assert_eq!(on_disk["consoleMode"], true);
@@ -478,7 +481,7 @@ mod tests {
     fn views_save_apply_and_match() {
         let dir = tempfile::tempdir().unwrap();
         let paths = app_paths(dir.path());
-        let mut state = UiState { group_by_status: false, show_hidden: true, ..Default::default() };
+        let mut state = UiState { group_by: GroupBy::None, show_hidden: true, ..Default::default() };
         state.toggle_status("beaten");
         state.toggle_facet(FacetKind::Genre, "RPG");
         state.toggle_facet(FacetKind::Genre, "Indie");
@@ -493,12 +496,12 @@ mod tests {
         loaded.clear_filters();
         assert_eq!(loaded.active_filters(), 0);
         assert_eq!(loaded.sort, SortMode::Playtime);
-        loaded.group_by_status = true;
+        loaded.group_by = GroupBy::Status;
         loaded.show_hidden = false;
         assert!(!loaded.shows_view(&view));
         loaded.apply_view(&view);
         assert!(loaded.shows_view(&view));
-        assert!(!loaded.group_by_status && loaded.show_hidden, "a view sets grouping and hidden games");
+        assert!(loaded.group_by == GroupBy::None && loaded.show_hidden, "a view sets grouping and hidden games");
         // the same values in another order still match
         loaded.facet_filters = loaded.facet_filters.toggled(FacetKind::Genre, "rpg").toggled(FacetKind::Genre, "RPG");
         assert!(loaded.shows_view(&view));
@@ -509,8 +512,12 @@ mod tests {
         // a view saved without them leaves both alone
         let old = ViewFilters::from_value(&json!({ "sort": "playtime" }));
         loaded.apply_view(&old);
-        assert!(!loaded.group_by_status && loaded.show_hidden);
+        assert!(loaded.group_by == GroupBy::None && loaded.show_hidden);
         assert!(loaded.shows_view(&old), "matches whatever the grouping");
+        // the grouping stored as the old toggle
+        assert_eq!(UiState::from_value(&json!({ "groupByStatus": false })).group_by, GroupBy::None);
+        assert_eq!(UiState::from_value(&json!({ "groupByStatus": false, "groupBy": "genre" })).group_by, GroupBy::Genre);
+        assert_eq!(UiState::from_value(&json!({})).group_by, GroupBy::Status);
     }
 
     #[test]

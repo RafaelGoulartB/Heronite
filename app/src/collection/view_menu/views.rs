@@ -9,7 +9,7 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::*;
 use heronite_data::models::CompletionStatus;
 use heronite_data::ui_state::{SavedView, ViewFilters};
-use heronite_data::{InstallFilter, Library, SortMode};
+use heronite_data::{GroupBy, InstallFilter, Library, SortMode};
 use heronite_i18n::tr;
 
 use super::super::CollectionView;
@@ -32,7 +32,12 @@ fn default_views(statuses: &[CompletionStatus]) -> Vec<SavedView> {
         slugs.iter().filter_map(|slug| statuses.iter().find(|s| s.slug == *slug)).map(|s| s.id.clone()).collect()
     };
     let view = |name: &str, f: ViewFilters| SavedView { name: name.into(), filters: f };
-    let base = |sort, group| ViewFilters { sort, group_by_status: Some(group), show_hidden: Some(false), ..Default::default() };
+    let base = |sort, group: bool| ViewFilters {
+        sort,
+        group_by: Some(if group { GroupBy::Status } else { GroupBy::None }),
+        show_hidden: Some(false),
+        ..Default::default()
+    };
     let mut out = Vec::new();
     for (name, slugs, f) in [
         (tr!("Playing now"), &["playing", "endless"][..], base(SortMode::LastPlayed, false)),
@@ -231,7 +236,7 @@ mod tests {
         let views = default_views(&statuses);
         let names: Vec<_> = views.iter().map(|v| v.name.as_str()).collect();
         assert_eq!(names, ["Playing now", "Backlog", "Finished", "Favourites"]);
-        assert!(views.iter().all(|v| v.filters.group_by_status.is_some() && v.filters.show_hidden == Some(false)));
+        assert!(views.iter().all(|v| v.filters.group_by.is_some() && v.filters.show_hidden == Some(false)));
         assert_eq!(views[1].filters.install_filter, InstallFilter::Installed);
         // no matching status: only Favourites is left
         assert_eq!(default_views(&[]).len(), 1);

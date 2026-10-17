@@ -19,16 +19,18 @@ struct Loaded {
     lib: Library,
     wiki: WikiCache,
     categories: heronite_data::categories::Categories,
+    extras: heronite_data::organize::GameExtras,
     actions: HashMap<String, Vec<heronite_data::game_actions::Action>>,
     covers: HashMap<SharedString, Vec<ImageRef>>,
     stages: HashMap<SharedString, Vec<ImageRef>>,
 }
 
-fn load_all(data_paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Loaded> {
+fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: bool) -> anyhow::Result<Loaded> {
     let t = Instant::now();
     let lib = Library::load_with(data_paths, include_hidden)?;
     let wiki = WikiCache::load(data_paths);
     let categories = heronite_data::categories::Categories::load(data_paths);
+    let extras = super::organize::game_extras(&lib, data_paths, cache);
     let actions = heronite_data::game_actions::load(data_paths);
     let shots = (!lib.settings.screenshots.folder.is_empty()).then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
     let ctx = ArtContext::new(data_paths, shots.as_deref());
@@ -40,15 +42,16 @@ fn load_all(data_paths: &DataPaths, include_hidden: bool) -> anyhow::Result<Load
         stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, categories, actions, covers, stages })
+    Ok(Loaded { lib, wiki, categories, extras, actions, covers, stages })
 }
 
 impl CollectionView {
     pub(super) fn spawn_load(&self, cx: &mut Context<Self>) {
         let data_paths = self.data_paths.clone();
+        let cache = self.app_paths.cache.clone();
         let include_hidden = self.ui.show_hidden;
         cx.spawn(async move |this, cx| {
-            let loaded = cx.background_spawn(async move { load_all(&data_paths, include_hidden) }).await;
+            let loaded = cx.background_spawn(async move { load_all(&data_paths, &cache, include_hidden) }).await;
             this.update(cx, |this, cx| {
                 this.refreshing = false;
                 match loaded {
@@ -117,6 +120,7 @@ impl CollectionView {
         self.stage_chains = l.stages;
         self.wiki = Arc::new(l.wiki);
         self.categories = l.categories;
+        self.game_extras = Arc::new(l.extras);
         self.user_actions = l.actions;
         self.prune_category_filter();
         if !first {

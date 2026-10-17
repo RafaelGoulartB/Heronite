@@ -13,7 +13,9 @@ impl CollectionView {
     /// one, `HERONITE_DEBUG_MENU_MANAGE=1` for Manage installation's), `HERONITE_DEBUG_DROPDOWN=view|nav` opens a header menu
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
     /// that search typed; `views`: its views in edit mode; `views-select`:
-    /// their select open), `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
+    /// their select open; `more-group` / `more-sort`: the "More" list of
+    /// that row), `HERONITE_DEBUG_ORGANIZE=<group>,<sort>` groups and sorts
+    /// the list (`year,releaseDate`), `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
     /// the first render that has a window (`open_pending_debug_dialog`).
     ///
     /// `HERONITE_DEBUG_MULTI=<n>` selects the first n games shown (a
@@ -50,6 +52,16 @@ impl CollectionView {
         if let Some(steps) = crate::env::value("HERONITE_DEBUG_BATCH") {
             self.debug_batch(steps, cx);
         }
+        if let Some(spec) = crate::env::value("HERONITE_DEBUG_ORGANIZE") {
+            let (group, sort) = spec.split_once(',').unwrap_or((spec.as_str(), ""));
+            if let Some(by) = heronite_data::GroupBy::parse(group) {
+                self.ui.group_by = by;
+            }
+            if let Some(mode) = heronite_data::SortMode::parse(sort) {
+                self.ui.sort = mode;
+            }
+            self.refresh_groups();
+        }
         if let Some(menu) = crate::env::value("HERONITE_DEBUG_DROPDOWN") {
             let query = match menu.as_str() {
                 "facets" => Some("developer:"),
@@ -65,6 +77,10 @@ impl CollectionView {
                 }
                 "views-select" => {
                     self.view_menu.set_select_open(true);
+                    Some(Menu::View)
+                }
+                "more-group" | "more-sort" => {
+                    self.view_menu.set_more(menu == "more-group");
                     Some(Menu::View)
                 }
                 "nav" => Some(Menu::Nav),

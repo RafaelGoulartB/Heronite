@@ -76,6 +76,8 @@ pub enum Icon {
     Palette,
     PhotoCamera,
     Inbox,
+    /// Calendar day (release date, year).
+    Event,
     CallMerge,
     Checklist,
     SelectAll,
@@ -131,6 +133,7 @@ impl Icon {
             Palette => "icons/palette.svg",
             PhotoCamera => "icons/photo-camera.svg",
             Inbox => "icons/inbox.svg",
+            Event => "icons/event.svg",
             CallMerge => "icons/call-merge.svg",
             Checklist => "icons/checklist.svg",
             SelectAll => "icons/select-all.svg",

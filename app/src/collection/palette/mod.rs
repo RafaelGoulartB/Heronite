@@ -319,17 +319,9 @@ impl CollectionView {
             self.navigate(Page::Collection, window, cx);
         }
         match cmd {
-            ViewCmd::Sort(mode) => {
-                self.ui.sort = mode;
-                self.save_ui();
-                self.refresh_groups();
-            }
+            ViewCmd::Sort(mode) => self.set_sort(mode, cx),
             ViewCmd::Show(filter) => self.set_install_filter(filter, cx),
-            ViewCmd::GroupByStatus => {
-                self.ui.group_by_status = !self.ui.group_by_status;
-                self.save_ui();
-                self.refresh_groups();
-            }
+            ViewCmd::Group(by) => self.set_group_by(by, cx),
             ViewCmd::GridView => self.set_grid_view(!self.ui.grid_view, cx),
             ViewCmd::ShowHidden => self.set_show_hidden(!self.ui.show_hidden, cx),
             ViewCmd::ClearFilters => {
