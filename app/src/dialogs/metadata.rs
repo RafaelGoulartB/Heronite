@@ -179,7 +179,8 @@ impl MetadataDialog {
                                 picks.insert(field.to_string(), if chosen == "manual" { "keep".into() } else { chosen.clone() });
                             }
                         }
-                        if let Some(id) = p.proposed.igdb_id {
+                        // A match found by the fetch; a picked one is already set.
+                        if let (None, Some(id)) = (this.igdb_id, p.proposed.igdb_id) {
                             this.igdb_id = Some(id.get() as i64);
                         }
                         this.picks = picks;

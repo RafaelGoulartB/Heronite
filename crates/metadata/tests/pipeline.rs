@@ -189,6 +189,47 @@ fn manual_edits_survive_refetch_and_picks_override() {
 }
 
 #[test]
+fn picking_another_igdb_game_replaces_the_stored_match() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    // Id 4242 is another game; every other lookup answers with Portal 2.
+    let server = Server::start(|req| match req.path() {
+        "/twitch/oauth2/token" => Resp::json(json!({"access_token": "tok", "expires_in": 3600})),
+        "/igdb/v4/games" if req.body.contains("where id = 4242;") => {
+            let mut rows: Value = serde_json::from_str(&fixture("igdb_game_steam_620.json")).unwrap();
+            rows[0]["id"] = json!(4242);
+            rows[0]["slug"] = json!("other-game");
+            Resp::json(rows)
+        }
+        "/igdb/v4/games" => Resp::raw_json(fixture("igdb_game_steam_620.json")),
+        _ => Resp::status(404),
+    });
+    let svc = MetadataService::with_endpoints(paths, server.endpoints());
+    let saved = svc.apply_game_metadata(&args("steam_620", "Portal 2")).unwrap();
+    assert_eq!(saved.igdb_id.map(|n| n.get()), Some(72.0));
+
+    let mut pick = args("steam_620", "Portal 2");
+    pick.igdb_id = Some(4242);
+    pick.overwrite_existing = Some(true);
+    pick.preserve_manual = Some(false);
+    let preview = svc.preview_game_metadata(&pick).unwrap();
+    assert_eq!(preview.current.as_ref().and_then(|c| c.igdb_id).map(|n| n.get()), Some(72.0));
+    assert_eq!(preview.proposed.igdb_id.map(|n| n.get()), Some(4242.0));
+    assert_eq!(preview.proposed.igdb_slug.as_deref(), Some("other-game"));
+
+    let applied = svc.apply_game_metadata(&pick).unwrap();
+    assert_eq!(applied.igdb_id.map(|n| n.get()), Some(4242.0));
+    let stored = svc.get_game_metadata("sideload", "steam_620").unwrap().unwrap();
+    assert_eq!((stored.igdb_id.map(|n| n.get()), stored.igdb_slug.as_deref()), (Some(4242.0), Some("other-game")));
+
+    // A later automatic refresh follows the match the user chose.
+    let mut auto = args("steam_620", "Portal 2");
+    auto.overwrite_existing = Some(true);
+    let refreshed = svc.apply_game_metadata(&auto).unwrap();
+    assert_eq!(refreshed.igdb_id.map(|n| n.get()), Some(4242.0));
+}
+
+#[test]
 fn igdb_401_refreshes_the_token_once() {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());

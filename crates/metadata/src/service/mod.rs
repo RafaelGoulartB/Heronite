@@ -235,15 +235,13 @@ impl MetadataService {
         Gathered { candidates, offline }
     }
 
-    /// `previewGameMetadata`: what each provider returned and what the merge
-    /// would store. Nothing is written.
-    pub fn preview_game_metadata(&self, args: &MetadataApplyArgs) -> Result<MetadataPreview> {
-        let runner = as_runner(&args.runner).to_owned();
-        let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
-        let mut args = args.clone();
-        args.runner = runner.clone();
-        let Gathered { candidates, offline } = self.gather(&args);
-
+    /// The merge of `candidates` into `current` that a preview proposes.
+    fn propose(
+        &self,
+        args: &MetadataApplyArgs,
+        current: Option<&CollectionGameMetadata>,
+        candidates: &[MetadataCandidate],
+    ) -> CollectionGameMetadata {
         let has_picks = args.field_picks.as_ref().is_some_and(|p| !p.is_empty());
         let overwrite = args.overwrite_existing != Some(false);
         let preserve_manual = if has_picks { false } else { args.preserve_manual.unwrap_or(args.overwrite_existing == Some(false)) };
@@ -252,16 +250,36 @@ impl MetadataService {
             candidates.iter().map(|c| MergeCandidate { source: &c.source, metadata: &c.metadata }).collect();
         let mut proposed = merge_metadata(MergeArgs {
             app_name: &args.app_name,
-            runner: &runner,
-            current: current.as_ref(),
+            runner: &args.runner,
+            current,
             candidates: &merge_candidates,
             priority: &priority,
             overwrite_existing: overwrite,
             preserve_manual,
             field_picks: args.field_picks.as_ref(),
         });
+        // The merge only fills an empty IGDB id, so a game picked on purpose
+        // (re-matching a wrong one) has to be carried over here.
+        if args.igdb_id.is_some() {
+            if let Some(igdb) = candidates.iter().find(|c| c.source == "igdb").filter(|c| c.metadata.igdb_id.is_some()) {
+                proposed.igdb_id = igdb.metadata.igdb_id;
+                proposed.igdb_slug = igdb.metadata.igdb_slug.clone();
+            }
+        }
         // Names the user renamed, merged or removed in the fields manager.
         NameRules::load(&self.paths).apply_metadata(&mut proposed);
+        proposed
+    }
+
+    /// `previewGameMetadata`: what each provider returned and what the merge
+    /// would store. Nothing is written.
+    pub fn preview_game_metadata(&self, args: &MetadataApplyArgs) -> Result<MetadataPreview> {
+        let runner = as_runner(&args.runner).to_owned();
+        let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
+        let mut args = args.clone();
+        args.runner = runner;
+        let Gathered { candidates, offline } = self.gather(&args);
+        let proposed = self.propose(&args, current.as_ref(), &candidates);
         Ok(MetadataPreview { app_name: args.app_name.clone(), current, proposed, candidates, igdb_configured: self.igdb_configured(), offline })
     }
 
