@@ -223,7 +223,7 @@ impl SettingsPanel {
                 "hide-on-protocol",
                 "hideWindowOnProtocolLaunch",
                 false,
-                tr!("Hide Heronite window when launching games from heronite-rs:// links"),
+                tr!("Hide Heronite window when launching games from heronite:// links"),
                 Some(tr!("Keeps the window hidden when a game is launched from an external shortcut, like the 'Add to Steam' feature.")),
                 false,
                 cx,

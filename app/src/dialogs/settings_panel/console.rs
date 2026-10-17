@@ -694,7 +694,7 @@ impl SettingsPanel {
             self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon (needs restart)"), None, false),
             Self::c_header(tr!("When a game starts")),
             self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
-            self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite-rs:// launches"), None, false),
+            self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite:// launches"), None, false),
             Self::c_header(tr!("Game Shortcuts")),
             self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
             self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
