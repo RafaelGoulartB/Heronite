@@ -14,6 +14,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use anyhow::Result;
+use heronite_data::field_names::NameRules;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, LocalMetaFile, MetadataSettings};
 use heronite_data::paths::DataPaths;
@@ -202,7 +203,7 @@ impl MetadataService {
         let priority = with_preferred_source(&self.metadata_settings().field_priority, args.source.as_deref());
         let merge_candidates: Vec<MergeCandidate<'_>> =
             candidates.iter().map(|c| MergeCandidate { source: &c.source, metadata: &c.metadata }).collect();
-        let proposed = merge_metadata(MergeArgs {
+        let mut proposed = merge_metadata(MergeArgs {
             app_name: &args.app_name,
             runner: &runner,
             current: current.as_ref(),
@@ -212,6 +213,8 @@ impl MetadataService {
             preserve_manual,
             field_picks: args.field_picks.as_ref(),
         });
+        // Names the user renamed, merged or removed in the fields manager.
+        NameRules::load(&self.paths).apply_metadata(&mut proposed);
         Ok(MetadataPreview { app_name: args.app_name.clone(), current, proposed, candidates, igdb_configured: self.igdb_configured() })
     }
 
@@ -262,7 +265,7 @@ impl MetadataService {
             return Ok(e.clone());
         }
         let from_playnite = metadata_from_playnite_game(app_name, runner, game, library_path);
-        let merged = merge_metadata(MergeArgs {
+        let mut merged = merge_metadata(MergeArgs {
             app_name,
             runner,
             current: existing.as_ref(),
@@ -272,6 +275,7 @@ impl MetadataService {
             preserve_manual: true,
             field_picks: None,
         });
+        NameRules::load(&self.paths).apply_metadata(&mut merged);
         upsert_game_metadata(&self.paths, self.persist_images(merged, false))
     }
 

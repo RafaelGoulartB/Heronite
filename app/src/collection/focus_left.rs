@@ -302,7 +302,13 @@ impl CollectionView {
         if let Some(score) = &vm.score {
             rows.push(fact_row(tr!("Score"), div().child(score.clone())).into_any_element());
         }
-        rows.push(fact_row(tr!("Library"), div().child(vm.library.clone())).into_any_element());
+        // Filters the collection by the store the game comes from.
+        let key = vm.key.clone();
+        rows.push(
+            clickable(fact_row(tr!("Library"), div().child(vm.library.clone())), "focus-library")
+                .on_click(cx.listener(move |this, _, _, cx| this.filter_by_store_of(&key, cx)))
+                .into_any_element(),
+        );
         match &self.facts.backup {
             Some(Backup::At(at)) => {
                 let (text, color) = backup_age(*at);

@@ -110,7 +110,7 @@ impl SettingsPanel {
             self.sync_select(false, cx),
             vec![help(tr!("Less CPU overhead in busy games. Fsync is the fastest where the kernel has it."))],
         );
-        col = col.child(heading(tr!("Sync"))).child(sync.card());
+        col = col.child(self.marked_heading(tr!("Sync"), "sync", cx)).child(sync.card());
 
         let mut experimental = rows().child(self.toggle_row(
             "wayland",
@@ -201,6 +201,7 @@ impl SettingsPanel {
             .map(|(i, w)| SelectOption {
                 label: logic::display_wine_name(&w.name).into(),
                 selected: i == selected,
+                dot: None,
                 group: Some(logic::wine_group(w).into()),
                 note: (self.global_wine.as_deref() == Some(w.name.as_str())).then(|| tr!("default").into()),
             })

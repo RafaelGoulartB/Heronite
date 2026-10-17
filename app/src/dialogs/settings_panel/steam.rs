@@ -534,6 +534,7 @@ impl SettingsPanel {
             .map(|o| SelectOption {
                 label: o.label.clone().into(),
                 selected: o.name == current,
+                dot: None,
                 group: o.group.map(SharedString::from),
                 note: o.note.map(SharedString::from),
             })
@@ -557,7 +558,7 @@ impl SettingsPanel {
             col = col
                 .child(heading(tr!("Graphics and libraries")))
                 .child(self.proton_graphics(off, cx).card())
-                .child(heading(tr!("Sync")))
+                .child(self.marked_heading(tr!("Sync"), "sync", cx))
                 .child(sync.card())
                 .child(heading(tr!("Experimental")))
                 .child(self.proton_experimental(off, cx).card());

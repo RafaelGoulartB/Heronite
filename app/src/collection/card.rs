@@ -27,6 +27,9 @@ pub(super) struct CardState<'a> {
     /// The pointer just left this card: play the bar's slide-out.
     pub leaving: bool,
     pub grey_uninstalled: bool,
+    /// Selecting several games: `Some(ticked)` draws the tick circle, dims
+    /// the cards left out and drops the play bar.
+    pub pick: Option<bool>,
     /// Epic install / update progress and update hint.
     pub epic: Option<super::epic::CardEpic>,
 }
@@ -38,7 +41,7 @@ pub fn card(
     on_play: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
     let vm = s.vm;
-    let ring: Option<Rgba> = if vm.playing {
+    let ring: Option<Rgba> = if vm.playing || s.pick == Some(true) {
         Some(theme::accent())
     } else if s.selected {
         Some(theme::selected_ring())
@@ -102,7 +105,8 @@ pub fn card(
         Icon::InstallCircle
     };
     let hovered = s.hovered;
-    let show_bar = s.hovered || s.leaving;
+    let show_bar = s.pick.is_none() && (s.hovered || s.leaving);
+    let left_out = s.pick == Some(false) && !s.hovered;
     const BAR_H: f32 = 24. + 2. * 5.6;
     let bar = div()
         .absolute()
@@ -150,7 +154,13 @@ pub fn card(
                 .shadow(vec![shadow])
                 .bg(theme::rgb_a(255, 255, 255, 0.03))
                 .child(
-                    div().size_full().rounded(px(6.)).overflow_hidden().when(vm.hidden && !s.hovered, |d| d.opacity(0.62)).child(cover_img),
+                    div()
+                        .size_full()
+                        .rounded(px(6.))
+                        .overflow_hidden()
+                        .when(vm.hidden && !s.hovered, |d| d.opacity(0.62))
+                        .when(left_out, |d| d.opacity(0.55))
+                        .child(cover_img),
                 )
                 .children(s.epic.as_ref().map(super::epic::card_overlay))
                 .children(vm.hidden.then(hidden_badge))
@@ -165,7 +175,8 @@ pub fn card(
                         .border_2()
                         .border_color(color)
                 }))
-                .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(6.)).overflow_hidden().child(bar))),
+                .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(6.)).overflow_hidden().child(bar)))
+                .children(s.pick.map(tick_circle)),
         )
         .when(s.title, |d| {
             d.child(
@@ -181,6 +192,25 @@ pub fn card(
         })
         .child(playtime_label(vm).when(s.title, |d| d.mt(px(1.))))
         .into_any_element()
+}
+
+/// The selection's tick on the top-right of the cover: filled while ticked.
+fn tick_circle(ticked: bool) -> Div {
+    let d =
+        div().absolute().top(px(6.)).right(px(6.)).size(px(24.)).rounded_full().flex().items_center().justify_center().border_2().shadow(
+            vec![BoxShadow {
+                color: theme::black_a(0.4),
+                offset: point(px(0.), px(2.)),
+                blur_radius: px(8.),
+                spread_radius: px(0.),
+                inset: false,
+            }],
+        );
+    if ticked {
+        d.bg(theme::accent()).border_color(theme::accent()).child(icon(Icon::Check, px(16.), theme::page_bg()))
+    } else {
+        d.bg(theme::black_a(0.45)).border_color(theme::white_a(0.88))
+    }
 }
 
 /// "Hidden" tag on the top-left of a hidden game shown by "Show hidden games".
@@ -203,7 +233,9 @@ fn hidden_badge() -> Div {
         .child(tr!("Hidden"))
 }
 
+/// The playtime, or the value the list is sorted by (`CardVm::caption`).
 fn playtime_label(vm: &CardVm) -> Div {
+    let c = &vm.caption;
     div()
         .mt(px(6.))
         .px(px(1.))
@@ -213,8 +245,10 @@ fn playtime_label(vm: &CardVm) -> Div {
         .text_size(px(12.))
         .font_weight(theme::W_500)
         .text_color(theme::white_a(0.72))
-        // MUI's 1.5rem SvgIcon size wins over the 14px rule in Heronite.
-        .child(icon(Icon::AccessTime, px(24.), theme::white_a(0.72 * 0.78)))
+        // Material icons fill about 5/6 of their box, the drive icon all of it:
+        // both come out the height of the text.
+        .child(icon(c.icon, px(if c.icon == Icon::FaHardDrive { 14. } else { 16. }), theme::white_a(0.72 * 0.78)))
+        .when(c.muted, |d| d.text_color(theme::white_a(0.4)))
         .when(vm.playing, |d| {
             d.child(div().size(px(6.)).rounded_full().bg(theme::success()).with_animation(
                 ElementId::Name(format!("live-{}", vm.key).into()),
@@ -222,5 +256,10 @@ fn playtime_label(vm: &CardVm) -> Div {
                 |el, t| el.opacity(0.4 + 0.6 * (1. - (2. * t - 1.).abs())),
             ))
         })
-        .child(vm.playtime.clone())
+        .map(|d| match c.stars {
+            Some(n) => d.child(div().flex().items_center().children((1..=5u8).map(|i| {
+                icon(Icon::Star, px(13.), if i <= n { theme::rgb_a(244, 211, 94, 1.).into() } else { theme::white_a(0.2) })
+            }))),
+            None => d.child(div().min_w_0().truncate().child(c.text.clone())),
+        })
 }

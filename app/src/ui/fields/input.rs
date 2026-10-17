@@ -106,6 +106,32 @@ fn field_row(input: &Entity<InputState>, disabled: bool, leading: Option<AnyElem
         .child(focus_ring(input))
 }
 
+/// A duration as one field: a clock, the hours ("h") and the minutes ("min")
+/// typed in place on a single input surface (the time played of a game).
+pub fn duration_field(hours: &Entity<InputState>, minutes: &Entity<InputState>) -> Div {
+    let unit = |text: SharedString| div().flex_none().text_size(px(13.)).text_color(theme::text_muted()).child(text);
+    // Right-aligned, so the number sits against its unit.
+    let number = |input: &Entity<InputState>, w: f32| {
+        div().w(px(w)).flex_none().child(Input::new(input).appearance(false).text_right())
+    };
+    input_surface()
+        .relative()
+        .flex()
+        .items_center()
+        .gap(px(2.))
+        .h(px(theme::INPUT_H))
+        .pl(px(12.))
+        .pr(px(14.))
+        .child(icon(Icon::AccessTime, px(18.), theme::text_muted()).mr(px(4.)))
+        .child(number(hours, 52.))
+        .child(unit(tr!("h").into()))
+        .child(div().w(px(4.)).flex_none())
+        .child(number(minutes, 36.))
+        .child(unit(tr!("min").into()))
+        .child(focus_ring(hours))
+        .child(focus_ring(minutes))
+}
+
 /// Multi-line input of `rows` rows (body font).
 pub fn textarea_box(state: &Entity<TextareaState>, rows: usize) -> Div {
     input_surface()
@@ -121,7 +147,16 @@ pub fn textarea_box(state: &Entity<TextareaState>, rows: usize) -> Div {
 /// Search bar of the artwork pickers: magnifier + borderless input on the
 /// glass input surface. Grows to fill the row (`flex_1`).
 pub fn search_box(input: &Entity<InputState>) -> Div {
-    field_row(input, false, Some(icon(Icon::FaSearch, px(14.), theme::text_muted()).into_any_element()), None)
+    search_row(input, None)
+}
+
+/// [`search_box`] with `trailing` after the text (a clear button).
+pub fn search_box_with(input: &Entity<InputState>, trailing: AnyElement) -> Div {
+    search_row(input, Some(trailing))
+}
+
+fn search_row(input: &Entity<InputState>, trailing: Option<AnyElement>) -> Div {
+    field_row(input, false, Some(icon(Icon::FaSearch, px(14.), theme::text_muted()).into_any_element()), trailing)
         .flex_1()
         .w_auto()
         .min_w(px(192.))

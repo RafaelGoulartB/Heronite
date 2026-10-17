@@ -7,7 +7,7 @@ use serde_json::Value;
 use super::parts::{column, heading, help, Rows};
 use super::SettingsPanel;
 use crate::theme;
-use crate::ui::controls::{row, toggle_row};
+use crate::ui::controls::row;
 use crate::ui::fields::{field_label, input_box};
 use heronite_i18n::{n_, tr};
 
@@ -31,7 +31,9 @@ impl SettingsPanel {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let on = self.gs_flag(field);
-        let mut row = toggle_row(id, label.to_string(), help_text, on);
+        // The first switch stands for all of gamescope's settings.
+        let group = if id == "gs-upscaling" { "gamescope" } else { "" };
+        let mut row = self.switch_row(id, group, label, help_text, on, cx);
         if disabled {
             row = row.opacity(0.4).cursor_not_allowed();
         } else {
@@ -39,10 +41,6 @@ impl SettingsPanel {
                 let now = this.gs_flag(field);
                 this.set_gamescope(field, Value::Bool(!now), cx)
             }));
-        }
-        // The first switch stands for all of gamescope's settings.
-        if id == "gs-upscaling" {
-            return self.marked("gamescope", super::parts::ROW_DOT, row, cx).into_any_element();
         }
         row.into_any_element()
     }

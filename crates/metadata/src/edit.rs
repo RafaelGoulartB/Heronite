@@ -1,14 +1,16 @@
 //! Manual details editing: port of `metadata/edit.ts`.
 
 use anyhow::Result;
+use heronite_data::field_names::NameRules;
 use heronite_data::json_store;
-use heronite_data::models::{CollectionGameMetadata, LocalMetaFile};
+use heronite_data::library::metadata_key;
+use heronite_data::models::{CollectionGameMetadata, LocalMetaFile, MetadataFile};
 use heronite_data::num::JsNum;
 use heronite_data::paths::DataPaths;
 
 use crate::store::{as_runner, current_or_blank, upsert_game_metadata};
 use crate::types::{DetailsPatch, DetailsResult};
-use crate::util::unique_names;
+use crate::util::{blank_metadata, unique_names};
 
 /// `setOptionalString`: trimmed value, or removed when blank.
 fn trimmed_or_none(value: &str) -> Option<String> {
@@ -108,6 +110,157 @@ fn sync_local_game_meta(paths: &DataPaths, patch: &DetailsPatch) -> Result<Optio
     })
 }
 
+/// A tag field of the details: the lists the batch editor changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ListField {
+    Genres,
+    Developers,
+    Publishers,
+    Themes,
+    GameModes,
+    Platforms,
+    Features,
+}
+
+impl ListField {
+    pub const ALL: [ListField; 7] =
+        [Self::Genres, Self::Developers, Self::Publishers, Self::Themes, Self::GameModes, Self::Platforms, Self::Features];
+
+    /// The field's key in `fieldSources`.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Genres => "genres",
+            Self::Developers => "developers",
+            Self::Publishers => "publishers",
+            Self::Themes => "themes",
+            Self::GameModes => "gameModes",
+            Self::Platforms => "platforms",
+            Self::Features => "features",
+        }
+    }
+
+    pub fn get(self, md: &CollectionGameMetadata) -> &[String] {
+        match self {
+            Self::Genres => &md.genres,
+            Self::Developers => &md.developers,
+            Self::Publishers => &md.publishers,
+            Self::Themes => &md.themes,
+            Self::GameModes => &md.game_modes,
+            Self::Platforms => &md.platforms,
+            Self::Features => &md.features,
+        }
+    }
+
+    fn apply_to(self, md: &mut CollectionGameMetadata, delta: &ListDelta) {
+        let next = delta.apply(self.get(md));
+        *self.slot(md) = next;
+    }
+
+    fn slot(self, md: &mut CollectionGameMetadata) -> &mut Vec<String> {
+        match self {
+            Self::Genres => &mut md.genres,
+            Self::Developers => &mut md.developers,
+            Self::Publishers => &mut md.publishers,
+            Self::Themes => &mut md.themes,
+            Self::GameModes => &mut md.game_modes,
+            Self::Platforms => &mut md.platforms,
+            Self::Features => &mut md.features,
+        }
+    }
+}
+
+/// What the batch editor does to one tag field of every game: names given to
+/// all of them and names taken from all of them. The rest of each game's list
+/// stays as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ListDelta {
+    pub add: Vec<String>,
+    pub remove: Vec<String>,
+}
+
+impl ListDelta {
+    pub fn is_empty(&self) -> bool {
+        self.add.is_empty() && self.remove.is_empty()
+    }
+
+    fn apply(&self, list: &[String]) -> Vec<String> {
+        let gone = |v: &String| self.remove.iter().any(|r| r.eq_ignore_ascii_case(v));
+        let kept = list.iter().filter(|v| !gone(v));
+        unique_names(kept.chain(self.add.iter()).map(|s| Some(s.as_str())), 40)
+    }
+}
+
+/// The batch editor's changes (F3 with several games selected).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BatchDetails {
+    /// A series for all of them; `Some("")` clears it.
+    pub series: Option<String>,
+    pub lists: Vec<(ListField, ListDelta)>,
+}
+
+impl BatchDetails {
+    pub fn is_empty(&self) -> bool {
+        self.series.is_none() && self.lists.iter().all(|(_, d)| d.is_empty())
+    }
+}
+
+/// What a game's metadata entry was before a batch edit (`None`: it had none),
+/// under its `metadata.json` key.
+pub type DetailsBefore = Vec<(String, Option<CollectionGameMetadata>)>;
+
+/// Applies `edit` to every `(runner, app_name)` in one write of
+/// `metadata.json`. Changed fields get the `manual` source, as in the details
+/// editor. The library fields manager's rules are applied to each game first,
+/// so the names it shows are the names removed. Returns what each game had
+/// before, for [`restore_details`].
+pub fn update_many_details(paths: &DataPaths, games: &[(String, String)], edit: &BatchDetails) -> Result<DetailsBefore> {
+    if games.is_empty() || edit.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rules = NameRules::load(paths);
+    json_store::update::<MetadataFile, _>(&paths.metadata(), |file| {
+        let mut before = Vec::with_capacity(games.len());
+        for (runner, app_name) in games {
+            let runner = as_runner(runner);
+            let key = metadata_key(runner, app_name);
+            let prev = file.games.get(&key).cloned();
+            let mut next = prev.clone().unwrap_or_else(|| blank_metadata(app_name, runner));
+            rules.apply_metadata(&mut next);
+            if let Some(v) = &edit.series {
+                next.series = trimmed_or_none(v);
+                next.field_sources.insert("series".into(), "manual".into());
+            }
+            for (field, delta) in edit.lists.iter().filter(|(_, d)| !d.is_empty()) {
+                field.apply_to(&mut next, delta);
+                next.field_sources.insert(field.key().into(), "manual".into());
+            }
+            file.games.insert(key.clone(), next);
+            before.push((key, prev));
+        }
+        Ok(before)
+    })
+}
+
+/// Puts back the entries [`update_many_details`] returned (undo).
+pub fn restore_details(paths: &DataPaths, before: &DetailsBefore) -> Result<()> {
+    if before.is_empty() {
+        return Ok(());
+    }
+    json_store::update::<MetadataFile, _>(&paths.metadata(), |file| {
+        for (key, prev) in before {
+            match prev {
+                Some(md) => {
+                    file.games.insert(key.clone(), md.clone());
+                }
+                None => {
+                    file.games.shift_remove(key);
+                }
+            }
+        }
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,5 +334,40 @@ mod tests {
         let r = update_collection_game_details(&paths, &patch(|p| p.notes = Some("hello".into()))).unwrap();
         assert_eq!(r.metadata.notes.as_deref(), Some("hello"));
         assert!(r.meta.is_none());
+    }
+
+    #[test]
+    fn batch_edit_adds_removes_and_restores() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        std::fs::create_dir_all(paths.local_library()).unwrap();
+        update_collection_game_details(
+            &paths,
+            &patch(|p| {
+                p.genres = Some(vec!["RPG".into(), "Action".into()]);
+                p.series = Some("Souls".into());
+            }),
+        )
+        .unwrap();
+        let games = [("sideload".to_string(), "g".to_string()), ("zoom".to_string(), "h".to_string())];
+        let edit = BatchDetails {
+            series: Some(String::new()),
+            lists: vec![
+                (ListField::Genres, ListDelta { add: vec!["Indie".into(), "rpg".into()], remove: vec!["action".into()] }),
+                (ListField::Platforms, ListDelta::default()),
+            ],
+        };
+        let before = update_many_details(&paths, &games, &edit).unwrap();
+        let v = read_value(&paths.metadata()).unwrap();
+        assert_eq!(v["games"]["sideload:g"]["genres"], serde_json::json!(["RPG", "Indie"]));
+        assert_eq!(v["games"]["sideload:h"]["genres"], serde_json::json!(["Indie", "rpg"]));
+        assert!(v["games"]["sideload:g"]["series"].is_null());
+        assert_eq!(v["games"]["sideload:h"]["fieldSources"]["genres"], "manual");
+        assert!(v["games"]["sideload:h"]["fieldSources"].get("platforms").is_none(), "untouched field");
+        restore_details(&paths, &before).unwrap();
+        let v = read_value(&paths.metadata()).unwrap();
+        assert_eq!(v["games"]["sideload:g"]["genres"], serde_json::json!(["RPG", "Action"]));
+        assert_eq!(v["games"]["sideload:g"]["series"], "Souls");
+        assert!(v["games"].get("sideload:h").is_none());
     }
 }

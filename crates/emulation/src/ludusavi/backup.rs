@@ -75,6 +75,14 @@ impl Drop for InFlight {
     }
 }
 
+/// Tests that take the in-flight guard (backup and restore ones) run one at
+/// a time, so none of them finds it taken by another.
+#[cfg(test)]
+pub(super) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    L.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Everything the flow reads from or runs on the machine.
 pub struct LudusaviEnv<'a> {
     pub paths: &'a DataPaths,
@@ -270,13 +278,8 @@ mod tests {
     use super::*;
     use crate::ludusavi::fake::{out, Fake};
     use heronite_launch::probe::FakeProbe;
-    use std::sync::Mutex;
 
-    /// Serializes tests that hit the global in-flight guard.
-    fn guard_lock() -> std::sync::MutexGuard<'static, ()> {
-        static L: Mutex<()> = Mutex::new(());
-        L.lock().unwrap_or_else(|e| e.into_inner())
-    }
+    use super::test_lock as guard_lock;
 
     fn setup(settings_json: &str) -> (tempfile::TempDir, DataPaths) {
         let d = tempfile::tempdir().unwrap();

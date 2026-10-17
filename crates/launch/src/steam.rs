@@ -193,6 +193,18 @@ impl SteamLocator {
         })
     }
 
+    /// `SizeOnDisk` of an installed Steam game's `appmanifest_<id>.acf`, in bytes.
+    pub fn size_on_disk(&self, app_id: &str) -> Option<u64> {
+        if app_id.is_empty() || !app_id.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        self.library_roots().into_iter().find_map(|root| {
+            let text = fs::read_to_string(root.join("steamapps").join(format!("appmanifest_{app_id}.acf"))).ok()?;
+            let doc = Vdf::parse(&text).ok()?;
+            doc.get("AppState")?.str_of("SizeOnDisk")?.parse::<u64>().ok().filter(|n| *n > 0)
+        })
+    }
+
     /// Steam console logs that mention game processes.
     pub fn log_files(&self) -> Vec<PathBuf> {
         const NAMES: [&str; 3] = ["console_log.txt", "console-linux.txt", "console-windows.txt"];
@@ -421,6 +433,18 @@ mod tests {
         assert_eq!(loc.install_dir("400"), None);
         assert_eq!(loc.install_dir("9"), None);
         assert_eq!(loc.install_dir("../x"), None);
+    }
+
+    #[test]
+    fn size_on_disk_comes_from_the_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let steam = dir.path().join("home/.steam/steam");
+        write(&steam.join("steamapps/appmanifest_400.acf"), "\"AppState\" { \"installdir\" \"Portal\" \"SizeOnDisk\" \"4518092416\" }");
+        write(&steam.join("steamapps/appmanifest_620.acf"), "\"AppState\" { \"installdir\" \"Portal 2\" \"SizeOnDisk\" \"0\" }");
+        let loc = SteamLocator { home: dir.path().join("home"), steam_path: steam, system_roots: vec![] };
+        assert_eq!(loc.size_on_disk("400"), Some(4_518_092_416));
+        assert_eq!(loc.size_on_disk("620"), None, "not downloaded yet");
+        assert_eq!(loc.size_on_disk("9"), None);
     }
 
     #[test]

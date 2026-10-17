@@ -120,6 +120,8 @@ pub struct GameSettingsDialog {
     nested: Option<Nested>,
     details: Details,
     initial: Form,
+    /// Saved time played, in minutes.
+    initial_playtime: u64,
     launch: Option<LaunchState>,
     /// The game's own actions (Launch tab).
     actions: ActionsState,
@@ -142,7 +144,7 @@ impl GameSettingsDialog {
 
         let (default_cover, default_hero) = Self::default_art(&ctx, &game);
         let initial = form_from(&game.title, game.metadata.as_deref(), game.meta.as_deref());
-        let details = Self::build_details(&ctx, &initial, window, cx);
+        let details = Self::build_details(&ctx, &initial, game.playtime_minutes, window, cx);
         let launch = Self::build_launch(&game, window, cx);
         let actions = Self::build_actions(&game, &ctx.data_paths);
         let facts = GameFacts::of(&game);
@@ -178,6 +180,7 @@ impl GameSettingsDialog {
             nested: None,
             details,
             initial,
+            initial_playtime: game.playtime_minutes,
             launch,
             actions,
             panel,
@@ -315,7 +318,7 @@ impl Render for GameSettingsDialog {
             );
         }
 
-        let dirty = self.read_form(cx) != self.initial;
+        let dirty = self.game_tab_dirty(cx);
         // "Use defaults" only where a reset exists: the custom images.
         let can_reset = self.tab == Tab::Game && self.busy.is_none() && (self.art.cover_url.is_some() || self.art.hero_url.is_some());
         let left = div().child(if self.tab == Tab::Game {

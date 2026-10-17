@@ -53,14 +53,27 @@ impl CollectionView {
     pub(super) fn refresh_groups(&mut self) {
         let Some(lib) = self.lib.clone() else { return };
         let playing = &self.playing;
-        let (ui, categories, updates) = (&self.ui, &self.categories, &self.update_apps);
-        let keep = |g: &heronite_data::CollectionGame| {
-            categories.matches(&ui.categories, &g.runner, &g.app_name) && (!ui.only.updates || updates.contains(&g.app_name))
+        let keep = |g: &heronite_data::CollectionGame| self.keeps_game(g, &lib.statuses);
+        let organize = heronite_data::organize::Organize {
+            extras: Some(&self.game_extras),
+            ratings: self.facts.ratings(),
+            categories: Some(&self.categories),
+            statuses: &lib.statuses,
         };
-        let groups =
-            data::build_groups(&lib, ui, &self.search, &keep, &|key| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name)));
+        let is_playing = |key: &str| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name));
+        let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &organize);
         self.set_groups(groups);
         self.refresh_focus();
+    }
+
+    /// The list's conditions that live in the app: the selected categories
+    /// and statuses, and "Only with an update".
+    pub(super) fn keeps_game(&self, g: &heronite_data::CollectionGame, statuses: &[heronite_data::models::CompletionStatus]) -> bool {
+        let ui = &self.ui;
+        self.categories.matches(&ui.categories, &g.runner, &g.app_name)
+            && (!ui.only.updates || self.update_apps.contains(&g.app_name))
+            && (ui.statuses.is_empty()
+                || ui.statuses.contains(&heronite_data::status::resolve_status_id(g.status_raw.as_deref(), statuses)))
     }
 
     fn refresh_focus(&mut self) {
@@ -72,6 +85,7 @@ impl CollectionView {
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
+        self.toast_undo = false;
         self.toast = Some((text.into(), error));
         self.toast_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
@@ -82,6 +96,12 @@ impl CollectionView {
             .ok();
         }));
         cx.notify();
+    }
+
+    /// A toast for a batch change, with Undo (`selection.rs`).
+    pub(super) fn show_undo_toast(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.show_toast(text, false, cx);
+        self.toast_undo = true;
     }
 
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
@@ -154,6 +174,18 @@ impl CollectionView {
             self.save_ui();
             self.refresh_groups();
         }
+    }
+
+    /// "Library" of the facts card: shows only the games of the store this
+    /// one comes from (Steam, Epic Games, Emulated...), in place of any other
+    /// store filter.
+    pub(super) fn filter_by_store_of(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)) else { return };
+        let Some(store) = g.facets[FacetKind::Store.index()].first().map(|i| i.value.clone()) else { return };
+        self.ui.facet_filters.store = vec![store];
+        self.save_ui();
+        self.refresh_groups();
+        cx.notify();
     }
 
     fn set_groups(&mut self, groups: Vec<GroupVm>) {

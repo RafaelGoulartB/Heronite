@@ -57,7 +57,7 @@ impl CollectionView {
     pub(super) fn active_facets(&self) -> Vec<(&'static str, SharedString)> {
         heronite_data::collection::FACET_KINDS
             .iter()
-            .filter_map(|k| self.ui.facet_filters.get(*k).map(|v| (k.as_str(), SharedString::from(v.to_string()))))
+            .flat_map(|k| self.ui.facet_filters.get(*k).iter().map(|v| (k.as_str(), SharedString::from(v.clone()))))
             .collect()
     }
 
@@ -91,11 +91,17 @@ impl CollectionView {
     /// Details with the folders found on disk (install, or emulator + ROM)
     /// after "Playtime".
     pub(super) fn with_folder_rows(&self, mut vm: super::vm::FocusVm) -> super::vm::FocusVm {
+        let measured = |kind: super::open_links::FolderKind| {
+            self.facts.folder_size.as_ref().filter(|(k, _)| *k == kind).map(|(_, size)| SharedString::from(size.clone()))
+        };
         let rows = self.facts.folders.iter().enumerate().map(|(i, (kind, path))| super::vm::DetailRow {
             label: kind.label().into(),
             value: super::vm::DetailValue::Folder {
                 path: path.to_string_lossy().into_owned().into(),
-                size: (*kind == super::open_links::FolderKind::Install).then(|| vm.install_size.clone()).flatten(),
+                size: match kind {
+                    super::open_links::FolderKind::Install => vm.install_size.clone().or_else(|| measured(*kind)),
+                    _ => measured(*kind),
+                },
             },
             split: i == 0,
         });

@@ -94,6 +94,35 @@ pub fn toggle_hidden(paths: &DataPaths, app_name: &str, title: &str) -> Result<b
     }
 }
 
+/// Favourites of many games in one write: `(app_name, title, on)`. A game
+/// already in the list keeps its place and title; one added goes at the end.
+pub fn set_favourites(paths: &DataPaths, games: &[(String, String, bool)]) -> Result<()> {
+    set_many(paths, "favourites", games)
+}
+
+/// Hidden flags of many games in one write, like [`set_favourites`].
+pub fn set_hidden(paths: &DataPaths, games: &[(String, String, bool)]) -> Result<()> {
+    set_many(paths, "hidden", games)
+}
+
+fn set_many(paths: &DataPaths, key: &str, games: &[(String, String, bool)]) -> Result<()> {
+    if games.is_empty() {
+        return Ok(());
+    }
+    json_store::update_value(&paths.store_config(), |doc| {
+        let list = list_mut(doc, key);
+        for (app_name, title, on) in games {
+            let has = list.iter().any(|v| is_entry(v, app_name));
+            if *on && !has {
+                list.push(json!({ "appName": app_name, "title": title }));
+            } else if !*on && has {
+                list.retain(|v| !is_entry(v, app_name));
+            }
+        }
+        Ok(())
+    })
+}
+
 /// The `{ appName, title }` entries of `games.<key>` (`favourites`, `hidden`
 /// or `recent`) as stored, in order. Missing file or key: empty.
 pub fn list_entries(paths: &DataPaths, key: &str) -> Vec<(String, String)> {
@@ -181,6 +210,20 @@ mod tests {
         assert!(toggle_favourite(&paths, "a", "A").unwrap());
         let v = json_store::read_value(&paths.store_config()).unwrap();
         assert_eq!(v["games"]["favourites"][0]["appName"], "a");
+    }
+
+    #[test]
+    fn many_flags_in_one_write() {
+        let (_d, paths) = setup("{\n\t\"games\": {\n\t\t\"favourites\": [{\"appName\": \"a\", \"title\": \"A\"}]\n\t}\n}");
+        let on = |app: &str, on: bool| (app.to_string(), app.to_uppercase(), on);
+        set_favourites(&paths, &[on("a", true), on("b", true), on("c", false)]).unwrap();
+        assert_eq!(list_entries(&paths, "favourites"), [("a".to_string(), "A".to_string()), ("b".to_string(), "B".to_string())]);
+        set_favourites(&paths, &[on("a", false)]).unwrap();
+        assert_eq!(list_entries(&paths, "favourites").len(), 1);
+        set_hidden(&paths, &[on("h", true), on("h", true)]).unwrap();
+        assert_eq!(list_entries(&paths, "hidden").len(), 1);
+        set_hidden(&paths, &[on("h", false)]).unwrap();
+        assert!(list_entries(&paths, "hidden").is_empty());
     }
 
     #[test]

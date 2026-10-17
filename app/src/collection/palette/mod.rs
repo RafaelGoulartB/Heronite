@@ -238,6 +238,9 @@ impl CollectionView {
         if self.modal_open(cx) {
             return false;
         }
+        if self.view_menu_key(ks, window, cx) {
+            return true;
+        }
         if ctrl {
             match key {
                 "k" => {
@@ -295,6 +298,7 @@ impl CollectionView {
             Act::YearReview => self.open_year_review(window, cx),
             Act::Onboarding => self.open_onboarding(cx),
             Act::ManageStatuses => self.open_manage_statuses(window, cx),
+            Act::ManageFields => self.open_manage_fields(None, window, cx),
             // The quit question needs the window: ask once this update ended.
             Act::Quit => cx.defer(crate::system::request_quit),
             Act::View(cmd) => self.run_view_cmd(cmd, window, cx),
@@ -315,22 +319,15 @@ impl CollectionView {
             self.navigate(Page::Collection, window, cx);
         }
         match cmd {
-            ViewCmd::Sort(mode) => {
-                self.ui.sort = mode;
-                self.save_ui();
-                self.refresh_groups();
-            }
+            ViewCmd::Sort(mode) => self.set_sort(mode, cx),
             ViewCmd::Show(filter) => self.set_install_filter(filter, cx),
-            ViewCmd::GroupByStatus => {
-                self.ui.group_by_status = !self.ui.group_by_status;
-                self.save_ui();
-                self.refresh_groups();
-            }
+            ViewCmd::Group(by) => self.set_group_by(by, cx),
             ViewCmd::GridView => self.set_grid_view(!self.ui.grid_view, cx),
             ViewCmd::ShowHidden => self.set_show_hidden(!self.ui.show_hidden, cx),
             ViewCmd::ClearFilters => {
                 self.ui.clear_facets();
                 self.ui.categories.clear();
+                self.ui.statuses.clear();
                 self.save_ui();
                 self.refresh_groups();
             }

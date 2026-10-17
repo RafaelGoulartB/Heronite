@@ -2,7 +2,6 @@
 //! facets and related games of `Collection/index.tsx`, `collectionFacets.ts`,
 //! `collectionTags.ts`, `relatedGames.ts` and `playtime.ts`.
 
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -10,6 +9,7 @@ use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 use crate::library::CollectionGame;
+use crate::organize::{compare_keyed, Keyed, Organize};
 use crate::models::{CollectionGameMetadata, CompletionStatus, GameInfo};
 use crate::status::{resolve_status_id, status_color, status_label, UNKNOWN_GROUP_ID};
 use crate::text::{facet_key, locale_cmp, locale_cmp_base, split_names, unique_names};
@@ -45,7 +45,8 @@ impl InstallFilter {
     }
 }
 
-/// `CollectionSort` (stored as `title` / `lastPlayed` / `playtime`).
+/// `CollectionSort` (stored as `title` / `lastPlayed` / `playtime`), and the
+/// sorts this app adds (see [`crate::organize`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SortMode {
     #[default]
@@ -55,16 +56,52 @@ pub enum SortMode {
     LastPlayed,
     #[serde(rename = "playtime")]
     Playtime,
+    /// Day the game entered the library.
+    #[serde(rename = "dateAdded")]
+    DateAdded,
+    /// Sessions recorded.
+    #[serde(rename = "timesPlayed")]
+    TimesPlayed,
+    #[serde(rename = "installSize")]
+    InstallSize,
+    #[serde(rename = "releaseDate")]
+    ReleaseDate,
+    /// The user's stars.
+    #[serde(rename = "rating")]
+    Rating,
+    #[serde(rename = "criticScore")]
+    CriticScore,
 }
 
 impl SortMode {
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "title" => Some(Self::Title),
-            "lastPlayed" => Some(Self::LastPlayed),
-            "playtime" => Some(Self::Playtime),
-            _ => None,
+    pub const ALL: [SortMode; 9] = [
+        SortMode::Title,
+        SortMode::LastPlayed,
+        SortMode::Playtime,
+        SortMode::DateAdded,
+        SortMode::TimesPlayed,
+        SortMode::InstallSize,
+        SortMode::ReleaseDate,
+        SortMode::Rating,
+        SortMode::CriticScore,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Title => "title",
+            Self::LastPlayed => "lastPlayed",
+            Self::Playtime => "playtime",
+            Self::DateAdded => "dateAdded",
+            Self::TimesPlayed => "timesPlayed",
+            Self::InstallSize => "installSize",
+            Self::ReleaseDate => "releaseDate",
+            Self::Rating => "rating",
+            Self::CriticScore => "criticScore",
         }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.as_str() == value)
     }
 }
 
@@ -79,11 +116,21 @@ pub enum FacetKind {
     /// Where the game comes from (Steam, Epic Games, added manually...);
     /// a game also owned on Steam is under Steam too.
     Store,
+    Theme,
+    Feature,
 }
 
 /// `FACET_KINDS`, in the order the filter menu lists them.
-pub const FACET_KINDS: [FacetKind; 6] =
-    [FacetKind::Store, FacetKind::Series, FacetKind::Developer, FacetKind::Publisher, FacetKind::Genre, FacetKind::Platform];
+pub const FACET_KINDS: [FacetKind; 8] = [
+    FacetKind::Store,
+    FacetKind::Series,
+    FacetKind::Developer,
+    FacetKind::Publisher,
+    FacetKind::Genre,
+    FacetKind::Theme,
+    FacetKind::Feature,
+    FacetKind::Platform,
+];
 
 impl FacetKind {
     pub fn index(self) -> usize {
@@ -98,6 +145,8 @@ impl FacetKind {
             Self::Genre => "genre",
             Self::Platform => "platform",
             Self::Store => "store",
+            Self::Theme => "theme",
+            Self::Feature => "feature",
         }
     }
 
@@ -106,19 +155,23 @@ impl FacetKind {
     }
 }
 
-/// `CollectionFacetFilters`: at most one selected value per kind.
+/// `CollectionFacetFilters`, with several values per kind: a game matches a
+/// kind when it has any of its values (Heronite kept one per kind).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FacetFilters {
-    pub series: Option<String>,
-    pub developer: Option<String>,
-    pub publisher: Option<String>,
-    pub genre: Option<String>,
-    pub platform: Option<String>,
-    pub store: Option<String>,
+    pub series: Vec<String>,
+    pub developer: Vec<String>,
+    pub publisher: Vec<String>,
+    pub genre: Vec<String>,
+    pub platform: Vec<String>,
+    pub store: Vec<String>,
+    pub theme: Vec<String>,
+    pub feature: Vec<String>,
 }
 
 impl FacetFilters {
-    pub fn get(&self, kind: FacetKind) -> Option<&str> {
+    pub fn get(&self, kind: FacetKind) -> &[String] {
         match kind {
             FacetKind::Series => &self.series,
             FacetKind::Developer => &self.developer,
@@ -126,11 +179,12 @@ impl FacetFilters {
             FacetKind::Genre => &self.genre,
             FacetKind::Platform => &self.platform,
             FacetKind::Store => &self.store,
+            FacetKind::Theme => &self.theme,
+            FacetKind::Feature => &self.feature,
         }
-        .as_deref()
     }
 
-    fn slot(&mut self, kind: FacetKind) -> &mut Option<String> {
+    fn slot(&mut self, kind: FacetKind) -> &mut Vec<String> {
         match kind {
             FacetKind::Series => &mut self.series,
             FacetKind::Developer => &mut self.developer,
@@ -138,20 +192,71 @@ impl FacetFilters {
             FacetKind::Genre => &mut self.genre,
             FacetKind::Platform => &mut self.platform,
             FacetKind::Store => &mut self.store,
+            FacetKind::Theme => &mut self.theme,
+            FacetKind::Feature => &mut self.feature,
         }
     }
 
     /// `hasFacetFilters`.
     pub fn is_active(&self) -> bool {
-        FACET_KINDS.iter().any(|k| self.get(*k).is_some_and(|v| !v.is_empty()))
+        FACET_KINDS.iter().any(|k| !self.get(*k).is_empty())
     }
 
-    /// `toggleFacetFilter`: selecting the active value clears it.
+    /// Selected values, all kinds together.
+    pub fn len(&self) -> usize {
+        FACET_KINDS.iter().map(|k| self.get(*k).len()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        !self.is_active()
+    }
+
+    /// Whether `value` is selected (same [`facet_key`]).
+    pub fn contains(&self, kind: FacetKind, value: &str) -> bool {
+        let key = facet_key(value);
+        self.get(kind).iter().any(|v| facet_key(v) == key)
+    }
+
+    /// `toggleFacetFilter`: adds the value, or removes it when selected.
     pub fn toggled(&self, kind: FacetKind, value: &str) -> Self {
         let mut next = self.clone();
-        let same = self.get(kind).is_some_and(|sel| !sel.is_empty() && facet_key(sel) == facet_key(value));
-        *next.slot(kind) = if same { None } else { Some(value.to_owned()) };
+        let key = facet_key(value);
+        let slot = next.slot(kind);
+        let before = slot.len();
+        slot.retain(|v| facet_key(v) != key);
+        if slot.len() == before && !key.is_empty() {
+            slot.push(value.trim().to_owned());
+        }
         next
+    }
+
+    pub fn clear_kind(&mut self, kind: FacetKind) {
+        self.slot(kind).clear();
+    }
+
+    /// Renames the selected values of `kind` named like `from` (by
+    /// [`facet_key`]) to `to`, or drops them (`None`). True when it changed.
+    pub fn rename_values(&mut self, kind: FacetKind, from: &[String], to: Option<&str>) -> bool {
+        let keys: HashSet<String> = from.iter().map(|v| facet_key(v)).collect();
+        let slot = self.slot(kind);
+        if !slot.iter().any(|v| keys.contains(&facet_key(v))) {
+            return false;
+        }
+        let mut next: Vec<String> = Vec::with_capacity(slot.len());
+        for v in slot.drain(..) {
+            let v = if keys.contains(&facet_key(&v)) { to.map(str::to_owned) } else { Some(v) };
+            if let Some(v) = v.filter(|v| !next.iter().any(|n| facet_key(n) == facet_key(v))) {
+                next.push(v);
+            }
+        }
+        *slot = next;
+        true
+    }
+
+    /// The same values per kind, in any order or spelling.
+    pub fn same_as(&self, other: &Self) -> bool {
+        let keys = |f: &Self, k: FacetKind| f.get(k).iter().map(|v| facet_key(v)).collect::<HashSet<_>>();
+        FACET_KINDS.iter().all(|k| keys(self, *k) == keys(other, *k))
     }
 }
 
@@ -163,7 +268,7 @@ pub struct FacetItem {
 }
 
 /// Facet values of a game, indexed by [`FacetKind::index`].
-pub type GameFacets = [Vec<FacetItem>; 6];
+pub type GameFacets = [Vec<FacetItem>; 8];
 
 fn items(values: Vec<String>) -> Vec<FacetItem> {
     values.into_iter().map(|value| FacetItem { key: facet_key(&value), value }).collect()
@@ -192,9 +297,20 @@ pub fn game_facets(game: &GameInfo, metadata: Option<&CollectionGameMetadata>) -
             unique_names(from_extra.iter().map(String::as_str))
         }
     };
-    let platforms = unique_names(metadata.map(|m| m.platforms.as_slice()).unwrap_or(&[]).iter().map(String::as_str));
+    let listed =
+        |list: fn(&CollectionGameMetadata) -> &[String]| unique_names(metadata.map(list).unwrap_or(&[]).iter().map(String::as_str));
+    let platforms = listed(|m| &m.platforms);
     // The stores are known from the overlay (`store_facet`).
-    [items(series), items(developers), items(publishers), items(genres), items(platforms), Vec::new()]
+    [
+        items(series),
+        items(developers),
+        items(publishers),
+        items(genres),
+        items(platforms),
+        Vec::new(),
+        items(listed(|m| &m.themes)),
+        items(listed(|m| &m.features)),
+    ]
 }
 
 /// Values of the Store facet: the game's source (a Steam entry, `steam-uri`,
@@ -220,17 +336,19 @@ pub fn store_facet(source: Option<&str>, runner: &str, steam_entry: bool, also_o
     items(values)
 }
 
-/// `matchesFacets`: every active kind must match one of the game's values.
+/// `matchesFacets`: every active kind must match one of the game's values
+/// (any of the selected ones).
 pub fn matches_facets(game: &CollectionGame, filters: &FacetFilters) -> bool {
     if !filters.is_active() {
         return true;
     }
-    FACET_KINDS.iter().all(|kind| match filters.get(*kind).filter(|v| !v.is_empty()) {
-        None => true,
-        Some(selected) => {
-            let wanted = facet_key(selected);
-            game.facets[kind.index()].iter().any(|item| item.key == wanted)
-        }
+    FACET_KINDS.iter().all(|kind| {
+        let selected = filters.get(*kind);
+        selected.is_empty()
+            || selected.iter().any(|s| {
+                let wanted = facet_key(s);
+                game.facets[kind.index()].iter().any(|item| item.key == wanted)
+            })
     })
 }
 
@@ -249,6 +367,8 @@ pub struct FacetOptions {
     pub genre: Vec<FacetOption>,
     pub platform: Vec<FacetOption>,
     pub store: Vec<FacetOption>,
+    pub theme: Vec<FacetOption>,
+    pub feature: Vec<FacetOption>,
 }
 
 impl FacetOptions {
@@ -260,13 +380,15 @@ impl FacetOptions {
             FacetKind::Genre => &self.genre,
             FacetKind::Platform => &self.platform,
             FacetKind::Store => &self.store,
+            FacetKind::Theme => &self.theme,
+            FacetKind::Feature => &self.feature,
         }
     }
 }
 
 /// `collectFacetOptions`: first spelling wins, sorted with `localeCompare`.
 pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
-    let mut buckets: [HashMap<&str, (usize, &str)>; 6] = Default::default();
+    let mut buckets: [HashMap<&str, (usize, &str)>; 8] = Default::default();
     // Preserve first-seen order only for the spelling; the output is sorted.
     for game in games {
         for kind in FACET_KINDS {
@@ -290,6 +412,8 @@ pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
         genre: finish(&buckets[3]),
         platform: finish(&buckets[4]),
         store: finish(&buckets[5]),
+        theme: finish(&buckets[6]),
+        feature: finish(&buckets[7]),
     }
 }
 
@@ -365,45 +489,6 @@ pub fn search_score(game: &CollectionGame, tokens: &[&str]) -> Option<i32> {
     crate::fuzzy::score_entry(tokens, &crate::fuzzy::Haystack { title: &title, alt, keywords: "" })
 }
 
-/// The sort comparator of `index.tsx`:
-/// - `playtime`: more minutes first; ties by title;
-/// - `lastPlayed`: most recent first, games never played last (ties by title);
-/// - always: title with `localeCompare`.
-///
-/// `descending` turns the sort's own key around; ties stay A-Z and games
-/// never played stay last.
-pub fn compare_games(a: &CollectionGame, b: &CollectionGame, sort: SortMode, descending: bool) -> Ordering {
-    let turn = |o: Ordering| if descending { o.reverse() } else { o };
-    if sort == SortMode::Playtime {
-        let delta = turn(b.playtime_minutes.cmp(&a.playtime_minutes));
-        if delta != Ordering::Equal {
-            return delta;
-        }
-    }
-    if sort == SortMode::LastPlayed {
-        let a_last = a.last_played.as_deref().unwrap_or("");
-        let b_last = b.last_played.as_deref().unwrap_or("");
-        if !a_last.is_empty() || !b_last.is_empty() {
-            if a_last.is_empty() {
-                return Ordering::Greater;
-            }
-            if b_last.is_empty() {
-                return Ordering::Less;
-            }
-            let delta = turn(b_last.cmp(a_last));
-            if delta != Ordering::Equal {
-                return delta;
-            }
-        }
-    }
-    let by_title = locale_cmp(&a.title, &b.title);
-    if sort == SortMode::Title {
-        turn(by_title)
-    } else {
-        by_title
-    }
-}
-
 /// Install filter + search + facets + the "only" switches, then sort
 /// (stable).
 pub fn filter_games(games: &[Game], query: &ViewQuery) -> Vec<Game> {
@@ -414,9 +499,26 @@ pub fn filter_games(games: &[Game], query: &ViewQuery) -> Vec<Game> {
 /// with an update). While searching, the best matches come first and the
 /// sort orders the ties.
 pub fn filter_games_where(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&CollectionGame) -> bool) -> Vec<Game> {
+    filter_games_organized(games, query, keep, &Organize::default())
+}
+
+/// [`filter_games_where`] with what the sorts kept outside the games read
+/// (ratings, dates added, sizes):
+/// - title: by [`sort_name`](crate::organize::sort_name);
+/// - the others: bigger and newer first, games without a value last (never
+///   played, not rated...), ties by title.
+///
+/// `descending` turns the sort's own key around; ties stay A-Z and games
+/// without a value stay last.
+pub fn filter_games_organized(
+    games: &[Game],
+    query: &ViewQuery,
+    keep: &dyn Fn(&CollectionGame) -> bool,
+    organize: &Organize,
+) -> Vec<Game> {
     let folded = crate::fuzzy::fold(query.search.trim());
     let tokens = crate::fuzzy::tokens(&folded);
-    let mut out: Vec<(i32, Game)> = games
+    let mut out: Vec<(i32, Keyed, Game)> = games
         .iter()
         .filter(|g| {
             query.install.matches(g.installed)
@@ -427,11 +529,11 @@ pub fn filter_games_where(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&Coll
         })
         .filter_map(|g| {
             let score = if tokens.is_empty() { Some(0) } else { search_score(g, &tokens) };
-            score.map(|s| (s, g.clone()))
+            score.map(|s| (s, Keyed::of(g, query.sort, organize), g.clone()))
         })
         .collect();
-    out.sort_by(|(sa, a), (sb, b)| sb.cmp(sa).then_with(|| compare_games(a, b, query.sort, query.descending)));
-    out.into_iter().map(|(_, g)| g).collect()
+    out.sort_by(|(sa, ka, _), (sb, kb, _)| sb.cmp(sa).then_with(|| compare_keyed(ka, kb, query.sort, query.descending)));
+    out.into_iter().map(|(_, _, g)| g).collect()
 }
 
 /// A section of the grouped list.
@@ -647,8 +749,13 @@ mod tests {
         assert_eq!(run(ViewQuery { facets: facets.clone(), ..Default::default() }), ["a", "b"]);
         let both = facets.toggled(FacetKind::Genre, "Puzzle");
         assert_eq!(run(ViewQuery { facets: both.clone(), ..Default::default() }), ["b"]);
-        // toggling the same value clears it
-        assert_eq!(both.toggled(FacetKind::Genre, " puzzle ").genre, None);
+        // several values of a kind add up; toggling one again removes it
+        let either = both.toggled(FacetKind::Genre, "Shooter");
+        assert_eq!(run(ViewQuery { facets: either.clone(), ..Default::default() }), ["a", "b"]);
+        assert_eq!(either.len(), 3);
+        assert!(either.contains(FacetKind::Genre, " shooter "));
+        assert!(either.same_as(&facets.toggled(FacetKind::Genre, "shooter").toggled(FacetKind::Genre, "PUZZLE")));
+        assert!(both.toggled(FacetKind::Genre, " puzzle ").genre.is_empty());
         assert!(!FacetFilters::default().is_active());
 
         let options = collect_facet_options(&games);
