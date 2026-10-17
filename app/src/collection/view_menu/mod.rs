@@ -47,6 +47,8 @@ pub(super) struct ViewMenu {
     renaming: Option<(usize, Entity<InputState>, Subscription)>,
     /// Height the menu may take below the header, in logical px.
     room: f32,
+    /// Small window: a narrower, denser panel (see `render::Density`).
+    compact: bool,
     /// `HERONITE_DEBUG_DROPDOWN=view:<text>`: typed on the next frame.
     pub debug_query: Option<String>,
     _sub: Subscription,
@@ -86,6 +88,7 @@ impl ViewMenu {
             editing: false,
             renaming: None,
             room: 600.,
+            compact: false,
             debug_query: None,
             _sub: sub,
         }
@@ -307,7 +310,9 @@ impl CollectionView {
     /// Per frame: a closed menu forgets what was typed; the placeholder
     /// follows the tokens.
     pub(super) fn sync_view_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.view_menu.room = (f32::from(window.viewport_size().height) - f32::from(theme::HEADER_H) - 24.).max(240.);
+        let viewport = window.viewport_size();
+        self.view_menu.room = (f32::from(viewport.height) - f32::from(theme::HEADER_H) - 24.).max(240.);
+        self.view_menu.compact = f32::from(viewport.height) < 900. || f32::from(viewport.width) < 1200.;
         if let Some(text) = self.view_menu.debug_query.take() {
             self.set_view_query(&text, window, cx);
         }

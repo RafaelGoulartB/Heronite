@@ -19,7 +19,34 @@ use crate::ui::dropdown::menu_panel;
 use crate::ui::fields::{select_menu_field, SelectOption};
 use crate::ui::icon;
 
-const W: f32 = 404.;
+/// Sizes of the panel: roomy, or `compact` in a small window (the menu then
+/// takes about a quarter less height and width).
+#[derive(Clone, Copy)]
+struct Density {
+    w: f32,
+    /// Inner padding of the panel's sections.
+    pad: f32,
+    /// Between sections.
+    gap: f32,
+    /// Between a section's title and its content.
+    head_gap: f32,
+    /// Vertical padding of a segment.
+    seg_py: f32,
+    text: f32,
+    /// Sort direction button.
+    dir: f32,
+    pill_h: f32,
+    pill_px: f32,
+    tile_py: f32,
+    tile_icon: f32,
+}
+
+impl Density {
+    const ROOMY: Density =
+        Density { w: 404., pad: 12., gap: 16., head_gap: 8., seg_py: 6., text: 13., dir: 36., pill_h: 30., pill_px: 11., tile_py: 9., tile_icon: 19. };
+    const COMPACT: Density =
+        Density { w: 360., pad: 10., gap: 11., head_gap: 6., seg_py: 4., text: 12.5, dir: 30., pill_h: 26., pill_px: 9., tile_py: 6., tile_icon: 16. };
+}
 
 /// The actions listed after the views in their select.
 #[derive(Clone, Copy)]
@@ -27,18 +54,25 @@ enum ViewAction {
     Save,
     Edit,
 }
-/// Inner padding of the panel's sections.
-const PAD: f32 = 12.;
 
 impl CollectionView {
+    fn vm_density(&self) -> Density {
+        if self.view_menu.compact {
+            Density::COMPACT
+        } else {
+            Density::ROOMY
+        }
+    }
+
     pub(in crate::collection) fn view_menu(&self, cx: &mut Context<Self>) -> AnyElement {
         let searching = !self.view_menu.query.trim().is_empty();
+        let d = self.vm_density();
         let body = div()
             .id("vm-body")
             .flex()
             .flex_col()
-            .gap(px(16.))
-            .p(px(PAD))
+            .gap(px(d.gap))
+            .p(px(d.pad))
             .min_h_0()
             .overflow_y_scroll()
             .children(searching.then(|| self.vm_results(cx)))
@@ -50,8 +84,8 @@ impl CollectionView {
                     .child(self.vm_only(cx))
                     .child(self.vm_browse(cx))
             });
-        menu_panel(W)
-            .w(px(W))
+        menu_panel(d.w)
+            .w(px(d.w))
             .p(px(0.))
             .gap(px(0.))
             .max_h(px(self.view_menu.room))
@@ -97,14 +131,14 @@ impl CollectionView {
         });
         div()
             .id("vm-query")
-            .m(px(PAD))
+            .m(px(self.vm_density().pad))
             .mb(px(0.))
             .flex()
             .flex_none()
             .flex_wrap()
             .items_center()
             .gap(px(6.))
-            .min_h(px(44.))
+            .min_h(px(if self.view_menu.compact { 38. } else { 44. }))
             .px(px(10.))
             .py(px(6.))
             .rounded(px(theme::R_TILE))
@@ -232,7 +266,7 @@ impl CollectionView {
         });
         let header = section_head(tr!("Presets")).children(done);
         let body = if editing { self.vm_views_edit(cx) } else { self.vm_views_select(cx) };
-        div().flex().flex_col().gap(px(8.)).child(header).child(body)
+        div().flex().flex_col().gap(px(self.vm_density().head_gap)).child(header).child(body)
     }
 
     /// The presets in a select (the one shown now, else "Custom"), with "Save
@@ -395,9 +429,10 @@ impl CollectionView {
             (SortMode::LastPlayed, tr!("Last played"), Icon::History),
             (SortMode::Playtime, tr!("Playtime"), Icon::AccessTime),
         ];
+        let d = self.vm_density();
         let seg = seg_track("vm-sort").children(items.into_iter().map(|(mode, label, ic)| {
             let on = self.ui.sort == mode;
-            seg_item(("vm-sort", mode as usize), on)
+            seg_item(("vm-sort", mode as usize), on, d)
                 .child(icon(ic, px(15.), if on { white().into() } else { theme::seg_text() }))
                 .child(label)
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -414,14 +449,14 @@ impl CollectionView {
             .flex_none()
             .items_center()
             .justify_center()
-            .size(px(36.))
+            .size(px(d.dir))
             .rounded_full()
             .bg(theme::seg_track())
             .cursor_pointer()
             .hover(|s| s.bg(theme::white_a(0.12)))
             .child(icon(if descending { Icon::ArrowDownward } else { Icon::ArrowUpward }, px(17.), theme::text_primary()))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
-        section(tr!("Sort")).child(div().flex().items_center().gap(px(6.)).child(seg.flex_1()).child(dir))
+        section(tr!("Sort"), d).child(div().flex().items_center().gap(px(6.)).child(seg.flex_1()).child(dir))
     }
 
     fn vm_group(&self, cx: &mut Context<Self>) -> Div {
@@ -441,10 +476,11 @@ impl CollectionView {
                 }
             })
         };
-        section(tr!("Group by")).child(
+        let d = self.vm_density();
+        section(tr!("Group by"), d).child(
             seg_track("vm-group")
-                .child(seg_item("vm-group-none", !grouped).child(tr!("None")).on_click(set(false)))
-                .child(seg_item("vm-group-status", grouped).child(dots).child(tr!("Status")).on_click(set(true))),
+                .child(seg_item("vm-group-none", !grouped, d).child(tr!("None")).on_click(set(false)))
+                .child(seg_item("vm-group-status", grouped, d).child(dots).child(tr!("Status")).on_click(set(true))),
         )
     }
 
@@ -455,9 +491,10 @@ impl CollectionView {
             (InstallFilter::Installed, tr!("Installed"), installed),
             (InstallFilter::Uninstalled, tr!("Not installed"), all - installed),
         ];
-        section(tr!("Show")).child(seg_track("vm-show").children(items.into_iter().map(|(f, label, n)| {
+        let d = self.vm_density();
+        section(tr!("Show"), d).child(seg_track("vm-show").children(items.into_iter().map(|(f, label, n)| {
             let on = self.ui.install_filter == f;
-            seg_item(("vm-show", f as usize), on)
+            seg_item(("vm-show", f as usize), on, d)
                 .child(label)
                 .child(div().text_size(px(11.)).text_color(if on { theme::text_primary() } else { theme::text_dim() }).child(n.to_string()))
                 .on_click(cx.listener(move |this, _, _, cx| this.set_install_filter(f, cx)))
@@ -471,17 +508,18 @@ impl CollectionView {
             (Pick::Only(Only::Offline), tr!("Offline"), Icon::WifiOff, self.ui.only.offline),
             (Pick::Hidden, tr!("Hidden"), Icon::VisibilityOff, self.ui.show_hidden),
         ];
-        let tile_w = (W - PAD * 2. - 18.) / 4.;
-        section(tr!("Only")).child(div().flex().gap(px(6.)).children(tiles.into_iter().enumerate().map(|(i, (pick, label, ic, on))| {
+        let d = self.vm_density();
+        let tile_w = (d.w - d.pad * 2. - 18.) / 4.;
+        section(tr!("Only"), d).child(div().flex().gap(px(6.)).children(tiles.into_iter().enumerate().map(|(i, (pick, label, ic, on))| {
             div()
                 .id(("vm-only", i))
                 .flex()
                 .flex_col()
                 .items_center()
-                .gap(px(6.))
+                .gap(px(d.tile_py - 3.))
                 .w(px(tile_w))
-                .pt(px(10.))
-                .pb(px(8.))
+                .pt(px(d.tile_py + 1.))
+                .pb(px(d.tile_py - 1.))
                 .rounded(px(12.))
                 .border_1()
                 .border_color(if on { theme::accent_tint_border() } else { theme::white_a(0.) })
@@ -490,7 +528,7 @@ impl CollectionView {
                 .hover(|s| s.bg(theme::white_a(0.09)))
                 .text_size(px(11.5))
                 .text_color(if on { white().into() } else { theme::text_muted() })
-                .child(icon(ic, px(19.), if on { theme::accent() } else { theme::text_primary() }))
+                .child(icon(ic, px(d.tile_icon), if on { theme::accent() } else { theme::text_primary() }))
                 .child(label)
                 .on_click(cx.listener(move |this, _, _, cx| this.apply_pick(&pick, cx)))
         })))
@@ -498,8 +536,9 @@ impl CollectionView {
 
     fn vm_browse(&self, cx: &mut Context<Self>) -> Div {
         let kinds = Kind::ALL.into_iter().filter(|k| *k != Kind::Only && (*k != Kind::Category || !self.categories.is_empty()));
-        section(tr!("Browse")).child(div().flex().flex_wrap().gap(px(6.)).children(kinds.enumerate().map(|(i, kind)| {
-            pill(("vm-browse", i)).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
+        let d = self.vm_density();
+        section(tr!("Browse"), d).child(div().flex().flex_wrap().gap(px(6.)).children(kinds.enumerate().map(|(i, kind)| {
+            pill(("vm-browse", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
                 move |this, _, window, cx| {
                     let text = choices::scoped_query(kind, "");
                     this.set_view_query(&text, window, cx);
@@ -518,7 +557,7 @@ impl CollectionView {
             .items_center()
             .gap(px(10.))
             .px(px(16.))
-            .py(px(10.))
+            .py(px(if self.view_menu.compact { 7. } else { 10. }))
             .border_t_1()
             .border_color(theme::white_a(0.08))
             .text_size(px(12.5))
@@ -545,8 +584,8 @@ impl CollectionView {
 }
 
 /// Section of the panel: small uppercase label above its content.
-fn section(label: &'static str) -> Div {
-    div().flex().flex_col().gap(px(8.)).child(section_head(label))
+fn section(label: &'static str, d: Density) -> Div {
+    div().flex().flex_col().gap(px(d.head_gap)).child(section_head(label))
 }
 
 /// A section's label row (room for an action on the right).
@@ -587,23 +626,23 @@ fn icon_button(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Di
 }
 
 /// Faint 30px pill of the Views and Browse rows (as the header's chips).
-fn pill(id: impl Into<ElementId>) -> Stateful<Div> {
+fn pill(id: impl Into<ElementId>, d: Density) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(6.))
-        .h(px(30.))
-        .px(px(11.))
-        .max_w(px(W - PAD * 2.))
+        .gap(px(d.pill_px - 5.))
+        .h(px(d.pill_h))
+        .px(px(d.pill_px))
+        .max_w(px(d.w - d.pad * 2.))
         .rounded_full()
         .border_1()
         .border_color(theme::white_a(0.))
         .bg(theme::white_a(0.05))
         .cursor_pointer()
         .hover(|s| s.bg(theme::white_a(0.1)))
-        .text_size(px(12.5))
+        .text_size(px(d.text - 0.5))
         .text_color(theme::text_primary())
 }
 
@@ -652,7 +691,7 @@ fn seg_track(id: &'static str) -> Stateful<Div> {
     div().id(id).flex().items_center().gap(px(2.)).p(px(3.)).rounded_full().bg(theme::seg_track())
 }
 
-fn seg_item(id: impl Into<ElementId>, on: bool) -> Stateful<Div> {
+fn seg_item(id: impl Into<ElementId>, on: bool, d: Density) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -661,10 +700,10 @@ fn seg_item(id: impl Into<ElementId>, on: bool) -> Stateful<Div> {
         .items_center()
         .justify_center()
         .gap(px(6.))
-        .py(px(6.))
+        .py(px(d.seg_py))
         .px(px(8.))
         .rounded_full()
-        .text_size(px(13.))
+        .text_size(px(d.text))
         .whitespace_nowrap()
         .cursor_pointer()
         .text_color(if on { white() } else { theme::seg_text().into() })
