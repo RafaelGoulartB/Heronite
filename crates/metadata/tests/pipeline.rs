@@ -274,6 +274,51 @@ fn apply_preview_refuses_a_preview_with_nothing_online_and_writes_nothing() {
 }
 
 #[test]
+fn a_title_edited_after_a_fetch_needs_the_collection_title_too() {
+    use heronite_data::library::Library;
+    use heronite_data::sideload::{save_game, SideloadPlatform, SideloadSpec};
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let (server, _) = mock();
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    svc.apply_game_metadata(&args("steam_620", "Portal 2")).unwrap();
+    let shown = |paths: &DataPaths| Library::load(paths).unwrap().get("sideload_steam_620").unwrap().title.clone();
+    assert_eq!(shown(&paths), "Portal 2");
+
+    // What "Edit game" saves: the sideload entry...
+    let spec = SideloadSpec {
+        app_name: "steam_620".into(),
+        title: "Portal Two".into(),
+        executable: "/games/portal2".into(),
+        platform: SideloadPlatform::Linux,
+        art_cover: String::new(),
+        art_square: String::new(),
+        browser_url: String::new(),
+        custom_user_agent: String::new(),
+        launch_full_screen: false,
+        run_as: None,
+        install: false,
+        install_folder: String::new(),
+        command: String::new(),
+    };
+    save_game(&paths, &spec).unwrap();
+    assert_eq!(shown(&paths), "Portal 2", "the fetched title still wins on its own");
+
+    // ...and the Collection title.
+    let patch =
+        DetailsPatch { app_name: "steam_620".into(), runner: "sideload".into(), title: Some("Portal Two".into()), ..Default::default() };
+    heronite_metadata::edit::update_collection_game_details(&paths, &patch).unwrap();
+    assert_eq!(shown(&paths), "Portal Two");
+
+    // A later automatic fetch keeps the user's title.
+    let mut again = args("steam_620", "Portal Two");
+    again.overwrite_existing = Some(true);
+    svc.apply_game_metadata(&again).unwrap();
+    assert_eq!(shown(&paths), "Portal Two");
+}
+
+#[test]
 fn igdb_401_refreshes_the_token_once() {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());
