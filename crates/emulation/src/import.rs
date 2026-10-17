@@ -14,7 +14,7 @@ use heronite_i18n::tr;
 use serde_json::{json, Value};
 
 use crate::pathutil::{dirname, normalize_key};
-use crate::scan::preview_rom_scan;
+use crate::scan::{imported_with, live_emulator_ids, orphaned, preview_rom_scan};
 use crate::sha1::sha1_hex;
 use crate::store::{self, resolve_template};
 use crate::types::{RomScanArgs, RomScanImportArgs, RomScanImportResult, RomScanItem, UpsertRomScannerArgs};
@@ -25,20 +25,23 @@ pub fn emu_app_name(emulator_id: &str, profile_id: &str, key: &str) -> String {
     format!("emu_{}", &hash[..16])
 }
 
-/// `findExisting`: the imported game that already owns one of these ROMs.
-fn find_existing<'a>(metas: &'a LocalMetaFile, emulator_id: &str, profile_id: &str, item: &RomScanItem) -> Option<&'a LocalGameMeta> {
+/// `findExisting`: the imported game that already owns one of these ROMs,
+/// else one whose emulator was removed ([`orphaned`]), which is re-linked.
+fn find_existing<'a>(
+    metas: &'a LocalMetaFile,
+    emulator_id: &str,
+    profile_id: &str,
+    live: &std::collections::HashSet<String>,
+    item: &RomScanItem,
+) -> Option<&'a LocalGameMeta> {
     let keys: std::collections::HashSet<String> = item.roms.iter().map(|r| normalize_key(&r.path)).collect();
-    metas.games.values().find(|meta| {
-        if meta.emulator_id.as_deref() != Some(emulator_id) {
-            return false;
-        }
-        if let Some(p) = meta.emulator_profile_id.as_deref().filter(|p| !p.is_empty()) {
-            if p != profile_id {
-                return false;
-            }
-        }
-        meta.roms.iter().flatten().any(|r| keys.contains(&normalize_key(&r.path)))
-    })
+    let owns = |meta: &&LocalGameMeta| meta.roms.iter().flatten().any(|r| keys.contains(&normalize_key(&r.path)));
+    metas
+        .games
+        .values()
+        .filter(owns)
+        .find(|meta| imported_with(meta, emulator_id, profile_id))
+        .or_else(|| metas.games.values().filter(owns).find(|meta| meta.source == "emulator" && orphaned(meta, live)))
 }
 
 /// Shallow merge into `sideload_apps/library.json` `games` like
@@ -120,11 +123,12 @@ pub fn import_scanned_roms(paths: &DataPaths, args: &RomScanImportArgs) -> Resul
     let statuses = load_statuses(paths)?;
     let not_played = inferred_status_id(0.0, &statuses);
 
+    let live = live_emulator_ids(paths)?;
     let mut metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let mut sideload_games: Vec<Value> = vec![];
     let mut seeded: Vec<String> = vec![];
     for item in selected {
-        let existing = find_existing(&metas, &emulator.id, &profile.id, item).cloned();
+        let existing = find_existing(&metas, &emulator.id, &profile.id, &live, item).cloned();
         let mut identity: Vec<String> = item.roms.iter().map(|r| normalize_key(&r.path)).collect();
         identity.sort();
         let app_name =
@@ -445,6 +449,43 @@ mod tests {
         let side = json_store::read_value(&paths.sideload_library()).unwrap();
         assert_eq!(side["games"].as_array().unwrap().len(), 2);
         assert_eq!(side["games"][0]["art_cover"], "https://art/1.png");
+    }
+
+    #[test]
+    fn an_emulator_removed_and_added_again_finds_its_games() {
+        let (_h, paths, roms, e, p) = setup();
+        let dir = roms.path().to_str().unwrap();
+        let import = |e: &str, p: &str| {
+            let games = scan(&paths, e, p, dir);
+            import_scanned_roms(
+                &paths,
+                &RomScanImportArgs { emulator_id: e.into(), profile_id: p.into(), directory: dir.into(), games, ..Default::default() },
+            )
+            .unwrap()
+        };
+        assert_eq!(import(&e, &p).imported, 2);
+        let before: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+
+        store::remove_user_emulator(&paths, &e).unwrap();
+        let again = store::upsert_user_emulator(
+            &paths,
+            UpsertUserEmulatorArgs {
+                definition_id: "pcsx2".into(),
+                name: "PCSX2".into(),
+                executable: "/opt/pcsx2".into(),
+                launch_kind: "native".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_ne!(again.id, e);
+        let r = import(&again.id, &again.profiles[0].id);
+        assert_eq!((r.imported, r.updated), (0, 2), "re-linked, not added twice");
+        let after: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        let names = |m: &LocalMetaFile| m.games.keys().cloned().collect::<Vec<_>>();
+        assert_eq!(names(&after), names(&before));
+        assert!(after.games.values().all(|m| m.emulator_id.as_deref() == Some(again.id.as_str())));
+        assert_eq!(json_store::read_value(&paths.sideload_library()).unwrap()["games"].as_array().unwrap().len(), 2);
     }
 
     #[test]

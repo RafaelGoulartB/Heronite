@@ -63,6 +63,22 @@ pub fn rom_disc_label(original: &str) -> Option<String> {
     })
 }
 
+/// The name of a ROM file without its extension and its disc/disk/side
+/// property (`FF7 (USA) (Disc 2).bin` → `FF7 (USA)`): what the discs of one
+/// game share, while regions and revisions stay apart.
+pub fn name_without_disc(file_name: &str) -> String {
+    let base = strip_ext(file_name);
+    let kept = props_re().replace_all(&base, |caps: &regex::Captures| {
+        let whole = caps.get(0).map_or("", |m| m.as_str());
+        if rom_disc_label(whole).is_some() {
+            String::new()
+        } else {
+            whole.to_string()
+        }
+    });
+    ws_re().replace_all(&kept, " ").trim().to_string()
+}
+
 /// `titleFromRomPath(fileName)`.
 pub fn title_from_rom_path(file_name: &str) -> String {
     let base = ext_re().replace(file_name, "").to_string();
@@ -98,6 +114,14 @@ mod tests {
         assert_eq!(rom_disc_label("Game (Side B)").as_deref(), Some("Side B"));
         assert_eq!(rom_disc_label("Game (Discovery)"), None);
         assert_eq!(rom_disc_label("Game (USA)"), None);
+    }
+
+    #[test]
+    fn discs_share_a_name_regions_do_not() {
+        assert_eq!(name_without_disc("FF7 (USA) (Disc 2).bin"), "FF7 (USA)");
+        assert_eq!(name_without_disc("FF7 (USA) [Disk 1] (Rev 1).bin"), "FF7 (USA) (Rev 1)");
+        assert_eq!(name_without_disc("Zelda (Europe).iso"), "Zelda (Europe)");
+        assert_eq!(name_without_disc("Game (Discovery).iso"), "Game (Discovery)");
     }
 
     #[test]
