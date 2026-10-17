@@ -142,14 +142,8 @@ impl CollectionView {
         if !first && self.lib.as_ref().is_some_and(|lib| lib.games.len() > before) {
             self.fill_metadata_now(cx);
         }
-        // Rebuilding the rows resets the list to the top; a reload (a dialog
-        // saved, the files changed on disk) keeps the user's place.
-        let scroll = (!first).then(|| self.list_state.logical_scroll_top());
         self.refresh_groups();
         self.prune_selection();
-        if let (Some(top), Some(last)) = (scroll, self.items.len().checked_sub(1)) {
-            self.list_state.scroll_to(ListOffset { item_ix: top.item_ix.min(last), offset_in_item: top.offset_in_item });
-        }
         let focused = if first {
             crate::env::value("HERONITE_DEBUG_SELECT").or_else(|| self.ui.focused_game.clone())
         } else {

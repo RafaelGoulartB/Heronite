@@ -53,6 +53,7 @@ impl CollectionView {
             if value != this.search {
                 this.search = value;
                 this.refresh_groups();
+                this.scroll_list_to_top();
                 cx.notify();
             }
         })
@@ -285,6 +286,7 @@ impl CollectionView {
                             this.search_input.update(cx, |s, cx| s.set_value("", window, cx));
                             this.search.clear();
                             this.refresh_groups();
+                            this.scroll_list_to_top();
                             cx.notify();
                         })),
                 )

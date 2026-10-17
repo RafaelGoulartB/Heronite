@@ -189,13 +189,38 @@ impl CollectionView {
     }
 
     fn set_groups(&mut self, groups: Vec<GroupVm>) {
+        // The anchor reads the rows of the groups that are about to go.
+        let anchor = self.scroll_anchor();
         self.groups = groups;
-        self.rebuild_items();
+        self.rebuild_with(anchor);
     }
 
     pub(super) fn rebuild_items(&mut self) {
+        let anchor = self.scroll_anchor();
+        self.rebuild_with(anchor);
+    }
+
+    fn scroll_anchor(&self) -> Option<vm::ScrollAnchor> {
+        let top = self.list_state.logical_scroll_top();
+        vm::scroll_anchor(&self.items, &self.groups, top.item_ix, top.offset_in_item)
+    }
+
+    /// Rebuilds the rows and keeps the user's place: the list state is reset
+    /// (the row heights changed), which would send it to the top, so the
+    /// anchored card or header is scrolled back to.
+    fn rebuild_with(&mut self, anchor: Option<vm::ScrollAnchor>) {
         self.items = vm::build_items(&self.groups, self.columns);
         self.list_state.reset(self.items.len());
+        let place = anchor.and_then(|a| vm::resolve_anchor(&self.items, &self.groups, self.columns, &a));
+        if let Some((item_ix, offset_in_item)) = place {
+            self.list_state.scroll_to(ListOffset { item_ix, offset_in_item });
+        }
+    }
+
+    /// Back to the first row: a new search is a new list, not the old one
+    /// narrowed down.
+    pub(super) fn scroll_list_to_top(&self) {
+        self.list_state.scroll_to(ListOffset { item_ix: 0, offset_in_item: px(0.) });
     }
 
     /// Scrolls the list so the selected card's row is visible
