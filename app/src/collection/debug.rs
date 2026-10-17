@@ -10,7 +10,7 @@ use super::{context_menu, CollectionView};
 impl CollectionView {
     /// `HERONITE_DEBUG_MENU=<card key>` opens its context menu (with the
     /// status flyout; `HERONITE_DEBUG_MENU_CATEGORIES=1` for the categories
-    /// one), `HERONITE_DEBUG_DROPDOWN=view|nav` opens a header menu
+    /// one, `HERONITE_DEBUG_MENU_MANAGE=1` for Manage installation's), `HERONITE_DEBUG_DROPDOWN=view|nav` opens a header menu
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
     /// that search typed; `views`: its views in edit mode; `views-select`:
     /// their select open), `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
@@ -37,8 +37,10 @@ impl CollectionView {
                 key: key.into(),
                 position: point(px(200.), px(160.)),
                 status_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_none()
-                    && crate::env::value("HERONITE_DEBUG_MENU_CATEGORIES").is_none(),
+                    && crate::env::value("HERONITE_DEBUG_MENU_CATEGORIES").is_none()
+                    && crate::env::value("HERONITE_DEBUG_MENU_MANAGE").is_none(),
                 install_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_some(),
+                manage_open: crate::env::value("HERONITE_DEBUG_MENU_MANAGE").is_some(),
                 categories_open: crate::env::value("HERONITE_DEBUG_MENU_CATEGORIES").is_some(),
             });
         }

@@ -228,22 +228,20 @@ impl CollectionView {
         }
     }
 
-    /// Details, Backup save (Ludusavi), Uninstall and Remove from Collection
-    /// (the order of `CollectionCard`'s menu), and Edit playtime for the
-    /// palette (the time played is edited in the game settings).
+    /// Backup save (Ludusavi), Uninstall and Remove from Collection, and for
+    /// the palette only Details (the store page) and Edit playtime (the time
+    /// played is edited in the game settings).
     pub(super) fn extras_actions(&self, game: &CollectionGame) -> Vec<GameActionItem> {
         use GameAction as A;
         let item = GameActionItem::new;
         let tracking = self.playing.contains_key(&game.app_name);
         let mut v = Vec::new();
         if details_url(game).is_some() {
-            v.push(item(
-                A::Details,
-                "details",
-                tr!("Details"),
-                Icon::OpenInNew,
-                "store page website browser loja pagina site navegador detalhes",
-            ));
+            // Palette only: the store page is a rare stop.
+            v.push(
+                item(A::Details, "details", tr!("Details"), Icon::OpenInNew, "store page website browser loja pagina site navegador detalhes")
+                    .palette_only(),
+            );
         }
         if !tracking {
             v.push(
@@ -251,7 +249,7 @@ impl CollectionView {
                     .palette_only(),
             );
         }
-        v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save (Ludusavi)"), Icon::Save, "saves backup salvamentos jogos salvos"));
+        v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save"), Icon::Save, "saves backup ludusavi salvamentos jogos salvos"));
         if game.steam_launch_id.is_some() && game.installed && !tracking {
             v.push(item(
                 A::SteamUninstall,

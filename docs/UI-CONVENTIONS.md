@@ -169,7 +169,10 @@ until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|ca
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
 Collection's context menu (`collection/context_menu.rs::item`/`paper`) uses the
-same look; other context-menu rows must call `context_menu::item`.
+same look and groups a game's rows with separators (`menu_place`): Play (and the other ways to play or install);
+Status, Categories, favourite, hide, recent; Settings, the folder, the save backup; "Manage installation ›" (the store's verify,
+modify, move, relocate, EOS in a flyout; a single one stays a plain row); shortcuts; uninstall / remove; View log; Select multiple. A new menu action gets a
+place there; rare ones (store page, metadata, playtime, cloud sync) stay in the palette only (`palette_only`); other context-menu rows must call `context_menu::item`.
 
 **Dialogs** (`ui::dialog`): `dialog(DialogProps, body, footer, on_close)` = glass
 modal (radius 26, title Rubik 22, round close button, Collection darkened by

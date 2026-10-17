@@ -6,7 +6,7 @@ use gpui_kit::*;
 use heronite_data::status::{set_game_status, SetStatusExtras};
 use heronite_data::{CollectionGame, Library};
 
-use super::game_actions::GameActionItem;
+use super::game_actions::{GameAction, GameActionItem};
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
@@ -21,8 +21,56 @@ pub(super) struct ContextMenuState {
     pub install_open: bool,
     /// Flyout of the Categories row.
     pub categories_open: bool,
+    /// Flyout of "Manage installation" (the store's install actions).
+    pub manage_open: bool,
     /// Opened on a selected game: the menu acts on the whole selection.
     pub batch: bool,
+}
+
+/// Groups of a game's context menu, in order: play, organize (status,
+/// categories, favourite, hidden), the game, its installation, shortcuts,
+/// removing it, the log, then "Select multiple".
+const GROUPS: usize = 8;
+
+/// The store's install actions (verify, modify, move...): one "Manage
+/// installation" row with a flyout.
+const INSTALL_GROUP: usize = 3;
+
+/// Group and place in the group of an action in the context menu.
+fn menu_place(action: &GameAction) -> (usize, u8) {
+    use super::epic::EpicAction as E;
+    use GameAction as A;
+    match action {
+        A::Primary | A::PlayWith(_) | A::User(_) | A::EditActions | A::InstallWay(_) => (0, 0),
+        A::SteamPlay => (0, 1),
+        A::SteamInstall => (0, 2),
+        A::Epic(E::Update) => (0, 3),
+        A::Epic(E::ShowInDownloads) => (0, 4),
+        A::Epic(E::Import) => (0, 5),
+        A::PlayAsPc => (0, 6),
+        A::Status(_) | A::Category { .. } => (1, 0),
+        A::Favourite => (1, 1),
+        A::Hide => (1, 2),
+        A::RemoveRecent => (1, 3),
+        A::Settings => (2, 0),
+        A::EditGame => (2, 1),
+        A::OpenFolder => (2, 2),
+        A::Ludusavi => (2, 3),
+        A::Details | A::Metadata | A::EditPlaytime | A::Epic(E::Sync) => (2, 4),
+        A::Epic(E::Verify) => (3, 0),
+        A::Epic(E::Modify) => (3, 1),
+        A::Epic(E::Move) => (3, 2),
+        A::Epic(E::Relocate) => (3, 3),
+        A::Epic(E::Eos) => (3, 4),
+        A::Epic(E::Forget) => (3, 5),
+        A::Shortcuts { .. } => (4, 0),
+        A::Steam { .. } => (4, 1),
+        A::Epic(E::Uninstall) => (5, 0),
+        A::SteamUninstall => (5, 1),
+        A::LocalUninstall => (5, 2),
+        A::RemoveFromCollection => (5, 3),
+        A::Log => (6, 0),
+    }
 }
 
 pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
@@ -64,7 +112,7 @@ impl CollectionView {
         let batch = self.sel.contains(&key);
         self.sel.pop = None;
         self.context_menu =
-            Some(ContextMenuState { key, position, status_open: false, install_open: false, categories_open: false, batch });
+            Some(ContextMenuState { key, position, status_open: false, install_open: false, categories_open: false, manage_open: false, batch });
         cx.notify();
     }
 
@@ -102,8 +150,8 @@ impl CollectionView {
         let lib = self.lib.clone()?;
         let game = lib.get(&state.key)?.clone();
         let key = state.key.clone();
-        let (position, status_open, install_open, categories_open) =
-            (state.position, state.status_open, state.install_open, state.categories_open);
+        let (position, status_open, install_open, categories_open, manage_open) =
+            (state.position, state.status_open, state.install_open, state.categories_open, state.manage_open);
         let playing = self.playing.contains_key(&game.app_name);
         let viewport = window.viewport_size();
         let flyout_left = f32::from(viewport.width - position.x) < 280. + 240.;
@@ -112,16 +160,34 @@ impl CollectionView {
             return Some(Self::menu_backdrop(menu, position, cx));
         }
 
-        let mut menu = paper().min_w(px(240.));
-        menu = menu.child(Self::status_row(&lib, &game, &key, status_open, flyout_left, cx));
-        menu = menu.child(self.categories_row(&game, &key, categories_open, flyout_left, cx));
-        menu = menu.child(self.primary_row(&game, &key, playing, install_open, flyout_left, cx));
+        // Rows by group (see `menu_place`); separators between the groups.
+        let mut groups: [Vec<AnyElement>; GROUPS] = Default::default();
+        groups[0].push(self.primary_row(&game, &key, playing, install_open, flyout_left, cx).into_any_element());
+        groups[1].push(Self::status_row(&lib, &game, &key, status_open, flyout_left, cx).into_any_element());
+        groups[1].push(self.categories_row(&game, &key, categories_open, flyout_left, cx).into_any_element());
         // Everything else comes from the game's action list (shared with the
         // command palette, see `game_actions.rs`).
-        for a in self.game_actions(&game, cx).into_iter().filter(|a| a.in_menu) {
-            menu = menu.child(Self::action_row(&key, a, cx));
+        let mut actions: Vec<GameActionItem> = self.game_actions(&game, cx).into_iter().filter(|a| a.in_menu).collect();
+        actions.sort_by_key(|a| menu_place(&a.action));
+        let (install, actions): (Vec<_>, Vec<_>) = actions.into_iter().partition(|a| menu_place(&a.action).0 == INSTALL_GROUP);
+        for a in actions {
+            let (group, _) = menu_place(&a.action);
+            groups[group].push(Self::action_row(&key, a, true, cx).into_any_element());
         }
-        menu = menu.child(crate::ui::dropdown::menu_separator()).child(self.select_row(&key, cx));
+        // The store's install actions share one row; a single one stays a plain row.
+        match install.len() {
+            0 => {}
+            1 => groups[INSTALL_GROUP].extend(install.into_iter().map(|a| Self::action_row(&key, a, true, cx).into_any_element())),
+            _ => groups[INSTALL_GROUP].push(self.manage_row(&key, install, manage_open, flyout_left, cx).into_any_element()),
+        }
+        groups[GROUPS - 1].push(self.select_row(&key, cx).into_any_element());
+        let mut menu = paper().min_w(px(240.));
+        for (i, rows) in groups.into_iter().filter(|g| !g.is_empty()).enumerate() {
+            if i > 0 {
+                menu = menu.child(crate::ui::dropdown::menu_separator());
+            }
+            menu = menu.children(rows);
+        }
         Some(Self::menu_backdrop(menu, position, cx))
     }
 
@@ -132,10 +198,11 @@ impl CollectionView {
         let k = key.clone();
         item("cm-select")
             .on_hover(cx.listener(|this, h: &bool, _, cx| {
-                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open)) {
+                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open || m.manage_open)) {
                     m.status_open = false;
                     m.install_open = false;
                     m.categories_open = false;
+                    m.manage_open = false;
                     cx.notify();
                 }
             }))
@@ -270,6 +337,7 @@ impl CollectionView {
                             m.status_open = true;
                             m.install_open = false;
                             m.categories_open = false;
+                            m.manage_open = false;
                         }
                         cx.notify();
                     }
@@ -314,6 +382,7 @@ impl CollectionView {
                             m.categories_open = true;
                             m.status_open = false;
                             m.install_open = false;
+                            m.manage_open = false;
                         }
                         cx.notify();
                     }
@@ -380,6 +449,7 @@ impl CollectionView {
                         m.status_open = false;
                         m.install_open = more;
                         m.categories_open = false;
+                        m.manage_open = false;
                     }
                     cx.notify();
                 }
@@ -400,15 +470,48 @@ impl CollectionView {
         wrap
     }
 
-    /// One plain row: hovering it folds the flyouts, a click runs the action.
-    fn action_row(key: &SharedString, a: GameActionItem, cx: &mut Context<Self>) -> Stateful<Div> {
+    /// "Manage installation" with the store's install actions in a flyout.
+    fn manage_row(&self, key: &SharedString, actions: Vec<GameActionItem>, open: bool, flyout_left: bool, cx: &mut Context<Self>) -> Div {
+        let mut row = div().relative().child(
+            item("cm-manage")
+                .child(icon(Icon::Build, px(18.), theme::text_muted()))
+                .child(tr!("Manage installation"))
+                .child(div().flex_1())
+                .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()))
+                .on_hover(cx.listener(|this, h: &bool, _, cx| {
+                    if *h {
+                        if let Some(m) = this.context_menu.as_mut() {
+                            m.manage_open = true;
+                            m.status_open = false;
+                            m.install_open = false;
+                            m.categories_open = false;
+                        }
+                        cx.notify();
+                    }
+                })),
+        );
+        if open {
+            let rows: Vec<Stateful<Div>> = actions.into_iter().map(|a| Self::action_row(key, a, false, cx)).collect();
+            let fly = paper().min_w(px(240.)).children(rows);
+            row = row.child(place_flyout(div().absolute().top(px(-6.)).occlude().child(fly), flyout_left));
+        }
+        row
+    }
+
+    /// One plain row: a click runs the action. In the menu itself (`fold`)
+    /// hovering it folds the open flyouts; rows inside a flyout keep it open.
+    fn action_row(key: &SharedString, a: GameActionItem, fold: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let (k, action) = (key.clone(), a.action);
         item(SharedString::from(format!("cm-{}", a.id)))
-            .on_hover(cx.listener(|this, h: &bool, _, cx| {
-                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open)) {
+            .on_hover(cx.listener(move |this, h: &bool, _, cx| {
+                if !fold {
+                    return;
+                }
+                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open || m.manage_open)) {
                     m.status_open = false;
                     m.install_open = false;
                     m.categories_open = false;
+                    m.manage_open = false;
                     cx.notify();
                 }
             }))

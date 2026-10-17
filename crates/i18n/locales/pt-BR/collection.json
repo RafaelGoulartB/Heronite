@@ -27,7 +27,7 @@
   "This opens Steam to uninstall \"{title}\". The game stays in Collection; Heronite marks it uninstalled after Steam finishes and you refresh.": "Isto abre a Steam para desinstalar \"{title}\". O jogo continua na Coleção; o Heronite o marca como desinstalado depois que a Steam terminar e você atualizar.",
   "Steam not found": "Steam não encontrada",
   "Steam was not found. Install or launch the Steam client, then try again.": "A Steam não foi encontrada. Instale ou abra o cliente da Steam e tente novamente.",
-  "Backup save (Ludusavi)": "Backup dos saves (Ludusavi)",
+  "Backup save": "Backup dos saves",
   "Yes": "Sim",
   "Could not open {url}: {err}": "Não foi possível abrir {url}: {err}",
   "No store page is known for this game.": "Nenhuma página de loja conhecida para este jogo.",
@@ -313,5 +313,6 @@
   "{n} changes": "{n} alterações",
   "Apply to {n} game": "Aplicar a {n} jogo",
   "Apply to {n} games": "Aplicar a {n} jogos",
-  "Ctrl click": "Ctrl + clique"
+  "Ctrl click": "Ctrl + clique",
+  "Manage installation": "Gerenciar instalação"
 }
