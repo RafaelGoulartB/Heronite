@@ -67,6 +67,10 @@ impl DataPaths {
     pub fn metadata(&self) -> PathBuf {
         self.j("local_library/metadata.json")
     }
+    /// Renamed, merged and removed names of the library fields (`field_names`).
+    pub fn field_names(&self) -> PathBuf {
+        self.j("local_library/names.json")
+    }
     pub fn art(&self) -> PathBuf {
         self.j("local_library/art.json")
     }
@@ -93,6 +97,9 @@ impl DataPaths {
     }
     pub fn ratings(&self) -> PathBuf {
         self.j("local_library/ratings.json")
+    }
+    pub fn added(&self) -> PathBuf {
+        self.j("local_library/added.json")
     }
     /// The actions users add to their games ([`crate::game_actions`]).
     pub fn game_actions(&self) -> PathBuf {

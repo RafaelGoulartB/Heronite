@@ -54,7 +54,10 @@ calls them from `cx.background_spawn` or worker threads.
   `proc` (`guard` and `Run`: helper processes die with the app), and one
   module per data file: `library`, `collection`, `sideload`, `game_config`,
   `settings`, `status`, `sessions`, `playtime`, `ui_state`, `appearance`,
-  `language`, `steam_owned` (the cached Steam library and its twins: a game
+  `language`, `install_size` (size on disk of a game its store gives none for: ROM files, a bounded and cached folder walk), `field_names` (the library fields manager: renames, merges and
+  removals of genres, companies, series, themes, features and platforms, kept
+  as rules in `local_library/names.json` that the metadata service and the
+  library load apply too, plus the duplicate suggestions), `steam_owned` (the cached Steam library and its twins: a game
   owned on Steam that the Collection has from another source joins that
   entry instead of getting a Steam entry of its own).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
@@ -134,7 +137,7 @@ calls them from `cx.background_spawn` or worker threads.
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
 | `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `update/` (app updates: checks, download, restart), `steam_library` (reads the Steam library while Steam runs), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
-| `collection/` | the main screen (`CollectionView`): list, header, focus panel, grid view (`grid`, `grid_drawer`), stage, context menu, command palette, screenshots, and the glue to dialogs and services; `welcome` is the empty Collection of a new setup (it checks Steam every few seconds while it shows); `onboarding` hosts the getting-started checklist (`dialogs/onboarding`: steps, looping previews drawn from the user's covers), which opens by itself once per setup and from the bulb in the header (`onboarding.json` in the app state) |
+| `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), focus panel, grid view (`grid`, `grid_drawer`), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, and the glue to dialogs and services; `welcome` is the empty Collection of a new setup (it checks Steam every few seconds while it shows); `onboarding` hosts the getting-started checklist (`dialogs/onboarding`: steps, looping previews drawn from the user's covers), which opens by itself once per setup and from the bulb in the header (`onboarding.json` in the app state) |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, Wine Manager, Emulators); they talk back through `PageEvent` |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar` |
@@ -152,6 +155,13 @@ calls them from `cx.background_spawn` or worker threads.
 - **No I/O in `render`.** Loads run in the background and land in the entity
   with `this.update(..)`. Long-lived channels are drained by "pump" tasks
   (`collection/pumps.rs`).
+- **Batch writes.** A change to many games is one write per file, never a
+  write per game: `status::set_games_status`, `config_games::set_favourites`
+  / `set_hidden`, `categories::set_many_in_category` / `restore_categories`
+  and `heronite_metadata::edit::update_many_details` (tag deltas and the
+  series; it returns the entries it replaced, which `restore_details` puts
+  back). The Collection keeps what the games were before each batch change
+  and undoes it with the same functions.
 - **Debug hooks.** `HERONITE_DEBUG_*` variables open a page, dialog, menu or
   state at startup, so `scripts/shot.sh` can capture it without clicks. They
   live in each area's `debug.rs`, and every read goes through `crate::env`.

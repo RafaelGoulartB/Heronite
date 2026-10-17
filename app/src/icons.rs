@@ -60,6 +60,7 @@ pub enum Icon {
     Warning,
     CloudSync,
     Update,
+    WifiOff,
     Language,
     Memory,
     BarChart,
@@ -75,6 +76,11 @@ pub enum Icon {
     Palette,
     PhotoCamera,
     Inbox,
+    /// Calendar day (release date, year).
+    Event,
+    CallMerge,
+    Checklist,
+    SelectAll,
     /// A game action that runs a command.
     Terminal,
     /// Mouse pointer of the getting-started previews.
@@ -127,6 +133,10 @@ impl Icon {
             Palette => "icons/palette.svg",
             PhotoCamera => "icons/photo-camera.svg",
             Inbox => "icons/inbox.svg",
+            Event => "icons/event.svg",
+            CallMerge => "icons/call-merge.svg",
+            Checklist => "icons/checklist.svg",
+            SelectAll => "icons/select-all.svg",
             Terminal => "icons/terminal.svg",
             Cursor => "icons/cursor.svg",
             Menu => "icons/menu.svg",
@@ -162,6 +172,7 @@ impl Icon {
             Warning => "icons/warning.svg",
             CloudSync => "icons/cloud-sync.svg",
             Update => "icons/update.svg",
+            WifiOff => "icons/wifi-off.svg",
             Language => "icons/language.svg",
             Memory => "icons/memory.svg",
             PlayCircle => "icons/play-circle.svg",

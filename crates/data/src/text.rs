@@ -142,7 +142,7 @@ fn month_from_name(name: &str) -> Option<u32> {
 /// Parses the date formats found in metadata (`2020-05-12`, `2007-9-14`,
 /// `19 Sep, 2022`, `Apr 22, 2013`) as a calendar date, without any timezone
 /// shift.
-fn parse_calendar_date(value: &str) -> Option<(i32, u32, u32)> {
+pub(crate) fn parse_calendar_date(value: &str) -> Option<(i32, u32, u32)> {
     let value = value.trim();
     let date_part = value.split(['T', ' ']).next().unwrap_or(value);
     let nums: Vec<&str> = date_part.split('-').collect();

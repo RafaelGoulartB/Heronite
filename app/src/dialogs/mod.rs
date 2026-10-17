@@ -12,6 +12,7 @@
 
 pub mod add_game;
 pub mod art_images;
+pub mod batch_edit;
 pub mod emulator_confirm;
 pub mod emulator_detect;
 pub mod emulator_edit;
@@ -24,12 +25,12 @@ pub mod launch_state;
 pub mod log_viewer;
 pub mod ludusavi_backup;
 pub mod manage_categories;
+pub mod manage_fields;
 pub mod manage_statuses;
 pub mod metadata;
 pub mod metadata_wizard;
 pub mod onboarding;
 pub mod pick_rom;
-pub mod playtime;
 pub mod quit_confirm;
 pub mod remove_game;
 pub mod rom_folder;

@@ -1,5 +1,7 @@
-//! What a game changed from the defaults it would otherwise get: a small dot
-//! by each changed row (it turns into a reset button under the pointer), and
+//! What a game changed from the defaults it would otherwise get: a quiet
+//! reset icon on the right of a changed row (before its switch, or at the end
+//! of a field's label) for the technical settings only ([`Group::button`]:
+//! the ones whose default a player would not know), and
 //! "Reset this tab" next to Done (the game settings dialog draws it).
 //!
 //! "The defaults" are what a new game gets from Settings › Game defaults
@@ -23,10 +25,20 @@ pub(super) struct Group {
     pub id: &'static str,
     pub section: Section,
     pub keys: &'static [&'static str],
+    /// Its row gets the reset icon when changed. Plain settings (a switch
+    /// anyone can flip back, a text box to empty) don't, so the tabs don't
+    /// fill up with icons; "Reset this tab" still covers them.
+    pub button: bool,
 }
 
+/// A plain setting: no reset icon on its row.
 const fn g(id: &'static str, section: Section, keys: &'static [&'static str]) -> Group {
-    Group { id, section, keys }
+    Group { id, section, keys, button: false }
+}
+
+/// A technical setting (or several keys behind one row): reset icon.
+const fn t(id: &'static str, section: Section, keys: &'static [&'static str]) -> Group {
+    Group { id, section, keys, button: true }
 }
 
 use Section::{Compatibility as C, Gpu as G, Launch as L, Performance as P, Saves as S};
@@ -34,46 +46,46 @@ use Section::{Compatibility as C, Gpu as G, Launch as L, Performance as P, Saves
 /// Every setting the game tabs show. The prefix and the saves folder are not
 /// here: every game has its own.
 const GROUPS: &[Group] = &[
-    g("wine-version", C, &["wineVersion"]),
+    t("wine-version", C, &["wineVersion"]),
     g("crossoverBottle", C, &["wineCrossoverBottle"]),
     g("umuId", C, &[heronite_launch::umu_ids::KEY]),
-    g("autoInstallDxvk", C, &["autoInstallDxvk"]),
-    g("autoInstallVkd3d", C, &["autoInstallVkd3d"]),
-    g("autoInstallDxvkNvapi", C, &["autoInstallDxvkNvapi"]),
-    g("preferSystemLibs", C, &["preferSystemLibs"]),
-    g("sync", C, &["enableEsync", "enableFsync"]),
-    g("enableWineWayland", C, &["enableWineWayland"]),
+    t("autoInstallDxvk", C, &["autoInstallDxvk"]),
+    t("autoInstallVkd3d", C, &["autoInstallVkd3d"]),
+    t("autoInstallDxvkNvapi", C, &["autoInstallDxvkNvapi"]),
+    t("preferSystemLibs", C, &["preferSystemLibs"]),
+    t("sync", C, &["enableEsync", "enableFsync"]),
+    t("enableWineWayland", C, &["enableWineWayland"]),
     g("enableHDR", C, &["enableHDR"]),
-    g("enableWoW64", C, &["enableWoW64"]),
+    t("enableWoW64", C, &["enableWoW64"]),
     g("battlEyeRuntime", C, &["battlEyeRuntime"]),
     g("eacRuntime", C, &["eacRuntime"]),
-    g(heronite_steam::options::KEY_NVAPI, C, &[heronite_steam::options::KEY_NVAPI]),
-    g(heronite_steam::options::KEY_WINED3D, C, &[heronite_steam::options::KEY_WINED3D]),
+    t(heronite_steam::options::KEY_NVAPI, C, &[heronite_steam::options::KEY_NVAPI]),
+    t(heronite_steam::options::KEY_WINED3D, C, &[heronite_steam::options::KEY_WINED3D]),
     g("showFps", P, &["showFps"]),
     g("showMangohud", P, &["showMangohud"]),
-    g("fps", P, &[fps_limit::KEY_LIMIT, fps_limit::KEY_METHOD, fps_limit::KEY_SMOOTH, fps_limit::KEY_NO_FOCUS]),
-    g("lsfg", P, &lsfg::INHERITED_KEYS),
+    t("fps", P, &[fps_limit::KEY_LIMIT, fps_limit::KEY_METHOD, fps_limit::KEY_SMOOTH, fps_limit::KEY_NO_FOCUS]),
+    t("lsfg", P, &lsfg::INHERITED_KEYS),
     g("enableFSR", P, &["enableFSR"]),
-    g("fsr-sharpness", P, &["maxSharpness"]),
-    g("gamescope", P, &["gamescope"]),
+    t("fsr-sharpness", P, &["maxSharpness"]),
+    t("gamescope", P, &["gamescope"]),
     g("useGameMode", P, &["useGameMode"]),
     g(heronite_launch::keep_awake::KEY, P, &[heronite_launch::keep_awake::KEY]),
-    g(heronite_launch::env::KEY_PREFER_SDL, P, &[heronite_launch::env::KEY_PREFER_SDL]),
-    g("gpu-device", G, &[gpu::KEY_DEVICE, gpu::KEY_PRIME]),
+    t(heronite_launch::env::KEY_PREFER_SDL, P, &[heronite_launch::env::KEY_PREFER_SDL]),
+    t("gpu-device", G, &[gpu::KEY_DEVICE, gpu::KEY_PRIME]),
     g(gpu::KEY_SMOOTH_MOTION, G, &[gpu::KEY_SMOOTH_MOTION]),
     g(gpu::KEY_REFLEX, G, &[gpu::KEY_REFLEX]),
-    g(gpu::KEY_SHADER_CACHE, G, &[gpu::KEY_SHADER_CACHE]),
-    g(gpu::KEY_DLSS_UPGRADE, G, &[gpu::KEY_DLSS_UPGRADE]),
-    g("gpu-dlss-preset", G, &[gpu::KEY_DLSS_PRESET]),
+    t(gpu::KEY_SHADER_CACHE, G, &[gpu::KEY_SHADER_CACHE]),
+    t(gpu::KEY_DLSS_UPGRADE, G, &[gpu::KEY_DLSS_UPGRADE]),
+    t("gpu-dlss-preset", G, &[gpu::KEY_DLSS_PRESET]),
     g(gpu::KEY_DLSS_INDICATOR, G, &[gpu::KEY_DLSS_INDICATOR]),
-    g(gpu::KEY_FSR4_UPGRADE, G, &[gpu::KEY_FSR4_UPGRADE]),
+    t(gpu::KEY_FSR4_UPGRADE, G, &[gpu::KEY_FSR4_UPGRADE]),
     g(gpu::KEY_FSR4_INDICATOR, G, &[gpu::KEY_FSR4_INDICATOR]),
-    g(gpu::KEY_XESS_UPGRADE, G, &[gpu::KEY_XESS_UPGRADE]),
+    t(gpu::KEY_XESS_UPGRADE, G, &[gpu::KEY_XESS_UPGRADE]),
     g(gpu::KEY_ANTI_LAG, G, &[gpu::KEY_ANTI_LAG]),
-    g(gpu::KEY_GLTHREAD, G, &[gpu::KEY_GLTHREAD]),
-    g("gpu-vsync", G, &[gpu::KEY_VSYNC]),
-    g("gpu-vendor", G, &[gpu::KEY_VENDOR]),
-    g("gpu-vram", G, &[gpu::KEY_VRAM]),
+    t(gpu::KEY_GLTHREAD, G, &[gpu::KEY_GLTHREAD]),
+    t("gpu-vsync", G, &[gpu::KEY_VSYNC]),
+    t("gpu-vendor", G, &[gpu::KEY_VENDOR]),
+    t("gpu-vram", G, &[gpu::KEY_VRAM]),
     g("launch-option", L, &[heronite_launch::launch_option::KEY]),
     g("launcherArgs", L, &["launcherArgs"]),
     g("offlineMode", L, &["offlineMode"]),
@@ -84,8 +96,8 @@ const GROUPS: &[Group] = &[
     g("companions", L, &[heronite_launch::companions::KEY]),
     g("targetExe", L, &["targetExe"]),
     g("verboseLogs", L, &["verboseLogs"]),
-    g("steam-runtime", L, &["steamRuntime"]),
-    g("disableUMU", L, &["disableUMU"]),
+    t("steam-runtime", L, &["steamRuntime"]),
+    t("disableUMU", L, &["disableUMU"]),
     g("wrapperOptions", L, &["wrapperOptions"]),
     g("enviromentOptions", L, &["enviromentOptions"]),
     g("autoSyncSaves", S, &["autoSyncSaves"]),
@@ -224,62 +236,45 @@ impl SettingsPanel {
         cx.notify();
     }
 
-    /// `el` with the changed dot in the card's left margin when its group
-    /// differs from the defaults. The dot resets it.
-    /// `top`: where the dot's 16 px target starts, by the row's label.
-    pub(super) fn marked(&self, id: &str, top: f32, el: impl IntoElement, cx: &mut Context<Self>) -> Div {
-        let wrap = div().relative().child(el);
-        match group(id).filter(|g| self.changed(g)) {
-            Some(g) => wrap.child(self.dot(g, cx).absolute().left(px(-16.)).top(px(top))),
-            None => wrap,
-        }
+    /// A field (label above its control) with the reset button at the right
+    /// end of the label line when its group differs from the defaults.
+    pub(super) fn marked(&self, id: &str, el: impl IntoElement, cx: &mut Context<Self>) -> Div {
+        div().relative().child(el).children(self.reset_button(id, cx).map(|b| b.absolute().top(px(-3.)).right(px(0.))))
     }
 
     /// A caption whose card is one setting (lists, the FPS limit, gamescope),
-    /// with the dot after the text when it changed.
+    /// with the reset button after the text when it changed.
     pub(super) fn marked_heading(&self, text: &str, id: &str, cx: &mut Context<Self>) -> Div {
         let caption = super::parts::heading(text);
-        match group(id).filter(|g| self.changed(g)) {
-            Some(g) => caption.flex().items_center().gap(px(4.)).child(self.dot(g, cx)),
+        match self.reset_button(id, cx) {
+            Some(b) => caption.flex().items_center().gap(px(6.)).child(b),
             None => caption,
         }
     }
 
-    /// 16 px target: the dot, and the reset arrow under the pointer.
-    fn dot(&self, g: &'static Group, cx: &mut Context<Self>) -> Stateful<Div> {
+    /// Bare ↺ (accent under the pointer) that sets the group of `id` back to
+    /// the defaults; `None` while it has not changed or is a plain setting.
+    pub(super) fn reset_button(&self, id: &str, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let g = group(id).filter(|g| g.button && self.changed(g))?;
         let hover = SharedString::from(format!("reset-{}", g.id));
-        div()
-            .id(hover.clone())
-            .group(hover.clone())
-            .relative()
-            .flex_none()
-            .size(px(16.))
-            .cursor_pointer()
-            .child(
-                div()
-                    .absolute()
-                    .top(px(5.))
-                    .left(px(5.))
-                    .size(px(6.))
-                    .rounded_full()
-                    .bg(theme::accent())
-                    .group_hover(hover.clone(), |s| s.opacity(0.)),
-            )
-            .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .opacity(0.)
-                    .group_hover(hover, |s| s.opacity(1.))
-                    .child(crate::ui::icon(Icon::Replay, px(14.), theme::accent())),
-            )
-            .on_click(cx.listener(move |this, _, _, cx| {
-                cx.stop_propagation();
-                this.reset(&[g], cx);
-            }))
+        Some(
+            div()
+                .id(hover.clone())
+                .group(hover.clone())
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(20.))
+                .rounded_full()
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::white_a(0.06)))
+                .child(crate::ui::icon(Icon::Replay, px(15.), theme::text_dim()).group_hover(hover, |s| s.text_color(theme::accent())))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.reset(&[g], cx);
+                })),
+        )
     }
 
     /// Whether the tab shown has settings that differ from the defaults.

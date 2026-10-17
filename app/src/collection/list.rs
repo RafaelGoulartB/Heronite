@@ -5,6 +5,7 @@ use gpui_kit::*;
 
 use super::vm::GroupVm;
 use crate::theme;
+use crate::ui::icon;
 
 /// `.collection__groupToggle`: 13px/600, .78 white, 7px dot, count pill.
 pub(super) fn group_header(g: &GroupVm, stuck: bool) -> Div {
@@ -38,7 +39,10 @@ pub(super) fn group_header(g: &GroupVm, stuck: bool) -> Div {
                     )),
             )
         })
-        .child(div().size(px(7.)).flex_none().rounded_full().bg(g.color).opacity(0.9))
+        .child(match g.icon {
+            Some(ic) => icon(ic, px(14.), theme::white_a(0.55)).into_any_element(),
+            None => div().size(px(7.)).flex_none().rounded_full().bg(g.color).opacity(0.9).into_any_element(),
+        })
         .child(g.name.clone())
         .child(
             div()

@@ -166,25 +166,50 @@ pub fn remove_category(paths: &DataPaths, name: &str) -> Result<()> {
 /// Puts a game in a category (`on`) or takes it out. Adding to a category
 /// that does not exist creates it.
 pub fn set_in_category(paths: &DataPaths, name: &str, runner: &str, app_name: &str, on: bool) -> Result<()> {
+    set_many_in_category(paths, name, &[(runner.to_owned(), app_name.to_owned(), on)])
+}
+
+/// [`set_in_category`] for many games in one write: `(runner, app_name, on)`.
+pub fn set_many_in_category(paths: &DataPaths, name: &str, games: &[(String, String, bool)]) -> Result<()> {
     let name = clean(name)?;
-    let key = Value::String(game_ref(runner, app_name));
     update(paths, |cats| {
-        if !on {
-            if let Some(Value::Array(list)) = cats.get_mut(&name) {
-                list.retain(|g| *g != key);
-            }
-            return Ok(());
-        }
-        let list = cats.entry(name).or_insert_with(|| Value::Array(Vec::new()));
-        if !list.is_array() {
-            *list = Value::Array(Vec::new());
-        }
-        let list = list.as_array_mut().expect("array");
-        if !list.contains(&key) {
-            list.push(key);
+        for (runner, app_name, on) in games {
+            put_in_category(cats, &name, runner, app_name, *on);
         }
         Ok(())
     })
+}
+
+/// Puts each game back in exactly the categories listed for it:
+/// `(runner, app_name, categories)`. Used to undo category changes.
+pub fn restore_categories(paths: &DataPaths, games: &[(String, String, Vec<String>)]) -> Result<()> {
+    update(paths, |cats| {
+        let names: Vec<String> = cats.keys().cloned().collect();
+        for (runner, app_name, keep) in games {
+            for name in names.iter().chain(keep.iter().filter(|n| !names.contains(n))) {
+                put_in_category(cats, name, runner, app_name, keep.contains(name));
+            }
+        }
+        Ok(())
+    })
+}
+
+fn put_in_category(cats: &mut serde_json::Map<String, Value>, name: &str, runner: &str, app_name: &str, on: bool) {
+    let key = Value::String(game_ref(runner, app_name));
+    if !on {
+        if let Some(Value::Array(list)) = cats.get_mut(name) {
+            list.retain(|g| *g != key);
+        }
+        return;
+    }
+    let list = cats.entry(name.to_owned()).or_insert_with(|| Value::Array(Vec::new()));
+    if !list.is_array() {
+        *list = Value::Array(Vec::new());
+    }
+    let list = list.as_array_mut().expect("array");
+    if !list.contains(&key) {
+        list.push(key);
+    }
 }
 
 #[cfg(test)]
@@ -256,5 +281,23 @@ mod tests {
         assert_eq!(v["games"]["favourites"][0]["appName"], "a");
         assert!(add_category(&paths, " ").is_err());
         assert!(add_category(&paths, UNCATEGORIZED).is_err());
+    }
+
+    #[test]
+    fn many_games_and_restore() {
+        let (_d, paths) = setup(r#"{"games":{"customCategories":{"RPG":["a_gog"],"Co-op":["b_gog"]}}}"#);
+        let g = |app: &str, on: bool| ("gog".to_string(), app.to_string(), on);
+        set_many_in_category(&paths, "RPG", &[g("a", true), g("b", true), g("c", false)]).unwrap();
+        let c = Categories::load(&paths);
+        assert_eq!(c.len_of("RPG"), 2);
+        assert!(c.contains("RPG", "gog", "b"));
+        restore_categories(
+            &paths,
+            &[("gog".into(), "a".into(), vec!["RPG".into()]), ("gog".into(), "b".into(), vec!["Co-op".into(), "New".into()])],
+        )
+        .unwrap();
+        let c = Categories::load(&paths);
+        assert_eq!(c.of_game("gog", "a"), ["RPG"]);
+        assert_eq!(c.of_game("gog", "b"), ["Co-op", "New"]);
     }
 }

@@ -1,7 +1,7 @@
 //! Collection leftovers: edit playtime, remove from Collection, manual
 //! Ludusavi backup, the focus panel's achievements / session history /
-//! "open details" button, the search box inside the facet filter flyout and
-//! the "Steam not found" and "Proton needed" messages.
+//! "open details" button and the "Steam not found" and "Proton needed"
+//! messages.
 //!
 //! The data work lives in `heronite-data` (playtime, sessions, details URL),
 //! `heronite-metadata` (remove, achievements) and `heronite-emulation`
@@ -9,11 +9,10 @@
 
 use std::sync::Arc;
 
-use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::details_url::details_url;
-use heronite_data::{CollectionGame, FacetKind};
+use heronite_data::CollectionGame;
 use heronite_emulation::ludusavi::{LudusaviGame, SystemRunner};
 use heronite_images::{ImageRef, Variant};
 use heronite_metadata::achievements::{load_achievements, Achievement};
@@ -23,11 +22,9 @@ use super::game_actions::{GameAction, GameActionItem};
 use super::{achievements, focus, CollectionView};
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog};
 use crate::dialogs::ludusavi_backup::LudusaviBackupDialog;
-use crate::dialogs::playtime::PlaytimeDialog;
 use crate::dialogs::remove_game::RemoveGameDialog;
 use crate::icons::Icon;
 use crate::pages::Page;
-use crate::theme;
 use heronite_i18n::tr;
 
 /// Text of the Steam uninstall confirmation (`collection.steam.uninstallHelp`).
@@ -38,27 +35,14 @@ fn steam_uninstall_message(title: &str) -> String {
     )
 }
 
-/// Whether a facet option shows for the flyout search `query` (already
-/// trimmed and lowercased): `value.toLowerCase().includes(needle)`.
-pub(super) fn facet_option_matches(value: &str, query: &str) -> bool {
-    query.is_empty() || value.to_lowercase().contains(query)
-}
-
 /// Whether a launch/install error means that there is no Steam client
 /// (the message may be translated).
 fn is_steam_missing(error: &str) -> bool {
     error.contains("Steam client was not found") || error.contains(heronite_i18n::tr("Steam client was not found"))
 }
 
-struct FacetSearch {
-    kind: FacetKind,
-    input: Entity<InputState>,
-    _sub: Subscription,
-}
-
 #[derive(Default)]
 pub(super) struct Extras {
-    facet_search: Option<FacetSearch>,
     /// Game whose achievements are loaded (or loading).
     ach_key: Option<SharedString>,
     ach: Vec<Achievement>,
@@ -124,25 +108,6 @@ impl CollectionView {
 
         self.sync_achievements(cx);
         self.debug_scroll(cx);
-
-        match (self.facet_flyout, self.extras.facet_search.as_ref().map(|f| f.kind)) {
-            (Some(kind), Some(have)) if kind == have => {}
-            (Some(kind), _) => {
-                let input = cx.new(|cx| {
-                    let mut s = InputState::new(window, cx);
-                    s.set_placeholder(tr!("Filter list"), window, cx);
-                    s
-                });
-                let sub = cx.subscribe_in(&input, window, |_, _, ev: &InputEvent, _, cx| {
-                    if matches!(ev, InputEvent::Change) {
-                        cx.notify();
-                    }
-                });
-                self.extras.facet_search = Some(FacetSearch { kind, input, _sub: sub });
-            }
-            (None, Some(_)) => self.extras.facet_search = None,
-            (None, None) => {}
-        }
     }
 
     /// Screenshot helper: scrolls the list or the focus panel the way a
@@ -210,7 +175,7 @@ impl CollectionView {
             return;
         }
         match which {
-            "playtime" => self.open_edit_playtime(&key, window, cx),
+            "playtime" => self.open_playtime_settings(&key, window, cx),
             "remove" => self.open_remove_game(&key, cx),
             _ => self.open_ludusavi_backup(&key, cx),
         }
@@ -263,32 +228,34 @@ impl CollectionView {
         }
     }
 
-    /// Details, Edit playtime, Backup save (Ludusavi), Uninstall and Remove
-    /// from Collection (the order of `CollectionCard`'s menu).
+    /// Backup save (Ludusavi), Uninstall and Remove from Collection, and for
+    /// the palette only Details (the store page) and Edit playtime (the time
+    /// played is edited in the game settings).
     pub(super) fn extras_actions(&self, game: &CollectionGame) -> Vec<GameActionItem> {
         use GameAction as A;
         let item = GameActionItem::new;
         let tracking = self.playing.contains_key(&game.app_name);
         let mut v = Vec::new();
         if details_url(game).is_some() {
-            v.push(item(
-                A::Details,
-                "details",
-                tr!("Details"),
-                Icon::OpenInNew,
-                "store page website browser loja pagina site navegador detalhes",
-            ));
+            // Palette only: the store page is a rare stop.
+            v.push(
+                item(
+                    A::Details,
+                    "details",
+                    tr!("Details"),
+                    Icon::OpenInNew,
+                    "store page website browser loja pagina site navegador detalhes",
+                )
+                .palette_only(),
+            );
         }
         if !tracking {
-            v.push(item(
-                A::EditPlaytime,
-                "playtime",
-                tr!("Edit playtime"),
-                Icon::AccessTime,
-                "hours time played editar tempo horas jogado",
-            ));
+            v.push(
+                item(A::EditPlaytime, "playtime", tr!("Edit playtime"), Icon::AccessTime, "hours time played editar tempo horas jogado")
+                    .palette_only(),
+            );
         }
-        v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save (Ludusavi)"), Icon::Save, "saves backup salvamentos jogos salvos"));
+        v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save"), Icon::Save, "saves backup ludusavi salvamentos jogos salvos"));
         if game.steam_launch_id.is_some() && game.installed && !tracking {
             v.push(item(
                 A::SteamUninstall,
@@ -319,9 +286,11 @@ impl CollectionView {
         v
     }
 
-    pub(super) fn open_edit_playtime(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
-        let view = cx.new(|cx| PlaytimeDialog::new(ctx, game.app_name.clone(), game.title.clone(), game.playtime_minutes, window, cx));
+    /// The game settings on the Game tab, where the time played is edited.
+    pub(super) fn open_playtime_settings(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::dialogs::game_settings::{GameSettingsDialog, Tab};
+        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
+        let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, Tab::Game, window, cx));
         self.open_dialog(view, cx);
     }
 
@@ -417,48 +386,11 @@ impl CollectionView {
         }
         extras
     }
-
-    /// What is typed in the open flyout's search (`kind` must be the open one).
-    pub(super) fn facet_query(&self, kind: FacetKind, cx: &App) -> String {
-        match &self.extras.facet_search {
-            Some(f) if f.kind == kind => f.input.read(cx).value().trim().to_lowercase(),
-            _ => String::new(),
-        }
-    }
-
-    /// The "Filter list" box at the top of the flyout.
-    pub(super) fn facet_search_box(&self, kind: FacetKind) -> Option<Div> {
-        let f = self.extras.facet_search.as_ref().filter(|f| f.kind == kind)?;
-        Some(
-            div()
-                .mx(px(2.))
-                .mb(px(4.))
-                .px(px(12.))
-                .h(px(32.))
-                .flex()
-                .items_center()
-                .rounded_full()
-                .bg(theme::search_fill())
-                .border_1()
-                .border_color(theme::input_border())
-                .text_size(px(14.))
-                .text_color(white())
-                .child(div().flex_1().min_w_0().child(Input::new(&f.input).appearance(false))),
-        )
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{facet_option_matches, is_steam_missing, steam_uninstall_message};
-
-    #[test]
-    fn flyout_search_is_a_case_insensitive_substring_match() {
-        assert!(facet_option_matches("Blizzard Entertainment", ""));
-        assert!(facet_option_matches("Blizzard Entertainment", "zard ent"));
-        assert!(facet_option_matches("Ōkami Studio", "studio"));
-        assert!(!facet_option_matches("Valve", "blizzard"));
-    }
+    use super::{is_steam_missing, steam_uninstall_message};
 
     #[test]
     fn steam_uninstall_text_names_the_game() {

@@ -160,14 +160,10 @@ mod tests {
         for f in ["backup-1.zip", "backup-1-diff.zip", "backup-2.zip"] {
             fs::write(game.join(f), "z").unwrap();
         }
+        // The in-flight guard is shared with the backup tests running alongside.
         let delete = |id: &str| {
-            for _ in 0..200 {
-                match delete_backup(&game, id) {
-                    Err(e) if e.contains("busy") => std::thread::sleep(std::time::Duration::from_millis(10)),
-                    r => return r,
-                }
-            }
-            panic!("the in-flight guard stayed taken");
+            let _l = super::super::super::backup::test_lock();
+            delete_backup(&game, id)
         };
         delete("backup-1.zip").unwrap();
         assert!(!game.join("backup-1.zip").exists() && !game.join("backup-1-diff.zip").exists());

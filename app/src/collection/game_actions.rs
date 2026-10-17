@@ -219,13 +219,17 @@ impl CollectionView {
                 "native port pc version executable linux windows nativo versao pc executavel",
             ));
         }
-        v.push(item(
-            A::Metadata,
-            "metadata",
-            tr!("Collection metadata"),
-            Icon::TravelExplore,
-            "igdb cover art genre description metadados capa arte genero descricao",
-        ));
+        // The focus panel has its own button; the palette keeps it.
+        v.push(
+            item(
+                A::Metadata,
+                "metadata",
+                tr!("Collection metadata"),
+                Icon::TravelExplore,
+                "igdb cover art genre description metadados capa arte genero descricao",
+            )
+            .palette_only(),
+        );
         v.push(if game.hidden {
             item(A::Hide, "hide", tr!("Unhide"), Icon::Visibility, "show reexibir mostrar exibir")
         } else {
@@ -309,7 +313,7 @@ impl CollectionView {
             A::Metadata => self.open_metadata_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
             A::Details => self.open_details(key, cx),
-            A::EditPlaytime => self.open_edit_playtime(key, window, cx),
+            A::EditPlaytime => self.open_playtime_settings(key, window, cx),
             A::Ludusavi => self.open_ludusavi_backup(key, cx),
             A::SteamUninstall => self.open_steam_uninstall(key, window, cx),
             A::SteamPlay => self.play_with_steam(key, cx),

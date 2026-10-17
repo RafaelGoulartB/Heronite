@@ -489,7 +489,7 @@ impl CollectionView {
                 let id = SharedString::from(format!("console-dialog-{}", d.entity_id()));
                 motion::layer_in(id, d, 240, 12.)
             }))
-            .children(self.render_toast())
+            .children(self.render_toast(cx))
             // Above the overlays: the hints of whatever has the focus.
             .child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(theme::console_bg())))
             .into_any_element()

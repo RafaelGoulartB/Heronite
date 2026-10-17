@@ -1,17 +1,19 @@
-//! The Details tab: the metadata form, its dirty check and saving.
+//! The Details tab: the metadata form and the time played, their dirty
+//! check and saving.
 
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::collect_tag_options;
 use heronite_data::models::{CollectionGameMetadata, LocalGameMeta};
+use heronite_data::playtime::{clamp_number, set_playtime_minutes, split_minutes};
 use heronite_i18n::{n_, tr};
 use heronite_metadata::{DetailsPatch, DetailsResult};
 
 use super::{block, Busy, GameSettingsDialog};
 use crate::dialogs::{DialogCtx, DialogEvent};
-use crate::ui::controls::{caption, card, help_text};
-use crate::ui::fields::{input_box, labeled, new_input, new_textarea, textarea_box, TagEvent, TagField};
+use crate::ui::controls::{caption, card, help_text, row};
+use crate::ui::fields::{duration_field, input_box, labeled, new_input, new_textarea, textarea_box, TagEvent, TagField};
 
 #[derive(Clone, PartialEq, Default)]
 pub(super) struct Form {
@@ -82,10 +84,13 @@ pub(super) struct Details {
     pub(super) notes: Entity<TextareaState>,
     /// In [`TAG_FIELDS`] order.
     pub(super) tags: Vec<Entity<TagField>>,
+    /// Time played (`store/timestamp.json` `totalPlayed`): hours and minutes.
+    pub(super) hours: Entity<InputState>,
+    pub(super) minutes: Entity<InputState>,
 }
 
 impl GameSettingsDialog {
-    pub(super) fn build_details(ctx: &DialogCtx, initial: &Form, window: &mut Window, cx: &mut Context<Self>) -> Details {
+    pub(super) fn build_details(ctx: &DialogCtx, initial: &Form, playtime: u64, window: &mut Window, cx: &mut Context<Self>) -> Details {
         let options = collect_tag_options(&ctx.lib.games);
         let tags: Vec<Entity<TagField>> = TAG_FIELDS
             .iter()
@@ -115,8 +120,10 @@ impl GameSettingsDialog {
             websites: new_input(window, cx, &initial.websites, ""),
             notes: new_textarea(window, cx, &initial.notes, 4),
             tags,
+            hours: new_input(window, cx, &split_minutes(playtime).0.to_string(), "0"),
+            minutes: new_input(window, cx, &split_minutes(playtime).1.to_string(), "0"),
         };
-        for input in [&details.name, &details.release, &details.score, &details.websites] {
+        for input in [&details.name, &details.release, &details.score, &details.websites, &details.hours, &details.minutes] {
             cx.subscribe_in(input, window, |_, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
@@ -156,10 +163,24 @@ impl GameSettingsDialog {
         }
     }
 
+    /// The time played the fields hold, in minutes (minutes past 59 count as 59).
+    pub(super) fn playtime(&self, cx: &App) -> u64 {
+        let d = &self.details;
+        clamp_number(d.hours.read(cx).value().as_ref(), None) * 60 + clamp_number(d.minutes.read(cx).value().as_ref(), Some(59))
+    }
+
+    /// The form or the time played differ from what is saved.
+    pub(super) fn game_tab_dirty(&self, cx: &App) -> bool {
+        self.read_form(cx) != self.initial || self.playtime(cx) != self.initial_playtime
+    }
+
     pub(super) fn save_details(&mut self, cx: &mut Context<Self>) {
         if self.busy.is_some() {
             return;
         }
+        let playtime = self.playtime(cx);
+        let playtime_changed = playtime != self.initial_playtime;
+        let details_changed = self.read_form(cx) != self.initial;
         let (form, old) = (self.read_form(cx), self.initial.clone());
         let mut patch = DetailsPatch { app_name: self.game.app_name.clone(), runner: self.runner(), ..Default::default() };
         if form.title != old.title {
@@ -213,14 +234,28 @@ impl GameSettingsDialog {
         self.error.clear();
         let service = self.service.clone();
         let title = self.title.clone();
+        let (paths, app_name) = (self.ctx.data_paths.clone(), self.game.app_name.clone());
         cx.spawn(async move |this, cx| {
-            let res: anyhow::Result<DetailsResult> = cx.background_spawn(async move { service.update_game_details(&patch) }).await;
+            let res: anyhow::Result<(Option<DetailsResult>, bool)> = cx
+                .background_spawn(async move {
+                    let details = if details_changed { Some(service.update_game_details(&patch)?) } else { None };
+                    if playtime_changed {
+                        set_playtime_minutes(&paths, &app_name, playtime as f64)?;
+                    }
+                    Ok((details, playtime_changed))
+                })
+                .await;
             this.update(cx, |this, cx| {
                 this.busy = None;
                 match res {
-                    Ok(r) => {
-                        let meta = r.meta.clone().or_else(|| this.game.meta.as_deref().cloned());
-                        this.initial = form_from(&title, Some(&r.metadata), meta.as_ref());
+                    Ok((details, playtime_saved)) => {
+                        if let Some(r) = details {
+                            let meta = r.meta.clone().or_else(|| this.game.meta.as_deref().cloned());
+                            this.initial = form_from(&title, Some(&r.metadata), meta.as_ref());
+                        }
+                        if playtime_saved {
+                            this.initial_playtime = playtime;
+                        }
                         cx.emit(DialogEvent::Changed);
                     }
                     Err(err) => this.error = format!("{err:#}"),
@@ -246,6 +281,9 @@ impl GameSettingsDialog {
                     .child(div().flex_1().child(labeled(tr!("Score"), input_box(&d.score, false)))),
             ),
         ]);
+        let playtime =
+            card([row(tr!("Time played"), Some(tr!("New sessions keep adding to this time.")), duration_field(&d.hours, &d.minutes))
+                .into_any_element()]);
         let tags = card(d.tags.iter().map(|t| block(t.clone())));
         let more =
             card([block(labeled(tr!("Websites"), input_box(&d.websites, false))), block(labeled(tr!("Notes"), textarea_box(&d.notes, 4)))]);
@@ -256,6 +294,8 @@ impl GameSettingsDialog {
             .child(caption(tr!("Details")))
             .child(help_text(tr!("Fetching metadata again keeps what you edit here.")).px(px(6.)))
             .child(general)
+            .child(caption(tr!("Playtime")))
+            .child(playtime)
             .child(caption(tr!("Tags")))
             .child(help_text(tr!("Pick a tag, or type a new one and press Enter.")).px(px(6.)))
             .child(tags)

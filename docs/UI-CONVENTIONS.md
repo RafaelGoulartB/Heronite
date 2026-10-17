@@ -106,9 +106,18 @@ are not clipped to the rounded corners: give edge-to-edge children their own rad
 **Collection header** (`collection/header.rs`, the one place the main screen departs from Heronite, by user
 decision): faint, no bar fill. Over the list column: ☰ (`tool_button`, radius 10, icon `theme::tool_icon()`), the
 search pill (`search_fill`, accent ring while focused, clear button) and the View button (`Icon::Tune`, accent while
-anything is filtered) whose single menu holds Show (segmented), Sort by (segmented), Group by status / Show hidden
-games (switches), Filter by (facet rows with a flyout to the right) and Manage statuses. Each active filter appears
-as a removable `filter_chip` after it. Right: in the grid the cover size slider and the "Aa" titles switch, the
+anything is filtered). Its menu (`collection/view_menu/`) starts with a search box: the active filters sit in it as
+tokens (click or Backspace removes one) and typing lists matching values of every kind (Only, Status, Category,
+Store, Genre, Developer, Publisher, Series, Platform) with counts, four per kind until `kind:` narrows it; ↑ ↓ and
+Enter pick, and an X beside the first kind's title empties the box (back to the menu). Below, when nothing is typed (every control has the cards' faint fill and border, `render::control`): Presets (a select showing the preset on screen, else "Custom", its list drawn like the "More" lists; a preset applies
+everything the menu sets: filters, sort, grouping, hidden games; four built-in ones are added to the user's list once
+and are then ordinary presets; under them "Save as preset…" while none matches and "Edit presets…", which lists them
+with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`), Show
+(segmented with counts), Group by (None | Status | Store | More), Sort (segmented + direction), Only (Favourites, Update, Offline,
+Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…" and "Library fields…", the fields manager
+`dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
+values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
+a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: in the grid the cover size slider and the "Aa" titles switch, the
 Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view only). Header menus open on click or
 after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The ☰ menu (`nav.rs`) is a list:
 pages grouped (Collection, Downloads, Statistics | Stores, Wine Manager, Emulators), then Add game, Console mode,
@@ -123,10 +132,10 @@ aligned with the cover's left edge, so the cover, "Screenshots" and "Details" st
 equals main → side (`COL_GAP`). `focus::layout(panel_w)` picks the widths: narrow = everything scrolls in one column with the
 left block as a row under the title; otherwise left column + main/side (stacked when tight), centred as a group in wide panels. The main column holds Screenshots, Overview, **Timeline** (`timeline.rs`: days of play with
 the screenshots of their sessions, thumbnails only) and Related. Facts that are not in the Library load in `game_facts.rs`.
-Clickable facts: "Save backup" backs up now, "On Linux" opens the ProtonDB page, the Details folder rows open the file manager;
+Clickable facts: "Library" sets the Store filter to the game's own store (replacing any other store), "Save backup" backs up now, "On Linux" opens the ProtonDB page, the Details folder rows open the file manager;
 rows that act get `focus_left::clickable` (pointer + faint highlight). Folder rows are resolved on disk, never shown from
 imported fields (`open_links::game_folders`): Steam games → the folder of their `appmanifest`; emulated games → "Emulator
-Folder" + "ROM Folder"; others → the stored path only when it exists (Playnite's Windows paths are dropped). ProtonDB needs a
+Folder" + "ROM Folder"; others → the stored path only when it exists (Playnite's Windows paths are dropped). Under the folder row goes the size: the store's (Epic, GOG), else measured once the focus settles (`folder_size.rs`): Steam's `SizeOnDisk`, an emulated game's ROM files (with the tracks a `.cue` / `.gdi` / `.m3u` names) under "ROM Folder", an AppImage's file, else a walk of the folder (never home, system folders or a folder holding another game's; cached 3 days in `install-sizes.json`; stopped when the focus moves). ProtonDB needs a
 Steam id: the game's, the metadata's, else a strict Steam search by title (`covers::steam_app_id_exact`, same name or name +
 edition words, cached in `~/.cache/heronite/protondb/titles.json`); emulated games have no "On Linux" row.
 
@@ -139,16 +148,35 @@ reaching into it next to the title and meta line, then the focus panel's own pie
 card), three tiles (Played, Last played, Sessions) and the details stacked in one column (`focus::stacked_details`),
 ending in "Open game page" (back to the Focus view). Keys while nothing floats over it: arrows move the selection
 (the drawer follows), Enter plays an installed game, Esc closes the drawer (the selection stays; selecting a game opens
-it again). `ui-state.json` keeps `gridView`, `gridCoverWidth` and `gridTitles`. Console mode is not affected.
+it again). The Focus list takes the same arrows and Enter (play an installed game). `ui-state.json` keeps `gridView`, `gridCoverWidth` and `gridTitles`. Console mode is not affected.
+
+**Selecting several games** (`collection/selection.rs`, `dock.rs`, by user decision: proposal 2 "Dock" of
+`propostas/selecao-v1`). Ctrl click ticks a game (with the focused one when nothing is selected yet), Shift click adds
+the cards from the last one clicked, Ctrl A selects every card on screen, and the card context menu's last row,
+"Select multiple" ("Add to selection" while selecting), starts it with the mouse. No tick shows on hover: only while
+games are selected do the cards get a round tick on the top-right (filled = selected, the others dimmed, no play bar),
+a plain click ticks or unticks, group headers get "Select group", the grid's drawer steps aside, and the dock floats at
+the bottom: × (or Esc) ends it, the count and "Select all N", Status ▾ and Categories ▾ (popovers above the dock),
+Favourite, Hide, Metadata (the metadata wizard on the selection) and Edit (F3). Right-clicking a selected card opens
+the same actions as a menu. Categories have three states (round tick: all, dash: some, ring: none); each click moves
+some → all → none → as it was (Playnite's assign / remove / leave alone), the next step shows under the pointer. Every
+batch change writes off the UI thread and its toast offers Undo (also Ctrl Z, 20 steps). F3 opens
+`dialogs/batch_edit.rs`: a drawer with the series and the tag fields of all the selected games; a tag only some have is
+dashed with "3/7" (click: give it to all), × takes one out of all, typing + Enter adds one to all; nothing is written
+until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|categories`,
+`HERONITE_DEBUG_DIALOG=batchedit`, `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo` (data copy only).
 
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
 Collection's context menu (`collection/context_menu.rs::item`/`paper`) uses the
-same look; other context-menu rows must call `context_menu::item`.
+same look and groups a game's rows with separators (`menu_place`): Play (and the other ways to play or install);
+Status, Categories, favourite, hide, recent; Settings, the folder, the save backup; "Manage installation ›" (the store's verify,
+modify, move, relocate, EOS in a flyout; a single one stays a plain row); shortcuts; uninstall / remove; View log; Select multiple. A new menu action gets a
+place there; rare ones (store page, metadata, playtime, cloud sync) stay in the palette only (`palette_only`); other context-menu rows must call `context_menu::item`.
 
 **Dialogs** (`ui::dialog`): `dialog(DialogProps, body, footer, on_close)` = glass
 modal (radius 26, title Rubik 22, round close button, Collection darkened by
-`rgba(0,0,0,.55)`); `drawer(DrawerProps { id, width }, header, body, footer,
+`rgba(0,0,0,.55)`); `dialog_scrolled(.., &ScrollHandle, ..)` is the same with a draggable scrollbar on a long body; `drawer(DrawerProps { id, width }, header, body, footer,
 on_close)` = right-hand sheet inset 10px, radius 24, with fixed header/footer
 slots (build the header with `kicker`, `dialog_title`, `close_button`).
 
@@ -170,15 +198,17 @@ slots (build the header with `kicker`, `dialog_title`, `close_button`).
 
 **Game settings drawer** (`dialogs/game_settings/`): the first `drawer` caller. Tabs are
 segmented pills in the header slot; each tab is a stack of `caption` + `card`. The tabs are the same for
-every game, by what the user wants to change: Game (images + details), Launch (Play, the actions,
+every game, by what the user wants to change: Game (images, details and the time played; the card menu has no "Edit playtime"), Launch (Play, the actions,
 the panel's launch settings), Compatibility (Wine / Proton), Performance (overlays, FPS limit, frame
 generation, image, system) and Saves (Ludusavi backups + cloud saves); a tab only goes away when the
 game has nothing for it. Descriptions are one short line saying the effect; paths and rare warnings
 only show when they matter. The Heroic
 panels (`dialogs/settings_panel`) build their cards with `parts::rows()` (`.child(toggle_row)`,
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →
-Game defaults can host them too. A setting that differs from the game defaults gets a 6px accent dot
-in the card's left margin (it turns into a reset arrow under the pointer), and the dialog a
+Game defaults can host them too. A setting that differs from the game defaults and is technical (its
+`Group` is made with `t(..)`: Wine version, DXVK/VKD3D, sync, FPS limit, gamescope, GPU tweaks...; not plain switches
+or text boxes) gets a bare ↺ on the right (dim, accent under the pointer): before the switch of a switch row, at the
+end of a field's label line, after the caption of a card that is one setting or holds an unlabelled field (Sync); and the dialog a
 "Reset this tab" button next to Done while the tab has changes (`settings_panel/changes.rs`;
 console: a dot after the label, Y resets, a "Reset this tab" row). A new setting is one entry of its
 `GROUPS`, keyed by the row, input or setting id. The Launch tab ends with "How the game starts"
@@ -236,7 +266,7 @@ checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_prima
 drawn before the compositor stopped sending frames, so late images (art, covers)
 are missing. Take a first capture to wake the window, wait a second, then take
 the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
-`HERONITE_DEBUG_DROPDOWN=nav|view|facets`, `HERONITE_DEBUG_MENU=<key>`,
+`HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
 
@@ -272,7 +302,7 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
   off-screen), prints PSS and closes it. Never open windows anywhere else,
   never switch workspaces, never move/click the real mouse.
 - Debug hooks (env, via `SHOT_ENV="..."`): `HERONITE_DEBUG_SELECT=<runner_appName>`,
-  `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|facets|nav`,
+  `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|view:<text>|nav`,
   `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>|onboarding[:<step>]` (extend the match in
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section,
   `onboarding:<step>` the getting-started checklist on a step such as `palette` or `screenshots`).

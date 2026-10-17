@@ -8,6 +8,7 @@ pub mod proc;
 pub mod temps;
 pub mod text;
 
+pub mod added;
 pub mod anticheat;
 pub mod appearance;
 pub mod art;
@@ -15,18 +16,21 @@ pub mod categories;
 pub mod collection;
 pub mod config_games;
 pub mod details_url;
+pub mod field_names;
 pub mod focus;
 pub mod fuzzy;
 pub mod game_actions;
 pub mod game_config;
 pub mod heronite_ui_import;
 pub mod hltb;
+pub mod install_size;
 pub mod language;
 pub mod launch_presets;
 pub mod library;
 pub mod maintenance;
 pub mod migrate;
 pub mod onboarding;
+pub mod organize;
 pub mod playtime;
 pub mod ratings;
 pub mod screenshot_prefs;
@@ -44,6 +48,7 @@ pub use art::{ArtContext, ImageRef};
 pub use collection::{FacetFilters, FacetKind, InstallFilter, SortMode, StatusGroup, ViewQuery};
 pub use library::{CollectionGame, Library};
 pub use num::JsNum;
+pub use organize::GroupBy;
 pub use paths::{AppPaths, DataPaths};
 
 #[cfg(test)]

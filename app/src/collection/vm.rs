@@ -5,11 +5,25 @@ use std::sync::Arc;
 
 use gpui_kit::{Rgba, SharedString};
 
+use crate::icons::Icon;
+
+/// The line under a card's cover (`data::caption`).
+#[derive(Clone)]
+pub(super) struct Caption {
+    pub icon: Icon,
+    pub text: SharedString,
+    /// The game has no value for the sort ("Never played", "Not rated").
+    pub muted: bool,
+    /// Star rating, drawn instead of the text.
+    pub stars: Option<u8>,
+}
+
 #[derive(Clone)]
 pub(super) struct CardVm {
     pub key: SharedString,
     pub title: SharedString,
-    pub playtime: SharedString,
+    /// The playtime, or the value the list is sorted by.
+    pub caption: Caption,
     pub installed: bool,
     pub playing: bool,
     /// Hidden in Heroic and shown because "Show hidden games" is on.
@@ -23,9 +37,11 @@ pub(super) struct GroupVm {
     pub id: SharedString,
     pub name: SharedString,
     pub color: Rgba,
+    /// Field icon of a header that is not a status (no colour dot then).
+    pub icon: Option<Icon>,
     pub cards: Vec<Arc<CardVm>>,
     pub collapsed: bool,
-    /// False when "Group by status" is off (one flat grid).
+    /// False when the list is not grouped (one flat grid).
     pub show_header: bool,
 }
 

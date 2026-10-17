@@ -67,7 +67,8 @@ impl CollectionView {
     }
 
     pub(super) fn drawer_open(&self) -> bool {
-        self.ui.grid_view && self.focus.is_some() && !self.grid.drawer_closed
+        // While selecting several games the dock acts on them: the grid takes the whole width.
+        self.ui.grid_view && self.focus.is_some() && !self.grid.drawer_closed && !self.sel.active()
     }
 
     /// Width of the list column and its columns for this window; sets the
@@ -171,12 +172,12 @@ impl CollectionView {
         state
     }
 
-    /// Keys of the grid when nothing floats over it: arrows move the
-    /// selection, Enter plays an installed game (or shows the drawer), Esc
-    /// closes the drawer. Returns whether the key was used.
+    /// Keys of the grid and the Focus list when nothing floats over them:
+    /// arrows move the selection, Enter plays an installed game (in the grid
+    /// it otherwise shows the drawer), Esc closes the drawer. Returns whether
+    /// the key was used.
     pub(super) fn grid_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let free = self.ui.grid_view
-            && self.page == crate::pages::Page::Collection
+        let free = self.page == crate::pages::Page::Collection
             && self.dialog.is_none()
             && self.context_menu.is_none()
             && self.open_menu.is_none()
@@ -204,7 +205,7 @@ impl CollectionView {
                 let Some(key) = self.selected.clone() else { return false };
                 if self.focus.as_ref().is_some_and(|f| f.installed && !f.playing) {
                     self.install_or_play(&key, window, cx);
-                } else {
+                } else if self.ui.grid_view {
                     self.grid.drawer_closed = false;
                 }
                 true
