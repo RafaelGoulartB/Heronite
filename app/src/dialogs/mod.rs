@@ -24,6 +24,7 @@ pub mod launch_state;
 pub mod log_viewer;
 pub mod ludusavi_backup;
 pub mod manage_categories;
+pub mod manage_fields;
 pub mod manage_statuses;
 pub mod metadata;
 pub mod metadata_wizard;

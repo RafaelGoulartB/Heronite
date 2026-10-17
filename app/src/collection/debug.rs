@@ -63,6 +63,11 @@ impl CollectionView {
             }
             "statuses" => self.open_manage_statuses(window, cx),
             "categories" => self.open_manage_categories(window, cx),
+            // fields[:genres|companies|series|themes|features|platforms]
+            w if w == "fields" || w.starts_with("fields:") => {
+                let field = w.strip_prefix("fields:").and_then(heronite_data::field_names::Field::parse);
+                self.open_manage_fields(field, window, cx);
+            }
             // What Play shows for a store game whose folder is gone.
             w if w.starts_with("folder-missing:") => {
                 self.epic.pending = Some(super::epic::Request::FolderMissing(w["folder-missing:".len()..].to_string()));

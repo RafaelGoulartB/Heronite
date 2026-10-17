@@ -298,6 +298,7 @@ impl CollectionView {
             Act::YearReview => self.open_year_review(window, cx),
             Act::Onboarding => self.open_onboarding(cx),
             Act::ManageStatuses => self.open_manage_statuses(window, cx),
+            Act::ManageFields => self.open_manage_fields(None, window, cx),
             // The quit question needs the window: ask once this update ended.
             Act::Quit => cx.defer(crate::system::request_quit),
             Act::View(cmd) => self.run_view_cmd(cmd, window, cx),

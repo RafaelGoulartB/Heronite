@@ -262,5 +262,7 @@
   "stores the current filters, sort and grouping in the preset.": "guarda os filtros, a ordem e o agrupamento atuais no preset.",
   "“{name}” now holds the current filters": "“{name}” agora guarda os filtros atuais",
   "Edit presets…": "Editar presets…",
-  "Save as preset…": "Salvar como preset…"
+  "Save as preset…": "Salvar como preset…",
+  "Library fields…": "Campos da biblioteca…",
+  "Merge, rename or remove genres, companies and more": "Mescle, renomeie ou remova gêneros, empresas e mais"
 }

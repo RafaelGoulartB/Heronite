@@ -559,14 +559,28 @@ impl CollectionView {
     fn vm_browse(&self, cx: &mut Context<Self>) -> Div {
         let kinds = Kind::ALL.into_iter().filter(|k| *k != Kind::Only && (*k != Kind::Category || !self.categories.is_empty()));
         let d = self.vm_density();
-        section(tr!("Browse"), d).child(div().flex().flex_wrap().gap(px(6.)).children(kinds.enumerate().map(|(i, kind)| {
-            pill(("vm-browse", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
-                move |this, _, window, cx| {
-                    let text = choices::scoped_query(kind, "");
-                    this.set_view_query(&text, window, cx);
-                },
-            ))
-        })))
+        let fields = div()
+            .id("vm-fields")
+            .cursor_pointer()
+            .text_size(px(12.))
+            .text_color(theme::accent())
+            .hover(|s| s.text_color(white()))
+            .child(tr!("Library fields…"))
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.open_menu = None;
+                this.open_manage_fields(None, window, cx);
+            }));
+        let header = section_head(tr!("Browse")).child(fields);
+        div().flex().flex_col().gap(px(d.head_gap)).child(header).child(div().flex().flex_wrap().gap(px(6.)).children(
+            kinds.enumerate().map(|(i, kind)| {
+                pill(("vm-browse", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
+                    move |this, _, window, cx| {
+                        let text = choices::scoped_query(kind, "");
+                        this.set_view_query(&text, window, cx);
+                    },
+                ))
+            }),
+        ))
     }
 
     fn vm_footer(&self, cx: &mut Context<Self>) -> Div {

@@ -43,6 +43,8 @@ pub(super) enum Act {
     /// The getting-started checklist.
     Onboarding,
     ManageStatuses,
+    /// The library fields manager (genres, companies...).
+    ManageFields,
     Quit,
     /// Sort, filters and grouping of the Collection list.
     View(ViewCmd),
@@ -318,6 +320,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         tr!("Add, rename and order the statuses"),
         Icon::Flag,
         "status playing beaten completed custom jogando zerado completo personalizado renomear",
+    ));
+    v.push(action(
+        Act::ManageFields,
+        "fields",
+        tr!("Library fields…"),
+        tr!("Merge, rename or remove genres, companies and more"),
+        Icon::CallMerge,
+        "fields names duplicates merge rename genres companies developers publishers series themes features platforms clean campos nomes duplicados mesclar renomear generos empresas plataformas limpar",
     ));
     v.push(action(
         Act::Console,
@@ -744,6 +754,7 @@ mod tests {
             Act::OpenLogs,
             Act::YearReview,
             Act::ManageStatuses,
+            Act::ManageFields,
             Act::Console,
             Act::Quit,
         ] {

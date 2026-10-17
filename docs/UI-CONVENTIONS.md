@@ -114,7 +114,8 @@ everything the menu sets: filters, sort, grouping, hidden games; four built-in o
 and are then ordinary presets; under them "Save as preset…" while none matches and "Edit presets…", which lists them
 with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`), Show
 (segmented with counts), Group by (None | Status), Sort (segmented + direction), Only (Favourites, Update, Offline,
-Hidden tiles) and Browse (one chip per kind, fills `kind:`); the footer has the count, Reset all and Statuses…. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments, Only tiles and Browse pills. Several
+Hidden tiles) and Browse (one chip per kind, fills `kind:`; "Library fields…" on its caption row opens the fields manager,
+`dialogs/manage_fields`, also in the palette); the footer has the count, Reset all and Statuses…. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments, Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
 a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: in the grid the cover size slider and the "Aa" titles switch, the
 Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view only). Header menus open on click or

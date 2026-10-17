@@ -1,12 +1,14 @@
 //! The View menu's sort direction, "Only" switches and custom categories,
-//! and the category edits of a game. The menu itself is drawn in `header.rs`; the categories are
+//! the category edits of a game and the library fields manager. The menu itself is drawn in `header.rs`; the categories are
 //! `heronite_data::categories`.
 
 use gpui_kit::*;
 use heronite_data::categories::{self, Categories, UNCATEGORIZED};
+use heronite_data::field_names::Field;
 use heronite_i18n::tr;
 
 use super::CollectionView;
+use crate::dialogs::manage_fields::{ManageFieldsDialog, NamesChanged};
 use crate::services::downloads::Downloads;
 
 /// One of the View menu's "Only" switches.
@@ -120,6 +122,22 @@ impl CollectionView {
         self.open_menu = None;
         self.context_menu = None;
         let view = cx.new(|cx| crate::dialogs::manage_categories::ManageCategoriesDialog::new(ctx, window, cx));
+        self.open_dialog(view, cx);
+    }
+
+    /// The library fields manager, on `field` (companies by default). Its
+    /// renames carry over to the View menu's filters and presets.
+    pub(super) fn open_manage_fields(&mut self, field: Option<Field>, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ctx) = self.dialog_ctx() else { return };
+        self.open_menu = None;
+        self.context_menu = None;
+        let view = cx.new(|cx| ManageFieldsDialog::new(ctx, field, window, cx));
+        cx.subscribe(&view, |this, _, ev: &NamesChanged, _| {
+            if this.ui.rename_facet_values(ev.field.facet_kinds(), &ev.from, ev.to.as_deref()) {
+                this.save_ui();
+            }
+        })
+        .detach();
         self.open_dialog(view, cx);
     }
 }

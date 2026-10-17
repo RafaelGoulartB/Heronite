@@ -76,6 +76,7 @@ pub enum Icon {
     Palette,
     PhotoCamera,
     Inbox,
+    CallMerge,
     /// A game action that runs a command.
     Terminal,
     /// Mouse pointer of the getting-started previews.
@@ -128,6 +129,7 @@ impl Icon {
             Palette => "icons/palette.svg",
             PhotoCamera => "icons/photo-camera.svg",
             Inbox => "icons/inbox.svg",
+            CallMerge => "icons/call-merge.svg",
             Terminal => "icons/terminal.svg",
             Cursor => "icons/cursor.svg",
             Menu => "icons/menu.svg",
