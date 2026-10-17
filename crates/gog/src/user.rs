@@ -147,8 +147,7 @@ pub fn logout(paths: &DataPaths) -> Result<()> {
     for name in ACCOUNT_CACHES {
         let store = CacheStore::new(paths, name, None);
         if store.path().exists() {
-            let cleared =
-                if name == LIBRARY_CACHE { store.clear_keeping_games("games", |n| installed.contains(n)) } else { store.clear() };
+            let cleared = if name == LIBRARY_CACHE { store.clear_keeping_games("games", |n| installed.contains(n)) } else { store.clear() };
             if let Err(err) = cleared {
                 log::warn!("clearing {}: {err:#}", store.path().display());
             }

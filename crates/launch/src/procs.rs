@@ -79,7 +79,11 @@ fn parse_start_ticks(stat: &str) -> Option<u64> {
 fn clock_ticks_per_second() -> u64 {
     // SAFETY: sysconf has no preconditions.
     let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
-    if hz > 0 { hz as u64 } else { 100 }
+    if hz > 0 {
+        hz as u64
+    } else {
+        100
+    }
 }
 
 /// Now, in the clock `/proc/<pid>/stat` measures start times with (ticks

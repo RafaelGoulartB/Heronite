@@ -260,11 +260,8 @@ pub fn scan_rom_directory(
         .zip(&titles)
         .map(|(roms, title)| {
             // Two versions of a game (regions, revisions) keep what tells them apart.
-            let title = if titles.iter().filter(|t| *t == title).count() > 1 {
-                name_without_disc(&basename(&roms[0].path))
-            } else {
-                title.clone()
-            };
+            let title =
+                if titles.iter().filter(|t| *t == title).count() > 1 { name_without_disc(&basename(&roms[0].path)) } else { title.clone() };
             to_scan_item(title, roms, imported)
         })
         .collect();
