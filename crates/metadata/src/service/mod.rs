@@ -280,7 +280,14 @@ impl MetadataService {
         args.runner = runner;
         let Gathered { candidates, offline } = self.gather(&args);
         let proposed = self.propose(&args, current.as_ref(), &candidates);
-        Ok(MetadataPreview { app_name: args.app_name.clone(), current, proposed, candidates, igdb_configured: self.igdb_configured(), offline })
+        Ok(MetadataPreview {
+            app_name: args.app_name.clone(),
+            current,
+            proposed,
+            candidates,
+            igdb_configured: self.igdb_configured(),
+            offline,
+        })
     }
 
     /// `persistImages`.

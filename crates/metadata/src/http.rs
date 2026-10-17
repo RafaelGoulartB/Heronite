@@ -168,7 +168,12 @@ impl<'a> Request<'a> {
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
         let content_type = header("content-type").unwrap_or_default();
         let content_length = header("content-length").and_then(|v| v.parse().ok());
-        let body = resp.body_mut().with_config().limit(self.max_bytes).read_to_vec().map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
+        let body = resp
+            .body_mut()
+            .with_config()
+            .limit(self.max_bytes)
+            .read_to_vec()
+            .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
         Ok(Response { status, content_type, content_length, body })
     }
 
