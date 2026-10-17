@@ -205,9 +205,11 @@ impl Downloads {
         self.toast(cx, tr!("Update added to the download queue"), false);
     }
 
+    /// The user's pause: it also holds after a restart (the connection's and
+    /// the shutdown's pauses do not).
     pub fn pause(&mut self) {
         self.offline.release();
-        self.manager.pause();
+        self.manager.pause_by_user();
     }
 
     pub fn resume(&mut self) {
@@ -296,7 +298,8 @@ impl Downloads {
     /// At start: a queue left from the last run waits for the network instead
     /// of failing its first element.
     pub(super) fn start_queue_when_online(&mut self, cx: &mut Context<Self>) {
-        if self.snapshot.queue.is_empty() {
+        // A queue the user paused stays paused (and needs no network check).
+        if self.snapshot.queue.is_empty() || self.manager.is_user_paused() {
             self.manager.start();
             return;
         }
