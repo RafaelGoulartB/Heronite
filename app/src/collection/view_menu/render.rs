@@ -138,10 +138,11 @@ impl CollectionView {
                     .text_color(theme::text_dim())
                     .child(tr!("No filter matches “{query}”", query = q).to_string()),
             );
+            list = list.child(div().flex().justify_center().child(self.vm_results_close(cx)));
         }
         let highlight = self.view_menu.highlight;
         let mut n = 0;
-        for f in found {
+        for (i, f) in found.into_iter().enumerate() {
             list = list.child(
                 div()
                     .flex()
@@ -153,7 +154,8 @@ impl CollectionView {
                     .text_size(px(11.5))
                     .text_color(theme::text_dim())
                     .child(icon(f.kind.icon(), px(13.), theme::text_dim()))
-                    .child(f.kind.label().to_uppercase()),
+                    .child(div().flex_1().child(f.kind.label().to_uppercase()))
+                    .when(i == 0, |d| d.child(self.vm_results_close(cx))),
             );
             for row in f.rows {
                 let lit = n == highlight;
@@ -170,6 +172,23 @@ impl CollectionView {
             );
         }
         list
+    }
+
+    /// X of the results: empties the box and goes back to the menu.
+    fn vm_results_close(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        div()
+            .id("vm-results-close")
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(px(22.))
+            .my(px(-4.))
+            .rounded_full()
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::white_a(0.1)))
+            .child(icon(Icon::Close, px(14.), theme::text_muted()))
+            .on_click(cx.listener(|this, _, window, cx| this.set_view_query("", window, cx)))
     }
 
     fn vm_result_row(&self, n: usize, row: Row, lit: bool, cx: &mut Context<Self>) -> Stateful<Div> {
