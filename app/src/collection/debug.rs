@@ -15,9 +15,25 @@ impl CollectionView {
     /// that search typed; `views`: its views in edit mode; `views-select`:
     /// their select open), `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
     /// the first render that has a window (`open_pending_debug_dialog`).
-    pub(super) fn apply_debug_env(&mut self) {
+    ///
+    /// `HERONITE_DEBUG_MULTI=<n>` selects the first n games shown (a
+    /// selection: the dock, the tick circles); `HERONITE_DEBUG_DOCK=status|
+    /// categories` opens that dock popover. With a selection,
+    /// `HERONITE_DEBUG_MENU` on a selected game opens the batch menu and
+    /// `HERONITE_DEBUG_DIALOG=batchedit` the fields editor and
+    /// `HERONITE_DEBUG_BATCH` runs batch changes (see `open_pending_debug_dialog`).
+    pub(super) fn apply_debug_env(&mut self, cx: &mut Context<Self>) {
+        if let Some(n) = crate::env::parse::<usize>("HERONITE_DEBUG_MULTI") {
+            self.set_selection(self.shown_keys().into_iter().take(n).collect());
+            self.sel.pop = match crate::env::value("HERONITE_DEBUG_DOCK").as_deref() {
+                Some("status") => Some(super::selection::DockPop::Status),
+                Some("categories") => Some(super::selection::DockPop::Categories),
+                _ => None,
+            };
+        }
         if let Some(key) = crate::env::value("HERONITE_DEBUG_MENU") {
             self.context_menu = Some(context_menu::ContextMenuState {
+                batch: self.sel.contains(&key),
                 key: key.into(),
                 position: point(px(200.), px(160.)),
                 status_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_none()
@@ -28,6 +44,9 @@ impl CollectionView {
         }
         if let Some(which) = crate::env::value("HERONITE_DEBUG_DIALOG") {
             self.pending_debug_dialog = Some(which);
+        }
+        if let Some(steps) = crate::env::value("HERONITE_DEBUG_BATCH") {
+            self.debug_batch(steps, cx);
         }
         if let Some(menu) = crate::env::value("HERONITE_DEBUG_DROPDOWN") {
             let query = match menu.as_str() {
@@ -54,6 +73,36 @@ impl CollectionView {
         }
     }
 
+    /// `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo`: these
+    /// batch changes on the selection, a second apart (tests of the writes
+    /// and their undo; use a copy of the data folder).
+    fn debug_batch(&mut self, steps: String, cx: &mut Context<Self>) {
+        let steps: Vec<String> = steps.split(',').map(str::to_owned).collect();
+        cx.spawn(async move |this, cx| {
+            for step in steps {
+                cx.background_executor().timer(std::time::Duration::from_millis(1200)).await;
+                let ok = this.update(cx, |this, cx| {
+                    log::info!("debug batch: {step}");
+                    match step.split_once(':') {
+                        Some(("status", id)) => this.batch_status(id.to_string(), cx),
+                        Some(("cat", name)) => this.batch_category(name.to_string(), cx),
+                        _ if step == "fav" => this.batch_favourite(cx),
+                        _ if step == "hide" => this.batch_hide(cx),
+                        _ if step == "undo" => {
+                            this.undo_batch(cx);
+                        }
+                        _ => {}
+                    }
+                    cx.notify();
+                });
+                if ok.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(super) fn open_pending_debug_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(which) = self.pending_debug_dialog.take() else { return };
         match which.as_str() {
@@ -62,6 +111,7 @@ impl CollectionView {
                 self.open_settings_section(section.unwrap_or(crate::pages::settings::Section::Appearance), window, cx);
             }
             "statuses" => self.open_manage_statuses(window, cx),
+            "batchedit" => self.open_batch_edit(window, cx),
             "categories" => self.open_manage_categories(window, cx),
             // fields[:genres|companies|series|themes|features|platforms]
             w if w == "fields" || w.starts_with("fields:") => {

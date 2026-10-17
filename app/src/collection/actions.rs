@@ -79,6 +79,7 @@ impl CollectionView {
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
+        self.toast_undo = false;
         self.toast = Some((text.into(), error));
         self.toast_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
@@ -89,6 +90,12 @@ impl CollectionView {
             .ok();
         }));
         cx.notify();
+    }
+
+    /// A toast for a batch change, with Undo (`selection.rs`).
+    pub(super) fn show_undo_toast(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.show_toast(text, false, cx);
+        self.toast_undo = true;
     }
 
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {

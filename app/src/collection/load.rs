@@ -56,6 +56,9 @@ impl CollectionView {
                         this.welcome.load_error = None;
                         this.apply_loaded(l, cx);
                         this.nav_library_loaded(cx);
+                        if std::mem::take(&mut this.reload_again) {
+                            this.reload(cx);
+                        }
                     }
                     Err(err) => {
                         log::error!("loading library: {err:#}");
@@ -75,6 +78,8 @@ impl CollectionView {
 
     pub(super) fn reload(&mut self, cx: &mut Context<Self>) {
         if self.refreshing {
+            // The running load may have read the files before this change.
+            self.reload_again = true;
             return;
         }
         self.refreshing = true;
@@ -137,6 +142,7 @@ impl CollectionView {
         // saved, the files changed on disk) keeps the user's place.
         let scroll = (!first).then(|| self.list_state.logical_scroll_top());
         self.refresh_groups();
+        self.prune_selection();
         if let (Some(top), Some(last)) = (scroll, self.items.len().checked_sub(1)) {
             self.list_state.scroll_to(ListOffset { item_ix: top.item_ix.min(last), offset_in_item: top.offset_in_item });
         }
@@ -159,7 +165,7 @@ impl CollectionView {
         }
         if first {
             log::info!("library on screen after {:?}", self.started.elapsed());
-            self.apply_debug_env();
+            self.apply_debug_env(cx);
             self.maybe_open_onboarding(cx);
             crate::trim_heap_later();
         }

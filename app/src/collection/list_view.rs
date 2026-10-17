@@ -58,17 +58,19 @@ impl CollectionView {
             ListItem::Header { group } => {
                 let g = &self.groups[group];
                 let gid = g.id.clone();
-                let header = list::group_header(g, false).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
-                    cx.listener(move |this, _, _, cx| {
-                        this.ui.toggle_group(&gid);
-                        this.save_ui();
-                        if let Some(g) = this.groups.iter_mut().find(|g| g.id == gid) {
-                            g.collapsed = !g.collapsed;
-                        }
-                        this.rebuild_items();
-                        cx.notify();
-                    }),
-                );
+                let pick = self.group_pick(&gid, cx);
+                let header =
+                    list::group_header(g, false).children(pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
+                        cx.listener(move |this, _, _, cx| {
+                            this.ui.toggle_group(&gid);
+                            this.save_ui();
+                            if let Some(g) = this.groups.iter_mut().find(|g| g.id == gid) {
+                                g.collapsed = !g.collapsed;
+                            }
+                            this.rebuild_items();
+                            cx.notify();
+                        }),
+                    );
                 let m = self.list_metrics();
                 div().pl(px(m.pad_l)).pr(px(m.pad_r)).child(header).into_any_element()
             }
@@ -111,14 +113,15 @@ impl CollectionView {
                 width: self.card_w,
                 cover_h,
                 title: self.ui.grid_view && self.ui.grid_titles,
-                selected: self.selected.as_ref() == Some(&key),
+                selected: !self.sel.active() && self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
                 leaving: self.leaving.as_ref() == Some(&key),
                 grey_uninstalled: self.grey_uninstalled,
+                pick: self.sel.active().then(|| self.sel.contains(&key)),
                 epic: self.epic_card(&key, cx),
             },
-            cx.listener(move |this, _, _, cx| {
-                this.select(k1.clone(), true);
+            cx.listener(move |this, ev: &ClickEvent, _, cx| {
+                this.card_clicked(k1.clone(), ev);
                 cx.notify();
             }),
             cx.listener(move |this, hovered: &bool, _, cx| {
@@ -213,7 +216,13 @@ impl CollectionView {
         let no_match = self.lib.as_ref().is_some_and(|lib| !lib.games.is_empty()) && self.groups.iter().all(|g| g.cards.is_empty());
         let m = self.list_metrics();
         let sticky = self.sticky().map(|(g, shift)| {
-            div().absolute().top(px(shift)).left(px(m.pad_l)).right(px(m.pad_r)).child(list::group_header(&self.groups[g], true))
+            let pick = self.group_pick(&self.groups[g].id.clone(), cx);
+            div()
+                .absolute()
+                .top(px(shift))
+                .left(px(m.pad_l))
+                .right(px(m.pad_r))
+                .child(list::group_header(&self.groups[g], true).children(pick))
         });
         let grid = self.ui.grid_view;
         div()
@@ -234,6 +243,46 @@ impl CollectionView {
             .children(sticky)
             .children(list_scrollbar)
             .when(no_match, |d| d.child(self.render_no_match(cx)))
+    }
+
+    /// While selecting: the group header's "Select group" (the whole group
+    /// in, or out once all of it is in).
+    fn group_pick(&self, gid: &SharedString, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let (n, total) = self.sel.active().then(|| self.group_selection(gid)).flatten()?;
+        let tri = if n == 0 {
+            super::selection::Tri::None
+        } else if n == total {
+            super::selection::Tri::All
+        } else {
+            super::selection::Tri::Some
+        };
+        let gid = gid.clone();
+        Some(
+            div()
+                .id(SharedString::from(format!("group-pick-{gid}")))
+                .relative()
+                .ml(px(6.))
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .h(px(22.))
+                .pl(px(3.))
+                .pr(px(9.))
+                .rounded_full()
+                .bg(theme::white_a(0.05))
+                .text_size(px(12.))
+                .font_weight(theme::W_REGULAR)
+                .text_color(theme::text_muted())
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::white_a(0.1)).text_color(white()))
+                .child(super::dock::tri_mark(tri).size(px(16.)))
+                .child(if n == total { tr!("Unselect group") } else { tr!("Select group") })
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.toggle_group_selection(&gid);
+                    cx.notify();
+                })),
+        )
     }
 
     /// The list when the search and the filters hide every game.

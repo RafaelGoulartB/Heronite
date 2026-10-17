@@ -150,6 +150,22 @@ ending in "Open game page" (back to the Focus view). Keys while nothing floats o
 (the drawer follows), Enter plays an installed game, Esc closes the drawer (the selection stays; selecting a game opens
 it again). `ui-state.json` keeps `gridView`, `gridCoverWidth` and `gridTitles`. Console mode is not affected.
 
+**Selecting several games** (`collection/selection.rs`, `dock.rs`, by user decision: proposal 2 "Dock" of
+`propostas/selecao-v1`). Ctrl click ticks a game (with the focused one when nothing is selected yet), Shift click adds
+the cards from the last one clicked, Ctrl A selects every card on screen, and the card context menu's last row,
+"Select multiple" ("Add to selection" while selecting), starts it with the mouse. No tick shows on hover: only while
+games are selected do the cards get a round tick on the top-right (filled = selected, the others dimmed, no play bar),
+a plain click ticks or unticks, group headers get "Select group", the grid's drawer steps aside, and the dock floats at
+the bottom: × (or Esc) ends it, the count and "Select all N", Status ▾ and Categories ▾ (popovers above the dock),
+Favourite, Hide, Metadata (the metadata wizard on the selection) and Edit (F3). Right-clicking a selected card opens
+the same actions as a menu. Categories have three states (round tick: all, dash: some, ring: none); each click moves
+some → all → none → as it was (Playnite's assign / remove / leave alone), the next step shows under the pointer. Every
+batch change writes off the UI thread and its toast offers Undo (also Ctrl Z, 20 steps). F3 opens
+`dialogs/batch_edit.rs`: a drawer with the series and the tag fields of all the selected games; a tag only some have is
+dashed with "3/7" (click: give it to all), × takes one out of all, typing + Enter adds one to all; nothing is written
+until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|categories`,
+`HERONITE_DEBUG_DIALOG=batchedit`, `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo` (data copy only).
+
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
 Collection's context menu (`collection/context_menu.rs::item`/`paper`) uses the

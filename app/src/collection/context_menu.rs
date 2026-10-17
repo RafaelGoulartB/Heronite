@@ -11,7 +11,7 @@ use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trn};
 
 pub(super) struct ContextMenuState {
     pub key: SharedString,
@@ -21,6 +21,8 @@ pub(super) struct ContextMenuState {
     pub install_open: bool,
     /// Flyout of the Categories row.
     pub categories_open: bool,
+    /// Opened on a selected game: the menu acts on the whole selection.
+    pub batch: bool,
 }
 
 pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
@@ -59,7 +61,10 @@ pub(super) fn place_flyout(fly: Div, left: bool) -> Div {
 
 impl CollectionView {
     pub(super) fn open_context_menu(&mut self, key: SharedString, position: Point<Pixels>, cx: &mut Context<Self>) {
-        self.context_menu = Some(ContextMenuState { key, position, status_open: false, install_open: false, categories_open: false });
+        let batch = self.sel.contains(&key);
+        self.sel.pop = None;
+        self.context_menu =
+            Some(ContextMenuState { key, position, status_open: false, install_open: false, categories_open: false, batch });
         cx.notify();
     }
 
@@ -102,6 +107,10 @@ impl CollectionView {
         let playing = self.playing.contains_key(&game.app_name);
         let viewport = window.viewport_size();
         let flyout_left = f32::from(viewport.width - position.x) < 280. + 240.;
+        if state.batch {
+            let menu = self.batch_menu(status_open, categories_open, flyout_left, cx);
+            return Some(Self::menu_backdrop(menu, position, cx));
+        }
 
         let mut menu = paper().min_w(px(240.));
         menu = menu.child(Self::status_row(&lib, &game, &key, status_open, flyout_left, cx));
@@ -112,7 +121,131 @@ impl CollectionView {
         for a in self.game_actions(&game, cx).into_iter().filter(|a| a.in_menu) {
             menu = menu.child(Self::action_row(&key, a, cx));
         }
+        menu = menu.child(crate::ui::dropdown::menu_separator()).child(self.select_row(&key, cx));
         Some(Self::menu_backdrop(menu, position, cx))
+    }
+
+    /// "Select multiple" (starts selecting with this game), or "Add to
+    /// selection" while other games are selected.
+    fn select_row(&self, key: &SharedString, cx: &mut Context<Self>) -> Stateful<Div> {
+        let adding = self.sel.active();
+        let k = key.clone();
+        item("cm-select")
+            .on_hover(cx.listener(|this, h: &bool, _, cx| {
+                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open)) {
+                    m.status_open = false;
+                    m.install_open = false;
+                    m.categories_open = false;
+                    cx.notify();
+                }
+            }))
+            .child(icon(if adding { Icon::Add } else { Icon::Checklist }, px(18.), theme::accent()))
+            .child(if adding { tr!("Add to selection") } else { tr!("Select multiple") })
+            .when(!adding, |d| d.child(div().flex_1()).child(crate::ui::controls::kbd(tr!("Ctrl click"))))
+            .on_click(cx.listener(move |this, _, _, cx| this.start_selection(k.clone(), cx)))
+    }
+
+    /// The menu of a selected game: the batch changes for the whole selection.
+    fn batch_menu(&mut self, status_open: bool, categories_open: bool, flyout_left: bool, cx: &mut Context<Self>) -> Div {
+        let games = self.selected_games();
+        let n = games.len();
+        let status_fly = paper().min_w(px(230.)).max_h(px(420.)).child(
+            div().id("cm-b-st-list").flex().flex_col().gap(px(2.)).overflow_y_scroll().children(self.batch_status_rows(&games, "cm-b", cx)),
+        );
+        let cats_fly = paper().w(px(320.)).child(self.batch_categories_body(&games, "cm-b", cx));
+        let fold = |which: Option<bool>| {
+            cx.listener(move |this: &mut Self, h: &bool, _, cx: &mut Context<Self>| {
+                if !*h {
+                    return;
+                }
+                if let Some(m) = this.context_menu.as_mut() {
+                    // Some(true): the status flyout, Some(false): the categories', None: neither.
+                    m.status_open = which == Some(true);
+                    m.categories_open = which == Some(false);
+                    cx.notify();
+                }
+            })
+        };
+        let sub = |id: &'static str, ic: Icon, label: SharedString, open: bool, body: Div, hover| {
+            let row = item(id)
+                .on_hover(hover)
+                .child(icon(ic, px(18.), theme::text_muted()))
+                .child(label)
+                .child(div().flex_1())
+                .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()));
+            let mut wrap = div().relative().child(row);
+            if open {
+                wrap = wrap.child(place_flyout(div().absolute().top(px(-6.)).occlude().child(body), flyout_left));
+            }
+            wrap
+        };
+        let status = sub("cm-b-status", Icon::Flag, tr!("Status").into(), status_open, status_fly, fold(Some(true)));
+        let cats = sub("cm-b-cats", Icon::Label, tr!("Categories").into(), categories_open, cats_fly, fold(Some(false)));
+        let all_fav = games.iter().all(|g| g.favourite);
+        let all_hidden = games.iter().all(|g| g.hidden);
+        let plain =
+            |id: &'static str, ic: Icon, label: &str| item(id).child(icon(ic, px(18.), theme::text_muted())).child(label.to_string());
+        paper()
+            .min_w(px(250.))
+            .child(div().px(px(12.)).pt(px(6.)).pb(px(4.)).text_size(px(12.)).text_color(theme::text_dim()).child(trn!(
+                n,
+                "{n} game selected",
+                "{n} games selected"
+            )))
+            .child(status)
+            .child(cats)
+            .child(
+                plain(
+                    "cm-b-fav",
+                    if all_fav { Icon::Favorite } else { Icon::FavoriteBorder },
+                    if all_fav { tr!("Remove from favourites") } else { tr!("Add to favourites") },
+                )
+                .on_hover(fold(None))
+                .on_click(cx.listener(|this, _, _, cx| this.batch_favourite(cx))),
+            )
+            .child(
+                plain(
+                    "cm-b-hide",
+                    if all_hidden { Icon::Visibility } else { Icon::VisibilityOff },
+                    if all_hidden { tr!("Unhide") } else { tr!("Hide") },
+                )
+                .on_hover(fold(None))
+                .on_click(cx.listener(|this, _, _, cx| this.batch_hide(cx))),
+            )
+            .child(
+                plain("cm-b-meta", Icon::CloudDownload, tr!("Download metadata"))
+                    .on_hover(fold(None))
+                    .on_click(cx.listener(|this, _, _, cx| this.batch_metadata(cx))),
+            )
+            .child(
+                plain("cm-b-edit", Icon::Edit, tr!("Edit fields…"))
+                    .child(div().flex_1())
+                    .child(crate::ui::controls::kbd("F3"))
+                    .on_hover(fold(None))
+                    .on_click(cx.listener(|this, _, window, cx| this.open_batch_edit(window, cx))),
+            )
+            .child(crate::ui::dropdown::menu_separator())
+            .child(
+                plain("cm-b-all", Icon::SelectAll, tr!("Select all"))
+                    .child(div().flex_1())
+                    .child(crate::ui::controls::kbd("Ctrl A"))
+                    .on_hover(fold(None))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.select_all_shown();
+                        cx.notify();
+                    })),
+            )
+            .child(
+                plain("cm-b-clear", Icon::Close, tr!("Clear selection"))
+                    .child(div().flex_1())
+                    .child(crate::ui::controls::kbd("Esc"))
+                    .on_hover(fold(None))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.context_menu = None;
+                        this.clear_selection();
+                        cx.notify();
+                    })),
+            )
     }
 
     /// "Status" row with its flyout of statuses.

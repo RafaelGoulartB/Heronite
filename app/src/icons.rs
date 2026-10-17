@@ -77,6 +77,8 @@ pub enum Icon {
     PhotoCamera,
     Inbox,
     CallMerge,
+    Checklist,
+    SelectAll,
     /// A game action that runs a command.
     Terminal,
     /// Mouse pointer of the getting-started previews.
@@ -130,6 +132,8 @@ impl Icon {
             PhotoCamera => "icons/photo-camera.svg",
             Inbox => "icons/inbox.svg",
             CallMerge => "icons/call-merge.svg",
+            Checklist => "icons/checklist.svg",
+            SelectAll => "icons/select-all.svg",
             Terminal => "icons/terminal.svg",
             Cursor => "icons/cursor.svg",
             Menu => "icons/menu.svg",

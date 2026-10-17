@@ -9,13 +9,14 @@ mod console;
 mod context_menu;
 mod data;
 mod debug;
+mod dock;
 mod emulation;
 mod epic;
 mod extras;
 mod focus;
 mod focus_left;
-mod game_actions;
 mod folder_size;
+mod game_actions;
 mod game_facts;
 mod grid;
 mod grid_drawer;
@@ -36,6 +37,7 @@ mod render_focus;
 mod screenshot_viewer;
 mod screenshots;
 mod scroll;
+mod selection;
 mod sideload_uninstall;
 mod steam_copy;
 mod system_glue;
@@ -95,10 +97,14 @@ pub struct CollectionView {
     /// The View menu's search box, typed text and saved-view name box.
     view_menu: view_menu::ViewMenu,
     refreshing: bool,
+    /// A reload was asked for while one ran: load again when it ends.
+    reload_again: bool,
     runtime: Arc<GameRuntime>,
     /// app_name -> started tracking (Launching/Running).
     playing: HashMap<String, bool>,
     toast: Option<(SharedString, bool)>,
+    /// The toast says what a batch change did and offers to undo it.
+    toast_undo: bool,
     context_menu: Option<context_menu::ContextMenuState>,
     focus_handle: FocusHandle,
     dialog: Option<AnyView>,
@@ -133,6 +139,8 @@ pub struct CollectionView {
     grid: grid::GridUi,
     list_state: ListState,
     selected: Option<SharedString>,
+    /// Several games picked at once (`selection.rs`, the dock in `dock.rs`).
+    sel: selection::Selection,
     hovered: Option<SharedString>,
     leaving: Option<SharedString>,
     focus: Option<FocusVm>,
@@ -211,9 +219,11 @@ impl CollectionView {
             wheel: WheelScroll::default(),
             view_menu,
             refreshing: false,
+            reload_again: false,
             runtime,
             playing: HashMap::new(),
             toast: None,
+            toast_undo: false,
             toast_task: None,
             context_menu: None,
             focus_handle: cx.focus_handle(),
@@ -240,6 +250,7 @@ impl CollectionView {
             grid: Default::default(),
             list_state,
             selected: None,
+            sel: Default::default(),
             hovered: None,
             leaving: None,
             focus: None,
@@ -270,20 +281,50 @@ impl CollectionView {
 }
 
 impl CollectionView {
-    fn render_toast(&self) -> Option<Div> {
+    fn render_toast(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let undo = self.toast_undo && self.sel.can_undo();
         self.toast.clone().map(|(text, error)| {
             div().absolute().bottom(px(84.)).left_0().right_0().flex().justify_center().child(
                 div()
-                    .max_w(px(560.))
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .max_w(px(620.))
                     .px(px(16.))
                     .py(px(10.))
+                    .when(undo, |d| d.py(px(6.)).pr(px(6.)))
                     .rounded(px(10.))
                     .bg(theme::rgb_a(18, 22, 28, 0.94))
                     .border_1()
                     .border_color(if error { theme::danger().into() } else { theme::white_a(0.12) })
                     .text_size(px(13.33))
                     .text_color(theme::white_a(0.92))
-                    .child(text),
+                    .child(text)
+                    .when(undo, |d| {
+                        d.child(
+                            div()
+                                .id("toast-undo")
+                                .occlude()
+                                .flex()
+                                .flex_none()
+                                .items_center()
+                                .gap(px(8.))
+                                .h(px(30.))
+                                .px(px(12.))
+                                .rounded(px(8.))
+                                .bg(theme::accent_tint())
+                                .text_color(theme::accent())
+                                .font_weight(theme::W_BOLD)
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme::accent_tint_border()))
+                                .child(heronite_i18n::tr!("Undo"))
+                                .child(crate::ui::controls::kbd("Ctrl Z"))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.undo_batch(cx);
+                                    cx.notify();
+                                })),
+                        )
+                    }),
             )
         })
     }
@@ -301,7 +342,7 @@ impl CollectionView {
     }
 
     fn on_key_down(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.shots_key(ev, cx) || self.grid_key(ev, window, cx) {
+        if self.shots_key(ev, cx) || self.selection_key(ev, window, cx) || self.grid_key(ev, window, cx) {
             cx.notify();
             return;
         }
@@ -384,7 +425,8 @@ impl CollectionView {
             let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
             div().size_full().flex().child(list_column).child(div().flex_1().min_w_0().h_full().child(focus_panel)).into_any_element()
         };
-        let toast = self.render_toast();
+        let toast = self.render_toast(cx);
+        let dock = if on_page { None } else { self.render_dock(window, cx) };
         let update_banner = self.render_update_banner(cx);
 
         div()
@@ -407,6 +449,7 @@ impl CollectionView {
             .when(!on_page, |root| {
                 root.child(div().absolute().inset_0().flex().flex_col().child(header).child(div().flex().flex_1().min_h_0().child(body)))
             })
+            .children(dock)
             .children(toast)
             .children(update_banner)
             .children(self.render_context_menu(window, cx))

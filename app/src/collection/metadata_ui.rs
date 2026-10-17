@@ -75,19 +75,14 @@ impl CollectionView {
 
     /// Games the wizard checks: the ones the list currently shows.
     pub(super) fn open_wizard(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(ctx), Some(lib)) = (self.dialog_ctx(), self.lib.clone()) else { return };
-        let games: Vec<BulkItem> = self
-            .groups
-            .iter()
-            .flat_map(|g| g.cards.iter())
-            .filter_map(|c| lib.get(&c.key))
-            .map(|g| BulkItem {
-                app_name: g.app_name.clone(),
-                runner: if g.runner == "zoom" { "sideload".into() } else { g.runner.clone() },
-                title: g.title.clone(),
-                steam_app_id: g.steam_app_id.clone(),
-            })
-            .collect();
+        let Some(lib) = self.lib.clone() else { return };
+        let games = self.groups.iter().flat_map(|g| g.cards.iter()).filter_map(|c| lib.get(&c.key)).map(|g| bulk_item(g)).collect();
+        self.open_wizard_for(games, cx);
+    }
+
+    /// The wizard on `games` (the list, or the selected games).
+    pub(super) fn open_wizard_for(&mut self, games: Vec<BulkItem>, cx: &mut Context<Self>) {
+        let Some(ctx) = self.dialog_ctx() else { return };
         hub(cx).update(cx, |h, cx| {
             h.dismissed = false;
             cx.notify();
@@ -159,5 +154,15 @@ impl CollectionView {
             "wizard" => self.open_wizard(window, cx),
             _ => {}
         }
+    }
+}
+
+/// A game as the metadata wizard takes it.
+pub(super) fn bulk_item(g: &heronite_data::CollectionGame) -> BulkItem {
+    BulkItem {
+        app_name: g.app_name.clone(),
+        runner: if g.runner == "zoom" { "sideload".into() } else { g.runner.clone() },
+        title: g.title.clone(),
+        steam_app_id: g.steam_app_id.clone(),
     }
 }

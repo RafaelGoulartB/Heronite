@@ -67,7 +67,8 @@ impl CollectionView {
     }
 
     pub(super) fn drawer_open(&self) -> bool {
-        self.ui.grid_view && self.focus.is_some() && !self.grid.drawer_closed
+        // While selecting several games the dock acts on them: the grid takes the whole width.
+        self.ui.grid_view && self.focus.is_some() && !self.grid.drawer_closed && !self.sel.active()
     }
 
     /// Width of the list column and its columns for this window; sets the
