@@ -87,6 +87,15 @@ impl SettingsPanel {
                 cx,
             ))
             .child(self.toggle_row(
+                "check-updates",
+                "checkForUpdatesOnStartup",
+                true,
+                tr!("Check for game updates at startup"),
+                Some(tr!("Off, updates are only looked for when you refresh a store's library. Automatic updates still check on their own.")),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
                 "auto-update",
                 "autoUpdateGames",
                 false,

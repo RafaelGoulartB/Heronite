@@ -751,6 +751,7 @@ impl SettingsPanel {
             self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx),
             self.c_toggle("downloadNoHttps", false, tr!("Download without HTTPS (LanCache)"), None, false),
             Self::c_header(tr!("Updates")),
+            self.c_toggle("checkForUpdatesOnStartup", true, tr!("Check for game updates at startup"), None, false),
             self.c_toggle("autoUpdateGames", false, tr!("Update games automatically"), None, false),
         ]
     }
