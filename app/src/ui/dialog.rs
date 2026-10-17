@@ -32,6 +32,30 @@ pub fn dialog(
     footer: Option<AnyElement>,
     on_close: impl Fn(&mut Window, &mut App) + 'static,
 ) -> AnyElement {
+    build(props, None, body, footer, on_close)
+}
+
+/// [`dialog`] whose body shows a draggable scrollbar while it overflows.
+/// The caller keeps `scroll` between frames; its size is only known after a
+/// first layout, so the caller draws once more when `scroll.bounds()` is
+/// still empty.
+pub fn dialog_scrolled(
+    props: DialogProps,
+    scroll: &ScrollHandle,
+    body: AnyElement,
+    footer: Option<AnyElement>,
+    on_close: impl Fn(&mut Window, &mut App) + 'static,
+) -> AnyElement {
+    build(props, Some(scroll), body, footer, on_close)
+}
+
+fn build(
+    props: DialogProps,
+    scroll: Option<&ScrollHandle>,
+    body: AnyElement,
+    footer: Option<AnyElement>,
+    on_close: impl Fn(&mut Window, &mut App) + 'static,
+) -> AnyElement {
     let on_close = std::rc::Rc::new(on_close);
     let close = {
         let on_close = on_close.clone();
@@ -60,6 +84,35 @@ pub fn dialog(
     let content = match props.height {
         Some(h) => content.h(px(h)).flex_none(),
         None => content,
+    };
+    let content = match scroll {
+        Some(scroll) => {
+            // Only one dialog is open at a time: one id for its scrollbar.
+            let bar = crate::ui::scrollbar_draggable(
+                "dialog-scrollbar",
+                scroll.offset().y,
+                scroll.max_offset().y,
+                scroll.bounds().size.height,
+                {
+                    let scroll = scroll.clone();
+                    move |distance, window, _| {
+                        scroll.set_offset(point(px(0.), px(-distance)));
+                        window.refresh();
+                    }
+                },
+                None,
+            );
+            div()
+                .relative()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h_0()
+                .child(content.track_scroll(scroll))
+                .children(bar.map(|b| b.right(px(8.))))
+                .into_any_element()
+        }
+        None => content.into_any_element(),
     };
     let mut card = glass::glass_panel(theme::R_SHEET)
         .id(props.id.clone())

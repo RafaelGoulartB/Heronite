@@ -156,7 +156,7 @@ same look; other context-menu rows must call `context_menu::item`.
 
 **Dialogs** (`ui::dialog`): `dialog(DialogProps, body, footer, on_close)` = glass
 modal (radius 26, title Rubik 22, round close button, Collection darkened by
-`rgba(0,0,0,.55)`); `drawer(DrawerProps { id, width }, header, body, footer,
+`rgba(0,0,0,.55)`); `dialog_scrolled(.., &ScrollHandle, ..)` is the same with a draggable scrollbar on a long body; `drawer(DrawerProps { id, width }, header, body, footer,
 on_close)` = right-hand sheet inset 10px, radius 24, with fixed header/footer
 slots (build the header with `kicker`, `dialog_title`, `close_button`).
 

@@ -121,7 +121,16 @@ pub fn textarea_box(state: &Entity<TextareaState>, rows: usize) -> Div {
 /// Search bar of the artwork pickers: magnifier + borderless input on the
 /// glass input surface. Grows to fill the row (`flex_1`).
 pub fn search_box(input: &Entity<InputState>) -> Div {
-    field_row(input, false, Some(icon(Icon::FaSearch, px(14.), theme::text_muted()).into_any_element()), None)
+    search_row(input, None)
+}
+
+/// [`search_box`] with `trailing` after the text (a clear button).
+pub fn search_box_with(input: &Entity<InputState>, trailing: AnyElement) -> Div {
+    search_row(input, Some(trailing))
+}
+
+fn search_row(input: &Entity<InputState>, trailing: Option<AnyElement>) -> Div {
+    field_row(input, false, Some(icon(Icon::FaSearch, px(14.), theme::text_muted()).into_any_element()), trailing)
         .flex_1()
         .w_auto()
         .min_w(px(192.))
