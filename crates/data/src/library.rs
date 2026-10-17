@@ -404,6 +404,7 @@ fn stamp_files(paths: &DataPaths) -> Vec<PathBuf> {
         paths.game_overrides(),
         paths.local_meta(),
         paths.metadata(),
+        paths.field_names(),
         paths.art(),
         paths.statuses(),
         paths.collection_settings(),
@@ -644,6 +645,7 @@ impl Library {
         let owned = SteamOwnedFile::read(paths);
         let joins = steam_joins(&kept, &owned, &metas, &metadatas, &overrides, &timestamps, &sessions, &favourites);
 
+        let names = crate::field_names::NameRules::load(paths);
         let mut games: Vec<Arc<CollectionGame>> = Vec::new();
         for game in kept {
             let key = format!("{}_{}", game.runner, game.app_name);
@@ -652,7 +654,7 @@ impl Library {
             }
             let app = game.app_name.clone();
             let runner = game.runner.clone();
-            games.push(Arc::new(CollectionGame::build(BuildInputs {
+            let mut built = CollectionGame::build(BuildInputs {
                 steam: joins.links.get(&key).cloned(),
                 overrides: overrides.get(&app).cloned(),
                 meta: metas.get(&app).cloned(),
@@ -665,7 +667,9 @@ impl Library {
                 hidden: hidden.contains(app.as_str()),
                 statuses: &statuses,
                 game,
-            })));
+            });
+            names.apply_facets(&mut built.facets);
+            games.push(Arc::new(built));
         }
 
         let index = games.iter().enumerate().map(|(i, g)| (g.key.clone(), i)).collect();
@@ -687,7 +691,7 @@ impl Library {
     }
 
     /// True when any file the library was built from changed since [`Library::load`]
-    /// (about 16 `stat` calls; nothing is read).
+    /// (about 18 `stat` calls; nothing is read).
     pub fn changed_on_disk(&self) -> bool {
         take_stamp(&self.files) != self.stamp
     }

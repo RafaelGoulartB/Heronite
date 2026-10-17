@@ -67,6 +67,10 @@ impl DataPaths {
     pub fn metadata(&self) -> PathBuf {
         self.j("local_library/metadata.json")
     }
+    /// Renamed, merged and removed names of the library fields (`field_names`).
+    pub fn field_names(&self) -> PathBuf {
+        self.j("local_library/names.json")
+    }
     pub fn art(&self) -> PathBuf {
         self.j("local_library/art.json")
     }

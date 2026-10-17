@@ -54,7 +54,10 @@ calls them from `cx.background_spawn` or worker threads.
   `proc` (`guard` and `Run`: helper processes die with the app), and one
   module per data file: `library`, `collection`, `sideload`, `game_config`,
   `settings`, `status`, `sessions`, `playtime`, `ui_state`, `appearance`,
-  `language`, `steam_owned` (the cached Steam library and its twins: a game
+  `language`, `field_names` (the library fields manager: renames, merges and
+  removals of genres, companies, series, themes, features and platforms, kept
+  as rules in `local_library/names.json` that the metadata service and the
+  library load apply too, plus the duplicate suggestions), `steam_owned` (the cached Steam library and its twins: a game
   owned on Steam that the Collection has from another source joins that
   entry instead of getting a Steam entry of its own).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese

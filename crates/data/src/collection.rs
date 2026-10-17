@@ -197,6 +197,25 @@ impl FacetFilters {
         self.slot(kind).clear();
     }
 
+    /// Renames the selected values of `kind` named like `from` (by
+    /// [`facet_key`]) to `to`, or drops them (`None`). True when it changed.
+    pub fn rename_values(&mut self, kind: FacetKind, from: &[String], to: Option<&str>) -> bool {
+        let keys: HashSet<String> = from.iter().map(|v| facet_key(v)).collect();
+        let slot = self.slot(kind);
+        if !slot.iter().any(|v| keys.contains(&facet_key(v))) {
+            return false;
+        }
+        let mut next: Vec<String> = Vec::with_capacity(slot.len());
+        for v in slot.drain(..) {
+            let v = if keys.contains(&facet_key(&v)) { to.map(str::to_owned) } else { Some(v) };
+            if let Some(v) = v.filter(|v| !next.iter().any(|n| facet_key(n) == facet_key(v))) {
+                next.push(v);
+            }
+        }
+        *slot = next;
+        true
+    }
+
     /// The same values per kind, in any order or spelling.
     pub fn same_as(&self, other: &Self) -> bool {
         let keys = |f: &Self, k: FacetKind| f.get(k).iter().map(|v| facet_key(v)).collect::<HashSet<_>>();
@@ -241,9 +260,8 @@ pub fn game_facets(game: &GameInfo, metadata: Option<&CollectionGameMetadata>) -
             unique_names(from_extra.iter().map(String::as_str))
         }
     };
-    let listed = |list: fn(&CollectionGameMetadata) -> &[String]| {
-        unique_names(metadata.map(list).unwrap_or(&[]).iter().map(String::as_str))
-    };
+    let listed =
+        |list: fn(&CollectionGameMetadata) -> &[String]| unique_names(metadata.map(list).unwrap_or(&[]).iter().map(String::as_str));
     let platforms = listed(|m| &m.platforms);
     // The stores are known from the overlay (`store_facet`).
     [

@@ -183,6 +183,19 @@ impl UiState {
         self.facet_filters = self.facet_filters.toggled(kind, value);
     }
 
+    /// Follows a rename, merge (`to`) or removal (`None`) of names in the
+    /// filters on screen and in the saved views. True when one changed.
+    pub fn rename_facet_values(&mut self, kinds: &[FacetKind], from: &[String], to: Option<&str>) -> bool {
+        let mut changed = false;
+        for kind in kinds {
+            changed |= self.facet_filters.rename_values(*kind, from, to);
+            for view in &mut self.saved_views {
+                changed |= view.filters.facet_filters.rename_values(*kind, from, to);
+            }
+        }
+        changed
+    }
+
     /// `handleClearFacets`.
     pub fn clear_facets(&mut self) {
         self.facet_filters = FacetFilters::default();
