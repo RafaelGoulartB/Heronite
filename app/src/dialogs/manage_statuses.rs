@@ -1,17 +1,19 @@
 //! `ManageStatusesDialog`: rename, reorder, add and remove completion
 //! statuses (`local_library/statuses.json`).
 
+use std::collections::HashMap;
+
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::models::CompletionStatus;
 use heronite_data::status;
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trn};
 
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{button, help_text, ButtonKind};
+use crate::ui::controls::{button, button_sm, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::input_box;
 
@@ -25,9 +27,19 @@ pub struct ManageStatusesDialog {
     rows: Vec<Row>,
     new_name: Entity<InputState>,
     error: Option<SharedString>,
+    /// Games on each status (by id), kept up to date as statuses go.
+    counts: HashMap<String, usize>,
+    /// The status whose removal is being confirmed.
+    confirm: Option<String>,
 }
 
 impl EventEmitter<DialogEvent> for ManageStatusesDialog {}
+
+/// Where the games of a deleted status are counted afterwards.
+fn count_after_delete(counts: &mut HashMap<String, usize>, id: &str, fallback: &str) {
+    let moved = counts.remove(id).unwrap_or(0);
+    *counts.entry(fallback.to_owned()).or_default() += moved;
+}
 
 fn text_input(window: &mut Window, cx: &mut App, value: &str, placeholder: &str) -> Entity<InputState> {
     let value = value.to_string();
@@ -50,7 +62,11 @@ impl ManageStatusesDialog {
         })
         .detach();
         let statuses = ctx.lib.statuses.clone();
-        let mut this = Self { ctx, rows: Vec::new(), new_name, error: None };
+        let mut counts = HashMap::new();
+        for g in &ctx.lib.games {
+            *counts.entry(g.status_id.clone()).or_default() += 1;
+        }
+        let mut this = Self { ctx, rows: Vec::new(), new_name, error: None, counts, confirm: None };
         this.set_statuses(statuses, window, cx);
         this
     }
@@ -105,12 +121,50 @@ impl ManageStatusesDialog {
         self.apply(res, window, cx);
     }
 
+    /// Esc, offered by the host before it closes the dialog: answers the
+    /// question about removing a status.
+    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        let asking = self.confirm.take().is_some();
+        if asking {
+            cx.notify();
+        }
+        asking
+    }
+
+    fn ask_delete(&mut self, id: String, cx: &mut Context<Self>) {
+        if self.rows.len() > 1 {
+            self.confirm = Some(id);
+            cx.notify();
+        }
+    }
+
     fn delete(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.confirm = None;
         if self.rows.len() <= 1 {
             return;
         }
+        let statuses: Vec<CompletionStatus> = self.rows.iter().map(|r| r.status.clone()).collect();
+        let fallback = status::delete_fallback(&statuses, &id).map(|s| s.id.clone());
         let res = status::delete_status(&self.ctx.data_paths, &id);
+        if let (Ok(list), Some(fallback)) = (&res, fallback) {
+            if !list.iter().any(|s| s.id == id) {
+                count_after_delete(&mut self.counts, &id, &fallback);
+            }
+        }
         self.apply(res, window, cx);
+    }
+
+    /// "Remove X? 3 games move to Y."
+    fn delete_question(&self, row: &Row) -> String {
+        let name = status::status_label(&row.status.name);
+        let games = self.counts.get(&row.status.id).copied().unwrap_or(0);
+        let statuses: Vec<CompletionStatus> = self.rows.iter().map(|r| r.status.clone()).collect();
+        let to = status::delete_fallback(&statuses, &row.status.id).map(|s| status::status_label(&s.name).to_string()).unwrap_or_default();
+        if games == 0 {
+            tr!("Remove “{name}”? No game is on it.", name)
+        } else {
+            trn!(games, "Remove “{name}”? Its {n} game moves to “{to}”.", "Remove “{name}”? Its {n} games move to “{to}”.", name, to)
+        }
     }
 
     fn add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -140,12 +194,35 @@ impl Render for ManageStatusesDialog {
         let mut list = div().flex().flex_col().gap(px(6.));
         for (i, row) in self.rows.iter().enumerate() {
             let id = row.status.id.clone();
+            let dot = div().flex_none().size(px(7.)).rounded_full().opacity(0.9).bg(theme::status_color(&row.status.slug));
+            if self.confirm.as_ref() == Some(&id) {
+                list = list.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .min_h(px(40.))
+                        .child(dot)
+                        .child(div().flex_1().min_w_0().text_size(px(13.5)).child(self.delete_question(row)))
+                        .child(button_sm(SharedString::from(format!("st-del-no-{i}")), ButtonKind::Ghost, tr!("Cancel")).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.confirm = None;
+                                cx.notify();
+                            }),
+                        ))
+                        .child(
+                            button_sm(SharedString::from(format!("st-del-yes-{i}")), ButtonKind::Danger, tr!("Remove"))
+                                .on_click(cx.listener(move |this, _, w, cx| this.delete(id.clone(), w, cx))),
+                        ),
+                );
+                continue;
+            }
             list = list.child(
                 div()
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(div().size(px(7.)).rounded_full().opacity(0.9).bg(theme::status_color(&row.status.slug)))
+                    .child(dot)
                     .child(field(&row.input))
                     .child(
                         icon_btn(SharedString::from(format!("st-up-{i}")), Icon::FaChevronUp, i > 0)
@@ -157,7 +234,7 @@ impl Render for ManageStatusesDialog {
                     )
                     .child(
                         icon_btn(SharedString::from(format!("st-del-{i}")), Icon::FaTrash, n > 1)
-                            .on_click(cx.listener(move |this, _, w, cx| this.delete(id.clone(), w, cx))),
+                            .on_click(cx.listener(move |this, _, _, cx| this.ask_delete(id.clone(), cx))),
                     ),
             );
         }
@@ -188,5 +265,20 @@ impl Render for ManageStatusesDialog {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_deleted_status_hands_its_count_to_the_fallback() {
+        let mut counts = HashMap::from([("beaten".to_owned(), 3), ("not-played".to_owned(), 2)]);
+        count_after_delete(&mut counts, "beaten", "not-played");
+        assert_eq!(counts.get("beaten"), None);
+        assert_eq!(counts["not-played"], 5);
+        count_after_delete(&mut counts, "gone", "playing");
+        assert_eq!(counts["playing"], 0);
     }
 }

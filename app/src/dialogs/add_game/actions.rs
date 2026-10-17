@@ -20,7 +20,7 @@ use crate::dialogs::DialogEvent;
 
 impl AddGameDialog {
     pub(super) fn save(&mut self, cx: &mut Context<Self>) {
-        if self.saving || self.confirm_remove {
+        if self.saving || self.confirm_remove || self.confirm_discard {
             return;
         }
         let title = text_of(&self.title, cx).trim().to_string();

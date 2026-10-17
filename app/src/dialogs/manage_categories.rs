@@ -11,7 +11,7 @@ use heronite_i18n::{tr, trn};
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{button, help_text, ButtonKind};
+use crate::ui::controls::{button, button_sm, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::input_box;
 
@@ -27,9 +27,21 @@ pub struct ManageCategoriesDialog {
     rows: Vec<Row>,
     new_name: Entity<InputState>,
     error: Option<SharedString>,
+    /// The category whose removal is being confirmed.
+    confirm: Option<String>,
 }
 
 impl EventEmitter<DialogEvent> for ManageCategoriesDialog {}
+
+/// A category was renamed (or merged into another): the Collection follows
+/// it in the filters and saved views that name it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CategoryRenamed {
+    pub from: String,
+    pub to: String,
+}
+
+impl EventEmitter<CategoryRenamed> for ManageCategoriesDialog {}
 
 fn text_input(window: &mut Window, cx: &mut App, value: &str, placeholder: &str) -> Entity<InputState> {
     let value = value.to_string();
@@ -51,7 +63,7 @@ impl ManageCategoriesDialog {
             }
         })
         .detach();
-        let mut this = Self { ctx, rows: Vec::new(), new_name, error: None };
+        let mut this = Self { ctx, rows: Vec::new(), new_name, error: None, confirm: None };
         this.load(window, cx);
         this
     }
@@ -94,10 +106,24 @@ impl ManageCategoriesDialog {
             return;
         }
         let res = categories::rename_category(&self.ctx.data_paths, old, &new);
+        if res.is_ok() {
+            cx.emit(CategoryRenamed { from: old.to_owned(), to: new });
+        }
         self.apply(res, window, cx);
     }
 
+    /// Esc, offered by the host before it closes the dialog: answers the
+    /// question about removing a category.
+    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        let asking = self.confirm.take().is_some();
+        if asking {
+            cx.notify();
+        }
+        asking
+    }
+
     fn delete(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.confirm = None;
         let res = categories::remove_category(&self.ctx.data_paths, &name);
         self.apply(res, window, cx);
     }
@@ -121,6 +147,37 @@ impl Render for ManageCategoriesDialog {
         }
         for (i, row) in self.rows.iter().enumerate() {
             let name = row.name.clone();
+            if self.confirm.as_ref() == Some(&name) {
+                let question = if row.games == 0 {
+                    tr!("Remove the category “{name}”?", name = name.as_str())
+                } else {
+                    trn!(
+                        row.games,
+                        "Remove the category “{name}”? Its {n} game stays in your library.",
+                        "Remove the category “{name}”? Its {n} games stay in your library.",
+                        name = name.as_str()
+                    )
+                };
+                list = list.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .min_h(px(40.))
+                        .child(div().flex_1().min_w_0().text_size(px(13.5)).child(question))
+                        .child(button_sm(SharedString::from(format!("cat-del-no-{i}")), ButtonKind::Ghost, tr!("Cancel")).on_click(
+                            cx.listener(|this, _, _, cx| {
+                                this.confirm = None;
+                                cx.notify();
+                            }),
+                        ))
+                        .child(
+                            button_sm(SharedString::from(format!("cat-del-yes-{i}")), ButtonKind::Danger, tr!("Remove"))
+                                .on_click(cx.listener(move |this, _, w, cx| this.delete(name.clone(), w, cx))),
+                        ),
+                );
+                continue;
+            }
             list = list.child(
                 div()
                     .flex()
@@ -132,10 +189,12 @@ impl Render for ManageCategoriesDialog {
                         "{n} game",
                         "{n} games"
                     )))
-                    .child(
-                        crate::pages::icon_action(SharedString::from(format!("cat-del-{i}")), Icon::FaTrash, true)
-                            .on_click(cx.listener(move |this, _, w, cx| this.delete(name.clone(), w, cx))),
-                    ),
+                    .child(crate::pages::icon_action(SharedString::from(format!("cat-del-{i}")), Icon::FaTrash, true).on_click(
+                        cx.listener(move |this, _, _, cx| {
+                            this.confirm = Some(name.clone());
+                            cx.notify();
+                        }),
+                    )),
             );
         }
         let body = div()

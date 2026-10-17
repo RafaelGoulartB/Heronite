@@ -174,6 +174,51 @@ pub fn platform_label(p: SideloadPlatform) -> &'static str {
 
 pub const PLATFORMS: [SideloadPlatform; 3] = [SideloadPlatform::Linux, SideloadPlatform::Windows, SideloadPlatform::Browser];
 
+/// What Esc does, outermost layer first: the image picker, a confirmation,
+/// else it asks before throwing away what was typed.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Escape {
+    ClosePicker,
+    KeepEditing,
+    BackFromRemove,
+    AskDiscard,
+    /// Nothing to protect: the host closes the dialog.
+    Close,
+}
+
+pub fn escape(picker: bool, discard: bool, remove: bool, dirty: bool) -> Escape {
+    if picker {
+        Escape::ClosePicker
+    } else if discard {
+        Escape::KeepEditing
+    } else if remove {
+        Escape::BackFromRemove
+    } else if dirty {
+        Escape::AskDiscard
+    } else {
+        Escape::Close
+    }
+}
+
+/// What the X button, a click outside and Cancel do.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CloseRequest {
+    AskDiscard,
+    /// The confirmation is already up; a stray click does not answer it.
+    Stay,
+    Close,
+}
+
+pub fn close_request(dirty: bool, asking: bool, saving: bool) -> CloseRequest {
+    if saving || !dirty {
+        CloseRequest::Close
+    } else if asking {
+        CloseRequest::Stay
+    } else {
+        CloseRequest::AskDiscard
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,5 +312,22 @@ mod tests {
         assert_eq!(install_folder("/g/My Game/game.exe").as_deref(), Some("/g/My Game"));
         assert_eq!(install_folder(""), None);
         assert_eq!(install_folder("game.exe"), None);
+    }
+
+    #[test]
+    fn esc_peels_one_layer_at_a_time() {
+        assert_eq!(escape(true, true, true, true), Escape::ClosePicker);
+        assert_eq!(escape(false, true, true, true), Escape::KeepEditing);
+        assert_eq!(escape(false, false, true, true), Escape::BackFromRemove);
+        assert_eq!(escape(false, false, false, true), Escape::AskDiscard);
+        assert_eq!(escape(false, false, false, false), Escape::Close);
+    }
+
+    #[test]
+    fn closing_asks_only_when_there_is_something_to_lose() {
+        assert_eq!(close_request(false, false, false), CloseRequest::Close);
+        assert_eq!(close_request(true, false, false), CloseRequest::AskDiscard);
+        assert_eq!(close_request(true, true, false), CloseRequest::Stay);
+        assert_eq!(close_request(true, false, true), CloseRequest::Close);
     }
 }

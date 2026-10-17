@@ -351,9 +351,11 @@ impl CollectionView {
             return;
         }
         if ev.keystroke.key == "escape" {
-            if self.dialog.is_some() {
-                self.dialog = None;
-                self.dialog_sub = None;
+            if let Some(dialog) = self.dialog.clone() {
+                if !crate::dialogs::handle_escape(&dialog, cx) {
+                    self.dialog = None;
+                    self.dialog_sub = None;
+                }
             } else if self.context_menu.is_some() {
                 self.context_menu = None;
             } else if self.open_menu.is_some() {
