@@ -230,6 +230,50 @@ fn picking_another_igdb_game_replaces_the_stored_match() {
 }
 
 #[test]
+fn apply_preview_saves_the_shown_preview_without_fetching_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let (server, _) = mock();
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    let mut a = args("steam_620", "Portal 2");
+    a.overwrite_existing = Some(true);
+    a.preserve_manual = Some(false);
+    let preview = svc.preview_game_metadata(&a).unwrap();
+    let requests = server.log.lock().len();
+
+    // The user takes Steam's description over IGDB's.
+    a.field_picks = Some([("description".to_string(), "steam".to_string())].into_iter().collect());
+    let saved = svc.apply_preview(&preview, &a).unwrap();
+    assert_eq!(server.log.lock().len(), requests, "no provider is asked again");
+    assert_eq!(saved.field_sources["description"], "steam");
+    assert_eq!(saved.field_sources["genres"], "igdb");
+    assert_eq!(saved.igdb_id.map(|n| n.get()), Some(72.0));
+    assert!(saved.fetched_at.is_some() && saved.fetch_error.is_none());
+    assert_eq!(svc.get_game_metadata("sideload", "steam_620").unwrap().unwrap().field_sources["description"], "steam");
+}
+
+#[test]
+fn apply_preview_refuses_a_preview_with_nothing_online_and_writes_nothing() {
+    let offline_dir = tempfile::tempdir().unwrap();
+    let (dead, _) = dead_endpoints();
+    let svc = MetadataService::with_endpoints(make_root(offline_dir.path()), dead);
+    let offline = svc.preview_game_metadata(&args("steam_620", "Portal 2")).unwrap();
+    let err = svc.apply_preview(&offline, &args("steam_620", "Portal 2")).unwrap_err();
+    assert!(heronite_metadata::service::is_offline(&err));
+
+    // Reachable servers that know nothing: an error too, not a saved failure.
+    let dir = tempfile::tempdir().unwrap();
+    let server = Server::start(|_| Resp::status(500));
+    let svc = MetadataService::with_endpoints(make_root(dir.path()), server.endpoints());
+    let empty = svc.preview_game_metadata(&args("ghost", "Ghost Game")).unwrap();
+    assert!(!empty.offline && empty.candidates.is_empty());
+    let err = svc.apply_preview(&empty, &args("ghost", "Ghost Game")).unwrap_err();
+    assert_eq!(err.to_string(), "No metadata sources returned data");
+    assert!(svc.get_game_metadata("sideload", "ghost").unwrap().is_none());
+    assert!(svc.get_game_metadata("sideload", "steam_620").unwrap().is_none());
+}
+
+#[test]
 fn igdb_401_refreshes_the_token_once() {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());

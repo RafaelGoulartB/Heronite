@@ -40,7 +40,7 @@ struct Gathered {
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use heronite_data::field_names::NameRules;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, LocalMetaFile, MetadataSettings};
@@ -317,6 +317,26 @@ impl MetadataService {
         let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
         let saved = self.persist_images(preview.proposed, download);
         upsert_game_metadata(&self.paths, saved)
+    }
+
+    /// Stores what the user saw in `preview` without asking the providers
+    /// again: the preview's candidates are merged with `args` (`field_picks`
+    /// and the merge options) over the saved record. Nothing is written, and
+    /// an error returned, when the preview holds no online data.
+    pub fn apply_preview(&self, preview: &MetadataPreview, args: &MetadataApplyArgs) -> Result<CollectionGameMetadata> {
+        if preview.offline {
+            return Err(Offline.into());
+        }
+        if preview.candidates.is_empty() {
+            bail!(tr!("No metadata sources returned data"));
+        }
+        let runner = as_runner(&args.runner).to_owned();
+        let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
+        let mut args = args.clone();
+        args.runner = runner;
+        let proposed = self.propose(&args, current.as_ref(), &preview.candidates);
+        let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
+        upsert_game_metadata(&self.paths, self.persist_images(proposed, download))
     }
 
     /// `seedPlayniteMetadata`: first import of a Playnite game's own metadata

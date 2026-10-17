@@ -11,6 +11,7 @@ use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::settings::METADATA_FIELDS;
 use heronite_i18n::{n_, tr};
+use heronite_metadata::service::Offline;
 use heronite_metadata::{MetadataApplyArgs, MetadataPreview, MetadataSearchHit, MetadataService};
 
 use super::art_images::{chain_for_url, picture, DialogImages};
@@ -184,6 +185,9 @@ impl MetadataDialog {
                             this.igdb_id = Some(id.get() as i64);
                         }
                         this.picks = picks;
+                        if p.offline {
+                            this.error = Offline.to_string();
+                        }
                         this.preview = Some(p);
                     }
                     Err(err) => this.error = format!("{err:#}"),
@@ -222,16 +226,16 @@ impl MetadataDialog {
     }
 
     fn apply(&mut self, cx: &mut Context<Self>) {
-        if self.busy.is_some() || self.preview.is_none() {
-            return;
-        }
+        let Some(preview) = self.preview.clone().filter(|_| self.busy.is_none()) else { return };
         self.busy = Some(Busy::Apply);
         self.error.clear();
         let service = self.service.clone();
         let mut args = self.args();
         args.field_picks = Some(self.picks.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
+        // Saves the preview the user is looking at; asking the providers again
+        // could answer differently, or not at all.
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { service.apply_game_metadata(&args) }).await;
+            let res = cx.background_spawn(async move { service.apply_preview(&preview, &args) }).await;
             this.update(cx, |this, cx| {
                 this.busy = None;
                 match res {
