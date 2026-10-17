@@ -219,13 +219,17 @@ impl CollectionView {
                 "native port pc version executable linux windows nativo versao pc executavel",
             ));
         }
-        v.push(item(
-            A::Metadata,
-            "metadata",
-            tr!("Collection metadata"),
-            Icon::TravelExplore,
-            "igdb cover art genre description metadados capa arte genero descricao",
-        ));
+        // The focus panel has its own button; the palette keeps it.
+        v.push(
+            item(
+                A::Metadata,
+                "metadata",
+                tr!("Collection metadata"),
+                Icon::TravelExplore,
+                "igdb cover art genre description metadados capa arte genero descricao",
+            )
+            .palette_only(),
+        );
         v.push(if game.hidden {
             item(A::Hide, "hide", tr!("Unhide"), Icon::Visibility, "show reexibir mostrar exibir")
         } else {
