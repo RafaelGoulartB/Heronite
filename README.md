@@ -42,13 +42,15 @@ https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
 
 Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux, and Windows games into one Collection. You can sort them by your own statuses, fill in their metadata and art, and launch them through Wine/Proton or an emulator. Each session is recorded, so you can see how much you played and which screenshots you took.
 
-Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, CPU, and disk](#light-on-your-pc). On Linux it builds on Wine/Proton, gamescope, Ludusavi, the system tray, and desktop shortcuts.
+Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, CPU, and disk](#light-on-your-pc). On Linux it builds on Wine/Proton, gamescope, Ludusavi, the system tray, and desktop and Steam shortcuts.
 
 ## Your library, organized
 
-- **Collection:** one screen for every game. Covers are grouped by status (Playing, On Going, Plan to Play, Not Played, or your own), and the selected game's art fills the background. The details panel shows screenshots, How Long To Beat times, ProtonDB tier and anti-cheat status, achievements, your rating, the last save backup, and a timeline of every day you played.
-- **Command palette:** press <kbd>Ctrl</kbd> <kbd>K</kbd> to jump to any page or settings section, run any action, or find a game and play it, open its settings or its folder. Press <kbd>→</kbd> on a game to see everything its right-click menu offers (status, favourites, uninstall, shortcuts, Epic tools…). The palette also covers the pages (pause downloads, install the latest Proton, sign in to Epic, add an emulator), the Collection's sort and filters, and appearance toggles. With a game selected, its actions come first, and items you used recently rise to the top. Pages also have direct shortcuts (<kbd>Ctrl</kbd> <kbd>1</kbd> to <kbd>6</kbd>, <kbd>Ctrl</kbd> <kbd>,</kbd>, <kbd>Ctrl</kbd> <kbd>N</kbd>).
-- **Add any game:** add a native Linux program, a Windows program (run through Wine/Proton), a browser game, or a ROM. Covers and backgrounds can come from IGDB, Steam, Lutris, a web image search, or one of your own screenshots.
+- **Collection:** one screen for every game, as a list with a details panel or as a grid of covers with the selected game in a side drawer. Covers are grouped by status (nine to start with, such as Playing, Plan to Play, Beaten and Abandoned, or your own) or by category, store, platform, genre, developer, series, year, play time, or size on disk, and the selected game's art fills the background. The details panel shows screenshots, How Long To Beat times, ProtonDB tier and anti-cheat status, achievements, your rating, the last save backup, the game's folders and their size, related games, and a timeline of every day you played.
+- **View menu:** type to find any filter (store, status, category, genre, developer, series, theme, feature, or platform), each with its number of games. Sort by title, last played, play time, date added, times played, size, release date, or score, in either direction. Save the whole menu as a preset: Playing now, Backlog, Finished, and Favourites come built in. Search ignores accents and forgives small typos.
+- **Change many games at once:** select several games (<kbd>Ctrl</kbd> or <kbd>Shift</kbd> click, <kbd>Ctrl</kbd> <kbd>A</kbd>) and change their status, categories, favourite, or hidden state together, with undo, or edit their series, genres, developers, and other fields in one go. The library fields manager renames, merges, or removes genres, companies, series, and the other names, points out names that look alike, and applies the same rules to metadata downloaded later.
+- **Command palette:** press <kbd>Ctrl</kbd> <kbd>K</kbd> to jump to any page or settings section, run any action, or find a game and play it, open its settings or its folder. Press <kbd>→</kbd> on a game to see everything its right-click menu offers (status, favourites, uninstall, shortcuts, Epic tools…). The palette also covers the pages (pause downloads, install the latest Proton, sign in to Epic, add an emulator), the Collection's layout, grouping, sort, and filters, and appearance toggles. With a game selected, its actions come first, and items you used recently rise to the top. Pages also have direct shortcuts (<kbd>Ctrl</kbd> <kbd>1</kbd> to <kbd>6</kbd>, <kbd>Ctrl</kbd> <kbd>,</kbd>, <kbd>Ctrl</kbd> <kbd>N</kbd>), and <kbd>F11</kbd> switches fullscreen.
+- **Add any game:** add a native Linux program (an executable or a command), a Windows program (run through Wine/Proton), or a browser game. ROMs come in by scanning a folder (see [Emulators](#install-configure-and-play)). Covers and backgrounds can come from Steam, SteamGridDB, IGDB, Lutris, a web image search, a file or link, or one of your own screenshots. Any game can also get its own actions next to Play: another program, a command, or a link.
 
 <table>
   <tr>
@@ -59,14 +61,15 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 
 ## Install, configure, and play
 
-- **Steam:** installed Steam games are added to the Collection automatically, and their play time is tracked.
-- **Epic Games:** log in, install, update, repair, move, and uninstall games, manage DLC, and sync cloud saves. Downloads run through a queue you can reorder.
+- **Steam:** your whole Steam library appears in the Collection, installed or not. Heronite reads it from the running Steam client, so it needs no login or API key. Install, play, and uninstall go through Steam, and Steam's play time and last played date are kept in sync. A game you also have from another source gets Steam as a second way to play instead of a second card. Heronite can also change a Steam game's launch options and Proton version, and add any other game to Steam.
+- **Epic Games:** log in, install, update, repair, move, import, and uninstall games, manage DLC, and sync cloud saves. Pick how a game starts (its launch options or a playable DLC), and manage the EOS Overlay. Games sold through the EA app or Ubisoft Connect install and start through those apps. Downloads run through a queue you can reorder, which waits while you are offline and resumes when the connection is back. If you move or delete a game's folder by hand (from any store), Heronite asks for the new folder or lets you mark the game as not installed.
 - **GOG:** log in, and your GOG games appear in the Collection. Install them (Windows or native Linux builds, with the language and DLCs you choose), update, repair, move, import, and uninstall them, and sync cloud saves. Downloads share the same queue.
 - **Amazon Games:** log in, and the games of your Amazon account (Prime Gaming included) appear in the Collection. Install, update, verify, move, import, and uninstall them through the same queue.
-- **Wine and Proton:** each Windows game gets Heroic's full settings (Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, launch options, environment variables).
-- **Fixes and comfort:** Proton gets each game's protonfixes through its umu ID, found by itself (or set by hand, with suggestions from the umu database). Save environment variables, wrappers and arguments as presets to apply to other games, keep the computer awake while you play with a controller, and switch controllers to SDL when a game does not see them right.
-- **Frame generation:** turn on Lossless Scaling frame generation (through lsfg-vk) for any game, Steam games included, with its multiplier, flow scale, performance mode and HDR, or one of lsfg-vk's own profiles. The Wine Manager downloads and updates Proton from six sources: Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM and Proton-Sarek. It only asks GitHub for a source's list when that source has something new.
-- **Emulators:** detect installed emulators (PATH, Flatpak, AppImages) or add your own with profiles and RetroArch cores. Scan ROM folders to import games, with multi-disc games merged into one entry, and continue from a save state.
+- **Wine and Proton:** each Windows game gets Heroic's settings (Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, launch options, environment variables you can paste as text), in tabs by what you want to change. The GPU tab picks the graphics card and turns on DLSS, FSR 4, or XeSS upgrades. Each game gets one FPS limit, with the limiter you choose (MangoHud, DXVK/VKD3D-Proton, or gamescope). A Winetricks page lists what is installed and what can be, and a preview shows the exact command a launch will run. Each changed setting can be reset on its own.
+- **Fixes and comfort:** Proton gets each game's protonfixes through its umu ID, found by itself (or set by hand, with suggestions from the umu database). The anti-cheat list stays current. Save environment variables, wrappers and arguments as presets to apply to other games, and switch controllers to SDL when a game does not see them right. The computer stays awake while a game runs (useful with a controller), unless you turn that off for the game.
+- **Frame generation:** turn on Lossless Scaling frame generation (through lsfg-vk) for any game, Steam games included, with its multiplier, flow scale, performance mode and HDR, or one of lsfg-vk's own profiles.
+- **Wine Manager:** downloads and updates Proton from six sources: Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM and Proton-Sarek. It only asks GitHub for a source's list when that source has something new, and it can make the builds available to Steam too. It also lists your Wine prefixes and the games that use each, and creates, duplicates, or removes them. Uninstalling a game keeps a prefix that other games still use.
+- **Emulators:** detect installed emulators (PATH, Flatpak, AppImages, and folders such as `~/Applications`, `~/Games`, or `/opt`) or add your own with profiles and RetroArch cores, and open any of them without a game. Scan ROM folders to import games, with multi-disc games merged into one entry, and continue from a save state. An emulated game can become its PC version (a native port, say) and keep its play time, status, and art.
 
 <table>
   <tr>
@@ -90,7 +93,7 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 
 ## Console mode
 
-A controller-first layout for the couch or a TV. It covers the whole app: the library, game pages, downloads, the Wine Manager, Epic, GOG, Amazon Games, emulators, statistics, and settings. You can use a gamepad or the keyboard, and an on-screen keyboard is available for text fields. Turn it on from the palette (**Console mode**); Heronite remembers it on the next start. The desktop layout does not change. Its menu (<kbd>Start</kbd>) also has **Power**, to suspend, restart or shut down the computer without leaving the couch.
+A controller-first layout for the couch or a TV. It covers the whole app: the library, game pages, downloads, the Wine Manager, Epic, GOG, Amazon Games, emulators, statistics, and settings. You can use a gamepad or the keyboard, and an on-screen keyboard is available for text fields. Turn it on from the palette or the ☰ menu (**Console mode**), or start Heronite with `--console`; it remembers the mode on the next start, and **Desktop mode** in its menu goes back. The desktop layout does not change. Its menu (<kbd>Start</kbd>) also has **Power**, to suspend, restart or shut down the computer without leaving the couch.
 
 <table>
   <tr>
@@ -104,6 +107,7 @@ A controller-first layout for the couch or a TV. It covers the whole app: the li
 - **Appearance:** set the opacity, blur, darkening, and colour intensity of the game art behind the Collection. Panels can be glass or solid, and covers can use the Steam (2:3), IGDB (3:4), GOG (11:15), or other aspect ratios.
 - **Screenshots:** set the capture folder and the in-game shortcut, compress captures without quality loss, and limit the preview cache.
 - **Backups:** back up saves with Ludusavi after each game closes (or manually from the game's menu), restore any backup into the game's current Wine/Proton prefix from its settings (even one made in another Steam library or on Windows, with undo), and schedule copies of the whole data folder.
+- **Startup:** start Heronite with the system, minimized if you like. `heronite://launch` links and `--launch` start a game straight away, and `--fullscreen` opens the window fullscreen.
 
 <table>
   <tr>
@@ -126,11 +130,11 @@ A game launcher should get out of the way when the game starts. Heronite is a si
 
 ## Your data
 
-Everything stays on your machine, in Heroic-compatible files: library, Collection, statuses, sessions, playtime, and settings live in `~/.local/share/heronite/` (override it with `HERONITE_DATA_DIR`). UI state goes in `~/.config/heronite/` and caches in `~/.cache/heronite/`.
+Everything stays on your machine, in Heroic-compatible files: library, Collection, statuses, sessions, playtime, and settings live in `~/.local/share/heronite/` (override it with `HERONITE_DATA_DIR`). UI state goes in `~/.config/heronite/` and caches in `~/.cache/heronite/`; with another data folder, they go in a `<folder>.heronite/` next to it instead.
 
 On first start, if that folder does not exist yet, Heronite copies an existing Heroic setup into it **once**. It only reads Heroic's files and never writes to Heroic's folders, so both apps can stay installed.
 
-Online features need connectivity: metadata and art (IGDB, Steam, Lutris, How Long To Beat, ProtonDB), Epic Games, GOG, Amazon Games, Wine/Proton downloads, and the app's update check (Heronite asks GitHub for the latest release at start and every 6 hours; switch it off in **Settings > About**). For IGDB, add your own Twitch client ID and secret in **Settings > Metadata**.
+Online features need connectivity: metadata and art (IGDB, Steam, SteamGridDB, Lutris, How Long To Beat, ProtonDB), the umu database and the anti-cheat list (AreWeAntiCheatYet), Epic Games, GOG, Amazon Games, Wine/Proton downloads, and the app's update check (Heronite asks GitHub for the latest release at start and every 6 hours; switch it off in **Settings > About**). For IGDB, add your own Twitch client ID and secret in **Settings > Metadata**, and your SteamGridDB API key there to get its covers.
 
 ## Download
 
@@ -142,8 +146,6 @@ Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has 
 | Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `heronite_<version>-1_amd64.deb` | `sudo apt install ./heronite_*_amd64.deb` |
 | Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
 | Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
-
-Each release also has a copy of the AppImage named after its version.
 
 **Updates.** When a new version is out, a card offers it, or you can check in **Settings > About**. Every download is checked against Heronite's signing key before anything is installed.
 
@@ -168,7 +170,7 @@ scripts/install.sh
 
 ## Development
 
-The app is a Cargo workspace. `app/` is the GPUI binary (`heronite-rs`): the Collection screen, dialogs, ☰ pages, and console mode. The `crates/` folder holds the GPUI-free libraries: data files and Heroic migration, launching and playtime, Epic (legendary), GOG (gogdl), Amazon Games (nile), emulation, metadata, screenshots and images, Wine/Proton, and shortcuts. A separate small binary handles the store login window, which keeps a web engine out of the main app.
+The app is a Cargo workspace. `app/` is the GPUI binary (`heronite-rs`): the Collection screen, dialogs, ☰ pages, and console mode. The `crates/` folder holds the GPUI-free libraries: data files and Heroic migration, launching and playtime, Epic (legendary), GOG (gogdl), Amazon Games (nile), emulation, Steam library and settings, metadata, screenshots and images, Wine/Proton, shortcuts, app updates, and translations. A separate small binary (`heronite-epic-login`) handles the store login window, which keeps a web engine out of the main app.
 
 ```bash
 cargo fmt --all
