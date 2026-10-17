@@ -36,7 +36,7 @@ pub(in crate::collection) enum Kind {
 
 impl Kind {
     /// In the order the results list them.
-    pub const ALL: [Kind; 9] = [
+    pub const ALL: [Kind; 11] = [
         Kind::Only,
         Kind::Status,
         Kind::Category,
@@ -45,6 +45,8 @@ impl Kind {
         Kind::Facet(FacetKind::Developer),
         Kind::Facet(FacetKind::Publisher),
         Kind::Facet(FacetKind::Series),
+        Kind::Facet(FacetKind::Theme),
+        Kind::Facet(FacetKind::Feature),
         Kind::Facet(FacetKind::Platform),
     ];
 
@@ -78,6 +80,8 @@ impl Kind {
             Kind::Facet(FacetKind::Publisher) => Icon::ShoppingBag,
             Kind::Facet(FacetKind::Series) => Icon::Folder,
             Kind::Facet(FacetKind::Platform) => Icon::SportsEsports,
+            Kind::Facet(FacetKind::Theme) => Icon::Lightbulb,
+            Kind::Facet(FacetKind::Feature) => Icon::Tune,
         }
     }
 }

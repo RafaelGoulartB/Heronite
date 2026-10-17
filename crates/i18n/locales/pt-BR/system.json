@@ -182,7 +182,7 @@
   "Shut down the computer?": "Desligar o computador?",
   "{names} is running and will close: progress the game has not saved is lost. Heronite saves the playtime so far.": "{names} está aberto e será fechado: o progresso que o jogo não salvou será perdido. O Heronite salva o tempo de jogo até agora.",
   "{names} are running and will close: progress the games have not saved is lost. Heronite saves the playtime so far.": "{names} estão abertos e serão fechados: o progresso que os jogos não salvaram será perdido. O Heronite salva o tempo de jogo até agora.",
-  "Category, series, developer, publisher, genre, platform": "Categoria, série, desenvolvedor, publicadora, gênero, plataforma",
+  "Category, series, developer, publisher, genre, theme, feature, platform": "Categoria, série, desenvolvedor, publicadora, gênero, tema, recurso, plataforma",
   "Add, rename or remove categories": "Adicionar, renomear ou remover categorias",
   "Filter Category: {value}": "Filtrar Categoria: {value}",
   "Remove filter Category: {value}": "Remover filtro Categoria: {value}",

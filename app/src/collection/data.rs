@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use gpui_kit::{rgb, Rgba, SharedString};
-use heronite_data::collection::{self, RelatedKind};
+use heronite_data::collection::{self, FacetKind, RelatedKind};
 use heronite_data::focus::focus_data;
 use heronite_data::hltb::WikiCache;
 use heronite_data::status::display_status;
@@ -106,17 +106,18 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     if !d.features.is_empty() {
         rows.push(DetailRow {
             label: tr!("Features").into(),
-            value: chips(&d.features[..d.features.len().min(8)], None, false),
+            // Steam's features (no metadata) are not a filter.
+            value: chips(&d.features[..d.features.len().min(8)], (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature"), false),
             split: true,
         });
     }
     if !d.themes.is_empty() {
-        rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes[..d.themes.len().min(8)], None, false), split: true });
+        rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes[..d.themes.len().min(8)], Some("theme"), false), split: true });
     }
     if d.platforms.len() > 1 {
         rows.push(DetailRow {
             label: tr!("Platforms").into(),
-            value: chips(&d.platforms[..d.platforms.len().min(8)], None, false),
+            value: chips(&d.platforms[..d.platforms.len().min(8)], Some("platform"), false),
             split: true,
         });
     }

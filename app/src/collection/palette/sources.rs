@@ -339,6 +339,8 @@ fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Genre => tr!("Genre"),
         FacetKind::Platform => tr!("Platform"),
         FacetKind::Store => tr!("Store"),
+        FacetKind::Theme => tr!("Theme"),
+        FacetKind::Feature => tr!("Feature"),
     }
 }
 
@@ -351,6 +353,8 @@ fn facet_keywords(k: FacetKind) -> &'static str {
         FacetKind::Genre => "genre genero",
         FacetKind::Platform => "platform plataforma",
         FacetKind::Store => "store source manual loja origem manualmente",
+        FacetKind::Theme => "theme tema",
+        FacetKind::Feature => "feature mode recurso modo",
     }
 }
 
@@ -500,7 +504,7 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         ViewCmd::ClearFilters,
         "view:clear".into(),
         tr!("Clear filters"),
-        tr!("Category, series, developer, publisher, genre, platform"),
+        tr!("Category, series, developer, publisher, genre, theme, feature, platform"),
         Icon::Close,
         "reset filters facets limpar filtros redefinir",
     );
