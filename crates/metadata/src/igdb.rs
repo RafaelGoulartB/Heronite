@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 use serde::Deserialize;
 
 use crate::http::Http;
-use crate::types::{IgdbCredentialTest, MetadataSearchHit};
+use crate::types::{IgdbCredentialTest, Lookup, MetadataSearchHit};
 use crate::util::{blank_metadata, clip, pick_best_match, title_queries, unique_names, unique_names12, MIN_MATCH_SCORE};
 
 /// `external_game_source` / old `category` value of Steam.
@@ -403,9 +403,9 @@ impl Igdb {
         title: &str,
         steam_app_id: Option<&str>,
         igdb_id: Option<i64>,
-    ) -> Option<CollectionGameMetadata> {
+    ) -> Lookup<CollectionGameMetadata> {
         if !creds.configured() {
-            return None;
+            return Lookup::Skipped;
         }
         let result = (|| -> Result<Option<IgdbGame>> {
             let mut game = None;
@@ -423,11 +423,11 @@ impl Igdb {
             Ok(game)
         })();
         match result {
-            Ok(Some(game)) => Some(map_game(app_name, runner, &game)),
-            Ok(None) => None,
+            Ok(Some(game)) => Lookup::Found(map_game(app_name, runner, &game)),
+            Ok(None) => Lookup::NotFound,
             Err(e) => {
                 log::warn!("IGDB fetch failed for {title}: {e}");
-                None
+                Lookup::from_error(&e)
             }
         }
     }
@@ -483,7 +483,7 @@ mod tests {
         let igdb = Igdb::new();
         let none = IgdbCredentials::default();
         assert!(igdb.search(&http, &none, "x").is_empty());
-        assert!(igdb.fetch(&http, &none, "a", "sideload", "x", None, None).is_none());
+        assert!(matches!(igdb.fetch(&http, &none, "a", "sideload", "x", None, None), Lookup::Skipped));
         assert!(!igdb.test_credentials(&http, &none).ok);
     }
 }

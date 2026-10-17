@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::http::Http;
-use crate::types::SteamHeroCacheResult;
+use crate::types::{Lookup, SteamHeroCacheResult};
 use crate::util::{blank_metadata, clip, local_art_url, now_ms, strip_html, unique_names, unique_names12};
 
 const CACHE_MS: i64 = 30 * 24 * 60 * 60 * 1000;
@@ -147,7 +147,7 @@ fn write_cache(path: &Path, details: &SteamAppDetails) -> Result<()> {
 }
 
 /// `fetchDetails`: asks for `language`, then English.
-fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Option<SteamAppDetails> {
+fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Lookup<SteamAppDetails> {
     let mut langs = vec![language];
     if language != "english" {
         langs.push("english");
@@ -161,14 +161,20 @@ fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Option<Stea
                 let ok = payload.and_then(|p| p.get("success")).and_then(Value::as_bool) == Some(true);
                 if let (true, Some(data)) = (ok, payload.and_then(|p| p.get("data"))) {
                     if let Some(mapped) = map_details(steam_app_id, lang, data) {
-                        return Some(mapped);
+                        return Lookup::Found(mapped);
                     }
                 }
             }
-            Err(e) => log::warn!("Steam appdetails failed for {steam_app_id} ({lang}): {e}"),
+            Err(e) => {
+                log::warn!("Steam appdetails failed for {steam_app_id} ({lang}): {e}");
+                // English would not answer either.
+                if crate::http::is_unreachable(&e) {
+                    return Lookup::Unreachable;
+                }
+            }
         }
     }
-    None
+    Lookup::NotFound
 }
 
 /// `getSteamAppDetails`: cached for 30 days in
@@ -181,33 +187,50 @@ pub fn get_steam_app_details(
     steam_app_id: &str,
     language: Option<&str>,
 ) -> Option<SteamAppDetails> {
+    lookup_steam_app_details(paths, http, state, steam_app_id, language).into_option()
+}
+
+/// [`get_steam_app_details`] that also says when Steam could not be reached.
+/// An unreachable Steam is not remembered as missing: the next call asks again.
+fn lookup_steam_app_details(
+    paths: &DataPaths,
+    http: &Http,
+    state: &SteamState,
+    steam_app_id: &str,
+    language: Option<&str>,
+) -> Lookup<SteamAppDetails> {
     let steam_app_id = steam_app_id.trim();
     if steam_app_id.is_empty() {
-        return None;
+        return Lookup::Skipped;
     }
     // Without a language, the interface's (Steam text is then in Portuguese too).
     let language = steam_language(language.unwrap_or(heronite_i18n::current().code()));
     let key = format!("{steam_app_id}:{language}");
     let file = paths.steam_details(steam_app_id, language);
     let fresh = |c: &SteamAppDetails| c.fetched_at.is_some_and(|t| now_ms() - t < CACHE_MS);
+    // A stale cache still beats a failed fetch.
+    let stale_or = |cached: Option<SteamAppDetails>, miss: Lookup<SteamAppDetails>| match cached {
+        Some(c) => Lookup::Found(strip_fetched(c)),
+        None => miss,
+    };
 
     let cached = read_cache(&file);
     if let Some(c) = cached.as_ref().filter(|c| fresh(c)) {
-        return Some(strip_fetched(c.clone()));
+        return Lookup::Found(strip_fetched(c.clone()));
     }
     let blocked = state.missing_until.lock().get(&key).is_some_and(|t| *t > Instant::now());
     if blocked {
-        return cached.map(strip_fetched);
+        return stale_or(cached, Lookup::NotFound);
     }
 
     let lock = state.lock_for(&key);
     let _guard = lock.lock();
     // Another thread may have finished while we waited.
     if let Some(c) = read_cache(&file).filter(|c| fresh(c)) {
-        return Some(strip_fetched(c));
+        return Lookup::Found(strip_fetched(c));
     }
     match fetch_details(http, steam_app_id, language) {
-        Some(mut fetched) => {
+        Lookup::Found(mut fetched) => {
             state.missing_until.lock().remove(&key);
             let mut to_write = fetched.clone();
             to_write.fetched_at = Some(now_ms());
@@ -215,11 +238,12 @@ pub fn get_steam_app_details(
                 log::warn!("could not write {}: {e}", file.display());
             }
             fetched.fetched_at = None;
-            Some(fetched)
+            Lookup::Found(fetched)
         }
-        None => {
+        Lookup::Unreachable => stale_or(cached, Lookup::Unreachable),
+        miss => {
             state.missing_until.lock().insert(key, Instant::now() + MISSING_FOR);
-            cached.map(strip_fetched)
+            stale_or(cached, miss)
         }
     }
 }
@@ -272,10 +296,9 @@ pub fn fetch_steam_metadata(
     runner: &str,
     steam_app_id: Option<&str>,
     language: Option<&str>,
-) -> Option<CollectionGameMetadata> {
-    let id = steam_app_id.filter(|s| !s.is_empty())?;
-    let details = get_steam_app_details(paths, http, state, id, language)?;
-    Some(metadata_from_details(app_name, runner, id, &details))
+) -> Lookup<CollectionGameMetadata> {
+    let Some(id) = steam_app_id.filter(|s| !s.is_empty()) else { return Lookup::Skipped };
+    lookup_steam_app_details(paths, http, state, id, language).map(|details| metadata_from_details(app_name, runner, id, &details))
 }
 
 // Heroes (`heroes.ts`)

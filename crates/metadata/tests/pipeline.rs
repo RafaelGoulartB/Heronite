@@ -251,6 +251,61 @@ fn no_provider_answers_stores_a_fetch_error_and_idle_fill_retries_later() {
     assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 0);
 }
 
+/// Endpoints of a host that takes connections and drops them: every request
+/// fails without an answer, like a machine with no network. Counts them.
+fn dead_endpoints() -> (Endpoints, Arc<AtomicUsize>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let count = accepted.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            count.fetch_add(1, Ordering::SeqCst);
+            drop(stream);
+        }
+    });
+    let endpoints = Endpoints {
+        twitch_token: format!("{base}/twitch/oauth2/token"),
+        igdb: format!("{base}/igdb/v4"),
+        steam_store: format!("{base}/steam"),
+        lutris: format!("{base}/lutris"),
+        ..Endpoints::default()
+    };
+    (endpoints, accepted)
+}
+
+#[test]
+fn offline_saves_nothing_and_the_idle_fill_stops_at_the_first_game() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let (dead, accepted) = dead_endpoints();
+    let svc = MetadataService::with_endpoints(paths.clone(), dead);
+
+    // The store still answers, but the preview says it is not a real fetch.
+    let preview = svc.preview_game_metadata(&args("steam_620", "Portal 2")).unwrap();
+    assert!(preview.offline);
+    assert_eq!(preview.candidates.iter().map(|c| c.source.as_str()).collect::<Vec<_>>(), ["store"]);
+    let per_game = accepted.load(Ordering::SeqCst);
+    assert!(per_game > 0);
+
+    let err = svc.apply_game_metadata(&args("steam_620", "Portal 2")).unwrap_err();
+    assert!(heronite_metadata::service::is_offline(&err), "{err:#}");
+    assert!(svc.get_game_metadata("sideload", "steam_620").unwrap().is_none(), "store-only data must not count as fetched");
+
+    // Two games are missing; only the first one is tried.
+    let before = accepted.load(Ordering::SeqCst);
+    assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 0);
+    assert_eq!(accepted.load(Ordering::SeqCst) - before, per_game);
+    assert!(svc.all_metadata().unwrap().keys().all(|k| k == "sideload:other"));
+
+    // Back online everything is filled, nothing was marked as tried.
+    let (server, _) = mock();
+    let online = MetadataService::with_endpoints(paths, server.endpoints());
+    assert_eq!(online.refresh_missing_collection_metadata().unwrap(), 2);
+    let stored = online.get_game_metadata("sideload", "steam_620").unwrap().unwrap();
+    assert_eq!(stored.field_sources["description"], "igdb");
+}
+
 #[test]
 fn bulk_job_reports_progress_skips_fetched_and_can_be_cancelled() {
     let dir = tempfile::tempdir().unwrap();

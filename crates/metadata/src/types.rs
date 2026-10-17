@@ -11,6 +11,46 @@ pub const SOURCE_IDS: [&str; 6] = ["igdb", "steam", "store", "playnite", "lutris
 /// The providers asked for candidates, in `PROVIDER_ORDER`.
 pub const PROVIDER_ORDER: [&str; 5] = ["igdb", "steam", "store", "lutris", "playnite"];
 
+/// What a network provider got: tells "nothing there" from "could not ask".
+#[derive(Debug, Clone)]
+pub enum Lookup<T> {
+    Found(T),
+    /// The service answered and has nothing for this game.
+    NotFound,
+    /// No answer at all (offline, DNS, timeout).
+    Unreachable,
+    /// Not asked (no credentials, no id to look up).
+    Skipped,
+}
+
+impl<T> Lookup<T> {
+    pub fn into_option(self) -> Option<T> {
+        match self {
+            Self::Found(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Lookup<U> {
+        match self {
+            Self::Found(v) => Lookup::Found(f(v)),
+            Self::NotFound => Lookup::NotFound,
+            Self::Unreachable => Lookup::Unreachable,
+            Self::Skipped => Lookup::Skipped,
+        }
+    }
+
+    /// A provider failure: transport errors are `Unreachable`, the rest
+    /// (bad status, bad JSON) count as an answer without data.
+    pub fn from_error(err: &anyhow::Error) -> Self {
+        if crate::http::is_unreachable(err) {
+            Self::Unreachable
+        } else {
+            Self::NotFound
+        }
+    }
+}
+
 /// `CollectionMetadataCandidate`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +73,10 @@ pub struct MetadataPreview {
     pub proposed: CollectionGameMetadata,
     pub candidates: Vec<MetadataCandidate>,
     pub igdb_configured: bool,
+    /// Every online provider that was asked was unreachable: the candidates
+    /// hold local data only and must not be saved as a fetch.
+    #[serde(default)]
+    pub offline: bool,
 }
 
 /// `CollectionMetadataApplyArgs` (plus the optional Steam `language` that

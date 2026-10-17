@@ -26,6 +26,7 @@
   "Could not install {tool}: {error}": "Não foi possível instalar o {tool}: {error}",
   "Could not install {verb} with winetricks: {error}": "Não foi possível instalar {verb} com o winetricks: {error}",
   "Could not open {path}: {error}": "Não foi possível abrir {path}: {error}",
+  "Could not reach the metadata services. Check your connection and try again.": "Não foi possível acessar os serviços de metadados. Verifique sua conexão e tente novamente.",
   "Could not read {path}: {error}": "Não foi possível ler {path}: {error}",
   "Could not remove this game from Collection.": "Não foi possível remover este jogo da Coleção.",
   "Could not run a Wine command: {error}": "Não foi possível executar um comando do Wine: {error}",
