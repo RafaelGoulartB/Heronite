@@ -43,6 +43,7 @@
   "Background art": "Arte de fundo",
   "Background art address": "Endereço da arte de fundo",
   "Backup folder cannot be inside the data folder": "A pasta de backup não pode ficar dentro da pasta de dados",
+  "Backup folder was not found. Is its drive connected?": "A pasta de backup não foi encontrada. O disco dela está conectado?",
   "Backup path is not a folder": "O caminho do backup não é uma pasta",
   "Browser": "Navegador",
   "BrowserURL": "URL do navegador",

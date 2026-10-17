@@ -139,6 +139,7 @@ fn localized_error(message: &str) -> String {
         "Backup folder cannot be inside the data folder" => tr!("Backup folder cannot be inside the data folder").to_string(),
         "Data folder was not found" => tr!("Data folder was not found").to_string(),
         "Backup path is not a folder" => tr!("Backup path is not a folder").to_string(),
+        "Backup folder was not found" => tr!("Backup folder was not found. Is its drive connected?").to_string(),
         other => other.to_string(),
     }
 }
@@ -168,14 +169,34 @@ pub fn run_collection_backup(paths: &DataPaths, force: bool, now: DateTime<Local
     let outcome = (|| -> Result<()> {
         // Checked first (Heronite removes the old copy before checking).
         assert_safe_destination(&paths.root.to_string_lossy(), &folder)?;
-        if Path::new(&folder).exists() && !Path::new(&folder).is_dir() {
+        let folder_path = Path::new(&folder);
+        if folder_path.exists() && !folder_path.is_dir() {
             return Err(anyhow!("Backup path is not a folder"));
+        }
+        // A folder on a drive that is not mounted would otherwise be made on
+        // the system disk and filled there: scheduled backups never create
+        // it, and "Back up now" only creates its last level.
+        if !folder_path.is_dir() {
+            if !force || !folder_path.parent().is_some_and(Path::is_dir) {
+                return Err(anyhow!("Backup folder was not found"));
+            }
+            fs::create_dir(folder_path)?;
+        }
+        // The copy is made beside the day's backup and only replaces it once
+        // complete: a full disk midway leaves the previous copy intact.
+        let partial = format!("{destination}.partial");
+        if Path::new(&partial).exists() {
+            fs::remove_dir_all(&partial)?;
+        }
+        if let Err(e) = copy_config(&paths.root, Path::new(&partial)) {
+            let _ = fs::remove_dir_all(&partial);
+            return Err(e);
         }
         if Path::new(&destination).exists() {
             fs::remove_dir_all(&destination)?;
         }
-        fs::create_dir_all(&folder)?;
-        copy_config(&paths.root, Path::new(&destination))
+        fs::rename(&partial, &destination)?;
+        Ok(())
     })();
     match outcome {
         Ok(()) => {
@@ -287,6 +308,7 @@ mod tests {
         let data_dir = dir.path().join("data");
         let dest_root = dir.path().join("backups");
         fake_data_paths(&data_dir);
+        fs::create_dir_all(&dest_root).unwrap();
         let paths = DataPaths::at(&data_dir);
         settings::save_backup(&paths, dest_root.to_str().unwrap(), "daily").unwrap();
         let now = at(2026, 10, 7, 12);
@@ -317,6 +339,56 @@ mod tests {
         let forced = run_collection_backup(&paths, true, now);
         assert!(forced.ran);
         assert!(!expected.join("stale").exists());
+        assert!(!dest_root.join("heronite-2026-10-07.partial").exists());
+    }
+
+    #[test]
+    fn a_failed_copy_keeps_the_previous_backup() {
+        let _s = serial();
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path().join("data");
+        let dest_root = dir.path().join("backups");
+        fake_data_paths(&data_dir);
+        fs::create_dir_all(&dest_root).unwrap();
+        let paths = DataPaths::at(&data_dir);
+        settings::save_backup(&paths, dest_root.to_str().unwrap(), "daily").unwrap();
+        let now = at(2026, 10, 7, 12);
+        assert!(run_collection_backup(&paths, true, now).ran);
+
+        // An unreadable file makes the next copy fail midway.
+        use std::os::unix::fs::PermissionsExt;
+        let locked = data_dir.join("store/zz-locked.json");
+        fs::write(&locked, "{}").unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::read(&locked).is_ok() {
+            return; // root reads anything
+        }
+        let r = run_collection_backup(&paths, true, now);
+        assert!(!r.ran && r.error.is_some(), "{r:?}");
+        assert!(dest_root.join("heronite-2026-10-07/store/config.json").exists());
+        assert!(!dest_root.join("heronite-2026-10-07.partial").exists());
+    }
+
+    #[test]
+    fn a_backup_folder_on_a_missing_drive_is_never_created() {
+        let _s = serial();
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path().join("data");
+        fake_data_paths(&data_dir);
+        let paths = DataPaths::at(&data_dir);
+        // A drive that is not mounted: its folder is just not there.
+        let unplugged = dir.path().join("media/usb/backups");
+        settings::save_backup(&paths, unplugged.to_str().unwrap(), "daily").unwrap();
+        let r = run_collection_backup(&paths, true, Local::now());
+        assert_eq!(r.error.as_deref(), Some("Backup folder was not found. Is its drive connected?"));
+        assert!(!dir.path().join("media").exists());
+        // Scheduled backups never create it; "Back up now" makes a new
+        // folder in an existing one.
+        let new = dir.path().join("backups");
+        settings::save_backup(&paths, new.to_str().unwrap(), "daily").unwrap();
+        assert!(run_collection_backup(&paths, false, Local::now()).error.is_some());
+        assert!(!new.exists());
+        assert!(run_collection_backup(&paths, true, Local::now()).ran);
     }
 
     #[test]
