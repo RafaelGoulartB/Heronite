@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
 
-use crate::net::{Cancel, Net};
+use crate::net::{Cancel, Net, CANCELLED};
 use crate::probe::Probe;
 use crate::settings::GameSettings;
 use crate::tools::{self, Tool, Vulkan};
@@ -158,6 +158,11 @@ pub fn install_remove(env: &Env, settings: &GameSettings, tool: Tool, action: Ac
     if current == version {
         return Ok(Outcome::AlreadyInstalled(version));
     }
+    // A cancel anywhere below leaves the marker unwritten: the next launch
+    // installs again instead of trusting a half-done prefix.
+    if (env.cancel)() {
+        return Err(CANCELLED.to_string());
+    }
     (env.progress)(
         &format!("Installing {} in the prefix...", tool.label()),
         &tr!("Installing {tool} in the prefix...", tool = tool.label()),
@@ -175,7 +180,9 @@ pub fn install_remove(env: &Env, settings: &GameSettings, tool: Tool, action: Ac
         }
     }
     for name in override_names(is64, &dlls64, &dlls32) {
-        env.runner.run(&reg_add(&name));
+        if !env.runner.run(&reg_add(&name)) && (env.cancel)() {
+            return Err(CANCELLED.to_string());
+        }
     }
 
     // nvngx.dll makes DLSS work on NVIDIA GPUs.
@@ -204,6 +211,9 @@ pub fn install_remove(env: &Env, settings: &GameSettings, tool: Tool, action: Ac
             }
             None => log::warn!("Could not find nvngx.dll for DLSS!"),
         }
+    }
+    if (env.cancel)() {
+        return Err(CANCELLED.to_string());
     }
     tools::write_atomic(&marker, &version)?;
     Ok(Outcome::Installed(version))
@@ -298,6 +308,36 @@ mod tests {
         let names: Vec<&str> = calls.iter().map(|c| c[4].as_str()).collect();
         assert_eq!(names, ["a", "c", "b"], "each override once");
         assert_eq!(calls[0], ["reg", "add", OVERRIDES_KEY, "/v", "a", "/d", "native,builtin", "/f"]);
+    }
+
+    #[test]
+    fn a_cancelled_install_is_not_remembered() {
+        // The user cancels while the first override is being registered.
+        struct Cancelling(std::cell::Cell<bool>);
+        impl WineRunner for Cancelling {
+            fn run(&self, _parts: &[String]) -> bool {
+                self.0.set(true);
+                false
+            }
+        }
+        let fx = fixture(Tool::Dxvk);
+        let runner = Cancelling(std::cell::Cell::new(false));
+        let (probe, net) = (FakeProbe::new("/h"), FakeNet::offline());
+        let cancel = || runner.0.get();
+        let env = Env {
+            paths: &fx.paths,
+            net: &net,
+            probe: &probe,
+            runner: &runner,
+            vulkan: Vulkan::Modern,
+            cancel: &cancel,
+            progress: &|_, _| {},
+        };
+        assert_eq!(install_remove(&env, &fx.settings, Tool::Dxvk, Action::Install), Err(CANCELLED.to_string()));
+        assert!(!fx.prefix.join("current_dxvk").exists());
+        // Cancelled before anything was copied: the prefix is untouched.
+        let env = Env { cancel: &|| true, ..env };
+        assert_eq!(install_remove(&env, &fx.settings, Tool::Dxvk, Action::Install), Err(CANCELLED.to_string()));
     }
 
     #[test]
