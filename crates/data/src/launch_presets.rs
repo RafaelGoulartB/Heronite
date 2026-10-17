@@ -36,6 +36,8 @@ impl Preset {
 struct File {
     #[serde(default)]
     presets: Vec<Preset>,
+    #[serde(flatten)]
+    extra: Map<String, Value>,
 }
 
 fn path(paths: &DataPaths) -> std::path::PathBuf {
@@ -47,23 +49,26 @@ pub fn load(paths: &DataPaths) -> Vec<Preset> {
     crate::json_store::read::<File>(&path(paths)).map(|f| f.presets).unwrap_or_default()
 }
 
-fn save(paths: &DataPaths, mut presets: Vec<Preset>) -> Result<()> {
-    presets.sort_by_key(|p| p.name.to_lowercase());
-    crate::json_store::write(&path(paths), &File { presets })
+/// Changes the saved list. A file that cannot be read is an error, never
+/// replaced: the presets in it are not lost to the next save.
+fn modify(paths: &DataPaths, f: impl FnOnce(&mut Vec<Preset>)) -> Result<()> {
+    crate::json_store::update::<File, _>(&path(paths), |file| {
+        f(&mut file.presets);
+        file.presets.sort_by_key(|p| p.name.to_lowercase());
+        Ok(())
+    })
 }
 
 /// Adds `preset`, replacing one with the same name (any case).
 pub fn put(paths: &DataPaths, preset: Preset) -> Result<()> {
-    let mut all = load(paths);
-    all.retain(|p| !p.name.eq_ignore_ascii_case(&preset.name));
-    all.push(preset);
-    save(paths, all)
+    modify(paths, |all| {
+        all.retain(|p| !p.name.eq_ignore_ascii_case(&preset.name));
+        all.push(preset);
+    })
 }
 
 pub fn remove(paths: &DataPaths, name: &str) -> Result<()> {
-    let mut all = load(paths);
-    all.retain(|p| p.name != name);
-    save(paths, all)
+    modify(paths, |all| all.retain(|p| p.name != name))
 }
 
 fn pairs(settings: &Map<String, Value>, key: &str, a: &str, b: &str) -> Vec<(String, String)> {
@@ -165,5 +170,18 @@ mod tests {
         assert_eq!(names, ["a", "b"], "same name in another case replaces it");
         remove(&paths, "b").unwrap();
         assert_eq!(load(&paths).len(), 1);
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_read_is_never_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        let broken = r#"{"presets": [{"name": "DLSS", "args": "-dx12"}"#;
+        std::fs::create_dir_all(paths.local_library()).unwrap();
+        std::fs::write(path(&paths), broken).unwrap();
+        assert!(load(&paths).is_empty());
+        assert!(put(&paths, Preset { name: "new".into(), ..Default::default() }).is_err());
+        assert!(remove(&paths, "DLSS").is_err());
+        assert_eq!(std::fs::read_to_string(path(&paths)).unwrap(), broken);
     }
 }
