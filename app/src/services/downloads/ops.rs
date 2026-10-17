@@ -201,7 +201,8 @@ impl Downloads {
             |data_paths, lg, _, _| {
                 heronite_epic::moves::resume_interrupted_move(data_paths, lg).unwrap_or_else(|| OpResult {
                     ok: true,
-                    aborted: false, warning: false,
+                    aborted: false,
+                    warning: false,
                     message: tr!("The interrupted move was already finished").into(),
                 })
             },
@@ -263,7 +264,8 @@ impl Downloads {
                     Ok(None) => {
                         return OpResult {
                             ok: false,
-                            aborted: false, warning: false,
+                            aborted: false,
+                            warning: false,
                             message: tr!("The save folder could not be detected; set it in the game settings").into(),
                         }
                     }

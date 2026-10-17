@@ -170,7 +170,8 @@ mod tests {
 
     #[test]
     fn a_game_with_an_operation_running_waits_like_a_game_being_played() {
-        let p = plan(&open(), &[Candidate { busy: true, ..c("verifying") }, Candidate { busy: true, queued: true, ..c("queued") }, c("free")]);
+        let p =
+            plan(&open(), &[Candidate { busy: true, ..c("verifying") }, Candidate { busy: true, queued: true, ..c("queued") }, c("free")]);
         assert_eq!(p.queue, ["free"]);
         assert_eq!(p.deferred, ["verifying"]);
     }

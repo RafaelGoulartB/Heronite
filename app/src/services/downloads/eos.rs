@@ -254,7 +254,8 @@ impl Downloads {
                     PrefixFolder::Invalid => {
                         return OpResult {
                             ok: false,
-                            aborted: false, warning: false,
+                            aborted: false,
+                            warning: false,
                             message: tr!("The Wine prefix of this game does not exist yet; start the game once first").into(),
                         }
                     }

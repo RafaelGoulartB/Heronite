@@ -644,8 +644,8 @@ impl Spawner for PanickingSpawner {
     fn open_uri(&self, uri: &str) -> std::io::Result<()> {
         self.0.open_uri(uri)
     }
-    fn kill_pattern(&self, pattern: &str) {
-        self.0.kill_pattern(pattern)
+    fn kill_pattern(&self, pattern: &str, since: u64) {
+        self.0.kill_pattern(pattern, since)
     }
 }
 

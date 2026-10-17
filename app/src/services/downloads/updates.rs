@@ -182,13 +182,15 @@ impl Downloads {
     /// running or has an operation in progress is left out (one toast counts
     /// them); one already in the queue is left out silently.
     pub(super) fn updatable(&mut self, apps: Vec<String>, cx: &mut Context<Self>) -> Vec<String> {
-        let (free, held): (Vec<String>, Vec<String>) = apps
-            .into_iter()
-            .filter(|a| self.queued(a).is_none())
-            .partition(|a| !self.busy.contains_key(a) && !self.playing.contains(a));
+        let (free, held): (Vec<String>, Vec<String>) =
+            apps.into_iter().filter(|a| self.queued(a).is_none()).partition(|a| !self.busy.contains_key(a) && !self.playing.contains(a));
         if !held.is_empty() {
             let n = held.len();
-            self.toast(cx, trn!(n, "{n} game is running or busy and was not updated", "{n} games are running or busy and were not updated"), true);
+            self.toast(
+                cx,
+                trn!(n, "{n} game is running or busy and was not updated", "{n} games are running or busy and were not updated"),
+                true,
+            );
         }
         free
     }

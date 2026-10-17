@@ -91,7 +91,8 @@ fn failed(out: &crate::cmd::Output) -> OpResult {
     let why = out.error_lines();
     OpResult {
         ok: false,
-        aborted: false, warning: false,
+        aborted: false,
+        warning: false,
         message: if why.is_empty() { tr!("legendary exited with {code}", code = format!("{:?}", out.code)) } else { why },
     }
 }

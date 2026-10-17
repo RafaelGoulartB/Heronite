@@ -270,7 +270,9 @@ impl Render for ManageStatusesDialog {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Not `super::*`: gpui's glob import brings its own `test` macro.
+    use super::count_after_delete;
+    use std::collections::HashMap;
 
     #[test]
     fn a_deleted_status_hands_its_count_to_the_fallback() {
