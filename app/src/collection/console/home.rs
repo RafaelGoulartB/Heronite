@@ -194,7 +194,7 @@ impl LibraryNav {
 /// Cover tile. The focused one lifts: it grows a little over its slot
 /// (the layout does not move), gets the white ring and a deeper shadow,
 /// all on a spring so the focus glides from cover to cover.
-fn tile(id: SharedString, src: Option<ImageSource>, title: &str, w: Pixels, h: Pixels, focused: bool, playing: bool) -> Div {
+fn tile(id: SharedString, src: Option<ImageSource>, title: &str, w: Pixels, h: Pixels, focused: bool, badge: Option<&'static str>) -> Div {
     let title = title.to_string();
     let face = move |t: f32| {
         let (gx, gy) = (w * (LIFT * t), h * (LIFT * t));
@@ -235,7 +235,7 @@ fn tile(id: SharedString, src: Option<ImageSource>, title: &str, w: Pixels, h: P
                     )
                     .into_any_element(),
             })
-            .when(playing, |d| d.child(div().absolute().top(u(8.)).left(u(8.)).child(kit::badge(tr!("Playing"), theme::console_btn_a()))))
+            .when_some(badge, |d, b| d.child(div().absolute().top(u(8.)).left(u(8.)).child(kit::badge(b, theme::console_btn_a()))))
     };
     div()
         .flex_none()
@@ -275,8 +275,14 @@ impl CollectionView {
         let src = self.cover(key, w * s, h * s, window.scale_factor(), if focused { 200 } else { 50 });
         let game = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
         let title = game.as_ref().map_or(String::new(), |g| g.title.clone());
-        let playing = game.as_ref().is_some_and(|g| self.playing.contains_key(&g.app_name));
-        tile(SharedString::from(format!("tile-{key}")), src, &title, u(w), u(h), focused, playing)
+        let badge = game.as_ref().and_then(|g| {
+            if self.preparing.contains_key(&g.app_name) {
+                Some(tr!("Preparing"))
+            } else {
+                self.playing.contains_key(&g.app_name).then(|| tr!("Playing"))
+            }
+        });
+        tile(SharedString::from(format!("tile-{key}")), src, &title, u(w), u(h), focused, badge)
     }
 
     /// Big title + facts of `key` (the Home hero).
@@ -457,7 +463,9 @@ impl CollectionView {
 
     /// "Play", "Install" or "Stop" for the X shortcut.
     pub(super) fn primary_label(&self, g: &CollectionGame) -> &'static str {
-        if self.playing.contains_key(&g.app_name) {
+        if self.preparing.contains_key(&g.app_name) {
+            tr!("Cancel launch")
+        } else if self.playing.contains_key(&g.app_name) {
             tr!("Stop")
         } else if g.installed {
             tr!("Play")

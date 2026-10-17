@@ -24,6 +24,7 @@ mod header;
 mod html;
 mod install_options;
 mod launch_options;
+mod launch_progress;
 mod list;
 mod list_view;
 mod load;
@@ -114,6 +115,8 @@ pub struct CollectionView {
     runtime: Arc<GameRuntime>,
     /// app_name -> started tracking (Launching/Running).
     playing: HashMap<String, bool>,
+    /// app_name -> the step of a launch that has not started the game yet.
+    preparing: HashMap<String, launch_progress::LaunchStep>,
     toast: Option<(SharedString, bool)>,
     /// The button the toast offers, if any.
     toast_action: Option<ToastAction>,
@@ -235,6 +238,7 @@ impl CollectionView {
             reload_again: false,
             runtime,
             playing: HashMap::new(),
+            preparing: HashMap::new(),
             toast: None,
             toast_action: None,
             toast_task: None,

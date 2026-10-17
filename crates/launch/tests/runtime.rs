@@ -69,7 +69,18 @@ fn request(app: &str, plan: LaunchPlan) -> LaunchRequest {
     LaunchRequest { app_name: app.into(), runner: "sideload".into(), title: format!("{app} title"), plan }
 }
 
+/// The next event, past the preparation steps (tested on their own).
 fn next(rx: &Receiver<LaunchEvent>) -> LaunchEvent {
+    loop {
+        match rx.recv_timeout(Duration::from_secs(5)).expect("event") {
+            LaunchEvent::Preparing { .. } => continue,
+            ev => return ev,
+        }
+    }
+}
+
+/// The next event, whatever it is.
+fn next_any(rx: &Receiver<LaunchEvent>) -> LaunchEvent {
     rx.recv_timeout(Duration::from_secs(5)).expect("event")
 }
 
@@ -331,7 +342,7 @@ fn real_scripts_run_before_and_after_the_game() {
     plan.after_script = Some(script(&write_script(d.path(), "after.sh", &out), "after"));
     launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
     assert!(matches!(next(&rx), LaunchEvent::Launching { .. }));
-    assert_eq!(status_of(next(&rx)), ("Running the script before launch...".to_string(), false));
+    assert_eq!(status_of(next_any(&rx)), ("Running the script before launch...".to_string(), false));
     assert!(matches!(next(&rx), LaunchEvent::Running { .. }));
     let LaunchEvent::Exited { record, .. } = next(&rx) else { panic!() };
     assert!(record.is_some());
@@ -347,8 +358,8 @@ fn real_a_missing_script_is_reported_and_the_game_still_runs() {
     plan.before_script = Some(script(&d.path().join("nope.sh").to_string_lossy(), "before"));
     launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
     next(&rx);
-    let _ = next(&rx);
-    let (message, warning) = status_of(next(&rx));
+    let _ = next_any(&rx);
+    let (message, warning) = status_of(next_any(&rx));
     assert!(warning && message.contains("nope.sh"), "{message}");
     assert!(matches!(next(&rx), LaunchEvent::Running { .. }));
     assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
@@ -458,6 +469,7 @@ fn services(online: bool, cloud: Option<Arc<RecordingCloud>>) -> PrepServices {
 fn status_of(ev: LaunchEvent) -> (String, bool) {
     match ev {
         LaunchEvent::Status { message, warning, .. } => (message, warning),
+        LaunchEvent::Preparing { message, .. } => (message, false),
         other => panic!("expected a status, got {other:?}"),
     }
 }
@@ -472,14 +484,14 @@ fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     r.launcher.launch(request("Calluna", LaunchPlan::Native(process))).unwrap();
 
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    assert_eq!(status_of(next(&r.rx)), ("Downloading cloud saves...".to_string(), false));
+    assert_eq!(status_of(next_any(&r.rx)), ("Downloading cloud saves...".to_string(), false));
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     // The download ran before the game was spawned.
     assert_eq!(*cloud.calls.lock().unwrap(), [("--skip-upload".to_string(), "Calluna:/saves".to_string())]);
 
     std::thread::sleep(Duration::from_millis(60));
     r.spawner.finish(0, 0);
-    assert_eq!(status_of(next(&r.rx)), ("Uploading cloud saves...".to_string(), false));
+    assert_eq!(status_of(next_any(&r.rx)), ("Uploading cloud saves...".to_string(), false));
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     // The upload (500 ms) is not playtime.
     assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
@@ -496,7 +508,7 @@ fn a_forced_clear_does_not_upload_saves() {
     process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    let _download = next(&r.rx);
+    let _download = next_any(&r.rx);
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     assert!(r.launcher.force_clear("g"));
     assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
@@ -539,7 +551,7 @@ fn prefix_creation_is_announced_and_runs_before_the_game() {
     process.pre_commands = vec![Command { program: "/w/wine".into(), args: vec!["wineboot".into()], ..Default::default() }];
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    assert_eq!(status_of(next(&r.rx)), ("Preparing prefix...".to_string(), false));
+    assert_eq!(status_of(next_any(&r.rx)), ("Preparing prefix...".to_string(), false));
     wait_until("the prefix command", || !r.spawner.spawned().is_empty());
     assert_eq!(r.spawner.spawned()[0].program, "/w/wine");
     r.spawner.finish(0, 0);
@@ -556,7 +568,7 @@ fn stopping_while_preparing_ends_the_launch_without_a_session() {
     process.pre_commands = vec![Command { program: "/w/wine".into(), ..Default::default() }];
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    let _ = next(&r.rx);
+    let _ = next_any(&r.rx);
     wait_until("the prefix command", || !r.spawner.spawned().is_empty());
     assert!(r.launcher.stop("g"));
     let LaunchEvent::Exited { record, .. } = next(&r.rx) else { panic!() };
@@ -603,7 +615,7 @@ fn preparing_the_launch_is_not_playtime() {
     process.pre_commands = vec![Command { program: "/w/wine".into(), ..Default::default() }];
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    let _ = next(&r.rx);
+    let _ = next_any(&r.rx);
     wait_until("the prefix command", || !r.spawner.spawned().is_empty());
     std::thread::sleep(Duration::from_millis(500));
     r.spawner.finish(0, 0);
@@ -831,7 +843,7 @@ fn clearing_a_game_leaves_its_programs_running_and_missing_ones_are_reported() {
     r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
     next(&r.rx);
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
-    let (message, warning) = status_of(next(&r.rx));
+    let (message, warning) = status_of(next_any(&r.rx));
     assert!(warning && message.contains("nope.exe"), "{message}");
     wait_until("the program", || r.spawner.spawned().len() == 2);
     assert!(r.launcher.force_clear("g"));
@@ -980,4 +992,33 @@ fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     let LaunchEvent::Exited { stopped, .. } = next(&rx) else { panic!() };
     assert!(stopped);
     assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
+}
+
+#[test]
+fn a_prefix_whose_creation_was_stopped_is_created_again() {
+    let r = rig();
+    let prefix = r._dir.path().join("prefix");
+    fs::create_dir_all(&prefix).unwrap();
+    let marker = prefix.join(heronite_launch::wine::CREATING_MARKER);
+    let plan = |prefix: &std::path::Path| {
+        let mut process = process_plan("/games/run.sh", &[]);
+        process.pre_commands = vec![Command { program: "/w/wineboot".into(), ..Default::default() }];
+        let settings = heronite_launch::settings::GameSettings { wine_prefix: prefix.to_string_lossy().into(), ..Default::default() };
+        process.prep = PrepSpec { wine: Some(settings), ..Default::default() };
+        LaunchPlan::Native(process)
+    };
+    r.launcher.launch(request("g", plan(&prefix))).unwrap();
+    wait_until("wineboot", || !r.spawner.spawned().is_empty());
+    assert!(marker.exists(), "set while the prefix is being created");
+    assert!(r.launcher.stop("g"));
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert!(marker.exists(), "kept: the creation was cut short");
+
+    r.launcher.launch(request("g", plan(&prefix))).unwrap();
+    wait_until("wineboot again", || r.spawner.spawned().len() == 2);
+    r.spawner.finish(1, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert!(!marker.exists(), "removed once the prefix was created");
 }

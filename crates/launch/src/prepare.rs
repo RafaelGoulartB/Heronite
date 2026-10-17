@@ -38,14 +38,19 @@ pub struct Notice {
     pub log: String,
     /// Something failed (the launch carries on) rather than plain progress.
     pub warning: bool,
+    /// The step must not be interrupted (see [`crate::LaunchEvent::Preparing`]).
+    pub uncancellable: bool,
 }
 
 impl Notice {
     pub fn info(log: impl Into<String>, message: impl Into<String>) -> Self {
-        Self { log: log.into(), message: message.into(), warning: false }
+        Self { log: log.into(), message: message.into(), warning: false, uncancellable: false }
     }
     pub fn warn(log: impl Into<String>, message: impl Into<String>) -> Self {
-        Self { log: log.into(), message: message.into(), warning: true }
+        Self { log: log.into(), message: message.into(), warning: true, uncancellable: false }
+    }
+    pub fn uncancellable(self) -> Self {
+        Self { uncancellable: true, ..self }
     }
 }
 
@@ -79,9 +84,17 @@ pub struct Prep<'a> {
     pub notify: &'a dyn Fn(Notice),
 }
 
+/// How long an installer stopped by a cancel or a timeout gets to exit
+/// before it is killed.
+const STOP_GRACE: Duration = Duration::from_secs(2);
+
 /// Runs `cmd` and waits for it (killing it after `timeout` or on cancel).
-/// False when it could not be started, timed out or was cancelled.
+/// False when it could not be started, timed out or was cancelled; nothing
+/// is started once cancelled.
 pub fn run_wait(spawner: &dyn Spawner, cmd: &crate::plan::Command, timeout: Duration, cancel: &dyn Fn() -> bool) -> bool {
+    if cancel() {
+        return false;
+    }
     let mut handle = match spawner.spawn(cmd, None) {
         Ok(h) => h,
         Err(e) => {
@@ -97,8 +110,12 @@ pub fn run_wait(spawner: &dyn Spawner, cmd: &crate::plan::Command, timeout: Dura
             Err(_) => return false,
         }
         if cancel() || Instant::now() > deadline {
+            // An installer (msiexec, vcredist) gets a moment to stop cleanly.
             handle.terminate();
-            std::thread::sleep(Duration::from_millis(100));
+            let grace = Instant::now() + STOP_GRACE;
+            while Instant::now() < grace && matches!(handle.poll(), Ok(None)) {
+                std::thread::sleep(Duration::from_millis(20));
+            }
             handle.kill();
             return false;
         }
@@ -153,10 +170,14 @@ impl Prep<'_> {
             return;
         }
         let download = flag == "--skip-upload";
-        self.notice(Notice::info(
-            format!("{} cloud saves...", if download { "Downloading" } else { "Uploading" }),
-            if download { tr!("Downloading cloud saves...") } else { tr!("Uploading cloud saves...") },
-        ));
+        // Cut short, a sync could leave the saves half replaced.
+        self.notice(
+            Notice::info(
+                format!("{} cloud saves...", if download { "Downloading" } else { "Uploading" }),
+                if download { tr!("Downloading cloud saves...") } else { tr!("Uploading cloud saves...") },
+            )
+            .uncancellable(),
+        );
         match cloud.sync(&saves.runner, app_name, &saves.path, flag) {
             Ok(out) => {
                 if let Some(problem) = sync_problem(&out) {
@@ -639,5 +660,9 @@ pub(crate) mod tests {
         assert!(run_wait(&ok, &cmd, Duration::from_secs(1), &|| false));
         let bad = InstantSpawner { exit_code: 1, ..Default::default() };
         assert!(!run_wait(&bad, &cmd, Duration::from_secs(1), &|| false));
+        // Once cancelled, nothing more is started.
+        let cancelled = InstantSpawner::default();
+        assert!(!run_wait(&cancelled, &cmd, Duration::from_secs(1), &|| true));
+        assert!(cancelled.spawned.lock().unwrap().is_empty());
     }
 }

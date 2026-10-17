@@ -69,6 +69,9 @@ struct State {
     subscriber: Option<UnboundedSender<LaunchEvent>>,
     /// Games started by this process (pid once known).
     running: HashMap<String, Option<u32>>,
+    /// The step of each launch that has not started its game yet (message,
+    /// cancellable), replayed to a window that opens meanwhile.
+    steps: HashMap<String, (String, bool)>,
     tray: Option<TrayHandle>,
     /// `HERONITE_DEBUG_FAKE_TRAY`: behave as if a tray icon existed (measure
     /// the app closed to the tray without putting an icon in the user's bar).
@@ -131,6 +134,10 @@ pub fn attach_runtime(data_paths: &DataPaths, cx: &mut App) -> (Arc<GameRuntime>
     let mut s = hub.0.borrow_mut();
     for (app_name, pid) in &s.running {
         let _ = tx.unbounded_send(LaunchEvent::Launching { app_name: app_name.clone() });
+        if let Some((message, cancellable)) = s.steps.get(app_name) {
+            let (message, cancellable) = (message.clone(), *cancellable);
+            let _ = tx.unbounded_send(LaunchEvent::Preparing { app_name: app_name.clone(), message, cancellable });
+        }
         if let Some(pid) = pid {
             let _ = tx.unbounded_send(LaunchEvent::Running { app_name: app_name.clone(), pid: *pid });
         }

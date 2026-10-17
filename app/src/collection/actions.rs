@@ -62,7 +62,8 @@ impl CollectionView {
             statuses: &lib.statuses,
         };
         let is_playing = |key: &str| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name));
-        let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &organize);
+        let step = |key: &str| lib.get(key).and_then(|g| self.preparing.get(&g.app_name)).map(|s| s.label());
+        let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize);
         self.set_groups(groups);
         self.refresh_focus();
     }
@@ -124,14 +125,22 @@ impl CollectionView {
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
         match ev {
             LaunchEvent::Launching { app_name } => {
+                self.preparing.insert(app_name.clone(), super::launch_progress::LaunchStep::starting());
                 self.playing.insert(app_name, false);
+            }
+            LaunchEvent::Preparing { app_name, message, cancellable } => {
+                if self.playing.contains_key(&app_name) {
+                    self.set_launch_step(app_name, message, cancellable);
+                }
             }
             LaunchEvent::Running { app_name, pid } => {
                 log::info!("{app_name} running as pid {pid}");
+                self.preparing.remove(&app_name);
                 self.playing.insert(app_name, true);
             }
             LaunchEvent::Exited { app_name, elapsed, exit, stopped, .. } => {
                 log::info!("{app_name} exited after {elapsed:?}");
+                self.preparing.remove(&app_name);
                 self.playing.remove(&app_name);
                 if let Some(exit) = heronite_launch::failed_launch(exit, stopped, elapsed) {
                     self.show_failed_launch_toast(&app_name, exit, cx);
@@ -141,10 +150,11 @@ impl CollectionView {
                 self.reload(cx);
             }
             LaunchEvent::Error { app_name, message } => {
+                self.preparing.remove(&app_name);
                 self.playing.remove(&app_name);
                 self.show_toast(message, true, cx);
             }
-            // Preparing the launch (prefix, DXVK, cloud saves...): progress and non-fatal problems.
+            // Problems while preparing, and what happens after the game (cloud saves).
             LaunchEvent::Status { message, warning, .. } => self.show_toast(message, warning, cx),
         }
         self.refresh_groups();
@@ -155,6 +165,9 @@ impl CollectionView {
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = lib.get(key).cloned() else { return };
+        if self.preparing.contains_key(&game.app_name) {
+            return self.cancel_launch(&game.app_name, cx);
+        }
         if self.playing.contains_key(&game.app_name) {
             if !self.runtime.stop(&game.app_name) {
                 self.runtime.force_clear(&game.app_name);

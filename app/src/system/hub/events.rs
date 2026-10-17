@@ -13,16 +13,23 @@ use crate::system::tray::TrayCmd;
 
 pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     let hub = hub(cx);
-    let (launching, ended, settings) = {
+    let (started, ended, settings) = {
         let mut s = hub.0.borrow_mut();
+        // A game this run launched has just started (not one picked up again).
+        let mut started = false;
         match &ev {
             LaunchEvent::Launching { app_name } => {
                 s.running.entry(app_name.clone()).or_insert(None);
             }
+            LaunchEvent::Preparing { app_name, message, cancellable } => {
+                s.steps.insert(app_name.clone(), (message.clone(), *cancellable));
+            }
             LaunchEvent::Running { app_name, pid } => {
-                s.running.insert(app_name.clone(), Some(*pid));
+                s.steps.remove(app_name);
+                started = s.running.insert(app_name.clone(), Some(*pid)) == Some(None);
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
+                s.steps.remove(app_name);
                 s.running.remove(app_name);
             }
             LaunchEvent::Status { message, warning, .. } => {
@@ -43,7 +50,7 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
                 log::error!("{message}");
             }
         }
-        (matches!(ev, LaunchEvent::Launching { .. }), ended, s.settings())
+        (started, ended, s.settings())
     };
     // Before the post-game work, which takes the session (and its title) away.
     if !has_window(cx) {
@@ -55,8 +62,9 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     }
     tell_downloads(cx, &ev);
     tell_compression(cx, &ev);
-    if launching && settings.minimize_on_launch {
-        // Heroic's `minimizeOnLaunch`: needs the tray to come back from.
+    // Heroic's `minimizeOnLaunch`, once the game runs: the window shows the
+    // launch's progress until then. Needs the tray to come back from.
+    if started && settings.minimize_on_launch {
         close_window_keep_alive(cx);
     }
     if ended {
@@ -71,7 +79,7 @@ fn tell_downloads(cx: &mut App, ev: &LaunchEvent) {
     let (app_name, running) = match ev {
         LaunchEvent::Launching { app_name } | LaunchEvent::Running { app_name, .. } => (app_name, true),
         LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => (app_name, false),
-        LaunchEvent::Status { .. } => return,
+        LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => return,
     };
     downloads.update(cx, |d, cx| d.game_running(app_name, running, cx));
 }
@@ -82,7 +90,7 @@ fn tell_compression(cx: &mut App, ev: &LaunchEvent) {
     let (app_name, running) = match ev {
         LaunchEvent::Launching { app_name } | LaunchEvent::Running { app_name, .. } => (app_name, true),
         LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => (app_name, false),
-        LaunchEvent::Status { .. } => return,
+        LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => return,
     };
     compression.update(cx, |c, cx| c.set_game_running(app_name, running, cx));
 }

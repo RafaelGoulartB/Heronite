@@ -69,6 +69,7 @@ pub fn init(
         window: None,
         subscriber: None,
         running: HashMap::new(),
+        steps: HashMap::new(),
         tray,
         fake_tray,
         exit_when_idle: cli.launch.is_some() && !want_window && !start_in_tray,

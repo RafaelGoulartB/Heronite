@@ -29,6 +29,11 @@ pub enum LaunchEvent {
     /// finished ("Preparing prefix...", "Downloading DXVK...", a cloud save
     /// error). The game keeps going; `warning` says something went wrong.
     Status { app_name: String, message: String, warning: bool },
+    /// The step the launch is at before the game starts ("Preparing
+    /// prefix...", "Installing Redistributables (EPIC)", "Waiting for Steam
+    /// to start the game..."). `cancellable` is false while stopping could
+    /// do harm (cloud saves being downloaded): a stop then waits for the step.
+    Preparing { app_name: String, message: String, cancellable: bool },
 }
 
 /// A game that ends this soon, badly, on its own never really started.

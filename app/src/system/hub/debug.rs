@@ -102,13 +102,15 @@ pub(super) fn debug_hooks(cx: &mut App, tray_tx: UnboundedSender<TrayCmd>) {
 }
 
 fn fake_session(cx: &mut App, spec: &str) {
-    let parse = || -> Option<(String, u64, u64)> {
+    // `+<prep_seconds>`: the launch first prepares that long.
+    let parse = || -> Option<(String, u64, u64, u64)> {
         let (app, rest) = spec.split_once(':')?;
-        let (secs, delay) = rest.split_once('@')?;
-        Some((app.to_string(), secs.parse().ok()?, delay.parse().ok()?))
+        let (secs, rest) = rest.split_once('@')?;
+        let (delay, prep) = rest.split_once('+').unwrap_or((rest, "0"));
+        Some((app.to_string(), secs.parse().ok()?, delay.parse().ok()?, prep.parse().ok()?))
     };
-    let Some((app_name, secs, delay)) = parse() else {
-        log::warn!("HERONITE_DEBUG_FAKE_SESSION: expected <app_name>:<seconds>@<delay_ms>");
+    let Some((app_name, secs, delay, prep)) = parse() else {
+        log::warn!("HERONITE_DEBUG_FAKE_SESSION: expected <app_name>:<seconds>@<delay_ms>[+<prep_seconds>]");
         return;
     };
     let state = hub(cx);
@@ -138,8 +140,14 @@ fn fake_session(cx: &mut App, spec: &str) {
             let runtime = hub(cx).0.borrow().runtime.clone();
             runtime.debug_register_session(&game);
             on_event(cx, LaunchEvent::Launching { app_name: app.clone() });
-            on_event(cx, LaunchEvent::Running { app_name: app.clone(), pid: 1 });
         });
+        let steps = [("Downloading cloud saves...", false), ("Preparing prefix...", true), ("Installing Redistributables (EPIC)", true)];
+        for (message, cancellable) in steps.into_iter().take(if prep > 0 { 3 } else { 0 }) {
+            let (app, message) = (app.clone(), message.to_string());
+            cx.update(|cx| on_event(cx, LaunchEvent::Preparing { app_name: app, message, cancellable }));
+            cx.background_executor().timer(Duration::from_millis(prep * 1000 / 3)).await;
+        }
+        cx.update(|cx| on_event(cx, LaunchEvent::Running { app_name: app.clone(), pid: 1 }));
         cx.background_executor().timer(Duration::from_secs(secs)).await;
         cx.update(|cx| {
             log::info!("[fake-session] {} exits (window: {})", game.title, has_window(cx));

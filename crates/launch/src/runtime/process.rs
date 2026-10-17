@@ -69,7 +69,13 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         } else {
             log.info(&n.log);
         }
-        shared.send(LaunchEvent::Status { app_name: req.app_name.clone(), message: n.message, warning: n.warning })
+        // Until the game runs, progress is the step the launch is at.
+        let app_name = req.app_name.clone();
+        shared.send(if !n.warning && !control.playing.load(Ordering::SeqCst) {
+            LaunchEvent::Preparing { app_name, message: n.message, cancellable: !n.uncancellable }
+        } else {
+            LaunchEvent::Status { app_name, message: n.message, warning: n.warning }
+        })
     };
     let cancelled = || control.abort.load(Ordering::SeqCst) || control.kill.load(Ordering::SeqCst);
     let prep = Prep {
@@ -90,6 +96,19 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         Flow::Fail(message) => return fail(shared, log, req, message),
     }
     steps.done("cloud saves and umu");
+    // A prefix whose creation was cut short is created again next time,
+    // even if wineboot had already written the files that make it look done.
+    let creating = plan
+        .prep
+        .wine
+        .as_ref()
+        .filter(|_| !plan.pre_commands.is_empty())
+        .map(|s| std::path::Path::new(&s.wine_prefix).join(crate::wine::CREATING_MARKER));
+    if let Some(marker) = &creating {
+        if let Err(e) = std::fs::write(marker, "") {
+            log::debug!("{}: {e}", marker.display());
+        }
+    }
     if !plan.pre_commands.is_empty() {
         status(Notice::info("Preparing prefix...", tr!("Preparing prefix...")));
     }
@@ -97,6 +116,12 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         if control.kill.load(Ordering::SeqCst) || !run_to_completion(shared, control, cmd, Some(log)) {
             return finish_aborted(shared, log, req);
         }
+    }
+    if control.kill.load(Ordering::SeqCst) {
+        return finish_aborted(shared, log, req);
+    }
+    if let Some(marker) = &creating {
+        let _ = std::fs::remove_file(marker);
     }
     steps.done("prefix creation");
     // Redistributables, EOS overlay and known fixes the first time the game

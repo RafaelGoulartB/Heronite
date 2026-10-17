@@ -11,6 +11,10 @@ use crate::plan::{Command, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopS
 use crate::probe::Probe;
 use crate::settings::{GameSettings, WineVersion};
 
+/// In a prefix while it is being created; still there if the creation was
+/// stopped, so the next launch creates it again.
+pub const CREATING_MARKER: &str = ".heronite-creating";
+
 /// Heroic's `getUmuPath`: `umu-run` on `$PATH`, else its bundled copy.
 pub fn umu_path(ctx: &PlanContext, probe: &dyn Probe) -> String {
     probe.which("umu-run").unwrap_or_else(|| join(&join(&ctx.tools_dir(), "runtimes"), "umu/umu_run.py"))
@@ -142,9 +146,13 @@ impl WineEnv {
         Command { program: self.runner_bin(), args, env: e, cwd: None }
     }
 
-    /// `verifyWinePrefix`: files that must exist for the prefix to be usable.
+    /// `verifyWinePrefix`: files that must exist for the prefix to be usable,
+    /// and no creation left unfinished ([`CREATING_MARKER`]).
     pub(crate) fn prefix_missing(&self, probe: &dyn Probe) -> bool {
         let prefix = &self.settings.wine_prefix;
+        if probe.exists(&join(prefix, CREATING_MARKER)) {
+            return true;
+        }
         let mut required: Vec<String> =
             ["dosdevices", "drive_c", "system.reg", "user.reg", "userdef.reg"].iter().map(|s| s.to_string()).collect();
         let mut files = vec![prefix.clone()];

@@ -117,7 +117,7 @@ impl Session {
                 self.running.insert(app_name.clone());
                 self.begin_capture(app_name, cx);
             }
-            LaunchEvent::Running { .. } | LaunchEvent::Status { .. } => {}
+            LaunchEvent::Running { .. } | LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => {}
         }
     }
 

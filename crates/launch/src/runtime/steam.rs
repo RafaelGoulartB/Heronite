@@ -13,6 +13,11 @@ use crate::record;
 
 pub(super) fn run_steam(shared: &Shared, log: &GameLog, req: &LaunchRequest, control: &Control, app_id: &str, uri: &str) {
     log.info(&format!("Opening {uri}"));
+    shared.send(LaunchEvent::Preparing {
+        app_name: req.app_name.clone(),
+        message: tr!("Waiting for Steam to start the game...").into(),
+        cancellable: true,
+    });
     if let Err(e) = shared.spawner.open_uri(uri) {
         return fail(
             shared,

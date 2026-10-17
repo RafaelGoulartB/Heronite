@@ -10,7 +10,6 @@
 use std::io::{BufRead, BufReader, Read};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::channel::mpsc::{unbounded, UnboundedSender};
 use futures::StreamExt;
@@ -367,7 +366,7 @@ impl SettingsPanel {
                     .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Installing {verb}\u{2026}", verb)))
                     .child(self.outline_button("wt-cancel", tr!("Cancel"), true, cx, |this, _, cx| this.cancel_winetricks(cx))),
             )
-            .child(busy_bar())
+            .child(crate::services::widgets::busy_bar("wt-sweep", 6.))
             .child(
                 div()
                     .flex()
@@ -433,20 +432,6 @@ impl SettingsPanel {
             )
             .child(div().flex_none().child(right))
     }
-}
-
-/// A bar with a light sweeping across: winetricks gives no percentage.
-fn busy_bar() -> AnyElement {
-    let track = div().relative().w_full().h(px(6.)).rounded_full().bg(theme::white_a(0.14)).overflow_hidden();
-    let sweep = div().absolute().top_0().bottom_0().w(relative(0.3)).rounded_full().bg(theme::accent());
-    if !theme::animations() {
-        return track.child(sweep.left(relative(0.35))).into_any_element();
-    }
-    track
-        .child(
-            sweep.with_animation("wt-sweep", Animation::new(Duration::from_millis(1400)).repeat(), |s, t| s.left(relative(t * 1.3 - 0.3))),
-        )
-        .into_any_element()
 }
 
 /// Runs `winetricks -q <verb>` in the game's prefix; every output line goes
