@@ -351,6 +351,9 @@ impl Downloads {
 
     /// Verify and repair the game's files.
     pub fn store_verify(&mut self, store: Store, app_name: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let app = app_name.to_string();
         self.run_task_then(
             app_name,
@@ -404,6 +407,9 @@ impl Downloads {
 
     /// Moves the install folder into `new_parent`.
     pub fn store_move(&mut self, store: Store, app_name: &str, new_parent: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let (app, to) = (app_name.to_string(), new_parent.to_string());
         self.run_task_then(
             app_name,

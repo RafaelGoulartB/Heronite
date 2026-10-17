@@ -61,6 +61,21 @@ impl Downloads {
         );
     }
 
+    /// Whether the game's files are in use (it is running, or its download is
+    /// queued): a verify, move or install-location change must not start; a
+    /// toast says why. The menus hide these already, this is the backstop.
+    pub(super) fn files_in_use(&mut self, app_name: &str, cx: &mut Context<Self>) -> bool {
+        let reason = if self.playing.contains(app_name) {
+            tr!("The game is running: close it first")
+        } else if self.queued(app_name).is_some() {
+            tr!("This game is in the download queue")
+        } else {
+            return false;
+        };
+        self.toast(cx, reason, true);
+        true
+    }
+
     /// Runs `work` for a game on a worker thread: the game shows as busy
     /// (with the percents `work` reports) until it ends with a toast.
     pub(super) fn run_task_then(
@@ -140,6 +155,9 @@ impl Downloads {
 
     /// Verify and repair (`legendary repair`).
     pub fn verify(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let app = app_name.to_string();
         self.run_op(app_name, tr!("Verifying"), true, cx, move |data_paths, lg, cancel, report| {
             ops::repair(data_paths, lg, &app, cancel, |u| match u {
@@ -193,6 +211,9 @@ impl Downloads {
     }
 
     pub fn move_install(&mut self, app_name: &str, install_path: &str, new_parent: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let (app, from, to) = (app_name.to_string(), install_path.to_string(), new_parent.to_string());
         self.run_op(app_name, tr!("Moving"), false, cx, move |data_paths, lg, _, _| {
             let r = ops::move_install(data_paths, lg, &app, &from, &to);
