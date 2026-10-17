@@ -337,9 +337,11 @@ impl ViewFilters {
         v.categories = names("categories");
         v.statuses = names("statuses");
         // `groupByStatus` is how the grouping was stored when it was a toggle.
-        v.group_by = value.get("groupBy").and_then(Value::as_str).and_then(GroupBy::parse).or_else(|| {
-            value.get("groupByStatus").and_then(Value::as_bool).map(|on| if on { GroupBy::Status } else { GroupBy::None })
-        });
+        v.group_by = value
+            .get("groupBy")
+            .and_then(Value::as_str)
+            .and_then(GroupBy::parse)
+            .or_else(|| value.get("groupByStatus").and_then(Value::as_bool).map(|on| if on { GroupBy::Status } else { GroupBy::None }));
         v.show_hidden = value.get("showHidden").and_then(Value::as_bool);
         v
     }

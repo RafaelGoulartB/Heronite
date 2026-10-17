@@ -9,8 +9,8 @@ use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
 use crate::library::CollectionGame;
-use crate::organize::{compare_keyed, Keyed, Organize};
 use crate::models::{CollectionGameMetadata, CompletionStatus, GameInfo};
+use crate::organize::{compare_keyed, Keyed, Organize};
 use crate::status::{resolve_status_id, status_color, status_label, UNKNOWN_GROUP_ID};
 use crate::text::{facet_key, locale_cmp, locale_cmp_base, split_names, unique_names};
 
@@ -510,12 +510,7 @@ pub fn filter_games_where(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&Coll
 ///
 /// `descending` turns the sort's own key around; ties stay A-Z and games
 /// without a value stay last.
-pub fn filter_games_organized(
-    games: &[Game],
-    query: &ViewQuery,
-    keep: &dyn Fn(&CollectionGame) -> bool,
-    organize: &Organize,
-) -> Vec<Game> {
+pub fn filter_games_organized(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&CollectionGame) -> bool, organize: &Organize) -> Vec<Game> {
     let folded = crate::fuzzy::fold(query.search.trim());
     let tokens = crate::fuzzy::tokens(&folded);
     let mut out: Vec<(i32, Keyed, Game)> = games

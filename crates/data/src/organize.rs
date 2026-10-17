@@ -296,7 +296,12 @@ fn playtime_ranges() -> [(&'static str, &'static str, u64); 6] {
 
 /// Ranges of [`GroupBy::InstallSize`]: (id, label, least bytes), largest first.
 fn size_ranges() -> [(&'static str, &'static str, u64); 4] {
-    [("50gb", tr!("50 GB or more"), 50 * GB), ("10gb", tr!("10 to 50 GB"), 10 * GB), ("1gb", tr!("1 to 10 GB"), GB), ("0gb", tr!("Under 1 GB"), 1)]
+    [
+        ("50gb", tr!("50 GB or more"), 50 * GB),
+        ("10gb", tr!("10 to 50 GB"), 10 * GB),
+        ("1gb", tr!("1 to 10 GB"), GB),
+        ("0gb", tr!("Under 1 GB"), 1),
+    ]
 }
 
 /// The sections `g` goes in: `(key, label)`; no value gives none.

@@ -3,14 +3,14 @@
 use std::sync::Arc;
 
 use gpui_kit::{rgb, Rgba, SharedString};
+use heronite_data::collection::Game;
 use heronite_data::collection::{self, FacetKind, RelatedKind};
 use heronite_data::focus::focus_data;
 use heronite_data::hltb::WikiCache;
-use heronite_data::status::display_status;
-use heronite_data::ui_state::UiState;
-use heronite_data::collection::Game;
 use heronite_data::organize::{self, Organize};
+use heronite_data::status::display_status;
 use heronite_data::text::{format_timestamp, DateLocale};
+use heronite_data::ui_state::UiState;
 use heronite_data::{CollectionGame, GroupBy, Library, SortMode, ViewQuery};
 
 use super::vm::*;
@@ -166,12 +166,20 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         rows.push(DetailRow {
             label: tr!("Features").into(),
             // Steam's features (no metadata) are not a filter.
-            value: chips(&d.features[..d.features.len().min(8)], (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature"), false),
+            value: chips(
+                &d.features[..d.features.len().min(8)],
+                (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature"),
+                false,
+            ),
             split: true,
         });
     }
     if !d.themes.is_empty() {
-        rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes[..d.themes.len().min(8)], Some("theme"), false), split: true });
+        rows.push(DetailRow {
+            label: tr!("Themes").into(),
+            value: chips(&d.themes[..d.themes.len().min(8)], Some("theme"), false),
+            split: true,
+        });
     }
     if d.platforms.len() > 1 {
         rows.push(DetailRow {

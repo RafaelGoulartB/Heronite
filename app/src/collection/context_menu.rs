@@ -111,8 +111,15 @@ impl CollectionView {
     pub(super) fn open_context_menu(&mut self, key: SharedString, position: Point<Pixels>, cx: &mut Context<Self>) {
         let batch = self.sel.contains(&key);
         self.sel.pop = None;
-        self.context_menu =
-            Some(ContextMenuState { key, position, status_open: false, install_open: false, categories_open: false, manage_open: false, batch });
+        self.context_menu = Some(ContextMenuState {
+            key,
+            position,
+            status_open: false,
+            install_open: false,
+            categories_open: false,
+            manage_open: false,
+            batch,
+        });
         cx.notify();
     }
 
@@ -198,7 +205,9 @@ impl CollectionView {
         let k = key.clone();
         item("cm-select")
             .on_hover(cx.listener(|this, h: &bool, _, cx| {
-                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open || m.manage_open)) {
+                if let Some(m) =
+                    this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open || m.manage_open))
+                {
                     m.status_open = false;
                     m.install_open = false;
                     m.categories_open = false;
@@ -507,7 +516,9 @@ impl CollectionView {
                 if !fold {
                     return;
                 }
-                if let Some(m) = this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open || m.manage_open)) {
+                if let Some(m) =
+                    this.context_menu.as_mut().filter(|m| *h && (m.status_open || m.install_open || m.categories_open || m.manage_open))
+                {
                     m.status_open = false;
                     m.install_open = false;
                     m.categories_open = false;

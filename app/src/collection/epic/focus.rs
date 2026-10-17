@@ -237,8 +237,14 @@ impl CollectionView {
         // The game settings' cloud saves tab has "Sync now"; the palette keeps it.
         if cloud {
             v.push(
-                item(EpicAction::Sync, "sync", Icon::CloudSync, tr!("Cloud saves sync"), "upload download saves sincronizar nuvem salvamentos")
-                    .palette_only(),
+                item(
+                    EpicAction::Sync,
+                    "sync",
+                    Icon::CloudSync,
+                    tr!("Cloud saves sync"),
+                    "upload download saves sincronizar nuvem salvamentos",
+                )
+                .palette_only(),
             );
         }
         v.push(item(

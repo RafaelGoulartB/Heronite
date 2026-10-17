@@ -257,9 +257,13 @@ fn playtime_label(vm: &CardVm) -> Div {
             ))
         })
         .map(|d| match c.stars {
-            Some(n) => d.child(div().flex().items_center().children((1..=5u8).map(|i| {
-                icon(Icon::Star, px(13.), if i <= n { theme::rgb_a(244, 211, 94, 1.).into() } else { theme::white_a(0.2) })
-            }))),
+            Some(n) => {
+                d.child(div().flex().items_center().children(
+                    (1..=5u8).map(|i| {
+                        icon(Icon::Star, px(13.), if i <= n { theme::rgb_a(244, 211, 94, 1.).into() } else { theme::white_a(0.2) })
+                    }),
+                ))
+            }
             None => d.child(div().min_w_0().truncate().child(c.text.clone())),
         })
 }

@@ -90,13 +90,7 @@ pub(super) struct Details {
 }
 
 impl GameSettingsDialog {
-    pub(super) fn build_details(
-        ctx: &DialogCtx,
-        initial: &Form,
-        playtime: u64,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Details {
+    pub(super) fn build_details(ctx: &DialogCtx, initial: &Form, playtime: u64, window: &mut Window, cx: &mut Context<Self>) -> Details {
         let options = collect_tag_options(&ctx.lib.games);
         let tags: Vec<Entity<TagField>> = TAG_FIELDS
             .iter()
@@ -287,12 +281,9 @@ impl GameSettingsDialog {
                     .child(div().flex_1().child(labeled(tr!("Score"), input_box(&d.score, false)))),
             ),
         ]);
-        let playtime = card([row(
-            tr!("Time played"),
-            Some(tr!("New sessions keep adding to this time.")),
-            duration_field(&d.hours, &d.minutes),
-        )
-        .into_any_element()]);
+        let playtime =
+            card([row(tr!("Time played"), Some(tr!("New sessions keep adding to this time.")), duration_field(&d.hours, &d.minutes))
+                .into_any_element()]);
         let tags = card(d.tags.iter().map(|t| block(t.clone())));
         let more =
             card([block(labeled(tr!("Websites"), input_box(&d.websites, false))), block(labeled(tr!("Notes"), textarea_box(&d.notes, 4)))]);

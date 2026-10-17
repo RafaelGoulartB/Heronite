@@ -18,7 +18,8 @@ mod tags;
 mod text;
 
 pub use input::{
-    choose_path, duration_field, input_box, new_input, new_textarea, on_commit, path_field, search_box, search_box_with, text_field, textarea_box,
+    choose_path, duration_field, input_box, new_input, new_textarea, on_commit, path_field, search_box, search_box_with, text_field,
+    textarea_box,
 };
 pub use select::{select_field, select_menu_field, SelectOption};
 pub use tags::{TagEvent, TagField};

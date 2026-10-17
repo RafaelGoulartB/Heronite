@@ -22,8 +22,8 @@ pub mod fuzzy;
 pub mod game_actions;
 pub mod game_config;
 pub mod heronite_ui_import;
-pub mod install_size;
 pub mod hltb;
+pub mod install_size;
 pub mod language;
 pub mod launch_presets;
 pub mod library;
@@ -46,9 +46,9 @@ pub mod ui_state;
 
 pub use art::{ArtContext, ImageRef};
 pub use collection::{FacetFilters, FacetKind, InstallFilter, SortMode, StatusGroup, ViewQuery};
-pub use organize::GroupBy;
 pub use library::{CollectionGame, Library};
 pub use num::JsNum;
+pub use organize::GroupBy;
 pub use paths::{AppPaths, DataPaths};
 
 #[cfg(test)]

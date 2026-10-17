@@ -239,8 +239,14 @@ impl CollectionView {
         if details_url(game).is_some() {
             // Palette only: the store page is a rare stop.
             v.push(
-                item(A::Details, "details", tr!("Details"), Icon::OpenInNew, "store page website browser loja pagina site navegador detalhes")
-                    .palette_only(),
+                item(
+                    A::Details,
+                    "details",
+                    tr!("Details"),
+                    Icon::OpenInNew,
+                    "store page website browser loja pagina site navegador detalhes",
+                )
+                .palette_only(),
             );
         }
         if !tracking {

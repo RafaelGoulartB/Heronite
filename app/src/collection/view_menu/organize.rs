@@ -160,7 +160,13 @@ impl CollectionView {
             self.lib.as_deref().map(|l| l.statuses.iter().take(5).map(|s| theme::status_color(&s.slug)).collect()).unwrap_or_default();
         let dots = || {
             div().flex().flex_none().items_center().children(colors.iter().enumerate().map(|(i, c)| {
-                div().size(px(8.)).rounded_full().bg(*c).border_1().border_color(theme::rgb_a(20, 22, 30, 0.9)).when(i > 0, |d| d.ml(px(-3.)))
+                div()
+                    .size(px(8.))
+                    .rounded_full()
+                    .bg(*c)
+                    .border_1()
+                    .border_color(theme::rgb_a(20, 22, 30, 0.9))
+                    .when(i > 0, |d| d.ml(px(-3.)))
             }))
         };
         let quick = QUICK_GROUPS.into_iter().map(|by| {
@@ -185,20 +191,13 @@ impl CollectionView {
             on: current == by,
         });
         let list = (self.view_menu.more == Some(More::Group)).then(|| {
-            self.more_list(
-                "vm-group-list",
-                options.collect(),
-                cx,
-                |this, id, cx| {
-                    if let Some(by) = GroupBy::ALL.into_iter().find(|b| *b as usize == id) {
-                        this.set_group_by(by, cx);
-                    }
-                },
-            )
+            self.more_list("vm-group-list", options.collect(), cx, |this, id, cx| {
+                if let Some(by) = GroupBy::ALL.into_iter().find(|b| *b as usize == id) {
+                    this.set_group_by(by, cx);
+                }
+            })
         });
-        let hint = current
-            .many_per_game()
-            .then(|| hint_text(tr!("A game with several values shows in each of their groups.")).px(px(4.)));
+        let hint = current.many_per_game().then(|| hint_text(tr!("A game with several values shows in each of their groups.")).px(px(4.)));
         div()
             .flex()
             .flex_col()
@@ -249,7 +248,11 @@ impl CollectionView {
             .cursor_pointer()
             .hover(|s| s.bg(theme::white_a(0.12)))
             // Up for A → Z, down for "most / newest first", as the words say.
-            .child(icon(if (current == SortMode::Title) == descending { Icon::ArrowDownward } else { Icon::ArrowUpward }, px(17.), theme::text_primary()))
+            .child(icon(
+                if (current == SortMode::Title) == descending { Icon::ArrowDownward } else { Icon::ArrowUpward },
+                px(17.),
+                theme::text_primary(),
+            ))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
         let head = section_head(tr!("Sort")).child(div().text_size(px(12.)).child(sort_direction(current, descending)));
         let hint = (current == SortMode::Title)

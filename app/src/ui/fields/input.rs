@@ -111,9 +111,7 @@ fn field_row(input: &Entity<InputState>, disabled: bool, leading: Option<AnyElem
 pub fn duration_field(hours: &Entity<InputState>, minutes: &Entity<InputState>) -> Div {
     let unit = |text: SharedString| div().flex_none().text_size(px(13.)).text_color(theme::text_muted()).child(text);
     // Right-aligned, so the number sits against its unit.
-    let number = |input: &Entity<InputState>, w: f32| {
-        div().w(px(w)).flex_none().child(Input::new(input).appearance(false).text_right())
-    };
+    let number = |input: &Entity<InputState>, w: f32| div().w(px(w)).flex_none().child(Input::new(input).appearance(false).text_right());
     input_surface()
         .relative()
         .flex()
