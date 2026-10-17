@@ -140,10 +140,7 @@ impl Downloads {
     /// Queues an update for every installed Epic game that has one.
     pub fn update_all_epic(&mut self, cx: &mut Context<Self>) {
         let apps: Vec<String> = self.updates.iter().cloned().collect();
-        for app in apps {
-            if self.queued(&app).is_some() {
-                continue;
-            }
+        for app in self.updatable(apps, cx) {
             if let Some(info) = library_entry(&self.data_paths, &app) {
                 self.queue_update(info, cx);
             }
@@ -181,6 +178,21 @@ impl Downloads {
         .detach();
     }
 
+    /// Of `apps`, those an update can be queued for now. A game that is
+    /// running or has an operation in progress is left out (one toast counts
+    /// them); one already in the queue is left out silently.
+    pub(super) fn updatable(&mut self, apps: Vec<String>, cx: &mut Context<Self>) -> Vec<String> {
+        let (free, held): (Vec<String>, Vec<String>) = apps
+            .into_iter()
+            .filter(|a| self.queued(a).is_none())
+            .partition(|a| !self.busy.contains_key(a) && !self.playing.contains(a));
+        if !held.is_empty() {
+            let n = held.len();
+            self.toast(cx, trn!(n, "{n} game is running or busy and was not updated", "{n} games are running or busy and were not updated"), true);
+        }
+        free
+    }
+
     /// The hub tells which games are being played: such a game is not
     /// updated; its update is queued once it exits.
     pub fn game_running(&mut self, app_name: &str, running: bool, cx: &mut Context<Self>) {
@@ -195,8 +207,9 @@ impl Downloads {
     }
 
     /// `autoUpdateGames`: queues the updates found, except for games that
-    /// ignore updates (`ignoreGameUpdates` in their settings) and games being
-    /// played (those wait for their exit); not at all offline or on a
+    /// ignore updates (`ignoreGameUpdates` in their settings), games being
+    /// played and games with a verify or move running (those wait for their
+    /// exit / the end of the operation); not at all offline or on a
     /// metered connection. `only`: just that game.
     pub(super) fn queue_auto_updates(&mut self, only: Option<String>, cx: &mut Context<Self>) {
         let data_paths = self.data_paths.clone();
@@ -213,6 +226,7 @@ impl Downloads {
         }
         let queued: HashSet<String> = self.snapshot.queue.iter().map(|e| e.params.app_name.clone()).collect();
         let playing = self.playing.clone();
+        let busy: HashSet<String> = self.busy.keys().cloned().collect();
         cx.spawn(async move |this, cx| {
             let (plan, entries) = cx
                 .background_spawn(async move {
@@ -229,6 +243,7 @@ impl Downloads {
                                 .unwrap_or(false),
                             queued: queued.contains(app),
                             playing: playing.contains(app),
+                            busy: busy.contains(app),
                         })
                         .collect();
                     let gates = if enabled {
@@ -241,7 +256,13 @@ impl Downloads {
                         autoupdate::Gates::default()
                     };
                     let plan = autoupdate::plan(&gates, &candidates);
-                    let entries: Vec<Value> = plan.queue.iter().filter_map(|app| any_library_entry(&data_paths, app)).collect();
+                    // An operation that just ended may have uninstalled the game.
+                    let entries: Vec<Value> = plan
+                        .queue
+                        .iter()
+                        .filter_map(|app| any_library_entry(&data_paths, app))
+                        .filter(|e| e.get("is_installed").and_then(Value::as_bool) != Some(false))
+                        .collect();
                     (plan, entries)
                 })
                 .await;

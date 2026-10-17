@@ -1,8 +1,8 @@
 //! Automatic game updates (`autoUpdateGames`): which of the updates found may
 //! be queued right now. Port of Heroic's `autoUpdate` (skip games that ignore
 //! updates), plus the conditions Heroic does not look at: a game being played
-//! is updated after it exits, nothing is downloaded offline or on a metered
-//! connection.
+//! (or being verified or moved) is updated after it exits, nothing is
+//! downloaded offline or on a metered connection.
 //!
 //! Everything here is pure except the two probes at the bottom.
 
@@ -19,6 +19,8 @@ pub struct Candidate {
     pub queued: bool,
     /// Being played right now.
     pub playing: bool,
+    /// A verify, move or other operation is running on it.
+    pub busy: bool,
 }
 
 /// The conditions of the moment.
@@ -52,7 +54,7 @@ impl Block {
 pub struct Plan {
     /// Queue these updates now.
     pub queue: Vec<String>,
-    /// Being played: queue them when the game exits.
+    /// Being played or busy: queue them when the game exits / the operation ends.
     pub deferred: Vec<String>,
     /// Games that ignore updates.
     pub ignored: Vec<String>,
@@ -79,7 +81,7 @@ pub fn plan(gates: &Gates, candidates: &[Candidate]) -> Plan {
             plan.ignored.push(c.app_name.clone());
         } else if c.queued {
             // Nothing to do: it is on its way.
-        } else if c.playing {
+        } else if c.playing || c.busy {
             plan.deferred.push(c.app_name.clone());
         } else {
             plan.queue.push(c.app_name.clone());
@@ -138,7 +140,7 @@ mod tests {
     use super::*;
 
     fn c(app: &str) -> Candidate {
-        Candidate { app_name: app.into(), ignored: false, queued: false, playing: false }
+        Candidate { app_name: app.into(), ignored: false, queued: false, playing: false, busy: false }
     }
 
     fn open() -> Gates {
@@ -164,6 +166,13 @@ mod tests {
         assert_eq!(p.queue, ["free"]);
         assert_eq!(p.deferred, ["playing"]);
         assert_eq!(p.ignored, ["ignored"]);
+    }
+
+    #[test]
+    fn a_game_with_an_operation_running_waits_like_a_game_being_played() {
+        let p = plan(&open(), &[Candidate { busy: true, ..c("verifying") }, Candidate { busy: true, queued: true, ..c("queued") }, c("free")]);
+        assert_eq!(p.queue, ["free"]);
+        assert_eq!(p.deferred, ["verifying"]);
     }
 
     #[test]

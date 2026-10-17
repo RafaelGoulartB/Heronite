@@ -15,6 +15,9 @@ impl Downloads {
     /// The game's folder was moved or renamed by hand: the store now looks
     /// for it in `folder`.
     pub fn relocate(&mut self, runner: &str, app_name: &str, folder: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let (runner, app, folder) = (runner.to_string(), app_name.to_string(), folder.to_string());
         self.run_task_then(
             app_name,

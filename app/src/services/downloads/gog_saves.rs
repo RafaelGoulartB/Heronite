@@ -26,9 +26,9 @@ impl Downloads {
                 match result {
                     Ok(text) => {
                         let _ = tx.unbounded_send(text);
-                        OpResult { ok: true, aborted: false, message: tr!("Cloud saves synced").into() }
+                        OpResult { ok: true, aborted: false, warning: false, message: tr!("Cloud saves synced").into() }
                     }
-                    Err(err) => OpResult { ok: false, aborted: false, message: format!("{err:#}") },
+                    Err(err) => OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
                 }
             },
             |_, _, _| {},

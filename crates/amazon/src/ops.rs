@@ -190,18 +190,34 @@ pub fn verify(paths: &DataPaths, nile: &Nile, app_name: &str, cancel: &Cancel, o
 /// `nile uninstall`: nile deletes the files of the game's manifest and its
 /// entry. When it cannot, the entry (and the stored manifest, so a new install
 /// downloads everything) is removed here; folders are never deleted here.
-pub fn uninstall(paths: &DataPaths, nile: &Nile, app_name: &str) -> Result<()> {
+/// Then `Some(problem)` tells the user what nile said and where the game's
+/// files may still be.
+pub fn uninstall(paths: &DataPaths, nile: &Nile, app_name: &str) -> Result<Option<String>> {
+    let folder = installed::get(paths, app_name).map(|g| g.path).unwrap_or_default();
     let out = nile.run(&["uninstall", app_name])?;
+    let mut problem = None;
     if !out.success() || installed::get(paths, app_name).is_some() {
-        log::warn!("nile could not uninstall {app_name} ({}): removing its entry", error_text(&out));
+        let why = error_text(&out);
+        log::warn!("nile could not uninstall {app_name} ({why}): removing its entry");
         installed::remove(paths, app_name)?;
         remove_manifest(nile, app_name);
+        let why = match why.lines().rev().find(|l| !l.trim().is_empty()) {
+            Some(last) => last.trim().to_string(),
+            None if !out.success() => exit_message(&out),
+            None => String::new(),
+        };
+        problem = Some(match (why.is_empty(), folder.is_empty()) {
+            (false, false) => tr!("nile could not delete the game's files ({why}): they may still be in {folder}", why, folder),
+            (false, true) => tr!("nile could not delete the game's files ({why})", why),
+            (true, false) => tr!("nile could not delete the game's files: they may still be in {folder}", folder),
+            (true, true) => tr!("nile could not delete the game's files").to_string(),
+        });
     }
     if let Err(err) = library::write_library(paths) {
         log::warn!("rebuilding the Amazon library: {err:#}");
     }
     updates::forget(paths, app_name);
-    Ok(())
+    Ok(problem)
 }
 
 /// Takes the game off the installed list (and drops nile's manifest of it)
@@ -452,7 +468,7 @@ mod tests {
         library::write_library(&env.paths).unwrap();
         json_store::write(&env.paths.nile_store("updates"), &json!({"updates": [ID]})).unwrap();
         let nile = env.nile("echo '[]' > \"$NILE_CONFIG_PATH/nile/installed.json\"");
-        uninstall(&env.paths, &nile, ID).unwrap();
+        assert_eq!(uninstall(&env.paths, &nile, ID).unwrap(), None);
         assert_eq!(env.calls(), [format!("uninstall {ID}")]);
         assert_eq!(library::game_info(&env.paths, ID).unwrap()["is_installed"], false);
         assert!(updates::cached_updates(&env.paths).is_empty());
@@ -471,7 +487,9 @@ mod tests {
             &format!(r#"[{{"id": "{ID}", "path": "{}"}}, {{"id": "other", "path": "/o"}}]"#, folder.display()),
         );
         let nile = env.nile("echo 'Traceback (most recent call last):' >&2; exit 1");
-        uninstall(&env.paths, &nile, ID).unwrap();
+        let problem = uninstall(&env.paths, &nile, ID).unwrap().expect("a failed nile is reported");
+        assert!(problem.contains(&folder.display().to_string()), "{problem}");
+        assert!(problem.contains("Traceback"), "nile's last error line is shown: {problem}");
         let left = installed::load(&env.paths);
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].id, "other");

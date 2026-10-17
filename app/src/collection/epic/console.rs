@@ -23,6 +23,8 @@ impl CollectionView {
             (s.busy_of(&game.app_name).is_some(), s.queued(&game.app_name).is_some(), s.has_update(&game.app_name))
         };
         let cloud = super::has_cloud_saves(game);
+        // Moving or verifying the files of a running game would pull them from under it.
+        let playing = self.playing.contains_key(&game.app_name);
         let flags = svc.read(cx).game_flags(&game.app_name);
         let mut rows = Vec::new();
         if queued {
@@ -52,9 +54,11 @@ impl CollectionView {
             if update {
                 rows.push(Row::action("epic:update", tr!("Update")).icon(Icon::Update));
             }
-            rows.push(Row::action("epic:verify", tr!("Verify and repair")).icon(Icon::Build));
-            rows.push(Row::action("epic:move", tr!("Move install")).icon(Icon::Folder));
-            rows.push(Row::action("epic:relocate", tr!("Change install location\u{2026}")).icon(Icon::FolderOpen));
+            if !playing {
+                rows.push(Row::action("epic:verify", tr!("Verify and repair")).icon(Icon::Build));
+                rows.push(Row::action("epic:move", tr!("Move install")).icon(Icon::Folder));
+                rows.push(Row::action("epic:relocate", tr!("Change install location\u{2026}")).icon(Icon::FolderOpen));
+            }
         }
         if flags.has_dlcs && !flags.third_party {
             rows.push(

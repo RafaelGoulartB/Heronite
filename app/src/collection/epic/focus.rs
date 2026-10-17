@@ -150,6 +150,8 @@ impl CollectionView {
             (s.busy_of(&game.app_name).is_some(), s.queued(&game.app_name).is_some(), s.has_update(&game.app_name))
         };
         let cloud = super::has_cloud_saves(game);
+        // Moving or verifying the files of a running game would pull them from under it.
+        let playing = self.playing.contains_key(&game.app_name);
         // The Collection's game model leaves these out; the service read them from the library file.
         let flags = svc.read(cx).game_flags(&game.app_name);
         let (third_party, has_dlcs) = (flags.third_party, flags.has_dlcs);
@@ -205,21 +207,29 @@ impl CollectionView {
             if update {
                 v.push(item(EpicAction::Update, "update", Icon::Update, tr!("Update"), "upgrade patch atualizar atualizacao"));
             }
-            v.push(item(
-                EpicAction::Verify,
-                "verify",
-                Icon::Build,
-                tr!("Verify and repair"),
-                "check fix integrity verificar reparar integridade",
-            ));
-            v.push(item(EpicAction::Move, "move", Icon::Folder, tr!("Move install"), "relocate folder disk mover instalacao pasta disco"));
-            v.push(item(
-                EpicAction::Relocate,
-                "relocate",
-                Icon::FolderOpen,
-                tr!("Change install location\u{2026}"),
-                "locate path moved renamed folder localizar caminho movido renomeado pasta",
-            ));
+            if !playing {
+                v.push(item(
+                    EpicAction::Verify,
+                    "verify",
+                    Icon::Build,
+                    tr!("Verify and repair"),
+                    "check fix integrity verificar reparar integridade",
+                ));
+                v.push(item(
+                    EpicAction::Move,
+                    "move",
+                    Icon::Folder,
+                    tr!("Move install"),
+                    "relocate folder disk mover instalacao pasta disco",
+                ));
+                v.push(item(
+                    EpicAction::Relocate,
+                    "relocate",
+                    Icon::FolderOpen,
+                    tr!("Change install location\u{2026}"),
+                    "locate path moved renamed folder localizar caminho movido renomeado pasta",
+                ));
+            }
         }
         if has_dlcs && !third_party {
             v.push(item(EpicAction::Modify, "modify", Icon::Tune, tr!("Modify installation"), "dlc content modificar instalacao conteudo"));

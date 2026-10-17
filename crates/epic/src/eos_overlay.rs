@@ -91,7 +91,7 @@ fn failed(out: &crate::cmd::Output) -> OpResult {
     let why = out.error_lines();
     OpResult {
         ok: false,
-        aborted: false,
+        aborted: false, warning: false,
         message: if why.is_empty() { tr!("legendary exited with {code}", code = format!("{:?}", out.code)) } else { why },
     }
 }
@@ -113,10 +113,10 @@ pub fn install(data_paths: &DataPaths, legendary: &Legendary, cancel: &std::sync
         }
     });
     if let Err(err) = asked {
-        return OpResult { ok: false, aborted: false, message: format!("{err:#}") };
+        return OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") };
     }
     if cancel.is_requested() {
-        return OpResult { ok: false, aborted: true, message: tr!("Cancelled").into() };
+        return OpResult { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() };
     }
 
     let mut parser = ProgressParser::new(Some(download_size));
@@ -126,9 +126,9 @@ pub fn install(data_paths: &DataPaths, legendary: &Legendary, cancel: &std::sync
         }
     });
     match out {
-        Err(err) => OpResult { ok: false, aborted: false, message: format!("{err:#}") },
-        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, message: tr!("Cancelled").into() },
-        Ok(out) if out.success() => OpResult { ok: true, aborted: false, message: tr!("EOS Overlay installed").into() },
+        Err(err) => OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
+        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() },
+        Ok(out) if out.success() => OpResult { ok: true, aborted: false, warning: false, message: tr!("EOS Overlay installed").into() },
         Ok(out) => failed(&out),
     }
 }
@@ -136,8 +136,8 @@ pub fn install(data_paths: &DataPaths, legendary: &Legendary, cancel: &std::sync
 /// `remove` (the caller asks the user first).
 pub fn remove(legendary: &Legendary) -> OpResult {
     match legendary.run(&["eos-overlay", "remove", "-y"], &[]) {
-        Err(err) => OpResult { ok: false, aborted: false, message: format!("{err:#}") },
-        Ok(out) if out.success() => OpResult { ok: true, aborted: false, message: tr!("EOS Overlay uninstalled").into() },
+        Err(err) => OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
+        Ok(out) if out.success() => OpResult { ok: true, aborted: false, warning: false, message: tr!("EOS Overlay uninstalled").into() },
         Ok(out) => failed(&out),
     }
 }
@@ -162,8 +162,8 @@ pub fn disable(legendary: &Legendary, prefix: Option<&str>) -> OpResult {
 
 fn switch(legendary: &Legendary, action: &str, prefix: Option<&str>, done: &str) -> OpResult {
     match legendary.run(&prefix_args(action, prefix), &[]) {
-        Err(err) => OpResult { ok: false, aborted: false, message: format!("{err:#}") },
-        Ok(out) if out.success() => OpResult { ok: true, aborted: false, message: done.into() },
+        Err(err) => OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
+        Ok(out) if out.success() => OpResult { ok: true, aborted: false, warning: false, message: done.into() },
         Ok(out) => failed(&out),
     }
 }

@@ -68,6 +68,9 @@ struct Inner {
     finished: Vec<DmElement>,
     current: Option<Current>,
     worker: bool,
+    /// The user (not the shutdown or the connection) paused the queue; saved
+    /// so a restart keeps it paused.
+    user_paused: bool,
 }
 
 struct Shared {
@@ -85,16 +88,17 @@ pub struct DownloadManager {
 }
 
 impl DownloadManager {
-    /// Loads the persisted queue. Nothing runs until [`start`](Self::start).
+    /// Loads the persisted queue. Nothing runs until [`start`](Self::start),
+    /// which keeps a queue the user paused paused.
     pub fn new(data_paths: DataPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
         let file = queue::load(&data_paths);
-        Self::with_state(data_paths, job, notify, file.queue, file.finished, false)
+        Self::with_state(data_paths, job, notify, file.queue, file.finished, file.user_paused, false)
     }
 
     /// A queue that lives only in memory (screenshots / debug fakes): it
     /// neither loads nor saves `store/download-manager.json`.
     pub fn new_ephemeral(data_paths: DataPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
-        Self::with_state(data_paths, job, notify, Vec::new(), Vec::new(), true)
+        Self::with_state(data_paths, job, notify, Vec::new(), Vec::new(), false, true)
     }
 
     fn with_state(
@@ -103,6 +107,7 @@ impl DownloadManager {
         notify: impl Fn(Event) + Send + Sync + 'static,
         queue: Vec<DmElement>,
         finished: Vec<DmElement>,
+        user_paused: bool,
         ephemeral: bool,
     ) -> Self {
         Self {
@@ -111,7 +116,7 @@ impl DownloadManager {
                 ephemeral,
                 job,
                 notify: Arc::new(notify),
-                inner: Mutex::new(Inner { state: DmState::Idle, queue, finished, current: None, worker: false }),
+                inner: Mutex::new(Inner { state: DmState::Idle, queue, finished, current: None, worker: false, user_paused }),
             }),
         }
     }
@@ -133,7 +138,7 @@ impl DownloadManager {
         if self.shared.ephemeral {
             return;
         }
-        if let Err(err) = queue::save(&self.shared.data_paths, &g.queue, &g.finished) {
+        if let Err(err) = queue::save(&self.shared.data_paths, &g.queue, &g.finished, g.user_paused) {
             log::error!("saving the download queue: {err:#}");
         }
     }
@@ -165,13 +170,24 @@ impl DownloadManager {
     }
 
     /// `initQueue`: runs the queue unless it is paused or already running.
+    /// A queue the user paused (before a restart too) goes to `Paused`.
     pub fn start(&self) {
         {
             let mut g = self.shared.inner.lock();
             if g.worker || g.queue.is_empty() {
+                if g.queue.is_empty() && g.user_paused {
+                    g.user_paused = false;
+                    self.persist(&g);
+                }
                 if g.state == DmState::Paused && !g.worker {
                     g.state = DmState::Idle;
                 }
+                return;
+            }
+            if g.user_paused {
+                g.state = DmState::Paused;
+                drop(g);
+                self.emit(Event::Changed);
                 return;
             }
             g.state = DmState::Running;
@@ -252,6 +268,10 @@ impl DownloadManager {
         if g.state != DmState::Paused {
             g.state = DmState::Idle;
         }
+        if g.queue.is_empty() && g.user_paused {
+            g.user_paused = false;
+            self.persist(&g);
+        }
         drop(g);
         self.emit(Event::Changed);
     }
@@ -270,10 +290,31 @@ impl DownloadManager {
         self.emit(Event::Changed);
     }
 
+    /// The user's pause: like [`pause`](Self::pause), and it survives a restart.
+    pub fn pause_by_user(&self) {
+        {
+            let mut g = self.shared.inner.lock();
+            if !g.queue.is_empty() && !g.user_paused {
+                g.user_paused = true;
+                self.persist(&g);
+            }
+        }
+        self.pause();
+    }
+
+    /// The queue is paused because the user asked for it.
+    pub fn is_user_paused(&self) -> bool {
+        self.shared.inner.lock().user_paused
+    }
+
     /// `resumeCurrentDownload`.
     pub fn resume(&self) {
         {
             let mut g = self.shared.inner.lock();
+            if g.user_paused {
+                g.user_paused = false;
+                self.persist(&g);
+            }
             if g.state == DmState::Paused {
                 g.state = DmState::Idle;
                 if let Some(c) = g.current.as_mut() {
@@ -290,6 +331,7 @@ impl DownloadManager {
     /// `cancelCurrentDownload`: stops the first element and removes it (and
     /// the DLCs queued with it); optionally deletes what was downloaded.
     pub fn cancel_current(&self, remove_downloaded: bool) {
+        let mut stale = None;
         {
             let mut g = self.shared.inner.lock();
             let Some(first) = g.queue.first().cloned() else { return };
@@ -304,17 +346,27 @@ impl DownloadManager {
                 None => {
                     // Not running (paused or idle): drop it right away.
                     g.queue.retain(|e| e.params.app_name != first.params.app_name);
-                    if let Some((path, folder)) = remove {
-                        remove_partial_download(&path, &folder);
-                    }
-                    if g.queue.is_empty() && g.state == DmState::Paused {
-                        g.state = DmState::Idle;
+                    stale = remove;
+                    if g.queue.is_empty() {
+                        g.user_paused = false;
+                        if g.state == DmState::Paused {
+                            g.state = DmState::Idle;
+                        }
                     }
                 }
             }
             self.persist(&g);
         }
         self.emit(Event::Changed);
+        // A multi-GB folder: neither under the lock nor on the caller's (UI) thread.
+        if let Some((path, folder)) = stale {
+            let spawned = std::thread::Builder::new().name("epic-remove-partial".into()).spawn(move || {
+                remove_partial_download(&path, &folder);
+            });
+            if let Err(err) = spawned {
+                log::error!("removing the partial download: {err}");
+            }
+        }
     }
 
     /// `removeFromQueue` for an element that is not running.
@@ -328,6 +380,9 @@ impl DownloadManager {
             g.queue.retain(|e| e.params.app_name != app_name);
             if g.queue.len() == before {
                 return;
+            }
+            if g.queue.is_empty() {
+                g.user_paused = false;
             }
             self.persist(&g);
         }
@@ -369,7 +424,8 @@ impl DownloadManager {
     /// (the element stays first in the queue, legendary keeps its resume
     /// data) so the next start picks it up again. Does not block: poll
     /// [`is_idle`](Self::is_idle) to know when the worker is gone. The paused
-    /// state itself is not persisted, only the queue.
+    /// state itself is not persisted (a user's pause is, see
+    /// [`pause_by_user`](Self::pause_by_user)), only the queue.
     pub fn pause_for_shutdown(&self) {
         self.pause();
     }
@@ -585,7 +641,7 @@ mod tests {
     fn a_persisted_queue_is_loaded_but_not_started() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path());
-        queue::save(&data_paths, &[el("a")], &[]).unwrap();
+        queue::save(&data_paths, &[el("a")], &[], false).unwrap();
         let job = FakeJob::new(&[], &[]);
         let m = DownloadManager::new(data_paths, job.clone(), |_| {});
         assert_eq!(m.snapshot().queue.len(), 1);
@@ -622,6 +678,97 @@ mod tests {
         m2.start();
         wait_until(&m2, "both done", |s| s.finished.len() == 2);
         assert_eq!(*job2.runs.lock(), ["a", "b"]);
+    }
+
+    #[test]
+    fn a_pause_by_the_user_survives_a_restart_until_resumed() {
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, dir) = manager(job.clone());
+        m.add(el("a"));
+        wait_until(&m, "a running", |s| s.state == DmState::Running && job.started.load(Ordering::SeqCst) == 1);
+        m.pause_by_user();
+        wait_until(&m, "stopped", |s| s.state == DmState::Paused);
+        for _ in 0..400 {
+            if m.is_idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(queue::load(&DataPaths::at(dir.path())).user_paused);
+        // The next run: starting it (the 5 s start, a move that finished) does not run the queue.
+        let job2 = FakeJob::new(&[], &[]);
+        let m2 = DownloadManager::new(DataPaths::at(dir.path()), job2.clone(), |_| {});
+        assert!(m2.is_user_paused());
+        m2.start();
+        assert_eq!(m2.snapshot().state, DmState::Paused);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(job2.started.load(Ordering::SeqCst), 0);
+        assert_eq!(m2.snapshot().queue.len(), 1);
+        // Adding to a paused queue does not start it either.
+        m2.add(el("b"));
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(job2.started.load(Ordering::SeqCst), 0);
+        m2.resume();
+        wait_until(&m2, "both done", |s| s.finished.len() == 2);
+        assert!(!queue::load(&DataPaths::at(dir.path())).user_paused);
+    }
+
+    #[test]
+    fn other_pauses_are_not_remembered_and_an_emptied_queue_forgets_the_user_pause() {
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, dir) = manager(job.clone());
+        m.add(el("a"));
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause();
+        wait_until(&m, "paused", |s| s.state == DmState::Paused);
+        assert!(!m.is_user_paused());
+        assert!(!queue::load(&DataPaths::at(dir.path())).user_paused);
+        m.resume();
+        wait_until(&m, "a restarted", |_| job.started.load(Ordering::SeqCst) == 2);
+        m.pause_by_user();
+        wait_until(&m, "paused", |s| s.state == DmState::Paused);
+        for _ in 0..400 {
+            if m.is_idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        m.cancel_current(false);
+        assert!(m.snapshot().queue.is_empty());
+        assert!(!m.is_user_paused());
+        assert!(!queue::load(&DataPaths::at(dir.path())).user_paused);
+        // A new download starts at once.
+        m.add(el("c"));
+        wait_until(&m, "c done", |s| s.finished.len() == 1);
+    }
+
+    #[test]
+    fn cancelling_a_paused_download_deletes_its_folder_off_the_calling_thread() {
+        let games = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(games.path().join("a/sub")).unwrap();
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, _dir) = manager(job.clone());
+        let mut base = el("a");
+        base.params.path = games.path().to_str().unwrap().into();
+        m.add(base);
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause();
+        wait_until(&m, "paused", |s| s.state == DmState::Paused);
+        for _ in 0..400 {
+            if m.is_idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        m.cancel_current(true);
+        assert!(m.snapshot().queue.is_empty());
+        for _ in 0..400 {
+            if !games.path().join("a").exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!games.path().join("a").exists());
     }
 
     #[test]

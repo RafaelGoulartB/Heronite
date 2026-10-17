@@ -22,7 +22,7 @@ enum OpMsg {
 }
 
 fn locate(data_paths: &DataPaths) -> Result<Legendary, OpResult> {
-    Legendary::locate(data_paths).map_err(|e| OpResult { ok: false, aborted: false, message: format!("{e:#}") })
+    Legendary::locate(data_paths).map_err(|e| OpResult { ok: false, aborted: false, warning: false, message: format!("{e:#}") })
 }
 
 impl Downloads {
@@ -59,6 +59,21 @@ impl Downloads {
             },
             then,
         );
+    }
+
+    /// Whether the game's files are in use (it is running, or its download is
+    /// queued): a verify, move or install-location change must not start; a
+    /// toast says why. The menus hide these already, this is the backstop.
+    pub(super) fn files_in_use(&mut self, app_name: &str, cx: &mut Context<Self>) -> bool {
+        let reason = if self.playing.contains(app_name) {
+            tr!("The game is running: close it first")
+        } else if self.queued(app_name).is_some() {
+            tr!("This game is in the download queue")
+        } else {
+            return false;
+        };
+        self.toast(cx, reason, true);
+        true
     }
 
     /// Runs `work` for a game on a worker thread: the game shows as busy
@@ -108,10 +123,15 @@ impl Downloads {
                         }
                         OpMsg::Done(r) => {
                             this.busy.remove(&app);
+                            // An auto-update skipped because of this operation goes now.
+                            if this.deferred.remove(&app) {
+                                this.queue_auto_updates(Some(app.clone()), cx);
+                            }
                             if r.aborted {
                                 this.toast(cx, tr!("{label} cancelled", label), false);
                             } else if r.ok {
-                                this.toast(cx, r.message.clone(), false);
+                                // A warning is a finished operation with a problem to read.
+                                this.toast(cx, r.message.clone(), r.warning);
                             } else {
                                 let first = r.message.lines().next().unwrap_or(tr!("Failed")).to_string();
                                 this.toast(cx, tr!("{label} failed: {first}", label, first), true);
@@ -136,6 +156,9 @@ impl Downloads {
 
     /// Verify and repair (`legendary repair`).
     pub fn verify(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let app = app_name.to_string();
         self.run_op(app_name, tr!("Verifying"), true, cx, move |data_paths, lg, cancel, report| {
             ops::repair(data_paths, lg, &app, cancel, |u| match u {
@@ -151,15 +174,14 @@ impl Downloads {
         self.run_op(app_name, tr!("Uninstalling"), false, cx, move |data_paths, lg, _, _| {
             // The prefix is looked up before the settings are deleted.
             let prefix_to_remove = remove_prefix;
-            let r = ops::uninstall(data_paths, lg, &app);
+            let mut r = ops::uninstall(data_paths, lg, &app);
             if r.ok {
-                if prefix_to_remove {
-                    if let Err(err) = ops::remove_prefix(data_paths, &app) {
-                        log::warn!("removing the prefix of {app}: {err:#}");
-                    }
-                }
+                let note = prefix_to_remove.then(|| ops::remove_prefix_note(data_paths, &app)).flatten();
                 if remove_settings {
                     ops::remove_settings_and_logs(data_paths, &app);
+                }
+                if let Some(note) = note {
+                    r = OpResult::warn(format!("{}. {note}", r.message));
                 }
             }
             r
@@ -179,7 +201,7 @@ impl Downloads {
             |data_paths, lg, _, _| {
                 heronite_epic::moves::resume_interrupted_move(data_paths, lg).unwrap_or_else(|| OpResult {
                     ok: true,
-                    aborted: false,
+                    aborted: false, warning: false,
                     message: tr!("The interrupted move was already finished").into(),
                 })
             },
@@ -189,11 +211,14 @@ impl Downloads {
     }
 
     pub fn move_install(&mut self, app_name: &str, install_path: &str, new_parent: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let (app, from, to) = (app_name.to_string(), install_path.to_string(), new_parent.to_string());
         self.run_op(app_name, tr!("Moving"), false, cx, move |data_paths, lg, _, _| {
             let r = ops::move_install(data_paths, lg, &app, &from, &to);
             if r.ok {
-                OpResult { ok: true, aborted: false, message: tr!("Game moved").into() }
+                OpResult { ok: true, aborted: false, warning: false, message: tr!("Game moved").into() }
             } else {
                 r
             }
@@ -238,11 +263,11 @@ impl Downloads {
                     Ok(None) => {
                         return OpResult {
                             ok: false,
-                            aborted: false,
+                            aborted: false, warning: false,
                             message: tr!("The save folder could not be detected; set it in the game settings").into(),
                         }
                     }
-                    Err(err) => return OpResult { ok: false, aborted: false, message: format!("{err:#}") },
+                    Err(err) => return OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
                 }
             } else {
                 configured
@@ -250,9 +275,9 @@ impl Downloads {
             match saves::sync(data_paths, &app, &path, saves::SyncMode::Both) {
                 Ok(text) => {
                     let _ = tx.unbounded_send(Ok(text));
-                    OpResult { ok: true, aborted: false, message: tr!("Cloud saves synced").into() }
+                    OpResult { ok: true, aborted: false, warning: false, message: tr!("Cloud saves synced").into() }
                 }
-                Err(err) => OpResult { ok: false, aborted: false, message: format!("{err:#}") },
+                Err(err) => OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") },
             }
         });
         cx.spawn(async move |this, cx| {

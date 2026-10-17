@@ -186,6 +186,15 @@ impl Downloads {
         let manager = self.manager.clone();
         let data_paths = self.data_paths.clone();
         let app = game_info.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
+        // Patching the files of a running game, or while a verify or move works on them.
+        if self.playing.contains(&app) {
+            self.toast(cx, tr!("The game is running: close it first"), true);
+            return;
+        }
+        if self.busy.contains_key(&app) {
+            self.toast(cx, tr!("Another operation is running for this game"), true);
+            return;
+        }
         let runner = game_info.get("runner").and_then(Value::as_str).filter(|r| !r.is_empty()).unwrap_or("legendary").to_string();
         let path = game_info.pointer("/install/install_path").and_then(Value::as_str).unwrap_or_default().to_string();
         let platform = game_info.pointer("/install/platform").and_then(Value::as_str).unwrap_or("Windows").to_string();
@@ -205,9 +214,11 @@ impl Downloads {
         self.toast(cx, tr!("Update added to the download queue"), false);
     }
 
+    /// The user's pause: it also holds after a restart (the connection's and
+    /// the shutdown's pauses do not).
     pub fn pause(&mut self) {
         self.offline.release();
-        self.manager.pause();
+        self.manager.pause_by_user();
     }
 
     pub fn resume(&mut self) {
@@ -296,7 +307,8 @@ impl Downloads {
     /// At start: a queue left from the last run waits for the network instead
     /// of failing its first element.
     pub(super) fn start_queue_when_online(&mut self, cx: &mut Context<Self>) {
-        if self.snapshot.queue.is_empty() {
+        // A queue the user paused stays paused (and needs no network check).
+        if self.snapshot.queue.is_empty() || self.manager.is_user_paused() {
             self.manager.start();
             return;
         }

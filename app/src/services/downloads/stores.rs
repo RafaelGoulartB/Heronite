@@ -71,17 +71,17 @@ fn refresh_blocking(paths: &DataPaths, store: Store) -> anyhow::Result<Local> {
 }
 
 pub(super) fn failed(err: anyhow::Error) -> OpResult {
-    OpResult { ok: false, aborted: false, message: format!("{err:#}") }
+    OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") }
 }
 
 pub(super) fn done(message: &str) -> OpResult {
-    OpResult { ok: true, aborted: false, message: message.to_string() }
+    OpResult { ok: true, aborted: false, warning: false, message: message.to_string() }
 }
 
 /// A finished operation that may have been cancelled.
 fn ended(result: anyhow::Result<()>, cancel: &Cancel, message: &str) -> OpResult {
     match result {
-        _ if cancel.is_requested() => OpResult { ok: false, aborted: true, message: tr!("Cancelled").into() },
+        _ if cancel.is_requested() => OpResult { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() },
         Ok(()) => done(message),
         Err(err) => failed(err),
     }
@@ -331,7 +331,7 @@ impl Downloads {
 
     /// Queues updates for `apps` (any store) that are not queued yet.
     pub(super) fn queue_updates_of(&mut self, apps: Vec<String>, cx: &mut Context<Self>) {
-        let apps: Vec<String> = apps.into_iter().filter(|a| self.queued(a).is_none()).collect();
+        let apps = self.updatable(apps, cx);
         if apps.is_empty() {
             return;
         }
@@ -351,6 +351,9 @@ impl Downloads {
 
     /// Verify and repair the game's files.
     pub fn store_verify(&mut self, store: Store, app_name: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let app = app_name.to_string();
         self.run_task_then(
             app_name,
@@ -381,22 +384,26 @@ impl Downloads {
             cx,
             move |paths, _, _| {
                 let res = match store {
-                    Store::Gog => heronite_gog::ops::uninstall(paths, &app),
+                    Store::Gog => heronite_gog::ops::uninstall(paths, &app).map(|_| None),
                     Store::Amazon => Nile::locate(paths).and_then(|n| heronite_amazon::ops::uninstall(paths, &n, &app)),
                 };
-                if let Err(err) = res {
-                    return failed(err);
-                }
+                // What did not go as asked, for the toast.
+                let mut problems: Vec<String> = match res {
+                    Err(err) => return failed(err),
+                    Ok(problem) => problem.into_iter().collect(),
+                };
                 // The prefix is looked up before the settings are deleted.
                 if remove_prefix {
-                    if let Err(err) = epic_ops::remove_prefix(paths, &app) {
-                        log::warn!("removing the prefix of {app}: {err:#}");
-                    }
+                    problems.extend(epic_ops::remove_prefix_note(paths, &app));
                 }
                 if remove_settings {
                     epic_ops::remove_settings_and_logs(paths, &app);
                 }
-                done(tr!("Uninstalled"))
+                if problems.is_empty() {
+                    done(tr!("Uninstalled"))
+                } else {
+                    OpResult::warn(format!("{}. {}", tr!("Uninstalled"), problems.join(" ")))
+                }
             },
             |_, _, _| {},
         );
@@ -404,6 +411,9 @@ impl Downloads {
 
     /// Moves the install folder into `new_parent`.
     pub fn store_move(&mut self, store: Store, app_name: &str, new_parent: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let (app, to) = (app_name.to_string(), new_parent.to_string());
         self.run_task_then(
             app_name,

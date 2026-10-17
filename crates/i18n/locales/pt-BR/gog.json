@@ -1,6 +1,7 @@
 {
   "Could not copy the game: {error}": "Não foi possível copiar o jogo: {error}",
   "Could not create {path}: {error}": "Não foi possível criar {path}: {error}",
+  "Could not delete {dir}: {error}": "Não foi possível apagar {dir}: {error}",
   "Could not delete {path}: {error}": "Não foi possível apagar {path}: {error}",
   "Could not download the Windows components this game needs: {error}": "Não foi possível baixar os componentes do Windows de que este jogo precisa: {error}",
   "Could not get gogdl, which Heronite uses for GOG: {error}": "Não foi possível obter o gogdl, que o Heronite usa para a GOG: {error}",
