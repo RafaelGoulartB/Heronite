@@ -21,6 +21,7 @@ pub mod fuzzy;
 pub mod game_actions;
 pub mod game_config;
 pub mod heronite_ui_import;
+pub mod install_size;
 pub mod hltb;
 pub mod language;
 pub mod launch_presets;

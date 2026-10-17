@@ -135,7 +135,7 @@ the screenshots of their sessions, thumbnails only) and Related. Facts that are 
 Clickable facts: "Library" sets the Store filter to the game's own store (replacing any other store), "Save backup" backs up now, "On Linux" opens the ProtonDB page, the Details folder rows open the file manager;
 rows that act get `focus_left::clickable` (pointer + faint highlight). Folder rows are resolved on disk, never shown from
 imported fields (`open_links::game_folders`): Steam games → the folder of their `appmanifest`; emulated games → "Emulator
-Folder" + "ROM Folder"; others → the stored path only when it exists (Playnite's Windows paths are dropped). ProtonDB needs a
+Folder" + "ROM Folder"; others → the stored path only when it exists (Playnite's Windows paths are dropped). Under the folder row goes the size: the store's (Epic, GOG), else measured once the focus settles (`folder_size.rs`): Steam's `SizeOnDisk`, an emulated game's ROM files (with the tracks a `.cue` / `.gdi` / `.m3u` names) under "ROM Folder", an AppImage's file, else a walk of the folder (never home, system folders or a folder holding another game's; cached 3 days in `install-sizes.json`; stopped when the focus moves). ProtonDB needs a
 Steam id: the game's, the metadata's, else a strict Steam search by title (`covers::steam_app_id_exact`, same name or name +
 edition words, cached in `~/.cache/heronite/protondb/titles.json`); emulated games have no "On Linux" row.
 

@@ -54,7 +54,7 @@ calls them from `cx.background_spawn` or worker threads.
   `proc` (`guard` and `Run`: helper processes die with the app), and one
   module per data file: `library`, `collection`, `sideload`, `game_config`,
   `settings`, `status`, `sessions`, `playtime`, `ui_state`, `appearance`,
-  `language`, `field_names` (the library fields manager: renames, merges and
+  `language`, `install_size` (size on disk of a game its store gives none for: ROM files, a bounded and cached folder walk), `field_names` (the library fields manager: renames, merges and
   removals of genres, companies, series, themes, features and platforms, kept
   as rules in `local_library/names.json` that the metadata service and the
   library load apply too, plus the duplicate suggestions), `steam_owned` (the cached Steam library and its twins: a game

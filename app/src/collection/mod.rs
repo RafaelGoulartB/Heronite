@@ -15,6 +15,7 @@ mod extras;
 mod focus;
 mod focus_left;
 mod game_actions;
+mod folder_size;
 mod game_facts;
 mod grid;
 mod grid_drawer;

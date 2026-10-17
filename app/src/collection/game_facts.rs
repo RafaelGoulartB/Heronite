@@ -1,7 +1,7 @@
 //! Data of the focus panel's left column that the Library does not hold: the
 //! user's star rating (`local_library/ratings.json`), the last Ludusavi save
 //! backup, the Linux facts (ProtonDB tier, anti-cheat) and the folders of
-//! the Details panel. Everything is read
+//! the Details panel with their size (`folder_size`). Everything is read
 //! off the UI thread when the focused game changes; ProtonDB is fetched (and
 //! cached for a week) only when the cache is missing or stale.
 
@@ -45,6 +45,13 @@ pub(super) struct Linux {
     pub anticheat: Option<AntiCheatInfo>,
 }
 
+impl Facts {
+    /// The game the facts belong to.
+    pub fn key(&self) -> Option<&SharedString> {
+        self.key.as_ref()
+    }
+}
+
 impl Linux {
     pub fn is_empty(&self) -> bool {
         !self.native && self.tier.is_none() && self.anticheat.is_none()
@@ -59,6 +66,11 @@ pub(super) struct Facts {
     pub linux: Option<Linux>,
     /// Folders that exist here (install, or emulator + ROM), for Details.
     pub folders: Vec<(FolderKind, PathBuf)>,
+    /// Size measured here (`folder_size`) and the folder row it goes under,
+    /// for a game whose store gives none.
+    pub folder_size: Option<(FolderKind, String)>,
+    /// Bumped when the focus moves, which stops a running measure.
+    pub size_generation: super::folder_size::SizeGeneration,
     /// Stars by game key; `None` until `ratings.json` was read.
     ratings: Option<HashMap<String, u8>>,
     ratings_loading: bool,
@@ -114,6 +126,8 @@ impl CollectionView {
         self.facts.backup = None;
         self.facts.linux = None;
         self.facts.folders.clear();
+        self.facts.folder_size = None;
+        self.facts.size_generation.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.facts.rating_hover = None;
         // `HERONITE_DEBUG_FOCUS_STATUS=1` opens the status selector (screenshots).
         self.facts.status_open = crate::env::value("HERONITE_DEBUG_FOCUS_STATUS").is_some();
@@ -149,6 +163,7 @@ impl CollectionView {
                 || game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("linux")));
         // Other stores: ProtonDB only knows Steam ids, so look it up by title.
         let by_title = known_steam.is_none() && !native && !emulated;
+        let measured = game.clone();
         cx.spawn(async move |this, cx| {
             let (local, net) = cx
                 .background_spawn(async move {
@@ -186,6 +201,7 @@ impl CollectionView {
                     this.facts.backup = Some(backup);
                     this.facts.folders = folders;
                     this.facts.linux = linux;
+                    this.load_folder_size(key.clone(), measured, cx);
                     cx.notify();
                     true
                 })
