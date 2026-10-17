@@ -41,6 +41,7 @@ pub fn init(
     }
     let (runtime, events) = GameRuntime::new(data_paths.clone());
     let runtime = Arc::new(runtime);
+    let adopting = runtime.clone();
     // Post-game work (backup, capture session) runs here, with or without a window.
     crate::services::session::init(cx, data_paths.clone(), runtime.clone());
 
@@ -129,6 +130,15 @@ pub fn init(
         crate::services::compression::init(cx, data_paths.clone());
         crate::services::update::init(cx, heronite_data::AppPaths::for_data(&data_paths));
     }
+    // Games still running from before the app restarted; after the services
+    // above, which follow running games through the same events.
+    cx.background_spawn(async move {
+        let n = adopting.adopt_leftovers();
+        if n > 0 {
+            log::info!("following {n} game(s) left running");
+        }
+    })
+    .detach();
 
     if want_window || unreachable {
         show_window(cx);

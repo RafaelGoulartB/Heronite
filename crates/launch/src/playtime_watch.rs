@@ -89,6 +89,11 @@ impl SteamWatch {
         Self { app_id: app_id.to_string(), self_pid: std::process::id(), pids: BTreeSet::new(), started: false }
     }
 
+    /// A game already seen running with these pids (a session picked up again).
+    pub fn resume(app_id: &str, pids: BTreeSet<u32>) -> Self {
+        Self { pids, started: true, ..Self::new(app_id) }
+    }
+
     fn ignorable(&self, pid: u32, procs: &dyn Procs) -> bool {
         pid == self.self_pid || !procs.is_alive(pid) || procs.comm(pid).map(|c| is_steam_helper(&c)).unwrap_or(false)
     }
@@ -264,6 +269,37 @@ pub fn wait_for_steam_session(
         sync(&watch, &new, &mut announced, on_first_pid);
     }
 
+    follow(&mut watch, &mut tails, procs, cfg, abort, wake, shared)
+}
+
+/// Follows a Steam game seen running with `pids` until it exits, as
+/// [`wait_for_steam_session`] does once the game started (a session picked
+/// up again after the app restarted). Only what Steam logs from now on counts.
+pub fn follow_steam_session(
+    app_id: &str,
+    procs: &dyn Procs,
+    log_files: &dyn Fn() -> Vec<PathBuf>,
+    cfg: &SteamWaitConfig,
+    abort: &AtomicBool,
+    wake: &Wake,
+    shared: &Mutex<BTreeSet<u32>>,
+    pids: BTreeSet<u32>,
+) -> SteamWaitOutcome {
+    let mut watch = SteamWatch::resume(app_id, pids);
+    let mut tails: HashMap<PathBuf, LogTail> = log_files().into_iter().map(|f| (f.clone(), LogTail::open(&f).0)).collect();
+    follow(&mut watch, &mut tails, procs, cfg, abort, wake, shared)
+}
+
+/// Until every tracked pid is gone (or tracking is aborted).
+fn follow(
+    watch: &mut SteamWatch,
+    tails: &mut HashMap<PathBuf, LogTail>,
+    procs: &dyn Procs,
+    cfg: &SteamWaitConfig,
+    abort: &AtomicBool,
+    wake: &Wake,
+    shared: &Mutex<BTreeSet<u32>>,
+) -> SteamWaitOutcome {
     loop {
         if abort.load(Ordering::SeqCst) {
             return SteamWaitOutcome::Aborted;
@@ -274,13 +310,11 @@ pub fn wait_for_steam_session(
             return SteamWaitOutcome::Finished;
         }
         wake.wait_while(cfg.poll_interval, || !abort.load(Ordering::SeqCst));
-        let mut new = Vec::new();
         for t in tails.values_mut() {
             if let Some(chunk) = t.read_new() {
-                new.extend(watch.apply_chunk(&chunk, procs));
+                watch.apply_chunk(&chunk, procs);
             }
         }
-        sync(&watch, &new, &mut announced, on_first_pid);
     }
 }
 

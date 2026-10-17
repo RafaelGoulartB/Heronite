@@ -21,6 +21,18 @@ pub trait Procs: Send + Sync {
     /// File names (lowercase, `game.exe`) of the Windows programs running in
     /// the Wine prefix `prefix`.
     fn windows_programs(&self, prefix: &str) -> Vec<String>;
+    /// When the process started, in clock ticks since boot (see
+    /// [`boot_ticks_now`]). With the pid and the boot, it names one process:
+    /// a pid reused later starts later.
+    fn start_ticks(&self, pid: u32) -> Option<u64>;
+    /// Whether any process of group `pgid` is left. The kernel keeps a group's
+    /// id from being given to a new process while the group lives.
+    fn group_alive(&self, pgid: u32) -> bool;
+    /// Signals every process of group `pgid`.
+    fn signal_group(&self, pgid: u32, sig: Sig);
+    /// This boot's id (`/proc/sys/kernel/random/boot_id`): pids and start
+    /// ticks mean nothing across a reboot.
+    fn boot_id(&self) -> Option<String>;
 }
 
 /// Whether the Wine prefix variable of a process (`WINEPREFIX`) is `prefix`
@@ -84,6 +96,18 @@ fn clock_ticks_per_second() -> u64 {
     } else {
         100
     }
+}
+
+/// Milliseconds of the clock [`std::time::Instant`] uses (`CLOCK_MONOTONIC`,
+/// suspend not counted). Unlike an `Instant`, it can be written down and read
+/// back by the next run of the app (same boot only).
+pub fn monotonic_ms() -> u64 {
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: clock_gettime writes into the timespec we own.
+    if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) } != 0 {
+        return 0;
+    }
+    ts.tv_sec as u64 * 1000 + ts.tv_nsec as u64 / 1_000_000
 }
 
 /// Now, in the clock `/proc/<pid>/stat` measures start times with (ticks
@@ -233,6 +257,40 @@ impl Procs for SystemProcs {
         }
         out
     }
+
+    fn start_ticks(&self, pid: u32) -> Option<u64> {
+        if pid <= 1 {
+            return None;
+        }
+        parse_start_ticks(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
+    }
+
+    fn group_alive(&self, pgid: u32) -> bool {
+        if pgid <= 1 {
+            return false;
+        }
+        // SAFETY: signal 0 only checks that the group exists.
+        let r = unsafe { libc::kill(-(pgid as libc::pid_t), 0) };
+        r == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+
+    fn signal_group(&self, pgid: u32, sig: Sig) {
+        if pgid <= 1 {
+            return;
+        }
+        let s = match sig {
+            Sig::Term => libc::SIGTERM,
+            Sig::Kill => libc::SIGKILL,
+        };
+        // SAFETY: kill(2) on a process group we were asked to signal.
+        unsafe {
+            libc::kill(-(pgid as libc::pid_t), s);
+        }
+    }
+
+    fn boot_id(&self) -> Option<String> {
+        std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    }
 }
 
 /// Scriptable process table for tests.
@@ -247,7 +305,14 @@ struct FakeState {
     comms: HashMap<u32, String>,
     parents: HashMap<u32, u32>,
     signals: Vec<(u32, Sig)>,
+    group_signals: Vec<(u32, Sig)>,
     windows: HashMap<String, Vec<String>>,
+    /// Start ticks; 0 for a process started without one.
+    ticks: HashMap<u32, u64>,
+    /// Process group of a pid; its own pid when not set.
+    groups: HashMap<u32, u32>,
+    /// `None`: "fake-boot".
+    boot: Option<String>,
 }
 
 impl FakeProcs {
@@ -272,6 +337,19 @@ impl FakeProcs {
     pub fn set_windows_programs(&self, prefix: &str, names: &[&str]) {
         self.inner.lock().unwrap().windows.insert(prefix.to_string(), names.iter().map(|n| n.to_string()).collect());
     }
+    pub fn set_start_ticks(&self, pid: u32, ticks: u64) {
+        self.inner.lock().unwrap().ticks.insert(pid, ticks);
+    }
+    /// Puts `pid` in process group `pgid`.
+    pub fn set_group(&self, pid: u32, pgid: u32) {
+        self.inner.lock().unwrap().groups.insert(pid, pgid);
+    }
+    pub fn set_boot_id(&self, id: &str) {
+        self.inner.lock().unwrap().boot = Some(id.to_string());
+    }
+    pub fn group_signals(&self) -> Vec<(u32, Sig)> {
+        self.inner.lock().unwrap().group_signals.clone()
+    }
 }
 
 impl Procs for FakeProcs {
@@ -292,6 +370,20 @@ impl Procs for FakeProcs {
     }
     fn windows_programs(&self, prefix: &str) -> Vec<String> {
         self.inner.lock().unwrap().windows.get(prefix).cloned().unwrap_or_default()
+    }
+    fn start_ticks(&self, pid: u32) -> Option<u64> {
+        let s = self.inner.lock().unwrap();
+        s.alive.contains(&pid).then(|| s.ticks.get(&pid).copied().unwrap_or(0))
+    }
+    fn group_alive(&self, pgid: u32) -> bool {
+        let s = self.inner.lock().unwrap();
+        s.alive.iter().any(|p| s.groups.get(p).copied().unwrap_or(*p) == pgid)
+    }
+    fn signal_group(&self, pgid: u32, sig: Sig) {
+        self.inner.lock().unwrap().group_signals.push((pgid, sig));
+    }
+    fn boot_id(&self) -> Option<String> {
+        Some(self.inner.lock().unwrap().boot.clone().unwrap_or_else(|| "fake-boot".into()))
     }
 }
 
@@ -364,6 +456,9 @@ mod tests {
         let me = std::process::id();
         assert!(SystemProcs.is_alive(me));
         assert!(SystemProcs.comm(me).is_some());
+        assert!(SystemProcs.start_ticks(me).is_some_and(|t| t <= boot_ticks_now() + clock_ticks_per_second()));
+        assert!(SystemProcs.boot_id().is_some_and(|b| b.len() > 8));
+        assert!(monotonic_ms() > 0);
         assert!(!SystemProcs.is_alive(u32::MAX - 1));
     }
 }

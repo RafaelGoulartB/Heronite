@@ -190,6 +190,27 @@ pub struct Checkpointer {
 }
 
 impl Checkpointer {
+    /// Picks a session up where another run of the app left it (see
+    /// [`Self::base_total`] and [`Self::has_written`]).
+    pub fn resume(base_total: Option<f64>, written: bool) -> Self {
+        Self { base_total, recent_done: written }
+    }
+
+    /// Reads `totalPlayed` now, before the session writes anything, so the
+    /// base is known (and can be written down) from the start.
+    pub fn begin(&mut self, paths: &DataPaths, app_name: &str) -> Result<()> {
+        if self.base_total.is_none() {
+            let root = json_store::read_value(&paths.timestamps())?;
+            self.base_total = Some(root.get(app_name).and_then(|e| e.get("totalPlayed")).and_then(Value::as_f64).unwrap_or(0.0));
+        }
+        Ok(())
+    }
+
+    /// `totalPlayed` before this session, once known.
+    pub fn base_total(&self) -> Option<f64> {
+        self.base_total
+    }
+
     /// A write (a checkpoint) already stored part of this session.
     pub fn has_written(&self) -> bool {
         self.recent_done
@@ -297,6 +318,25 @@ mod tests {
         assert!(!out.session_recorded);
         assert!(!paths.sessions().exists());
         assert!(paths.timestamps().exists() && paths.store_config().exists());
+    }
+
+    #[test]
+    fn a_resumed_session_is_not_counted_twice() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let rec = |end: i64| PlayRecord { app_name: "g".into(), title: "G".into(), started_at: t(0), ended_at: t(end * 60_000) };
+        record_play(&paths, &rec(100), 5).unwrap();
+        // A new session: base read at its start, a checkpoint at 30 min.
+        let mut cp = Checkpointer::default();
+        cp.begin(&paths, "g").unwrap();
+        assert_eq!(cp.base_total(), Some(100.0));
+        let next = |end: i64| PlayRecord { started_at: t(200 * 60_000), ended_at: t((200 + end) * 60_000), ..rec(0) };
+        cp.write(&paths, &next(30), 5).unwrap();
+        // The app restarts; the session goes on to 45 min.
+        let mut again = Checkpointer::resume(cp.base_total(), cp.has_written());
+        assert_eq!(again.write(&paths, &next(45), 5).unwrap().total_played_minutes, 145);
+        let doc: SessionsFile = json_store::read(&paths.sessions()).unwrap();
+        assert_eq!(doc.sessions["g"].len(), 2, "the row of the session is updated, not added again");
     }
 
     #[test]

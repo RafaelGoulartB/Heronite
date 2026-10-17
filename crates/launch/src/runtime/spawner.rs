@@ -83,12 +83,7 @@ struct SystemHandle {
 /// A group lives as long as one member does, so this is "the process and
 /// everything it started (that stayed in its group) is gone".
 fn group_alive(pgid: u32) -> bool {
-    if pgid <= 1 {
-        return false;
-    }
-    // SAFETY: signal 0 only checks that the group exists.
-    let r = unsafe { libc::kill(-(pgid as libc::pid_t), 0) };
-    r == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    SystemProcs.group_alive(pgid)
 }
 
 impl SystemHandle {

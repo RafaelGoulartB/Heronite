@@ -1,11 +1,14 @@
 //! The data a plan is made of: commands, stop specs, prep specs and [`LaunchPlan`].
 
+use serde::{Deserialize, Serialize};
+
 use crate::env::Env;
 use crate::settings::GameSettings;
 
 /// A process to spawn. `env` holds only *additions* to the inherited
 /// environment; `program` is run as given (resolved through `$PATH` if bare).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Command {
     pub program: String,
     pub args: Vec<String>,
@@ -25,7 +28,8 @@ impl Command {
 /// What "stop" does besides killing the tracked process tree: it
 /// terminates the programs its patterns name (see [`crate::procs::program_matches`])
 /// and shuts the Wine prefix down.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
 pub struct StopSpec {
     pub kill_patterns: Vec<String>,
     pub commands: Vec<Command>,
@@ -126,7 +130,8 @@ pub struct FirstLaunch {
 }
 
 /// What a cloud save sync around a launch works on.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CloudSaves {
     /// `legendary` or `gog`: the store that keeps the saves.
     pub runner: String,

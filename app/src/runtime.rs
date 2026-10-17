@@ -97,6 +97,30 @@ impl GameRuntime {
         }
     }
 
+    /// Picks up the games a previous run of the app left running (see
+    /// [`Launcher::adopt`]): they show as playing again and their sessions go
+    /// on. Reads the library when there is one: call it off the UI thread.
+    pub fn adopt_leftovers(&self) -> usize {
+        let mut lib: Option<Option<heronite_data::Library>> = None;
+        self.launcher.adopt(&mut |g| {
+            let lib = lib.get_or_insert_with(|| heronite_data::Library::load_with(&self.paths, true).ok());
+            let game = lib.as_ref().and_then(|l| l.games.iter().find(|c| c.app_name == g.app_name && c.runner == g.runner));
+            let info = game.map(|c| session_info(c, None)).unwrap_or_else(|| SessionInfo {
+                app_name: g.app_name.clone(),
+                runner: g.runner.clone(),
+                title: g.title.clone(),
+                steam_app_id: None,
+                aliases: Vec::new(),
+                is_emulator: false,
+                rom: None,
+                selected_rom: None,
+            });
+            if let Ok(mut s) = self.sessions.lock() {
+                s.insert(g.app_name.clone(), info);
+            }
+        })
+    }
+
     /// Takes the session out when it ended.
     pub fn take_session(&self, app_name: &str) -> Option<SessionInfo> {
         self.sessions.lock().ok()?.remove(app_name)

@@ -20,7 +20,7 @@ use crate::record;
 /// --wait). A stop that arrives meanwhile ends it; one requested before it
 /// started does not (the after-exit script still runs for a stopped game).
 /// Returns false if tracking was aborted meanwhile.
-fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command, log: Option<&Arc<GameLog>>) -> bool {
+pub(super) fn run_to_completion(shared: &Shared, control: &Control, cmd: &Command, log: Option<&Arc<GameLog>>) -> bool {
     if let Some(log) = log {
         log.info(&format!("Running: {}", log_writer::command_line_for_log(cmd)));
     }
@@ -149,6 +149,11 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     // The session clock starts here, not at the launch request.
     let started_at = control.set_playing();
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
+    // Written down so the next run of the app can pick the game up if this
+    // one quits or crashes first.
+    if let Some(tracked) = super::adopt::process_entry(shared, handle.pid(), plan) {
+        super::adopt::remember(shared, control, req, tracked);
+    }
     shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid: handle.pid() });
     let mut awake = plan.keep_awake.as_ref().and_then(|cmd| match shared.spawner.spawn(cmd, None) {
         Ok(h) => Some(h),
@@ -310,7 +315,7 @@ fn follow_the_prefix(
 /// Runs one of the game's scripts to completion. Its exit code is ignored and
 /// a missing script is only reported, as in Heroic: the game still runs.
 /// Returns false if tracking was aborted meanwhile.
-fn run_script(
+pub(super) fn run_script(
     shared: &Shared,
     control: &Control,
     probe: &dyn Probe,

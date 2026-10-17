@@ -5,6 +5,7 @@
 //! Like Heroic's backend, several games may run at once (one per app name);
 //! launching an app that is already tracked is refused.
 
+mod adopt;
 mod companions;
 mod fake;
 mod process;
@@ -30,6 +31,7 @@ use crate::steam::SteamLocator;
 use session::run_session;
 use state::{Control, Ledger, Shared};
 
+pub use adopt::AdoptedGame;
 pub use fake::{FakeHandleState, FakeSpawner};
 pub use spawner::{ExitInfo, ProcessHandle, Spawner, SystemSpawner};
 pub use types::{
@@ -152,6 +154,7 @@ impl Launcher {
             playing: AtomicBool::new(false),
             ledger: Mutex::new(Ledger { cp: Checkpointer::default(), finished: false }),
             wake: Default::default(),
+            running: Mutex::new(None),
         });
         {
             let mut sessions = self.shared.sessions.lock().unwrap();

@@ -42,6 +42,9 @@ pub(super) struct Control {
     /// Notified whenever `abort`, `kill`, `playing` or `ledger.finished`
     /// change, so the tracking threads sleep instead of polling them.
     pub(super) wake: Wake,
+    /// What `running.json` holds for this session, once the game runs (see
+    /// [`super::adopt`]).
+    pub(super) running: Mutex<Option<super::adopt::RunningEntry>>,
 }
 
 impl Control {
@@ -126,6 +129,7 @@ impl Shared {
         if let Err(e) = ledger.cp.write(&self.paths, &rec, self.cfg.min_session_seconds) {
             log::warn!("saving the playtime of {app_name}: {e:#}");
         }
+        super::adopt::refresh(self, control, &ledger);
     }
 
     pub(super) fn send(&self, ev: LaunchEvent) {

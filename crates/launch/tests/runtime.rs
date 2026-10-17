@@ -859,3 +859,125 @@ fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for
     r.spawner.finish(0, 0);
     assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
 }
+
+/// Another launcher on the same data and processes: the app started again
+/// while the first one's games still run.
+fn restarted(r: &Rig) -> (Launcher, Receiver<LaunchEvent>) {
+    let home = r._dir.path().join("home");
+    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let (tx, rx) = channel();
+    (Launcher::new(r.paths.clone(), steam, Arc::new(FakeSpawner::new()), r.procs.clone(), fast_cfg(), tx), rx)
+}
+
+fn running_file(paths: &DataPaths) -> serde_json::Value {
+    json_store::read_value(&paths.local_library().join("running.json")).unwrap()
+}
+
+#[test]
+fn a_game_left_running_is_picked_up_by_the_next_run() {
+    let r = rig();
+    // The fake spawner's first pid.
+    r.procs.start(40_001, "game", None);
+    r.procs.set_start_ticks(40_001, 777);
+    let mut plan = process_plan("/games/game", &[]);
+    plan.stop.kill_patterns = vec!["game".into()];
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { pid: 40_001, .. }));
+    assert_eq!(running_file(&r.paths)["sessions"]["g"]["tracked"]["startTicks"], 777);
+    // Quitting saves the playtime; the game keeps running.
+    r.launcher.checkpoint_all();
+
+    // 30 minutes into the session, the app starts again.
+    json_store::update_value(&r.paths.local_library().join("running.json"), |doc| {
+        let mono = doc["sessions"]["g"]["monoStartMs"].as_u64().unwrap();
+        doc["sessions"]["g"]["monoStartMs"] = serde_json::json!(mono - 30 * 60_000);
+        Ok(())
+    })
+    .unwrap();
+    let (again, rx) = restarted(&r);
+    let mut adopted = Vec::new();
+    assert_eq!(again.adopt(&mut |g| adopted.push(g.title.clone())), 1);
+    assert_eq!(adopted, ["g title"]);
+    assert_eq!(next(&rx), LaunchEvent::Running { app_name: "g".into(), pid: 40_001 });
+    assert!(again.is_running("g"));
+
+    // The game ends: recorded once, from the session's real start.
+    r.procs.exit(40_001);
+    let LaunchEvent::Exited { stopped, record, elapsed, .. } = next(&rx) else { panic!() };
+    assert!(!stopped);
+    assert!(elapsed >= Duration::from_secs(30 * 60));
+    assert_eq!(record.unwrap().total_played_minutes, 30);
+    let doc: SessionsFile = json_store::read(&r.paths.sessions()).unwrap();
+    assert_eq!(doc.sessions["g"].len(), 1, "the checkpointed row is updated in place");
+    assert!(running_file(&r.paths)["sessions"].get("g").is_none());
+}
+
+#[test]
+fn games_that_ended_meanwhile_or_before_a_reboot_are_dropped() {
+    let r = rig();
+    r.procs.start(40_001, "game", None);
+    r.procs.set_start_ticks(40_001, 5);
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/game", &[])))).unwrap();
+    next(&r.rx);
+    next(&r.rx);
+    // Its pid now belongs to another program that started later.
+    r.procs.set_start_ticks(40_001, 6);
+    let (again, rx) = restarted(&r);
+    assert_eq!(again.adopt(&mut |_| {}), 0);
+    assert!(rx.try_recv().is_err());
+    assert!(running_file(&r.paths)["sessions"].get("g").is_none());
+
+    // Another boot: the same pid and start ticks mean nothing.
+    let r = rig();
+    r.procs.start(40_001, "game", None);
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/game", &[])))).unwrap();
+    next(&r.rx);
+    next(&r.rx);
+    r.procs.set_boot_id("another-boot");
+    assert_eq!(restarted(&r).0.adopt(&mut |_| {}), 0);
+}
+
+#[test]
+fn an_adopted_game_whose_leader_left_is_followed_through_its_group() {
+    let r = rig();
+    r.procs.start(40_001, "launcher", None);
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/launcher", &[])))).unwrap();
+    next(&r.rx);
+    next(&r.rx);
+    // The launcher script exited; the game it started stays in its group.
+    r.procs.exit(40_001);
+    r.procs.start(40_050, "game", Some(1));
+    r.procs.set_group(40_050, 40_001);
+    let (again, rx) = restarted(&r);
+    assert_eq!(again.adopt(&mut |_| {}), 1);
+    next(&rx);
+    // Stop reaches the whole group.
+    assert!(again.stop("g"));
+    wait_until("the group is signalled", || r.procs.group_signals().contains(&(40_001, heronite_launch::procs::Sig::Term)));
+    r.procs.exit(40_050);
+    let LaunchEvent::Exited { stopped, .. } = next(&rx) else { panic!() };
+    assert!(stopped);
+}
+
+#[test]
+fn a_steam_game_left_running_is_picked_up_by_its_pids() {
+    let r = rig();
+    let log = write_steam_log(&r, "");
+    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    next(&r.rx);
+    r.procs.start(7777, "reaper", None);
+    r.procs.set_start_ticks(7777, 42);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    next(&r.rx);
+    assert_eq!(running_file(&r.paths)["sessions"]["steam_400"]["tracked"]["pids"], serde_json::json!([[7777, 42]]));
+
+    let (again, rx) = restarted(&r);
+    assert_eq!(again.adopt(&mut |_| {}), 1);
+    assert_eq!(next(&rx), LaunchEvent::Running { app_name: "steam_400".into(), pid: 7777 });
+    // Stop closes the game's processes, never Steam.
+    again.stop_with("steam_400", StopOptions { kill_steam_processes: true });
+    let LaunchEvent::Exited { stopped, .. } = next(&rx) else { panic!() };
+    assert!(stopped);
+    assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
+}

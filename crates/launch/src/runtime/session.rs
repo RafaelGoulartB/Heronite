@@ -19,6 +19,7 @@ pub(super) fn finish(shared: &Shared, log: &GameLog, req: &LaunchRequest, contro
     log.close();
     // Free the slot first so listeners can relaunch right away.
     shared.sessions.lock().unwrap().remove(&req.app_name);
+    super::adopt::forget(shared, control, &req.app_name);
     let mut outcome = None;
     // The last write goes through the session's ledger: it replaces what the
     // checkpoints stored instead of adding to it.
@@ -65,11 +66,17 @@ pub(super) fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, notice: 
 /// (which stops the checkpointer); after a panic the slot is also freed and
 /// the listeners told, or the game would stay "playing" and refuse every
 /// later launch.
-struct SessionEnd {
+pub(super) struct SessionEnd {
     shared: Arc<Shared>,
     app_name: String,
     title: String,
     control: Arc<Control>,
+}
+
+impl SessionEnd {
+    pub(super) fn new(shared: Arc<Shared>, app_name: &str, title: &str, control: Arc<Control>) -> Self {
+        Self { shared, app_name: app_name.to_string(), title: title.to_string(), control }
+    }
 }
 
 impl Drop for SessionEnd {
@@ -87,6 +94,7 @@ impl Drop for SessionEnd {
                 sessions.remove(&self.app_name);
             }
         }
+        super::adopt::forget(&self.shared, &self.control, &self.app_name);
         let message = tr!("Lost track of {title}: the launcher hit an internal error", title = self.title);
         self.shared.send(LaunchEvent::Error { app_name: self.app_name.clone(), message });
     }
@@ -94,7 +102,7 @@ impl Drop for SessionEnd {
 
 /// Saves the playtime of the running game every checkpoint interval, so a
 /// crash, a kill or a power cut loses at most that much.
-fn spawn_checkpointer(shared: Arc<Shared>, app_name: String, control: Arc<Control>) {
+pub(super) fn spawn_checkpointer(shared: Arc<Shared>, app_name: String, control: Arc<Control>) {
     let _ = std::thread::Builder::new().name(format!("checkpoint-{app_name}")).spawn(move || {
         let finished = || control.ledger.lock().map(|l| l.finished).unwrap_or(true);
         // Until the game runs (preparing a prefix can take minutes).
@@ -111,7 +119,7 @@ fn spawn_checkpointer(shared: Arc<Shared>, app_name: String, control: Arc<Contro
 }
 
 pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<Control>) {
-    let _end = SessionEnd { shared: shared.clone(), app_name: req.app_name.clone(), title: req.title.clone(), control: control.clone() };
+    let _end = SessionEnd::new(shared.clone(), &req.app_name, &req.title, control.clone());
     spawn_checkpointer(shared.clone(), req.app_name.clone(), control.clone());
     let log = open_game_log(&shared, &req);
     match &req.plan {

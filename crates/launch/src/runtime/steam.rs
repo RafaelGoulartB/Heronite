@@ -39,6 +39,7 @@ pub(super) fn run_steam(shared: &Shared, log: &GameLog, req: &LaunchRequest, con
             // clock starts here, not when Steam was asked to open it.
             let started_at = control.set_playing();
             let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
+            super::adopt::remember(shared, control, req, super::adopt::steam_entry(shared, control, app_id));
             shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid });
         },
     );
