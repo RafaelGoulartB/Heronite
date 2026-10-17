@@ -168,7 +168,8 @@ impl AddGameDialog {
         let (mut folder, mut command) = (String::new(), String::new());
         if let Some(game) = &edited {
             let g = &game.game;
-            title = g.title.clone();
+            // What the game shows (Collection title first), not the sideload one.
+            title = game.title.clone();
             square = g.art_square.clone().unwrap_or_default();
             let cover = g.art_cover.clone().unwrap_or_default();
             hero = if cover != square { cover } else { String::new() };

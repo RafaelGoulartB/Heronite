@@ -7,7 +7,7 @@ use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, LocalMetaFile};
 
-use super::MetadataService;
+use super::{is_offline, MetadataService};
 use crate::store::{as_runner, get_game_metadata};
 use crate::types::*;
 use crate::util::now_ms;
@@ -171,7 +171,8 @@ impl MetadataService {
     /// `refreshMissingCollectionMetadata`: when `autoFillMissing` is on,
     /// fetches metadata for up to 40 overlay games that have none (or whose
     /// last attempt failed more than a week ago) and returns how many got
-    /// data. Call it when the app is idle.
+    /// data. Stops at the first game when offline (nothing is saved, so the
+    /// next call tries again). Call it when the app is idle.
     pub fn refresh_missing_collection_metadata(&self) -> Result<usize> {
         self.refresh_missing_while(&|| false)
     }
@@ -220,7 +221,7 @@ impl MetadataService {
             if should_stop() {
                 break;
             }
-            let saved = self.apply_game_metadata(&MetadataApplyArgs {
+            let saved = match self.apply_game_metadata(&MetadataApplyArgs {
                 app_name: meta.app_name.clone(),
                 runner: meta.runner.clone(),
                 title: meta.title.clone(),
@@ -230,7 +231,16 @@ impl MetadataService {
                 preserve_manual: Some(true),
                 download_images: Some(settings.download_images),
                 ..Default::default()
-            })?;
+            }) {
+                Ok(saved) => saved,
+                // Offline: the other games would fail the same way. They stay
+                // unfetched, so the next start tries again.
+                Err(e) if is_offline(&e) => {
+                    log::info!("Collection metadata fill stopped: {e}");
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
             if saved.fetch_error.is_none() {
                 filled += 1;
             }

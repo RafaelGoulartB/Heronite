@@ -17,6 +17,13 @@ pub fn clean_title(raw: &str) -> String {
     remove_special_characters(raw).chars().take(TITLE_MAX).collect()
 }
 
+/// The title to store as the Collection title when editing: the typed one,
+/// only if it differs from the one the game was showing. The shown title comes
+/// from the metadata first, so the sideload title alone would change nothing.
+pub fn changed_title(shown: Option<&str>, typed: &str) -> Option<String> {
+    shown.is_some_and(|s| s.trim() != typed.trim()).then(|| typed.trim().to_string())
+}
+
 /// `file://` URL of a local image the way Heroic stores it (`file://${path}`),
 /// with the few characters that would break the URL percent-encoded.
 pub fn file_url(path: &str) -> String {
@@ -229,6 +236,13 @@ mod tests {
         assert_eq!(clean_title("Sonic: The Hedgehog™ 2?"), "Sonic The Hedgehog 2");
         assert_eq!(clean_title(&"a".repeat(60)).chars().count(), 40);
         assert_eq!(clean_title("Ação & Reação"), "Ação  Reação");
+    }
+
+    #[test]
+    fn only_a_changed_shown_title_is_stored_in_the_collection() {
+        assert_eq!(changed_title(Some("Portal 2"), "Portal Two").as_deref(), Some("Portal Two"));
+        assert_eq!(changed_title(Some("Portal 2"), " Portal 2 "), None);
+        assert_eq!(changed_title(None, "Portal 2"), None);
     }
 
     #[test]

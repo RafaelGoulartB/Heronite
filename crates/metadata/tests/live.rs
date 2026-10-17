@@ -32,7 +32,7 @@ fn live_steam_lutris_hltb() {
     assert_eq!(d.name, "Portal");
     assert!(svc.paths.steam_details("400", "english").exists());
 
-    let l = heronite_metadata::lutris::fetch_lutris_metadata(&svc.http, "a", "sideload", "Portal", None).expect("lutris");
+    let l = heronite_metadata::lutris::fetch_lutris_metadata(&svc.http, "a", "sideload", "Portal", None).into_option().expect("lutris");
     assert!(l.lutris_slug.as_deref().is_some_and(|s| s.starts_with("portal")));
     assert_eq!(l.title.as_deref(), Some("Portal"));
 

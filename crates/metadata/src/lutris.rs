@@ -4,6 +4,7 @@ use heronite_data::models::CollectionGameMetadata;
 use serde_json::Value;
 
 use crate::http::Http;
+use crate::types::Lookup;
 use crate::util::{blank_metadata, clip, pick_best_match, strip_html, title_queries, unique_names, unique_names12, MIN_MATCH_SCORE};
 
 fn named_list(v: Option<&Value>) -> Vec<String> {
@@ -57,7 +58,7 @@ pub fn fetch_lutris_metadata(
     runner: &str,
     title: &str,
     lutris_slug: Option<&str>,
-) -> Option<CollectionGameMetadata> {
+) -> Lookup<CollectionGameMetadata> {
     let run = || -> anyhow::Result<Option<CollectionGameMetadata>> {
         let mut slug = lutris_slug.filter(|s| !s.is_empty()).map(str::to_owned);
         if slug.is_none() {
@@ -82,10 +83,11 @@ pub fn fetch_lutris_metadata(
         Ok(map_lutris_detail(app_name, runner, &slug, &detail))
     };
     match run() {
-        Ok(md) => md,
+        Ok(Some(md)) => Lookup::Found(md),
+        Ok(None) => Lookup::NotFound,
         Err(e) => {
             log::warn!("Lutris metadata failed for {title}: {e}");
-            None
+            Lookup::from_error(&e)
         }
     }
 }
