@@ -98,12 +98,10 @@ impl CollectionView {
         cx.notify();
     }
 
-    /// A removed or renamed category no longer filters.
+    /// A removed category no longer filters, nor does it in the saved views.
     pub(super) fn prune_category_filter(&mut self) {
         let cats = &self.categories;
-        let before = self.ui.categories.len();
-        self.ui.categories.retain(|n| n == UNCATEGORIZED || cats.exists(n));
-        if self.ui.categories.len() != before {
+        if self.ui.prune_categories(|n| n == UNCATEGORIZED || cats.exists(n)) {
             self.save_ui();
         }
     }
@@ -122,6 +120,13 @@ impl CollectionView {
         self.open_menu = None;
         self.context_menu = None;
         let view = cx.new(|cx| crate::dialogs::manage_categories::ManageCategoriesDialog::new(ctx, window, cx));
+        // Before the reload that follows the rename prunes the old name.
+        cx.subscribe(&view, |this, _, ev: &crate::dialogs::manage_categories::CategoryRenamed, _| {
+            if this.ui.rename_category(&ev.from, &ev.to) {
+                this.save_ui();
+            }
+        })
+        .detach();
         self.open_dialog(view, cx);
     }
 

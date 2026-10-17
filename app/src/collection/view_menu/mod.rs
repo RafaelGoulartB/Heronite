@@ -310,11 +310,9 @@ impl CollectionView {
         (games.len(), games.iter().filter(|g| g.installed).count())
     }
 
-    /// A removed status no longer filters.
+    /// A removed status no longer filters, nor does it in the saved views.
     pub(super) fn prune_status_filter(&mut self, lib: &Library) {
-        let before = self.ui.statuses.len();
-        self.ui.statuses.retain(|id| lib.statuses.iter().any(|s| &s.id == id));
-        if self.ui.statuses.len() != before {
+        if self.ui.prune_statuses(|id| lib.statuses.iter().any(|s| s.id == id)) {
             self.save_ui();
         }
     }

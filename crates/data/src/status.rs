@@ -345,6 +345,12 @@ pub fn rename_status(paths: &DataPaths, id: &str, name: &str) -> Result<Option<V
     upsert_status(paths, status).map(Some)
 }
 
+/// The status the games of `id` move to when it is deleted: "not-played", or
+/// the first other one. `None` when there is no other.
+pub fn delete_fallback<'a>(statuses: &'a [CompletionStatus], id: &str) -> Option<&'a CompletionStatus> {
+    statuses.iter().find(|s| s.id != id && s.slug == "not-played").or_else(|| statuses.iter().find(|s| s.id != id))
+}
+
 /// `deleteCompletionStatus`: the last status cannot be deleted; games using
 /// the deleted one move to "not-played" (or the first other status).
 pub fn delete_status(paths: &DataPaths, id: &str) -> Result<Vec<CompletionStatus>> {
@@ -358,11 +364,7 @@ pub fn delete_status(paths: &DataPaths, id: &str) -> Result<Vec<CompletionStatus
             file.statuses = statuses.clone();
             return Ok(Outcome::Unchanged(statuses));
         }
-        let fallback = statuses
-            .iter()
-            .find(|s| s.id != id && s.slug == "not-played")
-            .or_else(|| statuses.iter().find(|s| s.id != id))
-            .map(|s| s.id.clone());
+        let fallback = delete_fallback(&statuses, id).map(|s| s.id.clone());
         let Some(fallback) = fallback else {
             file.statuses = statuses.clone();
             return Ok(Outcome::Unchanged(statuses));
@@ -544,6 +546,16 @@ mod tests {
         assert_eq!(list.len(), 9);
         let v = json_store::read_value(&paths.local_meta()).unwrap();
         assert_eq!(v["games"]["g1"]["completionStatusId"], "not-played");
+    }
+
+    #[test]
+    fn deleted_status_moves_games_to_not_played_or_the_first_other() {
+        let s = default_statuses();
+        assert_eq!(delete_fallback(&s, "beaten").unwrap().id, "not-played");
+        // Deleting "not-played" itself: the first other one.
+        let first_other = s.iter().find(|x| x.id != "not-played").unwrap().id.clone();
+        assert_eq!(delete_fallback(&s, "not-played").unwrap().id, first_other);
+        assert!(delete_fallback(&s[..1], &s[0].id).is_none());
     }
 
     #[test]
