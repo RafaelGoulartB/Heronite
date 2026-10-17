@@ -265,28 +265,44 @@ pub struct SetStatusExtras {
 /// a minimal one, exactly like Heronite: `playniteId = heroic_<appName>`,
 /// `source = other`, `launchKind = unavailable`. Returns the stored entry.
 pub fn set_game_status(paths: &DataPaths, app_name: &str, status_id: &str, extras: &SetStatusExtras) -> Result<LocalGameMeta> {
+    json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| Ok(put_status(file, app_name, status_id, extras)))
+}
+
+/// [`set_game_status`] for many games in one write: `(app_name, status_id,
+/// extras)`, each game its own status (an undo puts back different ones).
+pub fn set_games_status(paths: &DataPaths, games: &[(String, String, SetStatusExtras)]) -> Result<()> {
+    if games.is_empty() {
+        return Ok(());
+    }
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
-        if let Some(existing) = file.games.get_mut(app_name) {
-            existing.completion_status_id = Some(status_id.to_owned());
-            return Ok(existing.clone());
+        for (app_name, status_id, extras) in games {
+            put_status(file, app_name, status_id, extras);
         }
-        let runner = match extras.runner.as_deref() {
-            Some("zoom") | None => "sideload",
-            Some(other) => other,
-        };
-        let meta = LocalGameMeta {
-            app_name: app_name.to_owned(),
-            runner: runner.to_owned(),
-            playnite_id: extras.playnite_id.clone().unwrap_or_else(|| format!("heroic_{app_name}")),
-            source: "other".into(),
-            launch_kind: "unavailable".into(),
-            title: extras.title.clone().unwrap_or_else(|| app_name.to_owned()),
-            completion_status_id: Some(status_id.to_owned()),
-            ..Default::default()
-        };
-        file.games.insert(app_name.to_owned(), meta.clone());
-        Ok(meta)
+        Ok(())
     })
+}
+
+fn put_status(file: &mut LocalMetaFile, app_name: &str, status_id: &str, extras: &SetStatusExtras) -> LocalGameMeta {
+    if let Some(existing) = file.games.get_mut(app_name) {
+        existing.completion_status_id = Some(status_id.to_owned());
+        return existing.clone();
+    }
+    let runner = match extras.runner.as_deref() {
+        Some("zoom") | None => "sideload",
+        Some(other) => other,
+    };
+    let meta = LocalGameMeta {
+        app_name: app_name.to_owned(),
+        runner: runner.to_owned(),
+        playnite_id: extras.playnite_id.clone().unwrap_or_else(|| format!("heroic_{app_name}")),
+        source: "other".into(),
+        launch_kind: "unavailable".into(),
+        title: extras.title.clone().unwrap_or_else(|| app_name.to_owned()),
+        completion_status_id: Some(status_id.to_owned()),
+        ..Default::default()
+    };
+    file.games.insert(app_name.to_owned(), meta.clone());
+    meta
 }
 
 /// `upsertCompletionStatus`: replaces the status with the same id or appends.
@@ -486,6 +502,21 @@ mod tests {
         let v = json_store::read_value(&paths.local_meta()).unwrap();
         assert_eq!(v["games"]["Calluna"]["completionStatusId"], "played");
         assert_eq!(v["games"]["Calluna"]["title"], "Control");
+    }
+
+    #[test]
+    fn many_games_get_their_status_in_one_write() {
+        let (_d, paths) = temp_paths();
+        set_game_status(&paths, "a", "playing", &SetStatusExtras::default()).unwrap();
+        let extras = SetStatusExtras { runner: Some("zoom".into()), title: Some("B".into()), playnite_id: None };
+        set_games_status(&paths, &[("a".into(), "beaten".into(), SetStatusExtras::default()), ("b".into(), "played".into(), extras)])
+            .unwrap();
+        let v = json_store::read_value(&paths.local_meta()).unwrap();
+        assert_eq!(v["games"]["a"]["completionStatusId"], "beaten");
+        assert_eq!(v["games"]["b"]["completionStatusId"], "played");
+        assert_eq!(v["games"]["b"]["runner"], "sideload");
+        assert_eq!(v["games"]["b"]["title"], "B");
+        set_games_status(&paths, &[]).unwrap();
     }
 
     #[test]
