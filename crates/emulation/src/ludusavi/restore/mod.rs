@@ -268,13 +268,8 @@ mod tests {
 
     /// The in-flight guard is shared with the backup tests running alongside.
     fn apply(env: &LudusaviEnv, plan: &RestorePlan, root: &std::path::Path) -> Result<RestoreOutcome, String> {
-        for _ in 0..200 {
-            match apply_restore(env, &tool(), plan, root, "app") {
-                Err(e) if e.contains("busy") => std::thread::sleep(std::time::Duration::from_millis(10)),
-                r => return r,
-            }
-        }
-        panic!("the in-flight guard stayed taken");
+        let _l = super::super::backup::test_lock();
+        apply_restore(env, &tool(), plan, root, "app")
     }
 
     fn tool() -> Tool {

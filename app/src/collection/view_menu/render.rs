@@ -42,10 +42,32 @@ struct Density {
 }
 
 impl Density {
-    const ROOMY: Density =
-        Density { w: 404., pad: 12., gap: 16., head_gap: 8., seg_py: 6., text: 13., dir: 36., pill_h: 30., pill_px: 11., tile_py: 9., tile_icon: 19. };
-    const COMPACT: Density =
-        Density { w: 360., pad: 10., gap: 11., head_gap: 6., seg_py: 4., text: 12.5, dir: 30., pill_h: 26., pill_px: 9., tile_py: 6., tile_icon: 16. };
+    const ROOMY: Density = Density {
+        w: 404.,
+        pad: 12.,
+        gap: 16.,
+        head_gap: 8.,
+        seg_py: 6.,
+        text: 13.,
+        dir: 36.,
+        pill_h: 30.,
+        pill_px: 11.,
+        tile_py: 9.,
+        tile_icon: 19.,
+    };
+    const COMPACT: Density = Density {
+        w: 360.,
+        pad: 10.,
+        gap: 11.,
+        head_gap: 6.,
+        seg_py: 4.,
+        text: 12.5,
+        dir: 30.,
+        pill_h: 26.,
+        pill_px: 9.,
+        tile_py: 6.,
+        tile_icon: 16.,
+    };
 }
 
 /// The actions listed after the views in their select.

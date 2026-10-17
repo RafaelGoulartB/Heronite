@@ -127,12 +127,11 @@ impl SettingsPanel {
         on: bool,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        let control = div()
-            .flex()
-            .items_center()
-            .gap(px(10.))
-            .children(self.reset_button(group, cx))
-            .child(toggle(SharedString::from(format!("{id}-sw")), on, false));
+        let control = div().flex().items_center().gap(px(10.)).children(self.reset_button(group, cx)).child(toggle(
+            SharedString::from(format!("{id}-sw")),
+            on,
+            false,
+        ));
         row(label.to_string(), help_text, control).id(id).cursor_pointer()
     }
 
