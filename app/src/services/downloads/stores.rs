@@ -331,7 +331,7 @@ impl Downloads {
 
     /// Queues updates for `apps` (any store) that are not queued yet.
     pub(super) fn queue_updates_of(&mut self, apps: Vec<String>, cx: &mut Context<Self>) {
-        let apps: Vec<String> = apps.into_iter().filter(|a| self.queued(a).is_none()).collect();
+        let apps = self.updatable(apps, cx);
         if apps.is_empty() {
             return;
         }

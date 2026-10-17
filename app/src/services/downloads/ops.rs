@@ -108,6 +108,10 @@ impl Downloads {
                         }
                         OpMsg::Done(r) => {
                             this.busy.remove(&app);
+                            // An auto-update skipped because of this operation goes now.
+                            if this.deferred.remove(&app) {
+                                this.queue_auto_updates(Some(app.clone()), cx);
+                            }
                             if r.aborted {
                                 this.toast(cx, tr!("{label} cancelled", label), false);
                             } else if r.ok {

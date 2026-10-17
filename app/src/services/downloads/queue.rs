@@ -186,6 +186,15 @@ impl Downloads {
         let manager = self.manager.clone();
         let data_paths = self.data_paths.clone();
         let app = game_info.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
+        // Patching the files of a running game, or while a verify or move works on them.
+        if self.playing.contains(&app) {
+            self.toast(cx, tr!("The game is running: close it first"), true);
+            return;
+        }
+        if self.busy.contains_key(&app) {
+            self.toast(cx, tr!("Another operation is running for this game"), true);
+            return;
+        }
         let runner = game_info.get("runner").and_then(Value::as_str).filter(|r| !r.is_empty()).unwrap_or("legendary").to_string();
         let path = game_info.pointer("/install/install_path").and_then(Value::as_str).unwrap_or_default().to_string();
         let platform = game_info.pointer("/install/platform").and_then(Value::as_str).unwrap_or("Windows").to_string();
