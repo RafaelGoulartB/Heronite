@@ -309,7 +309,7 @@ impl CollectionView {
             A::Metadata => self.open_metadata_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
             A::Details => self.open_details(key, cx),
-            A::EditPlaytime => self.open_edit_playtime(key, window, cx),
+            A::EditPlaytime => self.open_playtime_settings(key, window, cx),
             A::Ludusavi => self.open_ludusavi_backup(key, cx),
             A::SteamUninstall => self.open_steam_uninstall(key, window, cx),
             A::SteamPlay => self.play_with_steam(key, cx),

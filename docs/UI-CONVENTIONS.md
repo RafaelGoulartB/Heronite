@@ -195,7 +195,7 @@ slots (build the header with `kicker`, `dialog_title`, `close_button`).
 
 **Game settings drawer** (`dialogs/game_settings/`): the first `drawer` caller. Tabs are
 segmented pills in the header slot; each tab is a stack of `caption` + `card`. The tabs are the same for
-every game, by what the user wants to change: Game (images + details), Launch (Play, the actions,
+every game, by what the user wants to change: Game (images, details and the time played; the card menu has no "Edit playtime"), Launch (Play, the actions,
 the panel's launch settings), Compatibility (Wine / Proton), Performance (overlays, FPS limit, frame
 generation, image, system) and Saves (Ludusavi backups + cloud saves); a tab only goes away when the
 game has nothing for it. Descriptions are one short line saying the effect; paths and rare warnings

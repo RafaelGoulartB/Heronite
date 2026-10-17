@@ -31,7 +31,6 @@ pub mod metadata;
 pub mod metadata_wizard;
 pub mod onboarding;
 pub mod pick_rom;
-pub mod playtime;
 pub mod quit_confirm;
 pub mod remove_game;
 pub mod rom_folder;

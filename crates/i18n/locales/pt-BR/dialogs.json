@@ -29,7 +29,6 @@
   "Could not read {path}: {error}": "Não foi possível ler {path}: {error}",
   "Could not remove this game from Collection.": "Não foi possível remover este jogo da Coleção.",
   "Could not run a Wine command: {error}": "Não foi possível executar um comando do Wine: {error}",
-  "Could not save the playtime: {error}": "Não foi possível salvar o tempo de jogo: {error}",
   "Could not search images. Try another term.": "Não foi possível pesquisar imagens. Tente outro termo.",
   "Critic score": "Nota da crítica",
   "Current": "Atual",
@@ -143,7 +142,6 @@
   "Search web": "Pesquisar na web",
   "Select screenshot": "Selecionar captura de tela",
   "Set a screenshots folder in Collection settings first.": "Defina primeiro uma pasta de capturas de tela nas configurações da Coleção.",
-  "Set the total time played for {title}. New sessions keep adding to this value.": "Defina o tempo total jogado de {title}. Novas sessões continuam somando a este valor.",
   "Show in folder": "Mostrar na pasta",
   "Shown behind the game in Collection": "Exibido atrás do jogo na Coleção",
   "Shown on the game card": "Exibida no card do jogo",
@@ -298,5 +296,8 @@
   "“{to}” is in {n} game now": "“{to}” agora está em {n} jogo",
   "“{to}” is in {n} games now": "“{to}” agora está em {n} jogos",
   "{n} name selected": "{n} nome selecionado",
-  "{n} names selected": "{n} nomes selecionados"
+  "{n} names selected": "{n} nomes selecionados",
+  "New sessions keep adding to this time.": "Novas sessões continuam somando a este tempo.",
+  "h": "h",
+  "min": "min"
 }

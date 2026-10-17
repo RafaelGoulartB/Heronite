@@ -22,7 +22,6 @@ use super::game_actions::{GameAction, GameActionItem};
 use super::{achievements, focus, CollectionView};
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog};
 use crate::dialogs::ludusavi_backup::LudusaviBackupDialog;
-use crate::dialogs::playtime::PlaytimeDialog;
 use crate::dialogs::remove_game::RemoveGameDialog;
 use crate::icons::Icon;
 use crate::pages::Page;
@@ -176,7 +175,7 @@ impl CollectionView {
             return;
         }
         match which {
-            "playtime" => self.open_edit_playtime(&key, window, cx),
+            "playtime" => self.open_playtime_settings(&key, window, cx),
             "remove" => self.open_remove_game(&key, cx),
             _ => self.open_ludusavi_backup(&key, cx),
         }
@@ -229,8 +228,9 @@ impl CollectionView {
         }
     }
 
-    /// Details, Edit playtime, Backup save (Ludusavi), Uninstall and Remove
-    /// from Collection (the order of `CollectionCard`'s menu).
+    /// Details, Backup save (Ludusavi), Uninstall and Remove from Collection
+    /// (the order of `CollectionCard`'s menu), and Edit playtime for the
+    /// palette (the time played is edited in the game settings).
     pub(super) fn extras_actions(&self, game: &CollectionGame) -> Vec<GameActionItem> {
         use GameAction as A;
         let item = GameActionItem::new;
@@ -246,13 +246,10 @@ impl CollectionView {
             ));
         }
         if !tracking {
-            v.push(item(
-                A::EditPlaytime,
-                "playtime",
-                tr!("Edit playtime"),
-                Icon::AccessTime,
-                "hours time played editar tempo horas jogado",
-            ));
+            v.push(
+                item(A::EditPlaytime, "playtime", tr!("Edit playtime"), Icon::AccessTime, "hours time played editar tempo horas jogado")
+                    .palette_only(),
+            );
         }
         v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save (Ludusavi)"), Icon::Save, "saves backup salvamentos jogos salvos"));
         if game.steam_launch_id.is_some() && game.installed && !tracking {
@@ -285,9 +282,11 @@ impl CollectionView {
         v
     }
 
-    pub(super) fn open_edit_playtime(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.lib.as_ref().and_then(|l| l.get(key)).cloned()) else { return };
-        let view = cx.new(|cx| PlaytimeDialog::new(ctx, game.app_name.clone(), game.title.clone(), game.playtime_minutes, window, cx));
+    /// The game settings on the Game tab, where the time played is edited.
+    pub(super) fn open_playtime_settings(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::dialogs::game_settings::{GameSettingsDialog, Tab};
+        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
+        let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, Tab::Game, window, cx));
         self.open_dialog(view, cx);
     }
 
