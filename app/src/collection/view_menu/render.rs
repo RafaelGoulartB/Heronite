@@ -1,6 +1,6 @@
 //! The View menu's panel: search box with tokens, then either the results
-//! or Presets / Sort / Group by / Show / Only / Browse, and a footer with the
-//! count, "Reset all" and "Statuses…".
+//! or Presets / Sort / Group by / Show / Only / Browse / Manage, and a footer
+//! with the count and "Reset all".
 
 use gpui_kit::component::input::Input;
 use gpui_kit::prelude::*;
@@ -105,6 +105,7 @@ impl CollectionView {
                     .child(self.vm_sort(cx))
                     .child(self.vm_only(cx))
                     .child(self.vm_browse(cx))
+                    .child(self.vm_manage(cx))
             });
         menu_panel(d.w)
             .w(px(d.w))
@@ -559,28 +560,33 @@ impl CollectionView {
     fn vm_browse(&self, cx: &mut Context<Self>) -> Div {
         let kinds = Kind::ALL.into_iter().filter(|k| *k != Kind::Only && (*k != Kind::Category || !self.categories.is_empty()));
         let d = self.vm_density();
-        let fields = div()
-            .id("vm-fields")
-            .cursor_pointer()
-            .text_size(px(12.))
-            .text_color(theme::accent())
-            .hover(|s| s.text_color(white()))
+        section(tr!("Browse"), d).child(div().flex().flex_wrap().gap(px(6.)).children(kinds.enumerate().map(|(i, kind)| {
+            pill(("vm-browse", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
+                move |this, _, window, cx| {
+                    let text = choices::scoped_query(kind, "");
+                    this.set_view_query(&text, window, cx);
+                },
+            ))
+        })))
+    }
+
+    /// The statuses and the library fields managers.
+    fn vm_manage(&self, cx: &mut Context<Self>) -> Div {
+        let d = self.vm_density();
+        let statuses = pill("vm-statuses", d).child(icon(Icon::Flag, px(14.), theme::text_muted())).child(tr!("Statuses…")).on_click(
+            cx.listener(|this, _, window, cx| {
+                this.open_menu = None;
+                this.open_manage_statuses(window, cx);
+            }),
+        );
+        let fields = pill("vm-fields", d)
+            .child(icon(Icon::CallMerge, px(14.), theme::text_muted()))
             .child(tr!("Library fields…"))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.open_menu = None;
                 this.open_manage_fields(None, window, cx);
             }));
-        let header = section_head(tr!("Browse")).child(fields);
-        div().flex().flex_col().gap(px(d.head_gap)).child(header).child(div().flex().flex_wrap().gap(px(6.)).children(
-            kinds.enumerate().map(|(i, kind)| {
-                pill(("vm-browse", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
-                    move |this, _, window, cx| {
-                        let text = choices::scoped_query(kind, "");
-                        this.set_view_query(&text, window, cx);
-                    },
-                ))
-            }),
-        ))
+        section(tr!("Manage"), d).child(div().flex().flex_wrap().gap(px(6.)).child(statuses).child(fields))
     }
 
     fn vm_footer(&self, cx: &mut Context<Self>) -> Div {
@@ -593,7 +599,7 @@ impl CollectionView {
             .items_center()
             .gap(px(10.))
             .px(px(16.))
-            .py(px(if self.view_menu.compact { 7. } else { 10. }))
+            .py(px(if self.view_menu.compact { 9. } else { 12. }))
             .border_t_1()
             .border_color(theme::white_a(0.08))
             .text_size(px(12.5))
@@ -610,12 +616,6 @@ impl CollectionView {
                         .on_click(cx.listener(|this, _, _, cx| this.reset_view_filters(cx))),
                 )
             })
-            .child(crate::ui::controls::button_sm("vm-statuses", crate::ui::controls::ButtonKind::Glass, tr!("Statuses…")).on_click(
-                cx.listener(|this, _, window, cx| {
-                    this.open_menu = None;
-                    this.open_manage_statuses(window, cx);
-                }),
-            ))
     }
 }
 
