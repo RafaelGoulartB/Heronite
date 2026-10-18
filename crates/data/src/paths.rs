@@ -98,6 +98,9 @@ impl DataPaths {
     pub fn ratings(&self) -> PathBuf {
         self.j("local_library/ratings.json")
     }
+    pub fn journal(&self) -> PathBuf {
+        self.j("local_library/journal.json")
+    }
     pub fn added(&self) -> PathBuf {
         self.j("local_library/added.json")
     }

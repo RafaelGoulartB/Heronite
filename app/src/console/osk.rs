@@ -1,7 +1,8 @@
 //! On-screen keyboard for console mode: a bottom sheet with a key grid
 //! driven by the d-pad (A types, X deletes, Y space, LT shift, Start done,
 //! B cancels). A physical keyboard types into it too
-//! ([`Osk::type_key`]).
+//! ([`Osk::type_key`]). [`Osk::compact`] draws it as a sheet at the bottom
+//! of a narrow host (the in-game overlay's panel), with room for a few lines.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -27,13 +28,28 @@ pub struct Osk {
     row: usize,
     col: usize,
     shift: bool,
+    compact: bool,
+    /// A picture above the text (the capture it is about).
+    image: Option<std::path::PathBuf>,
 }
 
 impl EventEmitter<OskEvent> for Osk {}
 
 impl Osk {
     pub fn new(title: impl Into<SharedString>, initial: &str) -> Self {
-        Self { title: title.into(), text: initial.to_string(), row: 1, col: 0, shift: false }
+        Self { title: title.into(), text: initial.to_string(), row: 1, col: 0, shift: false, compact: false, image: None }
+    }
+
+    /// Shows `path` above the text.
+    pub fn image(mut self, path: Option<std::path::PathBuf>) -> Self {
+        self.image = path;
+        self
+    }
+
+    /// A bottom sheet that fills a narrow host's width.
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
+        self
     }
 
     fn key_at(&self, row: usize, col: usize) -> char {
@@ -135,44 +151,117 @@ impl PadTarget for Osk {
     }
 
     fn hints(&self, _: &App) -> Vec<Hint> {
-        vec![
-            hint(Btn::A, tr!("Type")),
-            hint(Btn::X, trc!("keyboard", "Delete")),
-            hint(Btn::Y, tr!("Space")),
-            hint(Btn::LT, tr!("Shift")),
-            hint(Btn::Start, tr!("Done")),
-            hint(Btn::B, tr!("Cancel")),
-        ]
+        keyboard_hints()
     }
 }
 
-fn key(label: String, focused: bool, wide: f32, on: bool) -> Div {
+/// Key height and text size, full size and compact.
+const KEY: (f32, f32) = (52., 19.);
+const KEY_COMPACT: (f32, f32) = (42., 16.);
+/// Height of the hints bar under a compact sheet (the overlay panel's).
+const HOST_HINTS_H: f32 = 55.;
+
+/// The buttons of the keyboard, for a host that draws its own hints.
+pub fn keyboard_hints() -> Vec<Hint> {
+    vec![
+        hint(Btn::A, tr!("Type")),
+        hint(Btn::X, trc!("keyboard", "Delete")),
+        hint(Btn::Y, tr!("Space")),
+        hint(Btn::LT, tr!("Shift")),
+        hint(Btn::Start, tr!("Done")),
+        hint(Btn::B, tr!("Cancel")),
+    ]
+}
+
+fn key(label: String, focused: bool, wide: f32, on: bool, (h, text): (f32, f32)) -> Div {
     div()
         .flex()
         .items_center()
         .justify_center()
         .flex_grow(1.)
         .flex_basis(u(wide))
-        .h(u(52.))
+        .min_w_0()
+        .h(u(h))
         .rounded(u(12.))
-        .text_size(u(19.))
+        .text_size(u(text))
         .when(focused, |d| d.relative().text_color(theme::console_on_focus()).font_weight(theme::W_BOLD).child(kit::focus_pill(12.)))
         .when(!focused, |d| d.bg(if on { theme::accent_tint() } else { theme::white_a(0.07) }).text_color(theme::text_primary()))
         .child(div().relative().child(label))
 }
 
+impl Osk {
+    fn grid(&self) -> Div {
+        let (gap, size, letter, (space, other)) =
+            if self.compact { (6., KEY_COMPACT, 30., (110., 60.)) } else { (8., KEY, 56., (300., 110.)) };
+        let mut grid = div().flex().flex_col().gap(u(gap));
+        for (r, line) in ROWS.iter().enumerate() {
+            grid = grid.child(
+                div().flex().gap(u(gap)).children(
+                    line.chars()
+                        .enumerate()
+                        .map(|(c, _)| key(self.key_at(r, c).to_string(), self.row == r && self.col == c, letter, false, size)),
+                ),
+            );
+        }
+        grid.child(div().flex().gap(u(gap)).children(SPECIAL.iter().enumerate().map(|(i, label)| {
+            let wide = if i == 1 { space } else { other };
+            key(tr(label).to_string(), self.row == SPECIAL_ROW && self.col == i, wide, i == 0 && self.shift, size)
+        })))
+    }
+
+    /// The compact sheet: title, the text over a few lines, the keys.
+    fn render_compact(&self) -> Div {
+        let field = div()
+            .min_h(u(84.))
+            .px(u(14.))
+            .py(u(10.))
+            .rounded(u(14.))
+            .bg(theme::black_a(0.35))
+            .border_1()
+            .border_color(theme::accent_tint_border())
+            .text_size(u(16.))
+            .line_height(u(22.))
+            .text_color(theme::text_primary())
+            .child(format!("{}\u{2502}", self.text));
+        div().absolute().inset_0().child(div().absolute().top_0().left_0().right_0().bottom(u(HOST_HINTS_H)).child(kit::scrim())).child(
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                // The host's button hints stay visible under it.
+                .bottom(u(HOST_HINTS_H))
+                .flex()
+                .flex_col()
+                .gap(u(12.))
+                .px(u(14.))
+                .pt(u(18.))
+                .pb(u(14.))
+                .rounded_t(u(24.))
+                .bg(theme::console_sidebar())
+                .border_t_1()
+                .border_b_1()
+                .border_color(theme::white_a(0.1))
+                .child(kit::title(self.title.clone(), 18.).px(u(4.)))
+                .children(self.image.clone().map(|path| {
+                    div()
+                        .h(u(120.))
+                        .rounded(u(12.))
+                        .overflow_hidden()
+                        .bg(theme::black_a(0.35))
+                        .child(img(path).size_full().object_fit(ObjectFit::Cover))
+                }))
+                .child(field)
+                .child(self.grid()),
+        )
+    }
+}
+
 impl Render for Osk {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let mut grid = div().flex().flex_col().gap(u(8.));
-        for (r, line) in ROWS.iter().enumerate() {
-            grid = grid.child(div().flex().gap(u(8.)).children(
-                line.chars().enumerate().map(|(c, _)| key(self.key_at(r, c).to_string(), self.row == r && self.col == c, 56., false)),
-            ));
+        if self.compact {
+            return self.render_compact();
         }
-        grid = grid.child(div().flex().gap(u(8.)).children(SPECIAL.iter().enumerate().map(|(i, label)| {
-            let wide = if i == 1 { 300. } else { 110. };
-            key(tr(label).to_string(), self.row == SPECIAL_ROW && self.col == i, wide, i == 0 && self.shift)
-        })));
+        let grid = self.grid();
         let field = div()
             .flex()
             .items_center()

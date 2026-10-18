@@ -49,14 +49,10 @@ fn day_entry(days: &mut BTreeMap<NaiveDate, TimelineDay>, date: NaiveDate) -> &m
     days.entry(date).or_insert_with(|| TimelineDay { date, played_secs: 0., sessions: 0, first_start: None, shots: Vec::new() })
 }
 
-/// Groups sessions and screenshots into days, newest day first.
-///
-/// Sessions shorter than [`MIN_SESSION_SECS`] and sessions with an unparseable
-/// start are ignored. `shots_taken_at_ms` holds the unix time of each
-/// screenshot in milliseconds; `None` entries are skipped.
-pub fn build_timeline<Tz: TimeZone>(sessions: &[LocalGameSession], shots_taken_at_ms: &[Option<f64>], tz: &Tz) -> Vec<TimelineDay> {
-    let mut days: BTreeMap<NaiveDate, TimelineDay> = BTreeMap::new();
-    let mut windows = Vec::new();
+/// The counted sessions: shorter than [`MIN_SESSION_SECS`] or with an
+/// unparseable start are left out.
+fn counted<Tz: TimeZone>(sessions: &[LocalGameSession], tz: &Tz) -> Vec<(Window, f64, NaiveTime)> {
+    let mut out = Vec::new();
     for session in sessions {
         let elapsed = session.elapsed_seconds.get();
         if elapsed.is_nan() || elapsed < MIN_SESSION_SECS {
@@ -65,22 +61,47 @@ pub fn build_timeline<Tz: TimeZone>(sessions: &[LocalGameSession], shots_taken_a
         let Some(start_ms) = parse_ms(&session.started_at) else { continue };
         let Some(start) = tz.timestamp_millis_opt(start_ms).single() else { continue };
         let end_ms = parse_ms(&session.ended_at).unwrap_or(start_ms + (elapsed * 1000.) as i64);
-        let date = start.date_naive();
-        let day = day_entry(&mut days, date);
+        out.push((Window { start_ms, end_ms, date: start.date_naive() }, elapsed, start.time()));
+    }
+    out
+}
+
+/// The day a moment (unix ms) belongs to: the day of the session it fell in
+/// (or up to [`SHOT_GRACE_SECS`] after), else its own local day.
+fn day_of<Tz: TimeZone>(windows: &[Window], ms: i64, tz: &Tz) -> Option<NaiveDate> {
+    let grace_ms = SHOT_GRACE_SECS * 1000;
+    // The latest-starting matching session wins when windows overlap.
+    let session = windows.iter().filter(|w| w.start_ms <= ms && ms <= w.end_ms + grace_ms).max_by_key(|w| w.start_ms);
+    session.map(|w| w.date).or_else(|| local_date(ms, tz))
+}
+
+/// The timeline day of each moment (unix ms), by the rule the screenshots
+/// follow; `None` for a moment with no local day.
+pub fn days_of_moments<Tz: TimeZone>(sessions: &[LocalGameSession], moments_ms: &[i64], tz: &Tz) -> Vec<Option<NaiveDate>> {
+    let windows: Vec<Window> = counted(sessions, tz).into_iter().map(|(w, ..)| w).collect();
+    moments_ms.iter().map(|ms| day_of(&windows, *ms, tz)).collect()
+}
+
+/// Groups sessions and screenshots into days, newest day first.
+///
+/// Sessions shorter than [`MIN_SESSION_SECS`] and sessions with an unparseable
+/// start are ignored. `shots_taken_at_ms` holds the unix time of each
+/// screenshot in milliseconds; `None` entries are skipped.
+pub fn build_timeline<Tz: TimeZone>(sessions: &[LocalGameSession], shots_taken_at_ms: &[Option<f64>], tz: &Tz) -> Vec<TimelineDay> {
+    let mut days: BTreeMap<NaiveDate, TimelineDay> = BTreeMap::new();
+    let mut windows = Vec::new();
+    for (window, elapsed, time) in counted(sessions, tz) {
+        let day = day_entry(&mut days, window.date);
         day.played_secs += elapsed;
         day.sessions += 1;
-        let time = start.time();
         day.first_start = Some(day.first_start.map_or(time, |t| t.min(time)));
-        windows.push(Window { start_ms, end_ms, date });
+        windows.push(window);
     }
 
-    let grace_ms = SHOT_GRACE_SECS * 1000;
     let mut placed: Vec<(i64, usize, NaiveDate)> = Vec::new();
     for (index, taken) in shots_taken_at_ms.iter().enumerate() {
         let Some(ms) = taken.filter(|t| t.is_finite()).map(|t| t as i64) else { continue };
-        // The latest-starting matching session wins when windows overlap.
-        let session = windows.iter().filter(|w| w.start_ms <= ms && ms <= w.end_ms + grace_ms).max_by_key(|w| w.start_ms);
-        let Some(date) = session.map(|w| w.date).or_else(|| local_date(ms, tz)) else { continue };
+        let Some(date) = day_of(&windows, ms, tz) else { continue };
         placed.push((ms, index, date));
     }
     placed.sort_unstable();
@@ -176,6 +197,16 @@ mod tests {
         assert_eq!(day.date, NaiveDate::from_ymd_opt(2026, 10, 5).unwrap());
         assert_eq!((day.sessions, day.played_secs, day.first_start), (0, 0., None));
         assert_eq!(day.shots, vec![2, 0, 3]);
+    }
+
+    #[test]
+    fn moments_follow_the_screenshot_rule() {
+        // 23:30 local on the 7th for two hours.
+        let sessions = [session("2026-10-08T02:30:00Z", 7200.)];
+        let at = |s: &str| DateTime::parse_from_rfc3339(s).unwrap().timestamp_millis();
+        let days = days_of_moments(&sessions, &[at("2026-10-08T04:35:00Z"), at("2026-10-08T15:00:00Z")], &tz());
+        assert_eq!(days[0], NaiveDate::from_ymd_opt(2026, 10, 7), "inside the grace period: the session's day");
+        assert_eq!(days[1], NaiveDate::from_ymd_opt(2026, 10, 8), "no session: its own day");
     }
 
     #[test]

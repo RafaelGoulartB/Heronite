@@ -6,6 +6,8 @@
 //! - `screenshotShortcut`: Guide + `screenshotButton` (RB unless changed)
 //!   takes a screenshot without opening it.
 //! - `volumeShortcut`: Guide + ↑ / ↓ changes the volume without opening it.
+//! - `momentShortcut`: Guide + Y marks a moment in the game's journal (with
+//!   a screenshot) without opening it, unless Y takes the screenshot.
 //! - `volumeStep`: percent per press of the volume shortcut (2, 5 or 10).
 //! - `side`: `left` (default) or `right` edge of the screen.
 //! - `keyboardShortcut` / `keyboardAccelerator`: a keyboard shortcut
@@ -108,6 +110,7 @@ pub struct OverlayPrefs {
     pub screenshot_shortcut: bool,
     pub screenshot_button: ChordButton,
     pub volume_shortcut: bool,
+    pub moment_shortcut: bool,
     /// One of [`VOLUME_STEPS`].
     pub volume_step: u8,
     pub side: Side,
@@ -125,6 +128,7 @@ impl Default for OverlayPrefs {
             screenshot_shortcut: true,
             screenshot_button: ChordButton::RB,
             volume_shortcut: true,
+            moment_shortcut: true,
             volume_step: 5,
             side: Side::Left,
             keyboard_shortcut: true,
@@ -154,6 +158,7 @@ impl OverlayPrefs {
                 .and_then(ChordButton::parse)
                 .unwrap_or(d.screenshot_button),
             volume_shortcut: flag("volumeShortcut", d.volume_shortcut),
+            moment_shortcut: flag("momentShortcut", d.moment_shortcut),
             volume_step: step,
             side: value.get("side").and_then(Value::as_str).and_then(Side::parse).unwrap_or(d.side),
             keyboard_shortcut: flag("keyboardShortcut", d.keyboard_shortcut),
@@ -177,6 +182,7 @@ impl OverlayPrefs {
             doc["screenshotShortcut"] = json!(self.screenshot_shortcut);
             doc["screenshotButton"] = json!(self.screenshot_button.as_str());
             doc["volumeShortcut"] = json!(self.volume_shortcut);
+            doc["momentShortcut"] = json!(self.moment_shortcut);
             doc["volumeStep"] = json!(self.volume_step);
             doc["side"] = json!(self.side.as_str());
             doc["keyboardShortcut"] = json!(self.keyboard_shortcut);
@@ -213,6 +219,7 @@ mod tests {
             screenshot_shortcut: false,
             screenshot_button: ChordButton::Y,
             volume_shortcut: true,
+            moment_shortcut: false,
             volume_step: 10,
             side: Side::Right,
             keyboard_shortcut: false,

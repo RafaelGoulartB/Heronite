@@ -9,11 +9,11 @@ use gpui_kit::*;
 use heronite_data::overlay_prefs::Side;
 
 /// Size of the panel in design px (console mode's 1280×800 scale). The
-/// height fits the tallest tab (Home with the FPS limit row and its recent
-/// screenshots); every tab
+/// height fits the tallest tab (Home with the FPS limit and "Mark this
+/// moment" rows and its recent screenshots); every tab
 /// fills it, so the panel never changes size while it loads or between tabs.
 pub const PANEL_W: f32 = 440.;
-pub const PANEL_H: f32 = 860.;
+pub const PANEL_H: f32 = 912.;
 /// Gap between the surfaces and the screen edges, in design px.
 pub const EDGE: f32 = 16.;
 /// Size of a notice, in design px.

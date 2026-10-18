@@ -14,6 +14,9 @@
 //! then the input thread and the shortcut run while the app does, and the
 //! panel shows what has no game (volume, controllers, Heronite).
 //!
+//! Guide + Y marks a moment in the game's journal (`moment`); the panel's
+//! Notes tab writes it.
+//!
 //! The keyboard shortcut is registered with the desktop only while such a
 //! game runs (or always, without a game) (a temporary Hyprland bind, else the GlobalShortcuts portal,
 //! as the screenshot shortcut). Opened from the keyboard, the panel takes
@@ -24,6 +27,7 @@
 //! from it. Desktops without layer-shell (GNOME, X11) cannot show them.
 
 mod debug;
+mod moment;
 pub mod panel;
 mod toast;
 mod window;
@@ -358,6 +362,7 @@ impl OverlayService {
             Event::Close => self.close_panel(cx),
             Event::Screenshot => self.screenshot(cx),
             Event::Volume(dir) => self.step_volume(dir, cx),
+            Event::Moment => self.mark_moment(cx),
             Event::Press(b) => {
                 if let Some(panel) = self.panel {
                     let pad = panel::pad_of(b);
@@ -509,5 +514,10 @@ impl OverlayService {
 }
 
 fn options(prefs: &OverlayPrefs) -> Options {
-    Options { screenshot: prefs.screenshot_shortcut, screenshot_button: prefs.screenshot_button.into(), volume: prefs.volume_shortcut }
+    Options {
+        screenshot: prefs.screenshot_shortcut,
+        screenshot_button: prefs.screenshot_button.into(),
+        volume: prefs.volume_shortcut,
+        moment: prefs.moment_shortcut,
+    }
 }

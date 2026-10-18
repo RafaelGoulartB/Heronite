@@ -71,6 +71,7 @@ impl CollectionView {
             SessionEvent::Toast { text, error } => self.show_toast(text.clone(), *error, cx),
             SessionEvent::Capture(c) => self.shots_on_msg(super::screenshots::Msg::Capture(c.clone()), cx),
             SessionEvent::LibraryChanged => self.reload(cx),
+            SessionEvent::JournalChanged(key) => self.journal_changed(key, cx),
         }
         cx.notify();
     }

@@ -23,6 +23,7 @@ mod grid_drawer;
 mod header;
 mod html;
 mod install_options;
+mod journal;
 mod launch_options;
 mod launch_progress;
 mod list;
@@ -82,6 +83,8 @@ enum ToastAction {
     ViewLog(String),
     /// Shows the install from a script that just ended.
     ScriptInstall,
+    /// Puts back the journal note just deleted (game key, the note).
+    RestoreNote(String, Box<heronite_data::journal::Entry>),
 }
 
 pub struct CollectionView {
@@ -137,6 +140,8 @@ pub struct CollectionView {
     onboarding: onboarding::OnboardingGlue,
     /// Rating, save backup, Linux facts and timeline of the focused game.
     facts: game_facts::Facts,
+    /// The focused game's journal (`journal/`).
+    journal: journal::JournalUi,
     focus_scroll: ScrollHandle,
     shots: screenshots::Shots,
     toast_task: Option<Task<()>>,
@@ -262,6 +267,7 @@ impl CollectionView {
             welcome: Default::default(),
             onboarding,
             facts: Default::default(),
+            journal: Default::default(),
             focus_scroll: ScrollHandle::new(),
             shots: Default::default(),
             images,
@@ -328,7 +334,6 @@ impl CollectionView {
                     .text_color(theme::white_a(0.92))
                     .child(text)
                     .children(action.map(|action| {
-                        let undo = matches!(action, ToastAction::Undo);
                         div()
                             .id("toast-action")
                             .occlude()
@@ -345,11 +350,11 @@ impl CollectionView {
                             .cursor_pointer()
                             .hover(|s| s.bg(theme::accent_tint_border()))
                             .child(match &action {
-                                ToastAction::Undo => heronite_i18n::tr!("Undo"),
+                                ToastAction::Undo | ToastAction::RestoreNote(..) => heronite_i18n::tr!("Undo"),
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
                                 ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
                             })
-                            .when(undo, |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
+                            .when(matches!(action, ToastAction::Undo), |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 match &action {
                                     ToastAction::Undo => {
@@ -362,6 +367,10 @@ impl CollectionView {
                                     ToastAction::ScriptInstall => {
                                         this.toast = None;
                                         this.show_script_install(window, cx);
+                                    }
+                                    ToastAction::RestoreNote(key, entry) => {
+                                        this.toast = None;
+                                        this.journal_restore(key.clone(), (**entry).clone(), cx);
                                     }
                                 }
                                 cx.notify();
@@ -429,6 +438,7 @@ impl CollectionView {
         self.sync_onboarding(window, cx);
         self.sync_language(window, cx);
         self.sync_facts(cx);
+        self.sync_journal(window, cx);
         self.sync_shots(window, cx);
         self.drive_palette(window, cx);
         crate::ui::glass::set_backdrop(self.glass_image(window));

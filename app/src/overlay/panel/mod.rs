@@ -1,11 +1,12 @@
 //! The overlay panel: the game and the session on top, tabs switched with
-//! LB / RB (Home, Screenshots, Audio, Controller), rows in console mode's
+//! LB / RB (Home, Screenshots, Notes, Audio, Controller), rows in console mode's
 //! look and the button hints at the bottom. It only takes controller presses
 //! (the service forwards them: the window never has the keyboard, so the
 //! game keeps it).
 
 mod data;
 mod mixer;
+mod notes;
 mod rows;
 mod shots;
 
@@ -22,7 +23,8 @@ use self::data::Data;
 use super::{GameNow, OverlayService};
 use crate::console::kit::{self, u};
 use crate::console::list::{self, ListNav, Row};
-use crate::console::{hint, Btn, Hint, Pad};
+use crate::console::osk::{self, Osk};
+use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
@@ -31,11 +33,12 @@ use crate::ui::icon;
 pub enum Tab {
     Home,
     Shots,
+    Notes,
     Audio,
     Controller,
 }
 
-const TABS: [Tab; 4] = [Tab::Home, Tab::Shots, Tab::Audio, Tab::Controller];
+const TABS: [Tab; 5] = [Tab::Home, Tab::Shots, Tab::Notes, Tab::Audio, Tab::Controller];
 /// Without a game there is nothing to capture.
 const TABS_NO_GAME: [Tab; 3] = [Tab::Home, Tab::Audio, Tab::Controller];
 
@@ -44,6 +47,7 @@ impl Tab {
         match self {
             Tab::Home => tr!("Home").into(),
             Tab::Shots => tr!("Screenshots").into(),
+            Tab::Notes => tr!("Notes").into(),
             Tab::Audio => tr!("Audio").into(),
             Tab::Controller => tr!("Controller").into(),
         }
@@ -53,6 +57,7 @@ impl Tab {
         match self {
             Tab::Home => Icon::Home,
             Tab::Shots => Icon::Collections,
+            Tab::Notes => Icon::Notes,
             Tab::Audio => Icon::VolumeUp,
             Tab::Controller => Icon::SportsEsports,
         }
@@ -93,6 +98,9 @@ pub struct OverlayPanel {
     /// Opened from the keyboard: it has the keyboard and shows keys.
     keyboard: bool,
     focus: FocusHandle,
+    /// The on-screen keyboard over the panel, and what it writes.
+    osk: Option<(Entity<Osk>, Subscription)>,
+    writing: Option<notes::Writing>,
 }
 
 /// Controller button to console mode's press.
@@ -148,6 +156,8 @@ impl OverlayPanel {
             error: None,
             keyboard,
             focus,
+            osk: None,
+            writing: None,
         };
         this.load_all(paths, cx);
         // The clock and the session time.
@@ -189,11 +199,19 @@ impl OverlayPanel {
         self.with_service(cx, |s, cx| s.close_panel(cx));
     }
 
-    pub fn on_pad(&mut self, pad: Pad, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+    pub fn on_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         crate::console::motion::press();
         cx.notify();
-        if self.viewer.is_some() {
-            self.viewer_pad(pad);
+        if let Some(osk) = self.osk.as_ref().map(|(k, _)| k.clone()) {
+            osk.update(cx, |k, cx| k.on_pad(pad, window, cx));
+            return true;
+        }
+        if let Some(i) = self.viewer {
+            if pad == Pad::Y {
+                self.capture_note(i, cx);
+            } else {
+                self.viewer_pad(pad);
+            }
             return true;
         }
         if let Some(confirm) = self.confirm.clone() {
@@ -215,8 +233,12 @@ impl OverlayPanel {
             }
             _ => {}
         }
-        if self.grid.is_some() {
-            self.grid_pad(pad);
+        if let Some(i) = self.grid {
+            if pad == Pad::Y {
+                self.capture_note(i, cx);
+            } else {
+                self.grid_pad(pad);
+            }
             return true;
         }
         let rows = self.rows();
@@ -224,6 +246,10 @@ impl OverlayPanel {
             if mixer::is_mixer(&id) && self.mixer_pad(&id, pad, cx) {
                 return true;
             }
+        }
+        if pad == Pad::Y && self.tab() == Tab::Notes && self.data.journal.is_some() {
+            self.with_service(cx, |s, cx| s.mark_moment(cx));
+            return true;
         }
         let outcome = self.nav.on_pad(pad, &rows);
         self.apply(outcome, cx);
@@ -260,8 +286,17 @@ impl OverlayPanel {
     }
 
     fn hints(&self) -> Vec<Hint> {
+        if self.osk.is_some() {
+            return osk::keyboard_hints();
+        }
+        let notes = self.data.journal.is_some();
         if self.viewer.is_some() {
-            return vec![hint(Btn::LeftRight, tr!("Previous / next")), hint(Btn::B, tr!("Back"))];
+            let mut h = vec![hint(Btn::LeftRight, tr!("Previous / next"))];
+            if notes {
+                h.push(hint(Btn::Y, tr!("Note")));
+            }
+            h.push(hint(Btn::B, tr!("Back")));
+            return h;
         }
         if self.confirm.is_some() {
             return vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Cancel"))];
@@ -275,6 +310,17 @@ impl OverlayPanel {
             }
             h.push(hint(Btn::B, tr!("Close")));
             return h;
+        }
+        if self.grid.is_some() && notes {
+            return vec![hint(Btn::A, tr!("View")), hint(Btn::Y, tr!("Note")), hint(Btn::B, tr!("Close")), hint(Btn::Bumpers, tr!("Tabs"))];
+        }
+        if self.tab() == Tab::Notes && notes {
+            return vec![
+                hint(Btn::A, tr!("Select")),
+                hint(Btn::Y, tr!("Mark a moment")),
+                hint(Btn::B, tr!("Close")),
+                hint(Btn::Bumpers, tr!("Tabs")),
+            ];
         }
         vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Close")), hint(Btn::Bumpers, tr!("Tabs"))]
     }
@@ -368,6 +414,12 @@ impl OverlayPanel {
     }
 
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(osk) = self.osk.as_ref().map(|(k, _)| k.clone()) {
+            if osk.update(cx, |k, cx| k.type_key(&ev.keystroke, cx)) {
+                cx.stop_propagation();
+                return;
+            }
+        }
         if let Some(pad) = crate::console::input::pad_from_key(&ev.keystroke) {
             cx.stop_propagation();
             self.on_pad(pad, window, cx);
@@ -443,7 +495,7 @@ impl OverlayPanel {
             Tab::Home if !self.apps_playing() => body.child(self.render_recent()),
             Tab::Home => body,
             Tab::Shots => body.child(self.render_grid()),
-            Tab::Audio | Tab::Controller => body,
+            Tab::Notes | Tab::Audio | Tab::Controller => body,
         }
     }
 }
@@ -504,6 +556,9 @@ impl Render for OverlayPanel {
         }
         if let Some(viewer) = self.render_viewer() {
             panel = panel.child(viewer);
+        }
+        if let Some((osk, _)) = &self.osk {
+            panel = panel.child(osk.clone());
         }
         panel
     }

@@ -15,6 +15,7 @@ impl OverlayPanel {
         match self.tab() {
             Tab::Home => self.home_rows(),
             Tab::Shots => vec![Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera)],
+            Tab::Notes => self.notes_rows(),
             Tab::Audio => self.audio_rows(),
             Tab::Controller => self.controller_rows(),
         }
@@ -34,6 +35,13 @@ impl OverlayPanel {
             return rows;
         };
         rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera));
+        if self.data.journal.is_some() {
+            rows.push(
+                Row::action("moment", tr!("Mark this moment"))
+                    .icon(Icon::Flag)
+                    .desc(tr!("Saves the time and a screenshot. Write about it later.")),
+            );
+        }
         // Only when the game's limiter can change while it runs.
         if let Some((live, limit)) = &game.fps {
             let steps = fps_steps(*limit);
@@ -120,6 +128,7 @@ impl OverlayPanel {
             "capture" => self.with_service(cx, |s, cx| s.screenshot(cx)),
             "launcher" => self.with_service(cx, |s, cx| s.show_launcher(cx)),
             "quit" => self.ask(Confirm::Quit),
+            id if self.notes_activate(id, cx) => {}
             _ => {
                 let Some(i) = id.strip_prefix("disconnect-").and_then(|n| n.parse::<usize>().ok()) else { return };
                 if let Some((c, _)) = self.data.controllers.get(i) {

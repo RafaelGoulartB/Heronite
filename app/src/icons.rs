@@ -95,6 +95,10 @@ pub enum Icon {
     /// A set of pictures (the overlay's captures).
     Collections,
     BatteryFull,
+    /// A speech bubble with lines (the game's journal).
+    Notes,
+    /// "Where I left off" in the journal.
+    Bookmark,
     /// Multi-colour 32px circle buttons (rendered with `img`, not `svg`).
     PlayCircle,
     InstallCircle,
@@ -120,6 +124,8 @@ impl Icon {
             Description => "icons/description.svg",
             Download => "icons/download.svg",
             Edit => "icons/edit.svg",
+            Notes => "icons/notes.svg",
+            Bookmark => "icons/bookmark.svg",
             ExpandMore => "icons/expand-more.svg",
             Favorite => "icons/favorite.svg",
             FavoriteBorder => "icons/favorite-border.svg",
