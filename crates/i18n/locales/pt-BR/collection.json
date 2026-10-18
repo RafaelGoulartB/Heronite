@@ -392,5 +392,7 @@
   "Nothing undone: these games were changed again since “{what}”": "Nada foi desfeito: esses jogos foram alterados de novo depois de “{what}”",
   "“{into}” already exists. Merge “{from}” into it?": "“{into}” já existe. Mesclar “{from}” nela?",
   "“{into}” already exists. Merge “{from}” into it? Its {n} game joins “{into}”.": "“{into}” já existe. Mesclar “{from}” nela? {n} jogo passa para “{into}”.",
-  "“{into}” already exists. Merge “{from}” into it? Its {n} games join “{into}”.": "“{into}” já existe. Mesclar “{from}” nela? {n} jogos passam para “{into}”."
+  "“{into}” already exists. Merge “{from}” into it? Its {n} games join “{into}”.": "“{into}” já existe. Mesclar “{from}” nela? {n} jogos passam para “{into}”.",
+  "Replace": "Substituir",
+  "A view with this name exists. Replace it with the current filters, or type another name.": "Já existe uma visualização com esse nome. Substitua-a pelos filtros atuais ou digite outro nome."
 }

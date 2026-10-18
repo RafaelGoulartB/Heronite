@@ -134,8 +134,14 @@ impl CollectionView {
             s
         });
         let sub = cx.subscribe_in(&input, window, move |this, _, ev: &InputEvent, window, cx| {
-            if matches!(ev, InputEvent::PressEnter { .. }) {
-                on_enter(this, window, cx);
+            match ev {
+                InputEvent::PressEnter { .. } => on_enter(this, window, cx),
+                // Another name: "Save" no longer replaces the view it matched.
+                InputEvent::Change if this.view_menu.replacing => {
+                    this.view_menu.replacing = false;
+                    cx.notify();
+                }
+                _ => {}
             }
         });
         input.update(cx, |s, cx| s.focus(window, cx));
@@ -145,31 +151,44 @@ impl CollectionView {
     /// "Save view": opens the name box.
     pub(super) fn start_naming_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.view_menu.renaming = None;
+        self.view_menu.replacing = false;
         self.view_menu.naming = Some(self.name_input("", Self::save_named_view, window, cx));
         cx.notify();
     }
 
     pub(super) fn cancel_view_naming(&mut self, cx: &mut Context<Self>) {
         self.view_menu.naming = None;
+        self.view_menu.replacing = false;
         self.view_menu.renaming = None;
         cx.notify();
     }
 
-    /// Saves the current state under the typed name (a view with the same
-    /// name is replaced).
+    /// Saves the current state under the typed name. When a view has that
+    /// name, the first Save says so and the second replaces it.
     pub(super) fn save_named_view(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some((input, _)) = self.view_menu.naming.as_ref() else { return };
         let name: String = input.read(cx).value().trim().chars().take(NAME_MAX).collect();
         if name.is_empty() {
             return;
         }
+        let taken = self.ui.saved_views.iter().position(|v| v.name.eq_ignore_ascii_case(&name));
+        if taken.is_some() && !self.view_menu.replacing {
+            self.view_menu.replacing = true;
+            cx.notify();
+            return;
+        }
         let view = SavedView { name, filters: self.ui.view_filters() };
-        match self.ui.saved_views.iter_mut().find(|v| v.name.eq_ignore_ascii_case(&view.name)) {
-            Some(old) => *old = view,
+        match taken {
+            Some(i) => {
+                let name = view.name.clone();
+                self.ui.saved_views[i] = view;
+                self.show_toast(tr!("“{name}” now holds the current filters", name), false, cx);
+            }
             None => self.ui.saved_views.push(view),
         }
         self.save_ui();
         self.view_menu.naming = None;
+        self.view_menu.replacing = false;
         self.focus_view_search(window, cx);
         cx.notify();
     }
