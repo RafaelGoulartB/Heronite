@@ -16,7 +16,7 @@ use super::{
 };
 use crate::icons::Icon;
 use crate::pages::settings::SettingsPage;
-use crate::pages::{caption_with, empty_row, icon_action, list_item, status_pill, PageEvent};
+use crate::pages::{empty_row, icon_action, list_item, status_pill, PageEvent};
 use crate::services::widgets::{busy_bar, cover_box, progress_bar};
 use crate::theme;
 use crate::ui::controls::{action_button, button_sm, caption, card_box, mini_checkbox, tabs, ButtonKind};
@@ -404,7 +404,17 @@ fn games(d: &mut SettingsPage, column: f32, window: &mut Window, cx: &mut Contex
     if games.len() > ROWS {
         list = list.child(show_all(Group::Games, expanded, games.len(), cx));
     }
-    div().child(caption_with(title, bar)).child(tree).child(div().h(px(10.))).child(list).into_any_element()
+    // As tall as the switch: a caption's fixed height would let it overlap the card.
+    let header = div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(12.))
+        .mt(px(14.))
+        .mb(px(8.))
+        .child(div().mx(px(6.)).text_size(px(12.)).text_color(theme::text_muted()).truncate().child(title))
+        .child(bar);
+    div().child(header).child(tree).child(div().h(px(10.))).child(list).into_any_element()
 }
 
 /// The biggest games as tiles of their art, sized by the space they take.
