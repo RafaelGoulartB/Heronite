@@ -60,7 +60,7 @@ pub enum DialogEvent {
 /// Esc, offered to the open dialog before the host closes it. True when the
 /// dialog used the key: it closed something inside itself (an image picker,
 /// a question) or asked before throwing away what was typed.
-pub fn handle_escape(view: &AnyView, cx: &mut App) -> bool {
+pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool {
     if let Ok(d) = view.clone().downcast::<add_game::AddGameDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
@@ -68,7 +68,7 @@ pub fn handle_escape(view: &AnyView, cx: &mut App) -> bool {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     if let Ok(d) = view.clone().downcast::<manage_categories::ManageCategoriesDialog>() {
-        return d.update(cx, |d, cx| d.on_escape(cx));
+        return d.update(cx, |d, cx| d.on_escape(window, cx));
     }
     if let Ok(d) = view.clone().downcast::<batch_edit::BatchEditDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));

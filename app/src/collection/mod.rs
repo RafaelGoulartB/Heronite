@@ -372,7 +372,7 @@ impl CollectionView {
         }
         if ev.keystroke.key == "escape" {
             if let Some(dialog) = self.dialog.clone() {
-                if !crate::dialogs::handle_escape(&dialog, cx) {
+                if !crate::dialogs::handle_escape(&dialog, window, cx) {
                     self.dialog = None;
                     self.dialog_sub = None;
                 }

@@ -29,6 +29,9 @@ pub struct ManageCategoriesDialog {
     error: Option<SharedString>,
     /// The category whose removal is being confirmed.
     confirm: Option<String>,
+    /// A rename to the name of another category, waiting for "Merge":
+    /// `(from, into)`.
+    merge: Option<(String, String)>,
 }
 
 impl EventEmitter<DialogEvent> for ManageCategoriesDialog {}
@@ -63,7 +66,7 @@ impl ManageCategoriesDialog {
             }
         })
         .detach();
-        let mut this = Self { ctx, rows: Vec::new(), new_name, error: None, confirm: None };
+        let mut this = Self { ctx, rows: Vec::new(), new_name, error: None, confirm: None, merge: None };
         this.load(window, cx);
         this
     }
@@ -105,6 +108,18 @@ impl ManageCategoriesDialog {
         if new.is_empty() || new == old {
             return;
         }
+        // Another category has that name: the two would become one. Ask.
+        if self.rows.iter().any(|r| r.name == new) {
+            self.confirm = None;
+            self.merge = Some((old.to_owned(), new));
+            cx.notify();
+            return;
+        }
+        self.do_rename(old, new, window, cx);
+    }
+
+    fn do_rename(&mut self, old: &str, new: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.merge = None;
         let res = categories::rename_category(&self.ctx.data_paths, old, &new);
         if res.is_ok() {
             cx.emit(CategoryRenamed { from: old.to_owned(), to: new });
@@ -113,13 +128,26 @@ impl ManageCategoriesDialog {
     }
 
     /// Esc, offered by the host before it closes the dialog: answers the
-    /// question about removing a category.
-    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+    /// question about removing or merging a category (no).
+    pub fn on_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.merge.is_some() {
+            self.cancel_merge(window, cx);
+            return true;
+        }
         let asking = self.confirm.take().is_some();
         if asking {
             cx.notify();
         }
         asking
+    }
+
+    /// The category keeps its name: its box shows it again.
+    fn cancel_merge(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((from, _)) = self.merge.take() else { return };
+        if let Some(row) = self.rows.iter().find(|r| r.name == from) {
+            row.input.update(cx, |s, cx| s.set_value(from.clone(), window, cx));
+        }
+        cx.notify();
     }
 
     fn delete(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -147,6 +175,35 @@ impl Render for ManageCategoriesDialog {
         }
         for (i, row) in self.rows.iter().enumerate() {
             let name = row.name.clone();
+            if let Some((from, into)) = self.merge.clone().filter(|(from, _)| *from == name) {
+                let question = if row.games == 0 {
+                    tr!("“{into}” already exists. Merge “{from}” into it?", into = into.as_str(), from = from.as_str())
+                } else {
+                    trn!(
+                        row.games,
+                        "“{into}” already exists. Merge “{from}” into it? Its {n} game joins “{into}”.",
+                        "“{into}” already exists. Merge “{from}” into it? Its {n} games join “{into}”.",
+                        into = into.as_str(),
+                        from = from.as_str()
+                    )
+                };
+                list = list.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .min_h(px(40.))
+                        .child(div().flex_1().min_w_0().text_size(px(13.5)).child(question))
+                        .child(button_sm(SharedString::from(format!("cat-merge-no-{i}")), ButtonKind::Ghost, tr!("Cancel")).on_click(
+                            cx.listener(|this, _, w, cx| this.cancel_merge(w, cx)),
+                        ))
+                        .child(
+                            button_sm(SharedString::from(format!("cat-merge-yes-{i}")), ButtonKind::Danger, tr!("Merge"))
+                                .on_click(cx.listener(move |this, _, w, cx| this.do_rename(&from, into.clone(), w, cx))),
+                        ),
+                );
+                continue;
+            }
             if self.confirm.as_ref() == Some(&name) {
                 let question = if row.games == 0 {
                     tr!("Remove the category “{name}”?", name = name.as_str())

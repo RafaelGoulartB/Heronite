@@ -389,5 +389,8 @@
   "Undone: {what}": "Desfeito: {what}",
   "Undone: {what} ({n} game changed since kept its change)": "Desfeito: {what} ({n} jogo alterado depois manteve a alteração)",
   "Undone: {what} ({n} games changed since kept their changes)": "Desfeito: {what} ({n} jogos alterados depois mantiveram as alterações)",
-  "Nothing undone: these games were changed again since “{what}”": "Nada foi desfeito: esses jogos foram alterados de novo depois de “{what}”"
+  "Nothing undone: these games were changed again since “{what}”": "Nada foi desfeito: esses jogos foram alterados de novo depois de “{what}”",
+  "“{into}” already exists. Merge “{from}” into it?": "“{into}” já existe. Mesclar “{from}” nela?",
+  "“{into}” already exists. Merge “{from}” into it? Its {n} game joins “{into}”.": "“{into}” já existe. Mesclar “{from}” nela? {n} jogo passa para “{into}”.",
+  "“{into}” already exists. Merge “{from}” into it? Its {n} games join “{into}”.": "“{into}” já existe. Mesclar “{from}” nela? {n} jogos passam para “{into}”."
 }
