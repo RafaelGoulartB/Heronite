@@ -269,11 +269,22 @@ impl CaptureService {
     /// Captures the display under the pointer into the active game's folder.
     /// Blocking; also what the shortcut triggers.
     pub fn capture_now(&self) -> CaptureOutcome {
+        self.capture(true)
+    }
+
+    /// Like [`capture_now`](Self::capture_now) for the in-game overlay, which
+    /// has its own switch and shows its own notice: it works with the
+    /// shortcut turned off and shows no OSD or notification.
+    pub fn capture_quiet(&self) -> CaptureOutcome {
+        self.capture(false)
+    }
+
+    fn capture(&self, shortcut: bool) -> CaptureOutcome {
         let (config, game) = {
             let st = self.inner.state.lock().unwrap();
             (st.config.clone(), current_game(st.games.values()).cloned())
         };
-        if !config.enabled {
+        if shortcut && !config.enabled {
             return CaptureOutcome::Skipped(SkipReason::Disabled);
         }
         let Some(game) = game else { return CaptureOutcome::Skipped(SkipReason::NoActiveGame) };
@@ -288,7 +299,7 @@ impl CaptureService {
                 log::info!("Collection screenshot saved to {}", path.display());
                 self.send(CaptureEvent::Saved { app_name: game.app_name.clone(), runner: game.runner.clone(), path: path.clone() });
                 let m = &self.inner.options.messages;
-                if !feedback::show_osd(tr(&m.saved_title), &game.title) {
+                if shortcut && !feedback::show_osd(tr(&m.saved_title), &game.title) {
                     feedback::notify(
                         tr(&m.saved_title),
                         &tr(&m.saved_body).replace("{game}", &game.title).replace("{path}", &path.to_string_lossy()),
@@ -298,8 +309,10 @@ impl CaptureService {
             }
             Err(error) => {
                 log::error!("Collection screenshot capture failed: {error}");
-                let m = &self.inner.options.messages;
-                feedback::notify(tr(&m.failed_title), &tr(&m.failed_body).replace("{error}", &error));
+                if shortcut {
+                    let m = &self.inner.options.messages;
+                    feedback::notify(tr(&m.failed_title), &tr(&m.failed_body).replace("{error}", &error));
+                }
                 self.send(CaptureEvent::Failed { error: error.clone() });
                 CaptureOutcome::Failed(error)
             }
