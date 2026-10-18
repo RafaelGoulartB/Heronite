@@ -174,6 +174,14 @@ pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
     ])
 }
 
+fn moment_desc(p: &OverlayPrefs) -> &'static str {
+    if p.screenshot_shortcut && p.screenshot_button == ChordButton::Y {
+        tr!("Off while Guide + Y takes the screenshot: pick another button for it above.")
+    } else {
+        tr!("Adds the time and a screenshot to the game's journal, to write about later in the overlay's Notes tab or the game's Journal.")
+    }
+}
+
 fn hotkey_status(d: &SettingsPage, cx: &App) -> Option<(String, bool)> {
     let p = &d.overlay.prefs;
     if !p.enabled || !p.keyboard_shortcut {
@@ -289,6 +297,10 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         row(tr!("Volume step"), Some(tr!("Also used by the volume rows of the overlay.")), step_tabs).into_any_element(),
     ]);
 
+    let moment = card([toggle_row("overlay-moment", tr!("Guide + Y: mark a moment"), Some(moment_desc(&p)), p.moment_shortcut)
+        .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.moment_shortcut = !p.moment_shortcut)))
+        .into_any_element()]);
+
     let look = card([row(tr!("Side of the screen"), None, side_tabs).into_any_element()]);
 
     let status = card([
@@ -319,7 +331,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(caption(tr!("Keyboard")))
         .child(dim(p.enabled, keyboard))
         .child(caption(tr!("Shortcuts without opening it")))
-        .child(dim(p.enabled, div().flex().flex_col().gap(px(12.)).child(shot).child(volume)))
+        .child(dim(p.enabled, div().flex().flex_col().gap(px(12.)).child(shot).child(volume).child(moment)))
         .child(caption(tr!("Position")))
         .child(dim(p.enabled, look))
         .child(caption(tr!("Status")))
@@ -405,6 +417,7 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     rows.extend(console_pad_shot_rows(d));
     rows.extend([
         Row::toggle("volume", tr!("Guide + ↑ / ↓: change the volume"), p.volume_shortcut),
+        Row::toggle("moment", tr!("Guide + Y: mark a moment"), p.moment_shortcut).desc(moment_desc(p)),
         Row::choice("step", tr!("Volume step"), VOLUME_STEPS.iter().map(|s| SharedString::from(step_label(*s))).collect(), step_index),
         Row::header(tr!("Position")),
         Row::choice("side", tr!("Side of the screen"), vec![tr!("Left").into(), tr!("Right").into()], usize::from(p.side == Side::Right)),
@@ -426,6 +439,7 @@ pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list:
             "keyboard" => update(d, cx, |p| p.keyboard_shortcut = on),
             "without-game" => update(d, cx, |p| p.without_game = on),
             "volume" => update(d, cx, |p| p.volume_shortcut = on),
+            "moment" => update(d, cx, |p| p.moment_shortcut = on),
             _ => {}
         },
         Outcome::Changed(id, Value::Choice { index, options }) => match id.as_ref() {

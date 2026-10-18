@@ -122,5 +122,8 @@
   "What to do when you come back": "O que fazer quando voltar",
   "With a screenshot. Write about it in Notes.": "Com uma captura. Escreva sobre ele em Notas.",
   "Write a note": "Escrever uma nota",
-  "Write about it in Notes.": "Escreva sobre ele em Notas."
+  "Write about it in Notes.": "Escreva sobre ele em Notas.",
+  "Adds the time and a screenshot to the game's journal, to write about later in the overlay's Notes tab or the game's Journal.": "Adiciona a hora e uma captura ao diário do jogo, para escrever depois na aba Notas do overlay ou no Diário do jogo.",
+  "Guide + Y: mark a moment": "Guide + Y: marcar um momento",
+  "Off while Guide + Y takes the screenshot: pick another button for it above.": "Desligado enquanto Guide + Y tira a captura: escolha outro botão para ela acima."
 }
