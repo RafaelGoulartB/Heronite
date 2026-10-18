@@ -4,6 +4,8 @@
 //! mode, smaller since the panel floats over a game (1440 px tall → 1.16).
 
 use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellNotSupportedError, LayerShellOptions};
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use gpui_kit::*;
 use heronite_data::overlay_prefs::Side;
 
@@ -14,6 +16,14 @@ pub const EDGE: f32 = 16.;
 /// Size of a notice, in design px.
 pub const NOTICE_W: f32 = 360.;
 pub const NOTICE_H: f32 = 76.;
+
+/// The panel's height the last time it was measured (logical px, 0 = never):
+/// it opens at that height again rather than at a guess.
+static LAST_PANEL_H: AtomicU32 = AtomicU32::new(0);
+
+pub fn remember_panel_height(h: f32) {
+    LAST_PANEL_H.store(h.to_bits(), Ordering::Relaxed);
+}
 
 /// Display height (px) per unit of the console scale.
 const PX_PER_SCALE: f32 = 1240.;
@@ -75,9 +85,12 @@ pub fn open_panel<V: Render>(
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<WindowHandle<V>> {
     let s = scale(cx);
-    // A first guess: the panel fits its height to what it shows once drawn
-    // (`OverlayPanel::fit`).
-    let size = size(px(PANEL_W * s), px(panel_max_height(cx) * 0.6));
+    // The panel fits its height to what it shows once drawn
+    // (`OverlayPanel::fit`); until then, its last height or a guess.
+    let last = f32::from_bits(LAST_PANEL_H.load(Ordering::Relaxed));
+    let max = panel_max_height(cx);
+    let height = if last > 0. { last.min(max) } else { max * 0.6 };
+    let size = size(px(PANEL_W * s), px(height));
     let anchor = side_anchor(side) | Anchor::TOP;
     cx.open_window(options("overlay", size, anchor, px(EDGE * s), layer), build)
 }

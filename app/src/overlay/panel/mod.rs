@@ -80,6 +80,8 @@ pub struct OverlayPanel {
     /// window follows it, up to `max_height`.
     content_height: Rc<Cell<f32>>,
     max_height: f32,
+    /// Redraws after a resize are scheduled.
+    fitting: Rc<Cell<bool>>,
     tab: usize,
     nav: ListNav,
     data: Data,
@@ -132,6 +134,7 @@ impl OverlayPanel {
             scale: super::window::scale(cx),
             content_height: Rc::new(Cell::new(0.)),
             max_height: super::window::panel_max_height(cx),
+            fitting: Rc::new(Cell::new(false)),
             tab: 0,
             nav: ListNav::default(),
             data: Data::default(),
@@ -391,12 +394,30 @@ impl OverlayPanel {
 
 impl OverlayPanel {
     /// Sizes the window to the content measured in the last frame.
-    fn fit(&self, window: &mut Window) {
+    fn fit(&self, window: &mut Window, cx: &mut Context<Self>) {
         let wanted = self.content_height.get().min(self.max_height).ceil();
         let size = window.viewport_size();
-        if wanted > 0. && (wanted - f32::from(size.height)).abs() > 1. {
-            log::debug!("overlay: panel height {wanted}");
-            window.resize(gpui_kit::size(size.width, px(wanted)));
+        if wanted <= 0. || (wanted - f32::from(size.height)).abs() <= 1. {
+            return;
+        }
+        log::debug!("overlay: panel height {wanted}");
+        super::window::remember_panel_height(wanted);
+        window.resize(gpui_kit::size(size.width, px(wanted)));
+        // The layer surface takes the new size with the next frame it commits:
+        // draw again until the compositor has applied it (nothing else may
+        // redraw a panel that just opened).
+        if !self.fitting.replace(true) {
+            let fitting = self.fitting.clone();
+            cx.spawn(async move |this, cx| {
+                for ms in [16, 60, 150, 300] {
+                    cx.background_executor().timer(Duration::from_millis(ms)).await;
+                    if this.update(cx, |_, cx| cx.notify()).is_err() {
+                        break;
+                    }
+                }
+                fitting.set(false);
+            })
+            .detach();
         }
     }
 }
@@ -420,9 +441,9 @@ fn duration_label(minutes: u64) -> String {
 }
 
 impl Render for OverlayPanel {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         kit::set_scale_value(self.scale);
-        self.fit(window);
+        self.fit(window, cx);
         let measured = self.content_height.clone();
         // The window's root always fills the window; the panel inside keeps its
         // own height (no shrinking), which `fit` gives the window next frame.
