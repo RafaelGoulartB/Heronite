@@ -24,7 +24,9 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use heronite_i18n::tr;
+use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
 
 mod fps;
 mod gpu;
@@ -695,6 +697,9 @@ impl SettingsPanel {
             Self::c_header(tr!("When a game starts")),
             self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
             self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite:// launches"), None, false),
+            Self::c_header(tr!("When a game ends")),
+            self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again"), None, !self.flag("minimizeOnLaunch", false)),
+            self.c_toggle(KEY_CLOSE_AFTER_GAME, false, tr!("Close Steam if Heronite opened it"), None, false),
             Self::c_header(tr!("Game Shortcuts")),
             self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
             self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),

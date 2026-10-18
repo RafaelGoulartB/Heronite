@@ -274,6 +274,11 @@ impl GlobalSettings {
         }
     }
 
+    /// A switch; missing or not a boolean is off.
+    pub fn flag(&self, key: &str) -> bool {
+        self.defaults.get(key).and_then(Value::as_bool).unwrap_or(false)
+    }
+
     pub fn wine_version(&self) -> WineVersion {
         parse_wine_version(self.defaults.get("wineVersion"))
     }

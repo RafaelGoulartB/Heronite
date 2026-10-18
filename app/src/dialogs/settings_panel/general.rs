@@ -8,11 +8,13 @@ use serde_json::Value;
 use super::parts::{column, heading, help, rows, Rows};
 use super::{Section, SettingsPanel, Target};
 use crate::icons::Icon;
+use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use crate::theme;
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::{tr, Lang, Preference};
+use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
 
 /// What the global ("General") panel shows. The Settings page hosts one
 /// panel and switches between these; the Game defaults use the other tabs.
@@ -176,6 +178,8 @@ impl SettingsPanel {
             .child(self.tray_rows(cx).card())
             .child(heading(tr!("When a game starts")))
             .child(self.game_start_rows(cx).card())
+            .child(heading(tr!("When a game ends")))
+            .child(self.game_end_rows(cx).card())
             .child(heading(tr!("Game Shortcuts")))
             .child(self.shortcut_rows(cx).card())
             .child(heading(tr!("Wine and Proton")))
@@ -229,6 +233,30 @@ impl SettingsPanel {
                 cx,
             ),
         )
+    }
+
+    /// After the game: the window it closed, the Steam it opened.
+    fn game_end_rows(&self, cx: &mut Context<Self>) -> Rows {
+        let minimize = self.flag("minimizeOnLaunch", false);
+        rows()
+            .child(self.toggle_row(
+                "restore-after-game",
+                KEY_RESTORE_AFTER_GAME,
+                false,
+                tr!("Show Heronite again"),
+                Some(tr!("Opens the window that \"Minimize after game launch\" closed once the game ends.")),
+                !minimize,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "close-steam-after-game",
+                KEY_CLOSE_AFTER_GAME,
+                false,
+                tr!("Close Steam if Heronite opened it"),
+                Some(tr!("When Steam was not running before you played a Steam game, it is closed once the game ends.")),
+                false,
+                cx,
+            ))
     }
 
     /// Shortcuts made when a game is added (`system/shortcuts.rs`).

@@ -64,12 +64,31 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     tell_compression(cx, &ev);
     // Heroic's `minimizeOnLaunch`, once the game runs: the window shows the
     // launch's progress until then. Needs the tray to come back from.
-    if started && settings.minimize_on_launch {
-        close_window_keep_alive(cx);
+    if started && settings.minimize_on_launch && close_window_keep_alive(cx) {
+        hub.0.borrow_mut().hidden_for_game = true;
     }
     if ended {
+        restore_after_game(cx, settings.restore_after_game);
         maybe_exit_idle(cx);
     }
+}
+
+/// Opens the window again once the last game it was closed for ended (with
+/// `restore`; else it stays in the tray until asked for).
+fn restore_after_game(cx: &mut App, restore: bool) {
+    let hub = hub(cx);
+    {
+        let mut s = hub.0.borrow_mut();
+        if !s.hidden_for_game || !s.running.is_empty() {
+            return;
+        }
+        s.hidden_for_game = false;
+        if !restore || s.quitting {
+            return;
+        }
+    }
+    log::info!("game ended: opening the window again");
+    show_window(cx);
 }
 
 /// The Epic service must not update a game while it is played (it queues the

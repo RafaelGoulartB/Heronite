@@ -5,6 +5,9 @@ use heronite_data::game_config::{load_global, Settings};
 use heronite_data::DataPaths;
 use serde_json::Value;
 
+/// Heronite's: show the window again once the game that minimized it ends.
+pub const KEY_RESTORE_AFTER_GAME: &str = "heroniteRestoreAfterGame";
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SysSettings {
     /// Closing the window keeps the app in the tray.
@@ -15,6 +18,8 @@ pub struct SysSettings {
     pub no_tray_icon: bool,
     /// Close the window when a game starts (needs the tray).
     pub minimize_on_launch: bool,
+    /// Open the window again when the games it was closed for end.
+    pub restore_after_game: bool,
     pub dark_tray_icon: bool,
     pub hide_window_on_protocol_launch: bool,
     /// Keep an XDG autostart entry (see `system::autostart`).
@@ -32,6 +37,7 @@ impl SysSettings {
             start_in_tray: flag("startInTray"),
             no_tray_icon: flag("noTrayIcon"),
             minimize_on_launch: flag("minimizeOnLaunch"),
+            restore_after_game: flag(KEY_RESTORE_AFTER_GAME),
             dark_tray_icon: flag("darkTrayIcon"),
             hide_window_on_protocol_launch: flag("hideWindowOnProtocolLaunch"),
             start_with_system: flag("startWithSystem"),
@@ -76,13 +82,20 @@ mod tests {
         let s = SysSettings::from_map(&m);
         assert!(!s.exit_to_tray && !s.start_in_tray && !s.no_tray_icon);
         assert_eq!(s.max_recent, 5);
-        let m: Settings =
-            json!({"exitToTray": true, "startInTray": true, "darkTrayIcon": true, "maxRecentGames": 3, "hideWindowOnProtocolLaunch": true})
-                .as_object()
-                .unwrap()
-                .clone();
+        assert!(!s.restore_after_game);
+        let m: Settings = json!({
+            "exitToTray": true,
+            "startInTray": true,
+            "darkTrayIcon": true,
+            "maxRecentGames": 3,
+            "hideWindowOnProtocolLaunch": true,
+            "heroniteRestoreAfterGame": true
+        })
+        .as_object()
+        .unwrap()
+        .clone();
         let s = SysSettings::from_map(&m);
-        assert!(s.exit_to_tray && s.start_in_tray && s.dark_tray_icon && s.hide_window_on_protocol_launch);
+        assert!(s.exit_to_tray && s.start_in_tray && s.dark_tray_icon && s.hide_window_on_protocol_launch && s.restore_after_game);
         assert_eq!(s.max_recent, 3);
         // 0 means "use the default", like `maxRecentGames || 5`.
         let m: Settings = json!({"maxRecentGames": 0}).as_object().unwrap().clone();

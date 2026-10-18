@@ -101,6 +101,9 @@ pub(super) enum Tracked {
         app_id: String,
         #[serde(default)]
         pids: Vec<(u32, u64)>,
+        /// Steam was not running before the launch (see `steam::close_steam`).
+        #[serde(default)]
+        opened_steam: bool,
     },
 }
 
@@ -182,8 +185,8 @@ pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::Proce
 }
 
 /// What a Steam session writes down (see [`remember`]).
-pub(super) fn steam_entry(shared: &Shared, control: &Control, app_id: &str) -> Tracked {
-    Tracked::Steam { app_id: app_id.to_string(), pids: steam_pids(&*shared.procs, &control.steam_pids.lock().unwrap()) }
+pub(super) fn steam_entry(shared: &Shared, control: &Control, app_id: &str, opened_steam: bool) -> Tracked {
+    Tracked::Steam { app_id: app_id.to_string(), pids: steam_pids(&*shared.procs, &control.steam_pids.lock().unwrap()), opened_steam }
 }
 
 /// The Steam game's pids that are still the same processes.
@@ -363,10 +366,10 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
             }
             finish(&shared, &log, &req, &control, elapsed, None);
         }
-        Tracked::Steam { app_id, .. } => {
+        Tracked::Steam { app_id, opened_steam, .. } => {
             let locator = shared.steam.clone();
             let seeded: BTreeSet<u32> = control.steam_pids.lock().unwrap().clone();
-            crate::playtime_watch::follow_steam_session(
+            let outcome = crate::playtime_watch::follow_steam_session(
                 app_id,
                 &*shared.procs,
                 &move || locator.log_files(),
@@ -378,6 +381,9 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
             );
             log.info("Steam game finished");
             finish(&shared, &log, &req, &control, control.played(), None);
+            if *opened_steam && matches!(outcome, crate::playtime_watch::SteamWaitOutcome::Finished) {
+                super::steam::close_steam(&shared, &entry.title);
+            }
         }
     }
 }

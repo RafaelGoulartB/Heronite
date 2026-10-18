@@ -81,6 +81,9 @@ struct State {
     exit_when_idle: bool,
     /// The next window close is ours (tray / minimize on launch): stay alive.
     hiding: bool,
+    /// The window was closed because a game started (minimize on launch):
+    /// it may open again once no game runs.
+    hidden_for_game: bool,
     /// The graceful quit began: no new windows, requests or quits.
     quitting: bool,
     fake_launch: bool,

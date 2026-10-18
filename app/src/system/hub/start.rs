@@ -74,6 +74,7 @@ pub fn init(
         fake_tray,
         exit_when_idle: cli.launch.is_some() && !want_window && !start_in_tray,
         hiding: false,
+        hidden_for_game: false,
         quitting: false,
         fake_launch: crate::env::flag("HERONITE_DEBUG_FAKE_LAUNCH"),
         // The first window opens fullscreen right away.

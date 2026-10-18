@@ -257,6 +257,42 @@ fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
     assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
 }
 
+/// Plays `steam_400` to its end. `steam_open_before`: Steam's pid file names
+/// a live process before the launch (else Steam "starts" with the game).
+/// Returns the URIs opened.
+fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
+    let r = rig();
+    let log = write_steam_log(&r, "");
+    json_store::write(&r.paths.global_config(), &serde_json::json!({"defaultSettings": {"heroniteCloseSteamAfterGame": close_after}}))
+        .unwrap();
+    let steam_running = || {
+        fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000\n").unwrap();
+        r.procs.start(5000, "steam", None);
+    };
+    if steam_open_before {
+        steam_running();
+    }
+    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    next(&r.rx);
+    wait_until("uri opened", || r.spawner.uris() == ["u"]);
+    steam_running();
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.procs.exit(7777);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    // Steam is closed right after the session ends, on the same thread.
+    std::thread::sleep(Duration::from_millis(100));
+    r.spawner.uris()
+}
+
+#[test]
+fn steam_opened_for_a_game_is_closed_after_it_only_when_asked() {
+    assert_eq!(play_steam_game(true, false), ["u", "steam://exit"]);
+    assert_eq!(play_steam_game(false, false), ["u"], "the setting is off");
+    assert_eq!(play_steam_game(true, true), ["u"], "Steam was already open");
+}
+
 #[test]
 fn steam_that_never_starts_the_game_is_an_error_without_recording() {
     let r = rig();
@@ -992,6 +1028,33 @@ fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     let LaunchEvent::Exited { stopped, .. } = next(&rx) else { panic!() };
     assert!(stopped);
     assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
+}
+
+#[test]
+fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
+    let r = rig();
+    let log = write_steam_log(&r, "");
+    json_store::write(&r.paths.global_config(), &serde_json::json!({"defaultSettings": {"heroniteCloseSteamAfterGame": true}})).unwrap();
+    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    next(&r.rx);
+    wait_until("uri opened", || r.spawner.uris() == ["u"]);
+    fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000").unwrap();
+    r.procs.start(5000, "steam", None);
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    next(&r.rx);
+    assert_eq!(running_file(&r.paths)["sessions"]["steam_400"]["tracked"]["openedSteam"], true);
+
+    let home = r._dir.path().join("home");
+    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let (tx, rx) = channel();
+    let spawner = Arc::new(FakeSpawner::new());
+    let again = Launcher::new(r.paths.clone(), steam, spawner.clone(), r.procs.clone(), fast_cfg(), tx);
+    assert_eq!(again.adopt(&mut |_| {}), 1);
+    next(&rx);
+    r.procs.exit(7777);
+    assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
+    wait_until("Steam closed", || spawner.uris() == ["steam://exit"]);
 }
 
 #[test]
