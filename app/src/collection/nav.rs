@@ -310,6 +310,7 @@ impl CollectionView {
                         )
                         .on_click(cx.listener(|this, _, window, cx| this.open_install_script(None, window, cx))),
                     )
+                    .child(menu_separator())
                     .child(
                         nav_row("nav-console".into(), Icon::Tv, tr!("Console mode"), Trailing::None, false)
                             .on_click(cx.listener(|this, _, window, cx| this.set_console(true, window, cx))),
