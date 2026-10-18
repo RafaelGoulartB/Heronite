@@ -526,6 +526,35 @@ impl CollectionView {
         self.pages.meta.loaded_at = None;
         self.sync_nav_meta(cx);
         self.offer_stats_data(cx);
+        self.offer_settings_library(cx);
+    }
+
+    /// Gives the Settings page the reloaded library while it is on screen
+    /// (Storage looks again after an uninstall); otherwise it gets the
+    /// library when it is shown next.
+    fn offer_settings_library(&self, cx: &mut Context<Self>) {
+        if self.page != Page::Settings {
+            return;
+        }
+        let (Some(offer), Some(view)) = (self.library_offer(), self.pages.settings.clone()) else { return };
+        let Ok(view) = view.downcast::<pages::settings::SettingsPage>() else { return };
+        view.update(cx, |p, cx| p.set_library(offer, cx));
+    }
+
+    /// Runs the game's uninstall (Steam's, its store's or a local game's), as
+    /// its context menu does.
+    fn uninstall_game(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        use super::game_actions::GameAction as A;
+        let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
+        let action = self
+            .game_actions(&game, cx)
+            .into_iter()
+            .map(|i| i.action)
+            .find(|a| matches!(a, A::SteamUninstall | A::LocalUninstall | A::Epic(super::epic::EpicAction::Uninstall)));
+        match action {
+            Some(action) => self.run_game_action(key, &action, window, cx),
+            None => self.show_toast(tr!("This game cannot be uninstalled from here").to_string(), true, cx),
+        }
     }
 
     /// Gives the Statistics page the current library (it skips the work
@@ -559,6 +588,7 @@ impl CollectionView {
                     self.reveal_selected();
                 }
             }
+            PageEvent::Uninstall(key) => self.uninstall_game(key, window, cx),
         }
     }
 

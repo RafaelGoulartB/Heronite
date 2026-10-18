@@ -330,6 +330,12 @@ impl CollectionView {
     pub(super) fn offer_settings_data(&self, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.as_ref() else { return };
         let chain = self.selected.as_ref().and_then(|k| self.stage_chains.get(k).cloned()).unwrap_or_default();
-        crate::pages::settings::offer(lib.settings.clone(), chain, cx);
+        crate::pages::settings::offer(lib.settings.clone(), chain, self.library_offer(), cx);
+    }
+
+    /// The library and its art, for the Settings page's Storage section.
+    pub(super) fn library_offer(&self) -> Option<crate::pages::settings::LibraryOffer> {
+        let lib = self.lib.clone()?;
+        Some(crate::pages::settings::LibraryOffer { lib, chains: self.cover_chains.clone(), stages: self.stage_chains.clone() })
     }
 }

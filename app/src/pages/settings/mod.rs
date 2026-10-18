@@ -7,6 +7,7 @@
 //! - Game defaults: a second panel (Wine / Other / Advanced / Gamescope
 //!   defaults new games inherit).
 //! - Library: hidden games, favourites, recent games (`library.rs`).
+//! - Storage: what the games take on disk and cleaning it up (`storage/`).
 //! - Advanced extras: folders, cache, copy settings (`advanced.rs`).
 //! - Appearance, Metadata, Screenshots, Backups: Collection settings, backed
 //!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
@@ -17,7 +18,7 @@
 //!
 //! Emulators and ROM folders are not here: they live on the ☰ Emulators page.
 //!
-//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|overlay|metadata|screenshots|backups|logs|about]`.
+//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|storage|overlay|metadata|screenshots|backups|logs|about]`.
 
 mod about;
 mod advanced;
@@ -33,6 +34,7 @@ mod saves;
 mod saves_restore;
 mod screenshots;
 mod section;
+mod storage;
 pub mod sysinfo;
 mod updates;
 
@@ -40,9 +42,13 @@ pub use advanced::open_folder;
 pub use backup::format_time;
 pub use section::Section;
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::settings::{self as store, EffectiveSettings};
+use heronite_data::Library;
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
 
@@ -71,17 +77,26 @@ fn take_requested_section(cx: &mut App) -> Option<Section> {
 }
 
 /// What the Collection hands over when it shows the page: the settings it
-/// already loaded (so the page does no file I/O to build its inputs) and the
-/// stage artwork of the focused game (Appearance live preview).
+/// already loaded (so the page does no file I/O to build its inputs), the
+/// stage artwork of the focused game (Appearance live preview), and the
+/// library with its art (Storage).
 struct Offer {
     settings: EffectiveSettings,
     chain: Vec<ImageRef>,
+    library: Option<LibraryOffer>,
 }
 impl Global for Offer {}
 
+/// The Collection's library and the art chains of its games (covers, wide art).
+pub struct LibraryOffer {
+    pub lib: Arc<Library>,
+    pub chains: HashMap<SharedString, Vec<ImageRef>>,
+    pub stages: HashMap<SharedString, Vec<ImageRef>>,
+}
+
 /// Called by the Collection right before it shows the Settings page.
-pub fn offer(settings: EffectiveSettings, chain: Vec<ImageRef>, cx: &mut App) {
-    cx.set_global(Offer { settings, chain });
+pub fn offer(settings: EffectiveSettings, chain: Vec<ImageRef>, library: Option<LibraryOffer>, cx: &mut App) {
+    cx.set_global(Offer { settings, chain, library });
 }
 
 pub struct SettingsPage {
@@ -102,6 +117,7 @@ pub struct SettingsPage {
     defaults_section: HSection,
     library: library::State,
     overlay: overlay::State,
+    storage: storage::State,
     advanced: advanced::State,
     about: about::State,
     logs: logs::State,
@@ -123,11 +139,15 @@ impl SettingsPage {
             Some("gpu") => HSection::Gpu,
             _ => DEFAULT_SECTIONS[0],
         };
-        let (settings, chain) = match cx.has_global::<Offer>().then(|| cx.remove_global::<Offer>()) {
-            Some(o) => (o.settings, o.chain),
+        let (settings, chain, library) = match cx.has_global::<Offer>().then(|| cx.remove_global::<Offer>()) {
+            Some(o) => (o.settings, o.chain, o.library),
             // The Collection has not loaded its library yet: read the file.
-            None => (store::load(&ctx.data_paths).unwrap_or_default(), Vec::new()),
+            None => (store::load(&ctx.data_paths).unwrap_or_default(), Vec::new(), None),
         };
+        let mut storage = storage::State::new(&ctx);
+        if let Some(l) = library {
+            storage.set_library(l.lib, l.chains, l.stages);
+        }
         let appearance = appearance::State::new(&ctx, &settings, chain, window, cx);
         let screenshots = screenshots::State::new(&ctx, &settings, window, cx);
         let metadata = metadata::State::new(&ctx, &settings, window, cx);
@@ -144,6 +164,7 @@ impl SettingsPage {
             saves_restore: Default::default(),
             library: library::State::new(&ctx),
             overlay: overlay::State::new(&ctx, cx),
+            storage,
             advanced: advanced::State::default(),
             about: about::State::default(),
             logs: logs::State::default(),
@@ -191,8 +212,11 @@ impl SettingsPage {
     pub fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if cx.has_global::<Offer>() {
             // Another game may be focused now; the settings are re-read below.
-            let chain = cx.remove_global::<Offer>().chain;
-            self.appearance.set_chain(chain);
+            let offer = cx.remove_global::<Offer>();
+            self.appearance.set_chain(offer.chain);
+            if let Some(l) = offer.library {
+                self.storage.set_library(l.lib, l.chains, l.stages);
+            }
         }
         if let Some(section) = take_requested_section(cx) {
             self.select(section, window, cx);
@@ -213,6 +237,15 @@ impl SettingsPage {
         .detach();
         self.on_section_shown(window, cx);
         cx.notify();
+    }
+
+    /// The Collection reloaded its library while the page is on screen (a
+    /// game was uninstalled from Storage): Storage looks again.
+    pub fn set_library(&mut self, offer: LibraryOffer, cx: &mut Context<Self>) {
+        let changed = self.storage.set_library(offer.lib, offer.chains, offer.stages);
+        if changed && self.section == Section::Storage {
+            storage::State::shown(self, cx);
+        }
     }
 
     /// Records the result of a settings write (any Collection section) and
@@ -244,12 +277,16 @@ impl SettingsPage {
 
     /// Starts the background work a section needs.
     fn on_section_shown(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.section != Section::Storage {
+            self.storage.stop();
+        }
         match self.section {
             Section::Advanced => self.advanced.measure(&self.ctx, cx),
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
             Section::Overlay => overlay::shown(cx),
             Section::Saves => saves::State::shown(self, window, cx),
+            Section::Storage => storage::State::shown(self, cx),
             _ => {}
         }
     }
@@ -354,6 +391,7 @@ impl SettingsPage {
             }
             Section::GameDefaults => self.defaults_view(window, cx),
             Section::Library => self.library_section(cx).into_any_element(),
+            Section::Storage => storage::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
@@ -384,7 +422,11 @@ impl Render for SettingsPage {
         let body = self.render_body(window, cx);
         let title = div().flex().flex_col().gap(px(4.)).pr(px(48.)).child(page_heading(section.label())).child(help_text(section.blurb()));
         // The log viewer wants the width; the forms read better narrow.
-        let max_w = if section == Section::Logs { px(1400.) } else { px(880.) };
+        let max_w = match section {
+            Section::Logs => px(1400.),
+            Section::Storage => px(storage::MAX_W),
+            _ => px(880.),
+        };
         let column = div().flex().flex_col().w_full().max_w(max_w).mx_auto().gap(px(14.)).child(title).child(body);
         let content =
             div().id("page-settings").flex_1().min_w_0().h_full().overflow_y_scroll().px(px(36.)).pt(px(26.)).pb(px(32.)).child(column);
