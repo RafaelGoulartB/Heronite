@@ -18,6 +18,7 @@ pub mod panel;
 mod toast;
 mod window;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -27,6 +28,7 @@ use gpui_kit::*;
 use heronite_data::overlay_prefs::OverlayPrefs;
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::tr;
+use heronite_launch::live_fps::LiveFps;
 use heronite_launch::LaunchEvent;
 use heronite_media::capture::{CaptureOutcome, SkipReason};
 use heronite_overlay::input::{Controller, Event, Options, Watcher};
@@ -53,6 +55,8 @@ pub struct RunningGame {
 pub struct GameNow {
     pub game: RunningGame,
     pub info: Option<SessionInfo>,
+    /// How its FPS limit can change now, and the limit it has (`0` = none).
+    pub fps: Option<(LiveFps, u32)>,
 }
 
 impl GameNow {
@@ -75,6 +79,10 @@ pub struct OverlayService {
     layer_shell: bool,
     /// Debug: draw the panel in a normal window (`HERONITE_DEBUG_OVERLAY=window`).
     debug_window: bool,
+    /// `HERONITE_DEBUG_OVERLAY_FPS`: a limiter the debug game pretends to have.
+    debug_live_fps: Option<LiveFps>,
+    /// FPS limits set from the panel, by game, while it runs.
+    fps_limits: HashMap<String, u32>,
 }
 
 struct OverlayGlobal(Entity<OverlayService>);
@@ -98,6 +106,8 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         notice: None,
         layer_shell: window::wayland(),
         debug_window: false,
+        debug_live_fps: None,
+        fps_limits: HashMap::new(),
     });
     cx.set_global(OverlayGlobal(entity.clone()));
     debug::start(&entity, cx);
@@ -133,6 +143,7 @@ impl OverlayService {
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
                 self.games.retain(|g| &g.app_name != app_name);
+                self.fps_limits.remove(app_name);
                 if self.games.is_empty() {
                     self.close_panel(cx);
                 }
@@ -146,7 +157,19 @@ impl OverlayService {
     pub fn current(&self) -> Option<GameNow> {
         let game = self.games.last()?.clone();
         let info = self.runtime.session_info(&game.app_name);
-        Some(GameNow { game, info })
+        let live = self.debug_live_fps.clone().or_else(|| self.runtime.live_fps(&game.app_name));
+        // gamescope's limit is set with xprop.
+        let live = live.filter(|l| !l.is_gamescope() || heronite_overlay::gamescope::available());
+        let fps = live.map(|l| {
+            let limit = self.fps_limits.get(&game.app_name).copied().unwrap_or_else(|| l.limit());
+            (l, limit)
+        });
+        Some(GameNow { game, info, fps })
+    }
+
+    /// The panel changed the running game's FPS limit (kept for this session).
+    pub fn fps_limit_changed(&mut self, app_name: &str, limit: u32) {
+        self.fps_limits.insert(app_name.to_string(), limit);
     }
 
     /// The input thread runs while a game runs and the overlay is on.

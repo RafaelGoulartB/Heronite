@@ -244,6 +244,12 @@ pub fn toggle_pill(on: bool, focused: bool) -> Div {
 
 /// `‹ value ›` (arrows dimmed at the ends).
 pub fn choice(value: impl Into<SharedString>, focused: bool, can_left: bool, can_right: bool) -> Div {
+    choice_sized(value, focused, can_left, can_right, 150.)
+}
+
+/// [`choice`] whose value takes at least `min_w` design px (narrow for short
+/// values, so the label keeps its room).
+pub fn choice_sized(value: impl Into<SharedString>, focused: bool, can_left: bool, can_right: bool, min_w: f32) -> Div {
     let color: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_primary().into() };
     let arrow = |ic: Icon, on: bool| icon(ic, u(18.), if on { color } else { Hsla { a: 0.25, ..color } });
     div()
@@ -254,7 +260,7 @@ pub fn choice(value: impl Into<SharedString>, focused: bool, can_left: bool, can
         .child(arrow(Icon::ChevronLeft, can_left))
         .child(
             div()
-                .min_w(u(150.))
+                .min_w(u(min_w))
                 .max_w(u(360.))
                 .flex()
                 .justify_center()

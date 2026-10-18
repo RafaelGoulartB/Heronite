@@ -4,5 +4,7 @@
 
 pub mod audio;
 pub mod controller;
+pub mod gamescope;
 #[cfg(target_os = "linux")]
 pub mod input;
+mod procs;

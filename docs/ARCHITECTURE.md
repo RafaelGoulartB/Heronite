@@ -81,7 +81,9 @@ calls them from `cx.background_spawn` or worker threads.
   and adds the frame generation variables to a launch. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
-  a fallback). `gpu` holds a game's graphics card settings (the card that draws it,
+  a fallback). `live_fps` makes that limit changeable while the game runs when MangoHud or gamescope applies it
+  (MangoHud reads it from a config file of ours in `$XDG_RUNTIME_DIR/heronite/mangohud`, rewritten by the in-game
+  overlay; gamescope's is its `GAMESCOPE_FPS_LIMIT` atom, set by `heronite_overlay::gamescope`). `gpu` holds a game's graphics card settings (the card that draws it,
   NVIDIA Smooth Motion and Reflex, the DLSS / FSR 4 / XeSS upgrades of GE-Proton and
   Proton-CachyOS, Mesa's Anti-Lag and glthread, vsync and what DXVK tells DirectX games)
   as variables, and `gpu::detect` finds the cards (sysfs, `vulkaninfo`, `pci.ids`) and the

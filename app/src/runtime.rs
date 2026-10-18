@@ -89,6 +89,11 @@ impl GameRuntime {
         self.sessions.lock().ok()?.get(app_name).cloned()
     }
 
+    /// How a running game's FPS limit can change, if it can.
+    pub fn live_fps(&self, app_name: &str) -> Option<heronite_launch::live_fps::LiveFps> {
+        self.launcher.live_fps(app_name)
+    }
+
     /// `HERONITE_DEBUG_FAKE_SESSION`: registers a session as if the game had
     /// been launched (nothing is started).
     pub fn debug_register_session(&self, game: &CollectionGame) {

@@ -283,14 +283,19 @@ read: LB / RB tabs on top (icon over label: Home,
 Screenshots, Audio, Controller), then game title, session and total time, clock and battery, the tab's `console::list`
 rows and a compact hint bar. Volume is a mixer block (by user decision: option D) on Home and Audio: two bars, System
 and the game's own streams, that are two rows of the list (↑ ↓), ◀ ▶ change the focused one, A mutes it, Y switches
-the output shown under them. Quitting the game asks first (focus on Cancel). Guide + RB and Guide + ↑ / ↓ show a notice in the top corner opposite the panel.
+the output shown under them. Home's "FPS limit" row only shows when the game's limiter can change while it runs
+(`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
+`GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
+started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
+user's `MangoHud.conf` or their Steam launch options was ruled out). Quitting the game asks
+first (focus on Cancel). Guide + RB and Guide + ↑ / ↓ show a notice in the top corner opposite the panel.
 The panel only takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
 (which is usually updating when it calls in) and reaches it through deferred `with_service`. GNOME and X11 cannot show
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
 window (`com.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
 plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` adds a notice (`com.heronite.overlay-notice`);
-`HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
+`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
 the panel's size follows it.
 
 ## Rules

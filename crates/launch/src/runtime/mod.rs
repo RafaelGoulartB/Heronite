@@ -134,6 +134,12 @@ impl Launcher {
         s.get(app_name).map(|c| c.pid.load(Ordering::SeqCst)).filter(|p| *p != 0)
     }
 
+    /// How the FPS limit of a running game can change, if it can.
+    pub fn live_fps(&self, app_name: &str) -> Option<crate::live_fps::LiveFps> {
+        let s = self.shared.sessions.lock().unwrap();
+        s.get(app_name).and_then(|c| c.live_fps.lock().unwrap().clone())
+    }
+
     /// Starts the game in the background; progress arrives as [`LaunchEvent`]s.
     pub fn launch(&self, req: LaunchRequest) -> Result<(), LaunchError> {
         if let LaunchPlan::Unavailable(reason) = &req.plan {
@@ -155,6 +161,7 @@ impl Launcher {
             ledger: Mutex::new(Ledger { cp: Checkpointer::default(), finished: false }),
             wake: Default::default(),
             running: Mutex::new(None),
+            live_fps: Mutex::new(None),
         });
         {
             let mut sessions = self.shared.sessions.lock().unwrap();

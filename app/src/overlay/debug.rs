@@ -7,6 +7,8 @@
 //! - `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a,wait:800,b` plays presses on it
 //!   (the names of `HERONITE_DEBUG_PAD`).
 //! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` shows a notice too.
+//! - `HERONITE_DEBUG_OVERLAY_FPS=<limit>` pretends the game's limiter can
+//!   change while it runs (the FPS limit row shows; nothing is applied).
 
 use std::time::{Duration, Instant};
 
@@ -25,7 +27,11 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
     };
     let entity = entity.clone();
     let paths = entity.read(cx).data_paths.clone();
-    entity.update(cx, |s, _| s.debug_window = mode != "layer");
+    entity.update(cx, |s, _| {
+        s.debug_window = mode != "layer";
+        s.debug_live_fps =
+            crate::env::parse::<u32>("HERONITE_DEBUG_OVERLAY_FPS").map(|limit| heronite_launch::live_fps::LiveFps::Gamescope { limit });
+    });
     cx.spawn(async move |cx| {
         let game = cx
             .background_spawn(async move {

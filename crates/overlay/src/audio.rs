@@ -7,6 +7,8 @@ use std::process::Command;
 use std::time::Duration;
 
 use heronite_data::proc::Run;
+
+use crate::procs::belongs_to;
 use serde_json::Value;
 
 /// An output device.
@@ -120,39 +122,6 @@ fn game_streams(game_pid: u32) -> Vec<SinkInput> {
     parse_sink_inputs(&text).into_iter().filter(|s| belongs_to(s.pid, game_pid)).collect()
 }
 
-fn belongs_to(pid: u32, game_pid: u32) -> bool {
-    let mut current = pid;
-    for _ in 0..64 {
-        if current == game_pid {
-            return true;
-        }
-        let Some((ppid, pgrp)) = proc_stat(current) else { return false };
-        if pgrp == game_pid {
-            return true;
-        }
-        if ppid <= 1 {
-            return false;
-        }
-        current = ppid;
-    }
-    false
-}
-
-/// `(ppid, pgrp)` of a process.
-fn proc_stat(pid: u32) -> Option<(u32, u32)> {
-    parse_stat(&std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)
-}
-
-/// Fields after the command name, which may hold spaces and parentheses.
-fn parse_stat(text: &str) -> Option<(u32, u32)> {
-    let rest = &text[text.rfind(')')? + 1..];
-    let mut fields = rest.split_whitespace();
-    let _state = fields.next()?;
-    let ppid = fields.next()?.parse().ok()?;
-    let pgrp = fields.next()?.parse().ok()?;
-    Some((ppid, pgrp))
-}
-
 struct Sink {
     output: Output,
     volume: u16,
@@ -262,11 +231,5 @@ mod tests {
         assert_eq!(stepped(3, -5), 0);
         assert_eq!(stepped(120, 5), 120, "a boosted volume is not raised");
         assert_eq!(stepped(120, -5), 115);
-    }
-
-    #[test]
-    fn parses_proc_stat() {
-        assert_eq!(parse_stat("1234 (Game (x64).exe) S 1200 1100 1100 0 -1"), Some((1200, 1100)));
-        assert_eq!(parse_stat("garbage"), None);
     }
 }

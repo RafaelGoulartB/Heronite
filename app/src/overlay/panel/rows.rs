@@ -3,6 +3,7 @@
 use gpui_kit::*;
 use heronite_data::status::{self, SetStatusExtras};
 use heronite_i18n::tr;
+use heronite_launch::live_fps::LiveFps;
 use heronite_overlay::audio;
 
 use super::{mixer, Confirm, OverlayPanel, Tab};
@@ -28,6 +29,14 @@ impl OverlayPanel {
             Some(None) => {}
         }
         rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera));
+        // Only when the game's limiter can change while it runs.
+        if let Some((live, limit)) = &self.game.fps {
+            let steps = fps_steps(*limit);
+            let options = steps.iter().map(|n| if *n == 0 { tr!("Off").into() } else { SharedString::from(format!("{n} FPS")) }).collect();
+            let index = steps.iter().position(|n| n == limit).unwrap_or(0);
+            let desc = if live.is_gamescope() { tr!("Changes now (gamescope)") } else { tr!("Changes now (MangoHud)") };
+            rows.push(Row::choice("fps", tr!("FPS limit"), options, index).icon(Icon::Tune).desc(desc).compact());
+        }
         if let Some(id) = &self.data.status_id {
             let options: Vec<SharedString> = self.data.statuses.iter().map(|s| status::status_label(&s.name).to_string().into()).collect();
             let index = self.data.statuses.iter().position(|s| &s.id == id).unwrap_or(0);
@@ -162,6 +171,12 @@ impl OverlayPanel {
                 self.run_audio(move || audio::set_mic_muted(!on), cx);
             }
             ("status", Value::Choice { index, .. }) => self.set_status(index, cx),
+            ("fps", Value::Choice { index, .. }) => {
+                let Some((_, limit)) = &self.game.fps else { return };
+                if let Some(next) = fps_steps(*limit).get(index).copied() {
+                    self.set_fps_limit(next, cx);
+                }
+            }
             _ => {}
         }
     }
@@ -182,6 +197,41 @@ impl OverlayPanel {
             return;
         }
         cx.background_spawn(async move { f() }).detach();
+    }
+
+    /// Applies a new FPS limit to the running game (`0` = none).
+    fn set_fps_limit(&mut self, limit: u32, cx: &mut Context<Self>) {
+        let Some((live, _)) = self.game.fps.clone() else { return };
+        self.game.fps = Some((live.clone(), limit));
+        let app_name = self.game.game.app_name.clone();
+        self.with_service(cx, move |s, _| s.fps_limit_changed(&app_name, limit));
+        if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() {
+            log::info!("overlay debug: FPS limit change skipped");
+            return;
+        }
+        let pid = self.game.game.pid;
+        cx.spawn(async move |this, cx| {
+            let res = cx
+                .background_spawn(async move {
+                    match &live {
+                        LiveFps::MangoHud { .. } => heronite_launch::live_fps::set_mangohud(&live, limit),
+                        LiveFps::Gamescope { .. } => match pid {
+                            Some(pid) => heronite_overlay::gamescope::set_fps_limit(pid, limit),
+                            None => Err("the game's process is not known yet".into()),
+                        },
+                    }
+                })
+                .await;
+            if let Err(e) = res {
+                log::warn!("overlay: FPS limit {limit}: {e}");
+                this.update(cx, |this, cx| {
+                    this.error = Some(tr!("Could not change the FPS limit: {err}", err = e).into());
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     fn set_status(&mut self, index: usize, cx: &mut Context<Self>) {
@@ -225,4 +275,14 @@ impl OverlayPanel {
         })
         .detach();
     }
+}
+
+/// The limits offered (`0` = none), with `current` among them.
+fn fps_steps(current: u32) -> Vec<u32> {
+    let mut steps = vec![0, 30, 40, 45, 60, 72, 90, 120, 144];
+    if !steps.contains(&current) {
+        steps.push(current);
+        steps.sort_unstable();
+    }
+    steps
 }
