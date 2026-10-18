@@ -179,7 +179,15 @@ impl OverlayPanel {
                     .text_color(muted_color)
                     .child(icon(Icon::Headphones, u(15.), muted_color))
                     .child(div().truncate().child(o))
-                    .when(focused && a.outputs.len() > 1, |d| d.child(div().ml_auto().child(self.glyph(crate::console::Btn::Y))))
+                    .when(focused && a.outputs.len() > 1, |d| {
+                        d.child(
+                            div()
+                                .ml_auto()
+                                .rounded(u(6.))
+                                .when(self.keyboard, |d| d.bg(theme::black_a(0.7)))
+                                .child(self.glyph(crate::console::Btn::Y)),
+                        )
+                    })
             }));
         block = if focused {
             block.bg(theme::console_focus()).border_color(theme::white_a(0.55)).shadow(kit::shadow(0.45, 8., 24.))
