@@ -156,6 +156,9 @@ pub struct CollectionView {
     /// Grid view state (`grid.rs`).
     grid: grid::GridUi,
     list_state: ListState,
+    /// Group whose header row sits under the pinned copy (hidden so the two
+    /// don't show at once).
+    stuck_group: Option<usize>,
     selected: Option<SharedString>,
     /// Several games picked at once (`selection.rs`, the dock in `dock.rs`).
     sel: selection::Selection,
@@ -272,6 +275,7 @@ impl CollectionView {
             card_w: theme::CARD_W,
             grid: Default::default(),
             list_state,
+            stuck_group: None,
             selected: None,
             sel: Default::default(),
             hovered: None,
