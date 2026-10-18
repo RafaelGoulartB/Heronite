@@ -122,9 +122,9 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .mx(px(6.))
         .mb(px(4.))
         .child(status_pill(tr!("Beta"), theme::console_btn_y()))
-        .child(meta_text(tr!(
+        .child(div().flex_1().min_w_0().child(meta_text(tr!(
             "The overlay is new and still being tested: it may not work with every controller, game or desktop. It stays off until you turn it on here."
-        )));
+        ))));
 
     let main = card([toggle_row(
         "overlay-enabled",
