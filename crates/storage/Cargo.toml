@@ -1,0 +1,24 @@
+[package]
+name = "heronite-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "What the games take on disk: installs, Wine prefixes, Proton builds, Steam leftovers, caches, and cleaning them up"
+
+[dependencies]
+heronite-data = { path = "../data" }
+heronite-i18n = { path = "../i18n" }
+heronite-launch = { path = "../launch" }
+heronite-wine = { path = "../wine" }
+serde_json.workspace = true
+anyhow.workspace = true
+log.workspace = true
+dirs = "6"
+libc = "0.2"
+trash = "5"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

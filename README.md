@@ -107,6 +107,7 @@ A controller-first layout for the couch or a TV. It covers the whole app: the li
 - **Appearance:** set the opacity, blur, darkening, and colour intensity of the game art behind the Collection. Panels can be glass or solid, and covers can use the Steam (2:3), IGDB (3:4), GOG (11:15), or other aspect ratios.
 - **Screenshots:** set the capture folder and the in-game shortcut, compress captures without quality loss, and limit the preview cache.
 - **Backups:** back up saves with Ludusavi after each game closes (or manually from the game's menu), restore any backup into the game's current Wine/Proton prefix from its settings (even one made in another Steam library or on Windows, with undo), and schedule copies of the whole data folder.
+- **Storage:** **Settings > Storage** shows what your games take on each disk: a treemap of the installed games (the ones you have not played for months stand out), the Wine prefixes, Proton builds and runtimes, what Steam keeps of games you uninstalled, caches, and game folders nothing uses any more. Tick what to clean and free it in one click; what may hold saves goes to the trash. It only reads your disks while you look at it.
 - **Startup:** start Heronite with the system, minimized if you like. `heronite://launch` links and `--launch` start a game straight away, and `--fullscreen` opens the window fullscreen.
 
 <table>

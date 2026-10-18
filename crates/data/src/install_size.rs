@@ -120,6 +120,25 @@ fn quoted_or_nth(line: &str, n: usize) -> Option<&str> {
     line.split_whitespace().nth(n)
 }
 
+/// A size as stores write it: bytes ("4518092416"), or a number and a unit
+/// ("41.92 GB", "1.5 GiB", "700 MB"), 1024-based.
+pub fn parse_store_size(text: &str) -> Option<u64> {
+    let text = text.trim();
+    let split = text.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == ',')).unwrap_or(text.len());
+    let number: f64 = text[..split].replace(',', "").parse().ok()?;
+    let unit = text[split..].trim().to_ascii_lowercase();
+    let power = match unit.trim_end_matches("ib").trim_end_matches('b') {
+        "" => 0,
+        "k" => 1,
+        "m" => 2,
+        "g" => 3,
+        "t" => 4,
+        _ => return None,
+    };
+    let bytes = number * 1024f64.powi(power);
+    (bytes.is_finite() && bytes >= 1.).then_some(bytes as u64)
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CachedSize {
@@ -174,6 +193,16 @@ impl SizeCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sizes_in_store_shapes() {
+        assert_eq!(parse_store_size("4518092416"), Some(4_518_092_416));
+        assert_eq!(parse_store_size("1.5 GiB"), Some(1_610_612_736));
+        assert_eq!(parse_store_size("41.92 GB"), Some(45_011_257_262));
+        assert_eq!(parse_store_size("700 MB"), Some(734_003_200));
+        assert_eq!(parse_store_size("0"), None);
+        assert_eq!(parse_store_size("big"), None);
+    }
 
     #[test]
     fn walks_only_game_folders() {

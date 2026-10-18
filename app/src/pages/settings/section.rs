@@ -14,6 +14,8 @@ pub enum Section {
     GameDefaults,
     Downloads,
     Library,
+    /// What the games take on disk, and cleaning it up.
+    Storage,
     /// The in-game overlay (Guide button).
     Overlay,
     Metadata,
@@ -30,19 +32,20 @@ impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 4] = [
         (n_!("App"), &[Section::General, Section::Appearance, Section::Advanced]),
-        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Library, Section::Overlay]),
+        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Library, Section::Storage, Section::Overlay]),
         (n_!("Collection"), &[Section::Metadata, Section::Screenshots, Section::Saves, Section::Backups]),
         (n_!("Help"), &[Section::Logs, Section::About]),
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 13] = [
+    pub const ALL: [Section; 14] = [
         Section::General,
         Section::Appearance,
         Section::Advanced,
         Section::GameDefaults,
         Section::Downloads,
         Section::Library,
+        Section::Storage,
         Section::Overlay,
         Section::Metadata,
         Section::Screenshots,
@@ -60,6 +63,7 @@ impl Section {
             Section::GameDefaults => tr!("Game defaults"),
             Section::Downloads => tr!("Downloads"),
             Section::Library => tr!("Library"),
+            Section::Storage => tr!("Storage"),
             Section::Overlay => tr!("Overlay"),
             Section::Metadata => tr!("Metadata"),
             Section::Screenshots => tr!("Screenshots"),
@@ -78,6 +82,7 @@ impl Section {
             Section::GameDefaults => Icon::Tune,
             Section::Downloads => Icon::Download,
             Section::Library => Icon::GridView,
+            Section::Storage => Icon::FaHardDrive,
             Section::Overlay => Icon::SportsEsports,
             Section::Metadata => Icon::TravelExplore,
             Section::Screenshots => Icon::Fullscreen,
@@ -97,6 +102,7 @@ impl Section {
             Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
+            Section::Storage => tr!("What your games take on disk, and what can go."),
             Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
             Section::Metadata => tr!("Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags."),
             Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),
@@ -116,6 +122,7 @@ impl Section {
             Section::GameDefaults => "game defaults wine prefix gamescope launch options new games padroes dos jogos prefixo opcoes de inicializacao novos jogos",
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
+            Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut beta botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
             Section::Screenshots => "screenshots capture shortcut hotkey folder thumbnails cache gallery capturas de tela atalho pasta miniaturas galeria",
@@ -143,6 +150,7 @@ impl Section {
             "defaults" => Some(Section::GameDefaults),
             "downloads" => Some(Section::Downloads),
             "library" => Some(Section::Library),
+            "storage" | "disk" => Some(Section::Storage),
             "overlay" => Some(Section::Overlay),
             "metadata" => Some(Section::Metadata),
             "screenshots" => Some(Section::Screenshots),
@@ -171,6 +179,7 @@ mod tests {
         assert_eq!(Section::parse("saves"), Some(Section::Saves));
         assert_eq!(Section::parse("metadata"), Some(Section::Metadata));
         assert_eq!(Section::parse("library"), Some(Section::Library));
+        assert_eq!(Section::parse("storage"), Some(Section::Storage));
         assert_eq!(Section::parse("defaults"), Some(Section::GameDefaults));
         assert_eq!(Section::parse("nope"), None);
         assert_eq!(crate::pages::Page::from_debug("settings"), Some(crate::pages::Page::Settings));

@@ -45,7 +45,7 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   `self.open_dialog(cx.new(|cx| V::new(ctx, window, cx)), cx)`.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
 - Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
-  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library, Overlay),
+  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library, Storage, Overlay),
   Collection (Metadata, Screenshots, Backups), Help (Logs, About). A section = title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata`, `screenshots`, `saves` + `backup` for Backups) with `State::new(&PageCtx, &EffectiveSettings, …)`
@@ -216,6 +216,17 @@ console: a dot after the label, Y resets, a "Reset this tab" row). A new setting
 `GROUPS`, keyed by the row, input or setting id. The Launch tab ends with "How the game starts"
 (`launch_preview.rs`): the command and variables of a launch built from the settings on screen, grouped
 by the setting each comes from (`HERONITE_DEBUG_PREVIEW=1` opens it).
+
+**Settings → Storage** (`pages/settings/storage/`, `heronite_storage`): what the games take on disk, read only while the
+section is on screen (listed when shown, then the sizes no store or manifest gives are walked one by one and cached in
+`install-sizes.json`; showing another section stops the walk). A bar per disk (one device = one disk, btrfs subvolumes
+included) in the group colours (`group_color`), hover names a part; the "Free up space" card (big number = the ticked
+choices, a split bar, the choices as switches, then an inline confirmation); the games as a squarified treemap of their
+wide art (`treemap.rs`, the biggest 12 and a "+n" tile; an amber dot = not played for half a year) over a list sorted by
+size or least recently played; then one list per kind (Wine prefixes, Proton and runtimes, Steam leftovers, caches,
+leftover folders), unused rows first with an amber "Unused" pill and bar. Prefixes, Steam's Proton prefixes and leftover
+folders go to the trash, caches and Wine Manager builds are deleted; a game's remove button sends `PageEvent::Uninstall`
+(the Collection runs its own uninstall over the page). Console: rows, A twice removes. `HERONITE_DEBUG_PAGE=settings:storage`.
 
 **Pages** (`pages/mod.rs`, ☰ pages other than Settings): `sheet(id, title, lead, actions, max_w, window, close, column)`
 = glass sheet inset 12px under the slim header (title Rubik 26 + lead, optional header actions, round close =
