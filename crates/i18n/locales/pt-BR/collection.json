@@ -384,5 +384,7 @@
   "Unknown store": "Loja desconhecida",
   "Unknown year": "Ano desconhecido",
   "Worst first": "Piores primeiro",
-  "Z → A": "Z → A"
+  "Z → A": "Z → A",
+  "Discard {n} change?": "Descartar {n} alteração?",
+  "Discard {n} changes?": "Descartar {n} alterações?"
 }

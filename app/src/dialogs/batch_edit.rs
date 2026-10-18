@@ -2,8 +2,9 @@
 //! (Playnite's multi-game edit). A field where the games differ stays as it
 //! is unless edited. A tag only some of the games have is dashed with "3/7":
 //! a click gives it to all of them; × takes a tag out of all of them; typing
-//! a name and Enter adds it to all. Nothing is written here: the Collection
-//! applies [`BatchEditApply`] with an Undo.
+//! a name and Enter adds it to all (a name still in its box when Apply is
+//! pressed counts too). Closing with changes asks first. Nothing is written
+//! here: the Collection applies [`BatchEditApply`] with an Undo.
 
 use std::sync::Arc;
 
@@ -49,8 +50,13 @@ struct TagList {
 }
 
 impl TagList {
-    fn delta(&self) -> ListDelta {
-        ListDelta { add: self.add.clone(), remove: self.remove.clone() }
+    /// The name typed in the box and not added with Enter yet (unless Enter
+    /// would change nothing: added already, or on all `total` games).
+    fn pending(&self, total: usize, cx: &App) -> Option<String> {
+        let name = self.input.read(cx).value().trim().to_string();
+        let same = |n: &String| n.eq_ignore_ascii_case(&name);
+        let everywhere = self.counts.iter().any(|(n, c)| same(n) && *c >= total) && !self.remove.iter().any(same);
+        (!name.is_empty() && !everywhere && !self.add.iter().any(same)).then_some(name)
     }
 }
 
@@ -61,6 +67,8 @@ pub struct BatchEditDialog {
     series_initial: String,
     series_edited: bool,
     lists: Vec<TagList>,
+    /// "Discard changes?" is asked (Esc, ×, a click outside or Cancel with changes).
+    confirm_discard: bool,
 }
 
 impl EventEmitter<DialogEvent> for BatchEditDialog {}
@@ -100,6 +108,10 @@ impl BatchEditDialog {
                 counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase())));
                 let input = new_input(window, cx, "", tr!("Add to all…"));
                 cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, window, cx| {
+                    // The count of changes includes what is typed.
+                    if matches!(ev, InputEvent::Change) {
+                        cx.notify();
+                    }
                     if matches!(ev, InputEvent::PressEnter { .. }) {
                         let name = state.read(cx).value().trim().to_string();
                         if !name.is_empty() {
@@ -113,7 +125,7 @@ impl BatchEditDialog {
                 TagList { field, counts, add: Vec::new(), remove: Vec::new(), input }
             })
             .collect();
-        Self { total, series: series_input, series_initial, series_edited: false, lists }
+        Self { total, series: series_input, series_initial, series_edited: false, lists, confirm_discard: false }
     }
 
     fn add_name(&mut self, list: usize, name: String) {
@@ -125,18 +137,62 @@ impl BatchEditDialog {
         }
     }
 
-    fn changes(&self) -> usize {
-        usize::from(self.series_edited) + self.lists.iter().map(|l| l.add.len() + l.remove.len()).sum::<usize>()
+    /// What Apply writes: the chips plus a name still in its box.
+    fn edit(&self, cx: &App) -> BatchDetails {
+        let series = self.series_edited.then(|| self.series.read(cx).value().trim().to_string());
+        let lists = self
+            .lists
+            .iter()
+            .map(|l| {
+                let mut add = l.add.clone();
+                if let Some(name) = l.pending(self.total, cx) {
+                    add.push(name);
+                }
+                let remove = l.remove.iter().filter(|r| !add.iter().any(|a| a.eq_ignore_ascii_case(r))).cloned().collect();
+                (l.field, ListDelta { add, remove })
+            })
+            .filter(|(_, d)| !d.is_empty())
+            .collect();
+        BatchDetails { series, lists }
+    }
+
+    fn changes(&self, cx: &App) -> usize {
+        let edit = self.edit(cx);
+        usize::from(edit.series.is_some()) + edit.lists.iter().map(|(_, d)| d.add.len() + d.remove.len()).sum::<usize>()
     }
 
     fn apply(&mut self, cx: &mut Context<Self>) {
-        let series = self.series_edited.then(|| self.series.read(cx).value().trim().to_string());
-        let lists = self.lists.iter().map(|l| (l.field, l.delta())).filter(|(_, d)| !d.is_empty()).collect();
-        let edit = BatchDetails { series, lists };
+        let edit = self.edit(cx);
         if !edit.is_empty() {
             cx.emit(BatchEditApply(edit));
         }
         cx.emit(DialogEvent::Close);
+    }
+
+    /// Esc, offered by the host before it closes the dialog: with changes it
+    /// asks first; a second Esc goes back to editing.
+    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        let n = self.changes(cx);
+        if self.confirm_discard && n > 0 {
+            self.confirm_discard = false;
+        } else if n > 0 {
+            self.confirm_discard = true;
+        } else {
+            return false;
+        }
+        cx.notify();
+        true
+    }
+
+    /// ×, a click outside and Cancel: closes, or asks first when it would
+    /// lose changes.
+    fn request_close(&mut self, cx: &mut Context<Self>) {
+        if self.changes(cx) > 0 && !self.confirm_discard {
+            self.confirm_discard = true;
+            cx.notify();
+        } else {
+            cx.emit(DialogEvent::Close);
+        }
     }
 
     fn chip(id: SharedString, text: SharedString) -> Stateful<Div> {
@@ -241,15 +297,16 @@ impl BatchEditDialog {
                     }))),
             );
         }
-        let changed = !l.add.is_empty() || !l.remove.is_empty();
+        let changed = !l.add.is_empty() || !l.remove.is_empty() || l.pending(total, cx).is_some();
         let field = l.field;
         Self::field(
             label_of(field),
             changed,
-            cx.listener(move |this, _, _, cx| {
+            cx.listener(move |this, _, window, cx| {
                 let l = &mut this.lists[li];
                 l.add.clear();
                 l.remove.clear();
+                l.input.update(cx, |s, cx| s.set_value("", window, cx));
                 cx.notify();
             }),
         )
@@ -290,7 +347,7 @@ impl Render for BatchEditDialog {
         let close = {
             let entity = entity.clone();
             move |_: &mut Window, cx: &mut App| {
-                entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
+                entity.update(cx, |this, cx| this.request_close(cx)).ok();
             }
         };
         let header = div()
@@ -331,34 +388,65 @@ impl Render for BatchEditDialog {
         for li in 0..self.lists.len() {
             body = body.child(self.tag_field(li, cx));
         }
-        let n = self.changes();
-        let footer = div()
-            .flex()
-            .w_full()
-            .items_center()
-            .justify_between()
-            .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(if n == 0 {
-                tr!("No changes yet").to_string()
-            } else {
-                trn!(n, "{n} change", "{n} changes")
-            }))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(
-                        button("be-cancel", ButtonKind::Glass, tr!("Cancel"))
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
-                    )
-                    .child(action_button(
-                        "be-apply",
-                        ButtonKind::Primary,
-                        trn!(self.total, "Apply to {n} game", "Apply to {n} games"),
-                        n > 0,
-                        cx.listener(|this, _, _, cx| this.apply(cx)),
-                    )),
-            );
+        let n = self.changes(cx);
+        // Changes undone meanwhile: nothing left to ask about.
+        let footer = if self.confirm_discard && n > 0 {
+            div()
+                .flex()
+                .w_full()
+                .items_center()
+                .justify_between()
+                .gap(px(8.))
+                .child(div().flex_1().min_w_0().text_size(px(13.)).text_color(theme::text_primary()).child(trn!(
+                    n,
+                    "Discard {n} change?",
+                    "Discard {n} changes?"
+                )))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(button("be-discard-back", ButtonKind::Ghost, tr!("Keep editing")).on_click(cx.listener(
+                            |this, _, _, cx| {
+                                this.confirm_discard = false;
+                                cx.notify();
+                            },
+                        )))
+                        .child(
+                            button("be-discard-yes", ButtonKind::Danger, tr!("Discard"))
+                                .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+                        ),
+                )
+        } else {
+            div()
+                .flex()
+                .w_full()
+                .items_center()
+                .justify_between()
+                .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(if n == 0 {
+                    tr!("No changes yet").to_string()
+                } else {
+                    trn!(n, "{n} change", "{n} changes")
+                }))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(
+                            button("be-cancel", ButtonKind::Glass, tr!("Cancel"))
+                                .on_click(cx.listener(|this, _, _, cx| this.request_close(cx))),
+                        )
+                        .child(action_button(
+                            "be-apply",
+                            ButtonKind::Primary,
+                            trn!(self.total, "Apply to {n} game", "Apply to {n} games"),
+                            n > 0,
+                            cx.listener(|this, _, _, cx| this.apply(cx)),
+                        )),
+                )
+        };
         let vw = f32::from(window.viewport_size().width);
         div().absolute().inset_0().child(drawer(
             DrawerProps { id: "collection-batch-edit".into(), width: 540f32.min(vw * 0.96) },
