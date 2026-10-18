@@ -287,7 +287,9 @@ The panel only takes controller presses from the service (`OverlayPanel::on_pad`
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
 window (`com.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
-plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` adds a notice (`com.heronite.overlay-notice`).
+plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` adds a notice (`com.heronite.overlay-notice`);
+`HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
+`RUST_LOG=debug` logs the height the panel asks for.
 
 ## Rules
 - No I/O on the UI thread except tiny reads; use `cx.background_spawn` and

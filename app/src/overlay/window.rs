@@ -26,7 +26,12 @@ pub fn scale(cx: &App) -> f32 {
 /// Height of the tallest display. Wayland has no primary display (GPUI
 /// returns none), and the compositor puts the surface on the focused one,
 /// which this cannot know: one display is the usual case.
+/// `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for it (sizes of other
+/// screens in debug captures).
 fn display_height(cx: &App) -> f32 {
+    if let Some(h) = crate::env::parse::<f32>("HERONITE_DEBUG_OVERLAY_DISPLAY") {
+        return h;
+    }
     cx.displays().iter().map(|d| f32::from(d.bounds().size.height)).fold(0., f32::max).max(720.)
 }
 

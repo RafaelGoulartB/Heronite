@@ -395,6 +395,7 @@ impl OverlayPanel {
         let wanted = self.content_height.get().min(self.max_height).ceil();
         let size = window.viewport_size();
         if wanted > 0. && (wanted - f32::from(size.height)).abs() > 1. {
+            log::debug!("overlay: panel height {wanted}");
             window.resize(gpui_kit::size(size.width, px(wanted)));
         }
     }
