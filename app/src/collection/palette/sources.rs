@@ -32,6 +32,8 @@ pub(super) enum Act {
     /// Settings, opened on this section.
     Section(Section),
     AddGame,
+    /// Install a game from an install script file.
+    InstallScript,
     Refresh,
     ScanRoms,
     EpicUpdates,
@@ -262,6 +264,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         )
         .shortcut("Ctrl N"),
     );
+    v.push(action(
+        Act::InstallScript,
+        "install-script",
+        tr!("Install from script\u{2026}"),
+        tr!("Install a game from a YAML install script"),
+        Icon::Description,
+        "yaml yml script installer instalar roteiro wine setup",
+    ));
     v.push(
         action(
             Act::Refresh,
@@ -771,6 +781,7 @@ mod tests {
         assert!(v.iter().filter(|e| matches!(e.act, Act::Section(_))).all(|e| e.secondary));
         for a in [
             Act::AddGame,
+            Act::InstallScript,
             Act::Refresh,
             Act::ScanRoms,
             Act::EpicUpdates,

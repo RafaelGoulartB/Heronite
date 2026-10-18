@@ -3454,6 +3454,7 @@ dependencies = [
  "heronite-gog",
  "heronite-i18n",
  "heronite-images",
+ "heronite-installer",
  "heronite-launch",
  "heronite-media",
  "heronite-metadata",

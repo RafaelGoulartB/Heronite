@@ -37,6 +37,7 @@ pub mod rom_folder;
 pub mod save_backups;
 pub mod scan_roms;
 pub mod screenshot_art;
+pub mod script_install;
 pub mod settings_panel;
 pub mod store_import;
 pub mod store_install;

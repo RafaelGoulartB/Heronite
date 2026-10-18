@@ -38,6 +38,7 @@ mod pumps;
 mod render_focus;
 mod screenshot_viewer;
 mod screenshots;
+mod script_install;
 mod scroll;
 mod selection;
 mod sideload_uninstall;
@@ -79,6 +80,8 @@ enum ToastAction {
     Undo,
     /// Opens the log of the game under this key.
     ViewLog(String),
+    /// Shows the install from a script that just ended.
+    ScriptInstall,
 }
 
 pub struct CollectionView {
@@ -206,6 +209,9 @@ impl CollectionView {
         if let Some(compression) = crate::services::compression::get(cx) {
             cx.subscribe(&compression, |this, _, ev, cx| this.on_compression_event(ev, cx)).detach();
         }
+        // Installs from a script that end while their dialog is closed.
+        let script_install = crate::services::script_install::get(cx);
+        cx.subscribe(&script_install, |this, _, ev, cx| this.on_script_install_event(ev, cx)).detach();
         // The update banner and the ☰ Settings row.
         if let Some(updater) = crate::services::update::get(cx) {
             cx.observe(&updater, |_, _, cx| cx.notify()).detach();
@@ -334,9 +340,13 @@ impl CollectionView {
                             .font_weight(theme::W_BOLD)
                             .cursor_pointer()
                             .hover(|s| s.bg(theme::accent_tint_border()))
-                            .child(if undo { heronite_i18n::tr!("Undo") } else { heronite_i18n::tr!("View log") })
+                            .child(match &action {
+                                ToastAction::Undo => heronite_i18n::tr!("Undo"),
+                                ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
+                                ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
+                            })
                             .when(undo, |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
-                            .on_click(cx.listener(move |this, _, _, cx| {
+                            .on_click(cx.listener(move |this, _, window, cx| {
                                 match &action {
                                     ToastAction::Undo => {
                                         this.undo_batch(cx);
@@ -344,6 +354,10 @@ impl CollectionView {
                                     ToastAction::ViewLog(key) => {
                                         this.toast = None;
                                         this.open_game_log(key, cx);
+                                    }
+                                    ToastAction::ScriptInstall => {
+                                        this.toast = None;
+                                        this.show_script_install(window, cx);
                                     }
                                 }
                                 cx.notify();

@@ -196,6 +196,7 @@ impl CollectionView {
             w if w.starts_with("add-game") || w.starts_with("edit-game") => {
                 self.add_game_debug_dialog(w, window, cx);
             }
+            w if w.starts_with("install-script") => self.script_install_debug_dialog(w, window, cx),
             other => {
                 if !self.epic_debug_dialog(other, window, cx) {
                     self.open_emu_debug_dialog(other, window, cx);
