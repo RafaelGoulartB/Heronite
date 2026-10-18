@@ -32,6 +32,7 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-amazon     nile CLI: Amazon Games account, library,
  │                      installs, updates                            → data, launch, epic
  ├─ heronite-emulation  emulators, ROM scan, save states, Ludusavi   → data, launch
+ ├─ heronite-installer  games from YAML install scripts              → data, launch, emulation
  ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
  │                      lossless PNG → WebP compression              → data, images
@@ -121,6 +122,19 @@ calls them from `cx.background_spawn` or worker threads.
   soundtracks, demos, test servers or games hidden in Steam), caches it and
   adds the games the Collection does not have yet; Steam's play time moves
   the Steam entries up when it is ahead.
+- **heronite-installer:** installs a game from a YAML (or JSON) install
+  script. `script` reads the file (one script, a list, or an API dump;
+  repeated keys keep the last value), `steps` types the `installer` list,
+  `vars` substitutes `$GAMEDIR`, `${VERSION}`, file ids and answers the way
+  the scripts expect (unknown `$names` stay for the shell), `check` says
+  before anything runs what blocks it (unsupported runner or step, missing
+  archiver or emulator). `engine::install` fetches the `files` (downloads to
+  `~/.cache/heronite/install-scripts/<slug>`, files the user picks, local
+  paths), runs the steps (`archive` through the system archivers, `fsops`,
+  `tasks`: Wine tasks through `heronite_launch::wine_tools`, each waiting for
+  the prefix's wineserver) and `finish` adds a local game: `wine`, `linux`,
+  `dosbox`, `scummvm`, `libretro` and `web` runners, `system.env` and DLL
+  overrides as environment variables, `launch_configs` as the game's actions.
 - **heronite-wine:** the Wine Manager (`manager`: download, install, remove
   builds from `repos`) and `detect`, the Wine/Proton list the settings pick
   from. `default` keeps a global default that can run games: when none is
