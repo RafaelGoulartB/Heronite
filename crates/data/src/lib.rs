@@ -31,6 +31,7 @@ pub mod maintenance;
 pub mod migrate;
 pub mod onboarding;
 pub mod organize;
+pub mod overlay_prefs;
 pub mod playtime;
 pub mod ratings;
 pub mod screenshot_prefs;
