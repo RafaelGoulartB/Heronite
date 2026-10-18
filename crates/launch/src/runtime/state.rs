@@ -45,6 +45,8 @@ pub(super) struct Control {
     /// What `running.json` holds for this session, once the game runs (see
     /// [`super::adopt`]).
     pub(super) running: Mutex<Option<super::adopt::RunningEntry>>,
+    /// How the limit can change while the game runs (see [`crate::live_fps`]).
+    pub(super) live_fps: Mutex<Option<crate::live_fps::LiveFps>>,
 }
 
 impl Control {

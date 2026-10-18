@@ -6,6 +6,7 @@ mod env;
 mod icons;
 mod images;
 mod language;
+mod overlay;
 mod pages;
 mod runtime;
 mod services;

@@ -8,7 +8,8 @@ use futures_util::StreamExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-const SHORTCUT_ID: &str = "game-screenshot";
+/// Id of the screenshot shortcut in its portal session.
+pub const SHORTCUT_ID: &str = "game-screenshot";
 
 /// A live GlobalShortcuts session on its own thread.
 pub struct PortalShortcut {
@@ -17,10 +18,11 @@ pub struct PortalShortcut {
 }
 
 impl PortalShortcut {
-    /// Binds `trigger` and calls `on_activated` for each press.
-    /// `on_ready` receives the registration result exactly once.
+    /// Binds `trigger` as the shortcut `id` and calls `on_activated` for
+    /// each press. `on_ready` receives the registration result exactly once.
     pub fn start(
         app_id: Option<String>,
+        (id, description): (&'static str, &'static str),
         trigger: String,
         on_activated: Arc<dyn Fn() + Send + Sync>,
         on_ready: Box<dyn FnOnce(Result<(), String>) + Send>,
@@ -28,7 +30,7 @@ impl PortalShortcut {
         let (stop_tx, stop_rx) = futures_channel::oneshot::channel::<()>();
         let thread = std::thread::Builder::new()
             .name("heronite-shortcut-portal".into())
-            .spawn(move || pollster::block_on(run(app_id, trigger, on_activated, on_ready, stop_rx)))
+            .spawn(move || pollster::block_on(run(app_id, id, description, trigger, on_activated, on_ready, stop_rx)))
             .ok();
         Self { stop: Some(stop_tx), thread }
     }
@@ -52,6 +54,8 @@ impl Drop for PortalShortcut {
 
 async fn run(
     app_id: Option<String>,
+    id: &'static str,
+    description: &'static str,
     trigger: String,
     on_activated: Arc<dyn Fn() + Send + Sync>,
     on_ready: Box<dyn FnOnce(Result<(), String>) + Send>,
@@ -75,7 +79,7 @@ async fn run(
         let request = shortcuts
             .bind_shortcuts(
                 &session,
-                &[NewShortcut::new(SHORTCUT_ID, super::BIND_DESCRIPTION).preferred_trigger(trigger.as_str())],
+                &[NewShortcut::new(id, description).preferred_trigger(trigger.as_str())],
                 None,
                 BindShortcutsOptions::default(),
             )
@@ -95,7 +99,7 @@ async fn run(
         }
     };
     while let Either::Left((Some(a), _)) = select(activated.next(), &mut stop).await {
-        if a.shortcut_id() == SHORTCUT_ID {
+        if a.shortcut_id() == id {
             on_activated();
         }
     }

@@ -25,6 +25,7 @@ pub mod launch_option;
 pub mod legendary;
 pub mod legendary_install;
 pub mod library;
+pub mod live_fps;
 pub mod log_reader;
 pub mod log_writer;
 pub mod lsfg;

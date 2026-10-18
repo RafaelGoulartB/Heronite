@@ -1,7 +1,7 @@
 //! Colours: the `nord-dark` palette, text, and the fills of cards, buttons,
 //! tabs and inputs.
 
-use gpui_kit::{hsla, rgb, Hsla, Rgba};
+use gpui_kit::{hsla, rgb, rgba, Hsla, Rgba};
 
 /// `rgba(255,255,255,a)`
 pub fn white_a(a: f32) -> Hsla {
@@ -56,6 +56,17 @@ pub fn console_bg() -> Rgba {
 }
 pub fn console_sidebar() -> Rgba {
     rgb(0x0e1218)
+}
+/// The in-game overlay's panels: the console sidebar, nearly opaque over the game.
+pub fn overlay_fill() -> Rgba {
+    rgba(0x0e1218f0)
+}
+/// A level bar of the overlay's mixer on the light focus pill, and muted.
+pub fn overlay_bar_focus() -> Rgba {
+    rgb(0x1976d2)
+}
+pub fn overlay_bar_muted() -> Rgba {
+    rgb(0x6b7480)
 }
 pub fn console_focus() -> Rgba {
     rgb(0xeef2f7)

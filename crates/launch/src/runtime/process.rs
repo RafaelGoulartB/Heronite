@@ -159,9 +159,13 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     steps.done("script before launch");
     log.info(&steps.summary());
-    log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&plan.command)));
+    // MangoHud's limit moves into a file of ours so the overlay can change it.
+    let mut command = plan.command.clone();
+    let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
+    *control.live_fps.lock().unwrap() = live;
+    log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));
     log.info("Game Output:");
-    let mut handle = match shared.spawner.spawn_logged(&plan.command, Some(log.clone())) {
+    let mut handle = match shared.spawner.spawn_logged(&command, Some(log.clone())) {
         Ok(h) => h,
         Err(e) => {
             let program = &plan.command.program;

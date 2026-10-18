@@ -303,6 +303,7 @@ fn adopted_control(entry: &RunningEntry) -> Control {
         ledger: Mutex::new(Ledger { cp: Checkpointer::resume(entry.base_total, entry.written), finished: false }),
         wake: Default::default(),
         running: Mutex::new(Some(entry.clone())),
+        live_fps: Mutex::new(None),
     }
 }
 

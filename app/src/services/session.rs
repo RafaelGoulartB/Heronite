@@ -43,6 +43,9 @@ pub enum SessionEvent {
     Toast { text: String, error: bool },
     /// The capture service reported something (a saved screenshot...).
     Capture(CaptureEvent),
+    /// Something outside the Collection changed a game (the in-game
+    /// overlay's status row): read the library again.
+    LibraryChanged,
 }
 
 pub struct Session {

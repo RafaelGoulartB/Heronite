@@ -40,7 +40,7 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<
 
 /// Opens the main window, or brings the open one to the front. Returns the
 /// Collection view.
-pub(super) fn show_window(cx: &mut App) -> Option<WeakEntity<CollectionView>> {
+pub fn show_window(cx: &mut App) -> Option<WeakEntity<CollectionView>> {
     let hub = hub(cx);
     let existing = hub.0.borrow().window.as_ref().map(|w| (w.handle, w.view.clone()));
     if let Some((handle, view)) = existing {

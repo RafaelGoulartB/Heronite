@@ -1,5 +1,6 @@
 //! Settings → Screenshots: folder (and the space it uses), in-game capture
-//! shortcut, lossless compression, preview cache.
+//! shortcut, the controller's (the overlay's Guide + RB, shared with
+//! Settings → Overlay), lossless compression, preview cache.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -14,7 +15,7 @@ use crate::pages::PageCtx;
 use crate::services::compression::{self, Compression, Phase};
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, card_box, row, toggle_row, ButtonKind};
-use crate::ui::fields::{choose_path, input_box, labeled, meta_text, new_input, on_commit, path_field};
+use crate::ui::fields::{accelerator_from_key, choose_path, hotkey_box, input_box, labeled, meta_text, new_input, on_commit, path_field};
 
 pub struct State {
     folder: Entity<InputState>,
@@ -248,41 +249,6 @@ fn save(
     d.saved(res, cx);
 }
 
-/// Electron-style accelerator from a key press (`acceleratorFromKey`).
-fn accelerator_from_key(ev: &KeyDownEvent) -> Option<String> {
-    let k = ev.keystroke.key.as_str();
-    if matches!(k, "control" | "ctrl" | "alt" | "shift" | "meta" | "super" | "platform" | "cmd" | "function") {
-        return None;
-    }
-    let key = match k {
-        "space" => "Space".to_string(),
-        "up" => "Up".into(),
-        "down" => "Down".into(),
-        "left" => "Left".into(),
-        "right" => "Right".into(),
-        "escape" => "Esc".into(),
-        "print" | "printscreen" => "PrintScreen".into(),
-        k if k.chars().count() == 1 => k.to_uppercase(),
-        k => {
-            let mut c = k.chars();
-            c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
-        }
-    };
-    let m = &ev.keystroke.modifiers;
-    let mut parts = Vec::new();
-    if m.control || m.platform {
-        parts.push("CommandOrControl".to_string());
-    }
-    if m.alt {
-        parts.push("Alt".into());
-    }
-    if m.shift {
-        parts.push("Shift".into());
-    }
-    parts.push(key);
-    Some(parts.join("+"))
-}
-
 pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let s = d.settings.screenshots.clone();
     let st = &d.screenshots;
@@ -291,7 +257,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let status = screenshots_global(cx).and_then(|g| g.capture).map(|c| c.status());
     let focused = st.hotkey.is_focused(window);
 
-    let hotkey = input_box_text(
+    let hotkey = hotkey_box(
         div().id("shot-hotkey").track_focus(&st.hotkey).cursor_pointer().on_key_down(cx.listener(|d, ev: &KeyDownEvent, _, cx| {
             cx.stop_propagation();
             if let Some(a) = accelerator_from_key(ev) {
@@ -461,9 +427,18 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             )))
             .child(card);
     }
+    let overlay_on = d.overlay_enabled();
+    let pad_shot = super::overlay::pad_shot_card(d, cx);
     col = col
         .child(caption(tr!("In-game capture")))
         .child(capture)
+        .child(caption(tr!("With the controller")))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(if overlay_on {
+            tr!("Works during a game opened by Heronite, through the in-game overlay.")
+        } else {
+            tr!("Needs the in-game overlay, which is off: turn it on in Settings → Overlay.")
+        })))
+        .child(div().when(!overlay_on, |d| d.opacity(0.5)).child(pad_shot))
         .child(caption(tr!("Preview cache")))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
             "Thumbnails generated so the screenshot gallery opens instantly. They are recreated on demand after clearing."
@@ -473,24 +448,6 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         col = col.child(div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::success()).child(m));
     }
     col.into_any_element()
-}
-
-/// Read-only input look with the accelerator text (`input_box` needs an
-/// `InputState`; this one is a plain focusable box).
-fn input_box_text(base: Stateful<Div>, text: String, focused: bool) -> Stateful<Div> {
-    base.flex()
-        .items_center()
-        .w_full()
-        .h(px(theme::INPUT_H))
-        .px(px(14.))
-        .rounded(px(theme::R_INPUT))
-        .bg(theme::input_fill())
-        .border_1()
-        .border_color(if focused { theme::input_border_focus() } else { theme::input_border() })
-        .font_family(theme::FONT_BODY)
-        .text_size(px(14.))
-        .text_color(theme::text_primary())
-        .child(text)
 }
 
 /// Shortcuts offered in console mode (a controller cannot record one).
@@ -537,6 +494,10 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         Row::toggle("capture", tr!("Capture screenshots while a game runs"), s.capture_enabled),
         Row::choice("shortcut", tr!("Screenshot shortcut"), shortcuts.into_iter().map(SharedString::from).collect(), si)
             .desc(tr!("Captures go to the game's folder and show up in the Collection")),
+        Row::header(tr!("With the controller")),
+    ]);
+    rows.extend(super::overlay::console_pad_shot_rows(d));
+    rows.extend([
         Row::header(tr!("Preview cache")),
         Row::number("limit", tr!("Cache limit"), s.cache_limit_mb.get() as i64, 50, 10_000, 50, " MB"),
         Row::action("clear", if st.busy { tr!("Clearing\u{2026}") } else { tr!("Clear the preview cache") })
@@ -556,6 +517,10 @@ pub(super) fn console_apply(
     cx: &mut Context<SettingsPage>,
 ) {
     use crate::console::list::{Outcome, Value};
+    if super::overlay::console_apply_pad_shot(d, &outcome, cx) {
+        cx.notify();
+        return;
+    }
     match outcome {
         Outcome::Activate(id) => match id.as_ref() {
             "folder" => {

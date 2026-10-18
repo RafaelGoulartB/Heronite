@@ -36,6 +36,9 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
  │                      lossless PNG → WebP compression              → data, images
+ ├─ heronite-overlay    in-game overlay backend: controller input
+ │                      (evdev, Guide button, grabs), pactl audio,
+ │                      controller battery / Bluetooth               → data
  ├─ heronite-wine       Wine/Proton manager                          → data
  ├─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf       → data
  ├─ heronite-steam      settings of Steam games (launch options,
@@ -78,7 +81,9 @@ calls them from `cx.background_spawn` or worker threads.
   and adds the frame generation variables to a launch. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
-  a fallback). `gpu` holds a game's graphics card settings (the card that draws it,
+  a fallback). `live_fps` makes that limit changeable while the game runs when MangoHud or gamescope applies it
+  (MangoHud reads it from a config file of ours in `$XDG_RUNTIME_DIR/heronite/mangohud`, rewritten by the in-game
+  overlay; gamescope's is its `GAMESCOPE_FPS_LIMIT` atom, set by `heronite_overlay::gamescope`). `gpu` holds a game's graphics card settings (the card that draws it,
   NVIDIA Smooth Motion and Reflex, the DLSS / FSR 4 / XeSS upgrades of GE-Proton and
   Proton-CachyOS, Mesa's Anti-Lag and glthread, vsync and what DXVK tells DirectX games)
   as variables, and `gpu::detect` finds the cards (sysfs, `vulkaninfo`, `pci.ids`) and the
@@ -135,6 +140,16 @@ calls them from `cx.background_spawn` or worker threads.
   the prefix's wineserver) and `finish` adds a local game: `wine`, `linux`,
   `dosbox`, `scummvm`, `libretro` and `web` runners, `system.env` and DLL
   overrides as environment variables, `launch_configs` as the game's actions.
+- **heronite-overlay:** the backend of the in-game overlay. `input` reads
+  the controllers from `/dev/input/event*` on its own thread (only while a
+  game launched by the app runs and the overlay is on) and grabs them
+  (`EVIOCGRAB`) while Guide is held or the panel is open, so the game gets
+  none of those presses; `input::core` is the pure state machine (Guide tap
+  = open / close, Guide + RB (or the button chosen) = screenshot,
+  Guide + ↑ / ↓ = volume, held
+  directions repeat). `audio` drives the default output, the microphone,
+  the game's own streams and the other apps playing through `pactl`; `controller` reads the battery from
+  sysfs and disconnects Bluetooth controllers.
 - **heronite-wine:** the Wine Manager (`manager`: download, install, remove
   builds from `repos`) and `detect`, the Wine/Proton list the settings pick
   from. `default` keeps a global default that can run games: when none is
@@ -151,6 +166,7 @@ calls them from `cx.background_spawn` or worker threads.
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
 | `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `steam_library` (reads the Steam library while Steam runs), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
+| `overlay/` | the in-game overlay (beta, off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`) and notices (`toast.rs`) as layer-shell windows (`window.rs`) |
 | `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), focus panel, grid view (`grid`, `grid_drawer`), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, and the glue to dialogs and services; `welcome` is the empty Collection of a new setup (it checks Steam every few seconds while it shows); `onboarding` hosts the getting-started checklist (`dialogs/onboarding`: steps, looping previews drawn from the user's covers), which opens by itself once per setup and from the bulb in the header (`onboarding.json` in the app state) |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, Wine Manager, Emulators); they talk back through `PageEvent` |

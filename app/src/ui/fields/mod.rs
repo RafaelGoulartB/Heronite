@@ -7,16 +7,19 @@
 //! * [`text`]: paragraphs, labels, [`text::labeled`] and [`text::panel`].
 //! * [`input`]: single-line / multi-line inputs, path fields, file chooser.
 //! * [`select`]: [`select::select_field`] (label, select, open menu).
+//! * [`hotkey`]: a keyboard shortcut field.
 //! * [`tags`]: [`tags::TagField`] (chips + autocomplete) and tag helpers.
 //!
 //! Values come from Heroic's `TextInputField/index.css` and
 //! `SelectField/index.css`. Callers import from `crate::ui::fields` only.
 
+mod hotkey;
 mod input;
 mod select;
 mod tags;
 mod text;
 
+pub use hotkey::{accelerator_from_key, hotkey_box};
 pub use input::{
     choose_path, duration_field, input_box, new_input, new_textarea, on_commit, path_field, search_box, search_box_with, text_field,
     textarea_box,

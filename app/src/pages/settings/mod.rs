@@ -17,7 +17,7 @@
 //!
 //! Emulators and ROM folders are not here: they live on the ☰ Emulators page.
 //!
-//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|metadata|screenshots|backups|logs|about]`.
+//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|overlay|metadata|screenshots|backups|logs|about]`.
 
 mod about;
 mod advanced;
@@ -27,6 +27,7 @@ mod console;
 mod library;
 pub mod logs;
 mod metadata;
+mod overlay;
 mod palette;
 mod saves;
 mod saves_restore;
@@ -100,6 +101,7 @@ pub struct SettingsPage {
     defaults: Option<Entity<SettingsPanel>>,
     defaults_section: HSection,
     library: library::State,
+    overlay: overlay::State,
     advanced: advanced::State,
     about: about::State,
     logs: logs::State,
@@ -141,6 +143,7 @@ impl SettingsPage {
             saves,
             saves_restore: Default::default(),
             library: library::State::new(&ctx),
+            overlay: overlay::State::new(&ctx, cx),
             advanced: advanced::State::default(),
             about: about::State::default(),
             logs: logs::State::default(),
@@ -245,6 +248,7 @@ impl SettingsPage {
             Section::Advanced => self.advanced.measure(&self.ctx, cx),
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
+            Section::Overlay => overlay::shown(cx),
             Section::Saves => saves::State::shown(self, window, cx),
             _ => {}
         }
@@ -350,6 +354,7 @@ impl SettingsPage {
             }
             Section::GameDefaults => self.defaults_view(window, cx),
             Section::Library => self.library_section(cx).into_any_element(),
+            Section::Overlay => overlay::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
             Section::Screenshots => Self::collection_section(screenshots::render(self, window, cx), self.error.clone()),

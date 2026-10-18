@@ -292,6 +292,10 @@ impl AppPaths {
     pub fn screenshot_prefs(&self) -> PathBuf {
         self.config.join("screenshots.json")
     }
+    /// In-game overlay options (see `heronite_data::overlay_prefs`).
+    pub fn overlay_prefs(&self) -> PathBuf {
+        self.config.join("overlay.json")
+    }
     /// Update switches and the last update check (see `heronite_update::prefs`).
     pub fn update_state(&self) -> PathBuf {
         self.config.join("update.json")

@@ -1,0 +1,21 @@
+[package]
+name = "heronite-overlay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "In-game overlay backend for Heronite: controller input (Guide button, grabs), system audio and controller status"
+
+[dependencies]
+heronite-data = { path = "../data" }
+serde_json = "1"
+log = "0.4"
+libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.13"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

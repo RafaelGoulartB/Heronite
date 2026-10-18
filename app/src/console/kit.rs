@@ -34,6 +34,13 @@ pub fn set_scale(window: &Window) {
     PILLS.with(|c| c.set(0));
 }
 
+/// Sets the scale directly, for windows whose height is not the display's
+/// (the in-game overlay's panel and notices).
+pub fn set_scale_value(scale: f32) {
+    SCALE.store(scale.clamp(1., 2.).to_bits(), Ordering::Relaxed);
+    PILLS.with(|c| c.set(0));
+}
+
 pub fn scale() -> f32 {
     f32::from_bits(SCALE.load(Ordering::Relaxed))
 }
@@ -95,22 +102,7 @@ pub fn glyph(btn: Btn) -> Div {
             .text_color(theme::console_on_focus())
             .child(letter.to_string())
     };
-    let cap = |label: &str| {
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .h(u(22.))
-            .min_w(u(26.))
-            .px(u(5.))
-            .rounded(u(5.))
-            .bg(theme::white_a(0.16))
-            .text_size(u(10.))
-            .font_weight(theme::W_BOLD)
-            .text_color(theme::text_primary())
-            .child(label.to_string())
-    };
+    let cap = key_cap;
     match btn {
         Btn::A => circle("A", theme::console_btn_a()),
         Btn::B => circle("B", theme::console_btn_b()),
@@ -121,8 +113,52 @@ pub fn glyph(btn: Btn) -> Div {
         Btn::LT => cap("LT"),
         Btn::Start => cap("\u{2630}"),
         Btn::Bumpers => div().flex().gap(u(4.)).child(cap("LB")).child(cap("RB")),
-        Btn::LeftRight => div().flex().gap(u(4.)).child(cap("\u{25c0}")).child(cap("\u{25b6}")),
+        // Icons: the fonts have no ◀ ▶, and the fallback draws them as emoji.
+        Btn::LeftRight => div().flex().gap(u(4.)).child(arrow_cap(Icon::ChevronLeft)).child(arrow_cap(Icon::ChevronRight)),
     }
+}
+
+/// [`glyph`] for the keyboard: the key `console::input::pad_from_key` turns
+/// into that button.
+pub fn key_glyph(btn: Btn) -> Div {
+    match btn {
+        Btn::A => key_cap("Enter"),
+        Btn::B => key_cap("Esc"),
+        Btn::X => key_cap("X"),
+        Btn::Y => key_cap("Y"),
+        Btn::LB => key_cap("Q"),
+        Btn::RB => key_cap("E"),
+        Btn::Bumpers => div().flex().gap(u(4.)).child(key_cap("Q")).child(key_cap("E")),
+        Btn::Start => key_cap("M"),
+        Btn::LT | Btn::LeftRight => glyph(btn),
+    }
+}
+
+/// A dark keycap with a label.
+fn key_cap(label: &str) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .h(u(22.))
+        .min_w(u(26.))
+        .px(u(5.))
+        .rounded(u(5.))
+        .bg(theme::white_a(0.16))
+        .text_size(u(10.))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::text_primary())
+        .child(label.to_string())
+}
+
+/// A dark keycap holding an icon.
+fn arrow_cap(ic: Icon) -> Div {
+    div().flex().flex_none().items_center().justify_center().h(u(22.)).min_w(u(26.)).rounded(u(5.)).bg(theme::white_a(0.16)).child(icon(
+        ic,
+        u(16.),
+        theme::text_primary(),
+    ))
 }
 
 /// Footer with the button hints of the current screen.
@@ -227,6 +263,12 @@ pub fn toggle_pill(on: bool, focused: bool) -> Div {
 
 /// `‹ value ›` (arrows dimmed at the ends).
 pub fn choice(value: impl Into<SharedString>, focused: bool, can_left: bool, can_right: bool) -> Div {
+    choice_sized(value, focused, can_left, can_right, 150.)
+}
+
+/// [`choice`] whose value takes at least `min_w` design px (narrow for short
+/// values, so the label keeps its room).
+pub fn choice_sized(value: impl Into<SharedString>, focused: bool, can_left: bool, can_right: bool, min_w: f32) -> Div {
     let color: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_primary().into() };
     let arrow = |ic: Icon, on: bool| icon(ic, u(18.), if on { color } else { Hsla { a: 0.25, ..color } });
     div()
@@ -237,7 +279,7 @@ pub fn choice(value: impl Into<SharedString>, focused: bool, can_left: bool, can
         .child(arrow(Icon::ChevronLeft, can_left))
         .child(
             div()
-                .min_w(u(150.))
+                .min_w(u(min_w))
                 .max_w(u(360.))
                 .flex()
                 .justify_center()

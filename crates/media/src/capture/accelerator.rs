@@ -157,18 +157,31 @@ impl HyprlandBind {
 
     /// One of ours (left behind by a crashed session) with this trigger.
     pub fn is_ours(&self, binding: &HyprlandBinding) -> bool {
-        self.description.as_deref() == Some(BIND_DESCRIPTION) && self.is_same_trigger(binding)
+        self.is_ours_as(binding, BIND_DESCRIPTION)
+    }
+
+    /// [`is_ours`](Self::is_ours) for the bind described as `description`.
+    pub fn is_ours_as(&self, binding: &HyprlandBinding, description: &str) -> bool {
+        self.description.as_deref() == Some(description) && self.is_same_trigger(binding)
     }
 }
 
-/// The Lua expression that installs the temporary bind.
+/// The Lua expression that installs the temporary screenshot bind (the game
+/// gets the keys too).
 pub fn hyprland_bind_expression(binding: &HyprlandBinding, pid: u32) -> String {
+    hyprland_bind_expression_as(binding, &format!("kill -USR2 {pid}"), BIND_DESCRIPTION, false)
+}
+
+/// A temporary bind that runs `command`. `consume`: the focused window (the
+/// game) does not get the keys.
+pub fn hyprland_bind_expression_as(binding: &HyprlandBinding, command: &str, description: &str, consume: bool) -> String {
     let q = |s: &str| serde_json::to_string(s).expect("string");
     format!(
-        "hl.bind({}, hl.dsp.exec_cmd({}), {{ non_consuming = true, dont_inhibit = true, allow_input_capture = true, description = {} }})",
+        "hl.bind({}, hl.dsp.exec_cmd({}), {{ non_consuming = {}, dont_inhibit = true, allow_input_capture = true, description = {} }})",
         q(&binding.keys),
-        q(&format!("kill -USR2 {pid}")),
-        q(BIND_DESCRIPTION),
+        q(command),
+        !consume,
+        q(description),
     )
 }
 
@@ -236,6 +249,11 @@ mod tests {
             r#"hl.bind("CTRL + F10", hl.dsp.exec_cmd("kill -USR2 4242"), { non_consuming = true, dont_inhibit = true, allow_input_capture = true, description = "Heronite game screenshot" })"#
         );
         assert_eq!(hyprland_unbind_expression("CTRL + F10"), r#"hl.unbind("CTRL + F10")"#);
+        let b = to_hyprland_binding("Super+G").unwrap();
+        assert_eq!(
+            hyprland_bind_expression_as(&b, "kill -USR1 7", "Heronite overlay", true),
+            r#"hl.bind("SUPER + G", hl.dsp.exec_cmd("kill -USR1 7"), { non_consuming = false, dont_inhibit = true, allow_input_capture = true, description = "Heronite overlay" })"#
+        );
     }
 
     #[test]

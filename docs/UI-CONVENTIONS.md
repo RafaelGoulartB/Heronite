@@ -45,7 +45,7 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   `self.open_dialog(cx.new(|cx| V::new(ctx, window, cx)), cx)`.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
 - Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
-  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library),
+  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library, Overlay),
   Collection (Metadata, Screenshots, Backups), Help (Logs, About). A section = title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata`, `screenshots`, `saves` + `backup` for Backups) with `State::new(&PageCtx, &EffectiveSettings, …)`
@@ -271,6 +271,45 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
+
+**In-game overlay** (`app/src/overlay/`, Settings → Overlay; beta, off by default, options in `overlay.json` of the app
+state): during a game launched by the app, the controller's Guide button opens a panel over the game (by user decision:
+proposal 1 "Guide lateral, estilo Xbox"). It is a Wayland layer-shell surface on the overlay layer (no keyboard focus, so
+the game keeps it), 440 design px wide along the left or right edge, in console mode's look scaled to the display
+(`kit::set_scale_value`; 1440 px tall → 1.16), from the top, with a fixed size (`window::PANEL_H`, the tallest tab: Home with its
+recent screenshots; capped at the display's height) so it never changes size while it loads or between tabs: every tab
+fills it, the Screenshots grid and the Controller list scroll inside it, and the mixer holds its place while the audio is
+read: LB / RB tabs on top (icon over label: Home,
+Screenshots, Audio, Controller), then game title, session and total time, clock and battery, the tab's `console::list`
+rows and a compact hint bar. Volume is a mixer block (by user decision: option D) on Home and Audio: bars for System,
+the game's own streams and each other app playing (a browser tab, a music player: `pactl` streams not paused and not
+event sounds, one bar per app name; 2 on Home, which then drops its recent captures, 6 on Audio), that are rows of the
+list (↑ ↓), ◀ ▶ change the focused one, A mutes it, Y switches the output shown under them. Audio adds the output, the
+microphone (the default source; the outputs' monitors are left out) and its mute. Home's "FPS limit" row only shows when the game's limiter can change while it runs
+(`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
+`GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
+started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
+user's `MangoHud.conf` or their Steam launch options was ruled out). Quitting the game asks
+first (focus on Cancel). Guide + RB and Guide + ↑ / ↓ show a notice in the top corner opposite the panel. The
+screenshot's button is a choice (RB unless changed; not ↑ / ↓ nor the triggers, which many controllers report as axes),
+shown in Settings → Overlay and in Settings → Screenshots ("With the controller"). A keyboard shortcut (Super + G unless
+changed, `heronite_media::capture::GlobalHotkey`: a temporary consuming Hyprland bind that sends SIGUSR1, else the
+GlobalShortcuts portal) opens and closes it too; it is registered only while a game launched by the app runs and removed
+on quit. Opened that way the surface takes the keyboard (`KeyboardInteractivity::Exclusive`, so the game gets no keys
+until it closes), console mode's keys drive it (`console::input::pad_from_key`) and the hints show keys
+(`kit::key_glyph`: Enter, Esc, Q / E). "Open it without a game too" (`withoutGame`, off by default) keeps the input thread and the
+shortcut running while the app runs; the panel then has no Screenshots tab, the header says "No game running", the mixer
+has only System, and Home ends with "Open Heronite".
+The panel takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
+(which is usually updating when it calls in) and reaches it through deferred `with_service`. GNOME and X11 cannot show
+it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
+window (`com.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
+under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
+plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` adds a notice (`com.heronite.overlay-notice`);
+`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
+`HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
+it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
+the panel's size follows it.
 
 ## Rules
 - No I/O on the UI thread except tiny reads; use `cx.background_spawn` and

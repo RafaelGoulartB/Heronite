@@ -51,11 +51,23 @@ pub struct Row {
     pub icon: Option<Icon>,
     /// Differs from the defaults: a small dot after the label.
     pub changed: bool,
+    /// A short value: its ‹ › take less width.
+    pub compact: bool,
 }
 
 impl Row {
     fn new(id: impl Into<SharedString>, label: impl Into<SharedString>, value: Value) -> Self {
-        Self { id: id.into(), label: label.into(), desc: None, value, enabled: true, danger: false, icon: None, changed: false }
+        Self {
+            id: id.into(),
+            label: label.into(),
+            desc: None,
+            value,
+            enabled: true,
+            danger: false,
+            icon: None,
+            changed: false,
+            compact: false,
+        }
     }
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
         Self::new(id, label, Value::Action)
@@ -103,6 +115,10 @@ impl Row {
     }
     pub fn icon(mut self, ic: Icon) -> Self {
         self.icon = Some(ic);
+        self
+    }
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
         self
     }
     fn focusable(&self) -> bool {
@@ -279,7 +295,8 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
         Value::Toggle(on) => kit::toggle_pill(*on, focused).into_any_element(),
         Value::Choice { options, index } => {
             let text = options.get(*index).cloned().unwrap_or_default();
-            kit::choice(text, focused, *index > 0, index + 1 < options.len()).into_any_element()
+            let min_w = if r.compact { 84. } else { 150. };
+            kit::choice_sized(text, focused, *index > 0, index + 1 < options.len(), min_w).into_any_element()
         }
         Value::Number { value, min, max, suffix, .. } => {
             kit::choice(format!("{value}{suffix}"), focused, value > min, value < max).into_any_element()
