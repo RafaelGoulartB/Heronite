@@ -128,8 +128,18 @@ pub fn glyph(btn: Btn) -> Div {
         Btn::LT => cap("LT"),
         Btn::Start => cap("\u{2630}"),
         Btn::Bumpers => div().flex().gap(u(4.)).child(cap("LB")).child(cap("RB")),
-        Btn::LeftRight => div().flex().gap(u(4.)).child(cap("\u{25c0}")).child(cap("\u{25b6}")),
+        // Icons: the fonts have no ◀ ▶, and the fallback draws them as emoji.
+        Btn::LeftRight => div().flex().gap(u(4.)).child(arrow_cap(Icon::ChevronLeft)).child(arrow_cap(Icon::ChevronRight)),
     }
+}
+
+/// A dark keycap holding an icon.
+fn arrow_cap(ic: Icon) -> Div {
+    div().flex().flex_none().items_center().justify_center().h(u(22.)).min_w(u(26.)).rounded(u(5.)).bg(theme::white_a(0.16)).child(icon(
+        ic,
+        u(16.),
+        theme::text_primary(),
+    ))
 }
 
 /// Footer with the button hints of the current screen.
