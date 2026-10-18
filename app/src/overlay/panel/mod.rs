@@ -354,6 +354,10 @@ impl OverlayPanel {
             .child(self.glyph(Btn::RB))
     }
 
+    fn apps_playing(&self) -> bool {
+        self.data.audio.as_ref().and_then(|a| a.as_ref()).is_some_and(|a| !a.apps.is_empty())
+    }
+
     /// The button's glyph, or its key when opened from the keyboard.
     fn glyph(&self, btn: Btn) -> Div {
         if self.keyboard {
@@ -414,9 +418,10 @@ impl OverlayPanel {
                 for (i, r) in rows.iter().enumerate() {
                     match r.id.as_ref() {
                         mixer::SYSTEM => {
-                            list = list.child(div().py(u(4.)).child(self.render_mixer(audio, mixer_focus.as_deref(), loading)))
+                            let apps = if self.tab() == Tab::Home { mixer::HOME_APPS } else { mixer::AUDIO_APPS };
+                            list = list.child(div().py(u(4.)).child(self.render_mixer(audio, mixer_focus.as_deref(), loading, apps)))
                         }
-                        mixer::GAME => {}
+                        id if mixer::is_mixer(id) => {}
                         _ => list = list.child(list::render_row(r, list_active && i == self.nav.focus)),
                     }
                 }
@@ -433,7 +438,10 @@ impl OverlayPanel {
             body = body.child(div().px(u(22.)).text_size(u(13.)).text_color(theme::danger_text()).child(e.clone()));
         }
         match self.tab() {
-            Tab::Home => body.child(self.render_recent()),
+            // Apps playing take the room of the recent captures (the panel's
+            // height is fixed; the Screenshots tab has them).
+            Tab::Home if !self.apps_playing() => body.child(self.render_recent()),
+            Tab::Home => body,
             Tab::Shots => body.child(self.render_grid()),
             Tab::Audio | Tab::Controller => body,
         }

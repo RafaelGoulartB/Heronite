@@ -1,7 +1,9 @@
-//! The volume mixer of Home and Audio: one block with two bars, the system's
-//! output and the game's own streams, and the output under them. The bars are
-//! two rows of the list (`mix-system`, `mix-game`), so ↑ ↓ move between them
-//! like any row; ◀ ▶ change the focused one, A mutes it, Y switches output.
+//! The volume mixer of Home and Audio: one block with a bar for the system's
+//! output, one for the game's own streams and one per other app playing (a
+//! browser tab, a music player; [`HOME_APPS`] on Home, [`AUDIO_APPS`] on
+//! Audio), and the output under them. The bars are rows of the list
+//! (`mix-system`, `mix-game`, `mix-app-<n>`), so ↑ ↓ move between them like
+//! any row; ◀ ▶ change the focused one, A mutes it, Y switches output.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -18,27 +20,54 @@ use crate::ui::icon;
 
 pub const SYSTEM: &str = "mix-system";
 pub const GAME: &str = "mix-game";
+const APP: &str = "mix-app-";
+
+/// Apps shown on Home (the panel's height is fixed) and on Audio.
+pub const HOME_APPS: usize = 2;
+pub const AUDIO_APPS: usize = 6;
 
 /// Output names are long ("Family 17h/19h HD Audio Controller Analog
 /// Stereo"); the chip keeps the start.
 const OUTPUT_CHARS: usize = 28;
 
 /// The mixer rows (values for ◀ ▶; the block draws them): the game's only
-/// with a game.
-pub fn rows(a: &AudioState, game: bool) -> Vec<Row> {
+/// with a game, then up to `apps` other apps.
+pub fn rows(a: &AudioState, game: bool, apps: usize) -> Vec<Row> {
     let mut rows = vec![Row::number(SYSTEM, tr!("System"), i64::from(a.volume), 0, i64::from(a.volume.max(100)), 5, "%")];
-    if !game {
-        return rows;
+    if game {
+        rows.push(match a.game_volume {
+            Some(v) => Row::number(GAME, tr!("Game"), i64::from(v), 0, i64::from(v.max(100)), 5, "%"),
+            None => Row::info(GAME, tr!("Game"), tr!("No sound yet")),
+        });
     }
-    rows.push(match a.game_volume {
-        Some(v) => Row::number(GAME, tr!("Game"), i64::from(v), 0, i64::from(v.max(100)), 5, "%"),
-        None => Row::info(GAME, tr!("Game"), tr!("No sound yet")),
-    });
+    for (i, app) in a.apps.iter().take(apps).enumerate() {
+        rows.push(Row::number(app_id(i), app.name.clone(), i64::from(app.volume), 0, i64::from(app.volume.max(100)), 5, "%"));
+    }
     rows
 }
 
+fn app_id(i: usize) -> SharedString {
+    format!("{APP}{i}").into()
+}
+
+/// The app of a mixer row id.
+pub fn app_index(id: &str) -> Option<usize> {
+    id.strip_prefix(APP)?.parse().ok()
+}
+
 pub fn is_mixer(id: &str) -> bool {
-    id == SYSTEM || id == GAME
+    id == SYSTEM || id == GAME || app_index(id).is_some()
+}
+
+/// A globe for browsers, a play arrow for the rest.
+fn app_icon(app: &audio::AppAudio) -> Icon {
+    const BROWSERS: [&str; 10] = ["chrome", "chromium", "firefox", "zen", "brave", "vivaldi", "edge", "librewolf", "opera", "floorp"];
+    let name = format!("{} {}", app.name.to_lowercase(), app.binary);
+    if BROWSERS.iter().any(|b| name.contains(b)) {
+        Icon::Language
+    } else {
+        Icon::PlayArrow
+    }
 }
 
 pub fn short(name: &str) -> String {
@@ -63,7 +92,7 @@ impl OverlayPanel {
                 }
                 true
             }
-            Pad::A => {
+            Pad::A if id == GAME => {
                 let Some(pid) = self.game.as_ref().and_then(|g| g.game.pid) else { return true };
                 let muted = self.set_audio(|a| {
                     a.game_volume.map(|_| {
@@ -78,6 +107,19 @@ impl OverlayPanel {
             }
             Pad::Y => {
                 self.next_output(cx);
+                true
+            }
+            Pad::A => {
+                let Some(i) = app_index(id) else { return true };
+                let change = self.set_audio(|a| {
+                    a.apps.get_mut(i).map(|app| {
+                        app.muted = !app.muted;
+                        (app.streams.clone(), app.muted)
+                    })
+                });
+                if let Some(Some((streams, m))) = change {
+                    self.run_audio(move || audio::set_streams_muted(&streams, m), cx);
+                }
                 true
             }
             _ => false,
@@ -101,8 +143,9 @@ impl OverlayPanel {
         }
     }
 
-    /// The block; `focus` is the focused mixer row, if one is.
-    pub(super) fn render_mixer(&self, a: &AudioState, focus: Option<&str>, loading: bool) -> Div {
+    /// The block, with up to `apps` other apps; `focus` is the focused mixer
+    /// row, if one is.
+    pub(super) fn render_mixer(&self, a: &AudioState, focus: Option<&str>, loading: bool, apps: usize) -> Div {
         let focused = focus.is_some();
         let line = |id: &str, ic: Icon, label: SharedString, level: Option<u16>, muted: bool| {
             let on = focus == Some(id);
@@ -128,7 +171,7 @@ impl OverlayPanel {
                 .rounded(u(12.))
                 .when(on, |d| d.bg(theme::black_a(0.08)))
                 .child(icon(if muted { Icon::VolumeOff } else { ic }, u(20.), fg))
-                .child(div().w(u(64.)).flex_none().text_size(u(16.)).text_color(fg).child(label))
+                .child(div().w(u(108.)).flex_none().min_w_0().truncate().text_size(u(16.)).text_color(fg).child(label))
                 .child(
                     div()
                         .flex_1()
@@ -167,6 +210,13 @@ impl OverlayPanel {
             .border_2()
             .child(line(SYSTEM, Icon::VolumeUp, tr!("System").into(), Some(a.volume), a.muted))
             .when(self.game.is_some(), |d| d.child(line(GAME, Icon::SportsEsports, tr!("Game").into(), a.game_volume, a.game_muted)))
+            .children(
+                a.apps
+                    .iter()
+                    .take(apps)
+                    .enumerate()
+                    .map(|(i, app)| line(&app_id(i), app_icon(app), app.name.clone().into(), Some(app.volume), app.muted)),
+            )
             .children(output.map(|o| {
                 div()
                     .flex()

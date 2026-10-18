@@ -147,8 +147,8 @@ calls them from `cx.background_spawn` or worker threads.
   none of those presses; `input::core` is the pure state machine (Guide tap
   = open / close, Guide + RB (or the button chosen) = screenshot,
   Guide + ↑ / ↓ = volume, held
-  directions repeat). `audio` drives the default output, the microphone and
-  the game's own streams through `pactl`; `controller` reads the battery from
+  directions repeat). `audio` drives the default output, the microphone,
+  the game's own streams and the other apps playing through `pactl`; `controller` reads the battery from
   sysfs and disconnects Bluetooth controllers.
 - **heronite-wine:** the Wine Manager (`manager`: download, install, remove
   builds from `repos`) and `detect`, the Wine/Proton list the settings pick

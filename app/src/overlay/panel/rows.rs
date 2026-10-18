@@ -24,9 +24,9 @@ impl OverlayPanel {
         let mut rows = Vec::new();
         let has_game = self.game.is_some();
         match &self.data.audio {
-            Some(Some(a)) => rows.extend(mixer::rows(a, has_game)),
+            Some(Some(a)) => rows.extend(mixer::rows(a, has_game, mixer::HOME_APPS)),
             // Still reading it: the mixer's rows already hold their place.
-            None => rows.extend(mixer::rows(&audio::AudioState::default(), has_game)),
+            None => rows.extend(mixer::rows(&audio::AudioState::default(), has_game, 0)),
             Some(None) => {}
         }
         let Some(game) = &self.game else {
@@ -54,7 +54,7 @@ impl OverlayPanel {
 
     fn audio_rows(&self) -> Vec<Row> {
         let a = match &self.data.audio {
-            None => return mixer::rows(&audio::AudioState::default(), self.game.is_some()),
+            None => return mixer::rows(&audio::AudioState::default(), self.game.is_some(), 0),
             Some(None) => {
                 return vec![Row::info("none", tr!("Volume control is not available"), "")
                     .desc(tr!("It needs pactl (PipeWire or PulseAudio)."))
@@ -62,7 +62,7 @@ impl OverlayPanel {
             }
             Some(Some(a)) => a,
         };
-        let mut rows = mixer::rows(a, self.game.is_some());
+        let mut rows = mixer::rows(a, self.game.is_some(), mixer::AUDIO_APPS);
         if !a.outputs.is_empty() {
             let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short(&o.description).into()).collect();
             rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));
@@ -158,6 +158,22 @@ impl OverlayPanel {
                 });
                 if let Some(v) = v {
                     self.run_audio(move || audio::set_game_volume(pid, v), cx);
+                }
+            }
+            (id, Value::Number { value, .. }) if mixer::app_index(id).is_some() => {
+                let Some(i) = mixer::app_index(id) else { return };
+                let step = self.volume_step;
+                let change = self.set_audio(|a| {
+                    a.apps.get_mut(i).map(|app| {
+                        let from = i64::from(app.volume);
+                        let to = if value > from { from + step } else { from - step };
+                        app.volume = to.clamp(0, from.max(100)) as u16;
+                        app.muted = false;
+                        (app.streams.clone(), app.volume)
+                    })
+                });
+                if let Some(Some((streams, v))) = change {
+                    self.run_audio(move || audio::set_streams_volume(&streams, v), cx);
                 }
             }
             ("output", Value::Choice { index, .. }) => {

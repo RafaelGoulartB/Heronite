@@ -1,7 +1,8 @@
 //! System audio for the overlay through `pactl` (PulseAudio, or PipeWire's
 //! pulse server, which every PipeWire desktop runs): the output volume, its
-//! mute, the default output, the microphone mute and the volume of the
-//! game's own streams. Every call is blocking (it runs `pactl`).
+//! mute, the default output, the microphone mute, the volume of the game's
+//! own streams and of the other apps playing (a browser tab, a music
+//! player). Every call is blocking (it runs `pactl`).
 
 use std::process::Command;
 use std::time::Duration;
@@ -20,6 +21,21 @@ pub struct Output {
     pub description: String,
 }
 
+/// An app playing sound now (not the game): its streams together.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppAudio {
+    /// `application.name` ("Google Chrome", "Spotify").
+    pub name: String,
+    /// `application.process.binary`, lowercase (`chrome`), when reported.
+    pub binary: String,
+    /// Of its first stream, in percent.
+    pub volume: u16,
+    /// Every stream of it is muted.
+    pub muted: bool,
+    /// Its streams (pactl sink-input indexes).
+    pub streams: Vec<u32>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AudioState {
     /// Volume of the default output, in percent (above 100 when boosted).
@@ -33,6 +49,8 @@ pub struct AudioState {
     /// Volume of the game's streams, when it plays any.
     pub game_volume: Option<u16>,
     pub game_muted: bool,
+    /// Other apps playing, in the order they started.
+    pub apps: Vec<AppAudio>,
 }
 
 fn pactl(args: &[&str]) -> Option<String> {
@@ -53,7 +71,10 @@ pub fn read(game_pid: Option<u32>) -> Option<AudioState> {
     let default_output = sinks.iter().position(|s| s.output.name == default);
     let (volume, muted) = default_output.map(|i| (sinks[i].volume, sinks[i].muted)).unwrap_or_default();
     let mic_muted = pactl(&["get-source-mute", "@DEFAULT_SOURCE@"]).and_then(|s| parse_mute(&s));
-    let game = game_pid.and_then(|pid| game_streams(pid).into_iter().next());
+    let streams = pactl(&["-f", "json", "list", "sink-inputs"]).map(|t| parse_sink_inputs(&t)).unwrap_or_default();
+    let is_game = |s: &SinkInput| game_pid.zip(s.pid).is_some_and(|(game, pid)| belongs_to(pid, game));
+    let game = streams.iter().find(|s| is_game(s));
+    let apps = group_apps(streams.iter().filter(|s| !is_game(s)));
     Some(AudioState {
         volume,
         muted,
@@ -62,7 +83,45 @@ pub fn read(game_pid: Option<u32>) -> Option<AudioState> {
         mic_muted,
         game_volume: game.as_ref().map(|s| s.volume),
         game_muted: game.is_some_and(|s| s.muted),
+        apps,
     })
+}
+
+/// The apps playing now: streams not paused (corked) and not event sounds
+/// (notifications), grouped by app name.
+fn group_apps<'a>(inputs: impl Iterator<Item = &'a SinkInput>) -> Vec<AppAudio> {
+    let mut apps: Vec<AppAudio> = Vec::new();
+    for s in inputs.filter(|s| !s.corked && s.role != "event") {
+        match apps.iter_mut().find(|a| a.name == s.name) {
+            Some(a) => {
+                a.streams.push(s.index);
+                a.muted &= s.muted;
+            }
+            None => apps.push(AppAudio {
+                name: s.name.clone(),
+                binary: s.binary.clone(),
+                volume: s.volume,
+                muted: s.muted,
+                streams: vec![s.index],
+            }),
+        }
+    }
+    apps
+}
+
+/// Sets the volume of an app's streams (and unmutes them).
+pub fn set_streams_volume(streams: &[u32], percent: u16) {
+    for index in streams {
+        let index = index.to_string();
+        pactl(&["set-sink-input-volume", &index, &format!("{percent}%")]);
+        pactl(&["set-sink-input-mute", &index, "0"]);
+    }
+}
+
+pub fn set_streams_muted(streams: &[u32], muted: bool) {
+    for index in streams {
+        pactl(&["set-sink-input-mute", &index.to_string(), if muted { "1" } else { "0" }]);
+    }
 }
 
 /// Sets the default output's volume (percent) and unmutes it.
@@ -119,7 +178,7 @@ pub fn set_game_muted(game_pid: u32, muted: bool) {
 /// its own group) or descends from it.
 fn game_streams(game_pid: u32) -> Vec<SinkInput> {
     let Some(text) = pactl(&["-f", "json", "list", "sink-inputs"]) else { return Vec::new() };
-    parse_sink_inputs(&text).into_iter().filter(|s| belongs_to(s.pid, game_pid)).collect()
+    parse_sink_inputs(&text).into_iter().filter(|s| s.pid.is_some_and(|pid| belongs_to(pid, game_pid))).collect()
 }
 
 struct Sink {
@@ -146,7 +205,14 @@ fn parse_sinks(json: &str) -> Vec<Sink> {
 
 struct SinkInput {
     index: u32,
-    pid: u32,
+    /// Not reported by native PipeWire streams.
+    pid: Option<u32>,
+    name: String,
+    binary: String,
+    /// `media.role` (`event` for notification sounds).
+    role: String,
+    /// Paused.
+    corked: bool,
     volume: u16,
     muted: bool,
 }
@@ -157,10 +223,22 @@ fn parse_sink_inputs(json: &str) -> Vec<SinkInput> {
         .iter()
         .filter_map(|s| {
             let index = u32::try_from(s.get("index")?.as_u64()?).ok()?;
-            let pid = s.get("properties")?.get("application.process.id")?.as_str()?.parse().ok()?;
+            let props = s.get("properties")?;
+            let prop = |key: &str| props.get(key).and_then(Value::as_str).map(str::trim).filter(|v| !v.is_empty());
+            let binary = prop("application.process.binary").unwrap_or_default().to_lowercase();
+            let name = prop("application.name")
+                .or(prop("application.process.binary"))
+                .or(prop("node.name"))
+                .or(prop("media.name"))
+                .unwrap_or("?")
+                .to_string();
             Some(SinkInput {
                 index,
-                pid,
+                pid: prop("application.process.id").and_then(|p| p.parse().ok()),
+                name,
+                binary,
+                role: prop("media.role").unwrap_or_default().to_string(),
+                corked: s.get("corked").and_then(Value::as_bool).unwrap_or(false),
                 volume: average_percent(s.get("volume")),
                 muted: s.get("mute").and_then(Value::as_bool).unwrap_or(false),
             })
@@ -215,13 +293,34 @@ mod tests {
     fn parses_sink_inputs_and_mute() {
         let json = r#"[{"index":7,"mute":true,"properties":{"application.process.id":"4242","application.name":"wine"},
                        "volume":{"front-left":{"value_percent":"85%"},"front-right":{"value_percent":"85%"}}},
-                      {"index":8,"properties":{}}]"#;
+                      {"index":8,"properties":{"node.name":"pw-play"}},
+                      {"properties":{}}]"#;
         let s = parse_sink_inputs(json);
-        assert_eq!(s.len(), 1);
-        assert_eq!((s[0].index, s[0].pid, s[0].volume, s[0].muted), (7, 4242, 85, true));
+        assert_eq!(s.len(), 2);
+        assert_eq!((s[0].index, s[0].pid, s[0].volume, s[0].muted), (7, Some(4242), 85, true));
+        assert_eq!((s[1].pid, s[1].name.as_str()), (None, "pw-play"), "native PipeWire streams have no pid");
         assert_eq!(parse_mute("Mute: yes\n"), Some(true));
         assert_eq!(parse_mute("Mute: no"), Some(false));
         assert_eq!(parse_mute("Failure"), None);
+    }
+
+    #[test]
+    fn groups_the_apps_playing() {
+        let json = r#"[
+          {"index":1,"corked":false,"mute":false,"properties":{"application.name":"Google Chrome","application.process.binary":"Chrome"},
+           "volume":{"mono":{"value_percent":"80%"}}},
+          {"index":2,"corked":false,"mute":true,"properties":{"application.name":"Spotify"},"volume":{"mono":{"value_percent":"50%"}}},
+          {"index":3,"corked":false,"mute":false,"properties":{"application.name":"Google Chrome"},"volume":{"mono":{"value_percent":"100%"}}},
+          {"index":4,"corked":true,"properties":{"application.name":"mpv"}},
+          {"index":5,"corked":false,"properties":{"application.name":"Discord","media.role":"event"}}
+        ]"#;
+        let inputs = parse_sink_inputs(json);
+        let apps = group_apps(inputs.iter());
+        assert_eq!(apps.len(), 2, "paused streams and event sounds are left out");
+        assert_eq!((apps[0].name.as_str(), apps[0].binary.as_str(), apps[0].volume), ("Google Chrome", "chrome", 80));
+        assert_eq!(apps[0].streams, vec![1, 3], "one row per app");
+        assert!(!apps[0].muted);
+        assert!(apps[1].muted);
     }
 
     #[test]

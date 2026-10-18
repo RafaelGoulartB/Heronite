@@ -281,9 +281,10 @@ recent screenshots; capped at the display's height) so it never changes size whi
 fills it, the Screenshots grid and the Controller list scroll inside it, and the mixer holds its place while the audio is
 read: LB / RB tabs on top (icon over label: Home,
 Screenshots, Audio, Controller), then game title, session and total time, clock and battery, the tab's `console::list`
-rows and a compact hint bar. Volume is a mixer block (by user decision: option D) on Home and Audio: two bars, System
-and the game's own streams, that are two rows of the list (↑ ↓), ◀ ▶ change the focused one, A mutes it, Y switches
-the output shown under them. Home's "FPS limit" row only shows when the game's limiter can change while it runs
+rows and a compact hint bar. Volume is a mixer block (by user decision: option D) on Home and Audio: bars for System,
+the game's own streams and each other app playing (a browser tab, a music player: `pactl` streams not paused and not
+event sounds, one bar per app name; 2 on Home, which then drops its recent captures, 6 on Audio), that are rows of the
+list (↑ ↓), ◀ ▶ change the focused one, A mutes it, Y switches the output shown under them. Home's "FPS limit" row only shows when the game's limiter can change while it runs
 (`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
 `GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
