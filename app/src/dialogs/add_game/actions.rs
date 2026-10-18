@@ -134,15 +134,10 @@ impl AddGameDialog {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    // The prefix path comes from the game's config: delete it first.
-                    let prefix = with_prefix.then(|| sideload::remove_prefix(&paths, &app, &home));
-                    heronite_metadata::remove::remove_collection_game(
-                        &paths,
-                        &heronite_metadata::remove::ShortcutDirs::detect(),
-                        &app,
-                        "sideload",
-                    )?;
-                    anyhow::Ok(prefix)
+                    crate::dialogs::remove_game::remove_from_collection(&paths, "sideload", &app)?;
+                    // Only once the game is gone: a failed removal keeps its prefix. Its
+                    // path is in the game's settings, which the removal leaves.
+                    anyhow::Ok(with_prefix.then(|| sideload::remove_prefix(&paths, &app, &home)))
                 })
                 .await;
             this.update(cx, |this, cx| {
