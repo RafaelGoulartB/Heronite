@@ -58,6 +58,8 @@ pub struct UiState {
     pub grid_cover_w: f32,
     /// The grid shows each game's title under its cover.
     pub grid_titles: bool,
+    /// The focus panel shows the Journal instead of the Timeline.
+    pub journal_view: bool,
 }
 
 /// Range and default of [`UiState::grid_cover_w`].
@@ -85,6 +87,7 @@ impl Default for UiState {
             grid_view: false,
             grid_cover_w: GRID_COVER_W.2,
             grid_titles: false,
+            journal_view: false,
         }
     }
 }
@@ -120,6 +123,7 @@ impl UiState {
             state.grid_cover_w = (w as f32).clamp(GRID_COVER_W.0, GRID_COVER_W.1);
         }
         state.grid_titles = flag("gridTitles");
+        state.journal_view = flag("journalView");
         state
     }
 
@@ -136,6 +140,7 @@ impl UiState {
             "gridView": self.grid_view,
             "gridCoverWidth": self.grid_cover_w,
             "gridTitles": self.grid_titles,
+            "journalView": self.journal_view,
         });
         if let (Value::Object(doc), Value::Object(view)) = (&mut doc, self.view_filters().to_value()) {
             doc.extend(view);

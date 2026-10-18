@@ -1,7 +1,11 @@
 //! "Timeline" of the focus panel: each day the game was played (time played,
 //! number of sessions) with the screenshots taken during those sessions, as
 //! thumbnails (the same cache as the Screenshots strip). Newest day first;
-//! days with screenshots but no tracked session are listed too.
+//! days with screenshots but no tracked session are listed too. A switch in
+//! its title turns it into the game's Journal (`journal/`); each day here
+//! shows how many notes it has.
+
+use std::collections::HashMap;
 
 use chrono::Datelike;
 use gpui_kit::prelude::*;
@@ -13,8 +17,10 @@ use super::focus::{h3, panel};
 use super::game_facts::TIMELINE_DAYS;
 use super::screenshots::thumb_tile;
 use super::CollectionView;
+use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{button_sm, ButtonKind};
+use crate::ui::icon;
 use heronite_i18n::{tr, trc, trn};
 
 const DATE_W: f32 = 86.;
@@ -29,9 +35,18 @@ impl CollectionView {
     /// The section (none when the game was never played and has no screenshots).
     pub(super) fn timeline_section(&mut self, key: &SharedString, main_w: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
         let days = self.timeline_days(key)?;
+        let current = self.journal.is_for(key);
+        let has_notes = current && self.journal.data.as_ref().is_some_and(|d| !d.entries.is_empty() || d.left_off.is_some());
+        if current && (self.ui.journal_view || (days.is_empty() && has_notes)) {
+            return self.journal_section(key, main_w, cx);
+        }
         if days.is_empty() {
             return None;
         }
+        let notes: HashMap<chrono::NaiveDate, usize> = match self.journal_days(key) {
+            Some((_, jdays)) if current => jdays.iter().filter(|d| !d.entries.is_empty()).map(|d| (d.date, d.entries.len())).collect(),
+            _ => HashMap::new(),
+        };
         let content_w = main_w - 2. * 16.8 - DATE_W - RAIL_W - 2. * GAP;
         let max_tiles = (((content_w + TILE_GAP) / (TILE_W + TILE_GAP)).floor() as usize).clamp(1, 6);
         let shown = self.facts.timeline_days.min(days.len());
@@ -43,16 +58,9 @@ impl CollectionView {
         for (i, day) in days[..shown].iter().enumerate() {
             let is_best = played_days > 1 && day.played_secs > 0. && day.played_secs >= best;
             let tiles = self.day_tiles(i, day, max_tiles, cx);
-            list = list.child(day_row(day, this_year, i + 1 < shown, is_best, tiles));
+            let chip = notes.get(&day.date).map(|n| self.notes_chip(i, *n, cx));
+            list = list.child(day_row(day, this_year, i + 1 < shown, is_best, chip, tiles));
         }
-
-        let sessions: usize = days.iter().map(|d| d.sessions).sum();
-        let since = days.iter().rev().find(|d| d.sessions > 0).map(|d| date_label(d, this_year));
-        let meta = match (sessions, since) {
-            (0, _) | (_, None) => String::new(),
-            (1, Some(s)) => tr!("1 session · {since}", since = s),
-            (n, Some(s)) => tr!("{n} sessions since {since}", n, since = s),
-        };
 
         let more = days.len() - shown;
         let footer = if more > 0 {
@@ -75,16 +83,7 @@ impl CollectionView {
             div()
                 .flex()
                 .flex_col()
-                .child(
-                    h3(tr!("Timeline")).flex().justify_between().items_baseline().gap(px(12.)).child(
-                        div()
-                            .font_family(theme::FONT_BODY)
-                            .text_size(px(12.5))
-                            .font_weight(theme::W_REGULAR)
-                            .text_color(theme::white_a(0.52))
-                            .child(meta),
-                    ),
-                )
+                .child(self.timeline_header(key, cx))
                 .child(
                     panel(false)
                         .gap(px(4.))
@@ -93,6 +92,88 @@ impl CollectionView {
                 )
                 .into_any_element(),
         )
+    }
+
+    /// The section's title: "Timeline" or "Journal", what it holds, and the
+    /// switch between the two.
+    pub(super) fn timeline_header(&mut self, key: &SharedString, cx: &mut Context<Self>) -> Div {
+        let journal = self.ui.journal_view && self.journal.is_for(key);
+        let this_year = chrono::Local::now().year();
+        let meta = if journal {
+            let n = self.journal.data.as_ref().map_or(0, |d| d.entries.len());
+            if n == 0 {
+                String::new()
+            } else {
+                trn!(n, "{n} note", "{n} notes")
+            }
+        } else {
+            let days = self.timeline_days(key).unwrap_or_default();
+            let sessions: usize = days.iter().map(|d| d.sessions).sum();
+            let since = days.iter().rev().find(|d| d.sessions > 0).map(|d| date_label(d, this_year));
+            match (sessions, since) {
+                (0, _) | (_, None) => String::new(),
+                (1, Some(s)) => tr!("1 session · {since}", since = s),
+                (n, Some(s)) => tr!("{n} sessions since {since}", n, since = s),
+            }
+        };
+        let switch = self.view_switch(journal, cx);
+        h3(if journal { tr!("Journal") } else { tr!("Timeline") }).flex().justify_between().items_center().gap(px(12.)).child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .font_family(theme::FONT_BODY)
+                .text_size(px(12.5))
+                .font_weight(theme::W_REGULAR)
+                .text_color(theme::white_a(0.52))
+                .child(meta)
+                .child(switch),
+        )
+    }
+
+    /// Timeline | Journal: small pills on the segmented track (the size of
+    /// the command palette's filters, so the title stays one line).
+    fn view_switch(&mut self, journal: bool, cx: &mut Context<Self>) -> Div {
+        let mut bar = div().flex().flex_none().items_center().gap(px(2.)).p(px(2.)).rounded_full().bg(theme::seg_track());
+        for (on_journal, label) in [(false, tr!("Timeline")), (true, tr!("Journal"))] {
+            let on = on_journal == journal;
+            bar = bar.child(
+                div()
+                    .id(if on_journal { "timeline-view-journal" } else { "timeline-view-timeline" })
+                    .px(px(10.))
+                    .py(px(2.))
+                    .rounded_full()
+                    .cursor_pointer()
+                    .text_size(px(12.))
+                    .text_color(if on { white() } else { Hsla::from(theme::seg_text()) })
+                    .when(on, |d| d.bg(theme::seg_active()))
+                    .when(!on, |d| d.hover(|s| s.text_color(white())))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_journal_view(on_journal, cx)))
+                    .child(label),
+            );
+        }
+        bar
+    }
+
+    /// "3 notes" on a day of the Timeline; opens the Journal.
+    fn notes_chip(&mut self, day_i: usize, n: usize, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .id(SharedString::from(format!("tl-notes-{day_i}")))
+            .flex()
+            .items_center()
+            .gap(px(5.))
+            .ml(px(4.))
+            .px(px(7.))
+            .rounded(px(5.))
+            .cursor_pointer()
+            .bg(theme::white_a(0.07))
+            .hover(|s| s.bg(theme::white_a(0.13)))
+            .text_size(px(11.5))
+            .text_color(theme::white_a(0.8))
+            .child(icon(Icon::Notes, px(12.), theme::accent()))
+            .child(trn!(n, "{n} note", "{n} notes"))
+            .on_click(cx.listener(|this, _, _, cx| this.set_journal_view(true, cx)))
+            .into_any_element()
     }
 
     /// Thumbnails of one day; the last tile shows "+N" when they do not fit.
@@ -143,7 +224,7 @@ impl CollectionView {
     }
 }
 
-fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, tiles: Option<Div>) -> Div {
+fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, notes: Option<AnyElement>, tiles: Option<Div>) -> Div {
     let sub = match (day.sessions, day.first_start) {
         (1, Some(t)) => t.format(trc!("time format", "%-I:%M %p")).to_string(),
         (0, _) => String::new(),
@@ -176,6 +257,7 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, til
                 .child(tr!("Longest day")),
         );
     }
+    line = line.children(notes);
     div()
         .flex()
         .gap(px(GAP))
