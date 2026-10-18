@@ -42,6 +42,9 @@ pub enum Event {
     Progress { app_name: String, progress: Progress },
     /// An element ended (done, error or abort); `Changed` follows.
     Finished { element: DmElement, error: Option<String> },
+    /// An element failed while the connection was down: it stays first in
+    /// the queue, which is paused until the connection is back.
+    HeldOffline { element: DmElement },
     /// "Stop, delete files" could not delete this folder.
     RemoveFailed { title: String, folder: String },
 }
@@ -75,7 +78,18 @@ struct Inner {
     /// The user (not the shutdown or the connection) paused the queue; saved
     /// so a restart keeps it paused.
     user_paused: bool,
+    /// The element last held for the connection. Failing again right after
+    /// it resumed is recorded: where the probes are blocked, "offline" never
+    /// ends.
+    held: Option<String>,
 }
+
+/// A held element that fails again sooner than this after it restarted is
+/// not held again.
+const HELD_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Blocking check (it may probe the network): `true` when offline.
+pub type OfflineCheck = Arc<dyn Fn() -> bool + Send + Sync>;
 
 struct Shared {
     data_paths: DataPaths,
@@ -84,6 +98,8 @@ struct Shared {
     job: Arc<dyn Job>,
     notify: Arc<dyn Fn(Event) + Send + Sync>,
     inner: Mutex<Inner>,
+    /// Asked on the worker thread after a failed element; see [`DownloadManager::set_offline_check`].
+    offline: Mutex<Option<OfflineCheck>>,
 }
 
 #[derive(Clone)]
@@ -120,7 +136,8 @@ impl DownloadManager {
                 ephemeral,
                 job,
                 notify: Arc::new(notify),
-                inner: Mutex::new(Inner { state: DmState::Idle, queue, finished, current: None, worker: false, user_paused }),
+                inner: Mutex::new(Inner { state: DmState::Idle, queue, finished, current: None, worker: false, user_paused, held: None }),
+                offline: Mutex::new(None),
             }),
         }
     }
@@ -149,6 +166,15 @@ impl DownloadManager {
 
     fn emit(&self, ev: Event) {
         (self.shared.notify)(ev);
+    }
+
+    /// With a check set, an element that fails while it says "offline" is not
+    /// recorded as failed: it stays first and the queue pauses
+    /// ([`Event::HeldOffline`]), instead of the next elements failing one
+    /// after the other. Whoever sets it resumes the queue when the connection
+    /// is back.
+    pub fn set_offline_check(&self, check: OfflineCheck) {
+        *self.shared.offline.lock() = Some(check);
     }
 
     /// Deletes a cancelled download's folder; tells when it is still there.
@@ -244,11 +270,16 @@ impl DownloadManager {
                 }
                 self.emit(Event::Progress { app_name: app.clone(), progress: p });
             };
+            let started = std::time::Instant::now();
             let result = self.shared.job.run(&element, &cancel, &mut report);
+            // Blocking (a probe), so before taking the lock (and without the
+            // check's own). A stop that was asked for explains the failure by itself.
+            let check = self.shared.offline.lock().clone();
+            let offline = result.status == DmStatus::Error && !cancel.is_requested() && check.is_some_and(|check| check());
 
             let mut ended = element.clone();
             ended.end_time = now_ms();
-            let (finished_event, remove) = {
+            let (events, remove) = {
                 let mut g = self.shared.inner.lock();
                 let cur = g.current.take();
                 // A pause or a cancel that came as the job finished its work
@@ -256,14 +287,27 @@ impl DownloadManager {
                 let done = result.status == DmStatus::Done;
                 let cancelled = cur.as_ref().is_some_and(|c| c.cancelled);
                 let pause = !done && !cancelled && cur.as_ref().is_some_and(|c| c.pause_requested);
+                // Cancelled or paused during the probe: that wins.
+                let held_just_now = g.held.as_deref() == Some(app.as_str()) && started.elapsed() < HELD_AGAIN_AFTER;
+                let offline = offline && !cancel.is_requested() && !held_just_now;
                 let remove = cur.and_then(|c| c.remove_on_abort).filter(|_| !done && cancelled);
-                if pause {
+                if pause || offline {
                     if let Some(first) = g.queue.iter_mut().find(|e| e.params.app_name == app) {
                         first.start_time = ended.start_time;
                     }
+                    let mut events = Vec::new();
+                    if offline && !pause {
+                        log::info!("{app} failed while offline: the queue waits for the connection");
+                        g.held = Some(app.clone());
+                        g.state = DmState::Paused;
+                        events.push(Event::HeldOffline { element: ended });
+                    }
                     self.persist(&g);
-                    (None, remove)
+                    (events, remove)
                 } else {
+                    if g.held.as_deref() == Some(app.as_str()) {
+                        g.held = None;
+                    }
                     ended.status = Some(result.status);
                     ended.error = result.error.clone().filter(|_| result.status == DmStatus::Error);
                     match g.finished.iter().position(|e| e.params.app_name == app) {
@@ -278,13 +322,13 @@ impl DownloadManager {
                         g.queue.retain(|e| !dlcs.contains(&e.params.app_name));
                     }
                     self.persist(&g);
-                    (Some(Event::Finished { element: ended, error: result.error.clone() }), remove)
+                    (vec![Event::Finished { element: ended, error: result.error.clone() }], remove)
                 }
             };
             if let Some((path, folder)) = remove {
                 self.remove_partial(element.params.title(), &path, &folder);
             }
-            if let Some(ev) = finished_event {
+            for ev in events {
                 self.emit(ev);
             }
             self.emit(Event::Changed);
@@ -892,6 +936,45 @@ mod tests {
         assert!(s.finished.iter().find(|e| e.params.app_name == "z").unwrap().error.is_none());
         assert_eq!(queue::load(&DataPaths::at(dir.path())).finished.iter().find(|e| e.params.app_name == "a").unwrap().error.as_deref(), Some("boom"));
         drop(rx);
+    }
+
+    #[test]
+    fn a_failure_while_offline_holds_the_queue_instead_of_emptying_it() {
+        let job = FakeJob::new(&[], &["a"]);
+        let (m, rx, _dir) = manager(job.clone());
+        let offline = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let flag = offline.clone();
+        m.set_offline_check(Arc::new(move || flag.load(Ordering::SeqCst)));
+        m.add(el("a"));
+        m.add(el("b"));
+        wait_until(&m, "held", |s| s.state == DmState::Paused);
+        wait_idle(&m);
+        let s = m.snapshot();
+        assert!(s.finished.is_empty());
+        assert_eq!(s.queue.iter().map(|e| e.params.app_name.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(*job.runs.lock(), ["a"]);
+        assert!(rx.try_iter().any(|e| matches!(e, Event::HeldOffline { element } if element.params.app_name == "a")));
+        // Back online, a real failure is a failure and the queue goes on.
+        offline.store(false, Ordering::SeqCst);
+        m.resume();
+        wait_until(&m, "both ended", |s| s.finished.len() == 2 && s.state == DmState::Idle);
+        assert_eq!(m.snapshot().finished.iter().find(|e| e.params.app_name == "a").unwrap().status, Some(DmStatus::Error));
+    }
+
+    #[test]
+    fn an_element_is_held_once_when_the_probes_never_say_online() {
+        let job = FakeJob::new(&[], &["a"]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.set_offline_check(Arc::new(|| true));
+        m.add(el("a"));
+        m.add(el("b"));
+        wait_until(&m, "held", |s| s.state == DmState::Paused);
+        wait_idle(&m);
+        // Resumed (the network has been up a while): it fails again and is recorded.
+        m.resume();
+        wait_until(&m, "both ended", |s| s.finished.len() == 2 && s.state == DmState::Idle);
+        assert_eq!(*job.runs.lock(), ["a", "a", "b"]);
+        assert_eq!(m.snapshot().finished.iter().find(|e| e.params.app_name == "a").unwrap().status, Some(DmStatus::Error));
     }
 
     #[test]

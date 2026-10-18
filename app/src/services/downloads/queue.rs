@@ -1,6 +1,7 @@
 //! Install and update requests, queue control and the download manager's events.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::Instant;
 
 use gpui_kit::*;
@@ -124,6 +125,13 @@ impl Downloads {
                     _ => {}
                 }
             }
+            DmEvent::HeldOffline { element } => {
+                log::info!("downloads: {} failed while offline, the queue waits", element.params.app_name);
+                // Paused already: the tick must not read the old state and let go.
+                self.snapshot = self.manager.snapshot();
+                self.offline.did_pause();
+                self.offline_notice(tr!("No internet connection: downloads paused"), true, cx);
+            }
             DmEvent::RemoveFailed { title, folder } => {
                 self.toast(cx, tr!("{title}: the downloaded files could not be deleted from {folder}", title, folder), true);
             }
@@ -227,6 +235,8 @@ impl Downloads {
 
     /// Looks at the connection while the queue downloads or waits for it.
     pub(super) fn spawn_offline_watch(&mut self, cx: &mut Context<Self>) {
+        // A failure while offline holds the queue (this watch resumes it).
+        self.manager.set_offline_check(Arc::new(|| !(connectivity::has_network() && SystemNet.is_online())));
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(connectivity::TICK).await;
             if this.update(cx, |this, cx| this.offline_tick(cx)).is_err() {
