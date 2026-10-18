@@ -71,10 +71,19 @@ fn app_icon(app: &audio::AppAudio) -> Icon {
 }
 
 pub fn short(name: &str) -> String {
-    if name.chars().count() <= OUTPUT_CHARS {
+    short_to(name, OUTPUT_CHARS)
+}
+
+/// A device name in a row's value: shorter, so the row's label keeps room.
+pub fn short_row(name: &str) -> String {
+    short_to(name, 20)
+}
+
+fn short_to(name: &str, chars: usize) -> String {
+    if name.chars().count() <= chars {
         return name.to_string();
     }
-    let cut: String = name.chars().take(OUTPUT_CHARS - 1).collect();
+    let cut: String = name.chars().take(chars - 1).collect();
     format!("{}…", cut.trim_end())
 }
 

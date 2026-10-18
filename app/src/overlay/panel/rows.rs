@@ -64,11 +64,15 @@ impl OverlayPanel {
         };
         let mut rows = mixer::rows(a, self.game.is_some(), mixer::AUDIO_APPS);
         if !a.outputs.is_empty() {
-            let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short(&o.description).into()).collect();
+            let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
             rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));
         }
+        if !a.inputs.is_empty() {
+            let options: Vec<SharedString> = a.inputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
+            rows.push(Row::choice("input", tr!("Microphone"), options, a.default_input.unwrap_or(0)).icon(Icon::Mic));
+        }
         if let Some(muted) = a.mic_muted {
-            rows.push(Row::toggle("mic", tr!("Microphone"), !muted).icon(if muted { Icon::MicOff } else { Icon::Mic }));
+            rows.push(Row::toggle("mic", tr!("Microphone on"), !muted).icon(if muted { Icon::MicOff } else { Icon::Mic }));
         }
         rows
     }
@@ -184,6 +188,17 @@ impl OverlayPanel {
                 if let Some(Some(name)) = name {
                     self.run_audio(move || audio::set_default_output(&name), cx);
                     // The new output's volume.
+                    self.load_audio(cx);
+                }
+            }
+            ("input", Value::Choice { index, .. }) => {
+                let name = self.set_audio(|a| {
+                    a.default_input = Some(index);
+                    a.inputs.get(index).map(|o| o.name.clone())
+                });
+                if let Some(Some(name)) = name {
+                    self.run_audio(move || audio::set_default_input(&name), cx);
+                    // The new microphone's mute.
                     self.load_audio(cx);
                 }
             }

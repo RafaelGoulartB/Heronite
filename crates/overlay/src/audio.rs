@@ -1,6 +1,6 @@
 //! System audio for the overlay through `pactl` (PulseAudio, or PipeWire's
 //! pulse server, which every PipeWire desktop runs): the output volume, its
-//! mute, the default output, the microphone mute, the volume of the game's
+//! mute, the default output, the default microphone and its mute, the volume of the game's
 //! own streams and of the other apps playing (a browser tab, a music
 //! player). Every call is blocking (it runs `pactl`).
 
@@ -12,10 +12,10 @@ use heronite_data::proc::Run;
 use crate::procs::belongs_to;
 use serde_json::Value;
 
-/// An output device.
+/// An output device (or an input one: [`AudioState::inputs`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Output {
-    /// pactl's sink name (what `set-default-sink` takes).
+    /// pactl's sink (or source) name (what `set-default-sink` takes).
     pub name: String,
     /// Human name ("Arctis 7 Game").
     pub description: String,
@@ -46,6 +46,10 @@ pub struct AudioState {
     pub default_output: Option<usize>,
     /// `None` when there is no microphone.
     pub mic_muted: Option<bool>,
+    /// The microphones (input devices; not the outputs' monitors).
+    pub inputs: Vec<Output>,
+    /// Index of the default input in `inputs`.
+    pub default_input: Option<usize>,
     /// Volume of the game's streams, when it plays any.
     pub game_volume: Option<u16>,
     pub game_muted: bool,
@@ -71,6 +75,9 @@ pub fn read(game_pid: Option<u32>) -> Option<AudioState> {
     let default_output = sinks.iter().position(|s| s.output.name == default);
     let (volume, muted) = default_output.map(|i| (sinks[i].volume, sinks[i].muted)).unwrap_or_default();
     let mic_muted = pactl(&["get-source-mute", "@DEFAULT_SOURCE@"]).and_then(|s| parse_mute(&s));
+    let inputs = pactl(&["-f", "json", "list", "sources"]).map(|t| parse_sources(&t)).unwrap_or_default();
+    let default_source = pactl(&["get-default-source"]).map(|s| s.trim().to_string()).unwrap_or_default();
+    let default_input = inputs.iter().position(|s| s.name == default_source);
     let streams = pactl(&["-f", "json", "list", "sink-inputs"]).map(|t| parse_sink_inputs(&t)).unwrap_or_default();
     let is_game = |s: &SinkInput| game_pid.zip(s.pid).is_some_and(|(game, pid)| belongs_to(pid, game));
     let game = streams.iter().find(|s| is_game(s));
@@ -81,6 +88,8 @@ pub fn read(game_pid: Option<u32>) -> Option<AudioState> {
         outputs: sinks.into_iter().map(|s| s.output).collect(),
         default_output,
         mic_muted,
+        inputs,
+        default_input,
         game_volume: game.as_ref().map(|s| s.volume),
         game_muted: game.is_some_and(|s| s.muted),
         apps,
@@ -154,6 +163,11 @@ pub fn set_default_output(name: &str) {
     pactl(&["set-default-sink", name]);
 }
 
+/// Makes `name` (a source of [`AudioState::inputs`]) the microphone.
+pub fn set_default_input(name: &str) {
+    pactl(&["set-default-source", name]);
+}
+
 pub fn set_mic_muted(muted: bool) {
     pactl(&["set-source-mute", "@DEFAULT_SOURCE@", if muted { "1" } else { "0" }]);
 }
@@ -199,6 +213,23 @@ fn parse_sinks(json: &str) -> Vec<Sink> {
                 volume: average_percent(s.get("volume")),
                 muted: s.get("mute").and_then(Value::as_bool).unwrap_or(false),
             })
+        })
+        .collect()
+}
+
+/// The input devices, without the monitors of the outputs.
+fn parse_sources(json: &str) -> Vec<Output> {
+    let Ok(Value::Array(items)) = serde_json::from_str::<Value>(json) else { return Vec::new() };
+    items
+        .iter()
+        .filter_map(|s| {
+            let name = s.get("name")?.as_str()?.to_string();
+            let class = s.get("properties").and_then(|p| p.get("device.class")).and_then(Value::as_str);
+            if class == Some("monitor") || name.ends_with(".monitor") {
+                return None;
+            }
+            let description = s.get("description").and_then(Value::as_str).unwrap_or(&name).to_string();
+            Some(Output { name, description })
         })
         .collect()
 }
@@ -302,6 +333,20 @@ mod tests {
         assert_eq!(parse_mute("Mute: yes\n"), Some(true));
         assert_eq!(parse_mute("Mute: no"), Some(false));
         assert_eq!(parse_mute("Failure"), None);
+    }
+
+    #[test]
+    fn sources_leave_out_the_monitors() {
+        let json = r#"[
+          {"name":"alsa_input.usb-046d_C270.mono-fallback","description":"Webcam C270 Mono","properties":{"device.class":"sound"}},
+          {"name":"alsa_output.pci-0000_0d_00.6.analog-stereo.monitor","description":"Monitor of Ryzen","properties":{"device.class":"monitor"}},
+          {"name":"alsa_input.pci-0000_0d_00.6.analog-stereo","properties":{}}
+        ]"#;
+        let s = parse_sources(json);
+        assert_eq!(
+            s.iter().map(|o| o.description.as_str()).collect::<Vec<_>>(),
+            ["Webcam C270 Mono", "alsa_input.pci-0000_0d_00.6.analog-stereo"]
+        );
     }
 
     #[test]
