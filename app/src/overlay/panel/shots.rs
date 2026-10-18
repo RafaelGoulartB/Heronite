@@ -13,8 +13,6 @@ use crate::theme;
 /// Captures on Home.
 const RECENT: usize = 3;
 const COLS: usize = 2;
-/// Height of the Screenshots grid before it scrolls (design px).
-const GRID_MAX_H: f32 = 400.;
 
 impl OverlayPanel {
     fn tile(&self, i: usize, focused: bool) -> Div {
@@ -79,8 +77,8 @@ impl OverlayPanel {
                     .when(len < COLS, |d| d.child(div().flex_1())),
             );
         }
-        // About three rows; more scroll.
-        div().child(grid.max_h(u(GRID_MAX_H)))
+        // Takes what the panel has left; more rows scroll.
+        div().flex_1().min_h_0().child(grid.size_full())
     }
 
     pub(super) fn grid_pad(&mut self, pad: Pad) {

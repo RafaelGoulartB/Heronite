@@ -98,7 +98,7 @@ impl OverlayPanel {
     }
 
     /// The block; `focus` is the focused mixer row, if one is.
-    pub(super) fn render_mixer(&self, a: &AudioState, focus: Option<&str>) -> Div {
+    pub(super) fn render_mixer(&self, a: &AudioState, focus: Option<&str>, loading: bool) -> Div {
         let focused = focus.is_some();
         let line = |id: &str, ic: Icon, label: SharedString, level: Option<u16>, muted: bool| {
             let on = focus == Some(id);
@@ -109,11 +109,12 @@ impl OverlayPanel {
                 (false, false) => theme::console_btn_x(),
             };
             let value = match level {
+                _ if loading => "\u{2026}".to_string(),
                 None => tr!("No sound yet").to_string(),
                 Some(_) if muted => tr!("Muted").to_string(),
                 Some(v) => format!("{v}%"),
             };
-            let frac = level.map_or(0., |v| (f32::from(v.min(100)) / 100.).clamp(0., 1.));
+            let frac = if loading { 0. } else { level.map_or(0., |v| (f32::from(v.min(100)) / 100.).clamp(0., 1.)) };
             div()
                 .flex()
                 .items_center()
@@ -145,7 +146,12 @@ impl OverlayPanel {
                         .child(value),
                 )
         };
-        let output = a.default_output.and_then(|i| a.outputs.get(i)).map(|o| short(&o.description));
+        // While loading, a placeholder keeps the line (and the block's height).
+        let output = if loading {
+            Some("\u{2026}".to_string())
+        } else {
+            a.default_output.and_then(|i| a.outputs.get(i)).map(|o| short(&o.description))
+        };
         let muted_color: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_muted().into() };
         let mut block = div()
             .relative()

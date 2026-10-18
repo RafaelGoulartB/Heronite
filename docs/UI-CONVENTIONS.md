@@ -276,8 +276,10 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 state): during a game launched by the app, the controller's Guide button opens a panel over the game (by user decision:
 proposal 1 "Guide lateral, estilo Xbox"). It is a Wayland layer-shell surface on the overlay layer (no keyboard focus, so
 the game keeps it), 440 design px wide along the left or right edge, in console mode's look scaled to the display
-(`kit::set_scale_value`; 1440 px tall → 1.16), from the top and only as tall as its content (`OverlayPanel::fit` measures
-the panel each frame and resizes the layer surface, up to the display's height; the Screenshots grid scrolls past ~3 rows): LB / RB tabs on top (icon over label: Home,
+(`kit::set_scale_value`; 1440 px tall → 1.16), from the top, with a fixed size (`window::PANEL_H`, the tallest tab: Home with its
+recent screenshots; capped at the display's height) so it never changes size while it loads or between tabs: every tab
+fills it, the Screenshots grid and the Controller list scroll inside it, and the mixer holds its place while the audio is
+read: LB / RB tabs on top (icon over label: Home,
 Screenshots, Audio, Controller), then game title, session and total time, clock and battery, the tab's `console::list`
 rows and a compact hint bar. Volume is a mixer block (by user decision: option D) on Home and Audio: two bars, System
 and the game's own streams, that are two rows of the list (↑ ↓), ◀ ▶ change the focused one, A mutes it, Y switches
@@ -289,7 +291,7 @@ window (`com.heronite.overlay`) as if the game ran (Hyprland ignores its size re
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
 plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` adds a notice (`com.heronite.overlay-notice`);
 `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
-`RUST_LOG=debug` logs the height the panel asks for.
+the panel's size follows it.
 
 ## Rules
 - No I/O on the UI thread except tiny reads; use `cx.background_spawn` and

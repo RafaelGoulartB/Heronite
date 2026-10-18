@@ -4,26 +4,19 @@
 //! mode, smaller since the panel floats over a game (1440 px tall → 1.16).
 
 use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellNotSupportedError, LayerShellOptions};
-use std::sync::atomic::{AtomicU32, Ordering};
-
 use gpui_kit::*;
 use heronite_data::overlay_prefs::Side;
 
-/// Width of the panel in design px (console mode's 1280×800 scale).
+/// Size of the panel in design px (console mode's 1280×800 scale). The
+/// height fits the tallest tab (Home with its recent screenshots); every tab
+/// fills it, so the panel never changes size while it loads or between tabs.
 pub const PANEL_W: f32 = 440.;
+pub const PANEL_H: f32 = 800.;
 /// Gap between the surfaces and the screen edges, in design px.
 pub const EDGE: f32 = 16.;
 /// Size of a notice, in design px.
 pub const NOTICE_W: f32 = 360.;
 pub const NOTICE_H: f32 = 76.;
-
-/// The panel's height the last time it was measured (logical px, 0 = never):
-/// it opens at that height again rather than at a guess.
-static LAST_PANEL_H: AtomicU32 = AtomicU32::new(0);
-
-pub fn remember_panel_height(h: f32) {
-    LAST_PANEL_H.store(h.to_bits(), Ordering::Relaxed);
-}
 
 /// Display height (px) per unit of the console scale.
 const PX_PER_SCALE: f32 = 1240.;
@@ -85,18 +78,15 @@ pub fn open_panel<V: Render>(
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<WindowHandle<V>> {
     let s = scale(cx);
-    // The panel fits its height to what it shows once drawn
-    // (`OverlayPanel::fit`); until then, its last height or a guess.
-    let last = f32::from_bits(LAST_PANEL_H.load(Ordering::Relaxed));
-    let max = panel_max_height(cx);
-    let height = if last > 0. { last.min(max) } else { max * 0.6 };
+    let height = (PANEL_H * s).min(panel_max_height(cx));
     let size = size(px(PANEL_W * s), px(height));
     let anchor = side_anchor(side) | Anchor::TOP;
     cx.open_window(options("overlay", size, anchor, px(EDGE * s), layer), build)
 }
 
-/// The tallest the panel may be: the display minus the edge gaps.
-pub fn panel_max_height(cx: &App) -> f32 {
+/// The tallest the panel may be: the display minus the edge gaps (a Steam
+/// Deck's 800 px is a little short of the full height).
+fn panel_max_height(cx: &App) -> f32 {
     (display_height(cx) - 2. * EDGE * scale(cx)).max(400.)
 }
 

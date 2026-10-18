@@ -9,14 +9,13 @@ mod mixer;
 mod rows;
 mod shots;
 
-use std::cell::Cell;
-use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
+use heronite_overlay::audio::AudioState;
 use heronite_overlay::input::{Button, Controller};
 
 use self::data::Data;
@@ -76,12 +75,6 @@ pub struct OverlayPanel {
     game: GameNow,
     controllers: Vec<Controller>,
     scale: f32,
-    /// Height the content needs (logical px), measured after layout; the
-    /// window follows it, up to `max_height`.
-    content_height: Rc<Cell<f32>>,
-    max_height: f32,
-    /// Redraws after a resize are scheduled.
-    fitting: Rc<Cell<bool>>,
     tab: usize,
     nav: ListNav,
     data: Data,
@@ -132,9 +125,6 @@ impl OverlayPanel {
             game,
             controllers,
             scale: super::window::scale(cx),
-            content_height: Rc::new(Cell::new(0.)),
-            max_height: super::window::panel_max_height(cx),
-            fitting: Rc::new(Cell::new(false)),
             tab: 0,
             nav: ListNav::default(),
             data: Data::default(),
@@ -362,25 +352,39 @@ impl OverlayPanel {
     fn render_body(&mut self) -> Div {
         let rows = self.rows();
         let list_active = self.grid.is_none() && self.confirm.is_none();
-        let list = match self.data.audio.as_ref().and_then(|a| a.as_ref()).filter(|_| rows.iter().any(|r| r.id.as_ref() == mixer::SYSTEM)) {
+        let placeholder = AudioState::default();
+        let has_mixer = rows.iter().any(|r| r.id.as_ref() == mixer::SYSTEM);
+        // While the audio is read, the mixer shows empty at its full size.
+        let audio = match &self.data.audio {
+            Some(Some(a)) => Some((a, false)),
+            None => Some((&placeholder, true)),
+            Some(None) => None,
+        };
+        let list = match audio.filter(|_| has_mixer) {
             // With the mixer: the rows are drawn here (short lists, no scrolling).
-            Some(audio) => {
+            Some((audio, loading)) => {
                 self.nav.clamp(&rows);
                 let focus = list_active.then(|| rows.get(self.nav.focus).map(|r| r.id.clone())).flatten();
                 let mixer_focus = focus.as_ref().filter(|id| mixer::is_mixer(id)).map(|id| id.to_string());
                 let mut list = div().flex().flex_col().gap(u(4.));
                 for (i, r) in rows.iter().enumerate() {
                     match r.id.as_ref() {
-                        mixer::SYSTEM => list = list.child(div().py(u(4.)).child(self.render_mixer(audio, mixer_focus.as_deref()))),
+                        mixer::SYSTEM => {
+                            list = list.child(div().py(u(4.)).child(self.render_mixer(audio, mixer_focus.as_deref(), loading)))
+                        }
                         mixer::GAME => {}
                         _ => list = list.child(list::render_row(r, list_active && i == self.nav.focus)),
                     }
                 }
                 list.into_any_element()
             }
+            // Long lists (several controllers) scroll inside the panel.
+            None if self.tab() == Tab::Controller => {
+                self.nav.render(("overlay-rows", self.tab), &rows, list_active).flex_1().min_h_0().into_any_element()
+            }
             None => self.nav.render(("overlay-rows", self.tab), &rows, list_active).flex_none().into_any_element(),
         };
-        let mut body = div().flex().flex_col().flex_shrink(1.).min_h_0().px(u(12.)).pt(u(10.)).pb(u(6.)).gap(u(8.)).child(list);
+        let mut body = div().flex().flex_col().flex_1().min_h_0().overflow_hidden().px(u(12.)).pt(u(10.)).pb(u(6.)).gap(u(8.)).child(list);
         if let Some(e) = &self.error {
             body = body.child(div().px(u(22.)).text_size(u(13.)).text_color(theme::danger_text()).child(e.clone()));
         }
@@ -388,36 +392,6 @@ impl OverlayPanel {
             Tab::Home => body.child(self.render_recent()),
             Tab::Shots => body.child(self.render_grid()),
             Tab::Audio | Tab::Controller => body,
-        }
-    }
-}
-
-impl OverlayPanel {
-    /// Sizes the window to the content measured in the last frame.
-    fn fit(&self, window: &mut Window, cx: &mut Context<Self>) {
-        let wanted = self.content_height.get().min(self.max_height).ceil();
-        let size = window.viewport_size();
-        if wanted <= 0. || (wanted - f32::from(size.height)).abs() <= 1. {
-            return;
-        }
-        log::debug!("overlay: panel height {wanted}");
-        super::window::remember_panel_height(wanted);
-        window.resize(gpui_kit::size(size.width, px(wanted)));
-        // The layer surface takes the new size with the next frame it commits:
-        // draw again until the compositor has applied it (nothing else may
-        // redraw a panel that just opened).
-        if !self.fitting.replace(true) {
-            let fitting = self.fitting.clone();
-            cx.spawn(async move |this, cx| {
-                for ms in [16, 60, 150, 300] {
-                    cx.background_executor().timer(Duration::from_millis(ms)).await;
-                    if this.update(cx, |_, cx| cx.notify()).is_err() {
-                        break;
-                    }
-                }
-                fitting.set(false);
-            })
-            .detach();
         }
     }
 }
@@ -441,17 +415,13 @@ fn duration_label(minutes: u64) -> String {
 }
 
 impl Render for OverlayPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         kit::set_scale_value(self.scale);
-        self.fit(window, cx);
-        let measured = self.content_height.clone();
-        // The window's root always fills the window; the panel inside keeps its
-        // own height (no shrinking), which `fit` gives the window next frame.
+        // The window has the panel's fixed size (`window::PANEL_H`): the panel
+        // fills it and the tab's content takes what the header and hints leave.
         let mut panel = div()
             .relative()
-            .flex_none()
-            .w_full()
-            .max_h(px(self.max_height))
+            .size_full()
             .font_family(theme::FONT_BODY)
             .text_color(theme::text_primary())
             .flex()
@@ -464,21 +434,7 @@ impl Render for OverlayPanel {
             .child(self.render_tabs())
             .child(self.render_header())
             .child(self.render_body())
-            .child(self.render_hints())
-            .child(
-                canvas(
-                    move |bounds, window, _| {
-                        let h = f32::from(bounds.size.height);
-                        if (h - measured.get()).abs() > 0.5 {
-                            measured.set(h);
-                            window.refresh();
-                        }
-                    },
-                    |_, _, _, _| {},
-                )
-                .absolute()
-                .size_full(),
-            );
+            .child(self.render_hints());
         if let Some(confirm) = &self.confirm {
             let (title, message) = match confirm {
                 Confirm::Quit => (tr!("Quit {game}?", game = self.game.title()), tr!("Progress you have not saved in the game is lost.")),
@@ -492,6 +448,6 @@ impl Render for OverlayPanel {
         if let Some(viewer) = self.render_viewer() {
             panel = panel.child(viewer);
         }
-        div().size_full().flex().flex_col().child(panel)
+        panel
     }
 }

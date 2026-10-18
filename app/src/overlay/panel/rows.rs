@@ -21,8 +21,11 @@ impl OverlayPanel {
 
     fn home_rows(&self) -> Vec<Row> {
         let mut rows = Vec::new();
-        if let Some(Some(a)) = &self.data.audio {
-            rows.extend(mixer::rows(a));
+        match &self.data.audio {
+            Some(Some(a)) => rows.extend(mixer::rows(a)),
+            // Still reading it: the mixer's rows already hold their place.
+            None => rows.extend(mixer::rows(&audio::AudioState::default())),
+            Some(None) => {}
         }
         rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera));
         if let Some(id) = &self.data.status_id {
@@ -37,7 +40,7 @@ impl OverlayPanel {
 
     fn audio_rows(&self) -> Vec<Row> {
         let a = match &self.data.audio {
-            None => return vec![Row::info("loading", tr!("Audio"), tr!("Loading…"))],
+            None => return mixer::rows(&audio::AudioState::default()),
             Some(None) => {
                 return vec![Row::info("none", tr!("Volume control is not available"), "")
                     .desc(tr!("It needs pactl (PipeWire or PulseAudio)."))
