@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use heronite_data::install_size::{rom_bytes, SizeCache};
+use heronite_data::install_size::{parse_store_size, rom_bytes, SizeCache};
 use heronite_data::organize::GameExtras;
 use heronite_data::{CollectionGame, DataPaths, Library};
 use heronite_launch::settings::GlobalSettings;
@@ -48,7 +48,7 @@ fn system_names() -> HashMap<String, String> {
 }
 
 fn size_of<'a>(g: &CollectionGame, steam: impl FnOnce() -> Option<&'a SteamLocator>, walked: &SizeCache) -> Option<u64> {
-    if let Some(bytes) = g.details.install_size.as_deref().and_then(parse_size) {
+    if let Some(bytes) = g.details.install_size.as_deref().and_then(parse_store_size) {
         return Some(bytes);
     }
     let meta = g.meta.as_deref();
@@ -71,38 +71,4 @@ fn size_of<'a>(g: &CollectionGame, steam: impl FnOnce() -> Option<&'a SteamLocat
         .map(|p| Path::new(p.trim()))
         .find(|p| p.is_absolute())?;
     walked.get(dir)
-}
-
-/// A size as stores write it: bytes ("4518092416"), or a number and a unit
-/// ("41.92 GB", "1.5 GiB", "700 MB"), 1024-based.
-fn parse_size(text: &str) -> Option<u64> {
-    let text = text.trim();
-    let split = text.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == ',')).unwrap_or(text.len());
-    let number: f64 = text[..split].replace(',', "").parse().ok()?;
-    let unit = text[split..].trim().to_ascii_lowercase();
-    let power = match unit.trim_end_matches("ib").trim_end_matches('b') {
-        "" => 0,
-        "k" => 1,
-        "m" => 2,
-        "g" => 3,
-        "t" => 4,
-        _ => return None,
-    };
-    let bytes = number * 1024f64.powi(power);
-    (bytes.is_finite() && bytes >= 1.).then_some(bytes as u64)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_size;
-
-    #[test]
-    fn sizes_in_store_shapes() {
-        assert_eq!(parse_size("4518092416"), Some(4_518_092_416));
-        assert_eq!(parse_size("1.5 GiB"), Some(1_610_612_736));
-        assert_eq!(parse_size("41.92 GB"), Some(45_011_257_262));
-        assert_eq!(parse_size("700 MB"), Some(734_003_200));
-        assert_eq!(parse_size("0"), None);
-        assert_eq!(parse_size("big"), None);
-    }
 }

@@ -117,6 +117,9 @@ pub enum PageEvent {
     ShowHidden(bool),
     /// Select this game (`CollectionGame::key`) on the Collection.
     ShowGame(String),
+    /// Uninstall this game (`CollectionGame::key`) the way its context menu
+    /// does; the page stays on screen under the dialog.
+    Uninstall(String),
 }
 
 /// Round close button of a [`sheet`]: goes back to the Collection.

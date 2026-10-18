@@ -40,6 +40,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      (evdev, Guide button, grabs), pactl audio,
  │                      controller battery / Bluetooth               → data
  ├─ heronite-wine       Wine/Proton manager                          → data
+ ├─ heronite-storage    disk space of games, prefixes, Proton builds,
+ │                      Steam leftovers, caches; cleaning them up    → data, launch, wine
  ├─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf       → data
  ├─ heronite-steam      settings of Steam games (launch options,
  │                      Proton) via the client or its files         → data, launch, shortcuts
@@ -150,6 +152,15 @@ calls them from `cx.background_spawn` or worker threads.
   directions repeat). `audio` drives the default output, the microphone,
   the game's own streams and the other apps playing through `pactl`; `controller` reads the battery from
   sysfs and disconnects Bluetooth controllers.
+- **heronite-storage:** Settings → Storage. `inventory` lists the installed games (store size, Steam's
+  `SizeOnDisk`, ROM files, else a walk), the Wine prefixes (in use while an installed game or the defaults
+  use them; one inside a game's folder goes with the game), the Wine Manager builds (in use when the default,
+  set on an installed game or picked in Steam's `config.vdf`) and the runtimes, Steam's `compatdata` /
+  `shadercache` of apps without a manifest, the caches that rebuild themselves and the folders of the games
+  folders nothing known points to (installed games, prefixes, ROM folders, emulators, the download queue, any
+  path of the settings; nothing changed in the last two hours). `measure` walks one item (`du`-style blocks);
+  `disks` maps paths to devices (`mountinfo`, `statvfs`); `remove` re-checks the path and trashes what may
+  hold saves, deletes the rest.
 - **heronite-wine:** the Wine Manager (`manager`: download, install, remove
   builds from `repos`) and `detect`, the Wine/Proton list the settings pick
   from. `default` keeps a global default that can run games: when none is
