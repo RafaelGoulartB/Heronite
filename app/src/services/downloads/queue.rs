@@ -9,7 +9,7 @@ use heronite_amazon::ops::NileJob;
 use heronite_data::DataPaths;
 use heronite_epic::cmd::{Cancel, Legendary};
 use heronite_epic::info;
-use heronite_epic::manager::{DmState, Event as DmEvent, Job, JobResult};
+use heronite_epic::manager::{DmState, DownloadManager, Event as DmEvent, Job, JobResult};
 use heronite_epic::ops::{self, LegendaryJob};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
@@ -124,6 +124,9 @@ impl Downloads {
                     _ => {}
                 }
             }
+            DmEvent::RemoveFailed { title, folder } => {
+                self.toast(cx, tr!("{title}: the downloaded files could not be deleted from {folder}", title, folder), true);
+            }
         }
         cx.notify();
     }
@@ -159,16 +162,7 @@ impl Downloads {
                         size: req.size.clone(),
                         ..Default::default()
                     };
-                    manager.add(DmElement::new(ElementKind::Install, base.clone()));
-                    let separate_dlcs = if runner == "legendary" { req.dlcs.as_slice() } else { &[] };
-                    for dlc in separate_dlcs {
-                        // The queue lists the DLC under its own title and cover.
-                        let game_info = library_entry(&data_paths, dlc).unwrap_or_else(|| base.game_info.clone());
-                        manager.add(DmElement::new(
-                            ElementKind::Install,
-                            InstallParams { app_name: dlc.clone(), install_dlcs: Vec::new(), game_info, size: None, ..base.clone() },
-                        ));
-                    }
+                    add_install(&manager, &data_paths, base);
                     anyhow::Ok(())
                 })
                 .await;
@@ -367,6 +361,36 @@ impl Downloads {
             },
             cx,
         );
+    }
+}
+
+/// Queues an install and, for Epic, its DLCs as elements of their own (GOG
+/// installs the chosen DLCs with the game: gogdl takes them along).
+fn add_install(manager: &DownloadManager, data_paths: &DataPaths, mut base: InstallParams) {
+    if base.runner == "nile" {
+        // The folder nile creates, which "Stop, delete files" deletes.
+        let title = base.game_info.get("title").and_then(Value::as_str).map(str::to_string);
+        let folder = heronite_amazon::ops::install_folder_name(title.as_deref(), &base.app_name);
+        if let Some(info) = base.game_info.as_object_mut() {
+            info.insert("folder_name".into(), Value::String(folder));
+        }
+    }
+    manager.add(DmElement::new(ElementKind::Install, base.clone()));
+    let separate_dlcs = if base.runner == "legendary" { base.install_dlcs.as_slice() } else { &[] };
+    for dlc in separate_dlcs {
+        // The queue lists the DLC under its own title and cover.
+        let game_info = library_entry(data_paths, dlc).unwrap_or_else(|| {
+            // It installs into the base game's folder: never one to delete.
+            let mut info = base.game_info.clone();
+            if let Some(obj) = info.as_object_mut() {
+                obj.insert("install".into(), serde_json::json!({"is_dlc": true}));
+            }
+            info
+        });
+        manager.add(DmElement::new(
+            ElementKind::Install,
+            InstallParams { app_name: dlc.clone(), install_dlcs: Vec::new(), game_info, size: None, ..base.clone() },
+        ));
     }
 }
 

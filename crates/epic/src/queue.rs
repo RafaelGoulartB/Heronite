@@ -53,6 +53,11 @@ impl InstallParams {
     pub fn folder_name(&self) -> Option<String> {
         self.game_info.get("folder_name").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)
     }
+
+    /// The stored `GameInfo` is a DLC: it installs into its base game's folder.
+    pub fn is_dlc(&self) -> bool {
+        self.game_info.pointer("/install/is_dlc").and_then(Value::as_bool).unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +98,18 @@ pub struct DmElement {
 impl DmElement {
     pub fn new(kind: ElementKind, params: InstallParams) -> Self {
         Self { params, kind, add_to_queue_time: now_ms(), end_time: 0, start_time: 0, status: None, extra: Map::new() }
+    }
+
+    /// The folder "Stop, delete files" may delete: `(base path, folder)` of a
+    /// game's own install. Never for an update (the folder is the installed
+    /// game) or a DLC (it shares its base game's folder), nor for a path that
+    /// is not absolute (`thirdParty` installs).
+    pub fn partial_folder(&self) -> Option<(String, String)> {
+        let absolute = std::path::Path::new(self.params.path.trim_matches('\'')).is_absolute();
+        if self.kind != ElementKind::Install || self.params.is_dlc() || !absolute {
+            return None;
+        }
+        self.params.folder_name().map(|f| (self.params.path.clone(), f))
     }
 
     pub fn same_game(&self, app_name: &str, runner: &str) -> bool {

@@ -42,6 +42,8 @@ pub enum Event {
     Progress { app_name: String, progress: Progress },
     /// An element ended (done, error or abort); `Changed` follows.
     Finished { element: DmElement, error: Option<String> },
+    /// "Stop, delete files" could not delete this folder.
+    RemoveFailed { title: String, folder: String },
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +149,16 @@ impl DownloadManager {
 
     fn emit(&self, ev: Event) {
         (self.shared.notify)(ev);
+    }
+
+    /// Deletes a cancelled download's folder; tells when it is still there.
+    fn remove_partial(&self, title: String, path: &str, folder: &str) {
+        remove_partial_download(path, folder);
+        let left = std::path::Path::new(path.trim_matches('\'')).join(folder);
+        if left.exists() {
+            log::error!("could not delete the cancelled download in {}", left.display());
+            self.emit(Event::RemoveFailed { title, folder: left.display().to_string() });
+        }
     }
 
     /// `addToQueue`: replaces an element of the same game, otherwise appends;
@@ -263,7 +275,7 @@ impl DownloadManager {
                 }
             };
             if let Some((path, folder)) = remove {
-                remove_partial_download(&path, &folder);
+                self.remove_partial(element.params.title(), &path, &folder);
             }
             if let Some(ev) = finished_event {
                 self.emit(ev);
@@ -344,7 +356,7 @@ impl DownloadManager {
             let Some(first) = g.queue.first().cloned() else { return };
             let dlcs = first.params.install_dlcs.clone();
             g.queue.retain(|e| !dlcs.contains(&e.params.app_name));
-            let remove = remove_downloaded.then(|| first.params.folder_name().map(|f| (first.params.path.clone(), f))).flatten();
+            let remove = remove_downloaded.then(|| first.partial_folder()).flatten();
             match g.current.as_mut().filter(|c| c.app_name == first.params.app_name) {
                 Some(c) => {
                     // A pause or resume asked for around it does not keep it queued.
@@ -355,7 +367,7 @@ impl DownloadManager {
                 None => {
                     // Not running (paused or idle): drop it right away.
                     g.queue.retain(|e| e.params.app_name != first.params.app_name);
-                    stale = remove;
+                    stale = remove.map(|r| (first.params.title(), r));
                     if g.queue.is_empty() {
                         g.user_paused = false;
                         if g.state == DmState::Paused {
@@ -368,9 +380,10 @@ impl DownloadManager {
         }
         self.emit(Event::Changed);
         // A multi-GB folder: neither under the lock nor on the caller's (UI) thread.
-        if let Some((path, folder)) = stale {
+        if let Some((title, (path, folder))) = stale {
+            let me = self.clone();
             let spawned = std::thread::Builder::new().name("epic-remove-partial".into()).spawn(move || {
-                remove_partial_download(&path, &folder);
+                me.remove_partial(title, &path, &folder);
             });
             if let Err(err) = spawned {
                 log::error!("removing the partial download: {err}");
@@ -851,6 +864,35 @@ mod tests {
         let s = m.snapshot();
         assert!(s.queue.is_empty());
         assert_eq!(s.finished[0].status, Some(DmStatus::Abort));
+    }
+
+    #[test]
+    fn only_a_base_game_install_has_a_folder_to_delete() {
+        let mut base = el("a");
+        base.params.path = "/games".into();
+        assert_eq!(base.partial_folder(), Some(("/games".into(), "a".into())));
+        let mut update = base.clone();
+        update.kind = ElementKind::Update;
+        assert_eq!(update.partial_folder(), None);
+        let mut dlc = base.clone();
+        dlc.params.game_info = json!({"title": "d", "folder_name": "a", "install": {"is_dlc": true}});
+        assert_eq!(dlc.partial_folder(), None);
+        let mut third = base.clone();
+        third.params.path = "thirdParty".into();
+        assert_eq!(third.partial_folder(), None);
+    }
+
+    #[test]
+    fn a_folder_that_could_not_be_deleted_is_reported() {
+        let (m, rx, _dir) = manager(FakeJob::new(&[], &[]));
+        let games = tempfile::tempdir().unwrap();
+        // Not a folder: remove_dir_all fails and it stays.
+        std::fs::write(games.path().join("a"), "x").unwrap();
+        m.remove_partial("A".into(), games.path().to_str().unwrap(), "a");
+        assert!(rx.try_iter().any(|e| matches!(e, Event::RemoveFailed { title, .. } if title == "A")));
+        // Nothing left behind: nothing to say.
+        m.remove_partial("B".into(), games.path().to_str().unwrap(), "missing");
+        assert!(!rx.try_iter().any(|e| matches!(e, Event::RemoveFailed { .. })));
     }
 
     #[test]
