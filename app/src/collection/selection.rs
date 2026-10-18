@@ -318,6 +318,26 @@ impl CollectionView {
                 self.sel.steps = steps;
             }
         }
+        self.prune_selection_to_list();
+    }
+
+    /// Games the list no longer shows (the search or a filter changed) leave
+    /// the selection: the dock acts on the games on screen only. Folded
+    /// groups still count. Not while an undo waits for its reload (its games
+    /// may only come back with it).
+    pub(super) fn prune_selection_to_list(&mut self) {
+        if !self.sel.active() || self.sel.reseed {
+            return;
+        }
+        let listed: HashSet<&SharedString> = self.groups.iter().flat_map(|g| g.cards.iter().map(|c| &c.key)).collect();
+        if self.sel.keys.iter().all(|k| listed.contains(k)) {
+            return;
+        }
+        let keys: Vec<SharedString> = self.sel.keys.iter().filter(|k| listed.contains(k)).cloned().collect();
+        let anchor = self.sel.anchor.clone();
+        // A new set of games: the categories' clicks start over from it.
+        self.set_selection(keys);
+        self.sel.anchor = anchor.filter(|a| self.sel.contains(a));
     }
 
     /// A category's state over the selection, its count and what a click does next.

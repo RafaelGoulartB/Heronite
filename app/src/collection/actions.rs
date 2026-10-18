@@ -66,6 +66,7 @@ impl CollectionView {
         let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize);
         self.set_groups(groups);
         self.refresh_focus();
+        self.prune_selection_to_list();
     }
 
     /// The list's conditions that live in the app: the selected categories
