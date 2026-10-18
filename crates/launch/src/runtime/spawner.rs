@@ -160,6 +160,7 @@ impl SystemSpawner {
         use std::process::Stdio;
         let mut c = std::process::Command::new(&cmd.program);
         c.args(&cmd.args).envs(&cmd.env).stdin(Stdio::null());
+        crate::wine::drop_host_certs(cmd, &mut c);
         if let Some(dir) = cmd.cwd.as_deref().filter(|d| !d.is_empty()) {
             c.current_dir(dir);
         }

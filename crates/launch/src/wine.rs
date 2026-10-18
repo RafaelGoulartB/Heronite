@@ -15,6 +15,29 @@ use crate::settings::{GameSettings, WineVersion};
 /// stopped, so the next launch creates it again.
 pub const CREATING_MARKER: &str = ".heronite-creating";
 
+/// Variables naming the host's CA certificates (`SSL_CERT_FILE=/etc/ssl/cert.pem`
+/// on Arch-based systems). The Steam runtime container of umu has its own
+/// `/etc`, so curl inside it (winetricks downloading .NET, protonfixes) fails
+/// with "error setting certificate file" when they reach it.
+const HOST_CERT_VARS: [&str; 3] = ["SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE"];
+
+/// Whether `c` runs through umu (directly or behind wrappers).
+pub fn runs_through_umu(c: &Command) -> bool {
+    std::iter::once(&c.program).chain(&c.args).any(|p| matches!(node_basename(p).as_str(), "umu-run" | "umu_run.py"))
+}
+
+/// Keeps the host's certificate variables out of a command that runs in
+/// umu's container (see [`HOST_CERT_VARS`]); values the command sets itself
+/// (the game's environment variables) stay.
+pub fn drop_host_certs(c: &Command, cmd: &mut std::process::Command) {
+    if !runs_through_umu(c) {
+        return;
+    }
+    for var in HOST_CERT_VARS.iter().filter(|v| !c.env.contains_key(**v)) {
+        cmd.env_remove(var);
+    }
+}
+
 /// Heroic's `getUmuPath`: `umu-run` on `$PATH`, else its bundled copy.
 pub fn umu_path(ctx: &PlanContext, probe: &dyn Probe) -> String {
     probe.which("umu-run").unwrap_or_else(|| join(&join(&ctx.tools_dir(), "runtimes"), "umu/umu_run.py"))
@@ -259,6 +282,27 @@ pub fn build_wine_plan(
 #[cfg(test)]
 mod tests {
     use super::{is_no_wine_error, no_wine_message};
+
+    #[test]
+    fn host_certificates_stay_out_of_umu() {
+        use super::{drop_host_certs, runs_through_umu};
+        use crate::plan::Command;
+        let umu = Command {
+            program: "/usr/bin/gamemoderun".into(),
+            args: vec!["/t/umu/umu_run.py".into(), "x.exe".into()],
+            ..Default::default()
+        };
+        assert!(runs_through_umu(&umu));
+        let mut cmd = std::process::Command::new("true");
+        cmd.env("SSL_CERT_FILE", "/etc/ssl/cert.pem");
+        drop_host_certs(&umu, &mut cmd);
+        let removed: Vec<_> = cmd.get_envs().filter(|(_, v)| v.is_none()).map(|(k, _)| k.to_string_lossy().into_owned()).collect();
+        assert_eq!(removed, ["CURL_CA_BUNDLE", "SSL_CERT_DIR", "SSL_CERT_FILE"]);
+        let wine = Command { program: "/w/bin/wine".into(), args: vec!["x.exe".into()], ..Default::default() };
+        let mut cmd = std::process::Command::new("true");
+        drop_host_certs(&wine, &mut cmd);
+        assert_eq!(cmd.get_envs().count(), 0, "plain Wine runs on the host");
+    }
 
     #[test]
     fn the_no_wine_message_is_recognised() {

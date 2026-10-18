@@ -384,6 +384,7 @@ fn spawn_tools_update(paths: DataPaths) {
 /// Starts `c` without waiting for it; a thread reaps it when it exits.
 pub(crate) fn spawn_detached(c: &heronite_launch::Command) -> Result<(), String> {
     let mut cmd = std::process::Command::new(&c.program);
+    heronite_launch::wine::drop_host_certs(c, &mut cmd);
     cmd.args(&c.args)
         .envs(&c.env)
         .stdin(std::process::Stdio::null())

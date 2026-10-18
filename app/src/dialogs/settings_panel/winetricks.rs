@@ -461,6 +461,7 @@ fn run_install(
     }
     let c = &built.command;
     let mut cmd = std::process::Command::new(&c.program);
+    heronite_launch::wine::drop_host_certs(c, &mut cmd);
     cmd.args(&c.args)
         .envs(&c.env)
         .stdin(std::process::Stdio::null())

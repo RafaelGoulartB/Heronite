@@ -223,6 +223,7 @@ fn run_exe_blocking(paths: &heronite_data::DataPaths, home: &str, map: &Settings
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
+    heronite_launch::wine::drop_host_certs(c, &mut cmd);
     if let Some(dir) = c.cwd.as_deref().filter(|d| Path::new(d).is_dir()) {
         cmd.current_dir(dir);
     }
