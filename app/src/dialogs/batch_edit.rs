@@ -407,12 +407,10 @@ impl Render for BatchEditDialog {
                         .flex()
                         .items_center()
                         .gap(px(8.))
-                        .child(button("be-discard-back", ButtonKind::Ghost, tr!("Keep editing")).on_click(cx.listener(
-                            |this, _, _, cx| {
-                                this.confirm_discard = false;
-                                cx.notify();
-                            },
-                        )))
+                        .child(button("be-discard-back", ButtonKind::Ghost, tr!("Keep editing")).on_click(cx.listener(|this, _, _, cx| {
+                            this.confirm_discard = false;
+                            cx.notify();
+                        })))
                         .child(
                             button("be-discard-yes", ButtonKind::Danger, tr!("Discard"))
                                 .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),

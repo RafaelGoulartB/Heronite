@@ -194,9 +194,10 @@ impl Render for ManageCategoriesDialog {
                         .gap(px(8.))
                         .min_h(px(40.))
                         .child(div().flex_1().min_w_0().text_size(px(13.5)).child(question))
-                        .child(button_sm(SharedString::from(format!("cat-merge-no-{i}")), ButtonKind::Ghost, tr!("Cancel")).on_click(
-                            cx.listener(|this, _, w, cx| this.cancel_merge(w, cx)),
-                        ))
+                        .child(
+                            button_sm(SharedString::from(format!("cat-merge-no-{i}")), ButtonKind::Ghost, tr!("Cancel"))
+                                .on_click(cx.listener(|this, _, w, cx| this.cancel_merge(w, cx))),
+                        )
                         .child(
                             button_sm(SharedString::from(format!("cat-merge-yes-{i}")), ButtonKind::Danger, tr!("Merge"))
                                 .on_click(cx.listener(move |this, _, w, cx| this.do_rename(&from, into.clone(), w, cx))),

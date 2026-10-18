@@ -934,7 +934,10 @@ mod tests {
         let a = s.finished.iter().find(|e| e.params.app_name == "a").unwrap();
         assert_eq!((a.status, a.error.as_deref()), (Some(DmStatus::Error), Some("boom")));
         assert!(s.finished.iter().find(|e| e.params.app_name == "z").unwrap().error.is_none());
-        assert_eq!(queue::load(&DataPaths::at(dir.path())).finished.iter().find(|e| e.params.app_name == "a").unwrap().error.as_deref(), Some("boom"));
+        assert_eq!(
+            queue::load(&DataPaths::at(dir.path())).finished.iter().find(|e| e.params.app_name == "a").unwrap().error.as_deref(),
+            Some("boom")
+        );
         drop(rx);
     }
 

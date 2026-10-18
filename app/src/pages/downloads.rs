@@ -294,9 +294,7 @@ impl Render for DownloadsPage {
                         .children(pill),
                 )
                 .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(meta_line(&el)))
-                .children(
-                    reason.map(|r| div().line_clamp(2).text_ellipsis().text_size(px(12.)).text_color(theme::danger_text()).child(r)),
-                );
+                .children(reason.map(|r| div().line_clamp(2).text_ellipsis().text_size(px(12.)).text_color(theme::danger_text()).child(r)));
             let retry_app = app.clone();
             let trailing = div()
                 .flex()

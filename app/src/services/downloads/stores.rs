@@ -27,9 +27,11 @@ fn read_local(paths: &DataPaths, store: Store) -> Local {
         Store::Gog => {
             let stats = heronite_gog::library::stats(paths);
             Local {
-                account: heronite_gog::user::account(paths)
-                    .filter(|_| heronite_gog::user::is_logged_in(paths))
-                    .map(|a| Account { logged_in: true, name: a.username, expired: false }),
+                account: heronite_gog::user::account(paths).filter(|_| heronite_gog::user::is_logged_in(paths)).map(|a| Account {
+                    logged_in: true,
+                    name: a.username,
+                    expired: false,
+                }),
                 owned: stats.owned,
                 installed: stats.installed,
                 updates: heronite_gog::updates::cached_updates(paths),
@@ -38,9 +40,11 @@ fn read_local(paths: &DataPaths, store: Store) -> Local {
         Store::Amazon => {
             let stats = heronite_amazon::library::stats(paths);
             Local {
-                account: heronite_amazon::user::account(paths)
-                    .filter(|_| heronite_amazon::user::is_logged_in(paths))
-                    .map(|a| Account { logged_in: true, name: a.name, expired: false }),
+                account: heronite_amazon::user::account(paths).filter(|_| heronite_amazon::user::is_logged_in(paths)).map(|a| Account {
+                    logged_in: true,
+                    name: a.name,
+                    expired: false,
+                }),
                 owned: stats.owned,
                 installed: stats.installed,
                 updates: heronite_amazon::updates::cached_updates(paths),

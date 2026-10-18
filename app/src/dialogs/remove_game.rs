@@ -65,9 +65,8 @@ impl RemoveGameDialog {
         self.error = None;
         let (paths, app_name, runner) = (self.ctx.data_paths.clone(), self.app_name.clone(), self.runner.clone());
         cx.spawn(async move |this, cx| {
-            let result = cx
-                .background_spawn(async move { remove_from_collection(&paths, &runner, &app_name).map_err(|e| format!("{e:#}")) })
-                .await;
+            let result =
+                cx.background_spawn(async move { remove_from_collection(&paths, &runner, &app_name).map_err(|e| format!("{e:#}")) }).await;
             this.update(cx, |this, cx| {
                 this.working = false;
                 match result {
