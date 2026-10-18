@@ -88,6 +88,19 @@ pub fn get(cx: &mut App) -> Entity<ScriptInstall> {
     entity
 }
 
+/// The service if something already created it.
+pub fn started(cx: &App) -> Option<Entity<ScriptInstall>> {
+    cx.try_global::<ScriptInstallGlobal>().map(|g| g.0.clone())
+}
+
+/// The title of the game being installed, while one is (the quit question
+/// mentions it).
+pub fn running_title(cx: &App) -> Option<String> {
+    let s = started(cx)?;
+    let run = s.read(cx).run.as_ref().filter(|r| r.running())?;
+    Some(run.job.title.clone())
+}
+
 struct WorkerHost {
     tx: UnboundedSender<Msg>,
     control: Arc<Control>,

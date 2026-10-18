@@ -89,8 +89,15 @@ impl CollectionView {
 
     /// The question before quitting while games run (window X without a tray
     /// to stay in, tray "Quit").
-    pub fn system_quit_confirm(&mut self, games: Vec<String>, post_game: bool, tray: bool, cx: &mut Context<Self>) {
-        let view = cx.new(|_| crate::dialogs::quit_confirm::QuitConfirmDialog::new(games, post_game, tray));
+    pub fn system_quit_confirm(
+        &mut self,
+        games: Vec<String>,
+        post_game: bool,
+        install: Option<String>,
+        tray: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let view = cx.new(|_| crate::dialogs::quit_confirm::QuitConfirmDialog::new(games, post_game, install, tray));
         self.open_dialog(view, cx);
     }
 

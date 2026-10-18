@@ -1,4 +1,5 @@
 {
+  "A game is being installed": "Um jogo está sendo instalado",
   "A task needs a name": "Uma tarefa precisa de um nome",
   "Add the game to the Collection": "Adicionar o jogo à Coleção",
   "Another game is being installed": "Outro jogo está sendo instalado",
@@ -94,6 +95,7 @@
   "The folder the game is installed in": "A pasta onde o jogo é instalado",
   "The install of {title} failed": "A instalação de {title} falhou",
   "The install of {title} was stopped": "A instalação de {title} foi interrompida",
+  "The install of {title} would also be stopped.": "A instalação de {title} também seria interrompida.",
   "The parameters of {directive} must be a map": "Os parâmetros de {directive} precisam ser um mapa",
   "The program that starts the game was not found: {path}. Pick the right one in Edit game.": "O programa que inicia o jogo não foi encontrado: {path}. Escolha o certo em Editar jogo.",
   "The script asks questions while it installs.": "O script faz perguntas durante a instalação.",
@@ -146,7 +148,9 @@
   "{program} is needed to play this game; install it with your package manager": "{program} é necessário para jogar este jogo; instale-o com o seu gerenciador de pacotes",
   "{program} was stopped by a signal": "{program} foi interrompido por um sinal",
   "{step}: {error}": "{step}: {error}",
+  "{title} is being installed": "{title} está sendo instalado",
   "{title} is in your Collection": "{title} está na sua Coleção",
+  "{title} is still being installed. If you quit now, the install stops and the game is not added.": "{title} ainda está sendo instalado. Se você sair agora, a instalação para e o jogo não é adicionado.",
   "{title} was installed": "{title} foi instalado",
   "{tool} is needed to extract this archive; install it with your package manager": "{tool} é necessário para extrair este arquivo; instale-o com o seu gerenciador de pacotes"
 }

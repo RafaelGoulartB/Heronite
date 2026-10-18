@@ -19,6 +19,8 @@ use crate::ui::fields::paragraph;
 pub struct QuitConfirmDialog {
     games: Vec<String>,
     post_game: bool,
+    /// The game being installed from a script.
+    install: Option<String>,
     tray: bool,
     console_list: crate::console::list::ListNav,
 }
@@ -62,9 +64,33 @@ pub fn message(games: &[String], post_game: bool) -> String {
     text
 }
 
+/// [`message`], with the install from a script that quitting would stop.
+pub fn full_message(games: &[String], post_game: bool, install: Option<&str>) -> String {
+    let Some(title) = install else { return message(games, post_game) };
+    if games.is_empty() && !post_game {
+        return tr!("{title} is still being installed. If you quit now, the install stops and the game is not added.", title);
+    }
+    let mut text = message(games, post_game);
+    text.push(' ');
+    text.push_str(&tr!("The install of {title} would also be stopped.", title));
+    text
+}
+
 impl QuitConfirmDialog {
-    pub fn new(games: Vec<String>, post_game: bool, tray: bool) -> Self {
-        Self { games, post_game, tray, console_list: Default::default() }
+    pub fn new(games: Vec<String>, post_game: bool, install: Option<String>, tray: bool) -> Self {
+        Self { games, post_game, install, tray, console_list: Default::default() }
+    }
+
+    fn title(&self) -> &'static str {
+        if self.games.is_empty() && !self.post_game && self.install.is_some() {
+            tr!("A game is being installed")
+        } else {
+            tr!("A game is running")
+        }
+    }
+
+    fn text(&self) -> String {
+        full_message(&self.games, self.post_game, self.install.as_deref())
     }
 }
 
@@ -72,17 +98,11 @@ impl Render for QuitConfirmDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if crate::console::active() {
             let rows = self.console_rows();
-            let text = message(&self.games, self.post_game);
-            return crate::console::list::simple_dialog(
-                &mut self.console_list,
-                "console-quit",
-                tr!("A game is running"),
-                &text,
-                None,
-                &rows,
-            );
+            let text = self.text();
+            let title = self.title();
+            return crate::console::list::simple_dialog(&mut self.console_list, "console-quit", title, &text, None, &rows);
         }
-        let body = div().flex().flex_col().gap(px(14.)).child(paragraph(message(&self.games, self.post_game)));
+        let body = div().flex().flex_col().gap(px(14.)).child(paragraph(self.text()));
         let mut footer = div().flex().gap(px(10.));
         if self.tray {
             footer = footer
@@ -105,7 +125,7 @@ impl Render for QuitConfirmDialog {
         })));
         let entity = cx.entity().downgrade();
         dialog(
-            DialogProps { id: "quit-confirm".into(), title: tr!("A game is running").into(), width: 560., height: None },
+            DialogProps { id: "quit-confirm".into(), title: self.title().into(), width: 560., height: None },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
@@ -159,7 +179,7 @@ impl crate::console::PadTarget for QuitConfirmDialog {
 
 #[cfg(test)]
 mod tests {
-    use super::{message, name_list};
+    use super::{full_message, message, name_list};
 
     fn v(names: &[&str]) -> Vec<String> {
         names.iter().map(|s| s.to_string()).collect()
@@ -181,5 +201,13 @@ mod tests {
         assert!(two.starts_with("\"A\" and \"B\" are still running.") && two.contains("when they end"));
         assert!(message(&v(&["A"]), true).contains("another game"));
         assert!(message(&[], true).starts_with("Post-game tasks"));
+    }
+
+    #[test]
+    fn a_running_install_is_mentioned() {
+        assert!(full_message(&[], false, Some("Doom")).starts_with("Doom is still being installed."));
+        let both = full_message(&v(&["A"]), false, Some("Doom"));
+        assert!(both.starts_with("\"A\" is still running.") && both.ends_with("The install of Doom would also be stopped."));
+        assert_eq!(full_message(&v(&["A"]), false, None), message(&v(&["A"]), false));
     }
 }

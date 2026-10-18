@@ -10,9 +10,22 @@ use heronite_i18n::{tr, trn};
 use super::hub;
 use super::window::{close_window_keep_alive, show_window};
 
-/// Games the launcher is tracking (titles, sorted) and whether post-game work
-/// (backups, cloud saves) is still running: what a quit would leave behind.
-fn pending_work(cx: &App) -> (Vec<String>, bool) {
+/// What a quit would leave behind: the games the launcher is tracking
+/// (titles, sorted), whether post-game work (backups, cloud saves) is still
+/// running, and the game being installed from a script.
+struct Pending {
+    titles: Vec<String>,
+    busy: bool,
+    install: Option<String>,
+}
+
+impl Pending {
+    fn nothing(&self) -> bool {
+        self.titles.is_empty() && !self.busy && self.install.is_none()
+    }
+}
+
+fn pending_work(cx: &App) -> Pending {
     let hub = hub(cx);
     let (running, runtime) = {
         let s = hub.0.borrow();
@@ -21,18 +34,18 @@ fn pending_work(cx: &App) -> (Vec<String>, bool) {
     let mut titles: Vec<String> =
         running.into_iter().map(|app| runtime.session_info(&app).map(|i| i.title).filter(|t| !t.is_empty()).unwrap_or(app)).collect();
     titles.sort();
-    (titles, crate::services::session::busy())
+    Pending { titles, busy: crate::services::session::busy(), install: crate::services::script_install::running_title(cx) }
 }
 
 /// Opens the quit confirmation in the existing main window.
-fn ask_quit_confirm(cx: &mut App, titles: Vec<String>, busy: bool) -> bool {
+fn ask_quit_confirm(cx: &mut App, pending: Pending) -> bool {
     let hub = hub(cx);
     let (view, tray) = {
         let s = hub.0.borrow();
         (s.window.as_ref().map(|w| w.view.clone()), s.has_tray())
     };
     let Some(view) = view else { return false };
-    view.update(cx, |v, cx| v.system_quit_confirm(titles, busy, tray, cx)).is_ok()
+    view.update(cx, |v, cx| v.system_quit_confirm(pending.titles, pending.busy, pending.install, tray, cx)).is_ok()
 }
 
 /// The close button was pressed (called by the platform before the window
@@ -51,13 +64,18 @@ pub(super) fn allow_user_close(cx: &mut App) -> bool {
     if stays_alive {
         return true;
     }
-    let (titles, busy) = pending_work(cx);
-    if titles.is_empty() && !busy {
+    let pending = pending_work(cx);
+    if pending.nothing() {
         return true;
     }
-    log::info!("close requested while {} game(s) run (post-game work: {busy}): asking", titles.len());
+    log::info!(
+        "close requested while {} game(s) run (post-game work: {}, install: {:?}): asking",
+        pending.titles.len(),
+        pending.busy,
+        pending.install
+    );
     // Never `show_window` from here: the window is being updated right now.
-    ask_quit_confirm(cx, titles, busy);
+    ask_quit_confirm(cx, pending);
     false
 }
 
@@ -67,13 +85,18 @@ pub fn request_quit(cx: &mut App) {
     if hub(cx).0.borrow().quitting {
         return;
     }
-    let (titles, busy) = pending_work(cx);
-    if titles.is_empty() && !busy {
+    let pending = pending_work(cx);
+    if pending.nothing() {
         return graceful_quit(cx);
     }
-    log::info!("quit requested while {} game(s) run (post-game work: {busy}): asking", titles.len());
+    log::info!(
+        "quit requested while {} game(s) run (post-game work: {}, install: {:?}): asking",
+        pending.titles.len(),
+        pending.busy,
+        pending.install
+    );
     // The window may be hidden (tray): bring it up for the question.
-    let asked = show_window(cx).is_some() && ask_quit_confirm(cx, titles, busy);
+    let asked = show_window(cx).is_some() && ask_quit_confirm(cx, pending);
     if !asked {
         log::warn!("could not show the quit confirmation: quitting");
         graceful_quit(cx);
@@ -103,10 +126,10 @@ static RELAUNCH: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// (`None` = the app can restart).
 pub fn restart_blocker(cx: &App) -> Option<String> {
     cx.try_global::<super::Hub>()?;
-    let (titles, busy) = pending_work(cx);
+    let Pending { titles, busy, install } = pending_work(cx);
     match titles.as_slice() {
         [] if busy => Some(tr!("Saving after your game").into()),
-        [] => None,
+        [] => install.map(|title| tr!("{title} is being installed", title)),
         [one] => Some(tr!("{title} is running", title = one)),
         _ => Some(trn!(titles.len(), "{n} game is running", "{n} games are running")),
     }
