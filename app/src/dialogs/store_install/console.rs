@@ -101,8 +101,7 @@ impl StoreInstallDialog {
             rows.push(Row::action("import", tr!("Import")).icon(Icon::Check).enabled(!text_of(&self.import_path, cx).is_empty()));
             rows.push(Row::action("mode", tr!("Download and install instead")).icon(Icon::Download));
         } else {
-            let label = if self.not_enough_space() { tr!("Force install") } else { tr!("Install") };
-            rows.push(Row::action("install", label).icon(Icon::Download).enabled(self.can_install(cx)));
+            rows.push(Row::action("install", tr!("Install")).icon(Icon::Download).enabled(self.can_install(cx)));
             rows.push(Row::action("mode", tr!("Import an existing install instead")).icon(Icon::FolderOpen));
         }
         rows.push(Row::action("cancel", tr!("Cancel")));

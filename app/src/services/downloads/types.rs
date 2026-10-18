@@ -109,6 +109,9 @@ pub struct InstallRequest {
     /// Wine settings to store for the game (Linux): prefix and wine version.
     pub wine_prefix: Option<String>,
     pub wine_version: Option<Value>,
+    /// "Force install" with too little free space: legendary skips its own
+    /// check (gogdl and nile cannot).
+    pub ignore_free_space: bool,
 }
 
 #[derive(Clone, Debug)]

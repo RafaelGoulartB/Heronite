@@ -59,6 +59,8 @@ pub struct StoreInstallDialog {
     dlcs: Vec<(Dlc, bool)>,
     path: Entity<InputState>,
     space: Option<DiskSpace>,
+    /// Bytes the downloads already queued will take on that filesystem.
+    reserved: u64,
     wine_list: Vec<WineInstallation>,
     wine_loaded: bool,
     wine_pick: usize,
@@ -183,6 +185,7 @@ impl StoreInstallDialog {
             dlcs: Vec::new(),
             path,
             space: None,
+            reserved: 0,
             wine_list: Vec::new(),
             wine_loaded: false,
             wine_pick: 0,
@@ -204,7 +207,10 @@ impl StoreInstallDialog {
             this.load_info(cx);
         }
         this.load_wine(cx);
-        this.space = disk::check(&text_of(&this.path, cx));
+        let path = text_of(&this.path, cx);
+        let queued = services::downloads_started(cx).map(|s| s.read(cx).queued_needs(&this.app_name)).unwrap_or_default();
+        this.space = disk::check(&path);
+        this.reserved = disk::reserved_on(&path, &queued);
         this
     }
 
@@ -306,10 +312,12 @@ impl StoreInstallDialog {
 
     fn check_space(&mut self, cx: &mut Context<Self>) {
         let path = text_of(&self.path, cx);
+        let queued = services::downloads_started(cx).map(|s| s.read(cx).queued_needs(&self.app_name)).unwrap_or_default();
         cx.spawn(async move |this, cx| {
-            let space = cx.background_spawn(async move { disk::check(&path) }).await;
+            let (space, reserved) = cx.background_spawn(async move { (disk::check(&path), disk::reserved_on(&path, &queued)) }).await;
             this.update(cx, |this, cx| {
                 this.space = space;
+                this.reserved = reserved;
                 cx.notify();
             })
             .ok();
@@ -351,8 +359,11 @@ impl StoreInstallDialog {
         self.sizes().map_or(0., |s| s.1)
     }
 
-    fn not_enough_space(&self) -> bool {
-        self.space.as_ref().is_some_and(|s| self.info.is_some() && (s.free as f64) < self.disk_bytes())
+    /// Free space left for this game once the downloads queued before it are
+    /// in. A shortage is only shown: gogdl and nile check the space
+    /// themselves and cannot be told to skip it (no "Force install" here).
+    fn free_after_queue(&self) -> Option<f64> {
+        self.space.as_ref().map(|s| s.free.saturating_sub(self.reserved) as f64)
     }
 
     fn languages(&self) -> &[String] {
@@ -399,6 +410,7 @@ impl StoreInstallDialog {
             size: Some(file_size(self.download_bytes())),
             wine_prefix,
             wine_version,
+            ignore_free_space: false,
         };
         services::downloads(cx).update(cx, |s, cx| s.queue_install(req, cx));
         cx.emit(DialogEvent::Close);

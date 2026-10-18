@@ -27,6 +27,16 @@ pub fn file_size(bytes: f64) -> String {
     format!("{text} {}", UNITS[unit])
 }
 
+/// Bytes of a size text [`file_size`] made (`25.87 GiB`); `None` for
+/// anything else.
+pub fn parse_size(text: &str) -> Option<f64> {
+    const UNITS: [&str; 7] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
+    let (number, unit) = text.trim().split_once(' ')?;
+    let power = UNITS.iter().position(|u| *u == unit.trim())?;
+    let value: f64 = number.trim().parse().ok().filter(|v: &f64| v.is_finite() && *v >= 0.)?;
+    Some(value * 1024f64.powi(power as i32))
+}
+
 /// [`file_size`] for the screen: the language's decimal separator.
 pub fn file_size_local(bytes: f64) -> String {
     localize_size(&file_size(bytes))
@@ -93,6 +103,17 @@ mod tests {
         assert_eq!(file_size(45010292103.), "41.92 GiB");
         assert_eq!(file_size(27783660544.), "25.88 GiB");
         assert_eq!(file_size(1024. * 1024. * 1024.), "1 GiB");
+    }
+
+    #[test]
+    fn size_texts_parse_back() {
+        assert_eq!(parse_size("512 B"), Some(512.));
+        assert_eq!(parse_size("1.5 KiB"), Some(1536.));
+        // Two decimals: close to the bytes it came from.
+        let back = parse_size(&file_size(27783660544.)).unwrap();
+        assert!((back - 27783660544.).abs() < 27783660544. * 0.001, "{back}");
+        assert_eq!(parse_size("?? MB"), None);
+        assert_eq!(parse_size(""), None);
     }
 
     #[test]

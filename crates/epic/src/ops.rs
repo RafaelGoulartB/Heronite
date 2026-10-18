@@ -107,6 +107,9 @@ impl LegendaryJob {
             ElementKind::Install => install_args(&p.app_name, platform, &p.path, &p.sdl_list, &dl),
             ElementKind::Update => update_args("update", &p.app_name, &dl),
         };
+        if p.ignore_free_space {
+            args.push("--ignore-free-space".into());
+        }
         let mut result = self.run_once(&args, total, cancel, on_progress);
         // Retry with a higher shared memory limit, like Heroic.
         if let Ok(out) = &result {

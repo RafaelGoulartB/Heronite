@@ -14,7 +14,7 @@ use heronite_epic::manager::{DmState, DownloadManager, Event as DmEvent, Job, Jo
 use heronite_epic::ops::{self, LegendaryJob};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
-use heronite_epic::util::file_size;
+use heronite_epic::util::{file_size, parse_size};
 use heronite_gog::cmd::Gogdl;
 use heronite_gog::ops::GogJob;
 use heronite_i18n::tr;
@@ -33,6 +33,22 @@ impl Downloads {
             (0, DmState::Paused) => QueueState::Paused,
             _ => QueueState::Waiting,
         })
+    }
+
+    /// What the queued downloads (all but `except`'s) still have to bring:
+    /// `(install path, bytes)`, for the install dialogs' free space. The
+    /// queue keeps download sizes, so this errs on the low side.
+    pub fn queued_needs(&self, except: &str) -> Vec<(String, f64)> {
+        self.snapshot
+            .queue
+            .iter()
+            .filter(|e| e.params.app_name != except)
+            .filter_map(|e| {
+                let size = e.params.size.as_deref().and_then(parse_size)?;
+                let done = self.progress.get(&e.params.app_name).map_or(0., |p| p.downloaded_mib * 1024. * 1024.);
+                Some((e.params.path.clone(), (size - done).max(0.)))
+            })
+            .collect()
     }
 
     pub fn is_running(&self) -> bool {
@@ -168,6 +184,7 @@ impl Downloads {
                         platform_to_install: req.platform.clone(),
                         game_info: req.game_info.clone(),
                         size: req.size.clone(),
+                        ignore_free_space: req.ignore_free_space,
                         ..Default::default()
                     };
                     add_install(&manager, &data_paths, base);
@@ -397,6 +414,7 @@ impl Downloads {
                 size,
                 wine_prefix: None,
                 wine_version: None,
+                ignore_free_space: false,
             },
             cx,
         );

@@ -46,6 +46,8 @@ pub struct EpicInstallDialog {
     info_error: Option<String>,
     path: Entity<InputState>,
     space: Option<DiskSpace>,
+    /// Bytes the downloads already queued will take on that filesystem.
+    reserved: u64,
     dlcs: Vec<(Dlc, bool)>,
     sdl: Vec<(Sdl, bool)>,
     // Wine (Linux, Windows builds).
@@ -111,6 +113,7 @@ impl EpicInstallDialog {
             info_error: None,
             path,
             space: None,
+            reserved: 0,
             dlcs: Vec::new(),
             sdl: Vec::new(),
             wine_list: Vec::new(),
@@ -142,7 +145,10 @@ impl EpicInstallDialog {
         }
         this.load_sdl(cx);
         this.load_wine(cx);
-        this.space = disk::check(&text_of(&this.path, cx));
+        let path = text_of(&this.path, cx);
+        let queued = services::downloads_started(cx).map(|s| s.read(cx).queued_needs(&this.app_name)).unwrap_or_default();
+        this.space = disk::check(&path);
+        this.reserved = disk::reserved_on(&path, &queued);
         this
     }
 
@@ -215,15 +221,28 @@ impl EpicInstallDialog {
 
     fn check_space(&mut self, cx: &mut Context<Self>) {
         let path = text_of(&self.path, cx);
+        let queued = services::downloads_started(cx).map(|s| s.read(cx).queued_needs(&self.app_name)).unwrap_or_default();
         cx.spawn(async move |this, cx| {
-            let space = cx.background_spawn(async move { disk::check(&path) }).await;
+            let (space, reserved) = cx.background_spawn(async move { (disk::check(&path), disk::reserved_on(&path, &queued)) }).await;
             this.update(cx, |this, cx| {
                 this.space = space;
+                this.reserved = reserved;
                 cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// Free space left for this game once the downloads queued before it are in.
+    fn free_after_queue(&self) -> Option<f64> {
+        self.space.as_ref().map(|s| s.free.saturating_sub(self.reserved) as f64)
+    }
+
+    /// Too little room: the button says "Force install", which tells
+    /// legendary to skip its own free space check.
+    fn not_enough(&self) -> bool {
+        self.third_party.is_none() && self.info.is_some() && self.free_after_queue().is_some_and(|free| free < self.disk_bytes())
     }
 
     fn download_bytes(&self) -> f64 {
@@ -282,6 +301,7 @@ impl EpicInstallDialog {
             size: Some(file_size(self.download_bytes())),
             wine_prefix,
             wine_version,
+            ignore_free_space: self.not_enough(),
         };
         services::downloads(cx).update(cx, |s, cx| s.queue_install(req, cx));
         cx.emit(DialogEvent::Close);
@@ -301,6 +321,7 @@ impl EpicInstallDialog {
             size: None,
             wine_prefix,
             wine_version,
+            ignore_free_space: false,
         };
         services::downloads(cx).update(cx, |s, cx| s.queue_install(req, cx));
         cx.emit(DialogEvent::Close);

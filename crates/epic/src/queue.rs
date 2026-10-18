@@ -31,6 +31,10 @@ pub struct InstallParams {
     /// Download size as text (`25.87 GiB`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<String>,
+    /// "Force install": the tool skips its own free space check (only
+    /// legendary has one that can be skipped). Not in Heroic's format.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ignore_free_space: bool,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
