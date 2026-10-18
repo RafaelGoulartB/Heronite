@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use crate::cmd::Cancel;
 use crate::ops::remove_partial_download;
 use crate::progress::Progress;
-use crate::queue::{self, now_ms, DmElement, DmStatus};
+use crate::queue::{self, now_ms, DmElement, DmStatus, ElementKind};
 
 /// What a job returns.
 #[derive(Debug, Clone)]
@@ -271,6 +271,12 @@ impl DownloadManager {
                         None => g.finished.push(ended.clone()),
                     }
                     g.queue.retain(|e| e.params.app_name != app);
+                    // DLCs queued after a base game that did not install would
+                    // only fail one by one.
+                    if !done && ended.kind == ElementKind::Install && !ended.params.install_dlcs.is_empty() {
+                        let dlcs = &ended.params.install_dlcs;
+                        g.queue.retain(|e| !dlcs.contains(&e.params.app_name));
+                    }
                     self.persist(&g);
                     (Some(Event::Finished { element: ended, error: result.error.clone() }), remove)
                 }
@@ -865,6 +871,27 @@ mod tests {
         let s = m.snapshot();
         assert!(s.queue.is_empty());
         assert_eq!(s.finished[0].status, Some(DmStatus::Abort));
+    }
+
+    #[test]
+    fn a_failed_base_game_takes_its_dlcs_out_and_keeps_the_reason() {
+        let job = FakeJob::new(&[], &["a"]);
+        let (m, rx, dir) = manager(job.clone());
+        m.pause();
+        let mut base = el("a");
+        base.params.install_dlcs = vec!["dlc1".into()];
+        m.add(base);
+        m.add(el("dlc1"));
+        m.add(el("z"));
+        m.resume();
+        wait_until(&m, "z done", |s| s.finished.iter().any(|e| e.params.app_name == "z") && s.state == DmState::Idle);
+        assert_eq!(*job.runs.lock(), ["a", "z"]);
+        let s = m.snapshot();
+        let a = s.finished.iter().find(|e| e.params.app_name == "a").unwrap();
+        assert_eq!((a.status, a.error.as_deref()), (Some(DmStatus::Error), Some("boom")));
+        assert!(s.finished.iter().find(|e| e.params.app_name == "z").unwrap().error.is_none());
+        assert_eq!(queue::load(&DataPaths::at(dir.path())).finished.iter().find(|e| e.params.app_name == "a").unwrap().error.as_deref(), Some("boom"));
+        drop(rx);
     }
 
     #[test]
