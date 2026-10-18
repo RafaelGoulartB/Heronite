@@ -14,6 +14,9 @@
 //! then the input thread and the shortcut run while the app does, and the
 //! panel shows what has no game (volume, controllers, Heronite).
 //!
+//! The panel's Notes tab marks moments in the game's journal (`moment`)
+//! and writes it.
+//!
 //! The keyboard shortcut is registered with the desktop only while such a
 //! game runs (or always, without a game) (a temporary Hyprland bind, else the GlobalShortcuts portal,
 //! as the screenshot shortcut). Opened from the keyboard, the panel takes
@@ -24,6 +27,7 @@
 //! from it. Desktops without layer-shell (GNOME, X11) cannot show them.
 
 mod debug;
+mod moment;
 pub mod panel;
 mod toast;
 mod window;

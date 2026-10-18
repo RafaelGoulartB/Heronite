@@ -46,6 +46,8 @@ pub enum SessionEvent {
     /// Something outside the Collection changed a game (the in-game
     /// overlay's status row): read the library again.
     LibraryChanged,
+    /// The in-game overlay wrote to the journal of this game (its key).
+    JournalChanged(String),
 }
 
 pub struct Session {

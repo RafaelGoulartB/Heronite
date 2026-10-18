@@ -128,6 +128,13 @@ impl CollectionView {
         .detach();
     }
 
+    /// The in-game overlay wrote to the journal of `key`.
+    pub(super) fn journal_changed(&mut self, key: &str, cx: &mut Context<Self>) {
+        if self.journal.key.as_deref() == Some(key) {
+            self.load_journal(cx);
+        }
+    }
+
     /// The days of the Journal: the timeline's and those with notes.
     pub(super) fn journal_days(&mut self, key: &SharedString) -> Option<(Arc<Vec<TimelineDay>>, Arc<Vec<JournalDay>>)> {
         let timeline = self.timeline_days(key)?;

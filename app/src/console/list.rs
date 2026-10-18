@@ -53,6 +53,8 @@ pub struct Row {
     pub changed: bool,
     /// A short value: its ‹ › take less width.
     pub compact: bool,
+    /// A picture drawn in place of the value (a capture's preview).
+    pub image: Option<std::path::PathBuf>,
 }
 
 impl Row {
@@ -67,6 +69,7 @@ impl Row {
             icon: None,
             changed: false,
             compact: false,
+            image: None,
         }
     }
     pub fn action(id: impl Into<SharedString>, label: impl Into<SharedString>) -> Self {
@@ -119,6 +122,10 @@ impl Row {
     }
     pub fn compact(mut self) -> Self {
         self.compact = true;
+        self
+    }
+    pub fn image(mut self, path: Option<std::path::PathBuf>) -> Self {
+        self.image = path;
         self
     }
     fn focusable(&self) -> bool {
@@ -309,6 +316,18 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
             .child(if t.is_empty() { SharedString::from("\u{2014}") } else { t.clone() })
             .into_any_element(),
         Value::Header => div().into_any_element(),
+    };
+    let value = match &r.image {
+        Some(path) => div()
+            .flex_none()
+            .w(u(72.))
+            .h(u(40.))
+            .rounded(u(8.))
+            .overflow_hidden()
+            .bg(theme::white_a(0.06))
+            .child(img(path.clone()).size_full().object_fit(ObjectFit::Cover))
+            .into_any_element(),
+        None => value,
     };
     kit::row_base(focused)
         .when(!r.enabled, |d| d.opacity(0.4))

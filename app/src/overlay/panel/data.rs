@@ -1,10 +1,11 @@
 //! What the panel reads off the UI thread when it opens: total play time,
-//! the game's status, its recent captures and their previews, the audio
-//! state and the controllers' batteries.
+//! the game's status, its journal, its recent captures and their previews,
+//! the audio state and the controllers' batteries.
 
 use std::path::PathBuf;
 
 use gpui_kit::*;
+use heronite_data::journal::{self, GameJournal};
 use heronite_data::models::{CompletionStatus, LocalMetaFile};
 use heronite_data::{json_store, status, DataPaths};
 use heronite_media::{list_screenshots, GameQuery, Screenshot, ThumbnailCache};
@@ -31,6 +32,9 @@ pub struct Data {
     /// `None` until read; `Some(None)` = no audio control.
     pub audio: Option<Option<AudioState>>,
     pub controllers: Vec<(Controller, Option<Battery>)>,
+    /// The game's journal key and journal (`None` while read, or without
+    /// the session's runner).
+    pub journal: Option<(String, GameJournal)>,
 }
 
 struct Loaded {
@@ -39,6 +43,7 @@ struct Loaded {
     status_id: String,
     shots: Vec<Screenshot>,
     thumb_cache: ThumbnailCache,
+    journal: Option<(String, GameJournal)>,
 }
 
 fn load(paths: &DataPaths, app_name: &str, info: Option<&SessionInfo>) -> Loaded {
@@ -62,7 +67,19 @@ fn load(paths: &DataPaths, app_name: &str, info: Option<&SessionInfo>) -> Loaded
         }
         _ => Vec::new(),
     };
-    Loaded { total_minutes, statuses, status_id, shots, thumb_cache: ThumbnailCache::new(paths.screenshot_thumbnails_dir(), limit) }
+    let journal = info.map(|i| {
+        let key = journal::collection_key(&i.runner, app_name);
+        let j = journal::load(paths, &key);
+        (key, j)
+    });
+    Loaded {
+        total_minutes,
+        statuses,
+        status_id,
+        shots,
+        thumb_cache: ThumbnailCache::new(paths.screenshot_thumbnails_dir(), limit),
+        journal,
+    }
 }
 
 impl OverlayPanel {
@@ -83,6 +100,7 @@ impl OverlayPanel {
                 d.status_id = Some(loaded.status_id);
                 d.shots = loaded.shots;
                 d.thumb_cache = Some(loaded.thumb_cache);
+                d.journal = loaded.journal;
                 this.load_thumbs(cx);
                 cx.notify();
             })
@@ -127,10 +145,16 @@ impl OverlayPanel {
         .detach();
     }
 
-    /// Makes the previews of the listed captures, newest first, one at a time.
+    /// Makes the previews of the listed captures, newest first, then of the
+    /// captures the journal's notes are about, one at a time.
     fn load_thumbs(&mut self, cx: &mut Context<Self>) {
         let Some(cache) = self.data.thumb_cache.clone() else { return };
-        let paths: Vec<PathBuf> = self.data.shots.iter().map(|s| s.path.clone()).filter(|p| !self.data.thumbs.contains_key(p)).collect();
+        let mut paths: Vec<PathBuf> = self.data.shots.iter().map(|s| s.path.clone()).collect();
+        if let Some((_, j)) = &self.data.journal {
+            paths.extend(j.entries.iter().rev().filter_map(|e| e.shot.as_deref()).map(|s| self.shot_source(s)));
+        }
+        let mut seen = std::collections::HashSet::new();
+        paths.retain(|p| !self.data.thumbs.contains_key(p) && seen.insert(p.clone()));
         for p in &paths {
             self.data.thumbs.insert(p.clone(), None);
         }
@@ -150,6 +174,12 @@ impl OverlayPanel {
             }
         })
         .detach();
+    }
+
+    /// The file of a capture a note names: the listed one with that name
+    /// (a compressed `.png` is now a `.webp`), else the path as written.
+    pub(super) fn shot_source(&self, stored: &str) -> PathBuf {
+        self.data.shots.iter().find(|s| journal::is_shot(stored, &s.path)).map(|s| s.path.clone()).unwrap_or_else(|| PathBuf::from(stored))
     }
 
     /// The preview of a capture, once made.

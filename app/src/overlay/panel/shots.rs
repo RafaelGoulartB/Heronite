@@ -8,7 +8,9 @@ use heronite_i18n::tr;
 use super::OverlayPanel;
 use crate::console::kit::{self, u};
 use crate::console::Pad;
+use crate::icons::Icon;
 use crate::theme;
+use crate::ui::icon;
 
 /// Captures on Home.
 const RECENT: usize = 3;
@@ -28,6 +30,21 @@ impl OverlayPanel {
             .border_color(if focused { theme::console_focus().into() } else { theme::white_a(0.06) });
         if let Some(thumb) = self.thumb(&shot.path) {
             tile = tile.child(img(thumb).size_full().object_fit(ObjectFit::Cover));
+        }
+        if self.shot_note(&shot.path).is_some_and(|e| !e.is_moment()) {
+            tile = tile.child(
+                div()
+                    .absolute()
+                    .top(u(6.))
+                    .right(u(6.))
+                    .size(u(22.))
+                    .rounded_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(theme::black_a(0.6))
+                    .child(icon(Icon::Notes, u(13.), theme::accent())),
+            );
         }
         if let Some(when) = shot.taken_at.and_then(taken_label) {
             tile = tile.child(
@@ -121,6 +138,7 @@ impl OverlayPanel {
         let shot = self.data.shots.get(i)?;
         let count = tr!("{n} of {total}", n = i + 1, total = self.data.shots.len());
         let when = shot.taken_at.and_then(taken_label).unwrap_or_default();
+        let note = self.shot_note(&shot.path).map(|e| e.text.clone()).filter(|t| !t.is_empty());
         Some(
             div()
                 .absolute()
@@ -129,6 +147,18 @@ impl OverlayPanel {
                 .flex_col()
                 .bg(theme::black_a(0.94))
                 .child(div().flex_1().min_h_0().p(u(12.)).child(img(shot.path.clone()).size_full().object_fit(ObjectFit::Contain)))
+                .children(note.map(|n| {
+                    div()
+                        .flex()
+                        .gap(u(8.))
+                        .px(u(24.))
+                        .pb(u(8.))
+                        .text_size(u(14.))
+                        .line_height(u(20.))
+                        .text_color(theme::text_primary())
+                        .child(icon(Icon::Notes, u(16.), theme::accent()))
+                        .child(div().flex_1().min_w_0().child(n))
+                }))
                 .child(
                     div()
                         .flex()
