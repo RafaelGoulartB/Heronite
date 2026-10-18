@@ -108,6 +108,19 @@ pub fn get(cx: &App) -> Option<Entity<OverlayService>> {
 }
 
 impl OverlayService {
+    /// Settings changed them (already saved).
+    pub fn set_prefs(&mut self, prefs: OverlayPrefs, cx: &mut Context<Self>) {
+        self.prefs = prefs;
+        if let Some(w) = &self.watcher {
+            w.set_options(options(&prefs));
+        }
+        if !prefs.enabled {
+            self.close_panel(cx);
+        }
+        self.sync_watcher(cx);
+        cx.notify();
+    }
+
     /// Every launch event, from the hub.
     pub fn on_launch_event(&mut self, ev: &LaunchEvent, cx: &mut Context<Self>) {
         match ev {
