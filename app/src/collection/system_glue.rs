@@ -70,6 +70,7 @@ impl CollectionView {
         match ev {
             SessionEvent::Toast { text, error } => self.show_toast(text.clone(), *error, cx),
             SessionEvent::Capture(c) => self.shots_on_msg(super::screenshots::Msg::Capture(c.clone()), cx),
+            SessionEvent::LibraryChanged => self.reload(cx),
         }
         cx.notify();
     }

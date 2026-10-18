@@ -20,6 +20,7 @@ heronite-launch = { path = "../crates/launch" }
 heronite-metadata = { path = "../crates/metadata" }
 serde_json.workspace = true
 heronite-media = { path = "../crates/media" }
+heronite-overlay = { path = "../crates/overlay" }
 heronite-emulation = { path = "../crates/emulation" }
 heronite-installer = { path = "../crates/installer" }
 heronite-wine = { path = "../crates/wine" }

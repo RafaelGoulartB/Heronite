@@ -34,6 +34,13 @@ pub fn set_scale(window: &Window) {
     PILLS.with(|c| c.set(0));
 }
 
+/// Sets the scale directly, for windows whose height is not the display's
+/// (the in-game overlay's panel and notices).
+pub fn set_scale_value(scale: f32) {
+    SCALE.store(scale.clamp(1., 2.).to_bits(), Ordering::Relaxed);
+    PILLS.with(|c| c.set(0));
+}
+
 pub fn scale() -> f32 {
     f32::from_bits(SCALE.load(Ordering::Relaxed))
 }

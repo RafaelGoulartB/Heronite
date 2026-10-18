@@ -1,0 +1,71 @@
+//! Debug hooks of the overlay (nothing is launched):
+//!
+//! - `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` opens the panel in a normal
+//!   window (`com.heronite.overlay`, for captures) as if the game were
+//!   running; `layer[:<app_name>]` opens the real layer-shell panel. Without
+//!   an app name, the first installed game of the library.
+//! - `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a,wait:800,b` plays presses on it
+//!   (the names of `HERONITE_DEBUG_PAD`).
+//! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` shows a notice too.
+
+use std::time::{Duration, Instant};
+
+use gpui_kit::*;
+use heronite_i18n::tr;
+
+use super::toast::Notice;
+use super::{OverlayService, RunningGame};
+use crate::icons::Icon;
+
+pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
+    let Some(spec) = crate::env::value("HERONITE_DEBUG_OVERLAY") else { return };
+    let (mode, wanted) = match spec.split_once(':') {
+        Some((m, a)) => (m.to_string(), Some(a.to_string())),
+        None => (spec, None),
+    };
+    let entity = entity.clone();
+    let paths = entity.read(cx).data_paths.clone();
+    entity.update(cx, |s, _| s.debug_window = mode != "layer");
+    cx.spawn(async move |cx| {
+        let game = cx
+            .background_spawn(async move {
+                let lib = heronite_data::Library::load_with(&paths, true).ok()?;
+                let found = match &wanted {
+                    Some(app) => lib.games.iter().find(|g| &g.app_name == app),
+                    None => lib.games.iter().find(|g| g.installed),
+                };
+                found.cloned()
+            })
+            .await;
+        let opened = entity.update(cx, |s, cx| {
+            let app_name = match &game {
+                Some(g) => {
+                    s.runtime.debug_register_session(g);
+                    g.app_name.clone()
+                }
+                None => "debug".to_string(),
+            };
+            let started = Instant::now().checked_sub(Duration::from_secs(72 * 60)).unwrap_or_else(Instant::now);
+            s.games.push(RunningGame { app_name, pid: None, started });
+            s.open_panel(cx);
+            s.panel
+        });
+        let Some(panel) = opened else { return };
+        if let Some(kind) = crate::env::value("HERONITE_DEBUG_OVERLAY_NOTICE") {
+            let notice = match kind.as_str() {
+                "volume" => Notice::volume(65),
+                _ => Notice::text(Icon::PhotoCamera, tr!("Screenshot saved"), false)
+                    .sub(game.as_ref().map(|g| g.title.clone()).unwrap_or_default()),
+            };
+            entity.update(cx, |s, cx| s.notify(notice, cx));
+        }
+        let script = crate::env::value("HERONITE_DEBUG_OVERLAY_PAD").unwrap_or_default();
+        for (wait, pad) in crate::console::input::parse_script(&script) {
+            cx.background_executor().timer(wait).await;
+            if panel.update(cx, |p, window, cx| p.on_pad(pad, window, cx)).is_err() {
+                break;
+            }
+        }
+    })
+    .detach();
+}

@@ -44,6 +44,7 @@ pub fn init(
     let adopting = runtime.clone();
     // Post-game work (backup, capture session) runs here, with or without a window.
     crate::services::session::init(cx, data_paths.clone(), runtime.clone());
+    crate::overlay::init(cx, data_paths.clone(), runtime.clone());
 
     let (tray_tx, tray_rx) = unbounded();
     let tray = (!settings.no_tray_icon && !crate::env::flag("HERONITE_NO_TRAY"))
