@@ -205,6 +205,7 @@ impl CaptureService {
         let accel_press = accelerator.clone();
         let shortcut = PortalShortcut::start(
             self.inner.options.portal_app_id.clone(),
+            (portal::SHORTCUT_ID, super::BIND_DESCRIPTION),
             trigger,
             Arc::new(move || {
                 if let Some(inner) = weak.upgrade() {

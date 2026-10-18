@@ -1,6 +1,7 @@
 //! The in-game overlay (beta, off by default; Settings → Overlay): a panel
-//! the controller's Guide button opens over a game launched by the app, plus
-//! two shortcuts that work without opening it (Guide + RB: screenshot,
+//! the controller's Guide button (or a keyboard shortcut, Super + G unless
+//! changed) opens over a game launched by the app, plus two shortcuts that
+//! work without opening it (Guide + RB, or the button chosen: screenshot;
 //! Guide + ↑ / ↓: volume).
 //!
 //! The service follows the launch events (from the hub, like the post-game
@@ -8,6 +9,11 @@
 //! runs and the overlay is on, `heronite_overlay::input` reads the
 //! controllers on its own thread; while the panel is open, or Guide is held,
 //! the controllers are grabbed and the game gets none of their input.
+//!
+//! The keyboard shortcut is registered with the desktop only while such a
+//! game runs (a temporary Hyprland bind, else the GlobalShortcuts portal,
+//! as the screenshot shortcut). Opened from the keyboard, the panel takes
+//! the keyboard until it closes, so it can be driven without a controller.
 //!
 //! The panel and the notices are Wayland layer-shell surfaces
 //! ([`window`]): they float over a fullscreen game without taking focus
@@ -30,7 +36,7 @@ use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::tr;
 use heronite_launch::live_fps::LiveFps;
 use heronite_launch::LaunchEvent;
-use heronite_media::capture::{CaptureOutcome, SkipReason};
+use heronite_media::capture::{CaptureOutcome, GlobalHotkey, HotkeySpec, ShortcutBackend, SkipReason};
 use heronite_overlay::input::{Controller, Event, Options, Watcher};
 
 use self::panel::OverlayPanel;
@@ -48,6 +54,17 @@ pub struct RunningGame {
     /// Process (group leader) once known.
     pub pid: Option<u32>,
     pub started: Instant,
+}
+
+/// The keyboard shortcut, for Settings.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum HotkeyState {
+    /// Not registered: off, or no game running.
+    #[default]
+    Idle,
+    Registering,
+    Ready(ShortcutBackend),
+    Failed(String),
 }
 
 /// What the panel shows about the game it is open over.
@@ -83,6 +100,11 @@ pub struct OverlayService {
     debug_live_fps: Option<LiveFps>,
     /// FPS limits set from the panel, by game, while it runs.
     fps_limits: HashMap<String, u32>,
+    /// The keyboard shortcut registered (and its accelerator) while a game runs.
+    hotkey: Option<(String, GlobalHotkey)>,
+    hotkey_state: HotkeyState,
+    /// Bumped per registration, so a late answer of an old one is ignored.
+    hotkey_epoch: u64,
 }
 
 struct OverlayGlobal(Entity<OverlayService>);
@@ -108,6 +130,9 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         debug_window: false,
         debug_live_fps: None,
         fps_limits: HashMap::new(),
+        hotkey: None,
+        hotkey_state: HotkeyState::Idle,
+        hotkey_epoch: 0,
     });
     cx.set_global(OverlayGlobal(entity.clone()));
     debug::start(&entity, cx);
@@ -117,18 +142,35 @@ pub fn get(cx: &App) -> Option<Entity<OverlayService>> {
     cx.try_global::<OverlayGlobal>().map(|g| g.0.clone())
 }
 
+/// The app is quitting: the keyboard shortcut, for the caller to drop off
+/// the UI thread (that removes it from the desktop; a Hyprland bind would
+/// otherwise outlive the app).
+pub fn take_hotkey(cx: &mut App) -> Option<GlobalHotkey> {
+    let service = get(cx)?;
+    service.update(cx, |s, _| {
+        s.hotkey_epoch += 1;
+        s.hotkey_state = HotkeyState::Idle;
+        s.hotkey.take().map(|(_, h)| h)
+    })
+}
+
 impl OverlayService {
     /// Settings changed them (already saved).
     pub fn set_prefs(&mut self, prefs: OverlayPrefs, cx: &mut Context<Self>) {
-        self.prefs = prefs;
         if let Some(w) = &self.watcher {
             w.set_options(options(&prefs));
         }
-        if !prefs.enabled {
+        let enabled = prefs.enabled;
+        self.prefs = prefs;
+        if !enabled {
             self.close_panel(cx);
         }
         self.sync_watcher(cx);
         cx.notify();
+    }
+
+    pub fn hotkey_state(&self) -> &HotkeyState {
+        &self.hotkey_state
     }
 
     /// Every launch event, from the hub.
@@ -172,8 +214,10 @@ impl OverlayService {
         self.fps_limits.insert(app_name.to_string(), limit);
     }
 
-    /// The input thread runs while a game runs and the overlay is on.
+    /// The input thread runs, and the keyboard shortcut is registered,
+    /// while a game runs and the overlay is on.
     fn sync_watcher(&mut self, cx: &mut Context<Self>) {
+        self.sync_hotkey(cx);
         let wanted = self.prefs.enabled && !self.games.is_empty();
         if wanted == self.watcher.is_some() {
             return;
@@ -204,6 +248,99 @@ impl OverlayService {
         .detach();
     }
 
+    fn sync_hotkey(&mut self, cx: &mut Context<Self>) {
+        let p = &self.prefs;
+        let wanted = (p.enabled && p.keyboard_shortcut && !self.games.is_empty() && (self.layer_shell || self.debug_window))
+            .then(|| p.keyboard_accelerator.clone());
+        if wanted.as_deref() == self.hotkey.as_ref().map(|(a, _)| a.as_str()) {
+            return;
+        }
+        self.hotkey_epoch += 1;
+        if let Some((_, old)) = self.hotkey.take() {
+            // Removing it waits for hyprctl / the portal.
+            cx.background_spawn(async move { drop(old) }).detach();
+        }
+        let Some(accelerator) = wanted else {
+            self.hotkey_state = HotkeyState::Idle;
+            cx.notify();
+            return;
+        };
+        log::info!("overlay: registering the keyboard shortcut {accelerator}");
+        let (press_tx, mut presses) = unbounded();
+        let (ready_tx, mut ready) = unbounded();
+        let spec = HotkeySpec {
+            id: "overlay",
+            description: "Heronite overlay",
+            signal: signal_hook::consts::SIGUSR1,
+            accelerator: accelerator.clone(),
+            consume: true,
+            portal_app_id: Some("com.heronite.launcher".into()),
+        };
+        let hotkey = GlobalHotkey::start(
+            spec,
+            Arc::new(move || {
+                let _ = press_tx.unbounded_send(());
+            }),
+            Box::new(move |result| {
+                let _ = ready_tx.unbounded_send(result);
+            }),
+        );
+        self.hotkey = Some((accelerator, hotkey));
+        self.hotkey_state = HotkeyState::Registering;
+        let epoch = self.hotkey_epoch;
+        cx.spawn(async move |this, cx| {
+            if let Some(result) = ready.next().await {
+                let current = this
+                    .update(cx, |this, cx| {
+                        if this.hotkey_epoch != epoch {
+                            return false;
+                        }
+                        this.hotkey_state = match result {
+                            Ok(backend) => HotkeyState::Ready(backend),
+                            Err(e) => {
+                                log::warn!("overlay: keyboard shortcut: {e}");
+                                HotkeyState::Failed(e)
+                            }
+                        };
+                        cx.notify();
+                        true
+                    })
+                    .unwrap_or(false);
+                if !current {
+                    return;
+                }
+            }
+            while presses.next().await.is_some() {
+                let current = this
+                    .update(cx, |this, cx| {
+                        if this.hotkey_epoch == epoch {
+                            this.toggle_from_keyboard(cx);
+                        }
+                        this.hotkey_epoch == epoch
+                    })
+                    .unwrap_or(false);
+                if !current {
+                    break;
+                }
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// The keyboard shortcut: opens the panel (taking the keyboard) or closes it.
+    fn toggle_from_keyboard(&mut self, cx: &mut Context<Self>) {
+        if self.panel.is_some() {
+            self.close_panel(cx);
+            return;
+        }
+        // The controllers are held as with Guide (and Guide closes it).
+        if let Some(w) = &self.watcher {
+            w.open();
+        }
+        self.open_panel_with(true, cx);
+    }
+
     fn on_input(&mut self, ev: Event, cx: &mut Context<Self>) {
         match ev {
             Event::Open => self.open_panel(cx),
@@ -231,6 +368,11 @@ impl OverlayService {
     }
 
     fn open_panel(&mut self, cx: &mut Context<Self>) {
+        self.open_panel_with(false, cx);
+    }
+
+    /// `keyboard`: opened from the keyboard, the panel takes it while open.
+    fn open_panel_with(&mut self, keyboard: bool, cx: &mut Context<Self>) {
         if self.panel.is_some() {
             return;
         }
@@ -247,8 +389,8 @@ impl OverlayService {
         let controllers = self.controllers.clone();
         let (paths, step) = (self.data_paths.clone(), self.prefs.volume_step);
         let layer = !self.debug_window;
-        match window::open_panel(cx, self.prefs.side, layer, move |_, cx| {
-            cx.new(|cx| OverlayPanel::new(service, paths, step, game, controllers, cx))
+        match window::open_panel(cx, self.prefs.side, layer, keyboard, move |window, cx| {
+            cx.new(|cx| OverlayPanel::new(service, paths, step, game, controllers, keyboard, window, cx))
         }) {
             Ok(handle) => self.panel = Some(handle),
             Err(e) => {
@@ -355,5 +497,5 @@ impl OverlayService {
 }
 
 fn options(prefs: &OverlayPrefs) -> Options {
-    Options { screenshot: prefs.screenshot_shortcut, volume: prefs.volume_shortcut }
+    Options { screenshot: prefs.screenshot_shortcut, screenshot_button: prefs.screenshot_button.into(), volume: prefs.volume_shortcut }
 }

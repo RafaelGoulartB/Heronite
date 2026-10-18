@@ -190,6 +190,7 @@ pub(super) fn graceful_quit(cx: &mut App) {
     }
     // Stops the current encode at once; the next start resumes the queue.
     crate::services::compression::shutdown(cx);
+    let hotkey = crate::overlay::take_hotkey(cx);
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {
         // Only asks (legendary gets SIGTERM); waited for below.
@@ -203,6 +204,10 @@ pub(super) fn graceful_quit(cx: &mut App) {
         std::process::exit(0);
     });
     cx.spawn(async move |cx| {
+        // Removes the overlay's keyboard shortcut from the desktop.
+        if let Some(hotkey) = hotkey {
+            cx.background_spawn(async move { drop(hotkey) }).await;
+        }
         let saved = cx.background_spawn(async move { runtime.checkpoint_all() }).await;
         if saved > 0 {
             log::info!("saved the playtime of {saved} running game(s)");

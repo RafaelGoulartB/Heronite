@@ -26,8 +26,8 @@ use heronite_i18n::n_;
 use std::path::{Path, PathBuf};
 
 pub use accelerator::{
-    hyprland_bind_expression, hyprland_unbind_expression, parse_accelerator, to_hyprland_binding, to_portal_trigger, Accelerator,
-    HyprlandBind, HyprlandBinding, MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER,
+    hyprland_bind_expression, hyprland_bind_expression_as, hyprland_unbind_expression, parse_accelerator, to_hyprland_binding,
+    to_portal_trigger, Accelerator, HyprlandBind, HyprlandBinding, MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER,
 };
 
 #[cfg(target_os = "linux")]
@@ -35,12 +35,16 @@ mod feedback;
 #[cfg(target_os = "linux")]
 mod grim;
 #[cfg(target_os = "linux")]
+mod hotkey;
+#[cfg(target_os = "linux")]
 mod hyprland;
 #[cfg(target_os = "linux")]
 mod portal;
 #[cfg(target_os = "linux")]
 mod service;
 
+#[cfg(target_os = "linux")]
+pub use hotkey::{GlobalHotkey, HotkeySpec};
 #[cfg(target_os = "linux")]
 pub use service::{CaptureService, ServiceOptions};
 

@@ -124,7 +124,7 @@ impl SettingsPage {
         match sec {
             CSec::Extras => advanced::console_rows(self),
             CSec::Rows(Section::Library) => library::console_rows(self),
-            CSec::Rows(Section::Overlay) => overlay::console_rows(self),
+            CSec::Rows(Section::Overlay) => overlay::console_rows(self, cx),
             CSec::Rows(Section::About) => about::console_rows(self, cx),
             CSec::Rows(Section::Logs) => logs::console_rows(self),
             CSec::Rows(Section::Appearance) => appearance::console_rows(self),

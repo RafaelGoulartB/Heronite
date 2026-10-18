@@ -1,6 +1,7 @@
 //! The overlay's surfaces: Wayland layer-shell windows on the overlay layer,
 //! drawn over everything (fullscreen games included) without keyboard focus,
-//! so the game keeps it. Sizes follow the display's height, like console
+//! so the game keeps it; only a panel opened from the keyboard takes it
+//! (until it closes). Sizes follow the display's height, like console
 //! mode, smaller since the panel floats over a game (1440 px tall → 1.16).
 
 use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellNotSupportedError, LayerShellOptions};
@@ -46,14 +47,14 @@ fn side_anchor(side: Side) -> Anchor {
     }
 }
 
-fn options(namespace: &str, size: Size<Pixels>, anchor: Anchor, margin: Pixels, layer: bool) -> WindowOptions {
+fn options(namespace: &str, size: Size<Pixels>, anchor: Anchor, margin: Pixels, layer: bool, keyboard: bool) -> WindowOptions {
     let kind = if layer {
         WindowKind::LayerShell(LayerShellOptions {
             namespace: namespace.to_string(),
             layer: Layer::Overlay,
             anchor,
             margin: Some((margin, margin, margin, margin)),
-            keyboard_interactivity: KeyboardInteractivity::None,
+            keyboard_interactivity: if keyboard { KeyboardInteractivity::Exclusive } else { KeyboardInteractivity::None },
             ..Default::default()
         })
     } else {
@@ -65,24 +66,25 @@ fn options(namespace: &str, size: Size<Pixels>, anchor: Anchor, margin: Pixels, 
         app_id: Some(if layer { "com.heronite.rs".into() } else { format!("com.heronite.{namespace}") }),
         window_background: WindowBackgroundAppearance::Transparent,
         kind,
-        focus: !layer,
+        focus: !layer || keyboard,
         ..Default::default()
     }
 }
 
 /// Opens the panel along one side of the screen. `layer = false` draws it in
-/// a normal window (debug captures).
+/// a normal window (debug captures); `keyboard`: it takes the keyboard.
 pub fn open_panel<V: Render>(
     cx: &mut App,
     side: Side,
     layer: bool,
+    keyboard: bool,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<WindowHandle<V>> {
     let s = scale(cx);
     let height = (PANEL_H * s).min(panel_max_height(cx));
     let size = size(px(PANEL_W * s), px(height));
     let anchor = side_anchor(side) | Anchor::TOP;
-    cx.open_window(options("overlay", size, anchor, px(EDGE * s), layer), build)
+    cx.open_window(options("overlay", size, anchor, px(EDGE * s), layer, keyboard), build)
 }
 
 /// The tallest the panel may be: the display minus the edge gaps (a Steam
@@ -105,7 +107,7 @@ pub fn open_notice<V: Render>(
         Side::Left => Anchor::RIGHT,
         Side::Right => Anchor::LEFT,
     };
-    cx.open_window(options("overlay-notice", size, corner | Anchor::TOP, px(24. * s), layer), build)
+    cx.open_window(options("overlay-notice", size, corner | Anchor::TOP, px(24. * s), layer, false), build)
 }
 
 /// The compositor refused a layer-shell surface (GNOME's has none).

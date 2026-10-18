@@ -1,7 +1,7 @@
 //! Hyprland integration through `hyprctl`. Only the JSON parsing is unit-tested;
 //! the functions that run `hyprctl eval` change the compositor's state.
 
-use super::{hyprland_bind_expression, hyprland_unbind_expression, HyprlandBind, HyprlandBinding, Monitor};
+use super::{hyprland_bind_expression_as, hyprland_unbind_expression, HyprlandBind, HyprlandBinding, Monitor, BIND_DESCRIPTION};
 use heronite_i18n::tr;
 use serde::Deserialize;
 use std::io::Read;
@@ -73,16 +73,22 @@ pub fn unregister(keys: &str) -> Result<(), String> {
 /// `registerHyprlandHotkey`: drops a stale bind of ours, refuses a conflicting
 /// bind, installs the temporary bind and checks that Hyprland kept it.
 pub fn register(binding: &HyprlandBinding, accelerator: &str, pid: u32) -> Result<(), String> {
+    register_as(binding, accelerator, &format!("kill -USR2 {pid}"), BIND_DESCRIPTION, false)
+}
+
+/// [`register`] for a bind that runs `command`, described as `description`
+/// (how a stale one is recognised).
+pub fn register_as(binding: &HyprlandBinding, accelerator: &str, command: &str, description: &str, consume: bool) -> Result<(), String> {
     let mut current = binds()?;
-    if current.iter().any(|b| b.is_ours(binding)) {
+    if current.iter().any(|b| b.is_ours_as(binding, description)) {
         eval(&hyprland_unbind_expression(&binding.keys))?;
         current = binds()?;
     }
     if current.iter().any(|b| b.is_same_trigger(binding)) {
         return Err(tr!("The shortcut {accelerator} is already in use", accelerator));
     }
-    eval(&hyprland_bind_expression(binding, pid))?;
-    if !binds()?.iter().any(|b| b.is_ours(binding)) {
+    eval(&hyprland_bind_expression_as(binding, command, description, consume))?;
+    if !binds()?.iter().any(|b| b.is_ours_as(binding, description)) {
         return Err(tr!("Hyprland did not retain the shortcut").into());
     }
     Ok(())

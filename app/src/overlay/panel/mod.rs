@@ -87,6 +87,9 @@ pub struct OverlayPanel {
     viewer: Option<usize>,
     /// Shown under the rows after a failed action.
     error: Option<SharedString>,
+    /// Opened from the keyboard: it has the keyboard and shows keys.
+    keyboard: bool,
+    focus: FocusHandle,
 }
 
 /// Controller button to console mode's press.
@@ -116,8 +119,14 @@ impl OverlayPanel {
         volume_step: u8,
         game: GameNow,
         controllers: Vec<Controller>,
+        keyboard: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let focus = cx.focus_handle();
+        if keyboard {
+            window.focus(&focus, cx);
+        }
         let mut this = Self {
             service,
             paths: paths.clone(),
@@ -134,6 +143,8 @@ impl OverlayPanel {
             grid_scroll: ScrollHandle::new(),
             viewer: None,
             error: None,
+            keyboard,
+            focus,
         };
         this.load_all(paths, cx);
         // The clock and the session time.
@@ -306,7 +317,7 @@ impl OverlayPanel {
             .gap(u(6.))
             .mx(u(16.))
             .pt(u(16.))
-            .child(kit::glyph(Btn::LB))
+            .child(self.glyph(Btn::LB))
             .children(TABS.iter().enumerate().map(|(i, t)| {
                 let on = i == self.tab;
                 let color: Hsla = if on { theme::text_primary().into() } else { theme::text_muted().into() };
@@ -323,7 +334,23 @@ impl OverlayPanel {
                     .child(icon(t.icon(), u(20.), color))
                     .child(div().text_size(u(12.)).text_color(color).truncate().child(t.label()))
             }))
-            .child(kit::glyph(Btn::RB))
+            .child(self.glyph(Btn::RB))
+    }
+
+    /// The button's glyph, or its key when opened from the keyboard.
+    fn glyph(&self, btn: Btn) -> Div {
+        if self.keyboard {
+            kit::key_glyph(btn)
+        } else {
+            kit::glyph(btn)
+        }
+    }
+
+    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(pad) = crate::console::input::pad_from_key(&ev.keystroke) {
+            cx.stop_propagation();
+            self.on_pad(pad, window, cx);
+        }
     }
 
     fn render_hints(&self) -> Div {
@@ -344,7 +371,7 @@ impl OverlayPanel {
                     .gap(u(7.))
                     .text_size(u(13.))
                     .text_color(theme::text_muted())
-                    .child(kit::glyph(h.btn))
+                    .child(self.glyph(h.btn))
                     .child(h.label)
             }))
     }
@@ -415,7 +442,7 @@ fn duration_label(minutes: u64) -> String {
 }
 
 impl Render for OverlayPanel {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         kit::set_scale_value(self.scale);
         // The window has the panel's fixed size (`window::PANEL_H`): the panel
         // fills it and the tab's content takes what the header and hints leave.
@@ -434,7 +461,9 @@ impl Render for OverlayPanel {
             .child(self.render_tabs())
             .child(self.render_header())
             .child(self.render_body())
-            .child(self.render_hints());
+            .child(self.render_hints())
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_key));
         if let Some(confirm) = &self.confirm {
             let (title, message) = match confirm {
                 Confirm::Quit => (tr!("Quit {game}?", game = self.game.title()), tr!("Progress you have not saved in the game is lost.")),

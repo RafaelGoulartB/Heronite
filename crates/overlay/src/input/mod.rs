@@ -66,7 +66,8 @@ impl Watcher {
         self.send(Cmd::Close);
     }
 
-    /// The overlay opened without the Guide button (a debug hook).
+    /// The overlay opened without the Guide button (the keyboard shortcut,
+    /// a debug hook): hold the controllers, as Guide would.
     pub fn open(&self) {
         self.send(Cmd::Open);
     }

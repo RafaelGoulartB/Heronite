@@ -102,22 +102,7 @@ pub fn glyph(btn: Btn) -> Div {
             .text_color(theme::console_on_focus())
             .child(letter.to_string())
     };
-    let cap = |label: &str| {
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .h(u(22.))
-            .min_w(u(26.))
-            .px(u(5.))
-            .rounded(u(5.))
-            .bg(theme::white_a(0.16))
-            .text_size(u(10.))
-            .font_weight(theme::W_BOLD)
-            .text_color(theme::text_primary())
-            .child(label.to_string())
-    };
+    let cap = key_cap;
     match btn {
         Btn::A => circle("A", theme::console_btn_a()),
         Btn::B => circle("B", theme::console_btn_b()),
@@ -131,6 +116,40 @@ pub fn glyph(btn: Btn) -> Div {
         // Icons: the fonts have no ◀ ▶, and the fallback draws them as emoji.
         Btn::LeftRight => div().flex().gap(u(4.)).child(arrow_cap(Icon::ChevronLeft)).child(arrow_cap(Icon::ChevronRight)),
     }
+}
+
+/// [`glyph`] for the keyboard: the key `console::input::pad_from_key` turns
+/// into that button.
+pub fn key_glyph(btn: Btn) -> Div {
+    match btn {
+        Btn::A => key_cap("Enter"),
+        Btn::B => key_cap("Esc"),
+        Btn::X => key_cap("X"),
+        Btn::Y => key_cap("Y"),
+        Btn::LB => key_cap("Q"),
+        Btn::RB => key_cap("E"),
+        Btn::Bumpers => div().flex().gap(u(4.)).child(key_cap("Q")).child(key_cap("E")),
+        Btn::Start => key_cap("M"),
+        Btn::LT | Btn::LeftRight => glyph(btn),
+    }
+}
+
+/// A dark keycap with a label.
+fn key_cap(label: &str) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .h(u(22.))
+        .min_w(u(26.))
+        .px(u(5.))
+        .rounded(u(5.))
+        .bg(theme::white_a(0.16))
+        .text_size(u(10.))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::text_primary())
+        .child(label.to_string())
 }
 
 /// A dark keycap holding an icon.

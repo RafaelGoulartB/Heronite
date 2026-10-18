@@ -288,14 +288,22 @@ the output shown under them. Home's "FPS limit" row only shows when the game's l
 `GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
 user's `MangoHud.conf` or their Steam launch options was ruled out). Quitting the game asks
-first (focus on Cancel). Guide + RB and Guide + ↑ / ↓ show a notice in the top corner opposite the panel.
-The panel only takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
+first (focus on Cancel). Guide + RB and Guide + ↑ / ↓ show a notice in the top corner opposite the panel. The
+screenshot's button is a choice (RB unless changed; not ↑ / ↓ nor the triggers, which many controllers report as axes),
+shown in Settings → Overlay and in Settings → Screenshots ("With the controller"). A keyboard shortcut (Super + G unless
+changed, `heronite_media::capture::GlobalHotkey`: a temporary consuming Hyprland bind that sends SIGUSR1, else the
+GlobalShortcuts portal) opens and closes it too; it is registered only while a game launched by the app runs and removed
+on quit. Opened that way the surface takes the keyboard (`KeyboardInteractivity::Exclusive`, so the game gets no keys
+until it closes), console mode's keys drive it (`console::input::pad_from_key`) and the hints show keys
+(`kit::key_glyph`: Enter, Esc, Q / E).
+The panel takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
 (which is usually updating when it calls in) and reaches it through deferred `with_service`. GNOME and X11 cannot show
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
 window (`com.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
 plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` adds a notice (`com.heronite.overlay-notice`);
-`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
+`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
+it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
 the panel's size follows it.
 
 ## Rules

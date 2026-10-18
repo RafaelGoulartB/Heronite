@@ -4,7 +4,8 @@
 //!
 //! - Guide down grabs that controller at once, so what follows (RB, ↑ ↓)
 //!   reaches only us, not the game.
-//! - Guide + RB is a screenshot, Guide + ↑ / ↓ a volume step. Any other
+//! - Guide + RB (or the button chosen) is a screenshot, Guide + ↑ / ↓ a
+//!   volume step. Any other
 //!   button while Guide is held makes it a chord too: no overlay on release.
 //! - Guide released without a chord opens the overlay (every controller is
 //!   grabbed while it is open) or closes it.
@@ -33,6 +34,24 @@ pub enum Button {
     Guide,
 }
 
+impl From<heronite_data::overlay_prefs::ChordButton> for Button {
+    fn from(b: heronite_data::overlay_prefs::ChordButton) -> Self {
+        use heronite_data::overlay_prefs::ChordButton as C;
+        match b {
+            C::RB => Button::RB,
+            C::LB => Button::LB,
+            C::A => Button::A,
+            C::B => Button::B,
+            C::X => Button::X,
+            C::Y => Button::Y,
+            C::Left => Button::Left,
+            C::Right => Button::Right,
+            C::Start => Button::Start,
+            C::Select => Button::Select,
+        }
+    }
+}
+
 impl Button {
     fn is_direction(self) -> bool {
         matches!(self, Button::Up | Button::Down | Button::Left | Button::Right)
@@ -47,7 +66,7 @@ pub enum Event {
     Open,
     /// Guide tapped while open (or every controller went away): close it.
     Close,
-    /// Guide + RB.
+    /// Guide + the screenshot button.
     Screenshot,
     /// Guide + ↑ (`1`) or ↓ (`-1`).
     Volume(i8),
@@ -69,6 +88,8 @@ pub enum Grab {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Options {
     pub screenshot: bool,
+    /// Held with Guide for a screenshot (RB unless changed).
+    pub screenshot_button: Button,
     pub volume: bool,
 }
 
@@ -124,7 +145,7 @@ impl Core {
             if down {
                 *used = true;
                 match b {
-                    Button::RB if self.opts.screenshot => out.events.push(Event::Screenshot),
+                    b if self.opts.screenshot && b == self.opts.screenshot_button => out.events.push(Event::Screenshot),
                     Button::Up if self.opts.volume => out.events.push(Event::Volume(1)),
                     Button::Down if self.opts.volume => out.events.push(Event::Volume(-1)),
                     _ => {}
@@ -204,7 +225,8 @@ impl Core {
         out
     }
 
-    /// The UI opened the overlay by itself (a debug hook): hold the controllers.
+    /// The UI opened the overlay by itself (the keyboard shortcut, a debug
+    /// hook): hold the controllers.
     pub fn open(&mut self) -> Output {
         let mut out = Output::default();
         if !self.open {
@@ -281,7 +303,7 @@ impl Core {
 mod tests {
     use super::*;
 
-    const ALL: Options = Options { screenshot: true, volume: true };
+    const ALL: Options = Options { screenshot: true, screenshot_button: Button::RB, volume: true };
 
     fn press(core: &mut Core, dev: usize, b: Button) -> Output {
         let now = Instant::now();
@@ -325,8 +347,19 @@ mod tests {
     }
 
     #[test]
+    fn the_screenshot_button_can_change() {
+        let mut c = Core::new(Options { screenshot_button: Button::Y, ..ALL });
+        let now = Instant::now();
+        c.button(0, Button::Guide, true, now);
+        assert!(c.button(0, Button::RB, true, now).events.is_empty(), "RB is a plain chord now");
+        assert_eq!(c.button(0, Button::Y, true, now).events, vec![Event::Screenshot]);
+        assert!(c.button(0, Button::Guide, false, now).events.is_empty());
+        assert!(!c.is_open());
+    }
+
+    #[test]
     fn disabled_shortcuts_still_swallow_the_chord() {
-        let mut c = Core::new(Options { screenshot: false, volume: false });
+        let mut c = Core::new(Options { screenshot: false, screenshot_button: Button::RB, volume: false });
         let now = Instant::now();
         c.button(0, Button::Guide, true, now);
         assert!(c.button(0, Button::RB, true, now).events.is_empty());

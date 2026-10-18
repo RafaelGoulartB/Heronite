@@ -9,6 +9,9 @@
 //! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` shows a notice too.
 //! - `HERONITE_DEBUG_OVERLAY_FPS=<limit>` pretends the game's limiter can
 //!   change while it runs (the FPS limit row shows; nothing is applied).
+//! - `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens it as the keyboard shortcut
+//!   does (it takes the keyboard); `=shortcut` registers the real shortcut
+//!   instead of opening it (Settings → Overlay's, removed on exit).
 
 use std::time::{Duration, Instant};
 
@@ -53,7 +56,11 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
             };
             let started = Instant::now().checked_sub(Duration::from_secs(72 * 60)).unwrap_or_else(Instant::now);
             s.games.push(RunningGame { app_name, pid: None, started });
-            s.open_panel(cx);
+            match crate::env::value("HERONITE_DEBUG_OVERLAY_KEYBOARD").filter(|v| v != "0").as_deref() {
+                Some("shortcut") => s.sync_hotkey(cx),
+                Some(_) => s.open_panel_with(true, cx),
+                None => s.open_panel(cx),
+            }
             s.panel
         });
         let Some(panel) = opened else { return };

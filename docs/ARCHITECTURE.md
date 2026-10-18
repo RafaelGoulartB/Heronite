@@ -145,7 +145,8 @@ calls them from `cx.background_spawn` or worker threads.
   game launched by the app runs and the overlay is on) and grabs them
   (`EVIOCGRAB`) while Guide is held or the panel is open, so the game gets
   none of those presses; `input::core` is the pure state machine (Guide tap
-  = open / close, Guide + RB = screenshot, Guide + ↑ / ↓ = volume, held
+  = open / close, Guide + RB (or the button chosen) = screenshot,
+  Guide + ↑ / ↓ = volume, held
   directions repeat). `audio` drives the default output, the microphone and
   the game's own streams through `pactl`; `controller` reads the battery from
   sysfs and disconnects Bluetooth controllers.

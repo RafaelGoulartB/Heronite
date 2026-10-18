@@ -143,7 +143,7 @@ impl SettingsPage {
             saves,
             saves_restore: Default::default(),
             library: library::State::new(&ctx),
-            overlay: overlay::State::new(&ctx),
+            overlay: overlay::State::new(&ctx, cx),
             advanced: advanced::State::default(),
             about: about::State::default(),
             logs: logs::State::default(),
