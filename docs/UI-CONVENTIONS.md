@@ -45,7 +45,7 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   `self.open_dialog(cx.new(|cx| V::new(ctx, window, cx)), cx)`.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
 - Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
-  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library),
+  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library, Overlay),
   Collection (Metadata, Screenshots, Backups), Help (Logs, About). A section = title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata`, `screenshots`, `saves` + `backup` for Backups) with `State::new(&PageCtx, &EffectiveSettings, …)`
@@ -271,6 +271,23 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
+
+**In-game overlay** (`app/src/overlay/`, Settings → Overlay; beta, off by default, options in `overlay.json` of the app
+state): during a game launched by the app, the controller's Guide button opens a panel over the game (by user decision:
+proposal 1 "Guide lateral, estilo Xbox"). It is a Wayland layer-shell surface on the overlay layer (no keyboard focus, so
+the game keeps it), 440 design px wide along the left or right edge, in console mode's look scaled to the display
+(`kit::set_scale_value`; 1440 px tall → 1.16), from the top and only as tall as its content (`OverlayPanel::fit` measures
+the panel each frame and resizes the layer surface, up to the display's height; the Screenshots grid scrolls past ~3 rows): LB / RB tabs on top (icon over label: Home,
+Screenshots, Audio, Controller), then game title, session and total time, clock and battery, the tab's `console::list`
+rows and a compact hint bar. Volume is a mixer block (by user decision: option D) on Home and Audio: two bars, System
+and the game's own streams, that are two rows of the list (↑ ↓), ◀ ▶ change the focused one, A mutes it, Y switches
+the output shown under them. Quitting the game asks first (focus on Cancel). Guide + RB and Guide + ↑ / ↓ show a notice in the top corner opposite the panel.
+The panel only takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
+(which is usually updating when it calls in) and reaches it through deferred `with_service`. GNOME and X11 cannot show
+it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
+window (`com.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
+under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
+plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` adds a notice (`com.heronite.overlay-notice`).
 
 ## Rules
 - No I/O on the UI thread except tiny reads; use `cx.background_spawn` and
