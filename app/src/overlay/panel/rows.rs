@@ -22,15 +22,20 @@ impl OverlayPanel {
 
     fn home_rows(&self) -> Vec<Row> {
         let mut rows = Vec::new();
+        let has_game = self.game.is_some();
         match &self.data.audio {
-            Some(Some(a)) => rows.extend(mixer::rows(a)),
+            Some(Some(a)) => rows.extend(mixer::rows(a, has_game)),
             // Still reading it: the mixer's rows already hold their place.
-            None => rows.extend(mixer::rows(&audio::AudioState::default())),
+            None => rows.extend(mixer::rows(&audio::AudioState::default(), has_game)),
             Some(None) => {}
         }
+        let Some(game) = &self.game else {
+            rows.push(Row::action("launcher", tr!("Open Heronite")).icon(Icon::Home));
+            return rows;
+        };
         rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera));
         // Only when the game's limiter can change while it runs.
-        if let Some((live, limit)) = &self.game.fps {
+        if let Some((live, limit)) = &game.fps {
             let steps = fps_steps(*limit);
             let options = steps.iter().map(|n| if *n == 0 { tr!("Off").into() } else { SharedString::from(format!("{n} FPS")) }).collect();
             let index = steps.iter().position(|n| n == limit).unwrap_or(0);
@@ -49,7 +54,7 @@ impl OverlayPanel {
 
     fn audio_rows(&self) -> Vec<Row> {
         let a = match &self.data.audio {
-            None => return mixer::rows(&audio::AudioState::default()),
+            None => return mixer::rows(&audio::AudioState::default(), self.game.is_some()),
             Some(None) => {
                 return vec![Row::info("none", tr!("Volume control is not available"), "")
                     .desc(tr!("It needs pactl (PipeWire or PulseAudio)."))
@@ -57,7 +62,7 @@ impl OverlayPanel {
             }
             Some(Some(a)) => a,
         };
-        let mut rows = mixer::rows(a);
+        let mut rows = mixer::rows(a, self.game.is_some());
         if !a.outputs.is_empty() {
             let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short(&o.description).into()).collect();
             rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));
@@ -124,7 +129,7 @@ impl OverlayPanel {
 
     fn changed(&mut self, id: &str, value: Value, cx: &mut Context<Self>) {
         self.error = None;
-        let pid = self.game.game.pid;
+        let pid = self.game.as_ref().and_then(|g| g.game.pid);
         match (id, value) {
             (mixer::SYSTEM, Value::Number { value, .. }) => {
                 let step = self.volume_step;
@@ -172,7 +177,7 @@ impl OverlayPanel {
             }
             ("status", Value::Choice { index, .. }) => self.set_status(index, cx),
             ("fps", Value::Choice { index, .. }) => {
-                let Some((_, limit)) = &self.game.fps else { return };
+                let Some((_, limit)) = self.game.as_ref().and_then(|g| g.fps.as_ref()) else { return };
                 if let Some(next) = fps_steps(*limit).get(index).copied() {
                     self.set_fps_limit(next, cx);
                 }
@@ -201,15 +206,15 @@ impl OverlayPanel {
 
     /// Applies a new FPS limit to the running game (`0` = none).
     fn set_fps_limit(&mut self, limit: u32, cx: &mut Context<Self>) {
-        let Some((live, _)) = self.game.fps.clone() else { return };
-        self.game.fps = Some((live.clone(), limit));
-        let app_name = self.game.game.app_name.clone();
+        let Some(game) = &mut self.game else { return };
+        let Some((live, _)) = game.fps.clone() else { return };
+        game.fps = Some((live.clone(), limit));
+        let (app_name, pid) = (game.game.app_name.clone(), game.game.pid);
         self.with_service(cx, move |s, _| s.fps_limit_changed(&app_name, limit));
         if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() {
             log::info!("overlay debug: FPS limit change skipped");
             return;
         }
-        let pid = self.game.game.pid;
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
@@ -236,18 +241,15 @@ impl OverlayPanel {
 
     fn set_status(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(status) = self.data.statuses.get(index).cloned() else { return };
+        let Some(game) = &self.game else { return };
+        let app_name = game.game.app_name.clone();
+        let extras = SetStatusExtras { runner: game.info.as_ref().map(|i| i.runner.clone()), title: Some(game.title()), playnite_id: None };
         self.data.status_id = Some(status.id.clone());
         if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() {
             log::info!("overlay debug: status change skipped");
             return;
         }
         let paths = self.paths.clone();
-        let app_name = self.game.game.app_name.clone();
-        let extras = SetStatusExtras {
-            runner: self.game.info.as_ref().map(|i| i.runner.clone()),
-            title: Some(self.game.title()),
-            playnite_id: None,
-        };
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { status::set_game_status(&paths, &app_name, &status.id, &extras) }).await;
             this.update(cx, |this, cx| match res {

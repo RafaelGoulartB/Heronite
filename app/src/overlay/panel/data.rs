@@ -68,8 +68,12 @@ fn load(paths: &DataPaths, app_name: &str, info: Option<&SessionInfo>) -> Loaded
 impl OverlayPanel {
     /// Starts every read; each lands in `data` and redraws.
     pub(super) fn load_all(&mut self, paths: DataPaths, cx: &mut Context<Self>) {
-        let app_name = self.game.game.app_name.clone();
-        let info = self.game.info.clone();
+        self.load_audio(cx);
+        self.load_batteries(cx);
+        // Play time, status and captures are the game's.
+        let Some(game) = &self.game else { return };
+        let app_name = game.game.app_name.clone();
+        let info = game.info.clone();
         cx.spawn(async move |this, cx| {
             let loaded = cx.background_spawn(async move { load(&paths, &app_name, info.as_ref()) }).await;
             this.update(cx, |this, cx| {
@@ -85,13 +89,11 @@ impl OverlayPanel {
             .ok();
         })
         .detach();
-        self.load_audio(cx);
-        self.load_batteries(cx);
     }
 
     /// Reads the audio state again (after a change, or when the panel opens).
     pub(super) fn load_audio(&mut self, cx: &mut Context<Self>) {
-        let pid = self.game.game.pid;
+        let pid = self.game.as_ref().and_then(|g| g.game.pid);
         cx.spawn(async move |this, cx| {
             let state = cx.background_spawn(async move { audio::read(pid) }).await;
             this.update(cx, |this, cx| {

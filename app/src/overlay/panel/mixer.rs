@@ -23,9 +23,13 @@ pub const GAME: &str = "mix-game";
 /// Stereo"); the chip keeps the start.
 const OUTPUT_CHARS: usize = 28;
 
-/// The two mixer rows (values for ◀ ▶; the block draws them).
-pub fn rows(a: &AudioState) -> Vec<Row> {
+/// The mixer rows (values for ◀ ▶; the block draws them): the game's only
+/// with a game.
+pub fn rows(a: &AudioState, game: bool) -> Vec<Row> {
     let mut rows = vec![Row::number(SYSTEM, tr!("System"), i64::from(a.volume), 0, i64::from(a.volume.max(100)), 5, "%")];
+    if !game {
+        return rows;
+    }
     rows.push(match a.game_volume {
         Some(v) => Row::number(GAME, tr!("Game"), i64::from(v), 0, i64::from(v.max(100)), 5, "%"),
         None => Row::info(GAME, tr!("Game"), tr!("No sound yet")),
@@ -60,7 +64,7 @@ impl OverlayPanel {
                 true
             }
             Pad::A => {
-                let Some(pid) = self.game.game.pid else { return true };
+                let Some(pid) = self.game.as_ref().and_then(|g| g.game.pid) else { return true };
                 let muted = self.set_audio(|a| {
                     a.game_volume.map(|_| {
                         a.game_muted = !a.game_muted;
@@ -162,7 +166,7 @@ impl OverlayPanel {
             .rounded(u(16.))
             .border_2()
             .child(line(SYSTEM, Icon::VolumeUp, tr!("System").into(), Some(a.volume), a.muted))
-            .child(line(GAME, Icon::SportsEsports, tr!("Game").into(), a.game_volume, a.game_muted))
+            .when(self.game.is_some(), |d| d.child(line(GAME, Icon::SportsEsports, tr!("Game").into(), a.game_volume, a.game_muted)))
             .children(output.map(|o| {
                 div()
                     .flex()
@@ -175,7 +179,7 @@ impl OverlayPanel {
                     .text_color(muted_color)
                     .child(icon(Icon::Headphones, u(15.), muted_color))
                     .child(div().truncate().child(o))
-                    .when(focused && a.outputs.len() > 1, |d| d.child(div().ml_auto().child(kit::glyph(crate::console::Btn::Y))))
+                    .when(focused && a.outputs.len() > 1, |d| d.child(div().ml_auto().child(self.glyph(crate::console::Btn::Y))))
             }));
         block = if focused {
             block.bg(theme::console_focus()).border_color(theme::white_a(0.55)).shadow(kit::shadow(0.45, 8., 24.))

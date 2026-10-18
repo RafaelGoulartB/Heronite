@@ -10,6 +10,8 @@
 //! - `side`: `left` (default) or `right` edge of the screen.
 //! - `keyboardShortcut` / `keyboardAccelerator`: a keyboard shortcut
 //!   (`Super+G` unless changed) opens and closes it too.
+//! - `withoutGame`: Guide and the keyboard shortcut open it with no game
+//!   running too (off: only during a game launched by the app).
 
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -112,6 +114,8 @@ pub struct OverlayPrefs {
     pub keyboard_shortcut: bool,
     /// Electron-style (`Super+G`), like the screenshot shortcut.
     pub keyboard_accelerator: String,
+    /// It opens with no game running too.
+    pub without_game: bool,
 }
 
 impl Default for OverlayPrefs {
@@ -125,6 +129,7 @@ impl Default for OverlayPrefs {
             side: Side::Left,
             keyboard_shortcut: true,
             keyboard_accelerator: DEFAULT_KEYBOARD_ACCELERATOR.into(),
+            without_game: false,
         }
     }
 }
@@ -158,6 +163,7 @@ impl OverlayPrefs {
                 .map(str::trim)
                 .filter(|a| !a.is_empty())
                 .map_or(d.keyboard_accelerator, str::to_string),
+            without_game: flag("withoutGame", d.without_game),
         }
     }
 
@@ -175,6 +181,7 @@ impl OverlayPrefs {
             doc["side"] = json!(self.side.as_str());
             doc["keyboardShortcut"] = json!(self.keyboard_shortcut);
             doc["keyboardAccelerator"] = json!(self.keyboard_accelerator);
+            doc["withoutGame"] = json!(self.without_game);
             Ok(())
         })
     }
@@ -210,6 +217,7 @@ mod tests {
             side: Side::Right,
             keyboard_shortcut: false,
             keyboard_accelerator: "Ctrl+Shift+O".into(),
+            without_game: true,
         };
         p.save(&paths).unwrap();
         assert_eq!(OverlayPrefs::load(&paths), p);

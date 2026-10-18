@@ -36,6 +36,8 @@ pub enum Tab {
 }
 
 const TABS: [Tab; 4] = [Tab::Home, Tab::Shots, Tab::Audio, Tab::Controller];
+/// Without a game there is nothing to capture.
+const TABS_NO_GAME: [Tab; 3] = [Tab::Home, Tab::Audio, Tab::Controller];
 
 impl Tab {
     fn label(self) -> String {
@@ -72,7 +74,8 @@ pub struct OverlayPanel {
     paths: DataPaths,
     /// Percent per press of ◀ ▶ on the volume rows.
     volume_step: i64,
-    game: GameNow,
+    /// `None`: opened without a game running (Settings → Overlay allows it).
+    game: Option<GameNow>,
     controllers: Vec<Controller>,
     scale: f32,
     tab: usize,
@@ -117,7 +120,7 @@ impl OverlayPanel {
         service: WeakEntity<OverlayService>,
         paths: DataPaths,
         volume_step: u8,
-        game: GameNow,
+        game: Option<GameNow>,
         controllers: Vec<Controller>,
         keyboard: bool,
         window: &mut Window,
@@ -163,8 +166,16 @@ impl OverlayPanel {
         self.load_batteries(cx);
     }
 
+    fn tabs(&self) -> &'static [Tab] {
+        if self.game.is_some() {
+            &TABS
+        } else {
+            &TABS_NO_GAME
+        }
+    }
+
     fn tab(&self) -> Tab {
-        TABS[self.tab]
+        self.tabs()[self.tab]
     }
 
     fn with_service(&self, cx: &mut Context<Self>, f: impl FnOnce(&mut OverlayService, &mut Context<OverlayService>) + 'static) {
@@ -191,7 +202,7 @@ impl OverlayPanel {
         }
         match pad {
             Pad::LB | Pad::RB => {
-                let n = TABS.len();
+                let n = self.tabs().len();
                 self.tab = if pad == Pad::RB { (self.tab + 1) % n } else { (self.tab + n - 1) % n };
                 self.nav.reset();
                 self.grid = None;
@@ -232,8 +243,9 @@ impl OverlayPanel {
             }
             match confirm {
                 Confirm::Quit => {
-                    let app_name = self.game.game.app_name.clone();
-                    self.with_service(cx, move |s, cx| s.stop_game(&app_name, cx));
+                    if let Some(app_name) = self.game.as_ref().map(|g| g.game.app_name.clone()) {
+                        self.with_service(cx, move |s, cx| s.stop_game(&app_name, cx));
+                    }
                 }
                 Confirm::Disconnect(address, _) => self.disconnect(address, cx),
             }
@@ -268,14 +280,19 @@ impl OverlayPanel {
     }
 
     fn render_header(&self) -> Div {
-        let elapsed = self.game.game.started.elapsed().as_secs() / 60;
-        let session = duration_label(elapsed);
-        let line = match self.data.total_minutes {
-            Some(total) => {
-                let total = duration_label(total);
-                tr!("Session {session} · Total {total}", session, total)
+        let (title, line) = match &self.game {
+            Some(game) => {
+                let session = duration_label(game.game.started.elapsed().as_secs() / 60);
+                let line = match self.data.total_minutes {
+                    Some(total) => {
+                        let total = duration_label(total);
+                        tr!("Session {session} · Total {total}", session, total)
+                    }
+                    None => tr!("Session {session}", session),
+                };
+                (game.title(), line)
             }
-            None => tr!("Session {session}", session),
+            None => ("Heronite".to_string(), tr!("No game running").to_string()),
         };
         let battery = self.data.controllers.iter().find_map(|(_, b)| *b).map(|b| format!("{}%", b.percent));
         let info = |ic: Icon, text: String| {
@@ -296,7 +313,7 @@ impl OverlayPanel {
             .pb(u(16.))
             .border_b_1()
             .border_color(theme::white_a(0.08))
-            .child(kit::title(self.game.title(), 24.).truncate())
+            .child(kit::title(title, 24.).truncate())
             .child(div().text_size(u(14.)).text_color(theme::text_muted()).child(line))
             .child(
                 div()
@@ -318,7 +335,7 @@ impl OverlayPanel {
             .mx(u(16.))
             .pt(u(16.))
             .child(self.glyph(Btn::LB))
-            .children(TABS.iter().enumerate().map(|(i, t)| {
+            .children(self.tabs().iter().enumerate().map(|(i, t)| {
                 let on = i == self.tab;
                 let color: Hsla = if on { theme::text_primary().into() } else { theme::text_muted().into() };
                 div()
@@ -466,7 +483,10 @@ impl Render for OverlayPanel {
             .on_key_down(cx.listener(Self::on_key));
         if let Some(confirm) = &self.confirm {
             let (title, message) = match confirm {
-                Confirm::Quit => (tr!("Quit {game}?", game = self.game.title()), tr!("Progress you have not saved in the game is lost.")),
+                Confirm::Quit => (
+                    tr!("Quit {game}?", game = self.game.as_ref().map(|g| g.title()).unwrap_or_default()),
+                    tr!("Progress you have not saved in the game is lost."),
+                ),
                 Confirm::Disconnect(_, name) => {
                     (tr!("Disconnect {name}?", name = name.clone()), tr!("Press its Guide button to connect it again."))
                 }

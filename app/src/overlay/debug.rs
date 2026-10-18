@@ -3,7 +3,8 @@
 //! - `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` opens the panel in a normal
 //!   window (`com.heronite.overlay`, for captures) as if the game were
 //!   running; `layer[:<app_name>]` opens the real layer-shell panel. Without
-//!   an app name, the first installed game of the library.
+//!   an app name, the first installed game of the library; `none` opens it
+//!   with no game (as "without a game" allows).
 //! - `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a,wait:800,b` plays presses on it
 //!   (the names of `HERONITE_DEBUG_PAD`).
 //! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` shows a notice too.
@@ -30,6 +31,21 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
     };
     let entity = entity.clone();
     let paths = entity.read(cx).data_paths.clone();
+    if wanted.as_deref() == Some("none") {
+        entity.update(cx, |s, cx| {
+            s.debug_window = mode != "layer";
+            // In memory only: the saved options stay as they are.
+            s.prefs.without_game = true;
+            match crate::env::value("HERONITE_DEBUG_OVERLAY_KEYBOARD").filter(|v| v != "0").as_deref() {
+                Some(_) => s.open_panel_with(true, cx),
+                None => s.open_panel(cx),
+            }
+            if let Some(panel) = s.panel {
+                cx.spawn(async move |_, cx| play_script(panel, cx).await).detach();
+            }
+        });
+        return;
+    }
     entity.update(cx, |s, _| {
         s.debug_window = mode != "layer";
         s.debug_live_fps =
@@ -72,13 +88,18 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
             };
             entity.update(cx, |s, cx| s.notify(notice, cx));
         }
-        let script = crate::env::value("HERONITE_DEBUG_OVERLAY_PAD").unwrap_or_default();
-        for (wait, pad) in crate::console::input::parse_script(&script) {
-            cx.background_executor().timer(wait).await;
-            if panel.update(cx, |p, window, cx| p.on_pad(pad, window, cx)).is_err() {
-                break;
-            }
-        }
+        play_script(panel, cx).await;
     })
     .detach();
+}
+
+/// `HERONITE_DEBUG_OVERLAY_PAD` on the panel.
+async fn play_script(panel: WindowHandle<super::panel::OverlayPanel>, cx: &mut AsyncApp) {
+    let script = crate::env::value("HERONITE_DEBUG_OVERLAY_PAD").unwrap_or_default();
+    for (wait, pad) in crate::console::input::parse_script(&script) {
+        cx.background_executor().timer(wait).await;
+        if panel.update(cx, |p, window, cx| p.on_pad(pad, window, cx)).is_err() {
+            break;
+        }
+    }
 }

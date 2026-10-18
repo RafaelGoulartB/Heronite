@@ -295,14 +295,17 @@ changed, `heronite_media::capture::GlobalHotkey`: a temporary consuming Hyprland
 GlobalShortcuts portal) opens and closes it too; it is registered only while a game launched by the app runs and removed
 on quit. Opened that way the surface takes the keyboard (`KeyboardInteractivity::Exclusive`, so the game gets no keys
 until it closes), console mode's keys drive it (`console::input::pad_from_key`) and the hints show keys
-(`kit::key_glyph`: Enter, Esc, Q / E).
+(`kit::key_glyph`: Enter, Esc, Q / E). "Open it without a game too" (`withoutGame`, off by default) keeps the input thread and the
+shortcut running while the app runs; the panel then has no Screenshots tab, the header says "No game running", the mixer
+has only System, and Home ends with "Open Heronite".
 The panel takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
 (which is usually updating when it calls in) and reaches it through deferred `with_service`. GNOME and X11 cannot show
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
 window (`com.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
 plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` adds a notice (`com.heronite.overlay-notice`);
-`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
+`HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
+`HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
 the panel's size follows it.
 

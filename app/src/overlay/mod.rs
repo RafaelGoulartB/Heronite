@@ -10,8 +10,12 @@
 //! controllers on its own thread; while the panel is open, or Guide is held,
 //! the controllers are grabbed and the game gets none of their input.
 //!
+//! Settings can let it open with no game running too ("without a game"):
+//! then the input thread and the shortcut run while the app does, and the
+//! panel shows what has no game (volume, controllers, Heronite).
+//!
 //! The keyboard shortcut is registered with the desktop only while such a
-//! game runs (a temporary Hyprland bind, else the GlobalShortcuts portal,
+//! game runs (or always, without a game) (a temporary Hyprland bind, else the GlobalShortcuts portal,
 //! as the screenshot shortcut). Opened from the keyboard, the panel takes
 //! the keyboard until it closes, so it can be driven without a controller.
 //!
@@ -135,6 +139,8 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         hotkey_epoch: 0,
     });
     cx.set_global(OverlayGlobal(entity.clone()));
+    // Without a game it is ready from the start.
+    entity.update(cx, |s, cx| s.sync_watcher(cx));
     debug::start(&entity, cx);
 }
 
@@ -214,11 +220,16 @@ impl OverlayService {
         self.fps_limits.insert(app_name.to_string(), limit);
     }
 
+    /// Whether it can open now: on, and a game runs (or it may open without).
+    fn active(&self) -> bool {
+        self.prefs.enabled && (!self.games.is_empty() || self.prefs.without_game)
+    }
+
     /// The input thread runs, and the keyboard shortcut is registered,
-    /// while a game runs and the overlay is on.
+    /// while it can open.
     fn sync_watcher(&mut self, cx: &mut Context<Self>) {
         self.sync_hotkey(cx);
-        let wanted = self.prefs.enabled && !self.games.is_empty();
+        let wanted = self.active();
         if wanted == self.watcher.is_some() {
             return;
         }
@@ -250,8 +261,8 @@ impl OverlayService {
 
     fn sync_hotkey(&mut self, cx: &mut Context<Self>) {
         let p = &self.prefs;
-        let wanted = (p.enabled && p.keyboard_shortcut && !self.games.is_empty() && (self.layer_shell || self.debug_window))
-            .then(|| p.keyboard_accelerator.clone());
+        let wanted =
+            (self.active() && p.keyboard_shortcut && (self.layer_shell || self.debug_window)).then(|| p.keyboard_accelerator.clone());
         if wanted.as_deref() == self.hotkey.as_ref().map(|(a, _)| a.as_str()) {
             return;
         }
@@ -376,10 +387,11 @@ impl OverlayService {
         if self.panel.is_some() {
             return;
         }
-        let Some(game) = self.current() else {
+        let game = self.current();
+        if game.is_none() && !self.prefs.without_game {
             self.release_input();
             return;
-        };
+        }
         if !self.layer_shell && !self.debug_window {
             log::info!("overlay: this desktop cannot show it (no layer-shell)");
             self.release_input();

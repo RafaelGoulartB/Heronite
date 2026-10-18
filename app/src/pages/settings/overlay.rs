@@ -227,6 +227,15 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         p.enabled,
     )
     .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
+    .into_any_element(),
+    toggle_row(
+        "overlay-without-game",
+        tr!("Open it without a game too"),
+        Some(tr!("Guide and the keyboard shortcut open it at any time Heronite is running, with the volume, the controllers and a way back to Heronite. Heronite then reads the controllers all the time, and Guide is the overlay's even outside games.")),
+        p.without_game,
+    )
+    .when(!p.enabled, |r| r.opacity(0.5))
+    .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.without_game = !p.without_game)))
     .into_any_element()]);
 
     let focused = d.overlay.hotkey.is_focused(window);
@@ -258,7 +267,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             .gap(px(8.))
             .child(labeled(tr!("Keyboard shortcut"), hotkey))
             .child(meta_text(tr!(
-                "Click the field and press the key combination ({default} unless changed). It is registered with the desktop only while a game opened by Heronite runs.",
+                "Click the field and press the key combination ({default} unless changed). It is registered with the desktop only while the overlay can open.",
                 default = DEFAULT_KEYBOARD_ACCELERATOR
             )))
             .children(hotkey_status(d, cx).map(|(text, error)| {
@@ -384,6 +393,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         Row::info("beta", tr!("Beta"), tr!("Being tested")).desc(tr!("New and still being tested; off until you turn it on.")),
         Row::toggle("enabled", tr!("Turn on the overlay"), p.enabled)
             .desc(tr!("The Guide button opens it during a game opened by Heronite")),
+        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game)
+            .desc(tr!("Guide and the keyboard shortcut open it at any time")),
         Row::header(tr!("Keyboard")),
         Row::toggle("keyboard", tr!("Open it with a keyboard shortcut"), p.keyboard_shortcut)
             .desc(tr!("The keyboard drives it while open: arrows, Enter, Esc, Q / E")),
@@ -413,6 +424,7 @@ pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list:
         Outcome::Changed(id, Value::Toggle(on)) => match id.as_ref() {
             "enabled" => update(d, cx, |p| p.enabled = on),
             "keyboard" => update(d, cx, |p| p.keyboard_shortcut = on),
+            "without-game" => update(d, cx, |p| p.without_game = on),
             "volume" => update(d, cx, |p| p.volume_shortcut = on),
             _ => {}
         },
