@@ -40,7 +40,9 @@ pub fn sync_args(app_name: &str, saves_path: &str, flag: Option<&str>) -> Vec<St
 }
 
 /// Runs `legendary sync-saves` for `app_name` with `saves_path`; returns
-/// legendary's output. Blocking: call off the UI thread.
+/// legendary's output. A failed run is an error, also when legendary only
+/// logged it (it often exits 0 after an `ERROR:` line). Blocking: call off
+/// the UI thread.
 pub fn sync(data_paths: &DataPaths, app_name: &str, saves_path: &str, mode: SyncMode) -> Result<String> {
     sync_flag(data_paths, app_name, saves_path, mode.flag())
 }
@@ -63,8 +65,13 @@ pub(crate) fn sync_with(legendary: &Legendary, app_name: &str, saves_path: &str,
         output.push_str(line);
         output.push('\n');
     })?;
-    if !out.success() {
-        log::error!("Failed to sync saves for {app_name}: {}", out.error_lines());
+    let why = out.error_lines();
+    if !out.success() || !why.is_empty() {
+        log::error!("Failed to sync saves for {app_name}: {why}");
+        if why.is_empty() {
+            bail!(tr!("legendary exited with {code}", code = format!("{:?}", out.code)));
+        }
+        bail!(why);
     }
     Ok(output)
 }
@@ -143,6 +150,16 @@ mod tests {
         assert_eq!(calls(dir.path()), ["sync-saves A --skip-upload --save-path /saves -y"]);
         let data_paths = DataPaths::at(dir.path());
         assert!(sync(&data_paths, "A", "  ", SyncMode::Both).is_err());
+    }
+
+    #[test]
+    fn a_sync_legendary_failed_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let lg = fake(dir.path(), "echo '[cli] ERROR: Save path is not writable' >&2");
+        let err = sync_with(&lg, "A", "/saves", None).unwrap_err().to_string();
+        assert!(err.contains("not writable"), "{err}");
+        let lg = fake(dir.path(), "exit 2");
+        assert!(sync_with(&lg, "A", "/saves", None).is_err());
     }
 
     #[test]

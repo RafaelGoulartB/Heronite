@@ -3454,6 +3454,7 @@ dependencies = [
  "heronite-gog",
  "heronite-i18n",
  "heronite-images",
+ "heronite-installer",
  "heronite-launch",
  "heronite-media",
  "heronite-metadata",
@@ -3595,6 +3596,27 @@ dependencies = [
  "tempfile",
  "ureq",
  "zstd",
+]
+
+[[package]]
+name = "heronite-installer"
+version = "0.11.0"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-emulation",
+ "heronite-i18n",
+ "heronite-launch",
+ "log",
+ "md-5",
+ "serde",
+ "serde-saphyr",
+ "serde_json",
+ "sha1_smol",
+ "sha2 0.10.9",
+ "shlex 1.3.0",
+ "tempfile",
+ "ureq",
 ]
 
 [[package]]

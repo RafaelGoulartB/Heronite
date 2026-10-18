@@ -86,6 +86,21 @@ pub fn set_ludusavi_settings(paths: &DataPaths, patch: &LudusaviSettingsPatch) -
     settings::load(paths)
 }
 
+/// Leaves one game out of the after-play backup (`on: false`) or puts it
+/// back in.
+pub fn set_auto_backup(paths: &DataPaths, runner: &str, app_name: &str, on: bool) -> Result<()> {
+    let mut next = current_ludusavi(paths)?;
+    let key = heronite_data::models::game_key(runner, app_name);
+    next.auto_backup_off.retain(|k| *k != key);
+    if !on {
+        next.auto_backup_off.push(key);
+    }
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |f| {
+        f.ludusavi = Some(next);
+        Ok(())
+    })
+}
+
 /// Outcome of a Ludusavi save backup to record.
 #[derive(Debug, Clone, Default)]
 pub struct LudusaviRecord {
@@ -198,6 +213,27 @@ mod tests {
         assert_eq!(l.last_error, None);
         assert_eq!(l.last_backup_path, None);
         assert_eq!(l.last_backup_at.as_deref(), Some("t2"));
+    }
+
+    #[test]
+    fn auto_backup_can_be_off_for_one_game() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(d.path());
+        std::fs::create_dir_all(paths.local_library()).unwrap();
+        std::fs::write(paths.collection_settings(), r#"{"ludusavi":{"enabled":true,"backupPath":"/b"}}"#).unwrap();
+        set_auto_backup(&paths, "gog", "123", false).unwrap();
+        set_auto_backup(&paths, "gog", "123", false).unwrap();
+        let l = settings::load(&paths).unwrap().ludusavi;
+        assert_eq!(l.auto_backup_off, ["gog:123"]);
+        assert!(!l.auto_backup_for("gog", "123"));
+        assert!(l.auto_backup_for("legendary", "123"));
+        // Other settings and records keep the list.
+        set_ludusavi_settings(&paths, &LudusaviSettingsPatch { format: Some("simple".into()), ..Default::default() }).unwrap();
+        record_ludusavi_backup(&paths, &LudusaviRecord { error: Some("x".into()), ..Default::default() }).unwrap();
+        assert_eq!(settings::load(&paths).unwrap().ludusavi.auto_backup_off, ["gog:123"]);
+        set_auto_backup(&paths, "gog", "123", true).unwrap();
+        let raw = json_store::read_value(&paths.collection_settings()).unwrap();
+        assert!(raw["ludusavi"].get("autoBackupOff").is_none());
     }
 
     #[test]

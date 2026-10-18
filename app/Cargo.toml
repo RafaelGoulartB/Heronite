@@ -21,6 +21,7 @@ heronite-metadata = { path = "../crates/metadata" }
 serde_json.workspace = true
 heronite-media = { path = "../crates/media" }
 heronite-emulation = { path = "../crates/emulation" }
+heronite-installer = { path = "../crates/installer" }
 heronite-wine = { path = "../crates/wine" }
 heronite-epic = { path = "../crates/epic" }
 heronite-gog = { path = "../crates/gog" }

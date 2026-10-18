@@ -216,7 +216,7 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
     let messages: Vec<String> = events
         .iter()
         .filter_map(|e| match e {
-            LaunchEvent::Status { message, .. } => Some(message.clone()),
+            LaunchEvent::Status { message, .. } | LaunchEvent::Preparing { message, .. } => Some(message.clone()),
             _ => None,
         })
         .collect();
@@ -230,6 +230,18 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
             "Uploading cloud saves..."
         ]
     );
+    // Before the game runs they are the launch's steps, and the cloud saves
+    // download cannot be cut short.
+    let steps: Vec<(&str, bool)> = events
+        .iter()
+        .filter_map(|e| match e {
+            LaunchEvent::Preparing { message, cancellable, .. } => Some((message.as_str(), *cancellable)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(steps[0], ("Downloading cloud saves...", false));
+    assert!(steps[1..].iter().all(|(_, c)| *c), "{steps:?}");
+    assert!(events.iter().any(|e| matches!(e, LaunchEvent::Status { message, .. } if message == "Uploading cloud saves...")));
 }
 
 #[test]
@@ -277,7 +289,7 @@ fn the_first_launch_in_a_prefix_runs_prerequisites_and_fixes_once() {
     let messages: Vec<String> = events
         .iter()
         .filter_map(|e| match e {
-            LaunchEvent::Status { message, .. } => Some(message.clone()),
+            LaunchEvent::Status { message, .. } | LaunchEvent::Preparing { message, .. } => Some(message.clone()),
             _ => None,
         })
         .collect();

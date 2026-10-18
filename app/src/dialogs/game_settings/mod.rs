@@ -7,6 +7,7 @@ mod console_actions;
 mod details;
 mod images;
 mod launch;
+mod sessions;
 
 use std::sync::Arc;
 
@@ -31,6 +32,7 @@ use crate::ui::dialog::{drawer, DrawerProps};
 use actions::ActionsState;
 use details::{form_from, Details, Form};
 use launch::LaunchState;
+use sessions::SessionsState;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tab {
@@ -122,6 +124,8 @@ pub struct GameSettingsDialog {
     initial: Form,
     /// Saved time played, in minutes.
     initial_playtime: u64,
+    /// The play sessions (Game tab).
+    sessions: SessionsState,
     launch: Option<LaunchState>,
     /// The game's own actions (Launch tab).
     actions: ActionsState,
@@ -181,6 +185,7 @@ impl GameSettingsDialog {
             details,
             initial,
             initial_playtime: game.playtime_minutes,
+            sessions: SessionsState::new(game.sessions.as_deref().map_or(&[], Vec::as_slice)),
             launch,
             actions,
             panel,
@@ -201,6 +206,7 @@ impl GameSettingsDialog {
         if let Some(which) = crate::env::value("HERONITE_DEBUG_ACTION_EDIT") {
             this.edit_action((which != "new").then_some(which), window, cx);
         }
+        this.debug_sessions(window, cx);
         this
     }
 
@@ -299,7 +305,7 @@ impl Render for GameSettingsDialog {
         });
         let panel_view = self.panel.as_ref().map(|(p, _)| p.clone());
         let content = match self.tab {
-            Tab::Game => div().flex().flex_col().gap(px(6.)).child(self.images_tab(cx)).child(self.details_tab()),
+            Tab::Game => div().flex().flex_col().gap(px(6.)).child(self.images_tab(cx)).child(self.details_tab(cx)),
             Tab::Actions => self.launch_tab(cx),
             Tab::Saves => div().children(self.backups.clone()),
             _ => div().children(panel_view),

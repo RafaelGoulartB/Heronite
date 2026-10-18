@@ -170,7 +170,7 @@ until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|ca
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
 Collection's context menu (`collection/context_menu.rs::item`/`paper`) uses the
 same look and groups a game's rows with separators (`menu_place`): Play (and the other ways to play or install);
-Status, Categories, favourite, hide, recent; Settings, the folder, the save backup; "Manage installation ›" (the store's verify,
+Status, Categories, favourite, hide, recent; Settings, the folder, "Saves ›" (back up now and the game's automatic backup switch, which keeps the flyout open); "Manage installation ›" (the store's verify,
 modify, move, relocate, EOS in a flyout; a single one stays a plain row); shortcuts; uninstall / remove; View log; Select multiple. A new menu action gets a
 place there; rare ones (store page, metadata, playtime, cloud sync) stay in the palette only (`palette_only`); other context-menu rows must call `context_menu::item`.
 
@@ -198,7 +198,9 @@ slots (build the header with `kicker`, `dialog_title`, `close_button`).
 
 **Game settings drawer** (`dialogs/game_settings/`): the first `drawer` caller. Tabs are
 segmented pills in the header slot; each tab is a stack of `caption` + `card`. The tabs are the same for
-every game, by what the user wants to change: Game (images, details and the time played; the card menu has no "Edit playtime"), Launch (Play, the actions,
+every game, by what the user wants to change: Game (images, details, the time played and, in the same card, the "Sessions" row:
+their sum, Recalculate, and when expanded the sessions 3 per page to fix, delete or add by hand, `sessions.rs`; `HERONITE_DEBUG_SESSION=open|page:<n>|new|invalid|edit:<row>|delete:<row>|recalc`;
+the card menu has no "Edit playtime"), Launch (Play, the actions,
 the panel's launch settings), Compatibility (Wine / Proton), Performance (overlays, FPS limit, frame
 generation, image, system) and Saves (Ludusavi backups + cloud saves); a tab only goes away when the
 game has nothing for it. Descriptions are one short line saying the effect; paths and rare warnings

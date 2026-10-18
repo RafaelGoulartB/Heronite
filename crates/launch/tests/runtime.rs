@@ -16,7 +16,7 @@ use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::prepare::CloudSync;
 use heronite_launch::probe::SystemProbe;
 use heronite_launch::procs::{FakeProcs, Procs, SystemProcs};
-use heronite_launch::runtime::{FakeSpawner, PrepServices};
+use heronite_launch::runtime::{FakeSpawner, PrepServices, ProcessHandle, Spawner};
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::{
     Command, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopOptions, StopSpec,
@@ -69,7 +69,18 @@ fn request(app: &str, plan: LaunchPlan) -> LaunchRequest {
     LaunchRequest { app_name: app.into(), runner: "sideload".into(), title: format!("{app} title"), plan }
 }
 
+/// The next event, past the preparation steps (tested on their own).
 fn next(rx: &Receiver<LaunchEvent>) -> LaunchEvent {
+    loop {
+        match rx.recv_timeout(Duration::from_secs(5)).expect("event") {
+            LaunchEvent::Preparing { .. } => continue,
+            ev => return ev,
+        }
+    }
+}
+
+/// The next event, whatever it is.
+fn next_any(rx: &Receiver<LaunchEvent>) -> LaunchEvent {
     rx.recv_timeout(Duration::from_secs(5)).expect("event")
 }
 
@@ -104,10 +115,11 @@ fn full_lifecycle_records_everything_like_heronite() {
 
     std::thread::sleep(Duration::from_millis(120));
     r.spawner.finish(0, 0);
-    let LaunchEvent::Exited { app_name, elapsed, exit, record } = next(&r.rx) else { panic!() };
+    let LaunchEvent::Exited { app_name, elapsed, exit, stopped, record } = next(&r.rx) else { panic!() };
     assert_eq!(app_name, "g1");
     assert!(elapsed >= Duration::from_millis(100));
     assert_eq!(exit.unwrap().code, Some(0));
+    assert!(!stopped);
     let record = record.unwrap();
     assert!(record.session_recorded);
     assert!(!r.launcher.is_running("g1"));
@@ -158,7 +170,7 @@ fn stop_terminates_the_tree_and_runs_stop_commands() {
     assert!(r.spawner.handle(0).unwrap().lock().unwrap().terminated);
     wait_until("stop commands", || r.spawner.spawned().len() == 2);
     assert_eq!(r.spawner.spawned()[1].program, "/w/wineserver");
-    assert_eq!(r.spawner.patterns(), ["pcsx2"], "patterns shorter than 3 chars are never pkill'ed");
+    assert_eq!(r.spawner.patterns(), ["pcsx2"], "patterns shorter than 3 chars are never used");
     assert!(!r.launcher.stop("g"), "nothing left to stop");
 }
 
@@ -245,6 +257,42 @@ fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
     assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
 }
 
+/// Plays `steam_400` to its end. `steam_open_before`: Steam's pid file names
+/// a live process before the launch (else Steam "starts" with the game).
+/// Returns the URIs opened.
+fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
+    let r = rig();
+    let log = write_steam_log(&r, "");
+    json_store::write(&r.paths.global_config(), &serde_json::json!({"defaultSettings": {"heroniteCloseSteamAfterGame": close_after}}))
+        .unwrap();
+    let steam_running = || {
+        fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000\n").unwrap();
+        r.procs.start(5000, "steam", None);
+    };
+    if steam_open_before {
+        steam_running();
+    }
+    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    next(&r.rx);
+    wait_until("uri opened", || r.spawner.uris() == ["u"]);
+    steam_running();
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.procs.exit(7777);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    // Steam is closed right after the session ends, on the same thread.
+    std::thread::sleep(Duration::from_millis(100));
+    r.spawner.uris()
+}
+
+#[test]
+fn steam_opened_for_a_game_is_closed_after_it_only_when_asked() {
+    assert_eq!(play_steam_game(true, false), ["u", "steam://exit"]);
+    assert_eq!(play_steam_game(false, false), ["u"], "the setting is off");
+    assert_eq!(play_steam_game(true, true), ["u"], "Steam was already open");
+}
+
 #[test]
 fn steam_that_never_starts_the_game_is_an_error_without_recording() {
     let r = rig();
@@ -286,7 +334,7 @@ fn real_process_exit_code_log_and_playtime() {
     next(&rx);
     let LaunchEvent::Exited { exit, record, .. } = next(&rx) else { panic!() };
     assert_eq!(exit.unwrap().code, Some(3));
-    assert!(record.is_some());
+    assert!(record.is_none(), "dying at once with an error is a failed launch, not playtime");
     // Heroic's layout: <logs>/games/<app>_<runner>/launch.log.
     let log = fs::read_to_string(paths.root.join("logs/games/g_sideload/launch.log")).unwrap();
     assert!(log.contains("hello from the game") && log.contains("oops"), "{log}");
@@ -330,7 +378,7 @@ fn real_scripts_run_before_and_after_the_game() {
     plan.after_script = Some(script(&write_script(d.path(), "after.sh", &out), "after"));
     launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
     assert!(matches!(next(&rx), LaunchEvent::Launching { .. }));
-    assert_eq!(status_of(next(&rx)), ("Running the script before launch...".to_string(), false));
+    assert_eq!(status_of(next_any(&rx)), ("Running the script before launch...".to_string(), false));
     assert!(matches!(next(&rx), LaunchEvent::Running { .. }));
     let LaunchEvent::Exited { record, .. } = next(&rx) else { panic!() };
     assert!(record.is_some());
@@ -346,8 +394,8 @@ fn real_a_missing_script_is_reported_and_the_game_still_runs() {
     plan.before_script = Some(script(&d.path().join("nope.sh").to_string_lossy(), "before"));
     launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
     next(&rx);
-    let _ = next(&rx);
-    let (message, warning) = status_of(next(&rx));
+    let _ = next_any(&rx);
+    let (message, warning) = status_of(next_any(&rx));
     assert!(warning && message.contains("nope.sh"), "{message}");
     assert!(matches!(next(&rx), LaunchEvent::Running { .. }));
     assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
@@ -457,6 +505,7 @@ fn services(online: bool, cloud: Option<Arc<RecordingCloud>>) -> PrepServices {
 fn status_of(ev: LaunchEvent) -> (String, bool) {
     match ev {
         LaunchEvent::Status { message, warning, .. } => (message, warning),
+        LaunchEvent::Preparing { message, .. } => (message, false),
         other => panic!("expected a status, got {other:?}"),
     }
 }
@@ -471,14 +520,14 @@ fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     r.launcher.launch(request("Calluna", LaunchPlan::Native(process))).unwrap();
 
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    assert_eq!(status_of(next(&r.rx)), ("Downloading cloud saves...".to_string(), false));
+    assert_eq!(status_of(next_any(&r.rx)), ("Downloading cloud saves...".to_string(), false));
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     // The download ran before the game was spawned.
     assert_eq!(*cloud.calls.lock().unwrap(), [("--skip-upload".to_string(), "Calluna:/saves".to_string())]);
 
     std::thread::sleep(Duration::from_millis(60));
     r.spawner.finish(0, 0);
-    assert_eq!(status_of(next(&r.rx)), ("Uploading cloud saves...".to_string(), false));
+    assert_eq!(status_of(next_any(&r.rx)), ("Uploading cloud saves...".to_string(), false));
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     // The upload (500 ms) is not playtime.
     assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
@@ -495,7 +544,7 @@ fn a_forced_clear_does_not_upload_saves() {
     process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    let _download = next(&r.rx);
+    let _download = next_any(&r.rx);
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     assert!(r.launcher.force_clear("g"));
     assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
@@ -538,7 +587,7 @@ fn prefix_creation_is_announced_and_runs_before_the_game() {
     process.pre_commands = vec![Command { program: "/w/wine".into(), args: vec!["wineboot".into()], ..Default::default() }];
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    assert_eq!(status_of(next(&r.rx)), ("Preparing prefix...".to_string(), false));
+    assert_eq!(status_of(next_any(&r.rx)), ("Preparing prefix...".to_string(), false));
     wait_until("the prefix command", || !r.spawner.spawned().is_empty());
     assert_eq!(r.spawner.spawned()[0].program, "/w/wine");
     r.spawner.finish(0, 0);
@@ -555,12 +604,115 @@ fn stopping_while_preparing_ends_the_launch_without_a_session() {
     process.pre_commands = vec![Command { program: "/w/wine".into(), ..Default::default() }];
     r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
-    let _ = next(&r.rx);
+    let _ = next_any(&r.rx);
     wait_until("the prefix command", || !r.spawner.spawned().is_empty());
     assert!(r.launcher.stop("g"));
     let LaunchEvent::Exited { record, .. } = next(&r.rx) else { panic!() };
     assert!(record.is_none());
     assert_eq!(r.spawner.spawned().len(), 1, "the game never started");
+}
+
+#[test]
+fn a_game_that_dies_right_after_starting_is_not_recorded() {
+    let r = rig();
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    std::thread::sleep(Duration::from_millis(30));
+    r.spawner.finish(0, 3);
+    let LaunchEvent::Exited { exit, stopped, record, .. } = next(&r.rx) else { panic!() };
+    assert_eq!(exit.unwrap().code, Some(3));
+    assert!(!stopped);
+    assert!(record.is_none());
+    assert!(!r.paths.sessions().exists());
+    assert!(!r.paths.store_config().exists(), "not moved up in recent");
+    let ts: serde_json::Value = json_store::read_value(&r.paths.timestamps()).unwrap();
+    assert!(ts["g"]["lastPlayed"].is_null());
+}
+
+#[test]
+fn a_stopped_game_is_recorded_and_says_it_was_stopped() {
+    let r = rig();
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert!(r.launcher.stop("g"));
+    // The fake dies of SIGTERM, which would be a failed launch had the user not asked.
+    let LaunchEvent::Exited { exit, stopped, record, .. } = next(&r.rx) else { panic!() };
+    assert_eq!(exit.unwrap().signal, Some(15));
+    assert!(stopped);
+    assert!(record.is_some());
+}
+
+#[test]
+fn preparing_the_launch_is_not_playtime() {
+    let r = rig();
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.pre_commands = vec![Command { program: "/w/wine".into(), ..Default::default() }];
+    r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    let _ = next_any(&r.rx);
+    wait_until("the prefix command", || !r.spawner.spawned().is_empty());
+    std::thread::sleep(Duration::from_millis(500));
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    std::thread::sleep(Duration::from_millis(100));
+    r.spawner.finish(1, 0);
+    let LaunchEvent::Exited { elapsed, record, .. } = next(&r.rx) else { panic!() };
+    assert!(elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(400), "{elapsed:?}");
+    assert!(record.unwrap().elapsed_seconds < 1);
+    let s = &sessions_of(&r.paths, "g")[0];
+    let (start, end) =
+        (s.started_at.parse::<chrono::DateTime<chrono::Utc>>().unwrap(), s.ended_at.parse::<chrono::DateTime<chrono::Utc>>().unwrap());
+    assert!(end - start < chrono::Duration::milliseconds(400), "{} -> {}", s.started_at, s.ended_at);
+}
+
+#[test]
+fn stopping_a_steam_game_before_it_starts_records_nothing() {
+    let r = rig();
+    write_steam_log(&r, "");
+    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    wait_until("uri opened", || !r.spawner.uris().is_empty());
+    assert!(r.launcher.stop("steam_400"));
+    let LaunchEvent::Exited { stopped, record, .. } = next(&r.rx) else { panic!() };
+    assert!(stopped);
+    assert!(record.is_none());
+    assert!(!r.paths.sessions().exists());
+    assert!(!r.paths.store_config().exists());
+}
+
+/// A spawner whose game start panics, to see what the launcher does about it.
+struct PanickingSpawner(FakeSpawner);
+
+impl Spawner for PanickingSpawner {
+    fn spawn(&self, _cmd: &Command, _log: Option<&std::path::Path>) -> std::io::Result<Box<dyn ProcessHandle>> {
+        panic!("spawner bug");
+    }
+    fn open_uri(&self, uri: &str) -> std::io::Result<()> {
+        self.0.open_uri(uri)
+    }
+    fn kill_pattern(&self, pattern: &str, since: u64) {
+        self.0.kill_pattern(pattern, since)
+    }
+}
+
+#[test]
+fn a_panicking_session_frees_the_game_and_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(dir.path().join("heroic"));
+    let home = dir.path().join("home");
+    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let (tx, rx) = channel();
+    let launcher = Launcher::new(paths, steam, Arc::new(PanickingSpawner(FakeSpawner::new())), Arc::new(FakeProcs::new()), fast_cfg(), tx);
+    launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
+    assert!(matches!(next(&rx), LaunchEvent::Launching { .. }));
+    let LaunchEvent::Error { app_name, message } = next(&rx) else { panic!() };
+    assert_eq!(app_name, "g");
+    assert!(message.contains("g title"), "{message}");
+    assert!(!launcher.is_running("g"));
+    // Not stuck on "already running" any more.
+    launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
 }
 
 // ---------------------------------------------------------------------------
@@ -727,7 +879,7 @@ fn clearing_a_game_leaves_its_programs_running_and_missing_ones_are_reported() {
     r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
     next(&r.rx);
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
-    let (message, warning) = status_of(next(&r.rx));
+    let (message, warning) = status_of(next_any(&r.rx));
     assert!(warning && message.contains("nope.exe"), "{message}");
     wait_until("the program", || r.spawner.spawned().len() == 2);
     assert!(r.launcher.force_clear("g"));
@@ -754,4 +906,187 @@ fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for
     assert!(r.launcher.is_running("g"));
     r.spawner.finish(0, 0);
     assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+}
+
+/// Another launcher on the same data and processes: the app started again
+/// while the first one's games still run.
+fn restarted(r: &Rig) -> (Launcher, Receiver<LaunchEvent>) {
+    let home = r._dir.path().join("home");
+    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let (tx, rx) = channel();
+    (Launcher::new(r.paths.clone(), steam, Arc::new(FakeSpawner::new()), r.procs.clone(), fast_cfg(), tx), rx)
+}
+
+fn running_file(paths: &DataPaths) -> serde_json::Value {
+    json_store::read_value(&paths.local_library().join("running.json")).unwrap()
+}
+
+#[test]
+fn a_game_left_running_is_picked_up_by_the_next_run() {
+    let r = rig();
+    // The fake spawner's first pid.
+    r.procs.start(40_001, "game", None);
+    r.procs.set_start_ticks(40_001, 777);
+    let mut plan = process_plan("/games/game", &[]);
+    plan.stop.kill_patterns = vec!["game".into()];
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { pid: 40_001, .. }));
+    assert_eq!(running_file(&r.paths)["sessions"]["g"]["tracked"]["startTicks"], 777);
+    // Quitting saves the playtime; the game keeps running.
+    r.launcher.checkpoint_all();
+
+    // Up to 30 minutes into the session, the app starts again. The clock
+    // counts from boot, so a machine up for less than that (a fresh CI
+    // runner) gets a shorter session.
+    let mut minutes = 0;
+    json_store::update_value(&r.paths.local_library().join("running.json"), |doc| {
+        let mono = doc["sessions"]["g"]["monoStartMs"].as_u64().unwrap();
+        minutes = (mono / 60_000).min(30);
+        doc["sessions"]["g"]["monoStartMs"] = serde_json::json!(mono - minutes * 60_000);
+        Ok(())
+    })
+    .unwrap();
+    assert!(minutes > 0, "the machine has been up for less than a minute");
+    let (again, rx) = restarted(&r);
+    let mut adopted = Vec::new();
+    assert_eq!(again.adopt(&mut |g| adopted.push(g.title.clone())), 1);
+    assert_eq!(adopted, ["g title"]);
+    assert_eq!(next(&rx), LaunchEvent::Running { app_name: "g".into(), pid: 40_001 });
+    assert!(again.is_running("g"));
+
+    // The game ends: recorded once, from the session's real start.
+    r.procs.exit(40_001);
+    let LaunchEvent::Exited { stopped, record, elapsed, .. } = next(&rx) else { panic!() };
+    assert!(!stopped);
+    assert!(elapsed >= Duration::from_secs(minutes * 60));
+    assert_eq!(record.unwrap().total_played_minutes as u64, minutes);
+    let doc: SessionsFile = json_store::read(&r.paths.sessions()).unwrap();
+    assert_eq!(doc.sessions["g"].len(), 1, "the checkpointed row is updated in place");
+    assert!(running_file(&r.paths)["sessions"].get("g").is_none());
+}
+
+#[test]
+fn games_that_ended_meanwhile_or_before_a_reboot_are_dropped() {
+    let r = rig();
+    r.procs.start(40_001, "game", None);
+    r.procs.set_start_ticks(40_001, 5);
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/game", &[])))).unwrap();
+    next(&r.rx);
+    next(&r.rx);
+    // Its pid now belongs to another program that started later.
+    r.procs.set_start_ticks(40_001, 6);
+    let (again, rx) = restarted(&r);
+    assert_eq!(again.adopt(&mut |_| {}), 0);
+    assert!(rx.try_recv().is_err());
+    assert!(running_file(&r.paths)["sessions"].get("g").is_none());
+
+    // Another boot: the same pid and start ticks mean nothing.
+    let r = rig();
+    r.procs.start(40_001, "game", None);
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/game", &[])))).unwrap();
+    next(&r.rx);
+    next(&r.rx);
+    r.procs.set_boot_id("another-boot");
+    assert_eq!(restarted(&r).0.adopt(&mut |_| {}), 0);
+}
+
+#[test]
+fn an_adopted_game_whose_leader_left_is_followed_through_its_group() {
+    let r = rig();
+    r.procs.start(40_001, "launcher", None);
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/launcher", &[])))).unwrap();
+    next(&r.rx);
+    next(&r.rx);
+    // The launcher script exited; the game it started stays in its group.
+    r.procs.exit(40_001);
+    r.procs.start(40_050, "game", Some(1));
+    r.procs.set_group(40_050, 40_001);
+    let (again, rx) = restarted(&r);
+    assert_eq!(again.adopt(&mut |_| {}), 1);
+    next(&rx);
+    // Stop reaches the whole group.
+    assert!(again.stop("g"));
+    wait_until("the group is signalled", || r.procs.group_signals().contains(&(40_001, heronite_launch::procs::Sig::Term)));
+    r.procs.exit(40_050);
+    let LaunchEvent::Exited { stopped, .. } = next(&rx) else { panic!() };
+    assert!(stopped);
+}
+
+#[test]
+fn a_steam_game_left_running_is_picked_up_by_its_pids() {
+    let r = rig();
+    let log = write_steam_log(&r, "");
+    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    next(&r.rx);
+    r.procs.start(7777, "reaper", None);
+    r.procs.set_start_ticks(7777, 42);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    next(&r.rx);
+    assert_eq!(running_file(&r.paths)["sessions"]["steam_400"]["tracked"]["pids"], serde_json::json!([[7777, 42]]));
+
+    let (again, rx) = restarted(&r);
+    assert_eq!(again.adopt(&mut |_| {}), 1);
+    assert_eq!(next(&rx), LaunchEvent::Running { app_name: "steam_400".into(), pid: 7777 });
+    // Stop closes the game's processes, never Steam.
+    again.stop_with("steam_400", StopOptions { kill_steam_processes: true });
+    let LaunchEvent::Exited { stopped, .. } = next(&rx) else { panic!() };
+    assert!(stopped);
+    assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
+}
+
+#[test]
+fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
+    let r = rig();
+    let log = write_steam_log(&r, "");
+    json_store::write(&r.paths.global_config(), &serde_json::json!({"defaultSettings": {"heroniteCloseSteamAfterGame": true}})).unwrap();
+    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    next(&r.rx);
+    wait_until("uri opened", || r.spawner.uris() == ["u"]);
+    fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000").unwrap();
+    r.procs.start(5000, "steam", None);
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    next(&r.rx);
+    assert_eq!(running_file(&r.paths)["sessions"]["steam_400"]["tracked"]["openedSteam"], true);
+
+    let home = r._dir.path().join("home");
+    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let (tx, rx) = channel();
+    let spawner = Arc::new(FakeSpawner::new());
+    let again = Launcher::new(r.paths.clone(), steam, spawner.clone(), r.procs.clone(), fast_cfg(), tx);
+    assert_eq!(again.adopt(&mut |_| {}), 1);
+    next(&rx);
+    r.procs.exit(7777);
+    assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
+    wait_until("Steam closed", || spawner.uris() == ["steam://exit"]);
+}
+
+#[test]
+fn a_prefix_whose_creation_was_stopped_is_created_again() {
+    let r = rig();
+    let prefix = r._dir.path().join("prefix");
+    fs::create_dir_all(&prefix).unwrap();
+    let marker = prefix.join(heronite_launch::wine::CREATING_MARKER);
+    let plan = |prefix: &std::path::Path| {
+        let mut process = process_plan("/games/run.sh", &[]);
+        process.pre_commands = vec![Command { program: "/w/wineboot".into(), ..Default::default() }];
+        let settings = heronite_launch::settings::GameSettings { wine_prefix: prefix.to_string_lossy().into(), ..Default::default() };
+        process.prep = PrepSpec { wine: Some(settings), ..Default::default() };
+        LaunchPlan::Native(process)
+    };
+    r.launcher.launch(request("g", plan(&prefix))).unwrap();
+    wait_until("wineboot", || !r.spawner.spawned().is_empty());
+    assert!(marker.exists(), "set while the prefix is being created");
+    assert!(r.launcher.stop("g"));
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert!(marker.exists(), "kept: the creation was cut short");
+
+    r.launcher.launch(request("g", plan(&prefix))).unwrap();
+    wait_until("wineboot again", || r.spawner.spawned().len() == 2);
+    r.spawner.finish(1, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert!(!marker.exists(), "removed once the prefix was created");
 }

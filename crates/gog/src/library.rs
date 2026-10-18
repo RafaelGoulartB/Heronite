@@ -270,6 +270,7 @@ pub fn refresh(paths: &DataPaths, gogdl: &Gogdl) -> Result<usize> {
     }
     let count = games.len();
     CacheStore::new(paths, LIBRARY_CACHE, None).set("games", Value::Array(games))?;
+    crate::playtime::import_in_background(paths, &creds);
     Ok(count)
 }
 

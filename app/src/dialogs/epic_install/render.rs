@@ -53,7 +53,7 @@ impl EpicInstallDialog {
 
     fn space_line(&self, cx: &App) -> Option<Div> {
         let space = self.space.as_ref()?;
-        let after = space.free as f64 - self.disk_bytes();
+        let after = self.free_after_queue()? - self.disk_bytes();
         let enough = self.info.is_none() || after >= 0.;
         let mut line = div()
             .text_size(px(13.))
@@ -62,6 +62,9 @@ impl EpicInstallDialog {
             .flex_wrap()
             .gap(px(4.))
             .child(tr!("Space available: {space}", space = space.message));
+        if self.reserved > 0 {
+            line = line.child(tr!("({size} for the download queue)", size = file_size_local(self.reserved as f64)));
+        }
         if self.info.is_some() && enough {
             line = line.child(tr!(" - After install: {size}", size = file_size_local(after)));
         }
@@ -294,8 +297,7 @@ impl Render for EpicInstallDialog {
             body = body.child(wine);
         }
 
-        let not_enough =
-            self.third_party.is_none() && self.space.as_ref().is_some_and(|s| self.info.is_some() && (s.free as f64) < self.disk_bytes());
+        let not_enough = self.not_enough();
         let ready = self.can_install(cx);
         let primary = if importing {
             action_button(

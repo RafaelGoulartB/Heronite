@@ -117,10 +117,15 @@ pub(super) fn build_groups(
     search: &str,
     keep: &dyn Fn(&CollectionGame) -> bool,
     is_playing: &dyn Fn(&str) -> bool,
+    launch_step: &dyn Fn(&str) -> Option<SharedString>,
     organize: &Organize,
 ) -> Vec<GroupVm> {
     let filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
-    let card = |g: &Game| card_vm_with(g, is_playing(&g.key), caption(g, ui.sort, organize, lib.date_locale));
+    let card = |g: &Game| {
+        // A launch that is preparing says its step under the cover.
+        let step = launch_step(&g.key).map(|text| Caption { icon: Icon::Refresh, text, muted: false, stars: None });
+        card_vm_with(g, is_playing(&g.key), step.or_else(|| caption(g, ui.sort, organize, lib.date_locale)))
+    };
     let icon = group_icon(ui.group_by);
     organize::group_games(&filtered, ui.group_by, organize)
         .into_iter()

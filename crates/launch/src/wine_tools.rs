@@ -81,10 +81,57 @@ pub fn winetricks_install_command(
     settings: &GameSettings,
     component: &str,
 ) -> Result<ToolCommand, String> {
+    winetricks_verbs_command(ctx, probe, settings, &[component.to_string()])
+}
+
+/// [`winetricks_install_command`] for several verbs in one run.
+pub fn winetricks_verbs_command(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    settings: &GameSettings,
+    verbs: &[String],
+) -> Result<ToolCommand, String> {
     let wine = prepare(ctx, probe, settings)?;
     let mut notes = wine.notes.clone();
-    let command = winetricks(ctx, probe, &wine, Some(component), &mut notes)?;
+    let command = winetricks(ctx, probe, &wine, Some(verbs), &mut notes)?;
     Ok(ToolCommand { command, notes })
+}
+
+/// The commands a launch runs to create a missing prefix (`wineboot
+/// --init`, or umu's `createprefix`), for the game's Wine.
+pub fn create_prefix_commands(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings) -> Result<Vec<Command>, String> {
+    let wine = prepare(ctx, probe, settings)?;
+    let s = &wine.settings;
+    let mut env = setup_env_vars(s, None, probe);
+    env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
+    quiet_wine_debug(&mut env, s);
+    // As a launch sets it (`setup_wrapper_env_vars`).
+    env.entry("GAMEID".into()).or_insert_with(|| "umu-0".into());
+    Ok(wine.prefix_creation(&env))
+}
+
+/// `wineserver -w` of the game's prefix: returns once every program in it
+/// has ended (a setup program that started another one and exited). `None`
+/// with umu, whose `umu-run` only returns when its container is empty.
+pub fn wait_prefix_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings) -> Result<Option<Command>, String> {
+    let wine = prepare(ctx, probe, settings)?;
+    if wine.runtime == WineRuntime::Umu {
+        return Ok(None);
+    }
+    let (prefix, version) = wine_from_proton(&wine, probe);
+    let Some(server) = crate::wine::wine_server_of(&version, probe) else { return Ok(None) };
+    let mut env = crate::env::Env::new();
+    env.insert("WINEPREFIX".into(), prefix);
+    Ok(Some(Command { program: server, args: vec!["-w".into()], env, cwd: None }))
+}
+
+/// `shutdownWine` for the game's prefix: ends every program in it.
+pub fn kill_prefix_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings) -> Result<Command, String> {
+    let wine = prepare(ctx, probe, settings)?;
+    let s = &wine.settings;
+    let mut env = setup_env_vars(s, None, probe);
+    env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
+    Ok(wine.shutdown_command(&env))
 }
 
 /// `runWineCommand({ commandParts, protonVerb: 'run' })` for the game's Wine
@@ -208,13 +255,13 @@ fn wine_from_proton(wine: &WineEnv, probe: &dyn Probe) -> (String, crate::settin
     (s.wine_prefix.clone(), s.wine_version.clone())
 }
 
-/// `Winetricks.runWithArgs(['-q', '--gui'])`, or `['-q', component]` to
-/// install `component` without the GUI.
+/// `Winetricks.runWithArgs(['-q', '--gui'])`, or `['-q', ..verbs]` to
+/// install `verbs` without the GUI.
 fn winetricks(
     ctx: &PlanContext,
     probe: &dyn Probe,
     wine: &WineEnv,
-    component: Option<&str>,
+    verbs: Option<&[String]>,
     notes: &mut Vec<String>,
 ) -> Result<Command, String> {
     let (prefix, wine_version) = wine_from_proton(wine, probe);
@@ -233,10 +280,10 @@ fn winetricks(
         // umu runs winetricks itself; an empty program opens its GUI.
         let umu = umu_path(ctx, probe);
         env.insert("UMU_RUNTIME_UPDATE".into(), "0".into());
-        let args = match component {
-            Some(c) => {
+        let args = match verbs {
+            Some(v) => {
                 env.insert("GAMEID".into(), "umu-0".into());
-                vec!["winetricks".to_string(), c.to_string()]
+                std::iter::once("winetricks".to_string()).chain(v.iter().cloned()).collect()
             }
             None => {
                 env.insert("GAMEID".into(), "winetricks-gui".into());
@@ -256,8 +303,8 @@ fn winetricks(
     env.insert("GAMEID".into(), "umu-0".into());
     env.insert("UMU_RUNTIME_UPDATE".into(), "0".into());
     notes.extend(missing_dependencies(probe));
-    let args = match component {
-        Some(c) => vec!["-q".to_string(), c.to_string()],
+    let args = match verbs {
+        Some(v) => std::iter::once("-q".to_string()).chain(v.iter().cloned()).collect(),
         None => vec!["-q".to_string(), "--gui".to_string()],
     };
     Ok(Command { program: script, args, env, cwd: None })
@@ -450,6 +497,40 @@ mod tests {
         assert_eq!(t.command.args, ["winetricks", "vcrun2022"]);
         assert_eq!(t.command.env["GAMEID"], "umu-0");
         assert_eq!(t.command.env["UMU_RUNTIME_UPDATE"], "0");
+    }
+
+    #[test]
+    fn winetricks_takes_several_verbs_at_once() {
+        let probe = probe().with_env("PATH", "/usr/bin");
+        let verbs = ["vcrun2022".to_string(), "win10".to_string()];
+        let t = winetricks_verbs_command(&ctx(), &probe, &settings("wine", "/w/bin/wine"), &verbs).unwrap();
+        assert_eq!(t.command.args, ["-q", "vcrun2022", "win10"]);
+        let t = winetricks_verbs_command(&ctx(), &probe, &settings("proton", "/p/GE/proton"), &verbs).unwrap();
+        assert_eq!(t.command.args, ["winetricks", "vcrun2022", "win10"]);
+    }
+
+    #[test]
+    fn waiting_for_the_prefix_uses_its_wineserver() {
+        let w = wait_prefix_command(&ctx(), &probe(), &settings("wine", "/w/bin/wine")).unwrap().unwrap();
+        assert_eq!((w.program.as_str(), w.args.as_slice()), ("/w/bin/wineserver", &["-w".to_string()][..]));
+        assert_eq!(w.env["WINEPREFIX"], "/pfx");
+        // Proton run directly: the wineserver inside it, on the `pfx` folder.
+        let mut s = settings("proton", "/p/GE/proton");
+        s.disable_umu = Some(true);
+        let w = wait_prefix_command(&ctx(), &probe(), &s).unwrap().unwrap();
+        assert_eq!((w.program.as_str(), w.env["WINEPREFIX"].as_str()), ("/p/GE/files/bin/wineserver", "/pfx/pfx"));
+        assert!(wait_prefix_command(&ctx(), &probe(), &settings("proton", "/p/GE/proton")).unwrap().is_none(), "umu waits by itself");
+    }
+
+    #[test]
+    fn prefix_creation_and_kill() {
+        let c = create_prefix_commands(&ctx(), &probe(), &settings("wine", "/w/bin/wine")).unwrap();
+        assert_eq!(c[0].args, ["wineboot", "--init"]);
+        assert_eq!(c[1].args, ["--wait"]);
+        let c = create_prefix_commands(&ctx(), &probe(), &settings("proton", "/p/GE/proton")).unwrap();
+        assert_eq!((c[0].program.as_str(), c[0].args.as_slice()), ("/usr/bin/umu-run", &["createprefix".to_string()][..]));
+        let k = kill_prefix_command(&ctx(), &probe(), &settings("wine", "/w/bin/wine")).unwrap();
+        assert_eq!((k.program.as_str(), k.args.as_slice()), ("/w/bin/wineserver", &["-k".to_string()][..]));
     }
 
     #[test]

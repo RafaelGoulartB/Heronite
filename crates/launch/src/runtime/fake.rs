@@ -110,7 +110,7 @@ impl Spawner for FakeSpawner {
         s.uris.push(uri.to_string());
         Ok(())
     }
-    fn kill_pattern(&self, pattern: &str) {
+    fn kill_pattern(&self, pattern: &str, _since: u64) {
         self.state.lock().unwrap().patterns.push(pattern.to_string());
     }
     fn make_executable(&self, _path: &str) -> io::Result<()> {

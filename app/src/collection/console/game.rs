@@ -43,14 +43,21 @@ fn detail_text(v: &DetailValue) -> String {
 impl CollectionView {
     fn game_rows(&mut self, g: &CollectionGame, cx: &mut Context<Self>) -> Vec<Row> {
         let playing = self.playing.contains_key(&g.app_name);
-        let (label, ic) = if playing {
+        let step = self.preparing.get(&g.app_name).cloned();
+        let (label, ic) = if step.is_some() {
+            (tr!("Cancel launch"), Icon::Close)
+        } else if playing {
             (tr!("Stop"), Icon::Stop)
         } else if g.installed {
             (tr!("Play"), Icon::PlayArrow)
         } else {
             (tr!("Install"), Icon::Download)
         };
-        let mut rows = vec![Row::action("primary", label).icon(ic)];
+        let mut primary = Row::action("primary", label).icon(ic);
+        if let Some(step) = step {
+            primary = primary.desc(step.label());
+        }
+        let mut rows = vec![primary];
         // The actions the user added; one that plays waits for the game to end.
         for a in self.actions_of(&g.key) {
             if a.plays() && playing {

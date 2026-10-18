@@ -27,9 +27,11 @@ fn read_local(paths: &DataPaths, store: Store) -> Local {
         Store::Gog => {
             let stats = heronite_gog::library::stats(paths);
             Local {
-                account: heronite_gog::user::account(paths)
-                    .filter(|_| heronite_gog::user::is_logged_in(paths))
-                    .map(|a| Account { logged_in: true, name: a.username }),
+                account: heronite_gog::user::account(paths).filter(|_| heronite_gog::user::is_logged_in(paths)).map(|a| Account {
+                    logged_in: true,
+                    name: a.username,
+                    expired: false,
+                }),
                 owned: stats.owned,
                 installed: stats.installed,
                 updates: heronite_gog::updates::cached_updates(paths),
@@ -38,9 +40,11 @@ fn read_local(paths: &DataPaths, store: Store) -> Local {
         Store::Amazon => {
             let stats = heronite_amazon::library::stats(paths);
             Local {
-                account: heronite_amazon::user::account(paths)
-                    .filter(|_| heronite_amazon::user::is_logged_in(paths))
-                    .map(|a| Account { logged_in: true, name: a.name }),
+                account: heronite_amazon::user::account(paths).filter(|_| heronite_amazon::user::is_logged_in(paths)).map(|a| Account {
+                    logged_in: true,
+                    name: a.name,
+                    expired: false,
+                }),
                 owned: stats.owned,
                 installed: stats.installed,
                 updates: heronite_amazon::updates::cached_updates(paths),
@@ -71,17 +75,17 @@ fn refresh_blocking(paths: &DataPaths, store: Store) -> anyhow::Result<Local> {
 }
 
 pub(super) fn failed(err: anyhow::Error) -> OpResult {
-    OpResult { ok: false, aborted: false, message: format!("{err:#}") }
+    OpResult { ok: false, aborted: false, warning: false, message: format!("{err:#}") }
 }
 
 pub(super) fn done(message: &str) -> OpResult {
-    OpResult { ok: true, aborted: false, message: message.to_string() }
+    OpResult { ok: true, aborted: false, warning: false, message: message.to_string() }
 }
 
 /// A finished operation that may have been cancelled.
 fn ended(result: anyhow::Result<()>, cancel: &Cancel, message: &str) -> OpResult {
     match result {
-        _ if cancel.is_requested() => OpResult { ok: false, aborted: true, message: tr!("Cancelled").into() },
+        _ if cancel.is_requested() => OpResult { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() },
         Ok(()) => done(message),
         Err(err) => failed(err),
     }
@@ -102,7 +106,7 @@ impl Downloads {
         }
     }
 
-    fn store_mut(&mut self, store: Store) -> &mut StoreState {
+    pub(super) fn store_mut(&mut self, store: Store) -> &mut StoreState {
         match store {
             Store::Gog => &mut self.gog,
             Store::Amazon => &mut self.amazon,
@@ -111,7 +115,14 @@ impl Downloads {
 
     fn apply_local(&mut self, store: Store, local: Local) {
         let st = self.store_mut(store);
+        // The tool's files still hold the refused sign-in: it stays expired
+        // until the next login.
+        let expired = st.account.expired;
         st.account = local.account.unwrap_or_default();
+        if expired {
+            st.account.logged_in = false;
+            st.account.expired = true;
+        }
         st.owned = local.owned;
         st.installed = local.installed;
         st.updates = local.updates.into_iter().collect();
@@ -221,6 +232,7 @@ impl Downloads {
                         if store == Store::Amazon {
                             this.amazon_login = None;
                         }
+                        this.store_mut(store).account.expired = false;
                         this.apply_local(store, local);
                         this.toast(cx, tr!("Logged in as {name}", name), false);
                         this.emit(cx, DownloadsEvent::LibraryChanged);
@@ -282,7 +294,15 @@ impl Downloads {
         cx.notify();
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { refresh_blocking(&paths, store) }).await;
+            let (res, online) = cx
+                .background_spawn(async move {
+                    let res = refresh_blocking(&paths, store);
+                    // A token refresh that failed offline is not an expired sign-in.
+                    let online = !res.as_ref().is_err_and(heronite_epic::session::is_expired)
+                        || heronite_launch::net::Net::is_online(&heronite_launch::net::SystemNet);
+                    (res, online)
+                })
+                .await;
             this.update(cx, |this, cx| {
                 this.store_mut(store).refreshing = false;
                 match res {
@@ -309,6 +329,7 @@ impl Downloads {
                             this.queue_auto_updates(None, cx);
                         }
                     }
+                    Err(err) if online && heronite_epic::session::is_expired(&err) => this.mark_expired(Some(store), cx),
                     Err(err) => {
                         let msg = format!("{err:#}");
                         this.store_mut(store).last_error = Some(msg.clone());
@@ -331,7 +352,7 @@ impl Downloads {
 
     /// Queues updates for `apps` (any store) that are not queued yet.
     pub(super) fn queue_updates_of(&mut self, apps: Vec<String>, cx: &mut Context<Self>) {
-        let apps: Vec<String> = apps.into_iter().filter(|a| self.queued(a).is_none()).collect();
+        let apps = self.updatable(apps, cx);
         if apps.is_empty() {
             return;
         }
@@ -351,6 +372,9 @@ impl Downloads {
 
     /// Verify and repair the game's files.
     pub fn store_verify(&mut self, store: Store, app_name: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let app = app_name.to_string();
         self.run_task_then(
             app_name,
@@ -381,22 +405,26 @@ impl Downloads {
             cx,
             move |paths, _, _| {
                 let res = match store {
-                    Store::Gog => heronite_gog::ops::uninstall(paths, &app),
+                    Store::Gog => heronite_gog::ops::uninstall(paths, &app).map(|_| None),
                     Store::Amazon => Nile::locate(paths).and_then(|n| heronite_amazon::ops::uninstall(paths, &n, &app)),
                 };
-                if let Err(err) = res {
-                    return failed(err);
-                }
+                // What did not go as asked, for the toast.
+                let mut problems: Vec<String> = match res {
+                    Err(err) => return failed(err),
+                    Ok(problem) => problem.into_iter().collect(),
+                };
                 // The prefix is looked up before the settings are deleted.
                 if remove_prefix {
-                    if let Err(err) = epic_ops::remove_prefix(paths, &app) {
-                        log::warn!("removing the prefix of {app}: {err:#}");
-                    }
+                    problems.extend(epic_ops::remove_prefix_note(paths, &app));
                 }
                 if remove_settings {
                     epic_ops::remove_settings_and_logs(paths, &app);
                 }
-                done(tr!("Uninstalled"))
+                if problems.is_empty() {
+                    done(tr!("Uninstalled"))
+                } else {
+                    OpResult::warn(format!("{}. {}", tr!("Uninstalled"), problems.join(" ")))
+                }
             },
             |_, _, _| {},
         );
@@ -404,6 +432,9 @@ impl Downloads {
 
     /// Moves the install folder into `new_parent`.
     pub fn store_move(&mut self, store: Store, app_name: &str, new_parent: &str, cx: &mut Context<Self>) {
+        if self.files_in_use(app_name, cx) {
+            return;
+        }
         let (app, to) = (app_name.to_string(), new_parent.to_string());
         self.run_task_then(
             app_name,

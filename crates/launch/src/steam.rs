@@ -11,6 +11,7 @@ use heronite_i18n::tr;
 use regex::Regex;
 
 use crate::probe::Probe;
+use crate::procs::Procs;
 use crate::runtime::Spawner;
 use crate::settings::GlobalSettings;
 use crate::vdf::Vdf;
@@ -226,7 +227,23 @@ impl SteamLocator {
         }
         out
     }
+
+    /// Whether the Steam client runs: a `steam.pid` it writes (native or
+    /// Flatpak) names a live process. In Steam Deck game mode Steam is the
+    /// session, so it always counts as running there.
+    pub fn client_running(&self, procs: &dyn Procs) -> bool {
+        if std::env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("gamescope") {
+            return true;
+        }
+        let mut files = vec![self.steam_path.join("steam.pid"), self.home.join(".steam/steam.pid")];
+        files.extend(self.steam_path.parent().map(|p| p.join("steam.pid")));
+        files.push(self.home.join(".var/app").join(FLATPAK_STEAM_ID).join(".steam/steam.pid"));
+        files.iter().any(|f| fs::read_to_string(f).ok().and_then(|s| s.trim().parse::<u32>().ok()).is_some_and(|pid| procs.is_alive(pid)))
+    }
 }
+
+/// Global setting: close Steam once the game that made Heronite open it ends.
+pub const KEY_CLOSE_AFTER_GAME: &str = "heroniteCloseSteamAfterGame";
 
 fn dedup_existing(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut seen = HashSet::new();

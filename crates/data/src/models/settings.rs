@@ -68,6 +68,10 @@ pub struct LudusaviSettings {
     /// Differential backups kept per full one (0..=255); `None` = Ludusavi's own setting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub differential_limit: Option<u8>,
+    /// Games (`runner:appName`, `game_key`) left out of the after-play
+    /// backup; a backup by hand still runs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub auto_backup_off: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_backup_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -115,6 +119,13 @@ pub struct ScreenshotsSettings {
     pub capture_accelerator: String,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+impl LudusaviSettings {
+    /// Whether a session of this game ends with a backup.
+    pub fn auto_backup_for(&self, runner: &str, app_name: &str) -> bool {
+        self.enabled && !self.auto_backup_off.contains(&super::game_key(runner, app_name))
+    }
 }
 
 fn default_true() -> bool {

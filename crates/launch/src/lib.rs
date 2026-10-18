@@ -55,5 +55,6 @@ pub mod winetricks;
 pub use plan::{build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 pub use probe::{Probe, SystemProbe};
 pub use runtime::{
-    ExitInfo, LaunchError, LaunchEvent, LaunchRequest, Launcher, LauncherConfig, ProcessHandle, Spawner, StopOptions, SystemSpawner,
+    failed_launch, ExitInfo, LaunchError, LaunchEvent, LaunchRequest, Launcher, LauncherConfig, ProcessHandle, Spawner, StopOptions,
+    SystemSpawner,
 };

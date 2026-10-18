@@ -37,6 +37,7 @@ pub mod rom_folder;
 pub mod save_backups;
 pub mod scan_roms;
 pub mod screenshot_art;
+pub mod script_install;
 pub mod settings_panel;
 pub mod store_import;
 pub mod store_install;
@@ -55,6 +56,25 @@ pub enum DialogEvent {
     Changed,
     /// Like `Changed`, then close.
     ChangedAndClose,
+}
+
+/// Esc, offered to the open dialog before the host closes it. True when the
+/// dialog used the key: it closed something inside itself (an image picker,
+/// a question) or asked before throwing away what was typed.
+pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool {
+    if let Ok(d) = view.clone().downcast::<add_game::AddGameDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<manage_statuses::ManageStatusesDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<manage_categories::ManageCategoriesDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(window, cx));
+    }
+    if let Ok(d) = view.clone().downcast::<batch_edit::BatchEditDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    false
 }
 
 /// What every dialog may need.

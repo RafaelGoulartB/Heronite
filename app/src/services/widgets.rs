@@ -23,6 +23,22 @@ pub fn progress_bar(percent: Option<f32>, height: f32, color: Rgba) -> Div {
         .child(div().absolute().top_0().left_0().bottom_0().w(relative(fill)).rounded_full().bg(color))
 }
 
+/// A bar with a light sweeping across, for work that gives no percentage.
+pub fn busy_bar(id: impl Into<ElementId>, height: f32) -> AnyElement {
+    let track = div().relative().w_full().h(px(height)).rounded_full().bg(theme::white_a(0.14)).overflow_hidden();
+    let sweep = div().absolute().top_0().bottom_0().w(relative(0.3)).rounded_full().bg(theme::accent());
+    if !theme::animations() {
+        return track.child(sweep.left(relative(0.35))).into_any_element();
+    }
+    track
+        .child(
+            sweep.with_animation(id, Animation::new(std::time::Duration::from_millis(1400)).repeat(), |s, t| {
+                s.left(relative(t * 1.3 - 0.3))
+            }),
+        )
+        .into_any_element()
+}
+
 /// `1234.5` MiB -> `1.21 GiB`.
 pub fn fmt_mib(mib: f64) -> String {
     if mib >= 1024. {

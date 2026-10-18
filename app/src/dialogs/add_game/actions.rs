@@ -11,6 +11,8 @@ use heronite_i18n::tr;
 use heronite_launch::settings::GameSettings;
 use heronite_launch::wine_tools::{build_tool_command, WineTool};
 use heronite_launch::{PlanContext, SystemProbe};
+use heronite_metadata::edit;
+use heronite_metadata::DetailsPatch;
 use serde_json::json;
 
 use super::logic::*;
@@ -20,7 +22,7 @@ use crate::dialogs::DialogEvent;
 
 impl AddGameDialog {
     pub(super) fn save(&mut self, cx: &mut Context<Self>) {
-        if self.saving || self.confirm_remove {
+        if self.saving || self.confirm_remove || self.confirm_discard {
             return;
         }
         let title = text_of(&self.title, cx).trim().to_string();
@@ -44,6 +46,12 @@ impl AddGameDialog {
                 return;
             }
         }
+        // Edit: set when the title differs from the one the game was showing.
+        let title_patch = self
+            .is_edit()
+            .then(|| self.ctx.lib.games.iter().find(|g| g.app_name == self.app_name && g.runner == "sideload"))
+            .flatten()
+            .and_then(|g| changed_title(Some(&g.title), &title));
         let (art_cover, art_square) = art_pair(&text_of(&self.square, cx), &text_of(&self.hero, cx));
         let browser = platform == SideloadPlatform::Browser;
         let spec = SideloadSpec {
@@ -76,6 +84,18 @@ impl AddGameDialog {
                         spec.run_as = run_as_for(spec.platform, detected, existing_run_as.as_deref());
                     }
                     let out = sideload::save_game(&paths, &spec)?;
+                    // The shown title is the Collection's: without this it would hide the new one.
+                    if let Some(title) = title_patch {
+                        edit::update_collection_game_details(
+                            &paths,
+                            &DetailsPatch {
+                                app_name: spec.app_name.clone(),
+                                runner: "sideload".into(),
+                                title: Some(title),
+                                ..Default::default()
+                            },
+                        )?;
+                    }
                     if let Some((prefix, wine, bottle)) = new_wine {
                         sideload::init_game_config(&paths, &home, &spec.app_name, &prefix, wine, &bottle)?;
                     }
@@ -114,15 +134,10 @@ impl AddGameDialog {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    // The prefix path comes from the game's config: delete it first.
-                    let prefix = with_prefix.then(|| sideload::remove_prefix(&paths, &app, &home));
-                    heronite_metadata::remove::remove_collection_game(
-                        &paths,
-                        &heronite_metadata::remove::ShortcutDirs::detect(),
-                        &app,
-                        "sideload",
-                    )?;
-                    anyhow::Ok(prefix)
+                    crate::dialogs::remove_game::remove_from_collection(&paths, "sideload", &app)?;
+                    // Only once the game is gone: a failed removal keeps its prefix. Its
+                    // path is in the game's settings, which the removal leaves.
+                    anyhow::Ok(with_prefix.then(|| sideload::remove_prefix(&paths, &app, &home)))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -208,6 +223,7 @@ fn run_exe_blocking(paths: &heronite_data::DataPaths, home: &str, map: &Settings
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
+    heronite_launch::wine::drop_host_certs(c, &mut cmd);
     if let Some(dir) = c.cwd.as_deref().filter(|d| Path::new(d).is_dir()) {
         cmd.current_dir(dir);
     }

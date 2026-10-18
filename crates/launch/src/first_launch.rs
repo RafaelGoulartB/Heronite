@@ -284,6 +284,8 @@ impl Prep<'_> {
     ) -> Flow {
         let mut steps = fl.post_install.clone();
         if let Some(store) = store {
+            // gogdl may download the redistributables first: it can take a while.
+            self.notice(Notice::info("Getting the game's installers...", tr!("Getting the game's installers...")));
             match store.steps(&fl.runner, &fl.app_name, &fl.install_path) {
                 Ok(more) => steps.extend(more),
                 Err(e) => {
@@ -672,8 +674,8 @@ mod tests {
             fn open_uri(&self, uri: &str) -> std::io::Result<()> {
                 self.inner.open_uri(uri)
             }
-            fn kill_pattern(&self, pattern: &str) {
-                self.inner.kill_pattern(pattern)
+            fn kill_pattern(&self, pattern: &str, since: u64) {
+                self.inner.kill_pattern(pattern, since)
             }
         }
         let fx = Fx::new();

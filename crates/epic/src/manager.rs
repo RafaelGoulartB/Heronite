@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use crate::cmd::Cancel;
 use crate::ops::remove_partial_download;
 use crate::progress::Progress;
-use crate::queue::{self, now_ms, DmElement, DmStatus};
+use crate::queue::{self, now_ms, DmElement, DmStatus, ElementKind};
 
 /// What a job returns.
 #[derive(Debug, Clone)]
@@ -42,6 +42,11 @@ pub enum Event {
     Progress { app_name: String, progress: Progress },
     /// An element ended (done, error or abort); `Changed` follows.
     Finished { element: DmElement, error: Option<String> },
+    /// An element failed while the connection was down: it stays first in
+    /// the queue, which is paused until the connection is back.
+    HeldOffline { element: DmElement },
+    /// "Stop, delete files" could not delete this folder.
+    RemoveFailed { title: String, folder: String },
 }
 
 #[derive(Debug, Clone)]
@@ -58,6 +63,8 @@ struct Current {
     cancel: Arc<Cancel>,
     progress: Option<Progress>,
     pause_requested: bool,
+    /// Cancelled: it leaves the queue whatever a pause or resume asked.
+    cancelled: bool,
     /// `(path, folder)` to delete once the process stopped (cancel + delete).
     remove_on_abort: Option<(String, String)>,
 }
@@ -68,7 +75,21 @@ struct Inner {
     finished: Vec<DmElement>,
     current: Option<Current>,
     worker: bool,
+    /// The user (not the shutdown or the connection) paused the queue; saved
+    /// so a restart keeps it paused.
+    user_paused: bool,
+    /// The element last held for the connection. Failing again right after
+    /// it resumed is recorded: where the probes are blocked, "offline" never
+    /// ends.
+    held: Option<String>,
 }
+
+/// A held element that fails again sooner than this after it restarted is
+/// not held again.
+const HELD_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Blocking check (it may probe the network): `true` when offline.
+pub type OfflineCheck = Arc<dyn Fn() -> bool + Send + Sync>;
 
 struct Shared {
     data_paths: DataPaths,
@@ -77,6 +98,8 @@ struct Shared {
     job: Arc<dyn Job>,
     notify: Arc<dyn Fn(Event) + Send + Sync>,
     inner: Mutex<Inner>,
+    /// Asked on the worker thread after a failed element; see [`DownloadManager::set_offline_check`].
+    offline: Mutex<Option<OfflineCheck>>,
 }
 
 #[derive(Clone)]
@@ -85,16 +108,17 @@ pub struct DownloadManager {
 }
 
 impl DownloadManager {
-    /// Loads the persisted queue. Nothing runs until [`start`](Self::start).
+    /// Loads the persisted queue. Nothing runs until [`start`](Self::start),
+    /// which keeps a queue the user paused paused.
     pub fn new(data_paths: DataPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
         let file = queue::load(&data_paths);
-        Self::with_state(data_paths, job, notify, file.queue, file.finished, false)
+        Self::with_state(data_paths, job, notify, file.queue, file.finished, file.user_paused, false)
     }
 
     /// A queue that lives only in memory (screenshots / debug fakes): it
     /// neither loads nor saves `store/download-manager.json`.
     pub fn new_ephemeral(data_paths: DataPaths, job: Arc<dyn Job>, notify: impl Fn(Event) + Send + Sync + 'static) -> Self {
-        Self::with_state(data_paths, job, notify, Vec::new(), Vec::new(), true)
+        Self::with_state(data_paths, job, notify, Vec::new(), Vec::new(), false, true)
     }
 
     fn with_state(
@@ -103,6 +127,7 @@ impl DownloadManager {
         notify: impl Fn(Event) + Send + Sync + 'static,
         queue: Vec<DmElement>,
         finished: Vec<DmElement>,
+        user_paused: bool,
         ephemeral: bool,
     ) -> Self {
         Self {
@@ -111,7 +136,8 @@ impl DownloadManager {
                 ephemeral,
                 job,
                 notify: Arc::new(notify),
-                inner: Mutex::new(Inner { state: DmState::Idle, queue, finished, current: None, worker: false }),
+                inner: Mutex::new(Inner { state: DmState::Idle, queue, finished, current: None, worker: false, user_paused, held: None }),
+                offline: Mutex::new(None),
             }),
         }
     }
@@ -133,13 +159,32 @@ impl DownloadManager {
         if self.shared.ephemeral {
             return;
         }
-        if let Err(err) = queue::save(&self.shared.data_paths, &g.queue, &g.finished) {
+        if let Err(err) = queue::save(&self.shared.data_paths, &g.queue, &g.finished, g.user_paused) {
             log::error!("saving the download queue: {err:#}");
         }
     }
 
     fn emit(&self, ev: Event) {
         (self.shared.notify)(ev);
+    }
+
+    /// With a check set, an element that fails while it says "offline" is not
+    /// recorded as failed: it stays first and the queue pauses
+    /// ([`Event::HeldOffline`]), instead of the next elements failing one
+    /// after the other. Whoever sets it resumes the queue when the connection
+    /// is back.
+    pub fn set_offline_check(&self, check: OfflineCheck) {
+        *self.shared.offline.lock() = Some(check);
+    }
+
+    /// Deletes a cancelled download's folder; tells when it is still there.
+    fn remove_partial(&self, title: String, path: &str, folder: &str) {
+        remove_partial_download(path, folder);
+        let left = std::path::Path::new(path.trim_matches('\'')).join(folder);
+        if left.exists() {
+            log::error!("could not delete the cancelled download in {}", left.display());
+            self.emit(Event::RemoveFailed { title, folder: left.display().to_string() });
+        }
     }
 
     /// `addToQueue`: replaces an element of the same game, otherwise appends;
@@ -165,13 +210,24 @@ impl DownloadManager {
     }
 
     /// `initQueue`: runs the queue unless it is paused or already running.
+    /// A queue the user paused (before a restart too) goes to `Paused`.
     pub fn start(&self) {
         {
             let mut g = self.shared.inner.lock();
             if g.worker || g.queue.is_empty() {
+                if g.queue.is_empty() && g.user_paused {
+                    g.user_paused = false;
+                    self.persist(&g);
+                }
                 if g.state == DmState::Paused && !g.worker {
                     g.state = DmState::Idle;
                 }
+                return;
+            }
+            if g.user_paused {
+                g.state = DmState::Paused;
+                drop(g);
+                self.emit(Event::Changed);
                 return;
             }
             g.state = DmState::Running;
@@ -199,6 +255,7 @@ impl DownloadManager {
                     cancel: cancel.clone(),
                     progress: None,
                     pause_requested: false,
+                    cancelled: false,
                     remove_on_abort: None,
                 });
                 self.persist(&g);
@@ -213,36 +270,65 @@ impl DownloadManager {
                 }
                 self.emit(Event::Progress { app_name: app.clone(), progress: p });
             };
+            let started = std::time::Instant::now();
             let result = self.shared.job.run(&element, &cancel, &mut report);
+            // Blocking (a probe), so before taking the lock (and without the
+            // check's own). A stop that was asked for explains the failure by itself.
+            let check = self.shared.offline.lock().clone();
+            let offline = result.status == DmStatus::Error && !cancel.is_requested() && check.is_some_and(|check| check());
 
             let mut ended = element.clone();
             ended.end_time = now_ms();
-            let (finished_event, remove) = {
+            let (events, remove) = {
                 let mut g = self.shared.inner.lock();
                 let cur = g.current.take();
-                let pause = cur.as_ref().is_some_and(|c| c.pause_requested);
-                let remove = cur.and_then(|c| c.remove_on_abort);
-                if pause {
+                // A pause or a cancel that came as the job finished its work
+                // leaves the finished install alone.
+                let done = result.status == DmStatus::Done;
+                let cancelled = cur.as_ref().is_some_and(|c| c.cancelled);
+                let pause = !done && !cancelled && cur.as_ref().is_some_and(|c| c.pause_requested);
+                // Cancelled or paused during the probe: that wins.
+                let held_just_now = g.held.as_deref() == Some(app.as_str()) && started.elapsed() < HELD_AGAIN_AFTER;
+                let offline = offline && !cancel.is_requested() && !held_just_now;
+                let remove = cur.and_then(|c| c.remove_on_abort).filter(|_| !done && cancelled);
+                if pause || offline {
                     if let Some(first) = g.queue.iter_mut().find(|e| e.params.app_name == app) {
                         first.start_time = ended.start_time;
                     }
+                    let mut events = Vec::new();
+                    if offline && !pause {
+                        log::info!("{app} failed while offline: the queue waits for the connection");
+                        g.held = Some(app.clone());
+                        g.state = DmState::Paused;
+                        events.push(Event::HeldOffline { element: ended });
+                    }
                     self.persist(&g);
-                    (None, remove)
+                    (events, remove)
                 } else {
+                    if g.held.as_deref() == Some(app.as_str()) {
+                        g.held = None;
+                    }
                     ended.status = Some(result.status);
+                    ended.error = result.error.clone().filter(|_| result.status == DmStatus::Error);
                     match g.finished.iter().position(|e| e.params.app_name == app) {
                         Some(i) => g.finished[i] = ended.clone(),
                         None => g.finished.push(ended.clone()),
                     }
                     g.queue.retain(|e| e.params.app_name != app);
+                    // DLCs queued after a base game that did not install would
+                    // only fail one by one.
+                    if !done && ended.kind == ElementKind::Install && !ended.params.install_dlcs.is_empty() {
+                        let dlcs = &ended.params.install_dlcs;
+                        g.queue.retain(|e| !dlcs.contains(&e.params.app_name));
+                    }
                     self.persist(&g);
-                    (Some(Event::Finished { element: ended, error: result.error.clone() }), remove)
+                    (vec![Event::Finished { element: ended, error: result.error.clone() }], remove)
                 }
             };
             if let Some((path, folder)) = remove {
-                remove_partial_download(&path, &folder);
+                self.remove_partial(element.params.title(), &path, &folder);
             }
-            if let Some(ev) = finished_event {
+            for ev in events {
                 self.emit(ev);
             }
             self.emit(Event::Changed);
@@ -251,6 +337,10 @@ impl DownloadManager {
         g.worker = false;
         if g.state != DmState::Paused {
             g.state = DmState::Idle;
+        }
+        if g.queue.is_empty() && g.user_paused {
+            g.user_paused = false;
+            self.persist(&g);
         }
         drop(g);
         self.emit(Event::Changed);
@@ -270,10 +360,31 @@ impl DownloadManager {
         self.emit(Event::Changed);
     }
 
+    /// The user's pause: like [`pause`](Self::pause), and it survives a restart.
+    pub fn pause_by_user(&self) {
+        {
+            let mut g = self.shared.inner.lock();
+            if !g.queue.is_empty() && !g.user_paused {
+                g.user_paused = true;
+                self.persist(&g);
+            }
+        }
+        self.pause();
+    }
+
+    /// The queue is paused because the user asked for it.
+    pub fn is_user_paused(&self) -> bool {
+        self.shared.inner.lock().user_paused
+    }
+
     /// `resumeCurrentDownload`.
     pub fn resume(&self) {
         {
             let mut g = self.shared.inner.lock();
+            if g.user_paused {
+                g.user_paused = false;
+                self.persist(&g);
+            }
             if g.state == DmState::Paused {
                 g.state = DmState::Idle;
                 if let Some(c) = g.current.as_mut() {
@@ -290,31 +401,45 @@ impl DownloadManager {
     /// `cancelCurrentDownload`: stops the first element and removes it (and
     /// the DLCs queued with it); optionally deletes what was downloaded.
     pub fn cancel_current(&self, remove_downloaded: bool) {
+        let mut stale = None;
         {
             let mut g = self.shared.inner.lock();
             let Some(first) = g.queue.first().cloned() else { return };
             let dlcs = first.params.install_dlcs.clone();
             g.queue.retain(|e| !dlcs.contains(&e.params.app_name));
-            let remove = remove_downloaded.then(|| first.params.folder_name().map(|f| (first.params.path.clone(), f))).flatten();
+            let remove = remove_downloaded.then(|| first.partial_folder()).flatten();
             match g.current.as_mut().filter(|c| c.app_name == first.params.app_name) {
                 Some(c) => {
+                    // A pause or resume asked for around it does not keep it queued.
+                    c.cancelled = true;
                     c.remove_on_abort = remove;
                     c.cancel.request();
                 }
                 None => {
                     // Not running (paused or idle): drop it right away.
                     g.queue.retain(|e| e.params.app_name != first.params.app_name);
-                    if let Some((path, folder)) = remove {
-                        remove_partial_download(&path, &folder);
-                    }
-                    if g.queue.is_empty() && g.state == DmState::Paused {
-                        g.state = DmState::Idle;
+                    stale = remove.map(|r| (first.params.title(), r));
+                    if g.queue.is_empty() {
+                        g.user_paused = false;
+                        if g.state == DmState::Paused {
+                            g.state = DmState::Idle;
+                        }
                     }
                 }
             }
             self.persist(&g);
         }
         self.emit(Event::Changed);
+        // A multi-GB folder: neither under the lock nor on the caller's (UI) thread.
+        if let Some((title, (path, folder))) = stale {
+            let me = self.clone();
+            let spawned = std::thread::Builder::new().name("epic-remove-partial".into()).spawn(move || {
+                me.remove_partial(title, &path, &folder);
+            });
+            if let Err(err) = spawned {
+                log::error!("removing the partial download: {err}");
+            }
+        }
     }
 
     /// `removeFromQueue` for an element that is not running.
@@ -328,6 +453,9 @@ impl DownloadManager {
             g.queue.retain(|e| e.params.app_name != app_name);
             if g.queue.len() == before {
                 return;
+            }
+            if g.queue.is_empty() {
+                g.user_paused = false;
             }
             self.persist(&g);
         }
@@ -369,7 +497,8 @@ impl DownloadManager {
     /// (the element stays first in the queue, legendary keeps its resume
     /// data) so the next start picks it up again. Does not block: poll
     /// [`is_idle`](Self::is_idle) to know when the worker is gone. The paused
-    /// state itself is not persisted, only the queue.
+    /// state itself is not persisted (a user's pause is, see
+    /// [`pause_by_user`](Self::pause_by_user)), only the queue.
     pub fn pause_for_shutdown(&self) {
         self.pause();
     }
@@ -406,14 +535,23 @@ mod tests {
         blocking: Vec<String>,
         runs: Mutex<Vec<String>>,
         fail: Vec<String>,
+        /// Block until stopped, then report the work as done (a stop that
+        /// came as the tool finished).
+        finishing: Vec<String>,
         started: AtomicUsize,
     }
 
     impl FakeJob {
         fn new(blocking: &[&str], fail: &[&str]) -> Arc<Self> {
+            Self::with_finishing(blocking, fail, &[])
+        }
+
+        fn with_finishing(blocking: &[&str], fail: &[&str], finishing: &[&str]) -> Arc<Self> {
+            let owned = |list: &[&str]| list.iter().map(|s| s.to_string()).collect();
             Arc::new(Self {
-                blocking: blocking.iter().map(|s| s.to_string()).collect(),
-                fail: fail.iter().map(|s| s.to_string()).collect(),
+                blocking: owned(blocking),
+                fail: owned(fail),
+                finishing: owned(finishing),
                 runs: Mutex::new(Vec::new()),
                 started: AtomicUsize::new(0),
             })
@@ -426,11 +564,12 @@ mod tests {
             self.runs.lock().push(app.clone());
             self.started.fetch_add(1, Ordering::SeqCst);
             on_progress(Progress { percent: 10., ..Default::default() });
-            if self.blocking.contains(&app) {
+            if self.blocking.contains(&app) || self.finishing.contains(&app) {
                 while !cancel.is_requested() {
                     std::thread::sleep(Duration::from_millis(10));
                 }
-                return JobResult { status: DmStatus::Abort, error: None };
+                let status = if self.finishing.contains(&app) { DmStatus::Done } else { DmStatus::Abort };
+                return JobResult { status, error: None };
             }
             if self.fail.contains(&app) {
                 return JobResult { status: DmStatus::Error, error: Some("boom".into()) };
@@ -585,7 +724,7 @@ mod tests {
     fn a_persisted_queue_is_loaded_but_not_started() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path());
-        queue::save(&data_paths, &[el("a")], &[]).unwrap();
+        queue::save(&data_paths, &[el("a")], &[], false).unwrap();
         let job = FakeJob::new(&[], &[]);
         let m = DownloadManager::new(data_paths, job.clone(), |_| {});
         assert_eq!(m.snapshot().queue.len(), 1);
@@ -622,6 +761,252 @@ mod tests {
         m2.start();
         wait_until(&m2, "both done", |s| s.finished.len() == 2);
         assert_eq!(*job2.runs.lock(), ["a", "b"]);
+    }
+
+    #[test]
+    fn a_pause_by_the_user_survives_a_restart_until_resumed() {
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, dir) = manager(job.clone());
+        m.add(el("a"));
+        wait_until(&m, "a running", |s| s.state == DmState::Running && job.started.load(Ordering::SeqCst) == 1);
+        m.pause_by_user();
+        wait_until(&m, "stopped", |s| s.state == DmState::Paused);
+        for _ in 0..400 {
+            if m.is_idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(queue::load(&DataPaths::at(dir.path())).user_paused);
+        // The next run: starting it (the 5 s start, a move that finished) does not run the queue.
+        let job2 = FakeJob::new(&[], &[]);
+        let m2 = DownloadManager::new(DataPaths::at(dir.path()), job2.clone(), |_| {});
+        assert!(m2.is_user_paused());
+        m2.start();
+        assert_eq!(m2.snapshot().state, DmState::Paused);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(job2.started.load(Ordering::SeqCst), 0);
+        assert_eq!(m2.snapshot().queue.len(), 1);
+        // Adding to a paused queue does not start it either.
+        m2.add(el("b"));
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(job2.started.load(Ordering::SeqCst), 0);
+        m2.resume();
+        wait_until(&m2, "both done", |s| s.finished.len() == 2);
+        assert!(!queue::load(&DataPaths::at(dir.path())).user_paused);
+    }
+
+    #[test]
+    fn other_pauses_are_not_remembered_and_an_emptied_queue_forgets_the_user_pause() {
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, dir) = manager(job.clone());
+        m.add(el("a"));
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause();
+        wait_until(&m, "paused", |s| s.state == DmState::Paused);
+        assert!(!m.is_user_paused());
+        assert!(!queue::load(&DataPaths::at(dir.path())).user_paused);
+        m.resume();
+        wait_until(&m, "a restarted", |_| job.started.load(Ordering::SeqCst) == 2);
+        m.pause_by_user();
+        wait_until(&m, "paused", |s| s.state == DmState::Paused);
+        for _ in 0..400 {
+            if m.is_idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        m.cancel_current(false);
+        assert!(m.snapshot().queue.is_empty());
+        assert!(!m.is_user_paused());
+        assert!(!queue::load(&DataPaths::at(dir.path())).user_paused);
+        // A new download starts at once.
+        m.add(el("c"));
+        wait_until(&m, "c done", |s| s.finished.len() == 1);
+    }
+
+    #[test]
+    fn cancelling_a_paused_download_deletes_its_folder_off_the_calling_thread() {
+        let games = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(games.path().join("a/sub")).unwrap();
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, _dir) = manager(job.clone());
+        let mut base = el("a");
+        base.params.path = games.path().to_str().unwrap().into();
+        m.add(base);
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause();
+        wait_until(&m, "paused", |s| s.state == DmState::Paused);
+        for _ in 0..400 {
+            if m.is_idle() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        m.cancel_current(true);
+        assert!(m.snapshot().queue.is_empty());
+        for _ in 0..400 {
+            if !games.path().join("a").exists() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!games.path().join("a").exists());
+    }
+
+    fn wait_idle(m: &DownloadManager) {
+        for _ in 0..400 {
+            if m.is_idle() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the worker did not stop");
+    }
+
+    #[test]
+    fn a_pause_as_the_job_finishes_records_it_as_done() {
+        let job = FakeJob::with_finishing(&[], &[], &["a"]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.add(el("a"));
+        m.add(el("b"));
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause();
+        wait_idle(&m);
+        let s = m.snapshot();
+        assert_eq!(s.finished.iter().map(|e| (e.params.app_name.as_str(), e.status)).collect::<Vec<_>>(), [("a", Some(DmStatus::Done))]);
+        let queued: Vec<_> = s.queue.iter().map(|e| e.params.app_name.as_str()).collect();
+        assert_eq!(queued, ["b"], "the next one waits, paused");
+        assert_eq!(s.state, DmState::Paused);
+    }
+
+    #[test]
+    fn cancel_and_delete_as_the_job_finishes_keeps_the_installed_game() {
+        let games = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(games.path().join("a")).unwrap();
+        let job = FakeJob::with_finishing(&[], &[], &["a"]);
+        let (m, _rx, _dir) = manager(job.clone());
+        let mut base = el("a");
+        base.params.path = games.path().to_str().unwrap().into();
+        m.add(base);
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.cancel_current(true);
+        wait_until(&m, "a finished", |s| s.finished.len() == 1 && s.state == DmState::Idle);
+        assert_eq!(m.snapshot().finished[0].status, Some(DmStatus::Done));
+        assert!(games.path().join("a").exists());
+    }
+
+    #[test]
+    fn a_cancel_after_a_pause_still_takes_the_element_out() {
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.add(el("a"));
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        {
+            // Both asked before the worker saw either.
+            let mut g = m.shared.inner.lock();
+            g.state = DmState::Paused;
+            let c = g.current.as_mut().unwrap();
+            c.pause_requested = true;
+            c.cancelled = true;
+            c.cancel.request();
+        }
+        wait_idle(&m);
+        let s = m.snapshot();
+        assert!(s.queue.is_empty());
+        assert_eq!(s.finished[0].status, Some(DmStatus::Abort));
+    }
+
+    #[test]
+    fn a_failed_base_game_takes_its_dlcs_out_and_keeps_the_reason() {
+        let job = FakeJob::new(&[], &["a"]);
+        let (m, rx, dir) = manager(job.clone());
+        m.pause();
+        let mut base = el("a");
+        base.params.install_dlcs = vec!["dlc1".into()];
+        m.add(base);
+        m.add(el("dlc1"));
+        m.add(el("z"));
+        m.resume();
+        wait_until(&m, "z done", |s| s.finished.iter().any(|e| e.params.app_name == "z") && s.state == DmState::Idle);
+        assert_eq!(*job.runs.lock(), ["a", "z"]);
+        let s = m.snapshot();
+        let a = s.finished.iter().find(|e| e.params.app_name == "a").unwrap();
+        assert_eq!((a.status, a.error.as_deref()), (Some(DmStatus::Error), Some("boom")));
+        assert!(s.finished.iter().find(|e| e.params.app_name == "z").unwrap().error.is_none());
+        assert_eq!(
+            queue::load(&DataPaths::at(dir.path())).finished.iter().find(|e| e.params.app_name == "a").unwrap().error.as_deref(),
+            Some("boom")
+        );
+        drop(rx);
+    }
+
+    #[test]
+    fn a_failure_while_offline_holds_the_queue_instead_of_emptying_it() {
+        let job = FakeJob::new(&[], &["a"]);
+        let (m, rx, _dir) = manager(job.clone());
+        let offline = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let flag = offline.clone();
+        m.set_offline_check(Arc::new(move || flag.load(Ordering::SeqCst)));
+        m.add(el("a"));
+        m.add(el("b"));
+        wait_until(&m, "held", |s| s.state == DmState::Paused);
+        wait_idle(&m);
+        let s = m.snapshot();
+        assert!(s.finished.is_empty());
+        assert_eq!(s.queue.iter().map(|e| e.params.app_name.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(*job.runs.lock(), ["a"]);
+        assert!(rx.try_iter().any(|e| matches!(e, Event::HeldOffline { element } if element.params.app_name == "a")));
+        // Back online, a real failure is a failure and the queue goes on.
+        offline.store(false, Ordering::SeqCst);
+        m.resume();
+        wait_until(&m, "both ended", |s| s.finished.len() == 2 && s.state == DmState::Idle);
+        assert_eq!(m.snapshot().finished.iter().find(|e| e.params.app_name == "a").unwrap().status, Some(DmStatus::Error));
+    }
+
+    #[test]
+    fn an_element_is_held_once_when_the_probes_never_say_online() {
+        let job = FakeJob::new(&[], &["a"]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.set_offline_check(Arc::new(|| true));
+        m.add(el("a"));
+        m.add(el("b"));
+        wait_until(&m, "held", |s| s.state == DmState::Paused);
+        wait_idle(&m);
+        // Resumed (the network has been up a while): it fails again and is recorded.
+        m.resume();
+        wait_until(&m, "both ended", |s| s.finished.len() == 2 && s.state == DmState::Idle);
+        assert_eq!(*job.runs.lock(), ["a", "a", "b"]);
+        assert_eq!(m.snapshot().finished.iter().find(|e| e.params.app_name == "a").unwrap().status, Some(DmStatus::Error));
+    }
+
+    #[test]
+    fn only_a_base_game_install_has_a_folder_to_delete() {
+        let mut base = el("a");
+        base.params.path = "/games".into();
+        assert_eq!(base.partial_folder(), Some(("/games".into(), "a".into())));
+        let mut update = base.clone();
+        update.kind = ElementKind::Update;
+        assert_eq!(update.partial_folder(), None);
+        let mut dlc = base.clone();
+        dlc.params.game_info = json!({"title": "d", "folder_name": "a", "install": {"is_dlc": true}});
+        assert_eq!(dlc.partial_folder(), None);
+        let mut third = base.clone();
+        third.params.path = "thirdParty".into();
+        assert_eq!(third.partial_folder(), None);
+    }
+
+    #[test]
+    fn a_folder_that_could_not_be_deleted_is_reported() {
+        let (m, rx, _dir) = manager(FakeJob::new(&[], &[]));
+        let games = tempfile::tempdir().unwrap();
+        // Not a folder: remove_dir_all fails and it stays.
+        std::fs::write(games.path().join("a"), "x").unwrap();
+        m.remove_partial("A".into(), games.path().to_str().unwrap(), "a");
+        assert!(rx.try_iter().any(|e| matches!(e, Event::RemoveFailed { title, .. } if title == "A")));
+        // Nothing left behind: nothing to say.
+        m.remove_partial("B".into(), games.path().to_str().unwrap(), "missing");
+        assert!(!rx.try_iter().any(|e| matches!(e, Event::RemoveFailed { .. })));
     }
 
     #[test]

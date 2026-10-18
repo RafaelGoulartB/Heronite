@@ -24,7 +24,9 @@ use crate::console::osk::{Osk, OskEvent};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
+use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use heronite_i18n::tr;
+use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
 
 mod fps;
 mod gpu;
@@ -692,9 +694,22 @@ impl SettingsPanel {
             self.c_toggle("exitToTray", false, tr!("Exit to tray"), None, no_tray),
             self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon (needs restart)"), None, no_tray),
             self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon (needs restart)"), None, false),
-            Self::c_header(tr!("When a game starts")),
+            Self::c_header(tr!("When a game starts and ends")),
             self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
+        ];
+        // Bringing the window back belongs to minimizing it.
+        if self.flag("minimizeOnLaunch", false) {
+            v.push(self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again when the game ends"), None, false));
+        }
+        v.extend([
             self.c_toggle("hideWindowOnProtocolLaunch", false, tr!("Hide the window for heronite:// launches"), None, false),
+            self.c_toggle(
+                KEY_CLOSE_AFTER_GAME,
+                false,
+                tr!("Close Steam when the game ends"),
+                Some(tr!("Only when Steam was not running before Heronite started the game")),
+                false,
+            ),
             Self::c_header(tr!("Game Shortcuts")),
             self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
             self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
@@ -709,7 +724,7 @@ impl SettingsPanel {
             ),
             self.c_toggle("downloadProtonToSteam", false, tr!("Download GE-Proton to Steam"), None, false),
             Self::c_header(tr!("Custom Wine / Proton paths")),
-        ];
+        ]);
         for (i, p) in self.custom_paths().into_iter().enumerate() {
             v.push(item(
                 Row::info(SharedString::from(format!("wp:{i}")), p.clone(), tr!("A removes")),

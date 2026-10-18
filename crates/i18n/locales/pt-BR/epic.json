@@ -44,6 +44,7 @@
   "Could not open the login window: {err}": "Não foi possível abrir a janela de login: {err}",
   "Could not read the download: {error}": "Não foi possível ler o arquivo baixado: {error}",
   "Could not read the sizes: {error}": "Não foi possível ler os tamanhos: {error}",
+  "Wine prefix kept: {why}": "Prefixo do Wine mantido: {why}",
   "{kind} is up to date": "{kind} está atualizado",
   "Could not replace {path}: {error}": "Não foi possível substituir {path}: {error}",
   "Could not run pkexec: {error}": "Não foi possível executar o pkexec: {error}",
@@ -365,5 +366,11 @@
   "The game's folder is missing": "A pasta do jogo sumiu",
   "{title}\nPick the folder the game is in now. Nothing is moved: this is for a folder you moved or renamed yourself.": "{title}\nEscolha a pasta onde o jogo está agora. Nada é movido: isto é para uma pasta que você mesmo moveu ou renomeou.",
   "{title}\nThe game leaves the installed games and stays in your library. No file is deleted.": "{title}\nO jogo sai dos jogos instalados e continua na sua biblioteca. Nenhum arquivo é apagado.",
-  "{title} is no longer at {path}.\nIf you moved or renamed its folder, pick where it is now. If you deleted it, remove it from the installed games: it stays in your library, ready to install again.": "{title} não está mais em {path}.\nSe você moveu ou renomeou a pasta, escolha onde ela está agora. Se apagou, remova o jogo dos instalados: ele continua na sua biblioteca, pronto para instalar de novo."
+  "{title} is no longer at {path}.\nIf you moved or renamed its folder, pick where it is now. If you deleted it, remove it from the installed games: it stays in your library, ready to install again.": "{title} não está mais em {path}.\nSe você moveu ou renomeou a pasta, escolha onde ela está agora. Se apagou, remova o jogo dos instalados: ele continua na sua biblioteca, pronto para instalar de novo.",
+  "{title}: the downloaded files could not be deleted from {folder}": "{title}: não foi possível apagar os arquivos baixados de {folder}",
+  "Retry": "Tentar de novo",
+  "({size} for the download queue)": "({size} para a fila de downloads)",
+  "Log in again": "Entrar novamente",
+  "The sign-in expired: log in again": "O login expirou: entre novamente",
+  "Your {store} sign-in expired. Log in again to download, update and sync saves.": "Seu login na {store} expirou. Entre novamente para baixar, atualizar e sincronizar saves."
 }

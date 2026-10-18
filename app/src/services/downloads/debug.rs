@@ -73,6 +73,7 @@ impl Downloads {
                 size: Some("1 GiB".into()),
                 wine_prefix: None,
                 wine_version: None,
+                ignore_free_space: false,
             },
             cx,
         );

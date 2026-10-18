@@ -53,7 +53,7 @@ impl StoreInstallDialog {
 
     fn space_line(&self) -> Option<Div> {
         let space = self.space.as_ref()?;
-        let after = space.free as f64 - self.disk_bytes();
+        let after = self.free_after_queue()? - self.disk_bytes();
         let enough = self.info.is_none() || after >= 0.;
         let mut line = div()
             .text_size(px(13.))
@@ -62,6 +62,9 @@ impl StoreInstallDialog {
             .flex_wrap()
             .gap(px(4.))
             .child(tr!("Space available: {space}", space = space.message));
+        if self.reserved > 0 {
+            line = line.child(tr!("({size} for the download queue)", size = file_size_local(self.reserved as f64)));
+        }
         if self.info.is_some() && enough {
             line = line.child(tr!(" - After install: {size}", size = file_size_local(after)));
         }
@@ -325,7 +328,7 @@ impl Render for StoreInstallDialog {
             action_button(
                 "store-do-install",
                 ButtonKind::Primary,
-                if self.not_enough_space() { tr!("Force install") } else { tr!("Install") },
+                tr!("Install"),
                 self.can_install(cx),
                 cx.listener(|this, _, _, cx| this.install(cx)),
             )

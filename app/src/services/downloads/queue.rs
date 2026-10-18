@@ -1,6 +1,7 @@
 //! Install and update requests, queue control and the download manager's events.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::Instant;
 
 use gpui_kit::*;
@@ -9,11 +10,11 @@ use heronite_amazon::ops::NileJob;
 use heronite_data::DataPaths;
 use heronite_epic::cmd::{Cancel, Legendary};
 use heronite_epic::info;
-use heronite_epic::manager::{DmState, Event as DmEvent, Job, JobResult};
+use heronite_epic::manager::{DmState, DownloadManager, Event as DmEvent, Job, JobResult};
 use heronite_epic::ops::{self, LegendaryJob};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
-use heronite_epic::util::file_size;
+use heronite_epic::util::{file_size, parse_size};
 use heronite_gog::cmd::Gogdl;
 use heronite_gog::ops::GogJob;
 use heronite_i18n::tr;
@@ -32,6 +33,22 @@ impl Downloads {
             (0, DmState::Paused) => QueueState::Paused,
             _ => QueueState::Waiting,
         })
+    }
+
+    /// What the queued downloads (all but `except`'s) still have to bring:
+    /// `(install path, bytes)`, for the install dialogs' free space. The
+    /// queue keeps download sizes, so this errs on the low side.
+    pub fn queued_needs(&self, except: &str) -> Vec<(String, f64)> {
+        self.snapshot
+            .queue
+            .iter()
+            .filter(|e| e.params.app_name != except)
+            .filter_map(|e| {
+                let size = e.params.size.as_deref().and_then(parse_size)?;
+                let done = self.progress.get(&e.params.app_name).map_or(0., |p| p.downloaded_mib * 1024. * 1024.);
+                Some((e.params.path.clone(), (size - done).max(0.)))
+            })
+            .collect()
     }
 
     pub fn is_running(&self) -> bool {
@@ -106,6 +123,13 @@ impl Downloads {
                             self.auto_failed.insert(element.params.app_name.clone());
                         }
                         let why = error.unwrap_or_default();
+                        let legendary = !matches!(element.params.runner.as_str(), "gog" | "nile");
+                        if legendary && heronite_epic::session::legendary_expired(&why) && !self.account.expired {
+                            // Its message says what to do; the history keeps legendary's.
+                            self.mark_expired(None, cx);
+                            self.reload_local(cx);
+                            return cx.notify();
+                        }
                         let first = why.lines().next().unwrap_or("").to_string();
                         let failed = match (install, first.is_empty()) {
                             (true, true) => tr!("{title}: installation failed", title = title.clone()),
@@ -123,6 +147,16 @@ impl Downloads {
                     }
                     _ => {}
                 }
+            }
+            DmEvent::HeldOffline { element } => {
+                log::info!("downloads: {} failed while offline, the queue waits", element.params.app_name);
+                // Paused already: the tick must not read the old state and let go.
+                self.snapshot = self.manager.snapshot();
+                self.offline.did_pause();
+                self.offline_notice(tr!("No internet connection: downloads paused"), true, cx);
+            }
+            DmEvent::RemoveFailed { title, folder } => {
+                self.toast(cx, tr!("{title}: the downloaded files could not be deleted from {folder}", title, folder), true);
             }
         }
         cx.notify();
@@ -157,18 +191,10 @@ impl Downloads {
                         platform_to_install: req.platform.clone(),
                         game_info: req.game_info.clone(),
                         size: req.size.clone(),
+                        ignore_free_space: req.ignore_free_space,
                         ..Default::default()
                     };
-                    manager.add(DmElement::new(ElementKind::Install, base.clone()));
-                    let separate_dlcs = if runner == "legendary" { req.dlcs.as_slice() } else { &[] };
-                    for dlc in separate_dlcs {
-                        // The queue lists the DLC under its own title and cover.
-                        let game_info = library_entry(&data_paths, dlc).unwrap_or_else(|| base.game_info.clone());
-                        manager.add(DmElement::new(
-                            ElementKind::Install,
-                            InstallParams { app_name: dlc.clone(), install_dlcs: Vec::new(), game_info, size: None, ..base.clone() },
-                        ));
-                    }
+                    add_install(&manager, &data_paths, base);
                     anyhow::Ok(())
                 })
                 .await;
@@ -186,6 +212,15 @@ impl Downloads {
         let manager = self.manager.clone();
         let data_paths = self.data_paths.clone();
         let app = game_info.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
+        // Patching the files of a running game, or while a verify or move works on them.
+        if self.playing.contains(&app) {
+            self.toast(cx, tr!("The game is running: close it first"), true);
+            return;
+        }
+        if self.busy.contains_key(&app) {
+            self.toast(cx, tr!("Another operation is running for this game"), true);
+            return;
+        }
         let runner = game_info.get("runner").and_then(Value::as_str).filter(|r| !r.is_empty()).unwrap_or("legendary").to_string();
         let path = game_info.pointer("/install/install_path").and_then(Value::as_str).unwrap_or_default().to_string();
         let platform = game_info.pointer("/install/platform").and_then(Value::as_str).unwrap_or("Windows").to_string();
@@ -205,9 +240,11 @@ impl Downloads {
         self.toast(cx, tr!("Update added to the download queue"), false);
     }
 
+    /// The user's pause: it also holds after a restart (the connection's and
+    /// the shutdown's pauses do not).
     pub fn pause(&mut self) {
         self.offline.release();
-        self.manager.pause();
+        self.manager.pause_by_user();
     }
 
     pub fn resume(&mut self) {
@@ -222,6 +259,8 @@ impl Downloads {
 
     /// Looks at the connection while the queue downloads or waits for it.
     pub(super) fn spawn_offline_watch(&mut self, cx: &mut Context<Self>) {
+        // A failure while offline holds the queue (this watch resumes it).
+        self.manager.set_offline_check(Arc::new(|| !(connectivity::has_network() && SystemNet.is_online())));
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(connectivity::TICK).await;
             if this.update(cx, |this, cx| this.offline_tick(cx)).is_err() {
@@ -296,7 +335,8 @@ impl Downloads {
     /// At start: a queue left from the last run waits for the network instead
     /// of failing its first element.
     pub(super) fn start_queue_when_online(&mut self, cx: &mut Context<Self>) {
-        if self.snapshot.queue.is_empty() {
+        // A queue the user paused stays paused (and needs no network check).
+        if self.snapshot.queue.is_empty() || self.manager.is_user_paused() {
             self.manager.start();
             return;
         }
@@ -337,6 +377,35 @@ impl Downloads {
         self.manager.clear_finished_item(app_name);
     }
 
+    /// Queues a failed install or update of the history again, with what it
+    /// was queued with (an install brings its DLCs again).
+    pub fn retry(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        let Some(el) = self.snapshot.finished.iter().find(|e| e.params.app_name == app_name).cloned() else { return };
+        if self.queued(app_name).is_some() {
+            return;
+        }
+        if el.kind == ElementKind::Update {
+            if self.playing.contains(app_name) {
+                self.toast(cx, tr!("The game is running: close it first"), true);
+                return;
+            }
+            if self.busy.contains_key(app_name) {
+                self.toast(cx, tr!("Another operation is running for this game"), true);
+                return;
+            }
+        }
+        self.manager.clear_finished_item(app_name);
+        let (manager, data_paths) = (self.manager.clone(), self.data_paths.clone());
+        cx.background_spawn(async move {
+            match el.kind {
+                ElementKind::Install => add_install(&manager, &data_paths, el.params),
+                ElementKind::Update => manager.add(DmElement::new(ElementKind::Update, el.params)),
+            }
+        })
+        .detach();
+        self.toast(cx, tr!("Added to the download queue"), false);
+    }
+
     /// Installs one owned DLC of an installed game into the game's folder
     /// (Heroic's `DLC` row: a normal install of the DLC with the base game's
     /// path and platform, no components of its own).
@@ -352,9 +421,40 @@ impl Downloads {
                 size,
                 wine_prefix: None,
                 wine_version: None,
+                ignore_free_space: false,
             },
             cx,
         );
+    }
+}
+
+/// Queues an install and, for Epic, its DLCs as elements of their own (GOG
+/// installs the chosen DLCs with the game: gogdl takes them along).
+fn add_install(manager: &DownloadManager, data_paths: &DataPaths, mut base: InstallParams) {
+    if base.runner == "nile" {
+        // The folder nile creates, which "Stop, delete files" deletes.
+        let title = base.game_info.get("title").and_then(Value::as_str).map(str::to_string);
+        let folder = heronite_amazon::ops::install_folder_name(title.as_deref(), &base.app_name);
+        if let Some(info) = base.game_info.as_object_mut() {
+            info.insert("folder_name".into(), Value::String(folder));
+        }
+    }
+    manager.add(DmElement::new(ElementKind::Install, base.clone()));
+    let separate_dlcs = if base.runner == "legendary" { base.install_dlcs.as_slice() } else { &[] };
+    for dlc in separate_dlcs {
+        // The queue lists the DLC under its own title and cover.
+        let game_info = library_entry(data_paths, dlc).unwrap_or_else(|| {
+            // It installs into the base game's folder: never one to delete.
+            let mut info = base.game_info.clone();
+            if let Some(obj) = info.as_object_mut() {
+                obj.insert("install".into(), serde_json::json!({"is_dlc": true}));
+            }
+            info
+        });
+        manager.add(DmElement::new(
+            ElementKind::Install,
+            InstallParams { app_name: dlc.clone(), install_dlcs: Vec::new(), game_info, size: None, ..base.clone() },
+        ));
     }
 }
 

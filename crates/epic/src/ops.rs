@@ -6,6 +6,7 @@ use std::path::Path;
 
 use anyhow::{bail, Result};
 use heronite_data::game_config;
+use heronite_data::sideload::{self, PrefixOutcome};
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
 use serde_json::{json, Value};
@@ -106,6 +107,9 @@ impl LegendaryJob {
             ElementKind::Install => install_args(&p.app_name, platform, &p.path, &p.sdl_list, &dl),
             ElementKind::Update => update_args("update", &p.app_name, &dl),
         };
+        if p.ignore_free_space {
+            args.push("--ignore-free-space".into());
+        }
         let mut result = self.run_once(&args, total, cancel, on_progress);
         // Retry with a higher shared memory limit, like Heroic.
         if let Ok(out) = &result {
@@ -174,15 +178,20 @@ impl Job for LegendaryJob {
 pub struct OpResult {
     pub ok: bool,
     pub aborted: bool,
+    /// Done, but `message` is a problem to read (shown as an error).
+    pub warning: bool,
     pub message: String,
 }
 
 impl OpResult {
     pub(crate) fn ok(message: impl Into<String>) -> Self {
-        Self { ok: true, aborted: false, message: message.into() }
+        Self { ok: true, aborted: false, warning: false, message: message.into() }
+    }
+    pub fn warn(message: impl Into<String>) -> Self {
+        Self { ok: true, aborted: false, warning: true, message: message.into() }
     }
     pub(crate) fn err(message: impl Into<String>) -> Self {
-        Self { ok: false, aborted: false, message: message.into() }
+        Self { ok: false, aborted: false, warning: false, message: message.into() }
     }
 }
 
@@ -213,7 +222,7 @@ pub fn repair(
     });
     match out {
         Err(err) => OpResult::err(format!("{err:#}")),
-        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, message: tr!("Cancelled").into() },
+        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() },
         Ok(out) if out.success() => {
             let _ = library::write_library(data_paths);
             OpResult::ok(tr!("Finished repairing"))
@@ -331,29 +340,22 @@ pub fn move_install(data_paths: &DataPaths, legendary: &Legendary, app_name: &st
     crate::moves::move_install(data_paths, legendary, app_name, install_path, new_parent)
 }
 
-/// `removePrefix`: deletes the game's Wine prefix, with Heroic's sanity checks.
-pub fn remove_prefix(data_paths: &DataPaths, app_name: &str) -> Result<bool> {
-    let home = home();
-    let settings = game_config::load_game(data_paths, app_name, &home);
-    let global = game_config::load_global(data_paths, &home);
-    let prefix = settings.get("winePrefix").and_then(Value::as_str).unwrap_or_default().to_string();
-    if prefix.is_empty() || !Path::new(&prefix).exists() {
-        return Ok(false);
+/// `removePrefix`: deletes the game's Wine prefix, with Heroic's sanity checks
+/// (see [`sideload::remove_prefix`]); `Skipped` says why it was kept.
+pub fn remove_prefix(data_paths: &DataPaths, app_name: &str) -> PrefixOutcome {
+    sideload::remove_prefix(data_paths, app_name, &home())
+}
+
+/// [`remove_prefix`] for an uninstall: `Some(note)` when the prefix stayed,
+/// for the toast.
+pub fn remove_prefix_note(data_paths: &DataPaths, app_name: &str) -> Option<String> {
+    match remove_prefix(data_paths, app_name) {
+        PrefixOutcome::Removed(_) => None,
+        PrefixOutcome::Skipped(why) => {
+            log::warn!("Wine prefix of {app_name} kept: {why}");
+            Some(tr!("Wine prefix kept: {why}", why))
+        }
     }
-    let text = |k: &str| global.get(k).and_then(Value::as_str).unwrap_or_default().to_string();
-    let forbidden = [text("defaultInstallPath"), game_config::shared_wine_prefix(&home), text("defaultWinePrefix")];
-    if prefix == "/" || prefix == home || forbidden.iter().any(|f| !f.is_empty() && *f == prefix) {
-        log::info!("Can't delete prefix {prefix}: it is a shared or default folder");
-        return Ok(false);
-    }
-    let p = Path::new(&prefix);
-    let has_content = p.read_dir()?.next().is_some();
-    if has_content && !p.join("drive_c").exists() && !p.join("pfx").exists() {
-        log::info!("Can't delete folder {prefix}: no drive_c/pfx folder inside");
-        return Ok(false);
-    }
-    std::fs::remove_dir_all(p)?;
-    Ok(true)
 }
 
 /// `removeSettingsAndLogs`.
@@ -683,21 +685,22 @@ mod tests {
         let prefix = dir.path().join("pfx");
         std::fs::create_dir_all(prefix.join("drive_c")).unwrap();
         game_config::set_game_setting(&data_paths, "A", &home(), "winePrefix", json!(prefix.to_str().unwrap())).unwrap();
-        assert!(remove_prefix(&data_paths, "A").unwrap());
+        assert!(matches!(remove_prefix(&data_paths, "A"), PrefixOutcome::Removed(_)));
         assert!(!prefix.exists());
         // A folder without drive_c/pfx is left alone.
         let other = dir.path().join("other");
         std::fs::create_dir_all(&other).unwrap();
         std::fs::write(other.join("file"), "x").unwrap();
         game_config::set_game_setting(&data_paths, "B", &home(), "winePrefix", json!(other.to_str().unwrap())).unwrap();
-        assert!(!remove_prefix(&data_paths, "B").unwrap());
+        assert!(matches!(remove_prefix(&data_paths, "B"), PrefixOutcome::Skipped(_)));
+        assert!(remove_prefix_note(&data_paths, "B").is_some_and(|n| n.contains("drive_c")));
         assert!(other.exists());
         // The default install path is never deleted (a temp one: never touch real folders in tests).
         let default_install = dir.path().join("Games/Heroic");
         std::fs::create_dir_all(default_install.join("drive_c")).unwrap();
         game_config::set_global_setting(&data_paths, &home(), "defaultInstallPath", json!(default_install.to_str().unwrap())).unwrap();
         game_config::set_game_setting(&data_paths, "C", &home(), "winePrefix", json!(default_install.to_str().unwrap())).unwrap();
-        assert!(!remove_prefix(&data_paths, "C").unwrap());
+        assert!(matches!(remove_prefix(&data_paths, "C"), PrefixOutcome::Skipped(_)));
         assert!(default_install.exists());
     }
 

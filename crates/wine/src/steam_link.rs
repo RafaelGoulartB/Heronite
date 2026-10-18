@@ -2,7 +2,9 @@
 //! pick them like the ones in `compatibilitytools.d`: each gets a folder
 //! there (`heronite-<build>`) holding only a `compatibilitytool.vdf` whose
 //! `install_path` points at the build. Kept while "Install Proton into
-//! Steam" is on; Steam reads the folder when it starts.
+//! Steam" is on; Steam reads the folder when it starts. A registration that
+//! points into another data folder (a test copy run with `HERONITE_DATA_DIR`)
+//! is that folder's: left alone, or the real one would come and go.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -20,8 +22,9 @@ const MARK: &str = "// Written by Heronite";
 pub fn sync(data_paths: &DataPaths) {
     let cfg = WineConfig::load(data_paths);
     let Some(steam_tools) = steam_tools_dir(&cfg) else { return };
-    let builds = if cfg.download_proton_to_steam { builds(&data_paths.tools_dir().join("proton")) } else { Vec::new() };
-    if let Err(e) = sync_into(&steam_tools, &builds) {
+    let proton = data_paths.tools_dir().join("proton");
+    let builds = if cfg.download_proton_to_steam { builds(&proton) } else { Vec::new() };
+    if let Err(e) = sync_into(&steam_tools, &proton, &builds) {
         log::warn!("Could not register Heronite's Proton builds with Steam in {}: {e}", steam_tools.display());
     }
 }
@@ -53,12 +56,13 @@ fn builds(dir: &Path) -> Vec<(String, PathBuf)> {
     out
 }
 
-fn sync_into(steam_tools: &Path, builds: &[(String, PathBuf)]) -> std::io::Result<()> {
+/// `proton`: this data folder's `tools/proton`.
+fn sync_into(steam_tools: &Path, proton: &Path, builds: &[(String, PathBuf)]) -> std::io::Result<()> {
     let wanted: Vec<(String, String)> = builds.iter().map(|(name, path)| (format!("{PREFIX}{name}"), manifest(name, path))).collect();
     if let Ok(rd) = fs::read_dir(steam_tools) {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            if name.starts_with(PREFIX) && !wanted.iter().any(|(w, _)| *w == name) && is_ours(&e.path()) {
+            if name.starts_with(PREFIX) && !wanted.iter().any(|(w, _)| *w == name) && is_ours(&e.path()) && is_here(&e.path(), proton) {
                 fs::remove_file(e.path().join(MANIFEST))?;
                 fs::remove_dir(e.path())?;
             }
@@ -74,6 +78,10 @@ fn sync_into(steam_tools: &Path, builds: &[(String, PathBuf)]) -> std::io::Resul
             log::warn!("{} is not Heronite's; leaving it alone", dir.display());
             continue;
         }
+        if dir.exists() && !is_here(&dir, proton) {
+            log::info!("{} belongs to another Heronite data folder; leaving it alone", dir.display());
+            continue;
+        }
         fs::create_dir_all(&dir)?;
         heronite_data::temps::write_atomic(&file, text.as_bytes(), None)?;
     }
@@ -85,6 +93,17 @@ fn is_ours(dir: &Path) -> bool {
     let Ok(rd) = fs::read_dir(dir) else { return false };
     let names: Vec<_> = rd.flatten().map(|e| e.file_name()).collect();
     names.len() == 1 && names[0] == MANIFEST && fs::read_to_string(dir.join(MANIFEST)).is_ok_and(|t| t.starts_with(MARK))
+}
+
+/// One of our registrations that points into `proton`, or at a build that
+/// is gone.
+fn is_here(dir: &Path, proton: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(dir.join(MANIFEST)) else { return true };
+    let doc = crate::vdf::parse(&text);
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let path =
+        doc.get("compatibilitytools").and_then(|c| c.get("compat_tools")).and_then(|t| t.get(&name)).and_then(|t| t.get("install_path"));
+    path.and_then(|p| p.as_str()).map(Path::new).is_none_or(|p| p.starts_with(proton) || !p.exists())
 }
 
 fn manifest(name: &str, path: &Path) -> String {
@@ -122,7 +141,7 @@ mod tests {
         fs::create_dir_all(steam.join("heronite-other")).unwrap();
         fs::write(steam.join("heronite-other").join(MANIFEST), "\"compatibilitytools\" {}").unwrap();
 
-        sync_into(&steam, &builds(&tools)).unwrap();
+        sync_into(&steam, &tools, &builds(&tools)).unwrap();
         let text = fs::read_to_string(steam.join("heronite-GE-Proton-latest").join(MANIFEST)).unwrap();
         assert!(text.starts_with(MARK));
         assert!(text.contains("\"heronite-GE-Proton-latest\""));
@@ -131,9 +150,33 @@ mod tests {
         assert!(!steam.join("heronite-half-extracted").exists());
 
         fs::remove_dir_all(&ge).unwrap();
-        sync_into(&steam, &builds(&tools)).unwrap();
+        sync_into(&steam, &tools, &builds(&tools)).unwrap();
         assert!(!steam.join("heronite-GE-Proton-latest").exists());
         assert!(steam.join("heronite-other").join(MANIFEST).exists());
+    }
+
+    #[test]
+    fn leaves_the_builds_of_another_data_folder_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let (real, copy) = (dir.path().join("real/tools/proton"), dir.path().join("copy/tools/proton"));
+        let steam = dir.path().join("Steam/compatibilitytools.d");
+        let ge = build(&real, "GE-Proton-latest");
+        sync_into(&steam, &real, &builds(&real)).unwrap();
+        let file = steam.join("heronite-GE-Proton-latest").join(MANIFEST);
+        let before = fs::read_to_string(&file).unwrap();
+
+        // A copy without builds, then with its own.
+        sync_into(&steam, &copy, &builds(&copy)).unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), before);
+        build(&copy, "GE-Proton-latest");
+        sync_into(&steam, &copy, &builds(&copy)).unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), before);
+
+        // Its build gone, any data folder may clean it up.
+        fs::remove_dir_all(&ge).unwrap();
+        fs::remove_dir_all(&copy).unwrap();
+        sync_into(&steam, &copy, &builds(&copy)).unwrap();
+        assert!(!file.exists());
     }
 
     #[test]

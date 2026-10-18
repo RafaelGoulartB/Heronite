@@ -373,7 +373,8 @@ pub fn is_managed_dir(data_paths: &DataPaths, path: &Path) -> bool {
         || parent.file_name().is_some_and(|n| n == "compatibilitytools.d")
 }
 
-/// Deletes the build and marks it as not installed. Blocking.
+/// Deletes the build and marks it as not installed. Blocking. A folder that
+/// cannot be deleted is an error and the build stays listed as installed.
 pub fn remove_version(data_paths: &DataPaths, info: &WineVersionInfo) -> anyhow::Result<()> {
     if let Some(dir) = info.install_dir.as_deref().filter(|d| !d.is_empty()) {
         let path = Path::new(dir);
@@ -382,7 +383,8 @@ pub fn remove_version(data_paths: &DataPaths, info: &WineVersionInfo) -> anyhow:
                 return Err(anyhow!(tr!("Refusing to delete {dir}: it is not inside a Wine/Proton tools folder", dir)));
             }
             if let Err(e) = fs::remove_dir_all(path) {
-                log::warn!("Couldn't remove folder {dir}: {e}. Still marking {} as not installed", info.version);
+                log::warn!("Couldn't remove folder {dir}: {e}");
+                return Err(anyhow!(tr!("Could not delete {dir}: {error}", dir, error = e.to_string())));
             }
         }
     }
@@ -608,6 +610,39 @@ mod tests {
         assert_eq!(install_dir_for(&data_paths, &cfg, &ge), data_paths.tools_dir().join("proton"));
         fs::write(steam.join("steam.sh"), "").unwrap();
         assert_eq!(install_dir_for(&data_paths, &cfg, &ge), steam.join("compatibilitytools.d"));
+    }
+
+    /// A build whose folder cannot be emptied is reported and stays listed as installed.
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_that_cannot_be_deleted_is_an_error_and_stays_installed() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(tmp.path().join("h"));
+        let dir = data_paths.tools_dir().join("proton/GE-Proton9-2");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("proton"), "x").unwrap();
+        let info = WineVersionInfo {
+            version: "GE-Proton9-2".into(),
+            kind: "GE-Proton".into(),
+            install_dir: Some(dir.to_string_lossy().into_owned()),
+            is_installed: Some(true),
+            ..Default::default()
+        };
+        store::mark_installed(&data_paths, &info).unwrap();
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+        let root = fs::write(dir.join("probe"), "").is_ok();
+        let result = remove_version(&data_paths, &info);
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+        if root {
+            return; // permissions do not stop root
+        }
+        let err = format!("{:#}", result.unwrap_err());
+        assert!(err.contains("GE-Proton9-2"), "{err}");
+        assert!(store::read_releases(&data_paths)[0].installed());
+        remove_version(&data_paths, &info).unwrap();
+        assert!(!dir.exists());
+        assert!(!store::read_releases(&data_paths)[0].installed());
     }
 
     #[test]

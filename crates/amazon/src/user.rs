@@ -194,17 +194,23 @@ fn remove_stored_account(paths: &DataPaths) -> Result<()> {
     })
 }
 
-/// `nile auth --logout`, then forget the account, the library list and the
-/// saved updates. Installed games stay installed.
+/// `nile auth --logout`, then forget the account, the library list (but its
+/// installed games, still on disk) and the saved updates.
 pub fn logout(paths: &DataPaths, nile: &Nile) -> Result<()> {
     // nile deregisters the device online; whatever it says, what we keep is
     // cleaned up below.
     let result = nile.run(&["auth", "--logout"]);
     remove_stored_account(paths)?;
+    let installed: Vec<String> = crate::installed::load(paths).into_iter().map(|i| i.id).collect();
     for name in ["nile_library", "nile_install_info"] {
         let store = CacheStore::new(paths, name, None);
         if store.path().exists() {
-            if let Err(err) = store.clear() {
+            let cleared = if name == "nile_library" {
+                store.clear_keeping_games("library", |n| installed.iter().any(|i| i == n))
+            } else {
+                store.clear()
+            };
+            if let Err(err) = cleared {
                 log::warn!("clearing {}: {err:#}", store.path().display());
             }
         }
@@ -336,7 +342,7 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        CacheStore::new(&env.paths, "nile_library", None).set("library", json!([{"app_name": "g"}])).unwrap();
+        CacheStore::new(&env.paths, "nile_library", None).set("library", json!([{"app_name": "g"}, {"app_name": "h"}])).unwrap();
         CacheStore::new(&env.paths, "nile_install_info", None).set("g", json!({"download_size": 1})).unwrap();
         json_store::write(&env.paths.nile_store("updates"), &json!({"updates": ["g"]})).unwrap();
 
@@ -348,7 +354,8 @@ mod tests {
         let stored = json_store::read_value(&env.paths.nile_store("config")).unwrap();
         assert!(stored.get("userData").is_none());
         assert_eq!(stored["other"], 1);
-        assert_eq!(json_store::read_value(&env.paths.nile_library()).unwrap(), json!({}));
+        // The installed game stays listed, the rest of the library goes.
+        assert_eq!(CacheStore::new(&env.paths, "nile_library", None).get("library").unwrap(), json!([{"app_name": "g"}]));
         assert_eq!(json_store::read_value(&env.paths.store_cache("nile_install_info")).unwrap(), json!({}));
         assert!(updates::cached_updates(&env.paths).is_empty());
         // Installed games stay.

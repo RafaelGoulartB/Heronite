@@ -8,14 +8,15 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use anyhow::Result;
-use heronite_data::models::{LocalGameRom, LocalMetaFile};
+use heronite_data::models::{LocalGameMeta, LocalGameRom, LocalMetaFile};
 use heronite_data::text::locale_cmp;
 use heronite_data::{json_store, DataPaths};
 use heronite_i18n::tr;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 use regex::Regex;
 
-use crate::names::{rom_disc_label, strip_ext, title_from_rom_path};
+use crate::names::{name_without_disc, rom_disc_label, strip_ext, title_from_rom_path};
+use crate::pathutil::dirname;
 use crate::pathutil::{basename, ext_lower, join, normalize_key, resolve};
 use crate::store::{self, resolve_template};
 use crate::types::{RomScanArgs, RomScanItem, RomScanPreview};
@@ -35,18 +36,32 @@ fn read_dir_sorted(dir: &str) -> Option<Vec<String>> {
     Some(names)
 }
 
+/// Whether an imported game was imported with this emulator/profile.
+pub fn imported_with(meta: &LocalGameMeta, emulator_id: &str, profile_id: &str) -> bool {
+    meta.emulator_id.as_deref() == Some(emulator_id)
+        && meta.emulator_profile_id.as_deref().filter(|p| !p.is_empty()).is_none_or(|p| p == profile_id)
+}
+
+/// Whether an imported game's emulator no longer exists (`live` has the ids
+/// of those that do). Its ROMs are offered again by the next scan, and
+/// importing them re-links the game (playtime, status, notes kept) instead of
+/// adding it twice: removing an emulator and adding it back loses nothing.
+pub fn orphaned(meta: &LocalGameMeta, live: &HashSet<String>) -> bool {
+    meta.emulator_id.as_deref().is_none_or(|id| !live.contains(id))
+}
+
+/// The ids of the emulators that exist now (see [`orphaned`]).
+pub fn live_emulator_ids(paths: &DataPaths) -> Result<HashSet<String>> {
+    Ok(store::list_user_emulators(paths)?.into_iter().map(|e| e.id).collect())
+}
+
 /// The set of ROM paths already imported for this emulator/profile
 /// (`importedRomPaths`), normalized with [`normalize_key`].
 pub fn imported_rom_paths(metas: &LocalMetaFile, emulator_id: &str, profile_id: &str) -> HashSet<String> {
     let mut set = HashSet::new();
     for meta in metas.games.values() {
-        if meta.emulator_id.as_deref() != Some(emulator_id) {
+        if !imported_with(meta, emulator_id, profile_id) {
             continue;
-        }
-        if let Some(p) = meta.emulator_profile_id.as_deref().filter(|p| !p.is_empty()) {
-            if p != profile_id {
-                continue;
-            }
         }
         for rom in meta.roms.iter().flatten() {
             set.insert(normalize_key(&rom.path));
@@ -226,18 +241,27 @@ pub fn scan_rom_directory(
             path: path.clone(),
             extra: Default::default(),
         };
-        let key = if options.merge_related_files { title.to_lowercase() } else { path };
+        // Discs of one game: same folder, same name but for the disc.
+        let key = if options.merge_related_files {
+            format!("{}|{}", normalize_key(&dirname(&path)), name_without_disc(&basename(&path)).to_lowercase())
+        } else {
+            path
+        };
         if !groups.contains_key(&key) {
             order.push(key.clone());
         }
         groups.entry(key).or_default().push(rom);
     }
 
-    let mut games: Vec<RomScanItem> = order
+    let groups: Vec<Vec<LocalGameRom>> = order.into_iter().map(|k| groups.remove(&k).unwrap_or_default()).collect();
+    let titles: Vec<String> = groups.iter().map(|roms| title_from_rom_path(&basename(&roms[0].path))).collect();
+    let mut games: Vec<RomScanItem> = groups
         .into_iter()
-        .map(|k| {
-            let roms = groups.remove(&k).unwrap_or_default();
-            let title = title_from_rom_path(&basename(&roms[0].path));
+        .zip(&titles)
+        .map(|(roms, title)| {
+            // Two versions of a game (regions, revisions) keep what tells them apart.
+            let title =
+                if titles.iter().filter(|t| *t == title).count() > 1 { name_without_disc(&basename(&roms[0].path)) } else { title.clone() };
             to_scan_item(title, roms, imported)
         })
         .collect();
@@ -357,6 +381,35 @@ mod tests {
             &HashSet::new(),
         );
         assert_eq!(split.games.len(), 3);
+    }
+
+    #[test]
+    fn regions_and_folders_are_not_discs() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("Other")).unwrap();
+        write(root.join("Zelda (USA).iso"), "x").unwrap();
+        write(root.join("Zelda (Europe).iso"), "x").unwrap();
+        write(root.join("Other/Zelda (USA).iso"), "x").unwrap();
+        write(root.join("Solo (USA).iso"), "x").unwrap();
+        let (e, p) = emu("custom", "custom", "{ImagePath}", &["iso"]);
+        let scan = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&scan), ["Solo", "Zelda (Europe)", "Zelda (USA)", "Zelda (USA)"]);
+        assert!(scan.games.iter().all(|g| g.roms.len() == 1));
+    }
+
+    #[test]
+    fn games_of_a_removed_emulator_are_orphans() {
+        let meta = |emulator: Option<&str>| LocalGameMeta {
+            emulator_id: emulator.map(str::to_string),
+            emulator_profile_id: Some("p1".into()),
+            ..Default::default()
+        };
+        let live: HashSet<String> = ["new".to_string()].into();
+        assert!(imported_with(&meta(Some("new")), "new", "p1"));
+        assert!(!imported_with(&meta(Some("new")), "new", "p2"));
+        assert!(!orphaned(&meta(Some("new")), &live));
+        assert!(orphaned(&meta(Some("removed")), &live) && orphaned(&meta(None), &live));
     }
 
     #[test]

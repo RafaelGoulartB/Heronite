@@ -18,10 +18,6 @@ use crate::icons::Icon;
 use crate::theme;
 
 impl EpicInstallDialog {
-    fn not_enough(&self) -> bool {
-        self.space.as_ref().is_some_and(|s| self.info.is_some() && (s.free as f64) < self.disk_bytes())
-    }
-
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         let mut rows = Vec::new();
         let importing = self.mode == Mode::Import;

@@ -12,7 +12,8 @@ use heronite_launch::prepare::CloudSync;
 use heronite_launch::runtime::PrepServices;
 use heronite_launch::steam::{open_steam_client_uri, SteamAction, SteamLocator};
 use heronite_launch::{
-    build_plan, LaunchEvent, LaunchOptions, LaunchPlan, LaunchRequest, Launcher, PlanContext, SystemProbe, SystemSpawner,
+    build_plan, ExitInfo, LaunchEvent, LaunchOptions, LaunchPlan, LaunchRequest, Launcher, PlanContext, StopOptions, SystemProbe,
+    SystemSpawner,
 };
 
 /// Cloud saves around a launch go through legendary or gogdl (the store
@@ -94,6 +95,30 @@ impl GameRuntime {
         if let Ok(mut s) = self.sessions.lock() {
             s.insert(game.app_name.clone(), session_info(game, None));
         }
+    }
+
+    /// Picks up the games a previous run of the app left running (see
+    /// [`Launcher::adopt`]): they show as playing again and their sessions go
+    /// on. Reads the library when there is one: call it off the UI thread.
+    pub fn adopt_leftovers(&self) -> usize {
+        let mut lib: Option<Option<heronite_data::Library>> = None;
+        self.launcher.adopt(&mut |g| {
+            let lib = lib.get_or_insert_with(|| heronite_data::Library::load_with(&self.paths, true).ok());
+            let game = lib.as_ref().and_then(|l| l.games.iter().find(|c| c.app_name == g.app_name && c.runner == g.runner));
+            let info = game.map(|c| session_info(c, None)).unwrap_or_else(|| SessionInfo {
+                app_name: g.app_name.clone(),
+                runner: g.runner.clone(),
+                title: g.title.clone(),
+                steam_app_id: None,
+                aliases: Vec::new(),
+                is_emulator: false,
+                rom: None,
+                selected_rom: None,
+            });
+            if let Ok(mut s) = self.sessions.lock() {
+                s.insert(g.app_name.clone(), info);
+            }
+        })
     }
 
     /// Takes the session out when it ended.
@@ -230,8 +255,11 @@ impl GameRuntime {
         Ok(played_rom)
     }
 
+    /// Closes the game. A Steam game's processes (the ones Steam's logs name
+    /// for it, never the client) are closed too; by default Stop would only
+    /// end the tracking and leave the game running.
     pub fn stop(&self, app_name: &str) -> bool {
-        self.launcher.stop(app_name)
+        self.launcher.stop_with(app_name, StopOptions { kill_steam_processes: true })
     }
 
     pub fn force_clear(&self, app_name: &str) -> bool {
@@ -253,6 +281,16 @@ impl GameRuntime {
             "legendary" => tr!("Epic games are installed from the install dialog.").into(),
             _ => tr!("This game has no install action.").into(),
         })
+    }
+}
+
+/// What a game that died right after starting (see
+/// [`heronite_launch::failed_launch`]) tells the user.
+pub fn failed_launch_message(title: &str, exit: ExitInfo) -> String {
+    match (exit.code, exit.signal) {
+        (Some(code), _) => tr!("{title} closed right after starting (exit code {code})", title, code),
+        (None, Some(signal)) => tr!("{title} crashed right after starting (signal {signal})", title, signal),
+        _ => tr!("{title} closed right after starting", title),
     }
 }
 
@@ -346,6 +384,7 @@ fn spawn_tools_update(paths: DataPaths) {
 /// Starts `c` without waiting for it; a thread reaps it when it exits.
 pub(crate) fn spawn_detached(c: &heronite_launch::Command) -> Result<(), String> {
     let mut cmd = std::process::Command::new(&c.program);
+    heronite_launch::wine::drop_host_certs(c, &mut cmd);
     cmd.args(&c.args)
         .envs(&c.env)
         .stdin(std::process::Stdio::null())
@@ -359,4 +398,17 @@ pub(crate) fn spawn_detached(c: &heronite_launch::Command) -> Result<(), String>
         let _ = child.wait();
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_launch_says_how_the_game_ended() {
+        let code = ExitInfo { code: Some(3), signal: None };
+        assert_eq!(failed_launch_message("Calluna", code), "Calluna closed right after starting (exit code 3)");
+        let signal = ExitInfo { code: None, signal: Some(11) };
+        assert_eq!(failed_launch_message("Calluna", signal), "Calluna crashed right after starting (signal 11)");
+    }
 }

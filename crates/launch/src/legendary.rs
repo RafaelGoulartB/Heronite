@@ -443,6 +443,10 @@ mod tests {
         }
         let process = legendary_process(&ready, &settings(json!({})), &Default::default());
         assert!(process.create_dirs.is_empty() && process.pre_commands.is_empty());
+        // One whose creation was stopped midway is created again.
+        let cut_short = ready.with_path(&format!("/pfx/{}", crate::wine::CREATING_MARKER));
+        let process = legendary_process(&cut_short, &settings(json!({})), &Default::default());
+        assert_eq!(process.pre_commands[0].args, ["createprefix"]);
     }
 
     #[test]

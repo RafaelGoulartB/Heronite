@@ -68,6 +68,10 @@ impl CollectionView {
 
     /// Play / Stop / Install, or the Epic install progress that replaces it.
     pub(super) fn play_area(&mut self, vm: &FocusVm, epic: Option<FocusEpic>, cx: &mut Context<Self>) -> AnyElement {
+        // While the launch prepares, its progress takes the button's place.
+        if let Some(progress) = self.launch_progress(&vm.key, cx) {
+            return progress;
+        }
         let (epic_el, hide_play) = match epic {
             Some(e) => (Some(e.element), e.replaces_play),
             None => (None, false),

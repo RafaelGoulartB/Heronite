@@ -195,6 +195,50 @@ impl UiState {
         changed
     }
 
+    /// Drops the statuses `keep` rejects (removed ones) from the filter on
+    /// screen and from the saved views. True when one changed.
+    pub fn prune_statuses(&mut self, keep: impl Fn(&str) -> bool) -> bool {
+        let before = self.statuses.len();
+        self.statuses.retain(|id| keep(id));
+        let mut changed = self.statuses.len() != before;
+        for view in &mut self.saved_views {
+            let before = view.filters.statuses.len();
+            view.filters.statuses.retain(|id| keep(id));
+            changed |= view.filters.statuses.len() != before;
+        }
+        changed
+    }
+
+    /// [`prune_statuses`](Self::prune_statuses) for categories.
+    pub fn prune_categories(&mut self, keep: impl Fn(&str) -> bool) -> bool {
+        let before = self.categories.len();
+        self.categories.retain(|name| keep(name));
+        let mut changed = self.categories.len() != before;
+        for view in &mut self.saved_views {
+            let before = view.filters.categories.len();
+            view.filters.categories.retain(|name| keep(name));
+            changed |= view.filters.categories.len() != before;
+        }
+        changed
+    }
+
+    /// Follows a category rename (or merge) in the filter on screen and in
+    /// the saved views. True when one changed.
+    pub fn rename_category(&mut self, old: &str, new: &str) -> bool {
+        let rename = |set: &mut BTreeSet<String>| {
+            let had = set.remove(old);
+            if had {
+                set.insert(new.to_owned());
+            }
+            had
+        };
+        let mut changed = rename(&mut self.categories);
+        for view in &mut self.saved_views {
+            changed |= rename(&mut view.filters.categories);
+        }
+        changed
+    }
+
     /// `handleClearFacets`.
     pub fn clear_facets(&mut self) {
         self.facet_filters = FacetFilters::default();
@@ -407,6 +451,46 @@ impl OnlyFilters {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn view_with(name: &str, categories: &[&str], statuses: &[&str]) -> SavedView {
+        let filters = ViewFilters {
+            categories: categories.iter().map(|s| s.to_string()).collect(),
+            statuses: statuses.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        };
+        SavedView { name: name.into(), filters }
+    }
+
+    #[test]
+    fn pruning_a_removed_status_reaches_the_saved_views() {
+        let mut ui = UiState::default();
+        ui.statuses.insert("gone".into());
+        ui.statuses.insert("beaten".into());
+        ui.saved_views = vec![view_with("A", &[], &["gone", "beaten"]), view_with("B", &[], &["beaten"])];
+        assert!(ui.prune_statuses(|id| id != "gone"));
+        assert_eq!(ui.statuses.iter().collect::<Vec<_>>(), ["beaten"]);
+        assert_eq!(ui.saved_views[0].filters.statuses.iter().collect::<Vec<_>>(), ["beaten"]);
+        assert!(!ui.prune_statuses(|id| id != "gone"));
+    }
+
+    #[test]
+    fn pruning_a_removed_category_reaches_the_saved_views() {
+        let mut ui = UiState { saved_views: vec![view_with("A", &["RPG", "Gone"], &[])], ..Default::default() };
+        assert!(ui.prune_categories(|name| name != "Gone"));
+        assert_eq!(ui.saved_views[0].filters.categories.iter().collect::<Vec<_>>(), ["RPG"]);
+    }
+
+    #[test]
+    fn renaming_a_category_follows_into_saved_views_and_merges() {
+        let mut ui = UiState::default();
+        ui.categories.insert("Old".into());
+        ui.saved_views = vec![view_with("A", &["Old", "New"], &[]), view_with("B", &["Other"], &[])];
+        assert!(ui.rename_category("Old", "New"));
+        assert_eq!(ui.categories.iter().collect::<Vec<_>>(), ["New"]);
+        assert_eq!(ui.saved_views[0].filters.categories.iter().collect::<Vec<_>>(), ["New"]);
+        assert_eq!(ui.saved_views[1].filters.categories.iter().collect::<Vec<_>>(), ["Other"]);
+        assert!(!ui.rename_category("Old", "New"));
+    }
 
     fn app_paths(dir: &std::path::Path) -> AppPaths {
         AppPaths { config: dir.join("cfg"), cache: dir.join("cache") }

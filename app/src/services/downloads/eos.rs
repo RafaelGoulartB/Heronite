@@ -249,12 +249,13 @@ impl Downloads {
                     PrefixFolder::NotApplicable => None,
                     // Nothing to enable / disable without a prefix (Heroic returns quietly).
                     PrefixFolder::Invalid if !enable => {
-                        return OpResult { ok: true, aborted: false, message: tr!("EOS Overlay disabled").into() }
+                        return OpResult { ok: true, aborted: false, warning: false, message: tr!("EOS Overlay disabled").into() }
                     }
                     PrefixFolder::Invalid => {
                         return OpResult {
                             ok: false,
                             aborted: false,
+                            warning: false,
                             message: tr!("The Wine prefix of this game does not exist yet; start the game once first").into(),
                         }
                     }

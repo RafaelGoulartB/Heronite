@@ -189,6 +189,136 @@ fn manual_edits_survive_refetch_and_picks_override() {
 }
 
 #[test]
+fn picking_another_igdb_game_replaces_the_stored_match() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    // Id 4242 is another game; every other lookup answers with Portal 2.
+    let server = Server::start(|req| match req.path() {
+        "/twitch/oauth2/token" => Resp::json(json!({"access_token": "tok", "expires_in": 3600})),
+        "/igdb/v4/games" if req.body.contains("where id = 4242;") => {
+            let mut rows: Value = serde_json::from_str(&fixture("igdb_game_steam_620.json")).unwrap();
+            rows[0]["id"] = json!(4242);
+            rows[0]["slug"] = json!("other-game");
+            Resp::json(rows)
+        }
+        "/igdb/v4/games" => Resp::raw_json(fixture("igdb_game_steam_620.json")),
+        _ => Resp::status(404),
+    });
+    let svc = MetadataService::with_endpoints(paths, server.endpoints());
+    let saved = svc.apply_game_metadata(&args("steam_620", "Portal 2")).unwrap();
+    assert_eq!(saved.igdb_id.map(|n| n.get()), Some(72.0));
+
+    let mut pick = args("steam_620", "Portal 2");
+    pick.igdb_id = Some(4242);
+    pick.overwrite_existing = Some(true);
+    pick.preserve_manual = Some(false);
+    let preview = svc.preview_game_metadata(&pick).unwrap();
+    assert_eq!(preview.current.as_ref().and_then(|c| c.igdb_id).map(|n| n.get()), Some(72.0));
+    assert_eq!(preview.proposed.igdb_id.map(|n| n.get()), Some(4242.0));
+    assert_eq!(preview.proposed.igdb_slug.as_deref(), Some("other-game"));
+
+    let applied = svc.apply_game_metadata(&pick).unwrap();
+    assert_eq!(applied.igdb_id.map(|n| n.get()), Some(4242.0));
+    let stored = svc.get_game_metadata("sideload", "steam_620").unwrap().unwrap();
+    assert_eq!((stored.igdb_id.map(|n| n.get()), stored.igdb_slug.as_deref()), (Some(4242.0), Some("other-game")));
+
+    // A later automatic refresh follows the match the user chose.
+    let mut auto = args("steam_620", "Portal 2");
+    auto.overwrite_existing = Some(true);
+    let refreshed = svc.apply_game_metadata(&auto).unwrap();
+    assert_eq!(refreshed.igdb_id.map(|n| n.get()), Some(4242.0));
+}
+
+#[test]
+fn apply_preview_saves_the_shown_preview_without_fetching_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let (server, _) = mock();
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    let mut a = args("steam_620", "Portal 2");
+    a.overwrite_existing = Some(true);
+    a.preserve_manual = Some(false);
+    let preview = svc.preview_game_metadata(&a).unwrap();
+    let requests = server.log.lock().len();
+
+    // The user takes Steam's description over IGDB's.
+    a.field_picks = Some([("description".to_string(), "steam".to_string())].into_iter().collect());
+    let saved = svc.apply_preview(&preview, &a).unwrap();
+    assert_eq!(server.log.lock().len(), requests, "no provider is asked again");
+    assert_eq!(saved.field_sources["description"], "steam");
+    assert_eq!(saved.field_sources["genres"], "igdb");
+    assert_eq!(saved.igdb_id.map(|n| n.get()), Some(72.0));
+    assert!(saved.fetched_at.is_some() && saved.fetch_error.is_none());
+    assert_eq!(svc.get_game_metadata("sideload", "steam_620").unwrap().unwrap().field_sources["description"], "steam");
+}
+
+#[test]
+fn apply_preview_refuses_a_preview_with_nothing_online_and_writes_nothing() {
+    let offline_dir = tempfile::tempdir().unwrap();
+    let (dead, _) = dead_endpoints();
+    let svc = MetadataService::with_endpoints(make_root(offline_dir.path()), dead);
+    let offline = svc.preview_game_metadata(&args("steam_620", "Portal 2")).unwrap();
+    let err = svc.apply_preview(&offline, &args("steam_620", "Portal 2")).unwrap_err();
+    assert!(heronite_metadata::service::is_offline(&err));
+
+    // Reachable servers that know nothing: an error too, not a saved failure.
+    let dir = tempfile::tempdir().unwrap();
+    let server = Server::start(|_| Resp::status(500));
+    let svc = MetadataService::with_endpoints(make_root(dir.path()), server.endpoints());
+    let empty = svc.preview_game_metadata(&args("ghost", "Ghost Game")).unwrap();
+    assert!(!empty.offline && empty.candidates.is_empty());
+    let err = svc.apply_preview(&empty, &args("ghost", "Ghost Game")).unwrap_err();
+    assert_eq!(err.to_string(), "No metadata sources returned data");
+    assert!(svc.get_game_metadata("sideload", "ghost").unwrap().is_none());
+    assert!(svc.get_game_metadata("sideload", "steam_620").unwrap().is_none());
+}
+
+#[test]
+fn a_title_edited_after_a_fetch_needs_the_collection_title_too() {
+    use heronite_data::library::Library;
+    use heronite_data::sideload::{save_game, SideloadPlatform, SideloadSpec};
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let (server, _) = mock();
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    svc.apply_game_metadata(&args("steam_620", "Portal 2")).unwrap();
+    let shown = |paths: &DataPaths| Library::load(paths).unwrap().get("sideload_steam_620").unwrap().title.clone();
+    assert_eq!(shown(&paths), "Portal 2");
+
+    // What "Edit game" saves: the sideload entry...
+    let spec = SideloadSpec {
+        app_name: "steam_620".into(),
+        title: "Portal Two".into(),
+        executable: "/games/portal2".into(),
+        platform: SideloadPlatform::Linux,
+        art_cover: String::new(),
+        art_square: String::new(),
+        browser_url: String::new(),
+        custom_user_agent: String::new(),
+        launch_full_screen: false,
+        run_as: None,
+        install: false,
+        install_folder: String::new(),
+        command: String::new(),
+    };
+    save_game(&paths, &spec).unwrap();
+    assert_eq!(shown(&paths), "Portal 2", "the fetched title still wins on its own");
+
+    // ...and the Collection title.
+    let patch =
+        DetailsPatch { app_name: "steam_620".into(), runner: "sideload".into(), title: Some("Portal Two".into()), ..Default::default() };
+    heronite_metadata::edit::update_collection_game_details(&paths, &patch).unwrap();
+    assert_eq!(shown(&paths), "Portal Two");
+
+    // A later automatic fetch keeps the user's title.
+    let mut again = args("steam_620", "Portal Two");
+    again.overwrite_existing = Some(true);
+    svc.apply_game_metadata(&again).unwrap();
+    assert_eq!(shown(&paths), "Portal Two");
+}
+
+#[test]
 fn igdb_401_refreshes_the_token_once() {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());
@@ -249,6 +379,61 @@ fn no_provider_answers_stores_a_fetch_error_and_idle_fill_retries_later() {
     })
     .unwrap();
     assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 0);
+}
+
+/// Endpoints of a host that takes connections and drops them: every request
+/// fails without an answer, like a machine with no network. Counts them.
+fn dead_endpoints() -> (Endpoints, Arc<AtomicUsize>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let count = accepted.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            count.fetch_add(1, Ordering::SeqCst);
+            drop(stream);
+        }
+    });
+    let endpoints = Endpoints {
+        twitch_token: format!("{base}/twitch/oauth2/token"),
+        igdb: format!("{base}/igdb/v4"),
+        steam_store: format!("{base}/steam"),
+        lutris: format!("{base}/lutris"),
+        ..Endpoints::default()
+    };
+    (endpoints, accepted)
+}
+
+#[test]
+fn offline_saves_nothing_and_the_idle_fill_stops_at_the_first_game() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let (dead, accepted) = dead_endpoints();
+    let svc = MetadataService::with_endpoints(paths.clone(), dead);
+
+    // The store still answers, but the preview says it is not a real fetch.
+    let preview = svc.preview_game_metadata(&args("steam_620", "Portal 2")).unwrap();
+    assert!(preview.offline);
+    assert_eq!(preview.candidates.iter().map(|c| c.source.as_str()).collect::<Vec<_>>(), ["store"]);
+    let per_game = accepted.load(Ordering::SeqCst);
+    assert!(per_game > 0);
+
+    let err = svc.apply_game_metadata(&args("steam_620", "Portal 2")).unwrap_err();
+    assert!(heronite_metadata::service::is_offline(&err), "{err:#}");
+    assert!(svc.get_game_metadata("sideload", "steam_620").unwrap().is_none(), "store-only data must not count as fetched");
+
+    // Two games are missing; only the first one is tried.
+    let before = accepted.load(Ordering::SeqCst);
+    assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 0);
+    assert_eq!(accepted.load(Ordering::SeqCst) - before, per_game);
+    assert!(svc.all_metadata().unwrap().keys().all(|k| k == "sideload:other"));
+
+    // Back online everything is filled, nothing was marked as tried.
+    let (server, _) = mock();
+    let online = MetadataService::with_endpoints(paths, server.endpoints());
+    assert_eq!(online.refresh_missing_collection_metadata().unwrap(), 2);
+    let stored = online.get_game_metadata("sideload", "steam_620").unwrap().unwrap();
+    assert_eq!(stored.field_sources["description"], "igdb");
 }
 
 #[test]

@@ -143,6 +143,10 @@ fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) ->
     if reason == BackupReason::Auto && !cfg.enabled {
         return Ok(LudusaviBackupResult { skipped_reason: Some("disabled".into()), ..Default::default() });
     }
+    if reason == BackupReason::Auto && !cfg.auto_backup_for(&game.runner, &game.app_name) {
+        log::info!("Ludusavi auto backup is off for {}", game.title);
+        return Ok(LudusaviBackupResult { skipped_reason: Some("off-for-game".into()), ..Default::default() });
+    }
     let preferred = Some(cfg.binary_path.as_str()).filter(|p| !p.is_empty());
     let detected = detect_ludusavi(env.runner, env.probe, preferred);
     let binary = Some(cfg.binary_path.trim().to_string()).filter(|b| !b.is_empty()).or_else(|| detected.as_ref().map(|d| d.binary.clone()));
@@ -334,6 +338,16 @@ mod tests {
         let r = backup_for_game(&env, &game, BackupReason::Auto);
         assert_eq!(r.skipped_reason.as_deref(), Some("disabled"));
         assert!(runner.calls.lock().unwrap().is_empty());
+        // Off for this game only: auto skipped, manual proceeds.
+        let (_d1, paths1) =
+            setup(r#"{"ludusavi":{"enabled":true,"useInstalledConfig":false,"backupPath":"/b","autoBackupOff":["sideload:g"]}}"#);
+        let env1 = LudusaviEnv { paths: &paths1, runner: &runner, probe: &probe };
+        let r = backup_for_game(&env1, &game, BackupReason::Auto);
+        assert_eq!(r.skipped_reason.as_deref(), Some("off-for-game"));
+        assert!(runner.calls.lock().unwrap().is_empty());
+        backup_for_game(&env1, &game, BackupReason::Manual);
+        assert!(!runner.calls.lock().unwrap().is_empty());
+        runner.calls.lock().unwrap().clear();
         // Binary not found.
         let (_d2, paths2) = setup(ENABLED);
         let none = FakeProbe::new("/h");

@@ -3,6 +3,8 @@
 
 pub mod compression;
 pub mod downloads;
+pub mod launch_blocker;
+pub mod script_install;
 pub mod session;
 pub mod steam_library;
 pub mod update;

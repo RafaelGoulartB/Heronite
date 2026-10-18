@@ -1,6 +1,7 @@
 {
   "Could not copy the game: {error}": "Não foi possível copiar o jogo: {error}",
   "Could not create {path}: {error}": "Não foi possível criar {path}: {error}",
+  "Could not delete {dir}: {error}": "Não foi possível apagar {dir}: {error}",
   "Could not delete {path}: {error}": "Não foi possível apagar {path}: {error}",
   "Could not download the Windows components this game needs: {error}": "Não foi possível baixar os componentes do Windows de que este jogo precisa: {error}",
   "Could not get gogdl, which Heronite uses for GOG: {error}": "Não foi possível obter o gogdl, que o Heronite usa para a GOG: {error}",
@@ -30,5 +31,6 @@
   "GOG answered with HTTP {status}": "A GOG respondeu com HTTP {status}",
   "This game has no cloud saves": "Este jogo não tem saves na nuvem",
   "This game has no Wine prefix yet; choose one in its Wine settings": "Este jogo ainda não tem um prefixo do Wine; escolha um nas configurações do Wine dele",
-  "That folder does not look like this game's install (goggame-{app}.info is missing)": "Essa pasta não parece ser a instalação deste jogo (falta o goggame-{app}.info)"
+  "That folder does not look like this game's install (goggame-{app}.info is missing)": "Essa pasta não parece ser a instalação deste jogo (falta o goggame-{app}.info)",
+  "Your GOG sign-in expired: log in again": "Seu login na GOG expirou: entre novamente"
 }

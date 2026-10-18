@@ -4,36 +4,35 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use chrono::Utc;
 use heronite_i18n::tr;
 
 use super::process::run_process;
 use super::state::{Control, Shared};
 use super::steam::run_steam;
-use super::{ExitInfo, LaunchEvent, LaunchRequest};
+use super::{failed_launch, ExitInfo, LaunchEvent, LaunchRequest};
 use crate::log_writer::{self, GameLog, GameLogType, HeaderInfo, LogPaths};
 use crate::plan::LaunchPlan;
 use crate::prepare::Notice;
 use crate::record::PlayRecord;
 
-pub(super) fn finish(
-    shared: &Shared,
-    log: &GameLog,
-    req: &LaunchRequest,
-    control: &Control,
-    started_at: chrono::DateTime<Utc>,
-    elapsed: Duration,
-    exit: Option<ExitInfo>,
-) {
+pub(super) fn finish(shared: &Shared, log: &GameLog, req: &LaunchRequest, control: &Control, elapsed: Duration, exit: Option<ExitInfo>) {
     log.close();
     // Free the slot first so listeners can relaunch right away.
     shared.sessions.lock().unwrap().remove(&req.app_name);
+    super::adopt::forget(shared, control, &req.app_name);
     let mut outcome = None;
     // The last write goes through the session's ledger: it replaces what the
     // checkpoints stored instead of adding to it.
     let mut ledger = control.ledger.lock().unwrap();
     ledger.finished = true;
-    if shared.cfg.record && control.record.load(Ordering::SeqCst) {
+    let stopped = control.stopped();
+    // A game that dies right after starting was not played: leave its history
+    // alone, unless a checkpoint already stored part of the session.
+    let failed = failed_launch(exit, stopped, elapsed).is_some() && !ledger.cp.has_written();
+    let record = shared.cfg.record && control.record.load(Ordering::SeqCst) && !failed;
+    // No start time: stopped while Steam was still starting the game, so
+    // nothing was played.
+    if let Some(started_at) = control.started_at().filter(|_| record) {
         let rec = PlayRecord {
             app_name: req.app_name.clone(),
             title: req.title.clone(),
@@ -52,7 +51,7 @@ pub(super) fn finish(
         }
     }
     drop(ledger);
-    shared.send(LaunchEvent::Exited { app_name: req.app_name.clone(), elapsed, exit, record: outcome });
+    shared.send(LaunchEvent::Exited { app_name: req.app_name.clone(), elapsed, exit, stopped, record: outcome });
 }
 
 pub(super) fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, notice: Notice) {
@@ -63,20 +62,47 @@ pub(super) fn fail(shared: &Shared, log: &GameLog, req: &LaunchRequest, notice: 
     shared.send(LaunchEvent::Error { app_name: req.app_name.clone(), message: notice.message });
 }
 
-/// Marks the session's ledger finished however the session thread ends (also
-/// on a panic), which stops its checkpointer.
-struct SessionEnd(Arc<Control>);
+/// Ends the session however its thread ends. The ledger is marked finished
+/// (which stops the checkpointer); after a panic the slot is also freed and
+/// the listeners told, or the game would stay "playing" and refuse every
+/// later launch.
+pub(super) struct SessionEnd {
+    shared: Arc<Shared>,
+    app_name: String,
+    title: String,
+    control: Arc<Control>,
+}
+
+impl SessionEnd {
+    pub(super) fn new(shared: Arc<Shared>, app_name: &str, title: &str, control: Arc<Control>) -> Self {
+        Self { shared, app_name: app_name.to_string(), title: title.to_string(), control }
+    }
+}
 
 impl Drop for SessionEnd {
     fn drop(&mut self) {
-        self.0.ledger.lock().unwrap_or_else(|e| e.into_inner()).finished = true;
-        self.0.wake.notify();
+        self.control.ledger.lock().unwrap_or_else(|e| e.into_inner()).finished = true;
+        self.control.wake.notify();
+        if !std::thread::panicking() {
+            return;
+        }
+        log::error!("the session thread of {} panicked", self.app_name);
+        {
+            // Only our own entry: a relaunch may already hold the slot.
+            let mut sessions = self.shared.sessions.lock().unwrap_or_else(|e| e.into_inner());
+            if sessions.get(&self.app_name).is_some_and(|c| Arc::ptr_eq(c, &self.control)) {
+                sessions.remove(&self.app_name);
+            }
+        }
+        super::adopt::forget(&self.shared, &self.control, &self.app_name);
+        let message = tr!("Lost track of {title}: the launcher hit an internal error", title = self.title);
+        self.shared.send(LaunchEvent::Error { app_name: self.app_name.clone(), message });
     }
 }
 
 /// Saves the playtime of the running game every checkpoint interval, so a
 /// crash, a kill or a power cut loses at most that much.
-fn spawn_checkpointer(shared: Arc<Shared>, app_name: String, control: Arc<Control>) {
+pub(super) fn spawn_checkpointer(shared: Arc<Shared>, app_name: String, control: Arc<Control>) {
     let _ = std::thread::Builder::new().name(format!("checkpoint-{app_name}")).spawn(move || {
         let finished = || control.ledger.lock().map(|l| l.finished).unwrap_or(true);
         // Until the game runs (preparing a prefix can take minutes).
@@ -93,16 +119,15 @@ fn spawn_checkpointer(shared: Arc<Shared>, app_name: String, control: Arc<Contro
 }
 
 pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<Control>) {
-    let (started_at, t0) = (control.started_at, control.t0);
-    let _end = SessionEnd(control.clone());
+    let _end = SessionEnd::new(shared.clone(), &req.app_name, &req.title, control.clone());
     spawn_checkpointer(shared.clone(), req.app_name.clone(), control.clone());
     let log = open_game_log(&shared, &req);
     match &req.plan {
-        LaunchPlan::SteamUri { app_id, uri } => run_steam(&shared, &log, &req, &control, app_id, uri, started_at, t0),
+        LaunchPlan::SteamUri { app_id, uri } => run_steam(&shared, &log, &req, &control, app_id, uri),
         LaunchPlan::Unavailable(r) => fail(&shared, &log, &req, Notice::warn(r.clone(), r.clone())),
         other => {
             let process = other.process().expect("process plan").clone();
-            run_process(&shared, &log, &req, &control, &process, started_at, t0);
+            run_process(&shared, &log, &req, &control, &process);
         }
     }
     // Every path above closed it already; this covers a panic-free early return.

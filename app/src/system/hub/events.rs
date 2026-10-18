@@ -13,16 +13,23 @@ use crate::system::tray::TrayCmd;
 
 pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     let hub = hub(cx);
-    let (launching, ended, settings) = {
+    let (started, ended, settings) = {
         let mut s = hub.0.borrow_mut();
+        // A game this run launched has just started (not one picked up again).
+        let mut started = false;
         match &ev {
             LaunchEvent::Launching { app_name } => {
                 s.running.entry(app_name.clone()).or_insert(None);
             }
+            LaunchEvent::Preparing { app_name, message, cancellable } => {
+                s.steps.insert(app_name.clone(), (message.clone(), *cancellable));
+            }
             LaunchEvent::Running { app_name, pid } => {
-                s.running.insert(app_name.clone(), Some(*pid));
+                s.steps.remove(app_name);
+                started = s.running.insert(app_name.clone(), Some(*pid)) == Some(None);
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
+                s.steps.remove(app_name);
                 s.running.remove(app_name);
             }
             LaunchEvent::Status { message, warning, .. } => {
@@ -43,24 +50,45 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
                 log::error!("{message}");
             }
         }
-        (matches!(ev, LaunchEvent::Launching { .. }), ended, s.settings())
+        (started, ended, s.settings())
     };
+    // Before the post-game work, which takes the session (and its title) away.
+    if !has_window(cx) {
+        notify_without_window(cx, &ev);
+    }
     // Window-independent consumers: post-game work and the Epic service.
     if let Some(session) = crate::services::session::get(cx) {
         session.update(cx, |s, cx| s.on_launch_event(&ev, cx));
     }
     tell_downloads(cx, &ev);
     tell_compression(cx, &ev);
-    if !has_window(cx) {
-        notify_without_window(&ev);
-    }
-    if launching && settings.minimize_on_launch {
-        // Heroic's `minimizeOnLaunch`: needs the tray to come back from.
-        close_window_keep_alive(cx);
+    // Heroic's `minimizeOnLaunch`, once the game runs: the window shows the
+    // launch's progress until then. Needs the tray to come back from.
+    if started && settings.minimize_on_launch && close_window_keep_alive(cx) {
+        hub.0.borrow_mut().hidden_for_game = true;
     }
     if ended {
+        restore_after_game(cx, settings.restore_after_game);
         maybe_exit_idle(cx);
     }
+}
+
+/// Opens the window again once the last game it was closed for ended (with
+/// `restore`; else it stays in the tray until asked for).
+fn restore_after_game(cx: &mut App, restore: bool) {
+    let hub = hub(cx);
+    {
+        let mut s = hub.0.borrow_mut();
+        if !s.hidden_for_game || !s.running.is_empty() {
+            return;
+        }
+        s.hidden_for_game = false;
+        if !restore || s.quitting {
+            return;
+        }
+    }
+    log::info!("game ended: opening the window again");
+    show_window(cx);
 }
 
 /// The Epic service must not update a game while it is played (it queues the
@@ -70,7 +98,7 @@ fn tell_downloads(cx: &mut App, ev: &LaunchEvent) {
     let (app_name, running) = match ev {
         LaunchEvent::Launching { app_name } | LaunchEvent::Running { app_name, .. } => (app_name, true),
         LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => (app_name, false),
-        LaunchEvent::Status { .. } => return,
+        LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => return,
     };
     downloads.update(cx, |d, cx| d.game_running(app_name, running, cx));
 }
@@ -81,15 +109,22 @@ fn tell_compression(cx: &mut App, ev: &LaunchEvent) {
     let (app_name, running) = match ev {
         LaunchEvent::Launching { app_name } | LaunchEvent::Running { app_name, .. } => (app_name, true),
         LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => (app_name, false),
-        LaunchEvent::Status { .. } => return,
+        LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => return,
     };
     compression.update(cx, |c, cx| c.set_game_running(app_name, running, cx));
 }
 
 /// With the window closed to the tray nobody sees toasts: problems of a
-/// launch (it failed, cloud saves could not be synced) become notifications.
-fn notify_without_window(ev: &LaunchEvent) {
+/// launch (it failed, cloud saves could not be synced, the game closed right
+/// after starting) become notifications.
+fn notify_without_window(cx: &App, ev: &LaunchEvent) {
     match ev {
+        LaunchEvent::Exited { app_name, elapsed, exit, stopped, .. } => {
+            if let Some(exit) = heronite_launch::failed_launch(*exit, *stopped, *elapsed) {
+                let title = hub(cx).0.borrow().runtime.session_info(app_name).map_or_else(|| app_name.clone(), |s| s.title);
+                crate::system::notify::send("Heronite", crate::runtime::failed_launch_message(&title, exit));
+            }
+        }
         LaunchEvent::Error { message, .. } => crate::system::notify::send("Heronite", message.clone()),
         LaunchEvent::Status { message, warning: true, .. } => crate::system::notify::send("Heronite", message.clone()),
         _ => {}

@@ -12,6 +12,8 @@
 //! * [`queue`], [`manager`]: the download queue (`store/download-manager.json`).
 //! * [`progress`]: legendary's download progress lines.
 //! * [`saves`]: cloud saves.
+//! * [`playtime`]: Epic's play time for the games never played here.
+//! * [`session`]: a sign-in that expired, for every store.
 //! * [`autoupdate`]: which updates `autoUpdateGames` may queue now.
 //! * [`eos_overlay`]: the EOS Overlay (`legendary eos-overlay`).
 //! * [`third_party`]: games of the EA app and Ubisoft Connect.
@@ -30,9 +32,11 @@ pub mod library;
 pub mod manager;
 pub mod moves;
 pub mod ops;
+pub mod playtime;
 pub mod progress;
 pub mod queue;
 pub mod saves;
+pub mod session;
 pub mod third_party;
 pub mod user;
 pub mod util;

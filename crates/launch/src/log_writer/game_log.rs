@@ -30,14 +30,28 @@ pub struct GameLog {
     path: PathBuf,
     /// Lines that are not forced are dropped (`disableLogs` / no `verboseLogs`).
     disabled: bool,
+    /// The run's log already exists and goes on (see [`Self::continuing`]).
+    append: bool,
     state: Mutex<State>,
 }
 
 impl GameLog {
     pub fn new(path: PathBuf, disabled: bool) -> Arc<Self> {
+        Self::with(path, disabled, false)
+    }
+
+    /// The log of a run that is still going (a game picked up again after the
+    /// app restarted): written at its end, never archived, since the game
+    /// keeps writing to it.
+    pub fn continuing(path: PathBuf, disabled: bool) -> Arc<Self> {
+        Self::with(path, disabled, true)
+    }
+
+    fn with(path: PathBuf, disabled: bool, append: bool) -> Arc<Self> {
         Arc::new(Self {
             path,
             disabled,
+            append,
             state: Mutex::new(State { file: None, started: false, written: 0, truncated: false, closed: false, failed: false }),
         })
     }
@@ -183,7 +197,7 @@ impl GameLog {
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        if self.path.exists() {
+        if self.path.exists() && !self.append {
             std::fs::rename(&self.path, old_path(&self.path))?;
         }
         OpenOptions::new().create(true).append(true).open(&self.path)
@@ -194,6 +208,19 @@ impl GameLog {
 mod tests {
     use super::*;
     use crate::log_writer::write_disabled_notice;
+
+    #[test]
+    fn a_run_that_goes_on_is_appended_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("game.log");
+        std::fs::write(&path, "game output\n").unwrap();
+        let log = GameLog::continuing(path.clone(), false);
+        log.info("picked up again");
+        log.close();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.starts_with("game output\n") && text.contains("picked up again"), "{text}");
+        assert!(!old_path(&path).exists());
+    }
 
     #[test]
     fn a_new_run_archives_the_previous_log() {

@@ -84,6 +84,9 @@ pub(super) struct Selection {
     pub pop: Option<DockPop>,
     /// Newest last.
     undo: Vec<Undo>,
+    /// A batch change or an undo was written and the library has not been
+    /// reloaded yet (since then): an undo now would compare stale games.
+    reloading: Option<std::time::Instant>,
 }
 
 impl Selection {
@@ -100,18 +103,46 @@ impl Selection {
     }
 }
 
-/// What a batch change touched (what its undo puts back).
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Changed {
-    Status,
-    Categories,
-    Favourite,
-    Hidden,
-    Details,
+/// What a batch change touched and what it left each game with. An undo
+/// only puts back the games that still have it: a later change to one of
+/// them stays.
+enum After {
+    Status(String),
+    /// The category and whether each game (in `Undo::games` order) is in it.
+    Categories {
+        name: String,
+        on: Vec<bool>,
+    },
+    Favourite(bool),
+    Hidden(bool),
+    Details(BatchDetails),
+}
+
+impl After {
+    /// Whether `g` (game `i` of the change) still is as the change left it.
+    fn holds(&self, i: usize, g: &CollectionGame, categories: &heronite_data::categories::Categories) -> bool {
+        match self {
+            Self::Status(id) => g.status_id == *id,
+            Self::Categories { name, on } => on.get(i).is_none_or(|on| categories.contains(name, &g.runner, &g.app_name) == *on),
+            Self::Favourite(on) => g.favourite == *on,
+            Self::Hidden(on) => g.hidden == *on,
+            Self::Details(edit) => {
+                let Some(md) = g.metadata.as_deref() else { return true };
+                let has = |list: &[String], name: &str| list.iter().any(|n| n.eq_ignore_ascii_case(name));
+                let series = |v: Option<&str>| v.map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned);
+                edit.series.as_deref().is_none_or(|v| series(md.series.as_deref()) == series(Some(v)))
+                    && edit.lists.iter().all(|(field, delta)| {
+                        let list = field.get(md);
+                        delta.add.iter().all(|a| has(list, a)) && !delta.remove.iter().any(|r| has(list, r))
+                    })
+            }
+        }
+    }
 }
 
 /// One game as it was before a batch change.
 struct Snap {
+    key: SharedString,
     runner: String,
     app_name: String,
     title: String,
@@ -123,14 +154,20 @@ struct Snap {
 }
 
 struct Undo {
-    changed: Changed,
+    after: After,
     keys: Vec<SharedString>,
     games: Vec<Snap>,
-    /// Metadata entries before a fields edit.
+    /// Metadata entries before a fields edit, in `games` order
+    /// (`update_many_details` keeps the order it was given).
     details: Option<DetailsBefore>,
+    /// What the change was, for the undo's toast.
+    message: String,
 }
 
 const UNDO_DEPTH: usize = 20;
+/// How long an undo waits for the reload after a change before it goes ahead
+/// anyway (a reload that failed must not block it for good).
+const RELOAD_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 fn extras_of(g: &CollectionGame) -> SetStatusExtras {
     SetStatusExtras {
@@ -262,6 +299,10 @@ impl CollectionView {
     /// After a reload: games gone from the list (hidden, removed) leave the
     /// selection; after an undo the categories' starting point is taken again.
     pub(super) fn prune_selection(&mut self) {
+        // A load that read the files before the change is followed by another.
+        if !self.reload_again {
+            self.sel.reloading = None;
+        }
         if !self.sel.active() {
             return;
         }
@@ -277,6 +318,26 @@ impl CollectionView {
                 self.sel.steps = steps;
             }
         }
+        self.prune_selection_to_list();
+    }
+
+    /// Games the list no longer shows (the search or a filter changed) leave
+    /// the selection: the dock acts on the games on screen only. Folded
+    /// groups still count. Not while an undo waits for its reload (its games
+    /// may only come back with it).
+    pub(super) fn prune_selection_to_list(&mut self) {
+        if !self.sel.active() || self.sel.reseed {
+            return;
+        }
+        let listed: HashSet<&SharedString> = self.groups.iter().flat_map(|g| g.cards.iter().map(|c| &c.key)).collect();
+        if self.sel.keys.iter().all(|k| listed.contains(k)) {
+            return;
+        }
+        let keys: Vec<SharedString> = self.sel.keys.iter().filter(|k| listed.contains(k)).cloned().collect();
+        let anchor = self.sel.anchor.clone();
+        // A new set of games: the categories' clicks start over from it.
+        self.set_selection(keys);
+        self.sel.anchor = anchor.filter(|a| self.sel.contains(a));
     }
 
     /// A category's state over the selection, its count and what a click does next.
@@ -288,10 +349,11 @@ impl CollectionView {
         (Tri::of(n, games.len()), n, next)
     }
 
-    fn snapshot(&self, changed: Changed, games: &[Arc<CollectionGame>]) -> Undo {
+    fn snapshot(&self, after: After, games: &[Arc<CollectionGame>]) -> Undo {
         let games = games
             .iter()
             .map(|g| Snap {
+                key: g.key.clone().into(),
                 runner: g.runner.clone(),
                 app_name: g.app_name.clone(),
                 title: g.title.clone(),
@@ -302,7 +364,7 @@ impl CollectionView {
                 categories: self.categories.of_game(&g.runner, &g.app_name).into_iter().map(str::to_owned).collect(),
             })
             .collect();
-        Undo { changed, keys: self.sel.keys.clone(), games, details: None }
+        Undo { after, keys: self.sel.keys.clone(), games, details: None, message: String::new() }
     }
 
     /// Runs a batch write off the UI thread, then keeps its undo, says what
@@ -321,6 +383,7 @@ impl CollectionView {
                 match res {
                     Ok(details) => {
                         undo.details = details;
+                        undo.message = message.clone();
                         this.sel.undo.push(undo);
                         let extra = this.sel.undo.len().saturating_sub(UNDO_DEPTH);
                         this.sel.undo.drain(..extra);
@@ -328,6 +391,7 @@ impl CollectionView {
                     }
                     Err(err) => this.show_toast(tr!("Could not change the games: {err}", err = format!("{err:#}")), true, cx),
                 }
+                this.sel.reloading = Some(std::time::Instant::now());
                 this.reload(cx);
             })
             .ok();
@@ -348,7 +412,7 @@ impl CollectionView {
             .and_then(|l| l.statuses.iter().find(|s| s.id == status_id))
             .map(|s| heronite_data::status::status_label(&s.name).to_string())
             .unwrap_or_else(|| status_id.clone());
-        let undo = self.snapshot(Changed::Status, &games);
+        let undo = self.snapshot(After::Status(status_id.clone()), &games);
         let writes: Vec<_> = games.iter().map(|g| (g.app_name.clone(), status_id.clone(), extras_of(g))).collect();
         let message = trn!(games.len(), "Status set to {status} on {n} game", "Status set to {status} on {n} games", status = name);
         self.run_batch(undo, message, move |p| heronite_data::status::set_games_status(p, &writes).map(|_| None), cx);
@@ -367,7 +431,6 @@ impl CollectionView {
         let step = (self.sel.steps.get(&name).copied().unwrap_or(0) + 1) % cyc.len();
         self.sel.steps.insert(name.clone(), step);
         let to = cyc[step];
-        let undo = self.snapshot(Changed::Categories, &games);
         let writes: Vec<(String, String, bool)> = games
             .iter()
             .map(|g| {
@@ -379,6 +442,8 @@ impl CollectionView {
                 (g.runner.clone(), g.app_name.clone(), on)
             })
             .collect();
+        let on = writes.iter().map(|(_, _, on)| *on).collect();
+        let undo = self.snapshot(After::Categories { name: name.clone(), on }, &games);
         let n = games.len();
         let message = match to {
             Step::All => trn!(n, "{name} added to {n} game", "{name} added to {n} games", name = name.clone()),
@@ -397,7 +462,7 @@ impl CollectionView {
         }
         self.context_menu = None;
         let all = games.iter().all(|g| g.favourite);
-        let undo = self.snapshot(Changed::Favourite, &games);
+        let undo = self.snapshot(After::Favourite(!all), &games);
         let writes: Vec<_> = games.iter().map(|g| (g.app_name.clone(), g.title.clone(), !all)).collect();
         let n = games.len();
         let message = if all {
@@ -417,7 +482,7 @@ impl CollectionView {
         }
         self.context_menu = None;
         let all = games.iter().all(|g| g.hidden);
-        let undo = self.snapshot(Changed::Hidden, &games);
+        let undo = self.snapshot(After::Hidden(!all), &games);
         let writes: Vec<_> = games.iter().map(|g| (g.app_name.clone(), g.title.clone(), !all)).collect();
         let n = games.len();
         let message =
@@ -454,40 +519,73 @@ impl CollectionView {
         if games.is_empty() || edit.is_empty() {
             return;
         }
-        let undo = self.snapshot(Changed::Details, &games);
+        let undo = self.snapshot(After::Details(edit.clone()), &games);
         let pairs: Vec<_> = games.iter().map(|g| (g.runner.clone(), g.app_name.clone())).collect();
         let message = trn!(games.len(), "{n} game edited", "{n} games edited");
         self.run_batch(undo, message, move |p| heronite_metadata::edit::update_many_details(p, &pairs, &edit).map(Some), cx);
     }
 
     /// Puts back what the last batch change changed (Ctrl Z, the toast's
-    /// Undo) and selects its games again. False when there is nothing to undo.
+    /// Undo) and selects its games again. A game changed since keeps its
+    /// newer state. False when there is nothing to undo.
     pub(super) fn undo_batch(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.sel.undo.is_empty() {
+            return false;
+        }
+        // The last change is not on screen yet: its games cannot be compared.
+        if self.sel.reloading.is_some_and(|at| at.elapsed() < RELOAD_WAIT) {
+            return true;
+        }
         let Some(u) = self.sel.undo.pop() else { return false };
         self.toast = None;
+        let Undo { after, keys, games, details, message } = u;
+        // A game gone from the list (hidden, removed) cannot be compared: it is put back.
+        let lib = self.lib.clone();
+        let holds: Vec<bool> = games
+            .iter()
+            .enumerate()
+            .map(|(i, s)| lib.as_ref().and_then(|l| l.get(&s.key)).is_none_or(|g| after.holds(i, g, &self.categories)))
+            .collect();
+        let skipped = holds.iter().filter(|h| !**h).count();
+        let games: Vec<Snap> = games.into_iter().zip(&holds).filter(|(_, h)| **h).map(|(s, _)| s).collect();
+        let details: DetailsBefore = details.unwrap_or_default().into_iter().zip(&holds).filter(|(_, h)| **h).map(|(d, _)| d).collect();
+        if games.is_empty() {
+            self.show_toast(tr!("Nothing undone: these games were changed again since “{what}”", what = message), false, cx);
+            return true;
+        }
+        let done = if skipped == 0 {
+            tr!("Undone: {what}", what = message.as_str())
+        } else {
+            trn!(
+                skipped,
+                "Undone: {what} ({n} game changed since kept its change)",
+                "Undone: {what} ({n} games changed since kept their changes)",
+                what = message.as_str()
+            )
+        };
         let paths = self.data_paths.clone();
-        let Undo { changed, keys, games, details } = u;
+        self.sel.reloading = Some(std::time::Instant::now());
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    match changed {
-                        Changed::Status => {
+                    match after {
+                        After::Status(_) => {
                             let w: Vec<_> = games.into_iter().map(|s| (s.app_name, s.status, s.extras)).collect();
                             heronite_data::status::set_games_status(&paths, &w)
                         }
-                        Changed::Categories => {
+                        After::Categories { .. } => {
                             let w: Vec<_> = games.into_iter().map(|s| (s.runner, s.app_name, s.categories)).collect();
                             heronite_data::categories::restore_categories(&paths, &w)
                         }
-                        Changed::Favourite => {
+                        After::Favourite(_) => {
                             let w: Vec<_> = games.into_iter().map(|s| (s.app_name, s.title, s.favourite)).collect();
                             heronite_data::config_games::set_favourites(&paths, &w)
                         }
-                        Changed::Hidden => {
+                        After::Hidden(_) => {
                             let w: Vec<_> = games.into_iter().map(|s| (s.app_name, s.title, s.hidden)).collect();
                             heronite_data::config_games::set_hidden(&paths, &w)
                         }
-                        Changed::Details => heronite_metadata::edit::restore_details(&paths, &details.unwrap_or_default()),
+                        After::Details(_) => heronite_metadata::edit::restore_details(&paths, &details),
                     }
                 })
                 .await;
@@ -498,10 +596,11 @@ impl CollectionView {
                         this.sel.keys = keys;
                         this.sel.reseed = true;
                         this.sel.pop = None;
-                        this.show_toast(tr!("Undone"), false, cx);
+                        this.show_toast(done, false, cx);
                     }
                     Err(err) => this.show_toast(tr!("Could not undo: {err}", err = format!("{err:#}")), true, cx),
                 }
+                this.sel.reloading = Some(std::time::Instant::now());
                 this.reload(cx);
             })
             .ok();

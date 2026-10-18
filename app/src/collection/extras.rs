@@ -14,6 +14,7 @@ use gpui_kit::*;
 use heronite_data::details_url::details_url;
 use heronite_data::CollectionGame;
 use heronite_emulation::ludusavi::{LudusaviGame, SystemRunner};
+use heronite_emulation::settings_ext::set_auto_backup;
 use heronite_images::{ImageRef, Variant};
 use heronite_metadata::achievements::{load_achievements, Achievement};
 use heronite_metadata::{Endpoints, Http};
@@ -228,7 +229,7 @@ impl CollectionView {
         }
     }
 
-    /// Backup save (Ludusavi), Uninstall and Remove from Collection, and for
+    /// Backup save and its after-play switch (Ludusavi), Uninstall and Remove from Collection, and for
     /// the palette only Details (the store page) and Edit playtime (the time
     /// played is edited in the game settings).
     pub(super) fn extras_actions(&self, game: &CollectionGame) -> Vec<GameActionItem> {
@@ -256,6 +257,14 @@ impl CollectionView {
             );
         }
         v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save"), Icon::Save, "saves backup ludusavi salvamentos jogos salvos"));
+        let auto = self.auto_backup(game);
+        v.push(item(
+            A::AutoBackup { on: !auto },
+            "auto-backup",
+            if auto { tr!("Turn off automatic save backup") } else { tr!("Turn on automatic save backup") },
+            Icon::CloudSync,
+            "saves backup ludusavi after play automatic salvamentos jogos salvos automatico depois de jogar",
+        ));
         if game.steam_launch_id.is_some() && game.installed && !tracking {
             v.push(item(
                 A::SteamUninstall,
@@ -342,6 +351,34 @@ impl CollectionView {
         };
         let view = cx.new(|cx| LudusaviBackupDialog::new(ctx, target, Arc::new(SystemRunner::default()), cx));
         self.open_dialog(view, cx);
+    }
+
+    /// Whether a session of `game` ends with a save backup.
+    pub(super) fn auto_backup(&self, game: &CollectionGame) -> bool {
+        self.lib.as_ref().is_some_and(|l| l.settings.ludusavi.auto_backup_for(&game.runner, &game.app_name))
+    }
+
+    /// Leaves the game out of the after-play backup or puts it back in. While
+    /// that backup is off for every game, opens Settings → Saves instead.
+    pub(super) fn set_auto_backup(&mut self, key: &str, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(lib) = self.lib.clone() else { return };
+        let Some(game) = lib.get(key) else { return };
+        if !lib.settings.ludusavi.enabled {
+            self.open_settings_section(crate::pages::settings::Section::Saves, window, cx);
+            return;
+        }
+        let (paths, runner, app_name) = (self.data_paths.clone(), game.runner.clone(), game.app_name.clone());
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { set_auto_backup(&paths, &runner, &app_name, on) }).await;
+            this.update(cx, |this, cx| {
+                if let Err(err) = res {
+                    this.show_toast(tr!("Could not save the setting: {error}", error = format!("{err:#}")), true, cx);
+                }
+                this.reload(cx);
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// The focus panel's "open details" button / the "Details" menu item:

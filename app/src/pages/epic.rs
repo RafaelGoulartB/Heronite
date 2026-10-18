@@ -405,6 +405,8 @@ impl Render for EpicPage {
                         tr!("Waiting for the login window...")
                     } else if logging_in {
                         tr!("Logging in...")
+                    } else if account.expired {
+                        tr!("Log in again")
                     } else {
                         tr!("Log in")
                     },

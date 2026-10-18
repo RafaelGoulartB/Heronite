@@ -133,6 +133,8 @@ impl<K: StoreKind> StorePage<K> {
                     tr!("Waiting for the login window...")
                 } else if state.logging_in {
                     tr!("Logging in...")
+                } else if state.account.expired {
+                    tr!("Log in again")
                 } else {
                     tr!("Log in")
                 },

@@ -326,13 +326,28 @@ impl CollectionView {
                 cx.notify();
             }));
         let list = open.then(|| self.vm_views_list(&cards, current, cx));
+        let replacing = self.view_menu.replacing;
         let naming = self.view_menu.naming.as_ref().map(|(input, _)| {
-            name_row(input)
+            let row = name_row(input)
                 .child(
-                    crate::ui::controls::button_sm("vm-view-save", crate::ui::controls::ButtonKind::Primary, tr!("Save"))
-                        .on_click(cx.listener(|this, _, window, cx| this.save_named_view(window, cx))),
+                    crate::ui::controls::button_sm(
+                        "vm-view-save",
+                        if replacing { crate::ui::controls::ButtonKind::Danger } else { crate::ui::controls::ButtonKind::Primary },
+                        if replacing { tr!("Replace") } else { tr!("Save") },
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| this.save_named_view(window, cx))),
                 )
-                .child(icon_button("vm-view-cancel", Icon::Close, true).on_click(cx.listener(|this, _, _, cx| this.cancel_view_naming(cx))))
+                .child(
+                    icon_button("vm-view-cancel", Icon::Close, true).on_click(cx.listener(|this, _, _, cx| this.cancel_view_naming(cx))),
+                );
+            let note = replacing.then(|| {
+                div()
+                    .px(px(12.))
+                    .text_size(px(12.))
+                    .text_color(theme::danger_text())
+                    .child(tr!("A view with this name exists. Replace it with the current filters, or type another name."))
+            });
+            div().flex().flex_col().gap(px(6.)).child(row).children(note)
         });
         div().flex().flex_col().gap(px(8.)).child(div().relative().child(trigger).children(list)).children(naming)
     }

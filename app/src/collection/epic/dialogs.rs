@@ -163,6 +163,10 @@ impl CollectionView {
         if self.epic_busy_guard(cx, tr!("Moving a game is not possible while an Epic game is being installed.")) {
             return;
         }
+        if self.playing.contains_key(&game.app_name) {
+            self.show_toast(tr!("{title} is running. Close the game to move it.", title = game.title), true, cx);
+            return;
+        }
         let Some(current) = game.game.install.install_path.clone() else { return };
         let mut spec = Confirm::new(
             "epic-move",
@@ -198,6 +202,10 @@ impl CollectionView {
     pub(super) fn epic_open_relocate(&mut self, key: &str, missing: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
         if self.epic_busy_guard(cx, tr!("Changing the install location is not possible while a game is being installed.")) {
+            return;
+        }
+        if self.playing.contains_key(&game.app_name) {
+            self.show_toast(tr!("{title} is running. Close the game to change its install location.", title = game.title), true, cx);
             return;
         }
         let current = game.game.install.install_path.clone().unwrap_or_default();
@@ -281,6 +289,10 @@ impl CollectionView {
     pub(super) fn epic_open_verify(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.epic_game(key) else { return };
         if self.epic_busy_guard(cx, tr!("Verifying a game is not possible while an Epic game is being installed.")) {
+            return;
+        }
+        if self.playing.contains_key(&game.app_name) {
+            self.show_toast(tr!("{title} is running. Close the game to verify it.", title = game.title), true, cx);
             return;
         }
         let mut spec = Confirm::new(

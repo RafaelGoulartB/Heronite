@@ -51,6 +51,24 @@ impl Default for Endpoints {
     }
 }
 
+/// A request that never got an answer (no network, DNS, timeout, dropped
+/// connection), as opposed to a server that replied with an error status.
+#[derive(Debug)]
+pub struct Unreachable(String);
+
+impl std::fmt::Display for Unreachable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for Unreachable {}
+
+/// Whether `err` came from a request that got no answer at all.
+pub fn is_unreachable(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<Unreachable>().is_some()
+}
+
 /// A finished response (status errors are not turned into `Err`).
 #[derive(Debug, Clone)]
 pub struct Response {
@@ -145,12 +163,17 @@ impl<'a> Request<'a> {
             }
             req.call()
         }
-        .map_err(|e| anyhow!("{}: {e}", self.url))?;
+        .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
         let status = resp.status().as_u16();
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
         let content_type = header("content-type").unwrap_or_default();
         let content_length = header("content-length").and_then(|v| v.parse().ok());
-        let body = resp.body_mut().with_config().limit(self.max_bytes).read_to_vec().map_err(|e| anyhow!("{}: {e}", self.url))?;
+        let body = resp
+            .body_mut()
+            .with_config()
+            .limit(self.max_bytes)
+            .read_to_vec()
+            .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
         Ok(Response { status, content_type, content_length, body })
     }
 

@@ -108,8 +108,10 @@ pub struct LocalGameSession {
     pub extra: Extra,
 }
 
-/// Heronite keeps at most this many sessions per game.
-pub const MAX_SESSIONS_PER_GAME: usize = 200;
+/// At most this many sessions are kept per game (Heronite kept 200: a game
+/// played every day lost its older months to Statistics and the year in
+/// review). About 190 bytes each on disk.
+pub const MAX_SESSIONS_PER_GAME: usize = 5000;
 
 // local_library/statuses.json
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -80,6 +80,30 @@ impl<'a> CacheStore<'a> {
         })
     }
 
+    /// Clears the store but the games of the list under `key` whose
+    /// `app_name` passes `keep` (with the list's date). Signing out keeps the
+    /// installed games this way: they are still on disk, and the Collection
+    /// only lists what a store's cache has.
+    pub fn clear_keeping_games(&self, key: &str, keep: impl Fn(&str) -> bool) -> Result<()> {
+        json_store::update_value(&self.path(), |doc| {
+            let games: Vec<Value> = match doc.get_mut(key).map(Value::take) {
+                Some(Value::Array(list)) => {
+                    list.into_iter().filter(|g| g.get("app_name").and_then(Value::as_str).is_some_and(&keep)).collect()
+                }
+                _ => Vec::new(),
+            };
+            let stamp = doc.get("__timestamp").and_then(|t| t.get(key)).cloned();
+            let mut fresh = Map::new();
+            if !games.is_empty() {
+                fresh.insert(key.to_string(), Value::Array(games));
+                let stamp = stamp.unwrap_or_else(|| Value::String(js_date_now()));
+                fresh.insert("__timestamp".into(), Value::Object(Map::from_iter([(key.to_string(), stamp)])));
+            }
+            *doc = Value::Object(fresh);
+            Ok(())
+        })
+    }
+
     /// `store.clear()`: the file becomes `{}`.
     pub fn clear(&self) -> Result<()> {
         json_store::update_value(&self.path(), |doc| {
@@ -112,6 +136,22 @@ mod tests {
         assert!(raw.contains("\"__timestamp\""), "{raw}");
         store.delete("a").unwrap();
         assert!(store.get("a").is_none());
+    }
+
+    #[test]
+    fn clearing_can_keep_some_games() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path());
+        let store = CacheStore::library(&data_paths);
+        store.set("library", json!([{"app_name": "a"}, {"app_name": "b"}, {"title": "no name"}])).unwrap();
+        store.set("other", json!(1)).unwrap();
+        store.clear_keeping_games("library", |n| n == "b").unwrap();
+        assert_eq!(store.get("library").unwrap(), json!([{"app_name": "b"}]));
+        assert!(store.get("other").is_none());
+        let raw = json_store::read_value(&store.path()).unwrap();
+        assert!(raw["__timestamp"]["library"].is_string() && raw["__timestamp"].get("other").is_none());
+        store.clear_keeping_games("library", |_| false).unwrap();
+        assert_eq!(json_store::read_value(&store.path()).unwrap(), json!({}));
     }
 
     #[test]

@@ -4,8 +4,9 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::DataPaths;
 use heronite_i18n::tr;
-use heronite_metadata::remove::{remove_collection_game, ShortcutDirs};
+use heronite_metadata::remove::{remove_collection_game, RemoveOutcome, ShortcutDirs};
 
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
@@ -37,6 +38,20 @@ pub fn confirm_message(title: &str) -> String {
     )
 }
 
+/// Takes a game out of the Collection: its desktop and menu shortcuts and
+/// its Steam shortcut first (`removeShortcuts` + `removeNonSteamGame`: they
+/// look the game up in the library the removal empties; failures only log),
+/// then its Collection data. Blocking.
+pub fn remove_from_collection(paths: &DataPaths, runner: &str, app_name: &str) -> anyhow::Result<RemoveOutcome> {
+    let outcome = crate::system::shortcuts::remove_shortcuts(paths, runner, app_name);
+    log::info!("shortcuts of {app_name}: {outcome:?}");
+    if crate::system::shortcuts::is_added_to_steam(paths, runner, app_name) {
+        let outcome = crate::system::shortcuts::remove_from_steam(paths, runner, app_name);
+        log::info!("steam shortcut of {app_name}: {outcome:?}");
+    }
+    remove_collection_game(paths, &ShortcutDirs::none(), app_name, runner)
+}
+
 impl RemoveGameDialog {
     pub fn new(ctx: DialogCtx, app_name: String, runner: String, title: String) -> Self {
         Self { ctx, app_name, runner, title, working: false, error: None, console_list: Default::default() }
@@ -50,19 +65,8 @@ impl RemoveGameDialog {
         self.error = None;
         let (paths, app_name, runner) = (self.ctx.data_paths.clone(), self.app_name.clone(), self.runner.clone());
         cx.spawn(async move |this, cx| {
-            let result = cx
-                .background_spawn(async move {
-                    // `removeShortcuts` + `removeNonSteamGame` first: they look the game up
-                    // in the library, which the removal below empties. Failures only log.
-                    let outcome = crate::system::shortcuts::remove_shortcuts(&paths, &runner, &app_name);
-                    log::info!("shortcuts of {app_name}: {outcome:?}");
-                    if crate::system::shortcuts::is_added_to_steam(&paths, &runner, &app_name) {
-                        let outcome = crate::system::shortcuts::remove_from_steam(&paths, &runner, &app_name);
-                        log::info!("steam shortcut of {app_name}: {outcome:?}");
-                    }
-                    remove_collection_game(&paths, &ShortcutDirs::none(), &app_name, &runner).map_err(|e| format!("{e:#}"))
-                })
-                .await;
+            let result =
+                cx.background_spawn(async move { remove_from_collection(&paths, &runner, &app_name).map_err(|e| format!("{e:#}")) }).await;
             this.update(cx, |this, cx| {
                 this.working = false;
                 match result {

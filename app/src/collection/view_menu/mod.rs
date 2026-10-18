@@ -40,6 +40,8 @@ pub(super) struct ViewMenu {
     with_tokens: bool,
     /// Name box of "Save view", while it is open.
     naming: Option<(Entity<InputState>, Subscription)>,
+    /// The name typed matches a saved view: the next Save replaces it.
+    replacing: bool,
     /// The Views select is open.
     select_open: bool,
     /// The Views section lists the views to rename, update, move or delete.
@@ -89,6 +91,7 @@ impl ViewMenu {
             highlight: 0,
             with_tokens: false,
             naming: None,
+            replacing: false,
             select_open: false,
             editing: false,
             more: None,
@@ -310,11 +313,9 @@ impl CollectionView {
         (games.len(), games.iter().filter(|g| g.installed).count())
     }
 
-    /// A removed status no longer filters.
+    /// A removed status no longer filters, nor does it in the saved views.
     pub(super) fn prune_status_filter(&mut self, lib: &Library) {
-        let before = self.ui.statuses.len();
-        self.ui.statuses.retain(|id| lib.statuses.iter().any(|s| &s.id == id));
-        if self.ui.statuses.len() != before {
+        if self.ui.prune_statuses(|id| lib.statuses.iter().any(|s| s.id == id)) {
             self.save_ui();
         }
     }

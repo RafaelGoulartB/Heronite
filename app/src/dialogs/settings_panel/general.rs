@@ -8,11 +8,13 @@ use serde_json::Value;
 use super::parts::{column, heading, help, rows, Rows};
 use super::{Section, SettingsPanel, Target};
 use crate::icons::Icon;
+use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use crate::theme;
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::{tr, Lang, Preference};
+use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
 
 /// What the global ("General") panel shows. The Settings page hosts one
 /// panel and switches between these; the Game defaults use the other tabs.
@@ -174,8 +176,8 @@ impl SettingsPanel {
             .child(self.startup_rows(cx).card())
             .child(heading(tr!("System Tray")))
             .child(self.tray_rows(cx).card())
-            .child(heading(tr!("When a game starts")))
-            .child(self.game_start_rows(cx).card())
+            .child(heading(tr!("When a game starts and ends")))
+            .child(self.game_rows(cx).card())
             .child(heading(tr!("Game Shortcuts")))
             .child(self.shortcut_rows(cx).card())
             .child(heading(tr!("Wine and Proton")))
@@ -217,18 +219,40 @@ impl SettingsPanel {
             .child(self.toggle_row("no-tray", "noTrayIcon", false, tr!("Hide System Tray Icon (requires restart)"), None, false, cx))
     }
 
-    fn game_start_rows(&self, cx: &mut Context<Self>) -> Rows {
-        rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false, cx)).child(
-            self.toggle_row(
-                "hide-on-protocol",
-                "hideWindowOnProtocolLaunch",
+    /// The window and Steam around a game. Bringing the window back belongs
+    /// to minimizing it, so it shows under that switch while it is on.
+    fn game_rows(&self, cx: &mut Context<Self>) -> Rows {
+        let mut list =
+            rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false, cx));
+        if self.flag("minimizeOnLaunch", false) {
+            list = list.child(self.toggle_row(
+                "restore-after-game",
+                KEY_RESTORE_AFTER_GAME,
                 false,
-                tr!("Hide Heronite window when launching games from heronite:// links"),
-                Some(tr!("Keeps the window hidden when a game is launched from an external shortcut, like the 'Add to Steam' feature.")),
+                tr!("Show Heronite again when the game ends"),
+                None,
                 false,
                 cx,
-            ),
-        )
+            ));
+        }
+        list.child(self.toggle_row(
+            "hide-on-protocol",
+            "hideWindowOnProtocolLaunch",
+            false,
+            tr!("Hide Heronite window when launching games from heronite:// links"),
+            Some(tr!("Keeps the window hidden when a game is launched from an external shortcut, like the 'Add to Steam' feature.")),
+            false,
+            cx,
+        ))
+        .child(self.toggle_row(
+            "close-steam-after-game",
+            KEY_CLOSE_AFTER_GAME,
+            false,
+            tr!("Close Steam when the game ends"),
+            Some(tr!("Only when Steam was not running before Heronite started the game.")),
+            false,
+            cx,
+        ))
     }
 
     /// Shortcuts made when a game is added (`system/shortcuts.rs`).

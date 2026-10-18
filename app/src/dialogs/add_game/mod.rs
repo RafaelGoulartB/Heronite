@@ -66,6 +66,18 @@ enum Select {
     Wine,
 }
 
+/// The form's fields, to tell whether anything was typed since it opened.
+/// The Wine pick is left out: it is filled in by itself once the list loads.
+#[derive(Clone, Default, PartialEq)]
+struct FormState {
+    texts: [String; 9],
+    by_command: bool,
+    fullscreen: bool,
+    shared_prefix: bool,
+    platform: Option<SideloadPlatform>,
+    bottle: String,
+}
+
 pub struct AddGameDialog {
     ctx: DialogCtx,
     mode: Mode,
@@ -105,6 +117,10 @@ pub struct AddGameDialog {
     auto_art_tried: Option<String>,
     saving: bool,
     installer_running: bool,
+    /// The form as it opened (after the stored values were filled in).
+    initial: FormState,
+    /// Asking whether to throw away what was typed.
+    confirm_discard: bool,
     /// Edit mode: asking to remove the game.
     confirm_remove: bool,
     remove_prefix_too: bool,
@@ -152,7 +168,8 @@ impl AddGameDialog {
         let (mut folder, mut command) = (String::new(), String::new());
         if let Some(game) = &edited {
             let g = &game.game;
-            title = g.title.clone();
+            // What the game shows (Collection title first), not the sideload one.
+            title = game.title.clone();
             square = g.art_square.clone().unwrap_or_default();
             let cover = g.art_cover.clone().unwrap_or_default();
             hero = if cover != square { cover } else { String::new() };
@@ -279,6 +296,8 @@ impl AddGameDialog {
             auto_art_tried: None,
             saving: false,
             installer_running: false,
+            initial: FormState::default(),
+            confirm_discard: false,
             confirm_remove: false,
             remove_prefix_too: false,
             removable_prefix,
@@ -289,10 +308,66 @@ impl AddGameDialog {
             layer: Default::default(),
             _subs: subs,
         };
+        this.initial = this.form_state(cx);
         if !this.is_edit() {
             this.load_wine_list(cx);
         }
         this
+    }
+
+    fn form_state(&self, cx: &App) -> FormState {
+        let texts =
+            [&self.title, &self.square, &self.hero, &self.exe, &self.folder, &self.command, &self.url, &self.user_agent, &self.prefix]
+                .map(|input| text_of(input, cx));
+        FormState {
+            texts,
+            by_command: self.by_command,
+            fullscreen: self.fullscreen,
+            shared_prefix: self.shared_prefix,
+            platform: Some(self.platform),
+            bottle: self.bottle.clone(),
+        }
+    }
+
+    /// Something was typed or changed since the dialog opened.
+    fn dirty(&self, cx: &App) -> bool {
+        self.form_state(cx) != self.initial
+    }
+
+    /// Esc, offered by the host before it closes the dialog. True when used:
+    /// the picker closed, a question was answered or asked.
+    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        let step = escape(self.picker.is_some(), self.confirm_discard, self.confirm_remove, !self.saving && self.dirty(cx));
+        match step {
+            Escape::ClosePicker => self.picker = None,
+            Escape::KeepEditing => self.confirm_discard = false,
+            Escape::BackFromRemove => {
+                self.confirm_remove = false;
+                self.error.clear();
+            }
+            Escape::AskDiscard => self.ask_discard(),
+            Escape::Close => return false,
+        }
+        cx.notify();
+        true
+    }
+
+    fn ask_discard(&mut self) {
+        self.confirm_discard = true;
+        self.confirm_remove = false;
+        self.error.clear();
+        self.notice.clear();
+    }
+
+    /// X, a click outside and Cancel: closes, or asks first when it would
+    /// lose what was typed.
+    fn request_close(&mut self, cx: &mut Context<Self>) {
+        match close_request(self.dirty(cx), self.confirm_discard, self.saving) {
+            CloseRequest::Close => cx.emit(DialogEvent::Close),
+            CloseRequest::AskDiscard => self.ask_discard(),
+            CloseRequest::Stay => {}
+        }
+        cx.notify();
     }
 
     fn is_edit(&self) -> bool {
@@ -345,7 +420,34 @@ impl Render for AddGameDialog {
         let entity = cx.entity().downgrade();
         let vw = f32::from(window.viewport_size().width);
 
-        let (title, body, footer) = if self.confirm_remove {
+        let (title, body, footer) = if self.confirm_discard {
+            let footer = div()
+                .flex()
+                .gap(px(10.))
+                .child(action_button(
+                    "ag-discard-back",
+                    ButtonKind::Ghost,
+                    tr!("Keep editing"),
+                    true,
+                    cx.listener(|this, _, _, cx| {
+                        this.confirm_discard = false;
+                        cx.notify();
+                    }),
+                ))
+                .child(action_button(
+                    "ag-discard-yes",
+                    ButtonKind::Danger,
+                    tr!("Discard"),
+                    true,
+                    cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)),
+                ));
+            let body = div().text_size(px(14.)).line_height(px(20.)).text_color(crate::theme::text_primary()).child(if edit {
+                tr!("Your changes to this game have not been saved. Close and discard them?")
+            } else {
+                tr!("This game has not been saved. Close and discard what you typed?")
+            });
+            (tr!("Discard changes?"), body, footer)
+        } else if self.confirm_remove {
             let footer = div()
                 .flex()
                 .gap(px(10.))
@@ -396,7 +498,7 @@ impl Render for AddGameDialog {
                 ButtonKind::Ghost,
                 tr!("Cancel"),
                 !self.saving,
-                cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)),
+                cx.listener(|this, _, _, cx| this.request_close(cx)),
             ));
             if !edit && self.platform == SideloadPlatform::Windows {
                 let can_run = can_save && !text_of(&self.title, cx).trim().is_empty();
@@ -430,7 +532,7 @@ impl Render for AddGameDialog {
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
-                entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
+                entity.update(cx, |this, cx| this.request_close(cx)).ok();
             },
         );
         let nested = self.picker.as_ref().map(|(p, _)| AnyView::from(p.clone()));

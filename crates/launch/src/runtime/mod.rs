@@ -5,6 +5,7 @@
 //! Like Heroic's backend, several games may run at once (one per app name);
 //! launching an app that is already tracked is refused.
 
+mod adopt;
 mod companions;
 mod fake;
 mod process;
@@ -20,7 +21,6 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
 use heronite_data::DataPaths;
 
 use crate::first_launch::{EpicSetup, StoreSetup};
@@ -31,9 +31,13 @@ use crate::steam::SteamLocator;
 use session::run_session;
 use state::{Control, Ledger, Shared};
 
+pub use adopt::AdoptedGame;
 pub use fake::{FakeHandleState, FakeSpawner};
 pub use spawner::{ExitInfo, ProcessHandle, Spawner, SystemSpawner};
-pub use types::{LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices, StopOptions, SystemInfoFn, CHECKPOINT_INTERVAL};
+pub use types::{
+    failed_launch, LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices, StopOptions, SystemInfoFn, CHECKPOINT_INTERVAL,
+    FAILED_LAUNCH_WINDOW,
+};
 
 /// Tracks running games. Cheap to clone.
 #[derive(Clone)]
@@ -145,11 +149,12 @@ impl Launcher {
             stop,
             steam_pids: Arc::new(Mutex::new(BTreeSet::new())),
             title: req.title.clone(),
-            started_at: Utc::now(),
-            t0: Instant::now(),
+            clock: Default::default(),
+            since_ticks: crate::procs::boot_ticks_now(),
             playing: AtomicBool::new(false),
             ledger: Mutex::new(Ledger { cp: Checkpointer::default(), finished: false }),
             wake: Default::default(),
+            running: Mutex::new(None),
         });
         {
             let mut sessions = self.shared.sessions.lock().unwrap();
@@ -192,11 +197,12 @@ impl Launcher {
         }
         let spawner = self.shared.spawner.clone();
         let stop = control.stop.clone();
+        let since = control.since_ticks;
         // Off the caller's thread: wineserver -k / pkill can take a moment.
         std::thread::spawn(move || {
             for pattern in &stop.kill_patterns {
                 if pattern.len() >= 3 {
-                    spawner.kill_pattern(pattern);
+                    spawner.kill_pattern(pattern, since);
                 }
             }
             for cmd in &stop.commands {

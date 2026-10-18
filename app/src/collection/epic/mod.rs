@@ -19,6 +19,7 @@ use super::CollectionView;
 use crate::dialogs::epic_confirm::{Confirm, EpicConfirmDialog};
 use crate::pages::Page;
 use crate::services::downloads::{Downloads, DownloadsEvent, QueueState};
+use crate::services::launch_blocker::{launch_blocker, Blocker};
 use crate::services::widgets::{fmt_percent, progress_bar};
 use crate::theme;
 use heronite_i18n::tr;
@@ -266,22 +267,15 @@ impl CollectionView {
         if !is_store_runner(&game.runner) {
             return false;
         }
-        let svc = self.epic_service(cx);
-        let (queued, busy, update) = {
-            let s = svc.read(cx);
-            (s.queued(&game.app_name).is_some(), s.busy_of(&game.app_name).is_some(), s.has_update(&game.app_name))
-        };
-        if queued || busy {
-            self.epic.pending = Some(Request::OpenDownloads);
-        } else if !game.installed {
-            self.epic.pending = Some(Request::Install { key: game.key.clone(), import: false });
-        } else if game.install_folder_missing() {
-            self.epic.pending = Some(Request::FolderMissing(game.key.clone()));
-        } else if update {
-            self.epic.pending = Some(Request::UpdatePrompt(game.key.clone()));
-        } else {
-            return false;
-        }
+        // Starts the service, which the blocker reads.
+        self.epic_service(cx);
+        self.epic.pending = Some(match launch_blocker(cx, game) {
+            Some(b) if b.is_busy() => Request::OpenDownloads,
+            None if !game.installed => Request::Install { key: game.key.clone(), import: false },
+            Some(Blocker::FolderMissing) => Request::FolderMissing(game.key.clone()),
+            Some(_) => Request::UpdatePrompt(game.key.clone()),
+            None => return false,
+        });
         cx.notify();
         true
     }

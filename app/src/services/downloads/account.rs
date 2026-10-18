@@ -54,6 +54,7 @@ impl Downloads {
     }
 
     pub fn logout(&mut self, cx: &mut Context<Self>) {
+        self.logging_out = true;
         let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx
@@ -63,9 +64,11 @@ impl Downloads {
                 })
                 .await;
             this.update(cx, |this, cx| {
+                this.logging_out = false;
                 match res {
                     Ok(()) => {
-                        this.apply_account(None);
+                        this.account = Default::default();
+                        this.last_error = None;
                         this.updates.clear();
                         this.stats = Stats::default();
                         this.toast(cx, tr!("Logged out of Epic Games"), false);

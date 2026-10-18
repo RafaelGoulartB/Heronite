@@ -59,20 +59,22 @@ impl CollectionView {
                 let g = &self.groups[group];
                 let gid = g.id.clone();
                 let pick = self.group_pick(&gid, cx);
-                let header =
-                    list::group_header(g, false).children(pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.ui.toggle_group(&gid);
-                            this.save_ui();
-                            if let Some(g) = this.groups.iter_mut().find(|g| g.id == gid) {
-                                g.collapsed = !g.collapsed;
-                            }
-                            this.rebuild_items();
-                            cx.notify();
-                        }),
-                    );
+                let header = list::group_header(g).children(pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        this.ui.toggle_group(&gid);
+                        this.save_ui();
+                        if let Some(g) = this.groups.iter_mut().find(|g| g.id == gid) {
+                            g.collapsed = !g.collapsed;
+                        }
+                        this.rebuild_items();
+                        cx.notify();
+                    }),
+                );
                 let m = self.list_metrics();
-                div().pl(px(m.pad_l)).pr(px(m.pad_r)).child(header).into_any_element()
+                // Pinned: the copy over the list stands in for it, otherwise
+                // both show, a few pixels apart, while it scrolls under.
+                let stuck = self.stuck_group == Some(group);
+                div().pl(px(m.pad_l)).pr(px(m.pad_r)).when(stuck, |d| d.opacity(0.)).child(header).into_any_element()
             }
             ListItem::Row { group, start } => {
                 let cards: Vec<Arc<CardVm>> = {
@@ -215,21 +217,29 @@ impl CollectionView {
         // Games exist, but the search and the filters leave none.
         let no_match = self.lib.as_ref().is_some_and(|lib| !lib.games.is_empty()) && self.groups.iter().all(|g| g.cards.is_empty());
         let m = self.list_metrics();
-        let sticky = self.sticky().map(|(g, shift)| {
+        let grid = self.ui.grid_view;
+        let sticky = self.sticky();
+        self.stuck_group = sticky.map(|(g, _)| g);
+        let sticky = sticky.map(|(g, shift)| {
             let pick = self.group_pick(&self.groups[g].id.clone(), cx);
             div()
                 .absolute()
                 .top(px(shift))
-                .left(px(m.pad_l))
-                .right(px(m.pad_r))
-                .child(list::group_header(&self.groups[g], true).children(pick))
+                .left_0()
+                .right_0()
+                .pl(px(m.pad_l))
+                .pr(px(m.pad_r))
+                .child(list::stuck_scrim(grid))
+                .child(list::group_header(&self.groups[g]).children(pick))
         });
-        let grid = self.ui.grid_view;
         div()
             .relative()
             .w(px(list_w))
             .h_full()
             .flex_none()
+            // A pinned header pushed up by the next one stays in the column
+            // (the list already clips its rows here).
+            .overflow_hidden()
             // The grid sits on the stage's own scrims.
             .when(!grid, |d| {
                 d.bg(linear_gradient(

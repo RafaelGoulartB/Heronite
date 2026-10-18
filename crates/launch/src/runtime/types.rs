@@ -18,15 +18,32 @@ pub enum LaunchEvent {
     Launching { app_name: String },
     /// The game process exists. For Steam this is the pid found in Steam's logs.
     Running { app_name: String, pid: u32 },
-    /// The game is gone (or tracking was cleared). `record` is what was
-    /// written to the data files, `None` if recording failed or was disabled.
-    Exited { app_name: String, elapsed: Duration, exit: Option<ExitInfo>, record: Option<RecordOutcome> },
+    /// The game is gone (or tracking was cleared). `stopped` is true when the
+    /// user ended it (stop, force clear), whatever `exit` says. `record` is
+    /// what was written to the data files, `None` if recording failed or was
+    /// disabled, or if it was a [`failed_launch`].
+    Exited { app_name: String, elapsed: Duration, exit: Option<ExitInfo>, stopped: bool, record: Option<RecordOutcome> },
     /// Spawning failed, Steam never started the game, or recording failed.
     Error { app_name: String, message: String },
     /// Progress or a non-fatal problem while the launch is prepared or
     /// finished ("Preparing prefix...", "Downloading DXVK...", a cloud save
     /// error). The game keeps going; `warning` says something went wrong.
     Status { app_name: String, message: String, warning: bool },
+    /// The step the launch is at before the game starts ("Preparing
+    /// prefix...", "Installing Redistributables (EPIC)", "Waiting for Steam
+    /// to start the game..."). `cancellable` is false while stopping could
+    /// do harm (cloud saves being downloaded): a stop then waits for the step.
+    Preparing { app_name: String, message: String, cancellable: bool },
+}
+
+/// A game that ends this soon, badly, on its own never really started.
+pub const FAILED_LAUNCH_WINDOW: Duration = Duration::from_secs(30);
+
+/// The exit of a game that crashed right after starting: not stopped by the
+/// user, killed by a signal or with a non-zero code, within
+/// [`FAILED_LAUNCH_WINDOW`]. Such a session is not recorded.
+pub fn failed_launch(exit: Option<ExitInfo>, stopped: bool, elapsed: Duration) -> Option<ExitInfo> {
+    exit.filter(|e| !stopped && elapsed < FAILED_LAUNCH_WINDOW && (e.signal.is_some() || e.code.is_some_and(|c| c != 0)))
 }
 
 #[derive(Debug, Clone)]
@@ -106,3 +123,26 @@ impl Default for PrepServices {
 
 /// `formatSystemInfo` for the log header (the app provides it).
 pub type SystemInfoFn = Arc<dyn Fn() -> String + Send + Sync>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn exit(code: Option<i32>, signal: Option<i32>) -> Option<ExitInfo> {
+        Some(ExitInfo { code, signal })
+    }
+
+    #[test]
+    fn only_a_quick_bad_exit_nobody_asked_for_is_a_failed_launch() {
+        let quick = Duration::from_secs(3);
+        assert!(failed_launch(exit(Some(1), None), false, quick).is_some());
+        assert!(failed_launch(exit(None, Some(11)), false, quick).is_some());
+        assert!(failed_launch(exit(Some(0), None), false, quick).is_none());
+        assert!(failed_launch(exit(None, None), false, quick).is_none());
+        assert!(failed_launch(None, false, quick).is_none());
+        // The user asked for it.
+        assert!(failed_launch(exit(None, Some(15)), true, quick).is_none());
+        // It ran for a while.
+        assert!(failed_launch(exit(Some(1), None), false, FAILED_LAUNCH_WINDOW).is_none());
+    }
+}

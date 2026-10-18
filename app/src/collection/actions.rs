@@ -7,7 +7,8 @@ use heronite_data::FacetKind;
 use heronite_launch::LaunchEvent;
 
 use super::vm::{self, GroupVm, ListItem};
-use super::{data, CollectionView};
+use super::{data, CollectionView, ToastAction};
+use crate::services::launch_blocker::{launch_blocker, Blocker};
 use heronite_i18n::tr;
 
 impl CollectionView {
@@ -61,9 +62,11 @@ impl CollectionView {
             statuses: &lib.statuses,
         };
         let is_playing = |key: &str| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name));
-        let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &organize);
+        let step = |key: &str| lib.get(key).and_then(|g| self.preparing.get(&g.app_name)).map(|s| s.label());
+        let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize);
         self.set_groups(groups);
         self.refresh_focus();
+        self.prune_selection_to_list();
     }
 
     /// The list's conditions that live in the app: the selected categories
@@ -85,7 +88,7 @@ impl CollectionView {
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
-        self.toast_undo = false;
+        self.toast_action = None;
         self.toast = Some((text.into(), error));
         self.toast_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
@@ -101,30 +104,58 @@ impl CollectionView {
     /// A toast for a batch change, with Undo (`selection.rs`).
     pub(super) fn show_undo_toast(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.show_toast(text, false, cx);
-        self.toast_undo = true;
+        self.toast_action = Some(ToastAction::Undo);
+    }
+
+    /// A game that died right after starting: says so, and offers its log.
+    fn show_failed_launch_toast(&mut self, app_name: &str, exit: heronite_launch::ExitInfo, cx: &mut Context<Self>) {
+        let Some(game) = self.lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name)).cloned() else { return };
+        self.show_toast(crate::runtime::failed_launch_message(&game.title, exit), true, cx);
+        self.toast_action = Some(ToastAction::ViewLog(game.key.clone()));
+    }
+
+    /// For launches that skip the Play button's dialogs: refuses (with a
+    /// toast) while a download or an operation owns the game's files.
+    pub(super) fn refuse_busy_launch(&mut self, game: &heronite_data::CollectionGame, cx: &mut Context<Self>) -> bool {
+        let blocker = launch_blocker(cx, game).filter(Blocker::is_busy);
+        let Some(text) = blocker.and_then(|b| b.refusal(&game.title)) else { return false };
+        self.show_toast(text, true, cx);
+        true
     }
 
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
         match ev {
             LaunchEvent::Launching { app_name } => {
+                self.preparing.insert(app_name.clone(), super::launch_progress::LaunchStep::starting());
                 self.playing.insert(app_name, false);
+            }
+            LaunchEvent::Preparing { app_name, message, cancellable } => {
+                if self.playing.contains_key(&app_name) {
+                    self.set_launch_step(app_name, message, cancellable);
+                }
             }
             LaunchEvent::Running { app_name, pid } => {
                 log::info!("{app_name} running as pid {pid}");
+                self.preparing.remove(&app_name);
                 self.playing.insert(app_name, true);
             }
-            LaunchEvent::Exited { app_name, elapsed, .. } => {
+            LaunchEvent::Exited { app_name, elapsed, exit, stopped, .. } => {
                 log::info!("{app_name} exited after {elapsed:?}");
+                self.preparing.remove(&app_name);
                 self.playing.remove(&app_name);
+                if let Some(exit) = heronite_launch::failed_launch(exit, stopped, elapsed) {
+                    self.show_failed_launch_toast(&app_name, exit, cx);
+                }
                 // Post-game work is `services::session`'s; the library only
                 // reloads what changed on disk (playtime, last played, recent).
                 self.reload(cx);
             }
             LaunchEvent::Error { app_name, message } => {
+                self.preparing.remove(&app_name);
                 self.playing.remove(&app_name);
                 self.show_toast(message, true, cx);
             }
-            // Preparing the launch (prefix, DXVK, cloud saves...): progress and non-fatal problems.
+            // Problems while preparing, and what happens after the game (cloud saves).
             LaunchEvent::Status { message, warning, .. } => self.show_toast(message, warning, cx),
         }
         self.refresh_groups();
@@ -135,6 +166,9 @@ impl CollectionView {
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = lib.get(key).cloned() else { return };
+        if self.preparing.contains_key(&game.app_name) {
+            return self.cancel_launch(&game.app_name, cx);
+        }
         if self.playing.contains_key(&game.app_name) {
             if !self.runtime.stop(&game.app_name) {
                 self.runtime.force_clear(&game.app_name);
@@ -189,13 +223,38 @@ impl CollectionView {
     }
 
     fn set_groups(&mut self, groups: Vec<GroupVm>) {
+        // The anchor reads the rows of the groups that are about to go.
+        let anchor = self.scroll_anchor();
         self.groups = groups;
-        self.rebuild_items();
+        self.rebuild_with(anchor);
     }
 
     pub(super) fn rebuild_items(&mut self) {
+        let anchor = self.scroll_anchor();
+        self.rebuild_with(anchor);
+    }
+
+    fn scroll_anchor(&self) -> Option<vm::ScrollAnchor> {
+        let top = self.list_state.logical_scroll_top();
+        vm::scroll_anchor(&self.items, &self.groups, top.item_ix, top.offset_in_item)
+    }
+
+    /// Rebuilds the rows and keeps the user's place: the list state is reset
+    /// (the row heights changed), which would send it to the top, so the
+    /// anchored card or header is scrolled back to.
+    fn rebuild_with(&mut self, anchor: Option<vm::ScrollAnchor>) {
         self.items = vm::build_items(&self.groups, self.columns);
         self.list_state.reset(self.items.len());
+        let place = anchor.and_then(|a| vm::resolve_anchor(&self.items, &self.groups, self.columns, &a));
+        if let Some((item_ix, offset_in_item)) = place {
+            self.list_state.scroll_to(ListOffset { item_ix, offset_in_item });
+        }
+    }
+
+    /// Back to the first row: a new search is a new list, not the old one
+    /// narrowed down.
+    pub(super) fn scroll_list_to_top(&self) {
+        self.list_state.scroll_to(ListOffset { item_ix: 0, offset_in_item: px(0.) });
     }
 
     /// Scrolls the list so the selected card's row is visible

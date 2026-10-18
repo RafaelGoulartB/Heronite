@@ -112,7 +112,12 @@ impl Session {
                 self.running.remove(app_name);
                 self.end_capture(app_name);
             }
-            LaunchEvent::Running { .. } | LaunchEvent::Status { .. } => {}
+            // A game picked up again after the app restarted starts here.
+            LaunchEvent::Running { app_name, .. } if !self.running.contains(app_name) => {
+                self.running.insert(app_name.clone());
+                self.begin_capture(app_name, cx);
+            }
+            LaunchEvent::Running { .. } | LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => {}
         }
     }
 

@@ -268,7 +268,7 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
-    pub(super) fn details_tab(&mut self) -> Div {
+    pub(super) fn details_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let d = &self.details;
         let general = card([
             block(labeled(tr!("Name"), input_box(&d.name, false))),
@@ -281,9 +281,11 @@ impl GameSettingsDialog {
                     .child(div().flex_1().child(labeled(tr!("Score"), input_box(&d.score, false)))),
             ),
         ]);
-        let playtime =
-            card([row(tr!("Time played"), Some(tr!("New sessions keep adding to this time.")), duration_field(&d.hours, &d.minutes))
-                .into_any_element()]);
+        let playtime = card([
+            row(tr!("Time played"), Some(tr!("New sessions keep adding to this time.")), duration_field(&d.hours, &d.minutes))
+                .into_any_element(),
+            self.sessions_row(cx),
+        ]);
         let tags = card(d.tags.iter().map(|t| block(t.clone())));
         let more =
             card([block(labeled(tr!("Websites"), input_box(&d.websites, false))), block(labeled(tr!("Notes"), textarea_box(&d.notes, 4)))]);

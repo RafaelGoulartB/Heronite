@@ -240,6 +240,15 @@ pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshR
     }
     let games = write_library(data_paths)?;
     log::info!("Game list updated, got {games} games & DLCs");
+    // With a fresh list legendary's token is fresh too. A failure here only
+    // costs the play time, never the refresh.
+    if list_error.is_none() {
+        match crate::playtime::import(data_paths) {
+            Ok(0) => {}
+            Ok(n) => log::info!("Epic play time taken in for {n} game(s) never played here"),
+            Err(err) => log::warn!("epic: reading the play time Epic counted: {err:#}"),
+        }
+    }
     Ok(RefreshResult { games, list_error })
 }
 

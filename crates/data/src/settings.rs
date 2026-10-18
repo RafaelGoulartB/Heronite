@@ -167,6 +167,7 @@ impl EffectiveSettings {
                 restore_paths: ludusavi.restore_paths.into_iter().map(|p| p.trim().to_owned()).filter(|p| !p.is_empty()).collect(),
                 full_limit: ludusavi.full_limit.filter(|n| *n >= 1),
                 differential_limit: ludusavi.differential_limit,
+                auto_backup_off: ludusavi.auto_backup_off,
                 last_backup_at: ludusavi.last_backup_at,
                 last_backup_game: ludusavi.last_backup_game,
                 last_backup_path: ludusavi.last_backup_path,
