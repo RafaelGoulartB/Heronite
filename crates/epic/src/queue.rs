@@ -91,13 +91,16 @@ pub struct DmElement {
     pub start_time: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<DmStatus>,
+    /// Why it failed (`status: error`), for the history. Not in Heroic's format.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
 
 impl DmElement {
     pub fn new(kind: ElementKind, params: InstallParams) -> Self {
-        Self { params, kind, add_to_queue_time: now_ms(), end_time: 0, start_time: 0, status: None, extra: Map::new() }
+        Self { params, kind, add_to_queue_time: now_ms(), end_time: 0, start_time: 0, status: None, error: None, extra: Map::new() }
     }
 
     /// The folder "Stop, delete files" may delete: `(base path, folder)` of a

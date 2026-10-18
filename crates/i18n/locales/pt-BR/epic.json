@@ -367,5 +367,6 @@
   "{title}\nPick the folder the game is in now. Nothing is moved: this is for a folder you moved or renamed yourself.": "{title}\nEscolha a pasta onde o jogo está agora. Nada é movido: isto é para uma pasta que você mesmo moveu ou renomeou.",
   "{title}\nThe game leaves the installed games and stays in your library. No file is deleted.": "{title}\nO jogo sai dos jogos instalados e continua na sua biblioteca. Nenhum arquivo é apagado.",
   "{title} is no longer at {path}.\nIf you moved or renamed its folder, pick where it is now. If you deleted it, remove it from the installed games: it stays in your library, ready to install again.": "{title} não está mais em {path}.\nSe você moveu ou renomeou a pasta, escolha onde ela está agora. Se apagou, remova o jogo dos instalados: ele continua na sua biblioteca, pronto para instalar de novo.",
-  "{title}: the downloaded files could not be deleted from {folder}": "{title}: não foi possível apagar os arquivos baixados de {folder}"
+  "{title}: the downloaded files could not be deleted from {folder}": "{title}: não foi possível apagar os arquivos baixados de {folder}",
+  "Retry": "Tentar de novo"
 }

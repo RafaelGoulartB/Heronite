@@ -343,6 +343,35 @@ impl Downloads {
         self.manager.clear_finished_item(app_name);
     }
 
+    /// Queues a failed install or update of the history again, with what it
+    /// was queued with (an install brings its DLCs again).
+    pub fn retry(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        let Some(el) = self.snapshot.finished.iter().find(|e| e.params.app_name == app_name).cloned() else { return };
+        if self.queued(app_name).is_some() {
+            return;
+        }
+        if el.kind == ElementKind::Update {
+            if self.playing.contains(app_name) {
+                self.toast(cx, tr!("The game is running: close it first"), true);
+                return;
+            }
+            if self.busy.contains_key(app_name) {
+                self.toast(cx, tr!("Another operation is running for this game"), true);
+                return;
+            }
+        }
+        self.manager.clear_finished_item(app_name);
+        let (manager, data_paths) = (self.manager.clone(), self.data_paths.clone());
+        cx.background_spawn(async move {
+            match el.kind {
+                ElementKind::Install => add_install(&manager, &data_paths, el.params),
+                ElementKind::Update => manager.add(DmElement::new(ElementKind::Update, el.params)),
+            }
+        })
+        .detach();
+        self.toast(cx, tr!("Added to the download queue"), false);
+    }
+
     /// Installs one owned DLC of an installed game into the game's folder
     /// (Heroic's `DLC` row: a normal install of the DLC with the base game's
     /// path and platform, no components of its own).

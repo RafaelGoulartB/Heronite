@@ -59,6 +59,18 @@ fn meta_line(el: &DmElement) -> String {
     format!("{kind} \u{b7} {store} \u{b7} {platform} \u{b7} {size}")
 }
 
+/// A failure as the history shows it: the tool's message without its log
+/// prefixes, lines joined.
+fn failure_reason(error: &str) -> String {
+    let strip = |line: &str| {
+        // legendary: `[DLManager] ERROR: text`.
+        let line = line.strip_prefix('[').and_then(|l| l.split_once("] ")).map_or(line, |(_, rest)| rest);
+        ["ERROR: ", "CRITICAL: "].iter().find_map(|p| line.strip_prefix(p)).unwrap_or(line).trim().to_string()
+    };
+    let lines: Vec<String> = error.lines().map(strip).filter(|l| !l.is_empty()).collect();
+    lines.join(" \u{b7} ")
+}
+
 fn date_text(ms: u64) -> String {
     let format = match heronite_i18n::current() {
         heronite_i18n::Lang::PtBr => "%d/%m/%Y %H:%M",
@@ -252,6 +264,10 @@ impl Render for DownloadsPage {
         for el in finished {
             let cover = self.covers.get(el.params.cover().as_deref(), 36., 48., scale);
             let app = el.params.app_name.clone();
+            let failed = el.status == Some(DmStatus::Error);
+            // Queued again already: nothing to retry.
+            let retry = failed && !snap.queue.iter().any(|q| q.params.app_name == app);
+            let reason = failed.then(|| el.error.as_deref().map(failure_reason)).flatten();
             let pill = match el.status {
                 Some(DmStatus::Done) => Some(status_pill(tr!("Done"), theme::success())),
                 Some(DmStatus::Error) => Some(status_pill(tr!("Failed"), theme::danger_text())),
@@ -277,12 +293,23 @@ impl Render for DownloadsPage {
                         )
                         .children(pill),
                 )
-                .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(meta_line(&el)));
+                .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(meta_line(&el)))
+                .children(
+                    reason.map(|r| div().line_clamp(2).text_ellipsis().text_size(px(12.)).text_color(theme::danger_text()).child(r)),
+                );
+            let retry_app = app.clone();
             let trailing = div()
                 .flex()
                 .items_center()
                 .gap(px(6.))
                 .child(div().mr(px(6.)).text_size(px(12.)).text_color(theme::text_dim()).child(date_text(el.end_time)))
+                .when(retry, |d| {
+                    d.child(button_sm(SharedString::from(format!("dm-retry-{app}")), ButtonKind::Glass, tr!("Retry")).on_click(
+                        cx.listener(move |this, _, _, cx| {
+                            this.svc.update(cx, |s, cx| s.retry(&retry_app, cx));
+                        }),
+                    ))
+                })
                 .child(icon_action(SharedString::from(format!("dm-clear-{app}")), Icon::Close, true).on_click(cx.listener(
                     move |this, _, _, cx| {
                         this.svc.update(cx, |s, _| s.clear_finished_item(&app));
@@ -311,5 +338,15 @@ impl Render for DownloadsPage {
             column,
         )
         .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn failure_reasons_lose_the_log_prefixes() {
+        let why = "[DLManager] ERROR: Not enough available disk space!\n\n[cli] ERROR: Installation failed";
+        assert_eq!(super::failure_reason(why), "Not enough available disk space! \u{b7} Installation failed");
+        assert_eq!(super::failure_reason("nile exited with Some(1)"), "nile exited with Some(1)");
     }
 }

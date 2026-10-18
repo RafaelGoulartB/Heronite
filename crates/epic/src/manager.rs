@@ -265,6 +265,7 @@ impl DownloadManager {
                     (None, remove)
                 } else {
                     ended.status = Some(result.status);
+                    ended.error = result.error.clone().filter(|_| result.status == DmStatus::Error);
                     match g.finished.iter().position(|e| e.params.app_name == app) {
                         Some(i) => g.finished[i] = ended.clone(),
                         None => g.finished.push(ended.clone()),

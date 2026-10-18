@@ -8,7 +8,7 @@ use heronite_epic::manager::{DmState, Snapshot};
 use heronite_epic::queue::{DmElement, DmStatus};
 use heronite_i18n::tr;
 
-use super::{date_text, meta_line, progress_text, DownloadsPage};
+use super::{date_text, failure_reason, meta_line, progress_text, DownloadsPage};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
 use crate::console::sheet::{Sheet, SheetEvent};
@@ -25,7 +25,12 @@ fn status_text(el: &DmElement) -> String {
         Some(DmStatus::Paused) => tr!("Paused"),
         None => tr!("Finished"),
     };
-    format!("{what} \u{b7} {}", date_text(el.end_time))
+    let mut text = format!("{what} \u{b7} {}", date_text(el.end_time));
+    if let Some(why) = el.error.as_deref().filter(|_| el.status == Some(DmStatus::Error)) {
+        text.push_str(" \u{b7} ");
+        text.push_str(&failure_reason(why));
+    }
+    text
 }
 
 impl DownloadsPage {
@@ -113,12 +118,18 @@ impl DownloadsPage {
             }
             id if id.starts_with("f:") => {
                 let app = id[2..].to_string();
-                let rows = vec![Row::action("forget", tr!("Remove from the list")).icon(Icon::Close)];
-                let title = snap.finished.iter().find(|e| e.params.app_name == app).map(|e| e.params.title()).unwrap_or_default();
-                self.open_sheet(title, None, rows, cx, move |this, id, cx| {
-                    if id == "forget" {
-                        this.svc.update(cx, |s, _| s.clear_finished_item(&app));
-                    }
+                let Some(el) = snap.finished.iter().find(|e| e.params.app_name == app) else { return };
+                let failed = el.status == Some(DmStatus::Error);
+                let mut rows = Vec::new();
+                if failed && !snap.queue.iter().any(|q| q.params.app_name == app) {
+                    rows.push(Row::action("retry", tr!("Retry")).icon(Icon::Replay));
+                }
+                rows.push(Row::action("forget", tr!("Remove from the list")).icon(Icon::Close));
+                let reason = el.error.as_deref().filter(|_| failed).map(failure_reason);
+                self.open_sheet(el.params.title(), reason, rows, cx, move |this, id, cx| match id {
+                    "retry" => this.svc.update(cx, |s, cx| s.retry(&app, cx)),
+                    "forget" => this.svc.update(cx, |s, _| s.clear_finished_item(&app)),
+                    _ => {}
                 });
             }
             _ => {}
