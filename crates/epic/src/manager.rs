@@ -58,6 +58,8 @@ struct Current {
     cancel: Arc<Cancel>,
     progress: Option<Progress>,
     pause_requested: bool,
+    /// Cancelled: it leaves the queue whatever a pause or resume asked.
+    cancelled: bool,
     /// `(path, folder)` to delete once the process stopped (cancel + delete).
     remove_on_abort: Option<(String, String)>,
 }
@@ -215,6 +217,7 @@ impl DownloadManager {
                     cancel: cancel.clone(),
                     progress: None,
                     pause_requested: false,
+                    cancelled: false,
                     remove_on_abort: None,
                 });
                 self.persist(&g);
@@ -236,8 +239,12 @@ impl DownloadManager {
             let (finished_event, remove) = {
                 let mut g = self.shared.inner.lock();
                 let cur = g.current.take();
-                let pause = cur.as_ref().is_some_and(|c| c.pause_requested);
-                let remove = cur.and_then(|c| c.remove_on_abort);
+                // A pause or a cancel that came as the job finished its work
+                // leaves the finished install alone.
+                let done = result.status == DmStatus::Done;
+                let cancelled = cur.as_ref().is_some_and(|c| c.cancelled);
+                let pause = !done && !cancelled && cur.as_ref().is_some_and(|c| c.pause_requested);
+                let remove = cur.and_then(|c| c.remove_on_abort).filter(|_| !done && cancelled);
                 if pause {
                     if let Some(first) = g.queue.iter_mut().find(|e| e.params.app_name == app) {
                         first.start_time = ended.start_time;
@@ -340,6 +347,8 @@ impl DownloadManager {
             let remove = remove_downloaded.then(|| first.params.folder_name().map(|f| (first.params.path.clone(), f))).flatten();
             match g.current.as_mut().filter(|c| c.app_name == first.params.app_name) {
                 Some(c) => {
+                    // A pause or resume asked for around it does not keep it queued.
+                    c.cancelled = true;
                     c.remove_on_abort = remove;
                     c.cancel.request();
                 }
@@ -462,14 +471,23 @@ mod tests {
         blocking: Vec<String>,
         runs: Mutex<Vec<String>>,
         fail: Vec<String>,
+        /// Block until stopped, then report the work as done (a stop that
+        /// came as the tool finished).
+        finishing: Vec<String>,
         started: AtomicUsize,
     }
 
     impl FakeJob {
         fn new(blocking: &[&str], fail: &[&str]) -> Arc<Self> {
+            Self::with_finishing(blocking, fail, &[])
+        }
+
+        fn with_finishing(blocking: &[&str], fail: &[&str], finishing: &[&str]) -> Arc<Self> {
+            let owned = |list: &[&str]| list.iter().map(|s| s.to_string()).collect();
             Arc::new(Self {
-                blocking: blocking.iter().map(|s| s.to_string()).collect(),
-                fail: fail.iter().map(|s| s.to_string()).collect(),
+                blocking: owned(blocking),
+                fail: owned(fail),
+                finishing: owned(finishing),
                 runs: Mutex::new(Vec::new()),
                 started: AtomicUsize::new(0),
             })
@@ -482,11 +500,12 @@ mod tests {
             self.runs.lock().push(app.clone());
             self.started.fetch_add(1, Ordering::SeqCst);
             on_progress(Progress { percent: 10., ..Default::default() });
-            if self.blocking.contains(&app) {
+            if self.blocking.contains(&app) || self.finishing.contains(&app) {
                 while !cancel.is_requested() {
                     std::thread::sleep(Duration::from_millis(10));
                 }
-                return JobResult { status: DmStatus::Abort, error: None };
+                let status = if self.finishing.contains(&app) { DmStatus::Done } else { DmStatus::Abort };
+                return JobResult { status, error: None };
             }
             if self.fail.contains(&app) {
                 return JobResult { status: DmStatus::Error, error: Some("boom".into()) };
@@ -769,6 +788,69 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(!games.path().join("a").exists());
+    }
+
+    fn wait_idle(m: &DownloadManager) {
+        for _ in 0..400 {
+            if m.is_idle() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the worker did not stop");
+    }
+
+    #[test]
+    fn a_pause_as_the_job_finishes_records_it_as_done() {
+        let job = FakeJob::with_finishing(&[], &[], &["a"]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.add(el("a"));
+        m.add(el("b"));
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause();
+        wait_idle(&m);
+        let s = m.snapshot();
+        assert_eq!(s.finished.iter().map(|e| (e.params.app_name.as_str(), e.status)).collect::<Vec<_>>(), [("a", Some(DmStatus::Done))]);
+        let queued: Vec<_> = s.queue.iter().map(|e| e.params.app_name.as_str()).collect();
+        assert_eq!(queued, ["b"], "the next one waits, paused");
+        assert_eq!(s.state, DmState::Paused);
+    }
+
+    #[test]
+    fn cancel_and_delete_as_the_job_finishes_keeps_the_installed_game() {
+        let games = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(games.path().join("a")).unwrap();
+        let job = FakeJob::with_finishing(&[], &[], &["a"]);
+        let (m, _rx, _dir) = manager(job.clone());
+        let mut base = el("a");
+        base.params.path = games.path().to_str().unwrap().into();
+        m.add(base);
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.cancel_current(true);
+        wait_until(&m, "a finished", |s| s.finished.len() == 1 && s.state == DmState::Idle);
+        assert_eq!(m.snapshot().finished[0].status, Some(DmStatus::Done));
+        assert!(games.path().join("a").exists());
+    }
+
+    #[test]
+    fn a_cancel_after_a_pause_still_takes_the_element_out() {
+        let job = FakeJob::new(&["a"], &[]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.add(el("a"));
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        {
+            // Both asked before the worker saw either.
+            let mut g = m.shared.inner.lock();
+            g.state = DmState::Paused;
+            let c = g.current.as_mut().unwrap();
+            c.pause_requested = true;
+            c.cancelled = true;
+            c.cancel.request();
+        }
+        wait_idle(&m);
+        let s = m.snapshot();
+        assert!(s.queue.is_empty());
+        assert_eq!(s.finished[0].status, Some(DmStatus::Abort));
     }
 
     #[test]
