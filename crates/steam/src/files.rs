@@ -180,10 +180,52 @@ fn read_compat_tool_vdf(dir: &Path) -> Option<Vec<CompatTool>> {
     )
 }
 
-/// The tools in `compatibilitytools.d` whose manifest appeared (or changed)
-/// after `since`: Steam reads the folder only when it starts. The change
-/// time, not the modification time: archives keep their files' old dates.
-pub fn tools_added_since(locator: &SteamLocator, since: std::time::SystemTime) -> Vec<CompatTool> {
+/// The tools in `compatibilitytools.d` the running Steam has not read: it
+/// reads the folder only when it starts. `started` is when it started.
+pub fn unseen_tools(locator: &SteamLocator, started: Option<std::time::SystemTime>) -> Vec<CompatTool> {
+    let log = fs::read_to_string(locator.steam_path.join("logs/compat_log.txt")).ok();
+    let mut out = match log.as_deref().and_then(read_at_start) {
+        Some(read) => tools_not_in(locator, &read),
+        None => started.map(|at| tools_added_since(locator, at)).unwrap_or_default(),
+    };
+    out.sort_by_key(|t| t.display.to_lowercase());
+    out
+}
+
+/// The tool folders Steam read at its last start: its `compat_log` has a
+/// `Processing local tool list at <folder>/compatibilitytool.vdf...` line
+/// for each after the `Client version` line of the start. `None` without
+/// that line.
+fn read_at_start(log: &str) -> Option<Vec<PathBuf>> {
+    const READ: &str = "] Processing local tool list at ";
+    let start = log.rfind("] Client version: ")?;
+    let read = log[start..].lines().filter_map(|line| {
+        let file = &line[line.find(READ)? + READ.len()..];
+        Path::new(file.strip_suffix("...").unwrap_or(file)).parent().and_then(|dir| fs::canonicalize(dir).ok())
+    });
+    Some(read.collect())
+}
+
+/// The tools whose folder is not one of `read` (canonical paths). Unlike
+/// file times, this does not count a manifest written again unchanged
+/// (Heronite's `steam_link`) as new.
+fn tools_not_in(locator: &SteamLocator, read: &[PathBuf]) -> Vec<CompatTool> {
+    let mut out = Vec::new();
+    for dir in compat_tool_dirs(locator) {
+        let Ok(rd) = fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            if !fs::canonicalize(e.path()).is_ok_and(|p| read.contains(&p)) {
+                out.extend(read_compat_tool_vdf(&e.path()).into_iter().flatten());
+            }
+        }
+    }
+    out
+}
+
+/// The tools whose manifest appeared (or changed) after `since`, for a Steam
+/// without a `compat_log`. The change time, not the modification time:
+/// archives keep their files' old dates.
+fn tools_added_since(locator: &SteamLocator, since: std::time::SystemTime) -> Vec<CompatTool> {
     use std::os::unix::fs::MetadataExt;
     let since = since.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
     let mut out = Vec::new();
@@ -196,7 +238,6 @@ pub fn tools_added_since(locator: &SteamLocator, since: std::time::SystemTime) -
             }
         }
     }
-    out.sort_by_key(|t| t.display.to_lowercase());
     out
 }
 
@@ -381,6 +422,40 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn unseen_tools_are_the_ones_steam_did_not_read_at_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let steam = dir.path().join("Steam");
+        let vdf = |name: &str| format!("\"compatibilitytools\" {{ \"compat_tools\" {{ \"{name}\" {{ \"install_path\" \".\" }} }} }}");
+        for name in ["old", "rewritten", "new"] {
+            write(&steam.join(format!("compatibilitytools.d/{name}/compatibilitytool.vdf")), &vdf(name));
+        }
+        fs::create_dir_all(steam.join("ubuntu12_32")).unwrap();
+        let locator = SteamLocator { home: dir.path().join("home"), steam_path: steam.clone(), system_roots: vec![steam.clone()] };
+        let read = |name: &str| {
+            format!(
+                "[x] Processing local tool list at {}/ubuntu12_32/../compatibilitytools.d/{name}/compatibilitytool.vdf...\n",
+                steam.display()
+            )
+        };
+        // Only the last start counts.
+        let log = format!(
+            "[x] Client version: 1\n{}[x] Client version: 2\n{}{}[x] Registering tool old, AppID 0\n",
+            read("new"),
+            read("old"),
+            read("rewritten")
+        );
+        write(&steam.join("logs/compat_log.txt"), &log);
+        // Every manifest was written after this "start": the log still knows
+        // which folders Steam read.
+        let names = |tools: Vec<CompatTool>| tools.into_iter().map(|t| t.name).collect::<Vec<_>>();
+        assert_eq!(names(unseen_tools(&locator, Some(std::time::UNIX_EPOCH))), ["new"]);
+        // No start in the log: the change times decide.
+        write(&steam.join("logs/compat_log.txt"), "");
+        assert_eq!(names(unseen_tools(&locator, Some(std::time::UNIX_EPOCH))).len(), 3);
+        assert!(unseen_tools(&locator, None).is_empty());
     }
 
     #[test]

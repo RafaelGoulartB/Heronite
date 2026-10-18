@@ -4,13 +4,31 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use super::context_menu::{self, Flyout};
 use super::header::Menu;
-use super::{context_menu, CollectionView};
+use super::CollectionView;
+
+/// The flyout `HERONITE_DEBUG_MENU` opens: the status one unless another is asked for.
+fn debug_flyout() -> Flyout {
+    let on = |name| crate::env::value(name).is_some();
+    if on("HERONITE_DEBUG_MENU_INSTALL") {
+        Flyout::Install
+    } else if on("HERONITE_DEBUG_MENU_MANAGE") {
+        Flyout::Manage
+    } else if on("HERONITE_DEBUG_MENU_CATEGORIES") {
+        Flyout::Categories
+    } else if on("HERONITE_DEBUG_MENU_SAVES") {
+        Flyout::Saves
+    } else {
+        Flyout::Status
+    }
+}
 
 impl CollectionView {
     /// `HERONITE_DEBUG_MENU=<card key>` opens its context menu (with the
     /// status flyout; `HERONITE_DEBUG_MENU_CATEGORIES=1` for the categories
-    /// one, `HERONITE_DEBUG_MENU_MANAGE=1` for Manage installation's), `HERONITE_DEBUG_DROPDOWN=view|nav` opens a header menu
+    /// one, `HERONITE_DEBUG_MENU_MANAGE=1` for Manage installation's,
+    /// `HERONITE_DEBUG_MENU_SAVES=1` for the saves'), `HERONITE_DEBUG_DROPDOWN=view|nav` opens a header menu
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
     /// that search typed; `views`: its views in edit mode; `views-select`:
     /// their select open; `more-group` / `more-sort`: the "More" list of
@@ -38,12 +56,7 @@ impl CollectionView {
                 batch: self.sel.contains(&key),
                 key: key.into(),
                 position: point(px(200.), px(160.)),
-                status_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_none()
-                    && crate::env::value("HERONITE_DEBUG_MENU_CATEGORIES").is_none()
-                    && crate::env::value("HERONITE_DEBUG_MENU_MANAGE").is_none(),
-                install_open: crate::env::value("HERONITE_DEBUG_MENU_INSTALL").is_some(),
-                manage_open: crate::env::value("HERONITE_DEBUG_MENU_MANAGE").is_some(),
-                categories_open: crate::env::value("HERONITE_DEBUG_MENU_CATEGORIES").is_some(),
+                open: Some(debug_flyout()),
             });
         }
         if let Some(which) = crate::env::value("HERONITE_DEBUG_DIALOG") {

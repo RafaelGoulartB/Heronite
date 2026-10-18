@@ -113,7 +113,7 @@ pub struct Snapshot {
     pub default_tool: Option<String>,
     /// `name` of the tool whose build last ran the game (from the prefix).
     pub last_ran: Option<String>,
-    /// Tools in `compatibilitytools.d` newer than the running Steam: it
+    /// Tools in `compatibilitytools.d` the running Steam has not read: it
     /// lists them only after it restarts.
     pub unseen: Vec<CompatTool>,
     pub access: Access,
@@ -242,7 +242,7 @@ impl Steam {
         });
         let unseen = match access {
             Access::Files => Vec::new(),
-            _ => self.started_at().map(|at| files::tools_added_since(&self.locator, at)).unwrap_or_default(),
+            _ => files::unseen_tools(&self.locator, self.started_at()),
         };
         Ok(Snapshot { launch_options, compat_tool, tools, default_tool, last_ran, unseen, access, prefix, flatpak: self.flatpak() })
     }

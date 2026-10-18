@@ -53,6 +53,10 @@ pub(super) enum GameAction {
     Details,
     EditPlaytime,
     Ludusavi,
+    /// The after-play save backup of this game (`on` = turn it on).
+    AutoBackup {
+        on: bool,
+    },
     SteamUninstall,
     /// The Steam copy of a game whose own copy is installed too.
     SteamPlay,
@@ -315,6 +319,7 @@ impl CollectionView {
             A::Details => self.open_details(key, cx),
             A::EditPlaytime => self.open_playtime_settings(key, window, cx),
             A::Ludusavi => self.open_ludusavi_backup(key, cx),
+            A::AutoBackup { on } => self.set_auto_backup(key, *on, window, cx),
             A::SteamUninstall => self.open_steam_uninstall(key, window, cx),
             A::SteamPlay => self.play_with_steam(key, cx),
             A::SteamInstall => self.install_with_steam(key, cx),
