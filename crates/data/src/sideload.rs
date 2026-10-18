@@ -351,6 +351,27 @@ pub fn init_game_config(
     game_config::set_game_settings(paths, app_name, home, &changes)
 }
 
+/// Fills the art of a sideloaded game where it has none (`art_cover`,
+/// `art_square`; empty values are skipped).
+pub fn fill_art(paths: &DataPaths, app_name: &str, art_cover: &str, art_square: &str) -> Result<()> {
+    json_store::update_value(&paths.sideload_library(), |doc| {
+        let entry = doc
+            .get_mut("games")
+            .and_then(Value::as_array_mut)
+            .and_then(|l| l.iter_mut().find(|g| g.get("app_name").and_then(Value::as_str) == Some(app_name)))
+            .and_then(Value::as_object_mut);
+        if let Some(g) = entry {
+            for (key, value) in [("art_cover", art_cover), ("art_square", art_square)] {
+                let empty = g.get(key).and_then(Value::as_str).is_none_or(str::is_empty);
+                if empty && !value.is_empty() {
+                    g.insert(key.into(), json!(value));
+                }
+            }
+        }
+        Ok(())
+    })
+}
+
 /// `GameInfo` of a sideloaded game from the raw library file.
 pub fn find_game(paths: &DataPaths, app_name: &str) -> Result<Option<Value>> {
     let doc = json_store::read_value(&paths.sideload_library())?;
@@ -467,6 +488,19 @@ mod tests {
         assert_eq!(short_uuid(hex("00000000-0000-4000-8000-000000000000")), "111111114Ay6byqtQtQyDN");
         assert_eq!(short_uuid(hex("ffffffff-ffff-4fff-bfff-ffffffffffff")), "xBuEXKpzVpVzLaDrb3orAX");
         assert_eq!(short_uuid(hex("123e4567-e89b-42d3-a456-426614174000")), "3fEgj34VZ4kh5joEmQykym");
+    }
+
+    #[test]
+    fn fill_art_only_fills_empty_slots() {
+        let (_d, paths) = setup();
+        let mut sp = spec("abc", "/g/game.exe", SideloadPlatform::Windows);
+        sp.art_square = String::new();
+        save_game(&paths, &sp).unwrap();
+        fill_art(&paths, "abc", "https://x/new-cover.jpg", "https://x/grid.jpg").unwrap();
+        let g = find_game(&paths, "abc").unwrap().unwrap();
+        assert_eq!(g["art_cover"], "https://example.com/hero.jpg", "kept");
+        assert_eq!(g["art_square"], "https://x/grid.jpg", "filled");
+        fill_art(&paths, "missing", "a", "b").unwrap();
     }
 
     #[test]
