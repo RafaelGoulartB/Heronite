@@ -369,5 +369,8 @@
   "{title} is no longer at {path}.\nIf you moved or renamed its folder, pick where it is now. If you deleted it, remove it from the installed games: it stays in your library, ready to install again.": "{title} não está mais em {path}.\nSe você moveu ou renomeou a pasta, escolha onde ela está agora. Se apagou, remova o jogo dos instalados: ele continua na sua biblioteca, pronto para instalar de novo.",
   "{title}: the downloaded files could not be deleted from {folder}": "{title}: não foi possível apagar os arquivos baixados de {folder}",
   "Retry": "Tentar de novo",
-  "({size} for the download queue)": "({size} para a fila de downloads)"
+  "({size} for the download queue)": "({size} para a fila de downloads)",
+  "Log in again": "Entrar novamente",
+  "The sign-in expired: log in again": "O login expirou: entre novamente",
+  "Your {store} sign-in expired. Log in again to download, update and sync saves.": "Seu login na {store} expirou. Entre novamente para baixar, atualizar e sincronizar saves."
 }

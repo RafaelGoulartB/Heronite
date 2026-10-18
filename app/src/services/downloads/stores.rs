@@ -29,7 +29,7 @@ fn read_local(paths: &DataPaths, store: Store) -> Local {
             Local {
                 account: heronite_gog::user::account(paths)
                     .filter(|_| heronite_gog::user::is_logged_in(paths))
-                    .map(|a| Account { logged_in: true, name: a.username }),
+                    .map(|a| Account { logged_in: true, name: a.username, expired: false }),
                 owned: stats.owned,
                 installed: stats.installed,
                 updates: heronite_gog::updates::cached_updates(paths),
@@ -40,7 +40,7 @@ fn read_local(paths: &DataPaths, store: Store) -> Local {
             Local {
                 account: heronite_amazon::user::account(paths)
                     .filter(|_| heronite_amazon::user::is_logged_in(paths))
-                    .map(|a| Account { logged_in: true, name: a.name }),
+                    .map(|a| Account { logged_in: true, name: a.name, expired: false }),
                 owned: stats.owned,
                 installed: stats.installed,
                 updates: heronite_amazon::updates::cached_updates(paths),
@@ -102,7 +102,7 @@ impl Downloads {
         }
     }
 
-    fn store_mut(&mut self, store: Store) -> &mut StoreState {
+    pub(super) fn store_mut(&mut self, store: Store) -> &mut StoreState {
         match store {
             Store::Gog => &mut self.gog,
             Store::Amazon => &mut self.amazon,
@@ -111,7 +111,14 @@ impl Downloads {
 
     fn apply_local(&mut self, store: Store, local: Local) {
         let st = self.store_mut(store);
+        // The tool's files still hold the refused sign-in: it stays expired
+        // until the next login.
+        let expired = st.account.expired;
         st.account = local.account.unwrap_or_default();
+        if expired {
+            st.account.logged_in = false;
+            st.account.expired = true;
+        }
         st.owned = local.owned;
         st.installed = local.installed;
         st.updates = local.updates.into_iter().collect();
@@ -221,6 +228,7 @@ impl Downloads {
                         if store == Store::Amazon {
                             this.amazon_login = None;
                         }
+                        this.store_mut(store).account.expired = false;
                         this.apply_local(store, local);
                         this.toast(cx, tr!("Logged in as {name}", name), false);
                         this.emit(cx, DownloadsEvent::LibraryChanged);
@@ -282,7 +290,15 @@ impl Downloads {
         cx.notify();
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { refresh_blocking(&paths, store) }).await;
+            let (res, online) = cx
+                .background_spawn(async move {
+                    let res = refresh_blocking(&paths, store);
+                    // A token refresh that failed offline is not an expired sign-in.
+                    let online = !res.as_ref().is_err_and(heronite_epic::session::is_expired)
+                        || heronite_launch::net::Net::is_online(&heronite_launch::net::SystemNet);
+                    (res, online)
+                })
+                .await;
             this.update(cx, |this, cx| {
                 this.store_mut(store).refreshing = false;
                 match res {
@@ -309,6 +325,7 @@ impl Downloads {
                             this.queue_auto_updates(None, cx);
                         }
                     }
+                    Err(err) if online && heronite_epic::session::is_expired(&err) => this.mark_expired(Some(store), cx),
                     Err(err) => {
                         let msg = format!("{err:#}");
                         this.store_mut(store).last_error = Some(msg.clone());

@@ -20,6 +20,9 @@ pub struct Busy {
 pub struct Account {
     pub logged_in: bool,
     pub name: String,
+    /// The saved sign-in stopped working: shown as logged out, with "Log in
+    /// again", until the next login (or logout).
+    pub expired: bool,
 }
 
 #[derive(Clone, Debug, Default)]

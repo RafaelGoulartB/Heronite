@@ -7,6 +7,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::json_store;
 use heronite_data::DataPaths;
 use heronite_epic::cache_store::CacheStore;
+use heronite_epic::session::SessionExpired;
 use heronite_i18n::tr;
 use serde_json::{json, Value};
 
@@ -85,10 +86,18 @@ fn parse_credentials(stdout: &str) -> Result<Credentials> {
     }
 }
 
-/// Fresh tokens (gogdl refreshes expired ones itself).
-pub fn credentials(_paths: &DataPaths, gogdl: &Gogdl) -> Result<Credentials> {
+/// Fresh tokens (gogdl refreshes expired ones itself). When gogdl has
+/// tokens but cannot refresh them, the error is a [`SessionExpired`].
+pub fn credentials(paths: &DataPaths, gogdl: &Gogdl) -> Result<Credentials> {
     let out = gogdl.run(&["auth"])?;
-    parse_credentials(&out.stdout)
+    parse_credentials(&out.stdout).map_err(|err| {
+        let refused = last_json_object(&out.stdout).is_some_and(|d| d.get("error").and_then(Value::as_bool) == Some(true));
+        if refused && is_logged_in(paths) {
+            anyhow!(SessionExpired).context(tr!("Your GOG sign-in expired: log in again"))
+        } else {
+            err
+        }
+    })
 }
 
 /// The account saved in `config.json` for a GOG user document.
@@ -237,6 +246,20 @@ mod tests {
         assert_eq!(calls(dir.path()), ["auth"]);
         let none = fake(dir.path(), &paths, "echo null");
         assert!(credentials(&paths, &none).is_err());
+    }
+
+    #[test]
+    fn tokens_gogdl_cannot_refresh_are_an_expired_session() {
+        let (dir, paths) = setup();
+        let refused = fake(dir.path(), &paths, "echo '{\"error\": true}'");
+        // Not signed in here: just an error.
+        assert!(!heronite_epic::session::is_expired(&credentials(&paths, &refused).unwrap_err()));
+        std::fs::create_dir_all(paths.gog_auth().parent().unwrap()).unwrap();
+        std::fs::write(paths.gog_auth(), r#"{"46899977096215655":{"access_token":"t","user_id":"4242"}}"#).unwrap();
+        save_account(&paths, &Account { user_id: "4242".into(), username: "player".into() }, None).unwrap();
+        let err = credentials(&paths, &refused).unwrap_err();
+        assert!(heronite_epic::session::is_expired(&err));
+        assert!(err.to_string().contains("expired"), "{err}");
     }
 
     #[test]

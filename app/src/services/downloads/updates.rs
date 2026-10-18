@@ -80,16 +80,22 @@ impl Downloads {
                 .background_spawn(async move {
                     let lg = Legendary::locate(&data_paths)?;
                     let r = library::refresh(&data_paths, &lg)?;
-                    anyhow::Ok((r, library::updates_available(&data_paths), read_stats(&data_paths)))
+                    let signed_in = heronite_epic::user::is_logged_in(&data_paths);
+                    anyhow::Ok((r, signed_in, library::updates_available(&data_paths), read_stats(&data_paths)))
                 })
                 .await;
             this.update(cx, |this, cx| {
                 this.refreshing = false;
                 match res {
-                    Ok((r, updates, stats)) => {
+                    Ok((r, signed_in, updates, stats)) => {
                         this.updates = updates.into_iter().collect();
                         this.stats = stats;
+                        // legendary refused the login (and deleted it).
+                        let expired = this.account.logged_in
+                            && !this.logging_out
+                            && (!signed_in || r.list_error.as_deref().is_some_and(heronite_epic::session::legendary_expired));
                         match r.list_error {
+                            _ if expired => this.mark_expired(None, cx),
                             Some(e) => {
                                 this.last_error = Some(e.clone());
                                 this.toast(

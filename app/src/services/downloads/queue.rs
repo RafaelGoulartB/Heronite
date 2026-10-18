@@ -123,6 +123,13 @@ impl Downloads {
                             self.auto_failed.insert(element.params.app_name.clone());
                         }
                         let why = error.unwrap_or_default();
+                        let legendary = !matches!(element.params.runner.as_str(), "gog" | "nile");
+                        if legendary && heronite_epic::session::legendary_expired(&why) && !self.account.expired {
+                            // Its message says what to do; the history keeps legendary's.
+                            self.mark_expired(None, cx);
+                            self.reload_local(cx);
+                            return cx.notify();
+                        }
                         let first = why.lines().next().unwrap_or("").to_string();
                         let failed = match (install, first.is_empty()) {
                             (true, true) => tr!("{title}: installation failed", title = title.clone()),

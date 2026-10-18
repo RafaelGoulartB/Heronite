@@ -64,6 +64,10 @@ pub fn bearer(token: &str) -> String {
 pub fn get_json(url: &str, token: &str) -> Result<serde_json::Value> {
     let auth = bearer(token);
     let resp = get(url, &[("Authorization", &auth)])?;
+    if resp.status == 401 {
+        // The token gogdl handed out is refused: the account must sign in again.
+        return Err(anyhow::anyhow!(heronite_epic::session::SessionExpired).context(format!("{url}: HTTP 401")));
+    }
     if resp.status / 100 != 2 {
         anyhow::bail!("{url}: HTTP {}", resp.status);
     }

@@ -36,6 +36,7 @@ use heronite_epic::progress::Progress;
 use heronite_epic::queue::DmElement;
 use heronite_epic::user::UserInfo;
 use heronite_epic::{library, user};
+use heronite_i18n::tr;
 
 use eos::EosEntry;
 use queue::LazyJob;
@@ -71,6 +72,8 @@ pub struct Downloads {
     /// (the periodic check would otherwise fail again every few hours).
     auto_failed: HashSet<String>,
     pub logging_in: bool,
+    /// An Epic logout runs: the account going away is not an expired sign-in.
+    logging_out: bool,
     /// Last problem of login / refresh, for the Epic page.
     pub last_error: Option<String>,
     eos: EosStatus,
@@ -130,6 +133,7 @@ impl Downloads {
             deferred: HashSet::new(),
             auto_failed: HashSet::new(),
             logging_in: false,
+            logging_out: false,
             last_error: None,
             eos: EosStatus::default(),
             eos_games: HashMap::new(),
@@ -233,14 +237,20 @@ impl Downloads {
         }
         let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let (info, updates, stats) = cx
+            let (info, signed_in, updates, stats) = cx
                 .background_spawn(async move {
                     let info = user::sync_user_info(&data_paths).ok().flatten();
-                    (info, library::updates_available(&data_paths), library_file::read_stats(&data_paths))
+                    let signed_in = user::is_logged_in(&data_paths);
+                    (info, signed_in, library::updates_available(&data_paths), library_file::read_stats(&data_paths))
                 })
                 .await;
             this.update(cx, |this, cx| {
+                // legendary deletes its login when Epic refuses it.
+                let lost = this.account.logged_in && !signed_in && !this.logging_out;
                 this.apply_account(info);
+                if lost {
+                    this.mark_expired(None, cx);
+                }
                 this.updates = updates.into_iter().collect();
                 this.stats = stats;
                 cx.notify();
@@ -252,8 +262,35 @@ impl Downloads {
 
     fn apply_account(&mut self, info: Option<UserInfo>) {
         self.account = match info {
-            Some(i) => Account { logged_in: true, name: i.display_name },
-            None => Account::default(),
+            Some(i) => Account { logged_in: true, name: i.display_name, expired: false },
+            None => Account { expired: self.account.expired, ..Account::default() },
         };
+    }
+
+    /// The saved sign-in of a store (`None`: Epic) stopped working: it shows
+    /// as logged out with "Log in again" and a message in place of the raw
+    /// failure, said once.
+    pub(super) fn mark_expired(&mut self, store: Option<Store>, cx: &mut Context<Self>) {
+        let name = store.map_or("Epic Games", Store::name);
+        let message = tr!("Your {store} sign-in expired. Log in again to download, update and sync saves.", store = name);
+        let (account, last_error) = match store {
+            None => (&mut self.account, &mut self.last_error),
+            Some(s) => {
+                let st = self.store_mut(s);
+                (&mut st.account, &mut st.last_error)
+            }
+        };
+        let first = !account.expired;
+        account.logged_in = false;
+        account.expired = true;
+        *last_error = Some(message.clone());
+        log::warn!("downloads: the {name} sign-in expired");
+        if first {
+            if !crate::system::has_window(cx) {
+                crate::system::notify::send(name.to_string(), message.clone());
+            }
+            self.toast(cx, message, true);
+        }
+        cx.notify();
     }
 }

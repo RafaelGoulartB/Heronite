@@ -9,10 +9,11 @@
 
 use std::collections::HashSet;
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use heronite_data::json_store;
 use heronite_data::DataPaths;
 use heronite_epic::cache_store::CacheStore;
+use heronite_epic::session::SessionExpired;
 use heronite_epic::util::{file_size, remove_special_characters};
 use heronite_i18n::tr;
 use serde_json::{json, Value};
@@ -33,7 +34,8 @@ pub fn refresh(paths: &DataPaths, nile: &Nile) -> Result<usize> {
     let out = nile.run(&["library", "sync"])?;
     let text = format!("{}\n{}", out.stderr, out.stdout);
     if text.contains("User not logged in") {
-        bail!(tr!("You are not signed in to Amazon Games"));
+        // nile has no (working) sign-in although the app has the account.
+        return Err(anyhow!(SessionExpired).context(tr!("You are not signed in to Amazon Games")));
     }
     if !out.success() {
         let why = out.error_lines();
@@ -292,7 +294,9 @@ mod tests {
     fn refresh_reports_a_missing_login() {
         let env = Env::new();
         let nile = env.nile("echo 'ERROR [CLI]:\t User not logged in' >&2; exit 1");
-        let err = refresh(&env.paths, &nile).unwrap_err().to_string();
+        let err = refresh(&env.paths, &nile).unwrap_err();
+        assert!(heronite_epic::session::is_expired(&err));
+        let err = err.to_string();
         assert!(err.contains("not signed in"), "{err}");
         assert!(!env.paths.nile_library().exists());
     }
