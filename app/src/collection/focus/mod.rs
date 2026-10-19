@@ -11,6 +11,7 @@ use std::rc::Rc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::appearance::Section;
 
 use self::description::render_html;
 use self::panels::{details_panel, details_value_width, hltb_panel, related_panel};
@@ -411,27 +412,39 @@ fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
 }
 
 /// Two columns (screenshots, overview, timeline, related | extra panel,
-/// details, How Long To Beat), or one when stacked. Stacked, the short side
-/// sections come right after the overview so a long timeline does not push
-/// them out of sight.
+/// details, How Long To Beat), or one when stacked. The order and the hidden
+/// sections come from Settings → Appearance (by default the short side
+/// sections come right after the overview when stacked, so a long timeline
+/// does not push them out of sight). The extra panel and How Long To Beat
+/// travel with "Details" but stay when it is hidden.
 fn body(lay: &Layout, s: Sections) -> Div {
     let Sections { screenshots, overview, timeline, related, top, details, hltb } = s;
+    let look = theme::appearance().sections;
+    let mut main_parts = [
+        (Section::Screenshots, screenshots),
+        (Section::Overview, Some(overview.into_any_element())),
+        (Section::Timeline, timeline),
+        (Section::Related, related.map(IntoElement::into_any_element)),
+    ];
+    let mut take = |section: Section| main_parts.iter_mut().find(|(s, _)| *s == section).and_then(|(_, el)| el.take());
+    let details = look.shown(Section::Details).then_some(details);
     if lay.stacked {
-        return div()
-            .flex()
-            .flex_col()
-            .gap(px(24.))
-            .min_w_0()
-            .children(screenshots)
-            .child(overview)
-            .children(hltb)
-            .children(top)
-            .child(details)
-            .children(timeline)
-            .children(related);
+        let mut col = div().flex().flex_col().gap(px(24.)).min_w_0();
+        let (mut hltb, mut top, mut details) = (hltb, top, details);
+        for section in look.order() {
+            col = match section {
+                Section::Details => col.children(hltb.take()).children(top.take()).children(details.take()),
+                _ if look.shown(section) => col.children(take(section)),
+                _ => col,
+            };
+        }
+        return col;
     }
-    let main = div().flex().flex_col().gap(px(24.)).min_w_0().children(screenshots).child(overview).children(timeline).children(related);
-    let side = div().flex().flex_col().gap(px(14.4)).min_w_0().children(top).child(details).children(hltb);
+    let main = look
+        .visible()
+        .filter(|s| *s != Section::Details)
+        .fold(div().flex().flex_col().gap(px(24.)).min_w_0(), |col, section| col.children(take(section)));
+    let side = div().flex().flex_col().gap(px(14.4)).min_w_0().children(top).children(details).children(hltb);
     div().flex().items_start().gap(px(COL_GAP)).child(main.flex_1()).child(side.w(px(lay.side_w)).flex_none())
 }
 
