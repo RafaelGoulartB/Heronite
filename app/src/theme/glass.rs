@@ -79,8 +79,10 @@ fn panel_opacity() -> f32 {
     }
 }
 
-/// The default panel opacity (`rgba(22,27,36,.84)`).
-const GLASS_OPACITY_DEFAULT: f32 = 0.84;
+/// Panel opacity above which the art under the glass darkens towards fully
+/// hidden at 100% (below it the dim stays at 50%). The default opacity (90%)
+/// sits above it.
+const DIM_KNEE: f32 = 0.84;
 
 /// Do the glass surfaces show blurred art at all? No in Solid mode and when
 /// the panels are fully opaque: then nothing needs to be generated or kept.
@@ -103,8 +105,8 @@ fn glass_tint(a: f32) -> Hsla {
     rgba_hsla(r, g, b, a)
 }
 
-/// Glass surface laid over the blurred art: `rgba(22,27,36,.84)` by default
-/// (the Interface opacity). With [`glass_art_dim`] about 8% of the art shows
+/// Glass surface laid over the blurred art: `rgba(22,27,36,.90)` by default
+/// (the Interface opacity). With [`glass_art_dim`] about 3% of the art shows
 /// through at the default: a tint of the game's colours without bright art
 /// hurting legibility. Solid mode: the opaque tint.
 pub fn glass_fill() -> Hsla {
@@ -117,22 +119,22 @@ pub fn glass_fill_solid() -> Hsla {
 }
 /// Darkening of the blurred art under the glass fill (stands in for the
 /// Collection's scrims that sit between the art and a real backdrop blur):
-/// 50% up to the default opacity, then rising to 100% so that fully opaque
+/// 50% up to [`DIM_KNEE`], then rising to 100% so that fully opaque
 /// panels hide the art completely.
 pub fn glass_art_dim() -> Hsla {
     let o = panel_opacity();
-    let t = ((o - GLASS_OPACITY_DEFAULT) / (1. - GLASS_OPACITY_DEFAULT)).clamp(0., 1.);
+    let t = ((o - DIM_KNEE) / (1. - DIM_KNEE)).clamp(0., 1.);
     black_a(0.5 + 0.5 * t)
 }
 /// Veil over the Collection behind the pages (☰ pages, Settings): `.55` at
-/// the default panel opacity, lighter for more transparent panels and fully
+/// [`DIM_KNEE`], darker above it, lighter for more transparent panels and fully
 /// opaque for Solid panels (the pages then show no art at all).
 pub fn page_backdrop() -> Hsla {
     let o = panel_opacity();
-    let a = if o >= GLASS_OPACITY_DEFAULT {
-        0.55 + 0.45 * ((o - GLASS_OPACITY_DEFAULT) / (1. - GLASS_OPACITY_DEFAULT))
+    let a = if o >= DIM_KNEE {
+        0.55 + 0.45 * ((o - DIM_KNEE) / (1. - DIM_KNEE))
     } else {
-        0.35 + 0.20 * ((o - 0.5) / (GLASS_OPACITY_DEFAULT - 0.5)).clamp(0., 1.)
+        0.35 + 0.20 * ((o - 0.5) / (DIM_KNEE - 0.5)).clamp(0., 1.)
     };
     // Solid: the plain page colour, no art behind the sheet.
     let (r, g, b) = if solid_mode() { (7, 9, 12) } else { (10, 12, 16) };
@@ -179,12 +181,15 @@ mod appearance_tests {
     #[test]
     fn glass_tokens_follow_the_appearance() {
         set_appearance(Appearance::default());
-        assert!((glass_fill().a - 0.84).abs() < 1e-6);
+        assert!((glass_fill().a - 0.90).abs() < 1e-6);
         assert!((glass_fill_solid().a - 0.94).abs() < 1e-6);
-        assert!((glass_art_dim().a - 0.5).abs() < 1e-6);
-        assert!((page_backdrop().a - 0.55).abs() < 1e-6);
+        assert!(glass_art_dim().a > 0.5 && glass_art_dim().a < 1.);
         assert!(glass_shows_art());
         assert_eq!(glass_blur_px(), 30.);
+
+        set_appearance(Appearance { interface_opacity: 84., ..Appearance::default() });
+        assert!((glass_art_dim().a - 0.5).abs() < 1e-6);
+        assert!((page_backdrop().a - 0.55).abs() < 1e-6);
 
         set_appearance(Appearance { interface_opacity: 100., ..Appearance::default() });
         assert!(!glass_shows_art());

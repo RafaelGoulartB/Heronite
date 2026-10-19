@@ -75,7 +75,7 @@ game's art (blur 30px, saturate 1.5, ~1/5 of the window, cached in the
 `ui::glass::set_backdrop`. Glass surfaces paint it aligned to the window and
 clipped to their rounded bounds (`Window::paint_image` with a sub-rect), under a
 dark dim (`theme::glass_art_dim`) and the translucent fill
-(`rgba(22,27,36,.84)` by default). No art (no game selected, Solid) or still
+(`rgba(22,27,36,.90)` by default). No art (no game selected, Solid) or still
 loading: nearly opaque fill (`.94`). Never blur per frame; never request another
 blur: reuse this one.
 
@@ -90,7 +90,7 @@ floor under the details (no lighter dip in the middle) and the focus panels
 with no panel stays at .66 or more. *Interface
 background* = every glass surface (menus, ☰, context menus, dropdowns, dialogs,
 drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
-`interfaceOpacity` 50-100 (default 84, maps to `glass_fill`; the art dim rises
+`interfaceOpacity` 50-100 (default 90, maps to `glass_fill`; the art dim rises
 from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
 (default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum.
 These live in this app's `appearance.json` (`AppPaths::appearance()`, next to

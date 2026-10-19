@@ -135,7 +135,7 @@ impl Appearance {
     pub const DEFAULT: Appearance = Appearance {
         collection_opacity: 100.,
         interface_mode: InterfaceMode::Transparent,
-        interface_opacity: 84.,
+        interface_opacity: 90.,
         interface_blur: 30.,
         solid_tint: SolidTint::Slate,
         accent: Accent::DEFAULT,
@@ -269,7 +269,7 @@ mod tests {
         let d = Appearance::default();
         assert_eq!(d.collection_opacity, 100.);
         assert_eq!(d.interface_mode, InterfaceMode::Transparent);
-        assert_eq!(d.interface_opacity, 84.);
+        assert_eq!(d.interface_opacity, 90.);
         assert_eq!(d.interface_blur, 30.);
         assert_eq!(d.solid_tint, SolidTint::Slate);
         assert_eq!(d.normalized(), d);
