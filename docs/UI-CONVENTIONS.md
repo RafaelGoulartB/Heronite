@@ -234,12 +234,14 @@ by the setting each comes from (`HERONITE_DEBUG_PREVIEW=1` opens it).
 section is on screen (listed when shown, then the sizes no store or manifest gives are walked one by one and cached in
 `install-sizes.json`; showing another section stops the walk). A bar per disk (one device = one disk, btrfs subvolumes
 included) in the group colours (`group_color`), hover names a part; the "Free up space" card (big number = the ticked
-choices, a split bar, the choices as switches, then an inline confirmation); the games as a squarified treemap of their
+choices, a split bar, the choices as switches, each with a chevron that opens what it does and every item it takes,
+with its paths, "To the trash" / "Deleted" and size; then an inline confirmation); the games as a squarified treemap of their
 wide art (`treemap.rs`, the biggest 12 and a "+n" tile; an amber dot = not played for half a year) over a list sorted by
 size or least recently played; then one list per kind (Wine prefixes, Proton and runtimes, Steam leftovers, caches,
 leftover folders), unused rows first with an amber "Unused" pill and bar. Prefixes, Steam's Proton prefixes and leftover
 folders go to the trash, caches and Wine Manager builds are deleted; a game's remove button sends `PageEvent::Uninstall`
-(the Collection runs its own uninstall over the page). Console: rows, A twice removes. `HERONITE_DEBUG_PAGE=settings:storage`.
+(the Collection runs its own uninstall over the page). Console: rows, A twice removes. `HERONITE_DEBUG_PAGE=settings:storage`
+(`HERONITE_DEBUG_SWEEPS_OPEN=1` opens every choice).
 
 **Pages** (`pages/mod.rs`, ☰ pages other than Settings): `sheet(id, title, lead, actions, max_w, window, close, column)`
 = glass sheet inset 12px under the slim header (title Rubik 26 + lead, optional header actions, round close =

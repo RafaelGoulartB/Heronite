@@ -12,7 +12,7 @@ use heronite_storage::{Group, Item, Kind, State as Use, Sweep};
 use super::treemap::squarify;
 use super::{
     days_since, group_color, group_label, item_meta, open, played_text, remove, seg_color, seg_label, size_text, stale, sweep_color,
-    sweep_label, unused_color, Confirm, GameSort, Hover, Seg, State,
+    sweep_effect, sweep_label, unused_color, Confirm, GameSort, Hover, Seg, State,
 };
 use crate::icons::Icon;
 use crate::pages::settings::SettingsPage;
@@ -284,7 +284,30 @@ fn free_up(st: &State, cx: &mut Context<SettingsPage>) -> AnyElement {
 
     let mut choices = div().flex().flex_col();
     for (s, count, bytes) in &parts {
-        let (s, on) = (*s, st.sweeps.contains(s));
+        let (s, on, open) = (*s, st.sweeps.contains(s), st.open_sweeps.contains(s));
+        let chevron = div()
+            .id(SharedString::from(format!("st-sweep-more-{s:?}")))
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(px(28.))
+            .rounded_full()
+            .cursor_pointer()
+            .hover(|d| d.bg(theme::white_a(0.08)))
+            .on_click(cx.listener(move |d, _, _, cx| {
+                // Not a click on the row: the choice stays as it is.
+                cx.stop_propagation();
+                let st = &mut d.storage;
+                if !st.open_sweeps.remove(&s) {
+                    st.open_sweeps.insert(s);
+                }
+                cx.notify();
+            }))
+            .child(
+                icon(Icon::ExpandMore, px(20.), theme::text_muted())
+                    .when(open, |i| i.with_transformation(Transformation::rotate(percentage(0.5)))),
+            );
         choices = choices.child(
             div()
                 .id(SharedString::from(format!("st-sweep-{s:?}")))
@@ -309,8 +332,12 @@ fn free_up(st: &State, cx: &mut Context<SettingsPage>) -> AnyElement {
                 .child(dot(sweep_color(s), 8.))
                 .child(div().flex_1().min_w_0().text_size(px(14.)).text_color(theme::text_primary()).truncate().child(sweep_label(s)))
                 .child(dim(count.to_string()))
-                .child(div().w(px(84.)).flex().justify_end().text_size(px(13.)).text_color(theme::text_muted()).child(human_size(*bytes))),
+                .child(div().w(px(84.)).flex().justify_end().text_size(px(13.)).text_color(theme::text_muted()).child(human_size(*bytes)))
+                .child(chevron),
         );
+        if open {
+            choices = choices.child(sweep_details(st, s));
+        }
     }
 
     let mut card = body.child(headline).child(split);
@@ -332,6 +359,49 @@ fn free_up(st: &State, cx: &mut Context<SettingsPage>) -> AnyElement {
         }
     }
     div().child(caption(tr!("Free up space"))).child(card).into_any_element()
+}
+
+/// Under an open "Free up space" choice: what freeing it does, then each
+/// thing it takes with its folders and size.
+fn sweep_details(st: &State, s: Sweep) -> Div {
+    let (mut items, _) = st.sweep_parts(s);
+    items.sort_by_key(|i| std::cmp::Reverse(st.own(i).unwrap_or(0)));
+    // Lined up with the choice's label (switch, gap, dot, gap) and its size
+    // (the chevron's room on the right).
+    let mut list = div().flex().flex_col().ml(px(62.)).mr(px(40.)).mb(px(8.)).pl(px(12.)).border_l_1().border_color(theme::white_a(0.1));
+    list = list.child(div().pb(px(6.)).text_size(px(12.)).line_height(px(17.)).text_color(theme::text_muted()).child(sweep_effect(s)));
+    for item in items {
+        let action = if item.goes_to_trash() { tr!("To the trash") } else { tr!("Deleted") };
+        let paths = item.paths.iter().map(|p| dim(p.display().to_string()).truncate());
+        list = list.child(
+            div()
+                .flex()
+                .items_start()
+                .gap(px(12.))
+                .py(px(5.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(div().text_size(px(13.)).text_color(theme::text_primary()).truncate().child(item.title.clone()))
+                        .children(paths),
+                )
+                .child(dim(action).flex_none())
+                .child(
+                    div()
+                        .w(px(84.))
+                        .flex()
+                        .flex_none()
+                        .justify_end()
+                        .text_size(px(13.))
+                        .text_color(theme::text_muted())
+                        .child(size_text(st.own(item))),
+                ),
+        );
+    }
+    list
 }
 
 /// Sorted for a list: what can go first, then the biggest.
