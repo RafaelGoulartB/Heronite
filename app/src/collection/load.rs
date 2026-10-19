@@ -130,6 +130,11 @@ impl CollectionView {
         let before = self.lib.as_ref().map_or(0, |lib| lib.games.len());
         let was_empty = before == 0;
         self.lib = Some(Arc::new(l.lib));
+        if first {
+            if let Some((text, error)) = crate::services::upkeep::take_restore_notice() {
+                self.show_toast(text, error, cx);
+            }
+        }
         if let Some(lib) = self.lib.clone() {
             self.prune_status_filter(&lib);
             self.seed_default_views(&lib);

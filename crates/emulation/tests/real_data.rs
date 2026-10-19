@@ -229,56 +229,6 @@ fn real_machine_detection_and_ludusavi() {
 }
 
 #[test]
-fn config_backup_of_a_copy_of_the_fixture() {
-    let Some(fx) = fixture() else { return };
-    let src = tempfile::tempdir().unwrap();
-    // Plain recursive copy of the fixture into a temp "heroic folder".
-    fn copy(from: &Path, to: &Path) {
-        std::fs::create_dir_all(to).unwrap();
-        for e in std::fs::read_dir(from).unwrap() {
-            let e = e.unwrap();
-            let t = to.join(e.file_name());
-            if e.file_type().unwrap().is_dir() {
-                copy(&e.path(), &t);
-            } else {
-                std::fs::copy(e.path(), t).unwrap();
-            }
-        }
-    }
-    copy(&fx, src.path());
-    let paths = DataPaths::at(src.path());
-    let out = tempfile::tempdir().unwrap();
-    heronite_data::settings::save_backup(&paths, out.path().to_str().unwrap(), "weekly").unwrap();
-    // The fixture's last backup is recent, so a weekly run is not due...
-    let due = heronite_emulation::backup::run_collection_backup(&paths, false, chrono::Local::now());
-    println!("scheduled run: {due:?}");
-    assert_eq!(due.skipped_reason.as_deref(), Some("not-due"));
-    // ...but a forced one copies the (temp) folder.
-    let r = heronite_emulation::backup::run_collection_backup(&paths, true, chrono::Local::now());
-    println!("backup: {r:?}");
-    assert!(r.ran, "{r:?}");
-    let dest = PathBuf::from(r.path.unwrap());
-    assert!(dest.join("local_library/library.json").exists());
-    assert!(!dest.join("store_cache").exists());
-    assert!(!dest.join("local_library/steam-details").exists());
-    let size: u64 = walk(&dest);
-    println!("backup size: {} KiB", size / 1024);
-    fn walk(p: &Path) -> u64 {
-        std::fs::read_dir(p)
-            .unwrap()
-            .map(|e| {
-                let e = e.unwrap();
-                if e.file_type().unwrap().is_dir() {
-                    walk(&e.path())
-                } else {
-                    e.metadata().unwrap().len()
-                }
-            })
-            .sum()
-    }
-}
-
-#[test]
 fn real_save_state_dirs_per_engine() {
     use heronite_emulation::save_states::{Engine, EngineContext};
     let env = HostEnv::system();

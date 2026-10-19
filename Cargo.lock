@@ -3478,6 +3478,7 @@ dependencies = [
  "gilrs",
  "gpui-kit",
  "heronite-amazon",
+ "heronite-backup",
  "heronite-data",
  "heronite-emulation",
  "heronite-epic",

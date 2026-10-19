@@ -21,6 +21,12 @@ use gpui_kit::*;
 fn main() {
     let started = Instant::now();
     tune_allocator();
+    // A restore asked for before a restart: copied before anything reads the
+    // data or the app state (the language included).
+    let restored = {
+        let data_paths = heronite_data::DataPaths::detect();
+        heronite_backup::restore::apply_pending(&data_paths, &heronite_data::AppPaths::for_data(&data_paths))
+    };
     // First, so even the migration's error is in the user's language (only
     // reads a file).
     language::init(&heronite_data::AppPaths::for_data(&heronite_data::DataPaths::detect()));
@@ -28,6 +34,13 @@ fn main() {
     let migration = migrate_from_heroic();
     env_logger_init();
     log::info!("interface language: {}", heronite_i18n::current().code());
+    if let Some(result) = &restored {
+        match result {
+            Ok(r) => log::info!("restored {:?} from {}: {} files written, {} removed", r.parts, r.snapshot.display(), r.written, r.removed),
+            Err(e) => log::error!("restoring a backup failed: {e:#}"),
+        }
+        services::upkeep::set_restore_result(result);
+    }
     match migration {
         heronite_data::migrate::Outcome::Migrated(r) => log::info!(
             "copied the Heroic setup into the data folder: {} files, {} MB, {} files with rewritten paths, legendary from {:?}",

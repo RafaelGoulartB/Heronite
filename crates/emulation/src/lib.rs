@@ -8,11 +8,10 @@
 //! * [`disc_id`]: PS1/PS2/PSP/PS3/GameCube/Wii disc identifiers.
 //! * [`save_states`]: per-engine save state listing, thumbnails and one-shot
 //!   launch arguments.
-//! * [`ludusavi`], [`backup`], [`settings_ext`]: Ludusavi save backups and the
-//!   scheduled config backup, with their status fields in `settings.json`.
+//! * [`ludusavi`], [`settings_ext`]: Ludusavi save backups, with their status
+//!   fields in `settings.json`.
 //! * [`jobs`]: the idle jobs schedule.
 
-pub mod backup;
 pub mod catalog;
 pub mod detect;
 pub mod disc_id;

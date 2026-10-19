@@ -1,13 +1,12 @@
-//! Idle maintenance (the emulation/backup part of `scheduleIdleMaintenance`
-//! in `init.ts`): 90 seconds after start Heronite auto-scans ROM folders and
-//! runs the scheduled config backup.
+//! Idle maintenance (the emulation part of `scheduleIdleMaintenance` in
+//! `init.ts`): 90 seconds after start Heronite auto-scans ROM folders. The
+//! scheduled backup is the app's (`heronite_backup`).
 
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use heronite_data::DataPaths;
 
-use crate::backup::{maybe_run_scheduled_backup, CollectionBackupResult};
 use crate::import::run_auto_rom_scanners;
 
 pub const IDLE_DELAY: Duration = Duration::from_secs(90);
@@ -17,12 +16,10 @@ pub struct IdleReport {
     /// Games imported by the ROM auto-scan.
     pub roms_imported: usize,
     pub rom_scan_error: Option<String>,
-    pub backup: CollectionBackupResult,
 }
 
-/// Runs the jobs now (blocking): `autoScanRomFolders()` then
-/// `maybeRunScheduledBackup()`. The caller refreshes the library when
-/// `roms_imported > 0`.
+/// Runs the jobs now (blocking): `autoScanRomFolders()`. The caller refreshes
+/// the library when `roms_imported > 0`.
 pub fn run_idle_jobs(paths: &DataPaths) -> IdleReport {
     let mut report = IdleReport::default();
     match run_auto_rom_scanners(paths) {
@@ -32,7 +29,6 @@ pub fn run_idle_jobs(paths: &DataPaths) -> IdleReport {
             report.rom_scan_error = Some(format!("{e:#}"));
         }
     }
-    report.backup = maybe_run_scheduled_backup(paths);
     report
 }
 
@@ -50,7 +46,7 @@ mod tests {
     use crate::types::{UpsertRomScannerArgs, UpsertUserEmulatorArgs};
 
     #[test]
-    fn idle_jobs_scan_and_report_backup_state() {
+    fn idle_jobs_scan_rom_folders() {
         let data_dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(data_dir.path());
         let roms = tempfile::tempdir().unwrap();
@@ -79,8 +75,6 @@ mod tests {
         let report = run_idle_jobs(&paths);
         assert_eq!(report.roms_imported, 1);
         assert!(report.rom_scan_error.is_none());
-        // No backup folder configured.
-        assert_eq!(report.backup.skipped_reason.as_deref(), Some("disabled"));
 
         let (tx, rx) = std::sync::mpsc::channel();
         let h = spawn_idle_jobs(paths, Duration::from_millis(10), move |r| tx.send(r.roms_imported).unwrap());

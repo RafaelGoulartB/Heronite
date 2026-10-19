@@ -1,11 +1,10 @@
 //! Settings writers that `heronite-data` does not have yet: the Ludusavi
-//! section and the "last backup" status fields of `local_library/settings.json`
-//! (ports of `setLudusaviSettings`, `recordLudusaviBackup`,
-//! `recordCollectionBackup`). Same read-modify-write as Heronite's
-//! `settingsFile.set('ludusavi' | 'backup', ...)`.
+//! section of `local_library/settings.json` and its "last backup" status
+//! fields (ports of `setLudusaviSettings`, `recordLudusaviBackup`). Same
+//! read-modify-write as Heronite's `settingsFile.set('ludusavi', ...)`.
 
 use anyhow::Result;
-use heronite_data::models::{BackupSettings, CollectionSettingsFile, LudusaviSettings};
+use heronite_data::models::{CollectionSettingsFile, LudusaviSettings};
 use heronite_data::{json_store, settings, DataPaths};
 
 /// `Partial<LudusaviSettings>` of the settings dialog.
@@ -37,10 +36,6 @@ pub struct LudusaviSettingsPatch {
 
 fn current_ludusavi(paths: &DataPaths) -> Result<LudusaviSettings> {
     Ok(settings::load(paths)?.ludusavi)
-}
-
-fn current_backup(paths: &DataPaths) -> Result<BackupSettings> {
-    Ok(settings::load(paths)?.backup)
 }
 
 /// `setLudusaviSettings`; returns the effective settings.
@@ -122,28 +117,6 @@ pub fn record_ludusavi_backup(paths: &DataPaths, rec: &LudusaviRecord) -> Result
     next.last_error = rec.error.clone();
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |f| {
         f.ludusavi = Some(next);
-        Ok(())
-    })
-}
-
-/// Outcome of a config backup to record.
-#[derive(Debug, Clone, Default)]
-pub struct BackupRecord {
-    pub at: String,
-    pub path: Option<String>,
-    pub error: Option<String>,
-}
-
-/// `recordCollectionBackup`.
-pub fn record_collection_backup(paths: &DataPaths, rec: &BackupRecord) -> Result<()> {
-    let mut next = current_backup(paths)?;
-    if rec.error.is_none() {
-        next.last_backup_at = Some(rec.at.clone());
-        next.last_backup_path = rec.path.clone();
-    }
-    next.last_error = rec.error.clone();
-    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |f| {
-        f.backup = Some(next);
         Ok(())
     })
 }
@@ -234,20 +207,5 @@ mod tests {
         set_auto_backup(&paths, "gog", "123", true).unwrap();
         let raw = json_store::read_value(&paths.collection_settings()).unwrap();
         assert!(raw["ludusavi"].get("autoBackupOff").is_none());
-    }
-
-    #[test]
-    fn backup_records_keep_last_success_on_error() {
-        let d = tempfile::tempdir().unwrap();
-        let paths = DataPaths::at(d.path());
-        settings::save_backup(&paths, "/b", "daily").unwrap();
-        record_collection_backup(&paths, &BackupRecord { at: "t1".into(), path: Some("/b/heroic-x".into()), error: None }).unwrap();
-        record_collection_backup(&paths, &BackupRecord { at: "t2".into(), path: None, error: Some("bad".into()) }).unwrap();
-        let b = settings::load(&paths).unwrap().backup;
-        assert_eq!(b.last_backup_at.as_deref(), Some("t1"));
-        assert_eq!(b.last_backup_path.as_deref(), Some("/b/heroic-x"));
-        assert_eq!(b.last_error.as_deref(), Some("bad"));
-        assert_eq!(b.folder, "/b");
-        assert_eq!(b.interval, "daily");
     }
 }

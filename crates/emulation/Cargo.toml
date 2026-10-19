@@ -3,7 +3,7 @@ name = "heronite-emulation"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "ROM scanning, emulator manager, disc ids, save states, Ludusavi and config backups, compatible with Heronite's data files"
+description = "ROM scanning, emulator manager, disc ids, save states, Ludusavi backups, compatible with Heronite's data files"
 
 [dependencies]
 heronite-data = { path = "../data" }

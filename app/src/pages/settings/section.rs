@@ -22,7 +22,7 @@ pub enum Section {
     Screenshots,
     /// Ludusavi: game save backups and restoring them.
     Saves,
-    /// The scheduled copy of the data folder.
+    /// Backups of the data folder and the app settings, and restoring them.
     Backups,
     Logs,
     About,
@@ -107,7 +107,7 @@ impl Section {
             Section::Metadata => tr!("Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags."),
             Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),
             Section::Saves => tr!("Game saves backed up with Ludusavi after you close a game, and the folders a game's Saves tab restores them from."),
-            Section::Backups => tr!("A scheduled copy of the data folder."),
+            Section::Backups => tr!("Scheduled backups of your Collection, play history and settings, and putting one back."),
             Section::Logs => tr!("The logs of this app, the runners and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs)."),
             Section::About => tr!("Updates, this app's data folders and the system it runs on."),
         }
@@ -127,7 +127,7 @@ impl Section {
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
             Section::Screenshots => "screenshots capture shortcut hotkey folder thumbnails cache gallery capturas de tela atalho pasta miniaturas galeria",
             Section::Saves => "saves ludusavi backup restore retention locked differential zip compression game list manifest salvamentos restaurar retencao travado diferencial compressao lista de jogos",
-            Section::Backups => "backups backup data folder config copy schedule pasta de dados copia agendar agendamento",
+            Section::Backups => "backups backup restore data folder config copy schedule retention sign-ins artwork pasta de dados copia agendar agendamento restaurar retencao logins arte",
             Section::Logs => "logs log viewer debug registros visualizador depurar",
             Section::About => "about version system info update upgrade new release changelog sobre versao sistema atualizacao atualizar novidades",
         }
