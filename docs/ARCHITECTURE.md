@@ -24,6 +24,8 @@ the UI.
 app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR strings (no GPUI)
  ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
+ ├─ heronite-backup     backups of the data folder and app state:
+ │                      incremental snapshots, retention, restore    → data
  ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
  ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
  ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
@@ -164,6 +166,18 @@ calls them from `cx.background_spawn` or worker threads.
   path of the settings; nothing changed in the last two hours). `measure` walks one item (`du`-style blocks);
   `disks` maps paths to devices (`mountinfo`, `statvfs`); `remove` re-checks the path and trashes what may
   hold saves, deletes the rest.
+- **heronite-backup:** Settings → Backups. `catalog` says what each file of the data folder and the app
+  state is: a `Part` a backup holds (Collection, app settings, artwork, store sign-ins) or something left out
+  because it is downloaded or rebuilt again (Wine builds, image caches, store caches, logs, temp files);
+  unknown files are in. `snapshot` writes `heronite-YYYY-MM-DD_HHMMSS/{data,config,manifest.json}` under a
+  `.partial` name, hard-linking the files unchanged since the previous backup (copies where links fail), with
+  the folder `0700`; `prune` keeps the newest N (a folder without a manifest is not a backup: never listed,
+  restored or removed). `run` is the schedule and "Back up now" (status in
+  `settings.json` `backup`). `restore::prepare` checks every file against the manifest's SHA-256, backs up
+  the current data and leaves `restore-pending.json` in the app state; `main` applies it first thing at the
+  next start (`apply_pending`), replacing each chosen part whole and rewriting paths when the backup came
+  from other folders. The app's `services::upkeep` runs the schedule (90 s after start, then hourly, never
+  during a game) and the image cache cap (`imageCacheLimitMb`, LRU over `images-cache` and the thumbs).
 - **heronite-wine:** the Wine Manager (`manager`: download, install, remove
   builds from `repos`) and `detect`, the Wine/Proton list the settings pick
   from. `default` keeps a global default that can run games: when none is
