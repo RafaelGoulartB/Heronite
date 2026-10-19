@@ -146,6 +146,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         values: v.iter().map(|s| SharedString::from(s.clone())).collect(),
         facet,
         clamp,
+        more: 0,
     };
 
     if !d.developers.is_empty() {
@@ -161,7 +162,11 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             split: false,
         });
     }
-    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(fd.last_played.as_deref().unwrap_or(tr!("Never"))), split: false });
+    let last_played = match g.last_played.as_deref().and_then(days_since) {
+        Some(days) if days < 60 => days_ago(days),
+        _ => fd.last_played.clone().unwrap_or_else(|| tr!("Never").to_string()),
+    };
+    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(&last_played), split: false });
     rows.push(DetailRow { label: tr!("Playtime").into(), value: text(&fd.playtime), split: false });
     if !d.features.is_empty() {
         rows.push(DetailRow {
@@ -183,11 +188,17 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         });
     }
     if d.platforms.len() > 1 {
-        rows.push(DetailRow {
-            label: tr!("Platforms").into(),
-            value: chips(&d.platforms[..d.platforms.len().min(8)], Some("platform"), false),
-            split: true,
-        });
+        // The PC ones first: this is a PC launcher.
+        let mut platforms = d.platforms.clone();
+        platforms.sort_by_key(|p| !is_pc_platform(p));
+        let shown = platforms.len().min(PLATFORMS_SHOWN);
+        let value = DetailValue::Chips {
+            values: platforms[..shown].iter().map(|p| SharedString::from(p.clone())).collect(),
+            facet: Some("platform"),
+            clamp: false,
+            more: platforms.len() - shown,
+        };
+        rows.push(DetailRow { label: tr!("Platforms").into(), value, split: true });
     }
     if !d.genres.is_empty() {
         rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre"), true), split: true });
@@ -232,7 +243,12 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             name: heronite_data::status::status_label(&st.name).to_string().into(),
             color: theme::status_color(&st.slug),
         }),
-        score: d.critic_score.map(|s| fmt_number(s).into()),
+        score: d.critic_score.filter(|s| *s > 0.),
+        score_source: g.metadata.as_ref().and_then(|m| m.field_sources.get("criticScore")).and_then(|s| match s.as_str() {
+            "igdb" => Some("IGDB".into()),
+            "steam" => Some("Steam".into()),
+            _ => None,
+        }),
         library: g.source_label.into(),
         install_size: d.install_size.clone().filter(|s| s != "0").map(Into::into),
         installed: g.installed,
@@ -241,6 +257,14 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         playtime: fd.playtime.clone().into(),
         last_played: fd.last_played.clone().map(Into::into),
     }
+}
+
+/// Platforms listed in Details before "+N".
+const PLATFORMS_SHOWN: usize = 3;
+
+fn is_pc_platform(name: &str) -> bool {
+    let n = name.to_lowercase();
+    ["pc", "windows", "linux", "mac", "steamos", "dos"].iter().any(|w| n.split(|c: char| !c.is_alphanumeric()).any(|part| part == *w))
 }
 
 fn related_game_vm(lib: &Library, g: &CollectionGame) -> RelatedGameVm {
@@ -259,10 +283,19 @@ fn related_game_vm(lib: &Library, g: &CollectionGame) -> RelatedGameVm {
     }
 }
 
-fn fmt_number(v: f64) -> String {
-    if v.fract() == 0. {
-        format!("{}", v as i64)
-    } else {
-        format!("{v}")
+/// Whole local days from an RFC 3339 moment to today (0 = today).
+pub(super) fn days_since(rfc3339: &str) -> Option<i64> {
+    let at = chrono::DateTime::parse_from_rfc3339(rfc3339).ok()?.with_timezone(&chrono::Local);
+    Some((chrono::Local::now().date_naive() - at.date_naive()).num_days().max(0))
+}
+
+/// "Today", "Yesterday", "3 days ago", "5 weeks ago", "4 months ago".
+pub(super) fn days_ago(days: i64) -> String {
+    match days {
+        ..=0 => tr!("Today").to_string(),
+        1 => tr!("Yesterday").to_string(),
+        2..=13 => tr!("{days} days ago", days),
+        14..=59 => tr!("{weeks} weeks ago", weeks = days / 7),
+        _ => tr!("{months} months ago", months = days / 30),
     }
 }

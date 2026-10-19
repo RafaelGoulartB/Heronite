@@ -35,7 +35,7 @@ pub(super) fn details_panel(
             .child(row.label.clone());
         let value: AnyElement = match &row.value {
             DetailValue::Text(t) => div().line_height(px(18.2)).child(t.clone()).into_any_element(),
-            DetailValue::Chips { values, facet, clamp } => {
+            DetailValue::Chips { values, facet, clamp, more } => {
                 let mut wrap = div().flex().flex_wrap().gap(px(5.12));
                 for (ci, v) in values.iter().enumerate() {
                     let is_active = facet.is_some_and(|f| active.iter().any(|(af, av)| *af == f && av == v));
@@ -57,6 +57,9 @@ pub(super) fn details_panel(
                         }
                         None => wrap = wrap.child(c),
                     }
+                }
+                if *more > 0 {
+                    wrap = wrap.child(chip(format!("+{more}")).text_color(theme::white_a(0.52)));
                 }
                 if *clamp {
                     div().max_h(px(73.6)).overflow_hidden().child(wrap).into_any_element()

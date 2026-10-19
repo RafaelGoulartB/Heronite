@@ -126,15 +126,16 @@ row for Epic Games, GOG and Amazon Games: each store keeps its own page, titled 
 tabs of `pages::stores` (LB / RB in console mode); the row (and the console sidebar's) opens the store shown last.
 
 **Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
-(`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, star rating, facts card with score,
-library, save backup and Linux) next to the scrolling details; no footer. The title + meta line sit above both, fixed and
+(`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, star rating, facts card with score
+(a green / amber / red badge from 75 / 50, with its source, IGDB or Steam, unless typed by hand), library, save backup and Linux) next to the scrolling details; no footer. The title + meta line sit above both, fixed and
 aligned with the cover's left edge, so the cover, "Screenshots" and "Details" start on one line; the gap left column → main
 equals main → side (`COL_GAP`). `focus::layout(panel_w)` picks the widths: narrow = everything scrolls in one column with the
 left block as a row under the title; otherwise left column + main/side (stacked when tight), centred as a group in wide panels. The main column holds Screenshots, Overview, **Timeline** (`timeline.rs`: days of play with
 the screenshots of their sessions, thumbnails only) and Related (one
 group at a time picked with pills in the title: Same series first when there is one, Same developer, Similar = 2+
 genres / themes in common; 100px covers with the time played, else the status, under the title, wrapping to the
-column: two rows, then "Show N more"; `HERONITE_DEBUG_RELATED=<group>[:all]`). Facts that are not in the Library load in `game_facts.rs`.
+column: two rows, then "Show N more"; `HERONITE_DEBUG_RELATED=<group>[:all]`). Details: Last Played
+is relative under 60 days; Platforms lists the PC ones first, 3 at most, then "+N". Facts that are not in the Library load in `game_facts.rs`.
 Clickable facts: "Library" sets the Store filter to the game's own store (replacing any other store), "Save backup" backs up now, "On Linux" opens the ProtonDB page, the Details folder rows open the file manager;
 rows that act get `focus_left::clickable` (pointer + faint highlight). Folder rows are resolved on disk, never shown from
 imported fields (`open_links::game_folders`): Steam games → the folder of their `appmanifest`; emulated games → "Emulator

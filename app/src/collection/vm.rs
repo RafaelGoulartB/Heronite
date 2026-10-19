@@ -130,6 +130,8 @@ pub(super) enum DetailValue {
         values: Vec<SharedString>,
         facet: Option<&'static str>,
         clamp: bool,
+        /// Values left out after `values`, shown as a "+N" chip.
+        more: usize,
     },
     Folder {
         path: SharedString,
@@ -192,8 +194,10 @@ pub(super) struct FocusVm {
     pub hltb: Option<HltbVm>,
     /// Current status (left column selector), `None` when the stored id is unknown.
     pub status: Option<StatusVm>,
-    /// Critic score of the left column's facts card.
-    pub score: Option<SharedString>,
+    /// Critic score of the left column's facts card, `0..=100`.
+    pub score: Option<f64>,
+    /// Where the score comes from ("IGDB", "Steam"), `None` when typed by hand.
+    pub score_source: Option<SharedString>,
     /// "Library" of the facts card: Steam, Epic, GOG...
     pub library: SharedString,
     /// Size shown under the install folder (the folders themselves are

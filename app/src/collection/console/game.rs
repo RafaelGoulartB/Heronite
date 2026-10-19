@@ -32,7 +32,14 @@ impl Default for GameNav {
 fn detail_text(v: &DetailValue) -> String {
     match v {
         DetailValue::Text(t) => t.to_string(),
-        DetailValue::Chips { values, .. } => values.iter().map(|s| s.as_ref()).collect::<Vec<_>>().join(", "),
+        DetailValue::Chips { values, more, .. } => {
+            let list = values.iter().map(|s| s.as_ref()).collect::<Vec<_>>().join(", ");
+            if *more > 0 {
+                format!("{list} +{more}")
+            } else {
+                list
+            }
+        }
         DetailValue::Folder { path, size } => match size {
             Some(s) => format!("{path} ({s})"),
             None => path.to_string(),
@@ -230,7 +237,7 @@ impl CollectionView {
             // Status, score and library live in the desktop left column, not in `details`.
             let head = [
                 f.status.as_ref().map(|s| (SharedString::from(tr!("Status")), s.name.to_string())),
-                f.score.as_ref().map(|s| (SharedString::from(tr!("Score")), s.to_string())),
+                f.score.map(|s| (SharedString::from(tr!("Score")), format!("{s:.0}"))),
                 Some((SharedString::from(tr!("Library")), f.library.to_string())),
             ];
             let rows = head.into_iter().flatten().chain(f.details.iter().map(|d| (d.label.clone(), detail_text(&d.value))));
