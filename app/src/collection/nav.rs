@@ -589,6 +589,8 @@ impl CollectionView {
                 }
             }
             PageEvent::Uninstall(key) => self.uninstall_game(key, window, cx),
+            PageEvent::ResetPanelWidths => self.reset_panel_widths(cx),
+            PageEvent::AppearanceChanged => cx.notify(),
         }
     }
 

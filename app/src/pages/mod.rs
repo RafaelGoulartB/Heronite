@@ -120,6 +120,12 @@ pub enum PageEvent {
     /// Uninstall this game (`CollectionGame::key`) the way its context menu
     /// does; the page stays on screen under the dialog.
     Uninstall(String),
+    /// Settings → Appearance: the Focus list and the grid drawer go back to
+    /// their default widths (kept in the Collection's `ui-state.json`).
+    ResetPanelWidths,
+    /// Settings → Appearance changed the look: the Collection under the page
+    /// repaints.
+    AppearanceChanged,
 }
 
 /// Round close button of a [`sheet`]: goes back to the Collection.
