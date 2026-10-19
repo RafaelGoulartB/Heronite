@@ -163,10 +163,10 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         });
     }
     let last_played = match g.last_played.as_deref().and_then(days_since) {
-        Some(days) if days < 60 => days_ago(days),
-        _ => fd.last_played.clone().unwrap_or_else(|| tr!("Never").to_string()),
+        Some(days) if days < 60 => Some(days_ago(days)),
+        _ => fd.last_played.clone(),
     };
-    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(&last_played), split: false });
+    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(last_played.as_deref().unwrap_or(tr!("Never"))), split: false });
     rows.push(DetailRow { label: tr!("Playtime").into(), value: text(&fd.playtime), split: false });
     if !d.features.is_empty() {
         rows.push(DetailRow {
@@ -255,7 +255,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         playing,
         favourite: g.favourite,
         playtime: fd.playtime.clone().into(),
-        last_played: fd.last_played.clone().map(Into::into),
+        last_played: last_played.map(Into::into),
     }
 }
 

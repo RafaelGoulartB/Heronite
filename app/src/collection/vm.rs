@@ -208,7 +208,8 @@ pub(super) struct FocusVm {
     pub favourite: bool,
     /// "12h 27m", the same as the Playtime row of Details.
     pub playtime: SharedString,
-    /// Date of the last session, `None` when never played.
+    /// When the last session was ("4 days ago", else its date), `None`
+    /// when never played.
     pub last_played: Option<SharedString>,
 }
 
