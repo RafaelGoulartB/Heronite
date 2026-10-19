@@ -85,6 +85,8 @@ enum ToastAction {
     ScriptInstall,
     /// Puts back the journal note just deleted (game key, the note).
     RestoreNote(String, Box<heronite_data::journal::Entry>),
+    /// Puts back the "where I left off" line just cleared (game key, the line).
+    RestoreLeftOff(String, Box<heronite_data::journal::LeftOff>),
 }
 
 pub struct CollectionView {
@@ -350,7 +352,9 @@ impl CollectionView {
                             .cursor_pointer()
                             .hover(|s| s.bg(theme::accent_tint_border()))
                             .child(match &action {
-                                ToastAction::Undo | ToastAction::RestoreNote(..) => heronite_i18n::tr!("Undo"),
+                                ToastAction::Undo | ToastAction::RestoreNote(..) | ToastAction::RestoreLeftOff(..) => {
+                                    heronite_i18n::tr!("Undo")
+                                }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
                                 ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
                             })
@@ -371,6 +375,10 @@ impl CollectionView {
                                     ToastAction::RestoreNote(key, entry) => {
                                         this.toast = None;
                                         this.journal_restore(key.clone(), (**entry).clone(), cx);
+                                    }
+                                    ToastAction::RestoreLeftOff(key, left) => {
+                                        this.toast = None;
+                                        this.journal_restore_left_off(key.clone(), (**left).clone(), cx);
                                     }
                                 }
                                 cx.notify();

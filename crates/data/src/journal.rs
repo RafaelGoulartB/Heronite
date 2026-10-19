@@ -188,6 +188,14 @@ pub fn set_left_off(paths: &DataPaths, key: &str, text: &str) -> Result<()> {
     })
 }
 
+/// Puts back a "where I left off" line as it was (its `at` included).
+pub fn restore_left_off(paths: &DataPaths, key: &str, left: &LeftOff) -> Result<()> {
+    json_store::update::<JournalFile, _>(&paths.journal(), |file| {
+        file.left_off.insert(key.to_owned(), serde_json::to_value(left)?);
+        Ok(())
+    })
+}
+
 /// Whether the stored `shot` is the screenshot at `path`: the same file, or
 /// the same name in the same folder with another extension (the background
 /// compression turns `.png` captures into `.webp`).
@@ -280,8 +288,11 @@ mod tests {
         let (_dir, paths) = paths();
         set_left_off(&paths, "g", " Chapter 8, by the lift ").unwrap();
         assert_eq!(load(&paths, "g").left_off.unwrap().text, "Chapter 8, by the lift");
+        let written = load(&paths, "g").left_off.unwrap();
         set_left_off(&paths, "g", "  ").unwrap();
         assert!(load(&paths, "g").left_off.is_none());
+        restore_left_off(&paths, "g", &written).unwrap();
+        assert_eq!(load(&paths, "g").left_off, Some(written), "back as it was, date included");
     }
 
     #[test]

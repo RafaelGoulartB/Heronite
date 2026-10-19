@@ -201,7 +201,25 @@ impl CollectionView {
             .font_weight(theme::W_BOLD)
             .text_color(theme::accent())
             .child(icon(Icon::Bookmark, px(13.), theme::accent()))
-            .child(tr!("Where I left off").to_uppercase());
+            .child(div().flex_1().child(tr!("Where I left off").to_uppercase()))
+            .when(editing.is_none() && data.left_off.is_some(), |d| {
+                d.child(
+                    div()
+                        .id("journal-left-off-clear")
+                        .flex_none()
+                        .size(px(22.))
+                        .my(px(-4.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(6.))
+                        .cursor_pointer()
+                        .opacity(0.6)
+                        .hover(|s| s.opacity(1.).bg(theme::white_a(0.08)))
+                        .child(icon(Icon::DeleteOutline, px(15.), theme::white_a(0.7)))
+                        .on_click(cx.listener(|this, _, _, cx| this.journal_clear_left_off(cx))),
+                )
+            });
         let body: AnyElement = match (editing, &data.left_off) {
             (Some(edit), _) => editor(edit, TEXT - 0.8, cx).into_any_element(),
             (None, Some(l)) => div()
