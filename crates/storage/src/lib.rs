@@ -88,6 +88,8 @@ pub enum State {
 pub enum CacheKind {
     /// Covers and art resized for the screen.
     Images,
+    /// Covers and art as downloaded (`images-cache`); fetched again when shown.
+    Downloads,
     /// Store and wiki game info (`store_cache`, rebuilt by the stores' refresh).
     StoreInfo,
     /// Downloads of install scripts.
