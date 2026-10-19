@@ -58,6 +58,7 @@ impl CollectionView {
                 screenshots,
                 timeline,
                 extras,
+                related_ui: self.facts.related,
             },
             self.focus_actions(cx),
         );

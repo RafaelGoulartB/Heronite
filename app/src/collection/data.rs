@@ -23,10 +23,6 @@ fn parse_hex(hex: &str) -> Rgba {
     u32::from_str_radix(h, 16).map(rgb).unwrap_or(rgb(0xe5e7eb))
 }
 
-fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
-    card_vm_with(g, playing, None)
-}
-
 /// A card whose caption is `caption` instead of the playtime.
 fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> Arc<CardVm> {
     Arc::new(CardVm {
@@ -209,7 +205,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
                 RelatedKind::Developer => tr!("Same developer").into(),
                 RelatedKind::Similar => tr!("Similar").into(),
             },
-            games: r.games.iter().map(|x| card_vm(x, false)).collect(),
+            games: r.games.iter().map(|x| related_game_vm(lib, x)).collect(),
         })
         .collect();
 
@@ -244,6 +240,22 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         favourite: g.favourite,
         playtime: fd.playtime.clone().into(),
         last_played: fd.last_played.clone().map(Into::into),
+    }
+}
+
+fn related_game_vm(lib: &Library, g: &CollectionGame) -> RelatedGameVm {
+    let status = display_status(g.status_raw.as_deref(), &lib.statuses);
+    let line = if g.playtime_minutes > 0 {
+        collection::format_playtime_minutes(g.playtime_minutes)
+    } else {
+        status.map_or_else(|| tr!("Never played").to_string(), |st| heronite_data::status::status_label(&st.name).to_string())
+    };
+    RelatedGameVm {
+        key: g.key.clone().into(),
+        title: g.title.clone().into(),
+        cover_key: g.key.clone().into(),
+        status_color: status.map(|st| theme::status_color(&st.slug)),
+        line: line.into(),
     }
 }
 

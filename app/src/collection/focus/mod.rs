@@ -5,6 +5,7 @@ mod description;
 mod panels;
 
 pub use description::html_image_size;
+pub(super) use panels::{RELATED_COVER_H, RELATED_COVER_W};
 
 use std::rc::Rc;
 
@@ -93,6 +94,7 @@ pub(super) struct FocusProps {
     pub timeline: Option<AnyElement>,
     /// Achievements and session history panels of the side column.
     pub extras: FocusExtras,
+    pub related_ui: RelatedUi,
 }
 
 /// Extra panels of the side column (see `extras.rs`).
@@ -108,6 +110,18 @@ pub(super) struct FocusActions {
     pub on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     /// A folder row of Details (install, emulator, ROM): opens it in the file manager.
     pub on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
+    /// Picks the group of "Related games" or shows all of it.
+    pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
+}
+
+/// What "Related games" shows of the focused game.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(super) struct RelatedUi {
+    /// Group on screen, an index into `FocusVm::related` (the first, the
+    /// series when there is one, for each game).
+    pub tab: usize,
+    /// Every cover, not only the first two rows.
+    pub expanded: bool,
 }
 
 pub(super) fn h3(text: impl Into<SharedString>) -> Div {
@@ -161,7 +175,20 @@ pub fn panel(facts: bool) -> Div {
 }
 
 pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
-    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, left, screenshots, timeline, extras } = props;
+    let FocusProps {
+        vm,
+        cover_for,
+        html_images,
+        viewport_w,
+        panel_w,
+        active_facets,
+        scroll,
+        left,
+        screenshots,
+        timeline,
+        extras,
+        related_ui,
+    } = props;
     let on_scroll: Rc<dyn Fn(&mut Window, &mut App)> = Rc::from(actions.on_scroll);
     let scrollbar = crate::ui::scrollbar_draggable(
         "focus-scrollbar",
@@ -186,7 +213,8 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         screenshots,
         overview: overview(&vm, &html_images, main_column_width(panel_w)),
         timeline,
-        related: (!vm.related.is_empty()).then(|| related_panel(&vm.related, &cover_for, actions.on_select)),
+        related: (!vm.related.is_empty())
+            .then(|| related_panel(&vm.related, related_ui, lay.main_w, &cover_for, actions.on_select, actions.on_related)),
         top: extras.top,
         details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
         hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
@@ -276,12 +304,13 @@ pub(super) struct StackedProps {
     pub screenshots: Option<AnyElement>,
     pub timeline: Option<AnyElement>,
     pub extras: FocusExtras,
+    pub related_ui: RelatedUi,
 }
 
 /// The details of the focus panel in one column (the grid's drawer): no
 /// title and no left column, which the caller lays out itself.
 pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div {
-    let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras } = props;
+    let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras, related_ui } = props;
     let lay = Layout { narrow: true, left_w: 0., stacked: true, main_w: width, side_w: width, offset: 0. };
     let details = details_panel(&vm.details, &active_facets, actions.on_facet, actions.on_open_folder);
     body(
@@ -290,7 +319,8 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
             screenshots,
             overview: overview(&vm, &html_images, width),
             timeline,
-            related: (!vm.related.is_empty()).then(|| related_panel(&vm.related, &cover_for, actions.on_select)),
+            related: (!vm.related.is_empty())
+                .then(|| related_panel(&vm.related, related_ui, width, &cover_for, actions.on_select, actions.on_related)),
             top: extras.top,
             details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
             hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),

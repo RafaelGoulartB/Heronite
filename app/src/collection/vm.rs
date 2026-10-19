@@ -153,10 +153,22 @@ pub(super) struct HltbVm {
     pub played_hours: f32,
 }
 
+/// A game of "Related games": its cover, title and a line about it.
+#[derive(Clone)]
+pub(super) struct RelatedGameVm {
+    pub key: SharedString,
+    pub title: SharedString,
+    pub cover_key: SharedString,
+    /// Colour of its status, `None` without one.
+    pub status_color: Option<Rgba>,
+    /// The time played, else its status ("Plan to Play", "Never played").
+    pub line: SharedString,
+}
+
 #[derive(Clone)]
 pub(super) struct RelatedGroupVm {
     pub title: SharedString,
-    pub games: Vec<Arc<CardVm>>,
+    pub games: Vec<RelatedGameVm>,
 }
 
 #[derive(Clone)]

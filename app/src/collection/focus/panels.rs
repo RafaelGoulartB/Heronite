@@ -5,10 +5,11 @@ use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::{h3, panel, CoverFor};
+use super::{h3, panel, small_tabs, CoverFor, RelatedUi};
 use crate::collection::vm::{DetailRow, DetailValue, HltbVm, RelatedGroupVm};
 use crate::icons::Icon;
 use crate::theme;
+use crate::ui::controls::{button_sm, ButtonKind};
 use crate::ui::{chip, icon};
 use heronite_i18n::tr;
 
@@ -166,65 +167,114 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
     )
 }
 
+/// Cover size of "Related games", in logical px.
+pub(in crate::collection) const RELATED_COVER_W: f32 = 100.;
+pub(in crate::collection) const RELATED_COVER_H: f32 = 150.;
+
+/// Rows of covers "Related games" shows before "Show N more".
+const RELATED_ROWS: usize = 2;
+const RELATED_GAP: f32 = 12.;
+
+/// Covers per row of "Related games" in a column `width` wide (`panel(false)`
+/// pads 16.8 on each side).
+fn related_columns(width: f32) -> usize {
+    (((width - 2. * 16.8 + RELATED_GAP) / (RELATED_COVER_W + RELATED_GAP)).floor() as usize).max(1)
+}
+
+/// "Related games": one group at a time (`ui.tab`, an index into `groups`),
+/// picked with the pills of the title; the series comes first when there is
+/// one. The covers wrap to the `width` of the column, two rows until
+/// "Show N more" (a sideways strip cannot be scrolled with a mouse wheel).
 pub(super) fn related_panel(
     groups: &[RelatedGroupVm],
+    ui: RelatedUi,
+    width: f32,
     cover_for: &CoverFor,
     on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
+    on_change: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
 ) -> Div {
-    let mut p = panel(false).child(h3(tr!("Related games")));
-    for (gi, g) in groups.iter().enumerate() {
-        let mut row = div().flex().gap(px(11.2)).pb(px(4.));
-        for game in &g.games {
-            let key = game.key.clone();
-            let cb = on_select.clone();
-            row = row.child(
-                div()
-                    .id(SharedString::from(format!("rel-{gi}-{key}")))
-                    .flex_none()
-                    .w(px(78.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.))
-                    .cursor_pointer()
-                    .on_click(move |_, w, cx| cb(key.clone(), w, cx))
-                    .child(
-                        div()
-                            .w(px(78.))
-                            .h(px(117.))
-                            .rounded(px(6.))
-                            .overflow_hidden()
-                            .shadow(vec![BoxShadow {
-                                color: theme::black_a(0.45),
-                                offset: point(px(0.), px(8.)),
-                                blur_radius: px(20.),
-                                spread_radius: px(0.),
-                                inset: false,
-                            }])
-                            .children(
-                                cover_for(&game.cover_key).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover)),
-                            ),
-                    )
-                    .child(div().text_size(px(11.)).text_color(theme::white_a(0.82)).truncate().child(game.title.clone())),
-            );
-        }
-        p = p.child(
+    let RelatedUi { tab, expanded } = ui;
+    let tab = tab.min(groups.len().saturating_sub(1));
+    let Some(g) = groups.get(tab) else { return panel(false) };
+    let picker: AnyElement = if groups.len() > 1 {
+        let labels: Vec<SharedString> = groups.iter().map(|g| g.title.clone()).collect();
+        let pick = on_change.clone();
+        let on_tab: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(move |i, w, cx| pick(RelatedUi { tab: i, expanded: false }, w, cx));
+        small_tabs("related-tab", &labels, tab, on_tab).into_any_element()
+    } else {
+        div().text_size(px(12.5)).text_color(theme::white_a(0.52)).child(g.title.clone()).into_any_element()
+    };
+    let title = h3(tr!("Related games"))
+        .flex()
+        .justify_between()
+        .items_center()
+        .gap(px(12.))
+        .child(div().flex().items_center().font_family(theme::FONT_BODY).font_weight(theme::W_REGULAR).child(picker));
+    let fold = related_columns(width) * RELATED_ROWS;
+    let shown = if expanded { g.games.len() } else { g.games.len().min(fold) };
+    let mut row = div().flex().flex_wrap().gap(px(RELATED_GAP)).pb(px(4.));
+    for game in &g.games[..shown] {
+        let key = game.key.clone();
+        let cb = on_select.clone();
+        row = row.child(
             div()
+                .id(SharedString::from(format!("rel-{tab}-{key}")))
+                .flex_none()
+                .w(px(RELATED_COVER_W))
                 .flex()
                 .flex_col()
-                .gap(px(8.))
+                .cursor_pointer()
+                .on_click(move |_, w, cx| cb(key.clone(), w, cx))
                 .child(
                     div()
+                        .w(px(RELATED_COVER_W))
+                        .h(px(RELATED_COVER_H))
+                        .rounded(px(6.))
+                        .overflow_hidden()
+                        .bg(theme::white_a(0.06))
+                        .shadow(vec![BoxShadow {
+                            color: theme::black_a(0.45),
+                            offset: point(px(0.), px(8.)),
+                            blur_radius: px(20.),
+                            spread_radius: px(0.),
+                            inset: false,
+                        }])
+                        .children(cover_for(&game.cover_key).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))),
+                )
+                .child(div().mt(px(7.)).text_size(px(12.)).text_color(theme::white_a(0.88)).truncate().child(game.title.clone()))
+                .child(
+                    div()
+                        .mt(px(2.))
                         .flex()
                         .items_center()
-                        .gap(px(4.))
-                        .text_size(px(13.))
-                        .font_weight(theme::W_BOLD)
-                        .text_color(theme::white_a(0.72))
-                        .child(icon(Icon::ExpandMore, px(18.), theme::white_a(0.72)))
-                        .child(g.title.clone()),
-                )
-                .child(div().id(SharedString::from(format!("rel-row-{gi}"))).overflow_x_scroll().child(row)),
+                        .gap(px(5.))
+                        .min_w_0()
+                        .text_size(px(11.))
+                        .text_color(theme::white_a(0.52))
+                        .children(game.status_color.map(|c| div().size(px(6.)).flex_none().rounded_full().bg(c)))
+                        .child(div().min_w_0().truncate().child(game.line.clone())),
+                ),
         );
     }
-    p
+    let toggle = (g.games.len() > fold).then(|| {
+        let label = if expanded { tr!("Show less").to_string() } else { tr!("Show {n} more", n = g.games.len() - fold) };
+        let change = on_change.clone();
+        button_sm("related-more", ButtonKind::Ghost, label).on_click(move |_, w, cx| change(RelatedUi { tab, expanded: !expanded }, w, cx))
+    });
+    panel(false).child(title).child(row).children(toggle.map(|b| div().flex().mt(px(6.)).ml(px(-10.)).child(b)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::related_columns;
+
+    #[test]
+    fn related_covers_fill_the_column() {
+        // 8 covers of 100 + 7 gaps of 12 + the panel's padding.
+        assert_eq!(related_columns(8. * 100. + 7. * 12. + 2. * 16.8), 8);
+        assert_eq!(related_columns(8. * 100. + 7. * 12. + 2. * 16.8 - 1.), 7);
+        // The grid drawer's column.
+        assert_eq!(related_columns(420.), 3);
+        assert_eq!(related_columns(50.), 1);
+    }
 }
