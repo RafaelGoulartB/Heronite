@@ -3524,6 +3524,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-backup"
+version = "0.12.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-data",
+ "heronite-i18n",
+ "libc",
+ "log",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "heronite-data"
 version = "0.12.0"
 dependencies = [
