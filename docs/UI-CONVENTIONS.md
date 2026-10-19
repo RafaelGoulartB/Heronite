@@ -135,8 +135,9 @@ left block as a row under the title; otherwise left column + main/side (stacked 
 the screenshots of their sessions, thumbnails only; a bar per day of the last 30 in the title when the column has room,
 hovering one says that day there; a faint "5 days without playing" line between days 3+ days apart) and Related (one
 group at a time picked with pills in the title: Same series first when there is one, Same developer, Similar = 2+
-genres / themes in common; 100px covers with the time played, else the status, under the title, wrapping to the
-column: two rows, then "Show N more"; `HERONITE_DEBUG_RELATED=<group>[:all]`). Details: Last Played
+genres / themes in common; 100px covers with the time played, else the status, under the title, on one row that
+scrolls sideways: ‹ › in the title, a swipe, or the mouse wheel while the row can still move, after which the page
+scrolls; `HERONITE_DEBUG_RELATED=<group>`). Details: Last Played
 is relative under 60 days; Platforms lists the PC ones first, 3 at most, then "+N". Facts that are not in the Library load in `game_facts.rs`.
 Clickable facts: "Library" sets the Store filter to the game's own store (replacing any other store), "Save backup" backs up now, "On Linux" opens the ProtonDB page, the Details folder rows open the file manager;
 rows that act get `focus_left::clickable` (pointer + faint highlight). Folder rows are resolved on disk, never shown from

@@ -9,8 +9,7 @@ use super::{h3, panel, small_tabs, CoverFor, RelatedUi};
 use crate::collection::vm::{DetailRow, DetailValue, HltbVm, RelatedGroupVm};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{button_sm, ButtonKind};
-use crate::ui::{chip, icon};
+use crate::ui::{chip, icon, round_button};
 use heronite_i18n::tr;
 
 pub(super) fn details_panel(
@@ -174,49 +173,64 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
 pub(in crate::collection) const RELATED_COVER_W: f32 = 100.;
 pub(in crate::collection) const RELATED_COVER_H: f32 = 150.;
 
-/// Rows of covers "Related games" shows before "Show N more".
-const RELATED_ROWS: usize = 2;
 const RELATED_GAP: f32 = 12.;
-
-/// Covers per row of "Related games" in a column `width` wide (`panel(false)`
-/// pads 16.8 on each side).
-fn related_columns(width: f32) -> usize {
-    (((width - 2. * 16.8 + RELATED_GAP) / (RELATED_COVER_W + RELATED_GAP)).floor() as usize).max(1)
-}
+/// Covers an arrow of the title moves the row by.
+const RELATED_STEP: f32 = 3. * (RELATED_COVER_W + RELATED_GAP);
 
 /// "Related games": one group at a time (`ui.tab`, an index into `groups`),
 /// picked with the pills of the title; the series comes first when there is
-/// one. The covers wrap to the `width` of the column, two rows until
-/// "Show N more" (a sideways strip cannot be scrolled with a mouse wheel).
+/// one. The covers sit on one row that scrolls sideways: with the arrows of
+/// the title, a sideways swipe, or the mouse wheel while the row has room to
+/// move (at its ends the wheel scrolls the page again).
 pub(super) fn related_panel(
     groups: &[RelatedGroupVm],
     ui: RelatedUi,
-    width: f32,
     cover_for: &CoverFor,
     on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     on_change: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
 ) -> Div {
-    let RelatedUi { tab, expanded } = ui;
+    let RelatedUi { tab, scroll } = ui;
     let tab = tab.min(groups.len().saturating_sub(1));
     let Some(g) = groups.get(tab) else { return panel(false) };
     let picker: AnyElement = if groups.len() > 1 {
         let labels: Vec<SharedString> = groups.iter().map(|g| g.title.clone()).collect();
         let pick = on_change.clone();
-        let on_tab: Rc<dyn Fn(usize, &mut Window, &mut App)> = Rc::new(move |i, w, cx| pick(RelatedUi { tab: i, expanded: false }, w, cx));
+        let on_tab: Rc<dyn Fn(usize, &mut Window, &mut App)> =
+            Rc::new(move |i, w, cx| pick(RelatedUi { tab: i, ..Default::default() }, w, cx));
         small_tabs("related-tab", &labels, tab, on_tab).into_any_element()
     } else {
         div().text_size(px(12.5)).text_color(theme::white_a(0.52)).child(g.title.clone()).into_any_element()
     };
-    let title = h3(tr!("Related games"))
+    let title = h3(tr!("Related games")).flex().justify_between().items_center().gap(px(12.)).child(
+        div()
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .font_family(theme::FONT_BODY)
+            .font_weight(theme::W_REGULAR)
+            .children(scroll_arrows(&scroll))
+            .child(picker),
+    );
+    let mut row = div()
+        .id(SharedString::from(format!("rel-row-{tab}")))
         .flex()
-        .justify_between()
-        .items_center()
-        .gap(px(12.))
-        .child(div().flex().items_center().font_family(theme::FONT_BODY).font_weight(theme::W_REGULAR).child(picker));
-    let fold = related_columns(width) * RELATED_ROWS;
-    let shown = if expanded { g.games.len() } else { g.games.len().min(fold) };
-    let mut row = div().flex().flex_wrap().gap(px(RELATED_GAP)).pb(px(4.));
-    for game in &g.games[..shown] {
+        .gap(px(RELATED_GAP))
+        .pb(px(4.))
+        .overflow_x_scroll()
+        // Sideways swipes only; the wheel goes through `scroll_by` below.
+        .restrict_scroll_to_axis()
+        .track_scroll(&scroll)
+        .on_scroll_wheel({
+            let scroll = scroll.clone();
+            move |ev, window, cx| {
+                let d = ev.delta.pixel_delta(window.line_height());
+                if d.y.abs() > d.x.abs() && scroll_by(&scroll, d.y) {
+                    cx.stop_propagation();
+                    window.refresh();
+                }
+            }
+        });
+    for game in &g.games {
         let key = game.key.clone();
         let cb = on_select.clone();
         row = row.child(
@@ -259,25 +273,41 @@ pub(super) fn related_panel(
                 ),
         );
     }
-    let toggle = (g.games.len() > fold).then(|| {
-        let label = if expanded { tr!("Show less").to_string() } else { tr!("Show {n} more", n = g.games.len() - fold) };
-        let change = on_change.clone();
-        button_sm("related-more", ButtonKind::Ghost, label).on_click(move |_, w, cx| change(RelatedUi { tab, expanded: !expanded }, w, cx))
-    });
-    panel(false).child(title).child(row).children(toggle.map(|b| div().flex().mt(px(6.)).ml(px(-10.)).child(b)))
+    panel(false).child(title).child(row)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::related_columns;
-
-    #[test]
-    fn related_covers_fill_the_column() {
-        // 8 covers of 100 + 7 gaps of 12 + the panel's padding.
-        assert_eq!(related_columns(8. * 100. + 7. * 12. + 2. * 16.8), 8);
-        assert_eq!(related_columns(8. * 100. + 7. * 12. + 2. * 16.8 - 1.), 7);
-        // The grid drawer's column.
-        assert_eq!(related_columns(420.), 3);
-        assert_eq!(related_columns(50.), 1);
+/// Moves a sideways row by `delta` (negative: towards its end), within its
+/// bounds; false when it could not move (already at that end).
+fn scroll_by(scroll: &ScrollHandle, delta: Pixels) -> bool {
+    let (offset, max) = (scroll.offset(), scroll.max_offset().x);
+    let x = (offset.x + delta).clamp(-max, px(0.));
+    if x == offset.x {
+        return false;
     }
+    scroll.set_offset(point(x, offset.y));
+    true
+}
+
+/// ‹ › of the title, while the row is wider than the panel (known from the
+/// last frame); the one at an end is dimmed.
+fn scroll_arrows(scroll: &ScrollHandle) -> Option<Div> {
+    let max = scroll.max_offset().x;
+    if max <= px(0.) {
+        return None;
+    }
+    let x = scroll.offset().x;
+    let arrow = |id: &'static str, ic: Icon, delta: f32, live: bool| {
+        let scroll = scroll.clone();
+        round_button(id, ic, 26., 0.35).when(!live, |d| d.opacity(0.35)).on_click(move |_, window, _| {
+            if scroll_by(&scroll, px(delta)) {
+                window.refresh();
+            }
+        })
+    };
+    Some(div().flex().gap(px(4.)).child(arrow("related-prev", Icon::ChevronLeft, RELATED_STEP, x < px(0.))).child(arrow(
+        "related-next",
+        Icon::ChevronRight,
+        -RELATED_STEP,
+        x > -max,
+    )))
 }

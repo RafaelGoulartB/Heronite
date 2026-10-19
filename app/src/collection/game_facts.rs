@@ -86,7 +86,7 @@ pub(super) struct Facts {
     pub launch_menu_open: bool,
     /// Days of the timeline shown.
     pub timeline_days: usize,
-    /// What "Related games" shows; back to the first group, folded, for each game.
+    /// What "Related games" shows; back to the first group for each game.
     pub related: super::focus::RelatedUi,
     /// Day of the Timeline's activity bars under the pointer.
     pub timeline_hover: Option<chrono::NaiveDate>,
@@ -150,14 +150,12 @@ impl CollectionView {
         self.facts.launch_options.clear();
         self.facts.launch_current = None;
         self.facts.timeline_days = TIMELINE_DAYS;
-        // `HERONITE_DEBUG_RELATED=<group>[:all]` opens "Related games" on that
-        // group (0 = the first), unfolded with `:all` (screenshots).
-        self.facts.related = crate::env::value("HERONITE_DEBUG_RELATED")
-            .map(|v| {
-                let (tab, all) = v.split_once(':').map_or((v.as_str(), false), |(t, a)| (t, a == "all"));
-                super::focus::RelatedUi { tab: tab.parse().unwrap_or(0), expanded: all }
-            })
-            .unwrap_or_default();
+        // `HERONITE_DEBUG_RELATED=<group>` opens "Related games" on that
+        // group (0 = the first; screenshots).
+        self.facts.related = super::focus::RelatedUi {
+            tab: crate::env::value("HERONITE_DEBUG_RELATED").and_then(|v| v.parse().ok()).unwrap_or(0),
+            ..Default::default()
+        };
         self.facts.timeline_hover = None;
         let (Some(lib), Some(key)) = (self.lib.clone(), target) else { return };
         let Some(game) = lib.get(&key).cloned() else { return };

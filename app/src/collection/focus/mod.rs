@@ -110,18 +110,18 @@ pub(super) struct FocusActions {
     pub on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     /// A folder row of Details (install, emulator, ROM): opens it in the file manager.
     pub on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
-    /// Picks the group of "Related games" or shows all of it.
+    /// Picks the group of "Related games".
     pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
 }
 
 /// What "Related games" shows of the focused game.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Default)]
 pub(super) struct RelatedUi {
     /// Group on screen, an index into `FocusVm::related` (the first, the
     /// series when there is one, for each game).
     pub tab: usize,
-    /// Every cover, not only the first two rows.
-    pub expanded: bool,
+    /// The sideways row of covers (back to its start with each group).
+    pub scroll: ScrollHandle,
 }
 
 pub(super) fn h3(text: impl Into<SharedString>) -> Div {
@@ -214,7 +214,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         overview: overview(&vm, &html_images, main_column_width(panel_w)),
         timeline,
         related: (!vm.related.is_empty())
-            .then(|| related_panel(&vm.related, related_ui, lay.main_w, &cover_for, actions.on_select, actions.on_related)),
+            .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
         top: extras.top,
         details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
         hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
@@ -320,7 +320,7 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
             overview: overview(&vm, &html_images, width),
             timeline,
             related: (!vm.related.is_empty())
-                .then(|| related_panel(&vm.related, related_ui, width, &cover_for, actions.on_select, actions.on_related)),
+                .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
             top: extras.top,
             details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
             hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
