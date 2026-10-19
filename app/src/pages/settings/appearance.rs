@@ -156,7 +156,7 @@ fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     let (blur, sat) = (a.blur, a.saturation / 100.);
     d.appearance.preview_task = Some(cx.spawn(async move |this, cx| {
         cx.background_executor().timer(Duration::from_millis(60)).await;
-        let decoded = cx.background_spawn(async move { heronite_images::load_stage(&chain, 776, 148, blur, sat, &opts) }).await;
+        let decoded = cx.background_spawn(async move { heronite_images::load_backdrop(&chain, 776, 148, blur, sat, &opts) }).await;
         if let Ok(decoded) = decoded {
             let frame = image::Frame::new(decoded.into_image_buffer());
             let img = Arc::new(RenderImage::new(smallvec::smallvec![frame]));

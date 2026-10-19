@@ -1,7 +1,8 @@
 //! `.collection__stage`: the focused game's hero art behind everything,
-//! blurred and saturated (pre-processed on the CPU by `heronite-images`),
-//! under three scrim gradients. CSS multi-stop gradients are split into
-//! two-stop bands because GPUI gradients take exactly two stops.
+//! blurred, saturated and with its highlights rolled off (pre-processed on
+//! the CPU by `heronite-images`, `Variant::Backdrop`), under three scrim
+//! gradients. CSS multi-stop gradients are split into two-stop bands because
+//! GPUI gradients take exactly two stops.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -41,8 +42,10 @@ pub fn scrim_layers(s: Scrim) -> Div {
         .absolute()
         .inset_0()
         .child(div().absolute().inset_0().bg(ink(s.dim)))
-        .child(gradient_row(90., &[(0., 0.82), (18., 0.58), (38., 0.22), (52., 0.12), (100., 0.28)], s.scrim))
-        .child(gradient_row(180., &[(0., 0.42), (28., 0.12), (62., 0.2), (100., 0.62)], s.scrim))
+        // Dark under the list column, then an even floor under the details:
+        // no lighter dip in the middle, where the overview sits on the art.
+        .child(gradient_row(90., &[(0., 0.82), (18., 0.6), (32., 0.34), (100., 0.28)], s.scrim))
+        .child(gradient_row(180., &[(0., 0.42), (24., 0.14), (62., 0.2), (100., 0.62)], s.scrim))
 }
 
 /// The stage. `art` is already blurred/saturated; `None` shows the plain page

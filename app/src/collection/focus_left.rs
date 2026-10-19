@@ -343,7 +343,8 @@ impl CollectionView {
             .justify_between()
             .pt(px(4.))
             .text_size(px(13.))
-            .text_color(theme::white_a(0.52))
+            // Sits on the art, not on a panel.
+            .text_color(theme::white_a(0.66))
             .child(tr!("Your rating"))
             .child(stars)
     }

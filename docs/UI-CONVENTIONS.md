@@ -81,7 +81,12 @@ blur: reuse this one.
 **Interface vs Collection appearance** (Settings → Appearance, two independent
 groups). *Collection background* = the stage art behind the list/details: on/off,
 blur, darkening, colour, edge shading in Heronite's `local_library/settings.json`
-(`background`), plus Opacity (`collectionOpacity`, default 100). *Interface
+(`background`), plus Opacity (`collectionOpacity`, default 100). Its art is
+`Variant::Backdrop`: the stage with its highlights rolled off (`BACKDROP_KNEE` /
+`BACKDROP_CAP`) so white text keeps 4.5:1 over white art; the scrims keep a
+floor under the details (no lighter dip in the middle) and the focus panels
+(`focus::panel`) are dense enough for .52 labels. Text that sits on the art
+with no panel stays at .66 or more. *Interface
 background* = every glass surface (menus, ☰, context menus, dropdowns, dialogs,
 drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
 `interfaceOpacity` 50-100 (default 84, maps to `glass_fill`; the art dim rises

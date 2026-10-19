@@ -178,12 +178,14 @@ pub(super) fn small_tabs(
     bar
 }
 
+/// A section surface. Dense enough that its secondary text (labels at .52)
+/// keeps a 4.5:1 contrast over bright Collection art.
 pub fn panel(facts: bool) -> Div {
     let d = div().flex().flex_col().border_1();
     if facts {
-        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::rgb_a(18, 22, 28, 0.28)).border_color(theme::white_a(0.1))
+        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::rgb_a(18, 22, 28, 0.5)).border_color(theme::white_a(0.1))
     } else {
-        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::rgb_a(12, 14, 18, 0.42)).border_color(theme::white_a(0.07))
+        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::rgb_a(12, 14, 18, 0.55)).border_color(theme::white_a(0.07))
     }
 }
 
@@ -379,7 +381,7 @@ fn header(vm: &FocusVm, title_size: f32) -> Div {
                 .text_color(white())
                 .child(vm.title.clone()),
         )
-        .when(!vm.meta_line.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::white_a(0.7)).child(vm.meta_line.clone())))
+        .when(!vm.meta_line.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::white_a(0.8)).child(vm.meta_line.clone())))
 }
 
 /// The blocks of the details, placed by [`body`].

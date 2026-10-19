@@ -54,6 +54,15 @@ pub fn thumb_key(identity: &str, variant: Variant, tw: u32, th: u32, opts: &Opts
             h.update(opts.stage_max_width.to_le_bytes());
             h.update(opts.stage_sigma_out.to_bits().to_le_bytes());
         }
+        Variant::Backdrop { blur_px, saturation } => {
+            h.update([3u8]);
+            h.update(blur_px.to_bits().to_le_bytes());
+            h.update(saturation.to_bits().to_le_bytes());
+            h.update(opts.stage_max_width.to_le_bytes());
+            h.update(opts.stage_sigma_out.to_bits().to_le_bytes());
+            h.update(crate::BACKDROP_KNEE.to_bits().to_le_bytes());
+            h.update(crate::BACKDROP_CAP.to_bits().to_le_bytes());
+        }
         Variant::Glass { blur_px, saturation } => {
             h.update([2u8]);
             h.update(blur_px.to_bits().to_le_bytes());
@@ -291,7 +300,8 @@ mod tests {
         let s2 = thumb_key("url:a", Variant::Stage { blur_px: 41.0, saturation: 1.2 }, 250, 375, &o);
         let s3 = thumb_key("url:a", Variant::Stage { blur_px: 40.0, saturation: 1.3 }, 250, 375, &o);
         let g1 = thumb_key("url:a", Variant::Glass { blur_px: 40.0, saturation: 1.2 }, 250, 375, &o);
-        let all = [&base, &s1, &s2, &s3, &g1];
+        let b1 = thumb_key("url:a", Variant::Backdrop { blur_px: 40.0, saturation: 1.2 }, 250, 375, &o);
+        let all = [&base, &s1, &s2, &s3, &g1, &b1];
         for (i, a) in all.iter().enumerate() {
             for b in &all[i + 1..] {
                 assert_ne!(a, b);
