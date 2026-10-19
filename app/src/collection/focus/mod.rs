@@ -183,9 +183,9 @@ pub(super) fn small_tabs(
 pub fn panel(facts: bool) -> Div {
     let d = div().flex().flex_col().border_1();
     if facts {
-        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::rgb_a(18, 22, 28, 0.5)).border_color(theme::white_a(0.1))
+        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::rgb_a(18, 22, 28, 0.45)).border_color(theme::white_a(0.1))
     } else {
-        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::rgb_a(12, 14, 18, 0.55)).border_color(theme::white_a(0.07))
+        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::rgb_a(12, 14, 18, 0.5)).border_color(theme::white_a(0.07))
     }
 }
 
