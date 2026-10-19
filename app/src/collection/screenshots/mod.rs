@@ -50,6 +50,8 @@ struct Textures {
     order: VecDeque<PathBuf>,
     pending: HashSet<PathBuf>,
     failed: HashSet<PathBuf>,
+    /// Asked for during the current render.
+    wanted: HashSet<PathBuf>,
 }
 
 pub(super) struct Full {
@@ -155,6 +157,9 @@ impl Shots {
 
     /// Texture of a thumbnail, queueing its generation once.
     pub fn thumb(&mut self, path: &Path) -> Option<ImageSource> {
+        if !self.tex.wanted.contains(path) {
+            self.tex.wanted.insert(path.to_path_buf());
+        }
         if let Some(img) = self.tex.ready.get(path) {
             let img = img.clone();
             if self.tex.order.back().map(|p| p.as_path()) != Some(path) {
@@ -174,6 +179,22 @@ impl Shots {
             }
         }
         None
+    }
+
+    /// Called before each render: queued thumbnails the last render did not
+    /// ask for (scrolled away, gallery closed) are dropped, so the visible
+    /// ones do not wait behind them. They are queued again when shown.
+    pub(super) fn prune_queue(&mut self) {
+        let wanted = std::mem::take(&mut self.tex.wanted);
+        let Some(q) = &self.queue else { return };
+        let mut items = q.items.lock().unwrap();
+        items.retain(|p| {
+            let keep = wanted.contains(p);
+            if !keep {
+                self.tex.pending.remove(p);
+            }
+            keep
+        });
     }
 
     pub fn drop_evicted(&mut self, window: &mut Window) {

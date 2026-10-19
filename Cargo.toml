@@ -84,6 +84,12 @@ opt-level = "s"
 
 [profile.dev.package."*"]
 opt-level = 2
+# Pixel loops (resize, swizzle): unoptimised, a screenshot preview takes ~0.7 s
+# instead of ~80 ms and opening one in the viewer ~1.2 s.
+[profile.dev.package.heronite-images]
+opt-level = 2
+[profile.dev.package.heronite-media]
+opt-level = 2
 
 # GPUI callbacks (`Rc<dyn Fn(.., &mut Window, &mut App)>`) and builder-style
 # render helpers trip these on nearly every view.

@@ -11,7 +11,7 @@
 //!   [`heronite_images::load_cover`]) and center-cropped to exactly 320x180;
 //!   a source smaller than that in either dimension is not enlarged and is
 //!   only center-cropped to `min(w, 320) x min(h, 180)`.
-//! * at most two previews are generated at a time ([`MAX_CONCURRENT_JOBS`]);
+//! * at most three previews are generated at a time ([`MAX_CONCURRENT_JOBS`]);
 //!   concurrent requests for the same source share one job.
 //! * least-recently-used eviction (access time, refreshed on every hit) down
 //!   to the limit, and entries whose original vanished are removed.
@@ -33,7 +33,7 @@ use std::time::{Duration, SystemTime};
 pub const THUMB_WIDTH: u32 = 320;
 pub const THUMB_HEIGHT: u32 = 180;
 pub const THUMB_QUALITY: u8 = 60;
-pub const MAX_CONCURRENT_JOBS: usize = 2;
+pub const MAX_CONCURRENT_JOBS: usize = 3;
 /// Quiet period after a generation before the cache is trimmed.
 pub const MAINTENANCE_DELAY: Duration = Duration::from_millis(1500);
 

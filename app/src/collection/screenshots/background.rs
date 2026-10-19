@@ -22,6 +22,7 @@ impl CollectionView {
     /// the viewer's image loaded.
     pub(in crate::collection) fn sync_shots(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.shots.drop_evicted(window);
+        self.shots.prune_queue();
         let Some(lib) = self.lib.clone() else { return };
         let settings = lib.settings.screenshots.clone();
         self.shots_start(&settings, cx);
@@ -50,7 +51,7 @@ impl CollectionView {
         let cache = ThumbnailCache::new(self.data_paths.screenshot_thumbnails_dir(), settings.cache_limit_mb.get());
         let (tx, mut rx) = unbounded::<Msg>();
         let queue = Arc::new(Queue { items: Mutex::new(VecDeque::new()), cv: Condvar::new() });
-        for n in 0..2 {
+        for n in 0..heronite_media::thumbnails::MAX_CONCURRENT_JOBS {
             let (queue, cache, tx) = (queue.clone(), cache.clone(), tx.clone());
             let _ = std::thread::Builder::new().name(format!("screenshot-thumbs-{n}")).spawn(move || loop {
                 let path = {
