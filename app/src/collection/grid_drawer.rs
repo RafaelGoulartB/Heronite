@@ -9,7 +9,8 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_images::Variant;
 
-use super::grid::{drawer_width, DRAWER_INSET};
+use super::grid::DRAWER_INSET;
+use super::resize::Panel;
 use super::vm::FocusVm;
 use super::{focus, CollectionView};
 use crate::theme;
@@ -25,8 +26,13 @@ impl CollectionView {
     /// The grid across the body, with the drawer over its right side.
     pub(super) fn render_grid_body(&mut self, grid_w: f32, vw: f32, vh: f32, scale: f32, cx: &mut Context<Self>) -> AnyElement {
         let list = self.render_list_column(grid_w, cx);
-        let drawer = if self.drawer_open() { self.render_grid_drawer(drawer_width(vw), vh, scale, cx) } else { None };
-        div().relative().size_full().flex().child(list).children(drawer).into_any_element()
+        let (drawer, edge) = if self.drawer_open() {
+            let drawer = self.render_grid_drawer(self.panel_width(Panel::Drawer, vw), vh, scale, cx);
+            (drawer, Some(self.resize_handle(Panel::Drawer, vw, cx)))
+        } else {
+            (None, None)
+        };
+        div().relative().size_full().flex().child(list).children(drawer).children(edge).into_any_element()
     }
 
     fn render_grid_drawer(&mut self, width: f32, vh: f32, scale: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -209,7 +215,7 @@ impl CollectionView {
                             .gap(px(6.))
                             .child(
                                 div()
-                                    .font_family(theme::FONT_HEADING)
+                                    .font_family(theme::font_heading())
                                     .font_weight(theme::W_BOLD)
                                     .text_size(px(22.))
                                     .line_height(px(26.))
@@ -271,7 +277,7 @@ fn number_tile(label: &'static str, value: SharedString) -> Div {
         .child(
             div()
                 .truncate()
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .font_weight(theme::W_BOLD)
                 .text_size(px(15.))
                 .text_color(white())

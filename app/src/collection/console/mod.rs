@@ -477,7 +477,7 @@ impl CollectionView {
             .size_full()
             .overflow_hidden()
             .bg(theme::console_bg())
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .text_color(theme::text_primary())
             .child(backdrop)
             .child(

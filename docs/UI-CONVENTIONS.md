@@ -75,7 +75,7 @@ game's art (blur 30px, saturate 1.5, ~1/5 of the window, cached in the
 `ui::glass::set_backdrop`. Glass surfaces paint it aligned to the window and
 clipped to their rounded bounds (`Window::paint_image` with a sub-rect), under a
 dark dim (`theme::glass_art_dim`) and the translucent fill
-(`rgba(22,27,36,.84)` by default). No art (no game selected, Solid) or still
+(`rgba(22,27,36,.90)` by default). No art (no game selected, Solid) or still
 loading: nearly opaque fill (`.94`). Never blur per frame; never request another
 blur: reuse this one.
 
@@ -90,7 +90,7 @@ floor under the details (no lighter dip in the middle) and the focus panels
 with no panel stays at .66 or more. *Interface
 background* = every glass surface (menus, ☰, context menus, dropdowns, dialogs,
 drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
-`interfaceOpacity` 50-100 (default 84, maps to `glass_fill`; the art dim rises
+`interfaceOpacity` 50-100 (default 90, maps to `glass_fill`; the art dim rises
 from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
 (default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum.
 These live in this app's `appearance.json` (`AppPaths::appearance()`, next to
@@ -104,6 +104,28 @@ independent of the Collection art; in Solid or at 100% nothing is generated and
 texture "s:" when the Collection art is off). Pages sit on `theme::page_backdrop()`
 (opaque page colour when Solid). Sliders call `set_appearance` live and save on
 release (off the UI thread).
+
+**Personal look** (Settings → Appearance, `appearance.json`, `heronite_data::appearance::{choices, profiles}`; page in
+`pages/settings/appearance/`: `look.rs` for the rows, `profiles.rs` for the tiles). Every value defaults to today's
+look and applies at once (`look::set_look` → `set_appearance`, saved off the UI thread, `PageEvent::AppearanceChanged`
+repaints the Collection). Read them through the theme, never from the file: `theme::accent()` and the `accent_*` tints
+follow **Accent colour** (Ice `#a5dceb` default, Mint, Amber, Rose, Lavender, or "From the game": the vivid average of
+the selected cover, measured on an 8×12 copy in `collection/look.rs`); never write the accent's RGB at a call site
+(`theme::accent_alpha(a)`). **High contrast** raises `text_muted`, `text_dim`, borders, separators and
+`theme::contrast_a(a)` for faint text over art. **Font** (`theme::font_body()` / `font_heading()`: Cabin + Rubik,
+Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**
+(radius 2 / 6 / 12), **Under the cover** (playtime or the sort value, playtime, last played, status with its colour,
+title, nothing; `data::chosen_caption`), **Favourite star**, **Under the pointer** (nothing, lift 4px, glow with an
+accent ring). **Picture** behind the Collection (`look::stage_source`: the game's art, one of its screenshots, its
+cover blurred, the Solid tint, or a picture copied to `AppPaths::custom_background()`), with a slideshow of the
+screenshots every 20 s. **Animations**: Full, Reduced (`theme::fades()` only: the stage cross-fade and covers fading
+in) or Off (`theme::animations()` is false; `HERONITE_NO_ANIMATIONS` forces Off). **Open the Collection in** (last
+used, Focus, Grid; applied once at start), **Reset widths** (`PageEvent::ResetPanelWidths`), **Game sections** (order
+and visibility of Screenshots, Overview, Details, Timeline, Related in `focus::body`; in two columns Details stays on
+the side, How Long To Beat and the extra panel travel with it). **Profiles**: four built-in looks (Standard = today,
+Cinema, Minimal, High contrast) and the user's (`profiles` in `appearance.json`), "Save as profile", export / import
+(`heroniteAppearance` marker). A profile holds everything in `appearance.json`, not the background sliders of
+`settings.json`. Console mode lists the same choices except the sections' order and "Your own picture".
 
 **Surfaces** (`ui::glass`): `glass_panel(radius)` (big shadow; popovers 20, sheets
 26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14). Children added after the constructor paint above the layers. Children
@@ -163,6 +185,12 @@ card), three tiles (Played, Last played, Sessions) and the details stacked in on
 ending in "Open game page" (back to the Focus view). Keys while nothing floats over it: arrows move the selection
 (the drawer follows), Enter plays an installed game, Esc closes the drawer (the selection stays; selecting a game opens
 it again). The Focus list takes the same arrows and Enter (play an installed game). `ui-state.json` keeps `gridView`, `gridCoverWidth` and `gridTitles`. Console mode is not affected.
+
+**Wider panels** (`collection/resize.rs`): the Focus list column and the grid's drawer grow when their inner edge is
+dragged (the cursor turns to col-resize over it; nothing else is drawn). Their default width for the window is the narrowest they get;
+dragging back to it, or a double click on the edge, returns to the default. A wider Focus list fits more columns of the
+same covers; the focus panel keeps at least 560px and the grid 320px. `ui-state.json` keeps `listColumnWidth` and
+`gridDrawerWidth` (`null` = default); Settings → Appearance → Layout → "Reset widths" clears both.
 
 **Selecting several games** (`collection/selection.rs`, `dock.rs`, by user decision: proposal 2 "Dock" of
 `propostas/selecao-v1`). Ctrl click ticks a game (with the focused one when nothing is selected yet), Shift click adds

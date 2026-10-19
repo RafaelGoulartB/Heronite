@@ -60,6 +60,12 @@ pub struct UiState {
     pub grid_titles: bool,
     /// The focus panel shows the Journal instead of the Timeline.
     pub journal_view: bool,
+    /// Width the Focus list column was dragged to, in logical px. `None`: the
+    /// default for the window, which is also the narrowest it gets.
+    pub list_column_w: Option<f32>,
+    /// Width the grid's drawer was dragged to, like
+    /// [`list_column_w`](Self::list_column_w).
+    pub grid_drawer_w: Option<f32>,
 }
 
 /// Range and default of [`UiState::grid_cover_w`].
@@ -88,6 +94,8 @@ impl Default for UiState {
             grid_cover_w: GRID_COVER_W.2,
             grid_titles: false,
             journal_view: false,
+            list_column_w: None,
+            grid_drawer_w: None,
         }
     }
 }
@@ -124,6 +132,9 @@ impl UiState {
         }
         state.grid_titles = flag("gridTitles");
         state.journal_view = flag("journalView");
+        let width = |key: &str| value.get(key).and_then(Value::as_f64).filter(|w| w.is_finite() && *w > 0.).map(|w| w as f32);
+        state.list_column_w = width("listColumnWidth");
+        state.grid_drawer_w = width("gridDrawerWidth");
         state
     }
 
@@ -141,6 +152,8 @@ impl UiState {
             "gridCoverWidth": self.grid_cover_w,
             "gridTitles": self.grid_titles,
             "journalView": self.journal_view,
+            "listColumnWidth": self.list_column_w,
+            "gridDrawerWidth": self.grid_drawer_w,
         });
         if let (Value::Object(doc), Value::Object(view)) = (&mut doc, self.view_filters().to_value()) {
             doc.extend(view);
@@ -532,6 +545,7 @@ mod tests {
             grid_view: true,
             grid_cover_w: 180.,
             grid_titles: true,
+            list_column_w: Some(560.),
             ..Default::default()
         };
         state.toggle_category("RPG");
@@ -555,6 +569,8 @@ mod tests {
         assert_eq!(on_disk["consoleMode"], true);
         assert_eq!(on_disk["onlyOffline"], true);
         assert_eq!(on_disk["gridView"], true);
+        assert_eq!(on_disk["listColumnWidth"], 560.);
+        assert_eq!(on_disk["gridDrawerWidth"], Value::Null);
         assert_eq!(on_disk["categories"], json!([crate::categories::UNCATEGORIZED, "RPG"]));
         state.clear_facets();
         assert!(!state.facet_filters.is_active());

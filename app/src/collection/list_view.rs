@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::appearance::CoverLabel;
 use heronite_images::Variant;
 
 use super::vm::{CardVm, ListItem};
@@ -107,6 +108,13 @@ impl CollectionView {
         let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
         let no_art = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));
         let (k1, k2, k3, k4) = (key.clone(), key.clone(), key.clone(), key.clone());
+        let a = theme::appearance();
+        let look = card::CardLook {
+            radius: a.cover_corners.radius(),
+            hover: a.cover_hover,
+            badges: a.cover_badges,
+            caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
+        };
         let el = card::card(
             card::CardState {
                 vm: &c,
@@ -114,13 +122,14 @@ impl CollectionView {
                 no_art,
                 width: self.card_w,
                 cover_h,
-                title: self.ui.grid_view && self.ui.grid_titles,
+                title: self.ui.grid_view && self.ui.grid_titles || a.cover_label == CoverLabel::Title,
                 selected: !self.sel.active() && self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
                 leaving: self.leaving.as_ref() == Some(&key),
                 grey_uninstalled: self.grey_uninstalled,
                 pick: self.sel.active().then(|| self.sel.contains(&key)),
                 epic: self.epic_card(&key, cx),
+                look,
             },
             cx.listener(move |this, ev: &ClickEvent, _, cx| {
                 this.card_clicked(k1.clone(), ev);

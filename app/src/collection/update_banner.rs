@@ -139,7 +139,7 @@ impl CollectionView {
             .gap(px(3.))
             .child(
                 div()
-                    .font_family(theme::FONT_HEADING)
+                    .font_family(theme::font_heading())
                     .text_size(px(17.))
                     .font_weight(theme::W_BOLD)
                     .text_color(theme::text_primary())
@@ -155,7 +155,7 @@ impl CollectionView {
             .flex_col()
             .gap(px(12.))
             .text_color(theme::text_primary())
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .child(head)
             .child(body)
             .children(progress)

@@ -1,5 +1,9 @@
-//! Settings → Appearance: two independent groups plus the covers.
+//! Settings → Appearance: profiles, colour, reading, the two backgrounds,
+//! covers, motion and layout.
 //!
+//! - Profiles (`profiles.rs`): built-in and saved looks, export / import.
+//! - Colour, reading, the cover options, the background picture, motion and
+//!   layout (`look.rs`): `appearance.json`, applied at once.
 //! - Collection background (the selected game's art behind the Collection):
 //!   on/off, blur, darkening, colour intensity, edge shading live in
 //!   `local_library/settings.json` (`background`); its
@@ -19,6 +23,12 @@ use heronite_data::appearance::{Appearance, InterfaceMode, SolidTint, INTERFACE_
 use heronite_data::settings::{self, CoverAspect, EffectiveSettings, PartialBackground};
 use heronite_i18n::{n_, tr};
 use heronite_images::{ImageRef, Opts};
+
+mod look;
+mod profiles;
+
+use gpui_kit::component::input::InputState;
+use heronite_data::appearance::Profile;
 
 use super::SettingsPage;
 use crate::collection::stage::{scrim_layers, Scrim};
@@ -55,6 +65,14 @@ pub struct State {
     preview_task: Option<Task<()>>,
     opts: Opts,
     aspect_open: bool,
+    /// The "Under the cover" and background picture selects are open.
+    label_open: bool,
+    picture_open: bool,
+    /// The user's saved looks; `None` until read (`profiles::ensure_loaded`).
+    profiles: Option<Vec<Profile>>,
+    profiles_task: Option<Task<()>>,
+    /// Name typed for "Save as profile".
+    profile_name: Entity<InputState>,
 }
 
 const ASPECTS: [(CoverAspect, &str); 6] = [
@@ -130,6 +148,11 @@ impl State {
             preview_task: None,
             opts: Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir())),
             aspect_open: false,
+            label_open: false,
+            picture_open: false,
+            profiles: None,
+            profiles_task: None,
+            profile_name: crate::ui::fields::new_input(window, cx, "", tr!("Profile name")),
         };
         this.preview_task = None;
         this
@@ -341,6 +364,8 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         save_background(d, cx);
     }))
     .into_any_element()];
+    rows.extend(look::picture_rows(d, cx));
+    let a = &d.appearance;
     for (field, state) in &a.sliders {
         let label = match field {
             Field::CollectionOpacity => tr!("Opacity: {value}%", value = a.ui.collection_opacity.round()),
@@ -415,23 +440,39 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         apply_interface(d, true, cx);
     }));
     let interface = interface_group(a, cx);
-    let covers = card([
-        row(
-            tr!("Cover aspect"),
-            Some(tr!("Shape of the covers in the grid, the details panel and related games.")),
-            div().w(px(200.)).child(aspect_select),
-        )
-        .into_any_element(),
-        toggle_row("grey-uninstalled", tr!("Show uninstalled games in grey"), None, grey)
-            .on_click(cx.listener(move |d, _, _, cx| {
-                let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);
-                d.saved(res, cx);
-            }))
+    let cover_rows = look::cover_rows(d, cx);
+    let covers = card(
+        [
+            row(
+                tr!("Cover aspect"),
+                Some(tr!("Shape of the covers in the grid, the details panel and related games.")),
+                div().w(px(200.)).child(aspect_select),
+            )
             .into_any_element(),
-    ]);
+            toggle_row("grey-uninstalled", tr!("Show uninstalled games in grey"), None, grey)
+                .on_click(cx.listener(move |d, _, _, cx| {
+                    let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);
+                    d.saved(res, cx);
+                }))
+                .into_any_element(),
+        ]
+        .into_iter()
+        .chain(cover_rows),
+    );
+    let profiles = profiles::profiles_group(d, cx);
+    let colour = look::colour_group(d, cx);
+    let reading = look::reading_group(d, cx);
+    let motion = look::motion_group(d, cx);
+    let layout = look::layout_group(d, cx);
     div()
         .flex()
         .flex_col()
+        .child(caption(tr!("Profiles")))
+        .child(profiles)
+        .child(caption(tr!("Colour")))
+        .child(colour)
+        .child(caption(tr!("Reading")))
+        .child(reading)
         .child(caption(tr!("Collection background")))
         .child(preview)
         .child(div().h(px(10.)))
@@ -464,6 +505,10 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         )
         .child(caption(tr!("Covers")))
         .child(covers)
+        .child(caption(tr!("Motion")))
+        .child(motion)
+        .child(caption(tr!("Layout")))
+        .child(layout)
         .into_any_element()
 }
 
@@ -526,7 +571,123 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
     rows.push(Row::choice("aspect", tr!("Cover aspect"), ASPECTS.iter().map(|(_, l)| SharedString::from(tr(l))).collect(), ai));
     rows.push(Row::toggle("grey", tr!("Show uninstalled games in grey"), d.settings.grey_uninstalled_games));
+    rows.extend(console_look_rows(d));
     rows
+}
+
+/// Labels of `items` and the index of `active` among them.
+fn console_choice<T: Copy + PartialEq>(items: &[(T, &'static str)], active: T) -> (Vec<SharedString>, usize) {
+    (items.iter().map(|(_, l)| SharedString::from(*l)).collect(), items.iter().position(|(v, _)| *v == active).unwrap_or(0))
+}
+
+/// The pictures console mode offers: not "Your own picture" (it needs a file picker).
+fn console_pictures() -> Vec<(heronite_data::appearance::BackgroundSource, &'static str)> {
+    look::picture_items().into_iter().filter(|(p, _)| *p != heronite_data::appearance::BackgroundSource::Custom).collect()
+}
+
+/// Console rows of `look.rs` and the profiles (the sections' order stays a desktop setting).
+fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
+    use crate::console::list::Row;
+    use heronite_data::appearance::{presets, Accent};
+    let a = d.appearance.ui;
+    let accents: Vec<(Accent, &'static str)> = Accent::ALL.iter().map(|x| (*x, look::accent_label(*x))).collect();
+    let choice = |id: &'static str, label: &'static str, (items, i): (Vec<SharedString>, usize)| Row::choice(id, label, items, i);
+    let mut rows = vec![
+        choice("cover-corners", tr!("Corners"), console_choice(&look::corner_items(), a.cover_corners)),
+        choice("cover-label", tr!("Under the cover"), console_choice(&look::label_items(), a.cover_label)),
+        Row::toggle("cover-badges", tr!("Favourite star"), a.cover_badges),
+        choice("cover-hover", tr!("Under the pointer"), console_choice(&look::hover_items(), a.cover_hover)),
+        choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
+        Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
+        Row::header(tr!("Colour")),
+        choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
+        Row::toggle("high-contrast", tr!("High contrast"), a.high_contrast),
+        Row::header(tr!("Reading")),
+        choice("font", tr!("Font"), console_choice(&look::font_items(), a.font)),
+        choice("density", tr!("Density"), console_choice(&look::density_items(), a.density)),
+        Row::header(tr!("Motion")),
+        choice("motion", tr!("Animations"), console_choice(&look::motion_items(), a.motion)),
+        Row::header(tr!("Layout")),
+        choice("start-view", tr!("Open the Collection in"), console_choice(&look::start_items(), a.start_view)),
+        Row::action("reset-widths", tr!("Reset widths")),
+        Row::header(tr!("Profiles")),
+    ];
+    rows.extend(presets().iter().map(|p| Row::action(SharedString::from(format!("preset:{}", p.id)), profiles::preset_name(p.id))));
+    rows
+}
+
+/// The value at `i` of `items`.
+fn pick<T: Copy>(items: &[(T, &'static str)], i: Option<usize>) -> Option<T> {
+    i.and_then(|i| items.get(i).map(|(v, _)| *v))
+}
+
+/// Applies a console row of [`console_look_rows`]; `false` when `id` is not one.
+fn console_apply_look(
+    d: &mut SettingsPage,
+    id: &str,
+    index: Option<usize>,
+    on: Option<bool>,
+    window: &mut Window,
+    cx: &mut Context<SettingsPage>,
+) -> bool {
+    use heronite_data::appearance::{presets, Accent};
+    if let Some(p) = id.strip_prefix("preset:").and_then(|p| presets().into_iter().find(|x| x.id == p)) {
+        profiles::apply_look(d, p.look, window, cx);
+        return true;
+    }
+    match (id, index, on) {
+        ("cover-corners", i, _) => {
+            if let Some(v) = pick(&look::corner_items(), i) {
+                look::set_look(d, cx, |a| a.cover_corners = v)
+            }
+        }
+        ("cover-label", i, _) => {
+            if let Some(v) = pick(&look::label_items(), i) {
+                look::set_look(d, cx, |a| a.cover_label = v)
+            }
+        }
+        ("cover-hover", i, _) => {
+            if let Some(v) = pick(&look::hover_items(), i) {
+                look::set_look(d, cx, |a| a.cover_hover = v)
+            }
+        }
+        ("bg-picture", i, _) => {
+            if let Some(v) = pick(&console_pictures(), i) {
+                look::set_look(d, cx, |a| a.background = v)
+            }
+        }
+        ("accent", i, _) => {
+            if let Some(v) = i.and_then(|i| Accent::ALL.get(i).copied()) {
+                look::set_look(d, cx, |a| a.accent = v)
+            }
+        }
+        ("font", i, _) => {
+            if let Some(v) = pick(&look::font_items(), i) {
+                look::set_look(d, cx, |a| a.font = v)
+            }
+        }
+        ("density", i, _) => {
+            if let Some(v) = pick(&look::density_items(), i) {
+                look::set_look(d, cx, |a| a.density = v)
+            }
+        }
+        ("motion", i, _) => {
+            if let Some(v) = pick(&look::motion_items(), i) {
+                look::set_look(d, cx, |a| a.motion = v)
+            }
+        }
+        ("start-view", i, _) => {
+            if let Some(v) = pick(&look::start_items(), i) {
+                look::set_look(d, cx, |a| a.start_view = v)
+            }
+        }
+        ("cover-badges", _, Some(on)) => look::set_look(d, cx, |a| a.cover_badges = on),
+        ("bg-slideshow", _, Some(on)) => look::set_look(d, cx, |a| a.background_slideshow = on),
+        ("high-contrast", _, Some(on)) => look::set_look(d, cx, |a| a.high_contrast = on),
+        ("reset-widths", _, _) => cx.emit(crate::pages::PageEvent::ResetPanelWidths),
+        _ => return false,
+    }
+    true
 }
 
 pub(super) fn console_apply(
@@ -536,6 +697,15 @@ pub(super) fn console_apply(
     cx: &mut Context<SettingsPage>,
 ) {
     use crate::console::list::{Outcome, Value};
+    let handled = match &outcome {
+        Outcome::Changed(id, Value::Choice { index, .. }) => console_apply_look(d, id, Some(*index), None, window, cx),
+        Outcome::Changed(id, Value::Toggle(on)) => console_apply_look(d, id, None, Some(*on), window, cx),
+        Outcome::Activate(id) => console_apply_look(d, id, None, None, window, cx),
+        _ => false,
+    };
+    if handled {
+        return;
+    }
     match outcome {
         Outcome::Changed(id, Value::Number { value, .. }) => {
             let v = value as f32;

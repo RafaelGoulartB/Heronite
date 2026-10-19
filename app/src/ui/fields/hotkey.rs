@@ -57,7 +57,7 @@ pub fn hotkey_box(base: Stateful<Div>, text: String, focused: bool) -> Stateful<
         .bg(theme::input_fill())
         .border_1()
         .border_color(if focused { theme::input_border_focus() } else { theme::input_border() })
-        .font_family(theme::FONT_BODY)
+        .font_family(theme::font_body())
         .text_size(px(14.))
         .text_color(theme::text_primary())
         .child(text)

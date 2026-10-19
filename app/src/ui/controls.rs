@@ -148,7 +148,7 @@ pub fn caption(text: impl Into<SharedString>) -> Div {
 /// Page / sheet title: Rubik 600, 26px.
 pub fn page_heading(text: impl Into<SharedString>) -> Div {
     div()
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .text_size(px(26.))
         .line_height(px(32.))
         .font_weight(theme::W_BOLD)
@@ -159,7 +159,7 @@ pub fn page_heading(text: impl Into<SharedString>) -> Div {
 /// Drawer / dialog title: Rubik 600, 22px.
 pub fn dialog_title(text: impl Into<SharedString>) -> Div {
     div()
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .text_size(px(22.))
         .line_height(px(27.))
         .font_weight(theme::W_BOLD)

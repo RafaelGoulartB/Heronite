@@ -1,7 +1,26 @@
 //! Font families and weights.
 
-pub const FONT_BODY: &str = "Cabin";
-pub const FONT_HEADING: &str = "Rubik";
+use heronite_data::appearance::FontChoice;
+
+/// GPUI's name for the desktop's interface font.
+const SYSTEM_FONT: &str = ".SystemUIFont";
+
+/// Family of the text (Settings → Appearance → Font).
+pub fn font_body() -> &'static str {
+    match super::appearance().font {
+        FontChoice::Default => "Cabin",
+        FontChoice::Rubik => "Rubik",
+        FontChoice::System => SYSTEM_FONT,
+    }
+}
+
+/// Family of the titles.
+pub fn font_heading() -> &'static str {
+    match super::appearance().font {
+        FontChoice::Default | FontChoice::Rubik => "Rubik",
+        FontChoice::System => SYSTEM_FONT,
+    }
+}
 /// Keyboard hint chips.
 pub const FONT_MONO: &str = "Noto Sans Mono";
 

@@ -129,7 +129,7 @@ impl Render for NoticeView {
             }));
         div()
             .size_full()
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .flex()
             .items_center()
             .gap(u(14.))

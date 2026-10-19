@@ -4,15 +4,17 @@
 use std::sync::Arc;
 
 use gpui_kit::*;
+use heronite_data::appearance::BackgroundSource;
 use heronite_images::Variant;
 
 use super::CollectionView;
+use crate::theme;
 
 impl CollectionView {
     /// Current stage texture: the selected game's, or the previous one while
     /// it loads.
     pub(super) fn stage_image(&mut self, window: &Window) -> Option<(SharedString, ImageSource)> {
-        if !self.stage_enabled {
+        if !self.stage_enabled || theme::appearance().background == BackgroundSource::Solid {
             // Off: the big blurred texture is not kept around.
             if self.shown_stage.take().is_some() {
                 self.images.forget_prefix("s:");
@@ -20,24 +22,19 @@ impl CollectionView {
             return None;
         }
         let key = self.selected.clone()?;
+        let (source, chain) = self.stage_source(&key)?;
         let scale = window.scale_factor();
         let size = window.viewport_size();
         let (pw, ph) = ((f32::from(size.width) * scale) as u32, (f32::from(size.height) * scale) as u32);
         let blur = self.blur_px * scale;
         let sat = self.saturation;
-        let id: SharedString = format!("s:{key}:{pw}x{ph}:{blur}:{sat}").into();
-        let chains = &self.stage_chains;
-        let ready = self.images.get_or_request(
-            &id,
-            || chains.get(&key).cloned().unwrap_or_default(),
-            pw,
-            ph,
-            Variant::Backdrop { blur_px: blur, saturation: sat },
-            1000,
-        );
+        let id: SharedString = format!("s:{key}:{source}:{pw}x{ph}:{blur}:{sat}").into();
+        let empty = chain.is_empty();
+        let ready = self.images.get_or_request(&id, || chain, pw, ph, Variant::Backdrop { blur_px: blur, saturation: sat }, 1000);
         if let Some(img) = ready {
-            self.shown_stage = Some((key, img));
-        } else if self.stage_chains.get(&key).is_none_or(|c| c.is_empty()) {
+            // The texture's id names the animation: a new picture fades in.
+            self.shown_stage = Some((id, img));
+        } else if empty {
             self.shown_stage = None;
         }
         self.shown_stage.as_ref().map(|(k, img)| (k.clone(), ImageSource::Render(img.clone())))

@@ -118,8 +118,9 @@ pub(super) fn is_store_runner(runner: &str) -> bool {
 }
 
 /// Card overlay: bottom strip with label + bar, "Update" pill at the top.
-pub(super) fn card_overlay(e: &CardEpic) -> Div {
-    let mut layer = div().absolute().inset_0().rounded(px(6.)).overflow_hidden();
+/// `radius`: the cover's.
+pub(super) fn card_overlay(e: &CardEpic, radius: f32) -> Div {
+    let mut layer = div().absolute().inset_0().rounded(px(radius)).overflow_hidden();
     if !e.label.is_empty() {
         layer = layer.child(
             div()

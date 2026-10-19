@@ -159,7 +159,7 @@ impl CollectionView {
                     .p(px(32.))
                     // Heronite blurs what is behind (16px); darker instead.
                     .bg(theme::rgb_a(4, 6, 8, 0.8))
-                    .font_family(theme::FONT_BODY)
+                    .font_family(theme::font_body())
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {
@@ -239,7 +239,7 @@ impl CollectionView {
                             .text_size(px(16.8))
                             .font_weight(theme::W_BOLD)
                             .text_color(white())
-                            .font_family(theme::FONT_BODY)
+                            .font_family(theme::font_body())
                             .child(tr!("Screenshots")),
                     )
                     .child(div().text_size(px(13.6)).text_color(theme::white_a(0.62)).child(total.to_string())),

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use gpui_kit::{Pixels, Rgba, SharedString};
+use gpui_kit::{Hsla, Pixels, Rgba, SharedString};
 
 use crate::icons::Icon;
 
@@ -16,6 +16,8 @@ pub(super) struct Caption {
     pub muted: bool,
     /// Star rating, drawn instead of the text.
     pub stars: Option<u8>,
+    /// Colour of the icon (a status's), else the text's.
+    pub tint: Option<Hsla>,
 }
 
 #[derive(Clone)]
@@ -28,6 +30,7 @@ pub(super) struct CardVm {
     pub playing: bool,
     /// Hidden in Heroic and shown because "Show hidden games" is on.
     pub hidden: bool,
+    pub favourite: bool,
     /// Index into the images the view keeps (cover chain id).
     pub cover_key: SharedString,
 }
@@ -221,10 +224,11 @@ mod tests {
             Arc::new(CardVm {
                 key: key.to_string().into(),
                 title: key.to_string().into(),
-                caption: Caption { icon: Icon::Add, text: "".into(), muted: false, stars: None },
+                caption: Caption { icon: Icon::Add, text: "".into(), muted: false, stars: None, tint: None },
                 installed: true,
                 playing: false,
                 hidden: false,
+                favourite: false,
                 cover_key: "".into(),
             })
         };

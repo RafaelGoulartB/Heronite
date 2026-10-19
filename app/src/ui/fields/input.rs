@@ -19,7 +19,7 @@ pub(super) fn input_surface() -> Div {
         .bg(theme::input_fill())
         .border_1()
         .border_color(theme::input_border())
-        .font_family(theme::FONT_BODY)
+        .font_family(theme::font_body())
         .text_size(px(14.))
         .text_color(theme::text_primary())
 }

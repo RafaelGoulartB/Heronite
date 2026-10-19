@@ -10,7 +10,7 @@ pub mod lsfg;
 pub mod ludusavi;
 mod scrollbar;
 
-pub use scrollbar::scrollbar_draggable;
+pub use scrollbar::{scrollbar_draggable, NoDragView};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;

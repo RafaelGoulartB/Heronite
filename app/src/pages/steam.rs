@@ -124,7 +124,7 @@ impl SteamPage {
                     .gap(px(4.))
                     .child(
                         div()
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .text_size(px(20.))
                             .font_weight(theme::W_BOLD)
                             .text_color(theme::text_primary())

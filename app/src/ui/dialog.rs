@@ -122,7 +122,7 @@ fn build(
         .w(px(props.width))
         .max_h(relative(0.95))
         .text_color(theme::text_primary())
-        .font_family(theme::FONT_BODY)
+        .font_family(theme::font_body())
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(header)
         .child(content);
@@ -186,7 +186,7 @@ pub fn drawer(
         .flex()
         .flex_col()
         .text_color(theme::text_primary())
-        .font_family(theme::FONT_BODY)
+        .font_family(theme::font_body())
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(div().flex_none().child(header))
         .child(

@@ -239,7 +239,7 @@ impl CollectionView {
             .child(
                 div()
                     .mt(px(12.))
-                    .font_family(theme::FONT_HEADING)
+                    .font_family(theme::font_heading())
                     .text_size(px(38.))
                     .line_height(px(46.))
                     .font_weight(theme::W_BOLD)
@@ -295,7 +295,7 @@ impl CollectionView {
                     .child(icon(Icon::Warning, px(36.), theme::danger_text()))
                     .child(
                         div()
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .text_size(px(24.))
                             .font_weight(theme::W_BOLD)
                             .text_color(theme::text_primary())

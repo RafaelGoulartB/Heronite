@@ -59,7 +59,7 @@ pub fn shadow(alpha: f32, y: f32, blur: f32) -> Vec<BoxShadow> {
 pub fn wordmark(text: &str) -> Div {
     let spaced: String = text.chars().flat_map(|c| [c, '\u{2009}']).collect();
     div()
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .font_weight(theme::W_BOLD)
         .text_size(u(14.))
         .text_color(theme::text_muted())
@@ -74,7 +74,7 @@ pub fn kicker(text: &str) -> Div {
 /// Rubik title.
 pub fn title(text: impl Into<SharedString>, size: f32) -> Div {
     div()
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .font_weight(theme::W_BOLD)
         .text_size(u(size))
         .line_height(u(size * 1.15))

@@ -21,10 +21,21 @@ pub use font::*;
 pub use glass::*;
 pub use layout::*;
 
-/// Fades and transitions on/off. `HERONITE_NO_ANIMATIONS=1` disables them
-/// (reduced motion; also needed for off-screen screenshots, where the
-/// compositor stops sending frames and fades would stay at opacity 0).
+/// `HERONITE_NO_ANIMATIONS=1` turns every animation off whatever Settings →
+/// Appearance → Motion says (also needed for off-screen screenshots, where
+/// the compositor stops sending frames and fades would stay at opacity 0).
+fn motion_forced_off() -> bool {
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *OFF.get_or_init(|| crate::env::flag("HERONITE_NO_ANIMATIONS"))
+}
+
+/// Fades and transitions of the interface: on only with Motion "Full".
 pub fn animations() -> bool {
-    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ON.get_or_init(|| !crate::env::flag("HERONITE_NO_ANIMATIONS"))
+    !motion_forced_off() && appearance().motion == heronite_data::appearance::Motion::Full
+}
+
+/// The background's cross-fade and the covers fading in: kept by Motion
+/// "Reduced" too.
+pub fn fades() -> bool {
+    !motion_forced_off() && appearance().motion != heronite_data::appearance::Motion::Off
 }

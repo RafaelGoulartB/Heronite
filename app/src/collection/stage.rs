@@ -48,6 +48,13 @@ pub fn scrim_layers(s: Scrim) -> Div {
         .child(gradient_row(180., &[(0., 0.42), (24., 0.14), (62., 0.2), (100., 0.62)], s.scrim))
 }
 
+/// Settings → Appearance → Background "Solid colour": the panels' colour
+/// under the same scrims.
+pub fn solid(s: Scrim) -> AnyElement {
+    let (r, g, b) = crate::theme::appearance().solid_tint.rgb();
+    div().absolute().inset_0().bg(crate::theme::rgb_a(r, g, b, 1.)).child(scrim_layers(s)).into_any_element()
+}
+
 /// The stage. `art` is already blurred/saturated; `None` shows the plain page
 /// colour like Heronite does when the background is disabled or missing.
 /// `opacity` (0-1, "Collection background → Opacity") is how visible the art
@@ -63,7 +70,7 @@ pub fn stage(art: Option<ImageSource>, art_id: SharedString, s: Scrim, opacity: 
         .child({
             let el = img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Cover).opacity(opacity);
             // `img.loaded { transition: opacity 500ms }`
-            if crate::theme::animations() {
+            if crate::theme::fades() {
                 el.with_animation(
                     ElementId::Name(format!("stage-{art_id}").into()),
                     Animation::new(std::time::Duration::from_millis(500)),

@@ -39,7 +39,7 @@ pub(super) fn render_html(blocks: &[crate::collection::html::Block], images: &dy
             Block::Heading(spans) => div()
                 .when(i > 0, |d| d.mt(px(18.4)))
                 .mb(px(7.2))
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .text_size(px(16.32))
                 .font_weight(theme::W_BOLD)
                 .text_color(white())
