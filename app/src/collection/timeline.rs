@@ -30,6 +30,14 @@ const TILE_W: f32 = 144.;
 const TILE_H: f32 = 81.;
 const TILE_GAP: f32 = 8.;
 const ROW_GAP: f32 = 18.;
+/// Days the activity bars of the title cover, ending today.
+const SPARK_DAYS: i64 = 30;
+const SPARK_BAR_W: f32 = 4.;
+const SPARK_H: f32 = 20.;
+/// Narrowest column that has room for the activity bars in the title.
+const SPARK_MIN_W: f32 = 620.;
+/// Days without play between two listed days that get a "pause" line.
+const PAUSE_MIN_DAYS: i64 = 3;
 
 impl CollectionView {
     /// The section (none when the game was never played and has no screenshots).
@@ -60,6 +68,12 @@ impl CollectionView {
             let tiles = self.day_tiles(i, day, max_tiles, cx);
             let chip = notes.get(&day.date).map(|n| self.notes_chip(i, *n, cx));
             list = list.child(day_row(day, this_year, i + 1 < shown, is_best, chip, tiles));
+            if let Some(older) = days.get(i + 1).filter(|_| i + 1 < shown) {
+                let off = (day.date - older.date).num_days() - 1;
+                if off >= PAUSE_MIN_DAYS {
+                    list = list.child(pause_row(off));
+                }
+            }
         }
 
         let more = days.len() - shown;
@@ -83,7 +97,7 @@ impl CollectionView {
             div()
                 .flex()
                 .flex_col()
-                .child(self.timeline_header(key, cx))
+                .child(self.timeline_header(key, main_w, cx))
                 .child(
                     panel(false)
                         .gap(px(4.))
@@ -96,10 +110,23 @@ impl CollectionView {
 
     /// The section's title: "Timeline" or "Journal", what it holds, and the
     /// switch between the two.
-    pub(super) fn timeline_header(&mut self, key: &SharedString, cx: &mut Context<Self>) -> Div {
+    pub(super) fn timeline_header(&mut self, key: &SharedString, main_w: f32, cx: &mut Context<Self>) -> Div {
         let journal = self.ui.journal_view && self.journal.is_for(key);
         let this_year = chrono::Local::now().year();
-        let meta = if journal {
+        let spark = if journal || main_w < SPARK_MIN_W { None } else { self.activity_bars(key, cx) };
+        let hovered = spark.as_ref().and(self.facts.timeline_hover);
+        let meta = if let Some(date) = hovered {
+            let played = self
+                .timeline_days(key)
+                .and_then(|days| days.iter().find(|d| d.date == date).map(|d| d.played_secs))
+                .filter(|s| *s > 0.)
+                .map(|s| format_playtime_minutes((s / 60.).round().max(1.) as u64));
+            let day = day_label(date, this_year);
+            match played {
+                Some(p) => tr!("{day} · played {time}", day, time = p),
+                None => tr!("{day} · not played", day),
+            }
+        } else if journal {
             let n = self.journal.data.as_ref().map_or(0, |d| d.entries.len());
             if n == 0 {
                 String::new()
@@ -126,9 +153,60 @@ impl CollectionView {
                 .text_size(px(12.5))
                 .font_weight(theme::W_REGULAR)
                 .text_color(theme::white_a(0.52))
+                // The bars sit after the text, next to the switch, so a
+                // hovered day's (wider or narrower) text never moves them.
                 .child(meta)
+                .children(spark)
                 .child(switch),
         )
+    }
+
+    /// One bar per day of the last [`SPARK_DAYS`], as tall as the time played
+    /// that day; hovering one says the day in the title. `None` when the game
+    /// was not played in that span.
+    fn activity_bars(&mut self, key: &SharedString, cx: &mut Context<Self>) -> Option<Div> {
+        let days = self.timeline_days(key)?;
+        let today = chrono::Local::now().date_naive();
+        let first = today - chrono::Duration::days(SPARK_DAYS - 1);
+        let played: HashMap<chrono::NaiveDate, f64> =
+            days.iter().filter(|d| d.date >= first && d.played_secs > 0.).map(|d| (d.date, d.played_secs)).collect();
+        let most = played.values().copied().fold(0., f64::max);
+        if most <= 0. {
+            return None;
+        }
+        let hover = self.facts.timeline_hover;
+        let mut bars = div().flex().flex_none().items_end().h(px(SPARK_H));
+        for i in 0..SPARK_DAYS {
+            let date = first + chrono::Duration::days(i);
+            let secs = played.get(&date).copied().unwrap_or(0.);
+            let h = if secs > 0. { 4. + (SPARK_H - 4.) * (secs / most) as f32 } else { 3. };
+            let on = hover == Some(date);
+            let color = match (secs > 0., on) {
+                (_, true) => white(),
+                (true, false) => theme::accent().into(),
+                (false, false) => theme::white_a(0.12),
+            };
+            // Hit areas are full height and touch each other (the gap is
+            // their padding), so moving along the bars never drops the hover.
+            bars = bars.child(
+                div()
+                    .id(SharedString::from(format!("tl-spark-{i}")))
+                    .flex()
+                    .items_end()
+                    .h_full()
+                    .px(px(1.))
+                    .on_hover(cx.listener(move |this, h: &bool, _, cx| {
+                        if *h {
+                            this.facts.timeline_hover = Some(date);
+                        } else if this.facts.timeline_hover == Some(date) {
+                            this.facts.timeline_hover = None;
+                        }
+                        cx.notify();
+                    }))
+                    .child(div().w(px(SPARK_BAR_W)).h(px(h)).rounded(px(1.)).bg(color)),
+            );
+        }
+        Some(bars)
     }
 
     /// Timeline | Journal.
@@ -281,12 +359,38 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, not
         .child(div().flex_1().min_w_0().child(line).children(tiles))
 }
 
+/// Between two days far apart: how long the game was left, on a fainter rail.
+fn pause_row(days: i64) -> Div {
+    let text = match days {
+        ..=13 => trn!(days, "{n} day without playing", "{n} days without playing"),
+        14..=59 => trn!(days / 7, "{n} week without playing", "{n} weeks without playing"),
+        _ => trn!(days / 30, "{n} month without playing", "{n} months without playing"),
+    };
+    div()
+        .flex()
+        .gap(px(GAP))
+        .pb(px(ROW_GAP))
+        .child(div().flex_none().w(px(DATE_W)))
+        .child(
+            div()
+                .relative()
+                .flex_none()
+                .w(px(RAIL_W))
+                .child(div().absolute().top_0().bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::white_a(0.04))),
+        )
+        .child(div().flex_1().min_w_0().text_size(px(12.)).line_height(px(16.)).text_color(theme::white_a(0.38)).child(text))
+}
+
 /// "Oct 7", or "Oct 7, 2025" outside the current year.
 fn date_label(day: &TimelineDay, this_year: i32) -> String {
-    let (month, d) = (heronite_i18n::month_short(day.date.month()), day.date.day());
-    if day.date.year() == this_year {
+    day_label(day.date, this_year)
+}
+
+fn day_label(date: chrono::NaiveDate, this_year: i32) -> String {
+    let (month, d) = (heronite_i18n::month_short(date.month()), date.day());
+    if date.year() == this_year {
         tr!("{month} {d}", month, d)
     } else {
-        tr!("{month} {d}, {year}", month, d, year = day.date.year())
+        tr!("{month} {d}, {year}", month, d, year = date.year())
     }
 }

@@ -423,5 +423,13 @@
   "{n} notes": "{n} notas",
   "{weekday}, {month} {d}": "{weekday}, {d} de {month}",
   "{weekday}, {month} {d}, {year}": "{weekday}, {d} de {month} de {year}",
-  "Similar": "Parecidos"
+  "Similar": "Parecidos",
+  "{day} · played {time}": "{day} · jogou {time}",
+  "{day} · not played": "{day} · sem jogar",
+  "{n} day without playing": "{n} dia sem jogar",
+  "{n} days without playing": "{n} dias sem jogar",
+  "{n} week without playing": "{n} semana sem jogar",
+  "{n} weeks without playing": "{n} semanas sem jogar",
+  "{n} month without playing": "{n} mês sem jogar",
+  "{n} months without playing": "{n} meses sem jogar"
 }

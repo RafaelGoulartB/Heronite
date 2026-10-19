@@ -91,7 +91,7 @@ fn new_note_at(day: &JournalDay, t: Option<&TimelineDay>, entries: &[Entry], sho
 
 impl CollectionView {
     pub(in crate::collection) fn journal_section(&mut self, key: &SharedString, main_w: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let header = self.timeline_header(key, cx);
+        let header = self.timeline_header(key, main_w, cx);
         let Some(data) = self.journal.data.clone() else {
             return Some(div().flex().flex_col().child(header).child(panel(false).h(px(80.))).into_any_element());
         };

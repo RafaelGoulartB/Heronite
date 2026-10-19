@@ -131,7 +131,8 @@ tabs of `pages::stores` (LB / RB in console mode); the row (and the console side
 aligned with the cover's left edge, so the cover, "Screenshots" and "Details" start on one line; the gap left column → main
 equals main → side (`COL_GAP`). `focus::layout(panel_w)` picks the widths: narrow = everything scrolls in one column with the
 left block as a row under the title; otherwise left column + main/side (stacked when tight), centred as a group in wide panels. The main column holds Screenshots, Overview, **Timeline** (`timeline.rs`: days of play with
-the screenshots of their sessions, thumbnails only) and Related (one
+the screenshots of their sessions, thumbnails only; a bar per day of the last 30 in the title when the column has room,
+hovering one says that day there; a faint "5 days without playing" line between days 3+ days apart) and Related (one
 group at a time picked with pills in the title: Same series first when there is one, Same developer, Similar = 2+
 genres / themes in common; 100px covers with the time played, else the status, under the title, wrapping to the
 column: two rows, then "Show N more"; `HERONITE_DEBUG_RELATED=<group>[:all]`). Details: Last Played

@@ -88,6 +88,8 @@ pub(super) struct Facts {
     pub timeline_days: usize,
     /// What "Related games" shows; back to the first group, folded, for each game.
     pub related: super::focus::RelatedUi,
+    /// Day of the Timeline's activity bars under the pointer.
+    pub timeline_hover: Option<chrono::NaiveDate>,
     /// Timeline of the focused game and what it was built from.
     timeline: Option<(String, Arc<Vec<TimelineDay>>)>,
 }
@@ -156,6 +158,7 @@ impl CollectionView {
                 super::focus::RelatedUi { tab: tab.parse().unwrap_or(0), expanded: all }
             })
             .unwrap_or_default();
+        self.facts.timeline_hover = None;
         let (Some(lib), Some(key)) = (self.lib.clone(), target) else { return };
         let Some(game) = lib.get(&key).cloned() else { return };
         self.load_facts(key, game, cx);
