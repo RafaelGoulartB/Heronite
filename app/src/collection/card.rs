@@ -1,17 +1,32 @@
 //! `CollectionCard`: cover (125px in the list, the grid's width in the grid),
-//! radius 6, soft shadow, playtime label below (the title above it when the
-//! grid shows titles), hover bar with the play button.
+//! radius 6 (Settings → Appearance → Corners), soft shadow, playtime label
+//! below (the title above it when the grid shows titles), hover bar with the
+//! play button and the hover effect of [`CardLook`].
 
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use heronite_data::appearance::CoverHover;
+
 use super::vm::CardVm;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 use heronite_i18n::tr;
+
+/// How every card looks (Settings → Appearance → Covers).
+#[derive(Clone, Copy)]
+pub(super) struct CardLook {
+    /// Corner radius of the cover, px.
+    pub radius: f32,
+    pub hover: CoverHover,
+    /// A star on the covers of favourites.
+    pub badges: bool,
+    /// The line under the cover (playtime, sort value, status...).
+    pub caption: bool,
+}
 
 pub(super) struct CardState<'a> {
     pub vm: &'a CardVm,
@@ -32,6 +47,7 @@ pub(super) struct CardState<'a> {
     pub pick: Option<bool>,
     /// Epic install / update progress and update hint.
     pub epic: Option<super::epic::CardEpic>,
+    pub look: CardLook,
 }
 
 pub fn card(
@@ -41,17 +57,26 @@ pub fn card(
     on_play: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
     let vm = s.vm;
+    let look = s.look;
+    let r = look.radius;
+    // Hover effects stay off while picking games (the tick says it all).
+    let lift = s.hovered && s.pick.is_none() && look.hover == CoverHover::Lift;
+    let glow = s.hovered && s.pick.is_none() && look.hover == CoverHover::Glow;
     let ring: Option<Rgba> = if vm.playing || s.pick == Some(true) {
         Some(theme::accent())
     } else if s.selected {
         Some(theme::selected_ring())
+    } else if glow {
+        Some(theme::accent_alpha(0.7))
     } else {
         None
     };
 
     // `box-shadow: 0 0 0 2px <ring>, 0 10px 24px rgba(0,0,0,.42)` — the ring
     // is drawn as a 2px border just outside the cover.
-    let shadow = if ring.is_some() {
+    let shadow = if lift {
+        BoxShadow { color: theme::black_a(0.5), offset: point(px(0.), px(16.)), blur_radius: px(30.), spread_radius: px(0.), inset: false }
+    } else if ring.is_some() {
         BoxShadow { color: theme::black_a(0.42), offset: point(px(0.), px(10.)), blur_radius: px(24.), spread_radius: px(0.), inset: false }
     } else {
         BoxShadow { color: theme::black_a(0.38), offset: point(px(0.), px(8.)), blur_radius: px(20.), spread_radius: px(0.), inset: false }
@@ -61,7 +86,7 @@ pub fn card(
     let cover_img = match s.cover {
         Some(src) => {
             // GPUI does not clip images to a parent's rounded corners: round the image itself.
-            let el = img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover).grayscale(grey);
+            let el = img(src).size_full().rounded(px(r)).object_fit(ObjectFit::Cover).grayscale(grey);
             if theme::fades() {
                 el.with_animation(
                     ElementId::Name(format!("cover-in-{}", vm.key).into()),
@@ -148,22 +173,24 @@ pub fn card(
         .child(
             div()
                 .relative()
+                .when(lift, |d| d.top(px(-LIFT)))
                 .w(px(s.width))
                 .h(px(s.cover_h))
-                .rounded(px(6.))
+                .rounded(px(r))
                 .shadow(vec![shadow])
                 .bg(theme::rgb_a(255, 255, 255, 0.03))
                 .child(
                     div()
                         .size_full()
-                        .rounded(px(6.))
+                        .rounded(px(r))
                         .overflow_hidden()
                         .when(vm.hidden && !s.hovered, |d| d.opacity(0.62))
                         .when(left_out, |d| d.opacity(0.55))
                         .child(cover_img),
                 )
-                .children(s.epic.as_ref().map(super::epic::card_overlay))
-                .children(vm.hidden.then(hidden_badge))
+                .when(glow, |d| d.child(div().absolute().inset_0().rounded(px(r)).bg(theme::white_a(0.07))))
+                .children(s.epic.as_ref().map(|e| super::epic::card_overlay(e, r)))
+                .children((vm.hidden || look.badges && vm.favourite).then(|| top_badges(vm.hidden, look.badges && vm.favourite)))
                 .children(ring.map(|color| {
                     div()
                         .absolute()
@@ -171,11 +198,11 @@ pub fn card(
                         .left(px(-2.))
                         .right(px(-2.))
                         .bottom(px(-2.))
-                        .rounded(px(8.))
+                        .rounded(px(r + 2.))
                         .border_2()
                         .border_color(color)
                 }))
-                .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(6.)).overflow_hidden().child(bar)))
+                .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(r)).overflow_hidden().child(bar)))
                 .children(s.pick.map(tick_circle)),
         )
         .when(s.title, |d| {
@@ -190,9 +217,12 @@ pub fn card(
                     .child(vm.title.clone()),
             )
         })
-        .child(playtime_label(vm).when(s.title, |d| d.mt(px(1.))))
+        .when(look.caption, |d| d.child(playtime_label(vm).when(s.title, |d| d.mt(px(1.)))))
         .into_any_element()
 }
+
+/// How far a cover rises under the pointer ([`CoverHover::Lift`]), px.
+const LIFT: f32 = 4.;
 
 /// The selection's tick on the top-right of the cover: filled while ticked.
 fn tick_circle(ticked: bool) -> Div {
@@ -213,24 +243,21 @@ fn tick_circle(ticked: bool) -> Div {
     }
 }
 
-/// "Hidden" tag on the top-left of a hidden game shown by "Show hidden games".
-fn hidden_badge() -> Div {
+/// Tags on the top-left of the cover: "Hidden" on a hidden game shown by
+/// "Show hidden games", a star on a favourite (when badges are on).
+fn top_badges(hidden: bool, favourite: bool) -> Div {
+    let tag = || div().flex().items_center().gap(px(3.)).px(px(6.)).py(px(2.)).rounded(px(4.)).bg(theme::black_a(0.62));
     div()
         .absolute()
         .top(px(6.))
         .left(px(6.))
         .flex()
-        .items_center()
-        .gap(px(3.))
-        .px(px(6.))
-        .py(px(2.))
-        .rounded(px(4.))
-        .bg(theme::black_a(0.62))
+        .gap(px(4.))
         .text_size(px(10.5))
         .font_weight(theme::W_BOLD)
         .text_color(theme::white_a(0.9))
-        .child(icon(Icon::VisibilityOff, px(11.), theme::white_a(0.9)))
-        .child(tr!("Hidden"))
+        .when(hidden, |d| d.child(tag().child(icon(Icon::VisibilityOff, px(11.), theme::white_a(0.9))).child(tr!("Hidden"))))
+        .when(favourite, |d| d.child(tag().px(px(4.)).child(icon(Icon::Star, px(12.), theme::rgb_a(255, 209, 102, 1.)))))
 }
 
 /// The playtime, or the value the list is sorted by (`CardVm::caption`).
@@ -244,11 +271,15 @@ fn playtime_label(vm: &CardVm) -> Div {
         .gap(px(5.))
         .text_size(px(12.))
         .font_weight(theme::W_500)
-        .text_color(theme::white_a(0.72))
+        .text_color(theme::white_a(theme::contrast_a(0.72)))
         // Material icons fill about 5/6 of their box, the drive icon all of it:
         // both come out the height of the text.
-        .child(icon(c.icon, px(if c.icon == Icon::FaHardDrive { 14. } else { 16. }), theme::white_a(0.72 * 0.78)))
-        .when(c.muted, |d| d.text_color(theme::white_a(0.4)))
+        .child(icon(
+            c.icon,
+            px(if c.icon == Icon::FaHardDrive { 14. } else { 16. }),
+            c.tint.unwrap_or(theme::white_a(theme::contrast_a(0.72 * 0.78))),
+        ))
+        .when(c.muted, |d| d.text_color(theme::white_a(theme::contrast_a(0.4))))
         .when(vm.playing, |d| {
             d.child(div().size(px(6.)).rounded_full().bg(theme::success()).with_animation(
                 ElementId::Name(format!("live-{}", vm.key).into()),

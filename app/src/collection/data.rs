@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use gpui_kit::{rgb, Rgba, SharedString};
+use heronite_data::appearance::CoverLabel;
 use heronite_data::collection::Game;
 use heronite_data::collection::{self, FacetKind, RelatedKind};
 use heronite_data::focus::focus_data;
@@ -33,10 +34,12 @@ fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> 
             text: collection::playtime_label(g.playtime_minutes).into(),
             muted: false,
             stars: None,
+            tint: None,
         }),
         installed: g.installed,
         playing,
         hidden: g.hidden,
+        favourite: g.favourite,
         cover_key: g.key.clone().into(),
     })
 }
@@ -44,8 +47,8 @@ fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> 
 /// The line under a card's cover: the value the list is sorted by, so the
 /// order explains itself (the playtime for title, last played and playtime).
 fn caption(g: &CollectionGame, sort: SortMode, o: &Organize, locale: DateLocale) -> Option<Caption> {
-    let shown = |icon, text: String| Caption { icon, text: text.into(), muted: false, stars: None };
-    let missing = |icon, text: &str| Caption { icon, text: text.to_string().into(), muted: true, stars: None };
+    let shown = |icon, text: String| Caption { icon, text: text.into(), muted: false, stars: None, tint: None };
+    let missing = |icon, text: &str| Caption { icon, text: text.to_string().into(), muted: true, stars: None, tint: None };
     Some(match sort {
         SortMode::Title | SortMode::LastPlayed | SortMode::Playtime => return None,
         SortMode::DateAdded => match o.added(g) {
@@ -66,7 +69,7 @@ fn caption(g: &CollectionGame, sort: SortMode, o: &Organize, locale: DateLocale)
             None => missing(Icon::Event, tr!("Unknown")),
         },
         SortMode::Rating => match o.rating(g) {
-            Some(stars) => Caption { icon: Icon::Star, text: SharedString::default(), muted: false, stars: Some(stars) },
+            Some(stars) => Caption { icon: Icon::Star, text: SharedString::default(), muted: false, stars: Some(stars), tint: None },
             None => missing(Icon::StarBorder, tr!("Not rated")),
         },
         SortMode::CriticScore => match g.details.critic_score.filter(|s| *s > 0.) {
@@ -74,6 +77,26 @@ fn caption(g: &CollectionGame, sort: SortMode, o: &Organize, locale: DateLocale)
             None => missing(Icon::BarChart, tr!("No score")),
         },
     })
+}
+
+/// The line under a cover for Settings → Appearance → "Under the cover";
+/// `None` keeps the playtime. Title and Nothing hide the line.
+fn chosen_caption(g: &CollectionGame, lib: &Library, ui: &UiState, o: &Organize) -> Option<Caption> {
+    match theme::appearance().cover_label {
+        CoverLabel::Auto => caption(g, ui.sort, o, lib.date_locale),
+        CoverLabel::Playtime | CoverLabel::Title | CoverLabel::Nothing => None,
+        CoverLabel::LastPlayed => Some(match g.last_played.as_deref().and_then(days_since) {
+            Some(days) => Caption { icon: Icon::History, text: days_ago(days).into(), muted: false, stars: None, tint: None },
+            None => Caption { icon: Icon::History, text: tr!("Never played").into(), muted: true, stars: None, tint: None },
+        }),
+        CoverLabel::Status => display_status(g.status_raw.as_deref(), &lib.statuses).map(|st| Caption {
+            icon: Icon::Flag,
+            text: heronite_data::status::status_label(&st.name).to_string().into(),
+            muted: false,
+            stars: None,
+            tint: Some(theme::status_color(&st.slug).into()),
+        }),
+    }
 }
 
 /// The icon a section header of `by` shows instead of the status dot.
@@ -119,8 +142,8 @@ pub(super) fn build_groups(
     let filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
     let card = |g: &Game| {
         // A launch that is preparing says its step under the cover.
-        let step = launch_step(&g.key).map(|text| Caption { icon: Icon::Refresh, text, muted: false, stars: None });
-        card_vm_with(g, is_playing(&g.key), step.or_else(|| caption(g, ui.sort, organize, lib.date_locale)))
+        let step = launch_step(&g.key).map(|text| Caption { icon: Icon::Refresh, text, muted: false, stars: None, tint: None });
+        card_vm_with(g, is_playing(&g.key), step.or_else(|| chosen_caption(g, lib, ui, organize)))
     };
     let icon = group_icon(ui.group_by);
     organize::group_games(&filtered, ui.group_by, organize)

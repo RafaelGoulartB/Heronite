@@ -45,12 +45,12 @@ pub(super) struct ListMetrics {
 }
 
 /// Columns and card width of a grid `width` wide whose cards are at least
-/// `min_card` wide: the cards share the room left over, so a row always
-/// reaches both edges.
-pub(super) fn grid_columns(width: f32, min_card: f32) -> (usize, f32) {
+/// `min_card` wide, `gap` apart: the cards share the room left over, so a
+/// row always reaches both edges.
+pub(super) fn grid_columns(width: f32, min_card: f32, gap: f32) -> (usize, f32) {
     let avail = (width - 2. * GRID_PAD).max(min_card);
-    let cols = (((avail + GRID_GAP_X) / (min_card + GRID_GAP_X)).floor() as usize).max(1);
-    let card = ((avail - GRID_GAP_X * (cols - 1) as f32) / cols as f32).floor();
+    let cols = (((avail + gap) / (min_card + gap)).floor() as usize).max(1);
+    let card = ((avail - gap * (cols - 1) as f32) / cols as f32).floor();
     (cols, card)
 }
 
@@ -60,11 +60,13 @@ pub(super) fn drawer_width(viewport_w: f32) -> f32 {
 }
 
 impl CollectionView {
+    /// Settings → Appearance → Density "Compact" halves the gaps.
     pub(super) fn list_metrics(&self) -> ListMetrics {
+        let k = if theme::appearance().density == heronite_data::appearance::Density::Compact { 0.5 } else { 1. };
         if self.ui.grid_view {
-            ListMetrics { pad_l: GRID_PAD, pad_r: GRID_PAD, gap_x: GRID_GAP_X, gap_y: GRID_GAP_Y }
+            ListMetrics { pad_l: GRID_PAD, pad_r: GRID_PAD, gap_x: GRID_GAP_X * k, gap_y: GRID_GAP_Y * k }
         } else {
-            ListMetrics { pad_l: 13.6, pad_r: 16., gap_x: theme::CARD_GAP_X, gap_y: theme::CARD_GAP_Y }
+            ListMetrics { pad_l: 13.6, pad_r: 16., gap_x: theme::CARD_GAP_X * k, gap_y: theme::CARD_GAP_Y * k }
         }
     }
 
@@ -85,7 +87,7 @@ impl CollectionView {
         } else {
             viewport_w
         };
-        let (cols, card) = grid_columns(w, self.ui.grid_cover_w);
+        let (cols, card) = grid_columns(w, self.ui.grid_cover_w, self.list_metrics().gap_x);
         self.card_w = card;
         (w, cols)
     }
@@ -307,7 +309,7 @@ mod tests {
 
     #[test]
     fn cards_fill_the_row() {
-        let (cols, card) = grid_columns(1920., 150.);
+        let (cols, card) = grid_columns(1920., 150., GRID_GAP_X);
         assert_eq!(cols, 11);
         assert!(card >= 150.);
         let used = card * cols as f32 + GRID_GAP_X * (cols - 1) as f32;
@@ -316,6 +318,6 @@ mod tests {
 
     #[test]
     fn narrow_grid_keeps_one_column() {
-        assert_eq!(grid_columns(100., 150.).0, 1);
+        assert_eq!(grid_columns(100., 150., GRID_GAP_X).0, 1);
     }
 }
