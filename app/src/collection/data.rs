@@ -207,6 +207,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             title: match r.kind {
                 RelatedKind::Series => tr!("Same series").into(),
                 RelatedKind::Developer => tr!("Same developer").into(),
+                RelatedKind::Similar => tr!("Similar").into(),
             },
             games: r.games.iter().map(|x| card_vm(x, false)).collect(),
         })

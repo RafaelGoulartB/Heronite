@@ -422,5 +422,6 @@
   "{n} note": "{n} nota",
   "{n} notes": "{n} notas",
   "{weekday}, {month} {d}": "{weekday}, {d} de {month}",
-  "{weekday}, {month} {d}, {year}": "{weekday}, {d} de {month} de {year}"
+  "{weekday}, {month} {d}, {year}": "{weekday}, {d} de {month} de {year}",
+  "Similar": "Parecidos"
 }

@@ -594,12 +594,18 @@ pub const RELATED_MAX_ITEMS: usize = 16;
 pub enum RelatedKind {
     Series,
     Developer,
+    /// Shares genres or themes (and neither series nor developer).
+    Similar,
 }
+
+/// Genres and themes a game must share with the current one to be similar.
+pub const SIMILAR_MIN_SHARED: usize = 2;
 
 #[derive(Debug, Clone)]
 pub struct RelatedGroup {
     pub kind: RelatedKind,
-    /// Sorted by title (`sensitivity: base`), at most [`RELATED_MAX_ITEMS`].
+    /// Sorted by title (`sensitivity: base`); similar games by how much they
+    /// share first. At most [`RELATED_MAX_ITEMS`].
     pub games: Vec<Game>,
 }
 
@@ -614,17 +620,32 @@ pub fn related_games(current: &CollectionGame, series: &[String], developers: &[
         |values: &[String]| -> HashSet<String> { values.iter().map(|v| v.trim()).filter(|v| !v.is_empty()).map(facet_key).collect() };
     let series = keys(series);
     let developers = keys(developers);
+    let tastes: HashSet<String> =
+        [FacetKind::Genre, FacetKind::Theme].iter().flat_map(|k| current.facets[k.index()].iter().map(|f| f.key.clone())).collect();
     let mut series_items: Vec<Game> = Vec::new();
     let mut developer_items: Vec<Game> = Vec::new();
+    let mut similar_items: Vec<(usize, Game)> = Vec::new();
     for game in games {
         if game.key == current.key {
             continue;
         }
-        if has_overlap(&series, &game.facets[FacetKind::Series.index()]) {
+        let same_series = has_overlap(&series, &game.facets[FacetKind::Series.index()]);
+        let same_developer = has_overlap(&developers, &game.facets[FacetKind::Developer.index()]);
+        if same_series {
             series_items.push(game.clone());
         }
-        if has_overlap(&developers, &game.facets[FacetKind::Developer.index()]) {
+        if same_developer {
             developer_items.push(game.clone());
+        }
+        if !same_series && !same_developer {
+            let shared = [FacetKind::Genre, FacetKind::Theme]
+                .iter()
+                .flat_map(|k| game.facets[k.index()].iter())
+                .filter(|f| tastes.contains(&f.key))
+                .count();
+            if shared >= SIMILAR_MIN_SHARED {
+                similar_items.push((shared, game.clone()));
+            }
         }
     }
     let finish = |mut list: Vec<Game>| {
@@ -638,6 +659,11 @@ pub fn related_games(current: &CollectionGame, series: &[String], developers: &[
     }
     if !developer_items.is_empty() {
         groups.push(RelatedGroup { kind: RelatedKind::Developer, games: finish(developer_items) });
+    }
+    if !similar_items.is_empty() {
+        similar_items.sort_by(|(na, a), (nb, b)| nb.cmp(na).then_with(|| locale_cmp_base(&a.title, &b.title)));
+        similar_items.truncate(RELATED_MAX_ITEMS);
+        groups.push(RelatedGroup { kind: RelatedKind::Similar, games: similar_items.into_iter().map(|(_, g)| g).collect() });
     }
     groups
 }
@@ -873,6 +899,27 @@ mod tests {
         assert_eq!(groups[1].kind, RelatedKind::Developer);
         // sorted by title: Half-Life before portal
         assert_eq!(groups[1].games.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["h1", "p1"]);
+    }
+
+    #[test]
+    fn similar_games_share_genres_and_skip_series_and_developer() {
+        let games = vec![
+            g("cur", "Control", |s| {
+                s.developers = vec!["Remedy".into()];
+                s.genres = vec!["Shooter".into(), "Adventure".into(), "Puzzle".into()];
+            }),
+            g("aw", "Alan Wake", |s| {
+                s.developers = vec!["Remedy".into()];
+                s.genres = vec!["Shooter".into(), "Adventure".into()];
+            }),
+            g("two", "B two", |s| s.genres = vec!["Shooter".into(), "Adventure".into()]),
+            g("three", "Z three", |s| s.genres = vec!["Shooter".into(), "Adventure".into(), "Puzzle".into()]),
+            g("one", "A one", |s| s.genres = vec!["Shooter".into(), "Racing".into()]),
+        ];
+        let groups = related_games_for(&games[0], &games);
+        assert_eq!(groups.iter().map(|g| g.kind).collect::<Vec<_>>(), [RelatedKind::Developer, RelatedKind::Similar]);
+        // The most shared first; a single shared genre is not enough.
+        assert_eq!(groups[1].games.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["three", "two"]);
     }
 
     #[test]
