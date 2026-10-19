@@ -39,6 +39,7 @@ impl CollectionView {
         let epic = self.epic_focus(&vm.key, vm.installed, cx);
         let play = self.play_area(&vm, epic, cx);
         let status = self.focus_status_row(&vm, vh, cx);
+        let left_off = self.left_off_card(&vm.key, cx);
         let numbers = self.drawer_numbers(&vm);
         let rating = self.rating_row(&vm.key, cx);
         let facts = self.facts_card(&vm, cx);
@@ -101,6 +102,7 @@ impl CollectionView {
                             .gap(px(12.))
                             .child(play)
                             .child(status)
+                            .children(left_off)
                             .child(numbers)
                             .child(rating)
                             .child(facts)

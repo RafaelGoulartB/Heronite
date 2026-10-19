@@ -126,7 +126,8 @@ row for Epic Games, GOG and Amazon Games: each store keeps its own page, titled 
 tabs of `pages::stores` (LB / RB in console mode); the row (and the console sidebar's) opens the store shown last.
 
 **Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
-(`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, star rating, facts card with score
+(`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, the journal's "Where I left off"
+card only once the player wrote one (click: the Journal; also in the grid drawer), star rating, facts card with score
 (a green / amber / red badge from 75 / 50, with its source, IGDB or Steam, unless typed by hand), library, save backup and Linux) next to the scrolling details; no footer. The title + meta line sit above both, fixed and
 aligned with the cover's left edge, so the cover, "Screenshots" and "Details" start on one line; the gap left column → main
 equals main → side (`COL_GAP`). `focus::layout(panel_w)` picks the widths: narrow = everything scrolls in one column with the

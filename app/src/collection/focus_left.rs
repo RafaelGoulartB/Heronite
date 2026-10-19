@@ -57,6 +57,7 @@ impl CollectionView {
             .min_w_0()
             .child(self.play_area(vm, epic, cx))
             .child(self.focus_status_row(vm, vh, cx))
+            .children(self.left_off_card(&vm.key, cx))
             .child(self.rating_row(&vm.key, cx))
             .child(self.facts_card(vm, cx));
 
@@ -255,6 +256,53 @@ impl CollectionView {
                 ),
             )
             .into_any_element()
+    }
+
+    /// The journal's "Where I left off", only once the player wrote it;
+    /// clicking it shows the Journal.
+    pub(super) fn left_off_card(&self, key: &SharedString, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.journal.is_for(key) {
+            return None;
+        }
+        let left_off = self.journal.data.as_ref()?.left_off.clone()?;
+        let when = super::data::days_since(&left_off.at).map(super::data::days_ago);
+        let caption = div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .text_size(px(11.))
+            .font_weight(theme::W_BOLD)
+            .text_color(theme::accent())
+            .child(icon(Icon::Bookmark, px(13.), theme::accent()))
+            .child(div().flex_1().min_w_0().truncate().child(tr!("Where I left off").to_uppercase()))
+            .children(when.map(|w| div().flex_none().font_weight(theme::W_REGULAR).text_color(theme::white_a(0.45)).child(w)));
+        Some(
+            div()
+                .id("focus-left-off")
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .px(px(14.))
+                .py(px(10.))
+                .rounded(px(10.))
+                .bg(theme::accent_wash())
+                .border_1()
+                .border_color(theme::accent_wash_border())
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::accent_tint()))
+                .on_click(cx.listener(|this, _, _, cx| this.set_journal_view(true, cx)))
+                .child(caption)
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .line_height(px(19.))
+                        .text_color(theme::white_a(0.92))
+                        .line_clamp(4)
+                        .text_ellipsis()
+                        .child(left_off.text),
+                )
+                .into_any_element(),
+        )
     }
 
     /// "Your rating" and five clickable stars (clicking the current rating clears it).

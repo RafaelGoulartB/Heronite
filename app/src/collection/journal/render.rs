@@ -231,9 +231,9 @@ impl CollectionView {
             .px(px(14.))
             .py(px(10.))
             .rounded(px(10.))
-            .bg(theme::rgba_hsla(165, 220, 235, 0.06))
+            .bg(theme::accent_wash())
             .border_1()
-            .border_color(theme::rgba_hsla(165, 220, 235, 0.2))
+            .border_color(theme::accent_wash_border())
             .child(caption)
             .child(body)
     }
