@@ -100,7 +100,7 @@ impl Sc<'_> {
     }
 
     fn heading(&self, size: f32, s: impl Into<SharedString>) -> Div {
-        self.text(size, theme::text_primary(), s).font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD)
+        self.text(size, theme::text_primary(), s).font_family(theme::font_heading()).font_weight(theme::W_BOLD)
     }
 
     fn ic(&self, ic: Icon, size: f32, color: impl Into<Hsla>) -> Svg {
@@ -279,7 +279,7 @@ fn build(step: Step, s: &Sc) -> Div {
         .border_color(theme::white_a(0.08))
         .bg(linear_gradient(160., linear_color_stop(rgb(0x18232f), 0.), linear_color_stop(rgb(0x0a0e13), 0.7)))
         .text_color(theme::text_primary())
-        .font_family(theme::FONT_BODY);
+        .font_family(theme::font_body());
     match step {
         Step::Steam => steam(board, s),
         Step::Stores => stores(board, s),
@@ -349,13 +349,11 @@ fn stores(board: Div, s: &Sc) -> Div {
         .panel(110., 64., 300., 118.)
         .rounded(s.p(16.))
         .child(
-            s.rect(18., 18., 34., 34.)
-                .rounded(s.p(10.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(theme::rgb_a(165, 220, 235, 0.14))
-                .child(s.ic(Icon::Storefront, 19., theme::accent())),
+            s.rect(18., 18., 34., 34.).rounded(s.p(10.)).flex().items_center().justify_center().bg(theme::accent_alpha(0.14)).child(s.ic(
+                Icon::Storefront,
+                19.,
+                theme::accent(),
+            )),
         )
         .child(s.at(64., 16.).child(s.heading(16., "Epic Games")))
         .child(s.at(64., 40.).child(s.text(12., theme::text_muted(), tr!("Log in to see your library"))))
@@ -709,7 +707,7 @@ fn palette(board: Div, s: &Sc) -> Div {
             .h(s.p(42.))
             .px(s.p(10.))
             .rounded(s.p(10.))
-            .when(on, |d| d.bg(theme::rgb_a(165, 220, 235, 0.12 + 0.2 * enter)).border_1().border_color(theme::rgb_a(165, 220, 235, 0.3)))
+            .when(on, |d| d.bg(theme::accent_alpha(0.12 + 0.2 * enter)).border_1().border_color(theme::accent_alpha(0.3)))
             .when(cover, |d| d.child(s.cover(0, 0., 0., 26., 36.).relative().left_0().top_0().rounded(s.p(4.))))
             .children(ic.map(|i| div().w(s.p(26.)).flex().justify_center().child(s.ic(i, 16., violet()))))
             .child(s.text(13.5, theme::text_primary(), label))
@@ -876,7 +874,7 @@ fn appearance(board: Div, s: &Sc) -> Div {
             .px(s.p(10.))
             .py(s.p(7.))
             .rounded(s.p(8.))
-            .when(on, |d| d.bg(theme::rgb_a(165, 220, 235, 0.14)).border_1().border_color(theme::rgb_a(165, 220, 235, 0.35)))
+            .when(on, |d| d.bg(theme::accent_alpha(0.14)).border_1().border_color(theme::accent_alpha(0.35)))
             .child(s.text(10.5, theme::text_dim(), label))
             .child(s.text(12., if on { theme::accent() } else { theme::text_primary() }, value).font_weight(theme::W_BOLD))
     };
@@ -1022,7 +1020,7 @@ fn console(board: Div, s: &Sc) -> Div {
                 .border(s.p(3.))
                 .border_color(theme::accent())
                 .shadow(vec![BoxShadow {
-                    color: theme::rgb_a(165, 220, 235, 0.55).into(),
+                    color: theme::accent_alpha(0.55).into(),
                     offset: point(px(0.), px(0.)),
                     blur_radius: s.p(24.),
                     spread_radius: px(0.),

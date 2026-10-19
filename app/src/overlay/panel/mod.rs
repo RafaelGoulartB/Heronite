@@ -526,7 +526,7 @@ impl Render for OverlayPanel {
         let mut panel = div()
             .relative()
             .size_full()
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .text_color(theme::text_primary())
             .flex()
             .flex_col()

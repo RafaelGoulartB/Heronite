@@ -390,7 +390,7 @@ impl MetadataDialog {
                     .rounded_full()
                     .border_1()
                     .border_color(if selected { theme::accent().into() } else { theme::white_a(0.12) })
-                    .bg(if selected { theme::rgb_a(165, 220, 235, 0.22).into() } else { theme::white_a(0.04) })
+                    .bg(if selected { theme::accent_alpha(0.22).into() } else { theme::white_a(0.04) })
                     .text_size(px(13.))
                     .text_color(theme::text_primary())
                     .cursor_pointer()

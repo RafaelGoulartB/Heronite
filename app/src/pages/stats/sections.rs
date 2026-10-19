@@ -231,7 +231,7 @@ impl StatsPage {
                                         .bg(rgba(0x0a0c10b3))
                                         .border_1()
                                         .border_color(theme::white_a(0.18))
-                                        .font_family(theme::FONT_HEADING)
+                                        .font_family(theme::font_heading())
                                         .font_weight(theme::W_BOLD)
                                         .text_size(px(11.))
                                         .child(tr!("New")),
@@ -242,7 +242,7 @@ impl StatsPage {
                                     .absolute()
                                     .left(px(12.))
                                     .bottom(px(4.))
-                                    .font_family(theme::FONT_HEADING)
+                                    .font_family(theme::font_heading())
                                     .font_weight(theme::W_BOLD)
                                     .text_size(px((cw * 0.3).clamp(30., 58.)))
                                     .line_height(px((cw * 0.3).clamp(30., 58.)))
@@ -262,7 +262,7 @@ impl StatsPage {
                     .child(
                         div()
                             .mt(px(2.))
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_size(px(20.))
                             .child(fmt_secs(g.secs)),
@@ -298,7 +298,7 @@ impl StatsPage {
                 .bg(Hsla { a: 0.1, ..Hsla::from(theme::accent()) })
                 .hover(|s| s.bg(Hsla { a: 0.2, ..Hsla::from(theme::accent()) }))
                 .cursor_pointer()
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .font_weight(theme::W_BOLD)
                 .text_size(px(12.5))
                 .text_color(theme::accent())
@@ -384,7 +384,7 @@ impl StatsPage {
                             .min_w(px(80.))
                             .flex()
                             .justify_end()
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_size(px(14.))
                             .child(fmt_secs(g.secs)),
@@ -471,7 +471,7 @@ impl StatsPage {
                 )
                 .child(
                     div()
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(px(22.))
                         .text_color(if i == best_part { theme::accent() } else { theme::text_primary() })
@@ -558,7 +558,7 @@ impl StatsPage {
                 .py(px(20.))
                 .child(
                     div()
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(px(11.5))
                         .text_color(theme::text_muted())
@@ -567,7 +567,7 @@ impl StatsPage {
                 .child(
                     div()
                         .mt_auto()
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(px(46.))
                         .line_height(px(48.))
@@ -777,7 +777,7 @@ impl StatsPage {
             div()
                 .flex()
                 .flex_col()
-                .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(24.)).child(big))
+                .child(div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(px(24.)).child(big))
                 .child(div().text_size(px(12.5)).text_color(theme::text_muted()).child(small))
         };
         let mut facts = div().grid().grid_cols(4).gap(px(16.)).mt(px(22.)).pt(px(18.)).border_t_1().border_color(theme::white_a(0.08));

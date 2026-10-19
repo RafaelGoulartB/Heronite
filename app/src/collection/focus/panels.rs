@@ -255,7 +255,7 @@ pub(super) fn related_panel(
             .flex()
             .items_center()
             .gap(px(10.))
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .font_weight(theme::W_REGULAR)
             .children(scroll_arrows(&scroll))
             .child(picker),

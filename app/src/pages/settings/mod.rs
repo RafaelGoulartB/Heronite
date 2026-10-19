@@ -359,7 +359,7 @@ impl SettingsPage {
                     .child(icon(Icon::Settings, px(18.), theme::text_primary()))
                     .child(
                         div()
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .text_size(px(19.))
                             .font_weight(theme::W_BOLD)
                             .text_color(theme::text_primary())
@@ -443,7 +443,7 @@ impl Render for SettingsPage {
             .flex()
             .size_full()
             .text_color(theme::text_primary())
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .child(self.nav(cx))
             .child(content)
             .child(close);

@@ -138,7 +138,7 @@ fn grow(id: impl Into<ElementId>, bar: Div, h: f32, delay: u64, z: Z) -> AnyElem
 
 fn heading(text: impl Into<SharedString>, size: f32, z: Z) -> Div {
     div()
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .font_weight(theme::W_BOLD)
         .text_size(z.p(size))
         .line_height(z.p(size * 1.02))
@@ -228,7 +228,7 @@ fn chip(z: Z) -> Div {
         .bg(rgba(0x0a0c108c))
         .border_1()
         .border_color(theme::white_a(0.14))
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .font_weight(theme::W_BOLD)
         .text_size(z.p(13.))
 }
@@ -336,7 +336,7 @@ impl StatsPage {
             .border_1()
             .border_color(theme::glass_border())
             .text_color(theme::text_primary())
-            .font_family(theme::FONT_BODY);
+            .font_family(theme::font_body());
         let bg_layer = |s: usize, fade: bool, this: &mut StatsPage| -> Option<AnyElement> {
             let g = bg_game(s)?;
             let src = this.blurred(g, w / 4., h / 4.)?;
@@ -428,7 +428,7 @@ impl StatsPage {
                     .gap(px(8.))
                     .child(
                         div()
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_color(theme::text_primary())
                             .child("Heronite"),
@@ -620,7 +620,7 @@ impl StatsPage {
             .w(z.p(480.))
             .px(z.p(30.))
             .py(z.p(26.))
-            .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(z.p(32.)).line_height(z.p(38.)).child(
+            .child(div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(z.p(32.)).line_height(z.p(38.)).child(
                 marked(tr!(
                     "That is ~~{days} and {hours}~~ without ever putting the controller down.",
                     days = trn!(dd, "{n} day", "{n} days"),
@@ -880,7 +880,7 @@ impl StatsPage {
                 .child(
                     div()
                         .mt(z.p(14.))
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(z.p(17.))
                         .truncate()
@@ -911,7 +911,7 @@ impl StatsPage {
             _ => tr!("Five games took ~~{share}%~~ of your time.", share),
         };
         let head = div()
-            .font_family(theme::FONT_HEADING)
+            .font_family(theme::font_heading())
             .font_weight(theme::W_BOLD)
             .text_size(z.p(72.))
             .line_height(z.p(74.))
@@ -1132,7 +1132,7 @@ impl StatsPage {
                 .pb(z.p(28.))
                 .child(
                     div()
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(z.p(12.))
                         .text_color(theme::white_a(0.85))
@@ -1151,7 +1151,7 @@ impl StatsPage {
                 .flex()
                 .items_baseline()
                 .gap(z.p(6.))
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .font_weight(theme::W_BOLD)
                 .child(div().text_size(z.p(60.)).line_height(z.p(58.)).child(n))
                 .children(unit.map(|u| div().text_size(z.p(25.)).child(u.to_string())))
@@ -1446,7 +1446,7 @@ impl StatsPage {
                     .child(
                         div()
                             .w(z.p(18.))
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_size(z.p(20.))
                             .text_color(theme::text_muted())
@@ -1454,7 +1454,7 @@ impl StatsPage {
                     )
                     .child(cover_img(src, 30., 40., 6., z))
                     .child(div().flex_1().min_w_0().truncate().child(self.game_title(g.game)))
-                    .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).child(hours_text(g.secs))),
+                    .child(div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).child(hours_text(g.secs))),
             );
         }
         let ink = rgb(0x0e1218);
@@ -1492,7 +1492,7 @@ impl StatsPage {
                         .flex()
                         .items_center()
                         .gap(z.p(8.))
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(z.p(12.))
                         .text_color(theme::white_a(0.85))
@@ -1520,7 +1520,7 @@ impl StatsPage {
                 .h(z.p(40.))
                 .px(z.p(20.))
                 .rounded_full()
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .font_weight(theme::W_BOLD)
                 .text_size(z.p(14.))
                 .cursor_pointer()
@@ -1580,7 +1580,7 @@ fn keycap(text: &str) -> Div {
         .border_1()
         .border_color(theme::white_a(0.14))
         .bg(theme::white_a(0.06))
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .font_weight(theme::W_BOLD)
         .text_size(px(11.))
         .text_color(theme::text_muted())

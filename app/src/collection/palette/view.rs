@@ -493,7 +493,7 @@ impl Render for PaletteView {
             .flex_col()
             .w(px(PANEL_W))
             .max_h(relative(0.9))
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .text_color(theme::text_primary())
             // Clicks on the panel keep the input focused and do not close it.
             .on_mouse_down(

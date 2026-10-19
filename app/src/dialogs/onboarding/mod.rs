@@ -205,7 +205,7 @@ impl OnboardingDialog {
                     .py(px(8.))
                     .rounded(px(14.))
                     .cursor_pointer()
-                    .when(selected, |d| d.bg(theme::rgb_a(165, 220, 235, 0.1)).border_1().border_color(theme::rgb_a(165, 220, 235, 0.28)))
+                    .when(selected, |d| d.bg(theme::accent_alpha(0.1)).border_1().border_color(theme::accent_alpha(0.28)))
                     .when(!selected, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
                     .on_click(cx.listener(move |this, _, _, cx| this.select(ix, cx)))
                     .child(step_icon(step, done, 36.))
@@ -325,7 +325,7 @@ impl Render for OnboardingDialog {
                 div()
                     .pl(px(4.))
                     .mt(px(8.))
-                    .font_family(theme::FONT_HEADING)
+                    .font_family(theme::font_heading())
                     .text_size(px(24.))
                     .line_height(px(30.))
                     .font_weight(theme::W_BOLD)
@@ -361,7 +361,7 @@ impl Render for OnboardingDialog {
             .pb(px(26.))
             .px(px(40.))
             .child(scenes::scene(step, SCENE_K, assets))
-            .child(div().mt(px(22.)).font_family(theme::FONT_HEADING).text_size(px(24.)).font_weight(theme::W_BOLD).child(step.title()))
+            .child(div().mt(px(22.)).font_family(theme::font_heading()).text_size(px(24.)).font_weight(theme::W_BOLD).child(step.title()))
             .child(
                 div()
                     .mt(px(8.))
@@ -418,7 +418,7 @@ impl Render for OnboardingDialog {
             .max_h(relative(0.95))
             .overflow_hidden()
             .text_color(theme::text_primary())
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(left)
             .child(right)
@@ -449,7 +449,7 @@ impl Render for OnboardingDialog {
 /// The step's icon on its group's tint, with a check once done.
 fn step_icon(step: Step, done: bool, size: f32) -> Div {
     let (fg, bg) = match step.group() {
-        0 => (theme::accent(), theme::rgb_a(165, 220, 235, 0.13)),
+        0 => (theme::accent(), theme::accent_alpha(0.13)),
         1 => (theme::success(), theme::rgb_a(95, 211, 155, 0.13)),
         _ => (rgb(0xb7a8ff), theme::rgb_a(183, 168, 255, 0.14)),
     };

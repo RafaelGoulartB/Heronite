@@ -173,7 +173,7 @@ impl StatsPage {
                 .child(bar.when(on, |b| b.bg(theme::accent())))
                 .child(
                     div()
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .text_size(px(11.5))
                         .text_color(if on { theme::text_primary() } else { theme::text_dim() })
                         .when(on, |d| d.font_weight(theme::W_BOLD))
@@ -381,7 +381,7 @@ impl StatsPage {
                     .child(
                         div()
                             .flex_none()
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_size(px(12.5))
                             .text_color(theme::text_muted())
@@ -441,7 +441,7 @@ impl StatsPage {
                         div()
                             .flex()
                             .mt(px(10.))
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_size(px(36.))
                             .line_height(px(40.))
@@ -530,14 +530,14 @@ impl StatsPage {
                         .bg(rgba(0x0a0e14b3))
                         .border_1()
                         .border_color(theme::white_a(0.08))
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(px(12.))
                         .text_color(theme::text_muted())
                         .child(num.clone()),
                 )
                 .child(
-                    div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(30.)).line_height(px(32.)).child(name),
+                    div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(px(30.)).line_height(px(32.)).child(name),
                 )
         };
         let shell = |w: f32| {
@@ -579,7 +579,7 @@ impl StatsPage {
                                 .top(relative(0.38))
                                 .flex()
                                 .justify_center()
-                                .font_family(theme::FONT_HEADING)
+                                .font_family(theme::font_heading())
                                 .font_weight(theme::W_BOLD)
                                 .text_size(px(170.))
                                 .text_color(theme::white_a(0.05))
@@ -592,7 +592,7 @@ impl StatsPage {
                         .pb(px(26.))
                         .child(
                             div()
-                                .font_family(theme::FONT_HEADING)
+                                .font_family(theme::font_heading())
                                 .font_weight(theme::W_BOLD)
                                 .text_size(px(44.))
                                 .text_color(theme::text_dim())
@@ -616,7 +616,7 @@ impl StatsPage {
             .justify_between()
             .mt(px(12.))
             .mb(px(6.))
-            .font_family(theme::FONT_HEADING)
+            .font_family(theme::font_heading())
             .font_weight(theme::W_BOLD)
             .text_size(px(11.))
             .text_color(theme::text_muted())
@@ -637,7 +637,7 @@ impl StatsPage {
                     div()
                         .flex_none()
                         .min_w(px(76.))
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(px(24.))
                         .text_color(theme::accent())
@@ -648,7 +648,9 @@ impl StatsPage {
                         .flex()
                         .flex_col()
                         .min_w_0()
-                        .child(div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(13.)).truncate().child(title))
+                        .child(
+                            div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(px(13.)).truncate().child(title),
+                        )
                         .child(div().text_size(px(12.)).text_color(theme::text_muted()).truncate().child(detail)),
                 )
         };
@@ -695,7 +697,7 @@ impl StatsPage {
                         .pb(px(20.))
                         .child(
                             div()
-                                .font_family(theme::FONT_HEADING)
+                                .font_family(theme::font_heading())
                                 .font_weight(theme::W_BOLD)
                                 .text_size(px(54.))
                                 .line_height(px(56.))
@@ -734,7 +736,7 @@ impl StatsPage {
                     .child(
                         div()
                             .w(px(12.))
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_size(px(12.))
                             .text_color(theme::text_dim())
@@ -759,7 +761,7 @@ impl StatsPage {
                                     .flex()
                                     .items_center()
                                     .gap(px(7.))
-                                    .font_family(theme::FONT_HEADING)
+                                    .font_family(theme::font_heading())
                                     .font_weight(theme::W_BOLD)
                                     .text_size(px(13.))
                                     .child(div().flex_none().size(px(8.)).rounded_full().bg(c))
@@ -780,7 +782,7 @@ impl StatsPage {
                             .min_w(px(70.))
                             .flex()
                             .justify_end()
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_size(px(14.))
                             .child(fmt_secs(*secs)),
@@ -848,7 +850,7 @@ impl StatsPage {
                             .py(px(3.))
                             .rounded_full()
                             .bg(rgba(0x0a0e14bf))
-                            .font_family(theme::FONT_HEADING)
+                            .font_family(theme::font_heading())
                             .font_weight(theme::W_BOLD)
                             .text_size(px(10.5))
                             .max_w(px(shot_w - 16.))
@@ -875,7 +877,7 @@ impl StatsPage {
             .bg(rgba(0x0a0e14b3))
             .border_1()
             .border_color(theme::white_a(0.14))
-            .font_family(theme::FONT_HEADING)
+            .font_family(theme::font_heading())
             .font_weight(theme::W_BOLD)
             .text_size(px(12.))
             .cursor_pointer()
@@ -905,14 +907,14 @@ impl StatsPage {
                     .pl(px(9.))
                     .pr(px(11.))
                     .py(px(4.))
-                    .font_family(theme::FONT_HEADING)
+                    .font_family(theme::font_heading())
                     .font_weight(theme::W_BOLD)
                     .text_size(px(11.5))
                     .child(div().size(px(8.)).rounded_full().bg(series_color(st.series_of(g))))
                     .child(if is_month { tr!("Game of the month") } else { tr!("Game of the year") })
                     .child(
                         div()
-                            .font_family(theme::FONT_BODY)
+                            .font_family(theme::font_body())
                             .font_weight(theme::W_REGULAR)
                             .text_color(theme::text_muted())
                             .max_w(px(220.))
@@ -929,7 +931,7 @@ impl StatsPage {
             .pb(px(20.))
             .child(
                 div()
-                    .font_family(theme::FONT_HEADING)
+                    .font_family(theme::font_heading())
                     .font_weight(theme::W_BOLD)
                     .text_size(px(54.))
                     .line_height(px(56.))

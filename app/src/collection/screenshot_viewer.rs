@@ -257,7 +257,7 @@ impl CollectionView {
             .occlude()
             .overflow_hidden()
             .bg(theme::black_a(0.86))
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .on_mouse_move(cx.listener(|this, ev: &MouseMoveEvent, _, cx| {
                 this.shots_reveal_controls(cx);
                 if let (Some(d), Some(MouseButton::Left)) = (this.shots.drag, ev.pressed_button) {

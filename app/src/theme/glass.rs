@@ -1,5 +1,6 @@
 //! Runtime appearance (Settings → Appearance) and the glass surfaces derived
-//! from it: fill, art dimming, borders, shadows and the page veil.
+//! from it: fill, art dimming, borders, shadows and the page veil. Also the
+//! accent colour and the high-contrast switch the palette reads.
 //!
 //! The appearance is one process-wide value read by every glass helper (no
 //! `cx` needed, no I/O while rendering). The Collection loads it at start and
@@ -24,6 +25,49 @@ pub fn appearance() -> Appearance {
 /// Replaces the appearance; out-of-range values are clamped on the way in.
 pub fn set_appearance(a: Appearance) {
     *APPEARANCE.write().unwrap_or_else(|e| e.into_inner()) = a.normalized();
+}
+
+static CUSTOM_BACKGROUND_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Changes when the user picks another background picture (it is always
+/// copied to the same file): part of its texture's cache id.
+pub fn custom_background_epoch() -> u64 {
+    CUSTOM_BACKGROUND_EPOCH.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn bump_custom_background() {
+    CUSTOM_BACKGROUND_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Sets the colour [`Accent::Game`] uses. True when it changed.
+pub fn set_game_accent(rgb: Option<(u8, u8, u8)>) -> bool {
+    let mut cur = GAME_ACCENT.write().unwrap_or_else(|e| e.into_inner());
+    let changed = *cur != rgb;
+    *cur = rgb;
+    changed
+}
+
+/// The accent colour (Settings → Appearance → Accent colour).
+pub fn accent_rgb() -> (u8, u8, u8) {
+    let ice = Accent::Ice.rgb().expect("a preset");
+    match appearance().accent.rgb() {
+        Some(c) => c,
+        None => GAME_ACCENT.read().unwrap_or_else(|e| e.into_inner()).unwrap_or(ice),
+    }
+}
+
+/// Stronger secondary text and borders (Settings → Appearance).
+pub fn high_contrast() -> bool {
+    appearance().high_contrast
+}
+
+/// `a` (the alpha of faint text or a line), raised halfway to opaque in high contrast.
+pub fn contrast_a(a: f32) -> f32 {
+    if high_contrast() {
+        a + (1. - a) * 0.5
+    } else {
+        a
+    }
 }
 
 /// Opacity of the glass panels as a fraction (the Solid mode is fully opaque).
@@ -95,7 +139,7 @@ pub fn page_backdrop() -> Hsla {
     rgba_hsla(r, g, b, a)
 }
 pub fn glass_border() -> Hsla {
-    white_a(0.11)
+    white_a(if high_contrast() { 0.22 } else { 0.11 })
 }
 /// 1px highlight along the top edge of a glass surface (inset shadow in CSS).
 pub fn glass_highlight() -> Hsla {

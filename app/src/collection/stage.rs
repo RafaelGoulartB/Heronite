@@ -63,7 +63,7 @@ pub fn stage(art: Option<ImageSource>, art_id: SharedString, s: Scrim, opacity: 
         .child({
             let el = img(art).absolute().inset_0().size_full().object_fit(ObjectFit::Cover).opacity(opacity);
             // `img.loaded { transition: opacity 500ms }`
-            if crate::theme::animations() {
+            if crate::theme::fades() {
                 el.with_animation(
                     ElementId::Name(format!("stage-{art_id}").into()),
                     Animation::new(std::time::Duration::from_millis(500)),

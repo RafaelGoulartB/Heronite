@@ -134,7 +134,7 @@ impl LogViewer {
             div()
                 .flex_1()
                 .min_w(px(120.))
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .text_size(px(17.))
                 .font_weight(theme::W_BOLD)
                 .text_color(white())

@@ -3,6 +3,8 @@
 
 use gpui_kit::{hsla, rgb, rgba, Hsla, Rgba};
 
+use super::{accent_rgb, contrast_a, high_contrast};
+
 /// `rgba(255,255,255,a)`
 pub fn white_a(a: f32) -> Hsla {
     hsla(0., 0., 1., a)
@@ -27,11 +29,26 @@ pub fn rgba_hsla(r: u8, g: u8, b: u8, a: f32) -> Hsla {
 pub fn page_bg() -> Rgba {
     rgb(0x07090c)
 }
+/// The accent colour (`#a5dceb` unless Settings → Appearance changes it).
 pub fn accent() -> Rgba {
-    rgb(0xa5dceb)
+    let (r, g, b) = accent_rgb();
+    rgb_a(r, g, b, 1.)
 }
+/// The accent, lighter (`#cbeef8` for the default).
 pub fn accent_overlay() -> Rgba {
-    rgb(0xcbeef8)
+    let (r, g, b) = accent_rgb();
+    let lift = |c: u8| (c as f32 + (255. - c as f32) * 0.45).round() as u8;
+    rgb_a(lift(r), lift(g), lift(b), 1.)
+}
+
+/// The accent at alpha `a`.
+pub fn accent_alpha(a: f32) -> Rgba {
+    let (r, g, b) = accent_rgb();
+    rgb_a(r, g, b, a)
+}
+
+fn accent_a(a: f32) -> Hsla {
+    accent_alpha(a).into()
 }
 pub fn navbar_background() -> Rgba {
     rgb(0x2e3440)
@@ -149,11 +166,11 @@ pub fn text_primary() -> Rgba {
 }
 /// Captions, leads, labels above fields (`#9aa6b6`).
 pub fn text_muted() -> Rgba {
-    rgb(0x9aa6b6)
+    rgb(if high_contrast() { 0xc8d0dc } else { 0x9aa6b6 })
 }
 /// Row descriptions (`#8c97a8`).
 pub fn text_dim() -> Rgba {
-    rgb(0x8c97a8)
+    rgb(if high_contrast() { 0xbcc6d3 } else { 0x8c97a8 })
 }
 /// Text drawn on an accent fill.
 pub fn on_accent() -> Rgba {
@@ -165,10 +182,10 @@ pub fn card_fill() -> Hsla {
     white_a(0.05)
 }
 pub fn card_border() -> Hsla {
-    white_a(0.07)
+    white_a(if high_contrast() { 0.16 } else { 0.07 })
 }
 pub fn row_separator() -> Hsla {
-    white_a(0.06)
+    white_a(if high_contrast() { 0.14 } else { 0.06 })
 }
 
 pub fn toggle_off() -> Hsla {
@@ -183,7 +200,7 @@ pub fn button_fill_hover() -> Hsla {
     white_a(0.14)
 }
 pub fn button_border() -> Hsla {
-    white_a(0.10)
+    white_a(if high_contrast() { 0.22 } else { 0.10 })
 }
 pub fn button_text() -> Rgba {
     rgb(0xeef2f7)
@@ -206,7 +223,7 @@ pub fn seg_active() -> Hsla {
     white_a(0.14)
 }
 pub fn seg_text() -> Rgba {
-    rgb(0xb5bfcc)
+    rgb(if high_contrast() { 0xdde3eb } else { 0xb5bfcc })
 }
 
 // Inputs and selects.
@@ -214,7 +231,7 @@ pub fn input_fill() -> Hsla {
     black_a(0.25)
 }
 pub fn input_border() -> Hsla {
-    white_a(0.08)
+    white_a(if high_contrast() { 0.2 } else { 0.08 })
 }
 /// Border of a focused input: the accent at 60%.
 pub fn input_border_focus() -> Hsla {
@@ -224,20 +241,20 @@ pub fn input_border_focus() -> Hsla {
 
 // Side navigation pills and the accent tint of active items.
 pub fn nav_text() -> Rgba {
-    rgb(0xc3cbd8)
+    rgb(if high_contrast() { 0xe2e7ee } else { 0xc3cbd8 })
 }
 pub fn accent_tint() -> Hsla {
-    rgba_hsla(165, 220, 235, 0.16)
+    accent_a(0.16)
 }
 pub fn accent_tint_border() -> Hsla {
-    rgba_hsla(165, 220, 235, 0.40)
+    accent_a(0.40)
 }
 /// Fill and border of the journal's "Where I left off" card.
 pub fn accent_wash() -> Hsla {
-    rgba_hsla(165, 220, 235, 0.06)
+    accent_a(0.06)
 }
 pub fn accent_wash_border() -> Hsla {
-    rgba_hsla(165, 220, 235, 0.2)
+    accent_a(0.2)
 }
 pub fn menu_item_hover() -> Hsla {
     white_a(0.07)
@@ -245,7 +262,7 @@ pub fn menu_item_hover() -> Hsla {
 
 // Collection header: icons, search pill and filter chips stay faint over the art.
 pub fn tool_icon() -> Hsla {
-    white_a(0.55)
+    white_a(contrast_a(0.55))
 }
 pub fn search_fill() -> Hsla {
     white_a(0.06)

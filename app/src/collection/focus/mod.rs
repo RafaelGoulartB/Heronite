@@ -140,7 +140,7 @@ pub(super) struct RelatedUi {
 pub(super) fn h3(text: impl Into<SharedString>) -> Div {
     div()
         .mb(px(8.8))
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .text_size(px(16.8))
         .line_height(px(20.))
         .font_weight(theme::W_BOLD)
@@ -374,7 +374,7 @@ fn header(vm: &FocusVm, title_size: f32) -> Div {
         .child(
             div()
                 .mb(px(6.4))
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .text_size(px(title_size))
                 .line_height(px(title_size * 1.15))
                 .font_weight(theme::W_BOLD)

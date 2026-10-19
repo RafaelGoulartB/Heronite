@@ -53,7 +53,7 @@ fn dot(color: Hsla, size: f32) -> Div {
 
 fn strong(text: impl Into<SharedString>, size: f32) -> Div {
     div()
-        .font_family(theme::FONT_HEADING)
+        .font_family(theme::font_heading())
         .font_weight(theme::W_BOLD)
         .text_size(px(size))
         .text_color(theme::text_primary())

@@ -277,7 +277,11 @@ impl CollectionView {
             .items_baseline()
             .gap(px(10.))
             .child(
-                div().font_family(theme::FONT_HEADING).font_weight(theme::W_BOLD).text_size(px(15.2)).child(long_date(day.date, this_year)),
+                div()
+                    .font_family(theme::font_heading())
+                    .font_weight(theme::W_BOLD)
+                    .text_size(px(15.2))
+                    .child(long_date(day.date, this_year)),
             )
             .child(div().text_size(px(12.5)).text_color(theme::white_a(0.5)).child(day_meta(t)))
             .child(div().flex_1())
@@ -491,7 +495,7 @@ impl CollectionView {
                 div()
                     .w(px(TIME_W + MARGIN_GAP))
                     .flex_none()
-                    .font_family(theme::FONT_HEADING)
+                    .font_family(theme::font_heading())
                     .font_weight(theme::W_BOLD)
                     .text_size(px(13.))
                     .text_color(theme::white_a(0.65))

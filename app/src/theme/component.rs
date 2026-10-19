@@ -2,7 +2,7 @@
 
 use gpui_kit::{hsla, rgb};
 
-use super::{background, navbar_background, white_a, FONT_BODY};
+use super::{background, navbar_background, white_a};
 
 /// Colours of the gpui-component widgets we reuse (inputs, sliders, popovers)
 /// so they look like Heroic's controls on nord-dark.
@@ -10,7 +10,7 @@ pub fn apply_component_theme(cx: &mut gpui_kit::App) {
     use gpui_kit::component::theme::{Theme, ThemeMode};
     Theme::change(ThemeMode::Dark, None, cx);
     let t = Theme::global_mut(cx);
-    t.font_family = FONT_BODY.into();
+    t.font_family = super::font_body().into();
     let c = &mut t.colors;
     c.background = background().into();
     c.foreground = rgb(0xcaf3fd).into();

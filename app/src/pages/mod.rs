@@ -182,7 +182,7 @@ pub fn sheet(
             .flex()
             .flex_col()
             .text_color(theme::text_primary())
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .child(header)
             .child(body)
             .child(close.absolute().top(px(20.)).right(px(20.))),

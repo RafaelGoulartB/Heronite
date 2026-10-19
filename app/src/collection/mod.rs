@@ -517,7 +517,7 @@ impl CollectionView {
             .size_full()
             .overflow_hidden()
             .bg(theme::page_bg())
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .text_color(white())
             .child(stage_el)
             .children(page_el)

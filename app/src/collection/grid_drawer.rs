@@ -215,7 +215,7 @@ impl CollectionView {
                             .gap(px(6.))
                             .child(
                                 div()
-                                    .font_family(theme::FONT_HEADING)
+                                    .font_family(theme::font_heading())
                                     .font_weight(theme::W_BOLD)
                                     .text_size(px(22.))
                                     .line_height(px(26.))
@@ -277,7 +277,7 @@ fn number_tile(label: &'static str, value: SharedString) -> Div {
         .child(
             div()
                 .truncate()
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .font_weight(theme::W_BOLD)
                 .text_size(px(15.))
                 .text_color(white())

@@ -149,7 +149,7 @@ impl CollectionView {
                 .flex()
                 .items_center()
                 .gap(px(12.))
-                .font_family(theme::FONT_BODY)
+                .font_family(theme::font_body())
                 .text_size(px(12.5))
                 .font_weight(theme::W_REGULAR)
                 .text_color(theme::white_a(0.52))
@@ -334,7 +334,7 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, not
                 .items_end()
                 .child(
                     div()
-                        .font_family(theme::FONT_HEADING)
+                        .font_family(theme::font_heading())
                         .font_weight(theme::W_BOLD)
                         .text_size(px(14.4))
                         .line_height(px(20.))

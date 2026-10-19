@@ -188,10 +188,10 @@ impl StatsPage {
                 spread_radius: px(0.),
                 inset: false,
             }])
-            .font_family(theme::FONT_BODY)
+            .font_family(theme::font_body())
             .child(
                 div()
-                    .font_family(theme::FONT_HEADING)
+                    .font_family(theme::font_heading())
                     .font_weight(theme::W_BOLD)
                     .text_size(px(13.))
                     .text_color(theme::text_primary())

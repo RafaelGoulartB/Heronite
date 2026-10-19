@@ -100,7 +100,7 @@ impl CollectionView {
                 .bg(rgb(0xf3f5f7))
                 .hover(|s| s.bg(rgb(0xffffff)))
                 .text_color(rgb(0x161616))
-                .font_family(theme::FONT_HEADING)
+                .font_family(theme::font_heading())
                 .font_weight(theme::W_BOLD)
                 .text_size(px(16.))
                 .cursor_pointer()

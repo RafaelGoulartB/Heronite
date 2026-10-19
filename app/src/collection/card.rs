@@ -62,7 +62,7 @@ pub fn card(
         Some(src) => {
             // GPUI does not clip images to a parent's rounded corners: round the image itself.
             let el = img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover).grayscale(grey);
-            if theme::animations() {
+            if theme::fades() {
                 el.with_animation(
                     ElementId::Name(format!("cover-in-{}", vm.key).into()),
                     Animation::new(Duration::from_millis(500)),

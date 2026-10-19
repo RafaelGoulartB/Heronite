@@ -203,7 +203,7 @@ impl EmulatorsPage {
                             .gap(px(10.))
                             .child(
                                 div()
-                                    .font_family(theme::FONT_HEADING)
+                                    .font_family(theme::font_heading())
                                     .font_weight(theme::W_BOLD)
                                     .text_size(px(18.))
                                     .text_color(theme::text_primary())

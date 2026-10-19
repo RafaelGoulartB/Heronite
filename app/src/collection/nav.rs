@@ -626,7 +626,7 @@ impl CollectionView {
         let header =
             div().flex().flex_none().items_center().h(theme::HEADER_H).px(px(12.)).gap(px(10.)).child(self.nav_dropdown(cx)).child(
                 div()
-                    .font_family(theme::FONT_HEADING)
+                    .font_family(theme::font_heading())
                     .text_size(px(17.6))
                     .font_weight(theme::W_BOLD)
                     .text_color(rgb(0xcaf3fd))

@@ -59,7 +59,7 @@ impl CollectionView {
     /// (from the font's advances; chips are short, one line, no shaping).
     pub(super) fn details_ui(&self, cx: &mut Context<Self>) -> focus::DetailsUi {
         let text = cx.text_system().clone();
-        let font_id = text.resolve_font(&font(theme::FONT_BODY));
+        let font_id = text.resolve_font(&font(theme::font_body()));
         let measure: focus::MeasureChip = Rc::new(move |s| {
             let w: f32 = s.chars().map(|c| text.advance(font_id, px(12.), c).map_or(7., |a| a.width / px(1.))).sum();
             // Rounding of the laid-out text.
