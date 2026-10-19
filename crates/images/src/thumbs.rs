@@ -118,7 +118,7 @@ pub fn read(dir: &Path, key: &ThumbKey) -> Option<Decoded> {
 }
 
 /// Refresh mtime (used as the LRU clock) at most once per 6 hours per file.
-fn touch_if_old(f: &std::fs::File) {
+pub(crate) fn touch_if_old(f: &std::fs::File) {
     const MIN_AGE: Duration = Duration::from_secs(6 * 3600);
     if let Ok(m) = f.metadata().and_then(|m| m.modified()) {
         if m.elapsed().map(|e| e > MIN_AGE).unwrap_or(false) {
@@ -176,6 +176,17 @@ pub struct EvictStats {
 /// stale temp files and expired negative markers. Safe to run on a background
 /// thread while the loader is active (readers treat vanished files as a miss).
 pub fn evict_lru(dir: &Path, max_bytes: u64) -> std::io::Result<EvictStats> {
+    evict_oldest(dir, max_bytes, |name| name.ends_with(EXT))
+}
+
+/// [`evict_lru`] for the shared download cache (`images-cache`: one file per
+/// URL, named by its SHA-256; hits refresh the mtime like thumbs). A dropped
+/// file is downloaded again when something still shows it.
+pub fn evict_downloads(dir: &Path, max_bytes: u64) -> std::io::Result<EvictStats> {
+    evict_oldest(dir, max_bytes, |name| name.len() == 64 && name.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+fn evict_oldest(dir: &Path, max_bytes: u64, is_entry: impl Fn(&str) -> bool) -> std::io::Result<EvictStats> {
     let mut st = EvictStats::default();
     let mut files: Vec<(SystemTime, u64, PathBuf)> = Vec::new();
     let now = SystemTime::now();
@@ -193,7 +204,7 @@ pub fn evict_lru(dir: &Path, max_bytes: u64) -> std::io::Result<EvictStats> {
             if now.duration_since(mtime).map(|d| d > Duration::from_secs(3600)).unwrap_or(false) {
                 let _ = std::fs::remove_file(&path);
             }
-        } else if name.ends_with(EXT) {
+        } else if is_entry(&name) {
             st.files_before += 1;
             st.bytes_before += m.len();
             files.push((mtime, m.len(), path));
@@ -348,6 +359,23 @@ mod tests {
         assert!(read(dir.path(), &keys[4]).is_some());
         // under cap: nothing happens
         assert_eq!(evict_lru(dir.path(), u64::MAX).unwrap().files_removed, 0);
+    }
+
+    #[test]
+    fn evict_downloads_keeps_recent_and_ignores_other_files() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..4u64 {
+            let p = dir.path().join(format!("{i:064x}"));
+            std::fs::write(&p, [0u8; 100]).unwrap();
+            let f = std::fs::OpenOptions::new().write(true).open(&p).unwrap();
+            f.set_modified(SystemTime::now() - Duration::from_secs(1000 - i * 100)).unwrap();
+        }
+        std::fs::write(dir.path().join("notes.txt"), [0u8; 1000]).unwrap();
+        let st = evict_downloads(dir.path(), 250).unwrap();
+        assert_eq!((st.files_before, st.files_removed, st.bytes_removed), (4, 2, 200));
+        assert!(!dir.path().join(format!("{:064x}", 0)).exists());
+        assert!(dir.path().join(format!("{:064x}", 3)).exists());
+        assert!(dir.path().join("notes.txt").exists());
     }
 
     #[test]

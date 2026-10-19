@@ -11,7 +11,7 @@
 //! - Advanced extras: folders, cache, copy settings (`advanced.rs`).
 //! - Appearance, Metadata, Screenshots, Backups: Collection settings, backed
 //!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
-//!   `screenshots.rs`, `saves.rs` + `backup.rs`). Any write ends in
+//!   `screenshots.rs`, `saves.rs` + `backup/`). Any write ends in
 //!   [`SettingsPage::saved`].
 //! - About: updates (`updates.rs`), version, folders and system information
 //!   (`about.rs`).
@@ -192,7 +192,8 @@ impl SettingsPage {
 
     /// `HERONITE_DEBUG_SETTINGS_ACTION=<action>` runs a write as if clicked (fixtures only):
     /// `unhide:<app>`, `unhide-all`, `fav-clear`, `recent-clear`, `max-recent:<n>`, `show-hidden:on|off`,
-    /// `clear-cache`.
+    /// `clear-cache`, and on Backups `backup-now`, `backup-open:<n>` (the n-th backup's details),
+    /// `backup-confirm:<n>` (its restore question).
     fn debug_action(&mut self, cx: &mut Context<Self>) {
         let Some(action) = crate::env::value("HERONITE_DEBUG_SETTINGS_ACTION") else { return };
         match action.split_once(':').unwrap_or((action.as_str(), "")) {
@@ -203,6 +204,7 @@ impl SettingsPage {
             ("max-recent", n) => self.set_max_recent(n.parse().unwrap_or(5), cx),
             ("show-hidden", v) => self.set_show_hidden(v == "on", cx),
             ("clear-cache", _) => self.clear_cache(cx),
+            (a @ ("backup-now" | "backup-open" | "backup-confirm"), n) => backup::debug_action(self, a, n.parse().unwrap_or(0), cx),
             _ => {}
         }
     }
@@ -287,6 +289,7 @@ impl SettingsPage {
             Section::Overlay => overlay::shown(cx),
             Section::Saves => saves::State::shown(self, window, cx),
             Section::Storage => storage::State::shown(self, cx),
+            Section::Backups => backup::shown(self, cx),
             _ => {}
         }
     }

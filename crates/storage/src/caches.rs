@@ -1,4 +1,4 @@
-//! Caches that rebuild themselves: this app's resized images, store info and
+//! Caches that rebuild themselves: this app's resized and downloaded images, store info and
 //! install script downloads, winetricks' downloads, the GPU drivers' compiled
 //! shaders and Steam's shader caches of the installed games. Only what
 //! exists is listed.
@@ -20,8 +20,9 @@ pub(crate) fn items(ctx: &Ctx, steam_shaders: Vec<PathBuf>) -> Vec<Item> {
         .map(|d| cache.join(d))
         .filter(|p| p.is_dir())
         .collect();
-    let all: [(CacheKind, String, Vec<PathBuf>); 6] = [
+    let all: [(CacheKind, String, Vec<PathBuf>); 7] = [
         (CacheKind::Images, tr!("Image previews").into(), vec![thumbs.clone()]),
+        (CacheKind::Downloads, tr!("Downloaded artwork").into(), vec![ctx.data_paths.images_cache_dir()]),
         (CacheKind::StoreInfo, tr!("Store game info").into(), store_info),
         (CacheKind::InstallScripts, tr!("Install script downloads").into(), vec![ctx.app.cache.join("install-scripts")]),
         (CacheKind::Winetricks, tr!("Winetricks downloads").into(), vec![cache.join("winetricks")]),

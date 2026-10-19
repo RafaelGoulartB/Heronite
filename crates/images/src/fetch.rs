@@ -65,6 +65,10 @@ pub(crate) fn url_bytes(url: &str, opts: &Opts) -> Result<Vec<u8>> {
 fn read_valid_cache(path: &Path) -> Option<Vec<u8>> {
     let bytes = std::fs::read(path).ok()?;
     if sniff(&bytes) {
+        // The mtime is the clock of `evict_downloads`.
+        if let Ok(f) = std::fs::File::open(path) {
+            crate::thumbs::touch_if_old(&f);
+        }
         Some(bytes)
     } else {
         log::debug!("removing invalid cache entry {}", path.display());

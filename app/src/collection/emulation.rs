@@ -302,7 +302,7 @@ impl CollectionView {
                     );
                     this.reload(cx);
                 }
-                if let Some(e) = report.rom_scan_error.or(report.backup.error) {
+                if let Some(e) = report.rom_scan_error {
                     log::warn!("idle jobs: {e}");
                 }
             })

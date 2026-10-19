@@ -106,8 +106,11 @@ pub struct EffectiveSettings {
     pub metadata: MetadataSettings,
     /// Parsed `metadata.coverAspect`.
     pub cover_aspect: CoverAspect,
+    /// `keep` is always `Some` here.
     pub backup: BackupSettings,
     pub ludusavi: LudusaviSettings,
+    /// MB, 0 = no cap ([`DEFAULT_IMAGE_CACHE_LIMIT_MB`] when unset).
+    pub image_cache_limit_mb: u32,
     /// Heroic `store/config.json` `theme` (default `midnightMirage`).
     pub theme: String,
     /// The interface language (`heronite_i18n`), which also picks the Steam
@@ -128,7 +131,7 @@ impl EffectiveSettings {
     pub fn from_files(file: &CollectionSettingsFile, config: &StoreConfigFile) -> Self {
         let backup = file.backup.clone().unwrap_or_else(fallback_backup);
         let interval = match backup.interval.as_str() {
-            "daily" | "weekly" | "monthly" => backup.interval.clone(),
+            "daily" | "weekly" | "monthly" | "never" => backup.interval.clone(),
             _ => "weekly".to_owned(),
         };
         let ludusavi = file.ludusavi.clone().unwrap_or_else(fallback_ludusavi);
@@ -149,6 +152,8 @@ impl EffectiveSettings {
             backup: BackupSettings {
                 folder: backup.folder,
                 interval,
+                keep: Some(backup.keep.unwrap_or(DEFAULT_BACKUP_KEEP)),
+                exclude: backup.exclude.into_iter().filter(|p| BACKUP_OPTIONAL_PARTS.contains(&p.as_str())).collect(),
                 last_backup_at: backup.last_backup_at,
                 last_backup_path: backup.last_backup_path,
                 last_error: backup.last_error,
@@ -174,6 +179,7 @@ impl EffectiveSettings {
                 last_error: ludusavi.last_error,
                 extra: Default::default(),
             },
+            image_cache_limit_mb: file.image_cache_limit_mb.unwrap_or(DEFAULT_IMAGE_CACHE_LIMIT_MB),
             theme: config.theme.clone().unwrap_or_else(|| DEFAULT_THEME.to_owned()),
             language: heronite_i18n::current().code().to_owned(),
             all_tiles_in_color: config.all_tiles_in_color.unwrap_or(false),
@@ -191,6 +197,14 @@ fn non_empty_trimmed(s: &str) -> Option<&str> {
     let t = s.trim();
     (!t.is_empty()).then_some(t)
 }
+
+/// Backups the folder keeps when `keep` is unset.
+pub const DEFAULT_BACKUP_KEEP: u32 = 10;
+/// Parts of a backup that can be left out (the Collection is always in).
+pub const BACKUP_OPTIONAL_PARTS: [&str; 3] = ["settings", "art", "logins"];
+/// Cap of the image caches when unset: about 4x what a library of a few
+/// hundred games uses, so it only trims a cache that grew without bound.
+pub const DEFAULT_IMAGE_CACHE_LIMIT_MB: u32 = 1024;
 
 fn fallback_backup() -> BackupSettings {
     BackupSettings { folder: String::new(), interval: "weekly".into(), ..Default::default() }
@@ -353,6 +367,45 @@ pub fn save_backup(paths: &DataPaths, folder: &str, interval: &str) -> Result<Ef
     load(paths)
 }
 
+/// Changes to the backup settings; `None` keeps the current value.
+#[derive(Debug, Clone, Default)]
+pub struct BackupPatch {
+    pub folder: Option<String>,
+    pub interval: Option<String>,
+    pub keep: Option<u32>,
+    pub exclude: Option<Vec<String>>,
+}
+
+pub fn save_backup_settings(paths: &DataPaths, patch: BackupPatch) -> Result<EffectiveSettings> {
+    let current = load(paths)?.backup;
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        let mut next = current;
+        if let Some(folder) = patch.folder {
+            next.folder = folder.trim().to_owned();
+        }
+        if let Some(interval) = patch.interval {
+            next.interval = interval;
+        }
+        if let Some(keep) = patch.keep {
+            next.keep = Some(keep);
+        }
+        if let Some(exclude) = patch.exclude {
+            next.exclude = exclude;
+        }
+        file.backup = Some(next);
+        Ok(())
+    })?;
+    load(paths)
+}
+
+pub fn save_image_cache_limit(paths: &DataPaths, limit_mb: u32) -> Result<EffectiveSettings> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        file.image_cache_limit_mb = Some(limit_mb);
+        Ok(())
+    })?;
+    load(paths)
+}
+
 /// `setCollectionMetadataSettings`: `patch` replaces the metadata section after
 /// normalisation; `field_priority` entries are merged over the current ones.
 pub fn save_metadata(paths: &DataPaths, patch: &MetadataSettings) -> Result<EffectiveSettings> {
@@ -462,6 +515,18 @@ mod tests {
         let s = save_backup(&paths, "/b", "yearly").unwrap();
         // An invalid interval is stored but read back as weekly.
         assert_eq!(s.backup.interval, "weekly");
+        assert_eq!(s.backup.keep, Some(DEFAULT_BACKUP_KEEP));
+        let patch = BackupPatch {
+            interval: Some("never".into()),
+            keep: Some(0),
+            exclude: Some(vec!["logins".into(), "bogus".into()]),
+            ..Default::default()
+        };
+        let s = save_backup_settings(&paths, patch).unwrap();
+        assert_eq!((s.backup.folder.as_str(), s.backup.interval.as_str(), s.backup.keep), ("/b", "never", Some(0)));
+        assert_eq!(s.backup.exclude, ["logins"]);
+        assert_eq!(s.image_cache_limit_mb, DEFAULT_IMAGE_CACHE_LIMIT_MB);
+        assert_eq!(save_image_cache_limit(&paths, 0).unwrap().image_cache_limit_mb, 0);
         let mut md = MetadataSettings { igdb_client_id: " id ".into(), cover_aspect: "dvd".into(), ..Default::default() };
         md.field_priority.insert("cover".into(), vec!["steam".into(), "bogus".into()]);
         let s = save_metadata(&paths, &md).unwrap();

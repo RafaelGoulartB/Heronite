@@ -21,6 +21,9 @@ pub struct CollectionSettingsFile {
     pub screenshots: Option<ScreenshotsSettings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<MetadataSettings>,
+    /// Size cap of the downloaded art and its resized copies, in MB (0 = no cap).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_cache_limit_mb: Option<u32>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -30,9 +33,15 @@ pub struct CollectionSettingsFile {
 pub struct BackupSettings {
     #[serde(default)]
     pub folder: String,
-    /// 'daily' | 'weekly' | 'monthly' (Heronite also accepts 'never' in the UI)
+    /// 'daily' | 'weekly' | 'monthly' | 'never' (only "Back up now").
     #[serde(default)]
     pub interval: String,
+    /// How many backups the folder keeps, newest first (0 = all; `None` = 10).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep: Option<u32>,
+    /// Optional parts left out of new backups (`settings`, `art`, `logins`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_backup_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -1,5 +1,5 @@
 //! Settings → Advanced extras (below the panel's switches): folders, clear
-//! cache and "copy all settings".
+//! cache, the image cache limit and "copy all settings".
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -7,12 +7,14 @@ use std::process::{Command, Stdio};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::maintenance::{self, ClearReport};
+use heronite_data::settings as store;
 use heronite_data::{game_config, DataPaths};
 use heronite_i18n::{tr, trn};
 
 use super::SettingsPage;
 use crate::pages::{PageCtx, PageEvent};
 use crate::ui::controls::{action_button, caption, card, row, ButtonKind};
+use crate::ui::fields::{meta_text, select_field};
 
 #[derive(Default)]
 pub struct State {
@@ -22,6 +24,18 @@ pub struct State {
     busy: bool,
     notice: Option<(SharedString, bool)>,
     copied: bool,
+    limit_open: bool,
+}
+
+/// Image cache caps offered (MB; 0 = no cap).
+const IMAGE_CACHE_LIMITS: [u32; 6] = [256, 512, 1024, 2048, 4096, 0];
+
+fn limit_label(mb: u32) -> String {
+    match mb {
+        0 => tr!("No limit").into(),
+        mb if mb % 1024 == 0 => format!("{} GB", mb / 1024),
+        mb => format!("{mb} MB"),
+    }
 }
 
 impl State {
@@ -100,6 +114,14 @@ impl SettingsPage {
             .ok();
         })
         .detach();
+    }
+
+    fn set_image_cache_limit(&mut self, mb: u32, cx: &mut Context<Self>) {
+        let res = store::save_image_cache_limit(&self.ctx.data_paths, mb);
+        self.saved(res, cx);
+        if let Some(upkeep) = crate::services::upkeep::get(cx) {
+            upkeep.update(cx, |u, cx| u.trim_caches(cx));
+        }
     }
 
     pub(super) fn advanced_extras(&mut self, cx: &mut Context<Self>) -> Div {
@@ -208,6 +230,7 @@ impl SettingsPage {
                 control,
             )
             .into_any_element(),
+            self.image_cache_limit(cx).into_any_element(),
         ]);
 
         let copied = self.advanced.copied;
@@ -245,6 +268,32 @@ impl SettingsPage {
     }
 }
 
+impl SettingsPage {
+    fn image_cache_limit(&mut self, cx: &mut Context<Self>) -> Div {
+        let now = self.settings.image_cache_limit_mb;
+        let select = select_field(
+            "adv-image-cache",
+            Some(tr!("Image cache limit")),
+            limit_label(now),
+            false,
+            self.advanced.limit_open,
+            IMAGE_CACHE_LIMITS.iter().map(|mb| (limit_label(*mb).into(), *mb == now)).collect(),
+            cx,
+            |this: &mut SettingsPage, _, cx| {
+                this.advanced.limit_open = !this.advanced.limit_open;
+                cx.notify();
+            },
+            |this: &mut SettingsPage, i, _, cx| {
+                this.advanced.limit_open = false;
+                this.set_image_cache_limit(IMAGE_CACHE_LIMITS[i], cx);
+            },
+        );
+        div().flex().flex_col().gap(px(6.)).py(px(11.)).child(select).child(meta_text(tr!(
+            "Covers and backgrounds downloaded for the Collection and their resized copies. Past the limit, the ones not shown for the longest go; they are downloaded again when needed."
+        )))
+    }
+}
+
 /// Console mode rows of "Folders and cache".
 pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
@@ -278,6 +327,13 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
                 .enabled(has_cache && !a.busy),
         );
     }
+    let limit = p.settings.image_cache_limit_mb;
+    rows.push(Row::choice(
+        "image-cache",
+        tr!("Image cache limit"),
+        IMAGE_CACHE_LIMITS.iter().map(|mb| limit_label(*mb).into()).collect(),
+        IMAGE_CACHE_LIMITS.iter().position(|mb| *mb == limit).unwrap_or(2),
+    ));
     rows.push(Row::header(tr!("Settings")));
     rows.push(
         Row::action("copy", if a.copied { tr!("Copied to the clipboard") } else { tr!("Copy all settings") })
@@ -290,7 +346,14 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
 }
 
 pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list::Outcome, cx: &mut Context<SettingsPage>) {
-    let crate::console::list::Outcome::Activate(id) = outcome else { return };
+    use crate::console::list::{Outcome, Value};
+    if let Outcome::Changed(id, Value::Choice { index, .. }) = &outcome {
+        if id.as_ref() == "image-cache" {
+            p.set_image_cache_limit(IMAGE_CACHE_LIMITS[*index], cx);
+        }
+        return;
+    }
+    let Outcome::Activate(id) = outcome else { return };
     match id.as_ref() {
         "open-config" => p.open_dir(p.ctx.data_paths.root.clone(), cx),
         "open-logs" => {

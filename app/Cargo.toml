@@ -13,6 +13,7 @@ gpui-kit.workspace = true
 anyhow.workspace = true
 log.workspace = true
 rust-embed = "8"
+heronite-backup = { path = "../crates/backup" }
 heronite-data = { path = "../crates/data" }
 heronite-i18n = { path = "../crates/i18n" }
 heronite-images = { path = "../crates/images" }
