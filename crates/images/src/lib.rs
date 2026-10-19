@@ -30,7 +30,7 @@ pub use error::{ImageError, Result};
 pub use fetch::{cache_path, url_digest};
 pub use loader::{LoadResult, Loader, LoaderConfig, Request, RequestKey};
 pub use resize::Filter;
-pub use thumbs::{evict_lru, EvictStats};
+pub use thumbs::{evict_downloads, evict_lru, EvictStats};
 
 use std::path::PathBuf;
 use std::time::Duration;
