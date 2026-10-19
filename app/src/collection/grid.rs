@@ -18,7 +18,8 @@ use heronite_i18n::tr;
 const GRID_PAD: f32 = 22.;
 const GRID_GAP_X: f32 = 16.;
 const GRID_GAP_Y: f32 = 20.;
-/// Widest drawer; narrow windows get less (see [`drawer_width`]).
+/// Default drawer width; narrow windows get less (see [`drawer_width`]). The
+/// user can drag it wider (`resize.rs`).
 const DRAWER_W: f32 = 460.;
 /// Space around the drawer (and between it and the grid).
 pub(super) const DRAWER_INSET: f32 = 10.;
@@ -53,6 +54,7 @@ pub(super) fn grid_columns(width: f32, min_card: f32) -> (usize, f32) {
     (cols, card)
 }
 
+/// Default width of the drawer, also its narrowest.
 pub(super) fn drawer_width(viewport_w: f32) -> f32 {
     DRAWER_W.min((viewport_w * 0.45).max(340.))
 }
@@ -76,9 +78,13 @@ impl CollectionView {
     pub(super) fn list_layout(&mut self, viewport_w: f32) -> (f32, usize) {
         if !self.ui.grid_view {
             self.card_w = theme::CARD_W;
-            return Self::list_column_width(viewport_w);
+            return self.focus_list_layout(viewport_w);
         }
-        let w = if self.drawer_open() { viewport_w - drawer_width(viewport_w) - 2. * DRAWER_INSET } else { viewport_w };
+        let w = if self.drawer_open() {
+            viewport_w - self.panel_width(super::resize::Panel::Drawer, viewport_w) - 2. * DRAWER_INSET
+        } else {
+            viewport_w
+        };
         let (cols, card) = grid_columns(w, self.ui.grid_cover_w);
         self.card_w = card;
         (w, cols)

@@ -45,7 +45,7 @@ fn grab_cell(id: &'static str) -> std::rc::Rc<std::cell::Cell<f32>> {
 }
 
 /// The view shown while dragging: nothing.
-struct NoDragView;
+pub struct NoDragView;
 
 impl Render for NoDragView {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {

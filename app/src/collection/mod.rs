@@ -37,6 +37,7 @@ mod organize;
 mod palette;
 mod pumps;
 mod render_focus;
+mod resize;
 mod screenshot_viewer;
 mod screenshots;
 mod script_install;
@@ -162,6 +163,9 @@ pub struct CollectionView {
     card_w: f32,
     /// Grid view state (`grid.rs`).
     grid: grid::GridUi,
+    /// The panel whose edge is being dragged (`resize.rs`) and where the
+    /// pointer grabbed it (pointer x − edge x).
+    resizing: Option<(resize::Panel, f32)>,
     list_state: ListState,
     /// Group whose header row sits under the pinned copy (hidden so the two
     /// don't show at once).
@@ -282,6 +286,7 @@ impl CollectionView {
             columns: 3,
             card_w: theme::CARD_W,
             grid: Default::default(),
+            resizing: None,
             list_state,
             stuck_group: None,
             selected: None,
@@ -485,7 +490,15 @@ impl CollectionView {
         } else {
             let list_column = self.render_list_column(list_w, cx);
             let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
-            div().size_full().flex().child(list_column).child(div().flex_1().min_w_0().h_full().child(focus_panel)).into_any_element()
+            let edge = self.resize_handle(resize::Panel::List, vw, cx);
+            div()
+                .relative()
+                .size_full()
+                .flex()
+                .child(list_column)
+                .child(div().flex_1().min_w_0().h_full().child(focus_panel))
+                .child(edge)
+                .into_any_element()
         };
         let toast = self.render_toast(cx);
         let dock = if on_page { None } else { self.render_dock(window, cx) };
