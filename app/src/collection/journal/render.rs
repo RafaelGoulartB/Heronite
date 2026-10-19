@@ -29,6 +29,8 @@ const MOSAIC: usize = 5;
 const MOSAIC_GAP: f32 = 6.;
 /// Thumbnails of a day without notes.
 const STRIP: usize = 5;
+/// Width of the notes' column under which a quiet day's button says only "Note".
+const QUIET_NARROW_W: f32 = 520.;
 const TEXT: f32 = 14.4;
 const LINE: f32 = 22.;
 
@@ -125,7 +127,7 @@ impl CollectionView {
             let t = day.timeline.and_then(|i| timeline.get(i));
             let at = new_note_at(day, t, &data.entries, &shots_ms);
             let el = if day.entries.is_empty() && !editing_new(day) {
-                self.journal_quiet_day(n, day, t, at, this_year, cx)
+                self.journal_quiet_day(n, day, t, at, this_year, content_w, cx)
             } else {
                 self.journal_day(n, day, t, &data.entries, at, this_year, content_w, cx)
             };
@@ -171,7 +173,8 @@ impl CollectionView {
         let new = add_button("journal-new".into(), tr!("Note"))
             .h(px(30.))
             .on_click(cx.listener(|this, _, window, cx| this.journal_edit(Target::New(Local::now().timestamp_millis()), window, cx)));
-        div().flex().items_center().gap(px(14.)).pb(px(6.)).children(search).child(new).child(
+        // Narrow (the grid drawer): the switch goes under the search.
+        div().flex().flex_wrap().items_center().gap_x(px(14.)).gap_y(px(8.)).pb(px(6.)).children(search).child(new).child(
             div()
                 .id("journal-only")
                 .flex()
@@ -443,22 +446,26 @@ impl CollectionView {
         t: Option<&TimelineDay>,
         at: i64,
         this_year: i32,
+        content_w: f32,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let group: SharedString = format!("jq-{n}").into();
+        let narrow = content_w < QUIET_NARROW_W;
         let label = if day.date.year() == this_year {
             tr!("{month} {d}", month = heronite_i18n::month_short(day.date.month()), d = day.date.day()).to_string()
         } else {
             tr!("{month} {d}, {year}", month = heronite_i18n::month_short(day.date.month()), d = day.date.day(), year = day.date.year())
                 .to_string()
         };
-        let mut strip = div().flex().gap(px(3.));
+        // Clipped, not pushed out, when the line is short.
+        let mut strip = div().flex().flex_1().min_w_0().overflow_hidden().gap(px(3.));
         if let Some(t) = t {
             for &idx in t.shots.iter().take(STRIP) {
                 let Some(path) = self.shots.items.get(idx).map(|s| s.path.clone()) else { continue };
                 if let Some(src) = self.shots.thumb(&path) {
                     strip = strip.child(
                         div()
+                            .flex_none()
                             .w(px(34.))
                             .h(px(19.))
                             .rounded(px(3.))
@@ -490,11 +497,10 @@ impl CollectionView {
                     .text_color(theme::white_a(0.65))
                     .child(label),
             )
-            .child(day_meta(t))
+            .child(div().flex_none().child(day_meta(t)))
             .child(strip)
-            .child(div().flex_1())
             .child(
-                add_button(SharedString::from(format!("jq-add-{n}")), tr!("Write about this day"))
+                add_button(SharedString::from(format!("jq-add-{n}")), if narrow { tr!("Note") } else { tr!("Write about this day") })
                     .opacity(0.)
                     .group_hover(group, |s| s.opacity(1.))
                     .on_click(cx.listener(move |this, _, window, cx| this.journal_edit(Target::New(at), window, cx))),
