@@ -121,6 +121,36 @@ pub(super) fn h3(text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
+/// Small pills on a segmented track for a section title (the size of the
+/// command palette's filters, so the title stays one line).
+pub(super) fn small_tabs(
+    id: &'static str,
+    labels: &[SharedString],
+    active: usize,
+    on_pick: Rc<dyn Fn(usize, &mut Window, &mut App)>,
+) -> Div {
+    let mut bar = div().flex().flex_none().items_center().gap(px(2.)).p(px(2.)).rounded_full().bg(theme::seg_track());
+    for (i, label) in labels.iter().enumerate() {
+        let on = i == active;
+        let pick = on_pick.clone();
+        bar = bar.child(
+            div()
+                .id(SharedString::from(format!("{id}-{i}")))
+                .px(px(10.))
+                .py(px(2.))
+                .rounded_full()
+                .cursor_pointer()
+                .text_size(px(12.))
+                .text_color(if on { white() } else { Hsla::from(theme::seg_text()) })
+                .when(on, |d| d.bg(theme::seg_active()))
+                .when(!on, |d| d.hover(|s| s.text_color(white())))
+                .on_click(move |_, w, cx| pick(i, w, cx))
+                .child(label.clone()),
+        );
+    }
+    bar
+}
+
 pub fn panel(facts: bool) -> Div {
     let d = div().flex().flex_col().border_1();
     if facts {

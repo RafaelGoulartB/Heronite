@@ -13,7 +13,7 @@ use gpui_kit::*;
 use heronite_data::collection::format_playtime_minutes;
 use heronite_data::timeline::TimelineDay;
 
-use super::focus::{h3, panel};
+use super::focus::{h3, panel, small_tabs};
 use super::game_facts::TIMELINE_DAYS;
 use super::screenshots::thumb_tile;
 use super::CollectionView;
@@ -131,28 +131,13 @@ impl CollectionView {
         )
     }
 
-    /// Timeline | Journal: small pills on the segmented track (the size of
-    /// the command palette's filters, so the title stays one line).
+    /// Timeline | Journal.
     fn view_switch(&mut self, journal: bool, cx: &mut Context<Self>) -> Div {
-        let mut bar = div().flex().flex_none().items_center().gap(px(2.)).p(px(2.)).rounded_full().bg(theme::seg_track());
-        for (on_journal, label) in [(false, tr!("Timeline")), (true, tr!("Journal"))] {
-            let on = on_journal == journal;
-            bar = bar.child(
-                div()
-                    .id(if on_journal { "timeline-view-journal" } else { "timeline-view-timeline" })
-                    .px(px(10.))
-                    .py(px(2.))
-                    .rounded_full()
-                    .cursor_pointer()
-                    .text_size(px(12.))
-                    .text_color(if on { white() } else { Hsla::from(theme::seg_text()) })
-                    .when(on, |d| d.bg(theme::seg_active()))
-                    .when(!on, |d| d.hover(|s| s.text_color(white())))
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_journal_view(on_journal, cx)))
-                    .child(label),
-            );
-        }
-        bar
+        let weak = cx.entity().downgrade();
+        let pick: std::rc::Rc<dyn Fn(usize, &mut Window, &mut App)> = std::rc::Rc::new(move |i, _, cx| {
+            weak.update(cx, |this, cx| this.set_journal_view(i == 1, cx)).ok();
+        });
+        small_tabs("timeline-view", &[tr!("Timeline").into(), tr!("Journal").into()], journal as usize, pick)
     }
 
     /// "3 notes" on a day of the Timeline; opens the Journal.
