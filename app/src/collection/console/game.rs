@@ -230,7 +230,7 @@ impl CollectionView {
             // Status, score and library live in the desktop left column, not in `details`.
             let head = [
                 f.status.as_ref().map(|s| (SharedString::from(tr!("Status")), s.name.to_string())),
-                f.score.as_ref().map(|s| (SharedString::from(tr!("Score")), s.to_string())),
+                f.score.map(|s| (SharedString::from(tr!("Score")), format!("{s:.0}"))),
                 Some((SharedString::from(tr!("Library")), f.library.to_string())),
             ];
             let rows = head.into_iter().flatten().chain(f.details.iter().map(|d| (d.label.clone(), detail_text(&d.value))));

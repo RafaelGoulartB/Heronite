@@ -259,6 +259,30 @@ impl CollectionView {
         self.write_journal(Box::new(move |p| journal::add(p, &key, &entry)), cx);
     }
 
+    /// Clears "Where I left off"; the toast offers it back.
+    pub(super) fn journal_clear_left_off(&mut self, cx: &mut Context<Self>) {
+        let (Some(key), Some(data)) = (self.journal.key.clone(), self.journal.data.clone()) else { return };
+        let mut next = (*data).clone();
+        let Some(left) = next.left_off.take() else { return };
+        self.journal.data = Some(Arc::new(next));
+        let k = key.to_string();
+        self.write_journal(Box::new(move |p| journal::set_left_off(p, &k, "")), cx);
+        self.show_toast(tr!("Where I left off cleared"), false, cx);
+        self.toast_action = Some(ToastAction::RestoreLeftOff(key.to_string(), Box::new(left)));
+    }
+
+    /// Puts back a cleared "Where I left off".
+    pub(super) fn journal_restore_left_off(&mut self, key: String, left: journal::LeftOff, cx: &mut Context<Self>) {
+        if self.journal.key.as_deref() == Some(key.as_str()) {
+            if let Some(data) = self.journal.data.clone() {
+                let mut next = (*data).clone();
+                next.left_off = Some(left.clone());
+                self.journal.data = Some(Arc::new(next));
+            }
+        }
+        self.write_journal(Box::new(move |p| journal::restore_left_off(p, &key, &left)), cx);
+    }
+
     fn write_journal(&mut self, write: Box<dyn FnOnce(&heronite_data::DataPaths) -> anyhow::Result<()> + Send>, cx: &mut Context<Self>) {
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {

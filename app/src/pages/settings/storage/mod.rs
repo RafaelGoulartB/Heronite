@@ -4,7 +4,8 @@
 //! gives are walked one item at a time (cached in `install-sizes.json`). The
 //! walk stops when another section is shown. Removing something rescans.
 //!
-//! Debug: `HERONITE_DEBUG_PAGE=settings:storage`.
+//! Debug: `HERONITE_DEBUG_PAGE=settings:storage`; `HERONITE_DEBUG_SWEEPS_OPEN=1`
+//! opens every "Free up space" choice.
 
 mod console;
 mod render;
@@ -76,6 +77,8 @@ pub struct State {
     walking: Option<(usize, usize)>,
     removing: bool,
     sweeps: HashSet<Sweep>,
+    /// "Free up space" choices showing what they remove.
+    open_sweeps: HashSet<Sweep>,
     confirm: Option<Confirm>,
     sort: GameSort,
     /// Groups showing every row.
@@ -99,6 +102,7 @@ impl State {
             walking: None,
             removing: false,
             sweeps: Sweep::ALL.into_iter().filter(|s| s.default_on()).collect(),
+            open_sweeps: if crate::env::flag("HERONITE_DEBUG_SWEEPS_OPEN") { Sweep::ALL.into_iter().collect() } else { HashSet::new() },
             confirm: None,
             sort: GameSort::Size,
             expanded: HashSet::new(),
@@ -410,6 +414,18 @@ fn sweep_label(s: Sweep) -> &'static str {
         Sweep::Leftovers => tr!("Leftover folders"),
         Sweep::Caches => tr!("Caches"),
         Sweep::Shaders => tr!("Compiled shaders"),
+    }
+}
+
+/// What freeing a choice does, over the list of what it takes.
+fn sweep_effect(s: Sweep) -> &'static str {
+    match s {
+        Sweep::Prefixes => tr!("No installed game uses these prefixes. They go to the trash with the saves and settings inside them, and can be restored from there."),
+        Sweep::Steam => tr!("Steam keeps these for games no longer installed. Proton prefixes go to the trash, where they can be restored; shader caches are deleted."),
+        Sweep::Builds => tr!("No installed game uses these builds. They are uninstalled and can be downloaded again from the Wine Manager."),
+        Sweep::Leftovers => tr!("No game points to these folders any more. They go to the trash, where they can be restored."),
+        Sweep::Caches => tr!("Deleted. They are rebuilt by themselves when needed."),
+        Sweep::Shaders => tr!("Deleted. Games compile them again as they run, and stutter for a while until they do."),
     }
 }
 

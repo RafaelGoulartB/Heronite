@@ -48,9 +48,24 @@ impl CollectionView {
                 screenshots,
                 timeline,
                 extras: focus_extras,
+                related_ui: self.facts.related.clone(),
+                details_ui: self.details_ui(cx),
             },
             self.focus_actions(cx),
         )
+    }
+
+    /// The rows of Details opened with "+N" and how wide a chip's text is
+    /// (from the font's advances; chips are short, one line, no shaping).
+    pub(super) fn details_ui(&self, cx: &mut Context<Self>) -> focus::DetailsUi {
+        let text = cx.text_system().clone();
+        let font_id = text.resolve_font(&font(theme::FONT_BODY));
+        let measure: focus::MeasureChip = Rc::new(move |s| {
+            let w: f32 = s.chars().map(|c| text.advance(font_id, px(12.), c).map_or(7., |a| a.width / px(1.))).sum();
+            // Rounding of the laid-out text.
+            w + 1.
+        });
+        focus::DetailsUi { open: self.facts.details_open.clone(), measure }
     }
 
     /// The filters set by facet, for the Details chips.
@@ -64,7 +79,7 @@ impl CollectionView {
     /// Callbacks of the details into the view (focus panel and grid drawer).
     pub(super) fn focus_actions(&self, cx: &mut Context<Self>) -> focus::FocusActions {
         let weak = cx.entity().downgrade();
-        let (w1, w2, w3) = (weak.clone(), weak.clone(), weak);
+        let (w1, w2, w3, w4, w5) = (weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak);
         focus::FocusActions {
             on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
             on_facet: Rc::new(move |f, v, _, cx| {
@@ -84,6 +99,20 @@ impl CollectionView {
             }),
             on_open_folder: Rc::new(move |path, _, cx| {
                 w3.update(cx, |this, cx| this.open_folder(path.to_string().into(), cx)).ok();
+            }),
+            on_expand_detail: Rc::new(move |label, _, cx| {
+                w5.update(cx, |this, cx| {
+                    this.facts.details_open.push(label);
+                    cx.notify();
+                })
+                .ok();
+            }),
+            on_related: Rc::new(move |related, _, cx| {
+                w4.update(cx, |this, cx| {
+                    this.facts.related = related;
+                    cx.notify();
+                })
+                .ok();
             }),
         }
     }
@@ -115,7 +144,7 @@ impl CollectionView {
         let mut covers: HashMap<SharedString, ImageSource> = HashMap::new();
         for g in &vm.related {
             for c in &g.games {
-                if let Some(src) = self.cover(&c.cover_key, 78., 117., scale, 50) {
+                if let Some(src) = self.cover(&c.cover_key, focus::RELATED_COVER_W, focus::RELATED_COVER_H, scale, 50) {
                     covers.insert(c.cover_key.clone(), src);
                 }
             }

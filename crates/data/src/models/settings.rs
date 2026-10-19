@@ -101,8 +101,10 @@ pub struct BackgroundSettings {
 }
 
 impl Default for BackgroundSettings {
+    /// Tuned for legibility over bright art: a blur of 12 keeps the colours
+    /// and shapes but drops the edges (logos, faces) that compete with text.
     fn default() -> Self {
-        Self { enabled: true, blur: JsNum(6.0), dimming: JsNum(14.0), saturation: JsNum(94.0), scrim: JsNum(100.0), extra: Extra::new() }
+        Self { enabled: true, blur: JsNum(12.0), dimming: JsNum(18.0), saturation: JsNum(90.0), scrim: JsNum(100.0), extra: Extra::new() }
     }
 }
 

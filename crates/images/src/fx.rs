@@ -21,6 +21,43 @@ pub fn flatten_over_black(buf: &mut [u8]) {
     }
 }
 
+/// Soft-caps the brightness of RGBA pixels so white text stays legible over
+/// them: relative luminance (linear light) above `knee` is rolled off towards
+/// `cap`, scaling the pixel's linear RGB so the hue is kept. Pixels at or
+/// below `knee` are untouched, so dark art keeps its look.
+pub fn compress_highlights(buf: &mut [u8], knee: f32, cap: f32) {
+    if !(cap > knee && knee > 0.) {
+        return;
+    }
+    let span = cap - knee;
+    let to_lin: [f32; 256] = std::array::from_fn(|i| {
+        let c = i as f32 / 255.;
+        if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    });
+    const STEPS: usize = 4096;
+    let to_srgb: Vec<u8> = (0..STEPS)
+        .map(|i| {
+            let l = i as f32 / (STEPS - 1) as f32;
+            let c = if l <= 0.003_130_8 { l * 12.92 } else { 1.055 * l.powf(1. / 2.4) - 0.055 };
+            (c * 255.).round().clamp(0., 255.) as u8
+        })
+        .collect();
+    for p in buf.as_chunks_mut::<4>().0 {
+        let (r, g, b) = (to_lin[p[0] as usize], to_lin[p[1] as usize], to_lin[p[2] as usize]);
+        let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if l <= knee {
+            continue;
+        }
+        let k = (knee + span * (1. - (-(l - knee) / span).exp())) / l;
+        let enc = |c: f32| to_srgb[((c * k).clamp(0., 1.) * (STEPS - 1) as f32).round() as usize];
+        (p[0], p[1], p[2]) = (enc(r), enc(g), enc(b));
+    }
+}
+
 /// CSS `saturate(s)` (feColorMatrix type=saturate, in sRGB space like CSS
 /// filter shorthand). Works for RGBA or BGRA alike when `bgra` is set.
 pub fn saturate(buf: &mut [u8], s: f32, bgra: bool) {
@@ -263,6 +300,35 @@ mod tests {
         saturate(&mut a, 2.0, false);
         saturate(&mut b, 2.0, true);
         assert_eq!([a[0], a[1], a[2]], [b[2], b[1], b[0]]);
+    }
+
+    #[test]
+    fn compress_highlights_caps_bright_pixels_only() {
+        let lin = |c: u8| {
+            let c = c as f32 / 255.;
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let luma = |p: &[u8]| 0.2126 * lin(p[0]) + 0.7152 * lin(p[1]) + 0.0722 * lin(p[2]);
+        // Dark and mid pixels (luminance <= knee) are untouched.
+        let mut px = [40u8, 60, 90, 255, 0, 0, 0, 255];
+        compress_highlights(&mut px, 0.15, 0.26);
+        assert_eq!(px, [40, 60, 90, 255, 0, 0, 0, 255]);
+        // White ends under the cap, red keeps its hue, alpha is kept.
+        let mut px = [255u8, 255, 255, 200, 230, 40, 40, 255];
+        compress_highlights(&mut px, 0.15, 0.26);
+        assert!(luma(&px[..3]) < 0.26 && luma(&px[..3]) > 0.2);
+        assert_eq!(px[3], 200);
+        assert!(px[0] == px[1] && px[1] == px[2]);
+        assert!(px[4] > px[5] && px[5] == px[6]);
+        // A brighter source stays brighter (monotonic).
+        let (mut a, mut b) = ([150u8, 150, 150, 255], [255u8, 255, 255, 255]);
+        compress_highlights(&mut a, 0.15, 0.26);
+        compress_highlights(&mut b, 0.15, 0.26);
+        assert!(b[0] > a[0]);
     }
 
     #[test]

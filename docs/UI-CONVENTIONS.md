@@ -81,7 +81,12 @@ blur: reuse this one.
 **Interface vs Collection appearance** (Settings → Appearance, two independent
 groups). *Collection background* = the stage art behind the list/details: on/off,
 blur, darkening, colour, edge shading in Heronite's `local_library/settings.json`
-(`background`), plus Opacity (`collectionOpacity`, default 100). *Interface
+(`background`), plus Opacity (`collectionOpacity`, default 100). Its art is
+`Variant::Backdrop`: the stage with its highlights rolled off (`BACKDROP_KNEE` /
+`BACKDROP_CAP`) so white text keeps 4.5:1 over white art; the scrims keep a
+floor under the details (no lighter dip in the middle) and the focus panels
+(`focus::panel`) are dense enough for .52 labels. Text that sits on the art
+with no panel stays at .66 or more. *Interface
 background* = every glass surface (menus, ☰, context menus, dropdowns, dialogs,
 drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
 `interfaceOpacity` 50-100 (default 84, maps to `glass_fill`; the art dim rises
@@ -126,12 +131,20 @@ row for Epic Games, GOG and Amazon Games: each store keeps its own page, titled 
 tabs of `pages::stores` (LB / RB in console mode); the row (and the console sidebar's) opens the store shown last.
 
 **Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
-(`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, star rating, facts card with score,
-library, save backup and Linux) next to the scrolling details; no footer. The title + meta line sit above both, fixed and
+(`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, the journal's "Where I left off"
+card only once the player wrote one (click: the Journal; also in the grid drawer), star rating, facts card with score
+(a green / amber / red badge from 75 / 50, with its source, IGDB or Steam, unless typed by hand), library, save backup and Linux) next to the scrolling details; no footer. The title + meta line sit above both, fixed and
 aligned with the cover's left edge, so the cover, "Screenshots" and "Details" start on one line; the gap left column → main
 equals main → side (`COL_GAP`). `focus::layout(panel_w)` picks the widths: narrow = everything scrolls in one column with the
 left block as a row under the title; otherwise left column + main/side (stacked when tight), centred as a group in wide panels. The main column holds Screenshots, Overview, **Timeline** (`timeline.rs`: days of play with
-the screenshots of their sessions, thumbnails only) and Related. Facts that are not in the Library load in `game_facts.rs`.
+the screenshots of their sessions, thumbnails only; a bar per day of the last 30 in the title when the column has room,
+hovering one says that day there; a faint "5 days without playing" line between days 3+ days apart) and Related (one
+group at a time picked with pills in the title: Same series first when there is one, Same developer, Similar = 2+
+genres / themes in common; 100px covers with the time played, else the status, under the title, on one row that
+scrolls sideways: ‹ › in the title, a swipe, or the mouse wheel while the row can still move, after which the page
+scrolls; `HERONITE_DEBUG_RELATED=<group>`). Details: Last Played
+is relative under 60 days; Platforms lists the PC ones first; every chip row keeps to one line (widths measured
+with the font), the rest behind a "+N" chip that shows them all. Facts that are not in the Library load in `game_facts.rs`.
 Clickable facts: "Library" sets the Store filter to the game's own store (replacing any other store), "Save backup" backs up now, "On Linux" opens the ProtonDB page, the Details folder rows open the file manager;
 rows that act get `focus_left::clickable` (pointer + faint highlight). Folder rows are resolved on disk, never shown from
 imported fields (`open_links::game_folders`): Steam games → the folder of their `appmanifest`; emulated games → "Emulator
@@ -221,12 +234,14 @@ by the setting each comes from (`HERONITE_DEBUG_PREVIEW=1` opens it).
 section is on screen (listed when shown, then the sizes no store or manifest gives are walked one by one and cached in
 `install-sizes.json`; showing another section stops the walk). A bar per disk (one device = one disk, btrfs subvolumes
 included) in the group colours (`group_color`), hover names a part; the "Free up space" card (big number = the ticked
-choices, a split bar, the choices as switches, then an inline confirmation); the games as a squarified treemap of their
+choices, a split bar, the choices as switches, each with a chevron that opens what it does and every item it takes,
+with its paths, "To the trash" / "Deleted" and size; then an inline confirmation); the games as a squarified treemap of their
 wide art (`treemap.rs`, the biggest 12 and a "+n" tile; an amber dot = not played for half a year) over a list sorted by
 size or least recently played; then one list per kind (Wine prefixes, Proton and runtimes, Steam leftovers, caches,
 leftover folders), unused rows first with an amber "Unused" pill and bar. Prefixes, Steam's Proton prefixes and leftover
 folders go to the trash, caches and Wine Manager builds are deleted; a game's remove button sends `PageEvent::Uninstall`
-(the Collection runs its own uninstall over the page). Console: rows, A twice removes. `HERONITE_DEBUG_PAGE=settings:storage`.
+(the Collection runs its own uninstall over the page). Console: rows, A twice removes. `HERONITE_DEBUG_PAGE=settings:storage`
+(`HERONITE_DEBUG_SWEEPS_OPEN=1` opens every choice).
 
 **Pages** (`pages/mod.rs`, ☰ pages other than Settings): `sheet(id, title, lead, actions, max_w, window, close, column)`
 = glass sheet inset 12px under the slim header (title Rubik 26 + lead, optional header actions, round close =

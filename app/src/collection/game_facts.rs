@@ -86,6 +86,12 @@ pub(super) struct Facts {
     pub launch_menu_open: bool,
     /// Days of the timeline shown.
     pub timeline_days: usize,
+    /// What "Related games" shows; back to the first group for each game.
+    pub related: super::focus::RelatedUi,
+    /// Chip rows of Details showing every value, by label.
+    pub details_open: Vec<SharedString>,
+    /// Day of the Timeline's activity bars under the pointer.
+    pub timeline_hover: Option<chrono::NaiveDate>,
     /// Timeline of the focused game and what it was built from.
     timeline: Option<(String, Arc<Vec<TimelineDay>>)>,
 }
@@ -146,6 +152,14 @@ impl CollectionView {
         self.facts.launch_options.clear();
         self.facts.launch_current = None;
         self.facts.timeline_days = TIMELINE_DAYS;
+        // `HERONITE_DEBUG_RELATED=<group>` opens "Related games" on that
+        // group (0 = the first; screenshots).
+        self.facts.related = super::focus::RelatedUi {
+            tab: crate::env::value("HERONITE_DEBUG_RELATED").and_then(|v| v.parse().ok()).unwrap_or(0),
+            ..Default::default()
+        };
+        self.facts.timeline_hover = None;
+        self.facts.details_open.clear();
         let (Some(lib), Some(key)) = (self.lib.clone(), target) else { return };
         let Some(game) = lib.get(&key).cloned() else { return };
         self.load_facts(key, game, cx);

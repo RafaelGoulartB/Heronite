@@ -37,6 +37,11 @@ use std::time::Duration;
 
 /// Default blur (physical px) used behind translucent panels.
 pub const PANEL_GLASS_BLUR_PX: f32 = 20.0;
+/// Relative luminance (linear light) above which [`Variant::Backdrop`] rolls
+/// the art off, and the level it never goes past: white text keeps a 4.5:1
+/// contrast over the brightest art once the Collection's scrims are on top.
+pub const BACKDROP_KNEE: f32 = 0.15;
+pub const BACKDROP_CAP: f32 = 0.26;
 
 /// One place an image can come from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -81,6 +86,11 @@ pub enum Variant {
     Stage { blur_px: f32, saturation: f32 },
     /// Same as `Stage` but cached separately; meant for a stronger blur.
     Glass { blur_px: f32, saturation: f32 },
+    /// `Stage` for art that sits behind text (the Collection background):
+    /// its brightest parts are also rolled off ([`fx::compress_highlights`]
+    /// with [`BACKDROP_KNEE`] / [`BACKDROP_CAP`]) so white text stays legible
+    /// over white or bright art, while darker art is untouched.
+    Backdrop { blur_px: f32, saturation: f32 },
 }
 
 impl std::hash::Hash for Variant {
@@ -89,6 +99,7 @@ impl std::hash::Hash for Variant {
             Variant::Cover => 0u8.hash(h),
             Variant::Stage { blur_px, saturation } => (1u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Glass { blur_px, saturation } => (2u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
+            Variant::Backdrop { blur_px, saturation } => (3u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
         }
     }
 }
@@ -156,6 +167,12 @@ pub fn load_cover(chain: &[ImageRef], target_w: u32, target_h: u32, opts: &Opts)
 /// stretched to the window and let the GPU upscale it.
 pub fn load_stage(chain: &[ImageRef], target_w: u32, target_h: u32, blur_px: f32, saturation: f32, opts: &Opts) -> Result<Decoded> {
     load(chain, target_w, target_h, Variant::Stage { blur_px, saturation }, opts)
+}
+
+/// [`load_stage`] for art behind text, with its highlights rolled off
+/// ([`Variant::Backdrop`]).
+pub fn load_backdrop(chain: &[ImageRef], target_w: u32, target_h: u32, blur_px: f32, saturation: f32, opts: &Opts) -> Result<Decoded> {
+    load(chain, target_w, target_h, Variant::Backdrop { blur_px, saturation }, opts)
 }
 
 /// Like [`load_stage`] with a stronger blur ([`PANEL_GLASS_BLUR_PX`] is a good
@@ -239,7 +256,7 @@ fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> 
             fx::swap_rb(&mut px);
             Ok(Decoded { width: tw, height: th, bgra: px })
         }
-        Variant::Stage { blur_px, saturation } | Variant::Glass { blur_px, saturation } => {
+        Variant::Stage { blur_px, saturation } | Variant::Glass { blur_px, saturation } | Variant::Backdrop { blur_px, saturation } => {
             let (ow, oh, scale) = geometry::stage_size(tw, th, blur_px, opts.stage_max_width, opts.stage_sigma_out);
             let raster = decode::decode(&bytes, ow, oh, opts.jpeg_scaled_decode)?;
             drop(bytes);
@@ -247,6 +264,9 @@ fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> 
             fx::flatten_over_black(&mut px);
             fx::gaussian_blur(&mut px, ow as usize, oh as usize, blur_px * scale);
             fx::saturate(&mut px, saturation, false);
+            if matches!(variant, Variant::Backdrop { .. }) {
+                fx::compress_highlights(&mut px, BACKDROP_KNEE, BACKDROP_CAP);
+            }
             fx::swap_rb(&mut px);
             Ok(Decoded { width: ow, height: oh, bgra: px })
         }

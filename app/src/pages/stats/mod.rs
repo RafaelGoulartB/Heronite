@@ -144,6 +144,9 @@ pub struct StatsPage {
     thumb_cache: Option<ThumbnailCache>,
     /// Preview of each screenshot shown so far (`None` while it is made).
     thumbs: HashMap<PathBuf, Option<PathBuf>>,
+    /// Previews still to make, one at a time (the cache blocks while it works).
+    thumb_queue: std::collections::VecDeque<PathBuf>,
+    thumb_loading: bool,
     period: Period,
     stats: Option<Arc<Stats>>,
     /// Year of the review button, its total and its top three games.
@@ -254,6 +257,8 @@ impl StatsPage {
             shots: None,
             thumb_cache: None,
             thumbs: HashMap::new(),
+            thumb_queue: Default::default(),
+            thumb_loading: false,
             period: Period::of(span, today()),
             stats: None,
             year_summary: None,
@@ -424,19 +429,27 @@ impl StatsPage {
             None => {
                 let cache = self.thumb_cache.clone()?;
                 self.thumbs.insert(path.to_path_buf(), None);
-                let source = path.to_path_buf();
-                cx.spawn(async move |this, cx| {
-                    let src = source.clone();
-                    let thumb = cx.background_spawn(async move { cache.thumbnail_path(&src).ok() }).await;
-                    this.update(cx, |this, cx| {
-                        if let Some(t) = thumb {
-                            this.thumbs.insert(source, Some(t));
-                            cx.notify();
+                self.thumb_queue.push_back(path.to_path_buf());
+                if !std::mem::replace(&mut self.thumb_loading, true) {
+                    cx.spawn(async move |this, cx| {
+                        while let Ok(Some(source)) = this.update(cx, |this, _| {
+                            let next = this.thumb_queue.pop_front();
+                            this.thumb_loading = next.is_some();
+                            next
+                        }) {
+                            let (c, src) = (cache.clone(), source.clone());
+                            let thumb = cx.background_spawn(async move { c.thumbnail_path(&src).ok() }).await;
+                            this.update(cx, |this, cx| {
+                                if let Some(t) = thumb {
+                                    this.thumbs.insert(source, Some(t));
+                                    cx.notify();
+                                }
+                            })
+                            .ok();
                         }
                     })
-                    .ok();
-                })
-                .detach();
+                    .detach();
+                }
                 None
             }
         }

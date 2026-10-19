@@ -23,10 +23,6 @@ fn parse_hex(hex: &str) -> Rgba {
     u32::from_str_radix(h, 16).map(rgb).unwrap_or(rgb(0xe5e7eb))
 }
 
-fn card_vm(g: &CollectionGame, playing: bool) -> Arc<CardVm> {
-    card_vm_with(g, playing, None)
-}
-
 /// A card whose caption is `caption` instead of the playtime.
 fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> Arc<CardVm> {
     Arc::new(CardVm {
@@ -146,55 +142,46 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     let d = &fd.details;
     let mut rows = Vec::new();
     let text = |s: &str| DetailValue::Text(s.to_string().into());
-    let chips = |v: &[String], facet: Option<&'static str>, clamp: bool| DetailValue::Chips {
+    // Every value: Details shows one line of them and "+N" for the rest.
+    let chips = |v: &[String], facet: Option<&'static str>| DetailValue::Chips {
         values: v.iter().map(|s| SharedString::from(s.clone())).collect(),
         facet,
-        clamp,
     };
 
     if !d.developers.is_empty() {
-        rows.push(DetailRow { label: tr!("Developer").into(), value: chips(&d.developers, Some("developer"), false), split: false });
+        rows.push(DetailRow { label: tr!("Developer").into(), value: chips(&d.developers, Some("developer")), split: false });
     }
     if !d.publishers.is_empty() {
-        rows.push(DetailRow { label: tr!("Publisher").into(), value: chips(&d.publishers, Some("publisher"), false), split: false });
+        rows.push(DetailRow { label: tr!("Publisher").into(), value: chips(&d.publishers, Some("publisher")), split: false });
     }
     if let Some(series) = &d.series {
-        rows.push(DetailRow {
-            label: tr!("Series").into(),
-            value: chips(std::slice::from_ref(series), Some("series"), false),
-            split: false,
-        });
+        rows.push(DetailRow { label: tr!("Series").into(), value: chips(std::slice::from_ref(series), Some("series")), split: false });
     }
-    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(fd.last_played.as_deref().unwrap_or(tr!("Never"))), split: false });
+    let last_played = match g.last_played.as_deref().and_then(days_since) {
+        Some(days) if days < 60 => Some(days_ago(days)),
+        _ => fd.last_played.clone(),
+    };
+    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(last_played.as_deref().unwrap_or(tr!("Never"))), split: false });
     rows.push(DetailRow { label: tr!("Playtime").into(), value: text(&fd.playtime), split: false });
     if !d.features.is_empty() {
         rows.push(DetailRow {
             label: tr!("Features").into(),
             // Steam's features (no metadata) are not a filter.
-            value: chips(
-                &d.features[..d.features.len().min(8)],
-                (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature"),
-                false,
-            ),
+            value: chips(&d.features, (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature")),
             split: true,
         });
     }
     if !d.themes.is_empty() {
-        rows.push(DetailRow {
-            label: tr!("Themes").into(),
-            value: chips(&d.themes[..d.themes.len().min(8)], Some("theme"), false),
-            split: true,
-        });
+        rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes, Some("theme")), split: true });
     }
     if d.platforms.len() > 1 {
-        rows.push(DetailRow {
-            label: tr!("Platforms").into(),
-            value: chips(&d.platforms[..d.platforms.len().min(8)], Some("platform"), false),
-            split: true,
-        });
+        // The PC ones first: this is a PC launcher.
+        let mut platforms = d.platforms.clone();
+        platforms.sort_by_key(|p| !is_pc_platform(p));
+        rows.push(DetailRow { label: tr!("Platforms").into(), value: chips(&platforms, Some("platform")), split: true });
     }
     if !d.genres.is_empty() {
-        rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre"), true), split: true });
+        rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
     }
     if let Some(notes) = d.notes.as_ref().filter(|n| !n.is_empty()) {
         rows.push(DetailRow { label: tr!("Notes").into(), value: text(notes), split: true });
@@ -207,8 +194,9 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             title: match r.kind {
                 RelatedKind::Series => tr!("Same series").into(),
                 RelatedKind::Developer => tr!("Same developer").into(),
+                RelatedKind::Similar => tr!("Similar").into(),
             },
-            games: r.games.iter().map(|x| card_vm(x, false)).collect(),
+            games: r.games.iter().map(|x| related_game_vm(lib, x)).collect(),
         })
         .collect();
 
@@ -235,21 +223,56 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             name: heronite_data::status::status_label(&st.name).to_string().into(),
             color: theme::status_color(&st.slug),
         }),
-        score: d.critic_score.map(|s| fmt_number(s).into()),
+        score: d.critic_score.filter(|s| *s > 0.),
+        score_source: g.metadata.as_ref().and_then(|m| m.field_sources.get("criticScore")).and_then(|s| match s.as_str() {
+            "igdb" => Some("IGDB".into()),
+            "steam" => Some("Steam".into()),
+            _ => None,
+        }),
         library: g.source_label.into(),
         install_size: d.install_size.clone().filter(|s| s != "0").map(Into::into),
         installed: g.installed,
         playing,
         favourite: g.favourite,
         playtime: fd.playtime.clone().into(),
-        last_played: fd.last_played.clone().map(Into::into),
+        last_played: last_played.map(Into::into),
     }
 }
 
-fn fmt_number(v: f64) -> String {
-    if v.fract() == 0. {
-        format!("{}", v as i64)
+fn is_pc_platform(name: &str) -> bool {
+    let n = name.to_lowercase();
+    ["pc", "windows", "linux", "mac", "steamos", "dos"].iter().any(|w| n.split(|c: char| !c.is_alphanumeric()).any(|part| part == *w))
+}
+
+fn related_game_vm(lib: &Library, g: &CollectionGame) -> RelatedGameVm {
+    let status = display_status(g.status_raw.as_deref(), &lib.statuses);
+    let line = if g.playtime_minutes > 0 {
+        collection::format_playtime_minutes(g.playtime_minutes)
     } else {
-        format!("{v}")
+        status.map_or_else(|| tr!("Never played").to_string(), |st| heronite_data::status::status_label(&st.name).to_string())
+    };
+    RelatedGameVm {
+        key: g.key.clone().into(),
+        title: g.title.clone().into(),
+        cover_key: g.key.clone().into(),
+        status_color: status.map(|st| theme::status_color(&st.slug)),
+        line: line.into(),
+    }
+}
+
+/// Whole local days from an RFC 3339 moment to today (0 = today).
+pub(super) fn days_since(rfc3339: &str) -> Option<i64> {
+    let at = chrono::DateTime::parse_from_rfc3339(rfc3339).ok()?.with_timezone(&chrono::Local);
+    Some((chrono::Local::now().date_naive() - at.date_naive()).num_days().max(0))
+}
+
+/// "Today", "Yesterday", "3 days ago", "5 weeks ago", "4 months ago".
+pub(super) fn days_ago(days: i64) -> String {
+    match days {
+        ..=0 => tr!("Today").to_string(),
+        1 => tr!("Yesterday").to_string(),
+        2..=13 => tr!("{days} days ago", days),
+        14..=59 => tr!("{weeks} weeks ago", weeks = days / 7),
+        _ => tr!("{months} months ago", months = days / 30),
     }
 }

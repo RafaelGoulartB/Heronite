@@ -5,6 +5,7 @@ mod description;
 mod panels;
 
 pub use description::html_image_size;
+pub(super) use panels::{RELATED_COVER_H, RELATED_COVER_W};
 
 use std::rc::Rc;
 
@@ -12,12 +13,22 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use self::description::render_html;
-use self::panels::{details_panel, hltb_panel, related_panel};
+use self::panels::{details_panel, details_value_width, hltb_panel, related_panel};
 use super::vm::FocusVm;
 use crate::theme;
 use heronite_i18n::tr;
 
 pub(super) type CoverFor = Rc<dyn Fn(&str) -> Option<ImageSource>>;
+/// Width of a chip's text (`ui::chip`: 12px body font), in logical px.
+pub(super) type MeasureChip = Rc<dyn Fn(&str) -> f32>;
+
+/// What Details needs besides its rows.
+#[derive(Clone)]
+pub(super) struct DetailsUi {
+    /// Labels of the chip rows showing every value (their "+N" was clicked).
+    pub open: Vec<SharedString>,
+    pub measure: MeasureChip,
+}
 
 /// Widths of the focus panel's columns, in logical px.
 #[derive(Clone, Copy, Debug)]
@@ -93,6 +104,8 @@ pub(super) struct FocusProps {
     pub timeline: Option<AnyElement>,
     /// Achievements and session history panels of the side column.
     pub extras: FocusExtras,
+    pub related_ui: RelatedUi,
+    pub details_ui: DetailsUi,
 }
 
 /// Extra panels of the side column (see `extras.rs`).
@@ -108,6 +121,20 @@ pub(super) struct FocusActions {
     pub on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     /// A folder row of Details (install, emulator, ROM): opens it in the file manager.
     pub on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
+    /// Shows every value of a chip row of Details (by its label).
+    pub on_expand_detail: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
+    /// Picks the group of "Related games".
+    pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
+}
+
+/// What "Related games" shows of the focused game.
+#[derive(Clone, Default)]
+pub(super) struct RelatedUi {
+    /// Group on screen, an index into `FocusVm::related` (the first, the
+    /// series when there is one, for each game).
+    pub tab: usize,
+    /// The sideways row of covers (back to its start with each group).
+    pub scroll: ScrollHandle,
 }
 
 pub(super) fn h3(text: impl Into<SharedString>) -> Div {
@@ -121,17 +148,63 @@ pub(super) fn h3(text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
+/// Small pills on a segmented track for a section title (the size of the
+/// command palette's filters, so the title stays one line).
+pub(super) fn small_tabs(
+    id: &'static str,
+    labels: &[SharedString],
+    active: usize,
+    on_pick: Rc<dyn Fn(usize, &mut Window, &mut App)>,
+) -> Div {
+    let mut bar = div().flex().flex_none().items_center().gap(px(2.)).p(px(2.)).rounded_full().bg(theme::seg_track());
+    for (i, label) in labels.iter().enumerate() {
+        let on = i == active;
+        let pick = on_pick.clone();
+        bar = bar.child(
+            div()
+                .id(SharedString::from(format!("{id}-{i}")))
+                .px(px(10.))
+                .py(px(2.))
+                .rounded_full()
+                .cursor_pointer()
+                .text_size(px(12.))
+                .text_color(if on { white() } else { Hsla::from(theme::seg_text()) })
+                .when(on, |d| d.bg(theme::seg_active()))
+                .when(!on, |d| d.hover(|s| s.text_color(white())))
+                .on_click(move |_, w, cx| pick(i, w, cx))
+                .child(label.clone()),
+        );
+    }
+    bar
+}
+
+/// A section surface. Dense enough that its secondary text (labels at .52)
+/// keeps a 4.5:1 contrast over bright Collection art.
 pub fn panel(facts: bool) -> Div {
     let d = div().flex().flex_col().border_1();
     if facts {
-        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::rgb_a(18, 22, 28, 0.28)).border_color(theme::white_a(0.1))
+        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::rgb_a(18, 22, 28, 0.45)).border_color(theme::white_a(0.1))
     } else {
-        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::rgb_a(12, 14, 18, 0.42)).border_color(theme::white_a(0.07))
+        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::rgb_a(12, 14, 18, 0.5)).border_color(theme::white_a(0.07))
     }
 }
 
 pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElement {
-    let FocusProps { vm, cover_for, html_images, viewport_w, panel_w, active_facets, scroll, left, screenshots, timeline, extras } = props;
+    let FocusProps {
+        vm,
+        cover_for,
+        html_images,
+        viewport_w,
+        panel_w,
+        active_facets,
+        scroll,
+        left,
+        screenshots,
+        timeline,
+        extras,
+        related_ui,
+        details_ui,
+    } = props;
     let on_scroll: Rc<dyn Fn(&mut Window, &mut App)> = Rc::from(actions.on_scroll);
     let scrollbar = crate::ui::scrollbar_draggable(
         "focus-scrollbar",
@@ -151,12 +224,23 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
     let title_size = (viewport_w * 0.022).clamp(24.8, 32.);
 
     let header = header(&vm, title_size);
-    let details = details_panel(&vm.details, &active_facets, actions.on_facet, actions.on_open_folder);
+    let details_w = if lay.stacked { lay.main_w } else { lay.side_w };
+    let details = details_panel(
+        &vm.details,
+        &active_facets,
+        details_value_width(details_w),
+        &details_ui.open,
+        &details_ui.measure,
+        actions.on_facet,
+        actions.on_open_folder,
+        actions.on_expand_detail,
+    );
     let sections = Sections {
         screenshots,
         overview: overview(&vm, &html_images, main_column_width(panel_w)),
         timeline,
-        related: (!vm.related.is_empty()).then(|| related_panel(&vm.related, &cover_for, actions.on_select)),
+        related: (!vm.related.is_empty())
+            .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
         top: extras.top,
         details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
         hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
@@ -246,21 +330,33 @@ pub(super) struct StackedProps {
     pub screenshots: Option<AnyElement>,
     pub timeline: Option<AnyElement>,
     pub extras: FocusExtras,
+    pub related_ui: RelatedUi,
+    pub details_ui: DetailsUi,
 }
 
 /// The details of the focus panel in one column (the grid's drawer): no
 /// title and no left column, which the caller lays out itself.
 pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div {
-    let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras } = props;
+    let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras, related_ui, details_ui } = props;
     let lay = Layout { narrow: true, left_w: 0., stacked: true, main_w: width, side_w: width, offset: 0. };
-    let details = details_panel(&vm.details, &active_facets, actions.on_facet, actions.on_open_folder);
+    let details = details_panel(
+        &vm.details,
+        &active_facets,
+        details_value_width(width),
+        &details_ui.open,
+        &details_ui.measure,
+        actions.on_facet,
+        actions.on_open_folder,
+        actions.on_expand_detail,
+    );
     body(
         &lay,
         Sections {
             screenshots,
             overview: overview(&vm, &html_images, width),
             timeline,
-            related: (!vm.related.is_empty()).then(|| related_panel(&vm.related, &cover_for, actions.on_select)),
+            related: (!vm.related.is_empty())
+                .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
             top: extras.top,
             details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
             hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
@@ -285,7 +381,7 @@ fn header(vm: &FocusVm, title_size: f32) -> Div {
                 .text_color(white())
                 .child(vm.title.clone()),
         )
-        .when(!vm.meta_line.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::white_a(0.7)).child(vm.meta_line.clone())))
+        .when(!vm.meta_line.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::white_a(0.8)).child(vm.meta_line.clone())))
 }
 
 /// The blocks of the details, placed by [`body`].

@@ -32,7 +32,7 @@ impl CollectionView {
             || chains.get(&key).cloned().unwrap_or_default(),
             pw,
             ph,
-            Variant::Stage { blur_px: blur, saturation: sat },
+            Variant::Backdrop { blur_px: blur, saturation: sat },
             1000,
         );
         if let Some(img) = ready {

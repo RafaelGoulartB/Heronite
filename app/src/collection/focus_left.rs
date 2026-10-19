@@ -57,6 +57,7 @@ impl CollectionView {
             .min_w_0()
             .child(self.play_area(vm, epic, cx))
             .child(self.focus_status_row(vm, vh, cx))
+            .children(self.left_off_card(&vm.key, cx))
             .child(self.rating_row(&vm.key, cx))
             .child(self.facts_card(vm, cx));
 
@@ -257,6 +258,53 @@ impl CollectionView {
             .into_any_element()
     }
 
+    /// The journal's "Where I left off", only once the player wrote it;
+    /// clicking it shows the Journal.
+    pub(super) fn left_off_card(&self, key: &SharedString, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if !self.journal.is_for(key) {
+            return None;
+        }
+        let left_off = self.journal.data.as_ref()?.left_off.clone()?;
+        let when = super::data::days_since(&left_off.at).map(super::data::days_ago);
+        let caption = div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .text_size(px(11.))
+            .font_weight(theme::W_BOLD)
+            .text_color(theme::accent())
+            .child(icon(Icon::Bookmark, px(13.), theme::accent()))
+            .child(div().flex_1().min_w_0().truncate().child(tr!("Where I left off").to_uppercase()))
+            .children(when.map(|w| div().flex_none().font_weight(theme::W_REGULAR).text_color(theme::white_a(0.45)).child(w)));
+        Some(
+            div()
+                .id("focus-left-off")
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .px(px(14.))
+                .py(px(10.))
+                .rounded(px(10.))
+                .bg(theme::accent_wash())
+                .border_1()
+                .border_color(theme::accent_wash_border())
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::accent_tint()))
+                .on_click(cx.listener(|this, _, _, cx| this.set_journal_view(true, cx)))
+                .child(caption)
+                .child(
+                    div()
+                        .text_size(px(13.))
+                        .line_height(px(19.))
+                        .text_color(theme::white_a(0.92))
+                        .line_clamp(4)
+                        .text_ellipsis()
+                        .child(left_off.text),
+                )
+                .into_any_element(),
+        )
+    }
+
     /// "Your rating" and five clickable stars (clicking the current rating clears it).
     pub(super) fn rating_row(&self, key: &SharedString, cx: &mut Context<Self>) -> Div {
         let rating = self.facts.rating(key);
@@ -295,7 +343,8 @@ impl CollectionView {
             .justify_between()
             .pt(px(4.))
             .text_size(px(13.))
-            .text_color(theme::white_a(0.52))
+            // Sits on the art, not on a panel.
+            .text_color(theme::white_a(0.66))
             .child(tr!("Your rating"))
             .child(stars)
     }
@@ -303,8 +352,24 @@ impl CollectionView {
     /// Score, library, last save backup and Linux compatibility.
     pub(super) fn facts_card(&self, vm: &FocusVm, cx: &mut Context<Self>) -> Div {
         let mut rows: Vec<AnyElement> = Vec::new();
-        if let Some(score) = &vm.score {
-            rows.push(fact_row(tr!("Score"), div().child(score.clone())).into_any_element());
+        if let Some(score) = vm.score {
+            let color = score_color(score);
+            let value = div()
+                .flex()
+                .items_center()
+                .justify_end()
+                .gap(px(8.))
+                .children(vm.score_source.clone().map(|s| div().text_size(px(12.)).text_color(theme::white_a(0.45)).child(s)))
+                .child(
+                    div()
+                        .px(px(7.))
+                        .rounded(px(5.))
+                        .bg(Rgba { a: 0.16, ..color })
+                        .font_weight(theme::W_BOLD)
+                        .text_color(color)
+                        .child(format!("{score:.0}")),
+                );
+            rows.push(fact_row(tr!("Score"), value).into_any_element());
         }
         // Filters the collection by the store the game comes from.
         let key = vm.key.clone();
@@ -372,17 +437,20 @@ fn clickable(row: Div, id: &'static str) -> Stateful<Div> {
     row.id(id).mx(px(-8.)).px(px(8.)).rounded(px(7.)).cursor_pointer().hover(|s| s.bg(theme::white_a(0.06)))
 }
 
+/// Critic score colour: green from 75, amber from 50, red below.
+fn score_color(score: f64) -> Rgba {
+    match score {
+        s if s >= 75. => rgb(0x3ecf8e),
+        s if s >= 50. => rgb(0xf0a202),
+        _ => rgb(0xe5534b),
+    }
+}
+
 /// "Today", "Yesterday", "3 days ago"...; green within a week, amber after a month.
 fn backup_age(at: SystemTime) -> (String, Hsla) {
     let at: chrono::DateTime<chrono::Local> = at.into();
     let days = (chrono::Local::now().date_naive() - at.date_naive()).num_days().max(0);
-    let text = match days {
-        0 => tr!("Today").to_string(),
-        1 => tr!("Yesterday").to_string(),
-        2..=13 => tr!("{days} days ago", days),
-        14..=59 => tr!("{weeks} weeks ago", weeks = days / 7),
-        _ => tr!("{months} months ago", months = days / 30),
-    };
+    let text = super::data::days_ago(days);
     let color = match days {
         0..=7 => rgb(0x3ecf8e).into(),
         8..=30 => theme::white_a(0.94),

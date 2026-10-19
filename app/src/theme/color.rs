@@ -232,6 +232,13 @@ pub fn accent_tint() -> Hsla {
 pub fn accent_tint_border() -> Hsla {
     rgba_hsla(165, 220, 235, 0.40)
 }
+/// Fill and border of the journal's "Where I left off" card.
+pub fn accent_wash() -> Hsla {
+    rgba_hsla(165, 220, 235, 0.06)
+}
+pub fn accent_wash_border() -> Hsla {
+    rgba_hsla(165, 220, 235, 0.2)
+}
 pub fn menu_item_hover() -> Hsla {
     white_a(0.07)
 }

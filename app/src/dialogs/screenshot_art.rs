@@ -95,28 +95,33 @@ impl ScreenshotArtDialog {
         this
     }
 
+    /// One preview at a time, in grid order: the cache blocks while it makes
+    /// a preview, so a task per tile would hold every background thread.
     fn load_thumbs(&mut self, cx: &mut Context<Self>) {
         let shown = self.items.len().min(self.visible);
-        for item in &self.items[..shown] {
-            if !self.requested.insert(item.path.clone()) {
-                continue;
-            }
-            let (path, cache) = (item.path.clone(), self.cache.clone());
-            cx.spawn(async move |this, cx| {
-                let p = path.clone();
-                let res = cx.background_spawn(async move { cache.thumbnail(&p) }).await;
-                if let Ok(decoded) = res {
-                    let frame = image::Frame::new(decoded.into_image_buffer());
-                    let img = Arc::new(RenderImage::new(smallvec::smallvec![frame]));
-                    this.update(cx, |this, cx| {
+        let paths: Vec<_> = self.items[..shown].iter().map(|i| i.path.clone()).filter(|p| self.requested.insert(p.clone())).collect();
+        if paths.is_empty() {
+            return;
+        }
+        let cache = self.cache.clone();
+        cx.spawn(async move |this, cx| {
+            for path in paths {
+                let (c, p) = (cache.clone(), path.clone());
+                let Ok(decoded) = cx.background_spawn(async move { c.thumbnail(&p) }).await else { continue };
+                let frame = image::Frame::new(decoded.into_image_buffer());
+                let img = Arc::new(RenderImage::new(smallvec::smallvec![frame]));
+                let alive = this
+                    .update(cx, |this, cx| {
                         this.thumbs.insert(path, img);
                         cx.notify();
                     })
-                    .ok();
+                    .is_ok();
+                if !alive {
+                    break;
                 }
-            })
-            .detach();
-        }
+            }
+        })
+        .detach();
     }
 
     fn confirm(&mut self, index: Option<usize>, cx: &mut Context<Self>) {

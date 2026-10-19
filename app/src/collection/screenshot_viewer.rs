@@ -241,6 +241,8 @@ impl CollectionView {
         let controls = !fit || self.shots.controls_visible;
 
         let image = self.viewer_image(&item.path, vw, vh, scale, cx);
+        // Decoding the full file can take a moment: say so instead of a blank screen.
+        let loading = image.is_none() && self.shots.full_failed.as_ref() != Some(&item.path);
         let tools = self.viewer_tools(i, cx);
 
         let mut caption = format!("{}/{}", i + 1, n);
@@ -282,7 +284,16 @@ impl CollectionView {
                     cx.notify();
                 }),
             )
-            .children(image);
+            .children(image)
+            .when(loading, |d| {
+                d.child(div().absolute().inset_0().flex().items_center().justify_center().child(
+                    crate::ui::icon(Icon::FaSpinner, px(28.), theme::white_a(0.7)).with_animation(
+                        "shot-loading",
+                        Animation::new(Duration::from_secs(1)).repeat(),
+                        |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
+                    ),
+                ))
+            });
         if controls {
             overlay = overlay.child(tools);
             if n > 1 {
