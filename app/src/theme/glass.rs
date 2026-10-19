@@ -6,17 +6,15 @@
 //! the Appearance page updates it while a slider moves.
 
 use gpui_kit::{px, Hsla};
-use heronite_data::appearance::{Appearance, InterfaceMode, SolidTint};
+use heronite_data::appearance::{Accent, Appearance, InterfaceMode};
 
 use super::{black_a, rgba_hsla, white_a};
 
-static APPEARANCE: std::sync::RwLock<Appearance> = std::sync::RwLock::new(Appearance {
-    collection_opacity: 100.,
-    interface_mode: InterfaceMode::Transparent,
-    interface_opacity: 84.,
-    interface_blur: 30.,
-    solid_tint: SolidTint::Slate,
-});
+static APPEARANCE: std::sync::RwLock<Appearance> = std::sync::RwLock::new(Appearance::DEFAULT);
+
+/// Colour of the selected game's art for [`Accent::Game`]; `None` while
+/// there is none (no game, art still loading).
+static GAME_ACCENT: std::sync::RwLock<Option<(u8, u8, u8)>> = std::sync::RwLock::new(None);
 
 /// The current appearance settings.
 pub fn appearance() -> Appearance {

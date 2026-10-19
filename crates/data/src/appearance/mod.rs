@@ -4,12 +4,20 @@
 //! - the opacity of the Collection background art (`collectionOpacity`, %);
 //! - the look of the interface surfaces (menus, dialogs, pages...): glass
 //!   (`interfaceMode: "transparent"`, art blurred behind translucent panels)
-//!   or solid, with the panel opacity, the blur and the solid tint.
+//!   or solid, with the panel opacity, the blur and the solid tint;
+//! - colour, reading, covers, background picture, motion and layout
+//!   ([`choices`]), and the user's saved looks ([`profiles`]).
 //!
 //! The on/off, blur, darkening... of the Collection background itself stay in
 //! `local_library/settings.json` (`background`).
 //! Loading is lenient: anything missing or invalid gives the default, numbers
 //! are clamped.
+
+mod choices;
+mod profiles;
+
+pub use choices::*;
+pub use profiles::*;
 
 use anyhow::Result;
 use heronite_i18n::tr;
@@ -100,17 +108,55 @@ pub struct Appearance {
     /// Blur of the art behind the glass panels, px.
     pub interface_blur: f32,
     pub solid_tint: SolidTint,
+    pub accent: Accent,
+    /// Stronger secondary text and borders.
+    pub high_contrast: bool,
+    pub font: FontChoice,
+    pub density: Density,
+    pub cover_corners: Corners,
+    pub cover_label: CoverLabel,
+    /// Favourite and "update available" badges on the covers.
+    pub cover_badges: bool,
+    pub cover_hover: CoverHover,
+    pub background: BackgroundSource,
+    /// With [`BackgroundSource::Screenshot`]: a different screenshot every
+    /// [`SLIDESHOW_SECS`].
+    pub background_slideshow: bool,
+    pub motion: Motion,
+    pub start_view: StartView,
+    pub sections: Sections,
+}
+
+/// Seconds between two screenshots of the background slideshow.
+pub const SLIDESHOW_SECS: u64 = 20;
+
+impl Appearance {
+    /// Today's look (also what a missing file gives).
+    pub const DEFAULT: Appearance = Appearance {
+        collection_opacity: 100.,
+        interface_mode: InterfaceMode::Transparent,
+        interface_opacity: 84.,
+        interface_blur: 30.,
+        solid_tint: SolidTint::Slate,
+        accent: Accent::DEFAULT,
+        high_contrast: false,
+        font: FontChoice::DEFAULT,
+        density: Density::DEFAULT,
+        cover_corners: Corners::DEFAULT,
+        cover_label: CoverLabel::DEFAULT,
+        cover_badges: false,
+        cover_hover: CoverHover::DEFAULT,
+        background: BackgroundSource::DEFAULT,
+        background_slideshow: false,
+        motion: Motion::DEFAULT,
+        start_view: StartView::DEFAULT,
+        sections: Sections::DEFAULT,
+    };
 }
 
 impl Default for Appearance {
     fn default() -> Self {
-        Self {
-            collection_opacity: 100.,
-            interface_mode: InterfaceMode::Transparent,
-            interface_opacity: 84.,
-            interface_blur: 30.,
-            solid_tint: SolidTint::Slate,
-        }
+        Self::DEFAULT
     }
 }
 
@@ -134,12 +180,30 @@ impl Appearance {
     pub fn from_value(value: &Value) -> Self {
         let d = Self::default();
         let num = |k: &str, default: f32| value.get(k).and_then(Value::as_f64).map(|v| v as f32).unwrap_or(default);
+        let flag = |k: &str, default: bool| value.get(k).and_then(Value::as_bool).unwrap_or(default);
+        let name = |k: &str| value.get(k).and_then(Value::as_str);
+        let names = |k: &str| -> Vec<&str> {
+            value.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default()
+        };
         Self {
             collection_opacity: num("collectionOpacity", d.collection_opacity),
-            interface_mode: value.get("interfaceMode").and_then(Value::as_str).and_then(InterfaceMode::parse).unwrap_or(d.interface_mode),
+            interface_mode: name("interfaceMode").and_then(InterfaceMode::parse).unwrap_or(d.interface_mode),
             interface_opacity: num("interfaceOpacity", d.interface_opacity),
             interface_blur: num("interfaceBlur", d.interface_blur),
-            solid_tint: value.get("interfaceSolidTint").and_then(Value::as_str).and_then(SolidTint::parse).unwrap_or(d.solid_tint),
+            solid_tint: name("interfaceSolidTint").and_then(SolidTint::parse).unwrap_or(d.solid_tint),
+            accent: name("accent").and_then(Accent::parse).unwrap_or_default(),
+            high_contrast: flag("highContrast", d.high_contrast),
+            font: name("font").and_then(FontChoice::parse).unwrap_or_default(),
+            density: name("density").and_then(Density::parse).unwrap_or_default(),
+            cover_corners: name("coverCorners").and_then(Corners::parse).unwrap_or_default(),
+            cover_label: name("coverLabel").and_then(CoverLabel::parse).unwrap_or_default(),
+            cover_badges: flag("coverBadges", d.cover_badges),
+            cover_hover: name("coverHover").and_then(CoverHover::parse).unwrap_or_default(),
+            background: name("background").and_then(BackgroundSource::parse).unwrap_or_default(),
+            background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
+            motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
+            start_view: name("startView").and_then(StartView::parse).unwrap_or_default(),
+            sections: Sections::from_names(names("sections"), names("hiddenSections")),
         }
         .normalized()
     }
@@ -151,6 +215,20 @@ impl Appearance {
             "interfaceOpacity": self.interface_opacity,
             "interfaceBlur": self.interface_blur,
             "interfaceSolidTint": self.solid_tint.as_str(),
+            "accent": self.accent.as_str(),
+            "highContrast": self.high_contrast,
+            "font": self.font.as_str(),
+            "density": self.density.as_str(),
+            "coverCorners": self.cover_corners.as_str(),
+            "coverLabel": self.cover_label.as_str(),
+            "coverBadges": self.cover_badges,
+            "coverHover": self.cover_hover.as_str(),
+            "background": self.background.as_str(),
+            "backgroundSlideshow": self.background_slideshow,
+            "motion": self.motion.as_str(),
+            "startView": self.start_view.as_str(),
+            "sections": self.sections.order().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            "hiddenSections": self.sections.hidden_names(),
         })
     }
 
@@ -233,6 +311,19 @@ mod tests {
             interface_opacity: 70.,
             interface_blur: 15.,
             solid_tint: SolidTint::Midnight,
+            accent: Accent::Game,
+            high_contrast: true,
+            font: FontChoice::System,
+            density: Density::Compact,
+            cover_corners: Corners::Round,
+            cover_label: CoverLabel::LastPlayed,
+            cover_badges: true,
+            cover_hover: CoverHover::Glow,
+            background: BackgroundSource::Screenshot,
+            background_slideshow: true,
+            motion: Motion::Reduced,
+            start_view: StartView::Grid,
+            sections: Sections::DEFAULT.moved(Section::Related, -4).toggled(Section::Timeline),
         };
         a.save(&p).unwrap();
         assert_eq!(Appearance::load(&p), a);
@@ -241,6 +332,19 @@ mod tests {
         assert_eq!(on_disk["interfaceMode"], "solid");
         assert_eq!(on_disk["interfaceSolidTint"], "midnight");
         assert_eq!(on_disk["collectionOpacity"], 60.0);
+        assert_eq!(on_disk["coverLabel"], "lastPlayed");
+        assert_eq!(on_disk["sections"][0], "related");
+        assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
+    }
+
+    #[test]
+    fn old_files_keep_todays_look() {
+        let v = json!({"collectionOpacity": 80, "interfaceMode": "solid"});
+        let a = Appearance::from_value(&v);
+        assert_eq!(a.accent, Accent::Ice);
+        assert_eq!(a.cover_corners.radius(), 6.);
+        assert_eq!(a.sections, Sections::DEFAULT);
+        assert_eq!(a.motion, Motion::Full);
     }
 
     #[test]

@@ -291,6 +291,11 @@ impl AppPaths {
     pub fn appearance(&self) -> PathBuf {
         self.config.join("appearance.json")
     }
+    /// The picture of Settings → Appearance → Background → "Your own
+    /// picture", copied here so it survives the original moving.
+    pub fn custom_background(&self) -> PathBuf {
+        self.config.join("background-image")
+    }
     /// Screenshot options specific to this app (see `heronite_data::screenshot_prefs`).
     pub fn screenshot_prefs(&self) -> PathBuf {
         self.config.join("screenshots.json")
