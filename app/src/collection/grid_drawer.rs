@@ -60,6 +60,7 @@ impl CollectionView {
                 timeline,
                 extras,
                 related_ui: self.facts.related.clone(),
+                details_ui: self.details_ui(cx),
             },
             self.focus_actions(cx),
         );

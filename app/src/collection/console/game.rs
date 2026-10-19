@@ -32,14 +32,7 @@ impl Default for GameNav {
 fn detail_text(v: &DetailValue) -> String {
     match v {
         DetailValue::Text(t) => t.to_string(),
-        DetailValue::Chips { values, more, .. } => {
-            let list = values.iter().map(|s| s.as_ref()).collect::<Vec<_>>().join(", ");
-            if *more > 0 {
-                format!("{list} +{more}")
-            } else {
-                list
-            }
-        }
+        DetailValue::Chips { values, .. } => values.iter().map(|s| s.as_ref()).collect::<Vec<_>>().join(", "),
         DetailValue::Folder { path, size } => match size {
             Some(s) => format!("{path} ({s})"),
             None => path.to_string(),

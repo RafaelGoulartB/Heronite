@@ -13,12 +13,22 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use self::description::render_html;
-use self::panels::{details_panel, hltb_panel, related_panel};
+use self::panels::{details_panel, details_value_width, hltb_panel, related_panel};
 use super::vm::FocusVm;
 use crate::theme;
 use heronite_i18n::tr;
 
 pub(super) type CoverFor = Rc<dyn Fn(&str) -> Option<ImageSource>>;
+/// Width of a chip's text (`ui::chip`: 12px body font), in logical px.
+pub(super) type MeasureChip = Rc<dyn Fn(&str) -> f32>;
+
+/// What Details needs besides its rows.
+#[derive(Clone)]
+pub(super) struct DetailsUi {
+    /// Labels of the chip rows showing every value (their "+N" was clicked).
+    pub open: Vec<SharedString>,
+    pub measure: MeasureChip,
+}
 
 /// Widths of the focus panel's columns, in logical px.
 #[derive(Clone, Copy, Debug)]
@@ -95,6 +105,7 @@ pub(super) struct FocusProps {
     /// Achievements and session history panels of the side column.
     pub extras: FocusExtras,
     pub related_ui: RelatedUi,
+    pub details_ui: DetailsUi,
 }
 
 /// Extra panels of the side column (see `extras.rs`).
@@ -110,6 +121,8 @@ pub(super) struct FocusActions {
     pub on_select: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     /// A folder row of Details (install, emulator, ROM): opens it in the file manager.
     pub on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
+    /// Shows every value of a chip row of Details (by its label).
+    pub on_expand_detail: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     /// Picks the group of "Related games".
     pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
 }
@@ -188,6 +201,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         timeline,
         extras,
         related_ui,
+        details_ui,
     } = props;
     let on_scroll: Rc<dyn Fn(&mut Window, &mut App)> = Rc::from(actions.on_scroll);
     let scrollbar = crate::ui::scrollbar_draggable(
@@ -208,7 +222,17 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
     let title_size = (viewport_w * 0.022).clamp(24.8, 32.);
 
     let header = header(&vm, title_size);
-    let details = details_panel(&vm.details, &active_facets, actions.on_facet, actions.on_open_folder);
+    let details_w = if lay.stacked { lay.main_w } else { lay.side_w };
+    let details = details_panel(
+        &vm.details,
+        &active_facets,
+        details_value_width(details_w),
+        &details_ui.open,
+        &details_ui.measure,
+        actions.on_facet,
+        actions.on_open_folder,
+        actions.on_expand_detail,
+    );
     let sections = Sections {
         screenshots,
         overview: overview(&vm, &html_images, main_column_width(panel_w)),
@@ -305,14 +329,24 @@ pub(super) struct StackedProps {
     pub timeline: Option<AnyElement>,
     pub extras: FocusExtras,
     pub related_ui: RelatedUi,
+    pub details_ui: DetailsUi,
 }
 
 /// The details of the focus panel in one column (the grid's drawer): no
 /// title and no left column, which the caller lays out itself.
 pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div {
-    let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras, related_ui } = props;
+    let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras, related_ui, details_ui } = props;
     let lay = Layout { narrow: true, left_w: 0., stacked: true, main_w: width, side_w: width, offset: 0. };
-    let details = details_panel(&vm.details, &active_facets, actions.on_facet, actions.on_open_folder);
+    let details = details_panel(
+        &vm.details,
+        &active_facets,
+        details_value_width(width),
+        &details_ui.open,
+        &details_ui.measure,
+        actions.on_facet,
+        actions.on_open_folder,
+        actions.on_expand_detail,
+    );
     body(
         &lay,
         Sections {

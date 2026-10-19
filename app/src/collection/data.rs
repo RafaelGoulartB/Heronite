@@ -142,25 +142,20 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     let d = &fd.details;
     let mut rows = Vec::new();
     let text = |s: &str| DetailValue::Text(s.to_string().into());
-    let chips = |v: &[String], facet: Option<&'static str>, clamp: bool| DetailValue::Chips {
+    // Every value: Details shows one line of them and "+N" for the rest.
+    let chips = |v: &[String], facet: Option<&'static str>| DetailValue::Chips {
         values: v.iter().map(|s| SharedString::from(s.clone())).collect(),
         facet,
-        clamp,
-        more: 0,
     };
 
     if !d.developers.is_empty() {
-        rows.push(DetailRow { label: tr!("Developer").into(), value: chips(&d.developers, Some("developer"), false), split: false });
+        rows.push(DetailRow { label: tr!("Developer").into(), value: chips(&d.developers, Some("developer")), split: false });
     }
     if !d.publishers.is_empty() {
-        rows.push(DetailRow { label: tr!("Publisher").into(), value: chips(&d.publishers, Some("publisher"), false), split: false });
+        rows.push(DetailRow { label: tr!("Publisher").into(), value: chips(&d.publishers, Some("publisher")), split: false });
     }
     if let Some(series) = &d.series {
-        rows.push(DetailRow {
-            label: tr!("Series").into(),
-            value: chips(std::slice::from_ref(series), Some("series"), false),
-            split: false,
-        });
+        rows.push(DetailRow { label: tr!("Series").into(), value: chips(std::slice::from_ref(series), Some("series")), split: false });
     }
     let last_played = match g.last_played.as_deref().and_then(days_since) {
         Some(days) if days < 60 => Some(days_ago(days)),
@@ -172,36 +167,21 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         rows.push(DetailRow {
             label: tr!("Features").into(),
             // Steam's features (no metadata) are not a filter.
-            value: chips(
-                &d.features[..d.features.len().min(8)],
-                (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature"),
-                false,
-            ),
+            value: chips(&d.features, (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature")),
             split: true,
         });
     }
     if !d.themes.is_empty() {
-        rows.push(DetailRow {
-            label: tr!("Themes").into(),
-            value: chips(&d.themes[..d.themes.len().min(8)], Some("theme"), false),
-            split: true,
-        });
+        rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes, Some("theme")), split: true });
     }
     if d.platforms.len() > 1 {
         // The PC ones first: this is a PC launcher.
         let mut platforms = d.platforms.clone();
         platforms.sort_by_key(|p| !is_pc_platform(p));
-        let shown = platforms.len().min(PLATFORMS_SHOWN);
-        let value = DetailValue::Chips {
-            values: platforms[..shown].iter().map(|p| SharedString::from(p.clone())).collect(),
-            facet: Some("platform"),
-            clamp: false,
-            more: platforms.len() - shown,
-        };
-        rows.push(DetailRow { label: tr!("Platforms").into(), value, split: true });
+        rows.push(DetailRow { label: tr!("Platforms").into(), value: chips(&platforms, Some("platform")), split: true });
     }
     if !d.genres.is_empty() {
-        rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre"), true), split: true });
+        rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
     }
     if let Some(notes) = d.notes.as_ref().filter(|n| !n.is_empty()) {
         rows.push(DetailRow { label: tr!("Notes").into(), value: text(notes), split: true });
@@ -258,9 +238,6 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         last_played: last_played.map(Into::into),
     }
 }
-
-/// Platforms listed in Details before "+N".
-const PLATFORMS_SHOWN: usize = 3;
 
 fn is_pc_platform(name: &str) -> bool {
     let n = name.to_lowercase();

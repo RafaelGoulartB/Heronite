@@ -138,7 +138,8 @@ group at a time picked with pills in the title: Same series first when there is 
 genres / themes in common; 100px covers with the time played, else the status, under the title, on one row that
 scrolls sideways: ‹ › in the title, a swipe, or the mouse wheel while the row can still move, after which the page
 scrolls; `HERONITE_DEBUG_RELATED=<group>`). Details: Last Played
-is relative under 60 days; Platforms lists the PC ones first, 3 at most, then "+N". Facts that are not in the Library load in `game_facts.rs`.
+is relative under 60 days; Platforms lists the PC ones first; every chip row keeps to one line (widths measured
+with the font), the rest behind a "+N" chip that shows them all. Facts that are not in the Library load in `game_facts.rs`.
 Clickable facts: "Library" sets the Store filter to the game's own store (replacing any other store), "Save backup" backs up now, "On Linux" opens the ProtonDB page, the Details folder rows open the file manager;
 rows that act get `focus_left::clickable` (pointer + faint highlight). Folder rows are resolved on disk, never shown from
 imported fields (`open_links::game_folders`): Steam games → the folder of their `appmanifest`; emulated games → "Emulator

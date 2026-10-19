@@ -129,9 +129,6 @@ pub(super) enum DetailValue {
     Chips {
         values: Vec<SharedString>,
         facet: Option<&'static str>,
-        clamp: bool,
-        /// Values left out after `values`, shown as a "+N" chip.
-        more: usize,
     },
     Folder {
         path: SharedString,

@@ -5,23 +5,62 @@ use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::{h3, panel, small_tabs, CoverFor, RelatedUi};
+use super::{h3, panel, small_tabs, CoverFor, MeasureChip, RelatedUi};
 use crate::collection::vm::{DetailRow, DetailValue, HltbVm, RelatedGroupVm};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{chip, icon, round_button};
 use heronite_i18n::tr;
 
+/// Chip of Details: its padding (`ui::chip`) and the gap between two.
+const CHIP_PAD_X: f32 = 6.72;
+const CHIP_GAP: f32 = 5.12;
+const DETAIL_LABEL_W: f32 = 134.4;
+const DETAIL_GAP: f32 = 13.6;
+
+/// Width the values of Details get in a column `column_w` wide (`panel(true)`
+/// pads 16 and has a 1px border on each side).
+pub(super) fn details_value_width(column_w: f32) -> f32 {
+    column_w - 2. * 17. - DETAIL_LABEL_W - DETAIL_GAP
+}
+
+/// How many of the chips (text widths `widths`) fit on one line `room` wide,
+/// leaving room for a "+N" chip (its text width from `plus_w`) when some do
+/// not; at least one.
+fn chips_on_one_line(widths: &[f32], room: f32, plus_w: impl Fn(usize) -> f32) -> usize {
+    let chip_w = |w: f32| w + 2. * CHIP_PAD_X;
+    let all: f32 = widths.iter().map(|w| chip_w(*w)).sum::<f32>() + CHIP_GAP * widths.len().saturating_sub(1) as f32;
+    if all <= room {
+        return widths.len();
+    }
+    let mut used = 0.;
+    for (k, w) in widths.iter().enumerate() {
+        let next = used + if k > 0 { CHIP_GAP } else { 0. } + chip_w(*w);
+        if next + CHIP_GAP + chip_w(plus_w(widths.len() - k - 1)) > room {
+            return k.max(1);
+        }
+        used = next;
+    }
+    widths.len()
+}
+
+/// The rows of Details. Chip rows keep to one line, the rest behind "+N";
+/// clicking it (`on_expand` with the row's label) shows them all, for the
+/// rows in `open`. `measure` gives a chip text's width, `value_w` the room.
 pub(super) fn details_panel(
     rows: &[DetailRow],
     active: &[(&'static str, SharedString)],
+    value_w: f32,
+    open: &[SharedString],
+    measure: &MeasureChip,
     on_facet: Rc<dyn Fn(&'static str, SharedString, &mut Window, &mut App)>,
     on_open_folder: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
+    on_expand: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
 ) -> Div {
     let mut p = panel(true);
     for (ri, row) in rows.iter().enumerate() {
         let label = div()
-            .w(px(134.4))
+            .w(px(DETAIL_LABEL_W))
             .flex_none()
             .flex()
             .items_center()
@@ -34,9 +73,15 @@ pub(super) fn details_panel(
             .child(row.label.clone());
         let value: AnyElement = match &row.value {
             DetailValue::Text(t) => div().line_height(px(18.2)).child(t.clone()).into_any_element(),
-            DetailValue::Chips { values, facet, clamp, more } => {
-                let mut wrap = div().flex().flex_wrap().gap(px(5.12));
-                for (ci, v) in values.iter().enumerate() {
+            DetailValue::Chips { values, facet } => {
+                let shown = if open.contains(&row.label) {
+                    values.len()
+                } else {
+                    let widths: Vec<f32> = values.iter().map(|v| measure(v)).collect();
+                    chips_on_one_line(&widths, value_w, |n| measure(&format!("+{n}")))
+                };
+                let mut wrap = div().flex().flex_wrap().gap(px(CHIP_GAP));
+                for (ci, v) in values[..shown].iter().enumerate() {
                     let is_active = facet.is_some_and(|f| active.iter().any(|(af, av)| *af == f && av == v));
                     let mut c = chip(v.clone());
                     if is_active {
@@ -57,27 +102,31 @@ pub(super) fn details_panel(
                         None => wrap = wrap.child(c),
                     }
                 }
-                if *more > 0 {
-                    wrap = wrap.child(chip(format!("+{more}")).text_color(theme::white_a(0.52)));
+                if shown < values.len() {
+                    let (expand, label) = (on_expand.clone(), row.label.clone());
+                    wrap = wrap.child(
+                        chip(format!("+{}", values.len() - shown))
+                            .id(SharedString::from(format!("chip-more-{ri}")))
+                            .text_color(theme::white_a(0.6))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::white_a(0.2)).text_color(white()))
+                            .on_click(move |_, w, cx| expand(label.clone(), w, cx)),
+                    );
                 }
-                if *clamp {
-                    div().max_h(px(73.6)).overflow_hidden().child(wrap).into_any_element()
-                } else {
-                    wrap.into_any_element()
-                }
+                wrap.into_any_element()
             }
             DetailValue::Folder { path, size } => div()
                 .flex()
                 .flex_col()
                 .gap(px(2.4))
                 .child({
-                    let (open, target) = (on_open_folder.clone(), path.clone());
+                    let (open_dir, target) = (on_open_folder.clone(), path.clone());
                     div()
                         .id(SharedString::from(format!("focus-folder-{ri}")))
                         .line_height(px(18.2))
                         .cursor_pointer()
                         .hover(|s| s.text_color(theme::accent()))
-                        .on_click(move |_, w, cx| open(target.clone(), w, cx))
+                        .on_click(move |_, w, cx| open_dir(target.clone(), w, cx))
                         .child(path.clone())
                 })
                 .children(size.clone().map(|s| div().text_size(px(12.)).text_color(theme::white_a(0.52)).child(s)))
@@ -87,7 +136,7 @@ pub(super) fn details_panel(
             div()
                 .flex()
                 .items_start()
-                .gap(px(13.6))
+                .gap(px(DETAIL_GAP))
                 .py(px(6.08))
                 .text_size(px(13.))
                 .when(row.split, |d| d.mt(px(6.4)).pt(px(11.2)).border_t_1().border_color(theme::white_a(0.12)))
@@ -310,4 +359,26 @@ fn scroll_arrows(scroll: &ScrollHandle) -> Option<Div> {
         -RELATED_STEP,
         x > -max,
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{chips_on_one_line, CHIP_GAP, CHIP_PAD_X};
+
+    #[test]
+    fn chips_keep_to_one_line_with_a_plus() {
+        let chip = |w: f32| w + 2. * CHIP_PAD_X;
+        let widths = [40., 40., 40., 40.];
+        let plus = |_: usize| 10.;
+        // All of them fit: no "+N".
+        let all = 4. * chip(40.) + 3. * CHIP_GAP;
+        assert_eq!(chips_on_one_line(&widths, all, plus), 4);
+        // One pixel short: the last one makes way for "+1".
+        assert_eq!(chips_on_one_line(&widths, all - 1., plus), 3);
+        // Room for two and "+2", not for three and "+1".
+        assert_eq!(chips_on_one_line(&widths, 2. * chip(40.) + 2. * CHIP_GAP + chip(10.), plus), 2);
+        // Never fewer than one, even in a tiny room.
+        assert_eq!(chips_on_one_line(&widths, 5., plus), 1);
+        assert_eq!(chips_on_one_line(&[], 100., plus), 0);
+    }
 }
