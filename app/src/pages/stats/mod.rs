@@ -12,6 +12,7 @@
 mod backlog;
 mod console;
 mod desktop;
+mod discoveries;
 mod journeys;
 mod months;
 mod palette;
@@ -165,6 +166,11 @@ pub struct StatsPage {
     jv: journeys::JourneyView,
     /// Status changes, How Long To Beat times and added dates (Backlog tab).
     backlog: Arc<backlog::BacklogData>,
+    /// Discoveries of the period and milestones (computed while the tab is shown).
+    insights: Option<Arc<Vec<stats::Insight>>>,
+    milestones: Option<Arc<Vec<stats::Milestone>>>,
+    /// Hidden kinds of discoveries are listed (dimmed).
+    show_hidden: bool,
     queue_sort: backlog::QueueSort,
     /// Year of the review button, its total and its top three games.
     year_summary: Option<(i32, f64, Vec<usize>)>,
@@ -299,6 +305,9 @@ impl StatsPage {
             journeys: None,
             jv: Default::default(),
             backlog: Arc::default(),
+            insights: None,
+            milestones: None,
+            show_hidden: false,
             queue_sort: Default::default(),
             year_summary: None,
             derived: Arc::default(),
@@ -389,6 +398,13 @@ impl StatsPage {
 
     fn recompute(&mut self) {
         self.stats = self.history.as_ref().map(|h| Arc::new(stats::compute(h, self.period, today())));
+        (self.insights, self.milestones) = match (&self.history, &self.stats) {
+            (Some(h), Some(st)) if self.tab == Tab::Discoveries => {
+                let (i, m) = discoveries::compute_for(h, st);
+                (Some(i), Some(m))
+            }
+            _ => (None, None),
+        };
         self.journeys =
             self.history.as_ref().filter(|_| self.tab == Tab::Journeys).map(|h| Arc::new(stats::journeys(h, self.period, today())));
         self.year_summary = self.history.as_ref().and_then(|h| {

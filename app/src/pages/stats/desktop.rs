@@ -301,7 +301,9 @@ impl StatsPage {
 
     fn render_hero(&mut self, st: Option<&Stats>, panel_w: f32, col_w: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         let top = st.and_then(|s| s.games.first()).map(|g| g.game);
-        let art = top.and_then(|g| self.art(g, panel_w, HERO_H, window));
+        // Discoveries show the art of the game their lead is about.
+        let art_game = if self.tab == Tab::Discoveries { self.lead_game().or(top) } else { top };
+        let art = art_game.and_then(|g| self.art(g, panel_w, HERO_H, window));
         let page = theme::stats_page_bg();
         let ink = |a: f32| Hsla { a, ..Hsla::from(page) };
         let mut hero = div().relative().w_full().h(px(HERO_H)).flex_none();
@@ -347,9 +349,10 @@ impl StatsPage {
                 Tab::Overview => column.child(self.render_total(st)),
                 Tab::Journeys => column.children(self.render_journeys_total(st)),
                 Tab::Backlog => column.child(self.render_backlog_total(st, cx)),
+                Tab::Discoveries => column.child(self.render_discoveries_total(st, window, cx)),
             };
             // The Backlog's goal card takes that corner.
-            if let Some(g) = top.filter(|_| self.tab != Tab::Backlog) {
+            if let Some(g) = top.filter(|_| matches!(self.tab, Tab::Overview | Tab::Journeys)) {
                 let cover = self.cover(g, 24., 32., window);
                 let title = self.game_title(g);
                 column = column.child(
@@ -482,6 +485,7 @@ impl StatsPage {
                 Tab::Overview => self.render_sections(st, col_w, wide, window, cx),
                 Tab::Journeys => self.render_journeys(st, window, cx),
                 Tab::Backlog => self.render_backlog(st, col_w, wide, window, cx),
+                Tab::Discoveries => self.render_discoveries(st, window, cx),
             },
         };
         // Blurred art of the number one game under the panels.
