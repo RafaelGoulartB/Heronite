@@ -10,6 +10,7 @@
 //! adds to both days.
 
 mod game;
+mod journeys;
 
 use std::collections::HashMap;
 
@@ -19,6 +20,7 @@ use heronite_i18n::tr;
 use crate::models::LocalGameSession;
 
 pub use game::{game_sheet, GameSheet};
+pub use journeys::{journeys, median, Journeys, Lane, LANE_MIN_SECS, PARALLEL_MIN_SECS};
 
 /// Shorter sessions are failed launches, not play.
 pub const MIN_SESSION_SECS: f64 = 120.;
