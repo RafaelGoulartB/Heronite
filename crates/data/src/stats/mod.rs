@@ -184,6 +184,11 @@ impl History {
     pub fn is_empty(&self) -> bool {
         self.sessions.is_empty() && self.lifetime_secs.iter().all(|s| *s <= 0.)
     }
+
+    /// Day of the last recorded session of `game`.
+    pub fn last_day(&self, game: usize) -> Option<NaiveDate> {
+        self.sessions.iter().filter(|s| s.game == game).map(|s| s.start.date()).max()
+    }
 }
 
 fn parse_local<Tz: TimeZone>(text: &str, tz: &Tz) -> Option<NaiveDateTime> {
@@ -627,6 +632,8 @@ mod tests {
             &utc(),
         );
         assert_eq!(h.since, Some(day(2026, 9, 10)));
+        assert_eq!(h.last_day(0), Some(day(2026, 10, 2)));
+        assert_eq!(h.last_day(5), None);
         let st = compute(&h, Period::of(Span::Month, day(2026, 10, 9)), day(2026, 10, 9));
         assert_eq!(
             st.games.iter().map(|g| (g.game, g.secs, g.sessions, g.new)).collect::<Vec<_>>(),
