@@ -1,14 +1,11 @@
 <h1 align="center">Heronite</h1>
 
 <p align="center">
-  <a href="https://github.com/RafaelGoulartB/Heronite/stargazers">
+  <a href="https://github.com/RafaelGoulartB/Heronite">
     <img alt="GitHub stars" src="https://img.shields.io/github/stars/RafaelGoulartB/Heronite?style=social" />
   </a>
   <a href="LICENSE">
     <img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPL_v3-2B8CA8.svg" />
-  </a>
-  <a href="https://github.com/RafaelGoulartB/Heronite/actions/workflows/ci.yml">
-    <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/RafaelGoulartB/Heronite/ci.yml?branch=main&label=CI&color=2B8CA8" />
   </a>
   <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest">
     <img alt="Latest release" src="https://img.shields.io/github/v/release/RafaelGoulartB/Heronite?color=2B8CA8&label=release" />
