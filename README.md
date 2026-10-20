@@ -30,68 +30,80 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
 
 ## Your library, organized
 
-- **Collection:** every game in a list or a grid of covers, grouped by status, store, genre, series, year and more. The details panel shows screenshots, How Long To Beat, ProtonDB and anti-cheat status, achievements, and a play timeline that doubles as a journal.
+- **Collection:** every game in a list with a details panel (Focus) or a grid of covers, switching by the window's width. Group by status, store, genre, series, year and more; drag the panels wider. The details panel shows screenshots, How Long To Beat, ProtonDB and anti-cheat status, achievements, related games, and a play timeline.
+- **Journal:** notes on the days you played and on your screenshots, plus where you left off.
 - **View menu:** filter, sort, and save the view as a preset (Playing now, Backlog, Finished, and Favourites built in). Search forgives accents and typos.
 - **Bulk edits:** change status, categories, and other fields of many games at once, with undo. A fields manager renames and merges genres, companies, and series.
 - **Command palette:** <kbd>Ctrl</kbd> <kbd>K</kbd> jumps to any page, runs any action, or finds and plays a game.
-- **Add any game:** native Linux programs, Windows programs, browser games, or ROMs from a folder. Art comes from Steam, SteamGridDB, IGDB, Lutris, the web, or your own screenshots.
+- **Add any game:** native Linux programs, Windows programs, browser games, install scripts, or ROMs from a folder. Art comes from Steam, SteamGridDB, IGDB, Lutris, the web, or your own screenshots.
+- **Getting started:** on first run, Heronite finds your Steam library, emulators, and ROM folders, and a checklist walks you through the rest.
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="assets/screenshots/collection.webp"><img src="assets/screenshots/collection.webp" width="100%" alt="Collection with games grouped by status and ELDEN RING selected, showing screenshots, overview, How Long To Beat times, details, and the play timeline over the game's art" /></a><br /><sub><b>Collection</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/collection.webp"><img src="assets/screenshots/collection.webp" width="100%" alt="Collection in Focus view with ELDEN RING selected, showing screenshots, overview, details, and the play timeline over the game's art" /></a><br /><sub><b>Collection</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/command-palette.webp"><img src="assets/screenshots/command-palette.webp" width="100%" alt="Command palette searching for 'contr', listing matching games and the play, settings, and open folder actions for Control" /></a><br /><sub><b>Command palette</b></sub></td>
   </tr>
 </table>
 
 ## Install, configure, and play
 
-- **Stores:** Steam (no login needed), Epic Games, GOG, and Amazon Games. Install, update, repair, move, import, and uninstall through one download queue, with cloud saves and DLC where the store supports them.
-- **Wine and Proton:** per-game Wine version, prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, DLSS/FSR/XeSS upgrades, Winetricks, protonfixes via umu, and Lossless Scaling frame generation (lsfg-vk).
+- **Stores:** Steam (no login needed), Epic Games, GOG, and Amazon Games, with EA app and Ubisoft Connect games started through their apps. One download queue to install, update, repair, move, import, and uninstall; it pauses while offline and retries failed downloads.
+- **Wine and Proton:** per-game Wine version, prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, GPU choice, DLSS/FSR/XeSS upgrades, Winetricks, protonfixes via umu, and Lossless Scaling frame generation (lsfg-vk).
+- **Launching:** see each step of a launch and cancel it, run scripts before and after the game or programs alongside it, and add your own actions next to Play.
 - **Wine Manager:** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage Wine prefixes.
 - **Emulators:** detect installed emulators or add your own with RetroArch cores, scan ROM folders, and continue from save states.
+- **In-game overlay (beta):** press the controller's Guide button (or a shortcut) for a panel over the game with volume, microphone, FPS limit, screenshots, and journal notes. Guide + Y marks a moment to write about later.
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="assets/screenshots/game-settings.webp"><img src="assets/screenshots/game-settings.webp" width="100%" alt="Game settings drawer for Control on the Wine tab, with the Proton version, prefix, DXVK-NVAPI, Esync, Fsync, and Winecfg and Winetricks buttons" /></a><br /><sub><b>Game settings</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/game-settings.webp"><img src="assets/screenshots/game-settings.webp" width="100%" alt="Game settings for Control on the Compatibility tab, with the Proton version, prefix, Winecfg and Winetricks buttons, and the umu game fixes" /></a><br /><sub><b>Game settings</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/wine-manager.webp"><img src="assets/screenshots/wine-manager.webp" width="100%" alt="Wine Manager listing Proton-CachyOS builds with release dates, sizes, and install buttons" /></a><br /><sub><b>Wine Manager</b></sub></td>
   </tr>
 </table>
 
 ## Look back at what you played
 
-- **Statistics:** play time by week, month, year, or all time, with charts, records, a yearly backlog goal, timelines of each game, and an album of your screenshots.
+- **Statistics:** play time by week, month, year, or all time, in five tabs: **Overview** (charts, top games, records), **Journeys** (each game as a lane in time), **Backlog** (a yearly goal of games to beat and a plan for the rest), **Discoveries** (the period told in sentences, with milestones), and **Album** (your screenshots as moments). Any game opens a sheet with its own numbers.
 - **Year in review:** your year told as full-screen stories, with a summary card to share.
-- **Sessions and screenshots:** every launch is recorded, and in-game screenshots are matched to the game and its timeline.
+- **Sessions:** every launch is recorded, in-game screenshots are matched to the game, and sessions can be edited by hand.
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="assets/screenshots/statistics.webp"><img src="assets/screenshots/statistics.webp" width="100%" alt="Statistics for October 2026 with total time played, a day-by-day chart per game, and the top eight games" /></a><br /><sub><b>Statistics</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/statistics.webp"><img src="assets/screenshots/statistics.webp" width="100%" alt="Statistics Overview for October 2026 with total time played, cards for the other tabs, and a day-by-day chart per game" /></a><br /><sub><b>Overview</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/year-in-review.webp"><img src="assets/screenshots/year-in-review.webp" width="100%" alt="Year in review intro story: Your 2026 in games, with days, games, and sessions next to a wall of covers" /></a><br /><sub><b>Year in review</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><a href="assets/screenshots/stats-backlog.webp"><img src="assets/screenshots/stats-backlog.webp" width="100%" alt="Backlog tab for 2026 with 9 games beaten, the yearly goal ring, and the beaten games along the year" /></a><br /><sub><b>Backlog</b></sub></td>
   </tr>
 </table>
 
 ## Console mode
 
-A controller-first layout for the couch or a TV that covers the whole app, with an on-screen keyboard. Turn it on from the palette, the ☰ menu, or with `--console`.
+A controller-first layout for the couch or a TV that covers the whole app, with an on-screen keyboard and a Power menu to suspend or shut down. Turn it on from the palette, the ☰ menu, or with `--console`.
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="assets/screenshots/console-home.webp"><img src="assets/screenshots/console-home.webp" width="100%" alt="Console home with ELDEN RING large over its art and a Continue playing shelf of covers" /></a><br /><sub><b>Home</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/console-home.webp"><img src="assets/screenshots/console-home.webp" width="100%" alt="Console home with SP Football Life 2026 large over its art and a Continue playing shelf of covers" /></a><br /><sub><b>Home</b></sub></td>
     <td width="50%" align="center"><a href="assets/screenshots/console-game.webp"><img src="assets/screenshots/console-game.webp" width="100%" alt="Console game page for ELDEN RING with Play, Status, Favourite, Game settings, Playtime, and Ludusavi backup rows next to its details" /></a><br /><sub><b>Game page</b></sub></td>
   </tr>
 </table>
 
 ## Make it yours
 
-- **Appearance:** tune the game art behind the Collection, pick glass or solid panels, and choose the cover aspect ratio.
-- **Backups:** back up saves with Ludusavi after each session, restore them into any prefix, and schedule backups of your Collection and settings.
+- **Appearance:** profiles, an accent colour (or the game's), high contrast, fonts, density, cover style, a background picture or slideshow behind the Collection, and which sections the details panel shows.
+- **Language:** English and Portuguese (Brazil), switched live.
+- **Saves and backups:** back up saves with Ludusavi after each session and restore them into any prefix. Scheduled, incremental backups of your Collection, play history, settings, and art.
 - **Storage:** see what your games take on each disk and clean up leftovers in one click.
 - **Startup:** start with the system, launch games via `heronite://launch` links or `--launch`.
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="assets/screenshots/appearance.webp"><img src="assets/screenshots/appearance.webp" width="100%" alt="Appearance settings with a live preview of the Collection background, its sliders, glass panel options, and cover aspect" /></a><br /><sub><b>Appearance</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/screenshots.webp"><img src="assets/screenshots/screenshots.webp" width="100%" alt="Screenshots settings with the capture folder and space used, lossless compression, the in-game capture shortcut, and the preview cache" /></a><br /><sub><b>Screenshots</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/appearance.webp"><img src="assets/screenshots/appearance.webp" width="100%" alt="Appearance settings with profiles, accent colours, font and density, and a live preview of the Collection background" /></a><br /><sub><b>Appearance</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/storage.webp"><img src="assets/screenshots/storage.webp" width="100%" alt="Storage settings with disk usage bars, space to free up, and a treemap of installed games by size" /></a><br /><sub><b>Storage</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><a href="assets/screenshots/backups.webp"><img src="assets/screenshots/backups.webp" width="100%" alt="Backups settings with the backup folder, schedule, what goes in a backup, and the last backup" /></a><br /><sub><b>Backups</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/screenshots.webp"><img src="assets/screenshots/screenshots.webp" width="100%" alt="Screenshots settings with the capture folder and space used, lossless compression, the in-game capture shortcut, and controller capture" /></a><br /><sub><b>Screenshots</b></sub></td>
   </tr>
 </table>
 
