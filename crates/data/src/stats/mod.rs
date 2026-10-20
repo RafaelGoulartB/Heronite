@@ -9,12 +9,16 @@
 //! covered (`startedAt` + `elapsedSeconds`), so one that runs past midnight
 //! adds to both days.
 
+mod game;
+
 use std::collections::HashMap;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Timelike};
 use heronite_i18n::tr;
 
 use crate::models::LocalGameSession;
+
+pub use game::{game_sheet, GameSheet};
 
 /// Shorter sessions are failed launches, not play.
 pub const MIN_SESSION_SECS: f64 = 120.;
