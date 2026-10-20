@@ -3,7 +3,8 @@
 //! it came from, Esc or a click outside closes it. It opens from the Album,
 //! the game sheet and the month cards.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use chrono::NaiveDateTime;
 use gpui_kit::prelude::*;
@@ -25,13 +26,13 @@ pub(super) struct Photo {
 
 /// What the viewer shows: a list of captures and the one open.
 pub(super) struct Lightbox {
-    pub photos: Vec<Photo>,
+    pub photos: Arc<Vec<Photo>>,
     pub index: usize,
 }
 
 impl StatsPage {
     /// Opens the viewer on `photos[index]`.
-    pub(super) fn open_photo(&mut self, photos: Vec<Photo>, index: usize, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_photo(&mut self, photos: Arc<Vec<Photo>>, index: usize, window: &mut Window, cx: &mut Context<Self>) {
         if photos.is_empty() {
             return;
         }
@@ -49,8 +50,17 @@ impl StatsPage {
         }
     }
 
+    /// Opens the viewer on every capture of `game`, at the one at `path`. The
+    /// list is made on the click: built while rendering it cost a copy of
+    /// every capture of the game on each frame.
+    pub(super) fn open_game_photo(&mut self, game: usize, path: &Path, window: &mut Window, cx: &mut Context<Self>) {
+        let photos = self.game_photos(game);
+        let at = photos.iter().position(|p| p.path == path).unwrap_or(0);
+        self.open_photo(Arc::new(photos), at, window, cx);
+    }
+
     /// The captures of `game` (all of them, oldest first), for the viewer.
-    pub(super) fn game_photos(&self, game: usize) -> Vec<Photo> {
+    fn game_photos(&self, game: usize) -> Vec<Photo> {
         self.shots
             .as_ref()
             .and_then(|all| all.get(&game))

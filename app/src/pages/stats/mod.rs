@@ -12,10 +12,14 @@
 mod album;
 mod album_panels;
 mod backlog;
+mod compute;
 mod console;
 mod desktop;
 mod discoveries;
+mod facts;
 mod journeys;
+mod load;
+mod marks;
 mod months;
 mod palette;
 mod review;
@@ -27,24 +31,25 @@ mod tip;
 mod viewer;
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveDateTime};
+use chrono::{Datelike, Local, NaiveDate, NaiveDateTime};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::stats::{
-    self, fmt_hours_short, fmt_secs, month_short, GameInput, GameSheet, History, Journeys, Period, Span, Stats, StatsPrefs, TOP_N,
+    self, fmt_hours_short, fmt_secs, month_short, GameSheet, History, Journeys, Period, Span, Stats, StatsPrefs, TOP_N,
 };
 use heronite_data::Library;
 use heronite_i18n::{n_, tr};
 use heronite_images::ImageRef;
-use heronite_media::{list_screenshots, GameQuery, ThumbnailCache};
+use heronite_media::ThumbnailCache;
 
 use super::{PageCtx, PageEvent};
 use crate::console::motion::{Axis, Glide};
 use crate::services::widgets::Covers;
 use crate::theme;
+use compute::{derive, Derived};
 use tabs::Tab;
 
 const WEEKDAYS_PLURAL: [&str; 7] =
@@ -128,26 +133,16 @@ pub(super) enum Hover {
     Part(usize),
 }
 
-/// Numbers of the period that need the library (not only the sessions).
-#[derive(Default)]
-pub(super) struct Derived {
-    /// Time per genre (a game's time split over its first three genres).
-    pub genres: Vec<(String, f64)>,
-    /// Time per store ("Steam", "Epic", "Emulator", "Local"...).
-    pub sources: Vec<(&'static str, f64)>,
-    /// Games played in the period that are Beaten or Completed, most played first.
-    pub beaten: Vec<usize>,
-    /// Screenshots taken in the period, per game (most first).
-    pub shots: Vec<(usize, Vec<Shot>)>,
-    pub shots_total: usize,
-}
-
 pub struct StatsPage {
     app: heronite_data::AppPaths,
     /// The page's choices kept in `ui-state.json` ([`StatsPrefs`]).
     prefs: StatsPrefs,
     covers: Covers,
     lib: Option<Arc<Library>>,
+    /// A new library whose history is still being built: the page keeps the
+    /// old library and history until both are ready, so game indexes always
+    /// match.
+    loading: Option<Arc<Library>>,
     chains: HashMap<SharedString, Vec<ImageRef>>,
     /// Wide art (stage chains) for the hero, the month cards and the review.
     stages: HashMap<SharedString, Vec<ImageRef>>,
@@ -169,6 +164,16 @@ pub struct StatsPage {
     jv: journeys::JourneyView,
     /// Status changes, How Long To Beat times and added dates (Backlog tab).
     backlog: Arc<backlog::BacklogData>,
+    /// Each game's status and the day it was beaten or abandoned.
+    facts: Arc<facts::GameFacts>,
+    /// The month cards' beaten games and screenshots ([`compute::MonthExtra`]).
+    months: Arc<Vec<compute::MonthExtra>>,
+    /// The Discoveries' look back.
+    memories: Arc<compute::Memories>,
+    /// The last period job started ([`compute::Job`]); older results are dropped.
+    job: u64,
+    /// Day of the last job: the same library on a new day computes again.
+    computed_on: Option<NaiveDate>,
     /// Discoveries of the period and milestones (computed while the tab is shown).
     insights: Option<Arc<Vec<stats::Insight>>>,
     milestones: Option<Arc<Vec<stats::Milestone>>>,
@@ -233,40 +238,6 @@ fn today() -> NaiveDate {
     Local::now().date_naive()
 }
 
-fn build_history(lib: &Library) -> History {
-    stats::history(lib.games.iter().map(|g| GameInput {
-        sessions: g.sessions.as_deref().map_or(&[], Vec::as_slice),
-        lifetime_minutes: g.playtime_minutes,
-        first_played: g.first_played.as_deref(),
-    }))
-}
-
-/// Screenshots of each game that has sessions. `games` comes most played
-/// first: when two games match the same capture folder (a demo and the full
-/// game), the folder goes to the first.
-fn list_shots(folder: &Path, games: Vec<(usize, GameQuery)>) -> HashMap<usize, Vec<Shot>> {
-    let mut out = HashMap::new();
-    let mut taken = std::collections::HashSet::new();
-    for (game, query) in games {
-        let found = list_screenshots(folder, &query);
-        if found.matched_folder.as_ref().is_some_and(|f| !taken.insert(f.clone())) {
-            continue;
-        }
-        let items: Vec<Shot> = found
-            .items
-            .into_iter()
-            .filter_map(|s| {
-                let at = DateTime::from_timestamp_millis(s.taken_at? as i64)?.with_timezone(&Local).naive_local();
-                Some(Shot { path: s.path, at })
-            })
-            .collect();
-        if !items.is_empty() {
-            out.insert(game, items);
-        }
-    }
-    out
-}
-
 impl StatsPage {
     pub fn new(_ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let ctx = _ctx;
@@ -306,6 +277,7 @@ impl StatsPage {
             prefs,
             covers,
             lib: None,
+            loading: None,
             chains: HashMap::new(),
             stages: HashMap::new(),
             history: None,
@@ -320,6 +292,11 @@ impl StatsPage {
             journeys: None,
             jv: Default::default(),
             backlog: Arc::default(),
+            facts: Arc::default(),
+            months: Arc::default(),
+            memories: Arc::default(),
+            job: 0,
+            computed_on: None,
             insights: None,
             milestones: None,
             show_hidden: false,
@@ -345,123 +322,11 @@ impl StatsPage {
         }
     }
 
-    /// The Collection's library and its art chains (covers and wide art);
-    /// the history and the screenshot listings are rebuilt off the UI thread
-    /// when the library changed.
-    pub fn set_library(
-        &mut self,
-        lib: Arc<Library>,
-        chains: &HashMap<SharedString, Vec<ImageRef>>,
-        stages: &HashMap<SharedString, Vec<ImageRef>>,
-        cx: &mut Context<Self>,
-    ) {
-        if self.lib.as_ref().is_some_and(|l| Arc::ptr_eq(l, &lib)) {
-            // Same data, maybe a new day: keep "today" right.
-            self.recompute();
-            return;
-        }
-        self.lib = Some(lib.clone());
-        self.chains = chains.clone();
-        self.stages = stages.clone();
-        self.thumb_cache = Some(ThumbnailCache::new(lib.paths.screenshot_thumbnails_dir(), lib.settings.screenshots.cache_limit_mb.get()));
-        let folder = lib.settings.screenshots_folder().map(Path::to_path_buf);
-        let mut played: Vec<(usize, u64)> = lib
-            .games
-            .iter()
-            .enumerate()
-            .filter(|(_, g)| g.sessions.as_ref().is_some_and(|s| !s.is_empty()))
-            .map(|(i, g)| (i, g.playtime_minutes))
-            .collect();
-        played.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-        let queries: Vec<(usize, GameQuery)> = played.into_iter().map(|(i, _)| (i, GameQuery::from_game(&lib.games[i]))).collect();
-        cx.spawn(async move |this, cx| {
-            let built = lib.clone();
-            let history = cx.background_spawn(async move { build_history(&built) }).await;
-            let fresh = this
-                .update(cx, |this, cx| {
-                    let fresh = this.lib.as_ref().is_some_and(|l| Arc::ptr_eq(l, &lib));
-                    if fresh {
-                        this.history = Some(Arc::new(history));
-                        this.recompute();
-                        if let Some(year) = this.review_wanted.take() {
-                            this.open_review(year, cx);
-                        }
-                        cx.notify();
-                    }
-                    fresh
-                })
-                .unwrap_or(false);
-            if fresh {
-                let built = lib.clone();
-                let data = cx.background_spawn(async move { backlog::BacklogData::read(&built) }).await;
-                this.update(cx, |this, cx| {
-                    if this.lib.as_ref().is_some_and(|l| Arc::ptr_eq(l, &lib)) {
-                        this.backlog = Arc::new(data);
-                        cx.notify();
-                    }
-                })
-                .ok();
-            }
-            let Some(folder) = folder.filter(|_| fresh) else { return };
-            let shots = cx.background_spawn(async move { list_shots(&folder, queries) }).await;
-            this.update(cx, |this, cx| {
-                if this.lib.as_ref().is_some_and(|l| Arc::ptr_eq(l, &lib)) {
-                    this.shots = Some(Arc::new(shots));
-                    this.recompute();
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    fn recompute(&mut self) {
-        self.stats = self.history.as_ref().map(|h| Arc::new(stats::compute(h, self.period, today())));
-        (self.insights, self.milestones) = match (&self.history, &self.stats) {
-            (Some(h), Some(st)) if matches!(self.tab, Tab::Discoveries | Tab::Overview) => {
-                let (i, m) = discoveries::compute_for(h, st);
-                (Some(i), Some(m))
-            }
-            _ => (None, None),
-        };
-        self.journeys = self
-            .history
-            .as_ref()
-            .filter(|_| matches!(self.tab, Tab::Journeys | Tab::Overview))
-            .map(|h| Arc::new(stats::journeys(h, self.period, today())));
-        self.year_summary = self.history.as_ref().and_then(|h| {
-            let year = self.review_year();
-            let jan1 = NaiveDate::from_ymd_opt(year, 1, 1)?;
-            let st = match self.stats.as_deref() {
-                Some(st) if st.period.span == Span::Year && st.period.start == jan1 => None,
-                _ => Some(stats::compute(h, Period::of(Span::Year, jan1), today())),
-            };
-            let st = st.as_ref().or(self.stats.as_deref())?;
-            Some((year, st.total_secs, st.games.iter().take(3).map(|g| g.game).collect()))
-        });
-        self.derived = Arc::new(match (&self.stats, &self.lib) {
-            (Some(st), Some(lib)) => derive(st, lib, self.shots.as_deref()),
-            _ => Derived::default(),
-        });
-        self.recompute_album();
-        // An open sheet follows the period.
-        if let (Some(sh), Some(h)) = (&self.sheet, &self.history) {
-            self.sheet = Some(Arc::new(stats::game_sheet(h, sh.game, self.period, today())));
-        }
-        if let Some(r) = self.review.as_mut() {
-            if let Some(h) = &self.history {
-                r.refresh(h, self.lib.as_deref(), self.shots.as_deref());
-            }
-        }
-        self.hover = None;
-    }
-
     fn go(&mut self, period: Period, cx: &mut Context<Self>) {
         self.period = period;
         self.show_all = false;
         self.moment_open = None;
-        self.recompute();
+        self.recompute(cx);
         self.scroll.set_offset(point(px(0.), px(0.)));
         self.strip.reset();
         cx.notify();
@@ -514,44 +379,6 @@ impl StatsPage {
         let key = self.game_key(game)?;
         let chain = self.stages.get(&key).filter(|c| !c.is_empty()).or_else(|| self.chains.get(&key))?;
         self.covers.get_blurred(&key, chain, w, h, 34., 1.6)
-    }
-
-    /// Preview texture of the screenshot at `path` (`w`x`h` logical px); the
-    /// preview is made in the background the first time.
-    fn shot(&mut self, path: &Path, w: f32, h: f32, window: &Window, cx: &mut Context<Self>) -> Option<ImageSource> {
-        match self.thumbs.get(path) {
-            Some(Some(thumb)) => {
-                let thumb = thumb.clone();
-                self.covers.get_file(&thumb, w, h, window.scale_factor())
-            }
-            Some(None) => None,
-            None => {
-                let cache = self.thumb_cache.clone()?;
-                self.thumbs.insert(path.to_path_buf(), None);
-                self.thumb_queue.push_back(path.to_path_buf());
-                if !std::mem::replace(&mut self.thumb_loading, true) {
-                    cx.spawn(async move |this, cx| {
-                        while let Ok(Some(source)) = this.update(cx, |this, _| {
-                            let next = this.thumb_queue.pop_front();
-                            this.thumb_loading = next.is_some();
-                            next
-                        }) {
-                            let (c, src) = (cache.clone(), source.clone());
-                            let thumb = cx.background_spawn(async move { c.thumbnail_path(&src).ok() }).await;
-                            this.update(cx, |this, cx| {
-                                if let Some(t) = thumb {
-                                    this.thumbs.insert(source, Some(t));
-                                    cx.notify();
-                                }
-                            })
-                            .ok();
-                        }
-                    })
-                    .detach();
-                }
-                None
-            }
-        }
     }
 
     /// Shows the Year in review of `year` (once the history is read).
@@ -625,42 +452,6 @@ impl StatsPage {
         }
         window.request_animation_frame();
     }
-}
-
-/// Genres, stores, beaten games and screenshots of the period.
-fn derive(st: &Stats, lib: &Library, shots: Option<&HashMap<usize, Vec<Shot>>>) -> Derived {
-    let mut genres: HashMap<String, f64> = HashMap::new();
-    let mut sources: HashMap<&'static str, f64> = HashMap::new();
-    let mut beaten = Vec::new();
-    for g in &st.games {
-        let Some(game) = lib.games.get(g.game) else { continue };
-        let names: Vec<&String> = game.details.genres.iter().take(3).collect();
-        for name in &names {
-            *genres.entry((*name).clone()).or_default() += g.secs / names.len() as f64;
-        }
-        *sources.entry(game.source_label).or_default() += g.secs;
-        let slug = lib.statuses.iter().find(|s| s.id == game.status_id).map_or(game.status_id.as_str(), |s| s.slug.as_str());
-        if matches!(slug, "beaten" | "completed") {
-            beaten.push(g.game);
-        }
-    }
-    let by_secs = |a: &f64, b: &f64| b.total_cmp(a);
-    let mut genres: Vec<(String, f64)> = genres.into_iter().collect();
-    genres.sort_by(|a, b| by_secs(&a.1, &b.1).then(a.0.cmp(&b.0)));
-    genres.truncate(6);
-    let mut sources: Vec<(&'static str, f64)> = sources.into_iter().filter(|s| s.1 > 0.).collect();
-    sources.sort_by(|a, b| by_secs(&a.1, &b.1).then(a.0.cmp(b.0)));
-    let mut in_period: Vec<(usize, Vec<Shot>)> = shots
-        .map(|all| {
-            all.iter()
-                .map(|(g, list)| (*g, list.iter().filter(|s| st.period.contains(s.at.date())).cloned().collect::<Vec<_>>()))
-                .filter(|(_, l)| !l.is_empty())
-                .collect()
-        })
-        .unwrap_or_default();
-    in_period.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(&b.0)));
-    let shots_total = in_period.iter().map(|(_, l)| l.len()).sum();
-    Derived { genres, sources, beaten, shots: in_period, shots_total }
 }
 
 // ---------------------------------------------------------------- texts

@@ -10,13 +10,12 @@ use chrono::{Datelike, Duration, NaiveDate};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::hltb::HltbEntry;
-use heronite_data::stats::{
-    fmt_hours_short, fmt_secs, goal, median, month_ends, month_short, running_count, weekly_hours, Period, Span, Stats,
-};
-use heronite_data::status_history::{day_of, Change};
+use heronite_data::stats::{fmt_hours_short, fmt_secs, goal, median, month_ends, month_short, Period, Span, Stats};
+use heronite_data::status_history::Change;
 use heronite_i18n::{tr, trc, trn};
 
 use super::desktop::{eyebrow, hint, panel, panel_head, GAP};
+use super::facts::BEATEN;
 use super::sections::sentence;
 use super::{full_date, short_date, today, StatsPage};
 use crate::pages::PageEvent;
@@ -26,6 +25,8 @@ use crate::theme;
 const STALE_DAYS: i64 = 30;
 const COVER_W: f32 = 46.;
 const COVER_H: f32 = 62.;
+/// Covers of beaten (and of abandoned) games on the line, the latest.
+const YEAR_COVERS_MAX: usize = 60;
 
 /// Library facts the tab needs besides the sessions, read once per library
 /// off the UI thread.
@@ -70,43 +71,10 @@ pub(super) enum QueueSort {
 }
 
 impl StatsPage {
-    /// Ids of the statuses whose slug is one of `slugs`.
-    fn status_ids(&self, slugs: &[&str]) -> Vec<String> {
-        self.lib
-            .as_ref()
-            .map(|l| l.statuses.iter().filter(|s| slugs.contains(&s.slug.as_str())).map(|s| s.id.clone()).collect())
-            .unwrap_or_default()
-    }
-
-    /// The day `game` entered one of the `slugs` statuses: the recorded change,
-    /// else its last session (for changes made before they were recorded).
-    pub(super) fn status_day(&self, game: usize, slugs: &[&str]) -> Option<NaiveDate> {
-        if !slugs.contains(&self.game_slug(game).as_str()) {
-            return None;
-        }
-        let current = &self.lib.as_ref()?.games.get(game)?.status_id;
-        let ids = self.status_ids(slugs);
-        let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
-        self.backlog.changes.get(&game).and_then(|c| day_of(c, current, &ids)).or_else(|| self.history.as_ref()?.last_day(game))
-    }
-
-    fn games_with(&self, slugs: &[&str]) -> Vec<usize> {
-        let n = self.lib.as_ref().map_or(0, |l| l.games.len());
-        (0..n).filter(|g| slugs.contains(&self.game_slug(*g).as_str())).collect()
-    }
-
-    /// Games beaten (or abandoned) inside `p`, oldest first, with the day.
-    fn finished_in(&self, p: &Period, slugs: &[&str]) -> Vec<(usize, NaiveDate)> {
-        let mut v: Vec<(usize, NaiveDate)> =
-            self.games_with(slugs).into_iter().filter_map(|g| Some((g, self.status_day(g, slugs).filter(|d| p.contains(*d))?))).collect();
-        v.sort_by_key(|x| x.1);
-        v
-    }
-
     /// Games beaten in `year`, oldest first.
     pub(super) fn beaten_in_year(&self, year: i32) -> Vec<(usize, NaiveDate)> {
         let jan1 = NaiveDate::from_ymd_opt(year, 1, 1).unwrap_or_else(today);
-        self.finished_in(&Period::of(Span::Year, jan1), &["beaten", "completed"])
+        self.facts.beaten_in(&Period::of(Span::Year, jan1))
     }
 
     fn year_goal(&self, year: i32) -> u32 {
@@ -122,8 +90,8 @@ impl StatsPage {
     /// Hero of the tab: games beaten in the period, and the goal of the year.
     pub(super) fn render_backlog_total(&self, st: &Stats, cx: &mut Context<Self>) -> Div {
         let p = st.period;
-        let beaten = self.finished_in(&p, &["beaten", "completed"]);
-        let abandoned = self.finished_in(&p, &["abandoned"]);
+        let beaten = self.facts.beaten_in(&p);
+        let abandoned = self.facts.abandoned_in(&p);
         let all = p.span == Span::All;
         let period = if all { tr!("all time").to_string() } else { p.label() };
         let total = self.lib.as_ref().map_or(0, |l| l.games.len());
@@ -302,8 +270,8 @@ impl StatsPage {
     /// The numbers behind the year's beaten and abandoned games, as a strip
     /// at the top of [`Self::backlog_year`].
     fn backlog_summary(&self, p: &Period) -> Div {
-        let beaten = self.finished_in(p, &["beaten", "completed"]);
-        let abandoned = self.finished_in(p, &["abandoned"]);
+        let beaten = self.facts.beaten_in(p);
+        let abandoned = self.facts.abandoned_in(p);
         let life = |g: usize| self.history.as_ref().map_or(0., |h| h.total_secs(g));
         let beaten_secs: f64 = beaten.iter().map(|(g, _)| life(*g)).sum();
         let abandoned_secs: f64 = abandoned.iter().map(|(g, _)| life(*g)).sum();
@@ -347,8 +315,14 @@ impl StatsPage {
     /// Beaten games above a line of months, abandoned ones under it, and
     /// empty slots for what the goal still asks.
     fn backlog_year(&mut self, p: &Period, summary: Div, col_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let beaten = self.finished_in(p, &["beaten", "completed"]);
-        let abandoned = self.finished_in(p, &["abandoned"]);
+        // All time keeps the latest covers: hundreds would stack row on row.
+        let latest = |mut v: Vec<(usize, NaiveDate)>| {
+            v.drain(..v.len().saturating_sub(YEAR_COVERS_MAX));
+            v
+        };
+        let (all_beaten, all_abandoned) = (self.facts.beaten_in(p), self.facts.abandoned_in(p));
+        let cut = all_beaten.len() > YEAR_COVERS_MAX || all_abandoned.len() > YEAR_COVERS_MAX;
+        let (beaten, abandoned) = (latest(all_beaten), latest(all_abandoned));
         let start = if p.span == Span::All { self.history.as_ref().and_then(|h| h.since).unwrap_or(p.start) } else { p.start };
         let end = if p.span == Span::All { today() + Duration::days(1) } else { p.end };
         let w = col_w - 48.;
@@ -485,11 +459,14 @@ impl StatsPage {
                     .child(tr!("Abandoned")),
             );
         let has_dates = !self.backlog.changes.is_empty();
-        let note = if has_dates {
-            tr!("Beaten above, abandoned below")
+        let mut note = if has_dates {
+            tr!("Beaten above, abandoned below").to_string()
         } else {
-            tr!("Beaten above, abandoned below \u{b7} the day is the last session until a status changes")
+            tr!("Beaten above, abandoned below \u{b7} the day is the last session until a status changes").to_string()
         };
+        if cut {
+            note = format!("{note} \u{b7} {}", tr!("the latest {n}", n = YEAR_COVERS_MAX));
+        }
         let title = if p.span == Span::All { tr!("Every beaten game") } else { tr!("The year") };
         panel()
             .child(panel_head(title, legend))
@@ -529,7 +506,7 @@ impl StatsPage {
 
     /// Hours each beaten game took next to its How Long To Beat range.
     fn backlog_hltb(&mut self, p: &Period, window: &Window, cx: &mut Context<Self>) -> Option<Div> {
-        let beaten = self.finished_in(p, &["beaten", "completed"]);
+        let beaten = self.facts.beaten_in(p);
         let rows: Vec<(usize, HltbEntry, f64)> = beaten
             .iter()
             .rev()
@@ -631,13 +608,7 @@ impl StatsPage {
         let mut counts: Vec<(String, String, usize)> = lib
             .statuses
             .iter()
-            .map(|s| {
-                (
-                    heronite_data::status::status_label(&s.name).to_string(),
-                    s.slug.clone(),
-                    lib.games.iter().filter(|g| g.status_id == s.id).count(),
-                )
-            })
+            .map(|s| (heronite_data::status::status_label(&s.name).to_string(), s.slug.clone(), self.facts.in_status(&s.id)))
             .filter(|c| c.2 > 0)
             .collect();
         counts.sort_by_key(|c| c.1 == "not-played");
@@ -656,9 +627,8 @@ impl StatsPage {
                         .child(div().font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(n.to_string()))
                 }),
             );
-        let opened = lib.games.iter().filter(|g| g.playtime_minutes > 0 || g.sessions.as_ref().is_some_and(|s| !s.is_empty())).count();
-        let five = lib.games.iter().filter(|g| g.playtime_minutes >= 300).count();
-        let beaten = self.games_with(&["beaten", "completed"]).len();
+        let (opened, five) = (self.facts.opened, self.facts.played_5h);
+        let beaten = self.facts.count(&BEATEN);
         let steps = [
             (tr!("In the Collection").to_string(), total, None),
             (tr!("Opened").to_string(), opened, Some(tr!("{pct}% of the Collection", pct = opened * 100 / total))),
@@ -700,9 +670,8 @@ impl StatsPage {
 
     /// Plan to play, with when each would be beaten at your pace.
     fn backlog_queue(&mut self, window: &Window, cx: &mut Context<Self>) -> Div {
-        let endless = self.games_with(&["endless"]);
-        let pace = self.history.as_ref().map_or(0., |h| weekly_hours(h, today(), 26, |g| endless.contains(&g)));
-        let mut queue = self.games_with(&["plan-to-play"]);
+        let pace = self.facts.pace;
+        let mut queue = self.facts.with(&["plan-to-play"]);
         let main = |this: &Self, g: usize| this.backlog.hltb.get(&g).map(|h| h.main_story).filter(|h| *h > 0.);
         let played = |this: &Self, g: usize| this.lib.as_ref().and_then(|l| l.games.get(g)).map_or(0, |x| x.playtime_minutes);
         match self.queue_sort {
@@ -826,7 +795,8 @@ impl StatsPage {
     fn backlog_shelf(&mut self, window: &Window, cx: &mut Context<Self>) -> Div {
         let t = today();
         let mut stale: Vec<(usize, Option<NaiveDate>)> = self
-            .games_with(&["playing", "on-hold"])
+            .facts
+            .with(&["playing", "on-hold"])
             .into_iter()
             .map(|g| (g, self.history.as_ref().and_then(|h| h.last_day(g))))
             .filter(|(_, d)| d.is_none_or(|d| (t - d).num_days() >= STALE_DAYS))
@@ -900,25 +870,14 @@ impl StatsPage {
     /// Games added, started and beaten over time (the backlog grows when the
     /// first line runs away from the others).
     fn backlog_pile(&self) -> AnyElement {
-        let Some(h) = self.history.clone() else { return div().into_any_element() };
-        let n = self.lib.as_ref().map_or(0, |l| l.games.len());
-        // A game was in the library by the day it was first played.
-        let added: Vec<NaiveDate> = (0..n)
-            .filter_map(|g| match (self.backlog.added.get(&g).copied(), h.first_day(g)) {
-                (Some(a), Some(f)) => Some(a.min(f)),
-                (a, f) => a.or(f),
-            })
-            .collect();
-        let started: Vec<NaiveDate> = (0..n).filter_map(|g| h.first_day(g)).collect();
-        let beaten: Vec<NaiveDate> =
-            self.games_with(&["beaten", "completed"]).into_iter().filter_map(|g| self.status_day(g, &["beaten", "completed"])).collect();
-        // From the first recorded session: older days only hold imported totals.
-        let Some(from) = h.since else { return div().into_any_element() };
-        let points = month_ends(from, today());
-        let series: [(String, Hsla, Vec<usize>); 3] = [
-            (trc!("stats", "Added").into(), theme::chart_series(0).into(), running_count(&added, &points)),
-            (tr!("Started").into(), theme::chart_series(1).into(), running_count(&started, &points)),
-            (tr!("Beaten").into(), theme::chart_series(2).into(), running_count(&beaten, &points)),
+        // Counted once per library ([`super::facts::Pile`]).
+        let facts = self.facts.clone();
+        let Some(pile) = facts.pile.as_ref() else { return div().into_any_element() };
+        let from = pile.from;
+        let series: [(String, Hsla, &Vec<usize>); 3] = [
+            (trc!("stats", "Added").into(), theme::chart_series(0).into(), &pile.added),
+            (tr!("Started").into(), theme::chart_series(1).into(), &pile.started),
+            (tr!("Beaten").into(), theme::chart_series(2).into(), &pile.beaten),
         ];
         let max = series.iter().flat_map(|s| s.2.iter().copied()).max().unwrap_or(1).max(1);
         let lines: Vec<(Hsla, Vec<f32>)> =

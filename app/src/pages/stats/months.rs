@@ -11,6 +11,7 @@ use heronite_data::stats::{fmt_secs, month_name, month_short, Bucket, Span, Stat
 use heronite_i18n::{tr, trn};
 
 use super::desktop::{eyebrow, hint, panel, panel_head};
+use super::marks::{marks, Mark};
 use super::review::marked;
 use super::river::{self, River, ORDER};
 use super::tip::hover;
@@ -67,9 +68,25 @@ fn art_pill() -> Div {
 
 impl StatsPage {
     pub(super) fn render_months(&mut self, st: &Stats, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let mut cards: Vec<AnyElement> = vec![self.river_card(st, window, cx)];
-        for (i, b) in st.buckets.iter().enumerate() {
-            cards.push(self.month_card(st, i, b, window, cx));
+        // Only the cards in view (and one screen around) are built; the others
+        // are empty boxes of their width, so the strip scrolls and the ruler
+        // jumps the same. A year is 13 cards of a few hundred elements each,
+        // all time up to 49, and the page renders again on every scroll.
+        let h = self.strip.handle();
+        let x = -f32::from(h.offset().x);
+        let view = f32::from(h.bounds().size.width).max(f32::from(window.viewport_size().width));
+        let (lo, hi) = (x - view, x + 2. * view);
+        let widths = std::iter::once(RIVER_W).chain(st.buckets.iter().map(|b| if b.future { FUTURE_W } else { MONTH_W }));
+        let mut left = 24.;
+        let mut cards: Vec<AnyElement> = Vec::new();
+        for (k, w) in widths.enumerate() {
+            let shown = left + w >= lo && left <= hi;
+            left += w + 16.;
+            cards.push(match (shown, k) {
+                (false, _) => div().flex_none().w(px(w)).h(px(MH)).into_any_element(),
+                (true, 0) => self.river_card(st, window, cx),
+                (true, k) => self.month_card(st, k - 1, &st.buckets[k - 1], window, cx),
+            });
         }
         let active = self.active_card(cards.len());
         let track = div()
@@ -718,7 +735,7 @@ impl StatsPage {
                 .into_any_element();
         }
 
-        let games = st.bucket_games.get(i).cloned().unwrap_or_default();
+        let games = st.bucket_games.get(i).map_or(&[][..], Vec::as_slice);
         let top = games.first().map(|g| g.0);
         let art = top.and_then(|g| self.art(g, MONTH_W, 300., window));
         let (big, title, detail) = self.highlight(st, i, b, best);
@@ -813,32 +830,10 @@ impl StatsPage {
                     .child(div().child(fmt_secs(rest))),
             );
         }
-        // Screenshots taken that month of its top games (any game if none).
-        let mut shots: Vec<(usize, std::path::PathBuf)> = Vec::new();
-        if let Some(all) = self.shots.clone() {
-            let in_month =
-                |g: usize| all.get(&g).and_then(|l| l.iter().filter(|s| b.start <= s.at.date() && s.at.date() < b.end).nth(0).cloned());
-            for (g, _) in games.iter().take(3) {
-                if let Some(s) = in_month(*g) {
-                    shots.push((*g, s.path));
-                }
-                if shots.len() == 2 {
-                    break;
-                }
-            }
-            if shots.is_empty() {
-                for (g, _) in games.iter().skip(3) {
-                    if let Some(s) = in_month(*g) {
-                        shots.push((*g, s.path));
-                        break;
-                    }
-                }
-            }
-        }
-        // Games beaten that month (their day: the status change, else the last session).
-        let beaten: Vec<usize> = (0..self.lib.as_ref().map_or(0, |l| l.games.len()))
-            .filter(|g| self.finished_on(*g).is_some_and(|d| b.start <= d && d < b.end))
-            .collect();
+        // Screenshots of the month's top games and the games beaten that month
+        // ([`super::compute::MonthExtra`]).
+        let extra = self.months.clone();
+        let (shots, beaten) = extra.get(i).map_or((&[][..], &[][..]), |m| (m.shots.as_slice(), m.beaten.as_slice()));
         let beaten_row = (!beaten.is_empty()).then(|| {
             let names: Vec<String> = beaten.iter().take(2).map(|g| self.game_title(*g)).collect();
             let more = beaten.len().saturating_sub(2);
@@ -887,12 +882,11 @@ impl StatsPage {
             .enumerate()
             .map(|(k, (g, path))| {
                 let src = self.shot(path, shot_w, shot_h, window, cx);
-                let photos = self.game_photos(*g);
-                let at = photos.iter().position(|p| &p.path == path).unwrap_or(0);
+                let (game, at) = (*g, path.clone());
                 div()
                     .id(SharedString::from(format!("month-{i}-shot-{k}")))
                     .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, window, cx| this.open_photo(photos.clone(), at, window, cx)))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_game_photo(game, &at, window, cx)))
                     .relative()
                     .flex_1()
                     .h(px(shot_h))
@@ -1013,44 +1007,45 @@ impl StatsPage {
         shell(MONTH_W).child(art_box).child(body).into_any_element()
     }
 
-    /// One bar per day of bucket `b` (day scale shared by the whole period).
-    fn daily_bars(&self, st: &Stats, b: &Bucket, best: Option<NaiveDate>, cx: &mut Context<Self>) -> Div {
+    /// One bar per day of bucket `b` (day scale shared by the whole period),
+    /// painted as one element ([`super::marks`]).
+    fn daily_bars(&self, st: &Stats, b: &Bucket, best: Option<NaiveDate>, cx: &mut Context<Self>) -> Stateful<Div> {
         let max = st.busiest.map_or(1., |x| x.1.max(1.));
-        let mut row = div().flex().items_end().gap(px(2.)).h(px(44.)).border_b_1().border_color(theme::white_a(0.1));
-        let days = (b.end - b.start).num_days();
         // Year buckets: one bar per week.
-        let step = if days > 31 { 7 } else { 1 };
+        let step = if (b.end - b.start).num_days() > 31 { 7 } else { 1 };
+        let scale = if step == 1 { max } else { max * 7. };
+        let mut bars: Vec<(NaiveDate, f64)> = Vec::new();
         let mut d = b.start;
         while d < b.end {
             let end = (d + Duration::days(step)).min(b.end);
-            let secs: f64 = if step == 1 { st.day_secs(d) } else { st.days.iter().filter(|(x, _)| d <= *x && *x < end).map(|x| x.1).sum() };
-            let scale = if step == 1 { max } else { max * 7. };
-            let on = self.hover == Some(Hover::Day(d));
-            let color: Hsla = if on {
-                gpui_kit::white()
-            } else if Some(d) == best {
-                theme::chart_ramp(1.).into()
-            } else {
-                theme::chart_series(0).into()
-            };
-            row = row.child(
-                div()
-                    .id(SharedString::from(format!("day-{d}")))
-                    .flex_1()
-                    .h_full()
-                    .flex()
-                    .items_end()
-                    .when(secs > 0. && step == 1, |el| el.on_hover(hover(Hover::Day(d), cx)))
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(if secs > 0. { ((secs / scale) as f32 * 44.).max(3.) } else { 0. }))
-                            .rounded_t(px(3.))
-                            .bg(color),
-                    ),
-            );
+            let from = st.days.partition_point(|x| x.0 < d);
+            let to = st.days.partition_point(|x| x.0 < end);
+            bars.push((d, st.days[from..to].iter().map(|x| x.1).sum()));
             d = end;
         }
-        row
+        let hover = self.hover;
+        let layout = move |w: f32, h: f32| {
+            let n = bars.len().max(1) as f32;
+            let bw = ((w - 2. * (n - 1.)) / n).max(1.);
+            let mut out = Vec::new();
+            for (i, (d, secs)) in bars.iter().enumerate().filter(|(_, b)| b.1 > 0.) {
+                let x = i as f32 * (bw + 2.);
+                let color: Hsla = if hover == Some(Hover::Day(*d)) {
+                    gpui_kit::white()
+                } else if Some(*d) == best {
+                    theme::chart_ramp(1.).into()
+                } else {
+                    theme::chart_series(0).into()
+                };
+                let bh = ((*secs / scale) as f32 * h).clamp(3., h);
+                // The whole column answers the cursor, not only the bar.
+                if step == 1 {
+                    out.push(Mark::new(x, 0., bw, h, transparent_black()).hover(Some(Hover::Day(*d))));
+                }
+                out.push(Mark::new(x, h - bh, bw, bh, color).radius(2.));
+            }
+            out
+        };
+        marks(SharedString::from(format!("days-{}", b.start)), layout, cx).h(px(44.)).border_b_1().border_color(theme::white_a(0.1))
     }
 }

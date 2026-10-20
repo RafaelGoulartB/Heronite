@@ -309,25 +309,27 @@ impl StatsPage {
 
     /// Screenshots of the game: those of the period, else its latest.
     fn sheet_shots(&mut self, game: usize, period: heronite_data::stats::Period, window: &Window, cx: &mut Context<Self>) -> Option<Div> {
-        let all = self.shots.as_ref()?.get(&game)?.clone();
-        let inside: Vec<_> = all.iter().filter(|s| period.contains(s.at.date())).cloned().collect();
+        let shots = self.shots.clone()?;
+        let all = shots.get(&game)?;
+        // The list is oldest first: the period is one slice of it.
+        let from = all.partition_point(|s| s.at.date() < period.start);
+        let inside = &all[from..from + all[from..].partition_point(|s| s.at.date() < period.end)];
         let (list, label) = if inside.is_empty() {
-            (all.iter().rev().take(6).cloned().collect::<Vec<_>>(), tr!("Latest screenshots").to_string())
+            (&all[all.len().saturating_sub(6)..], tr!("Latest screenshots").to_string())
         } else {
             let n = inside.len();
-            (inside.into_iter().rev().take(6).collect(), trn!(n, "{n} screenshot in this period", "{n} screenshots in this period"))
+            (&inside[n.saturating_sub(6)..], trn!(n, "{n} screenshot in this period", "{n} screenshots in this period"))
         };
         let w = (SHEET_W - 48. - 16.) / 3.;
         let h = w * 9. / 16.;
         // A click opens the viewer on every capture of the game.
-        let photos = self.game_photos(game);
         let thumbs: Vec<Stateful<Div>> = list
             .iter()
+            .rev()
             .enumerate()
             .map(|(k, s)| {
                 let src = self.shot(&s.path, w, h, window, cx);
-                let at = photos.iter().position(|p| p.path == s.path).unwrap_or(0);
-                let photos = photos.clone();
+                let at = s.path.clone();
                 div()
                     .id(("sheet-shot", k))
                     .w(px(w))
@@ -337,7 +339,7 @@ impl StatsPage {
                     .bg(theme::white_a(0.05))
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.85))
-                    .on_click(cx.listener(move |this, _, window, cx| this.open_photo(photos.clone(), at, window, cx)))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_game_photo(game, &at, window, cx)))
                     .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
             })
             .collect();

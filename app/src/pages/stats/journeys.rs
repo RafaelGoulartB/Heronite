@@ -3,13 +3,16 @@
 //! when it started, was beaten or abandoned, and how many games were going
 //! at once. A lane opens in place with the game's weeks on the same axis.
 
+use std::sync::Arc;
+
 use chrono::{Datelike, Duration, NaiveDate};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::stats::{fmt_secs, game_sheet, median, month_short, Journeys, Lane, Period, Span, Stats};
+use heronite_data::stats::{fmt_secs, game_sheet, median, month_short, GameSheet, Journeys, Lane, Period, Span, Stats};
 use heronite_i18n::{tr, trn};
 
 use super::desktop::{eyebrow, hint, panel, panel_head, GAP, R_PANEL};
+use super::marks::{marks, Mark};
 use super::{series_color, short_date, today, StatsPage};
 use crate::icons::Icon;
 use crate::theme;
@@ -21,6 +24,11 @@ const LEFT_W: f32 = 280.;
 const COLS: [f32; 4] = [96., 72., 112., 92.];
 const LANE_H: f32 = 30.;
 const PARALLEL_H: f32 = 96.;
+/// Lanes listed at first and added by each "Show more": all time on a big
+/// library has hundreds of games of 1h or more.
+const LANES_PAGE: usize = 40;
+/// "Only tried" games listed when open.
+const TRIED_MAX: usize = 60;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub(super) enum Sort {
@@ -49,6 +57,10 @@ pub(super) struct JourneyView {
     pub open: Option<usize>,
     /// The "only tried" games are listed.
     pub tried: bool,
+    /// Lanes listed beyond the first [`LANES_PAGE`].
+    pub more: usize,
+    /// The open lane's sheet, kept while the lane and the period stay.
+    pub sheet: Option<(usize, Period, Arc<GameSheet>)>,
 }
 
 /// Where `d` falls on the axis of `p` (0..=1).
@@ -96,27 +108,25 @@ fn ticks(p: &Period) -> Vec<(NaiveDate, String)> {
 
 impl StatsPage {
     /// Status slug of `game` (`beaten`, `playing`...).
-    pub(super) fn game_slug(&self, game: usize) -> String {
-        let Some(lib) = self.lib.as_ref() else { return String::new() };
-        let Some(g) = lib.games.get(game) else { return String::new() };
-        lib.statuses.iter().find(|s| s.id == g.status_id).map_or_else(|| g.status_id.clone(), |s| s.slug.clone())
+    pub(super) fn game_slug(&self, game: usize) -> &str {
+        self.facts.slug(game)
     }
 
-    /// The day `game` was beaten (or completed), see [`StatsPage::status_day`].
+    /// The day `game` was beaten (or completed), see [`super::facts`].
     pub(super) fn finished_on(&self, game: usize) -> Option<NaiveDate> {
-        self.status_day(game, &["beaten", "completed"])
+        self.facts.beaten_on(game)
     }
 
     fn abandoned_on(&self, game: usize) -> Option<NaiveDate> {
-        self.status_day(game, &["abandoned"])
+        self.facts.abandoned_on(game)
     }
 
     fn lane_matches(&self, lane: &Lane, p: &Period) -> bool {
         let slug = self.game_slug(lane.game);
         match self.jv.filter {
             Filter::All => true,
-            Filter::Beaten => matches!(slug.as_str(), "beaten" | "completed"),
-            Filter::Ongoing => matches!(slug.as_str(), "playing" | "endless" | "on-hold"),
+            Filter::Beaten => matches!(slug, "beaten" | "completed"),
+            Filter::Ongoing => matches!(slug, "playing" | "endless" | "on-hold"),
             Filter::Abandoned => slug == "abandoned",
             Filter::New => !lane.from_before(p),
         }
@@ -177,7 +187,7 @@ impl StatsPage {
     pub(super) fn render_journeys(&mut self, st: &Stats, window: &Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let Some(j) = self.journeys.clone() else { return Vec::new() };
         let Some(p) = j.period else { return Vec::new() };
-        vec![self.journey_insights(&j, &p), self.journey_parallel(&j, &p), self.journey_lanes(st, &j, &p, window, cx)]
+        vec![self.journey_insights(&j, &p), self.journey_parallel(&j, &p, cx), self.journey_lanes(st, &j, &p, window, cx)]
     }
 
     /// Four sentences about the period's journeys.
@@ -278,23 +288,33 @@ impl StatsPage {
     }
 
     /// How many games were going in each week (each day of a month).
-    fn journey_parallel(&self, j: &Journeys, p: &Period) -> AnyElement {
+    fn journey_parallel(&self, j: &Journeys, p: &Period, cx: &mut Context<Self>) -> AnyElement {
         let max = j.parallel.iter().map(|x| x.1).max().unwrap_or(1).max(1);
         let step = Journeys::step(p.span);
         let w = step as f32 / (p.end - p.start).num_days().max(1) as f32;
         let peak = j.peak();
-        let cols = j.parallel.iter().map(|(d, n)| {
-            let h = *n as f32 / max as f32 * PARALLEL_H;
-            let top = peak.is_some_and(|x| x.0 == *d);
-            div()
-                .absolute()
-                .bottom_0()
-                .left(relative(frac(p, *d)))
-                .w(relative(w))
-                .h(px(h))
-                .px(px(1.))
-                .child(div().size_full().rounded_t(px(3.)).bg(if top { theme::chart_ramp(1.) } else { theme::chart_ramp(0.62) }))
-        });
+        // One bar per week: all time has hundreds, painted as one element.
+        let bars: Vec<(f32, f32, bool)> = j
+            .parallel
+            .iter()
+            .filter(|x| x.1 > 0)
+            .map(|(d, n)| (frac(p, *d), *n as f32 / max as f32, peak.is_some_and(|x| x.0 == *d)))
+            .collect();
+        let cols = marks(
+            "parallel",
+            move |width, height| {
+                bars.iter()
+                    .map(|(x, v, top)| {
+                        let bw = (w * width - 2.).max(1.);
+                        let color = if *top { theme::chart_ramp(1.) } else { theme::chart_ramp(0.62) };
+                        Mark::new(x * width + 1., height * (1. - v), bw, height * v, color).radius((bw / 2.).min(3.))
+                    })
+                    .collect()
+            },
+            cx,
+        )
+        .absolute()
+        .inset_0();
         let active: Vec<usize> = j.parallel.iter().map(|x| x.1).filter(|n| *n > 0).collect();
         let avg = active.iter().sum::<usize>() as f64 / active.len().max(1) as f64;
         let idle = j.parallel.iter().filter(|x| x.1 == 0).count();
@@ -342,7 +362,7 @@ impl StatsPage {
         let chart = div()
             .flex()
             .flex_col()
-            .child(div().relative().h(px(PARALLEL_H)).border_b_1().border_color(theme::white_a(0.12)).children(cols))
+            .child(div().relative().h(px(PARALLEL_H)).border_b_1().border_color(theme::white_a(0.12)).child(cols))
             .child(Self::axis_ticks(p, false).mt(px(6.)));
         panel().child(Self::lane_row(left, chart, right)).into_any_element()
     }
@@ -362,8 +382,8 @@ impl StatsPage {
                     let slug = self.game_slug(l.game);
                     match f {
                         Filter::All => true,
-                        Filter::Beaten => matches!(slug.as_str(), "beaten" | "completed"),
-                        Filter::Ongoing => matches!(slug.as_str(), "playing" | "endless" | "on-hold"),
+                        Filter::Beaten => matches!(slug, "beaten" | "completed"),
+                        Filter::Ongoing => matches!(slug, "playing" | "endless" | "on-hold"),
                         Filter::Abandoned => slug == "abandoned",
                         Filter::New => !l.from_before(p),
                     }
@@ -481,11 +501,28 @@ impl StatsPage {
         .border_color(theme::white_a(0.08));
 
         let mut rows = div().flex().flex_col();
-        for lane in lanes {
+        let limit = LANES_PAGE + self.jv.more;
+        let hidden = lanes.len().saturating_sub(limit);
+        for lane in lanes.into_iter().take(limit) {
             rows = rows.child(self.lane(st, lane, p, day_max, window, cx));
             if self.jv.open == Some(lane.game) {
                 rows = rows.child(self.lane_open(lane, p, window, cx));
             }
+        }
+        if hidden > 0 {
+            rows = rows.child(
+                div().flex().justify_center().py(px(12.)).child(
+                    crate::ui::controls::button_sm(
+                        "jmore",
+                        crate::ui::controls::ButtonKind::Glass,
+                        tr!("Show {n} more", n = hidden.min(LANES_PAGE)),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.jv.more += LANES_PAGE;
+                        cx.notify();
+                    })),
+                ),
+            );
         }
         if !j.tried.is_empty() {
             let open = self.jv.tried;
@@ -509,7 +546,7 @@ impl StatsPage {
                     .child(tr!("{n} games only tried, under 1h each \u{b7} {time} in all", n = j.tried.len(), time = fmt_secs(total))),
             );
             if open {
-                rows = rows.child(div().flex().flex_wrap().gap(px(8.)).pb(px(8.)).children(j.tried.iter().map(|l| {
+                rows = rows.child(div().flex().flex_wrap().gap(px(8.)).pb(px(8.)).children(j.tried.iter().take(TRIED_MAX).map(|l| {
                     let g = l.game;
                     div()
                         .id(("jtried-game", g))
@@ -604,19 +641,21 @@ impl StatsPage {
                 .rounded_full()
                 .bg(Hsla { a: 0.18, ..color }),
         );
-        for (d, secs) in &lane.days {
-            let size = 5. + 9. * ((*secs / day_max) as f32).sqrt();
-            axis = axis.child(
-                div()
-                    .absolute()
-                    .top(px(LANE_H / 2. - size / 2.))
-                    .left(relative(frac(p, *d)))
-                    .ml(px(-size / 2.))
-                    .size(px(size))
-                    .rounded_full()
-                    .bg(color),
-            );
-        }
+        // A dot per day played (all time: hundreds), painted as one element.
+        let dots: Vec<(f32, f32)> = lane.days.iter().map(|(d, secs)| (frac(p, *d), 5. + 9. * ((*secs / day_max) as f32).sqrt())).collect();
+        axis = axis.child(
+            marks(
+                ("lane-dots", g),
+                move |w, h| {
+                    dots.iter()
+                        .map(|(x, size)| Mark::new(x * w - size / 2., h / 2. - size / 2., *size, *size, color).radius(size / 2.))
+                        .collect()
+                },
+                cx,
+            )
+            .absolute()
+            .inset_0(),
+        );
         if new {
             axis = axis.child(
                 div()
@@ -651,7 +690,7 @@ impl StatsPage {
                 trn!((f - start).num_days().max(0) as usize, "{n} day", "{n} days"),
                 Some(trn!(lane.days.len(), "{n} day played", "{n} days played")),
             ),
-            _ if matches!(slug.as_str(), "playing" | "endless" | "on-hold") => (tr!("ongoing").to_string(), None),
+            _ if matches!(slug, "playing" | "endless" | "on-hold") => (tr!("ongoing").to_string(), None),
             _ => ("\u{2014}".to_string(), None),
         };
         let col = |w: f32, big: String, small: Option<String>, dim: bool| {
@@ -698,7 +737,15 @@ impl StatsPage {
     fn lane_open(&mut self, lane: &Lane, p: &Period, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(h) = self.history.clone() else { return div().into_any_element() };
         let g = lane.game;
-        let sh = game_sheet(&h, g, *p, today());
+        // The sheet reads the game's whole period: once per lane opened.
+        let sh = match &self.jv.sheet {
+            Some((game, period, sh)) if *game == g && period == p => sh.clone(),
+            _ => {
+                let sh = Arc::new(game_sheet(&h, g, *p, today()));
+                self.jv.sheet = Some((g, *p, sh.clone()));
+                sh
+            }
+        };
         let max = sh.bars.iter().map(|b| b.1).fold(1., f64::max);
         let step = if matches!(p.span, Span::Week | Span::Month) { 1 } else { 7 };
         let w = step as f32 / (p.end - p.start).num_days().max(1) as f32;

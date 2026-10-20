@@ -2,9 +2,6 @@
 //! when you capture against when you play, a photo per month and the
 //! captures per session.
 
-use std::sync::Arc;
-
-use chrono::Datelike;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::stats::{fmt_secs, month_name, Span, Stats};
@@ -167,26 +164,12 @@ impl StatsPage {
 
     /// A photo per month (year and all time), else the latest captures.
     pub(super) fn album_months(&mut self, a: &AlbumView, st: &Stats, col_w: f32, window: &Window, cx: &mut Context<Self>) -> Div {
-        let list = Arc::new(a.photos.clone());
+        let list = a.photos.clone();
         // Six to a line across the whole column: a year is two even lines.
         let tw = ((col_w - 48. - 5. * 12.) / 6.).floor();
         let th = (tw * 9. / 16.).floor();
         if matches!(st.period.span, Span::Year | Span::All) {
-            // Each month: the middle capture of its most photographed game.
-            let mut months: std::collections::BTreeMap<(i32, u32), Vec<usize>> = Default::default();
-            for (i, p) in a.photos.iter().enumerate() {
-                months.entry((p.at.year(), p.at.month())).or_default().push(i);
-            }
-            let mut picks: Vec<((i32, u32), usize)> = Vec::new();
-            for (k, idx) in &months {
-                let mut per: std::collections::HashMap<usize, Vec<usize>> = Default::default();
-                for i in idx {
-                    per.entry(a.photos[*i].game).or_default().push(*i);
-                }
-                if let Some(best) = per.values().max_by_key(|v| v.len()) {
-                    picks.push((*k, best[best.len() / 2]));
-                }
-            }
+            let picks = &a.month_picks;
             let tiles: Vec<Div> = picks
                 .iter()
                 .rev()

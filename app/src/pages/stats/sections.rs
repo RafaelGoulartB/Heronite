@@ -7,6 +7,7 @@ use gpui_kit::*;
 use heronite_data::stats::{fmt_secs, month_name, month_short, Span, Stats, TOP_N};
 
 use super::desktop::{hint, panel, panel_head, GAP, R_PANEL};
+use super::marks::{marks, Mark};
 use super::review::marked;
 use super::tip::hover;
 use super::{axis_label, day_label, day_part, nice_axis, series_color, short_date, today, weekday, weekday_on, Hover, StatsPage};
@@ -35,6 +36,9 @@ fn line(parts: Vec<Div>) -> Div {
 }
 
 /// A sentence with `**bold**` runs.
+/// Rows of the "Show all" list of games.
+const LIST_MAX: usize = 100;
+
 pub(super) fn sentence(text: impl AsRef<str>) -> Div {
     div().child(marked(text))
 }
@@ -98,19 +102,15 @@ impl StatsPage {
         if let Some(lead) = self.shown_insights().into_iter().next() {
             cards.push((Tab::Discoveries, Icon::Lightbulb, tr!("Discovery").into(), self.insight_sentence(&lead.fact), lead.fact.game()));
         }
-        if let Some(all) = self.shots.clone() {
-            let mut per: Vec<(usize, usize)> =
-                all.iter().map(|(g, l)| (*g, l.iter().filter(|s| st.period.contains(s.at.date())).count())).filter(|x| x.1 > 0).collect();
-            per.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-            let n: usize = per.iter().map(|x| x.1).sum();
-            if let Some((g, _)) = per.first() {
-                let text = tr!(
-                    "**{n} screenshots**, most in {game}",
-                    n = heronite_data::stats::group_thousands(n as u64),
-                    game = self.game_title(*g)
-                );
-                cards.push((Tab::Album, Icon::PhotoCamera, tr!("Album").into(), text, Some(*g)));
-            }
+        // The period's screenshots per game, most first ([`super::Derived`]).
+        let derived = self.derived.clone();
+        if let Some((g, _)) = derived.shots.first() {
+            let text = tr!(
+                "**{n} screenshots**, most in {game}",
+                n = heronite_data::stats::group_thousands(derived.shots_total as u64),
+                game = self.game_title(*g)
+            );
+            cards.push((Tab::Album, Icon::PhotoCamera, tr!("Album").into(), text, Some(*g)));
         }
         let mut row = div().flex().gap(px(GAP));
         for (tab, ic, kicker, text, game) in cards {
@@ -439,7 +439,9 @@ impl StatsPage {
     fn render_list(&mut self, st: &Stats, skip: usize, window: &Window, cx: &mut Context<Self>) -> Div {
         let max = st.games.first().map_or(1., |g| g.secs.max(1.));
         let mut list = div().flex().flex_col().mt(px(18.)).pt(px(8.)).border_t_1().border_color(theme::white_a(0.08));
-        for (rank, g) in st.games.iter().enumerate().skip(skip) {
+        // All time on a big library holds thousands of games: the list stops
+        // at [`LIST_MAX`] (the rest are the ones played least).
+        for (rank, g) in st.games.iter().enumerate().skip(skip).take(LIST_MAX) {
             let cover = self.cover(g.game, 30., 40., window);
             let game = g.game;
             let meta = match g.last {
@@ -509,6 +511,14 @@ impl StatsPage {
                     ),
             );
         }
+        let rest = st.games.len().saturating_sub(skip + LIST_MAX);
+        if rest > 0 {
+            list = list.child(div().pt(px(12.)).text_size(px(12.5)).text_color(theme::text_muted()).child(trn!(
+                rest,
+                "and {n} more game",
+                "and {n} more games"
+            )));
+        }
         list
     }
 
@@ -519,30 +529,36 @@ impl StatsPage {
         let argmax = |v: &[f64]| v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map_or(0, |(i, _)| i);
         let best_day = argmax(&day_totals);
         let best_part = argmax(&st.day_parts);
-        let mut heat = div().flex().flex_col().gap(px(2.));
-        for (d, hours) in st.heat.iter().enumerate() {
-            let mut line = div()
-                .flex()
-                .items_center()
-                .gap(px(2.))
-                .child(div().flex_none().w(px(30.)).text_size(px(11.)).text_color(theme::text_dim()).child(weekday(d)));
-            for (h, v) in hours.iter().enumerate() {
-                let on = self.hover == Some(Hover::Heat(d, h));
-                let color: Hsla =
-                    if *v <= 0. { theme::chart_empty() } else { theme::chart_ramp(((*v / max_cell) as f32).powf(0.7)).into() };
-                line = line.child(
-                    div()
-                        .id(("heat", d * 24 + h))
-                        .flex_1()
-                        .h(px(21.))
-                        .rounded(px(4.))
-                        .bg(color)
-                        .when(on, |c| c.border_2().border_color(gpui_kit::white()))
-                        .on_hover(hover(Hover::Heat(d, h), cx)),
-                );
-            }
-            heat = heat.child(line);
-        }
+        // 168 cells painted as one element ([`super::marks`]), the weekdays beside.
+        let (heat_values, on) = (st.heat, self.hover);
+        let cells = marks(
+            "heat",
+            move |w, _| {
+                let cw = (w - 2. * 23.) / 24.;
+                let mut out = Vec::with_capacity(168);
+                for (d, hours) in heat_values.iter().enumerate() {
+                    for (h, v) in hours.iter().enumerate() {
+                        let color: Hsla =
+                            if *v <= 0. { theme::chart_empty() } else { theme::chart_ramp(((*v / max_cell) as f32).powf(0.7)).into() };
+                        let hover = Hover::Heat(d, h);
+                        out.push(
+                            Mark::new(h as f32 * (cw + 2.), d as f32 * 23., cw, 21., color)
+                                .radius(4.)
+                                .ring(on == Some(hover))
+                                .hover(Some(hover)),
+                        );
+                    }
+                }
+                out
+            },
+            cx,
+        )
+        .flex_1()
+        .h(px(7. * 23. - 2.));
+        let labels = div().flex_none().w(px(32.)).flex().flex_col().gap(px(2.)).children(
+            (0..7).map(|d| div().h(px(21.)).flex().items_center().text_size(px(11.)).text_color(theme::text_dim()).child(weekday(d))),
+        );
+        let heat = div().flex().child(labels).child(cells);
         let hours = div()
             .flex()
             .mt(px(4.))
@@ -829,35 +845,32 @@ impl StatsPage {
         let max = st.busiest.map_or(1., |b| b.1.max(1.));
         let today = today();
         let col_of = |d: NaiveDate| ((d - first_monday).num_days() / 7) as usize;
-        let mut grid = div().flex().gap(px(gap));
+        // 371 cells painted as one element ([`super::marks`]).
+        let mut cells = Vec::with_capacity(weeks * 7);
         for wk in 0..weeks {
-            let mut col = div().flex().flex_col().gap(px(gap));
             for wd in 0..7 {
                 let d = first_monday + Duration::days((wk * 7 + wd) as i64);
-                let inside = d.year() == year;
+                if d.year() != year {
+                    continue;
+                }
                 let v = st.day_secs(d);
-                let on = self.hover == Some(Hover::Day(d));
-                let color: Hsla = if !inside {
-                    theme::black_a(0.)
-                } else if d > today {
+                let color: Hsla = if d > today {
                     theme::white_a(0.022)
                 } else if v <= 0. {
                     theme::chart_empty()
                 } else {
                     theme::chart_ramp(((v / max) as f32).powf(0.6)).into()
                 };
-                col = col.child(
-                    div()
-                        .id(SharedString::from(format!("cal-{d}")))
-                        .size(px(cell))
-                        .rounded(px(3.))
-                        .bg(color)
-                        .when(on, |c| c.border_2().border_color(gpui_kit::white()))
-                        .when(inside && d <= today, |c| c.on_hover(hover(Hover::Day(d), cx))),
+                let (x, y) = (wk as f32 * (cell + gap), wd as f32 * (cell + gap));
+                cells.push(
+                    Mark::new(x, y, cell, cell, color)
+                        .radius(3.)
+                        .ring(self.hover == Some(Hover::Day(d)))
+                        .hover((d <= today).then_some(Hover::Day(d))),
                 );
             }
-            grid = grid.child(col);
         }
+        let grid = marks("calendar", move |_, _| cells, cx).w(px(weeks as f32 * (cell + gap) - gap)).h(px(7. * (cell + gap) - gap));
         let step = cell + gap;
         let months = div().relative().h(px(18.)).ml(px(34.)).children((1..=12).filter_map(|m| {
             let d = NaiveDate::from_ymd_opt(year, m, 1)?;

@@ -5,27 +5,32 @@
 //! chip per game filters the whole tab; any capture opens in the viewer
 //! ([`super::viewer`]).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{Datelike, NaiveDate, NaiveDateTime};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::stats::{capture_hours, captures_per_session, fmt_secs, moments, Moment, Span, Stats};
+use heronite_data::stats::{capture_hours, captures_per_session, fmt_secs, moments, History, Moment, Span, Stats};
 use heronite_i18n::{tr, trn};
 
 use super::desktop::{eyebrow, hint, panel, panel_head, GAP};
 use super::sections::{row, sentence};
 use super::viewer::Photo;
-use super::{day_label, StatsPage};
+use super::{day_label, Shot, StatsPage};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-/// The album of the period (and of the game picked in the chips).
+/// The album of the period (and of the game picked in the chips), built off
+/// the UI thread with the rest of the period ([`super::compute`]).
 #[derive(Default)]
 pub(super) struct AlbumView {
     /// Captures of the period of the picked game (or all), oldest first.
-    pub photos: Vec<Photo>,
+    pub photos: Arc<Vec<Photo>>,
+    /// Photo of the month: per month of the period, oldest first, the middle
+    /// capture of its most photographed game (index into `photos`).
+    pub month_picks: Vec<((i32, u32), usize)>,
     /// Captures per game in the period, most first (unfiltered: the chips).
     pub games: Vec<(usize, usize)>,
     /// Indexes into `photos`.
@@ -43,72 +48,81 @@ pub(super) struct AlbumView {
 }
 
 const COLLAGE: usize = 6;
+/// Chips listed when every game's chip shows.
+const CHIPS_MAX: usize = 40;
 /// Widest a game title gets in its chip.
 const CHIP_TITLE_W: f32 = 200.;
 
-impl StatsPage {
-    /// Rebuilds [`AlbumView`] for the period and the picked game.
-    pub(super) fn recompute_album(&mut self) {
-        self.album = match (&self.stats, &self.history, &self.shots) {
-            (Some(st), Some(h), Some(all)) if self.tab == super::tabs::Tab::Album => {
-                let mut in_period: Vec<Photo> = all
-                    .iter()
-                    .flat_map(|(g, list)| {
-                        list.iter().filter(|s| st.period.contains(s.at.date())).map(move |s| Photo {
-                            game: *g,
-                            at: s.at,
-                            path: s.path.clone(),
-                        })
-                    })
-                    .collect();
-                in_period.sort_by_key(|p| p.at);
-                let mut games: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-                for p in &in_period {
-                    *games.entry(p.game).or_default() += 1;
-                }
-                let mut games: Vec<(usize, usize)> = games.into_iter().collect();
-                games.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-                let rate = {
-                    let mut v: Vec<(usize, usize, f64)> = games
-                        .iter()
-                        .filter_map(|(g, n)| Some((*g, *n, st.game(*g)?.secs)))
-                        .filter(|(_, n, secs)| *n >= 5 && *secs >= 3600.)
-                        .collect();
-                    v.sort_by(|a, b| (b.1 as f64 / b.2).total_cmp(&(a.1 as f64 / a.2)));
-                    v
-                };
-                let pick = self.album_game.filter(|g| games.iter().any(|x| x.0 == *g));
-                let photos: Vec<Photo> = in_period.into_iter().filter(|p| pick.is_none_or(|g| p.game == g)).collect();
-                let pairs: Vec<(usize, NaiveDateTime)> = photos.iter().map(|p| (p.game, p.at)).collect();
-                let mut per_day: std::collections::BTreeMap<NaiveDate, usize> = Default::default();
-                for p in &photos {
-                    *per_day.entry(p.at.date()).or_default() += 1;
-                }
-                let busiest = per_day.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)));
-                let play_secs = match pick {
-                    Some(g) => st.game(g).map_or(0., |x| x.secs),
-                    None => st.total_secs,
-                };
-                Some(Arc::new(AlbumView {
-                    moments: moments(&pairs),
-                    hours: capture_hours(h, &pairs, st.period),
-                    per_session: captures_per_session(h, &pairs, st.period),
-                    photos,
-                    games,
-                    rate,
-                    busiest,
-                    play_secs,
-                }))
-            }
-            _ => None,
-        };
+/// The album of `st`'s period for the game `pick` (or all).
+pub(super) fn album_view(st: &Stats, h: &History, all: &HashMap<usize, Vec<Shot>>, pick: Option<usize>) -> AlbumView {
+    let mut in_period: Vec<Photo> = all
+        .iter()
+        .flat_map(|(g, list)| {
+            list.iter().filter(|s| st.period.contains(s.at.date())).map(move |s| Photo { game: *g, at: s.at, path: s.path.clone() })
+        })
+        .collect();
+    in_period.sort_by_key(|p| p.at);
+    let mut games: HashMap<usize, usize> = HashMap::new();
+    for p in &in_period {
+        *games.entry(p.game).or_default() += 1;
     }
+    let mut games: Vec<(usize, usize)> = games.into_iter().collect();
+    games.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let secs_of: HashMap<usize, f64> = st.games.iter().map(|g| (g.game, g.secs)).collect();
+    let rate = {
+        let mut v: Vec<(usize, usize, f64)> = games
+            .iter()
+            .filter_map(|(g, n)| Some((*g, *n, secs_of.get(g).copied()?)))
+            .filter(|(_, n, secs)| *n >= 5 && *secs >= 3600.)
+            .collect();
+        v.sort_by(|a, b| (b.1 as f64 / b.2).total_cmp(&(a.1 as f64 / a.2)));
+        v
+    };
+    let pick = pick.filter(|g| games.iter().any(|x| x.0 == *g));
+    let photos: Vec<Photo> = in_period.into_iter().filter(|p| pick.is_none_or(|g| p.game == g)).collect();
+    let pairs: Vec<(usize, NaiveDateTime)> = photos.iter().map(|p| (p.game, p.at)).collect();
+    let mut per_day: std::collections::BTreeMap<NaiveDate, usize> = Default::default();
+    for p in &photos {
+        *per_day.entry(p.at.date()).or_default() += 1;
+    }
+    let busiest = per_day.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)));
+    let play_secs = match pick {
+        Some(g) => secs_of.get(&g).copied().unwrap_or(0.),
+        None => st.total_secs,
+    };
+    AlbumView {
+        moments: moments(&pairs),
+        hours: capture_hours(h, &pairs, st.period),
+        per_session: captures_per_session(h, &pairs, st.period),
+        month_picks: month_picks(&photos),
+        photos: Arc::new(photos),
+        games,
+        rate,
+        busiest,
+        play_secs,
+    }
+}
 
+/// Each month's middle capture of its most photographed game.
+fn month_picks(photos: &[Photo]) -> Vec<((i32, u32), usize)> {
+    let mut months: std::collections::BTreeMap<(i32, u32), HashMap<usize, Vec<usize>>> = Default::default();
+    for (i, p) in photos.iter().enumerate() {
+        months.entry((p.at.year(), p.at.month())).or_default().entry(p.game).or_default().push(i);
+    }
+    months
+        .into_iter()
+        .filter_map(|(k, per)| {
+            let best = per.into_values().max_by(|a, b| a.len().cmp(&b.len()).then(b[0].cmp(&a[0])))?;
+            Some((k, best[best.len() / 2]))
+        })
+        .collect()
+}
+
+impl StatsPage {
     fn set_album_game(&mut self, game: Option<usize>, cx: &mut Context<Self>) {
         self.album_game = game;
         self.moment_open = None;
-        self.recompute_album();
-        cx.notify();
+        self.recompute(cx);
     }
 
     /// The game whose art leads the tab: the most photographed of the period.
@@ -142,7 +156,7 @@ impl StatsPage {
             .bg(theme::white_a(0.05))
             .cursor_pointer()
             .hover(|s| s.opacity(0.88))
-            .on_click(cx.listener(move |this, _, window, cx| this.open_photo(list.to_vec(), index, window, cx)))
+            .on_click(cx.listener(move |this, _, window, cx| this.open_photo(list.clone(), index, window, cx)))
             .children(src.map(|s| img(s).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
             .children(label.map(|l| {
                 div()
@@ -215,7 +229,7 @@ impl StatsPage {
             take(i, &mut picks);
         }
         picks.sort_by_key(|i| a.photos[*i].at);
-        let list = Arc::new(a.photos.clone());
+        let list = a.photos.clone();
         let tiles: Vec<Stateful<Div>> = picks
             .iter()
             .enumerate()
@@ -293,7 +307,8 @@ impl StatsPage {
         let mut shown: Vec<(usize, usize)> = Vec::new();
         for (g, n) in &a.games {
             let w = (self.game_title(*g).chars().count() as f32 * 7.4).min(CHIP_TITLE_W) + 74.;
-            if !self.album_more && (room < w || shown.len() >= 10) {
+            // Open, the list still stops at [`CHIPS_MAX`].
+            if shown.len() >= CHIPS_MAX || (!self.album_more && (room < w || shown.len() >= 10)) {
                 break;
             }
             room -= w + 8.;
@@ -353,7 +368,7 @@ impl StatsPage {
                 .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("No run of 5 or more captures in this period.")))
                 .into_any_element();
         }
-        let list = Arc::new(a.photos.clone());
+        let list = a.photos.clone();
         let mut grid = div().grid().grid_cols(4).gap(px(GAP));
         for (k, m) in a.moments.iter().take(8).enumerate() {
             let open = self.moment_open == Some(k);
@@ -459,5 +474,20 @@ impl StatsPage {
             );
         }
         p.into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::month_picks;
+    use crate::pages::stats::viewer::Photo;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn the_photo_of_a_month_comes_from_its_most_photographed_game() {
+        let at = |m, d| NaiveDate::from_ymd_opt(2026, m, d).unwrap().and_hms_opt(20, 0, 0).unwrap();
+        let p = |game, m, d| Photo { game, at: at(m, d), path: format!("{game}-{m}-{d}.png").into() };
+        let photos = [p(1, 3, 1), p(2, 3, 2), p(2, 3, 3), p(2, 3, 9), p(1, 4, 2)];
+        assert_eq!(month_picks(&photos), vec![((2026, 3), 2), ((2026, 4), 4)]);
     }
 }
