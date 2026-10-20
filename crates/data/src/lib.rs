@@ -27,6 +27,7 @@ pub mod install_size;
 pub mod journal;
 pub mod language;
 pub mod launch_presets;
+pub mod launchers;
 pub mod library;
 pub mod maintenance;
 pub mod migrate;

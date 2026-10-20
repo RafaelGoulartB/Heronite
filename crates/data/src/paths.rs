@@ -55,6 +55,10 @@ impl DataPaths {
     pub fn local_meta(&self) -> PathBuf {
         self.j("local_library/library.json")
     }
+    /// Which other launchers' games are imported (`launchers::ImportPrefs`).
+    pub fn launcher_imports(&self) -> PathBuf {
+        self.j("local_library/launcher-imports.json")
+    }
     pub fn sessions(&self) -> PathBuf {
         self.j("local_library/sessions.json")
     }
