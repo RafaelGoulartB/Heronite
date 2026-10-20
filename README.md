@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/RafaelGoulartB/Heronite/stargazers">
-    <img alt="GitHub stars" src="https://img.shields.io/github/stars/RafaelGoulartB/Heronite?style=flat&color=2B8CA8&logo=github" />
+    <img alt="GitHub stars" src="https://img.shields.io/github/stars/RafaelGoulartB/Heronite?style=social" />
   </a>
   <a href="LICENSE">
     <img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPL_v3-2B8CA8.svg" />
