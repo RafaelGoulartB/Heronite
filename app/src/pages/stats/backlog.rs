@@ -284,8 +284,8 @@ impl StatsPage {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let p = st.period;
-        let mut out = vec![self.backlog_summary(&p)];
-        out.push(self.backlog_year(&p, col_w, window, cx));
+        let summary = self.backlog_summary(&p);
+        let mut out = vec![self.backlog_year(&p, summary, col_w, window, cx)];
         let coll = self.backlog_collection();
         // Without cached How Long To Beat times, its panel is a one-line note.
         match self.backlog_hltb(&p, window, cx) {
@@ -299,7 +299,9 @@ impl StatsPage {
         out
     }
 
-    fn backlog_summary(&self, p: &Period) -> AnyElement {
+    /// The numbers behind the year's beaten and abandoned games, as a strip
+    /// at the top of [`Self::backlog_year`].
+    fn backlog_summary(&self, p: &Period) -> Div {
         let beaten = self.finished_in(p, &["beaten", "completed"]);
         let abandoned = self.finished_in(p, &["abandoned"]);
         let life = |g: usize| self.history.as_ref().map_or(0., |h| h.total_secs(g));
@@ -320,14 +322,11 @@ impl StatsPage {
                 .flex_1()
                 .flex()
                 .flex_col()
-                .gap(px(4.))
-                .px(px(20.))
-                .py(px(16.))
-                .rounded(px(16.))
-                .bg(rgba(0x161b24d6))
-                .border_1()
+                .gap(px(2.))
+                .pl(px(18.))
+                .border_l_1()
                 .border_color(theme::white_a(0.08))
-                .child(div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(px(24.)).child(value))
+                .child(div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(px(22.)).child(value))
                 .child(div().text_size(px(12.5)).text_color(theme::text_muted()).child(label))
         };
         let mut tiles = vec![tile(fmt_hours_short(beaten_secs), tr!("in games you beat").into())];
@@ -342,12 +341,12 @@ impl StatsPage {
             ));
         }
         tiles.push(tile(fmt_hours_short(abandoned_secs), tr!("in games you abandoned").into()));
-        div().flex().gap(px(GAP)).children(tiles).into_any_element()
+        div().flex().gap(px(GAP)).mb(px(22.)).children(tiles)
     }
 
     /// Beaten games above a line of months, abandoned ones under it, and
     /// empty slots for what the goal still asks.
-    fn backlog_year(&mut self, p: &Period, col_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    fn backlog_year(&mut self, p: &Period, summary: Div, col_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let beaten = self.finished_in(p, &["beaten", "completed"]);
         let abandoned = self.finished_in(p, &["abandoned"]);
         let start = if p.span == Span::All { self.history.as_ref().and_then(|h| h.since).unwrap_or(p.start) } else { p.start };
@@ -492,7 +491,12 @@ impl StatsPage {
             tr!("Beaten above, abandoned below \u{b7} the day is the last session until a status changes")
         };
         let title = if p.span == Span::All { tr!("Every beaten game") } else { tr!("The year") };
-        panel().child(panel_head(title, legend)).child(div().mt(px(-8.)).mb(px(10.)).child(hint(note))).child(area).into_any_element()
+        panel()
+            .child(panel_head(title, legend))
+            .child(div().mt(px(-8.)).mb(px(18.)).child(hint(note)))
+            .child(summary)
+            .child(area)
+            .into_any_element()
     }
 
     /// A clickable cover (opens the game sheet), with an optional caption.
@@ -778,10 +782,15 @@ impl StatsPage {
                             .child(div().text_size(px(13.5)).font_weight(theme::W_BOLD).truncate().child(self.game_title(g)))
                             .child(div().text_size(px(12.)).text_color(theme::text_dim()).truncate().children(since)),
                     )
-                    .child(div().w(px(150.)).flex_none().text_size(px(12.5)).text_color(theme::text_muted()).child(match hours {
-                        Some(h) => tr!("{h}h main story", h = h.round()),
-                        None => tr!("time to beat unknown").to_string(),
-                    }))
+                    // Unknown times stay blank: a column repeating "unknown" says nothing.
+                    .child(
+                        div()
+                            .w(px(150.))
+                            .flex_none()
+                            .text_size(px(12.5))
+                            .text_color(theme::text_muted())
+                            .children(hours.map(|h| tr!("{h}h main story", h = h.round()))),
+                    )
                     .child(div().w(px(130.)).flex_none().flex().flex_col().items_end().children(estimate.map(|(w, total)| {
                         div()
                             .flex()
