@@ -321,6 +321,28 @@ fn steam_games_become_uris_when_steam_exists() {
     assert_eq!(plan, LaunchPlan::Unavailable("Steam client was not found on PATH".into()));
 }
 
+#[test]
+fn another_launcher_starts_its_games_and_the_session_can_follow_them() {
+    let mut m = LocalGameMeta {
+        source: "lutris".into(),
+        launcher_args: Some("lutris lutris:rungameid/12".into()),
+        ..meta(heronite_data::launchers::LAUNCH_KIND)
+    };
+    m.extra.insert(heronite_data::launchers::PREFIX_KEY.into(), json!("/pfx/celeste"));
+    let mut game = sideload("lutris_12", "", "windows");
+    game.install.install_path = Some("/games/celeste".into());
+    let probe = FakeProbe::new("/h").with_bin("lutris", "/usr/bin/lutris").with_path("/games/celeste");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!((p.command.program.as_str(), p.command.args.as_slice()), ("lutris", &["lutris:rungameid/12".to_string()][..]));
+    assert_eq!(p.command.cwd.as_deref(), Some("/games/celeste"));
+    let handoff = p.handoff.unwrap();
+    assert_eq!((handoff.prefix.as_deref(), handoff.folder.as_deref()), (Some("/pfx/celeste"), Some("/games/celeste")));
+    // Without Lutris on this PC.
+    let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, Some(&m), &settings(json!({})), &Default::default());
+    assert_eq!(plan, LaunchPlan::Unavailable("Lutris was not found on this PC".into()));
+}
+
 fn emu_ctx(emu: UserEmulator) -> PlanContext {
     let mut c = ctx(json!({}));
     c.emulators.emulators.push(emu);

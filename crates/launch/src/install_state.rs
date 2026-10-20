@@ -49,6 +49,12 @@ pub fn next_install_state(
         };
     }
 
+    // Installed in the launcher it came from, while its folder is there.
+    if meta.launch_kind == heronite_data::launchers::LAUNCH_KIND {
+        let folder = game.install.install_path.as_deref().filter(|f| !f.is_empty());
+        return InstallState { is_installed: game.is_installed && folder.is_none_or(|f| probe.exists(f)), executable: String::new() };
+    }
+
     if meta.launch_kind == "emulator" {
         let executable = emulator_executable(ctx, meta).unwrap_or_else(local_exe);
         let roms_ok = emulator_rom_installed(meta, probe);

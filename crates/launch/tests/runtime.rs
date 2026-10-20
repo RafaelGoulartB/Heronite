@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use heronite_data::models::SessionsFile;
 use heronite_data::{json_store, DataPaths};
 use heronite_launch::net::FakeNet;
-use heronite_launch::plan::{CloudSaves, CompanionPlan, PrepSpec};
+use heronite_launch::plan::{CloudSaves, CompanionPlan, Handoff, PrepSpec};
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::prepare::CloudSync;
 use heronite_launch::probe::SystemProbe;
@@ -19,8 +19,8 @@ use heronite_launch::procs::{FakeProcs, Procs, SystemProcs};
 use heronite_launch::runtime::{FakeSpawner, PrepServices, ProcessHandle, Spawner};
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::{
-    Command, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopOptions, StopSpec,
-    SystemSpawner,
+    Command, HandoffConfig, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopOptions,
+    StopSpec, SystemSpawner,
 };
 
 fn fast_cfg() -> LauncherConfig {
@@ -34,6 +34,7 @@ fn fast_cfg() -> LauncherConfig {
             resolve_interval: Duration::from_millis(20),
         },
         record: true,
+        handoff: HandoffConfig { soon: Duration::from_millis(500), wait: Duration::from_millis(400), gone: Duration::from_millis(60) },
     }
 }
 
@@ -136,6 +137,34 @@ fn full_lifecycle_records_everything_like_heronite() {
 
     // The slot is free again.
     r.launcher.launch(request("g1", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
+}
+
+#[test]
+fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
+    let r = rig();
+    let mut plan = process_plan("lutris", &["lutris:rungameid/12"]);
+    plan.handoff = Some(Handoff { prefix: Some("/pfx".into()), folder: Some("/games/celeste".into()) });
+    r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan.clone()))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    // Lutris passes the request on and exits; the game shows up a bit later.
+    r.spawner.finish(0, 0);
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(r.launcher.is_running("lutris_12"));
+    r.procs.start(900, "Celeste.exe", None);
+    r.procs.set_game_pids(&[900]);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(r.launcher.is_running("lutris_12"), "the game is followed past the wait for it");
+    r.procs.exit(900);
+    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
+    assert!(elapsed >= Duration::from_millis(600));
+
+    // A game that never shows up: the session ends after the wait.
+    r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(1, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
 }
 
 #[test]

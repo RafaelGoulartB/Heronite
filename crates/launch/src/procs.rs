@@ -33,6 +33,33 @@ pub trait Procs: Send + Sync {
     /// This boot's id (`/proc/sys/kernel/random/boot_id`): pids and start
     /// ticks mean nothing across a reboot.
     fn boot_id(&self) -> Option<String>;
+    /// Processes of a game started by another program: running a file
+    /// under `folder`, or a Windows program (not Wine's own) in `prefix` or
+    /// from `folder`. Never this process.
+    fn game_pids(&self, prefix: Option<&str>, folder: Option<&str>) -> Vec<u32>;
+}
+
+/// Wine's own programs, running in every prefix in use, and Proton's
+/// `steam.exe`, which starts the game and stays after it.
+pub(crate) const WINE_SERVICES: &[&str] = &[
+    "steam.exe",
+    "services.exe",
+    "winedevice.exe",
+    "plugplay.exe",
+    "svchost.exe",
+    "explorer.exe",
+    "rpcss.exe",
+    "conhost.exe",
+    "tabtip.exe",
+    "wineboot.exe",
+    "winemenubuilder.exe",
+    "start.exe",
+];
+
+/// `path` is `folder` or inside it.
+fn under(path: &std::path::Path, folder: &str) -> bool {
+    let folder = folder.trim_end_matches('/');
+    !folder.is_empty() && path.starts_with(folder)
 }
 
 /// Whether the Wine prefix variable of a process (`WINEPREFIX`) is `prefix`
@@ -291,6 +318,46 @@ impl Procs for SystemProcs {
     fn boot_id(&self) -> Option<String> {
         std::fs::read_to_string("/proc/sys/kernel/random/boot_id").ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
     }
+
+    fn game_pids(&self, prefix: Option<&str>, folder: Option<&str>) -> Vec<u32> {
+        if prefix.is_none() && folder.is_none() {
+            return Vec::new();
+        }
+        let me = std::process::id();
+        let Ok(rd) = std::fs::read_dir("/proc") else { return Vec::new() };
+        let mut out = Vec::new();
+        for e in rd.flatten() {
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+            if pid == me || !self.is_alive(pid) {
+                continue;
+            }
+            let link = |what: &str| std::fs::read_link(format!("/proc/{pid}/{what}")).ok();
+            if let Some(folder) = folder {
+                if link("exe").is_some_and(|exe| under(&exe, folder)) {
+                    out.push(pid);
+                    continue;
+                }
+            }
+            let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { continue };
+            let argv0 = String::from_utf8_lossy(cmdline.split(|b| *b == 0).next().unwrap_or_default()).into_owned();
+            let Some(name) = windows_file_name(&argv0) else { continue };
+            if WINE_SERVICES.contains(&name.as_str()) {
+                continue;
+            }
+            let from_folder = folder.is_some_and(|f| link("cwd").is_some_and(|cwd| under(&cwd, f)));
+            let in_prefix = prefix.is_some_and(|prefix| {
+                std::fs::read(format!("/proc/{pid}/environ")).is_ok_and(|env| {
+                    env.split(|b| *b == 0)
+                        .filter_map(|kv| kv.strip_prefix(b"WINEPREFIX="))
+                        .any(|v| same_prefix(&String::from_utf8_lossy(v), prefix))
+                })
+            });
+            if from_folder || in_prefix {
+                out.push(pid);
+            }
+        }
+        out
+    }
 }
 
 /// Scriptable process table for tests.
@@ -313,6 +380,8 @@ struct FakeState {
     groups: HashMap<u32, u32>,
     /// `None`: "fake-boot".
     boot: Option<String>,
+    /// What [`Procs::game_pids`] reports (alive ones only).
+    game: Vec<u32>,
 }
 
 impl FakeProcs {
@@ -332,6 +401,10 @@ impl FakeProcs {
     }
     pub fn signals(&self) -> Vec<(u32, Sig)> {
         self.inner.lock().unwrap().signals.clone()
+    }
+    /// The processes [`Procs::game_pids`] finds (while alive).
+    pub fn set_game_pids(&self, pids: &[u32]) {
+        self.inner.lock().unwrap().game = pids.to_vec();
     }
     /// What [`Procs::windows_programs`] reports for `prefix`.
     pub fn set_windows_programs(&self, prefix: &str, names: &[&str]) {
@@ -384,6 +457,11 @@ impl Procs for FakeProcs {
     }
     fn boot_id(&self) -> Option<String> {
         Some(self.inner.lock().unwrap().boot.clone().unwrap_or_else(|| "fake-boot".into()))
+    }
+
+    fn game_pids(&self, _prefix: Option<&str>, _folder: Option<&str>) -> Vec<u32> {
+        let s = self.inner.lock().unwrap();
+        s.game.iter().copied().filter(|p| s.alive.contains(p)).collect()
     }
 }
 

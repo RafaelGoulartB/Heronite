@@ -36,6 +36,7 @@ fn rig(config_json: &str) -> Rig {
         min_session_seconds: 0,
         steam: SteamWaitConfig::default(),
         record: true,
+        handoff: Default::default(),
     };
     let launcher = Launcher::new(paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs, cfg, tx);
     launcher.set_system_info(Arc::new(|| "CPU: fake\nOS: test".to_string()));
