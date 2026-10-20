@@ -9,6 +9,7 @@
 //! covered (`startedAt` + `elapsedSeconds`), so one that runs past midnight
 //! adds to both days.
 
+mod album;
 mod backlog;
 mod game;
 mod insights;
@@ -22,6 +23,7 @@ use heronite_i18n::tr;
 
 use crate::models::LocalGameSession;
 
+pub use album::{capture_hours, captures_per_session, moments, Moment, MOMENT_GAP_SECS, MOMENT_MIN};
 pub use backlog::{goal, month_ends, running_count, weekly_hours, Goal};
 pub use game::{game_sheet, GameSheet};
 pub use insights::{insights, milestones, year_before, Fact, Insight, Milestone, MilestoneKind};
