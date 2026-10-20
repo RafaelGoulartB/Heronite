@@ -488,10 +488,18 @@ impl StatsPage {
         content =
             content.child(hero).child(div().relative().flex().flex_col().gap(px(GAP)).w(px(col_w)).mx_auto().pt(px(GAP)).children(body));
         let tip = st.as_ref().and_then(|st| self.render_tip(st, window));
+        let sheet = self.render_sheet(window, cx);
         div()
             .size_full()
             .p(px(12.))
             .pt(px(2.))
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
+                if ev.keystroke.key == "escape" && this.sheet.is_some() {
+                    this.close_sheet(cx);
+                    cx.stop_propagation();
+                }
+            }))
             .on_mouse_move(cx.listener(|this, _, _, cx| {
                 if this.hover.is_some() {
                     cx.notify();
@@ -509,9 +517,10 @@ impl StatsPage {
                     .text_color(theme::text_primary())
                     .font_family(theme::font_body())
                     .child(div().id("stats-page").size_full().overflow_y_scroll().track_scroll(&self.scroll).child(content))
-                    .child(page_close(cx).absolute().top(px(20.)).right(px(20.))),
+                    .child(page_close(cx).absolute().top(px(20.)).right(px(20.)))
+                    .children(sheet),
             )
-            .children(tip)
+            .children(tip.filter(|_| self.sheet.is_none()))
             .into_any_element()
     }
 }

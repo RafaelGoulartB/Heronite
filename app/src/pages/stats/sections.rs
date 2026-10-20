@@ -13,7 +13,6 @@ use super::{axis_label, day_label, day_part, nice_axis, series_color, short_date
 use heronite_i18n::{tr, trc, trn};
 
 use crate::icons::Icon;
-use crate::pages::PageEvent;
 use crate::theme;
 use crate::ui::icon;
 
@@ -57,7 +56,7 @@ impl StatsPage {
         }
         out.push(self.render_shelf(st, col_w, window, cx));
         let habits = self.render_habits(st, cx);
-        let records = self.render_records(st, if wide { span(col_w, 8) } else { col_w }, window);
+        let records = self.render_records(st, if wide { span(col_w, 8) } else { col_w }, window, cx);
         out.push(row(wide, vec![(habits, 4), (records, 8)]));
         let genres = self.render_genres(st, cx);
         if st.period.span == Span::Year {
@@ -183,7 +182,7 @@ impl StatsPage {
         let mut covers = Vec::new();
         for (rank, g) in st.games.iter().take(cols.max(SHELF).min(if cols == 4 { 4 } else { SHELF })).enumerate() {
             let src = self.cover(g.game, cw, ch, window);
-            let key = self.game_key(g.game).map(|k| k.to_string()).unwrap_or_default();
+            let game = g.game;
             let c = series_color(st.series_of(g.game));
             let first = rank == 0;
             covers.push(
@@ -194,7 +193,7 @@ impl StatsPage {
                     .min_w_0()
                     .cursor_pointer()
                     .on_hover(hover(Hover::Game(g.game), cx))
-                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(PageEvent::ShowGame(key.clone()))))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(game, window, cx)))
                     .child(
                         div()
                             .relative()
@@ -323,7 +322,7 @@ impl StatsPage {
         let mut list = div().flex().flex_col().mt(px(18.)).pt(px(8.)).border_t_1().border_color(theme::white_a(0.08));
         for (rank, g) in st.games.iter().enumerate().skip(skip) {
             let cover = self.cover(g.game, 30., 40., window);
-            let key = self.game_key(g.game).map(|k| k.to_string()).unwrap_or_default();
+            let game = g.game;
             let meta = match g.last {
                 Some(last) => {
                     tr!(
@@ -346,7 +345,7 @@ impl StatsPage {
                     .rounded(px(10.))
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::white_a(0.04)))
-                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(PageEvent::ShowGame(key.clone()))))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(game, window, cx)))
                     .child(div().w(px(24.)).text_size(px(12.)).text_color(theme::text_dim()).child((rank + 1).to_string()))
                     .child(
                         div()
@@ -578,12 +577,12 @@ impl StatsPage {
         )
     }
 
-    fn render_records(&mut self, st: &Stats, w: f32, window: &Window) -> Div {
+    fn render_records(&mut self, st: &Stats, w: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         let card_w = (w - GAP) / 2.;
-        let mut cards: Vec<Div> = Vec::new();
+        let mut cards: Vec<(Option<usize>, Div)> = Vec::new();
         if let Some(l) = st.longest {
             let detail = sentence(tr!("**{game}** \u{b7} {day}", game = self.game_title(l.game), day = day_label(l.start.date())));
-            cards.push(self.record(Some(l.game), card_w, tr!("Longest session"), fmt_secs(l.secs), detail, None, window));
+            cards.push((Some(l.game), self.record(Some(l.game), card_w, tr!("Longest session"), fmt_secs(l.secs), detail, None, window)));
         }
         if let Some((d, secs)) = st.busiest {
             let same = st.longest.is_some_and(|l| l.start.date() == d);
@@ -624,21 +623,24 @@ impl StatsPage {
                     .child(tr!("{month} 1", month = month_short(d.month())))
                     .child(short_date(next - Duration::days(1))),
             );
-            cards.push(self.record(None, card_w, tr!("Busiest day"), fmt_secs(secs), detail, None, window).child(mini));
+            cards.push((None, self.record(None, card_w, tr!("Busiest day"), fmt_secs(secs), detail, None, window).child(mini)));
         }
         if let (Some((a, z)), true) = (st.streak_range, st.streak > 1) {
             let detail = sentence(tr!("**{from} \u{2013} {to}** \u{b7} every single day", from = short_date(a), to = short_date(z)));
             let dots = div().flex().flex_wrap().gap(px(2.)).mt(px(10.)).children(
                 (0..st.streak.min(60)).map(|_| div().size(px(6.)).rounded(px(2.)).bg(Hsla { a: 0.85, ..Hsla::from(theme::accent()) })),
             );
-            cards.push(self.record(
+            cards.push((
                 st.streak_game,
-                card_w,
-                tr!("Longest streak"),
-                trn!(st.streak, "{n} day", "{n} days"),
-                detail,
-                Some(dots),
-                window,
+                self.record(
+                    st.streak_game,
+                    card_w,
+                    tr!("Longest streak"),
+                    trn!(st.streak, "{n} day", "{n} days"),
+                    detail,
+                    Some(dots),
+                    window,
+                ),
             ));
         }
         match st.longest_break.filter(|b| b.days >= 3) {
@@ -654,22 +656,33 @@ impl StatsPage {
                     Some(g) => tr!("**{from} \u{2013} {to}** \u{b7} back on {back} with {game}", from, to, back, game = self.game_title(g)),
                     None => tr!("**{from} \u{2013} {to}** \u{b7} back on {back}", from, to, back),
                 });
-                cards.push(self.record(back_game, card_w, tr!("Longest break"), trn!(b.days, "{n} day", "{n} days"), detail, None, window));
+                cards.push((
+                    back_game,
+                    self.record(back_game, card_w, tr!("Longest break"), trn!(b.days, "{n} day", "{n} days"), detail, None, window),
+                ));
             }
             None => {
                 let new = st.new_games();
                 let detail = sentence(trn!(new, "**{n} game** played for the first time", "**{n} games** played for the first time"));
-                cards.push(self.record(
-                    st.games.iter().find(|g| g.new).map(|g| g.game),
-                    card_w,
-                    tr!("Games played"),
-                    st.games.len().to_string(),
-                    detail,
-                    None,
-                    window,
+                let first_new = st.games.iter().find(|g| g.new).map(|g| g.game);
+                cards.push((
+                    first_new,
+                    self.record(first_new, card_w, tr!("Games played"), st.games.len().to_string(), detail, None, window),
                 ));
             }
         }
+        // A card with a game's art opens that game's sheet.
+        let cards = cards.into_iter().enumerate().map(|(i, (game, card))| match game {
+            Some(g) => div()
+                .id(("record", i))
+                .flex()
+                .flex_col()
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(g, window, cx)))
+                .child(card.flex_1())
+                .into_any_element(),
+            None => card.into_any_element(),
+        });
         div().grid().grid_cols(2).gap(px(GAP)).flex_1().children(cards)
     }
 

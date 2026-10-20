@@ -727,12 +727,20 @@ impl StatsPage {
         for (r, (g, secs)) in games.iter().take(3).enumerate() {
             let cover = self.cover(*g, 30., 40., window);
             let c = series_color(st.series_of(*g));
+            let game = *g;
             rows = rows.child(
                 div()
+                    .id(SharedString::from(format!("month-{i}-game-{game}")))
                     .flex()
                     .items_center()
                     .gap(px(12.))
                     .h(px(46.))
+                    .px(px(6.))
+                    .mx(px(-6.))
+                    .rounded(px(10.))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::white_a(0.04)))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(game, window, cx)))
                     .child(
                         div()
                             .w(px(12.))

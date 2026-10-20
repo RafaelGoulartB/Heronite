@@ -304,5 +304,21 @@
   "Also used by {n} other games, so it is kept.": "Também é usado por mais {n} jogos e será mantido.",
   "Wine prefix {prefix}: {note}": "Prefixo Wine {prefix}: {note}",
   "{games} and {n} other game": "{games} e mais {n} jogo",
-  "{games} and {n} other games": "{games} e mais {n} jogos"
+  "{games} and {n} other games": "{games} e mais {n} jogos",
+  "Open in Collection": "Abrir na Coleção",
+  "all time": "desde sempre",
+  "in {period} · {total} all time": "em {period} · {total} desde sempre",
+  "#{rank} game of {period} · {pct}% of your time": "{rank}º jogo de {period} · {pct}% do seu tempo",
+  "Week by week": "Semana a semana",
+  "{n} day played": "{n} dia jogado",
+  "{n} days played": "{n} dias jogados",
+  "Average session": "Sessão média",
+  "Usually starts": "Costuma começar",
+  "around {h}:00": "por volta das {h}h",
+  "On weekends": "Nos fins de semana",
+  "of its time": "do tempo dele",
+  "Last session": "Última sessão",
+  "Latest screenshots": "Capturas mais recentes",
+  "{n} screenshot in this period": "{n} captura neste período",
+  "{n} screenshots in this period": "{n} capturas neste período"
 }

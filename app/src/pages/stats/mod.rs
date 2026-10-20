@@ -16,6 +16,7 @@ mod palette;
 mod review;
 mod river;
 mod sections;
+mod sheet;
 mod tip;
 
 use std::collections::HashMap;
@@ -25,7 +26,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveDateTime};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::stats::{self, fmt_hours_short, fmt_secs, month_short, GameInput, History, Period, Span, Stats, TOP_N};
+use heronite_data::stats::{self, fmt_hours_short, fmt_secs, month_short, GameInput, GameSheet, History, Period, Span, Stats, TOP_N};
 use heronite_data::Library;
 use heronite_i18n::{n_, tr};
 use heronite_images::ImageRef;
@@ -160,6 +161,9 @@ pub struct StatsPage {
     review: Option<review::Review>,
     /// Open the review once the history is read.
     review_wanted: Option<i32>,
+    /// The game sheet open over the page ([`sheet`]).
+    sheet: Option<Arc<GameSheet>>,
+    sheet_scroll: ScrollHandle,
     focus: FocusHandle,
     /// Scroll of the console layout.
     console_scroll: ScrollHandle,
@@ -167,12 +171,14 @@ pub struct StatsPage {
 }
 
 /// `HERONITE_DEBUG_PAGE=stats[:week|month|year|all][:review[:N]]`, plus
-/// `HERONITE_DEBUG_STATS_SCROLL=px` (page) and `HERONITE_DEBUG_STATS_CARD=N`
-/// (month strip), for screenshots without clicks.
+/// `HERONITE_DEBUG_STATS_SCROLL=px` (page), `HERONITE_DEBUG_STATS_CARD=N`
+/// (month strip) and `HERONITE_DEBUG_STATS_SHEET=N` (the sheet of the
+/// period's game N, 0 = the first), for screenshots without clicks.
 #[derive(Default)]
 struct Debug {
     scroll: Option<f32>,
     card: Option<usize>,
+    sheet: Option<usize>,
     applied: bool,
 }
 
@@ -242,6 +248,7 @@ impl StatsPage {
         let debug = Debug {
             scroll: crate::env::parse("HERONITE_DEBUG_STATS_SCROLL"),
             card: crate::env::parse("HERONITE_DEBUG_STATS_CARD"),
+            sheet: crate::env::parse("HERONITE_DEBUG_STATS_SHEET"),
             applied: false,
         };
         let focus = cx.focus_handle();
@@ -269,6 +276,8 @@ impl StatsPage {
             strip: Glide::new(Axis::X),
             review: None,
             review_wanted,
+            sheet: None,
+            sheet_scroll: ScrollHandle::new(),
             focus,
             console_scroll: ScrollHandle::new(),
             debug,
@@ -351,6 +360,10 @@ impl StatsPage {
             (Some(st), Some(lib)) => derive(st, lib, self.shots.as_deref()),
             _ => Derived::default(),
         });
+        // An open sheet follows the period.
+        if let (Some(sh), Some(h)) = (&self.sheet, &self.history) {
+            self.sheet = Some(Arc::new(stats::game_sheet(h, sh.game, self.period, today())));
+        }
         if let Some(r) = self.review.as_mut() {
             if let Some(h) = &self.history {
                 r.refresh(h, self.lib.as_deref(), self.shots.as_deref());
@@ -475,6 +488,11 @@ impl StatsPage {
     fn apply_debug(&mut self, window: &mut Window) {
         if self.debug.applied || self.stats.is_none() {
             return;
+        }
+        if let (Some(n), Some(st), Some(h)) = (self.debug.sheet.take(), &self.stats, &self.history) {
+            if let Some(g) = st.games.get(n) {
+                self.sheet = Some(Arc::new(stats::game_sheet(h, g.game, self.period, today())));
+            }
         }
         if self.debug.scroll.is_none() && self.debug.card.is_none() {
             self.debug.applied = true;
