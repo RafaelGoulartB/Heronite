@@ -65,7 +65,7 @@ calls them from `cx.background_spawn` or worker threads.
   `local_library/status-history.json`, recorded by the status setters), `sessions`, `playtime`, `ui_state`, `appearance`,
   `stats` (the Statistics page's numbers: periods cut into hours, `game` for a
   game's sheet, `journeys`, `backlog` (goal pace, weekly hours, running counts),
-  `insights` (discoveries and milestones) and `prefs` (its keys in `ui-state.json`)),
+  `insights` (discoveries and milestones), `album` (moments, captures per session, capture hours) and `prefs` (its keys in `ui-state.json`)),
   `journal` (each game's notes in `local_library/journal.json`: the moment
   they are about, placed on the timeline's days by the screenshots' rule in
   `timeline`, an optional screenshot, and "where I left off"),
