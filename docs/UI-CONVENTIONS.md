@@ -291,7 +291,8 @@ Discoveries (`discoveries.rs`: the period's facts as sentences, pinned or hidden
 (`album.rs`, `album_panels.rs`: the screenshots of the period, a chip per game filtering the tab, moments, captures per
 hour played, capture hours against play hours, a photo per month, captures per session). Any capture opens in the viewer
 (`viewer.rs`: ← → through its list, Esc closes), from the Album, the game sheet and the month cards.
-A tab that cannot show a span (Journeys of a week) shows the year around it and dims that span. Every cover and game
+A tab that cannot show a span (Journeys of a week) shows the year around it and dims that span. Once the hero scrolls
+away, the tabs and the period switch stay pinned in a bar at the top of the page (`desktop.rs`). Every cover and game
 name opens the game sheet (`sheet.rs`, a drawer; Esc closes it). The last tab, the yearly goals and the pinned and
 hidden discoveries live in `ui-state.json` (`heronite_data::stats::StatsPrefs`). The page only reads: the Collection hands it the loaded library
 (`StatsPage::set_library`, on navigate and after each reload) and the numbers come from `heronite_data::stats`

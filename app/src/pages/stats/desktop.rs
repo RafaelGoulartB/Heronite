@@ -21,6 +21,11 @@ const HERO_H: f32 = 372.;
 const PAD: f32 = 32.;
 /// Widest the column gets (ultrawide windows keep even margins).
 const MAX_W: f32 = 1840.;
+/// Height of the bar that keeps the tabs and the period in reach while the
+/// page scrolls.
+const BAR_H: f32 = 76.;
+/// Scroll (px) past which the bar shows: the hero's own controls are gone.
+const BAR_AT: f32 = 84.;
 /// Gap between panels.
 pub(super) const GAP: f32 = 16.;
 /// Panel corner radius.
@@ -395,6 +400,41 @@ impl StatsPage {
         hero.child(column)
     }
 
+    /// The tabs and the period switch pinned to the top of the panel once the
+    /// hero scrolled away, so a long tab (Journeys, Album) never needs the
+    /// trip back up to change tab or period.
+    fn render_bar(&self, col_w: f32, cx: &mut Context<Self>) -> Div {
+        let page = Hsla::from(theme::stats_page_bg());
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .right_0()
+            .h(px(BAR_H))
+            .bg(page)
+            .border_b_1()
+            .border_color(theme::white_a(0.08))
+            .shadow(vec![BoxShadow {
+                color: theme::black_a(0.4),
+                offset: point(px(0.), px(8.)),
+                blur_radius: px(24.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+            .child(
+                div()
+                    .w(px(col_w))
+                    .h_full()
+                    .mx_auto()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .overflow_hidden()
+                    .child(self.render_tabs(cx))
+                    .child(self.render_switch(cx)),
+            )
+    }
+
     /// Eyebrow, the big total and the story line under it.
     fn render_total(&self, st: &Stats) -> Div {
         let all = st.period.span == Span::All;
@@ -518,6 +558,7 @@ impl StatsPage {
         }
         content =
             content.child(hero).child(div().relative().flex().flex_col().gap(px(GAP)).w(px(col_w)).mx_auto().pt(px(GAP)).children(body));
+        let bar = (-f32::from(self.scroll.offset().y) > BAR_AT).then(|| self.render_bar(col_w, cx));
         let tip = st.as_ref().and_then(|st| self.render_tip(st, window));
         let sheet = self.render_sheet(window, cx);
         let lightbox = self.render_lightbox(window, cx);
@@ -560,6 +601,7 @@ impl StatsPage {
                     .text_color(theme::text_primary())
                     .font_family(theme::font_body())
                     .child(div().id("stats-page").size_full().overflow_y_scroll().track_scroll(&self.scroll).child(content))
+                    .children(bar)
                     .child(page_close(cx).absolute().top(px(20.)).right(px(20.)))
                     .children(sheet)
                     .children(lightbox),
