@@ -189,6 +189,17 @@ impl History {
         self.sessions.is_empty() && self.lifetime_secs.iter().all(|s| *s <= 0.)
     }
 
+    /// First day `game` was ever played (sessions or `firstPlayed`).
+    pub fn first_day(&self, game: usize) -> Option<NaiveDate> {
+        self.first_day.get(game).copied().flatten()
+    }
+
+    /// Recorded session time of `game`, or its lifetime total when bigger.
+    pub fn total_secs(&self, game: usize) -> f64 {
+        let recorded: f64 = self.sessions.iter().filter(|s| s.game == game).map(|s| s.secs).sum();
+        recorded.max(self.lifetime_secs.get(game).copied().unwrap_or(0.))
+    }
+
     /// Day of the last recorded session of `game`.
     pub fn last_day(&self, game: usize) -> Option<NaiveDate> {
         self.sessions.iter().filter(|s| s.game == game).map(|s| s.start.date()).max()
@@ -638,6 +649,8 @@ mod tests {
         assert_eq!(h.since, Some(day(2026, 9, 10)));
         assert_eq!(h.last_day(0), Some(day(2026, 10, 2)));
         assert_eq!(h.last_day(5), None);
+        assert_eq!(h.first_day(0), Some(day(2025, 1, 1)));
+        assert_eq!((h.total_secs(0), h.total_secs(1)), (36000., 60000.));
         let st = compute(&h, Period::of(Span::Month, day(2026, 10, 9)), day(2026, 10, 9));
         assert_eq!(
             st.games.iter().map(|g| (g.game, g.secs, g.sessions, g.new)).collect::<Vec<_>>(),
