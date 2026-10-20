@@ -399,14 +399,17 @@ impl StatsPage {
     fn recompute(&mut self) {
         self.stats = self.history.as_ref().map(|h| Arc::new(stats::compute(h, self.period, today())));
         (self.insights, self.milestones) = match (&self.history, &self.stats) {
-            (Some(h), Some(st)) if self.tab == Tab::Discoveries => {
+            (Some(h), Some(st)) if matches!(self.tab, Tab::Discoveries | Tab::Overview) => {
                 let (i, m) = discoveries::compute_for(h, st);
                 (Some(i), Some(m))
             }
             _ => (None, None),
         };
-        self.journeys =
-            self.history.as_ref().filter(|_| self.tab == Tab::Journeys).map(|h| Arc::new(stats::journeys(h, self.period, today())));
+        self.journeys = self
+            .history
+            .as_ref()
+            .filter(|_| matches!(self.tab, Tab::Journeys | Tab::Overview))
+            .map(|h| Arc::new(stats::journeys(h, self.period, today())));
         self.year_summary = self.history.as_ref().and_then(|h| {
             let year = self.review_year();
             let jan1 = NaiveDate::from_ymd_opt(year, 1, 1)?;

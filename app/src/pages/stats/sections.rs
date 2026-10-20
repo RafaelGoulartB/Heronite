@@ -48,7 +48,7 @@ impl StatsPage {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let mut out = Vec::new();
+        let mut out = vec![self.render_portals(st, window, cx)];
         if matches!(st.period.span, Span::Year | Span::All) && st.buckets.len() > 1 {
             out.push(self.render_months(st, window, cx));
         } else {
@@ -66,6 +66,98 @@ impl StatsPage {
             out.push(genres.into_any_element());
         }
         out
+    }
+
+    /// Three cards under the hero, one per other tab, each with what that tab
+    /// has to say about the period.
+    fn render_portals(&mut self, st: &Stats, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        use super::tabs::Tab;
+        let mut cards: Vec<(Tab, Icon, String, String, Option<usize>)> = Vec::new();
+        if let Some(j) = self.journeys.clone() {
+            let text = match j.peak().filter(|p| p.1 > 1) {
+                Some((_, n)) => tr!("Up to **{n} games** at the same time", n),
+                None => trn!(j.lanes.len(), "**{n} journey** of 1h or more", "**{n} journeys** of 1h or more"),
+            };
+            let game = j.lanes.iter().max_by(|a, b| a.secs.total_cmp(&b.secs)).map(|l| l.game);
+            cards.push((Tab::Journeys, Icon::History, tr!("Journeys").into(), text, game));
+        }
+        let year = match st.period.span {
+            Span::All => today().year(),
+            _ => st.period.start.year(),
+        };
+        let beaten = self.beaten_in_year(year);
+        let target = self.prefs.goals.get(&year).copied().unwrap_or(12);
+        let last = beaten.last().map(|b| b.0);
+        cards.push((
+            Tab::Backlog,
+            Icon::Flag,
+            tr!("Goal for {year}", year),
+            tr!("**{done} of {target}** games beaten", done = beaten.len(), target),
+            last,
+        ));
+        if let Some(lead) = self.shown_insights().into_iter().next() {
+            cards.push((Tab::Discoveries, Icon::Lightbulb, tr!("Discovery").into(), self.insight_sentence(&lead.fact), lead.fact.game()));
+        }
+        let mut row = div().flex().gap(px(GAP));
+        for (tab, ic, kicker, text, game) in cards {
+            let cover = game.and_then(|g| self.cover(g, 30., 40., window));
+            row = row.child(
+                div()
+                    .id(SharedString::from(format!("portal-{}", tab.id())))
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .gap(px(14.))
+                    .px(px(18.))
+                    .py(px(14.))
+                    .rounded(px(16.))
+                    .bg(rgba(0x161b24d6))
+                    .border_1()
+                    .border_color(theme::white_a(0.08))
+                    .cursor_pointer()
+                    .hover(|s| s.border_color(Hsla { a: 0.45, ..Hsla::from(theme::accent()) }))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_tab(tab, cx)))
+                    .child(
+                        div()
+                            .flex_none()
+                            .size(px(36.))
+                            .rounded(px(10.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::white_a(0.06))
+                            .child(icon(ic, px(18.), theme::accent())),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .font_weight(theme::W_BOLD)
+                                    .text_color(theme::text_muted())
+                                    .child(kicker.to_uppercase()),
+                            )
+                            .child(div().text_size(px(13.5)).truncate().child(sentence(text))),
+                    )
+                    .children(cover.map(|s| {
+                        div()
+                            .flex_none()
+                            .w(px(30.))
+                            .h(px(40.))
+                            .rounded(px(5.))
+                            .overflow_hidden()
+                            .child(img(s).size_full().object_fit(ObjectFit::Cover))
+                    }))
+                    .child(icon(Icon::ChevronRight, px(16.), theme::text_muted())),
+            );
+        }
+        row.into_any_element()
     }
 
     /// Week and month: one bar per day, stacked by game.
@@ -307,7 +399,20 @@ impl StatsPage {
                 }))
                 .child(label)
         });
-        let head = div().flex().items_center().gap(px(14.)).child(hint(facts.join(" \u{b7} "))).children(toggle);
+        let journeys = div()
+            .id("stats-to-journeys")
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .text_size(px(12.5))
+            .font_weight(theme::W_BOLD)
+            .text_color(theme::accent())
+            .cursor_pointer()
+            .hover(|s| s.opacity(0.8))
+            .on_click(cx.listener(|this, _, _, cx| this.set_tab(super::tabs::Tab::Journeys, cx)))
+            .child(tr!("Every journey"))
+            .child(icon(Icon::ChevronRight, px(13.), theme::accent()));
+        let head = div().flex().items_center().gap(px(14.)).child(hint(facts.join(" \u{b7} "))).children(toggle).child(journeys);
         let mut p =
             panel().child(panel_head(tr!("Top games"), head)).child(div().grid().grid_cols(cols as u16).gap(px(16.)).children(covers));
         if self.show_all {

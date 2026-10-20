@@ -46,6 +46,11 @@ impl StatsPage {
         self.shown_insights().first().and_then(|i| i.fact.game())
     }
 
+    /// The sentence of `f`, with `**bold**` runs.
+    pub(super) fn insight_sentence(&self, f: &Fact) -> String {
+        self.insight_text(f)
+    }
+
     fn insight_text(&self, f: &Fact) -> String {
         let title = |g: usize| self.game_title(g);
         match f {

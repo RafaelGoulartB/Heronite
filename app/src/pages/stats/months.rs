@@ -21,7 +21,7 @@ use crate::theme;
 use crate::ui::icon;
 
 /// Card height.
-const MH: f32 = 664.;
+const MH: f32 = 708.;
 const MONTH_W: f32 = 470.;
 const FUTURE_W: f32 = 330.;
 const RIVER_W: f32 = 640.;
@@ -835,6 +835,51 @@ impl StatsPage {
                 }
             }
         }
+        // Games beaten that month (their day: the status change, else the last session).
+        let beaten: Vec<usize> = (0..self.lib.as_ref().map_or(0, |l| l.games.len()))
+            .filter(|g| self.finished_on(*g).is_some_and(|d| b.start <= d && d < b.end))
+            .collect();
+        let beaten_row = (!beaten.is_empty()).then(|| {
+            let names: Vec<String> = beaten.iter().take(2).map(|g| self.game_title(*g)).collect();
+            let more = beaten.len().saturating_sub(2);
+            let text = if more > 0 {
+                tr!("Beaten: {games} and {n} more", games = names.join(", "), n = more)
+            } else {
+                tr!("Beaten: {games}", games = names.join(", "))
+            };
+            let covers: Vec<AnyElement> = beaten
+                .iter()
+                .take(3)
+                .map(|g| {
+                    let game = *g;
+                    let src = self.cover(game, 22., 30., window);
+                    div()
+                        .id(SharedString::from(format!("month-{i}-beaten-{game}")))
+                        .flex_none()
+                        .w(px(22.))
+                        .h(px(30.))
+                        .rounded(px(4.))
+                        .overflow_hidden()
+                        .bg(theme::white_a(0.06))
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(game, window, cx)))
+                        .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+                        .into_any_element()
+                })
+                .collect();
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .mt(px(8.))
+                .px(px(10.))
+                .py(px(6.))
+                .rounded(px(10.))
+                .bg(theme::white_a(0.04))
+                .child(icon(Icon::Flag, px(14.), theme::status_color("beaten")))
+                .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(theme::text_muted()).child(text))
+                .children(covers)
+        });
         let shot_h = if shots.len() == 1 { 100. } else { 92. };
         let shot_w = if shots.len() == 1 { MONTH_W - 44. } else { (MONTH_W - 52.) / 2. };
         let shot_els: Vec<Div> = shots
@@ -955,6 +1000,7 @@ impl StatsPage {
             }))
             .when(!big.is_empty(), |d| d.child(hbox(big, title, detail)))
             .child(rows)
+            .children(beaten_row)
             .child(dlab)
             .child(daily)
             .when(!shot_els.is_empty(), |d| d.child(div().flex().gap(px(8.)).mt(px(12.)).children(shot_els)));

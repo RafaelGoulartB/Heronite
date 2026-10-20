@@ -474,5 +474,13 @@
   "You played **{pct}% more** than {name}: {time}": "Você jogou **{pct}% mais** que {name}: {time}",
   "You started **{n} new games** and gave them **{time}**": "Você começou **{n} jogos novos** e deu a eles **{time}**",
   "You started **{n} new games** ({prev} before) and gave them **{time}**": "Você começou **{n} jogos novos** ({prev} antes) e deu a eles **{time}**",
-  "stats|Pause": "Pausa"
+  "stats|Pause": "Pausa",
+  "Beaten: {games}": "Zerou: {games}",
+  "Beaten: {games} and {n} more": "Zerou: {games} e mais {n}",
+  "Discovery": "Descoberta",
+  "**{done} of {target}** games beaten": "**{done} de {target}** jogos zerados",
+  "Every journey": "Todas as jornadas",
+  "**{n} journey** of 1h or more": "**{n} jornada** de 1h ou mais",
+  "**{n} journeys** of 1h or more": "**{n} jornadas** de 1h ou mais",
+  "Up to **{n} games** at the same time": "Até **{n} jogos** ao mesmo tempo"
 }

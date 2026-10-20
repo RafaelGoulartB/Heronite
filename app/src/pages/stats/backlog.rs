@@ -103,6 +103,12 @@ impl StatsPage {
         v
     }
 
+    /// Games beaten in `year`, oldest first.
+    pub(super) fn beaten_in_year(&self, year: i32) -> Vec<(usize, NaiveDate)> {
+        let jan1 = NaiveDate::from_ymd_opt(year, 1, 1).unwrap_or_else(today);
+        self.finished_in(&Period::of(Span::Year, jan1), &["beaten", "completed"])
+    }
+
     fn year_goal(&self, year: i32) -> u32 {
         self.prefs.goals.get(&year).copied().unwrap_or(12)
     }
