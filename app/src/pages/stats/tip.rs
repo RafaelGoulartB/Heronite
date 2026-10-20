@@ -4,7 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::stats::{fmt_secs, Stats, TOP_N};
+use heronite_data::stats::{fmt_secs, Stats};
 use heronite_i18n::{tr, trn};
 
 use super::{bucket_label, day_label, day_part, series_color, short_date, weekday_plural, Hover, StatsPage};
@@ -59,13 +59,11 @@ impl StatsPage {
     fn tip_body(&self, st: &Stats, h: Hover) -> Option<Body> {
         let heat_total: f64 = st.heat.iter().flatten().sum();
         Some(match h {
-            Hover::Bar(i) | Hover::River(i) => {
+            Hover::Bar(i) => {
                 let b = st.buckets.get(i)?;
                 let mut rows = vec![row(None, tr!("Played"), fmt_secs(b.secs))];
                 rows.extend(self.bucket_rows(st, i));
-                let (days, _) = st.days_between(b.start, b.end);
-                let note = (matches!(h, Hover::River(_)) && b.secs > 0.).then(|| trn!(days, "{n} day with play", "{n} days with play"));
-                Body { title: bucket_label(st.period.span, b.start, b.end), rows, note }
+                Body { title: bucket_label(st.period.span, b.start, b.end), rows, note: None }
             }
             Hover::Heat(d, hr) => Body {
                 title: format!("{}, {hr:02}:00\u{2013}{:02}:00", weekday_plural(d), (hr + 1) % 24),
@@ -83,16 +81,6 @@ impl StatsPage {
                     )],
                     note: None,
                 }
-            }
-            Hover::Slot(slot) => {
-                let (title, secs) = if slot < TOP_N {
-                    let g = *st.series.get(slot)?;
-                    (self.game_title(g), st.game(g).map_or(0., |s| s.secs))
-                } else {
-                    let top: f64 = st.series.iter().filter_map(|g| st.game(*g)).map(|g| g.secs).sum();
-                    (tr!("Other games").into(), st.total_secs - top)
-                };
-                Body { title, rows: vec![row(Some(series_color(Some(slot))), tr!("This period"), fmt_secs(secs))], note: None }
             }
             Hover::Game(g) => {
                 let s = st.game(g)?;

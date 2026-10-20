@@ -1,7 +1,7 @@
 //! Statistics page (☰ → Statistics): play time of a week, month, year or
 //! all time. The top of the page is the period's number one game as a hero
-//! with the total; below it come the month-by-month strip (the year as a
-//! "river" and one card per month), the top games, the habits, the records,
+//! with the total; below it come the month-by-month strip (one card per
+//! month), the top games, the habits, the records,
 //! a calendar of every day and the genres. A Year in review ("Wrapped",
 //! [`review`]) tells the same year as full-window stories.
 //!
@@ -23,7 +23,6 @@ mod marks;
 mod months;
 mod palette;
 mod review;
-mod river;
 mod sections;
 mod sheet;
 mod tabs;
@@ -122,10 +121,6 @@ pub(super) enum Hover {
     Heat(usize, usize),
     /// A day (calendar cell, bar of a month card).
     Day(NaiveDate),
-    /// Bucket column of the river.
-    River(usize),
-    /// Band of the river / legend row (chart slot, `TOP_N` = Other).
-    Slot(usize),
     /// Cover of the shelf (game index).
     Game(usize),
     Genre(usize),
