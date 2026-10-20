@@ -42,7 +42,7 @@ pub(super) enum Act {
     Console,
     /// Statistics, Year in review of this year.
     YearReview,
-    /// The getting-started checklist.
+    /// "Getting started".
     Onboarding,
     ManageStatuses,
     /// The library fields manager (genres, companies...).

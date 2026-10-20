@@ -20,7 +20,7 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 
 | Icons | Files | Copyright | License |
 |---|---|---|---|
-| [Material Icons](https://github.com/google/material-design-icons), through [`@mui/icons-material`](https://github.com/mui/material-ui/tree/master/packages/mui-icons-material) | every `app/assets/icons/*.svg` with a `0 0 24 24` view box, except `moon`, `sun`, `sunrise`, and `sunset`, which were drawn for Heronite (as were `play-circle`, `install-circle`, `stop-circle`, and `cursor`) | Google LLC (icons); Copyright (c) 2014 Call-Em-All (package) | Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)); MIT ([`licenses/MIT-mui-icons-material.txt`](licenses/MIT-mui-icons-material.txt)) |
+| [Material Icons](https://github.com/google/material-design-icons), through [`@mui/icons-material`](https://github.com/mui/material-ui/tree/master/packages/mui-icons-material) | every `app/assets/icons/*.svg` with a `0 0 24 24` view box, except `moon`, `sun`, `sunrise`, and `sunset`, which were drawn for Heronite (as were `play-circle`, `install-circle`, and `stop-circle`) | Google LLC (icons); Copyright (c) 2014 Call-Em-All (package) | Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)); MIT ([`licenses/MIT-mui-icons-material.txt`](licenses/MIT-mui-icons-material.txt)) |
 | [Font Awesome Free](https://fontawesome.com) 6 | `app/assets/icons/fa-*.svg` | Copyright (c) 2024 Fonticons, Inc. | CC BY 4.0 ([`licenses/FontAwesome-Free.txt`](licenses/FontAwesome-Free.txt)) |
 
 ## Libraries in the AppImage
