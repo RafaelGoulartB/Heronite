@@ -11,6 +11,8 @@
 //! * [`ludusavi`], [`settings_ext`]: Ludusavi save backups, with their status
 //!   fields in `settings.json`.
 //! * [`jobs`]: the idle jobs schedule.
+//! * [`setup`]: emulators and ROM folders set up by themselves for a new
+//!   setup.
 
 pub mod catalog;
 pub mod detect;
@@ -26,6 +28,7 @@ pub mod pathutil;
 pub mod save_states;
 pub mod scan;
 pub mod settings_ext;
+pub mod setup;
 pub mod sha1;
 pub mod store;
 pub mod sysfiles;
