@@ -34,6 +34,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-amazon     nile CLI: Amazon Games account, library,
  │                      installs, updates                            → data, launch, epic
  ├─ heronite-emulation  emulators, ROM scan, save states, Ludusavi   → data, launch
+ ├─ heronite-import     games of Heroic, Lutris and Faugus brought
+ │                      into the Collection                          → data
  ├─ heronite-installer  games from YAML install scripts              → data, launch, emulation
  ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
@@ -120,6 +122,25 @@ calls them from `cx.background_spawn` or worker threads.
   Wine/Proton plan of local games; the first launch in a prefix runs the
   store's installers (`first_launch::StoreSetup`, Amazon's `PostInstall`).
 
+- **heronite-import:** the other Linux launchers. `detect` finds Heroic,
+  Lutris and Faugus (native or Flatpak) and reads their libraries, read
+  only: Lutris' `pga.db` (SQLite, compiled in through rusqlite's `bundled`)
+  and the Wine prefix from each game's YAML, Faugus' `games.json`, Heroic's
+  sideload library and install records. `collection` writes Lutris' and
+  Faugus' installed games as sideload entries whose `launchKind` is
+  `launcher` (`heronite_data::launchers`): `launcherArgs` holds the command
+  that asks the launcher to start them, the launcher's play time moves up
+  when it is ahead, and a game gone from the launcher stays as not
+  installed. `heroic` copies the games added by hand in Heroic (they start
+  here, with their `GamesConfig`) and adds its Epic, GOG and Amazon install
+  records to this app's. Which launchers are imported lives in
+  `local_library/launcher-imports.json`; the app's `services::launcher_imports`
+  keeps them in sync. A `launcher` game's plan is a native process with a
+  `Handoff`: when the launcher returns at once (Lutris already open passes
+  the request to its window), the runtime follows the game's processes
+  (`Procs::game_pids`: files under its folder, Windows programs in its
+  prefix) until they are gone, and a stop ends them.
+
 - **heronite-steam:** Steam games keep launching through Steam
   (`steam://rungameid`), with Steam's Proton and prefix. Their game settings
   tabs edit what Steam stores per game instead: the compatibility tool and the
@@ -198,10 +219,10 @@ calls them from `cx.background_spawn` or worker threads.
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `launcher_imports` (the games of Heroic, Lutris and Faugus: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `overlay/` | the in-game overlay (beta, off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard) and notices (`toast.rs`) as layer-shell windows (`window.rs`); `moment.rs` marks a moment in the game's journal (a capture and an empty note) |
-| `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive) and from the bulb in the header (`onboarding.json` in the app state) |
+| `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, the other launchers found with games (a click turns their import on), the stores, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `launchers` reloads the Collection when another launcher's games come in; `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive) and from the bulb in the header (`onboarding.json` in the app state) |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, Wine Manager, Emulators); they talk back through `PageEvent` |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar` |
