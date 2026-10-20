@@ -283,12 +283,20 @@ with `caption` + `card`/`card_box` + `row`. List helpers: `list_item(leading, co
 `icon_action(id, icon, enabled)` (round 32px list button), `status_pill(text, colour)` / `tag_pill(text)`,
 `caption_with(text, action)` (caption + action on the right), `empty_row(text)`. Progress bars: `services::widgets::progress_bar`.
 Confirmations inside a page are inline rows of a card (text + ghost "Cancel" + danger button), not modals.
-Statistics (`pages/stats.rs`, Ctrl 6) only reads: the Collection hands it the loaded library
+Statistics (`pages/stats/`, Ctrl 6) has four tabs over one period (`tabs.rs`): Overview (hero, month by month,
+top games, habits, records, every day, genres, plus a card per other tab and each month's beaten games), Journeys
+(`journeys.rs`: a lane per game in time, games going at once), Backlog (`backlog.rs`: the yearly goal, beaten and
+abandoned games on the year's line, How Long To Beat, the Collection by status, the queue, the shelf, the pile) and
+Discoveries (`discoveries.rs`: the period's facts as sentences, pinned or hidden by kind, milestones, memories).
+A tab that cannot show a span (Journeys of a week) shows the year around it and dims that span. Every cover and game
+name opens the game sheet (`sheet.rs`, a drawer; Esc closes it). The last tab, the yearly goals and the pinned and
+hidden discoveries live in `ui-state.json` (`heronite_data::stats::StatsPrefs`). The page only reads: the Collection hands it the loaded library
 (`StatsPage::set_library`, on navigate and after each reload) and the numbers come from `heronite_data::stats`
 (sessions cut into hours; sessions under 2 min are failed launches and ignored). Charts are plain divs: bars stacked
 in `theme::chart_series(i)` for the top 5 games of the period (`Stats::series`), the rest `theme::chart_other()`; a
 game keeps its colour in every block of the page. Hovering a bar / heatmap cell updates the line above it (no tooltips).
-`HERONITE_DEBUG_PAGE=stats:week|month|year|all` opens it on a span.
+`HERONITE_DEBUG_PAGE=stats:week|month|year|all` opens it on a span; `HERONITE_DEBUG_STATS_TAB=overview|journeys|backlog|discoveries`,
+`HERONITE_DEBUG_STATS_SHEET=<n>` (the sheet of the period's game n) and `HERONITE_DEBUG_STATS_OPEN=<n>` (lane n open).
 
 **Console mode** (`app/src/console/`, shell in `collection/console/`): an extra controller-first TV mode
 entered from ☰ › Console mode or the palette,
