@@ -1,0 +1,22 @@
+[package]
+name = "heronite-import"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Games of the other Linux launchers (Heroic, Lutris, Faugus) brought into the Collection"
+
+[dependencies]
+heronite-data = { path = "../data" }
+anyhow = "1"
+log = "0.4"
+serde_json.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+# Lutris keeps its library in SQLite; the library is compiled in (no system
+# libsqlite3 needed by the packages or the AppImage).
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
