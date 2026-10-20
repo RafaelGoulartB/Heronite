@@ -58,7 +58,7 @@ pub fn game_sheet(h: &History, game: usize, period: Period, today: NaiveDate) ->
     let mut bars: Vec<(NaiveDate, f64)> = (0..n).map(|i| (start + Duration::days(i * step), 0.)).collect();
     let (mut secs, mut weekend) = (0., 0.);
     let mut days = std::collections::BTreeSet::new();
-    for x in h.pieces.iter().filter(|x| x.game as usize == game && period.contains(x.at.date())) {
+    for x in h.pieces_in(period).iter().filter(|x| x.game as usize == game) {
         let s = x.secs as f64;
         secs += s;
         days.insert(x.at.date());
@@ -70,7 +70,7 @@ pub fn game_sheet(h: &History, game: usize, period: Period, today: NaiveDate) ->
             b.1 += s;
         }
     }
-    let mine: Vec<&Played> = h.sessions.iter().filter(|s| s.game == game).collect();
+    let mine: Vec<&Played> = h.sessions_of(game).collect();
     let inside: Vec<&&Played> = mine.iter().filter(|s| period.contains(s.start.date())).collect();
     let best = inside.iter().max_by(|a, b| a.secs.total_cmp(&b.secs)).map(|s| ***s);
     let mut hours: Vec<u32> = inside.iter().map(|s| (s.start.hour() + 18) % 24).collect();

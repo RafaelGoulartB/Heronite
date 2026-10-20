@@ -118,7 +118,7 @@ pub fn insights(h: &History, st: &Stats) -> Vec<Insight> {
     }
     if let Some(prev) = p.prev() {
         let mut before: HashMap<usize, f64> = HashMap::new();
-        for x in h.pieces.iter().filter(|x| prev.contains(x.at.date())) {
+        for x in h.pieces_in(prev) {
             *before.entry(x.game as usize).or_default() += x.secs as f64;
         }
         if let Some(g) = st.games.iter().max_by(|a, b| {
@@ -158,7 +158,7 @@ pub fn insights(h: &History, st: &Stats) -> Vec<Insight> {
     }
     if let Some((day, secs)) = st.busiest.filter(|b| b.1 >= 4. * 3600.) {
         let games = st.days.iter().position(|(d, _)| *d == day).map_or(1, |_| {
-            h.sessions.iter().filter(|s| s.start.date() == day).map(|s| s.game).collect::<std::collections::BTreeSet<_>>().len()
+            h.sessions_between(day, day + Duration::days(1)).iter().map(|s| s.game).collect::<std::collections::BTreeSet<_>>().len()
         });
         push(Fact::Marathon { day, secs, games }, secs / 3600. / 10.);
     }
@@ -184,7 +184,7 @@ pub fn insights(h: &History, st: &Stats) -> Vec<Insight> {
 impl Stats {
     /// Start times of the sessions of the period.
     fn session_list_starts<'a>(&'a self, h: &'a History) -> impl Iterator<Item = NaiveDateTime> + 'a {
-        h.sessions.iter().filter(|s| self.period.contains(s.start.date())).map(|s| s.start)
+        h.sessions_in(self.period).iter().map(|s| s.start)
     }
 }
 
@@ -233,8 +233,8 @@ pub struct Milestone {
 
 /// Milestones of the whole recorded history (sessions only), as of `today`.
 pub fn milestones(h: &History, today: NaiveDate) -> Vec<Milestone> {
-    let mut sessions: Vec<&super::Played> = h.sessions.iter().collect();
-    sessions.sort_by_key(|s| s.start);
+    // The history keeps its sessions oldest first.
+    let sessions: Vec<&super::Played> = h.sessions.iter().collect();
     let since = today - Duration::days(90);
     let mut out = Vec::new();
     for kind in MilestoneKind::ALL {
@@ -284,7 +284,7 @@ pub fn milestones(h: &History, today: NaiveDate) -> Vec<Milestone> {
                 if let Some((g, v)) = per.iter().max_by(|a, b| a.1.total_cmp(b.1)) {
                     value = *v;
                     game = game.or(Some(*g));
-                    recent = sessions.iter().filter(|s| s.game == *g && s.start.date() > since).map(|s| s.secs / 3600.).sum();
+                    recent = h.sessions_of(*g).filter(|s| s.start.date() > since).map(|s| s.secs / 3600.).sum();
                 }
             }
             MilestoneKind::Streak => {

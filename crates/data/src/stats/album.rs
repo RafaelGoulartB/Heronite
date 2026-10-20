@@ -5,6 +5,8 @@
 //! Screenshots come in as `(game, taken at)` in local time, the game being
 //! the index into the [`super::history`] input.
 
+use std::collections::HashMap;
+
 use chrono::{NaiveDateTime, Timelike};
 
 use super::{History, Period};
@@ -58,10 +60,17 @@ pub fn moments(shots: &[(usize, NaiveDateTime)]) -> Vec<Moment> {
 
 /// Sessions of `period` by how many captures they left: 0, 1, 2–4, 5–9, 10+.
 pub fn captures_per_session(h: &History, shots: &[(usize, NaiveDateTime)], period: Period) -> [usize; 5] {
+    // Each game's capture times sorted: a session counts its own with two
+    // binary searches instead of a pass over every capture.
+    let mut per_game: HashMap<usize, Vec<NaiveDateTime>> = HashMap::new();
+    for (g, at) in shots {
+        per_game.entry(*g).or_default().push(*at);
+    }
+    per_game.values_mut().for_each(|v| v.sort_unstable());
     let mut out = [0; 5];
-    for s in h.sessions.iter().filter(|s| period.contains(s.start.date())) {
+    for s in h.sessions_in(period) {
         let end = s.start + chrono::Duration::seconds(s.secs as i64);
-        let n = shots.iter().filter(|(g, at)| *g == s.game && *at >= s.start && *at <= end).count();
+        let n = per_game.get(&s.game).map_or(0, |v| v.partition_point(|at| *at <= end) - v.partition_point(|at| *at < s.start));
         out[match n {
             0 => 0,
             1 => 1,
@@ -81,7 +90,7 @@ pub fn capture_hours(h: &History, shots: &[(usize, NaiveDateTime)], period: Peri
         caps[at.hour() as usize] += 1.;
     }
     let mut play = [0f64; 24];
-    for x in h.pieces.iter().filter(|x| period.contains(x.at.date())) {
+    for x in h.pieces_in(period) {
         play[x.at.hour() as usize] += x.secs as f64;
     }
     let norm = |v: &mut [f64; 24]| {

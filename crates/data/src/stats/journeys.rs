@@ -86,11 +86,11 @@ pub fn journeys(h: &History, period: Period, today: NaiveDate) -> Journeys {
         period
     };
     let mut per_game: BTreeMap<usize, BTreeMap<NaiveDate, f64>> = BTreeMap::new();
-    for x in h.pieces.iter().filter(|x| period.contains(x.at.date())) {
+    for x in h.pieces_in(period) {
         *per_game.entry(x.game as usize).or_default().entry(x.at.date()).or_default() += x.secs as f64;
     }
     let mut sessions: BTreeMap<usize, usize> = BTreeMap::new();
-    for s in h.sessions.iter().filter(|s| period.contains(s.start.date())) {
+    for s in h.sessions_in(period) {
         *sessions.entry(s.game).or_default() += 1;
     }
     let step = Journeys::step(period.span);

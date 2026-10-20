@@ -43,8 +43,12 @@ pub fn goal(target: u32, done: u32, year: i32, today: NaiveDate) -> Goal {
 /// how fast a queue moves).
 pub fn weekly_hours(h: &History, today: NaiveDate, weeks: i64, skip: impl Fn(usize) -> bool) -> f64 {
     let from = today - Duration::weeks(weeks);
-    let secs: f64 =
-        h.pieces.iter().filter(|x| x.at.date() > from && x.at.date() <= today && !skip(x.game as usize)).map(|x| x.secs as f64).sum();
+    let secs: f64 = h
+        .pieces_between(from + Duration::days(1), today + Duration::days(1))
+        .iter()
+        .filter(|x| !skip(x.game as usize))
+        .map(|x| x.secs as f64)
+        .sum();
     secs / 3600. / weeks.max(1) as f64
 }
 
