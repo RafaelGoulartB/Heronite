@@ -19,7 +19,10 @@ use std::time::Duration;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::appearance::{Appearance, InterfaceMode, SolidTint, INTERFACE_BLUR_RANGE, INTERFACE_BLUR_STEP, INTERFACE_OPACITY_RANGE};
+use heronite_data::appearance::{
+    Appearance, InterfaceMode, SolidTint, AUTO_VIEW_WIDTH_RANGE, AUTO_VIEW_WIDTH_STEP, INTERFACE_BLUR_RANGE, INTERFACE_BLUR_STEP,
+    INTERFACE_OPACITY_RANGE,
+};
 use heronite_data::settings::{self, CoverAspect, EffectiveSettings, PartialBackground};
 use heronite_i18n::{n_, tr};
 use heronite_images::{ImageRef, Opts};
@@ -50,6 +53,8 @@ enum Field {
     PanelOpacity,
     /// Interface blur (px).
     PanelBlur,
+    /// Window width of the Focus / Grid switch (px).
+    AutoViewWidth,
 }
 
 pub struct State {
@@ -104,8 +109,10 @@ impl State {
             (Field::Scrim, 0., 150., 1., b.scrim.get()),
             (Field::PanelOpacity, INTERFACE_OPACITY_RANGE.0, INTERFACE_OPACITY_RANGE.1, 1., ui.interface_opacity as f64),
             (Field::PanelBlur, INTERFACE_BLUR_RANGE.0, INTERFACE_BLUR_RANGE.1, INTERFACE_BLUR_STEP, ui.interface_blur as f64),
+            (Field::AutoViewWidth, AUTO_VIEW_WIDTH_RANGE.0, AUTO_VIEW_WIDTH_RANGE.1, AUTO_VIEW_WIDTH_STEP, ui.auto_view.width as f64),
         ] {
-            let state = cx.new(|_| SliderState::new().min(min).max(max).step(step).default_value(value as f32));
+            // `max` first: each setter clamps against the other bound, and the default `max` is 100.
+            let state = cx.new(|_| SliderState::new().max(max).min(min).step(step).default_value(value as f32));
             cx.subscribe_in(&state, window, move |d: &mut SettingsPage, _, ev: &SliderEvent, _, cx| {
                 let (value, release) = match ev {
                     SliderEvent::Change(v) => (v, false),
@@ -121,12 +128,17 @@ impl State {
                     Field::CollectionOpacity => a.ui.collection_opacity = v,
                     Field::PanelOpacity => a.ui.interface_opacity = v,
                     Field::PanelBlur => a.ui.interface_blur = v,
+                    Field::AutoViewWidth => a.ui.auto_view.width = v,
                 }
                 if matches!(field, Field::Blur | Field::Saturation) {
                     schedule_preview(d, cx);
                 }
-                if matches!(field, Field::CollectionOpacity | Field::PanelOpacity | Field::PanelBlur) {
+                if matches!(field, Field::CollectionOpacity | Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth) {
                     apply_interface(d, release, cx);
+                    // The Collection behind switches its view live as the width moves past the window.
+                    if field == Field::AutoViewWidth {
+                        cx.emit(crate::pages::PageEvent::AppearanceChanged);
+                    }
                 } else if release {
                     save_background(d, cx);
                 }
@@ -316,7 +328,7 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
     card(rows)
 }
 
-pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
+pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     if d.appearance.preview.is_none() && d.appearance.preview_task.is_none() {
         schedule_preview(d, cx);
     }
@@ -373,7 +385,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             Field::Dimming => tr!("Darkening: {value}%", value = a.dimming.round()),
             Field::Saturation => tr!("Colour intensity: {value}%", value = a.saturation.round()),
             Field::Scrim => tr!("Edge shading: {value}%", value = a.scrim.round()),
-            Field::PanelOpacity | Field::PanelBlur => continue,
+            Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth => continue,
         };
         rows.push(slider_row(label, state));
     }
@@ -463,7 +475,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let colour = look::colour_group(d, cx);
     let reading = look::reading_group(d, cx);
     let motion = look::motion_group(d, cx);
-    let layout = look::layout_group(d, cx);
+    let layout = look::layout_group(d, f32::from(window.viewport_size().width), cx);
     div()
         .flex()
         .flex_col()

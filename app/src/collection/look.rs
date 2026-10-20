@@ -18,6 +18,8 @@ pub(super) struct LookState {
     /// Count of slideshow steps; picks the screenshot behind the Collection.
     pub slide: usize,
     slideshow: Option<Task<()>>,
+    /// The view the window's width asked for last (`AutoView::grid_for`).
+    auto_grid: Option<bool>,
 }
 
 /// Size the accent is measured on: a cover shrunk to a few pixels.
@@ -112,6 +114,21 @@ impl CollectionView {
             StartView::Last => {}
             StartView::Focus => self.ui.grid_view = false,
             StartView::Grid => self.ui.grid_view = true,
+        }
+    }
+
+    /// Settings → Appearance → "Switch with the window's width". The view
+    /// changes only when the wanted one does (the window crosses the width,
+    /// the switch is turned on, the width moves past the window), so the
+    /// header's Focus / Grid switch keeps working in between. Writes nothing:
+    /// this runs in `render` (no I/O), and the width picks the view again at
+    /// the next start anyway.
+    pub(super) fn sync_auto_view(&mut self, viewport_w: f32, cx: &mut Context<Self>) {
+        let wanted = theme::appearance().auto_view.grid_for(viewport_w);
+        if std::mem::replace(&mut self.look.auto_grid, wanted) != wanted {
+            if let Some(grid) = wanted {
+                self.show_grid_view(grid, cx);
+            }
         }
     }
 

@@ -31,6 +31,27 @@ pub const INTERFACE_OPACITY_RANGE: (f32, f32) = (50., 100.);
 pub const INTERFACE_BLUR_RANGE: (f32, f32) = (0., 60.);
 /// The blur is applied in steps (each value is a cached raster).
 pub const INTERFACE_BLUR_STEP: f32 = 5.;
+/// Window widths [`AutoView`] can switch at, logical px.
+pub const AUTO_VIEW_WIDTH_RANGE: (f32, f32) = (800., 2560.);
+pub const AUTO_VIEW_WIDTH_STEP: f32 = 20.;
+
+/// The Collection's view picked by the window's width: Grid while the window
+/// is narrower than `width`, Focus from `width` up. Off by default.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AutoView {
+    pub on: bool,
+    /// Logical px, within [`AUTO_VIEW_WIDTH_RANGE`].
+    pub width: f32,
+}
+
+impl AutoView {
+    pub const DEFAULT: AutoView = AutoView { on: false, width: 1400. };
+
+    /// `Some(true)` for Grid, `Some(false)` for Focus; `None` while off.
+    pub fn grid_for(self, window_w: f32) -> Option<bool> {
+        self.on.then_some(window_w < self.width)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InterfaceMode {
@@ -124,6 +145,7 @@ pub struct Appearance {
     pub background_slideshow: bool,
     pub motion: Motion,
     pub start_view: StartView,
+    pub auto_view: AutoView,
     pub sections: Sections,
 }
 
@@ -150,6 +172,7 @@ impl Appearance {
         background_slideshow: false,
         motion: Motion::DEFAULT,
         start_view: StartView::DEFAULT,
+        auto_view: AutoView::DEFAULT,
         sections: Sections::DEFAULT,
     };
 }
@@ -174,7 +197,14 @@ impl Appearance {
         self.collection_opacity = clamp(COLLECTION_OPACITY_RANGE, self.collection_opacity).round();
         self.interface_opacity = clamp(INTERFACE_OPACITY_RANGE, self.interface_opacity).round();
         self.interface_blur = clamp(INTERFACE_BLUR_RANGE, (self.interface_blur / INTERFACE_BLUR_STEP).round() * INTERFACE_BLUR_STEP);
+        self.auto_view.width = clamp(AUTO_VIEW_WIDTH_RANGE, (self.auto_view.width / AUTO_VIEW_WIDTH_STEP).round() * AUTO_VIEW_WIDTH_STEP);
         self
+    }
+
+    /// `self` with `other`'s [`AutoView`]. The switch follows the window,
+    /// not a look: applying or matching a profile neither changes nor breaks it.
+    pub fn with_auto_view_of(self, other: &Appearance) -> Self {
+        Self { auto_view: other.auto_view, ..self }
     }
 
     pub fn from_value(value: &Value) -> Self {
@@ -203,6 +233,7 @@ impl Appearance {
             background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
             start_view: name("startView").and_then(StartView::parse).unwrap_or_default(),
+            auto_view: AutoView { on: flag("autoView", d.auto_view.on), width: num("autoViewWidth", d.auto_view.width) },
             sections: Sections::from_names(names("sections"), names("hiddenSections")),
         }
         .normalized()
@@ -227,6 +258,8 @@ impl Appearance {
             "backgroundSlideshow": self.background_slideshow,
             "motion": self.motion.as_str(),
             "startView": self.start_view.as_str(),
+            "autoView": self.auto_view.on,
+            "autoViewWidth": self.auto_view.width,
             "sections": self.sections.order().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
             "hiddenSections": self.sections.hidden_names(),
         })
@@ -323,6 +356,7 @@ mod tests {
             background_slideshow: true,
             motion: Motion::Reduced,
             start_view: StartView::Grid,
+            auto_view: AutoView { on: true, width: 1600. },
             sections: Sections::DEFAULT.moved(Section::Related, -4).toggled(Section::Timeline),
         };
         a.save(&p).unwrap();
@@ -335,6 +369,21 @@ mod tests {
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
         assert_eq!(on_disk["sections"][0], "related");
         assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
+        assert_eq!(on_disk["autoView"], true);
+        assert_eq!(on_disk["autoViewWidth"], 1600.0);
+    }
+
+    #[test]
+    fn auto_view_is_off_until_turned_on() {
+        let a = Appearance::from_value(&json!({"startView": "grid"}));
+        assert_eq!(a.auto_view, AutoView::DEFAULT);
+        assert_eq!(a.auto_view.grid_for(900.), None);
+        let a = Appearance::from_value(&json!({"autoView": true, "autoViewWidth": 1290}));
+        assert_eq!(a.auto_view.width, 1300.);
+        assert_eq!(a.auto_view.grid_for(1299.), Some(true));
+        assert_eq!(a.auto_view.grid_for(1300.), Some(false));
+        let a = Appearance::from_value(&json!({"autoView": true, "autoViewWidth": 99999}));
+        assert_eq!(a.auto_view.width, AUTO_VIEW_WIDTH_RANGE.1);
     }
 
     #[test]

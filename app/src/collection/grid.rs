@@ -94,15 +94,23 @@ impl CollectionView {
 
     /// Focus (list + details) or Grid.
     pub(super) fn set_grid_view(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.show_grid_view(on, cx) {
+            self.save_ui();
+        }
+    }
+
+    /// [`Self::set_grid_view`] without saving it as the last view; `false`
+    /// when it already is the view.
+    pub(super) fn show_grid_view(&mut self, on: bool, cx: &mut Context<Self>) -> bool {
         if self.ui.grid_view == on {
-            return;
+            return false;
         }
         self.ui.grid_view = on;
-        self.save_ui();
         self.grid.drawer_closed = false;
         self.grid.reveal = true;
         self.focus_scroll.set_offset(point(px(0.), px(0.)));
         cx.notify();
+        true
     }
 
     /// Header controls: in the grid the cover size and the titles switch,
