@@ -41,6 +41,7 @@ mod updates;
 
 pub use advanced::open_folder;
 pub use backup::format_time;
+pub use launchers::launcher_icon;
 pub use section::Section;
 
 use std::collections::HashMap;

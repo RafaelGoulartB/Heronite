@@ -78,6 +78,9 @@ impl OnboardingDialog {
         let facts = Facts::read(&ctx.lib, &ctx.data_paths, &ctx.app, done);
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
+        // The other launchers found on this PC, offered in "Your games".
+        let launchers = crate::services::launcher_imports(cx);
+        cx.observe(&launchers, |_, _, cx| cx.notify()).detach();
         let games = pick_games(&ctx);
         // Whether Ludusavi is installed decides if backups can be turned on.
         let preferred = ctx.lib.settings.ludusavi.binary_path.clone();

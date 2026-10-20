@@ -96,6 +96,11 @@ impl LauncherImports {
         .detach();
     }
 
+    /// The launchers found that have games and are not imported yet.
+    pub fn offers(&self) -> Vec<Summary> {
+        self.found.iter().flatten().filter(|s| s.games > 0 && !self.prefs.enabled.contains(&s.launcher)).cloned().collect()
+    }
+
     pub fn summary(&self, launcher: Launcher) -> Option<&Summary> {
         self.found.iter().flatten().find(|s| s.launcher == launcher)
     }

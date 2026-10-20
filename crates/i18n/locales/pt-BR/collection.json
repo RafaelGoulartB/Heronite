@@ -465,5 +465,9 @@
   "Log in to a store": "Entrar numa loja",
   "Log in": "Entrar",
   "Added {n} game from {launcher}": "{n} jogo adicionado do {launcher}",
-  "Added {n} games from {launcher}": "{n} jogos adicionados do {launcher}"
+  "Added {n} games from {launcher}": "{n} jogos adicionados do {launcher}",
+  "Bring in from another launcher": "Trazer de outro launcher",
+  "Bringing in…": "Trazendo…",
+  "{n} game · Bring in": "{n} jogo · Trazer",
+  "{n} games · Bring in": "{n} jogos · Trazer"
 }

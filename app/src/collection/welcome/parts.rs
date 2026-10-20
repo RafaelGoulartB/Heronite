@@ -248,8 +248,9 @@ pub(super) fn source_row(
         .when_some(button, |d, b| d.child(div().flex_none().child(b)))
 }
 
-/// A store to log in to: its name over "Log in", tinted with its colour.
-pub(super) fn store_tile(id: &'static str, name: &'static str, (r, g, b): (u8, u8, u8)) -> Stateful<Div> {
+/// A store to log in to, or a launcher to bring games from: its name over
+/// what a click does, tinted with its colour.
+pub(super) fn tile(id: impl Into<ElementId>, ic: Icon, name: &'static str, action: String, (r, g, b): (u8, u8, u8)) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -273,7 +274,7 @@ pub(super) fn store_tile(id: &'static str, name: &'static str, (r, g, b): (u8, u
                 .items_center()
                 .justify_center()
                 .bg(theme::rgba_hsla(r, g, b, 0.14))
-                .child(icon(Icon::Storefront, px(20.), theme::rgba_hsla(r, g, b, 1.))),
+                .child(icon(ic, px(20.), theme::rgba_hsla(r, g, b, 1.))),
         )
         .child(
             div()
@@ -291,6 +292,14 @@ pub(super) fn store_tile(id: &'static str, name: &'static str, (r, g, b): (u8, u
                         .text_color(theme::text_primary())
                         .child(name),
                 )
-                .child(div().text_size(px(12.5)).text_color(theme::accent()).child(tr!("Log in"))),
+                .child(
+                    div()
+                        .whitespace_nowrap()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_size(px(12.5))
+                        .text_color(theme::accent())
+                        .child(action),
+                ),
         )
 }
