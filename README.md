@@ -15,8 +15,6 @@
   <a href="https://github.com/RafaelGoulartB/Heronite/releases">
     <img alt="Downloads" src="https://img.shields.io/github/downloads/RafaelGoulartB/Heronite/total?color=2B8CA8&logo=github&label=downloads" />
   </a>
-  <img alt="GitHub Pull Requests" src="https://img.shields.io/github/issues-pr/RafaelGoulartB/Heronite?color=2B8CA8" />
-  <img alt="GitHub repository size" src="https://img.shields.io/github/repo-size/RafaelGoulartB/Heronite?color=2B8CA8" />
 </p>
 
 <p align="center">
