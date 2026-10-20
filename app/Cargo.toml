@@ -23,6 +23,7 @@ serde_json.workspace = true
 heronite-media = { path = "../crates/media" }
 heronite-overlay = { path = "../crates/overlay" }
 heronite-emulation = { path = "../crates/emulation" }
+heronite-import = { path = "../crates/import" }
 heronite-installer = { path = "../crates/installer" }
 heronite-wine = { path = "../crates/wine" }
 heronite-epic = { path = "../crates/epic" }

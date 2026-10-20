@@ -133,7 +133,10 @@ impl CollectionView {
         if g.recent {
             manage.push(Row::action("recent", tr!("Remove from recent")).icon(Icon::History));
         }
-        if g.runner == "sideload" && !playing && !matches!(g.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
+        if g.runner == "sideload"
+            && !playing
+            && !matches!(g.launch_kind.as_deref(), Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND))
+        {
             manage.push(Row::action("x:edit", tr!("Edit game")).icon(Icon::Edit));
         }
         if g.runner == "sideload" && !playing && g.launch_kind.as_deref() == Some("emulator") {

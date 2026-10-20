@@ -176,6 +176,7 @@ fn section_help(s: Section) -> &'static str {
         Section::GameDefaults => tr!("Values new games start with"),
         Section::Downloads => tr!("Store downloads and updates"),
         Section::Library => tr!("Hidden games, favourites, recent games"),
+        Section::Launchers => tr!("Bring in games from Heroic, Lutris and Faugus"),
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
         Section::Overlay => tr!("Guide button panel over games (beta)"),
         Section::Metadata => tr!("IGDB keys, covers, field sources"),

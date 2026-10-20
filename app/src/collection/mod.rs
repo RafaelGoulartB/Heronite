@@ -26,6 +26,7 @@ mod install_options;
 mod journal;
 mod launch_options;
 mod launch_progress;
+mod launchers;
 mod list;
 mod list_view;
 mod load;
@@ -318,6 +319,7 @@ impl CollectionView {
         }
         this.spawn_load(cx);
         this.start_idle_jobs(cx);
+        this.watch_launcher_imports(cx);
         this.init_metadata(window, cx);
         this.spawn_disk_watch(cx);
         this.spawn_debug_browse(cx);

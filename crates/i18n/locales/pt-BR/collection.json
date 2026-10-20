@@ -463,5 +463,7 @@
   "ROMs": "ROMs",
   "Or add a game yourself": "Ou adicione um jogo você mesmo",
   "Log in to a store": "Entrar numa loja",
-  "Log in": "Entrar"
+  "Log in": "Entrar",
+  "Added {n} game from {launcher}": "{n} jogo adicionado do {launcher}",
+  "Added {n} games from {launcher}": "{n} jogos adicionados do {launcher}"
 }

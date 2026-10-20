@@ -14,6 +14,8 @@ pub enum Section {
     GameDefaults,
     Downloads,
     Library,
+    /// Heroic, Lutris and Faugus: bringing their games in.
+    Launchers,
     /// What the games take on disk, and cleaning it up.
     Storage,
     /// The in-game overlay (Guide button).
@@ -32,19 +34,23 @@ impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 4] = [
         (n_!("App"), &[Section::General, Section::Appearance, Section::Advanced]),
-        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Library, Section::Storage, Section::Overlay]),
+        (
+            n_!("Games"),
+            &[Section::GameDefaults, Section::Downloads, Section::Library, Section::Launchers, Section::Storage, Section::Overlay],
+        ),
         (n_!("Collection"), &[Section::Metadata, Section::Screenshots, Section::Saves, Section::Backups]),
         (n_!("Help"), &[Section::Logs, Section::About]),
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 14] = [
+    pub const ALL: [Section; 15] = [
         Section::General,
         Section::Appearance,
         Section::Advanced,
         Section::GameDefaults,
         Section::Downloads,
         Section::Library,
+        Section::Launchers,
         Section::Storage,
         Section::Overlay,
         Section::Metadata,
@@ -63,6 +69,7 @@ impl Section {
             Section::GameDefaults => tr!("Game defaults"),
             Section::Downloads => tr!("Downloads"),
             Section::Library => tr!("Library"),
+            Section::Launchers => tr!("Other launchers"),
             Section::Storage => tr!("Storage"),
             Section::Overlay => tr!("Overlay"),
             Section::Metadata => tr!("Metadata"),
@@ -82,6 +89,7 @@ impl Section {
             Section::GameDefaults => Icon::Tune,
             Section::Downloads => Icon::Download,
             Section::Library => Icon::GridView,
+            Section::Launchers => Icon::CallMerge,
             Section::Storage => Icon::FaHardDrive,
             Section::Overlay => Icon::SportsEsports,
             Section::Metadata => Icon::TravelExplore,
@@ -102,6 +110,7 @@ impl Section {
             Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
+            Section::Launchers => tr!("Bring in the games of Heroic, Lutris and Faugus. While on, a game added there shows up here too."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
             Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
             Section::Metadata => tr!("Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags."),
@@ -122,6 +131,7 @@ impl Section {
             Section::GameDefaults => "game defaults wine prefix gamescope launch options new games padroes dos jogos prefixo opcoes de inicializacao novos jogos",
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
+            Section::Launchers => "other launchers import heroic lutris faugus sync bring in outros launchers importar sincronizar trazer",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut beta botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
@@ -150,6 +160,7 @@ impl Section {
             "defaults" => Some(Section::GameDefaults),
             "downloads" => Some(Section::Downloads),
             "library" => Some(Section::Library),
+            "launchers" | "import" => Some(Section::Launchers),
             "storage" | "disk" => Some(Section::Storage),
             "overlay" => Some(Section::Overlay),
             "metadata" => Some(Section::Metadata),
