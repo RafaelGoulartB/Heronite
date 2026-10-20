@@ -28,6 +28,8 @@ pub(super) struct GameFacts {
     abandoned_days: Vec<(NaiveDate, usize)>,
     /// Games per status id.
     per_status: HashMap<String, usize>,
+    /// Library index of each game key (the plans keep keys).
+    index: HashMap<String, usize>,
     /// Games ever opened (play time or a session), and played 5h or more.
     pub opened: usize,
     pub played_5h: usize,
@@ -68,6 +70,7 @@ impl GameFacts {
             f.beaten_days.extend(b.map(|d| (d, i)));
             f.abandoned_days.extend(a.map(|d| (d, i)));
             *f.per_status.entry(g.status_id.clone()).or_default() += 1;
+            f.index.insert(g.key.clone(), i);
             f.opened += usize::from(g.playtime_minutes > 0 || g.sessions.as_ref().is_some_and(|s| !s.is_empty()));
             f.played_5h += usize::from(g.playtime_minutes >= 300);
             f.slug.push(slug);
@@ -98,6 +101,16 @@ impl GameFacts {
             }
         });
         f
+    }
+
+    /// Built for a library (empty until then).
+    pub fn ready(&self) -> bool {
+        !self.slug.is_empty()
+    }
+
+    /// Library index of the game with `key`.
+    pub fn index_of(&self, key: &str) -> Option<usize> {
+        self.index.get(key).copied()
     }
 
     pub fn slug(&self, game: usize) -> &str {

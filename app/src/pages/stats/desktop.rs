@@ -562,13 +562,17 @@ impl StatsPage {
         let tip = st.as_ref().and_then(|st| self.render_tip(st, window));
         let sheet = self.render_sheet(window, cx);
         let lightbox = self.render_lightbox(window, cx);
+        let planner = self.render_planner(window, cx);
         div()
             .size_full()
             .p(px(12.))
             .pt(px(2.))
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
-                if this.lightbox.is_some() {
+            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
+                if this.planner.is_some() && ev.keystroke.key == "escape" {
+                    this.close_planner(window, cx);
+                    cx.stop_propagation();
+                } else if this.lightbox.is_some() {
                     match ev.keystroke.key.as_str() {
                         "escape" => {
                             this.lightbox = None;
@@ -604,9 +608,10 @@ impl StatsPage {
                     .children(bar)
                     .child(page_close(cx).absolute().top(px(20.)).right(px(20.)))
                     .children(sheet)
-                    .children(lightbox),
+                    .children(lightbox)
+                    .children(planner),
             )
-            .children(tip.filter(|_| self.sheet.is_none() && self.lightbox.is_none()))
+            .children(tip.filter(|_| self.sheet.is_none() && self.lightbox.is_none() && self.planner.is_none()))
             .into_any_element()
     }
 }

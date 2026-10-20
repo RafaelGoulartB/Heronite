@@ -22,6 +22,7 @@ mod load;
 mod marks;
 mod months;
 mod palette;
+mod plans;
 mod review;
 mod sections;
 mod sheet;
@@ -194,6 +195,8 @@ pub struct StatsPage {
     moment_open: Option<usize>,
     /// The screenshot viewer over the page.
     lightbox: Option<viewer::Lightbox>,
+    /// The picker of a planned game over the page ([`plans`]).
+    planner: Option<plans::Planner>,
     /// The game sheet open over the page ([`sheet`]).
     sheet: Option<Arc<GameSheet>>,
     sheet_scroll: ScrollHandle,
@@ -218,6 +221,11 @@ struct Debug {
     sheet: Option<usize>,
     lane: Option<usize>,
     photo: Option<usize>,
+    /// `HERONITE_DEBUG_STATS_PLAN=N`: the picker of the Backlog's slot N open;
+    /// `HERONITE_DEBUG_STATS_PLANNED=N`: the queue's first N games planned
+    /// (in memory, not saved).
+    plan: Option<usize>,
+    planned: Option<usize>,
     applied: bool,
 }
 
@@ -256,6 +264,8 @@ impl StatsPage {
             sheet: crate::env::parse("HERONITE_DEBUG_STATS_SHEET"),
             lane: crate::env::parse("HERONITE_DEBUG_STATS_OPEN"),
             photo: crate::env::parse("HERONITE_DEBUG_STATS_PHOTO"),
+            plan: crate::env::parse("HERONITE_DEBUG_STATS_PLAN"),
+            planned: crate::env::parse("HERONITE_DEBUG_STATS_PLANNED"),
             applied: false,
         };
         let prefs = StatsPrefs::load(&ctx.app);
@@ -309,6 +319,7 @@ impl StatsPage {
             album_more: false,
             moment_open: None,
             lightbox: None,
+            planner: None,
             sheet: None,
             sheet_scroll: ScrollHandle::new(),
             focus,
@@ -404,7 +415,7 @@ impl StatsPage {
     }
 
     /// Debug hooks that need a laid-out page (scroll positions).
-    fn apply_debug(&mut self, window: &mut Window) {
+    fn apply_debug(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.debug.applied || self.stats.is_none() {
             return;
         }
@@ -423,6 +434,20 @@ impl StatsPage {
             if let Some(n) = self.debug.photo.take() {
                 self.lightbox = Some(viewer::Lightbox { photos: a.photos.clone(), index: n.min(a.photos.len() - 1) });
             }
+        }
+        // The plans need the status facts, read after the history.
+        if (self.debug.plan.is_some() || self.debug.planned.is_some()) && !self.facts.ready() {
+            window.request_animation_frame();
+            return;
+        }
+        if let Some(n) = self.debug.planned.take() {
+            let year = today().year();
+            let keys: Vec<String> =
+                self.facts.with(&["plan-to-play"]).into_iter().take(n).filter_map(|g| self.game_key(g).map(|k| k.to_string())).collect();
+            self.prefs.plans.insert(year, keys);
+        }
+        if let Some(slot) = self.debug.plan.take() {
+            self.open_planner(today().year(), slot, window, cx);
         }
         if let (Some(n), Some(st), Some(h)) = (self.debug.sheet.take(), &self.stats, &self.history) {
             if let Some(g) = st.games.get(n) {
@@ -572,7 +597,7 @@ impl Render for StatsPage {
         if crate::console::active() {
             return self.render_console(window, cx);
         }
-        self.apply_debug(window);
+        self.apply_debug(window, cx);
         self.render_desktop(window, cx)
     }
 }

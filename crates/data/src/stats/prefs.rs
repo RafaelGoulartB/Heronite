@@ -1,7 +1,8 @@
 //! What the Statistics page remembers: its last tab, the goal of beaten
-//! games of each year, and the discoveries pinned or hidden. They live in the
-//! app's `ui-state.json` under keys of their own (`statsTab`, `statsGoals`,
-//! `statsPinned`, `statsHidden`), which [`crate::ui_state::UiState`] keeps
+//! games of each year, the games planned to fill it, and the discoveries
+//! pinned or hidden. They live in the app's `ui-state.json` under keys of
+//! their own (`statsTab`, `statsGoals`, `statsPlans`, `statsPinned`,
+//! `statsHidden`), which [`crate::ui_state::UiState`] keeps
 //! when it saves, so the page writes them without touching the Collection's.
 
 use std::collections::BTreeMap;
@@ -18,6 +19,8 @@ pub struct StatsPrefs {
     pub tab: Option<String>,
     /// Games to beat in each year.
     pub goals: BTreeMap<i32, u32>,
+    /// Games planned to beat in each year, in order (game keys).
+    pub plans: BTreeMap<i32, Vec<String>>,
     /// Kinds of discoveries kept first.
     pub pinned: Vec<String>,
     /// Kinds of discoveries not shown.
@@ -35,7 +38,13 @@ impl StatsPrefs {
             .and_then(Value::as_object)
             .map(|m| m.iter().filter_map(|(y, n)| Some((y.parse().ok()?, n.as_u64().filter(|n| (1..=999).contains(n))? as u32))).collect())
             .unwrap_or_default();
+        let plans = value
+            .get("statsPlans")
+            .and_then(Value::as_object)
+            .map(|m| m.iter().filter_map(|(y, keys)| Some((y.parse().ok()?, strings(Some(keys))))).filter(|(_, k)| !k.is_empty()).collect())
+            .unwrap_or_default();
         Self {
+            plans,
             tab: value.get("statsTab").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned),
             goals,
             pinned: strings(value.get("statsPinned")),
@@ -50,6 +59,8 @@ impl StatsPrefs {
     /// Writes these keys only; the rest of the file stays as it is.
     pub fn save(&self, paths: &AppPaths) -> Result<()> {
         let goals: serde_json::Map<String, Value> = self.goals.iter().map(|(y, n)| (y.to_string(), json!(n))).collect();
+        let plans: serde_json::Map<String, Value> =
+            self.plans.iter().filter(|(_, k)| !k.is_empty()).map(|(y, k)| (y.to_string(), json!(k))).collect();
         json_store::update_value(&paths.ui_state(), |doc| {
             if !doc.is_object() {
                 *doc = Value::Object(Default::default());
@@ -57,6 +68,7 @@ impl StatsPrefs {
             let obj = doc.as_object_mut().expect("object");
             obj.insert("statsTab".into(), json!(self.tab));
             obj.insert("statsGoals".into(), Value::Object(goals));
+            obj.insert("statsPlans".into(), Value::Object(plans));
             obj.insert("statsPinned".into(), json!(self.pinned));
             obj.insert("statsHidden".into(), json!(self.hidden));
             Ok(())
@@ -76,6 +88,7 @@ mod tests {
         let prefs = StatsPrefs {
             tab: Some("backlog".into()),
             goals: [(2026, 12)].into_iter().collect(),
+            plans: [(2026, vec!["sideload_a".to_string(), "gog_b".to_string()])].into_iter().collect(),
             pinned: vec!["streak".into()],
             hidden: vec!["owl".into()],
         };

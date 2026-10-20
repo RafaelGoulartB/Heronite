@@ -198,6 +198,9 @@ impl StatsPage {
                 tr!("**A little behind** \u{b7} expected by today: {n}", n = heronite_i18n::decimal(g.expected, 1))
             }));
             lines = lines.child(sentence(tr!("At this pace, **~{n}** by Dec 31", n = g.projected.round() as u32)));
+            if let Some(line) = self.plans_line(year) {
+                lines = lines.child(sentence(line));
+            }
             if let Some(every) = g.every_days {
                 lines = lines.child(sentence(tr!(
                     "To make it: **one every {n} days** ({left} to go)",
@@ -418,29 +421,16 @@ impl StatsPage {
                         .opacity(0.7),
                 );
         }
-        // What the goal still asks, spread over the rest of the year.
+        // What the goal still asks, spread over the rest of the year: each
+        // slot holds a planned game or opens the picker ([`super::plans`]).
         if p.span == Span::Year && p.contains(t) {
-            let left = self.year_goal(p.start.year()).saturating_sub(beaten.len() as u32).min(8);
+            let year = p.start.year();
+            let planned = self.plans_of(year);
+            let left = (self.year_goal(year).saturating_sub(beaten.len() as u32) as usize).max(planned.len()).min(8);
             for i in 0..left {
                 let d = t + Duration::days(((p.end - t).num_days() as f32 * (i as f32 + 0.6) / left as f32) as i64);
-                area = area.child(
-                    div()
-                        .absolute()
-                        .left(px(x_of(d)))
-                        .top(px(axis_y - 10. - COVER_H))
-                        .w(px(COVER_W))
-                        .h(px(COVER_H))
-                        .rounded(px(8.))
-                        .border_1()
-                        .border_color(theme::white_a(0.18))
-                        .bg(theme::white_a(0.03))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_color(theme::text_dim())
-                        .font_weight(theme::W_BOLD)
-                        .child("?"),
-                );
+                let slot = self.plan_slot(year, i, planned.get(i).copied(), COVER_W, COVER_H, window, cx);
+                area = area.child(slot.absolute().left(px(x_of(d))).top(px(axis_y - 10. - COVER_H)));
             }
         }
         let legend = div()
@@ -706,6 +696,8 @@ impl StatsPage {
                     .child(label),
             );
         }
+        // Games planned for this year's goal ([`super::plans`]).
+        let planned = self.plans_of(today().year());
         let mut list = div().flex().flex_col();
         let mut weeks_so_far = 0.;
         for g in queue.iter().take(8) {
@@ -748,7 +740,14 @@ impl StatsPage {
                             .flex()
                             .flex_col()
                             .gap(px(2.))
-                            .child(div().text_size(px(13.5)).font_weight(theme::W_BOLD).truncate().child(self.game_title(g)))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .child(div().text_size(px(13.5)).font_weight(theme::W_BOLD).truncate().child(self.game_title(g)))
+                                    .when(planned.contains(&g), |d| d.child(super::super::status_pill(tr!("Planned"), theme::accent()))),
+                            )
                             .child(div().text_size(px(12.)).text_color(theme::text_dim()).truncate().children(since)),
                     )
                     // Unknown times stay blank: a column repeating "unknown" says nothing.
