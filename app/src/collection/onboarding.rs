@@ -65,10 +65,15 @@ impl CollectionView {
         self.open_dialog(view, cx);
     }
 
-    /// After the first load: the one time it opens by itself.
+    /// The one time it opens by itself: after the first load, or, on a new
+    /// setup, once the first games arrive (the empty Collection's welcome
+    /// already asks where they come from).
     pub(super) fn maybe_open_onboarding(&mut self, cx: &mut Context<Self>) {
         let state = &self.onboarding.state;
         if state.shown || state.hidden || self.dialog.is_some() || crate::console::active() || crate::env::flag("HERONITE_NO_ONBOARDING") {
+            return;
+        }
+        if self.lib.as_ref().is_some_and(|lib| lib.games.is_empty()) {
             return;
         }
         self.onboarding.state.shown = true;
