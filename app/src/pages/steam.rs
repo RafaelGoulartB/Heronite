@@ -1,11 +1,11 @@
 //! The Steam tab of the Stores: the library read from the Steam client
 //! (`services::steam_library`). No login: the client is signed in already;
-//! the page says whether it can be read and reads it on request.
+//! the page says whether it can be read, opens or restarts Steam when that
+//! is what is missing, and reads it on request.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{tr, trn};
-use heronite_steam::LibraryAccess;
 
 use super::commands::{CommandCtx, PageCommand, PaletteCommands};
 use super::{columns, content_width, page_close, sheet, status_pill, stores, Page, PageCtx, PageEvent};
@@ -13,7 +13,7 @@ use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
-use crate::services::steam_library::{SteamLibrary, SteamLibraryEvent};
+use crate::services::steam_library::{SteamLibrary, SteamLibraryEvent, SteamState};
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, ButtonKind};
 use crate::ui::icon;
@@ -61,26 +61,53 @@ impl SteamPage {
 
     /// The status of the client: text, colour, whether it can be read.
     fn status(&self, cx: &App) -> (String, Rgba, bool) {
-        let s = self.svc.read(cx);
-        match s.access {
-            None => (tr!("Checking Steam\u{2026}").into(), theme::text_muted(), false),
-            Some(LibraryAccess::Ready) => (tr!("Steam is running").into(), theme::success(), true),
-            Some(LibraryAccess::Closed) => (tr!("Steam is closed").into(), theme::text_muted(), false),
-            Some(LibraryAccess::NeedsRestart) => (tr!("Restart Steam once").into(), theme::danger_text(), false),
-            Some(LibraryAccess::NotInstalled) => (tr!("Steam not found").into(), theme::text_muted(), false),
+        match self.svc.read(cx).state() {
+            SteamState::Checking => (tr!("Checking Steam\u{2026}").into(), theme::text_muted(), false),
+            SteamState::Connected | SteamState::Reading => (tr!("Steam is running").into(), theme::success(), true),
+            SteamState::Closed => (tr!("Steam is closed").into(), theme::text_muted(), false),
+            SteamState::Opening => (tr!("Steam is starting").into(), theme::accent(), false),
+            SteamState::Restarting => (tr!("Restarting Steam\u{2026}").into(), theme::accent(), false),
+            SteamState::NeedsRestart => (tr!("Restart Steam once").into(), theme::warning(), false),
+            SteamState::Failed => (tr!("Could not connect").into(), theme::danger_text(), false),
+            SteamState::NotInstalled => (tr!("Steam not found").into(), theme::text_muted(), false),
         }
     }
 
     fn explanation(&self, cx: &App) -> Option<&'static str> {
-        match self.svc.read(cx).access {
-            Some(LibraryAccess::Closed) => Some(tr!("Open Steam to read your library. Heronite reads it by itself while Steam runs.")),
-            Some(LibraryAccess::NeedsRestart) => Some(tr!(
-                "Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once."
+        match self.svc.read(cx).state() {
+            SteamState::Closed => Some(tr!("Open Steam and Heronite reads your library by itself. The access it needs is turned on already: no restart.")),
+            SteamState::Opening => Some(tr!("Steam is starting. If it asks, sign in: your library is read as soon as Steam is ready.")),
+            SteamState::NeedsRestart => Some(tr!(
+                "Steam was open before Heronite could turn on the access it needs. Restart it once (games running from Steam close), or wait: your library comes in the next time Steam opens."
             )),
-            Some(LibraryAccess::NotInstalled) => {
+            SteamState::Failed => Some(tr!(
+                "Steam restarted but did not turn on the access Heronite needs, so it is not asked again. Your installed Steam games still show in the Collection."
+            )),
+            SteamState::NotInstalled => {
                 Some(tr!("Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself."))
             }
             _ => None,
+        }
+    }
+
+    /// The button the status calls for: open Steam, restart it, or read.
+    fn main_action(&self, cx: &App) -> (&'static str, &'static str, bool) {
+        let s = self.svc.read(cx);
+        match s.state() {
+            SteamState::Closed => ("open", tr!("Open Steam"), true),
+            SteamState::NeedsRestart => ("restart", tr!("Restart Steam"), heronite_steam::can_restart()),
+            SteamState::Restarting => ("restart", tr!("Restarting\u{2026}"), false),
+            SteamState::Reading => ("read", tr!("Reading\u{2026}"), false),
+            state => ("read", tr!("Read library now"), state == SteamState::Connected),
+        }
+    }
+
+    fn run_action(&mut self, id: &str, cx: &mut Context<Self>) {
+        match id {
+            "open" => self.svc.update(cx, |s, cx| s.open(cx)),
+            "restart" => self.svc.update(cx, |s, cx| s.restart(cx)),
+            "read" => self.read_now(cx),
+            _ => {}
         }
     }
 
@@ -99,7 +126,11 @@ impl SteamPage {
 
     /// The outcome of the last read asked for here.
     fn result_line(&self, cx: &App) -> Option<(String, bool)> {
-        match self.svc.read(cx).last.as_ref()? {
+        let s = self.svc.read(cx);
+        if let Some(e) = &s.error {
+            return Some((e.clone(), true));
+        }
+        match s.last.as_ref()? {
             Ok(r) if r.added > 0 => Some((trn!(r.added, "Added {n} game to the Collection.", "Added {n} games to the Collection."), false)),
             Ok(_) => Some((tr!("The Collection already has every game of your library.").to_string(), false)),
             Err(e) => Some((e.clone(), true)),
@@ -107,8 +138,8 @@ impl SteamPage {
     }
 
     fn render_library(&mut self, cx: &mut Context<Self>) -> Div {
-        let (status, color, ready) = self.status(cx);
-        let syncing = self.svc.read(cx).syncing;
+        let (status, color, _) = self.status(cx);
+        let (action, label, enabled) = self.main_action(cx);
         let mut rows: Vec<AnyElement> = vec![div()
             .flex()
             .items_center()
@@ -133,11 +164,11 @@ impl SteamPage {
                     .child(div().flex().child(status_pill(status, color))),
             )
             .child(action_button(
-                "steam-read",
+                SharedString::from(format!("steam-{action}")),
                 ButtonKind::Primary,
-                if syncing { tr!("Reading\u{2026}") } else { tr!("Read library now") },
-                ready && !syncing,
-                cx.listener(|this, _, _, cx| this.read_now(cx)),
+                label,
+                enabled,
+                cx.listener(move |this, _, _, cx| this.run_action(action, cx)),
             ))
             .into_any_element()];
         rows.push(div().py(px(12.)).text_size(px(13.)).text_color(theme::text_muted()).child(self.summary_line(cx)).into_any_element());
@@ -172,15 +203,12 @@ impl SteamPage {
     }
 
     fn console_rows(&self, cx: &App) -> Vec<Row> {
-        let (status, _, ready) = self.status(cx);
-        let syncing = self.svc.read(cx).syncing;
+        let (status, _, _) = self.status(cx);
+        let (action, label, enabled) = self.main_action(cx);
         let mut rows = vec![
             Row::header(tr!("Library")),
             Row::info("status", "Steam", status).icon(Icon::SportsEsports),
-            Row::action("read", if syncing { tr!("Reading\u{2026}") } else { tr!("Read library now") })
-                .desc(self.summary_line(cx))
-                .icon(Icon::Refresh)
-                .enabled(ready && !syncing),
+            Row::action(action, label).desc(self.summary_line(cx)).icon(Icon::Refresh).enabled(enabled),
         ];
         if let Some(text) = self.explanation(cx) {
             rows.push(Row::info("why", "Steam", text));
@@ -255,9 +283,7 @@ impl PadTarget for SteamPage {
         let rows = self.console_rows(cx);
         let used = match self.console_list.on_pad(pad, &rows) {
             Outcome::Activate(id) => {
-                if id.as_ref() == "read" {
-                    self.read_now(cx);
-                }
+                self.run_action(id.as_ref(), cx);
                 true
             }
             Outcome::Ignored => false,

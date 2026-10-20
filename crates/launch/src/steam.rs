@@ -75,6 +75,12 @@ pub fn flatpak_steam_root(home: &Path) -> PathBuf {
     home.join(".var/app").join(FLATPAK_STEAM_ID).join(".local/share/Steam")
 }
 
+/// Steam's folder for the Snap (Ubuntu's App Center installs this one):
+/// the Snap's home is `~/snap/steam/common`.
+pub fn snap_steam_root(home: &Path) -> PathBuf {
+    home.join("snap/steam/common/.local/share/Steam")
+}
+
 /// Opens `steam://install/<id>` or `steam://uninstall/<id>` in the Steam client.
 pub fn open_steam_client_uri(spawner: &dyn Spawner, probe: &dyn Probe, action: SteamAction, app_id: &str) -> Result<(), String> {
     if find_steam_binary(probe).is_none() {
@@ -143,7 +149,12 @@ impl SteamLocator {
         let home = PathBuf::from(probe.home());
         let configured = global.default_steam_path().filter(|p| !p.is_empty()).map(PathBuf::from);
         let native = home.join(".steam").join("steam");
-        let candidates = configured.iter().cloned().chain([native.clone(), home.join(".local/share/Steam"), flatpak_steam_root(&home)]);
+        let candidates = configured.iter().cloned().chain([
+            native.clone(),
+            home.join(".local/share/Steam"),
+            flatpak_steam_root(&home),
+            snap_steam_root(&home),
+        ]);
         let found = candidates.into_iter().find(|p| probe.exists(&p.to_string_lossy()));
         let steam_path = found.or(configured).unwrap_or(native);
         Self { home, steam_path, system_roots: vec![PathBuf::from("/usr/share/steam")] }
@@ -176,7 +187,32 @@ impl SteamLocator {
         roots.push(self.home.join(".steam").join("steam"));
         roots.push(self.home.join(".local").join("share").join("Steam"));
         roots.push(flatpak_steam_root(&self.home));
+        roots.push(snap_steam_root(&self.home));
         dedup_existing(roots)
+    }
+
+    /// Every Steam install on this machine: the chosen folder, then the
+    /// native, Flatpak and Snap ones that exist (each once, symlinks
+    /// resolved).
+    pub fn installs(&self) -> Vec<PathBuf> {
+        let home = &self.home;
+        let all = [
+            self.steam_path.clone(),
+            home.join(".steam/steam"),
+            home.join(".local/share/Steam"),
+            flatpak_steam_root(home),
+            snap_steam_root(home),
+        ];
+        let mut seen = Vec::new();
+        all.into_iter()
+            .filter(|p| p.join("config").is_dir() || p.join("steam.sh").is_file())
+            .filter(|p| {
+                let real = fs::canonicalize(p).unwrap_or_else(|_| p.clone());
+                let new = !seen.contains(&real);
+                seen.push(real);
+                new
+            })
+            .collect()
     }
 
     /// Folder of an installed Steam game: `steamapps/common/<installdir>` of
@@ -405,6 +441,9 @@ mod tests {
         assert_eq!(SteamLocator::detect(&global, &probe).steam_path, PathBuf::from("/h/.steam/steam"));
         // Nothing installed: the usual default.
         assert_eq!(SteamLocator::detect(&global, &FakeProbe::new("/h")).steam_path, PathBuf::from("/h/.steam/steam"));
+        // The Snap is found too.
+        let snap = "/h/snap/steam/common/.local/share/Steam";
+        assert_eq!(SteamLocator::detect(&global, &FakeProbe::new("/h").with_path(snap)).steam_path, PathBuf::from(snap));
     }
 
     #[test]
