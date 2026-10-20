@@ -42,6 +42,7 @@ pub mod sideload;
 pub mod sideload_uninstall;
 pub mod stats;
 pub mod status;
+pub mod status_history;
 pub mod steam_owned;
 pub mod timeline;
 pub mod ui_state;
