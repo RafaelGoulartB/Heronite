@@ -98,6 +98,20 @@ impl StatsPage {
         if let Some(lead) = self.shown_insights().into_iter().next() {
             cards.push((Tab::Discoveries, Icon::Lightbulb, tr!("Discovery").into(), self.insight_sentence(&lead.fact), lead.fact.game()));
         }
+        if let Some(all) = self.shots.clone() {
+            let mut per: Vec<(usize, usize)> =
+                all.iter().map(|(g, l)| (*g, l.iter().filter(|s| st.period.contains(s.at.date())).count())).filter(|x| x.1 > 0).collect();
+            per.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+            let n: usize = per.iter().map(|x| x.1).sum();
+            if let Some((g, _)) = per.first() {
+                let text = tr!(
+                    "**{n} screenshots**, most in {game}",
+                    n = heronite_data::stats::group_thousands(n as u64),
+                    game = self.game_title(*g)
+                );
+                cards.push((Tab::Album, Icon::PhotoCamera, tr!("Album").into(), text, Some(*g)));
+            }
+        }
         let mut row = div().flex().gap(px(GAP));
         for (tab, ic, kicker, text, game) in cards {
             let cover = game.and_then(|g| self.cover(g, 30., 40., window));

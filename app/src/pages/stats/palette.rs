@@ -30,7 +30,7 @@ impl PaletteCommands for StatsPage {
                     .disabled(shown.then_some(tr!("Shown now")))
             })
             .collect();
-        for tab in [Tab::Journeys, Tab::Backlog, Tab::Discoveries] {
+        for tab in [Tab::Journeys, Tab::Backlog, Tab::Discoveries, Tab::Album] {
             let (title, sub, keywords, ic) = match tab {
                 Tab::Journeys => (
                     tr!("Statistics: Journeys"),
@@ -43,6 +43,12 @@ impl PaletteCommands for StatsPage {
                     tr!("Goal, beaten games and the queue"),
                     tr!("stats backlog goal beaten queue hltb"),
                     Icon::Flag,
+                ),
+                Tab::Album => (
+                    tr!("Statistics: Album"),
+                    tr!("Moments, your most photographed games and a photo a month"),
+                    tr!("stats album screenshots captures photos moments"),
+                    Icon::PhotoCamera,
                 ),
                 _ => (
                     tr!("Statistics: Discoveries"),
