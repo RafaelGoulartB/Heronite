@@ -699,9 +699,20 @@ impl StatsPage {
     fn render_records(&mut self, st: &Stats, w: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         let card_w = (w - GAP) / 2.;
         let mut cards: Vec<(Option<usize>, Div)> = Vec::new();
+        // A game's art shows once: the longest session and the streak are
+        // often the same game, and two equal cards read as a glitch.
+        let mut shown: Vec<usize> = Vec::new();
+        let mut art = |g: Option<usize>| {
+            let g = g.filter(|g| !shown.contains(g));
+            shown.extend(g);
+            g
+        };
         if let Some(l) = st.longest {
             let detail = sentence(tr!("**{game}** \u{b7} {day}", game = self.game_title(l.game), day = day_label(l.start.date())));
-            cards.push((Some(l.game), self.record(Some(l.game), card_w, tr!("Longest session"), fmt_secs(l.secs), detail, None, window)));
+            cards.push((
+                Some(l.game),
+                self.record(art(Some(l.game)), card_w, tr!("Longest session"), fmt_secs(l.secs), detail, None, window),
+            ));
         }
         if let Some((d, secs)) = st.busiest {
             let same = st.longest.is_some_and(|l| l.start.date() == d);
@@ -752,7 +763,7 @@ impl StatsPage {
             cards.push((
                 st.streak_game,
                 self.record(
-                    st.streak_game,
+                    art(st.streak_game),
                     card_w,
                     tr!("Longest streak"),
                     trn!(st.streak, "{n} day", "{n} days"),
@@ -777,7 +788,7 @@ impl StatsPage {
                 });
                 cards.push((
                     back_game,
-                    self.record(back_game, card_w, tr!("Longest break"), trn!(b.days, "{n} day", "{n} days"), detail, None, window),
+                    self.record(art(back_game), card_w, tr!("Longest break"), trn!(b.days, "{n} day", "{n} days"), detail, None, window),
                 ));
             }
             None => {
@@ -786,7 +797,7 @@ impl StatsPage {
                 let first_new = st.games.iter().find(|g| g.new).map(|g| g.game);
                 cards.push((
                     first_new,
-                    self.record(first_new, card_w, tr!("Games played"), st.games.len().to_string(), detail, None, window),
+                    self.record(art(first_new), card_w, tr!("Games played"), st.games.len().to_string(), detail, None, window),
                 ));
             }
         }
