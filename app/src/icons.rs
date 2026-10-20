@@ -83,8 +83,6 @@ pub enum Icon {
     SelectAll,
     /// A game action that runs a command.
     Terminal,
-    /// Mouse pointer of the getting-started previews.
-    Cursor,
     VolumeUp,
     VolumeOff,
     Headphones,
@@ -154,7 +152,6 @@ impl Icon {
             Checklist => "icons/checklist.svg",
             SelectAll => "icons/select-all.svg",
             Terminal => "icons/terminal.svg",
-            Cursor => "icons/cursor.svg",
             VolumeUp => "icons/volume-up.svg",
             VolumeOff => "icons/volume-off.svg",
             Headphones => "icons/headphones.svg",

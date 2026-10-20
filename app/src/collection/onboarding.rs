@@ -1,9 +1,9 @@
-//! The getting-started checklist on the Collection: it opens by itself once
+//! "Getting started" on the Collection: it opens by itself once
 //! per setup (a new one, or one updated from a version without it) and from
 //! the bulb next to the View button, which "Don't show again" removes (the
 //! command palette still opens it). Using a feature anywhere ticks its step.
 //! A step that leads elsewhere (a page, the palette, console mode) brings
-//! the checklist back on that step once the user is back on the Collection.
+//! the dialog back where that step lives once the user is back on the Collection.
 //! `HERONITE_NO_ONBOARDING=1` keeps it from opening by itself (screenshots).
 
 use gpui_kit::prelude::*;
@@ -17,9 +17,9 @@ use crate::ui::tool_button;
 
 pub(super) struct OnboardingGlue {
     state: Onboarding,
-    /// What the checklist asked for; run on the next render (it needs the window).
+    /// What the dialog asked for; run on the next render (it needs the window).
     pending: Option<(Step, Action)>,
-    /// The step to show again once back from where the checklist led.
+    /// The step to show again once back from where the dialog led.
     resume: Option<Step>,
 }
 
@@ -40,7 +40,7 @@ impl CollectionView {
         self.open_onboarding_at(None, cx);
     }
 
-    /// Opens the checklist on `step` (else the first one not done).
+    /// Opens "Getting started" where `step` lives (else on its three cards).
     pub(super) fn open_onboarding_at(&mut self, step: Option<Step>, cx: &mut Context<Self>) {
         let Some(ctx) = self.dialog_ctx() else { return };
         let done = self.onboarding.state.done.clone();
@@ -76,7 +76,7 @@ impl CollectionView {
         self.open_onboarding(cx);
     }
 
-    /// Runs what the checklist asked for. Called on every render.
+    /// Runs what the dialog asked for. Called on every render.
     pub(super) fn sync_onboarding(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(step) = self.onboarding.resume {
             let back = self.page == crate::pages::Page::Collection
@@ -90,16 +90,29 @@ impl CollectionView {
             }
         }
         let Some((step, action)) = self.onboarding.pending.take() else { return };
-        if matches!(action, Action::Page(_) | Action::Palette | Action::Console | Action::Appearance) {
+        if matches!(action, Action::Page(_) | Action::Stores | Action::Settings(_) | Action::Palette | Action::Console) {
             self.onboarding.resume = Some(step);
         }
         match action {
             Action::Page(page) => self.navigate(page, window, cx),
+            Action::Stores => {
+                let page = self.pages.stores_page();
+                self.navigate(page, window, cx);
+            }
+            Action::AddGame => {
+                self.open_add_game(window, cx);
+            }
+            Action::Settings(section) => {
+                if section == crate::pages::settings::Section::Appearance {
+                    self.mark_onboarding(step);
+                }
+                self.open_settings_section(section, window, cx);
+            }
             Action::Palette => self.open_palette(window, cx),
             Action::Console => self.set_console(true, window, cx),
-            Action::Appearance => {
+            Action::LookChanged => {
                 self.mark_onboarding(step);
-                self.open_settings_section(crate::pages::settings::Section::Appearance, window, cx);
+                self.apply_start_view();
             }
             Action::Done(step) => self.mark_onboarding(step),
             Action::Hide => {
@@ -110,7 +123,7 @@ impl CollectionView {
         cx.notify();
     }
 
-    /// The user used a feature of the checklist (once is enough).
+    /// The user used a feature of "Getting started" (once is enough).
     pub(super) fn mark_onboarding(&mut self, step: Step) {
         if self.onboarding.state.done.insert(step.id().to_owned()) {
             self.save_onboarding();

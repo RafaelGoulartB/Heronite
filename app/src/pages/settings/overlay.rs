@@ -78,19 +78,6 @@ fn update(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, change: impl FnO
     cx.notify();
 }
 
-/// Whether this desktop can draw the overlay over games: it needs Wayland's
-/// layer-shell, which GNOME does not have.
-fn desktop_status() -> (String, bool) {
-    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
-        return (tr!("Not supported on X11: the overlay needs a Wayland session.").into(), false);
-    }
-    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-    if desktop.to_ascii_lowercase().contains("gnome") {
-        return (tr!("GNOME cannot draw over games (it lacks the layer-shell protocol).").into(), false);
-    }
-    (tr!("Supported (Wayland with layer-shell, like Hyprland, KDE Plasma and Sway).").into(), true)
-}
-
 fn controllers_text(list: Option<&Vec<Controller>>) -> String {
     match list {
         None => tr!("Looking for controllers…").into(),
@@ -211,7 +198,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             page.update(cx, |d, cx| update(d, cx, |p| p.side = v)).ok();
         })
     };
-    let (desktop, desktop_ok) = desktop_status();
+    let (desktop, desktop_ok) = crate::overlay::desktop_status();
     let status_line = |text: String, ok: bool| {
         div().text_size(px(13.)).text_color(if ok { theme::text_primary() } else { theme::danger_text() }).max_w(px(420.)).child(text)
     };
@@ -396,7 +383,7 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let step_index = VOLUME_STEPS.iter().position(|s| *s == p.volume_step).unwrap_or(1);
     let accelerators = console_accelerators(&p.keyboard_accelerator);
     let accel_index = accelerators.iter().position(|a| *a == p.keyboard_accelerator).unwrap_or(0);
-    let (desktop, desktop_ok) = desktop_status();
+    let (desktop, desktop_ok) = crate::overlay::desktop_status();
     let found = match &d.overlay.controllers {
         None => String::new(),
         Some(l) => trn!(l.len(), "{n} controller found", "{n} controllers found"),

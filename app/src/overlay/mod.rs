@@ -148,6 +148,19 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
     debug::start(&entity, cx);
 }
 
+/// Whether this desktop can draw the overlay over games: it needs Wayland's
+/// layer-shell, which GNOME does not have.
+pub fn desktop_status() -> (String, bool) {
+    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        return (tr!("Not supported on X11: the overlay needs a Wayland session.").into(), false);
+    }
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    if desktop.to_ascii_lowercase().contains("gnome") {
+        return (tr!("GNOME cannot draw over games (it lacks the layer-shell protocol).").into(), false);
+    }
+    (tr!("Supported (Wayland with layer-shell, like Hyprland, KDE Plasma and Sway).").into(), true)
+}
+
 pub fn get(cx: &App) -> Option<Entity<OverlayService>> {
     cx.try_global::<OverlayGlobal>().map(|g| g.0.clone())
 }

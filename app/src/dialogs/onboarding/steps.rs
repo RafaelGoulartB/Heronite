@@ -1,13 +1,17 @@
-//! The steps of the getting-started checklist: their text, what they lead
-//! to, and whether each one is done (read from the library and the settings
-//! when the checklist opens; the ones without a setting count once done here).
+//! What "Getting started" offers: the setup steps of its three cards (your
+//! games, your look, while you play), the tips to discover later, what each
+//! one leads to, and whether it is done (read from the library and the
+//! settings when the dialog opens; the ones without a setting count once
+//! done here).
 
 use std::collections::BTreeSet;
 
-use heronite_data::Library;
+use heronite_data::overlay_prefs::OverlayPrefs;
+use heronite_data::{AppPaths, Library};
 use heronite_i18n::{tr, trn};
 
 use crate::icons::Icon;
+use crate::pages::settings::Section;
 use crate::pages::Page;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -15,60 +19,59 @@ pub enum Step {
     Steam,
     Stores,
     Emulators,
-    Proton,
+    Appearance,
+    Overlay,
     Screenshots,
     Saves,
+    Proton,
     Tray,
-    Appearance,
     Palette,
     Statuses,
+    Journal,
     Stats,
     Console,
 }
 
-pub const STEPS: [Step; 12] = [
+/// The steps that count in the progress, card by card.
+pub const GAMES: [Step; 3] = [Step::Steam, Step::Stores, Step::Emulators];
+pub const PLAY: [Step; 5] = [Step::Overlay, Step::Screenshots, Step::Saves, Step::Proton, Step::Tray];
+/// The tips under the cards: nothing to set up, only to know about.
+pub const TIPS: [Step; 5] = [Step::Palette, Step::Statuses, Step::Journal, Step::Stats, Step::Console];
+
+const ALL: [Step; 14] = [
     Step::Steam,
     Step::Stores,
     Step::Emulators,
-    Step::Proton,
+    Step::Appearance,
+    Step::Overlay,
     Step::Screenshots,
     Step::Saves,
+    Step::Proton,
     Step::Tray,
-    Step::Appearance,
     Step::Palette,
     Step::Statuses,
+    Step::Journal,
     Step::Stats,
     Step::Console,
 ];
 
-/// What the checklist asks the Collection to do (it has the window).
+/// What the dialog asks the Collection to do (it has the window).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     Page(Page),
+    /// The store page shown last (Epic, GOG or Amazon).
+    Stores,
+    AddGame,
+    Settings(Section),
     Palette,
     Console,
-    /// Settings → Appearance.
-    Appearance,
-    /// A step done inside the checklist ("Got it").
+    /// The appearance changed here: the Collection repaints and applies
+    /// "Open the Collection in".
+    LookChanged,
+    /// A tip read here ("Got it").
     Done(Step),
     /// "Don't show again".
     Hide,
-}
-
-/// How a step is done from the checklist.
-pub enum Kind {
-    /// A button that leads to the feature.
-    Go { label: &'static str, action: Action },
-    /// A switch that turns the feature on right here.
-    Switch { label: String },
-}
-
-pub fn group_title(group: usize) -> &'static str {
-    match group {
-        0 => tr!("Bring in your games"),
-        1 => tr!("Ready to play"),
-        _ => tr!("Discover Heronite"),
-    }
 }
 
 impl Step {
@@ -78,28 +81,22 @@ impl Step {
             Step::Steam => "steam",
             Step::Stores => "stores",
             Step::Emulators => "emulators",
-            Step::Proton => "proton",
+            Step::Appearance => "appearance",
+            Step::Overlay => "overlay",
             Step::Screenshots => "screenshots",
             Step::Saves => "saves",
+            Step::Proton => "proton",
             Step::Tray => "tray",
             Step::Palette => "palette",
             Step::Statuses => "statuses",
-            Step::Appearance => "appearance",
+            Step::Journal => "journal",
             Step::Stats => "stats",
             Step::Console => "console",
         }
     }
 
     pub fn parse(id: &str) -> Option<Self> {
-        STEPS.into_iter().find(|s| s.id() == id)
-    }
-
-    pub fn group(self) -> usize {
-        match self {
-            Step::Steam | Step::Stores | Step::Emulators => 0,
-            Step::Proton | Step::Screenshots | Step::Saves | Step::Tray => 1,
-            _ => 2,
-        }
+        ALL.into_iter().find(|s| s.id() == id)
     }
 
     pub fn icon(self) -> Icon {
@@ -107,13 +104,15 @@ impl Step {
             Step::Steam => Icon::CloudSync,
             Step::Stores => Icon::Storefront,
             Step::Emulators => Icon::SportsEsports,
-            Step::Proton => Icon::WineBar,
+            Step::Appearance => Icon::Palette,
+            Step::Overlay => Icon::SportsEsports,
             Step::Screenshots => Icon::PhotoCamera,
             Step::Saves => Icon::Save,
+            Step::Proton => Icon::WineBar,
             Step::Tray => Icon::Inbox,
             Step::Palette => Icon::FaSearch,
             Step::Statuses => Icon::Flag,
-            Step::Appearance => Icon::Palette,
+            Step::Journal => Icon::Notes,
             Step::Stats => Icon::BarChart,
             Step::Console => Icon::Tv,
         }
@@ -121,84 +120,78 @@ impl Step {
 
     pub fn title(self) -> &'static str {
         match self {
-            Step::Steam => tr!("Steam library"),
+            Step::Steam => "Steam",
             Step::Stores => tr!("Epic, GOG and Amazon"),
             Step::Emulators => tr!("Emulators and ROMs"),
-            Step::Proton => tr!("Proton for Windows games"),
+            Step::Appearance => tr!("Make it yours"),
+            Step::Overlay => tr!("Controller overlay"),
             Step::Screenshots => tr!("Screenshots"),
             Step::Saves => tr!("Save backups"),
-            Step::Tray => tr!("Always at hand"),
-            Step::Palette => tr!("Ctrl K finds everything"),
-            Step::Statuses => tr!("Organise with statuses"),
-            Step::Appearance => tr!("Make it yours"),
-            Step::Stats => tr!("Statistics and Year in review"),
+            Step::Proton => "Proton",
+            Step::Tray => tr!("Keep in the tray"),
+            Step::Palette => "Ctrl K",
+            Step::Statuses => tr!("Status and rating"),
+            Step::Journal => tr!("The game's journal"),
+            Step::Stats => tr!("Statistics"),
             Step::Console => tr!("Console mode"),
         }
     }
 
+    /// One line on what it is for (the tips and the source tiles).
     pub fn description(self) -> &'static str {
         match self {
-            Step::Steam => tr!("Your Steam games come in by themselves while Steam is open, with the play time Steam counted."),
+            Step::Steam => tr!("Open Steam and your games come in by themselves, installed or not, with Steam's play time."),
             Step::Stores => tr!("Log in and your whole library shows in the Collection. You install games from there."),
-            Step::Emulators => {
-                tr!("Heronite finds the emulators on this PC and scans your ROM folders. Each game becomes a cover in the Collection.")
-            }
-            Step::Proton => tr!("Download it once and it becomes the default: Windows games start without any setup."),
-            Step::Screenshots => {
-                tr!("Press the capture key while playing. The pictures go to the game's timeline and to your Year in review.")
-            }
-            Step::Saves => tr!("When you close a game, Ludusavi keeps a copy of its saves. If something goes wrong, you restore it."),
-            Step::Tray => tr!("Closing the window keeps Heronite in the tray: downloads go on and notifications still arrive."),
-            Step::Palette => tr!("Games, pages and actions in one place. Type part of a name and press Enter."),
-            Step::Statuses => {
-                tr!("Mark games as Playing, Beaten or Plan to Play and rate them. Then group the Collection by status.")
-            }
-            Step::Appearance => tr!(
-                "Change how Heronite looks: the game's art behind the Collection with the blur, darkening and colour you like, glass or solid panels in several colours, and the shape of the covers."
-            ),
-            Step::Stats => tr!("Your play time month by month and, at the end of the year, the story of your year in games."),
-            Step::Console => tr!("Play from the couch with just a controller: big screens and button navigation."),
+            Step::Emulators => tr!("Heronite finds the emulators on this PC and scans your ROM folders."),
+            Step::Palette => tr!("Games, pages and actions in one place."),
+            Step::Statuses => tr!("Playing, Beaten, Plan to Play. Group the Collection by them."),
+            Step::Journal => tr!("Notes on the days you played, on screenshots, and where you left off."),
+            Step::Stats => tr!("Your play time month by month and your Year in review."),
+            Step::Console => tr!("From the couch, with just a controller."),
+            _ => "",
         }
     }
 
     /// Where the feature lives, for later.
     pub fn how(self) -> &'static str {
         match self {
-            Step::Steam => tr!("Automatic while Steam is open"),
-            Step::Stores => tr!("\u{2630} \u{2192} Stores"),
-            Step::Emulators => tr!("\u{2630} \u{2192} Emulators"),
-            Step::Proton => tr!("\u{2630} \u{2192} Wine Manager"),
-            Step::Screenshots => tr!("Settings \u{2192} Screenshots"),
-            Step::Saves => tr!("Settings \u{2192} Saves"),
-            Step::Tray => tr!("Settings \u{2192} General"),
-            Step::Palette => tr!("Ctrl K on any screen"),
             Step::Statuses => tr!("Right-click a game \u{2192} Status"),
-            Step::Appearance => tr!("Settings \u{2192} Appearance"),
-            Step::Stats => tr!("\u{2630} \u{2192} Statistics"),
-            Step::Console => tr!("\u{2630} \u{2192} Console mode"),
+            Step::Journal => tr!("A game's page \u{2192} Journal"),
+            _ => "",
         }
     }
 
-    pub fn kind(self, facts: &Facts) -> Kind {
-        let go = |label, action| Kind::Go { label, action };
+    /// What clicking the step does.
+    pub fn action(self) -> Action {
         match self {
-            Step::Steam => go(tr!("Open the Steam page"), Action::Page(Page::Steam)),
-            Step::Stores => go(tr!("Log in to a store"), Action::Page(Page::Epic)),
-            Step::Emulators => go(tr!("Set up emulators"), Action::Page(Page::Emulators)),
-            Step::Proton => go(tr!("Open the Wine Manager"), Action::Page(Page::WineManager)),
-            Step::Screenshots => Kind::Switch { label: tr!("Capture with {key}", key = facts.shot_key) },
-            Step::Saves => Kind::Switch { label: tr!("Back up after every session").into() },
-            Step::Tray => Kind::Switch { label: tr!("Keep Heronite in the tray when closed").into() },
-            Step::Palette => go(tr!("Try it now"), Action::Palette),
-            Step::Statuses => go(tr!("Got it"), Action::Done(Step::Statuses)),
-            Step::Appearance => go(tr!("Customise the look"), Action::Appearance),
-            Step::Stats => go(tr!("Open statistics"), Action::Page(Page::Statistics)),
-            Step::Console => go(tr!("Try console mode"), Action::Console),
+            Step::Steam => Action::Page(Page::Steam),
+            Step::Stores => Action::Stores,
+            Step::Emulators => Action::Page(Page::Emulators),
+            Step::Appearance => Action::Settings(Section::Appearance),
+            Step::Overlay => Action::Settings(Section::Overlay),
+            Step::Screenshots => Action::Settings(Section::Screenshots),
+            Step::Saves => Action::Settings(Section::Saves),
+            Step::Proton => Action::Page(Page::WineManager),
+            Step::Tray => Action::Settings(Section::General),
+            Step::Palette => Action::Palette,
+            Step::Statuses | Step::Journal => Action::Done(self),
+            Step::Stats => Action::Page(Page::Statistics),
+            Step::Console => Action::Console,
+        }
+    }
+
+    /// The label of a tip's action.
+    pub fn tip_label(self) -> &'static str {
+        match self {
+            Step::Palette => tr!("Try it"),
+            Step::Statuses | Step::Journal => tr!("Got it"),
+            Step::Console => tr!("Try it"),
+            _ => tr!("Open"),
         }
     }
 }
 
-/// What the checklist knows about this setup.
+/// What the dialog knows about this setup.
 #[derive(Clone, Debug, Default)]
 pub struct Facts {
     pub steam_games: usize,
@@ -206,32 +199,47 @@ pub struct Facts {
     pub emulated_games: usize,
     /// The default Wine/Proton, when it can run games.
     pub proton: Option<String>,
+    pub overlay: OverlayPrefs,
+    /// This desktop can draw the overlay over games, and why not.
+    pub overlay_ok: bool,
+    pub overlay_why: String,
     pub screenshots: bool,
     pub shot_key: String,
     pub saves: bool,
     /// Whether Ludusavi is installed (`None` while looking).
     pub ludusavi: Option<bool>,
     pub tray: bool,
+    /// The Collection shows the Grid view (else the Focus view).
+    pub grid_view: bool,
     /// `onboarding.json`'s `done`.
     pub done: BTreeSet<String>,
 }
 
 impl Facts {
     /// Reads the library and the settings (small files).
-    pub fn read(lib: &Library, data_paths: &heronite_data::DataPaths, done: BTreeSet<String>) -> Self {
+    pub fn read(lib: &Library, data_paths: &heronite_data::DataPaths, app: &AppPaths, done: BTreeSet<String>) -> Self {
         let count = |f: &dyn Fn(&heronite_data::CollectionGame) -> bool| lib.games.iter().filter(|g| f(g)).count();
+        let (overlay_why, overlay_ok) = crate::overlay::desktop_status();
         Self {
             steam_games: count(&|g| g.steam_app_id.is_some()),
             store_games: count(&|g| matches!(g.runner.as_str(), "legendary" | "gog" | "nile")),
             emulated_games: count(&|g| g.launch_kind.as_deref() == Some("emulator")),
             proton: heronite_wine::default::current(data_paths).map(|w| w.name),
+            overlay: OverlayPrefs::load(app),
+            overlay_ok,
+            overlay_why,
             screenshots: lib.settings.screenshots.capture_enabled,
             shot_key: Some(lib.settings.screenshots.capture_accelerator.clone()).filter(|k| !k.is_empty()).unwrap_or_else(|| "F10".into()),
             saves: lib.settings.ludusavi.enabled,
             ludusavi: None,
             tray: crate::system::settings::SysSettings::load(data_paths).exit_to_tray,
+            grid_view: heronite_data::ui_state::UiState::load(app).grid_view,
             done,
         }
+    }
+
+    pub fn games(&self) -> usize {
+        self.steam_games + self.store_games + self.emulated_games
     }
 
     pub fn is_done(&self, step: Step) -> bool {
@@ -240,32 +248,33 @@ impl Facts {
                 Step::Steam => self.steam_games > 0,
                 Step::Stores => self.store_games > 0,
                 Step::Emulators => self.emulated_games > 0,
-                Step::Proton => self.proton.is_some(),
+                Step::Overlay => self.overlay.enabled,
                 Step::Screenshots => self.screenshots,
                 Step::Saves => self.saves,
+                Step::Proton => self.proton.is_some(),
                 Step::Tray => self.tray,
                 _ => false,
             }
     }
 
-    /// The line under a step's title in the list.
-    pub fn status_line(&self, step: Step) -> String {
-        if !self.is_done(step) {
-            return step.how().into();
-        }
-        match step {
-            Step::Steam if self.steam_games > 0 => trn!(self.steam_games, "{n} game from Steam", "{n} games from Steam"),
-            Step::Stores if self.store_games > 0 => trn!(self.store_games, "{n} game from the stores", "{n} games from the stores"),
-            Step::Emulators if self.emulated_games > 0 => trn!(self.emulated_games, "{n} emulated game", "{n} emulated games"),
-            Step::Proton => match &self.proton {
-                Some(name) => tr!("{name} is the default", name),
-                None => step.how().into(),
-            },
-            _ => step.how().into(),
-        }
+    /// The games a source brought in, as "{n} games".
+    pub fn count_line(&self, step: Step) -> Option<String> {
+        let n = match step {
+            Step::Steam => self.steam_games,
+            Step::Stores => self.store_games,
+            Step::Emulators => self.emulated_games,
+            _ => 0,
+        };
+        (n > 0).then(|| trn!(n, "{n} game", "{n} games"))
+    }
+
+    /// The steps the progress counts: the three cards (the overlay only
+    /// where the desktop can draw it).
+    pub fn counted(&self) -> Vec<Step> {
+        GAMES.into_iter().chain([Step::Appearance]).chain(PLAY.into_iter().filter(|s| *s != Step::Overlay || self.overlay_ok)).collect()
     }
 
     pub fn done_count(&self) -> usize {
-        STEPS.iter().filter(|s| self.is_done(**s)).count()
+        self.counted().into_iter().filter(|s| self.is_done(*s)).count()
     }
 }
