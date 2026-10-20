@@ -490,7 +490,7 @@ impl StatsPage {
                 Tab::Overview => self.render_sections(st, col_w, wide, window, cx),
                 Tab::Journeys => self.render_journeys(st, window, cx),
                 Tab::Backlog => self.render_backlog(st, col_w, wide, window, cx),
-                Tab::Discoveries => self.render_discoveries(st, window, cx),
+                Tab::Discoveries => self.render_discoveries(st, col_w, window, cx),
                 Tab::Album => self.render_album(st, wide, window, cx),
             },
         };

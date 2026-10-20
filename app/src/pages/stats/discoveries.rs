@@ -17,6 +17,7 @@ use super::desktop::{eyebrow, hint, panel, panel_head, GAP};
 use super::journeys::Filter;
 use super::review::marked;
 use super::tabs::Tab;
+use super::viewer::Photo;
 use super::{day_label, full_date, in_text, short_date, today, weekday_plural, StatsPage};
 use crate::icons::Icon;
 use crate::theme;
@@ -349,8 +350,8 @@ impl StatsPage {
         )
     }
 
-    pub(super) fn render_discoveries(&mut self, st: &Stats, window: &Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        vec![self.discovery_feed(window, cx), self.discovery_milestones(st, window), self.discovery_memories(window, cx)]
+    pub(super) fn render_discoveries(&mut self, st: &Stats, col_w: f32, window: &Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        vec![self.discovery_feed(window, cx), self.discovery_milestones(st, window), self.discovery_memories(col_w, window, cx)]
     }
 
     fn discovery_feed(&mut self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
@@ -625,14 +626,18 @@ impl StatsPage {
             .child(panel_head(tr!("Milestones"), hint(trn!(reached, "{n} reached in your history", "{n} reached in your history"))))
             .child(div().grid().grid_cols(5).gap(px(GAP)).children(badges))
             .child(div().mt(px(18.)).mb(px(10.)).text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Next milestones")))
-            .child(div().grid().grid_cols(5).gap(px(GAP)).children(next))
+            // The next ones share the whole line, however many there are.
+            .child(div().grid().grid_cols(next.len().clamp(1, 5) as u16).gap(px(GAP)).children(next))
             .into_any_element()
     }
 
-    fn discovery_memories(&mut self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    fn discovery_memories(&mut self, col_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(h) = self.history.clone() else { return div().into_any_element() };
         let t = today();
         let mut cards = Vec::new();
+        // Room inside one of the three cards: covers and captures fill it.
+        let inner = ((col_w - 48. - 2. * GAP) / 3. - 40.).floor();
+        let (cw, pw) = (((inner - 4. * 8.) / 5.).floor(), ((inner - 8.) / 2.).floor());
         // This month a year ago.
         let month = Period::of(Span::Month, t - Duration::days(365));
         let then = compute(&h, month, t);
@@ -643,12 +648,12 @@ impl StatsPage {
                 .take(5)
                 .map(|g| {
                     let game = g.game;
-                    let src = self.cover(game, 48., 64., window);
+                    let src = self.cover(game, cw, cw * 4. / 3., window);
                     div()
                         .id(("mem-month", game))
-                        .w(px(48.))
-                        .h(px(64.))
-                        .rounded(px(6.))
+                        .w(px(cw))
+                        .h(px(cw * 4. / 3.))
+                        .rounded(px(8.))
                         .overflow_hidden()
                         .bg(theme::white_a(0.06))
                         .cursor_pointer()
@@ -670,30 +675,36 @@ impl StatsPage {
         }
         // Screenshots of the same week a year ago.
         let week = Period::of(Span::Week, t - Duration::days(364));
-        let shots: Vec<(usize, std::path::PathBuf)> = self
+        let shots: Vec<Photo> = self
             .shots
             .clone()
             .map(|all| {
-                let mut v: Vec<(usize, std::path::PathBuf, chrono::NaiveDateTime)> = all
+                let mut v: Vec<Photo> = all
                     .iter()
-                    .flat_map(|(g, l)| l.iter().filter(|s| week.contains(s.at.date())).map(move |s| (*g, s.path.clone(), s.at)))
+                    .flat_map(|(g, l)| {
+                        l.iter().filter(|s| week.contains(s.at.date())).map(move |s| Photo { game: *g, at: s.at, path: s.path.clone() })
+                    })
                     .collect();
-                v.sort_by_key(|x| x.2);
-                v.into_iter().take(4).map(|x| (x.0, x.1)).collect()
+                v.sort_by_key(|p| p.at);
+                v.truncate(4);
+                v
             })
             .unwrap_or_default();
         if !shots.is_empty() {
-            let thumbs: Vec<Div> = shots
-                .iter()
-                .map(|(_, path)| {
-                    let src = self.shot(path, 150., 84., window, cx);
-                    div()
-                        .w(px(150.))
-                        .h(px(84.))
-                        .rounded(px(8.))
-                        .overflow_hidden()
-                        .bg(theme::white_a(0.05))
-                        .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+            let list = Arc::new(shots.clone());
+            // Two by two, each opening in the viewer.
+            let thumbs: Vec<Stateful<Div>> = (0..shots.len())
+                .map(|i| {
+                    self.photo_tile(
+                        SharedString::from(format!("mem-shot-{i}")),
+                        list.clone(),
+                        i,
+                        pw,
+                        (pw * 9. / 16.).floor(),
+                        None,
+                        window,
+                        cx,
+                    )
                 })
                 .collect();
             cards.push(memory(
@@ -704,23 +715,40 @@ impl StatsPage {
                     from = short_date(week.start),
                     to = short_date(week.end - Duration::days(1))
                 )),
-                div().flex().flex_wrap().gap(px(8.)).children(thumbs),
+                div().grid().grid_cols(2).gap(px(8.)).children(thumbs),
             ));
         }
         // Where the history begins.
         if let Some(since) = h.since {
             let first = compute(&h, Period::of(Span::Month, since), t);
-            let game = first.games.first().map(|g| self.game_title(g.game)).unwrap_or_default();
+            let first_game = first.games.first().map(|g| g.game);
+            let game = first_game.map(|g| self.game_title(g)).unwrap_or_default();
             let all = compute(&h, Period::of(Span::All, t), t);
+            let since_then = div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!(
+                "Since then: {time}, {sessions} and {games}.",
+                time = fmt_hours_short(all.total_secs),
+                sessions = trn!(all.sessions, "{n} session", "{n} sessions"),
+                games = trn!(all.games.len(), "{n} game", "{n} games")
+            ));
+            // The first game's cover, as big as the month's covers.
+            let cover = first_game.map(|g| {
+                let src = self.cover(g, cw, cw * 4. / 3., window);
+                div()
+                    .id("mem-first")
+                    .flex_none()
+                    .w(px(cw))
+                    .h(px(cw * 4. / 3.))
+                    .rounded(px(8.))
+                    .overflow_hidden()
+                    .bg(theme::white_a(0.06))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(g, window, cx)))
+                    .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+            });
             cards.push(memory(
                 tr!("Where it all began"),
                 marked(tr!("The first recorded session was on **{day}**, with **{game}**", day = full_date(since), game)),
-                div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!(
-                    "Since then: {time}, {sessions} and {games}.",
-                    time = fmt_hours_short(all.total_secs),
-                    sessions = trn!(all.sessions, "{n} session", "{n} sessions"),
-                    games = trn!(all.games.len(), "{n} game", "{n} games")
-                )),
+                div().flex().items_start().gap(px(14.)).children(cover).child(since_then.flex_1()),
             ));
         }
         if cards.is_empty() {
