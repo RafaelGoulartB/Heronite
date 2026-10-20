@@ -171,6 +171,8 @@ impl CollectionView {
             self.apply_debug_env(cx);
             self.maybe_open_onboarding(cx);
             crate::trim_heap_later();
+        } else if was_empty {
+            self.maybe_open_onboarding(cx);
         }
     }
 }

@@ -62,6 +62,10 @@ pub fn success() -> Rgba {
 pub fn danger() -> Rgba {
     rgb(0xbf616a)
 }
+/// Something the user may want to do, not an error ("Restart Steam once").
+pub fn warning() -> Rgba {
+    rgb(0xf5cd5b)
+}
 pub fn selected_ring() -> Rgba {
     rgb(0xe8dcc0)
 }

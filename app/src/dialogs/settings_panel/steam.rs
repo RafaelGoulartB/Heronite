@@ -389,9 +389,7 @@ impl SettingsPanel {
         self.steam_mut().restart = Restart::Running(Instant::now());
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let bin = crate::env::value("HERONITE_STEAM_BIN")
-                .or_else(|| heronite_launch::steam::find_steam_binary(&heronite_launch::SystemProbe))
-                .unwrap_or_else(|| "steam".into());
+            let bin = crate::services::steam_library::steam_bin();
             let res = cx.background_spawn(async move { steam(&paths).restart(&bin) }).await;
             this.update(cx, |this, cx| {
                 if let Err(e) = res {

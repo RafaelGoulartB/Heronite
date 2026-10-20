@@ -26,7 +26,7 @@ use std::time::{Duration, SystemTime};
 use heronite_i18n::tr;
 use heronite_launch::steam::{desktop_protocol_env, flatpak_steam_root, SteamLocator};
 use heronite_shortcuts::steam::{enable_client_api_on_next_start, is_steam_running};
-use heronite_shortcuts::steam_client::SteamClient;
+use heronite_shortcuts::steam_client::{webhelper, SteamClient};
 
 /// A compatibility tool as Steam names it: `name` is what it stores
 /// (`proton_9`, `GE-Proton9-20`), `display` what it shows.
@@ -145,7 +145,11 @@ pub enum LibraryAccess {
     Ready,
     /// Steam is not running.
     Closed,
-    /// Steam runs without its debugging interface (turned on for its next start).
+    /// Steam runs and its client will answer: it is still starting,
+    /// updating or waiting for the user to sign in.
+    Starting,
+    /// Steam runs without its debugging interface: it started before the
+    /// flag file was there (it is now, for its next start).
     NeedsRestart,
     /// No Steam install was found.
     NotInstalled,
@@ -177,9 +181,25 @@ impl Steam {
         self.pid_dirs().iter().any(|dir| is_steam_running(dir))
     }
 
-    fn pid_dirs(&self) -> [PathBuf; 3] {
+    fn pid_dirs(&self) -> [PathBuf; 4] {
         let home = &self.locator.home;
-        [self.root().to_path_buf(), home.join(".steam/steam"), home.join(".var/app/com.valvesoftware.Steam/.steam/steam")]
+        [
+            self.root().to_path_buf(),
+            home.join(".steam/steam"),
+            home.join(".var/app/com.valvesoftware.Steam/.steam/steam"),
+            home.join("snap/steam/common/.steam/steam"),
+        ]
+    }
+
+    /// Turns the debugging interface on for the next start of every Steam
+    /// install found, and of the one running: Steam reads the flag file
+    /// only when it starts, so having it there before Steam opens is what
+    /// spares the user a restart. Cheap (a few file checks).
+    pub fn prepare_access(&self) {
+        let running = webhelper().and_then(|w| w.steam_root);
+        for root in self.locator.installs().into_iter().chain(running) {
+            enable_client_api_on_next_start(&root);
+        }
     }
 
     fn access(&self) -> Access {
@@ -189,7 +209,7 @@ impl Steam {
         if self.client.is_available() {
             return Access::Client;
         }
-        enable_client_api_on_next_start(self.root());
+        self.prepare_access();
         Access::ReadOnly
     }
 
@@ -266,35 +286,50 @@ impl Steam {
         (running, running && self.client.is_available())
     }
 
+    /// The `steam` command with `args`, for this install (Flatpak or not).
+    fn command(&self, steam_bin: &str, args: &[&str]) -> std::process::Command {
+        use std::process::{Command, Stdio};
+        let mut c = if self.flatpak() {
+            let mut c = Command::new("flatpak");
+            c.args(["run", "com.valvesoftware.Steam"]);
+            c
+        } else {
+            Command::new(steam_bin)
+        };
+        // Not this app's environment: when Steam started Heronite it holds
+        // Steam's overlay preload, its runtime and the AppImage's paths.
+        c.args(args)
+            .env_clear()
+            .envs(desktop_protocol_env(std::env::vars()))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        c
+    }
+
+    /// Starts Steam with the access Heronite needs already turned on.
+    /// `steam_bin` is the `steam` command. Returns at once.
+    pub fn open(&self, steam_bin: &str) -> Result<(), String> {
+        self.prepare_access();
+        let mut start = self.command(steam_bin, &[]);
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut start, 0);
+        let mut child = start.spawn().map_err(|e| tr!("Could not run Steam: {error}", error = e.to_string()))?;
+        // Reaped when it exits; Steam keeps running after Heronite closes.
+        std::thread::spawn(move || child.wait());
+        Ok(())
+    }
+
     /// Closes Steam and starts it again (so it lists new tools and opens
     /// the access Heronite needs). `steam_bin` is the `steam` command.
     /// Blocking: waits up to a minute for Steam to close.
     pub fn restart(&self, steam_bin: &str) -> Result<(), String> {
-        use std::process::{Command, Stdio};
         if !can_restart() {
             return Err(tr!("Steam cannot be restarted from here in game mode.").to_string());
         }
-        let command = |args: &[&str]| {
-            let mut c = if self.flatpak() {
-                let mut c = Command::new("flatpak");
-                c.args(["run", "com.valvesoftware.Steam"]);
-                c
-            } else {
-                Command::new(steam_bin)
-            };
-            // Not this app's environment: when Steam started Heronite it holds
-            // Steam's overlay preload, its runtime and the AppImage's paths.
-            c.args(args)
-                .env_clear()
-                .envs(desktop_protocol_env(std::env::vars()))
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-            c
-        };
-        let fail = |e: std::io::Error| tr!("Could not run Steam: {error}", error = e.to_string());
         if self.running() {
-            command(&["-shutdown"]).status().map_err(fail)?;
+            let fail = |e: std::io::Error| tr!("Could not run Steam: {error}", error = e.to_string());
+            self.command(steam_bin, &["-shutdown"]).status().map_err(fail)?;
             let deadline = std::time::Instant::now() + Duration::from_secs(60);
             while self.running() {
                 if std::time::Instant::now() > deadline {
@@ -303,26 +338,28 @@ impl Steam {
                 std::thread::sleep(Duration::from_millis(500));
             }
         }
-        enable_client_api_on_next_start(self.root());
-        let mut start = command(&[]);
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut start, 0);
-        let mut child = start.spawn().map_err(fail)?;
-        // Reaped when it exits; Steam keeps running after Heronite closes.
-        std::thread::spawn(move || child.wait());
-        Ok(())
+        self.open(steam_bin)
     }
 
     /// Whether [`read_library`](Self::read_library) can work now. Blocking
     /// (asks the client, a few milliseconds).
     pub fn library_access(&self) -> LibraryAccess {
-        if !self.root().join("config").is_dir() && !self.running() {
+        let running = self.running();
+        if !self.root().join("config").is_dir() && !running {
             return LibraryAccess::NotInstalled;
         }
-        match self.access() {
-            Access::Client => LibraryAccess::Ready,
-            Access::Files => LibraryAccess::Closed,
-            Access::ReadOnly => LibraryAccess::NeedsRestart,
+        self.prepare_access();
+        if !running {
+            return LibraryAccess::Closed;
+        }
+        if self.client.is_available() {
+            return LibraryAccess::Ready;
+        }
+        // Until its interface process starts, Steam is updating or starting;
+        // once it has, its command line says whether the client will answer.
+        match webhelper() {
+            Some(w) if !w.debugging => LibraryAccess::NeedsRestart,
+            _ => LibraryAccess::Starting,
         }
     }
 
@@ -331,6 +368,7 @@ impl Steam {
         match self.library_access() {
             LibraryAccess::Ready => library::read_owned(&self.client).map_err(|e| format!("{e:#}")),
             LibraryAccess::Closed => Err(tr!("Steam is not running. Open Steam to read your library.").to_string()),
+            LibraryAccess::Starting => Err(tr!("Steam is still starting. Your library is read as soon as it is ready.").to_string()),
             LibraryAccess::NeedsRestart => Err(tr!("Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once.").to_string()),
             LibraryAccess::NotInstalled => Err(tr!("Steam was not found on this PC. Install Steam and sign in, then open it to read your library.").to_string()),
         }

@@ -15,7 +15,7 @@
 use std::hash::{BuildHasher, Hasher};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -33,19 +33,56 @@ pub fn debugger_addr() -> String {
     debugger_port(Path::new("/proc")).map(|p| format!("127.0.0.1:{p}")).unwrap_or_else(|| DEFAULT_ADDR.to_string())
 }
 
-/// The debugging port in the command line of a `steamwebhelper` under `proc`.
-fn debugger_port(proc: &Path) -> Option<u16> {
-    std::fs::read_dir(proc).ok()?.flatten().find_map(|entry| {
+/// The running `steamwebhelper` (Steam's interface process), as its command
+/// line tells.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Webhelper {
+    /// Started with the debugging interface (`--remote-debugging-port`):
+    /// Steam read [`FLAG_FILE`] when it started, so the client answers once
+    /// it finishes starting (and the user signs in, if asked).
+    pub debugging: bool,
+    /// The Steam folder it runs from (`-steampath=<folder>/ubuntu12_32/steam`).
+    pub steam_root: Option<PathBuf>,
+}
+
+/// The `steamwebhelper` of the running Steam, if it started already.
+/// Reads `/proc` (a few hundred small files).
+pub fn webhelper() -> Option<Webhelper> {
+    webhelper_in(Path::new("/proc"))
+}
+
+/// The command lines of the `steamwebhelper` processes under `proc`.
+fn webhelper_args(proc: &Path) -> impl Iterator<Item = Vec<String>> {
+    std::fs::read_dir(proc).into_iter().flatten().flatten().filter_map(|entry| {
         let name = entry.file_name();
         if !name.to_string_lossy().bytes().all(|b| b.is_ascii_digit()) {
             return None;
         }
         let cmdline = std::fs::read(entry.path().join("cmdline")).ok()?;
-        let mut args = cmdline.split(|b| *b == 0).map(String::from_utf8_lossy);
-        if !args.next()?.rsplit('/').next()?.starts_with("steamwebhelper") {
-            return None;
-        }
-        args.find_map(|a| a.strip_prefix("--remote-debugging-port=").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0))
+        let args: Vec<String> = cmdline.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+        args.first()?.rsplit('/').next()?.starts_with("steamwebhelper").then_some(args)
+    })
+}
+
+fn webhelper_in(proc: &Path) -> Option<Webhelper> {
+    // Its renderer and GPU children share the name; the main process is the
+    // one with `-steampath`, but any of them tells whether debugging is on.
+    let all: Vec<_> = webhelper_args(proc).collect();
+    if all.is_empty() {
+        return None;
+    }
+    let debugging = all.iter().flatten().any(|a| a.starts_with("--remote-debugging-port="));
+    let steam_root = all.iter().flatten().find_map(|a| {
+        let bin = PathBuf::from(a.strip_prefix("-steampath=")?);
+        Some(bin.parent()?.parent()?.to_path_buf())
+    });
+    Some(Webhelper { debugging, steam_root })
+}
+
+/// The debugging port in the command line of a `steamwebhelper` under `proc`.
+fn debugger_port(proc: &Path) -> Option<u16> {
+    webhelper_args(proc).find_map(|args| {
+        args.iter().find_map(|a| a.strip_prefix("--remote-debugging-port=").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0))
     })
 }
 
@@ -562,6 +599,24 @@ mod tests {
         assert_eq!(debugger_port(proc), None);
         add("12", &["./steamwebhelper", "-nocrashdialog", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=39445"]);
         assert_eq!(debugger_port(proc), Some(39445));
+    }
+
+    #[test]
+    fn the_webhelper_tells_whether_debugging_comes_and_where_steam_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let proc = dir.path();
+        let add = |pid: &str, args: &[&str]| {
+            std::fs::create_dir_all(proc.join(pid)).unwrap();
+            std::fs::write(proc.join(pid).join("cmdline"), args.join("\0")).unwrap();
+        };
+        add("10", &["/usr/bin/steam"]);
+        assert_eq!(webhelper_in(proc), None);
+        add("11", &["./steamwebhelper", "-nocrashdialog", "-steampath=/home/u/.local/share/Steam/ubuntu12_32/steam"]);
+        add("12", &["/s/ubuntu12_64/steamwebhelper", "--type=zygote"]);
+        let root = Some(PathBuf::from("/home/u/.local/share/Steam"));
+        assert_eq!(webhelper_in(proc), Some(Webhelper { debugging: false, steam_root: root.clone() }));
+        add("13", &["/s/ubuntu12_64/steamwebhelper", "--type=renderer", "--remote-debugging-port=51605"]);
+        assert_eq!(webhelper_in(proc), Some(Webhelper { debugging: true, steam_root: root }));
     }
 
     #[test]

@@ -34,7 +34,6 @@
   "Heronite reads your library from the Steam client, so there is no login: only games are added (no tools, soundtracks, demos or games you hid in Steam). A game you already have from another store or added yourself is not added twice: it gets Steam's install instead. Steam keeps installing, updating and launching its games.": "O Heronite lê sua biblioteca pelo cliente da Steam, então não precisa de login: só entram jogos (sem ferramentas, trilhas sonoras, demos ou jogos que você escondeu na Steam). Um jogo que você já tem de outra loja ou adicionou à mão não entra duas vezes: ele ganha a instalação pela Steam. A Steam continua instalando, atualizando e abrindo os jogos dela.",
   "Last read {when}": "Lida em {when}",
   "Not read yet": "Ainda não lida",
-  "Open Steam to read your library. Heronite reads it by itself while Steam runs.": "Abra a Steam para ler sua biblioteca. O Heronite lê sozinho enquanto a Steam está aberta.",
   "Play with Steam": "Jogar pela Steam",
   "Read library now": "Ler biblioteca agora",
   "Read the Steam library": "Ler a biblioteca Steam",
@@ -53,5 +52,13 @@
   "Games are downloaded and verified with gogdl. After you log in, your whole GOG library shows in your Collection, and you install games from there.": "Os jogos são baixados e verificados com o gogdl. Depois que você entra, toda a sua biblioteca da GOG aparece na Coleção, e você instala os jogos por lá.",
   "Games are downloaded and verified with nile. After you log in, your whole Amazon Games library, including the Prime Gaming games you claimed, shows in your Collection, and you install games from there.": "Os jogos são baixados e verificados com o nile. Depois que você entra, toda a sua biblioteca da Amazon Games, incluindo os jogos do Prime Gaming que você resgatou, aparece na Coleção, e você instala os jogos por lá.",
   "Steam was not found on this PC. Install Steam and sign in, then open it to read your library.": "A Steam não foi encontrada neste PC. Instale a Steam e entre na sua conta, depois abra-a para ler sua biblioteca.",
-  "Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself.": "A Steam não foi encontrada neste PC. Instale a Steam, entre na sua conta e abra-a: o Heronite lê sua biblioteca sozinho."
+  "Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself.": "A Steam não foi encontrada neste PC. Instale a Steam, entre na sua conta e abra-a: o Heronite lê sua biblioteca sozinho.",
+  "Open Steam and Heronite reads your library by itself. The access it needs is turned on already: no restart.": "Abra a Steam e o Heronite lê sua biblioteca sozinho. O acesso de que ele precisa já está ligado: sem reiniciar.",
+  "Steam is starting": "A Steam está abrindo",
+  "Steam is starting. If it asks, sign in: your library is read as soon as Steam is ready.": "A Steam está abrindo. Se ela pedir, entre na sua conta: sua biblioteca é lida assim que a Steam estiver pronta.",
+  "Steam is still starting. Your library is read as soon as it is ready.": "A Steam ainda está abrindo. Sua biblioteca é lida assim que ela estiver pronta.",
+  "Steam restarted but did not turn on the access Heronite needs, so it is not asked again. Your installed Steam games still show in the Collection.": "A Steam reiniciou mas não ligou o acesso de que o Heronite precisa, então ele não pede de novo. Os jogos instalados da Steam continuam na Coleção.",
+  "Steam was open before Heronite could turn on the access it needs. Restart it once (games running from Steam close), or wait: your library comes in the next time Steam opens.": "A Steam já estava aberta antes de o Heronite ligar o acesso de que precisa. Reinicie uma vez (jogos abertos pela Steam fecham) ou espere: sua biblioteca entra na próxima vez que a Steam abrir.",
+  "Could not connect": "Não conectou",
+  "Open Steam": "Abrir a Steam"
 }
