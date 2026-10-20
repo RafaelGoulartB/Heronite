@@ -319,16 +319,25 @@ impl StatsPage {
         };
         let w = (SHEET_W - 48. - 16.) / 3.;
         let h = w * 9. / 16.;
-        let thumbs: Vec<Div> = list
+        // A click opens the viewer on every capture of the game.
+        let photos = self.game_photos(game);
+        let thumbs: Vec<Stateful<Div>> = list
             .iter()
-            .map(|s| {
+            .enumerate()
+            .map(|(k, s)| {
                 let src = self.shot(&s.path, w, h, window, cx);
+                let at = photos.iter().position(|p| p.path == s.path).unwrap_or(0);
+                let photos = photos.clone();
                 div()
+                    .id(("sheet-shot", k))
                     .w(px(w))
                     .h(px(h))
                     .rounded(px(8.))
                     .overflow_hidden()
                     .bg(theme::white_a(0.05))
+                    .cursor_pointer()
+                    .hover(|s| s.opacity(0.85))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_photo(photos.clone(), at, window, cx)))
                     .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
             })
             .collect();

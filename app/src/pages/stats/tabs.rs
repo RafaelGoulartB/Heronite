@@ -23,10 +23,12 @@ pub(super) enum Tab {
     Backlog,
     /// What the numbers tell: sentences, milestones, memories.
     Discoveries,
+    /// The screenshots: moments, the most photographed games, a photo a month.
+    Album,
 }
 
 impl Tab {
-    pub(super) const ALL: [Tab; 4] = [Tab::Overview, Tab::Journeys, Tab::Backlog, Tab::Discoveries];
+    pub(super) const ALL: [Tab; 5] = [Tab::Overview, Tab::Journeys, Tab::Backlog, Tab::Discoveries, Tab::Album];
 
     pub(super) fn label(self) -> &'static str {
         match self {
@@ -35,6 +37,7 @@ impl Tab {
             // The Collection's "Backlog" view is another thing ("Pendentes").
             Tab::Backlog => trc!("stats", "Backlog"),
             Tab::Discoveries => tr!("Discoveries"),
+            Tab::Album => tr!("Album"),
         }
     }
 
@@ -44,6 +47,7 @@ impl Tab {
             Tab::Journeys => Icon::History,
             Tab::Backlog => Icon::Flag,
             Tab::Discoveries => Icon::Lightbulb,
+            Tab::Album => Icon::PhotoCamera,
         }
     }
 
@@ -53,7 +57,7 @@ impl Tab {
             Tab::Overview => &[Span::Week, Span::Month, Span::Year, Span::All],
             Tab::Journeys => &[Span::Month, Span::Year, Span::All],
             Tab::Backlog => &[Span::Year, Span::All],
-            Tab::Discoveries => &[Span::Week, Span::Month, Span::Year, Span::All],
+            Tab::Discoveries | Tab::Album => &[Span::Week, Span::Month, Span::Year, Span::All],
         }
     }
 
@@ -64,6 +68,7 @@ impl Tab {
             Tab::Journeys => "journeys",
             Tab::Backlog => "backlog",
             Tab::Discoveries => "discoveries",
+            Tab::Album => "album",
         }
     }
 

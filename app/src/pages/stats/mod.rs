@@ -9,6 +9,8 @@
 //! library (handed in with [`StatsPage::set_library`]); the only disk reads
 //! are the screenshot listings, done once per library in the background.
 
+mod album;
+mod album_panels;
 mod backlog;
 mod console;
 mod desktop;
@@ -22,6 +24,7 @@ mod sections;
 mod sheet;
 mod tabs;
 mod tip;
+mod viewer;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -183,6 +186,13 @@ pub struct StatsPage {
     review: Option<review::Review>,
     /// Open the review once the history is read.
     review_wanted: Option<i32>,
+    /// The Album tab ([`album`]): its numbers, the game picked in its chips
+    /// and the moment open.
+    album: Option<Arc<album::AlbumView>>,
+    album_game: Option<usize>,
+    moment_open: Option<usize>,
+    /// The screenshot viewer over the page.
+    lightbox: Option<viewer::Lightbox>,
     /// The game sheet open over the page ([`sheet`]).
     sheet: Option<Arc<GameSheet>>,
     sheet_scroll: ScrollHandle,
@@ -196,7 +206,9 @@ pub struct StatsPage {
 /// `HERONITE_DEBUG_STATS_SCROLL=px` (page), `HERONITE_DEBUG_STATS_CARD=N`
 /// (month strip) and `HERONITE_DEBUG_STATS_SHEET=N` (the sheet of the
 /// period's game N, 0 = the first), `HERONITE_DEBUG_STATS_TAB=overview|journeys`
-/// and `HERONITE_DEBUG_STATS_OPEN=N` (open lane N of the Journeys tab), for
+/// `HERONITE_DEBUG_STATS_OPEN=N` (open lane N of the Journeys tab, or moment
+/// N of the Album) and `HERONITE_DEBUG_STATS_PHOTO=N` (capture N of the
+/// Album in the viewer), for
 /// screenshots without clicks.
 #[derive(Default)]
 struct Debug {
@@ -204,6 +216,7 @@ struct Debug {
     card: Option<usize>,
     sheet: Option<usize>,
     lane: Option<usize>,
+    photo: Option<usize>,
     applied: bool,
 }
 
@@ -275,6 +288,7 @@ impl StatsPage {
             card: crate::env::parse("HERONITE_DEBUG_STATS_CARD"),
             sheet: crate::env::parse("HERONITE_DEBUG_STATS_SHEET"),
             lane: crate::env::parse("HERONITE_DEBUG_STATS_OPEN"),
+            photo: crate::env::parse("HERONITE_DEBUG_STATS_PHOTO"),
             applied: false,
         };
         let prefs = StatsPrefs::load(&ctx.app);
@@ -317,6 +331,10 @@ impl StatsPage {
             strip: Glide::new(Axis::X),
             review: None,
             review_wanted,
+            album: None,
+            album_game: None,
+            moment_open: None,
+            lightbox: None,
             sheet: None,
             sheet_scroll: ScrollHandle::new(),
             focus,
@@ -424,6 +442,7 @@ impl StatsPage {
             (Some(st), Some(lib)) => derive(st, lib, self.shots.as_deref()),
             _ => Derived::default(),
         });
+        self.recompute_album();
         // An open sheet follows the period.
         if let (Some(sh), Some(h)) = (&self.sheet, &self.history) {
             self.sheet = Some(Arc::new(stats::game_sheet(h, sh.game, self.period, today())));
@@ -439,6 +458,7 @@ impl StatsPage {
     fn go(&mut self, period: Period, cx: &mut Context<Self>) {
         self.period = period;
         self.show_all = false;
+        self.moment_open = None;
         self.recompute();
         self.scroll.set_offset(point(px(0.), px(0.)));
         self.strip.reset();
@@ -564,8 +584,21 @@ impl StatsPage {
         if self.debug.applied || self.stats.is_none() {
             return;
         }
+        // The Album needs the screenshot listing, read after the history.
+        if self.tab == Tab::Album && self.album.is_none() && (self.debug.lane.is_some() || self.debug.photo.is_some()) {
+            window.request_animation_frame();
+            return;
+        }
         if let (Some(n), Some(j)) = (self.debug.lane, &self.journeys) {
             self.jv.open = j.lanes.get(n).map(|l| l.game);
+        }
+        if let (Some(n), Some(a)) = (self.debug.lane, &self.album) {
+            self.moment_open = (n < a.moments.len()).then_some(n);
+        }
+        if let Some(a) = self.album.clone().filter(|a| !a.photos.is_empty()) {
+            if let Some(n) = self.debug.photo.take() {
+                self.lightbox = Some(viewer::Lightbox { photos: a.photos.clone(), index: n.min(a.photos.len() - 1) });
+            }
         }
         if let (Some(n), Some(st), Some(h)) = (self.debug.sheet.take(), &self.stats, &self.history) {
             if let Some(g) = st.games.get(n) {

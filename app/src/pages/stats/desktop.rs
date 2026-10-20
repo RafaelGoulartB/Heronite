@@ -302,7 +302,11 @@ impl StatsPage {
     fn render_hero(&mut self, st: Option<&Stats>, panel_w: f32, col_w: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         let top = st.and_then(|s| s.games.first()).map(|g| g.game);
         // Discoveries show the art of the game their lead is about.
-        let art_game = if self.tab == Tab::Discoveries { self.lead_game().or(top) } else { top };
+        let art_game = match self.tab {
+            Tab::Discoveries => self.lead_game().or(top),
+            Tab::Album => self.album_lead().or(top),
+            _ => top,
+        };
         let art = art_game.and_then(|g| self.art(g, panel_w, HERO_H, window));
         let page = theme::stats_page_bg();
         let ink = |a: f32| Hsla { a, ..Hsla::from(page) };
@@ -350,6 +354,7 @@ impl StatsPage {
                 Tab::Journeys => column.children(self.render_journeys_total(st)),
                 Tab::Backlog => column.child(self.render_backlog_total(st, cx)),
                 Tab::Discoveries => column.child(self.render_discoveries_total(st, window, cx)),
+                Tab::Album => column.child(self.render_album_total(st, window, cx)),
             };
             // The Backlog's goal card takes that corner.
             if let Some(g) = top.filter(|_| matches!(self.tab, Tab::Overview | Tab::Journeys)) {
@@ -486,6 +491,7 @@ impl StatsPage {
                 Tab::Journeys => self.render_journeys(st, window, cx),
                 Tab::Backlog => self.render_backlog(st, col_w, wide, window, cx),
                 Tab::Discoveries => self.render_discoveries(st, window, cx),
+                Tab::Album => self.render_album(st, wide, window, cx),
             },
         };
         // Blurred art of the number one game under the panels.
@@ -514,13 +520,25 @@ impl StatsPage {
             content.child(hero).child(div().relative().flex().flex_col().gap(px(GAP)).w(px(col_w)).mx_auto().pt(px(GAP)).children(body));
         let tip = st.as_ref().and_then(|st| self.render_tip(st, window));
         let sheet = self.render_sheet(window, cx);
+        let lightbox = self.render_lightbox(window, cx);
         div()
             .size_full()
             .p(px(12.))
             .pt(px(2.))
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
-                if ev.keystroke.key == "escape" && this.sheet.is_some() {
+                if this.lightbox.is_some() {
+                    match ev.keystroke.key.as_str() {
+                        "escape" => {
+                            this.lightbox = None;
+                            cx.notify();
+                        }
+                        "left" => this.step_photo(-1, cx),
+                        "right" => this.step_photo(1, cx),
+                        _ => return,
+                    }
+                    cx.stop_propagation();
+                } else if ev.keystroke.key == "escape" && this.sheet.is_some() {
                     this.close_sheet(cx);
                     cx.stop_propagation();
                 }
@@ -543,9 +561,10 @@ impl StatsPage {
                     .font_family(theme::font_body())
                     .child(div().id("stats-page").size_full().overflow_y_scroll().track_scroll(&self.scroll).child(content))
                     .child(page_close(cx).absolute().top(px(20.)).right(px(20.)))
-                    .children(sheet),
+                    .children(sheet)
+                    .children(lightbox),
             )
-            .children(tip.filter(|_| self.sheet.is_none()))
+            .children(tip.filter(|_| self.sheet.is_none() && self.lightbox.is_none()))
             .into_any_element()
     }
 }

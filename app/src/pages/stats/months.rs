@@ -882,11 +882,17 @@ impl StatsPage {
         });
         let shot_h = if shots.len() == 1 { 100. } else { 92. };
         let shot_w = if shots.len() == 1 { MONTH_W - 44. } else { (MONTH_W - 52.) / 2. };
-        let shot_els: Vec<Div> = shots
+        let shot_els: Vec<Stateful<Div>> = shots
             .iter()
-            .map(|(g, path)| {
+            .enumerate()
+            .map(|(k, (g, path))| {
                 let src = self.shot(path, shot_w, shot_h, window, cx);
+                let photos = self.game_photos(*g);
+                let at = photos.iter().position(|p| &p.path == path).unwrap_or(0);
                 div()
+                    .id(SharedString::from(format!("month-{i}-shot-{k}")))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_photo(photos.clone(), at, window, cx)))
                     .relative()
                     .flex_1()
                     .h(px(shot_h))
