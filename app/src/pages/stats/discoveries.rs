@@ -518,7 +518,8 @@ impl StatsPage {
         for m in all.iter() {
             let title = m.game.map(|g| self.game_title(g)).unwrap_or_default();
             if let Some((step, day)) = m.reached {
-                let new = st.period.contains(day);
+                // All time holds every day: nothing is new there.
+                let new = st.period.span != Span::All && st.period.contains(day);
                 let art = m.game.filter(|_| m.kind == MilestoneKind::GameHours).and_then(|g| self.cover(g, 52., 52., window));
                 let ic = match m.kind {
                     MilestoneKind::Hours => Icon::AccessTime,
