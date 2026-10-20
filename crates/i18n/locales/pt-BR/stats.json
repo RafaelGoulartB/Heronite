@@ -482,5 +482,14 @@
   "Every journey": "Todas as jornadas",
   "**{n} journey** of 1h or more": "**{n} jornada** de 1h ou mais",
   "**{n} journeys** of 1h or more": "**{n} jornadas** de 1h ou mais",
-  "Up to **{n} games** at the same time": "Até **{n} jogos** ao mesmo tempo"
+  "Up to **{n} games** at the same time": "Até **{n} jogos** ao mesmo tempo",
+  "Each game as a lane in time": "Cada jogo numa linha do tempo",
+  "Goal, beaten games and the queue": "Meta, jogos zerados e a fila",
+  "Statistics: Backlog": "Estatísticas: Backlog",
+  "Statistics: Discoveries": "Estatísticas: Descobertas",
+  "Statistics: Journeys": "Estatísticas: Jornadas",
+  "Your play in sentences, milestones and memories": "Seu jogo em frases, marcos e memórias",
+  "stats backlog goal beaten queue hltb": "estatísticas backlog meta zerados fila hltb pendentes",
+  "stats discoveries insights milestones memories": "estatísticas descobertas fatos marcos memórias",
+  "stats journeys timeline games parallel": "estatísticas jornadas linha do tempo jogos paralelo"
 }
