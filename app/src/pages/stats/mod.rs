@@ -11,12 +11,14 @@
 
 mod console;
 mod desktop;
+mod journeys;
 mod months;
 mod palette;
 mod review;
 mod river;
 mod sections;
 mod sheet;
+mod tabs;
 mod tip;
 
 use std::collections::HashMap;
@@ -26,7 +28,9 @@ use std::sync::Arc;
 use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveDateTime};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::stats::{self, fmt_hours_short, fmt_secs, month_short, GameInput, GameSheet, History, Period, Span, Stats, TOP_N};
+use heronite_data::stats::{
+    self, fmt_hours_short, fmt_secs, month_short, GameInput, GameSheet, History, Journeys, Period, Span, Stats, TOP_N,
+};
 use heronite_data::Library;
 use heronite_i18n::{n_, tr};
 use heronite_images::ImageRef;
@@ -36,6 +40,7 @@ use super::{PageCtx, PageEvent};
 use crate::console::motion::{Axis, Glide};
 use crate::services::widgets::Covers;
 use crate::theme;
+use tabs::Tab;
 
 const WEEKDAYS_PLURAL: [&str; 7] =
     [n_!("Mondays"), n_!("Tuesdays"), n_!("Wednesdays"), n_!("Thursdays"), n_!("Fridays"), n_!("Saturdays"), n_!("Sundays")];
@@ -148,8 +153,12 @@ pub struct StatsPage {
     /// Previews still to make, one at a time (the cache blocks while it works).
     thumb_queue: std::collections::VecDeque<PathBuf>,
     thumb_loading: bool,
+    tab: Tab,
     period: Period,
     stats: Option<Arc<Stats>>,
+    /// The lanes of the Journeys tab (computed while it is shown).
+    journeys: Option<Arc<Journeys>>,
+    jv: journeys::JourneyView,
     /// Year of the review button, its total and its top three games.
     year_summary: Option<(i32, f64, Vec<usize>)>,
     derived: Arc<Derived>,
@@ -173,12 +182,15 @@ pub struct StatsPage {
 /// `HERONITE_DEBUG_PAGE=stats[:week|month|year|all][:review[:N]]`, plus
 /// `HERONITE_DEBUG_STATS_SCROLL=px` (page), `HERONITE_DEBUG_STATS_CARD=N`
 /// (month strip) and `HERONITE_DEBUG_STATS_SHEET=N` (the sheet of the
-/// period's game N, 0 = the first), for screenshots without clicks.
+/// period's game N, 0 = the first), `HERONITE_DEBUG_STATS_TAB=overview|journeys`
+/// and `HERONITE_DEBUG_STATS_OPEN=N` (open lane N of the Journeys tab), for
+/// screenshots without clicks.
 #[derive(Default)]
 struct Debug {
     scroll: Option<f32>,
     card: Option<usize>,
     sheet: Option<usize>,
+    lane: Option<usize>,
     applied: bool,
 }
 
@@ -249,8 +261,10 @@ impl StatsPage {
             scroll: crate::env::parse("HERONITE_DEBUG_STATS_SCROLL"),
             card: crate::env::parse("HERONITE_DEBUG_STATS_CARD"),
             sheet: crate::env::parse("HERONITE_DEBUG_STATS_SHEET"),
+            lane: crate::env::parse("HERONITE_DEBUG_STATS_OPEN"),
             applied: false,
         };
+        let tab = crate::env::value("HERONITE_DEBUG_STATS_TAB").and_then(|t| Tab::from_id(&t)).unwrap_or(Tab::Overview);
         let focus = cx.focus_handle();
         if review_wanted.is_some() {
             focus.focus(window, cx);
@@ -266,8 +280,11 @@ impl StatsPage {
             thumbs: HashMap::new(),
             thumb_queue: Default::default(),
             thumb_loading: false,
-            period: Period::of(span, today()),
+            tab,
+            period: tabs::period_for(tab, Period::of(span, today())),
             stats: None,
+            journeys: None,
+            jv: Default::default(),
             year_summary: None,
             derived: Arc::default(),
             hover: None,
@@ -346,6 +363,8 @@ impl StatsPage {
 
     fn recompute(&mut self) {
         self.stats = self.history.as_ref().map(|h| Arc::new(stats::compute(h, self.period, today())));
+        self.journeys =
+            self.history.as_ref().filter(|_| self.tab == Tab::Journeys).map(|h| Arc::new(stats::journeys(h, self.period, today())));
         self.year_summary = self.history.as_ref().and_then(|h| {
             let year = self.review_year();
             let jan1 = NaiveDate::from_ymd_opt(year, 1, 1)?;
@@ -488,6 +507,9 @@ impl StatsPage {
     fn apply_debug(&mut self, window: &mut Window) {
         if self.debug.applied || self.stats.is_none() {
             return;
+        }
+        if let (Some(n), Some(j)) = (self.debug.lane, &self.journeys) {
+            self.jv.open = j.lanes.get(n).map(|l| l.game);
         }
         if let (Some(n), Some(st), Some(h)) = (self.debug.sheet.take(), &self.stats, &self.history) {
             if let Some(g) = st.games.get(n) {

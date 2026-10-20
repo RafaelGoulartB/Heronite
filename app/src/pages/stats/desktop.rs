@@ -8,6 +8,7 @@ use gpui_kit::*;
 use heronite_data::stats::{fmt_hours_short, fmt_secs, month_in_sentence, Span, Stats};
 use heronite_i18n::{n_, tr};
 
+use super::tabs::Tab;
 use super::{change_pct, today, StatsPage};
 use crate::icons::Icon;
 use crate::pages::page_close;
@@ -130,6 +131,8 @@ impl StatsPage {
         let mut seg = capsule();
         for (span, label) in spans {
             let on = self.period.span == span;
+            // Spans the tab cannot show are dimmed (the tab shows the year).
+            let allowed = self.tab.spans().contains(&span);
             seg = seg.child(
                 div()
                     .id(SharedString::from(format!("stats-span-{label}")))
@@ -142,12 +145,13 @@ impl StatsPage {
                     .font_weight(theme::W_BOLD)
                     .text_size(px(13.))
                     .when(on, |d| d.bg(theme::accent()).text_color(theme::on_accent()))
-                    .when(!on, |d| {
+                    .when(!on && allowed, |d| {
                         d.text_color(theme::text_muted())
                             .cursor_pointer()
                             .hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary()))
+                            .on_click(cx.listener(move |this, _, _, cx| this.set_span(span, cx)))
                     })
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_span(span, cx)))
+                    .when(!on && !allowed, |d| d.text_color(theme::text_muted()).opacity(0.35))
                     .child(heronite_i18n::tr(label)),
             );
         }
@@ -327,11 +331,22 @@ impl StatsPage {
                 linear_color_stop(ink(1.), 1.),
             )));
 
-        let review = self.render_review_button(window, cx);
-        let controls = div().flex().items_center().justify_between().gap(px(16.)).child(self.render_switch(cx)).children(review);
+        let review = if self.tab == Tab::Overview { self.render_review_button(window, cx) } else { None };
+        let controls = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(12.))
+            .child(self.render_tabs(cx))
+            .child(self.render_switch(cx))
+            .child(div().flex_1())
+            .children(review);
         let mut column = div().relative().flex().flex_col().w(px(col_w)).h_full().mx_auto().pt(px(28.)).child(controls);
         if let Some(st) = st.filter(|s| s.total_secs > 0.) {
-            column = column.child(self.render_total(st));
+            column = match self.tab {
+                Tab::Overview => column.child(self.render_total(st)),
+                Tab::Journeys => column.children(self.render_journeys_total(st)),
+            };
             if let Some(g) = top {
                 let cover = self.cover(g, 24., 32., window);
                 let title = self.game_title(g);
@@ -461,7 +476,10 @@ impl StatsPage {
                     tr!("Pick another period with the arrows above."),
                 )]
             }
-            (Some(_), Some(st)) => self.render_sections(st, col_w, wide, window, cx),
+            (Some(_), Some(st)) => match self.tab {
+                Tab::Overview => self.render_sections(st, col_w, wide, window, cx),
+                Tab::Journeys => self.render_journeys(st, window, cx),
+            },
         };
         // Blurred art of the number one game under the panels.
         let backdrop = st.as_ref().and_then(|s| s.games.first()).and_then(|g| self.blurred(g.game, panel_w / 4., 300.));

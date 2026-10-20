@@ -35,7 +35,7 @@ fn line(parts: Vec<Div>) -> Div {
 }
 
 /// A sentence with `**bold**` runs.
-fn sentence(text: impl AsRef<str>) -> Div {
+pub(super) fn sentence(text: impl AsRef<str>) -> Div {
     div().child(marked(text))
 }
 
