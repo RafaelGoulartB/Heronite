@@ -9,6 +9,7 @@
 //! covered (`startedAt` + `elapsedSeconds`), so one that runs past midnight
 //! adds to both days.
 
+mod backlog;
 mod game;
 mod journeys;
 mod prefs;
@@ -20,6 +21,7 @@ use heronite_i18n::tr;
 
 use crate::models::LocalGameSession;
 
+pub use backlog::{goal, month_ends, running_count, weekly_hours, Goal};
 pub use game::{game_sheet, GameSheet};
 pub use journeys::{journeys, median, Journeys, Lane, LANE_MIN_SECS, PARALLEL_MIN_SECS};
 pub use prefs::StatsPrefs;
