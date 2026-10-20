@@ -102,14 +102,13 @@ impl StatsPage {
         lib.statuses.iter().find(|s| s.id == g.status_id).map_or_else(|| g.status_id.clone(), |s| s.slug.clone())
     }
 
-    /// The day `game` was beaten (or completed): its last recorded session
-    /// until the status change has a date of its own.
+    /// The day `game` was beaten (or completed), see [`StatsPage::status_day`].
     pub(super) fn finished_on(&self, game: usize) -> Option<NaiveDate> {
-        matches!(self.game_slug(game).as_str(), "beaten" | "completed").then(|| self.history.as_ref()?.last_day(game)).flatten()
+        self.status_day(game, &["beaten", "completed"])
     }
 
     fn abandoned_on(&self, game: usize) -> Option<NaiveDate> {
-        (self.game_slug(game) == "abandoned").then(|| self.history.as_ref()?.last_day(game)).flatten()
+        self.status_day(game, &["abandoned"])
     }
 
     fn lane_matches(&self, lane: &Lane, p: &Period) -> bool {

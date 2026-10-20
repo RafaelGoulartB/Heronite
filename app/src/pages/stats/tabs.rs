@@ -5,7 +5,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::stats::{Period, Span};
-use heronite_i18n::n_;
+use heronite_i18n::{tr, trc};
 
 use super::{today, StatsPage};
 use crate::icons::Icon;
@@ -19,22 +19,27 @@ pub(super) enum Tab {
     Overview,
     /// How each game went: a lane per game in time.
     Journeys,
+    /// What gets finished: the goal, beaten games, the queue.
+    Backlog,
 }
 
 impl Tab {
-    pub(super) const ALL: [Tab; 2] = [Tab::Overview, Tab::Journeys];
+    pub(super) const ALL: [Tab; 3] = [Tab::Overview, Tab::Journeys, Tab::Backlog];
 
     pub(super) fn label(self) -> &'static str {
-        heronite_i18n::tr(match self {
-            Tab::Overview => n_!("Overview"),
-            Tab::Journeys => n_!("Journeys"),
-        })
+        match self {
+            Tab::Overview => tr!("Overview"),
+            Tab::Journeys => tr!("Journeys"),
+            // The Collection's "Backlog" view is another thing ("Pendentes").
+            Tab::Backlog => trc!("stats", "Backlog"),
+        }
     }
 
     fn icon(self) -> Icon {
         match self {
             Tab::Overview => Icon::BarChart,
             Tab::Journeys => Icon::History,
+            Tab::Backlog => Icon::Flag,
         }
     }
 
@@ -43,6 +48,7 @@ impl Tab {
         match self {
             Tab::Overview => &[Span::Week, Span::Month, Span::Year, Span::All],
             Tab::Journeys => &[Span::Month, Span::Year, Span::All],
+            Tab::Backlog => &[Span::Year, Span::All],
         }
     }
 
@@ -51,6 +57,7 @@ impl Tab {
         match self {
             Tab::Overview => "overview",
             Tab::Journeys => "journeys",
+            Tab::Backlog => "backlog",
         }
     }
 
@@ -74,6 +81,8 @@ impl StatsPage {
             return;
         }
         self.tab = tab;
+        self.prefs.tab = Some(tab.id().to_string());
+        self.save_prefs(cx);
         let period = period_for(tab, self.period);
         self.go(period, cx);
     }

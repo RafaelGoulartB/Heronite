@@ -892,7 +892,7 @@ impl StatsPage {
 }
 
 /// Panels side by side in 12-column spans (`wide`), else stacked.
-fn row(wide: bool, items: Vec<(Div, usize)>) -> AnyElement {
+pub(super) fn row(wide: bool, items: Vec<(Div, usize)>) -> AnyElement {
     if !wide {
         return div().flex().flex_col().gap(px(GAP)).children(items.into_iter().map(|(d, _)| d)).into_any_element();
     }

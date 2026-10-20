@@ -346,8 +346,10 @@ impl StatsPage {
             column = match self.tab {
                 Tab::Overview => column.child(self.render_total(st)),
                 Tab::Journeys => column.children(self.render_journeys_total(st)),
+                Tab::Backlog => column.child(self.render_backlog_total(st, cx)),
             };
-            if let Some(g) = top {
+            // The Backlog's goal card takes that corner.
+            if let Some(g) = top.filter(|_| self.tab != Tab::Backlog) {
                 let cover = self.cover(g, 24., 32., window);
                 let title = self.game_title(g);
                 column = column.child(
@@ -479,6 +481,7 @@ impl StatsPage {
             (Some(_), Some(st)) => match self.tab {
                 Tab::Overview => self.render_sections(st, col_w, wide, window, cx),
                 Tab::Journeys => self.render_journeys(st, window, cx),
+                Tab::Backlog => self.render_backlog(st, col_w, wide, window, cx),
             },
         };
         // Blurred art of the number one game under the panels.

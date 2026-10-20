@@ -9,6 +9,7 @@
 //! library (handed in with [`StatsPage::set_library`]); the only disk reads
 //! are the screenshot listings, done once per library in the background.
 
+mod backlog;
 mod console;
 mod desktop;
 mod journeys;
@@ -29,7 +30,7 @@ use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveDateTime};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::stats::{
-    self, fmt_hours_short, fmt_secs, month_short, GameInput, GameSheet, History, Journeys, Period, Span, Stats, TOP_N,
+    self, fmt_hours_short, fmt_secs, month_short, GameInput, GameSheet, History, Journeys, Period, Span, Stats, StatsPrefs, TOP_N,
 };
 use heronite_data::Library;
 use heronite_i18n::{n_, tr};
@@ -138,6 +139,9 @@ pub(super) struct Derived {
 }
 
 pub struct StatsPage {
+    app: heronite_data::AppPaths,
+    /// The page's choices kept in `ui-state.json` ([`StatsPrefs`]).
+    prefs: StatsPrefs,
     covers: Covers,
     lib: Option<Arc<Library>>,
     chains: HashMap<SharedString, Vec<ImageRef>>,
@@ -159,6 +163,9 @@ pub struct StatsPage {
     /// The lanes of the Journeys tab (computed while it is shown).
     journeys: Option<Arc<Journeys>>,
     jv: journeys::JourneyView,
+    /// Status changes, How Long To Beat times and added dates (Backlog tab).
+    backlog: Arc<backlog::BacklogData>,
+    queue_sort: backlog::QueueSort,
     /// Year of the review button, its total and its top three games.
     year_summary: Option<(i32, f64, Vec<usize>)>,
     derived: Arc<Derived>,
@@ -264,12 +271,18 @@ impl StatsPage {
             lane: crate::env::parse("HERONITE_DEBUG_STATS_OPEN"),
             applied: false,
         };
-        let tab = crate::env::value("HERONITE_DEBUG_STATS_TAB").and_then(|t| Tab::from_id(&t)).unwrap_or(Tab::Overview);
+        let prefs = StatsPrefs::load(&ctx.app);
+        let tab = crate::env::value("HERONITE_DEBUG_STATS_TAB")
+            .or_else(|| prefs.tab.clone())
+            .and_then(|t| Tab::from_id(&t))
+            .unwrap_or(Tab::Overview);
         let focus = cx.focus_handle();
         if review_wanted.is_some() {
             focus.focus(window, cx);
         }
         Self {
+            app: ctx.app.clone(),
+            prefs,
             covers,
             lib: None,
             chains: HashMap::new(),
@@ -285,6 +298,8 @@ impl StatsPage {
             stats: None,
             journeys: None,
             jv: Default::default(),
+            backlog: Arc::default(),
+            queue_sort: Default::default(),
             year_summary: None,
             derived: Arc::default(),
             hover: None,
@@ -347,6 +362,17 @@ impl StatsPage {
                     fresh
                 })
                 .unwrap_or(false);
+            if fresh {
+                let built = lib.clone();
+                let data = cx.background_spawn(async move { backlog::BacklogData::read(&built) }).await;
+                this.update(cx, |this, cx| {
+                    if this.lib.as_ref().is_some_and(|l| Arc::ptr_eq(l, &lib)) {
+                        this.backlog = Arc::new(data);
+                        cx.notify();
+                    }
+                })
+                .ok();
+            }
             let Some(folder) = folder.filter(|_| fresh) else { return };
             let shots = cx.background_spawn(async move { list_shots(&folder, queries) }).await;
             this.update(cx, |this, cx| {
@@ -501,6 +527,17 @@ impl StatsPage {
     fn close_review(&mut self, cx: &mut Context<Self>) {
         self.review = None;
         cx.notify();
+    }
+
+    /// Saves [`StatsPrefs`] off the UI thread.
+    fn save_prefs(&self, cx: &mut Context<Self>) {
+        let (prefs, app) = (self.prefs.clone(), self.app.clone());
+        cx.background_spawn(async move {
+            if let Err(err) = prefs.save(&app) {
+                log::warn!("saving the Statistics choices: {err:#}");
+            }
+        })
+        .detach();
     }
 
     /// Debug hooks that need a laid-out page (scroll positions).
