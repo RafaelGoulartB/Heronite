@@ -30,7 +30,7 @@ impl StatsPage {
         };
         let max = first.1 as f64 / (first.2 / 3600.);
         let mut list = div().flex().flex_col().gap(px(10.));
-        for (g, n, secs) in a.rate.iter().take(7) {
+        for (g, n, secs) in a.rate.iter().take(9) {
             let game = *g;
             let r = *n as f64 / (secs / 3600.);
             let cover = self.cover(game, 26., 34., window);
@@ -166,8 +166,11 @@ impl StatsPage {
     }
 
     /// A photo per month (year and all time), else the latest captures.
-    pub(super) fn album_months(&mut self, a: &AlbumView, st: &Stats, window: &Window, cx: &mut Context<Self>) -> Div {
+    pub(super) fn album_months(&mut self, a: &AlbumView, st: &Stats, col_w: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         let list = Arc::new(a.photos.clone());
+        // Six to a line across the whole column: a year is two even lines.
+        let tw = ((col_w - 48. - 5. * 12.) / 6.).floor();
+        let th = (tw * 9. / 16.).floor();
         if matches!(st.period.span, Span::Year | Span::All) {
             // Each month: the middle capture of its most photographed game.
             let mut months: std::collections::BTreeMap<(i32, u32), Vec<usize>> = Default::default();
@@ -199,8 +202,8 @@ impl StatsPage {
                             SharedString::from(format!("month-photo-{y}-{m}")),
                             list.clone(),
                             *i,
-                            196.,
-                            110.,
+                            tw,
+                            th,
                             None,
                             window,
                             cx,
@@ -212,7 +215,7 @@ impl StatsPage {
                                 .text_size(px(11.5))
                                 .text_color(theme::text_dim())
                                 .truncate()
-                                .max_w(px(196.))
+                                .max_w(px(tw))
                                 .child(self.game_title(a.photos[*i].game)),
                         )
                 })
@@ -227,7 +230,7 @@ impl StatsPage {
             .rev()
             .map(|i| {
                 let label = Some(short_date(list[i].at.date()));
-                self.photo_tile(SharedString::from(format!("latest-{i}")), list.clone(), i, 196., 110., label, window, cx)
+                self.photo_tile(SharedString::from(format!("latest-{i}")), list.clone(), i, tw, th, label, window, cx)
             })
             .collect();
         panel()
@@ -264,7 +267,6 @@ impl StatsPage {
         });
         let none = a.per_session[0] * 100 / total;
         panel()
-            .flex_1()
             .child(panel_head(tr!("Captures per session"), hint(trn!(total, "{n} session", "{n} sessions"))))
             .child(
                 div()

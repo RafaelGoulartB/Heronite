@@ -491,7 +491,7 @@ impl StatsPage {
                 Tab::Journeys => self.render_journeys(st, window, cx),
                 Tab::Backlog => self.render_backlog(st, col_w, wide, window, cx),
                 Tab::Discoveries => self.render_discoveries(st, col_w, window, cx),
-                Tab::Album => self.render_album(st, wide, window, cx),
+                Tab::Album => self.render_album(st, col_w, wide, window, cx),
             },
         };
         // Blurred art of the number one game under the panels.

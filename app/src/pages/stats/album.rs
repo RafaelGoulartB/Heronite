@@ -43,6 +43,8 @@ pub(super) struct AlbumView {
 }
 
 const COLLAGE: usize = 6;
+/// Widest a game title gets in its chip.
+const CHIP_TITLE_W: f32 = 200.;
 
 impl StatsPage {
     /// Rebuilds [`AlbumView`] for the period and the picked game.
@@ -226,7 +228,10 @@ impl StatsPage {
         div().mt_auto().pb(px(30.)).flex().items_end().gap(px(28.)).child(main).children(side)
     }
 
-    pub(super) fn render_album(&mut self, st: &Stats, wide: bool, window: &Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    /// Chips, then the moments and a photo per month (what you look at),
+    /// then the numbers: the games you stop for on the left, when you
+    /// capture and how many captures a session leaves on the right.
+    pub(super) fn render_album(&mut self, st: &Stats, col_w: f32, wide: bool, window: &Window, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let Some(a) = self.album.clone() else { return Vec::new() };
         if a.games.is_empty() {
             return vec![panel()
@@ -243,13 +248,16 @@ impl StatsPage {
                 )
                 .into_any_element()];
         }
-        let mut out = vec![self.album_chips(&a, window, cx), self.album_moments(&a, window, cx)];
-        out.push(row(wide, vec![(self.album_rate(&a, st, window, cx), 6), (self.album_hours(&a), 6)]));
-        out.push(row(wide, vec![(self.album_months(&a, st, window, cx), 8), (self.album_sessions(&a), 4)]));
+        let mut out = vec![self.album_chips(&a, col_w, window, cx), self.album_moments(&a, window, cx)];
+        out.push(self.album_months(&a, st, col_w, window, cx).into_any_element());
+        let side = div().flex().flex_col().gap(px(GAP)).child(self.album_hours(&a)).child(self.album_sessions(&a));
+        out.push(row(wide, vec![(self.album_rate(&a, st, window, cx), 6), (side, 6)]));
         out
     }
 
-    fn album_chips(&mut self, a: &AlbumView, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+    /// A chip per game, on one line: the games that fit (roughly measured),
+    /// then "+N" for the rest.
+    fn album_chips(&mut self, a: &AlbumView, col_w: f32, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let total: usize = a.games.iter().map(|g| g.1).sum();
         let chip = |id: SharedString, on: bool| {
             div()
@@ -280,7 +288,23 @@ impl StatsPage {
                 .child(tr!("All games"))
                 .child(div().opacity(0.7).child(total.to_string())),
         );
-        for (g, n) in a.games.iter().take(10) {
+        // Room left after "All games" and the "+N" chip.
+        let mut room = col_w - 240.;
+        let mut shown: Vec<(usize, usize)> = Vec::new();
+        for (g, n) in &a.games {
+            let w = (self.game_title(*g).chars().count() as f32 * 7.4).min(CHIP_TITLE_W) + 74.;
+            if !self.album_more && (room < w || shown.len() >= 10) {
+                break;
+            }
+            room -= w + 8.;
+            shown.push((*g, *n));
+        }
+        // The picked game keeps its chip.
+        if let Some(pick) = self.album_game.filter(|g| !shown.iter().any(|x| x.0 == *g)) {
+            shown.extend(a.games.iter().find(|x| x.0 == pick).copied());
+        }
+        let hidden = a.games.len().saturating_sub(shown.len());
+        for (g, n) in &shown {
             let game = *g;
             let cover = self.cover(game, 22., 22., window);
             let on = self.album_game == Some(game);
@@ -297,8 +321,21 @@ impl StatsPage {
                             .bg(theme::white_a(0.08))
                             .children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
                     )
-                    .child(div().max_w(px(220.)).truncate().child(self.game_title(game)))
+                    .child(div().max_w(px(CHIP_TITLE_W)).truncate().child(self.game_title(game)))
                     .child(div().opacity(0.7).child(n.to_string())),
+            );
+        }
+        if hidden > 0 || self.album_more {
+            let label = if self.album_more { tr!("Show fewer").to_string() } else { tr!("+{n} more", n = hidden) };
+            chips = chips.child(
+                chip("album-more".into(), false)
+                    .pl(px(14.))
+                    .text_color(theme::text_muted())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.album_more = !this.album_more;
+                        cx.notify();
+                    }))
+                    .child(label),
             );
         }
         chips.into_any_element()

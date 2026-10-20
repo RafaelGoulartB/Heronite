@@ -186,10 +186,11 @@ pub struct StatsPage {
     review: Option<review::Review>,
     /// Open the review once the history is read.
     review_wanted: Option<i32>,
-    /// The Album tab ([`album`]): its numbers, the game picked in its chips
-    /// and the moment open.
+    /// The Album tab ([`album`]): its numbers, the game picked in its chips,
+    /// whether every game's chip shows and the moment open.
     album: Option<Arc<album::AlbumView>>,
     album_game: Option<usize>,
+    album_more: bool,
     moment_open: Option<usize>,
     /// The screenshot viewer over the page.
     lightbox: Option<viewer::Lightbox>,
@@ -333,6 +334,7 @@ impl StatsPage {
             review_wanted,
             album: None,
             album_game: None,
+            album_more: false,
             moment_open: None,
             lightbox: None,
             sheet: None,
