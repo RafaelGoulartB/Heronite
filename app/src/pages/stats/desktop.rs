@@ -8,6 +8,7 @@ use gpui_kit::*;
 use heronite_data::stats::{fmt_hours_short, fmt_secs, month_in_sentence, Span, Stats};
 use heronite_i18n::{n_, tr};
 
+use super::tabs::Tab;
 use super::{change_pct, today, StatsPage};
 use crate::icons::Icon;
 use crate::pages::page_close;
@@ -20,6 +21,11 @@ const HERO_H: f32 = 372.;
 const PAD: f32 = 32.;
 /// Widest the column gets (ultrawide windows keep even margins).
 const MAX_W: f32 = 1840.;
+/// Height of the bar that keeps the tabs and the period in reach while the
+/// page scrolls.
+const BAR_H: f32 = 76.;
+/// Scroll (px) past which the bar shows: the hero's own controls are gone.
+const BAR_AT: f32 = 84.;
 /// Gap between panels.
 pub(super) const GAP: f32 = 16.;
 /// Panel corner radius.
@@ -130,6 +136,8 @@ impl StatsPage {
         let mut seg = capsule();
         for (span, label) in spans {
             let on = self.period.span == span;
+            // Spans the tab cannot show are dimmed (the tab shows the year).
+            let allowed = self.tab.spans().contains(&span);
             seg = seg.child(
                 div()
                     .id(SharedString::from(format!("stats-span-{label}")))
@@ -142,12 +150,13 @@ impl StatsPage {
                     .font_weight(theme::W_BOLD)
                     .text_size(px(13.))
                     .when(on, |d| d.bg(theme::accent()).text_color(theme::on_accent()))
-                    .when(!on, |d| {
+                    .when(!on && allowed, |d| {
                         d.text_color(theme::text_muted())
                             .cursor_pointer()
                             .hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary()))
+                            .on_click(cx.listener(move |this, _, _, cx| this.set_span(span, cx)))
                     })
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_span(span, cx)))
+                    .when(!on && !allowed, |d| d.text_color(theme::text_muted()).opacity(0.35))
                     .child(heronite_i18n::tr(label)),
             );
         }
@@ -297,7 +306,13 @@ impl StatsPage {
 
     fn render_hero(&mut self, st: Option<&Stats>, panel_w: f32, col_w: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         let top = st.and_then(|s| s.games.first()).map(|g| g.game);
-        let art = top.and_then(|g| self.art(g, panel_w, HERO_H, window));
+        // Discoveries show the art of the game their lead is about.
+        let art_game = match self.tab {
+            Tab::Discoveries => self.lead_game().or(top),
+            Tab::Album => self.album_lead().or(top),
+            _ => top,
+        };
+        let art = art_game.and_then(|g| self.art(g, panel_w, HERO_H, window));
         let page = theme::stats_page_bg();
         let ink = |a: f32| Hsla { a, ..Hsla::from(page) };
         let mut hero = div().relative().w_full().h(px(HERO_H)).flex_none();
@@ -327,12 +342,27 @@ impl StatsPage {
                 linear_color_stop(ink(1.), 1.),
             )));
 
-        let review = self.render_review_button(window, cx);
-        let controls = div().flex().items_center().justify_between().gap(px(16.)).child(self.render_switch(cx)).children(review);
+        let review = if self.tab == Tab::Overview { self.render_review_button(window, cx) } else { None };
+        let controls = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(12.))
+            .child(self.render_tabs(cx))
+            .child(self.render_switch(cx))
+            .child(div().flex_1())
+            .children(review);
         let mut column = div().relative().flex().flex_col().w(px(col_w)).h_full().mx_auto().pt(px(28.)).child(controls);
         if let Some(st) = st.filter(|s| s.total_secs > 0.) {
-            column = column.child(self.render_total(st));
-            if let Some(g) = top {
+            column = match self.tab {
+                Tab::Overview => column.child(self.render_total(st)),
+                Tab::Journeys => column.children(self.render_journeys_total(st)),
+                Tab::Backlog => column.child(self.render_backlog_total(st, cx)),
+                Tab::Discoveries => column.child(self.render_discoveries_total(st, window, cx)),
+                Tab::Album => column.child(self.render_album_total(st, window, cx)),
+            };
+            // The Backlog's goal card takes that corner.
+            if let Some(g) = top.filter(|_| matches!(self.tab, Tab::Overview | Tab::Journeys)) {
                 let cover = self.cover(g, 24., 32., window);
                 let title = self.game_title(g);
                 column = column.child(
@@ -368,6 +398,41 @@ impl StatsPage {
             }
         }
         hero.child(column)
+    }
+
+    /// The tabs and the period switch pinned to the top of the panel once the
+    /// hero scrolled away, so a long tab (Journeys, Album) never needs the
+    /// trip back up to change tab or period.
+    fn render_bar(&self, col_w: f32, cx: &mut Context<Self>) -> Div {
+        let page = Hsla::from(theme::stats_page_bg());
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .right_0()
+            .h(px(BAR_H))
+            .bg(page)
+            .border_b_1()
+            .border_color(theme::white_a(0.08))
+            .shadow(vec![BoxShadow {
+                color: theme::black_a(0.4),
+                offset: point(px(0.), px(8.)),
+                blur_radius: px(24.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+            .child(
+                div()
+                    .w(px(col_w))
+                    .h_full()
+                    .mx_auto()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .overflow_hidden()
+                    .child(self.render_tabs(cx))
+                    .child(self.render_switch(cx)),
+            )
     }
 
     /// Eyebrow, the big total and the story line under it.
@@ -461,7 +526,13 @@ impl StatsPage {
                     tr!("Pick another period with the arrows above."),
                 )]
             }
-            (Some(_), Some(st)) => self.render_sections(st, col_w, wide, window, cx),
+            (Some(_), Some(st)) => match self.tab {
+                Tab::Overview => self.render_sections(st, col_w, wide, window, cx),
+                Tab::Journeys => self.render_journeys(st, window, cx),
+                Tab::Backlog => self.render_backlog(st, col_w, wide, window, cx),
+                Tab::Discoveries => self.render_discoveries(st, col_w, window, cx),
+                Tab::Album => self.render_album(st, col_w, wide, window, cx),
+            },
         };
         // Blurred art of the number one game under the panels.
         let backdrop = st.as_ref().and_then(|s| s.games.first()).and_then(|g| self.blurred(g.game, panel_w / 4., 300.));
@@ -487,11 +558,36 @@ impl StatsPage {
         }
         content =
             content.child(hero).child(div().relative().flex().flex_col().gap(px(GAP)).w(px(col_w)).mx_auto().pt(px(GAP)).children(body));
+        let bar = (-f32::from(self.scroll.offset().y) > BAR_AT).then(|| self.render_bar(col_w, cx));
         let tip = st.as_ref().and_then(|st| self.render_tip(st, window));
+        let sheet = self.render_sheet(window, cx);
+        let lightbox = self.render_lightbox(window, cx);
+        let planner = self.render_planner(window, cx);
         div()
             .size_full()
             .p(px(12.))
             .pt(px(2.))
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
+                if this.planner.is_some() && ev.keystroke.key == "escape" {
+                    this.close_planner(window, cx);
+                    cx.stop_propagation();
+                } else if this.lightbox.is_some() {
+                    match ev.keystroke.key.as_str() {
+                        "escape" => {
+                            this.lightbox = None;
+                            cx.notify();
+                        }
+                        "left" => this.step_photo(-1, cx),
+                        "right" => this.step_photo(1, cx),
+                        _ => return,
+                    }
+                    cx.stop_propagation();
+                } else if ev.keystroke.key == "escape" && this.sheet.is_some() {
+                    this.close_sheet(cx);
+                    cx.stop_propagation();
+                }
+            }))
             .on_mouse_move(cx.listener(|this, _, _, cx| {
                 if this.hover.is_some() {
                     cx.notify();
@@ -509,9 +605,13 @@ impl StatsPage {
                     .text_color(theme::text_primary())
                     .font_family(theme::font_body())
                     .child(div().id("stats-page").size_full().overflow_y_scroll().track_scroll(&self.scroll).child(content))
-                    .child(page_close(cx).absolute().top(px(20.)).right(px(20.))),
+                    .children(bar)
+                    .child(page_close(cx).absolute().top(px(20.)).right(px(20.)))
+                    .children(sheet)
+                    .children(lightbox)
+                    .children(planner),
             )
-            .children(tip)
+            .children(tip.filter(|_| self.sheet.is_none() && self.lightbox.is_none() && self.planner.is_none()))
             .into_any_element()
     }
 }

@@ -9,12 +9,26 @@
 //! covered (`startedAt` + `elapsedSeconds`), so one that runs past midnight
 //! adds to both days.
 
+mod album;
+mod backlog;
+mod game;
+mod insights;
+mod journeys;
+mod prefs;
+
 use std::collections::HashMap;
 
-use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Timelike};
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike};
 use heronite_i18n::tr;
 
 use crate::models::LocalGameSession;
+
+pub use album::{capture_hours, captures_per_session, moments, Moment, MOMENT_GAP_SECS, MOMENT_MIN};
+pub use backlog::{goal, month_ends, running_count, weekly_hours, Goal};
+pub use game::{game_sheet, GameSheet};
+pub use insights::{insights, milestones, year_before, Fact, Insight, Milestone, MilestoneKind};
+pub use journeys::{journeys, median, Journeys, Lane, LANE_MIN_SECS, PARALLEL_MIN_SECS};
+pub use prefs::StatsPrefs;
 
 /// Shorter sessions are failed launches, not play.
 pub const MIN_SESSION_SECS: f64 = 120.;
@@ -164,12 +178,21 @@ pub struct Played {
 
 /// Sessions of every game, cut into hours. Build once per library load
 /// ([`history`]), then [`compute`] any period from it.
+///
+/// Pieces and sessions are kept oldest first, so a period reads only its own
+/// slice ([`History::pieces_in`]) instead of the whole history, and each
+/// game's sessions are indexed: the page asks per game a lot, and a library
+/// can hold thousands of games and hundreds of thousands of sessions.
 #[derive(Default)]
 pub struct History {
     pieces: Vec<Piece>,
     sessions: Vec<Played>,
     lifetime_secs: Vec<f64>,
     first_day: Vec<Option<NaiveDate>>,
+    /// Per game: indexes into `sessions`, oldest first.
+    by_game: Vec<Vec<u32>>,
+    /// Per game: the recorded session time.
+    recorded: Vec<f64>,
     /// Day of the oldest recorded session.
     pub since: Option<NaiveDate>,
 }
@@ -177,6 +200,62 @@ pub struct History {
 impl History {
     pub fn is_empty(&self) -> bool {
         self.sessions.is_empty() && self.lifetime_secs.iter().all(|s| *s <= 0.)
+    }
+
+    /// Games of the [`history`] input (played or not).
+    pub fn games(&self) -> usize {
+        self.lifetime_secs.len()
+    }
+
+    /// Recorded sessions of every game.
+    pub fn session_count(&self) -> usize {
+        self.sessions.len()
+    }
+
+    /// First day `game` was ever played (sessions or `firstPlayed`).
+    pub fn first_day(&self, game: usize) -> Option<NaiveDate> {
+        self.first_day.get(game).copied().flatten()
+    }
+
+    /// Recorded session time of `game`, or its lifetime total when bigger.
+    pub fn total_secs(&self, game: usize) -> f64 {
+        self.recorded.get(game).copied().unwrap_or(0.).max(self.lifetime_secs.get(game).copied().unwrap_or(0.))
+    }
+
+    /// Day of the last recorded session of `game`.
+    pub fn last_day(&self, game: usize) -> Option<NaiveDate> {
+        let i = *self.by_game.get(game)?.last()?;
+        Some(self.sessions[i as usize].start.date())
+    }
+
+    /// Sessions of `game`, oldest first.
+    pub fn sessions_of(&self, game: usize) -> impl Iterator<Item = &Played> + '_ {
+        self.by_game.get(game).into_iter().flatten().map(|i| &self.sessions[*i as usize])
+    }
+
+    /// Pieces on the days `[start, end)`.
+    fn pieces_between(&self, start: NaiveDate, end: NaiveDate) -> &[Piece] {
+        let (a, b) = (start.and_time(NaiveTime::MIN), end.and_time(NaiveTime::MIN));
+        let from = self.pieces.partition_point(|x| x.at < a);
+        let to = from + self.pieces[from..].partition_point(|x| x.at < b);
+        &self.pieces[from..to]
+    }
+
+    fn pieces_in(&self, p: Period) -> &[Piece] {
+        self.pieces_between(p.start, p.end)
+    }
+
+    /// Sessions that started on the days `[start, end)`.
+    pub fn sessions_between(&self, start: NaiveDate, end: NaiveDate) -> &[Played] {
+        let (a, b) = (start.and_time(NaiveTime::MIN), end.and_time(NaiveTime::MIN));
+        let from = self.sessions.partition_point(|s| s.start < a);
+        let to = from + self.sessions[from..].partition_point(|s| s.start < b);
+        &self.sessions[from..to]
+    }
+
+    /// Sessions that started in `p`.
+    pub fn sessions_in(&self, p: Period) -> &[Played] {
+        self.sessions_between(p.start, p.end)
     }
 }
 
@@ -214,7 +293,16 @@ pub fn history_in<'a, Tz: TimeZone>(games: impl IntoIterator<Item = GameInput<'a
         h.lifetime_secs.push(input.lifetime_minutes as f64 * 60.);
         h.first_day.push(first);
     }
-    h.since = h.sessions.iter().map(|s| s.start.date()).min();
+    h.sessions.sort_by_key(|s| s.start);
+    h.pieces.sort_by_key(|x| x.at);
+    let n = h.lifetime_secs.len();
+    h.by_game = vec![Vec::new(); n];
+    h.recorded = vec![0.; n];
+    for (i, s) in h.sessions.iter().enumerate() {
+        h.by_game[s.game].push(i as u32);
+        h.recorded[s.game] += s.secs;
+    }
+    h.since = h.sessions.first().map(|s| s.start.date());
     h
 }
 
@@ -336,7 +424,7 @@ impl Stats {
 }
 
 fn period_secs(h: &History, p: Period) -> f64 {
-    h.pieces.iter().filter(|x| p.contains(x.at.date())).map(|x| x.secs as f64).sum()
+    h.pieces_in(p).iter().map(|x| x.secs as f64).sum()
 }
 
 fn buckets_for(p: Period, today: NaiveDate) -> Vec<(NaiveDate, NaiveDate)> {
@@ -391,7 +479,7 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
     let mut heat = [[0f64; 24]; 7];
     let mut day_parts = [0f64; 4];
     let mut weekend_secs = 0.;
-    for x in h.pieces.iter().filter(|x| period.contains(x.at.date())) {
+    for x in h.pieces_in(period).iter() {
         let secs = x.secs as f64;
         let g = per_game.entry(x.game as usize).or_insert_with(|| GameStat::empty(x.game as usize));
         g.secs += secs;
@@ -405,7 +493,7 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
     }
     let mut sessions = 0;
     let mut longest: Option<Played> = None;
-    for s in h.sessions.iter().filter(|s| period.contains(s.start.date())) {
+    for s in h.sessions_in(period) {
         sessions += 1;
         if let Some(g) = per_game.get_mut(&s.game) {
             g.sessions += 1;
@@ -433,7 +521,7 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
     games.sort_by(|a, b| b.secs.total_cmp(&a.secs).then(a.game.cmp(&b.game)));
     let top: Vec<usize> = {
         let mut by_sessions: HashMap<usize, f64> = HashMap::new();
-        for x in h.pieces.iter().filter(|x| period.contains(x.at.date())) {
+        for x in h.pieces_in(period).iter() {
             *by_sessions.entry(x.game as usize).or_default() += x.secs as f64;
         }
         let mut v: Vec<(usize, f64)> = by_sessions.into_iter().collect();
@@ -446,7 +534,7 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
         .map(|(start, end)| Bucket { start, end, secs: 0., top: [0.; TOP_N], future: start > today })
         .collect();
     let mut by_bucket: Vec<HashMap<usize, f64>> = vec![HashMap::new(); buckets.len()];
-    for x in h.pieces.iter().filter(|x| period.contains(x.at.date())) {
+    for x in h.pieces_in(period).iter() {
         let day = x.at.date();
         let i = buckets.partition_point(|b| b.end <= day);
         if let Some(b) = buckets.get_mut(i) {
@@ -479,7 +567,7 @@ pub fn compute(h: &History, period: Period, today: NaiveDate) -> Stats {
     }
     let streak_game = streak_range.and_then(|(a, b)| {
         let mut per: HashMap<usize, f64> = HashMap::new();
-        for x in h.pieces.iter().filter(|x| (a..=b).contains(&x.at.date())) {
+        for x in h.pieces_between(a, b + Duration::days(1)) {
             *per.entry(x.game as usize).or_default() += x.secs as f64;
         }
         ranked(per).first().map(|(g, _)| *g)
@@ -573,6 +661,29 @@ mod tests {
     }
 
     #[test]
+    fn the_history_is_indexed_by_time_and_by_game() {
+        // Given out of order and per game, read back oldest first.
+        let a = [s("2026-03-10T20:00:00Z", 3600.), s("2026-01-05T10:00:00Z", 1800.)];
+        let b = [s("2026-02-01T23:30:00Z", 3600.)];
+        let h = history_in(
+            [
+                GameInput { sessions: &a, lifetime_minutes: 0, first_played: None },
+                GameInput { sessions: &b, lifetime_minutes: 600, first_played: None },
+            ],
+            &utc(),
+        );
+        let feb = Period::of(Span::Month, day(2026, 2, 1));
+        assert_eq!(h.sessions_in(feb).iter().map(|s| s.game).collect::<Vec<_>>(), [1]);
+        // The session past midnight has a piece on each day.
+        assert_eq!(h.pieces_in(feb).len(), 2);
+        assert_eq!(h.pieces_between(day(2026, 2, 2), day(2026, 2, 3)).len(), 1);
+        assert_eq!(h.sessions_of(0).map(|s| s.start.date()).collect::<Vec<_>>(), [day(2026, 1, 5), day(2026, 3, 10)]);
+        assert_eq!((h.total_secs(0), h.total_secs(1)), (5400., 36000.));
+        assert_eq!((h.last_day(0), h.last_day(1), h.last_day(7)), (Some(day(2026, 3, 10)), Some(day(2026, 2, 1)), None));
+        assert_eq!((h.games(), h.session_count(), h.since), (2, 3, Some(day(2026, 1, 5))));
+    }
+
+    #[test]
     fn periods_and_labels() {
         let wed = day(2026, 10, 7);
         let w = Period::of(Span::Week, wed);
@@ -621,6 +732,10 @@ mod tests {
             &utc(),
         );
         assert_eq!(h.since, Some(day(2026, 9, 10)));
+        assert_eq!(h.last_day(0), Some(day(2026, 10, 2)));
+        assert_eq!(h.last_day(5), None);
+        assert_eq!(h.first_day(0), Some(day(2025, 1, 1)));
+        assert_eq!((h.total_secs(0), h.total_secs(1)), (36000., 60000.));
         let st = compute(&h, Period::of(Span::Month, day(2026, 10, 9)), day(2026, 10, 9));
         assert_eq!(
             st.games.iter().map(|g| (g.game, g.secs, g.sessions, g.new)).collect::<Vec<_>>(),

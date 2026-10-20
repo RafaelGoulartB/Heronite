@@ -7,13 +7,13 @@ use gpui_kit::*;
 use heronite_data::stats::{fmt_secs, month_name, month_short, Span, Stats, TOP_N};
 
 use super::desktop::{hint, panel, panel_head, GAP, R_PANEL};
+use super::marks::{marks, Mark};
 use super::review::marked;
 use super::tip::hover;
 use super::{axis_label, day_label, day_part, nice_axis, series_color, short_date, today, weekday, weekday_on, Hover, StatsPage};
 use heronite_i18n::{tr, trc, trn};
 
 use crate::icons::Icon;
-use crate::pages::PageEvent;
 use crate::theme;
 use crate::ui::icon;
 
@@ -36,7 +36,10 @@ fn line(parts: Vec<Div>) -> Div {
 }
 
 /// A sentence with `**bold**` runs.
-fn sentence(text: impl AsRef<str>) -> Div {
+/// Rows of the "Show all" list of games.
+const LIST_MAX: usize = 100;
+
+pub(super) fn sentence(text: impl AsRef<str>) -> Div {
     div().child(marked(text))
 }
 
@@ -49,7 +52,7 @@ impl StatsPage {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        let mut out = Vec::new();
+        let mut out = vec![self.render_portals(st, window, cx)];
         if matches!(st.period.span, Span::Year | Span::All) && st.buckets.len() > 1 {
             out.push(self.render_months(st, window, cx));
         } else {
@@ -57,7 +60,7 @@ impl StatsPage {
         }
         out.push(self.render_shelf(st, col_w, window, cx));
         let habits = self.render_habits(st, cx);
-        let records = self.render_records(st, if wide { span(col_w, 8) } else { col_w }, window);
+        let records = self.render_records(st, if wide { span(col_w, 8) } else { col_w }, window, cx);
         out.push(row(wide, vec![(habits, 4), (records, 8)]));
         let genres = self.render_genres(st, cx);
         if st.period.span == Span::Year {
@@ -67,6 +70,108 @@ impl StatsPage {
             out.push(genres.into_any_element());
         }
         out
+    }
+
+    /// Three cards under the hero, one per other tab, each with what that tab
+    /// has to say about the period.
+    fn render_portals(&mut self, st: &Stats, window: &Window, cx: &mut Context<Self>) -> AnyElement {
+        use super::tabs::Tab;
+        let mut cards: Vec<(Tab, Icon, String, String, Option<usize>)> = Vec::new();
+        if let Some(j) = self.journeys.clone() {
+            let text = match j.peak().filter(|p| p.1 > 1) {
+                Some((_, n)) => tr!("Up to **{n} games** at the same time", n),
+                None => trn!(j.lanes.len(), "**{n} journey** of 1h or more", "**{n} journeys** of 1h or more"),
+            };
+            let game = j.lanes.iter().max_by(|a, b| a.secs.total_cmp(&b.secs)).map(|l| l.game);
+            cards.push((Tab::Journeys, Icon::History, tr!("Journeys").into(), text, game));
+        }
+        let year = match st.period.span {
+            Span::All => today().year(),
+            _ => st.period.start.year(),
+        };
+        let beaten = self.beaten_in_year(year);
+        let target = self.prefs.goals.get(&year).copied().unwrap_or(12);
+        let last = beaten.last().map(|b| b.0);
+        cards.push((
+            Tab::Backlog,
+            Icon::Flag,
+            tr!("Goal for {year}", year),
+            tr!("**{done} of {target}** games beaten", done = beaten.len(), target),
+            last,
+        ));
+        if let Some(lead) = self.shown_insights().into_iter().next() {
+            cards.push((Tab::Discoveries, Icon::Lightbulb, tr!("Discovery").into(), self.insight_sentence(&lead.fact), lead.fact.game()));
+        }
+        // The period's screenshots per game, most first ([`super::Derived`]).
+        let derived = self.derived.clone();
+        if let Some((g, _)) = derived.shots.first() {
+            let text = tr!(
+                "**{n} screenshots**, most in {game}",
+                n = heronite_data::stats::group_thousands(derived.shots_total as u64),
+                game = self.game_title(*g)
+            );
+            cards.push((Tab::Album, Icon::PhotoCamera, tr!("Album").into(), text, Some(*g)));
+        }
+        let mut row = div().flex().gap(px(GAP));
+        for (tab, ic, kicker, text, game) in cards {
+            let cover = game.and_then(|g| self.cover(g, 30., 40., window));
+            row = row.child(
+                div()
+                    .id(SharedString::from(format!("portal-{}", tab.id())))
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .gap(px(14.))
+                    .px(px(18.))
+                    .py(px(14.))
+                    .rounded(px(16.))
+                    .bg(rgba(0x161b24d6))
+                    .border_1()
+                    .border_color(theme::white_a(0.08))
+                    .cursor_pointer()
+                    .hover(|s| s.border_color(Hsla { a: 0.45, ..Hsla::from(theme::accent()) }))
+                    .on_click(cx.listener(move |this, _, _, cx| this.set_tab(tab, cx)))
+                    .child(
+                        div()
+                            .flex_none()
+                            .size(px(36.))
+                            .rounded(px(10.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme::white_a(0.06))
+                            .child(icon(ic, px(18.), theme::accent())),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.))
+                            .child(
+                                div()
+                                    .text_size(px(11.))
+                                    .font_weight(theme::W_BOLD)
+                                    .text_color(theme::text_muted())
+                                    .child(kicker.to_uppercase()),
+                            )
+                            .child(div().text_size(px(13.5)).truncate().child(sentence(text))),
+                    )
+                    .children(cover.map(|s| {
+                        div()
+                            .flex_none()
+                            .w(px(30.))
+                            .h(px(40.))
+                            .rounded(px(5.))
+                            .overflow_hidden()
+                            .child(img(s).size_full().object_fit(ObjectFit::Cover))
+                    }))
+                    .child(icon(Icon::ChevronRight, px(16.), theme::text_muted())),
+            );
+        }
+        row.into_any_element()
     }
 
     /// Week and month: one bar per day, stacked by game.
@@ -183,7 +288,7 @@ impl StatsPage {
         let mut covers = Vec::new();
         for (rank, g) in st.games.iter().take(cols.max(SHELF).min(if cols == 4 { 4 } else { SHELF })).enumerate() {
             let src = self.cover(g.game, cw, ch, window);
-            let key = self.game_key(g.game).map(|k| k.to_string()).unwrap_or_default();
+            let game = g.game;
             let c = series_color(st.series_of(g.game));
             let first = rank == 0;
             covers.push(
@@ -194,7 +299,7 @@ impl StatsPage {
                     .min_w_0()
                     .cursor_pointer()
                     .on_hover(hover(Hover::Game(g.game), cx))
-                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(PageEvent::ShowGame(key.clone()))))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(game, window, cx)))
                     .child(
                         div()
                             .relative()
@@ -308,7 +413,20 @@ impl StatsPage {
                 }))
                 .child(label)
         });
-        let head = div().flex().items_center().gap(px(14.)).child(hint(facts.join(" \u{b7} "))).children(toggle);
+        let journeys = div()
+            .id("stats-to-journeys")
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .text_size(px(12.5))
+            .font_weight(theme::W_BOLD)
+            .text_color(theme::accent())
+            .cursor_pointer()
+            .hover(|s| s.opacity(0.8))
+            .on_click(cx.listener(|this, _, _, cx| this.set_tab(super::tabs::Tab::Journeys, cx)))
+            .child(tr!("Every journey"))
+            .child(icon(Icon::ChevronRight, px(13.), theme::accent()));
+        let head = div().flex().items_center().gap(px(14.)).child(hint(facts.join(" \u{b7} "))).children(toggle).child(journeys);
         let mut p =
             panel().child(panel_head(tr!("Top games"), head)).child(div().grid().grid_cols(cols as u16).gap(px(16.)).children(covers));
         if self.show_all {
@@ -321,9 +439,11 @@ impl StatsPage {
     fn render_list(&mut self, st: &Stats, skip: usize, window: &Window, cx: &mut Context<Self>) -> Div {
         let max = st.games.first().map_or(1., |g| g.secs.max(1.));
         let mut list = div().flex().flex_col().mt(px(18.)).pt(px(8.)).border_t_1().border_color(theme::white_a(0.08));
-        for (rank, g) in st.games.iter().enumerate().skip(skip) {
+        // All time on a big library holds thousands of games: the list stops
+        // at [`LIST_MAX`] (the rest are the ones played least).
+        for (rank, g) in st.games.iter().enumerate().skip(skip).take(LIST_MAX) {
             let cover = self.cover(g.game, 30., 40., window);
-            let key = self.game_key(g.game).map(|k| k.to_string()).unwrap_or_default();
+            let game = g.game;
             let meta = match g.last {
                 Some(last) => {
                     tr!(
@@ -346,7 +466,7 @@ impl StatsPage {
                     .rounded(px(10.))
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::white_a(0.04)))
-                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(PageEvent::ShowGame(key.clone()))))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(game, window, cx)))
                     .child(div().w(px(24.)).text_size(px(12.)).text_color(theme::text_dim()).child((rank + 1).to_string()))
                     .child(
                         div()
@@ -391,6 +511,14 @@ impl StatsPage {
                     ),
             );
         }
+        let rest = st.games.len().saturating_sub(skip + LIST_MAX);
+        if rest > 0 {
+            list = list.child(div().pt(px(12.)).text_size(px(12.5)).text_color(theme::text_muted()).child(trn!(
+                rest,
+                "and {n} more game",
+                "and {n} more games"
+            )));
+        }
         list
     }
 
@@ -401,30 +529,36 @@ impl StatsPage {
         let argmax = |v: &[f64]| v.iter().enumerate().max_by(|a, b| a.1.total_cmp(b.1)).map_or(0, |(i, _)| i);
         let best_day = argmax(&day_totals);
         let best_part = argmax(&st.day_parts);
-        let mut heat = div().flex().flex_col().gap(px(2.));
-        for (d, hours) in st.heat.iter().enumerate() {
-            let mut line = div()
-                .flex()
-                .items_center()
-                .gap(px(2.))
-                .child(div().flex_none().w(px(30.)).text_size(px(11.)).text_color(theme::text_dim()).child(weekday(d)));
-            for (h, v) in hours.iter().enumerate() {
-                let on = self.hover == Some(Hover::Heat(d, h));
-                let color: Hsla =
-                    if *v <= 0. { theme::chart_empty() } else { theme::chart_ramp(((*v / max_cell) as f32).powf(0.7)).into() };
-                line = line.child(
-                    div()
-                        .id(("heat", d * 24 + h))
-                        .flex_1()
-                        .h(px(21.))
-                        .rounded(px(4.))
-                        .bg(color)
-                        .when(on, |c| c.border_2().border_color(gpui_kit::white()))
-                        .on_hover(hover(Hover::Heat(d, h), cx)),
-                );
-            }
-            heat = heat.child(line);
-        }
+        // 168 cells painted as one element ([`super::marks`]), the weekdays beside.
+        let (heat_values, on) = (st.heat, self.hover);
+        let cells = marks(
+            "heat",
+            move |w, _| {
+                let cw = (w - 2. * 23.) / 24.;
+                let mut out = Vec::with_capacity(168);
+                for (d, hours) in heat_values.iter().enumerate() {
+                    for (h, v) in hours.iter().enumerate() {
+                        let color: Hsla =
+                            if *v <= 0. { theme::chart_empty() } else { theme::chart_ramp(((*v / max_cell) as f32).powf(0.7)).into() };
+                        let hover = Hover::Heat(d, h);
+                        out.push(
+                            Mark::new(h as f32 * (cw + 2.), d as f32 * 23., cw, 21., color)
+                                .radius(4.)
+                                .ring(on == Some(hover))
+                                .hover(Some(hover)),
+                        );
+                    }
+                }
+                out
+            },
+            cx,
+        )
+        .flex_1()
+        .h(px(7. * 23. - 2.));
+        let labels = div().flex_none().w(px(32.)).flex().flex_col().gap(px(2.)).children(
+            (0..7).map(|d| div().h(px(21.)).flex().items_center().text_size(px(11.)).text_color(theme::text_dim()).child(weekday(d))),
+        );
+        let heat = div().flex().child(labels).child(cells);
         let hours = div()
             .flex()
             .mt(px(4.))
@@ -578,12 +712,23 @@ impl StatsPage {
         )
     }
 
-    fn render_records(&mut self, st: &Stats, w: f32, window: &Window) -> Div {
+    fn render_records(&mut self, st: &Stats, w: f32, window: &Window, cx: &mut Context<Self>) -> Div {
         let card_w = (w - GAP) / 2.;
-        let mut cards: Vec<Div> = Vec::new();
+        let mut cards: Vec<(Option<usize>, Div)> = Vec::new();
+        // A game's art shows once: the longest session and the streak are
+        // often the same game, and two equal cards read as a glitch.
+        let mut shown: Vec<usize> = Vec::new();
+        let mut art = |g: Option<usize>| {
+            let g = g.filter(|g| !shown.contains(g));
+            shown.extend(g);
+            g
+        };
         if let Some(l) = st.longest {
             let detail = sentence(tr!("**{game}** \u{b7} {day}", game = self.game_title(l.game), day = day_label(l.start.date())));
-            cards.push(self.record(Some(l.game), card_w, tr!("Longest session"), fmt_secs(l.secs), detail, None, window));
+            cards.push((
+                Some(l.game),
+                self.record(art(Some(l.game)), card_w, tr!("Longest session"), fmt_secs(l.secs), detail, None, window),
+            ));
         }
         if let Some((d, secs)) = st.busiest {
             let same = st.longest.is_some_and(|l| l.start.date() == d);
@@ -624,21 +769,24 @@ impl StatsPage {
                     .child(tr!("{month} 1", month = month_short(d.month())))
                     .child(short_date(next - Duration::days(1))),
             );
-            cards.push(self.record(None, card_w, tr!("Busiest day"), fmt_secs(secs), detail, None, window).child(mini));
+            cards.push((None, self.record(None, card_w, tr!("Busiest day"), fmt_secs(secs), detail, None, window).child(mini)));
         }
         if let (Some((a, z)), true) = (st.streak_range, st.streak > 1) {
             let detail = sentence(tr!("**{from} \u{2013} {to}** \u{b7} every single day", from = short_date(a), to = short_date(z)));
             let dots = div().flex().flex_wrap().gap(px(2.)).mt(px(10.)).children(
                 (0..st.streak.min(60)).map(|_| div().size(px(6.)).rounded(px(2.)).bg(Hsla { a: 0.85, ..Hsla::from(theme::accent()) })),
             );
-            cards.push(self.record(
+            cards.push((
                 st.streak_game,
-                card_w,
-                tr!("Longest streak"),
-                trn!(st.streak, "{n} day", "{n} days"),
-                detail,
-                Some(dots),
-                window,
+                self.record(
+                    art(st.streak_game),
+                    card_w,
+                    tr!("Longest streak"),
+                    trn!(st.streak, "{n} day", "{n} days"),
+                    detail,
+                    Some(dots),
+                    window,
+                ),
             ));
         }
         match st.longest_break.filter(|b| b.days >= 3) {
@@ -654,22 +802,33 @@ impl StatsPage {
                     Some(g) => tr!("**{from} \u{2013} {to}** \u{b7} back on {back} with {game}", from, to, back, game = self.game_title(g)),
                     None => tr!("**{from} \u{2013} {to}** \u{b7} back on {back}", from, to, back),
                 });
-                cards.push(self.record(back_game, card_w, tr!("Longest break"), trn!(b.days, "{n} day", "{n} days"), detail, None, window));
+                cards.push((
+                    back_game,
+                    self.record(art(back_game), card_w, tr!("Longest break"), trn!(b.days, "{n} day", "{n} days"), detail, None, window),
+                ));
             }
             None => {
                 let new = st.new_games();
                 let detail = sentence(trn!(new, "**{n} game** played for the first time", "**{n} games** played for the first time"));
-                cards.push(self.record(
-                    st.games.iter().find(|g| g.new).map(|g| g.game),
-                    card_w,
-                    tr!("Games played"),
-                    st.games.len().to_string(),
-                    detail,
-                    None,
-                    window,
+                let first_new = st.games.iter().find(|g| g.new).map(|g| g.game);
+                cards.push((
+                    first_new,
+                    self.record(art(first_new), card_w, tr!("Games played"), st.games.len().to_string(), detail, None, window),
                 ));
             }
         }
+        // A card with a game's art opens that game's sheet.
+        let cards = cards.into_iter().enumerate().map(|(i, (game, card))| match game {
+            Some(g) => div()
+                .id(("record", i))
+                .flex()
+                .flex_col()
+                .cursor_pointer()
+                .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(g, window, cx)))
+                .child(card.flex_1())
+                .into_any_element(),
+            None => card.into_any_element(),
+        });
         div().grid().grid_cols(2).gap(px(GAP)).flex_1().children(cards)
     }
 
@@ -686,35 +845,32 @@ impl StatsPage {
         let max = st.busiest.map_or(1., |b| b.1.max(1.));
         let today = today();
         let col_of = |d: NaiveDate| ((d - first_monday).num_days() / 7) as usize;
-        let mut grid = div().flex().gap(px(gap));
+        // 371 cells painted as one element ([`super::marks`]).
+        let mut cells = Vec::with_capacity(weeks * 7);
         for wk in 0..weeks {
-            let mut col = div().flex().flex_col().gap(px(gap));
             for wd in 0..7 {
                 let d = first_monday + Duration::days((wk * 7 + wd) as i64);
-                let inside = d.year() == year;
+                if d.year() != year {
+                    continue;
+                }
                 let v = st.day_secs(d);
-                let on = self.hover == Some(Hover::Day(d));
-                let color: Hsla = if !inside {
-                    theme::black_a(0.)
-                } else if d > today {
+                let color: Hsla = if d > today {
                     theme::white_a(0.022)
                 } else if v <= 0. {
                     theme::chart_empty()
                 } else {
                     theme::chart_ramp(((v / max) as f32).powf(0.6)).into()
                 };
-                col = col.child(
-                    div()
-                        .id(SharedString::from(format!("cal-{d}")))
-                        .size(px(cell))
-                        .rounded(px(3.))
-                        .bg(color)
-                        .when(on, |c| c.border_2().border_color(gpui_kit::white()))
-                        .when(inside && d <= today, |c| c.on_hover(hover(Hover::Day(d), cx))),
+                let (x, y) = (wk as f32 * (cell + gap), wd as f32 * (cell + gap));
+                cells.push(
+                    Mark::new(x, y, cell, cell, color)
+                        .radius(3.)
+                        .ring(self.hover == Some(Hover::Day(d)))
+                        .hover((d <= today).then_some(Hover::Day(d))),
                 );
             }
-            grid = grid.child(col);
         }
+        let grid = marks("calendar", move |_, _| cells, cx).w(px(weeks as f32 * (cell + gap) - gap)).h(px(7. * (cell + gap) - gap));
         let step = cell + gap;
         let months = div().relative().h(px(18.)).ml(px(34.)).children((1..=12).filter_map(|m| {
             let d = NaiveDate::from_ymd_opt(year, m, 1)?;
@@ -879,7 +1035,7 @@ impl StatsPage {
 }
 
 /// Panels side by side in 12-column spans (`wide`), else stacked.
-fn row(wide: bool, items: Vec<(Div, usize)>) -> AnyElement {
+pub(super) fn row(wide: bool, items: Vec<(Div, usize)>) -> AnyElement {
     if !wide {
         return div().flex().flex_col().gap(px(GAP)).children(items.into_iter().map(|(d, _)| d)).into_any_element();
     }

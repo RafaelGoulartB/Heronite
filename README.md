@@ -80,7 +80,7 @@ Heronite is a native Rust app (GPUI, GPU rendered) that [stays light on memory, 
 
 ## Look back at what you played
 
-- **Statistics:** see your play time for a week, a month, a year, or all time. The page shows a day-by-day chart, your top games, when you usually play, your records, and the genres you play most.
+- **Statistics:** see your play time for a week, a month, a year, or all time, in five tabs. **Overview** shows a day-by-day chart (or the year month by month), your top games, when you usually play, your records, and the genres you play most. **Journeys** draws each game as a lane in time: when you started it, beat it or dropped it, and how many games you had going at once. **Backlog** follows a yearly goal of games to beat, puts the beaten ones on the year's line, compares your hours with How Long To Beat, and tells when the games in your queue would be done at your pace. **Discoveries** tells the period in sentences (a return after months away, your longest session, your night owl hours), with milestones and memories from a year before. **Album** turns your screenshots into memories: a collage of the period, the moments when you captured many in a row, the games that make you stop to capture most, a photo per month, and a viewer to go through them. Any game opens a sheet with its time, its weeks, its best session and its screenshots.
 - **Year in review:** your year told as seven full-screen stories: the big number, your number one game, the top five, your habits, your records, and a summary card you can copy.
 - **Sessions and screenshots:** each launch is recorded as a session. Screenshots taken in game with a shortcut are matched to the game and its timeline, and can be compressed to lossless WebP in the background.
 
