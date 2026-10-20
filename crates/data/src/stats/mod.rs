@@ -11,6 +11,7 @@
 
 mod game;
 mod journeys;
+mod prefs;
 
 use std::collections::HashMap;
 
@@ -21,6 +22,7 @@ use crate::models::LocalGameSession;
 
 pub use game::{game_sheet, GameSheet};
 pub use journeys::{journeys, median, Journeys, Lane, LANE_MIN_SECS, PARALLEL_MIN_SECS};
+pub use prefs::StatsPrefs;
 
 /// Shorter sessions are failed launches, not play.
 pub const MIN_SESSION_SECS: f64 = 120.;
