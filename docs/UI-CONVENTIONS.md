@@ -296,12 +296,27 @@ away, the tabs and the period switch stay pinned in a bar at the top of the page
 name opens the game sheet (`sheet.rs`, a drawer; Esc closes it). The last tab, the yearly goals and the pinned and
 hidden discoveries live in `ui-state.json` (`heronite_data::stats::StatsPrefs`). The page only reads: the Collection hands it the loaded library
 (`StatsPage::set_library`, on navigate and after each reload) and the numbers come from `heronite_data::stats`
-(sessions cut into hours; sessions under 2 min are failed launches and ignored). Charts are plain divs: bars stacked
+(sessions cut into hours; sessions under 2 min are failed launches and ignored). Charts are plain divs (the ones of
+hundreds of cells are painted, see below): bars stacked
 in `theme::chart_series(i)` for the top 5 games of the period (`Stats::series`), the rest `theme::chart_other()`; a
 game keeps its colour in every block of the page. Hovering a bar / heatmap cell updates the line above it (no tooltips).
 `HERONITE_DEBUG_PAGE=stats:week|month|year|all` opens it on a span; `HERONITE_DEBUG_STATS_TAB=overview|journeys|backlog|discoveries|album`,
 `HERONITE_DEBUG_STATS_SHEET=<n>` (the sheet of the period's game n) `HERONITE_DEBUG_STATS_OPEN=<n>` (lane n, or the Album's moment n, open) and `HERONITE_DEBUG_STATS_PHOTO=<n>` (the Album's
-capture n in the viewer).
+capture n in the viewer). `HERONITE_DEBUG_STATS_SCALE=<n>` plays every session n times (a history n times bigger),
+and `RUST_LOG=debug` logs how long each period took to compute.
+
+Statistics performance: the page renders again on every scroll frame and mouse move, so render code only reads.
+- A period is computed off the UI thread in one job (`compute.rs`, `Job` → `Snapshot`); the page shows the last result
+  until the next is back. The history is indexed by time and by game (`History::pieces_in`, `sessions_of`), so a period
+  reads only its own slice. Per-game status answers (slug, beaten and abandoned days, counts, the pile) come from
+  `facts.rs`, built once per library.
+- Anything that grows with the library is never worked out in a `render_*` function: no `compute`, no pass over every
+  game, session or screenshot, no copy of a list. Put it in the `Snapshot` or the facts.
+- Charts of hundreds of cells (calendar, hour grid, day bars, lane dots) are painted as one element (`marks.rs`; the
+  cell under the cursor comes from its rectangle). The month strip builds only the cards in view.
+- Lists are capped: Journeys lanes by 40 with "Show more", "Show all" games at 100, the Backlog's covers at the latest 60.
+- `crates/data/tests/stats_scale.rs` times every period function on 3,000 games and ~180,000 sessions
+  (`cargo test --release -p heronite-data --test stats_scale -- --ignored --nocapture`).
 
 **Console mode** (`app/src/console/`, shell in `collection/console/`): an extra controller-first TV mode
 entered from ☰ › Console mode or the palette,

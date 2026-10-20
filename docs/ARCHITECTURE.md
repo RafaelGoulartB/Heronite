@@ -63,7 +63,8 @@ calls them from `cx.background_spawn` or worker threads.
   module per data file: `library`, `collection`, `sideload`, `game_config`,
   `settings`, `status`, `status_history` (when each game's status changed, in
   `local_library/status-history.json`, recorded by the status setters), `sessions`, `playtime`, `ui_state`, `appearance`,
-  `stats` (the Statistics page's numbers: periods cut into hours, `game` for a
+  `stats` (the Statistics page's numbers: periods cut into hours, the history
+  indexed by time and by game so a period reads only its slice, `game` for a
   game's sheet, `journeys`, `backlog` (goal pace, weekly hours, running counts),
   `insights` (discoveries and milestones), `album` (moments, captures per session, capture hours) and `prefs` (its keys in `ui-state.json`)),
   `journal` (each game's notes in `local_library/journal.json`: the moment
