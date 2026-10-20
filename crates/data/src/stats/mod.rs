@@ -11,6 +11,7 @@
 
 mod backlog;
 mod game;
+mod insights;
 mod journeys;
 mod prefs;
 
@@ -23,6 +24,7 @@ use crate::models::LocalGameSession;
 
 pub use backlog::{goal, month_ends, running_count, weekly_hours, Goal};
 pub use game::{game_sheet, GameSheet};
+pub use insights::{insights, milestones, year_before, Fact, Insight, Milestone, MilestoneKind};
 pub use journeys::{journeys, median, Journeys, Lane, LANE_MIN_SECS, PARALLEL_MIN_SECS};
 pub use prefs::StatsPrefs;
 
