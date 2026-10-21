@@ -131,7 +131,7 @@ impl Mounts {
         let cache = probe.env_var("XDG_CACHE_HOME").filter(|d| d.starts_with('/')).unwrap_or_else(|| join(&home, ".cache"));
         let source = join(&cache, "winetricks");
         // `--overlay-src` must exist.
-        if bwrap.overlay() && probe.exists(&source) {
+        if !home.is_empty() && bwrap.overlay() && probe.exists(&source) {
             let path = join(&home, ".cache/winetricks");
             m.binds.push(Bind { source: (source != path).then_some(source), path, access: Access::Throwaway, required: false });
         }
