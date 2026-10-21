@@ -51,6 +51,25 @@ pub enum Status {
     Unavailable(String),
 }
 
+/// What Settings shows about this PC (`detect`).
+#[derive(Clone, Debug)]
+pub struct Detected {
+    pub program: Option<Program>,
+    /// What it can do (`Err`: `--info` failed).
+    pub info: Result<Info, String>,
+}
+
+/// Blocking: whether gpu-screen-recorder is installed and what it can do.
+pub fn detect() -> Detected {
+    match Program::find() {
+        None => Detected { program: None, info: Err(tr!("gpu-screen-recorder is not installed").into()) },
+        Some(p) => {
+            let info = p.info();
+            Detected { program: Some(p), info }
+        }
+    }
+}
+
 /// The running recorder and what it records.
 struct Running {
     recorder: Arc<Recorder>,
@@ -107,6 +126,24 @@ pub fn shutdown(cx: &mut App) {
 impl ReplayService {
     pub fn prefs(&self) -> &ReplayPrefs {
         &self.prefs
+    }
+
+    pub fn status(&self) -> &Status {
+        &self.status
+    }
+
+    /// Settings changed them (already saved): a running recorder starts again
+    /// with them.
+    pub fn set_prefs(&mut self, prefs: ReplayPrefs, cx: &mut Context<Self>) {
+        if prefs == self.prefs {
+            return;
+        }
+        self.prefs = prefs;
+        self.stop(cx);
+        if self.prefs.enabled && !self.games.is_empty() {
+            self.start(Duration::ZERO, cx);
+        }
+        cx.notify();
     }
 
     /// Every launch event, from the hub.

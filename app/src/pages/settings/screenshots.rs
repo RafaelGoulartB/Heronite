@@ -72,7 +72,7 @@ fn format_number(v: f64) -> String {
 }
 
 /// `5.1 GB`, `640 MB`, `12 KB` (powers of 1024, like the cache numbers).
-fn format_size(bytes: u64) -> String {
+pub(super) fn format_size(bytes: u64) -> String {
     const GB: f64 = 1024. * 1024. * 1024.;
     if bytes as f64 >= GB {
         format!("{} GB", heronite_i18n::decimal(bytes as f64 / GB, 1))
