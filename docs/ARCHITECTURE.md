@@ -105,7 +105,36 @@ calls them from `cx.background_spawn` or worker threads.
   `GAMEID` of a umu launch (protonfixes) from the user's id, the umu
   database (downloaded weekly), Heroic's cache, the metadata's Steam id or
   the title; `keep_awake` adds the logind lock the runtime holds while the
-  game runs.
+  game runs. `sandbox` (`heroniteSandbox` in the game's settings) runs
+  everything of a game, and everything run in its prefix, through bubblewrap:
+  `mounts` says what the sandbox shows (the prefix read-write, the game's
+  folder read-only, the Wine build and `tools/` read-only, umu's runtime and
+  Winetricks' downloads under a throwaway overlay), `script` builds the
+  `sh -c` program that creates the folders, looks up what depends on the
+  session (Wayland / X11 / PipeWire sockets, the controllers plugged in,
+  NVIDIA's devices) and starts `bwrap` with its own user, pid, UTS and
+  network namespaces and a private home (`<data>/sandbox/<prefix or game>`,
+  `DataPaths::sandbox_home_of_*`). The program goes after the wrappers that
+  stay outside (gamescope, GameMode, MangoHud) and before umu / Proton / the
+  game, so legendary gets it inside `--wrapper` too. Inside, the command runs
+  under a small `sh` that waits for every process of the sandbox (its pid
+  namespace ends with its first process). The pid namespace is what keeps the
+  sandbox closed: without it `/proc/<pid>/root` of any process of the user
+  shows the real files. Each `Exception` lets one thing through (network,
+  writing the game's folder, the shared folders, every device). The plan
+  builders, the Wine tools (`wine_tools`), the first-launch setup, game
+  actions and script installs all go through it; a plan that cannot be
+  sandboxed is `Unavailable`, never run outside. A game in the sandbox has no
+  stop commands nor `wineserver --wait` (both would start a sandbox of their
+  own): `runtime::sandboxed` follows the sandbox until it is gone and kills
+  its first process when a stop runs out of patience. Programs alongside the
+  game and Wine tools started while it plays join its sandbox with `nsenter`
+  (`sandbox::join`, `into_running`), sharing its wineserver. umu needs
+  bubblewrap 0.10 (`--tmp-overlay`) and its Steam runtime already
+  downloaded; otherwise the game runs Proton directly, with the Steam
+  client's libraries (`~/.steam/sdk32`, `sdk64`) shown read-only for its
+  `steam.exe`. Host writes into a sandboxed prefix (DXVK's DLLs, markers)
+  never follow links the sandbox could have planted.
 - **heronite-epic:** `cmd` runs legendary. `manager` + `queue` are the
   download queue (`store/download-manager.json`), shared by every store: an
   element's `params.runner` picks the job (legendary, gogdl or nile), and
