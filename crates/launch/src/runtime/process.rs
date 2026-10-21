@@ -7,7 +7,9 @@ use std::time::{Duration, Instant};
 use heronite_i18n::tr;
 
 use super::companions::Companions;
+use super::sandboxed::Sandboxed;
 use super::session::{fail, finish};
+use super::spawner::ProcessHandle;
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
 use crate::log_writer::{self, GameLog};
@@ -25,7 +27,7 @@ pub(super) fn run_to_completion(shared: &Shared, control: &Control, cmd: &Comman
         log.info(&format!("Running: {}", log_writer::command_line_for_log(cmd)));
     }
     let mut handle = match shared.spawner.spawn_logged(cmd, log.cloned()) {
-        Ok(h) => h,
+        Ok(h) => confined(shared, cmd, h),
         Err(e) => {
             log::warn!("{}: {e}", cmd.display());
             if let Some(log) = log {
@@ -105,7 +107,9 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         .filter(|_| !plan.pre_commands.is_empty())
         .map(|s| std::path::Path::new(&s.wine_prefix).join(crate::wine::CREATING_MARKER));
     if let Some(marker) = &creating {
-        if let Err(e) = std::fs::write(marker, "") {
+        // Written in place, a link put there from a sandbox would be followed.
+        let _ = std::fs::remove_file(marker);
+        if let Err(e) = std::fs::OpenOptions::new().write(true).create_new(true).open(marker) {
             log::debug!("{}: {e}", marker.display());
         }
     }
@@ -166,7 +170,10 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));
     log.info("Game Output:");
     let mut handle = match shared.spawner.spawn_logged(&command, Some(log.clone())) {
-        Ok(h) => h,
+        Ok(h) => match plan.sandboxed {
+            true => Box::new(Sandboxed::new(h, shared.procs.clone())),
+            false => h,
+        },
         Err(e) => {
             let program = &plan.command.program;
             let notice =
@@ -191,7 +198,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             None
         }
     });
-    let mut companions = Companions::new(&plan.companions, Instant::now());
+    let mut companions = Companions::new(&plan.companions, Instant::now(), plan.sandboxed.then(|| handle.pid()));
     let prefix = plan.prep.wine.as_ref().map(|s| s.wine_prefix.clone());
 
     let mut terminated_at: Option<Instant> = None;
@@ -276,6 +283,14 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         prep.after_exit(&req.app_name, &plan.prep);
     }
     finish(shared, log, req, control, elapsed, exit);
+}
+
+/// `handle` followed until its sandbox ends, when `cmd` starts one.
+fn confined(shared: &Shared, cmd: &Command, handle: Box<dyn ProcessHandle>) -> Box<dyn ProcessHandle> {
+    match crate::sandbox::is_wrapped(cmd) {
+        true => Box::new(Sandboxed::new(handle, shared.procs.clone())),
+        false => handle,
+    }
 }
 
 /// The duration of each preparation step.

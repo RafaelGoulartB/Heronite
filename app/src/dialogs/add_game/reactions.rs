@@ -26,9 +26,24 @@ impl AddGameDialog {
         }
     }
 
+    /// The prefix named after the title; none while there is no title.
     fn suggestion(&self, cx: &App) -> String {
+        let title = text_of(&self.title, cx);
+        if title.trim().is_empty() {
+            return String::new();
+        }
         let dir = self.global.get("defaultWinePrefixDir").and_then(Value::as_str).unwrap_or("");
-        suggested_prefix(dir, &text_of(&self.title, cx), &self.app_name)
+        suggested_prefix(dir, &title, &self.app_name)
+    }
+
+    /// The prefix the game gets: the one in the field, else the suggestion.
+    pub(super) fn prefix_path(&self, cx: &App) -> String {
+        let typed = text_of(&self.prefix, cx).trim().to_string();
+        if typed.is_empty() {
+            self.suggestion(cx)
+        } else {
+            typed
+        }
     }
 
     /// The executable decides the platform until the user chooses one.

@@ -59,7 +59,8 @@ contents:
 
 # Linked: libudev, libxcb, libxkbcommon(-x11). Loaded at run time: Vulkan,
 # Wayland, fontconfig. The Epic login window links WebKitGTK 4.1; without it
-# the app offers the browser login, so it is only recommended.
+# the app offers the browser login, so it is only recommended. bubblewrap runs
+# games in the sandbox; without it the sandbox says so.
 overrides:
   deb:
     depends:
@@ -77,6 +78,7 @@ overrides:
       - mesa-vulkan-drivers | vulkan-icd
       - xdg-utils
       - pkexec | policykit-1
+      - bubblewrap
   rpm:
     depends:
       - glibc >= 2.35
@@ -92,6 +94,7 @@ overrides:
       - mesa-vulkan-drivers
       - xdg-utils
       - polkit
+      - bubblewrap
   archlinux:
     depends:
       - glibc
@@ -108,6 +111,7 @@ overrides:
       - "vulkan-driver: GPU rendering"
       - "xdg-utils: open links and folders"
       - "polkit: install updates from the app"
+      - "bubblewrap: run games in the sandbox"
 
 rpm:
   group: Amusements/Games

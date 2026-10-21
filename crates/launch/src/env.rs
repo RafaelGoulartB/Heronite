@@ -293,6 +293,14 @@ pub struct WrapperPlan {
 /// `steam_runtime` is the umu binary when the wrapper list should include it
 /// (native games with the Steam runtime, or legendary through Proton+umu).
 pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option<&str>) -> WrapperPlan {
+    build_wrappers_in(s, probe, steam_runtime, None)
+}
+
+/// [`build_wrappers`] with the game in the sandbox (`sandbox`: the program
+/// of [`crate::sandbox::prelude`]). It goes last, before the Steam runtime:
+/// gamescope, GameMode and MangoHud stay outside (they only set the
+/// environment, or draw the game) and what runs Windows programs inside.
+pub fn build_wrappers_in(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option<&str>, sandbox: Option<&[String]>) -> WrapperPlan {
     let mut error = None;
     let mut mangohud: Vec<String> = Vec::new();
     let mut gamemode: Option<String> = None;
@@ -344,10 +352,13 @@ pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option
     if let Some(gm) = gamemode {
         wrappers.push(gm);
     }
-    if let Some(rt) = steam_runtime {
+    wrappers.retain(|w| !w.is_empty());
+    if let Some(prelude) = sandbox {
+        wrappers.extend(prelude.iter().cloned());
+    }
+    if let Some(rt) = steam_runtime.filter(|rt| !rt.is_empty()) {
         wrappers.push(rt.to_string());
     }
-    wrappers.retain(|w| !w.is_empty());
     WrapperPlan { wrappers, error }
 }
 

@@ -90,7 +90,7 @@ impl Default for UiState {
             show_hidden: false,
             console_mode: false,
             palette_recent: Vec::new(),
-            grid_view: false,
+            grid_view: true,
             grid_cover_w: GRID_COVER_W.2,
             grid_titles: false,
             journal_view: false,
@@ -126,7 +126,8 @@ impl UiState {
         if let Some(list) = value.get("paletteRecent").and_then(Value::as_array) {
             state.palette_recent = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
         }
-        state.grid_view = flag("gridView");
+        // The grid until the user picks the Focus view.
+        state.grid_view = value.get("gridView").and_then(Value::as_bool).unwrap_or(true);
         if let Some(w) = value.get("gridCoverWidth").and_then(Value::as_f64).filter(|w| w.is_finite()) {
             state.grid_cover_w = (w as f32).clamp(GRID_COVER_W.0, GRID_COVER_W.1);
         }
@@ -466,6 +467,38 @@ impl OnlyFilters {
     }
 }
 
+/// Key of a notice the user dismissed with "Got it" ("Add game"'s store note).
+pub const DISMISSED_NOTES: &str = "dismissedNotes";
+
+/// The notice `id` was dismissed. Kept outside [`UiState`] so a copy of the
+/// state held elsewhere does not write it back ([`UiState::save`] keeps keys
+/// it does not model).
+pub fn note_dismissed(paths: &AppPaths, id: &str) -> bool {
+    json_store::read_value(&paths.ui_state())
+        .ok()
+        .and_then(|doc| doc.get(DISMISSED_NOTES)?.as_array().map(|list| list.iter().any(|v| v.as_str() == Some(id))))
+        .unwrap_or(false)
+}
+
+/// Remembers that the notice `id` was dismissed.
+pub fn dismiss_note(paths: &AppPaths, id: &str) -> Result<()> {
+    json_store::update_value(&paths.ui_state(), |doc| {
+        if !doc.is_object() {
+            *doc = Value::Object(Default::default());
+        }
+        let obj = doc.as_object_mut().expect("object");
+        let list = obj.entry(DISMISSED_NOTES).or_insert_with(|| json!([]));
+        if !list.is_array() {
+            *list = json!([]);
+        }
+        let list = list.as_array_mut().expect("array");
+        if !list.iter().any(|v| v.as_str() == Some(id)) {
+            list.push(Value::String(id.to_owned()));
+        }
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -528,6 +561,13 @@ mod tests {
     }
 
     #[test]
+    fn the_grid_is_the_view_until_another_is_picked() {
+        assert!(UiState::default().grid_view);
+        assert!(UiState::from_value(&json!({})).grid_view);
+        assert!(!UiState::from_value(&json!({"gridView": false})).grid_view);
+    }
+
+    #[test]
     fn save_and_load_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let paths = app_paths(dir.path());
@@ -542,7 +582,7 @@ mod tests {
             palette_recent: vec!["go:downloads".into(), "game:sideload_steam_400:primary".into()],
             sort_descending: true,
             only: OnlyFilters { favourites: true, updates: false, offline: true },
-            grid_view: true,
+            grid_view: false,
             grid_cover_w: 180.,
             grid_titles: true,
             list_column_w: Some(560.),
@@ -568,7 +608,7 @@ mod tests {
         assert_eq!(on_disk["showHidden"], true);
         assert_eq!(on_disk["consoleMode"], true);
         assert_eq!(on_disk["onlyOffline"], true);
-        assert_eq!(on_disk["gridView"], true);
+        assert_eq!(on_disk["gridView"], false);
         assert_eq!(on_disk["listColumnWidth"], 560.);
         assert_eq!(on_disk["gridDrawerWidth"], Value::Null);
         assert_eq!(on_disk["categories"], json!([crate::categories::UNCATEGORIZED, "RPG"]));
@@ -649,5 +689,18 @@ mod tests {
         assert_eq!(on_disk["futureKey"], json!([1, 2]));
         assert_eq!(on_disk["showHidden"], true);
         assert!(UiState::load(&paths).show_hidden);
+    }
+
+    #[test]
+    fn dismissed_notes_survive_a_save_of_the_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        assert!(!note_dismissed(&paths, "add-game-stores"));
+        dismiss_note(&paths, "add-game-stores").unwrap();
+        dismiss_note(&paths, "add-game-stores").unwrap();
+        UiState::default().save(&paths).unwrap();
+        assert!(note_dismissed(&paths, "add-game-stores"));
+        assert!(!note_dismissed(&paths, "other"));
+        assert_eq!(json_store::read_value(&paths.ui_state()).unwrap()[DISMISSED_NOTES], json!(["add-game-stores"]));
     }
 }

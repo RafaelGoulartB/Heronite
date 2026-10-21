@@ -99,6 +99,8 @@ pub struct GameSettings {
     pub launch_option: Option<crate::launch_option::LaunchOption>,
     /// `heroniteUmuId`: the umu id the user set (see [`crate::umu_ids`]).
     pub umu_id: String,
+    /// `heroniteSandbox` (see [`crate::sandbox`]).
+    pub sandbox: crate::sandbox::Sandbox,
 }
 
 fn truthy(v: Option<&Value>) -> bool {
@@ -182,6 +184,13 @@ impl GameSettings {
         } else if wine_prefix.contains('~') {
             wine_prefix = wine_prefix.replacen('~', home, 1);
         }
+        let sandbox = crate::sandbox::Sandbox::from_map(m);
+        // In the sandbox the shared folders are an exception: hidden, they
+        // are not mounted in the runtime's container nor given drive letters.
+        let shared_folders = match sandbox.enabled && !sandbox.shared_folders {
+            true => Vec::new(),
+            false => crate::shared_folders::parse(m.get(crate::shared_folders::KEY)),
+        };
         let steam_runtime = match m.get("steamRuntime") {
             Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
             _ => None,
@@ -190,7 +199,7 @@ impl GameSettings {
             wine_version: parse_wine_version(m.get("wineVersion")),
             wine_prefix,
             env_options,
-            shared_folders: crate::shared_folders::parse(m.get(crate::shared_folders::KEY)),
+            shared_folders,
             companions: crate::companions::parse(m.get(crate::companions::KEY)),
             wrapper_options,
             launcher_args: text(m.get("launcherArgs")),
@@ -232,6 +241,7 @@ impl GameSettings {
             keep_awake: m.get(crate::keep_awake::KEY).map(|v| truthy(Some(v))).unwrap_or(true),
             launch_option: m.get(crate::launch_option::KEY).and_then(crate::launch_option::LaunchOption::from_value),
             umu_id: text(m.get(crate::umu_ids::KEY)).trim().to_string(),
+            sandbox,
         }
     }
 }

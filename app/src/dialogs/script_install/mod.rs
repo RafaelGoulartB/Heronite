@@ -78,16 +78,34 @@ pub struct ScriptInstallDialog {
     auto_start: bool,
     /// Debug hook: takes the preselected answer of the script's questions.
     auto_answer: bool,
+    /// The game's sandbox: the install runs in it too.
+    sandbox: heronite_launch::sandbox::Sandbox,
+    /// Why the sandbox cannot run here (looked at when it is turned on).
+    sandbox_problem: Option<String>,
+    /// Shown as a step of "Add game": its title, a back arrow to the form.
+    in_add_game: bool,
     _subs: Vec<Subscription>,
 }
 
+/// The back arrow of a script shown inside "Add game" was pressed.
+pub struct BackToForm;
+
 impl EventEmitter<DialogEvent> for ScriptInstallDialog {}
+impl EventEmitter<BackToForm> for ScriptInstallDialog {}
 
 impl ScriptInstallDialog {
     /// `file`: a script to open right away; `None` opens the file chooser
     /// (or shows the install already running).
     pub fn new(ctx: DialogCtx, file: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self::build(ctx, file, false, window, cx)
+    }
+
+    /// "Use an install script" of "Add game": the same faces inside that
+    /// dialog, with a back arrow to its form.
+    pub fn inside_add_game(ctx: DialogCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut this = Self::build(ctx, None, false, window, cx);
+        this.in_add_game = true;
+        this
     }
 
     /// The last install, also when it has ended (the toast's "Details").
@@ -158,6 +176,9 @@ impl ScriptInstallDialog {
             log_was_open: false,
             auto_start: false,
             auto_answer: false,
+            sandbox: Default::default(),
+            sandbox_problem: None,
+            in_add_game: false,
             _subs: subs,
         };
         match file {
@@ -285,8 +306,32 @@ impl ScriptInstallDialog {
         self.wine = by_script.or(by_default).cloned().or(first);
     }
 
+    /// Turns the sandbox (`network: false`) or its Internet exception on or off.
+    fn toggle_sandbox(&mut self, network: bool, cx: &mut Context<Self>) {
+        let s = self.sandbox;
+        self.sandbox = match network {
+            false => heronite_launch::sandbox::Sandbox { enabled: !s.enabled, ..s },
+            true => heronite_launch::sandbox::Sandbox { network: !s.network, ..s },
+        };
+        if self.sandbox.enabled {
+            cx.spawn(async move |this, cx| {
+                let why = cx.background_spawn(async move { heronite_launch::sandbox::unavailable(&heronite_launch::SystemProbe) }).await;
+                this.update(cx, |this, cx| {
+                    this.sandbox_problem = why;
+                    cx.notify();
+                })
+                .ok();
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
     /// Why Install cannot be pressed yet (`None`: it can).
     fn not_ready(&self, cx: &App) -> Option<String> {
+        if let Some(why) = self.sandbox_problem.as_ref().filter(|_| self.sandbox.enabled) {
+            return Some(why.clone());
+        }
         let check = self.check()?;
         if check.blocked() {
             return Some(tr!("This script cannot be installed here.").into());
@@ -327,6 +372,7 @@ impl ScriptInstallDialog {
             paths: self.ctx.data_paths.clone(),
             home: self.home.clone(),
             resume: (self.start_at > 0).then(|| heronite_installer::Resume { from: self.start_at, ..Default::default() }),
+            sandbox: self.sandbox,
             script,
         };
         let res = self.service.update(cx, |s, cx| s.start(job, cx));

@@ -293,22 +293,12 @@ impl CollectionView {
                             "nav-add-game".into(),
                             Icon::Add,
                             tr!("Add game"),
-                            Trailing::Meta(tr!("Sideload or ROM").into(), false),
+                            Trailing::Meta(tr!("Program or script").into(), false),
                             false,
                         )
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.open_add_game(window, cx);
                         })),
-                    )
-                    .child(
-                        nav_row(
-                            "nav-install-script".into(),
-                            Icon::Description,
-                            tr!("Install from script"),
-                            Trailing::Meta(tr!("YAML").into(), false),
-                            false,
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| this.open_install_script(None, window, cx))),
                     )
                     .child(menu_separator())
                     .child(

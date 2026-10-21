@@ -5,13 +5,13 @@ use gpui_kit::*;
 use heronite_i18n::{tr, trn};
 use heronite_installer::Issue;
 
-use super::{text_of, ScriptInstallDialog, Select};
+use super::{text_of, BackToForm, ScriptInstallDialog, Select};
 use crate::dialogs::settings_panel::logic::{display_wine_name, wine_options};
 use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, button_sm, caption, card, card_box, ButtonKind};
-use crate::ui::dialog::{dialog_scrolled, DialogProps};
+use crate::ui::controls::{action_button, button_sm, caption, card, card_box, toggle_row, ButtonKind};
+use crate::ui::dialog::{dialog_scrolled, dialog_scrolled_with_back, DialogProps};
 use crate::ui::fields::{choose_path, input_box, labeled, meta_text, paragraph, path_field, select_field};
 use crate::ui::icon;
 
@@ -211,6 +211,38 @@ impl ScriptInstallDialog {
         col
     }
 
+    /// The sandbox of the game, which the install also runs in.
+    fn sandbox_field(&mut self, cx: &mut Context<Self>) -> Div {
+        let s = self.sandbox;
+        let mut rows = vec![toggle_row(
+            "si-sandbox",
+            tr!("Install and play in a sandbox"),
+            Some(tr!("The script's programs, and later the game, run without network and without your home folder. The game's folder is writable while it installs.")),
+            s.enabled,
+        )
+        .on_click(cx.listener(|this, _, _, cx| this.toggle_sandbox(false, cx)))
+        .into_any_element()];
+        if s.enabled {
+            rows.push(
+                toggle_row(
+                    "si-sandbox-net",
+                    tr!("Allow the Internet"),
+                    Some(tr!(
+                        "Scripts that install components with Winetricks or sign in need it. A program could send out what it can read."
+                    )),
+                    s.network,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_sandbox(true, cx)))
+                .into_any_element(),
+            );
+        }
+        let mut col = div().flex().flex_col().child(caption(tr!("Sandbox"))).child(card(rows));
+        if let Some(why) = self.sandbox_problem.clone().filter(|_| s.enabled) {
+            col = col.child(div().mt(px(8.)).child(icon_line(Icon::Warning, rgb(0xebcb8b), why)));
+        }
+        col
+    }
+
     fn files_to_pick(&mut self, cx: &mut Context<Self>) -> Option<Div> {
         let asks = self.check()?.asks.clone();
         if asks.is_empty() {
@@ -377,6 +409,7 @@ impl ScriptInstallDialog {
         body = body.children(self.issues());
         body = body.child(self.game_fields(cx));
         body = body.children(self.wine_field(cx));
+        body = body.child(self.sandbox_field(cx));
         body = body.children(self.files_to_pick(cx));
         body = body.children(self.steps(cx));
         body.child(meta_text(tr!(
@@ -421,13 +454,14 @@ impl ScriptInstallDialog {
 impl Render for ScriptInstallDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let vw = f32::from(window.viewport_size().width);
+        let face_title = if self.in_add_game { tr!("Add game") } else { tr!("Install from script") };
         let (title, body, footer) = if self.running(cx) {
             let (t, b, f) = self.run_view(cx);
             (t, b, Some(f))
         } else if self.scripts.is_empty() {
-            (tr!("Install from script").to_string(), self.picker_body(cx), None)
+            (face_title.to_string(), self.picker_body(cx), None)
         } else {
-            (tr!("Install from script").to_string(), self.review_body(cx), Some(self.review_footer(cx)))
+            (face_title.to_string(), self.review_body(cx), Some(self.review_footer(cx)))
         };
         let entity = cx.entity().downgrade();
         // The size of the scroll area is only known after a first layout.
@@ -435,19 +469,27 @@ impl Render for ScriptInstallDialog {
             let view = cx.entity_id();
             cx.defer(move |cx| cx.notify(view));
         }
-        dialog_scrolled(
-            DialogProps {
-                id: "script-install".into(),
-                title: title.into(),
-                width: 720f32.min(vw * 0.96),
-                height: crate::dialogs::settings_panel::debug_dialog_height(),
-            },
-            &self.scroll,
-            body.into_any_element(),
-            footer.map(IntoElement::into_any_element),
-            move |_, cx| {
-                entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
-            },
-        )
+        let close = move |_: &mut Window, cx: &mut App| {
+            entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
+        };
+        let height = crate::dialogs::settings_panel::debug_dialog_height();
+        let (body, footer) = (body.into_any_element(), footer.map(IntoElement::into_any_element));
+        if self.in_add_game {
+            // Same id and width as "Add game": the step replaces its form in place.
+            let props = DialogProps { id: "add-game".into(), title: title.into(), width: 860f32.min(vw * 0.96), height };
+            let back = cx.entity().downgrade();
+            return dialog_scrolled_with_back(
+                props,
+                &self.scroll,
+                body,
+                footer,
+                move |_, cx| {
+                    back.update(cx, |_, cx| cx.emit(BackToForm)).ok();
+                },
+                close,
+            );
+        }
+        let props = DialogProps { id: "script-install".into(), title: title.into(), width: 720f32.min(vw * 0.96), height };
+        dialog_scrolled(props, &self.scroll, body, footer, close)
     }
 }

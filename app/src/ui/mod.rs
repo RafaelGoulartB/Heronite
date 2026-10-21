@@ -88,3 +88,25 @@ pub fn chip(text: impl Into<SharedString>) -> Div {
         .line_height(px(16.2))
         .child(text.into())
 }
+
+/// Hover text for `.tooltip(..)` of a stateful element: a small glass box,
+/// 320px wide at most, shown after GPUI's hover delay.
+pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let text = text.into();
+    move |_, cx| cx.new(|_| Tip(text.clone())).into()
+}
+
+struct Tip(SharedString);
+
+impl Render for Tip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        glass::glass_menu_surface(theme::R_ITEM)
+            .max_w(px(320.))
+            .px(px(10.))
+            .py(px(7.))
+            .text_size(px(12.5))
+            .line_height(px(17.))
+            .text_color(theme::text_primary())
+            .child(self.0.clone())
+    }
+}
