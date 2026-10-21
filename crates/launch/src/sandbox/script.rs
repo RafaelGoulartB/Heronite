@@ -113,7 +113,7 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
         a.push("$n".into());
     }
     a.extend(["--perms".into(), "0700".into(), "--dir".into(), "\"$r\"".into()]);
-    for sock in ["\"$w\"", "\"$r/pipewire-0\"", "\"$r/pulse/native\"", "\"$r/heronite/mangohud\"", "\"$x\""] {
+    for sock in ["\"$w\"", "\"$r/pipewire-0\"", "\"$r/pulse/native\"", "\"$r/heronite/mangohud\""] {
         a.extend(["--ro-bind-try".into(), sock.into(), sock.into()]);
     }
     a.extend(["--setenv".into(), "XDG_RUNTIME_DIR".into(), "\"$r\"".into()]);
@@ -125,6 +125,8 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
             a.extend(["--setenv".into(), (*var).into(), format!("\"$k{i}\"")]);
         }
     }
+    // The X11 cookie after the home: it may be anywhere in it.
+    a.extend(["--ro-bind-try".into(), "\"$x\"".into(), "\"$x\"".into()]);
     for b in &m.binds {
         let (src, dest) = (q(b.source.as_deref().unwrap_or(&b.path)), q(&b.path));
         match (b.access, b.required) {
