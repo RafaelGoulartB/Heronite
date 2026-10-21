@@ -25,6 +25,7 @@ mod parts;
 mod prefix_menu;
 mod presets;
 mod protondb;
+mod sandbox;
 mod saves;
 mod shared_folders;
 mod steam;
@@ -177,6 +178,8 @@ pub struct SettingsPanel {
     pub(super) lsfg_ui: Option<String>,
     /// The umu database, for the Game fixes section (`None` while read).
     pub(super) umu: Option<fixes::UmuData>,
+    /// Why the sandbox cannot run here (`None` while looked at; `Some(None)`: it can).
+    pub(super) sandbox_host: Option<Option<String>>,
     /// The launch presets of every game.
     pub(super) presets: Vec<heronite_data::launch_presets::Preset>,
     pub(super) env_error: String,
@@ -294,6 +297,7 @@ impl SettingsPanel {
             lsfg: None,
             lsfg_ui: None,
             umu: None,
+            sandbox_host: None,
             presets: Vec::new(),
             env_error: String::new(),
             env_text: None,
@@ -323,6 +327,9 @@ impl SettingsPanel {
         this.load_presets(cx);
         if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
             this.load_umu(cx);
+        }
+        if this.facts().is_some_and(|f| matches!(f.run_kind, logic::RunKind::Wine | logic::RunKind::Native)) {
+            this.load_sandbox_host(cx);
         }
         if this.is_steam() {
             // Debug settings are applied once Steam was read.
@@ -675,6 +682,7 @@ impl Render for SettingsPanel {
             Section::Gpu => self.gpu_tab(false, cx),
             Section::Launch => self.launch_opts_tab(window, cx),
             Section::Saves => self.saves_tab(window, cx),
+            Section::Sandbox => self.sandbox_tab(cx),
         };
         let mut footer = div()
             .flex()

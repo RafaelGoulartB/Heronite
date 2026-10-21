@@ -213,7 +213,8 @@ impl GameRuntime {
                 crate::ui::open_external(&target);
                 Ok(())
             }
-            ActionRun::Spawn(c) => spawn_detached(&c),
+            // A Windows program joins the game's sandbox while it plays.
+            ActionRun::Spawn(c) => spawn_detached(&heronite_launch::sandbox::into_running(c, &settings.wine_prefix, None)?),
             ActionRun::Play(plan) => self.start(game, *plan).map(|_| ()),
         }
     }

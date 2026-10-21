@@ -459,7 +459,8 @@ fn run_install(
     for n in built.notes {
         let _ = tx.unbounded_send(Msg::Line(n));
     }
-    let c = &built.command;
+    // While the game plays in its sandbox, Winetricks joins it.
+    let c = &heronite_launch::sandbox::into_running(built.command, &settings.wine_prefix, None)?;
     let mut cmd = std::process::Command::new(&c.program);
     heronite_launch::wine::drop_host_certs(c, &mut cmd);
     cmd.args(&c.args)

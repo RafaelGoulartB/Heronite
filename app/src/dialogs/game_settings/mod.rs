@@ -49,6 +49,8 @@ pub enum Tab {
     Saves,
     /// The store's cloud saves.
     CloudSaves,
+    /// What the game can reach.
+    Sandbox,
 }
 
 impl Tab {
@@ -60,6 +62,7 @@ impl Tab {
             Tab::Performance => Some(Section::Performance),
             Tab::Gpu => Some(Section::Gpu),
             Tab::CloudSaves => Some(Section::Saves),
+            Tab::Sandbox => Some(Section::Sandbox),
             _ => None,
         }
     }
@@ -71,6 +74,7 @@ impl Tab {
             Section::Performance => Tab::Performance,
             Section::Gpu => Tab::Gpu,
             Section::Saves => Tab::CloudSaves,
+            Section::Sandbox => Tab::Sandbox,
             Section::General => Tab::Game,
         }
     }
@@ -85,6 +89,7 @@ impl Tab {
             Tab::Gpu => tr!("GPU"),
             Tab::Saves => tr!("Saves"),
             Tab::CloudSaves => tr!("Cloud saves"),
+            Tab::Sandbox => tr!("Sandbox"),
         }
     }
 
@@ -214,7 +219,11 @@ impl GameSettingsDialog {
     fn tab_list(&self) -> Vec<Tab> {
         let has = |s: Section| self.panel.as_ref().is_some_and(|(_, secs)| secs.contains(&s));
         let mut t = vec![Tab::Game, Tab::Actions];
-        t.extend([Tab::Launch, Tab::Compatibility, Tab::Performance, Tab::Gpu].into_iter().filter(|t| t.section().is_some_and(has)));
+        t.extend(
+            [Tab::Launch, Tab::Compatibility, Tab::Performance, Tab::Gpu, Tab::Sandbox]
+                .into_iter()
+                .filter(|t| t.section().is_some_and(has)),
+        );
         if self.backups.is_some() {
             t.push(Tab::Saves);
         }
