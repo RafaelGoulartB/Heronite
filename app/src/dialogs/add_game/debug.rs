@@ -50,6 +50,7 @@ impl AddGameDialog {
                 "art-menu" => self.art_menu = Some(Slot::Square),
                 "address" => self.art_address = Some(Slot::Cover),
                 "no-note" => self.store_note = false,
+                "script" => self.open_script(window, cx),
                 "remove" => self.confirm_remove = true,
                 // Exercises the save path (fixture data only).
                 "save" => self.save(cx),

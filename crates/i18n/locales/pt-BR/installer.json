@@ -135,7 +135,6 @@
   "Won't delete {path}": "{path} não será apagado",
   "Write {file}": "Escrever {file}",
   "Wrong value for write_file mode: '{mode}'": "Valor errado para o modo de write_file: '{mode}'",
-  "YAML": "YAML",
   "execute needs a file or a command": "execute precisa de um arquivo ou de um comando",
   "execute takes a file or a command, not both": "execute aceita um arquivo ou um comando, não os dois",
   "extract needs a file": "extract precisa de um arquivo",

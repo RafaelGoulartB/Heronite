@@ -30,6 +30,7 @@ use heronite_wine::WineInstallation;
 use serde_json::Value;
 
 use super::art_images::DialogImages;
+use super::script_install::{BackToForm, ScriptInstallDialog};
 use super::settings_panel::logic::wine_of;
 use super::{DialogCtx, DialogEvent};
 use crate::ui::controls::{action_button, ButtonKind};
@@ -126,6 +127,8 @@ pub struct AddGameDialog {
     wine: Option<WineInstallation>,
     images: Entity<DialogImages>,
     picker: Option<(Entity<ImagePicker>, Subscription)>,
+    /// "Use an install script": the script's faces shown in place of the form.
+    script: Option<(Entity<ScriptInstallDialog>, [Subscription; 2])>,
     /// `runAs` the game had when it was opened for editing.
     existing_run_as: Option<String>,
     /// Looking for art on the network.
@@ -324,6 +327,7 @@ impl AddGameDialog {
             wine: wine_global,
             images,
             picker: None,
+            script: None,
             existing_run_as,
             finding: false,
             auto_art_tried: None,
@@ -371,6 +375,10 @@ impl AddGameDialog {
     /// Esc, offered by the host before it closes the dialog. True when used:
     /// the picker closed, a question was answered or asked.
     pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.script.take().is_some() {
+            cx.notify();
+            return true;
+        }
         if self.art_menu.take().is_some() {
             cx.notify();
             return true;
@@ -405,6 +413,27 @@ impl AddGameDialog {
             CloseRequest::AskDiscard => self.ask_discard(),
             CloseRequest::Stay => {}
         }
+        cx.notify();
+    }
+
+    /// Shows an install script's faces in place of the form (back arrow or
+    /// Esc returns to it; the install keeps going either way).
+    fn open_script(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let ctx = self.ctx.clone();
+        let view = cx.new(|cx| ScriptInstallDialog::inside_add_game(ctx, window, cx));
+        let events = cx.subscribe(&view, |this, _, ev: &DialogEvent, cx| match ev {
+            // The X: what the form's own X does (it may ask about what was typed).
+            DialogEvent::Close => {
+                this.script = None;
+                this.request_close(cx);
+            }
+            other => cx.emit(other.clone()),
+        });
+        let back = cx.subscribe(&view, |this, _, _: &BackToForm, cx| {
+            this.script = None;
+            cx.notify();
+        });
+        self.script = Some((view, [events, back]));
         cx.notify();
     }
 
@@ -460,6 +489,9 @@ impl Render for AddGameDialog {
         self.images.update(cx, |im, _| im.frame(window));
         if crate::console::active() {
             return self.render_console(window, cx);
+        }
+        if let Some((script, _)) = &self.script {
+            return div().absolute().inset_0().child(script.clone()).into_any_element();
         }
         let edit = self.is_edit();
         let entity = cx.entity().downgrade();

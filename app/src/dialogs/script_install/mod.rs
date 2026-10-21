@@ -82,16 +82,30 @@ pub struct ScriptInstallDialog {
     sandbox: heronite_launch::sandbox::Sandbox,
     /// Why the sandbox cannot run here (looked at when it is turned on).
     sandbox_problem: Option<String>,
+    /// Shown as a step of "Add game": its title, a back arrow to the form.
+    in_add_game: bool,
     _subs: Vec<Subscription>,
 }
 
+/// The back arrow of a script shown inside "Add game" was pressed.
+pub struct BackToForm;
+
 impl EventEmitter<DialogEvent> for ScriptInstallDialog {}
+impl EventEmitter<BackToForm> for ScriptInstallDialog {}
 
 impl ScriptInstallDialog {
     /// `file`: a script to open right away; `None` opens the file chooser
     /// (or shows the install already running).
     pub fn new(ctx: DialogCtx, file: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self::build(ctx, file, false, window, cx)
+    }
+
+    /// "Use an install script" of "Add game": the same faces inside that
+    /// dialog, with a back arrow to its form.
+    pub fn inside_add_game(ctx: DialogCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut this = Self::build(ctx, None, false, window, cx);
+        this.in_add_game = true;
+        this
     }
 
     /// The last install, also when it has ended (the toast's "Details").
@@ -164,6 +178,7 @@ impl ScriptInstallDialog {
             auto_answer: false,
             sandbox: Default::default(),
             sandbox_problem: None,
+            in_add_game: false,
             _subs: subs,
         };
         match file {

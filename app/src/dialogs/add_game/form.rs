@@ -181,11 +181,20 @@ impl AddGameDialog {
         )
     }
 
-    /// Under a Windows game's executable: running its setup program first,
-    /// and the folder the executable is in.
-    fn executable_notes(&self, exe: &str, title: &str, cx: &mut Context<Self>) -> Div {
-        let mut col = div().flex().flex_col().gap(px(6.)).mt(px(-6.));
-        if !self.is_edit() {
+    /// "Not installed yet?": run its setup program first (Windows: in the
+    /// game's Wine prefix) or install it with a script (adding a game only).
+    fn install_row(&self, title: &str, with_installer: bool, cx: &mut Context<Self>) -> Option<Div> {
+        let with_script = matches!(self.mode, Mode::Add);
+        if self.is_edit() || !(with_installer || with_script) {
+            return None;
+        }
+        let mut row = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(10.))
+            .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Not installed yet?")));
+        if with_installer {
             let has_title = !title.trim().is_empty();
             let can_run = !self.saving && !self.installer_running && has_title;
             let label = if self.installer_running { tr!("Running setup\u{2026}") } else { tr!("Run installer first") };
@@ -194,29 +203,44 @@ impl AddGameDialog {
             } else {
                 tr!("Add a title first: the game's Wine prefix is named after it.")
             };
-            col = col.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Not installed yet?")))
-                    .child(
-                        icon_button_sm(
-                            "ag-run-installer",
-                            ButtonKind::Glass,
-                            Icon::PlayArrow,
-                            label,
-                            can_run,
-                            cx.listener(|_, _, window, cx| {
-                                choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
-                                    this.run_installer(path, cx)
-                                });
-                            }),
-                        )
-                        .tooltip(tooltip(tip)),
-                    ),
+            row = row.child(
+                icon_button_sm(
+                    "ag-run-installer",
+                    ButtonKind::Glass,
+                    Icon::PlayArrow,
+                    label,
+                    can_run,
+                    cx.listener(|_, _, window, cx| {
+                        choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                            this.run_installer(path, cx)
+                        });
+                    }),
+                )
+                .tooltip(tooltip(tip)),
             );
         }
+        if with_script {
+            row = row.child(
+                icon_button_sm(
+                    "ag-use-script",
+                    ButtonKind::Glass,
+                    Icon::Description,
+                    tr!("Use an install script"),
+                    !self.saving && !self.installer_running,
+                    cx.listener(|this, _, window, cx| this.open_script(window, cx)),
+                )
+                .tooltip(tooltip(tr!(
+                    "Install it with a YAML install script: it gets the files, sets the game up and adds it to your Collection."
+                ))),
+            );
+        }
+        Some(row)
+    }
+
+    /// Under a Windows game's executable: how to install it first, and the
+    /// folder the executable is in.
+    fn executable_notes(&self, exe: &str, title: &str, cx: &mut Context<Self>) -> Div {
+        let mut col = div().flex().flex_col().gap(px(6.)).mt(px(-6.)).children(self.install_row(title, true, cx));
         if let Some(folder) = install_folder(exe) {
             col = col.child(meta_text(tr!("Install folder: {folder}", folder)));
         }
@@ -280,7 +304,7 @@ impl AddGameDialog {
                     }))
                     .into_any_element()]));
         } else if self.platform == SideloadPlatform::Linux {
-            right = right.child(self.linux_start(cx));
+            right = right.child(self.linux_start(cx)).children(self.install_row(&title, false, cx).map(|r| r.mt(px(-6.))));
         } else {
             let exe = text_of(&self.exe, cx);
             let has = !exe.is_empty();
