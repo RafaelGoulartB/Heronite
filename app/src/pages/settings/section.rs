@@ -104,7 +104,7 @@ impl Section {
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
             Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
-            Section::Metadata => tr!("Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags."),
+            Section::Metadata => tr!("Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags."),
             Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),
             Section::Saves => tr!("Game saves backed up with Ludusavi after you close a game, and the folders a game's Saves tab restores them from."),
             Section::Backups => tr!("Scheduled backups of your Collection, play history and settings, and putting one back."),

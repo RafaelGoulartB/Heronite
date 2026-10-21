@@ -20,7 +20,7 @@
   "Cloud saves synced": "Saves na nuvem sincronizados",
   "Cloud saves: {title}": "Saves na nuvem: {title}",
   "Collection list": "Lista da Coleção",
-  "Collection uses IGDB first, then Steam, store pages and Lutris to fill covers, descriptions and tags.": "A Coleção usa primeiro o IGDB, depois a Steam, páginas de lojas e o Lutris para preencher capas, descrições e tags.",
+  "Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags.": "A Coleção usa primeiro o IGDB, depois a Steam e páginas de lojas para preencher capas, descrições e tags.",
   "Controller-first TV layout": "Layout de TV pensado para controle",
   "Could not create the shortcuts for {title}: {error}": "Não foi possível criar os atalhos de {title}: {error}",
   "Could not launch {title}: {error}": "Não foi possível iniciar {title}: {error}",
