@@ -169,7 +169,8 @@ impl Prep<'_> {
             }
         };
         let ok = run_wait(self.spawner, &cmd, timeout, self.cancel);
-        if wait && !self.cancelled() {
+        // A sandbox only ends with its last program (see `crate::sandbox`).
+        if wait && !self.cancelled() && !settings.sandbox.enabled {
             if let Some(server) = &settings.wine_version.wineserver {
                 let wait_cmd =
                     crate::plan::Command { program: server.clone(), args: vec!["--wait".into()], env: cmd.env.clone(), cwd: None };

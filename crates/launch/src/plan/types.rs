@@ -76,6 +76,9 @@ pub struct ProcessPlan {
     /// legendary starts the game through umu (a Wine plan says it with
     /// [`WineRuntime::Umu`]): its `GAMEID` picks the protonfixes.
     pub through_umu: bool,
+    /// The game runs in the sandbox (see [`crate::sandbox`]): the programs
+    /// alongside it join that sandbox.
+    pub sandboxed: bool,
 }
 
 /// A program run alongside the game (see [`crate::companions`]).

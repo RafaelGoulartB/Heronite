@@ -6,7 +6,7 @@ use heronite_i18n::tr;
 use super::emulator::{emulator_plan, EmulatorOutcome};
 use super::{Command, LaunchOptions, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec};
 use crate::emulators::{node_basename, node_dirname};
-use crate::env::{build_wrappers, setup_env_vars, setup_wrapper_env_vars};
+use crate::env::{build_wrappers_in, setup_env_vars, setup_wrapper_env_vars};
 use crate::native::{effective_platform, is_executable_game, Platform};
 use crate::probe::Probe;
 use crate::settings::{load_game_settings, GameSettings};
@@ -62,6 +62,9 @@ fn build_sideload(
 ) -> LaunchPlan {
     // 1. Emulators (tryLaunchEmulatedGame).
     if let Some(m) = meta.filter(|m| m.launch_kind == "emulator") {
+        if settings.sandbox.enabled {
+            return LaunchPlan::Unavailable(tr!("The sandbox does not run emulators. Turn it off for this game.").into());
+        }
         return match emulator_plan(ctx, probe, game, m, settings, opts) {
             EmulatorOutcome::Plan(p) => p,
             // `.exe` emulators run through Wine like any Windows program.
@@ -150,15 +153,20 @@ fn command_plan(
         Ok(file) => file,
         Err(why) => return LaunchPlan::Unavailable(why),
     };
-    let umu = settings.steam_runtime.as_ref().map(|_| crate::wine::umu_path(ctx, probe));
+    let mut notes = Vec::new();
+    let umu = native_runtime(ctx, probe, settings, &mut notes);
     let umu_missing = umu.as_deref().is_some_and(|u| !probe.exists(u));
-    let wp = build_wrappers(settings, probe, umu.as_deref());
-    if let Some(err) = wp.error {
-        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
-    }
     let mut env = setup_wrapper_env_vars(&game.app_name, "sideload");
     env.extend(setup_env_vars(settings, Some(folder), probe));
     if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
+    let sandbox = match native_sandbox(ctx, probe, game, settings, folder, &env) {
+        Ok(p) => p,
+        Err(e) => return LaunchPlan::Unavailable(e),
+    };
+    let wp = build_wrappers_in(settings, probe, umu.as_deref(), sandbox.as_deref());
+    if let Some(err) = wp.error {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
     let mut parts = wp.wrappers;
@@ -171,8 +179,36 @@ fn command_plan(
         // An AppImage or script copied without the executable bit gets it, as executables do.
         make_executable: program_file.filter(|p| !probe.is_executable(p)),
         prep: PrepSpec { umu: umu_missing, ..Default::default() },
+        notes,
+        sandboxed: sandbox.is_some(),
         ..Default::default()
     })
+}
+
+/// umu for a Linux game in the Steam runtime (`steamRuntime`); none when the
+/// sandbox cannot give it its runtime (said in `notes`).
+fn native_runtime(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, notes: &mut Vec<String>) -> Option<String> {
+    settings.steam_runtime.as_ref()?;
+    if settings.sandbox.enabled {
+        if let Some(why) = crate::sandbox::umu_blocked(probe, "") {
+            notes.push(why);
+            return None;
+        }
+    }
+    Some(crate::wine::umu_path(ctx, probe))
+}
+
+/// The sandbox of a Linux game: its own private home, `folder` read-only.
+fn native_sandbox(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    game: &GameInfo,
+    settings: &GameSettings,
+    folder: &str,
+    env: &crate::env::Env,
+) -> Result<Option<Vec<String>>, String> {
+    let req = crate::sandbox::Request { folder: Some(folder), read: Vec::new(), env: Some(env) };
+    crate::sandbox::prelude(ctx, probe, settings, crate::sandbox::Owner::Game(&game.app_name), &req)
 }
 
 /// The program a command starts, for stopping it: the first word that is not
@@ -195,15 +231,20 @@ pub(crate) fn native_plan(
     if !probe.exists(executable) {
         return LaunchPlan::Unavailable(tr!("Executable not found: {executable}", executable));
     }
-    let umu = settings.steam_runtime.as_ref().map(|_| crate::wine::umu_path(ctx, probe));
+    let mut notes = Vec::new();
+    let umu = native_runtime(ctx, probe, settings, &mut notes);
     let umu_missing = umu.as_deref().is_some_and(|u| !probe.exists(u));
-    let wp = build_wrappers(settings, probe, umu.as_deref());
-    if let Some(err) = wp.error {
-        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
-    }
     let mut env = setup_wrapper_env_vars(&game.app_name, runner);
     env.extend(setup_env_vars(settings, game.install.install_path.as_deref(), probe));
     if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
+    let sandbox = match native_sandbox(ctx, probe, game, settings, &crate::wine::game_folder(game, executable), &env) {
+        Ok(p) => p,
+        Err(e) => return LaunchPlan::Unavailable(e),
+    };
+    let wp = build_wrappers_in(settings, probe, umu.as_deref(), sandbox.as_deref());
+    if let Some(err) = wp.error {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
 
@@ -216,6 +257,8 @@ pub(crate) fn native_plan(
         stop: StopSpec { kill_patterns: vec![node_basename(executable)], commands: vec![] },
         make_executable: (!probe.is_executable(executable)).then(|| executable.to_string()),
         prep: PrepSpec { umu: umu_missing, ..Default::default() },
+        notes,
+        sandboxed: sandbox.is_some(),
         ..Default::default()
     })
 }

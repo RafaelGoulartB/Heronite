@@ -97,9 +97,21 @@ fn copy_dll(from: &Path, to: &Path) {
     if let Some(dir) = to.parent() {
         let _ = fs::create_dir_all(dir);
     }
+    // A link left in the prefix is replaced, not written through: a program
+    // in the sandbox could point it at any file of the user.
+    if fs::symlink_metadata(to).is_ok_and(|m| m.file_type().is_symlink()) {
+        let _ = fs::remove_file(to);
+    }
     if let Err(e) = fs::copy(from, to) {
         log::error!("Error when copying {}: {e}", from.display());
     }
+}
+
+/// Whether `dir` (when it exists) is really inside `prefix`, links followed:
+/// programs in the sandbox write the prefix, and this app then copies into it.
+fn stays_inside(dir: &Path, prefix: &Path) -> bool {
+    let (Ok(dir), Ok(prefix)) = (fs::canonicalize(dir), fs::canonicalize(prefix)) else { return true };
+    dir.starts_with(prefix)
 }
 
 /// `DXVK.installRemove` for one tool in the prefix of `settings`.
@@ -128,6 +140,9 @@ pub fn install_remove(env: &Env, settings: &GameSettings, tool: Tool, action: Ac
     let dlls64 = dll_names(&dir64);
     let system32 = prefix.join("drive_c/windows/system32");
     let syswow64 = prefix.join("drive_c/windows/syswow64");
+    if settings.sandbox.enabled && ![&system32, &syswow64].iter().all(|d| stays_inside(d, &prefix)) {
+        return Err(tr!("The prefix's system folders lead outside it, so nothing was copied into them").into());
+    }
     let marker = prefix.join(format!("current_{}", tool.name()));
     let current = fs::read_to_string(&marker).ok().and_then(|t| t.lines().next().map(str::to_string)).unwrap_or_default();
 

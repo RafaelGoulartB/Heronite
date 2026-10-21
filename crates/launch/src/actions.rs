@@ -64,19 +64,39 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
         ActionKind::Program if detect_executable_kind(target, probe) == ExecutableKind::Windows => {
             crate::wine_tools::run_exe_command(ctx, probe, settings, target, &args).map(|c| ActionRun::Spawn(c.command))
         }
-        ActionKind::Program => Ok(ActionRun::Spawn(Command {
-            program: target.to_string(),
-            args,
-            env: game_env(game, settings, &[]),
-            cwd: Some(node_dirname(target)),
-        })),
-        _ => Ok(ActionRun::Spawn(Command {
-            program: "/bin/sh".into(),
-            args: vec!["-c".into(), target.to_string()],
-            env: game_env(game, settings, &[]),
-            cwd: Some(game_folder(game, probe)),
-        })),
+        ActionKind::Program => confined(
+            ctx,
+            probe,
+            game,
+            settings,
+            Command { program: target.to_string(), args, env: game_env(game, settings, &[]), cwd: Some(node_dirname(target)) },
+        ),
+        _ => confined(
+            ctx,
+            probe,
+            game,
+            settings,
+            Command {
+                program: "/bin/sh".into(),
+                args: vec!["-c".into(), target.to_string()],
+                env: game_env(game, settings, &[]),
+                cwd: Some(game_folder(game, probe)),
+            },
+        ),
     }
+}
+
+/// A Linux program or command of a game in the sandbox runs in a sandbox of
+/// the game's own (see [`crate::sandbox`]).
+fn confined(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &GameSettings, cmd: Command) -> Result<ActionRun, String> {
+    // Without a folder of its own the game gets none (not the home folder).
+    let folder = Some(game_folder(game, probe)).filter(|f| *f != probe.home());
+    let read = cmd.cwd.iter().filter(|d| **d != probe.home()).cloned().collect();
+    let req = crate::sandbox::Request { folder: folder.as_deref(), read, env: Some(&cmd.env) };
+    Ok(ActionRun::Spawn(match crate::sandbox::prelude(ctx, probe, settings, crate::sandbox::Owner::Game(&game.app_name), &req)? {
+        Some(p) => crate::sandbox::wrap(cmd, &p),
+        None => cmd,
+    }))
 }
 
 /// The plan of a local game that starts the action: its program (Linux or

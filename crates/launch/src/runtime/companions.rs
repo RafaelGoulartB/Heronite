@@ -31,12 +31,19 @@ const WINE_SERVICES: &[&str] = &[
     "start.exe",
 ];
 
+/// How long after the game started its sandbox is looked for.
+const SANDBOX_WAIT: Duration = Duration::from_secs(30);
+
 /// How long the game must be gone from its prefix before it counts as over
 /// (a launcher may hand over to the game).
 const GONE_FOR: Duration = Duration::from_secs(3);
 
 pub(super) struct Companions<'a> {
     waiting: Vec<(Instant, &'a CompanionPlan)>,
+    /// The game's process, when it runs in the sandbox: the programs join
+    /// the sandbox below it (see [`crate::sandbox::join`]).
+    sandbox_root: Option<u32>,
+    started: Instant,
     running: Vec<(String, Box<dyn ProcessHandle>)>,
     /// The game was seen running in its prefix.
     seen: bool,
@@ -45,9 +52,17 @@ pub(super) struct Companions<'a> {
 }
 
 impl<'a> Companions<'a> {
-    /// The game started at `started`.
-    pub(super) fn new(plans: &'a [CompanionPlan], started: Instant) -> Self {
-        Self { waiting: plans.iter().map(|p| (started + p.delay, p)).collect(), running: Vec::new(), seen: false, gone_since: None }
+    /// The game started at `started`; `sandbox_root`: its process, when it
+    /// runs in the sandbox.
+    pub(super) fn new(plans: &'a [CompanionPlan], started: Instant, sandbox_root: Option<u32>) -> Self {
+        Self {
+            waiting: plans.iter().map(|p| (started + p.delay, p)).collect(),
+            sandbox_root,
+            started,
+            running: Vec::new(),
+            seen: false,
+            gone_since: None,
+        }
     }
 
     /// Some program is waiting for its turn or still running.
@@ -116,8 +131,26 @@ impl<'a> Companions<'a> {
                     log::warn!("chmod {path}: {e}");
                 }
             }
-            log.info(&format!("Starting {path} alongside the game: {}", log_writer::command_line_for_log(&plan.command)));
-            match shared.spawner.spawn_logged(&plan.command, Some(log.clone())) {
+            let command = match self.sandbox_root {
+                None => plan.command.clone(),
+                Some(root) => match crate::sandbox::find_sandbox(&*shared.procs, root) {
+                    Some(pid) => crate::sandbox::join(&plan.command, pid),
+                    // The sandbox may still be starting.
+                    None if now.duration_since(self.started) < SANDBOX_WAIT => {
+                        self.waiting.push((now + Duration::from_secs(1), plan));
+                        continue;
+                    }
+                    None => {
+                        status(Notice::warn(
+                            format!("{path} did not start: the game's sandbox was not found"),
+                            tr!("{path} did not start: the game's sandbox was not found", path),
+                        ));
+                        continue;
+                    }
+                },
+            };
+            log.info(&format!("Starting {path} alongside the game: {}", log_writer::command_line_for_log(&command)));
+            match shared.spawner.spawn_logged(&command, Some(log.clone())) {
                 Ok(handle) => self.running.push((path.clone(), handle)),
                 Err(e) => status(Notice::warn(
                     format!("could not start {path}: {e}"),

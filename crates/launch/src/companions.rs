@@ -83,6 +83,16 @@ pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game:
         };
         process.companions.push(CompanionPlan { path: c.path.clone(), command, delay: Duration::from_secs(c.delay_secs.into()) });
     }
+    // In the sandbox the programs join the game's sandbox instead: umu's way
+    // into the container needs the session bus, which the sandbox hides.
+    // Their own container shares the sandbox's `/tmp` and processes, so
+    // they still reach the game's wineserver.
+    if let Some(process) = plan.process_mut().filter(|p| p.sandboxed) {
+        for c in &mut process.companions {
+            c.command.env.remove(UMU_NSENTER);
+        }
+        return;
+    }
     // Legendary runs umu itself as a wrapper and passes its environment on.
     if joins_container && (umu_game || matches!(plan, LaunchPlan::Legendary { .. })) {
         if let Some(process) = plan.process_mut() {

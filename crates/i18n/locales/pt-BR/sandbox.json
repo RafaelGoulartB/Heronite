@@ -1,0 +1,13 @@
+{
+  "In the sandbox, Winetricks can only install what it already downloaded: allow the Internet to get the rest": "No sandbox, o Winetricks só instala o que já baixou: permita a internet para obter o resto",
+  "The game is running in its sandbox, which cannot see {path}. Close the game to run it.": "O jogo está rodando no sandbox dele, que não enxerga {path}. Feche o jogo para executar.",
+  "The prefix's system folders lead outside it, so nothing was copied into them": "As pastas de sistema do prefixo levam para fora dele, então nada foi copiado para elas",
+  "The sandbox cannot share {path}: it would show your whole home folder. Move the game or the prefix into a folder of its own.": "O sandbox não pode compartilhar {path}: isso mostraria toda a sua pasta pessoal. Mova o jogo ou o prefixo para uma pasta própria.",
+  "The sandbox does not run emulators. Turn it off for this game.": "O sandbox não roda emuladores. Desligue-o para este jogo.",
+  "The sandbox needs bubblewrap (bwrap), which is not installed. Install the bubblewrap package, or turn the sandbox off for this game.": "O sandbox precisa do bubblewrap (bwrap), que não está instalado. Instale o pacote bubblewrap ou desligue o sandbox para este jogo.",
+  "bubblewrap cannot create a sandbox on this system ({error}). Turn the sandbox off for this game, or allow unprivileged user namespaces.": "O bubblewrap não consegue criar um sandbox neste sistema ({error}). Desligue o sandbox para este jogo ou permita user namespaces sem privilégio.",
+  "bubblewrap {version} cannot give umu its runtime in the sandbox (0.10 or newer is needed): running Proton directly": "O bubblewrap {version} não consegue dar ao umu o runtime dele no sandbox (é preciso 0.10 ou mais novo): rodando o Proton diretamente",
+  "bubblewrap {version} is too old for the sandbox (0.5 or newer is needed). Update it, or turn the sandbox off for this game.": "O bubblewrap {version} é antigo demais para o sandbox (é preciso 0.5 ou mais novo). Atualize-o ou desligue o sandbox para este jogo.",
+  "umu's Steam runtime ({runtime}) is not downloaded yet, and the sandbox has no network to get it: running Proton directly. Play a game with umu once outside the sandbox to get it.": "O runtime Steam do umu ({runtime}) ainda não foi baixado, e o sandbox não tem rede para obtê-lo: rodando o Proton diretamente. Jogue algo com umu uma vez fora do sandbox para baixá-lo.",
+  "{path} did not start: the game's sandbox was not found": "{path} não iniciou: o sandbox do jogo não foi encontrado"
+}

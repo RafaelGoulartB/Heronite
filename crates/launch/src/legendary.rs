@@ -5,9 +5,10 @@ use heronite_data::models::GameInfo;
 use heronite_i18n::tr;
 use serde_json::Value;
 
-use crate::env::{build_wrappers, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
+use crate::env::{build_wrappers_in, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
 use crate::plan::{CloudSaves, Command, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
 use crate::probe::Probe;
+use crate::sandbox;
 use crate::settings::GameSettings;
 use crate::wine;
 
@@ -99,12 +100,6 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
 
     // umu goes into the wrapper list so legendary starts the game through it.
     let through_umu = wine.umu.is_some();
-    let wp = build_wrappers(s, probe, wine.umu.as_deref());
-    if let Some(err) = wp.error {
-        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
-    }
-    let wrappers = wp.wrappers;
-    let wrapper_joined = shlex::try_join(wrappers.iter().map(String::as_str)).unwrap_or_else(|_| wrappers.join(" "));
 
     // Environment, later entries win (same order as Heroic).
     let mut env = setup_wrapper_env_vars(app, "legendary");
@@ -120,6 +115,20 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
     env.insert("LEGENDARY_CONFIG_PATH".into(), ctx.paths.legendary_config_dir().to_string_lossy().into_owned());
+
+    // legendary stays outside the sandbox (it signs in to Epic); the game
+    // it starts through the wrappers runs inside.
+    let req = sandbox::Request { folder: Some(install_path).filter(|p| !p.is_empty()), read: Vec::new(), env: Some(&env) };
+    let prelude = match sandbox::prelude(ctx, probe, s, sandbox::Owner::Prefix(&s.wine_prefix), &req) {
+        Ok(p) => p,
+        Err(e) => return LaunchPlan::Unavailable(e),
+    };
+    let wp = build_wrappers_in(s, probe, wine.umu.as_deref(), prelude.as_deref());
+    if let Some(err) = wp.error {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
+    let wrappers = wp.wrappers;
+    let wrapper_joined = shlex::try_join(wrappers.iter().map(String::as_str)).unwrap_or_else(|_| wrappers.join(" "));
 
     // The chosen way to start: a playable DLC is launched itself; a basic
     // option adds its arguments before the user's own.
@@ -185,6 +194,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     // else touches it, so DXVK can be installed into it.
     let (create_dirs, pre_commands) =
         if wine.prefix_missing(probe) { (vec![s.wine_prefix.clone()], wine.prefix_creation(&env)) } else { (vec![], vec![]) };
+    let (pre_commands, _, stop) = sandbox::confine(prelude.as_deref(), pre_commands, None, stop);
     // Cloud saves are synced around the launch when `autoSyncSaves` is on
     // and there is a folder to sync.
     let mut prep = wine.prep_spec();
@@ -214,6 +224,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
             prep,
             notes: wine.notes,
             through_umu,
+            sandboxed: prelude.is_some(),
             ..Default::default()
         },
     }

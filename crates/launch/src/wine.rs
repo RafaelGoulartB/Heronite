@@ -6,9 +6,10 @@ use heronite_data::models::GameInfo;
 use heronite_i18n::tr;
 
 use crate::emulators::{node_basename, node_dirname};
-use crate::env::{build_wrappers, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
+use crate::env::{build_wrappers_in, join, setup_env_vars, setup_wine_env_vars, setup_wrapper_env_vars, Env};
 use crate::plan::{Command, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec, WineRuntime};
 use crate::probe::Probe;
+use crate::sandbox;
 use crate::settings::{GameSettings, WineVersion};
 
 /// In a prefix while it is being created; still there if the creation was
@@ -118,7 +119,13 @@ fn prepare_with(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, d
     }
     let kind = settings.wine_version.kind.clone();
     let umu_file = umu_path(ctx, probe);
-    let wants_umu = kind == "proton" && settings.disable_umu != Some(true);
+    let mut wants_umu = kind == "proton" && settings.disable_umu != Some(true);
+    if wants_umu && settings.sandbox.enabled {
+        if let Some(why) = crate::sandbox::umu_blocked(probe, &node_dirname(&settings.wine_version.bin)) {
+            notes.push(why);
+            wants_umu = false;
+        }
+    }
     let umu_present = probe.exists(&umu_file);
     let umu_download = wants_umu && !umu_present && download_umu;
     let umu_ok = wants_umu && (umu_present || download_umu);
@@ -226,16 +233,21 @@ pub fn build_wine_plan(
         Err(e) => return LaunchPlan::Unavailable(e),
     };
     let s = &wine.settings;
-    let wp = build_wrappers(s, probe, None);
-    if let Some(err) = wp.error {
-        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
-    }
-
     let mut env = setup_wrapper_env_vars(&game.app_name, &game.runner);
     env.extend(setup_env_vars(s, None, probe));
     env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
     env.insert("PROTON_VERB".into(), "waitforexitandrun".into());
     if let Err(err) = crate::lsfg::apply(&mut env, &s.lsfg, &ctx.global, probe) {
+        return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
+    }
+    let folder = game_folder(game, executable);
+    let req = sandbox::Request { folder: Some(&folder), read: Vec::new(), env: Some(&env) };
+    let prelude = match sandbox::prelude(ctx, probe, s, sandbox::Owner::Prefix(&s.wine_prefix), &req) {
+        Ok(p) => p,
+        Err(e) => return LaunchPlan::Unavailable(e),
+    };
+    let wp = build_wrappers_in(s, probe, None, prelude.as_deref());
+    if let Some(err) = wp.error {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
 
@@ -261,6 +273,7 @@ pub fn build_wine_plan(
         cwd: Some(node_dirname(executable)),
     });
     let stop = StopSpec { kill_patterns: vec![node_basename(executable)], commands: vec![wine.shutdown_command(&env)] };
+    let (pre_commands, wait_after_exit, stop) = sandbox::confine(prelude.as_deref(), pre_commands, wait_after_exit, stop);
 
     LaunchPlan::Wine {
         runtime: wine.runtime,
@@ -274,9 +287,15 @@ pub fn build_wine_plan(
             make_executable: None,
             prep: wine.prep_spec(),
             notes: wine.notes,
+            sandboxed: prelude.is_some(),
             ..Default::default()
         },
     }
+}
+
+/// The folder of a game's files: its install folder, else its program's.
+pub(crate) fn game_folder(game: &GameInfo, executable: &str) -> String {
+    game.install.install_path.clone().filter(|p| p.starts_with('/')).unwrap_or_else(|| node_dirname(executable))
 }
 
 #[cfg(test)]
