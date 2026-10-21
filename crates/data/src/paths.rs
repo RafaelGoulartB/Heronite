@@ -240,9 +240,10 @@ impl DataPaths {
         let name = prefix.rsplit('/').next().unwrap_or("prefix");
         self.j("sandbox").join(format!("prefix-{}-{:08x}", file_name_safe(name), fnv32(prefix)))
     }
-    /// The home folder the sandbox gives a Linux game: `sandbox/game-<app>`.
+    /// The home folder the sandbox gives a Linux game: `sandbox/game-<app>-<hash>`
+    /// (the hash: two app names can give the same safe name).
     pub fn sandbox_home_of_game(&self, app_name: &str) -> PathBuf {
-        self.j("sandbox").join(format!("game-{}", file_name_safe(app_name)))
+        self.j("sandbox").join(format!("game-{}-{:08x}", file_name_safe(app_name), fnv32(app_name)))
     }
     /// The legendary binary this app runs (copied in by `migrate`).
     pub fn legendary_bin(&self) -> PathBuf {

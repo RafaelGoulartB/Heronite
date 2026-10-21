@@ -86,7 +86,10 @@ fn private_homes_are_per_prefix_or_per_game() {
     assert!(a.starts_with("/hr/sandbox/prefix-My_Prefix-"), "{a}");
     assert_eq!(a, private_home(&paths, Owner::Prefix("/home/u/Games/My Prefix")));
     assert_ne!(a, private_home(&paths, Owner::Prefix("/other/My Prefix")));
-    assert_eq!(private_home(&paths, Owner::Game("../evil")), "/hr/sandbox/game-.._evil");
+    let evil = private_home(&paths, Owner::Game("../evil"));
+    assert!(evil.starts_with("/hr/sandbox/game-.._evil-"), "{evil}");
+    // Names that give the same safe name keep homes of their own.
+    assert_ne!(private_home(&paths, Owner::Game("My Game")), private_home(&paths, Owner::Game("My_Game")));
 }
 
 #[test]
@@ -246,7 +249,7 @@ fn a_linux_game_gets_a_private_home_of_its_own() {
     let LaunchPlan::Native(process) = plan(&p, &s, &game("/home/u/Games/lin/run.sh", "linux")) else { panic!() };
     assert_eq!(process.command.args[2..], [NAME_FOR_TESTS, "/home/u/Games/lin/run.sh"]);
     let script = program(&process.command);
-    assert!(script.contains("--bind /hr/sandbox/game-g1 /home/u"), "{script}");
+    assert!(script.contains(&format!("--bind {} /home/u", private_home(&DataPaths::at("/hr"), Owner::Game("g1")))), "{script}");
     assert!(script.contains("--ro-bind-try /home/u/Games/lin /home/u/Games/lin"));
     assert!(process.sandboxed);
 }
