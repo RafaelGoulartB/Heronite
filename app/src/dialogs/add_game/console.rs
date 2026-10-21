@@ -215,6 +215,12 @@ impl AddGameDialog {
             }
         }
 
+        if self.offers_sandbox() {
+            rows.push(
+                Row::toggle("sandbox", tr!("Run in a sandbox"), self.sandbox)
+                    .desc(tr!("No network and no home folder for the game and its installer")),
+            );
+        }
         rows.push(Row::header(if edit { tr!("Save") } else { tr!("Add") }));
         if !edit && self.platform == SideloadPlatform::Windows {
             rows.push(
@@ -531,6 +537,7 @@ impl PadTarget for AddGameDialog {
                 ("start", Value::Choice { index, .. }) => self.by_command = index == 1,
                 ("shared", Value::Toggle(on)) => self.set_shared_prefix(on, window, cx),
                 ("remove-prefix", Value::Toggle(on)) => self.remove_prefix_too = on,
+                ("sandbox", Value::Toggle(on)) => self.sandbox = on,
                 _ => {}
             },
             Outcome::Activate(id) => match id.as_ref() {

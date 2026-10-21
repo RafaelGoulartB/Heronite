@@ -263,6 +263,20 @@ impl AddGameDialog {
             }
         }
 
+        if self.offers_sandbox() {
+            right = right.child(crate::ui::controls::card([crate::ui::controls::toggle_row(
+                "ag-sandbox",
+                tr!("Run in a sandbox"),
+                Some(tr!("The game, and the installer run first, start without network and without your home folder. Exceptions are in the game's settings, Sandbox tab.")),
+                self.sandbox,
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.sandbox = !this.sandbox;
+                cx.notify();
+            }))
+            .into_any_element()]));
+        }
+
         if !self.error.is_empty() {
             right = right.child(div().text_size(px(14.)).line_height(px(20.)).text_color(theme::danger_text()).child(self.error.clone()));
         } else if !self.notice.is_empty() {

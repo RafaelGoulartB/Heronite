@@ -74,6 +74,7 @@ struct FormState {
     by_command: bool,
     fullscreen: bool,
     shared_prefix: bool,
+    sandbox: bool,
     platform: Option<SideloadPlatform>,
     bottle: String,
 }
@@ -103,6 +104,8 @@ pub struct AddGameDialog {
     platform_manual: bool,
     open_select: Option<Select>,
     shared_prefix: bool,
+    /// A new game in the sandbox (`heroniteSandbox`): its installer too.
+    sandbox: bool,
     show_wine: bool,
     /// Last prefix this dialog suggested (typing over it stops suggestions).
     last_suggested: String,
@@ -285,6 +288,7 @@ impl AddGameDialog {
             platform_manual: edited.is_some(),
             open_select: None,
             shared_prefix: false,
+            sandbox: false,
             show_wine: true,
             last_suggested: suggested,
             wine_list: None,
@@ -324,6 +328,7 @@ impl AddGameDialog {
             by_command: self.by_command,
             fullscreen: self.fullscreen,
             shared_prefix: self.shared_prefix,
+            sandbox: self.sandbox,
             platform: Some(self.platform),
             bottle: self.bottle.clone(),
         }

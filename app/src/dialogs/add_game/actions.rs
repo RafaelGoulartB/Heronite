@@ -8,6 +8,7 @@ use gpui_kit::*;
 use heronite_data::game_config::{self, Settings};
 use heronite_data::sideload::{self, PrefixOutcome, SideloadPlatform, SideloadSpec};
 use heronite_i18n::tr;
+use heronite_launch::sandbox::{self, Sandbox};
 use heronite_launch::settings::GameSettings;
 use heronite_launch::wine_tools::{build_tool_command, WineTool};
 use heronite_launch::{PlanContext, SystemProbe};
@@ -21,6 +22,12 @@ use crate::dialogs::settings_panel::logic::wine_to_value;
 use crate::dialogs::DialogEvent;
 
 impl AddGameDialog {
+    /// A new Windows or Linux game can start in the sandbox (an existing
+    /// game changes it in its settings' Sandbox tab).
+    pub(super) fn offers_sandbox(&self) -> bool {
+        !self.is_edit() && matches!(self.platform, SideloadPlatform::Windows | SideloadPlatform::Linux)
+    }
+
     pub(super) fn save(&mut self, cx: &mut Context<Self>) {
         if self.saving || self.confirm_remove || self.confirm_discard {
             return;
@@ -71,6 +78,7 @@ impl AddGameDialog {
         };
         let new_wine = (!self.is_edit() && platform == SideloadPlatform::Windows)
             .then(|| (text_of(&self.prefix, cx).trim().to_string(), self.wine.as_ref().map(wine_to_value), self.bottle.clone()));
+        let sandbox = (self.offers_sandbox() && self.sandbox).then(|| Sandbox { enabled: true, ..Default::default() }.to_value());
         let (paths, home, existing_run_as, is_edit) =
             (self.ctx.data_paths.clone(), self.home.clone(), self.existing_run_as.clone(), self.is_edit());
         self.saving = true;
@@ -98,6 +106,9 @@ impl AddGameDialog {
                     }
                     if let Some((prefix, wine, bottle)) = new_wine {
                         sideload::init_game_config(&paths, &home, &spec.app_name, &prefix, wine, &bottle)?;
+                    }
+                    if let Some(value) = sandbox {
+                        game_config::set_game_settings(&paths, &spec.app_name, &home, &[(sandbox::KEY.to_string(), value)])?;
                     }
                     if out.added && !is_edit {
                         after_added(&paths, &spec);
@@ -172,6 +183,9 @@ impl AddGameDialog {
         map.insert("winePrefix".into(), json!(text_of(&self.prefix, cx).trim()));
         if let Some(w) = &self.wine {
             map.insert("wineVersion".into(), wine_to_value(w));
+        }
+        if self.sandbox {
+            map.insert(sandbox::KEY.into(), Sandbox { enabled: true, ..Default::default() }.to_value());
         }
         let (paths, home) = (self.ctx.data_paths.clone(), self.home.clone());
         let (tx, rx) = oneshot::channel();
