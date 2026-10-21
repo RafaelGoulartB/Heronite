@@ -45,6 +45,9 @@ pub struct Job {
     pub home: String,
     /// Picks up a failed install at one of its steps.
     pub resume: Option<Resume>,
+    /// The game's sandbox (`heroniteSandbox`): when on, the script's
+    /// programs and Wine commands run in it, with the game's folder writable.
+    pub sandbox: heronite_launch::sandbox::Sandbox,
 }
 
 /// Where a retried install starts, and what it keeps from the failed run.
@@ -517,32 +520,72 @@ impl<'a> State<'a> {
     }
 
     fn execute(&self, e: &crate::steps::Execute) -> Result<(), String> {
-        let mut cmd = match (&e.command, &e.file) {
+        let (program, args) = match (&e.command, &e.file) {
             (Some(command), _) => {
                 let shell = crate::exec::which_any(&["bash", "sh"]).unwrap_or_else(|| "sh".into());
-                let mut c = Command::new(shell);
-                c.arg("-c").arg(self.sub(command.trim()));
-                c
+                (shell, vec!["-c".to_string(), self.sub(command.trim())])
             }
             (None, Some(file)) => {
                 let program = self.existing_path(file);
                 if program.is_file() {
                     let _ = fsops::make_executable(&program);
                 }
-                let mut c = Command::new(&program);
-                c.args(split_args(&self.sub(&e.args)));
-                c
+                (program.to_string_lossy().into_owned(), split_args(&self.sub(&e.args)))
             }
             (None, None) => return Err(tr!("execute needs a file or a command").into()),
         };
         let cwd = e.working_dir.as_deref().map(|w| self.path(w)).filter(|p| p.is_dir()).unwrap_or_else(|| self.job.game_dir.clone());
-        cmd.current_dir(cwd);
-        cmd.envs(self.script_env());
-        cmd.envs(e.env.iter().map(|(k, v)| (k.clone(), self.sub(v))));
+        let mut env: heronite_launch::env::Env = self.script_env().into_iter().collect();
+        env.extend(e.env.iter().map(|(k, v)| (k.clone(), self.sub(v))));
+        let c = heronite_launch::Command { program, args, env, cwd: Some(cwd.to_string_lossy().into_owned()) };
+        let c = self.confine(c)?;
+        let mut cmd = Command::new(&c.program);
+        cmd.args(&c.args).envs(&c.env).current_dir(cwd);
         if e.terminal {
             self.log(tr!("This step asked for a terminal; its output is shown here instead."));
         }
         self.run(&mut cmd)
+    }
+
+    /// `c` in the game's sandbox when the install runs in one ([`Job::sandbox`]):
+    /// the game's folder writable, the downloads and the files the user
+    /// picked readable.
+    pub(crate) fn confine(&self, c: heronite_launch::Command) -> Result<heronite_launch::Command, String> {
+        use heronite_launch::sandbox::{self, Owner, Request};
+        if !self.job.sandbox.enabled {
+            return Ok(c);
+        }
+        let wine = crate::runners::runner(&self.job.script.runner)? == crate::runners::Runner::Wine;
+        let s = if wine { self.wine_settings(None, &[])? } else { self.sandbox_settings(&self.base_settings()) };
+        let folder = self.job.game_dir.to_string_lossy().into_owned();
+        let mut read = vec![self.job.cache_dir().to_string_lossy().into_owned()];
+        read.extend(self.job.provided.values().filter_map(|p| p.parent()).map(|p| p.to_string_lossy().into_owned()));
+        let owner = if wine { Owner::Prefix(&s.wine_prefix) } else { Owner::Game(&self.job.app_name) };
+        let env = c.env.clone();
+        let req = Request { folder: Some(&folder), read, env: Some(&env) };
+        Ok(match sandbox::prelude(&self.plan, &heronite_launch::SystemProbe, &s, owner, &req)? {
+            Some(p) => sandbox::wrap(c, &p),
+            None => c,
+        })
+    }
+
+    /// The new game's settings as they are so far.
+    pub(crate) fn base_settings(&self) -> heronite_launch::settings::GameSettings {
+        let map = heronite_data::game_config::load_game(&self.job.paths, &self.job.app_name, &self.job.home);
+        heronite_launch::settings::GameSettings::from_map(&map, &self.job.home)
+    }
+
+    /// `s` with the install's sandbox: the game's, plus writing the game's
+    /// folder (the install fills it).
+    pub(crate) fn sandbox_settings(&self, s: &heronite_launch::settings::GameSettings) -> heronite_launch::settings::GameSettings {
+        let mut s = s.clone();
+        if self.job.sandbox.enabled {
+            s.sandbox = heronite_launch::sandbox::Sandbox { game_folder: true, ..self.job.sandbox };
+            if !s.sandbox.shared_folders {
+                s.shared_folders.clear();
+            }
+        }
+        s
     }
 
     fn insert_disc(&mut self, requires: &str, message: Option<&str>) -> Result<(), String> {

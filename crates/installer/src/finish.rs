@@ -188,6 +188,9 @@ pub(crate) fn add_game(st: &mut State, runner: Runner) -> Result<Outcome, String
     if !env.is_empty() {
         changes.push(("enviromentOptions".into(), env_value(&env)));
     }
+    if job.sandbox.enabled && !matches!(launch, Launch::Browser { .. }) {
+        changes.push((heronite_launch::sandbox::KEY.into(), job.sandbox.to_value()));
+    }
     if !args.trim().is_empty() {
         changes.push(("launcherArgs".into(), json!(args.trim())));
     }

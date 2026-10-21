@@ -10,7 +10,7 @@ use crate::dialogs::settings_panel::logic::{display_wine_name, wine_options};
 use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, button_sm, caption, card, card_box, ButtonKind};
+use crate::ui::controls::{action_button, button_sm, caption, card, card_box, toggle_row, ButtonKind};
 use crate::ui::dialog::{dialog_scrolled, DialogProps};
 use crate::ui::fields::{choose_path, input_box, labeled, meta_text, paragraph, path_field, select_field};
 use crate::ui::icon;
@@ -211,6 +211,38 @@ impl ScriptInstallDialog {
         col
     }
 
+    /// The sandbox of the game, which the install also runs in.
+    fn sandbox_field(&mut self, cx: &mut Context<Self>) -> Div {
+        let s = self.sandbox;
+        let mut rows = vec![toggle_row(
+            "si-sandbox",
+            tr!("Install and play in a sandbox"),
+            Some(tr!("The script's programs, and later the game, run without network and without your home folder. The game's folder is writable while it installs.")),
+            s.enabled,
+        )
+        .on_click(cx.listener(|this, _, _, cx| this.toggle_sandbox(false, cx)))
+        .into_any_element()];
+        if s.enabled {
+            rows.push(
+                toggle_row(
+                    "si-sandbox-net",
+                    tr!("Allow the Internet"),
+                    Some(tr!(
+                        "Scripts that install components with Winetricks or sign in need it. A program could send out what it can read."
+                    )),
+                    s.network,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_sandbox(true, cx)))
+                .into_any_element(),
+            );
+        }
+        let mut col = div().flex().flex_col().child(caption(tr!("Sandbox"))).child(card(rows));
+        if let Some(why) = self.sandbox_problem.clone().filter(|_| s.enabled) {
+            col = col.child(div().mt(px(8.)).child(icon_line(Icon::Warning, rgb(0xebcb8b), why)));
+        }
+        col
+    }
+
     fn files_to_pick(&mut self, cx: &mut Context<Self>) -> Option<Div> {
         let asks = self.check()?.asks.clone();
         if asks.is_empty() {
@@ -377,6 +409,7 @@ impl ScriptInstallDialog {
         body = body.children(self.issues());
         body = body.child(self.game_fields(cx));
         body = body.children(self.wine_field(cx));
+        body = body.child(self.sandbox_field(cx));
         body = body.children(self.files_to_pick(cx));
         body = body.children(self.steps(cx));
         body.child(meta_text(tr!(
