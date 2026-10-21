@@ -130,7 +130,9 @@ impl SettingsPanel {
                         let _ = std::fs::create_dir_all(&open);
                         crate::ui::open_external(&open);
                     })),
-                vec![help(tr!("Saves, settings and caches the game writes to its home stay here between runs."))],
+                vec![help(tr!(
+                    "Saves, settings and caches the game writes to its home stay here between runs. The first runs build its shader cache again, so it may stutter for a while."
+                ))],
             );
         }
         let mut col = column().child(heading(tr!("Sandbox"))).child(card.card());

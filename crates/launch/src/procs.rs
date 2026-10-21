@@ -17,6 +17,9 @@ pub trait Procs: Send + Sync {
     fn comm(&self, pid: u32) -> Option<String>;
     /// Direct children.
     fn children(&self, pid: u32) -> Vec<u32>;
+    /// Every live process with its parent, read at once (one pass over
+    /// `/proc`, where [`Procs::children`] makes one per process).
+    fn parents(&self) -> HashMap<u32, u32>;
     fn signal(&self, pid: u32, sig: Sig);
     /// File names (lowercase, `game.exe`) of the Windows programs running in
     /// the Wine prefix `prefix`.
@@ -226,6 +229,19 @@ impl Procs for SystemProcs {
         out
     }
 
+    fn parents(&self) -> HashMap<u32, u32> {
+        let Ok(rd) = std::fs::read_dir("/proc") else {
+            return HashMap::new();
+        };
+        rd.flatten()
+            .filter_map(|e| {
+                let pid = e.file_name().to_str()?.parse::<u32>().ok()?;
+                let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+                parse_stat(&stat).map(|(_, ppid)| (pid, ppid))
+            })
+            .collect()
+    }
+
     fn signal(&self, pid: u32, sig: Sig) {
         if pid <= 1 {
             return;
@@ -377,6 +393,10 @@ impl Procs for FakeProcs {
         let mut v: Vec<u32> = s.parents.iter().filter(|(c, p)| **p == pid && s.alive.contains(c)).map(|(c, _)| *c).collect();
         v.sort_unstable();
         v
+    }
+    fn parents(&self) -> HashMap<u32, u32> {
+        let s = self.inner.lock().unwrap();
+        s.parents.iter().filter(|(c, _)| s.alive.contains(c)).map(|(c, p)| (*c, *p)).collect()
     }
     fn signal(&self, pid: u32, sig: Sig) {
         self.inner.lock().unwrap().signals.push((pid, sig));

@@ -121,10 +121,8 @@ fn prepare_with(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, d
     let umu_file = umu_path(ctx, probe);
     let mut wants_umu = kind == "proton" && settings.disable_umu != Some(true);
     if wants_umu && settings.sandbox.enabled {
-        if let Some(why) = crate::sandbox::umu_blocked(probe, &node_dirname(&settings.wine_version.bin)) {
-            notes.push(why);
-            wants_umu = false;
-        }
+        notes.push(crate::sandbox::without_umu());
+        wants_umu = false;
     }
     let umu_present = probe.exists(&umu_file);
     let umu_download = wants_umu && !umu_present && download_umu;

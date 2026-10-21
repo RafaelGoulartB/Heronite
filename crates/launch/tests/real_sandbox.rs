@@ -2,8 +2,9 @@
 //! game and Wine's Task Manager the program alongside it. Checks that the game
 //! runs in its own namespaces, without the network and without the real home,
 //! that the program alongside joins its sandbox, and that stopping the game
-//! ends everything. Ignored by default (opens windows, needs bubblewrap, a
-//! Proton build and umu). Run with a Proton folder:
+//! ends everything, holding nothing big in memory; with umu wanted or not,
+//! Proton runs directly there. Ignored by default (opens windows, needs
+//! bubblewrap and a Proton build). Run with a Proton folder:
 //!   HERONITE_REAL_PROTON=~/.local/share/Steam/compatibilitytools.d/UMU-Proton-10.0-4 \
 //!   cargo test -p heronite-launch --test real_sandbox -- --ignored --nocapture --test-threads=1
 
@@ -65,13 +66,23 @@ fn wait_for(what: &str, secs: u64, log: &std::path::Path, mut f: impl FnMut() ->
     panic!("timed out waiting for {what}:\n{}", std::fs::read_to_string(log).unwrap_or_default());
 }
 
+/// Shared memory in use on the machine (`Shmem`, KiB): what tmpfs layers hold.
+fn shmem_kib() -> u64 {
+    let info = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    info.lines().find_map(|l| l.strip_prefix("Shmem:")).and_then(|v| v.split_whitespace().next()?.parse().ok()).unwrap_or(0)
+}
+
 /// Whether `path` exists for the process `pid` (through its root).
 fn sees(pid: u32, path: &std::path::Path) -> bool {
     std::path::Path::new(&format!("/proc/{pid}/root")).join(path.strip_prefix("/").unwrap()).exists()
 }
 
 fn run(proton: &str, umu: bool) {
-    let dir = tempfile::tempdir().unwrap();
+    // On disk: in a `/tmp` held in memory the new prefix (Proton copies its
+    // default one, hundreds of MiB) would count as the sandbox's memory.
+    let cache = home().join(".cache");
+    std::fs::create_dir_all(&cache).unwrap();
+    let dir = tempfile::Builder::new().prefix("heronite-sandbox-test").tempdir_in(&cache).unwrap();
     let paths = DataPaths::at(dir.path().join("data"));
     // The umu this app downloads, without downloading it again.
     let umu_dir = paths.tools_dir().join("runtimes");
@@ -99,6 +110,8 @@ fn run(proton: &str, umu: bool) {
     let plan = build_plan_with_settings(&ctx, &heronite_launch::SystemProbe, &game, None, &settings, &LaunchOptions::default());
     let process = plan.process().unwrap_or_else(|| panic!("{plan:?}"));
     assert!(process.sandboxed, "{plan:?}");
+    // umu wanted or not, Proton runs directly in the sandbox.
+    assert!(matches!(plan, heronite_launch::LaunchPlan::Wine { runtime: heronite_launch::WineRuntime::Proton, .. }), "{plan:?}");
     eprintln!("[umu={umu}] notes: {:?}", process.notes);
 
     let (tx, rx) = channel();
@@ -106,12 +119,22 @@ fn run(proton: &str, umu: bool) {
     let steam = SteamLocator { home: dir.path().into(), steam_path: dir.path().join("steam"), system_roots: vec![] };
     let launcher =
         Launcher::new(paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs.clone(), LauncherConfig::default(), tx);
+    let shmem_before = shmem_kib();
     let started = Instant::now();
     launcher.launch(LaunchRequest { app_name: "notepad".into(), runner: "sideload".into(), title: "Notepad".into(), plan }).unwrap();
 
     let log_file = paths.root.join("logs/games/notepad_sideload/launch.log");
     wait_for("the game", 240, &log_file, || windows_pid(&prefix, "notepad.exe").is_some());
     eprintln!("[umu={umu}] game up after {:?}", started.elapsed());
+    // Nothing big is held in memory: umu's container in a throwaway layer
+    // held a copy of its Steam runtime there (about 700 MiB per container).
+    let grown = shmem_kib().saturating_sub(shmem_before) / 1024;
+    eprintln!("[umu={umu}] shared memory grew by {grown} MiB");
+    if std::env::var("HERONITE_TMP_INSPECT").is_ok() {
+        eprintln!("INSPECT");
+        std::thread::sleep(Duration::from_secs(90));
+    }
+    assert!(grown < 200, "the sandbox holds {grown} MiB in memory");
     let game_pid = windows_pid(&prefix, "notepad.exe").unwrap();
     let own = procs.user_ns(std::process::id()).unwrap();
     assert_ne!(procs.user_ns(game_pid).unwrap(), own, "the game runs in the sandbox");

@@ -33,6 +33,15 @@ pub fn build_plan_with_settings(
         "nile" => crate::nile::build(ctx, probe, game, settings, opts),
         other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),
     };
+    // Every way to start a game puts it in the sandbox itself; one that does
+    // not (Steam, or a new one that forgot) never runs outside instead.
+    let outside = match &plan {
+        LaunchPlan::SteamUri { .. } => true,
+        p => p.process().is_some_and(|p| !p.sandboxed),
+    };
+    if settings.sandbox.enabled && outside {
+        return LaunchPlan::Unavailable(tr!("This game cannot run in the sandbox. Turn it off for this game.").into());
+    }
     // Before the companions: they join the game's container with its GAMEID.
     let keys = crate::umu_ids::GameKeys {
         runner: &game.runner,
@@ -185,15 +194,13 @@ fn command_plan(
     })
 }
 
-/// umu for a Linux game in the Steam runtime (`steamRuntime`); none when the
-/// sandbox cannot give it its runtime (said in `notes`).
+/// umu for a Linux game in the Steam runtime (`steamRuntime`); none in the
+/// sandbox (said in `notes`, see [`crate::sandbox::without_umu`]).
 fn native_runtime(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, notes: &mut Vec<String>) -> Option<String> {
     settings.steam_runtime.as_ref()?;
     if settings.sandbox.enabled {
-        if let Some(why) = crate::sandbox::umu_blocked(probe, "") {
-            notes.push(why);
-            return None;
-        }
+        notes.push(tr!("In the sandbox, the game runs without the Steam runtime").into());
+        return None;
     }
     Some(crate::wine::umu_path(ctx, probe))
 }

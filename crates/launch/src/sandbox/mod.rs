@@ -13,7 +13,8 @@
 //! folders, looks up what depends on the session (display sockets, the
 //! controllers plugged in) and starts `bwrap`. It goes in the command line
 //! after the wrappers that stay outside (gamescope, GameMode, MangoHud) and
-//! before umu / Proton / the game. Inside, the command runs in its own pid
+//! before Proton / the game (umu does not run inside, see [`without_umu`]).
+//! Inside, the command runs in its own pid
 //! namespace (otherwise `/proc/<pid>/root` of any process of the user shows
 //! the real files), and the sandbox lasts until its last process exits.
 //!
@@ -41,6 +42,9 @@ pub use mounts::Mounts;
 pub const KEY: &str = "heroniteSandbox";
 /// Set inside the sandbox, so scripts and tools can tell.
 pub const ENV_INSIDE: &str = "HERONITE_SANDBOX";
+/// How long after its command starts a sandbox is looked for (see
+/// [`find_sandbox`]); past that it is taken as not there.
+pub const FOUND_WITHIN: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// What can be let through, one at a time. Each one makes some games work
 /// and costs a part of the isolation.
@@ -236,38 +240,14 @@ pub fn confine(
     }
 }
 
-/// Why umu cannot run in the sandbox, so the game runs Proton directly
-/// (`None`: it can). `proton`: the Proton build's folder, whose
-/// `toolmanifest.vdf` names the Steam runtime it needs. umu downloads that
-/// runtime the first time, which the sandbox (without network, and writing
-/// into a throwaway layer) cannot do.
-pub fn umu_blocked(probe: &dyn Probe, proton: &str) -> Option<String> {
-    let bwrap = probe.bwrap()?;
-    if !bwrap.overlay() {
-        return Some(tr!(
-            "bubblewrap {version} cannot give umu its runtime in the sandbox (0.10 or newer is needed): running Proton directly",
-            version = bwrap.version_text()
-        ));
-    }
-    let manifest = probe.read_head(&crate::env::join(proton, "toolmanifest.vdf"), 4096).unwrap_or_default();
-    let runtime = runtime_of_manifest(&String::from_utf8_lossy(&manifest));
-    if probe.exists(&crate::env::join(&mounts::umu_dir(probe), runtime)) {
-        return None;
-    }
-    Some(tr!(
-        "umu's Steam runtime ({runtime}) is not downloaded yet, and the sandbox has no network to get it: running Proton directly. Play a game with umu once outside the sandbox to get it.",
-        runtime
-    ))
-}
-
-/// umu's folder for the Steam runtime a Proton needs (`require_tool_appid`).
-fn runtime_of_manifest(text: &str) -> &'static str {
-    let appid = text.lines().find(|l| l.contains("\"require_tool_appid\"")).and_then(|l| l.split('"').nth(3)).unwrap_or("");
-    match appid {
-        "1391110" => "steamrt2",
-        "4183110" => "steamrt4",
-        _ => "steamrt3",
-    }
+/// Why umu does not run in the sandbox, so its games run Proton directly
+/// (and Linux games without the Steam runtime). Its container builds a copy
+/// of its Steam runtime on every start (pressure-vessel, hundreds of MiB);
+/// shown read-only that cannot work, shown writable a program in the
+/// sandbox could change the runtime every game outside uses, and in a
+/// throwaway layer the copy is held in memory while the game runs.
+pub fn without_umu() -> String {
+    tr!("In the sandbox, Proton runs directly, without umu's Steam runtime container").into()
 }
 
 /// The command [`wrap`] put in the sandbox.
@@ -275,7 +255,7 @@ pub fn inner(cmd: &Command) -> Option<Command> {
     if !is_wrapped(cmd) {
         return None;
     }
-    let (program, args) = cmd.args[3..].split_first()?;
+    let (program, args) = cmd.args[script::ARGS..].split_first()?;
     Some(Command { program: program.clone(), args: args.to_vec(), env: cmd.env.clone(), cwd: cmd.cwd.clone() })
 }
 
@@ -298,7 +278,7 @@ pub fn into_running(cmd: Command, prefix: &str, file: Option<&str>) -> Result<Co
 
 /// Whether `cmd` was started by [`wrap`].
 pub fn is_wrapped(cmd: &Command) -> bool {
-    cmd.args.get(2).is_some_and(|a| a == script::NAME)
+    script::starts_with_prelude(&cmd.program, &cmd.args)
 }
 
 #[cfg(test)]

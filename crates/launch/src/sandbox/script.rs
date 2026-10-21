@@ -5,7 +5,7 @@
 //!
 //! One line, without newlines: legendary gets it inside `--wrapper`.
 
-use super::mounts::{Access, Mounts, SYSTEM};
+use super::mounts::{Access, Mounts, SHADER_CACHES, SYSTEM};
 use super::{Bwrap, Sandbox};
 
 /// `$0` of the program: names it in `ps` and marks a wrapped command.
@@ -58,6 +58,15 @@ pub(super) fn prelude(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> Vec<Strin
     vec!["/bin/sh".into(), "-c".into(), program(bwrap, sandbox, m), NAME.into()]
 }
 
+/// How many of a wrapped command's arguments are the prelude's (`-c`, the
+/// program, `NAME`): the command's own follow.
+pub(super) const ARGS: usize = 3;
+
+/// Whether `program` and `args` start as [`prelude`] makes them.
+pub(super) fn starts_with_prelude(program: &str, args: &[String]) -> bool {
+    program == "/bin/sh" && args.len() >= ARGS && args[0] == "-c" && args[ARGS - 1] == NAME
+}
+
 fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
     let mut s = String::new();
     if !m.make.is_empty() {
@@ -72,7 +81,12 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
     if sandbox.network {
         s += RESOLVER;
     }
-    let mut a: Vec<String> = vec![q(&bwrap.path), "--unshare-user-try".into(), "--unshare-pid".into(), "--unshare-uts".into()];
+    if !m.home.is_empty() {
+        for (i, (var, dir)) in SHADER_CACHES.iter().enumerate() {
+            s += &format!("k{i}=${{{var}:-{}}}; ", q(&format!("{}/{dir}", m.home)));
+        }
+    }
+    let mut a: Vec<String> = vec![q(&bwrap.path), "--unshare-user".into(), "--unshare-pid".into(), "--unshare-uts".into()];
     a.push("--unshare-cgroup-try".into());
     if !sandbox.network {
         a.push("--unshare-net".into());
@@ -105,6 +119,11 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
     a.extend(["--setenv".into(), "XDG_RUNTIME_DIR".into(), "\"$r\"".into()]);
     if !m.home.is_empty() {
         a.extend(["--bind".into(), q(&m.private_home), q(&m.home)]);
+        // `k<n>`: the user's own path, else the folder in the home (looked
+        // at when the program runs, see below).
+        for (i, (var, _)) in SHADER_CACHES.iter().enumerate() {
+            a.extend(["--setenv".into(), (*var).into(), format!("\"$k{i}\"")]);
+        }
     }
     for b in &m.binds {
         let (src, dest) = (q(b.source.as_deref().unwrap_or(&b.path)), q(&b.path));
@@ -119,8 +138,6 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
         a.extend(["--unsetenv".into(), var.into()]);
     }
     a.extend(["--setenv".into(), super::ENV_INSIDE.into(), "1".into()]);
-    // Nothing to download into the throwaway layer.
-    a.extend(["--setenv".into(), "UMU_RUNTIME_UPDATE".into(), "0".into()]);
     a.extend(["--".into(), "/bin/sh".into(), "-c".into(), q(WAIT_ALL), "sh".into(), "\"$@\"".into()]);
     s += "exec ";
     s += &a.join(" ");
@@ -137,7 +154,7 @@ mod tests {
             home: "/home/u".into(),
             private_home: "/home/u/.local/share/heronite/sandbox/prefix-My Game-0000abcd".into(),
             binds: vec![
-                Bind { path: "/home/u/.local/share/umu".into(), access: Access::Throwaway, required: false, source: None },
+                Bind { path: "/home/u/.cache/winetricks".into(), access: Access::Throwaway, required: false, source: None },
                 Bind { path: "/home/u/Games/My Game".into(), access: Access::ReadOnly, required: false, source: None },
                 Bind { path: "/home/u/Games/My Game/pfx".into(), access: Access::ReadWrite, required: true, source: None },
             ],
@@ -159,10 +176,10 @@ mod tests {
         assert!(s.starts_with(
             "for d in '/home/u/.local/share/heronite/sandbox/prefix-My Game-0000abcd' '/home/u/Games/My Game/pfx'; do mkdir -p"
         ));
-        assert!(s.contains("exec /usr/bin/bwrap --unshare-user-try --unshare-pid"));
+        assert!(s.contains("exec /usr/bin/bwrap --unshare-user --unshare-pid"));
         assert!(s.contains("--unshare-net --new-session"));
         assert!(s.contains("--bind '/home/u/.local/share/heronite/sandbox/prefix-My Game-0000abcd' /home/u"));
-        assert!(s.contains("--overlay-src /home/u/.local/share/umu --tmp-overlay /home/u/.local/share/umu"));
+        assert!(s.contains("--overlay-src /home/u/.cache/winetricks --tmp-overlay /home/u/.cache/winetricks"));
         assert!(s.contains("--ro-bind-try '/home/u/Games/My Game' '/home/u/Games/My Game'"));
         assert!(s.contains("--bind '/home/u/Games/My Game/pfx' '/home/u/Games/My Game/pfx'"));
         assert!(s.contains("--unsetenv DBUS_SESSION_BUS_ADDRESS"));
@@ -191,5 +208,54 @@ mod tests {
             let out = std::process::Command::new("/bin/sh").arg("-n").arg("-c").arg(&p[2]).output().unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         }
+    }
+
+    /// The program runs: with a `bwrap` that prints what it is given, what
+    /// it looks up when it runs (the folders it makes, the session, the
+    /// shader caches) comes out as arguments, and the command follows.
+    #[test]
+    fn the_program_runs_and_hands_its_arguments_to_bwrap() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().into_owned();
+        let fake = dir.path().join("bwrap");
+        std::fs::write(&fake, "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n").unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let b = Bwrap { path: fake.to_string_lossy().into_owned(), ..bwrap() };
+        let home = format!("{root}/home dir");
+        let private = format!("{root}/private home");
+        let m = Mounts {
+            home: home.clone(),
+            private_home: private.clone(),
+            make: vec![private.clone(), format!("{private}/.cache/dxvk")],
+            ..Default::default()
+        };
+        let p = prelude(&b, &Sandbox { enabled: true, ..Default::default() }, &m);
+        let run = |extra: &[(&str, &str)]| {
+            let out = std::process::Command::new(&p[0])
+                .args(&p[1..])
+                .args(["/usr/bin/game", "an arg"])
+                .env("XDG_RUNTIME_DIR", "/run/user/1000")
+                .env("WAYLAND_DISPLAY", "wayland-1")
+                .env_remove("DXVK_STATE_CACHE_PATH")
+                .envs(extra.iter().copied())
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+            String::from_utf8(out.stdout).unwrap().lines().map(str::to_string).collect::<Vec<_>>()
+        };
+        let args = run(&[]);
+        let has = |w: &[&str]| args.windows(w.len()).any(|a| a == w);
+        assert!(std::path::Path::new(&format!("{private}/.cache/dxvk")).is_dir(), "made before bwrap");
+        assert!(has(&["--bind", &private, &home]), "{args:?}");
+        assert!(has(&["--dir", "/run/user/1000"]));
+        assert!(has(&["--ro-bind-try", "/run/user/1000/wayland-1", "/run/user/1000/wayland-1"]));
+        assert!(has(&["--setenv", "DXVK_STATE_CACHE_PATH", &format!("{home}/.cache/dxvk")]));
+        assert!(has(&["--setenv", "VKD3D_SHADER_CACHE_PATH", &format!("{home}/.cache/vkd3d-proton")]));
+        assert!(has(&["--setenv", super::super::ENV_INSIDE, "1"]));
+        assert_eq!(args[args.len() - 6..], ["/bin/sh", "-c", WAIT_ALL, "sh", "/usr/bin/game", "an arg"]);
+        // A cache folder the user set is kept.
+        let args = run(&[("DXVK_STATE_CACHE_PATH", "/mine")]);
+        assert!(args.windows(3).any(|a| a == ["--setenv", "DXVK_STATE_CACHE_PATH", "/mine"]), "{args:?}");
     }
 }

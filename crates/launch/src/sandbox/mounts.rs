@@ -14,8 +14,8 @@ use crate::settings::GameSettings;
 pub(super) enum Access {
     ReadOnly,
     ReadWrite,
-    /// Writes land in a layer thrown away at the end (umu's runtime: it
-    /// writes there on every run, and a change would reach every game).
+    /// Writes land in a layer thrown away at the end (Winetricks' downloads:
+    /// a change would reach every prefix).
     Throwaway,
 }
 
@@ -45,6 +45,13 @@ pub struct Mounts {
 /// layers, MangoHud's settings, the X11 and PulseAudio cookies.
 const HOME_READ: [&str; 5] = [".local/share/vulkan", ".config/MangoHud", ".config/pulse/cookie", ".Xauthority", ".config/lsfg-vk"];
 
+/// The shader caches DXVK and VKD3D-Proton write next to the game's program
+/// unless told where: in the sandbox that folder is read-only, so they go in
+/// its home (the variable, and the folder in the home). A path the user set
+/// is kept.
+pub(super) const SHADER_CACHES: [(&str, &str); 2] =
+    [("DXVK_STATE_CACHE_PATH", ".cache/dxvk"), ("VKD3D_SHADER_CACHE_PATH", ".cache/vkd3d-proton")];
+
 /// The system folders every sandbox shows read-only (see [`super::script`]).
 pub(super) const SYSTEM: [&str; 4] = ["/usr", "/etc", "/opt", "/nix"];
 
@@ -59,7 +66,7 @@ impl Mounts {
     ) -> Result<Self, String> {
         let home = clean(&probe.home()).unwrap_or_default();
         let private_home = private_home(&ctx.paths, owner);
-        let mut m = Mounts { home: home.clone(), private_home: private_home.clone(), binds: Vec::new(), make: vec![private_home] };
+        let mut m = Mounts { home: home.clone(), private_home: private_home.clone(), make: vec![private_home], ..Default::default() };
         let mut add = |path: &str, access: Access, required: bool| -> Result<(), String> {
             let Some(path) = clean(path) else { return Ok(()) };
             if too_wide(&path, &home) {
@@ -102,10 +109,6 @@ impl Mounts {
                     add(&crate::emulators::node_dirname(dll), Access::ReadOnly, false)?;
                 }
             }
-            // A Linux game in the Steam runtime: umu named by its path.
-            if let Some(umu) = env.get("PROTONPATH").filter(|v| v.starts_with('/')) {
-                add(umu, Access::ReadOnly, false)?;
-            }
             if env.keys().any(|k| k.starts_with("LSFG")) {
                 add(&join(&home, ".local/lib"), Access::ReadOnly, false)?;
             }
@@ -119,39 +122,26 @@ impl Mounts {
                 add(&join(steam, "legacycompat"), Access::ReadOnly, false)?;
             }
         }
-        if let Some(umu) = s.steam_runtime.as_deref().filter(|p| p.starts_with('/')) {
-            add(umu, Access::ReadOnly, false)?;
-        }
-        if let Some(umu) = probe.which("umu-run").filter(|p| !p.starts_with("/usr/")) {
-            add(&crate::emulators::node_dirname(&umu), Access::ReadOnly, false)?;
-        }
         for f in HOME_READ {
             add(&join(&home, f), Access::ReadOnly, false)?;
         }
-        if bwrap.overlay() {
-            // Inside, `XDG_*_HOME` are unset: umu and winetricks look in the
-            // default places. Winetricks finds what it already downloaded
-            // (the sandbox may have no network).
-            let cache = probe.env_var("XDG_CACHE_HOME").filter(|d| d.starts_with('/')).unwrap_or_else(|| join(&home, ".cache"));
-            let layers = [(umu_dir(probe), ".local/share/umu"), (join(&cache, "winetricks"), ".cache/winetricks")];
-            for (source, inside) in layers {
-                // `--overlay-src` must exist.
-                if probe.exists(&source) {
-                    let path = join(&home, inside);
-                    m.binds.push(Bind { source: (source != path).then_some(source), path, access: Access::Throwaway, required: false });
-                }
-            }
+        // Winetricks finds what it already downloaded (the sandbox may have
+        // no network). Inside, `XDG_CACHE_HOME` is unset: it looks in the
+        // default place.
+        let cache = probe.env_var("XDG_CACHE_HOME").filter(|d| d.starts_with('/')).unwrap_or_else(|| join(&home, ".cache"));
+        let source = join(&cache, "winetricks");
+        // `--overlay-src` must exist.
+        if bwrap.overlay() && probe.exists(&source) {
+            let path = join(&home, ".cache/winetricks");
+            m.binds.push(Bind { source: (source != path).then_some(source), path, access: Access::Throwaway, required: false });
+        }
+        if !home.is_empty() {
+            m.make.extend(SHADER_CACHES.iter().map(|(_, dir)| join(&m.private_home, dir)));
         }
         m.binds = order(std::mem::take(&mut m.binds));
         m.make.extend(m.binds.iter().filter(|b| b.required).map(|b| b.path.clone()));
         Ok(m)
     }
-}
-
-/// umu's folder (`$XDG_DATA_HOME/umu`): its runtimes.
-pub(super) fn umu_dir(probe: &dyn Probe) -> String {
-    let data = probe.env_var("XDG_DATA_HOME").filter(|d| d.starts_with('/')).unwrap_or_else(|| join(&probe.home(), ".local/share"));
-    join(&data, "umu")
 }
 
 /// The folder of a Wine or Proton build: Proton's own folder, or the one

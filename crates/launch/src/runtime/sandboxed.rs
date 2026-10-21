@@ -5,6 +5,7 @@
 
 use std::io;
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::spawner::{ExitInfo, ProcessHandle};
 use crate::procs::{Procs, Sig};
@@ -15,12 +16,15 @@ pub(super) struct Sandboxed {
     /// The sandbox's first process, once seen (it is only found below the
     /// process started while that one still runs).
     first: Option<u32>,
+    /// Looked for until then (see [`crate::sandbox::FOUND_WITHIN`]): each look
+    /// reads every process.
+    look_until: Instant,
     exit: Option<ExitInfo>,
 }
 
 impl Sandboxed {
     pub(super) fn new(inner: Box<dyn ProcessHandle>, procs: Arc<dyn Procs>) -> Self {
-        Self { inner, procs, first: None, exit: None }
+        Self { inner, procs, first: None, look_until: Instant::now() + crate::sandbox::FOUND_WITHIN, exit: None }
     }
 }
 
@@ -31,7 +35,7 @@ impl ProcessHandle for Sandboxed {
 
     fn poll(&mut self) -> io::Result<Option<ExitInfo>> {
         if self.exit.is_none() {
-            if self.first.is_none() {
+            if self.first.is_none() && Instant::now() < self.look_until {
                 self.first = crate::sandbox::find_sandbox(&*self.procs, self.inner.pid());
             }
             self.exit = self.inner.poll()?;
@@ -90,5 +94,21 @@ mod tests {
         assert!(procs.signals().contains(&(12, Sig::Kill)));
         procs.exit(12);
         assert_eq!(h.poll().unwrap(), Some(ExitInfo { code: None, signal: Some(15) }));
+    }
+
+    #[test]
+    fn the_sandbox_is_looked_for_only_for_a_while() {
+        let procs = Arc::new(FakeProcs::new());
+        procs.start(10, "bwrap", None);
+        let exit = Arc::new(Mutex::new(None));
+        let mut h = Sandboxed::new(Box::new(Handle(exit.clone())), procs.clone());
+        // Not found in time (a sandbox that never showed): no more looking.
+        h.look_until = Instant::now();
+        procs.start(12, "bwrap", Some(10));
+        procs.set_user_ns(12, "user:[2]");
+        assert_eq!(h.poll().unwrap(), None);
+        assert_eq!(h.first, None);
+        *exit.lock().unwrap() = Some(ExitInfo { code: Some(0), signal: None });
+        assert_eq!(h.poll().unwrap(), Some(ExitInfo { code: Some(0), signal: None }));
     }
 }

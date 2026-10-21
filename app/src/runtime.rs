@@ -214,7 +214,19 @@ impl GameRuntime {
                 Ok(())
             }
             // A Windows program joins the game's sandbox while it plays.
-            ActionRun::Spawn(c) => spawn_detached(&heronite_launch::sandbox::into_running(c, &settings.wine_prefix, None)?),
+            // Looking for that sandbox reads every process: not on this
+            // thread. What fails there fails inside (the command is `sh`).
+            ActionRun::Spawn(c) if heronite_launch::sandbox::is_wrapped(&c) => {
+                let prefix = settings.wine_prefix.clone();
+                std::thread::spawn(move || {
+                    let started = heronite_launch::sandbox::into_running(c, &prefix, None).and_then(|c| spawn_detached(&c));
+                    if let Err(e) = started {
+                        log::warn!("{e}");
+                    }
+                });
+                Ok(())
+            }
+            ActionRun::Spawn(c) => spawn_detached(&c),
             ActionRun::Play(plan) => self.start(game, *plan).map(|_| ()),
         }
     }

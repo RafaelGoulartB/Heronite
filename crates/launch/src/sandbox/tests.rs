@@ -45,11 +45,13 @@ fn meta() -> LocalGameMeta {
     }
 }
 
-/// umu with its Steam runtime downloaded, bubblewrap 0.11.
+/// umu with its Steam runtime downloaded (used outside the sandbox only),
+/// Winetricks, bubblewrap 0.11.
 fn probe() -> FakeProbe {
     FakeProbe::new("/home/u")
         .with_path("/p/GE/proton")
         .with_path(UMU)
+        .with_path("/hr/tools/winetricks")
         .with_path("/home/u/Games/win/game.exe")
         .with_path("/home/u/Games/pfx")
         .with_path("/home/u/.local/share/umu")
@@ -95,18 +97,20 @@ fn shared_folders_are_hidden_unless_allowed() {
 }
 
 #[test]
-fn a_windows_game_runs_in_the_sandbox_before_umu() {
+fn a_windows_game_runs_proton_directly_in_the_sandbox() {
     let s = windows_settings(json!({"enabled": true}));
     let p = plan(&probe(), &s, &game("/home/u/Games/win/game.exe", "Windows"));
-    let LaunchPlan::Wine { runtime: WineRuntime::Umu, process, .. } = &p else { panic!("{p:?}") };
+    let LaunchPlan::Wine { runtime: WineRuntime::Proton, process, .. } = &p else { panic!("{p:?}") };
     let c = &process.command;
     assert_eq!(c.program, "/bin/sh");
-    assert_eq!(c.args[2..], [NAME_FOR_TESTS, UMU, "/home/u/Games/win/game.exe"]);
+    assert_eq!(c.args[2..], [NAME_FOR_TESTS, "/p/GE/proton", "waitforexitandrun", "/home/u/Games/win/game.exe"]);
+    assert!(process.notes.contains(&without_umu()), "{:?}", process.notes);
     let script = program(c);
     assert!(script.contains("--bind /home/u/Games/pfx /home/u/Games/pfx"), "{script}");
     assert!(script.contains("--ro-bind-try /home/u/Games/win /home/u/Games/win"));
     assert!(script.contains(&format!("--bind {PRIVATE}")));
-    assert!(script.contains("--overlay-src /home/u/.local/share/umu --tmp-overlay /home/u/.local/share/umu"));
+    assert!(!script.contains(".local/share/umu"), "umu's runtime stays out");
+    assert!(script.contains("--unshare-user --unshare-pid"));
     assert!(script.contains("--unshare-net"));
     assert!(!script.contains("/data /data"), "shared folders stay out");
     assert!(process.sandboxed);
@@ -149,17 +153,72 @@ fn without_bubblewrap_nothing_runs() {
 }
 
 #[test]
-fn umu_without_its_runtime_or_an_old_bubblewrap_runs_proton_directly() {
+fn umu_never_runs_in_the_sandbox() {
+    // Its container would hold a copy of its Steam runtime in memory.
     let s = windows_settings(json!({"enabled": true}));
-    let mut no_runtime = probe();
-    no_runtime.paths.remove("/home/u/.local/share/umu/steamrt3");
-    let old = probe().with_bwrap((0, 9, 0));
-    for p in [no_runtime, old] {
-        let LaunchPlan::Wine { runtime, process, .. } = plan(&p, &s, &game("/home/u/Games/win/game.exe", "Windows")) else { panic!() };
-        assert_eq!(runtime, WineRuntime::Proton);
-        assert_eq!(process.command.args[3..], ["/p/GE/proton", "waitforexitandrun", "/home/u/Games/win/game.exe"]);
-        assert!(process.notes.iter().any(|n| n.contains("running Proton directly")), "{:?}", process.notes);
+    let LaunchPlan::Wine { runtime, .. } = plan(&probe(), &s, &game("/home/u/Games/win/game.exe", "Windows")) else { panic!() };
+    assert_eq!(runtime, WineRuntime::Proton);
+    let off = windows_settings(json!({}));
+    let LaunchPlan::Wine { runtime, .. } = plan(&probe(), &off, &game("/home/u/Games/win/game.exe", "Windows")) else { panic!() };
+    assert_eq!(runtime, WineRuntime::Umu, "outside, as before");
+    // A Linux game in the Steam runtime runs without it.
+    let s = settings(json!({KEY: {"enabled": true}, "steamRuntime": "steamrt3"}));
+    let p = probe().with_file("/home/u/Games/lin/run.sh", b"#!/bin/sh\n");
+    let LaunchPlan::Native(process) = plan(&p, &s, &game("/home/u/Games/lin/run.sh", "linux")) else { panic!() };
+    assert_eq!(process.command.args[2..], [NAME_FOR_TESTS, "/home/u/Games/lin/run.sh"]);
+    assert!(process.notes.iter().any(|n| n.contains("Steam runtime")), "{:?}", process.notes);
+}
+
+/// Every command of `plan` (and its companions') runs in the sandbox: its
+/// command has the prelude (after the wrappers that stay outside), and what
+/// runs before it is wrapped.
+fn all_inside(plan: &LaunchPlan) {
+    let process = plan.process().unwrap_or_else(|| panic!("{plan:?}"));
+    assert!(process.sandboxed, "{plan:?}");
+    let c = &process.command;
+    let words: Vec<&str> = std::iter::once(c.program.as_str()).chain(c.args.iter().map(String::as_str)).collect();
+    let wrapper = c.args.iter().position(|a| a == "--wrapper").map(|i| shlex::split(&c.args[i + 1]).unwrap());
+    let words: Vec<String> = match wrapper {
+        Some(w) => w,
+        None => words.iter().map(|w| w.to_string()).collect(),
+    };
+    assert!(words.windows(4).any(|w| w[0] == "/bin/sh" && w[1] == "-c" && w[3] == NAME_FOR_TESTS), "{words:?}");
+    assert!(process.pre_commands.iter().all(is_wrapped), "{:?}", process.pre_commands);
+    assert!(process.stop.commands.is_empty() && process.wait_after_exit.is_none());
+}
+
+#[test]
+fn every_way_to_start_a_game_or_a_tool_runs_inside() {
+    let s = windows_settings(json!({"enabled": true}));
+    let mut fresh = probe().with_path("/home/u/Downloads/setup.exe");
+    fresh.paths.remove("/home/u/Games/pfx");
+    let win = game("/home/u/Games/win/game.exe", "Windows");
+    all_inside(&plan(&probe(), &s, &win));
+    all_inside(&plan(&fresh, &s, &win));
+    let linux = settings(json!({KEY: {"enabled": true}}));
+    let p = probe().with_file("/home/u/Games/lin/run.sh", b"#!/bin/sh\n");
+    all_inside(&plan(&p, &linux, &game("/home/u/Games/lin/run.sh", "linux")));
+    for tool in [WineTool::Winecfg, WineTool::Winetricks, WineTool::RunExe("/home/u/Downloads/setup.exe".into())] {
+        assert!(is_wrapped(&build_tool_command(&ctx(), &fresh, &s, &tool).unwrap().command), "{tool:?}");
     }
+    assert!(crate::wine_tools::create_prefix_commands(&ctx(), &fresh, &s).unwrap().iter().all(is_wrapped));
+    assert!(is_wrapped(&kill_prefix_command(&ctx(), &fresh, &s).unwrap()));
+    assert!(is_wrapped(&crate::wine_tools::winetricks_verbs_command(&ctx(), &fresh, &s, &["corefonts".into()]).unwrap().command));
+    let parts = vec!["msiexec".to_string(), "/i".into(), "/home/u/Downloads/setup.exe".into()];
+    assert!(is_wrapped(&crate::wine_tools::wine_command_for(&ctx(), &fresh, &s, parts, None).unwrap()));
+}
+
+#[test]
+fn a_game_that_cannot_be_put_in_the_sandbox_does_not_start() {
+    let linux = settings(json!({KEY: {"enabled": true}}));
+    let m = LocalGameMeta { launch_kind: "steam-uri".into(), steam_app_id: Some("70".into()), ..meta() };
+    let p = probe().with_bin("steam", "/usr/bin/steam");
+    let plan = build_plan_with_settings(&ctx(), &p, &game("/x", "linux"), Some(&m), &linux, &LaunchOptions::default());
+    assert!(plan.unavailable_reason().is_some_and(|r| r.contains("cannot run in the sandbox")), "{plan:?}");
+    // Off, as before.
+    let off = settings(json!({}));
+    let plan = build_plan_with_settings(&ctx(), &p, &game("/x", "linux"), Some(&m), &off, &LaunchOptions::default());
+    assert!(matches!(plan, LaunchPlan::SteamUri { .. }), "{plan:?}");
 }
 
 #[test]
@@ -228,7 +287,7 @@ fn epic_games_get_the_sandbox_inside_legendarys_wrapper() {
     let wrapper = &args[args.iter().position(|a| a == "--wrapper").unwrap() + 1];
     let words = shlex::split(wrapper).unwrap();
     assert_eq!(words[..2], ["/bin/sh", "-c"]);
-    assert_eq!(words[3..], [NAME_FOR_TESTS, UMU]);
+    assert_eq!(words[3..], [NAME_FOR_TESTS, "/p/GE/proton", "waitforexitandrun"]);
     assert!(words[2].contains("--ro-bind-try /home/u/Games/Calluna /home/u/Games/Calluna"));
     assert!(process.sandboxed && process.stop.commands.is_empty());
     // legendary splits the wrapper with Python's shlex: same words.

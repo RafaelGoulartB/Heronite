@@ -31,9 +31,6 @@ const WINE_SERVICES: &[&str] = &[
     "start.exe",
 ];
 
-/// How long after the game started its sandbox is looked for.
-const SANDBOX_WAIT: Duration = Duration::from_secs(30);
-
 /// How long the game must be gone from its prefix before it counts as over
 /// (a launcher may hand over to the game).
 const GONE_FOR: Duration = Duration::from_secs(3);
@@ -136,7 +133,7 @@ impl<'a> Companions<'a> {
                 Some(root) => match crate::sandbox::find_sandbox(&*shared.procs, root) {
                     Some(pid) => crate::sandbox::join(&plan.command, pid),
                     // The sandbox may still be starting.
-                    None if now.duration_since(self.started) < SANDBOX_WAIT => {
+                    None if now.duration_since(self.started) < crate::sandbox::FOUND_WITHIN => {
                         self.waiting.push((now + Duration::from_secs(1), plan));
                         continue;
                     }
