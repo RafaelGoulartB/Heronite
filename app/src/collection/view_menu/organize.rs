@@ -241,8 +241,6 @@ impl CollectionView {
             ))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
         let head = section_head(tr!("Sort")).child(div().text_size(px(12.)).child(sort_direction(current, descending)));
-        let hint = (current == SortMode::Title)
-            .then(|| hint_text(tr!("Ignores “The”, “A” and “An” at the start; numbers go in order (VII before IX).")).px(px(4.)));
         div()
             .flex()
             .flex_col()
@@ -258,7 +256,6 @@ impl CollectionView {
                     .child(dir)
                     .children(list),
             )
-            .children(hint)
     }
 
     /// "More ▾", or the extra field picked with its icon.
