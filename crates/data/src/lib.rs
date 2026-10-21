@@ -35,6 +35,7 @@ pub mod organize;
 pub mod overlay_prefs;
 pub mod playtime;
 pub mod ratings;
+pub mod replay_prefs;
 pub mod screenshot_prefs;
 pub mod sessions;
 pub mod settings;

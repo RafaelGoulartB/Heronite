@@ -308,6 +308,10 @@ impl AppPaths {
     pub fn overlay_prefs(&self) -> PathBuf {
         self.config.join("overlay.json")
     }
+    /// Replay buffer options (see `heronite_data::replay_prefs`).
+    pub fn replay_prefs(&self) -> PathBuf {
+        self.config.join("replay.json")
+    }
     /// Update switches and the last update check (see `heronite_update::prefs`).
     pub fn update_state(&self) -> PathBuf {
         self.config.join("update.json")
