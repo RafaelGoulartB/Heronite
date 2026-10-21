@@ -113,7 +113,6 @@
   "In the Collection": "Na Coleção",
   "Include subfolders": "Incluir subpastas",
   "Install folder (optional)": "Pasta de instalação (opcional)",
-  "Install folder: {folder}": "Pasta de instalação: {folder}",
   "Install game": "Instalar jogo",
   "Install it with a YAML install script: it gets the files, sets the game up and adds it to your Collection.": "Instale com um script de instalação YAML: ele busca os arquivos, configura o jogo e o adiciona à sua Coleção.",
   "Install this game without its store: use Run installer first to run its setup program in the game's Wine prefix, then select the installed game's executable. Or select the executable of a copy you already have.": "Instale este jogo sem a loja: use Executar instalador primeiro para rodar o programa de instalação no prefixo Wine do jogo e depois selecione o executável do jogo instalado. Ou selecione o executável de uma cópia que você já tenha.",

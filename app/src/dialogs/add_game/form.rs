@@ -233,16 +233,6 @@ impl AddGameDialog {
         Some(row)
     }
 
-    /// Under a Windows game's executable: how to install it first, and the
-    /// folder the executable is in.
-    fn executable_notes(&self, exe: &str, title: &str, cx: &mut Context<Self>) -> Div {
-        let mut col = div().flex().flex_col().gap(px(6.)).mt(px(-6.)).children(self.install_row(title, true, cx));
-        if let Some(folder) = install_folder(exe) {
-            col = col.child(meta_text(tr!("Install folder: {folder}", folder)));
-        }
-        col
-    }
-
     /// A small switch: the sandbox is for apps from sources one does not
     /// trust, its tooltip says what it does.
     fn sandbox_switch(&self, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -321,7 +311,7 @@ impl AddGameDialog {
                         }
                     }),
                 ))
-                .child(self.executable_notes(&exe, &title, cx));
+                .children(self.install_row(&title, true, cx).map(|r| r.mt(px(-6.))));
             if !self.is_edit() {
                 right = right.child(self.wine_section(cx));
             }
