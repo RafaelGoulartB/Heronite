@@ -101,6 +101,8 @@ pub struct OverlayPanel {
     /// The on-screen keyboard over the panel, and what it writes.
     osk: Option<(Entity<Osk>, Subscription)>,
     writing: Option<notes::Writing>,
+    /// Seconds a replay keeps, when the replay is on and a game runs.
+    replay: Option<u32>,
 }
 
 /// Controller button to console mode's press.
@@ -138,6 +140,7 @@ impl OverlayPanel {
         if keyboard {
             window.focus(&focus, cx);
         }
+        let replay = game.as_ref().and_then(|_| OverlayService::replay_seconds(cx));
         let mut this = Self {
             service,
             paths: paths.clone(),
@@ -158,6 +161,7 @@ impl OverlayPanel {
             focus,
             osk: None,
             writing: None,
+            replay,
         };
         this.load_all(paths, cx);
         // The clock and the session time.

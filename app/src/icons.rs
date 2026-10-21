@@ -75,6 +75,8 @@ pub enum Icon {
     Lightbulb,
     Palette,
     PhotoCamera,
+    /// A replay (a saved video of the game).
+    Videocam,
     Inbox,
     /// Calendar day (release date, year).
     Event,
@@ -146,6 +148,7 @@ impl Icon {
             Lightbulb => "icons/lightbulb.svg",
             Palette => "icons/palette.svg",
             PhotoCamera => "icons/photo-camera.svg",
+            Videocam => "icons/videocam.svg",
             Inbox => "icons/inbox.svg",
             Event => "icons/event.svg",
             CallMerge => "icons/call-merge.svg",

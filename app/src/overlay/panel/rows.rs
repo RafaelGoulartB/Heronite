@@ -14,7 +14,11 @@ impl OverlayPanel {
     pub(super) fn rows(&self) -> Vec<Row> {
         match self.tab() {
             Tab::Home => self.home_rows(),
-            Tab::Shots => vec![Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera)],
+            Tab::Shots => {
+                let mut rows = vec![Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera)];
+                rows.extend(self.replay_row());
+                rows
+            }
             Tab::Notes => self.notes_rows(),
             Tab::Audio => self.audio_rows(),
             Tab::Controller => self.controller_rows(),
@@ -35,6 +39,7 @@ impl OverlayPanel {
             return rows;
         };
         rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera));
+        rows.extend(self.replay_row());
         if self.data.journal.is_some() {
             rows.push(
                 Row::action("moment", tr!("Mark this moment"))
@@ -58,6 +63,16 @@ impl OverlayPanel {
         rows.push(Row::action("launcher", tr!("Back to Heronite")).icon(Icon::Home).desc(tr!("The game keeps running")));
         rows.push(Row::action("quit", tr!("Quit game")).icon(Icon::PowerSettingsNew).danger());
         rows
+    }
+
+    /// "Save replay", while the replay is on.
+    fn replay_row(&self) -> Option<Row> {
+        let seconds = self.replay?;
+        Some(
+            Row::action("replay", tr!("Save replay"))
+                .icon(Icon::Videocam)
+                .desc(tr!("The last {n} s of the game, marked as a moment.", n = seconds)),
+        )
     }
 
     fn audio_rows(&self) -> Vec<Row> {
@@ -126,6 +141,7 @@ impl OverlayPanel {
         self.error = None;
         match id {
             "capture" => self.with_service(cx, |s, cx| s.screenshot(cx)),
+            "replay" => self.with_service(cx, |s, cx| s.save_replay(cx)),
             "launcher" => self.with_service(cx, |s, cx| s.show_launcher(cx)),
             "quit" => self.ask(Confirm::Quit),
             id if self.notes_activate(id, cx) => {}

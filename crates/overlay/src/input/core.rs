@@ -5,8 +5,9 @@
 //! - Guide down grabs that controller at once, so what follows (RB, ↑ ↓)
 //!   reaches only us, not the game.
 //! - Guide + RB (or the button chosen) is a screenshot, Guide + ↑ / ↓ a
-//!   volume step, Guide + Y a moment for the journal. Any other
-//!   button while Guide is held makes it a chord too: no overlay on release.
+//!   volume step, Guide + Y a moment for the journal, Guide + X the replay
+//!   saved. Any other button while Guide is held makes it a chord too: no
+//!   overlay on release.
 //! - Guide released without a chord opens the overlay (every controller is
 //!   grabbed while it is open) or closes it.
 //! - While open, the presses become navigation, with held directions and the
@@ -72,6 +73,8 @@ pub enum Event {
     Volume(i8),
     /// Guide + Y: mark this moment in the game's journal.
     Moment,
+    /// Guide + X: save the replay (the last seconds of the game).
+    Replay,
     /// A press while open (repeats included).
     Press(Button),
     /// The connected controllers changed.
@@ -95,6 +98,8 @@ pub struct Options {
     pub volume: bool,
     /// Guide + Y marks a moment (unless Y is the screenshot button).
     pub moment: bool,
+    /// Guide + X saves the replay (unless X is the screenshot button).
+    pub replay: bool,
 }
 
 /// First repeat after this long, then every [`REPEAT_EVERY`] (same pace as
@@ -153,6 +158,7 @@ impl Core {
                     Button::Up if self.opts.volume => out.events.push(Event::Volume(1)),
                     Button::Down if self.opts.volume => out.events.push(Event::Volume(-1)),
                     Button::Y if self.opts.moment => out.events.push(Event::Moment),
+                    Button::X if self.opts.replay => out.events.push(Event::Replay),
                     _ => {}
                 }
                 // A chord on another controller grabs it too, so the game
@@ -308,7 +314,7 @@ impl Core {
 mod tests {
     use super::*;
 
-    const ALL: Options = Options { screenshot: true, screenshot_button: Button::RB, volume: true, moment: true };
+    const ALL: Options = Options { screenshot: true, screenshot_button: Button::RB, volume: true, moment: true, replay: true };
 
     fn press(core: &mut Core, dev: usize, b: Button) -> Output {
         let now = Instant::now();
@@ -376,8 +382,25 @@ mod tests {
     }
 
     #[test]
+    fn guide_x_saves_the_replay_unless_x_takes_the_screenshot() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.button(0, Button::Guide, true, now);
+        assert_eq!(c.button(0, Button::X, true, now).events, vec![Event::Replay]);
+        assert!(c.button(0, Button::Guide, false, now).events.is_empty(), "a chord never opens the overlay");
+
+        let mut c = Core::new(Options { screenshot_button: Button::X, ..ALL });
+        c.button(0, Button::Guide, true, now);
+        assert_eq!(c.button(0, Button::X, true, now).events, vec![Event::Screenshot]);
+
+        let mut c = Core::new(Options { replay: false, ..ALL });
+        c.button(0, Button::Guide, true, now);
+        assert!(c.button(0, Button::X, true, now).events.is_empty());
+    }
+
+    #[test]
     fn disabled_shortcuts_still_swallow_the_chord() {
-        let mut c = Core::new(Options { screenshot: false, screenshot_button: Button::RB, volume: false, moment: false });
+        let mut c = Core::new(Options { screenshot: false, screenshot_button: Button::RB, volume: false, moment: false, replay: false });
         let now = Instant::now();
         c.button(0, Button::Guide, true, now);
         assert!(c.button(0, Button::RB, true, now).events.is_empty());
