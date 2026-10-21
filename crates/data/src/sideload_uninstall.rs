@@ -125,6 +125,10 @@ pub fn uninstall(paths: &DataPaths, input: &UninstallInput, delete_files: bool, 
     if let Some(p) = prefix.as_deref().filter(|p| p.exists()) {
         remove(p)?;
     }
+    // The home its programs had in the sandbox goes with it.
+    if let Some(home) = prefix.as_deref().map(|p| paths.sandbox_home_of_prefix(&p.to_string_lossy())).filter(|h| h.exists()) {
+        remove(&home)?;
+    }
     mark_uninstalled(paths, input.app_name)?;
     Ok(UninstallOutcome { files_removed: files, prefix_removed: prefix })
 }

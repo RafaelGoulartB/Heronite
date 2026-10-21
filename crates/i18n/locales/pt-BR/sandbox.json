@@ -42,5 +42,6 @@
   "umu's Steam runtime ({runtime}) is not downloaded yet, and the sandbox has no network to get it: running Proton directly. Play a game with umu once outside the sandbox to get it.": "O runtime Steam do umu ({runtime}) ainda não foi baixado, e o sandbox não tem rede para obtê-lo: rodando o Proton diretamente. Jogue algo com umu uma vez fora do sandbox para baixá-lo.",
   "{n} other games use this prefix. What this game installs in it reaches them, and they run outside the sandbox unless it is on for them too. A prefix of its own keeps it apart.": "{n} outros jogos usam este prefixo. O que este jogo instala nele chega a eles, e eles rodam fora do sandbox, a menos que o sandbox também esteja ligado neles. Um prefixo só deste jogo o mantém separado.",
   "{path} did not start: the game's sandbox was not found": "{path} não iniciou: o sandbox do jogo não foi encontrado",
+  "the sandbox's home folders": "as pastas pessoais do sandbox",
   "In the sandbox: what follows heronite-sandbox starts inside it. Programs alongside the game join it.": "No sandbox: o que vem depois de heronite-sandbox começa dentro dele. Os programas junto com o jogo entram nele."
 }

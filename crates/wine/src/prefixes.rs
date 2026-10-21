@@ -195,7 +195,14 @@ pub fn duplicate(source: &Path, name: &str, cancel: &Cancel) -> Result<PathBuf> 
 /// look like a prefix.
 pub fn trash(data_paths: &DataPaths, home: &str, path: &Path) -> Result<()> {
     sideload::check_prefix_removable(path, &protected(data_paths, home), Path::new(home)).map_err(|e| anyhow!(e))?;
-    trash::delete(path).map_err(|e| anyhow!(tr!("Could not move {path} to the trash: {error}", path = path.display(), error = e)))
+    trash::delete(path).map_err(|e| anyhow!(tr!("Could not move {path} to the trash: {error}", path = path.display(), error = e)))?;
+    // The home its programs had in the sandbox goes with it.
+    let sandbox_home = data_paths.sandbox_home_of_prefix(&path.to_string_lossy());
+    if sandbox_home.exists() {
+        trash::delete(&sandbox_home)
+            .map_err(|e| anyhow!(tr!("Could not move {path} to the trash: {error}", path = sandbox_home.display(), error = e)))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
