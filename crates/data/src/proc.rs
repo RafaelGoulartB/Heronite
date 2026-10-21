@@ -38,6 +38,27 @@ pub fn guard(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
+/// Idle CPU scheduling and idle I/O class for the calling thread (and the
+/// processes it spawns from now on): it only gets time nobody else wants, so
+/// a game or the UI never waits for it. Call it only on a thread of its own.
+pub fn idle_priority() {
+    #[cfg(target_os = "linux")]
+    {
+        const IOPRIO_WHO_PROCESS: libc::c_int = 1;
+        const IOPRIO_CLASS_IDLE: libc::c_int = 3;
+        const IOPRIO_CLASS_SHIFT: libc::c_int = 13;
+        let param = libc::sched_param { sched_priority: 0 };
+        // SAFETY: pid 0 is the calling thread; both calls only change its
+        // own scheduling and fail harmlessly.
+        unsafe {
+            if libc::sched_setscheduler(0, libc::SCHED_IDLE, &param) != 0 {
+                log::debug!("SCHED_IDLE: {}", std::io::Error::last_os_error());
+            }
+            libc::syscall(libc::SYS_ioprio_set, IOPRIO_WHO_PROCESS, 0, IOPRIO_CLASS_IDLE << IOPRIO_CLASS_SHIFT);
+        }
+    }
+}
+
 /// Lets another thread stop a running command: SIGTERM first (legendary then
 /// saves its resume data), SIGKILL of the whole process group if it lingers.
 #[derive(Debug, Default)]
