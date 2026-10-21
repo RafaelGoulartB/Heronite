@@ -1,0 +1,13 @@
+{
+  "No graphics card it can record with was found": "Nenhuma placa de vídeo com que ele possa gravar foi encontrada",
+  "No permission to capture the screen (gsr-kms-server)": "Sem permissão para capturar a tela (gsr-kms-server)",
+  "The audio source was not found": "A fonte de áudio não foi encontrada",
+  "The graphics card cannot encode this video format": "A placa de vídeo não codifica este formato de vídeo",
+  "The graphics card cannot encode video this large": "A placa de vídeo não codifica um vídeo deste tamanho",
+  "The graphics libraries could not be loaded": "As bibliotecas gráficas não puderam ser carregadas",
+  "The monitor was not found": "O monitor não foi encontrado",
+  "The screen could not be captured": "A tela não pôde ser capturada",
+  "gpu-screen-recorder could not start: {err}": "O gpu-screen-recorder não pôde iniciar: {err}",
+  "gpu-screen-recorder exited with code {code}": "O gpu-screen-recorder saiu com o código {code}",
+  "gpu-screen-recorder was stopped by a signal": "O gpu-screen-recorder foi parado por um sinal"
+}
