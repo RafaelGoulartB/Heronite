@@ -179,13 +179,16 @@ fn too_wide(path: &str, home: &str) -> bool {
 fn order(binds: Vec<Bind>) -> Vec<Bind> {
     let mut out: Vec<Bind> = Vec::new();
     for b in binds {
-        let covered = out.iter().any(|o| o.access == Access::ReadWrite && inside(&b.path, &o.path)) || out.iter().any(|o| o.path == b.path);
-        if covered {
+        if out.iter().any(|o| o.access == Access::ReadWrite && inside(&b.path, &o.path)) {
             continue;
         }
         if b.access == Access::ReadWrite {
-            // A writable folder wins over what was asked inside it.
+            // A writable folder wins over what was asked inside it, or at
+            // the same place.
             out.retain(|o| !(inside(&o.path, &b.path) && o.access != Access::ReadWrite));
+        }
+        if out.iter().any(|o| o.path == b.path) {
+            continue;
         }
         out.push(b);
     }
@@ -224,6 +227,15 @@ mod tests {
         ]);
         let paths: Vec<(&str, Access)> = out.iter().map(|b| (b.path.as_str(), b.access)).collect();
         assert_eq!(paths, [("/h/Games", Access::ReadOnly), ("/h/Games/pfx", Access::ReadWrite)]);
+    }
+
+    /// The game's folder comes first, read-only: shared with Proton later,
+    /// it is writable.
+    #[test]
+    fn a_writable_folder_wins_over_the_same_one_read_only() {
+        let out = order(vec![bind("/h/Games/Game", Access::ReadOnly), bind("/h/Games/Game", Access::ReadWrite)]);
+        let paths: Vec<(&str, Access)> = out.iter().map(|b| (b.path.as_str(), b.access)).collect();
+        assert_eq!(paths, [("/h/Games/Game", Access::ReadWrite)]);
     }
 
     #[test]
