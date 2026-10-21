@@ -222,6 +222,17 @@ modal (radius 26, title Rubik 22, round close button, Collection darkened by
 on_close)` = right-hand sheet inset 10px, radius 24, with fixed header/footer
 slots (build the header with `kicker`, `dialog_title`, `close_button`).
 
+**Add game** (`dialogs/add_game/`, by user decision): the cover and background previews on the left; a click on one
+opens its menu (Find art while it is empty, Search the web, Choose an image file, Type an address, which shows an
+address field under the previews until it loses focus, and Remove the image). On the right: the store note (Epic, GOG,
+Amazon; "Got it" hides it for good, `ui-state.json` `dismissedNotes`), Title with Find art inside it, Platform tabs,
+then how the game starts (Windows: the executable, with "Not installed yet?" and a small "Run installer first" button
+under it), the Wine / Proton card (open; closed, the version and the prefix show as pills; the prefix is named after
+the title) and a small "Run in a sandbox" switch whose tooltip (`ui::tooltip`) says what it is for. The footer says
+what is still missing and keeps "Add game" disabled until then. `HERONITE_DEBUG_DIALOG=add-game:<states>` (joined with
+`+`): `windows`, `linux`, `command`, `browser`, `shared`, `wine`, `wine-open`, `art-menu`, `address`, `no-note`,
+`picker`, `art=<cover url>[,<background url>]`.
+
 **Controls** (`ui::controls`):
 - `toggle(id, on, disabled)` 40x24 switch (spring-animated knob unless
   `HERONITE_NO_ANIMATIONS`), `toggle_row(id, label, desc, on)`, legacy

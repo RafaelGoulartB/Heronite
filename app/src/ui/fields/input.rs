@@ -89,6 +89,11 @@ pub fn input_box(input: &Entity<InputState>, disabled: bool) -> Div {
     field_row(input, disabled, None, None)
 }
 
+/// [`input_box`] with `trailing` inside it, after the text (a small button).
+pub fn input_box_with(input: &Entity<InputState>, trailing: AnyElement) -> Div {
+    field_row(input, false, None, Some(trailing)).pr(px(5.))
+}
+
 /// Input row: optional leading element, the text input, optional trailing one.
 fn field_row(input: &Entity<InputState>, disabled: bool, leading: Option<AnyElement>, trailing: Option<AnyElement>) -> Div {
     input_surface()

@@ -23,7 +23,7 @@ use heronite_data::collection::Game;
 use heronite_data::game_config::{self, Settings};
 use heronite_data::models::GameInfo;
 use heronite_data::sideload::{self, SideloadPlatform};
-use heronite_data::sideload_uninstall;
+use heronite_data::{sideload_uninstall, ui_state};
 use heronite_i18n::tr;
 use heronite_launch::SystemProbe;
 use heronite_wine::WineInstallation;
@@ -32,11 +32,15 @@ use serde_json::Value;
 use super::art_images::DialogImages;
 use super::settings_panel::logic::wine_of;
 use super::{DialogCtx, DialogEvent};
-use crate::ui::controls::{action_button, button, ButtonKind};
+use crate::ui::controls::{action_button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
-use crate::ui::fields::{choose_path, new_input};
+use crate::ui::fields::{meta_text, new_input};
 use logic::*;
-use picker::ImagePicker;
+use picker::{ImagePicker, Slot};
+
+/// Id of the store note in `ui-state.json` once "Got it" hides it.
+const STORE_NOTE: &str = "add-game-stores";
+
 #[derive(Clone, Debug)]
 pub enum Mode {
     Add,
@@ -62,7 +66,6 @@ pub struct Prefill {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Select {
-    Platform,
     Wine,
 }
 
@@ -104,6 +107,16 @@ pub struct AddGameDialog {
     platform_manual: bool,
     open_select: Option<Select>,
     shared_prefix: bool,
+    /// Adding: the note about store games, until "Got it" hides it for good.
+    store_note: bool,
+    /// The art slot whose menu (find, search, file, address, remove) is open.
+    art_menu: Option<Slot>,
+    /// The art slot under the pointer: a click on it toggles its menu, so the
+    /// menu's click-outside leaves that click alone.
+    art_hover: Option<Slot>,
+    /// The art slot whose address field shows under the images (until it
+    /// loses focus).
+    art_address: Option<Slot>,
     /// A new game in the sandbox (`heroniteSandbox`): its installer too.
     sandbox: bool,
     show_wine: bool,
@@ -215,19 +228,20 @@ impl AddGameDialog {
             .and_then(|p| sideload_uninstall::prefix_shared_note(&ctx.data_paths, &ctx.lib, &app_name, Path::new(p), &home));
 
         let prefix_dir = global.get("defaultWinePrefixDir").and_then(Value::as_str).unwrap_or("").to_string();
-        let suggested = suggested_prefix(&prefix_dir, &title, &app_name);
+        // Named after the title: none yet, no name (a random one would show).
+        let suggested = if title.trim().is_empty() { String::new() } else { suggested_prefix(&prefix_dir, &title, &app_name) };
 
         let mut subs = Vec::new();
         let title_in = new_input(window, cx, &title, tr!("Add a title to your Game/App"));
-        let square_in = new_input(window, cx, &square, tr!("Paste an URL of an Image or select one from your computer"));
-        let hero_in = new_input(window, cx, &hero, tr!("Paste an URL of an Image or select one from your computer"));
+        let square_in = new_input(window, cx, &square, "https://");
+        let hero_in = new_input(window, cx, &hero, "https://");
         let exe_in = new_input(window, cx, &exe, tr!("Select Executable"));
         let by_command = !command.is_empty();
         let folder_in = new_input(window, cx, &folder, tr!("The folder the game is in"));
         let command_in = new_input(window, cx, &command, "./start.sh");
         let url_in = new_input(window, cx, &url, tr!("Paste the Game URL here"));
         let ua_in = new_input(window, cx, &ua, tr!("Write a custom user agent here to be used on this browser app/game"));
-        let prefix_in = new_input(window, cx, &suggested, "");
+        let prefix_in = new_input(window, cx, &suggested, tr!("Named after the game's title"));
 
         subs.push(cx.subscribe_in(&title_in, window, |this, input, ev: &InputEvent, window, cx| match ev {
             InputEvent::Change => {
@@ -244,7 +258,17 @@ impl AddGameDialog {
             InputEvent::Blur => this.auto_find_art(window, cx),
             _ => {}
         }));
-        for input in [&square_in, &hero_in, &url_in, &ua_in, &prefix_in, &folder_in, &command_in] {
+        for (input, slot) in [(&square_in, Slot::Square), (&hero_in, Slot::Cover)] {
+            subs.push(cx.subscribe_in(input, window, move |this, _, ev: &InputEvent, _, cx| match ev {
+                InputEvent::Change => cx.notify(),
+                InputEvent::Blur if this.art_address == Some(slot) => {
+                    this.art_address = None;
+                    cx.notify();
+                }
+                _ => {}
+            }));
+        }
+        for input in [&url_in, &ua_in, &prefix_in, &folder_in, &command_in] {
             subs.push(cx.subscribe_in(input, window, |_, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
@@ -262,6 +286,7 @@ impl AddGameDialog {
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
 
+        let store_note = matches!(mode, Mode::Add) && !ui_state::note_dismissed(&ctx.app, STORE_NOTE);
         let wine_global = {
             let w = wine_of(&global);
             (global.get("wineVersion").is_some()).then_some(w)
@@ -288,6 +313,10 @@ impl AddGameDialog {
             platform_manual: edited.is_some(),
             open_select: None,
             shared_prefix: false,
+            store_note,
+            art_menu: None,
+            art_hover: None,
+            art_address: None,
             sandbox: false,
             show_wine: true,
             last_suggested: suggested,
@@ -342,6 +371,10 @@ impl AddGameDialog {
     /// Esc, offered by the host before it closes the dialog. True when used:
     /// the picker closed, a question was answered or asked.
     pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.art_menu.take().is_some() {
+            cx.notify();
+            return true;
+        }
         let step = escape(self.picker.is_some(), self.confirm_discard, self.confirm_remove, !self.saving && self.dirty(cx));
         match step {
             Escape::ClosePicker => self.picker = None,
@@ -391,7 +424,7 @@ impl AddGameDialog {
                 "Play this game as a PC game (a native port or a PC version) instead of through its emulator: choose how it starts. Its playtime, status and art stay."
             )),
             Mode::Install(_) => Some(tr!(
-                "Install this game without its store: use Run Installer First to run its setup program in the prefix below, then select the installed game's executable. Or select the executable of a copy you already have."
+                "Install this game without its store: use Run installer first to run its setup program in the game's Wine prefix, then select the installed game's executable. Or select the executable of a copy you already have."
             )),
         }
     }
@@ -403,6 +436,13 @@ impl AddGameDialog {
         } else {
             Start::Executable(exe)
         }
+    }
+
+    /// What the form still needs before it can be saved, as a sentence.
+    fn missing_now(&self, cx: &App) -> Option<&'static str> {
+        let url = normalize_url(&text_of(&self.url, cx));
+        let (exe, folder, command) = (text_of(&self.exe, cx), text_of(&self.folder, cx), text_of(&self.command, cx));
+        missing_hint(&text_of(&self.title, cx), self.platform, self.start(&exe, &folder, &command), &url)
     }
 
     fn dialog_title(&self) -> &'static str {
@@ -477,8 +517,9 @@ impl Render for AddGameDialog {
             (tr!("Remove game"), self.remove_confirmation(cx), footer)
         } else {
             let can_save = !self.saving && !self.installer_running;
+            let missing = self.missing_now(cx);
             let finish_label = match (edit, self.saving) {
-                (false, false) => tr!("Finish"),
+                (false, false) => tr!("Add game"),
                 (true, false) => tr!("Save"),
                 (_, true) => tr!("Saving\u{2026}"),
             };
@@ -497,33 +538,22 @@ impl Render for AddGameDialog {
                     }),
                 ));
             }
-            footer = footer.child(div().flex_1());
-            footer = footer.child(action_button(
-                "ag-cancel",
-                ButtonKind::Ghost,
-                tr!("Cancel"),
-                !self.saving,
-                cx.listener(|this, _, _, cx| this.request_close(cx)),
-            ));
-            if !edit && self.platform == SideloadPlatform::Windows {
-                let can_run = can_save && !text_of(&self.title, cx).trim().is_empty();
-                footer = footer.child(action_button(
-                    "ag-run-installer",
-                    ButtonKind::Glass,
-                    if self.installer_running { tr!("Running Setup") } else { tr!("Run Installer First") },
-                    can_run,
-                    cx.listener(|_, _, window, cx| {
-                        choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
-                            this.run_installer(path, cx)
-                        });
-                    }),
+            footer = footer
+                .child(div().flex_1().min_w_0().children(missing.filter(|_| !self.saving).map(|m| meta_text(m).text_right())))
+                .child(action_button(
+                    "ag-cancel",
+                    ButtonKind::Ghost,
+                    tr!("Cancel"),
+                    !self.saving,
+                    cx.listener(|this, _, _, cx| this.request_close(cx)),
+                ))
+                .child(action_button(
+                    "ag-finish",
+                    ButtonKind::Primary,
+                    finish_label,
+                    can_save && missing.is_none(),
+                    cx.listener(|this, _, _, cx| this.save(cx)),
                 ));
-            }
-            footer = footer.child(
-                button("ag-finish", ButtonKind::Primary, finish_label)
-                    .when(!can_save, |b| b.opacity(0.5))
-                    .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
-            );
             (self.dialog_title(), self.form(window, cx), footer)
         };
 

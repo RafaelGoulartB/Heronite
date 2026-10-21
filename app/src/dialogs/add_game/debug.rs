@@ -42,8 +42,14 @@ impl AddGameDialog {
                     self.platform_manual = true;
                 }
                 "shared" => self.set_shared_prefix(true, window, cx),
-                "platform-open" => self.open_select = Some(Select::Platform),
-                "wine-open" => self.open_select = Some(Select::Wine),
+                "wine" => self.show_wine = true,
+                "wine-open" => {
+                    self.show_wine = true;
+                    self.open_select = Some(Select::Wine);
+                }
+                "art-menu" => self.art_menu = Some(Slot::Square),
+                "address" => self.art_address = Some(Slot::Cover),
+                "no-note" => self.store_note = false,
                 "remove" => self.confirm_remove = true,
                 // Exercises the save path (fixture data only).
                 "save" => self.save(cx),
@@ -61,6 +67,8 @@ impl AddGameDialog {
                 _ => {}
             }
         }
+        // As if typed: the prefix follows the title.
+        self.title_changed(window, cx);
         cx.notify();
     }
 }

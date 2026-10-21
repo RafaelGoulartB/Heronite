@@ -6,103 +6,73 @@ use heronite_data::sideload::SideloadPlatform;
 use heronite_i18n::tr;
 
 use super::logic::*;
-use super::picker::Slot;
-use super::{text_of, AddGameDialog, Select};
+use super::{text_of, AddGameDialog, Mode, Select, STORE_NOTE};
 use crate::dialogs::settings_panel::logic::{default_wine, display_wine_name, wine_of, wine_options};
 use crate::icons::Icon;
+use crate::pages::{status_pill, tag_pill};
 use crate::theme;
-use crate::ui::controls::{action_button, checkbox, ButtonKind};
-use crate::ui::fields::{choose_path, field_label, input_box, labeled, meta_text, panel, path_field, select_field};
-use crate::ui::icon;
-
-/// Cover/background preview box sizes (600x900 and 1600x650 ratios).
-const SQUARE_W: f32 = 168.;
-const SQUARE_H: f32 = 252.;
-const HERO_W: f32 = 168.;
-const HERO_H: f32 = 68.;
+use crate::ui::controls::{button_sm, card, card_box, checkbox, icon_button_sm, mini_checkbox, tabs, toggle_row, ButtonKind};
+use crate::ui::fields::{choose_path, field_label, input_box, input_box_with, labeled, meta_text, panel, path_field, select_field};
+use crate::ui::{icon, tooltip};
 
 impl AddGameDialog {
-    fn platform_select(&self, cx: &mut Context<Self>) -> Div {
-        let options: Vec<(SharedString, bool)> =
-            PLATFORMS.iter().map(|p| (SharedString::from(platform_label(*p)), *p == self.platform)).collect();
-        select_field(
-            "ag-platform",
-            Some(tr!("Platform")),
-            platform_label(self.platform),
-            false,
-            self.open_select == Some(Select::Platform),
-            options,
-            cx,
-            |this, _, cx| {
-                this.open_select = if this.open_select == Some(Select::Platform) { None } else { Some(Select::Platform) };
-                cx.notify();
-            },
-            |this, i, _, cx| this.set_platform(PLATFORMS[i], cx),
+    fn platform_tabs(&self, cx: &mut Context<Self>) -> Div {
+        let items: Vec<(SideloadPlatform, &'static str)> = PLATFORMS.iter().map(|p| (*p, platform_label(*p))).collect();
+        let weak = cx.entity().downgrade();
+        labeled(
+            tr!("Platform"),
+            tabs("ag-platform", &items, self.platform, move |platform, _, cx| {
+                weak.update(cx, |this, cx| this.set_platform(platform, cx)).ok();
+            }),
         )
     }
 
-    fn wine_section(&mut self, cx: &mut Context<Self>) -> Div {
-        let open = self.show_wine;
-        let header = div()
-            .id("ag-wine-toggle")
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .cursor_pointer()
-            .text_size(px(14.))
-            .text_color(crate::theme::text_primary())
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.show_wine = !this.show_wine;
+    /// The note above the form: what to do instead for store games (until
+    /// "Got it"), or how installing works.
+    fn note(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let (text, dismiss) = match self.mode {
+            Mode::Add if self.store_note => {
+                (tr!("A game from Epic, GOG or Amazon? Do not add it here: install or import it from its store, in the menu."), true)
+            }
+            Mode::Add => return None,
+            _ => (self.top_note()?, false),
+        };
+        let ok = dismiss.then(|| {
+            button_sm("ag-note-ok", ButtonKind::Ghost, tr!("Got it")).on_click(cx.listener(|this, _, _, cx| {
+                this.store_note = false;
+                let app = this.ctx.app.clone();
+                cx.background_spawn(async move {
+                    if let Err(err) = heronite_data::ui_state::dismiss_note(&app, STORE_NOTE) {
+                        log::warn!("saving the dismissed note: {err:#}");
+                    }
+                })
+                .detach();
                 cx.notify();
             }))
-            .child(icon(if open { Icon::FaChevronUp } else { Icon::FaChevronDown }, px(12.), crate::theme::text_primary()))
-            .child(tr!("Show Wine settings"));
-        let mut col = crate::ui::controls::card_box().gap(px(12.)).py(px(12.)).child(header);
-        if !open {
-            return col;
-        }
+        });
+        Some(
+            panel()
+                .flex_row()
+                .items_center()
+                .gap(px(12.))
+                .py(px(10.))
+                .pr(px(if dismiss { 8. } else { 14. }))
+                .child(icon(Icon::InfoOutlined, px(18.), theme::accent()))
+                .child(div().flex_1().min_w_0().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_primary()).child(text))
+                .children(ok),
+        )
+    }
+
+    /// Wine / Proton: the version, the prefix and the shared prefix switch;
+    /// closed it sums up the version and the prefix.
+    fn wine_section(&mut self, cx: &mut Context<Self>) -> Div {
+        let open = self.show_wine;
         let shared = self.shared_prefix;
-        let mut share_label = tr!("Use shared Wine prefix").to_string();
-        if let Some(w) = self.global.get("wineVersion").map(|_| wine_of(&self.global)) {
-            share_label = tr!("Use shared Wine prefix ({name})", name = display_wine_name(&w.name));
-        }
-        col = col.child(checkbox("ag-shared", shared, share_label).on_click(cx.listener(|this, _, window, cx| {
-            let on = !this.shared_prefix;
-            this.set_shared_prefix(on, window, cx);
-        })));
-        if shared {
-            col = col.child(
-                panel().child(meta_text(tr!(
-                    "Only use this option if you know what you are doing. Sharing the same prefix for multiple games can create problems if their dependencies are incompatible."
-                ))),
-            );
-        }
-        if self.wine.as_ref().is_some_and(|w| w.kind == "crossover") {
-            col = col.child(meta_text(tr!("CrossOver bottles are chosen in Game settings after the game is added.")));
-        } else {
-            let has = !text_of(&self.prefix, cx).is_empty();
-            col = col.child(path_field(
-                "ag-prefix-pick",
-                Some(tr!("WinePrefix")),
-                &self.prefix,
-                has,
-                shared,
-                cx.listener(move |this, _, window, cx| {
-                    if has {
-                        this.prefix.update(cx, |s, cx| s.set_value("", window, cx));
-                    } else {
-                        choose_path(window, cx, true, tr!("Select WinePrefix Folder"), |this: &mut Self, path, window, cx| {
-                            this.prefix.update(cx, |s, cx| s.set_value(path, window, cx));
-                        });
-                    }
-                }),
-            ));
-        }
         let list = self.wine_list.clone();
         let loading = list.is_none();
         let current = self.wine.clone().unwrap_or_else(default_wine);
-        let options = wine_options(list.as_deref().unwrap_or(&[]), &current);
         let none_found = list.as_ref().is_some_and(|l| l.is_empty()) && self.wine.is_none();
+        let crossover = self.wine.as_ref().is_some_and(|w| w.kind == "crossover");
         let shown = if loading {
             tr!("Loading\u{2026}").to_string()
         } else if self.wine.is_none() {
@@ -110,13 +80,40 @@ impl AddGameDialog {
         } else {
             display_wine_name(&current.name)
         };
+        let mut header = div()
+            .id("ag-wine-toggle")
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .py(px(4.))
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.show_wine = !this.show_wine;
+                this.open_select = None;
+                cx.notify();
+            }))
+            .child(icon(Icon::WineBar, px(16.), theme::text_muted()))
+            .child(div().flex_1().min_w_0().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Wine / Proton")));
+        if !open {
+            header = header.child(if none_found { status_pill(shown.clone(), theme::danger_text()) } else { tag_pill(shown.clone()) });
+            if !crossover {
+                header = header.child(tag_pill(if shared { tr!("Shared prefix") } else { tr!("Own prefix") }));
+            }
+        }
+        header = header.child(icon(if open { Icon::ExpandMore } else { Icon::ChevronRight }, px(18.), theme::text_muted()));
+        let mut col = card_box().gap(px(12.)).py(px(12.)).child(header);
+        if !open {
+            return col;
+        }
+
+        let options = wine_options(list.as_deref().unwrap_or(&[]), &current);
         let items: Vec<(SharedString, bool)> = options
             .iter()
             .map(|w| (SharedString::from(display_wine_name(&w.name)), self.wine.as_ref().is_some_and(|c| c.name == w.name)))
             .collect();
         col = col.child(select_field(
             "ag-wine",
-            Some(tr!("Wine Version")),
+            Some(tr!("Wine version")),
             shown,
             shared || loading || options.is_empty() || none_found,
             self.open_select == Some(Select::Wine),
@@ -144,7 +141,110 @@ impl AddGameDialog {
                     .child(tr!("No Wine version was found, download one from the Wine Manager")),
             );
         }
+        if crossover {
+            col = col.child(meta_text(tr!("CrossOver bottles are chosen in Game settings after the game is added.")));
+        } else {
+            let has = !text_of(&self.prefix, cx).is_empty();
+            col = col.child(path_field(
+                "ag-prefix-pick",
+                Some(tr!("Wine prefix")),
+                &self.prefix,
+                has,
+                shared,
+                cx.listener(move |this, _, window, cx| {
+                    if has {
+                        this.prefix.update(cx, |s, cx| s.set_value("", window, cx));
+                    } else {
+                        choose_path(window, cx, true, tr!("Select WinePrefix Folder"), |this: &mut Self, path, window, cx| {
+                            this.prefix.update(cx, |s, cx| s.set_value(path, window, cx));
+                        });
+                    }
+                }),
+            ));
+        }
+        let share_label = match self.global.get("wineVersion").map(|_| wine_of(&self.global)) {
+            Some(w) => tr!("Use shared Wine prefix ({name})", name = display_wine_name(&w.name)),
+            None => tr!("Use shared Wine prefix").to_string(),
+        };
+        col.child(
+            toggle_row(
+                "ag-shared",
+                share_label,
+                Some(tr!("Only if you know what you are doing: games sharing a prefix can break each other's dependencies.")),
+                shared,
+            )
+            .py(px(4.))
+            .on_click(cx.listener(|this, _, window, cx| {
+                let on = !this.shared_prefix;
+                this.set_shared_prefix(on, window, cx);
+            })),
+        )
+    }
+
+    /// Under a Windows game's executable: running its setup program first,
+    /// and the folder the executable is in.
+    fn executable_notes(&self, exe: &str, title: &str, cx: &mut Context<Self>) -> Div {
+        let mut col = div().flex().flex_col().gap(px(6.)).mt(px(-6.));
+        if !self.is_edit() {
+            let has_title = !title.trim().is_empty();
+            let can_run = !self.saving && !self.installer_running && has_title;
+            let label = if self.installer_running { tr!("Running setup\u{2026}") } else { tr!("Run installer first") };
+            let tip = if has_title {
+                tr!("Runs the game's setup program in its Wine prefix. When it is done, select the installed game's executable.")
+            } else {
+                tr!("Add a title first: the game's Wine prefix is named after it.")
+            };
+            col = col.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Not installed yet?")))
+                    .child(
+                        icon_button_sm(
+                            "ag-run-installer",
+                            ButtonKind::Glass,
+                            Icon::PlayArrow,
+                            label,
+                            can_run,
+                            cx.listener(|_, _, window, cx| {
+                                choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                                    this.run_installer(path, cx)
+                                });
+                            }),
+                        )
+                        .tooltip(tooltip(tip)),
+                    ),
+            );
+        }
+        if let Some(folder) = install_folder(exe) {
+            col = col.child(meta_text(tr!("Install folder: {folder}", folder)));
+        }
         col
+    }
+
+    /// A small switch: the sandbox is for apps from sources one does not
+    /// trust, its tooltip says what it does.
+    fn sandbox_switch(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        div()
+            .id("ag-sandbox")
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .cursor_pointer()
+            .text_size(px(13.))
+            .text_color(theme::text_muted())
+            .hover(|s| s.text_color(theme::text_primary()))
+            .tooltip(tooltip(tr!(
+                "An isolated environment: the game and its installer start without network and without your home folder. For apps from sources you do not trust. Allow what it needs later in the game's settings, Sandbox tab."
+            )))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.sandbox = !this.sandbox;
+                cx.notify();
+            }))
+            .child(mini_checkbox("ag-sandbox-sw", self.sandbox, false).mt(px(0.)))
+            .child(tr!("Run in a sandbox"))
+            .child(icon(Icon::InfoOutlined, px(14.), theme::text_dim()))
     }
 
     pub(super) fn form(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Div {
@@ -152,86 +252,28 @@ impl AddGameDialog {
         let (square_url, hero_url) = (text_of(&self.square, cx), text_of(&self.hero, cx));
         let title = text_of(&self.title, cx);
         let preview_hero = if hero_url.trim().is_empty() { square_url.clone() } else { hero_url.clone() };
-
-        let left = div()
-            .flex()
-            .flex_col()
-            .flex_none()
-            .gap(px(12.))
-            .w(px(SQUARE_W))
-            .child(self.art_box("ag-art-square", Slot::Square, &square_url, SQUARE_W, SQUARE_H, cx))
-            .child(self.art_box("ag-art-hero", Slot::Cover, &preview_hero, HERO_W, HERO_H, cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.))
-                    .child(
-                        div()
-                            .text_size(px(14.))
-                            .font_weight(theme::W_BOLD)
-                            .text_color(crate::theme::text_primary())
-                            .child(if title.trim().is_empty() { tr!("Title").to_string() } else { title.clone() }),
-                    )
-                    .child(meta_text(platform_label(self.platform))),
-            );
+        let left = self.art_column(&square_url, &preview_hero, cx);
 
         let mut right = div().flex().flex_col().flex_1().min_w_0().gap(px(16.));
-        if let Some(note) = self.top_note() {
-            right = right.child(panel().child(div().text_size(px(14.)).line_height(px(20.)).text_color(white()).child(note)));
+        if let Some(note) = self.note(cx) {
+            right = right.child(note);
         }
-        right = right.child(div().flex().flex_col().child(field_label(tr!("Game/App Title"))).child(input_box(&self.title, false)));
-
         let finding = self.finding;
-        right = right
-            .child(self.art_field(
-                "ag-square",
-                tr!("Square Art (paste an URL, pick a file or click the image to search the web)"),
-                &self.square,
-                Slot::Square,
-                cx,
-            ))
-            .child(self.art_field("ag-hero", tr!("Cover/Hero Art (optional, wide background)"), &self.hero, Slot::Cover, cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(action_button(
-                        "ag-find-art",
-                        ButtonKind::Glass,
-                        if finding { tr!("Searching\u{2026}") } else { tr!("Find art for this title") },
-                        !finding && !title.trim().is_empty(),
-                        cx.listener(|this, _, window, cx| this.find_art(window, cx)),
-                    ))
-                    .child(action_button(
-                        "ag-search-square",
-                        ButtonKind::Glass,
-                        tr!("Search the web: cover"),
-                        true,
-                        cx.listener(|this, _, window, cx| this.open_picker(Slot::Square, window, cx)),
-                    ))
-                    .child(action_button(
-                        "ag-search-hero",
-                        ButtonKind::Glass,
-                        tr!("Search the web: background"),
-                        true,
-                        cx.listener(|this, _, window, cx| this.open_picker(Slot::Cover, window, cx)),
-                    )),
-            );
-
-        right = right.child(self.platform_select(cx));
-
-        if self.platform == SideloadPlatform::Windows && !self.is_edit() {
-            right = right.child(self.wine_section(cx));
-        }
+        let find = icon_button_sm(
+            "ag-find-art",
+            ButtonKind::Glass,
+            Icon::AutoAwesome,
+            if finding { tr!("Searching\u{2026}") } else { tr!("Find art") },
+            !finding && !title.trim().is_empty(),
+            cx.listener(|this, _, window, cx| this.find_art(window, cx)),
+        );
+        right = right.child(labeled(tr!("Title"), input_box_with(&self.title, find.into_any_element()))).child(self.platform_tabs(cx));
 
         if self.platform == SideloadPlatform::Browser {
             right = right
                 .child(labeled(tr!("BrowserURL"), input_box(&self.url, false)))
                 .child(labeled(tr!("Custom User Agent"), input_box(&self.user_agent, false)))
-                .child(crate::ui::controls::card([checkbox("ag-fullscreen", self.fullscreen, tr!("Launch Fullscreen (F11 to exit)"))
+                .child(card([checkbox("ag-fullscreen", self.fullscreen, tr!("Launch Fullscreen (F11 to exit)"))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.fullscreen = !this.fullscreen;
                         cx.notify();
@@ -242,39 +284,31 @@ impl AddGameDialog {
         } else {
             let exe = text_of(&self.exe, cx);
             let has = !exe.is_empty();
-            right = right.child(path_field(
-                "ag-exe-pick",
-                Some(tr!("Select Executable")),
-                &self.exe,
-                has,
-                false,
-                cx.listener(move |this, _, window, cx| {
-                    if has {
-                        this.exe.update(cx, |s, cx| s.set_value("", window, cx));
-                    } else {
-                        choose_path(window, cx, false, tr!("Select Executable"), |this: &mut Self, path, window, cx| {
-                            this.exe.update(cx, |s, cx| s.set_value(path, window, cx));
-                        });
-                    }
-                }),
-            ));
-            if let Some(folder) = install_folder(&exe) {
-                right = right.child(meta_text(tr!("Install folder: {folder}", folder)));
+            right = right
+                .child(path_field(
+                    "ag-exe-pick",
+                    Some(tr!("Executable")),
+                    &self.exe,
+                    has,
+                    false,
+                    cx.listener(move |this, _, window, cx| {
+                        if has {
+                            this.exe.update(cx, |s, cx| s.set_value("", window, cx));
+                        } else {
+                            choose_path(window, cx, false, tr!("Select Executable"), |this: &mut Self, path, window, cx| {
+                                this.exe.update(cx, |s, cx| s.set_value(path, window, cx));
+                            });
+                        }
+                    }),
+                ))
+                .child(self.executable_notes(&exe, &title, cx));
+            if !self.is_edit() {
+                right = right.child(self.wine_section(cx));
             }
         }
 
         if self.offers_sandbox() {
-            right = right.child(crate::ui::controls::card([crate::ui::controls::toggle_row(
-                "ag-sandbox",
-                tr!("Run in a sandbox"),
-                Some(tr!("The game, and the installer run first, start without network and without your home folder. Exceptions are in the game's settings, Sandbox tab.")),
-                self.sandbox,
-            )
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.sandbox = !this.sandbox;
-                cx.notify();
-            }))
-            .into_any_element()]));
+            right = right.child(div().flex().child(self.sandbox_switch(cx)));
         }
 
         if !self.error.is_empty() {
@@ -330,7 +364,7 @@ impl AddGameDialog {
             let has = !exe.is_empty();
             col = col.child(path_field(
                 "ag-exe-pick",
-                Some(tr!("Select Executable")),
+                Some(tr!("Executable")),
                 &self.exe,
                 has,
                 false,

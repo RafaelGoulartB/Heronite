@@ -77,7 +77,7 @@ impl AddGameDialog {
             command: if by_command { command } else { String::new() },
         };
         let new_wine = (!self.is_edit() && platform == SideloadPlatform::Windows)
-            .then(|| (text_of(&self.prefix, cx).trim().to_string(), self.wine.as_ref().map(wine_to_value), self.bottle.clone()));
+            .then(|| (self.prefix_path(cx), self.wine.as_ref().map(wine_to_value), self.bottle.clone()));
         let sandbox = (self.offers_sandbox() && self.sandbox).then(|| Sandbox { enabled: true, ..Default::default() }.to_value());
         let (paths, home, existing_run_as, is_edit) =
             (self.ctx.data_paths.clone(), self.home.clone(), self.existing_run_as.clone(), self.is_edit());
@@ -170,7 +170,7 @@ impl AddGameDialog {
         cx.notify();
     }
 
-    /// "Run Installer First": runs a setup program inside the chosen prefix
+    /// "Run installer first": runs a setup program inside the chosen prefix
     /// with the chosen Wine, before the game exists.
     pub(super) fn run_installer(&mut self, exe: String, cx: &mut Context<Self>) {
         if self.installer_running {
@@ -180,7 +180,7 @@ impl AddGameDialog {
         self.notice.clear();
         self.error.clear();
         let mut map = game_config::load_game(&self.ctx.data_paths, &self.app_name, &self.home);
-        map.insert("winePrefix".into(), json!(text_of(&self.prefix, cx).trim()));
+        map.insert("winePrefix".into(), json!(self.prefix_path(cx)));
         if let Some(w) = &self.wine {
             map.insert("wineVersion".into(), wine_to_value(w));
         }

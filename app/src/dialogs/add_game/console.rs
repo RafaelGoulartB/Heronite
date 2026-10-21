@@ -263,10 +263,7 @@ impl AddGameDialog {
         if self.confirm_remove {
             return None;
         }
-        let url = normalize_url(&text_of(&self.url, cx));
-        let (exe, folder, command) = (text_of(&self.exe, cx), text_of(&self.folder, cx), text_of(&self.command, cx));
-        missing_hint(&text_of(&self.title, cx), self.platform, self.start(&exe, &folder, &command), &url)
-            .map(|m| (SharedString::from(m), theme::console_btn_y().into()))
+        self.missing_now(cx).map(|m| (SharedString::from(m), theme::console_btn_y().into()))
     }
 
     fn console_art(&self, url: &str, w: f32, h: f32, empty: &'static str, cx: &mut Context<Self>) -> Div {
@@ -412,15 +409,7 @@ impl AddGameDialog {
             TextField::Url => set(&self.url.clone(), text, window, cx),
             TextField::UserAgent => set(&self.user_agent.clone(), text, window, cx),
             TextField::Command => set(&self.command.clone(), text, window, cx),
-            TextField::Art(slot) => set(&self.art_input(slot), text, window, cx),
-        }
-    }
-
-    fn art_input(&self, slot: Slot) -> Entity<gpui_kit::component::input::InputState> {
-        if slot == Slot::Square {
-            self.square.clone()
-        } else {
-            self.hero.clone()
+            TextField::Art(slot) => set(self.art_input(slot), text, window, cx),
         }
     }
 
@@ -480,7 +469,7 @@ impl AddGameDialog {
 
     /// A on an art row: where the image comes from.
     fn open_art_sheet(&mut self, slot: Slot, window: &mut Window, cx: &mut Context<Self>) {
-        let has = !text_of(&self.art_input(slot), cx).trim().is_empty();
+        let has = !text_of(self.art_input(slot), cx).trim().is_empty();
         let mut rows = vec![
             Row::action("web", tr!("Search the web")).icon(Icon::FaSearch),
             Row::action("file", tr!("Choose an image file")).icon(Icon::FolderOpen),
