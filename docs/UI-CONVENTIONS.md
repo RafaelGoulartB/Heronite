@@ -256,7 +256,8 @@ their sum, Recalculate, and when expanded the sessions 3 per page to fix, delete
 the card menu has no "Edit playtime"), Launch (Play, the actions,
 the panel's launch settings), Compatibility (Wine / Proton), Performance (overlays, FPS limit, frame
 generation, image, system) and Saves (Ludusavi backups + cloud saves); a tab only goes away when the
-game has nothing for it. Descriptions are one short line saying the effect; paths and rare warnings
+game has nothing for it. Sandbox shows only for a game whose settings have the sandbox on (set when it
+was added or installed); turning it off there keeps the tab until the drawer closes. Descriptions are one short line saying the effect; paths and rare warnings
 only show when they matter. The Heroic
 panels (`dialogs/settings_panel`) build their cards with `parts::rows()` (`.child(toggle_row)`,
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →

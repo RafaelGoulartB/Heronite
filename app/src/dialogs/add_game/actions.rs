@@ -22,8 +22,8 @@ use crate::dialogs::settings_panel::logic::wine_to_value;
 use crate::dialogs::DialogEvent;
 
 impl AddGameDialog {
-    /// A new Windows or Linux game can start in the sandbox (an existing
-    /// game changes it in its settings' Sandbox tab).
+    /// A new Windows or Linux game can start in the sandbox (a game in it
+    /// changes it in its settings' Sandbox tab, which only such games have).
     pub(super) fn offers_sandbox(&self) -> bool {
         !self.is_edit() && matches!(self.platform, SideloadPlatform::Windows | SideloadPlatform::Linux)
     }

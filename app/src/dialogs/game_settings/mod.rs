@@ -157,7 +157,12 @@ impl GameSettingsDialog {
         let launch = Self::build_launch(&game, window, cx);
         let actions = Self::build_actions(&game, &ctx.data_paths);
         let facts = GameFacts::of(&game);
-        let sections = facts.sections();
+        let mut sections = facts.sections();
+        // The Sandbox tab only for a game put in the sandbox (when it was
+        // added or installed). Decided once: turning it off here keeps the tab.
+        if !sandboxed(&ctx, &game.app_name) {
+            sections.retain(|s| *s != Section::Sandbox);
+        }
         let panel = (!sections.is_empty()).then(|| {
             let start = tab.section().filter(|s| sections.contains(s)).unwrap_or(sections[0]);
             let panel = cx.new(|cx| SettingsPanel::new(ctx.data_paths.clone(), Target::Game(facts), start, window, cx));
@@ -411,3 +416,10 @@ impl Render for GameSettingsDialog {
 
 /// Drawer width (px).
 const DRAWER_W: f32 = 580.;
+
+/// The game's settings have the sandbox on (a tiny read of its config).
+fn sandboxed(ctx: &DialogCtx, app_name: &str) -> bool {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+    let settings = heronite_data::game_config::load_game(&ctx.data_paths, app_name, &home);
+    heronite_launch::sandbox::Sandbox::from_map(&settings).enabled
+}
