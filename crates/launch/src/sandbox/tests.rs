@@ -208,6 +208,16 @@ fn every_way_to_start_a_game_or_a_tool_runs_inside() {
     assert!(is_wrapped(&crate::wine_tools::wine_command_for(&ctx(), &fresh, &s, parts, None).unwrap()));
 }
 
+/// `msiexec /i ~/setup.msi`: the file is shown, not the whole home.
+#[test]
+fn a_file_in_the_home_folder_is_shown_alone() {
+    let s = windows_settings(json!({"enabled": true}));
+    let p = probe().with_path("/home/u/setup.msi");
+    let parts = vec!["msiexec".to_string(), "/i".into(), "/home/u/setup.msi".into()];
+    let cmd = crate::wine_tools::wine_command_for(&ctx(), &p, &s, parts, None).unwrap();
+    assert!(cmd.args[1].contains("--ro-bind-try /home/u/setup.msi /home/u/setup.msi"), "{cmd:?}");
+}
+
 #[test]
 fn a_game_that_cannot_be_put_in_the_sandbox_does_not_start() {
     let linux = settings(json!({KEY: {"enabled": true}}));

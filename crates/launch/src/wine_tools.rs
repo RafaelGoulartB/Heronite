@@ -180,8 +180,16 @@ pub fn wine_command_for(
     install_path: Option<&str>,
 ) -> Result<Command, String> {
     let wine = prepare(ctx, probe, settings)?;
-    // The program and the files it is given (`msiexec /i <file>`, `regedit <file>`).
-    let read = parts.iter().filter(|p| p.starts_with('/') && probe.exists(p)).map(|p| node_dirname(p)).filter(|d| d != "/").collect();
+    // The program and the files it is given (`msiexec /i <file>`, `regedit <file>`):
+    // their folder, or only them when that folder is the home or holds it.
+    let home = probe.home();
+    let home = home.trim_end_matches('/');
+    let wide = |d: &str| d == "/" || d == home || home.strip_prefix(d).is_some_and(|r| r.starts_with('/'));
+    let read = parts
+        .iter()
+        .filter(|p| p.starts_with('/') && probe.exists(p))
+        .filter_map(|p| [node_dirname(p), p.clone()].into_iter().find(|d| !wide(d)))
+        .collect();
     let cmd = run_in_prefix_at(ctx, probe, &wine, parts, None, install_path);
     confined(ctx, probe, &wine.settings, cmd, install_path, read)
 }
