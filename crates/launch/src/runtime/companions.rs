@@ -117,6 +117,8 @@ impl<'a> Companions<'a> {
         let now = Instant::now();
         let (due, later): (Vec<_>, Vec<_>) = self.waiting.drain(..).partition(|(at, _)| *at <= now);
         self.waiting = later;
+        // Looked up once for all of them (it reads every process).
+        let mut sandbox: Option<Option<u32>> = None;
         for (_, plan) in due {
             let path = &plan.path;
             if !probe.exists(path) {
@@ -130,7 +132,7 @@ impl<'a> Companions<'a> {
             }
             let command = match self.sandbox_root {
                 None => plan.command.clone(),
-                Some(root) => match crate::sandbox::find_sandbox(&*shared.procs, root) {
+                Some(root) => match *sandbox.get_or_insert_with(|| crate::sandbox::find_sandbox(&*shared.procs, root)) {
                     Some(pid) => crate::sandbox::join(&plan.command, pid),
                     // The sandbox may still be starting.
                     None if now.duration_since(self.started) < crate::sandbox::FOUND_WITHIN => {
