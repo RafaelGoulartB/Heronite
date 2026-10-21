@@ -62,8 +62,8 @@ pub enum Left {
     Logs,
     /// Temp files, old `.bak` copies, runtime markers.
     Temp,
-    /// The home folders games in the sandbox write to (`sandbox/`): part of
-    /// the games, like their prefixes.
+    /// The home folders games in the sandbox write to (`sandbox/`): left out
+    /// like the games' prefixes, which they belong with.
     Sandbox,
 }
 
