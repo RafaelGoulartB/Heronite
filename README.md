@@ -53,6 +53,7 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
 - **Wine Manager:** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage Wine prefixes.
 - **Emulators:** detect installed emulators or add your own with RetroArch cores, scan ROM folders, and continue from save states.
 - **In-game overlay (beta):** press the controller's Guide button (or a shortcut) for a panel over the game with volume, microphone, FPS limit, screenshots, and journal notes. Guide + Y marks a moment to write about later.
+- **Replay (off by default):** keep the last seconds of the game (30 unless changed) and save them with Guide + X as a moment in its journal, recorded by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/) on the graphics card's encoder. Settings shows the memory it takes.
 
 <table>
   <tr>
