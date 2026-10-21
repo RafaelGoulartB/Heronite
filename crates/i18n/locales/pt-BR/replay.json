@@ -1,6 +1,7 @@
 {
   "A bigger screen is scaled down to it: less work for the graphics card and less memory.": "Uma tela maior é reduzida para caber: menos trabalho para a placa de vídeo e menos memória.",
   "A longer replay takes more memory while you play.": "Um replay mais longo ocupa mais memória enquanto você joga.",
+  "A replay saved in-game. Click to write about it.": "Um replay salvo no jogo. Clique para escrever sobre ele.",
   "About {size} of RAM": "Cerca de {size} de RAM",
   "About {size} of RAM while a game runs": "Cerca de {size} de RAM enquanto um jogo roda",
   "Already saving a replay": "Já está salvando um replay",
@@ -66,6 +67,7 @@
   "The last {n} s, in its replays folder.": "Os últimos {n} s, na pasta replays.",
   "The last {n} s. Write about it in Notes.": "Os últimos {n} s. Escreva sobre eles em Notas.",
   "The monitor was not found": "O monitor não foi encontrado",
+  "The replay is no longer at {path}": "O replay não está mais em {path}",
   "The screen could not be captured": "A tela não pôde ser capturada",
   "The screen's": "A da tela",
   "This graphics card cannot encode it: H.264 is used instead.": "Esta placa de vídeo não codifica esse formato: H.264 é usado no lugar.",
