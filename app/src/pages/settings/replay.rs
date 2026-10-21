@@ -161,26 +161,38 @@ fn estimate_card(st: &State) -> Div {
         n = p.seconds,
         margin = heronite_overlay::replay::plan::PANEL_MARGIN
     );
-    let mut col = div()
+    let stats = div()
+        .flex()
+        .flex_wrap()
+        .gap(px(32.))
+        .child(stat(tr!("About {size}", size = format_size(e.ram_bytes)), tr!("Memory (RAM)"), tr!("Grows with the length saved.")))
+        .child(stat(
+            tr!("About {size}", size = format_size(e.vram_bytes)),
+            tr!("Video memory (VRAM)"),
+            tr!("Grows with the video's resolution."),
+        ));
+    let col = div()
         .flex()
         .flex_col()
         .gap(px(6.))
         .py(px(12.))
         .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(tr!("Memory while a game runs")))
-        .child(
-            div()
-                .text_size(px(22.))
-                .font_weight(theme::W_BOLD)
-                .text_color(theme::text_primary())
-                .child(tr!("About {size} of RAM", size = format_size(e.ram_bytes))),
-        )
+        .child(stats.mb(px(4.)))
         .child(meta_text(screen))
-        .child(meta_text(kept));
-    if let Some(v) = e.vram_bytes {
-        col = col.child(meta_text(tr!("It also takes about {size} of the graphics card's memory.", size = format_size(v))));
-    }
-    col = col.child(meta_text(tr!("Each replay takes about {size} on disk.", size = format_size(e.file_bytes))));
+        .child(meta_text(kept))
+        .child(meta_text(tr!("Each replay takes about {size} on disk.", size = format_size(e.file_bytes))));
     card_box().child(col)
+}
+
+/// One number of the estimate, what it is and what makes it grow.
+fn stat(value: String, label: &'static str, grows: &'static str) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(2.))
+        .child(div().text_size(px(22.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(value))
+        .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(label))
+        .child(meta_text(grows))
 }
 
 fn program_text(d: Option<&Detected>) -> (String, bool) {
@@ -319,7 +331,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         row(tr!("Frame rate"), None, choice_tabs("replay-fps", &rates, p.fps, cx, |p, v| p.fps = v)).into_any_element(),
         row(
             tr!("Resolution"),
-            Some(tr!("A bigger screen is scaled down to it: less work for the graphics card and less memory.")),
+            Some(tr!("A bigger screen is scaled down to it: less work for the graphics card, less RAM and less video memory.")),
             choice_tabs("replay-resolution", &sizes, p.resolution, cx, |p, v| p.resolution = v),
         )
         .into_any_element(),
@@ -417,7 +429,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
 /// The RAM line for console mode.
 fn estimate_line(st: &State) -> String {
     let (e, _, _) = estimate_for(st);
-    tr!("About {size} of RAM while a game runs", size = format_size(e.ram_bytes))
+    tr!("About {ram} of RAM and {vram} of video memory while a game runs", ram = format_size(e.ram_bytes), vram = format_size(e.vram_bytes))
 }
 
 /// Console mode rows.

@@ -20,15 +20,22 @@ pub const PANEL_MARGIN: u32 = 10;
 const KEYINT: u32 = 2;
 /// Opus, per audio track.
 pub const AUDIO_KBPS: u32 = 128;
-/// Private memory gpu-screen-recorder takes besides the buffer (its heap and
-/// CUDA's), measured on an RTX 5070 with an empty buffer. Without CUDA it is
+/// Private memory gpu-screen-recorder takes besides the buffer, measured on
+/// an RTX 5070 with an empty buffer: its heap and CUDA's, and the sound's
+/// (PipeWire, the Opus encoder) when it records some. Without CUDA it is
 /// less (an estimate: not measured).
-const PROCESS_BYTES_NVIDIA: u64 = 115 * MB;
-const PROCESS_BYTES_OTHER: u64 = 70 * MB;
-/// Video memory of the CUDA context and NVENC session (measured: 363 MiB at
-/// 3440 × 1440), plus the frames it keeps.
-const VRAM_BYTES_NVIDIA: u64 = 300 * MB;
-const VRAM_FRAMES: u64 = 8;
+const PROCESS_BYTES_NVIDIA: u64 = 70 * MB;
+const PROCESS_BYTES_OTHER: u64 = 40 * MB;
+const PROCESS_BYTES_AUDIO: u64 = 40 * MB;
+/// Video memory: the CUDA context and NVENC session, plus the frames the
+/// encoder keeps at the video's size. Measured on an RTX 5070 (the card's
+/// used memory with and without the recorder): 385 MiB for a 3440 × 1440
+/// video, 229 MiB for 1920 × 804. VA-API has no CUDA context and keeps
+/// fewer frames (an estimate: not measured).
+const VRAM_BYTES_NVIDIA: u64 = 160 * MB;
+const VRAM_PER_MEGAPIXEL_NVIDIA: u64 = 46 * MB;
+const VRAM_BYTES_OTHER: u64 = 40 * MB;
+const VRAM_PER_MEGAPIXEL_OTHER: u64 = 18 * MB;
 const MB: u64 = 1024 * 1024;
 
 /// Bits per pixel of each frame, for H.264.
@@ -88,8 +95,9 @@ pub struct Estimate {
     pub video_kbps: u32,
     /// Memory while a game runs: the buffer plus the recorder itself.
     pub ram_bytes: u64,
-    /// Video memory, when known (NVIDIA).
-    pub vram_bytes: Option<u64>,
+    /// The graphics card's memory while a game runs: it grows with the
+    /// video's size, not its length.
+    pub vram_bytes: u64,
     /// One saved replay on disk.
     pub file_bytes: u64,
 }
@@ -102,10 +110,11 @@ pub fn estimate(prefs: &ReplayPrefs, codec: Codec, screen_w: u32, screen_h: u32,
     // Each packet is kept with a little bookkeeping, and CBR overshoots a bit.
     let buffer = u64::from(buffer_seconds(prefs) + KEYINT) * bytes_per_sec * 21 / 20;
     let nvidia = vendor.eq_ignore_ascii_case("nvidia");
-    let process = if nvidia { PROCESS_BYTES_NVIDIA } else { PROCESS_BYTES_OTHER };
-    // A frame in NV12: 1.5 bytes per pixel, at the screen's size (scaling comes after).
-    let frame = u64::from(screen_w) * u64::from(screen_h) * 3 / 2;
-    let vram_bytes = nvidia.then(|| VRAM_BYTES_NVIDIA + VRAM_FRAMES * frame);
+    let audio = if audio_tracks(prefs) > 0 { PROCESS_BYTES_AUDIO } else { 0 };
+    let process = (if nvidia { PROCESS_BYTES_NVIDIA } else { PROCESS_BYTES_OTHER }) + audio;
+    let (base, per_megapixel) =
+        if nvidia { (VRAM_BYTES_NVIDIA, VRAM_PER_MEGAPIXEL_NVIDIA) } else { (VRAM_BYTES_OTHER, VRAM_PER_MEGAPIXEL_OTHER) };
+    let vram_bytes = base + per_megapixel * u64::from(width) * u64::from(height) / 1_000_000;
     Estimate { width, height, video_kbps, ram_bytes: buffer + process, vram_bytes, file_bytes: u64::from(prefs.seconds) * bytes_per_sec }
 }
 
@@ -237,13 +246,21 @@ mod tests {
         assert!(long.ram_bytes > thirty.ram_bytes);
         // 30 s + 10 s of margin + 2 s of keyframe at 17.5 Mbit/s + 128 kbit/s.
         let buffer = 42 * (17_500 + 128) * 125 * 21 / 20;
-        assert_eq!(thirty.ram_bytes, buffer + PROCESS_BYTES_NVIDIA);
+        assert_eq!(thirty.ram_bytes, buffer + PROCESS_BYTES_NVIDIA + PROCESS_BYTES_AUDIO);
         assert_eq!(thirty.file_bytes, 30 * (17_500 + 128) * 125);
+        assert_eq!(long.vram_bytes, thirty.vram_bytes, "the length is in RAM only");
         assert!(estimate(&p, Codec::H264, 2560, 1440, "amd").ram_bytes < thirty.ram_bytes);
-        assert_eq!(estimate(&p, Codec::H264, 2560, 1440, "amd").vram_bytes, None);
-        // Measured: 363 MiB at 3440 × 1440.
-        let vram = estimate(&p, Codec::H264, 3440, 1440, "nvidia").vram_bytes.unwrap() / MB;
-        assert!((340..390).contains(&vram), "{vram}");
+    }
+
+    #[test]
+    fn video_memory_follows_the_video_size() {
+        let mib = |e: Estimate| e.vram_bytes / MB;
+        let p = ReplayPrefs::default();
+        // Measured on an RTX 5070: 385 MiB at 3440 × 1440, 229 MiB scaled to 1920 × 804.
+        assert!((375..395).contains(&mib(estimate(&p, Codec::H264, 3440, 1440, "nvidia"))));
+        let p1080 = ReplayPrefs { resolution: Resolution::P1080, ..p.clone() };
+        assert!((220..240).contains(&mib(estimate(&p1080, Codec::H264, 3440, 1440, "nvidia"))));
+        assert!(estimate(&p, Codec::H264, 3440, 1440, "amd").vram_bytes < estimate(&p, Codec::H264, 3440, 1440, "nvidia").vram_bytes);
     }
 
     #[test]
