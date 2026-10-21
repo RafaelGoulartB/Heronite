@@ -192,8 +192,10 @@ impl AddGameDialog {
             .flex()
             .flex_wrap()
             .items_center()
-            .gap(px(10.))
-            .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Not installed yet?")));
+            .gap(px(2.))
+            .text_size(px(12.5))
+            .line_height(px(16.))
+            .child(div().mr(px(4.)).text_color(theme::text_dim()).child(tr!("Not installed yet?")));
         if with_installer {
             let has_title = !title.trim().is_empty();
             let can_run = !self.saving && !self.installer_running && has_title;
@@ -204,34 +206,28 @@ impl AddGameDialog {
                 tr!("Add a title first: the game's Wine prefix is named after it.")
             };
             row = row.child(
-                icon_button_sm(
-                    "ag-run-installer",
-                    ButtonKind::Glass,
-                    Icon::PlayArrow,
-                    label,
-                    can_run,
-                    cx.listener(|_, _, window, cx| {
-                        choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
-                            this.run_installer(path, cx)
-                        });
-                    }),
-                )
-                .tooltip(tooltip(tip)),
+                link_action("ag-run-installer", Icon::PlayArrow, label, can_run)
+                    .when(can_run, |d| {
+                        d.on_click(cx.listener(|_, _, window, cx| {
+                            choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                                this.run_installer(path, cx)
+                            });
+                        }))
+                    })
+                    .tooltip(tooltip(tip)),
             );
         }
         if with_script {
+            if with_installer {
+                row = row.child(div().text_color(theme::text_dim()).child("\u{b7}"));
+            }
+            let can_open = !self.saving && !self.installer_running;
             row = row.child(
-                icon_button_sm(
-                    "ag-use-script",
-                    ButtonKind::Glass,
-                    Icon::Description,
-                    tr!("Use an install script"),
-                    !self.saving && !self.installer_running,
-                    cx.listener(|this, _, window, cx| this.open_script(window, cx)),
-                )
-                .tooltip(tooltip(tr!(
-                    "Install it with a YAML install script: it gets the files, sets the game up and adds it to your Collection."
-                ))),
+                link_action("ag-use-script", Icon::Description, tr!("Use an install script"), can_open)
+                    .when(can_open, |d| d.on_click(cx.listener(|this, _, window, cx| this.open_script(window, cx))))
+                    .tooltip(tooltip(tr!(
+                        "Install it with a YAML install script: it gets the files, sets the game up and adds it to your Collection."
+                    ))),
             );
         }
         Some(row)
@@ -430,4 +426,22 @@ impl AddGameDialog {
         }
         col
     }
+}
+
+/// A quiet action in a line of text: a small icon and the label in the
+/// accent, no fill until the pointer is over it; dim when it cannot run.
+fn link_action(id: &'static str, ic: Icon, label: &'static str, enabled: bool) -> Stateful<Div> {
+    let color = if enabled { theme::accent() } else { theme::text_dim() };
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(px(5.))
+        .px(px(6.))
+        .py(px(3.))
+        .rounded(px(8.))
+        .text_color(color)
+        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::white_a(0.06))))
+        .child(icon(ic, px(13.), color))
+        .child(label)
 }

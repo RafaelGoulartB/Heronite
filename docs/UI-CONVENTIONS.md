@@ -226,16 +226,16 @@ slots (build the header with `kicker`, `dialog_title`, `close_button`).
 opens its menu (Find art while it is empty, Search the web, Choose an image file, Type an address, which shows an
 address field under the previews until it loses focus, and Remove the image). On the right: the store note (Epic, GOG,
 Amazon; "Got it" hides it for good, `ui-state.json` `dismissedNotes`), Title with Find art inside it, Platform tabs,
-then how the game starts (Windows: the executable, with "Not installed yet?" and small "Run installer first" and "Use
-an install script" buttons under it; Linux: the script one only), the Wine / Proton card (open; closed, the version
-and the prefix show as pills; the prefix is named after the title) and a small "Run in a sandbox" switch whose tooltip
-(`ui::tooltip`) says what it is for. The footer says what is still missing and keeps "Add game" disabled until then.
-"Use an install script" shows the "Install from script" faces in place of the form
-(`ScriptInstallDialog::inside_add_game`: title "Add game", a back arrow, `ui::dialog::dialog_scrolled_with_back`; Esc
-goes back too, the install keeps going); the ☰ menu has no row of its own for scripts (the palette still opens them
-directly). `HERONITE_DEBUG_DIALOG=add-game:<states>` (joined with `+`): `windows`, `linux`, `command`, `browser`,
-`shared`, `wine`, `wine-open`, `art-menu`, `address`, `no-note`, `script`, `picker`, `art=<cover url>[,<background
-url>]`.
+then how the game starts (Windows: the executable, with one quiet line under it: "Not installed yet?" and the links
+"Run installer first" · "Use an install script" (accent text and a small icon, no fill; tooltips say what they do);
+Linux: the script one only), the Wine / Proton card (open; closed, the version and the prefix show as pills; the
+prefix is named after the title) and a small "Run in a sandbox" switch whose tooltip (`ui::tooltip`) says what it is
+for. The footer says what is still missing and keeps "Add game" disabled until then. "Use an install script" shows the
+"Install from script" faces in place of the form (`ScriptInstallDialog::inside_add_game`: title "Add game", a back
+arrow, `ui::dialog::dialog_scrolled_with_back`; Esc goes back too, the install keeps going); the ☰ menu has no row of
+its own for scripts (the palette still opens them directly). `HERONITE_DEBUG_DIALOG=add-game:<states>` (joined with
+`+`): `windows`, `linux`, `command`, `browser`, `shared`, `wine`, `wine-open`, `art-menu`, `address`, `no-note`,
+`script`, `picker`, `art=<cover url>[,<background url>]`.
 
 **Controls** (`ui::controls`):
 - `toggle(id, on, disabled)` 40x24 switch (spring-animated knob unless
