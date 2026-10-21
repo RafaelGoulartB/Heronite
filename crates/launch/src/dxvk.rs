@@ -144,7 +144,13 @@ pub fn install_remove(env: &Env, settings: &GameSettings, tool: Tool, action: Ac
         return Err(tr!("The prefix's system folders lead outside it, so nothing was copied into them").into());
     }
     let marker = prefix.join(format!("current_{}", tool.name()));
-    let current = fs::read_to_string(&marker).ok().and_then(|t| t.lines().next().map(str::to_string)).unwrap_or_default();
+    // Not through a link (see `copy_dll`).
+    let current = fs::symlink_metadata(&marker)
+        .ok()
+        .filter(|m| m.is_file())
+        .and_then(|_| fs::read_to_string(&marker).ok())
+        .and_then(|t| t.lines().next().map(str::to_string))
+        .unwrap_or_default();
 
     if action == Action::Restore {
         let _ = fs::remove_file(&marker);

@@ -31,10 +31,13 @@ pub fn unique_tmp_path(path: &Path) -> PathBuf {
 /// Writes `bytes` to a unique temp file next to `path`, fsyncs it and renames
 /// it over `path`. The temp file is removed if anything fails. `mode` sets the
 /// Unix permissions (the target keeps the temp file's, not the old one's).
+/// The temp file is made new, never written through a link left in its place
+/// (a Wine prefix is writable by the programs in the sandbox).
 pub fn write_atomic(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<()> {
     let tmp = unique_tmp_path(path);
+    let _ = fs::remove_file(&tmp);
     let result = (|| {
-        let mut f = fs::File::create(&tmp)?;
+        let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
         f.write_all(bytes)?;
         #[cfg(unix)]
         if let Some(mode) = mode {

@@ -211,10 +211,19 @@ pub fn ensure(paths: &DataPaths, net: &dyn Net, tool: Tool, vulkan: Vulkan, canc
     installed_dir(paths, tool).ok_or_else(|| tr!("{tool} was not installed", tool = tool.label()))
 }
 
-/// Writes a file next to its final place and renames it over.
+/// Writes a file next to its final place and renames it over. The file next
+/// to it is made new, never written through: in a prefix, a program in the
+/// sandbox could leave a link there to any file of the user.
 pub fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
+    use std::io::Write;
     let tmp = path.with_extension("tmp-write");
-    fs::write(&tmp, contents).map_err(|e| format!("writing {}: {e}", path.display()))?;
+    let _ = fs::remove_file(&tmp);
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .and_then(|mut f| f.write_all(contents.as_bytes()))
+        .map_err(|e| format!("writing {}: {e}", path.display()))?;
     fs::rename(&tmp, path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         format!("writing {}: {e}", path.display())
