@@ -4,7 +4,8 @@
 //!
 //! Saved from the panel, the replay asks for the time the panel was open
 //! too and that time is cut off its end afterwards: the panel is in the
-//! picture (the recorder captures the whole monitor).
+//! picture (the recorder captures the whole monitor). The panel can also
+//! turn the replay off until the game ends.
 
 use std::time::Duration;
 
@@ -17,13 +18,20 @@ use super::moment::may_write;
 use super::toast::Notice;
 use super::{OverlayService, HIDE_BEFORE_CAPTURE};
 use crate::icons::Icon;
+use crate::services::replay::PanelState;
 
 impl OverlayService {
-    /// Seconds a save keeps when the replay is on (for the panel's row).
-    pub fn replay_seconds(cx: &App) -> Option<u32> {
-        let service = crate::services::replay::get(cx)?;
-        let s = service.read(cx);
-        s.prefs().enabled.then_some(s.prefs().options.seconds)
+    /// The replay of the game running, for the panel's rows (`None` when it
+    /// is off for it).
+    pub fn replay_panel(cx: &App) -> Option<PanelState> {
+        crate::services::replay::get(cx)?.read(cx).panel_state()
+    }
+
+    /// Turns the replay off until the game ends, or back on.
+    pub fn set_replay_on(on: bool, cx: &mut App) {
+        if let Some(service) = crate::services::replay::get(cx) {
+            service.update(cx, |s, cx| s.set_session_on(on, cx));
+        }
     }
 
     /// Saves the replay of the running game and marks it in its journal.

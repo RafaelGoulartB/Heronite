@@ -290,6 +290,7 @@ fn status_text(st: &State, cx: &App) -> (String, bool) {
     match service.read(cx).status() {
         Status::Off => (tr!("Off").into(), true),
         Status::Idle => (tr!("Waiting for a game").into(), true),
+        Status::OffForSession => (tr!("Off until the game ends (overlay)").into(), true),
         Status::Starting => (tr!("Starting…").into(), true),
         Status::Recording { monitor, codec, vulkan } => {
             let encoder = encoder_name(*vulkan, info_of(st));
