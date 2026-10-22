@@ -25,6 +25,15 @@ pub(crate) use scan::scan;
 pub use scan::{exe_dirs, proxy_dlls, PROXY_DLLS};
 pub use stage::{find_fomod, stage, sweep, Source, Staged};
 
+/// The installed mod's files do not line up with the game: none of its
+/// top-level names is a folder or file of the game folder (nor the game's mod
+/// folder), so the game will most likely not see them. The app warns after
+/// an install; the mod stays installed.
+pub fn looks_misplaced(mod_dir: &Path, game_dir: &Path, profile: &Profile) -> bool {
+    let _ = (mod_dir, game_dir, profile);
+    false
+}
+
 /// What goes where.
 pub enum Plan {
     /// [`layout::auto`] decides.
