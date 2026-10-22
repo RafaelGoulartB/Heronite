@@ -28,11 +28,6 @@ pub fn save_replay(socket: &Path, seconds: u32) -> Result<PathBuf, String> {
     reply.as_str().filter(|p| !p.is_empty()).map(PathBuf::from).ok_or_else(|| "the recorder did not say where it saved".to_string())
 }
 
-/// Asks it to end (a replay is not saved). Blocking for a moment.
-pub fn stop(socket: &Path) -> Result<(), String> {
-    request(socket, "stop", Value::Null, Duration::from_secs(2)).map(|_| ())
-}
-
 /// Sends one request and waits for its answer; the answer's `data` on success.
 fn request(socket: &Path, name: &str, data: Value, timeout: Duration) -> Result<Value, String> {
     let mut stream = connect(socket)?;
