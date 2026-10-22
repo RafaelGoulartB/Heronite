@@ -40,8 +40,12 @@ const RESTART_AFTER: Duration = Duration::from_millis(1500);
 const AUDIO_WAIT: Duration = Duration::from_secs(180);
 const AUDIO_POLL: Duration = Duration::from_secs(5);
 /// Hidden folder of the captures root where the recorder writes a save
-/// before it moves into the game's folder (same disk: a rename).
+/// before it moves into the game's folder (same disk: a rename), and its
+/// buffer when kept on disk.
 const STAGING: &str = ".heronite-replay";
+/// A save left in [`STAGING`] this long was never moved (the app ended
+/// meanwhile): it goes.
+const STALE_AFTER: Duration = Duration::from_secs(60 * 60);
 
 /// What the replay is doing.
 #[derive(Clone, Debug, PartialEq)]
@@ -591,7 +595,9 @@ fn launch(
     };
     let waits_for_game_audio = opts.audio == Audio::Game && game_audio.is_none();
     let monitor = screen.name.clone();
-    let plan = Plan::new(opts, screen, encoding, game_audio, root.join(STAGING), program.socket_path());
+    let staging = root.join(STAGING);
+    clean_staging(&staging);
+    let plan = Plan::new(opts, screen, encoding, game_audio, staging, program.socket_path());
     let recorder = Recorder::start(program.clone(), plan, on_state).map_err(|e| e.to_string())?;
     Ok(Launched { recorder, root, monitor, codec, detected: (program, info), waits_for_game_audio })
 }
@@ -606,6 +612,28 @@ fn pick_screen(info: &Info, opts: &Options, game_pid: Option<u32>) -> Option<bac
         .or_else(|| info.screens.first().cloned())
 }
 
+/// Removes what earlier recorders left in the staging folder: their buffers
+/// on disk (`gsr-replay-*`, left when one was killed) and saves never moved
+/// (`Replay_*`, older than [`STALE_AFTER`]). Called with no recorder running.
+fn clean_staging(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let path = e.path();
+        let stale = e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > STALE_AFTER);
+        let removed = if name.starts_with("gsr-replay-") && path.is_dir() {
+            std::fs::remove_dir_all(&path).is_ok()
+        } else if name.starts_with("Replay_") && stale {
+            std::fs::remove_file(&path).is_ok()
+        } else {
+            false
+        };
+        if removed {
+            log::info!("replay: removed the leftover {}", path.display());
+        }
+    }
+}
+
 /// Moves a saved replay into `folder` under the captures' name (its date
 /// and time), copying when the folders are on different disks.
 fn move_into(staged: &Path, folder: &Path) -> Result<PathBuf, String> {
@@ -613,7 +641,15 @@ fn move_into(staged: &Path, folder: &Path) -> Result<PathBuf, String> {
     let ext = staged.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
     let target = unique_capture_path(folder, chrono::Local::now().naive_local(), ext);
     if std::fs::rename(staged, &target).is_err() {
-        std::fs::copy(staged, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+        if let Err(e) = std::fs::copy(staged, &target) {
+            let _ = std::fs::remove_file(&target);
+            return Err(tr!(
+                "Saved in {staged} but not moved to {folder}: {err}",
+                staged = staged.display(),
+                folder = folder.display(),
+                err = e
+            ));
+        }
         let _ = std::fs::remove_file(staged);
     }
     Ok(target)
@@ -624,7 +660,7 @@ mod tests {
     // Not `super::*`: GPUI's prelude has a `test` attribute of its own.
     use heronite_data::replay_prefs::ReplayPrefs;
 
-    use super::{decide, move_into, Status, STAGING};
+    use super::{clean_staging, decide, move_into, Status, STAGING};
 
     #[test]
     fn it_records_only_while_on_and_a_game_runs() {
@@ -647,5 +683,26 @@ mod tests {
         assert_eq!(saved.parent(), Some(folder.as_path()));
         assert!(saved.file_name().unwrap().to_str().unwrap().ends_with(".mp4"));
         assert!(saved.is_file() && !staged.exists());
+    }
+
+    #[test]
+    fn leftovers_of_earlier_recorders_go() {
+        let dir = tempfile::tempdir().unwrap();
+        let staging = dir.path().join(STAGING);
+        let buffer = staging.join("gsr-replay-2026-10-21_20-35-24.gsr");
+        std::fs::create_dir_all(&buffer).unwrap();
+        std::fs::write(buffer.join("Replay_0.gsr"), b"x").unwrap();
+        let fresh = staging.join("Replay_2026-10-21_20-40-00.mp4");
+        let old = staging.join("Replay_2026-10-20_10-00-00.mp4");
+        let other = staging.join("notes.txt");
+        for f in [&fresh, &old, &other] {
+            std::fs::write(f, b"x").unwrap();
+        }
+        let day_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(24 * 3600);
+        std::fs::File::options().write(true).open(&old).unwrap().set_modified(day_ago).unwrap();
+        clean_staging(&staging);
+        assert!(!buffer.exists() && !old.exists());
+        assert!(fresh.exists(), "a save may still be moving");
+        assert!(other.exists(), "only what the recorder writes");
     }
 }

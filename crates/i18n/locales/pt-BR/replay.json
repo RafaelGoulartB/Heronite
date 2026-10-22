@@ -62,6 +62,7 @@
   "Room for the panel": "Margem para o painel",
   "Save replay": "Salvar replay",
   "Saved in": "Salvo em",
+  "Saved in {staged} but not moved to {folder}: {err}": "Salvo em {staged}, mas não movido para {folder}: {err}",
   "Saves the replay (Settings → Replay) and marks it as a moment in the game's journal.": "Salva o replay (Configurações → Replay) e o marca como um momento no diário do jogo.",
   "Sound": "Som",
   "Still starting: try again in a moment": "Ainda começando: tente de novo em instantes",
