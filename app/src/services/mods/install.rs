@@ -73,8 +73,10 @@ fn install_archive(env: &JobEnv, path: &Path, build: Build) -> Result<ModEntry, 
     env.stage(JobStage::Installing);
     let ctx = InstallCtx { dirs: &dirs, game_dir: found.dir.as_deref(), profile: &profile };
     let id = {
-        // The commit writes the list it is given: keep the others' writes out.
+        // The commit writes the list it is given: keep the others' writes out,
+        // and give it the latest list so a toggle made meanwhile is not lost.
         let _io = env.shared.lock_io();
+        list = env.shared.list();
         install::commit(&ctx, &mut list, &staged, plan, entry, replace.as_deref(), &env.cancel)?
     };
     let built = list.get(&id).cloned().ok_or_else(|| tr!("The mod was not added to the list").to_string())?;
