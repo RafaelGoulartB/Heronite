@@ -1,0 +1,20 @@
+{
+  "Cannot use {path}: it is not a folder": "Não é possível usar {path}: não é uma pasta",
+  "fuse-overlayfs did not mount {path}: {error}": "O fuse-overlayfs não montou {path}: {error}",
+  "fuse-overlayfs failed: {error}": "O fuse-overlayfs falhou: {error}",
+  "fuse-overlayfs is needed to apply mods and could not be found. Install the fuse-overlayfs package.": "O fuse-overlayfs é necessário para aplicar mods e não foi encontrado. Instale o pacote fuse-overlayfs.",
+  "fuse-overlayfs is not available for {arch}; install it with your package manager": "O fuse-overlayfs não está disponível para {arch}; instale-o com o gerenciador de pacotes",
+  "Could not download fuse-overlayfs: {error}": "Não foi possível baixar o fuse-overlayfs: {error}",
+  "Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.": "O Heronite precisa do FUSE (fusermount3) para aplicar mods. Instale o pacote fuse3.",
+  "Heronite needs FUSE to apply mods, but /dev/fuse is missing. Load the fuse kernel module.": "O Heronite precisa do FUSE para aplicar mods, mas /dev/fuse não existe. Carregue o módulo fuse do kernel.",
+  "Mods cannot be applied over {path}": "Não é possível aplicar mods sobre {path}",
+  "Mods could not be applied: {error}": "Não foi possível aplicar os mods: {error}",
+  "Not a valid game key: {key}": "Chave de jogo inválida: {key}",
+  "The archive has no files to install": "O arquivo não tem nenhum arquivo para instalar",
+  "The fuse-overlayfs download is corrupt (its checksum does not match)": "O download do fuse-overlayfs está corrompido (a soma de verificação não confere)",
+  "The game is running with mods; close it first": "O jogo está aberto com mods; feche-o primeiro",
+  "The mods folder and the game folder cannot be inside each other": "A pasta dos mods e a pasta do jogo não podem ficar uma dentro da outra",
+  "The overwrite folder is empty": "A pasta de sobreposição está vazia",
+  "The path {path} is not allowed": "O caminho {path} não é permitido",
+  "{path} is still mounted from an earlier run and could not be unmounted": "{path} continua montado de uma execução anterior e não pôde ser desmontado"
+}
