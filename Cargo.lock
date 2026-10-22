@@ -3735,6 +3735,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-mods"
+version = "0.13.0"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-installer",
+ "libc",
+ "log",
+ "roxmltree 0.21.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "ureq",
+]
+
+[[package]]
 name = "heronite-overlay"
 version = "0.13.0"
 dependencies = [
