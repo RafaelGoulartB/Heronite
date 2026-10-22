@@ -42,10 +42,15 @@ impl State {
     }
 }
 
-/// Looks for gpu-screen-recorder and what it can do when the section shows.
+/// Looks for gpu-screen-recorder and what it can do when the section shows
+/// (what the recorder found, while a game runs).
 pub fn shown(cx: &mut Context<SettingsPage>) {
+    let cached = crate::services::replay::cached_detected(cx);
     cx.spawn(async move |this, cx| {
-        let detected = cx.background_spawn(async { crate::services::replay::detect() }).await;
+        let detected = match cached {
+            Some(found) => found,
+            None => cx.background_spawn(async { crate::services::replay::detect() }).await,
+        };
         this.update(cx, |d, cx| {
             d.replay.detected = Some(detected);
             cx.notify();

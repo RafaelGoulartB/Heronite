@@ -107,6 +107,9 @@ pub struct ReplayService {
     resync: bool,
     /// The recorders ending, one after the other: a new one starts after them.
     stopping: Option<Shared<Task<()>>>,
+    /// What gpu-screen-recorder can do, kept while games run: a restart does
+    /// not ask again (`--info` wakes the graphics card).
+    detected: Option<(Program, Info)>,
     /// `replay.json` is being written; `dirty`: changed again meanwhile.
     writing: bool,
     dirty: bool,
@@ -135,6 +138,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         saving: false,
         resync: false,
         stopping: None,
+        detected: None,
         writing: false,
         dirty: false,
     });
@@ -170,6 +174,14 @@ pub fn change(cx: &mut App, app: &AppPaths, f: impl FnOnce(&mut ReplayPrefs)) ->
             prefs
         }
     }
+}
+
+/// What the recorder found while a game runs, so Settings does not wake the
+/// graphics card again.
+pub fn cached_detected(cx: &App) -> Option<Detected> {
+    let service = get(cx)?;
+    let (program, info) = service.read(cx).detected.clone()?;
+    Some(Detected { program: Some(program), info: Ok(info) })
 }
 
 /// The app is quitting: the recorder ends (off the UI thread; it saves nothing).
@@ -220,6 +232,10 @@ impl ReplayService {
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
                 self.games.retain(|(a, _)| a != app_name);
+                if self.games.is_empty() {
+                    // The monitors may change before the next game.
+                    self.detected = None;
+                }
                 self.sync(RESTART_AFTER, cx);
             }
             LaunchEvent::Launching { .. } | LaunchEvent::Preparing { .. } | LaunchEvent::Status { .. } => {}
@@ -331,6 +347,7 @@ impl ReplayService {
         let data_paths = self.data_paths.clone();
         let game_pid = self.games.last().and_then(|g| g.1);
         let stopping = self.stopping.clone();
+        let cached = self.detected.clone();
         cx.spawn(async move |this, cx| {
             if !delay.is_zero() {
                 cx.background_executor().timer(delay).await;
@@ -348,7 +365,7 @@ impl ReplayService {
             let (tx, mut rx) = unbounded();
             let launched = cx
                 .background_spawn(async move {
-                    launch(&data_paths, &opts, game_pid, move |state| {
+                    launch(&data_paths, &opts, game_pid, cached, move |state| {
                         let _ = tx.unbounded_send(state.clone());
                     })
                 })
@@ -364,6 +381,7 @@ impl ReplayService {
                     }
                     match launched {
                         Ok(l) => {
+                            s.detected = Some(l.detected);
                             s.running = Some(Running { recorder: Arc::new(l.recorder), root: l.root, monitor: l.monitor, codec: l.codec });
                             if l.waits_for_game_audio {
                                 s.wait_for_game_audio(epoch, cx);
@@ -373,6 +391,7 @@ impl ReplayService {
                         Err(why) => {
                             log::warn!("replay: cannot record: {why}");
                             s.target = None;
+                            s.detected = None;
                             s.set_status(Status::Unavailable(why), cx);
                             false
                         }
@@ -396,6 +415,7 @@ impl ReplayService {
                                     s.retire(r.recorder, cx);
                                 }
                                 s.target = None;
+                                s.detected = None;
                                 s.set_status(Status::Unavailable(why), cx);
                             }
                             State::Starting => s.set_status(Status::Starting, cx),
@@ -520,15 +540,18 @@ struct Launched {
     root: PathBuf,
     monitor: String,
     codec: Codec,
+    detected: (Program, Info),
     /// It records without the game's sound, which is not playing yet.
     waits_for_game_audio: bool,
 }
 
-/// Blocking: everything a recording needs, then the recorder.
+/// Blocking: everything a recording needs, then the recorder. `cached` is
+/// what an earlier start found out.
 fn launch(
     data_paths: &DataPaths,
     opts: &Options,
     game_pid: Option<u32>,
+    cached: Option<(Program, Info)>,
     on_state: impl Fn(&State) + Send + Sync + 'static,
 ) -> Result<Launched, String> {
     let settings = heronite_data::settings::load(data_paths).map_err(|e| e.to_string())?;
@@ -537,8 +560,14 @@ fn launch(
         return Err(tr!("Choose a screenshots folder in Settings → Screenshots: replays are saved there").into());
     }
     let root = resolve_path(Path::new(&folder));
-    let program = Program::find().ok_or_else(|| tr!("gpu-screen-recorder is not installed").to_string())?;
-    let info = program.info()?;
+    let (program, info) = match cached {
+        Some(found) => found,
+        None => {
+            let program = Program::find().ok_or_else(|| tr!("gpu-screen-recorder is not installed").to_string())?;
+            let info = program.info()?;
+            (program, info)
+        }
+    };
     if !info.recent_enough() {
         return Err(tr!(
             "gpu-screen-recorder {found} is too old: {needed} or newer is needed",
@@ -563,8 +592,8 @@ fn launch(
     let waits_for_game_audio = opts.audio == Audio::Game && game_audio.is_none();
     let monitor = screen.name.clone();
     let plan = Plan::new(opts, screen, encoding, game_audio, root.join(STAGING), program.socket_path());
-    let recorder = Recorder::start(program, plan, on_state).map_err(|e| e.to_string())?;
-    Ok(Launched { recorder, root, monitor, codec, waits_for_game_audio })
+    let recorder = Recorder::start(program.clone(), plan, on_state).map_err(|e| e.to_string())?;
+    Ok(Launched { recorder, root, monitor, codec, detected: (program, info), waits_for_game_audio })
 }
 
 /// The monitor chosen in the options, else the game's, else the first.
