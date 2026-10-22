@@ -66,7 +66,7 @@ Mods.
 ```
 <mods root>/
   nexus.json                    Nexus account: API key (0600), name, premium
-  links-cache/                  Nexus game list, Thunderstore communities (1 day)
+  links-cache/                  Nexus game list, Thunderstore communities (7 days)
   <game key>/                   runner_appName
     mods.json                   ModList: order, switches, sources, choices
     mods/<mod id>/              the mod's files, relative to the GAME folder
