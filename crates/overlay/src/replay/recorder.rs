@@ -25,6 +25,9 @@ const READY_AFTER: Duration = Duration::from_secs(2);
 const MIN_RUN: Duration = Duration::from_secs(5);
 /// Starts again after it died, with these pauses; then it gives up.
 const RESTART_AFTER: [Duration; 3] = [Duration::from_secs(2), Duration::from_secs(5), Duration::from_secs(10)];
+/// Running this long before it died, the pauses start over: a long session
+/// survives any number of suspends.
+const HEALTHY_AFTER: Duration = Duration::from_secs(120);
 
 /// Numbers the sockets: each recorder has its own, so one that ends late
 /// never takes the next one's away.
@@ -233,7 +236,11 @@ fn supervise(shared: &Shared, program: &Program, plan: &Plan) {
             }
         };
         log::warn!("replay: the recorder ended: {why}");
-        if started.elapsed() < MIN_RUN || restarts >= RESTART_AFTER.len() {
+        let ran = started.elapsed();
+        if ran >= HEALTHY_AFTER {
+            restarts = 0;
+        }
+        if ran < MIN_RUN || restarts >= RESTART_AFTER.len() {
             shared.set(State::Failed(why));
             remove_socket(&plan.socket);
             return;
