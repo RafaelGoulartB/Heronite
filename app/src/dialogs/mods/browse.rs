@@ -101,8 +101,9 @@ impl ModsDialog {
         if v.g.info.thunderstore.is_some() {
             s.push(Source::Thunderstore);
         }
-        // BepInEx games live on Thunderstore: it comes first for them.
-        if v.g.info.profile.kind == heronite_mods::games::Kind::BepInEx {
+        // A game with a Thunderstore community is modded there first (BepInEx,
+        // MelonLoader, Hades II's own loader): it comes first.
+        if v.g.info.thunderstore.is_some() {
             s.reverse();
         }
         s

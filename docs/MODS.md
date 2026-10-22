@@ -105,7 +105,7 @@ Mods.
 
 ## Storage
 
-`<mods root>` = `<data>/mods` (Settings → Mods → Mods folder can move it).
+`<mods root>` = `<data>/mods`.
 
 ```
 <mods root>/

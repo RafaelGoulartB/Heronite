@@ -76,12 +76,18 @@ impl Support {
             Some(tr!("Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.").to_string())
         } else if !self.dev_fuse {
             Some(tr!("Heronite needs FUSE to apply mods, but /dev/fuse is missing. Load the fuse kernel module.").to_string())
-        } else if self.overlay.is_none() {
+        } else if self.overlay.is_none() && !downloadable() {
             Some(tr!("fuse-overlayfs is needed to apply mods and could not be found. Install the fuse-overlayfs package.").to_string())
         } else {
             None
         }
     }
+}
+
+/// Whether a release build of fuse-overlayfs exists for this CPU: then a
+/// missing one is fetched at the first modded launch, not a problem.
+fn downloadable() -> bool {
+    matches!(std::env::consts::ARCH, "x86_64" | "aarch64")
 }
 
 /// The overlay tool, downloaded to `<tools_bin>/fuse-overlayfs` when the
@@ -207,7 +213,8 @@ mod tests {
         assert!(!no_fuse.ready());
         assert!(no_fuse.problem().unwrap().contains("fusermount3"));
         assert!(Support { dev_fuse: false, ..all.clone() }.problem().unwrap().contains("/dev/fuse"));
-        assert!(Support { overlay: None, ..all }.problem().unwrap().contains("fuse-overlayfs"));
+        // Downloaded at the first modded launch where a release build exists.
+        assert_eq!(Support { overlay: None, ..all }.problem().is_some(), !downloadable());
     }
 
     #[test]

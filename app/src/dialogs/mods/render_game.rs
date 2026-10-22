@@ -48,30 +48,27 @@ impl ModsDialog {
 
         let dir = self.store_dir(cx);
         let open_dir = dir.clone();
-        let storage = panel()
-            .gap(px(10.))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .gap(px(12.))
-                    .child(
-                        div().flex().flex_col().min_w_0().child(div().text_size(px(14.)).child(tr!("Mods folder"))).child(
-                            div()
-                                .mt(px(2.))
-                                .truncate()
-                                .text_size(px(12.5))
-                                .text_color(theme::text_muted())
-                                .child(dir.to_string_lossy().to_string()),
-                        ),
-                    )
-                    .child(
-                        button_sm("mods-game-open", ButtonKind::Glass, tr!("Open"))
-                            .on_click(cx.listener(move |this, _, _, cx| this.open_dir(open_dir.clone(), cx))),
+        let storage = panel().gap(px(10.)).child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(12.))
+                .child(
+                    div().flex().flex_col().min_w_0().child(div().text_size(px(14.)).child(tr!("Mods folder"))).child(
+                        div()
+                            .mt(px(2.))
+                            .truncate()
+                            .text_size(px(12.5))
+                            .text_color(theme::text_muted())
+                            .child(dir.to_string_lossy().to_string()),
                     ),
-            )
-            .child(note(tr!("The folder can be moved in Settings \u{2192} Mods.").into()));
+                )
+                .child(
+                    button_sm("mods-game-open", ButtonKind::Glass, tr!("Open"))
+                        .on_click(cx.listener(move |this, _, _, cx| this.open_dir(open_dir.clone(), cx))),
+                ),
+        );
 
         let n = v.g.list.mods.len();
         let danger =
