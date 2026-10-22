@@ -1,19 +1,22 @@
 //! The replay buffer (Settings → Replay, off by default): while a game
-//! launched by the app runs, gpu-screen-recorder keeps its last seconds in
-//! memory (`heronite_overlay::replay`), and a save moves them into the
-//! game's captures folder, under `replays/`. The in-game overlay asks for
-//! the saves (Guide + X, the panel) and marks them as moments.
+//! launched by the app runs, gpu-screen-recorder keeps its last seconds
+//! (`heronite_overlay::replay`), and a save moves them into the game's
+//! captures folder, under `replays/`. The in-game overlay asks for the saves
+//! (Guide + X, the panel) and marks them as moments.
 //!
 //! The service follows the launch events (from the hub), so it works with
 //! the window closed to the tray. The recorder starts a few seconds after
-//! the game is running (it does not compete with the game's loading) and
-//! ends with the last game.
+//! the game is running (it does not compete with the game's loading), ends
+//! with the last game and starts again when the options change. One recorder
+//! at a time: a new one waits for the last one to end, and a save in
+//! progress is never cut short by a restart.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use futures::channel::mpsc::unbounded;
+use futures::future::{FutureExt, Shared};
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::replay_prefs::{Audio, Codec, Options, ReplayPrefs};
@@ -89,10 +92,16 @@ pub struct ReplayService {
     /// Games running (oldest first) and their process, once known.
     games: Vec<(String, Option<u32>)>,
     running: Option<Running>,
+    /// What the running (or starting) recorder records with.
+    target: Option<Options>,
     status: Status,
     /// Bumped by every start and stop: late answers of an older one are dropped.
     epoch: u64,
     saving: bool,
+    /// The recorder must change once the save in progress ends.
+    resync: bool,
+    /// The recorders ending, one after the other: a new one starts after them.
+    stopping: Option<Shared<Task<()>>>,
 }
 
 struct ReplayGlobal(Entity<ReplayService>);
@@ -106,8 +115,19 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
     // A tiny file in the app's config folder.
     let prefs = ReplayPrefs::load(&AppPaths::for_data(&data_paths));
     let status = if prefs.enabled { Status::Idle } else { Status::Off };
-    let entity =
-        cx.new(|_| ReplayService { data_paths, runtime, prefs, games: Vec::new(), running: None, status, epoch: 0, saving: false });
+    let entity = cx.new(|_| ReplayService {
+        data_paths,
+        runtime,
+        prefs,
+        games: Vec::new(),
+        running: None,
+        target: None,
+        status,
+        epoch: 0,
+        saving: false,
+        resync: false,
+        stopping: None,
+    });
     cx.set_global(ReplayGlobal(entity));
 }
 
@@ -120,6 +140,7 @@ pub fn shutdown(cx: &mut App) {
     let Some(service) = get(cx) else { return };
     let running = service.update(cx, |s, _| {
         s.epoch += 1;
+        s.target = None;
         s.running.take()
     });
     if let Some(r) = running {
@@ -143,10 +164,7 @@ impl ReplayService {
             return;
         }
         self.prefs = prefs;
-        self.stop(cx);
-        if self.prefs.enabled && !self.games.is_empty() {
-            self.start(Duration::ZERO, cx);
-        }
+        self.sync(Duration::ZERO, cx);
         cx.notify();
     }
 
@@ -159,26 +177,24 @@ impl ReplayService {
                     None => self.games.push((app_name.clone(), Some(*pid))),
                 }
                 // One recorder records the screen, whatever runs on it.
-                if self.prefs.enabled && self.running.is_none() && self.status != Status::Starting {
-                    self.start(START_AFTER, cx);
-                }
+                self.sync(START_AFTER, cx);
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
                 self.games.retain(|(a, _)| a != app_name);
-                if self.games.is_empty() {
-                    self.stop(cx);
-                }
+                self.sync(Duration::ZERO, cx);
             }
             LaunchEvent::Launching { .. } | LaunchEvent::Preparing { .. } | LaunchEvent::Status { .. } => {}
         }
     }
 
+    /// The options to record with now; `None`: no recorder should run.
+    fn wanted(&self) -> Option<Options> {
+        decide(&self.prefs, !self.games.is_empty()).ok()
+    }
+
+    /// The status without a recorder.
     fn idle_status(&self) -> Status {
-        if self.prefs.enabled {
-            Status::Idle
-        } else {
-            Status::Off
-        }
+        decide(&self.prefs, !self.games.is_empty()).err().unwrap_or(Status::Idle)
     }
 
     fn set_status(&mut self, status: Status, cx: &mut Context<Self>) {
@@ -188,25 +204,69 @@ impl ReplayService {
         }
     }
 
-    /// Ends the recorder (off the UI thread).
+    /// Brings the recorder in line with [`Self::wanted`]: starts it (after
+    /// `delay`), starts it again with other options, or ends it. Waits for a
+    /// save in progress.
+    fn sync(&mut self, delay: Duration, cx: &mut Context<Self>) {
+        let wanted = self.wanted();
+        if wanted == self.target {
+            if wanted.is_none() {
+                let idle = self.idle_status();
+                self.set_status(idle, cx);
+            }
+            return;
+        }
+        if self.saving {
+            self.resync = true;
+            return;
+        }
+        self.stop(cx);
+        if let Some(opts) = wanted {
+            self.start(opts, delay, cx);
+        }
+    }
+
+    /// Starts the recorder again with the same options (the game's sound
+    /// appeared).
+    fn restart(&mut self, cx: &mut Context<Self>) {
+        self.target = None;
+        self.sync(Duration::ZERO, cx);
+    }
+
+    /// Ends the recorder.
     fn stop(&mut self, cx: &mut Context<Self>) {
         self.epoch += 1;
+        self.target = None;
         if let Some(r) = self.running.take() {
-            cx.background_spawn(async move { drop(r) }).detach();
+            self.retire(r.recorder, cx);
         }
         let idle = self.idle_status();
         self.set_status(idle, cx);
     }
 
-    /// Starts the recorder after `delay`: finds the program, the monitor and
-    /// the game's sound off the UI thread.
-    fn start(&mut self, delay: Duration, cx: &mut Context<Self>) {
+    /// Ends a recorder off the UI thread, after the ones already ending.
+    fn retire(&mut self, recorder: Arc<Recorder>, cx: &mut Context<Self>) {
+        let before = self.stopping.take();
+        let ended = cx.background_spawn(async move {
+            if let Some(before) = before {
+                before.await;
+            }
+            drop(recorder);
+        });
+        self.stopping = Some(ended.shared());
+    }
+
+    /// Starts the recorder with `opts` after `delay`, once the last one has
+    /// ended: finds the program, the monitor and the game's sound off the UI
+    /// thread.
+    fn start(&mut self, opts: Options, delay: Duration, cx: &mut Context<Self>) {
         self.epoch += 1;
         let epoch = self.epoch;
+        self.target = Some(opts.clone());
         self.set_status(Status::Starting, cx);
-        let prefs = self.prefs.clone();
         let data_paths = self.data_paths.clone();
         let game_pid = self.games.last().and_then(|g| g.1);
+        let stopping = self.stopping.clone();
         cx.spawn(async move |this, cx| {
             if !delay.is_zero() {
                 cx.background_executor().timer(delay).await;
@@ -214,10 +274,17 @@ impl ReplayService {
             if this.update(cx, |s, _| s.epoch != epoch).unwrap_or(true) {
                 return;
             }
+            // Never two recorders at once (twice the memory, one socket).
+            if let Some(stopping) = stopping {
+                stopping.await;
+            }
+            if this.update(cx, |s, _| s.epoch != epoch).unwrap_or(true) {
+                return;
+            }
             let (tx, mut rx) = unbounded();
-            let started = cx
+            let launched = cx
                 .background_spawn(async move {
-                    launch(&data_paths, &prefs, game_pid, move |state| {
+                    launch(&data_paths, &opts, game_pid, move |state| {
                         let _ = tx.unbounded_send(state.clone());
                     })
                 })
@@ -225,22 +292,23 @@ impl ReplayService {
             let ok = this
                 .update(cx, |s, cx| {
                     if s.epoch != epoch {
-                        // Stopped meanwhile: let it go (off the UI thread).
-                        if let Ok((r, ..)) = started {
-                            cx.background_spawn(async move { drop(r) }).detach();
+                        // Stopped meanwhile: let it go.
+                        if let Ok(l) = launched {
+                            s.retire(Arc::new(l.recorder), cx);
                         }
                         return false;
                     }
-                    match started {
-                        Ok((recorder, root, monitor, codec, game_audio)) => {
-                            s.running = Some(Running { recorder: Arc::new(recorder), root, monitor, codec });
-                            if !game_audio && s.prefs.options.audio == Audio::Game {
+                    match launched {
+                        Ok(l) => {
+                            s.running = Some(Running { recorder: Arc::new(l.recorder), root: l.root, monitor: l.monitor, codec: l.codec });
+                            if l.waits_for_game_audio {
                                 s.wait_for_game_audio(epoch, cx);
                             }
                             true
                         }
                         Err(why) => {
                             log::warn!("replay: cannot record: {why}");
+                            s.target = None;
                             s.set_status(Status::Unavailable(why), cx);
                             false
                         }
@@ -250,7 +318,7 @@ impl ReplayService {
             if !ok {
                 return;
             }
-            // The recorder's own news: it failed, or it gave up after dying.
+            // The recorder's own news: recording, or it gave up after dying.
             while let Some(state) = rx.next().await {
                 let current = this
                     .update(cx, |s, cx| {
@@ -259,10 +327,11 @@ impl ReplayService {
                         }
                         match state {
                             State::Failed(why) => {
-                                // Its thread has ended: the next game tries again.
+                                // Its thread has ended: the next change or game tries again.
                                 if let Some(r) = s.running.take() {
-                                    cx.background_spawn(async move { drop(r) }).detach();
+                                    s.retire(r.recorder, cx);
                                 }
+                                s.target = None;
                                 s.set_status(Status::Unavailable(why), cx);
                             }
                             State::Starting => s.set_status(Status::Starting, cx),
@@ -301,10 +370,10 @@ impl ReplayService {
                     continue;
                 }
                 this.update(cx, |s, cx| {
-                    if s.epoch == epoch && !s.saving {
+                    if s.epoch == epoch {
                         log::info!("replay: the game plays sound now ({}): recording it", names.join(", "));
-                        s.stop(cx);
-                        s.start(Duration::ZERO, cx);
+                        // After the save in progress, if any.
+                        s.restart(cx);
                     }
                 })
                 .ok();
@@ -318,7 +387,7 @@ impl ReplayService {
     /// (the time the panel was open, cut off later) into its `replays`
     /// folder. Resolves to the saved file.
     pub fn save(&mut self, app_name: &str, extra: Duration, cx: &mut Context<Self>) -> Task<Result<PathBuf, String>> {
-        let Some(running) = &self.running else {
+        let (Some(running), Some(opts)) = (&self.running, &self.target) else {
             let why = match &self.status {
                 Status::Off => tr!("Replay is off (Settings → Replay)").to_string(),
                 Status::Unavailable(why) => why.clone(),
@@ -343,7 +412,7 @@ impl ReplayService {
         let recorder = running.recorder.clone();
         let root = running.root.clone();
         // Whole seconds, rounding the panel's time up so it is all cut off.
-        let seconds = self.prefs.options.seconds + extra.as_secs_f64().ceil() as u32;
+        let seconds = opts.seconds + extra.as_secs_f64().ceil() as u32;
         self.saving = true;
         cx.spawn(async move |this, cx| {
             let saved = cx
@@ -352,7 +421,13 @@ impl ReplayService {
                     move_into(&staged, &replay_folder(&game, &root))
                 })
                 .await;
-            this.update(cx, |s, _| s.saving = false).ok();
+            this.update(cx, |s, cx| {
+                s.saving = false;
+                if std::mem::take(&mut s.resync) {
+                    s.sync(Duration::ZERO, cx);
+                }
+            })
+            .ok();
             match &saved {
                 Ok(path) => log::info!("replay: saved {}", path.display()),
                 Err(e) => log::warn!("replay: saving failed: {e}"),
@@ -362,16 +437,36 @@ impl ReplayService {
     }
 }
 
-/// Blocking: everything a recording needs, then the recorder. Returns it,
-/// the captures root, the monitor, the codec and whether the game's sound
-/// is in it.
+/// What the replay does (`playing`: a game runs): record with these options,
+/// or not, and its status then.
+fn decide(prefs: &ReplayPrefs, playing: bool) -> Result<Options, Status> {
+    if !playing {
+        return Err(if prefs.enabled { Status::Idle } else { Status::Off });
+    }
+    if !prefs.enabled {
+        return Err(Status::Off);
+    }
+    Ok(prefs.options.clone())
+}
+
+/// A recorder started, and what the service keeps of it.
+struct Launched {
+    recorder: Recorder,
+    /// The captures root.
+    root: PathBuf,
+    monitor: String,
+    codec: Codec,
+    /// It records without the game's sound, which is not playing yet.
+    waits_for_game_audio: bool,
+}
+
+/// Blocking: everything a recording needs, then the recorder.
 fn launch(
     data_paths: &DataPaths,
-    prefs: &ReplayPrefs,
+    opts: &Options,
     game_pid: Option<u32>,
     on_state: impl Fn(&State) + Send + Sync + 'static,
-) -> Result<(Recorder, PathBuf, String, Codec, bool), String> {
-    let opts = &prefs.options;
+) -> Result<Launched, String> {
     let settings = heronite_data::settings::load(data_paths).map_err(|e| e.to_string())?;
     let folder = settings.screenshots.folder.trim().to_string();
     if folder.is_empty() {
@@ -401,14 +496,14 @@ fn launch(
         Audio::Game => backend::plan::app_audio(&names),
         _ => None,
     };
-    let with_game_audio = opts.audio != Audio::Game || game_audio.is_some();
+    let waits_for_game_audio = opts.audio == Audio::Game && game_audio.is_none();
     let monitor = screen.name.clone();
     let plan = Plan::new(opts, screen, encoding, game_audio, root.join(STAGING), program.socket_path());
     let recorder = Recorder::start(program, plan, on_state).map_err(|e| e.to_string())?;
-    Ok((recorder, root, monitor, codec, with_game_audio))
+    Ok(Launched { recorder, root, monitor, codec, waits_for_game_audio })
 }
 
-/// The monitor chosen in Settings, else the game's, else the first.
+/// The monitor chosen in the options, else the game's, else the first.
 fn pick_screen(info: &Info, opts: &Options, game_pid: Option<u32>) -> Option<backend::Screen> {
     let named = |name: &str| info.screens.iter().find(|s| s.name == name).cloned();
     (!opts.monitor.is_empty())
@@ -434,7 +529,19 @@ fn move_into(staged: &Path, folder: &Path) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's prelude has a `test` attribute of its own.
-    use super::{move_into, STAGING};
+    use heronite_data::replay_prefs::ReplayPrefs;
+
+    use super::{decide, move_into, Status, STAGING};
+
+    #[test]
+    fn it_records_only_while_on_and_a_game_runs() {
+        let mut p = ReplayPrefs { enabled: true, ..Default::default() };
+        assert_eq!(decide(&p, false), Err(Status::Idle), "waiting for a game");
+        assert_eq!(decide(&p, true), Ok(p.options.clone()));
+        p.enabled = false;
+        assert_eq!(decide(&p, false), Err(Status::Off));
+        assert_eq!(decide(&p, true), Err(Status::Off));
+    }
 
     #[test]
     fn a_save_moves_under_the_capture_name() {
