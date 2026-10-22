@@ -376,7 +376,8 @@ microphone (the default source; the outputs' monitors are left out) and its mute
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
 user's `MangoHud.conf` or their Steam launch options was ruled out). Quitting the game asks
 first (focus on Cancel). Guide + RB, Guide + ↑ / ↓ and Guide + X (the replay, Settings → Replay; Home and Screenshots
-show "Save replay" while it is on) show a notice in the top corner opposite the panel. The
+show "Save replay" while it records, and Screenshots a switch that turns it off until the game ends) show a notice in
+the top corner opposite the panel. The
 screenshot's button is a choice (RB unless changed; not ↑ / ↓ nor the triggers, which many controllers report as axes),
 shown in Settings → Overlay and in Settings → Screenshots ("With the controller"). A keyboard shortcut (Super + G unless
 changed, `heronite_media::capture::GlobalHotkey`: a temporary consuming Hyprland bind that sends SIGUSR1, else the

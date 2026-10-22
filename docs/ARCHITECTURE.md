@@ -71,7 +71,8 @@ calls them from `cx.background_spawn` or worker threads.
   `journal` (each game's notes in `local_library/journal.json`: the moment
   they are about, placed on the timeline's days by the screenshots' rule in
   `timeline`, an optional screenshot or replay, and "where I left off"),
-  `replay_prefs` (Settings → Replay, `replay.json` in the app state),
+  `replay_prefs` (Settings → Replay, `replay.json` in the app state: the
+  switch, the options every game uses and the games that have it on or off on their own),
   `language`, `install_size` (size on disk of a game its store gives none for: ROM files, a bounded and cached folder walk), `field_names` (the library fields manager: renames, merges and
   removals of genres, companies, series, themes, features and platforms, kept
   as rules in `local_library/names.json` that the metadata service and the
@@ -171,11 +172,13 @@ calls them from `cx.background_spawn` or worker threads.
   the game's own streams and the other apps playing through `pactl`; `controller` reads the battery from
   sysfs and disconnects Bluetooth controllers. `replay` runs gpu-screen-recorder (6.0 or newer, the
   system's or the Flatpak) as a replay buffer: `info` reads its `--info`, `plan` builds the command
-  (the monitor captured through KMS, the card's encoder only, a constant bitrate, the buffer in RAM)
-  and the memory estimate Settings shows, `recorder` runs it on a thread of its own (restarted when it
-  dies, ended with SIGTERM: a replay buffer saves nothing on exit), `ipc` saves through its `-ipc`
-  socket, `target` finds the game's monitor (Hyprland) and `trim` cuts the panel's time off the end
-  of a save (ffmpeg stream copy, idle priority).
+  (the monitor captured through KMS, the card's encoder only, NVENC / VA-API or Vulkan video, a
+  constant bitrate, the buffer in RAM or on disk) and the memory estimate Settings shows (measured on
+  an RTX 5070), `recorder` runs it on a thread of its own (a socket of its own each time, restarted
+  when it dies, Vulkan that cannot start falls back to the usual encoder, ended with SIGTERM: a replay
+  buffer saves nothing on exit), `ipc` saves through its `-ipc` socket, `target` finds the game's
+  monitor (Hyprland) and `trim` cuts the panel's time off the end of a save (ffmpeg stream copy, idle
+  priority).
 - **heronite-storage:** Settings → Storage. `inventory` lists the installed games (store size, Steam's
   `SizeOnDisk`, ROM files, else a walk), the Wine prefixes (in use while an installed game or the defaults
   use them; one inside a game's folder goes with the game), the Wine Manager builds (in use when the default,
@@ -211,7 +214,7 @@ calls them from `cx.background_spawn` or worker threads.
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default: starts gpu-screen-recorder a few seconds after a game is running and ends it with the last game; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default, on or off per game in Game settings → Performance: starts gpu-screen-recorder a few seconds after a game is running, again when the options change (one recorder at a time, never during a save) and ends it with the last game, a game that has it off, or when the overlay turns it off for the session; it owns `replay.json` and writes it in order; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `overlay/` | the in-game overlay (beta, off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard) and notices (`toast.rs`) as layer-shell windows (`window.rs`); `moment.rs` marks a moment in the game's journal (a capture and an empty note); `replay.rs` saves the replay (Guide + X, the panel's "Save replay") and marks it as a moment (`clip` in the journal entry) |
 | `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view, Focus or Grid by the window's width), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive) and from the bulb in the header (`onboarding.json` in the app state) |
