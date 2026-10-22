@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
+use heronite_data::launchers::{managed_by, managed_paths};
 use heronite_data::proc::{Cancel, Run};
 use heronite_data::{game_config, sideload, DataPaths};
 use heronite_i18n::tr;
@@ -191,9 +192,17 @@ pub fn duplicate(source: &Path, name: &str, cancel: &Cancel) -> Result<PathBuf> 
 }
 
 /// Moves a prefix to the trash (it can be restored from there). Refuses the
-/// default and shared folders, the home folder and anything that does not
-/// look like a prefix.
+/// default and shared folders, the home folder, the prefixes of the games
+/// Lutris and Faugus start, and anything that does not look like a prefix.
 pub fn trash(data_paths: &DataPaths, home: &str, path: &Path) -> Result<()> {
+    if let Some(m) = managed_by(&managed_paths(data_paths), path) {
+        bail!(tr!(
+            "Won't delete {path}: {launcher} keeps {title} there. Uninstall it from {launcher}",
+            path = path.display(),
+            launcher = m.launcher.name(),
+            title = m.title
+        ));
+    }
     sideload::check_prefix_removable(path, &protected(data_paths, home), Path::new(home)).map_err(|e| anyhow!(e))?;
     trash::delete(path).map_err(|e| anyhow!(tr!("Could not move {path} to the trash: {error}", path = path.display(), error = e)))?;
     // The home its programs had in the sandbox goes with it (left behind when
@@ -305,5 +314,18 @@ mod tests {
         fs::write(not_prefix.join("song.flac"), "x").unwrap();
         assert!(trash(&s.paths, &s.home, &not_prefix).is_err());
         assert!(not_prefix.exists());
+    }
+
+    #[test]
+    fn the_prefix_of_a_lutris_game_is_never_trashed() {
+        let s = setup();
+        let lutris = s._dir.path().join("home/Games/heroes-iii");
+        fs::create_dir_all(lutris.join("drive_c")).unwrap();
+        let meta = serde_json::json!({"games": {"lutris_7": {"appName": "lutris_7", "runner": "sideload", "source": "lutris",
+            "launchKind": "launcher", "title": "Heroes III", "heroniteLauncherPrefix": lutris}}});
+        heronite_data::json_store::write(&s.paths.local_meta(), &meta).unwrap();
+        let err = trash(&s.paths, &s.home, &lutris).unwrap_err().to_string();
+        assert!(err.contains("Lutris keeps Heroes III there"), "{err}");
+        assert!(lutris.join("drive_c").exists());
     }
 }

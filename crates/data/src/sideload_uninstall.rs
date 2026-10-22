@@ -8,7 +8,10 @@
 //! filesystem root, the home folder or a folder right under it, a mount
 //! point, a Steam library, a default Heroic folder, or hold another game. The
 //! prefix must belong to this game only: the shared prefix, the default
-//! prefixes and a prefix another game also uses are always kept.
+//! prefixes and a prefix another game also uses are always kept. Neither may
+//! be, hold or sit inside the folder or prefix of a game Lutris or Faugus
+//! starts (a game added here by hand often points into one): that is the
+//! other launcher's to delete.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -18,6 +21,7 @@ use serde_json::Value;
 
 use crate::game_config;
 use crate::json_store;
+use crate::launchers::{self, Managed};
 use crate::library::Library;
 use crate::paths::DataPaths;
 use crate::sideload::check_prefix_removable;
@@ -81,17 +85,18 @@ pub fn plan(paths: &DataPaths, input: &UninstallInput) -> UninstallPlan {
     .map(|p| PathBuf::from(game_config::expand_tilde(&p, input.home)))
     .collect();
     let other_prefixes: Vec<PathBuf> = other_game_prefixes(paths, input.app_name, input.home).into_iter().map(|(_, p)| p).collect();
+    let managed = launchers::managed_paths(paths);
 
     let prefix = if input.windows { own_prefix(paths, input.app_name, input.home) } else { None };
     let prefix = prefix.filter(|p| p.exists()).map(|path| {
-        let blocked = prefix_blocked(&path, &defaults, &other_prefixes, input.others, home);
+        let blocked = managed_blocked(&path, &managed).or_else(|| prefix_blocked(&path, &defaults, &other_prefixes, input.others, home));
         Target { path, blocked }
     });
 
     let files = input.folder.map(|folder| {
         let mut taken: Vec<PathBuf> = defaults.clone();
         taken.extend(other_prefixes.iter().cloned());
-        let blocked = folder_blocked(folder, &taken, input.others, home);
+        let blocked = managed_blocked(folder, &managed).or_else(|| folder_blocked(folder, &taken, input.others, home));
         Target { path: folder.to_path_buf(), blocked }
     });
     UninstallPlan { files, prefix }
@@ -206,6 +211,9 @@ fn other_game_prefixes(paths: &DataPaths, app_name: &str, home: &str) -> Vec<(St
 /// no other game uses it. Games are named by their title in `lib`; settings
 /// of games `lib` leaves out (hidden ones) still count, unnamed.
 pub fn prefix_shared_note(paths: &DataPaths, lib: &Library, app_name: &str, prefix: &Path, home: &str) -> Option<String> {
+    if let Some(m) = launchers::managed_by(&launchers::managed_paths(paths), prefix) {
+        return Some(tr!("{launcher} keeps {title} there, so it is kept.", launcher = m.launcher.name(), title = m.title));
+    }
     let users: Vec<String> = other_game_prefixes(paths, app_name, home)
         .into_iter()
         .filter(|(_, p)| inside(p, prefix) || same_path(p, prefix))
@@ -228,6 +236,18 @@ pub fn prefix_shared_note(paths: &DataPaths, lib: &Library, app_name: &str, pref
         games = trn!(rest, "{games} and {n} other game", "{games} and {n} other games", games);
     }
     Some(tr!("Also used by {games}, so it is kept.", games))
+}
+
+/// Why `path` is kept: it is, holds or sits inside the folder or prefix of
+/// a game another launcher starts.
+fn managed_blocked(path: &Path, managed: &[Managed]) -> Option<String> {
+    let m = launchers::managed_by(managed, path)?;
+    Some(tr!(
+        "Won't delete {path}: {launcher} keeps {title} there. Uninstall it from {launcher}",
+        path = path.display(),
+        launcher = m.launcher.name(),
+        title = m.title
+    ))
 }
 
 fn prefix_blocked(prefix: &Path, defaults: &[PathBuf], other_prefixes: &[PathBuf], others: &[PathBuf], home: &Path) -> Option<String> {
@@ -415,6 +435,53 @@ mod tests {
         e.set_prefix("b", &prefix);
         let p = e.plan(None, &[]).prefix.unwrap();
         assert!(p.blocked.unwrap().contains("another game"));
+    }
+
+    /// A game added by hand that points into the prefix of the same game in
+    /// Lutris (the user's HoMM3): neither its folder nor the prefix go.
+    #[test]
+    fn folders_and_prefixes_of_another_launcher_are_kept() {
+        let e = env();
+        let lutris_prefix = e.mkdir("Games/heroes-iii");
+        fs::create_dir_all(lutris_prefix.join("drive_c")).unwrap();
+        let game = e.mkdir("Games/heroes-iii/drive_c/HoMM3");
+        fs::write(game.join("h3hota.exe"), "x").unwrap();
+        e.set_prefix("a", &lutris_prefix);
+        json_store::write(
+            &e.paths.local_meta(),
+            &json!({"games": {"lutris_7": {"appName": "lutris_7", "runner": "sideload", "source": "lutris",
+                "launchKind": "launcher", "title": "Heroes III", "heroniteLauncherPrefix": lutris_prefix}}}),
+        )
+        .unwrap();
+
+        let plan = e.plan(Some(&game), &[]);
+        let files = plan.files.unwrap().blocked.unwrap();
+        assert!(files.contains("Lutris keeps Heroes III there"), "{files}");
+        assert!(plan.prefix.unwrap().blocked.unwrap().contains("Lutris"));
+        let input = UninstallInput { app_name: "a", home: e.home(), folder: Some(&game), windows: true, others: &[] };
+        assert!(uninstall(&e.paths, &input, true, false).is_err());
+        assert!(game.join("h3hota.exe").exists());
+
+        let lib = Library::load(&e.paths).unwrap();
+        let note = prefix_shared_note(&e.paths, &lib, "a", &lutris_prefix, e.home()).unwrap();
+        assert!(note.contains("Lutris keeps Heroes III there"), "{note}");
+        assert!(matches!(crate::sideload::remove_prefix(&e.paths, "a", e.home()), crate::sideload::PrefixOutcome::Skipped(_)));
+        assert!(lutris_prefix.join("drive_c").exists());
+
+        // Its folder, when it is not the prefix, too.
+        json_store::write(
+            &e.paths.local_meta(),
+            &json!({"games": {"lutris_7": {"appName": "lutris_7", "runner": "sideload", "source": "lutris",
+                "launchKind": "launcher", "title": "Heroes III"}}}),
+        )
+        .unwrap();
+        let lib = json!({"games": [
+            {"runner": "sideload", "app_name": "a", "title": "A", "is_installed": true, "install": {"executable": "x"}},
+            {"runner": "sideload", "app_name": "lutris_7", "title": "Heroes III", "is_installed": true,
+             "install": {"install_path": lutris_prefix}}
+        ]});
+        json_store::write(&e.paths.sideload_library(), &lib).unwrap();
+        assert!(e.plan(Some(&game), &[]).files.unwrap().blocked.unwrap().contains("Lutris"));
     }
 
     #[test]

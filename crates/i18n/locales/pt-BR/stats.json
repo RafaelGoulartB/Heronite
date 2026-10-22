@@ -533,5 +533,7 @@
   "~{h}h to beat": "~{h}h para zerar",
   "Planned": "Planejado",
   "**{n} game planned** for the rest of the year": "**{n} jogo planejado** para o resto do ano",
-  "**{n} games planned** for the rest of the year": "**{n} jogos planejados** para o resto do ano"
+  "**{n} games planned** for the rest of the year": "**{n} jogos planejados** para o resto do ano",
+  "Won't delete {path}: {launcher} keeps {title} there. Uninstall it from {launcher}": "{path} não será apagado: o {launcher} guarda {title} lá. Desinstale pelo {launcher}",
+  "{launcher} keeps {title} there, so it is kept.": "O {launcher} guarda {title} lá, então ele será mantido."
 }

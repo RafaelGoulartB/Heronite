@@ -5,14 +5,19 @@
 //! Lutris and Faugus keep starting their games: the entries hold the command
 //! that asks them to ([`LAUNCH_KIND`]). Heroic's games added by hand are
 //! copied as this app's own and start here.
+//!
+//! The folders and Wine prefixes of those games belong to their launcher
+//! ([`managed_paths`]): uninstalling a game added here never deletes them.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::json_store;
-use crate::models::Extra;
+use crate::models::{Extra, LocalMetaFile};
 use crate::paths::DataPaths;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -76,8 +81,74 @@ pub struct ImportPrefs {
     pub enabled: BTreeSet<Launcher>,
     #[serde(default)]
     pub last: BTreeMap<Launcher, LastImport>,
+    /// Pairs of a game added here and one of a launcher the user keeps as
+    /// two games ([`kept_apart_key`]), never offered to merge again.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub kept_apart: BTreeSet<String>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// How [`ImportPrefs::kept_apart`] names a pair: `<mine>|<theirs>` (app names).
+pub fn kept_apart_key(mine: &str, theirs: &str) -> String {
+    format!("{mine}|{theirs}")
+}
+
+/// A folder or Wine prefix of a game another launcher starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Managed {
+    pub path: PathBuf,
+    pub launcher: Launcher,
+    /// The Collection entry's app name (a `sideload` game).
+    pub app_name: String,
+    pub title: String,
+}
+
+/// The folders and Wine prefixes of the games Lutris and Faugus start (the
+/// Collection's entries of [`LAUNCH_KIND`]), installed or not: they are that
+/// launcher's to delete. Unreadable files give none.
+pub fn managed_paths(paths: &DataPaths) -> Vec<Managed> {
+    let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap_or_default();
+    let theirs: BTreeMap<&str, (Launcher, &str, Option<&str>)> = metas
+        .games
+        .values()
+        .filter(|m| m.launch_kind == LAUNCH_KIND)
+        .filter_map(|m| {
+            let launcher = Launcher::from_source(&m.source)?;
+            Some((m.app_name.as_str(), (launcher, m.title.as_str(), m.extra.get(PREFIX_KEY).and_then(Value::as_str))))
+        })
+        .collect();
+    if theirs.is_empty() {
+        return Vec::new();
+    }
+    let library = json_store::read_value(&paths.sideload_library()).unwrap_or(Value::Null);
+    let folders: BTreeMap<&str, &str> = library
+        .get("games")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|g| Some((g.get("app_name")?.as_str()?, g.get("install")?.get("install_path")?.as_str()?)))
+        .collect();
+    let mut out = Vec::new();
+    for (app, (launcher, title, prefix)) in theirs {
+        for path in [folders.get(app).copied(), prefix].into_iter().flatten().map(str::trim) {
+            let path = PathBuf::from(path.trim_end_matches('/'));
+            if path.is_absolute() && path.components().count() > 1 {
+                out.push(Managed { path, launcher, app_name: app.to_string(), title: title.to_string() });
+            }
+        }
+    }
+    out
+}
+
+/// The game of another launcher whose folder or prefix `path` is, is inside
+/// or holds.
+pub fn managed_by<'a>(managed: &'a [Managed], path: &std::path::Path) -> Option<&'a Managed> {
+    let overlap = |a: &std::path::Path, b: &std::path::Path| a.starts_with(b) || b.starts_with(a);
+    let real = path.canonicalize().ok();
+    managed
+        .iter()
+        .find(|m| overlap(path, &m.path) || real.as_deref().is_some_and(|r| m.path.canonicalize().is_ok_and(|mp| overlap(r, &mp))))
 }
 
 impl ImportPrefs {
