@@ -10,6 +10,9 @@
 //! with the last game and starts again when the options change. One recorder
 //! at a time: a new one waits for the last one to end, and a save in
 //! progress is never cut short by a restart.
+//!
+//! The service also owns `replay.json`: Settings changes it through
+//! [`change`], and it is written in order.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -31,6 +34,8 @@ use crate::runtime::GameRuntime;
 
 /// After the game is running: its loading goes first.
 const START_AFTER: Duration = Duration::from_secs(8);
+/// A change of the options waits this long, so several clicks restart once.
+const RESTART_AFTER: Duration = Duration::from_millis(1500);
 /// Saves wait for the game's sound this long, then record without it.
 const AUDIO_WAIT: Duration = Duration::from_secs(180);
 const AUDIO_POLL: Duration = Duration::from_secs(5);
@@ -102,6 +107,9 @@ pub struct ReplayService {
     resync: bool,
     /// The recorders ending, one after the other: a new one starts after them.
     stopping: Option<Shared<Task<()>>>,
+    /// `replay.json` is being written; `dirty`: changed again meanwhile.
+    writing: bool,
+    dirty: bool,
 }
 
 struct ReplayGlobal(Entity<ReplayService>);
@@ -127,12 +135,41 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         saving: false,
         resync: false,
         stopping: None,
+        writing: false,
+        dirty: false,
     });
     cx.set_global(ReplayGlobal(entity));
 }
 
 pub fn get(cx: &App) -> Option<Entity<ReplayService>> {
     cx.try_global::<ReplayGlobal>().map(|g| g.0.clone())
+}
+
+/// The options as they are now (read from `app` without the service).
+pub fn prefs(cx: &App, app: &AppPaths) -> ReplayPrefs {
+    match get(cx) {
+        Some(s) => s.read(cx).prefs.clone(),
+        None => ReplayPrefs::load(app),
+    }
+}
+
+/// Changes the options: the service writes them and restarts the recorder
+/// when the game running records with other ones. Gives the new options.
+pub fn change(cx: &mut App, app: &AppPaths, f: impl FnOnce(&mut ReplayPrefs)) -> ReplayPrefs {
+    match get(cx) {
+        Some(service) => service.update(cx, |s, cx| {
+            s.change_prefs(f, cx);
+            s.prefs.clone()
+        }),
+        None => {
+            let mut prefs = ReplayPrefs::load(app);
+            f(&mut prefs);
+            if let Err(e) = prefs.save(app) {
+                log::warn!("saving the replay options: {e:#}");
+            }
+            prefs
+        }
+    }
 }
 
 /// The app is quitting: the recorder ends (off the UI thread; it saves nothing).
@@ -157,14 +194,16 @@ impl ReplayService {
         &self.status
     }
 
-    /// Settings changed them (already saved): a running recorder starts again
-    /// with them.
-    pub fn set_prefs(&mut self, prefs: ReplayPrefs, cx: &mut Context<Self>) {
-        if prefs == self.prefs {
+    /// Applies `f` to the options, writes them and brings the recorder in
+    /// line (after [`RESTART_AFTER`], so several changes restart once).
+    pub fn change_prefs(&mut self, f: impl FnOnce(&mut ReplayPrefs), cx: &mut Context<Self>) {
+        let before = self.prefs.clone();
+        f(&mut self.prefs);
+        if self.prefs == before {
             return;
         }
-        self.prefs = prefs;
-        self.sync(Duration::ZERO, cx);
+        self.persist(cx);
+        self.sync(RESTART_AFTER, cx);
         cx.notify();
     }
 
@@ -181,7 +220,7 @@ impl ReplayService {
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
                 self.games.retain(|(a, _)| a != app_name);
-                self.sync(Duration::ZERO, cx);
+                self.sync(RESTART_AFTER, cx);
             }
             LaunchEvent::Launching { .. } | LaunchEvent::Preparing { .. } | LaunchEvent::Status { .. } => {}
         }
@@ -254,6 +293,31 @@ impl ReplayService {
             drop(recorder);
         });
         self.stopping = Some(ended.shared());
+    }
+
+    /// Writes `replay.json` off the UI thread, one write at a time, the last
+    /// options last.
+    fn persist(&mut self, cx: &mut Context<Self>) {
+        if self.writing {
+            self.dirty = true;
+            return;
+        }
+        self.writing = true;
+        let prefs = self.prefs.clone();
+        let app = AppPaths::for_data(&self.data_paths);
+        cx.spawn(async move |this, cx| {
+            if let Err(e) = cx.background_spawn(async move { prefs.save(&app) }).await {
+                log::warn!("saving the replay options: {e:#}");
+            }
+            this.update(cx, |s, cx| {
+                s.writing = false;
+                if std::mem::take(&mut s.dirty) {
+                    s.persist(cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
     }
 
     /// Starts the recorder with `opts` after `delay`, once the last one has

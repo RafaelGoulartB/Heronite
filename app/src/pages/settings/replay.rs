@@ -3,8 +3,8 @@
 //! a game runs, worked out from the screen, the frame rate and the bitrate
 //! (`heronite_overlay::replay::estimate`), and how to spare it (the encoder,
 //! the buffer on disk, the panel's margin). The options live in
-//! `replay.json` (`heronite_data::replay_prefs`) and reach the running
-//! service at once; Guide + X is the overlay's
+//! `replay.json` (`heronite_data::replay_prefs`), which the service writes;
+//! changes reach the running recorder at once. Guide + X is the overlay's
 //! (`overlay::replay_shortcut_card`).
 
 use gpui_kit::prelude::*;
@@ -26,7 +26,6 @@ use crate::ui::fields::{meta_text, select_field};
 const ASSUMED_SCREEN: (u32, u32) = (1920, 1080);
 
 pub struct State {
-    prefs: ReplayPrefs,
     /// `None` while it is looked for.
     detected: Option<Detected>,
     /// The menu of the monitor is open.
@@ -34,13 +33,12 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(ctx: &PageCtx, cx: &mut Context<SettingsPage>) -> Self {
-        // Its status (recording, unavailable) changes in the service.
+    pub fn new(_ctx: &PageCtx, cx: &mut Context<SettingsPage>) -> Self {
+        // Its options and status (recording, unavailable) change in the service.
         if let Some(service) = crate::services::replay::get(cx) {
             cx.observe(&service, |_, _, cx| cx.notify()).detach();
         }
-        // A tiny file in the app's config folder.
-        Self { prefs: ReplayPrefs::load(&ctx.app), detected: None, monitor_open: false }
+        Self { detected: None, monitor_open: false }
     }
 }
 
@@ -57,22 +55,13 @@ pub fn shown(cx: &mut Context<SettingsPage>) {
     .detach();
 }
 
-/// Changes the options, saves them (off the UI thread) and hands them to the
-/// service.
+fn prefs(d: &SettingsPage, cx: &App) -> ReplayPrefs {
+    crate::services::replay::prefs(cx, &d.ctx.app)
+}
+
+/// Changes the options (the service saves them and restarts the recorder).
 fn update(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, change: impl FnOnce(&mut ReplayPrefs)) {
-    change(&mut d.replay.prefs);
-    let prefs = d.replay.prefs.clone();
-    let app = d.ctx.app.clone();
-    let saved = prefs.clone();
-    cx.background_spawn(async move {
-        if let Err(e) = saved.save(&app) {
-            log::warn!("saving the replay options: {e:#}");
-        }
-    })
-    .detach();
-    if let Some(service) = crate::services::replay::get(cx) {
-        service.update(cx, |s, cx| s.set_prefs(prefs, cx));
-    }
+    crate::services::replay::change(cx, &d.ctx.app, change);
     cx.notify();
 }
 
@@ -461,7 +450,7 @@ fn sound_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> 
 }
 
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
-    let p = d.replay.prefs.clone();
+    let p = prefs(d, cx);
     let o = &p.options;
     let seconds: Vec<(u32, &'static str)> = SECONDS.iter().map(|s| (*s, seconds_label(*s))).collect();
     let main = card([
@@ -556,7 +545,7 @@ fn estimate_line(o: &Options, st: &State) -> String {
 /// Console mode rows.
 pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
-    let p = d.replay.prefs.clone();
+    let p = prefs(d, cx);
     let o = &p.options;
     let st = &d.replay;
     let (program, _) = program_text(st.detected.as_ref());
