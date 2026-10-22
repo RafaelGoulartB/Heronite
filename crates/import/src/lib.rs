@@ -12,8 +12,11 @@
 //! [`detect`] finds the launchers on this machine (native or Flatpak) and
 //! reads their libraries: small files, read only. [`sync`] writes the
 //! Collection; a game gone from its launcher stays, as not installed.
+//! [`duplicates`] finds the games then in the Collection twice (added here by
+//! hand, and brought in from Lutris or Faugus).
 
 pub mod collection;
+pub mod duplicates;
 pub mod faugus;
 pub mod heroic;
 pub mod lutris;

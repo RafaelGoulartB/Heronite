@@ -219,5 +219,17 @@
   "{n} game from {launcher} is still in your Collection, no longer kept in sync.": "{n} jogo do {launcher} continua na sua Coleção, sem sincronizar.",
   "{n} games from {launcher} are still in your Collection, no longer kept in sync.": "{n} jogos do {launcher} continuam na sua Coleção, sem sincronizar.",
   "{n} game in your Collection": "{n} jogo na sua Coleção",
-  "{n} games in your Collection": "{n} jogos na sua Coleção"
+  "{n} games in your Collection": "{n} jogos na sua Coleção",
+  "Added by you": "Adicionado por você",
+  "Already in your Collection": "Já está na sua Coleção",
+  "It runs in the Wine prefix of {launcher}'s game.": "Ele roda no prefixo Wine do jogo do {launcher}.",
+  "Its program is in the folder of {launcher}'s game.": "O programa dele fica na pasta do jogo do {launcher}.",
+  "Keep both": "Manter os dois",
+  "Merging…": "Mesclando…",
+  "Same name.": "Mesmo nome.",
+  "You added these here by hand, and their launcher has them too. Merge keeps the launcher's game, which it keeps starting with its own settings, and moves your play time, sessions, status, notes and journal to it. Replace removes the one you added, with its play time. Neither deletes any file.": "Você adicionou estes jogos aqui à mão, e o launcher deles também os tem. Mesclar mantém o jogo do launcher, que continua abrindo ele com as configurações de lá, e leva para ele o seu tempo de jogo, sessões, status, anotações e diário. Substituir remove o que você adicionou, junto com o tempo de jogo dele. Nenhum dos dois apaga arquivos.",
+  "{mine} was merged into {theirs}.": "{mine} foi mesclado em {theirs}.",
+  "{mine} was removed; {theirs} stays.": "{mine} foi removido; {theirs} continua.",
+  "{n} game is in your Collection twice": "{n} jogo está duas vezes na sua Coleção",
+  "{n} games are in your Collection twice": "{n} jogos estão duas vezes na sua Coleção"
 }

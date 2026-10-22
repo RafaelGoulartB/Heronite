@@ -3,6 +3,15 @@
 //! off, and keeping the ones turned on in sync (a few seconds after start,
 //! then every quarter of an hour). Everything runs off the UI thread; the
 //! Collection reloads on [`LauncherImportsEvent::Imported`].
+//!
+//! After each import it looks for the games then in the Collection twice
+//! (`heronite_import::duplicates`: added here by hand, and brought in from
+//! Lutris or Faugus), tells the Collection about the new ones
+//! ([`LauncherImportsEvent::Duplicates`]) and settles each as the user picks
+//! in Settings → Other launchers ([`Resolve`]).
+//!
+//! Debug: `HERONITE_DEBUG_RESOLVE=merge|replace|keep` settles the first pair
+//! found that way (for screenshots).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -10,7 +19,8 @@ use std::time::Duration;
 
 use gpui_kit::*;
 use heronite_data::launchers::{ImportPrefs, LastImport, Launcher};
-use heronite_data::DataPaths;
+use heronite_data::{DataPaths, Library};
+use heronite_import::duplicates::Duplicate;
 use heronite_import::Report;
 
 const FIRST_DELAY: Duration = Duration::from_secs(8);
@@ -27,6 +37,22 @@ pub struct Summary {
 
 pub enum LauncherImportsEvent {
     Imported(Launcher, Report),
+    /// Games found in the Collection twice, not told about before.
+    Duplicates(Vec<Duplicate>),
+    /// A pair was merged or the game added by hand removed.
+    Resolved,
+}
+
+/// What to do with a game in the Collection twice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Resolve {
+    /// Keeps the launcher's entry and carries the other's play time,
+    /// sessions, status, notes and journal over to it.
+    Merge,
+    /// Keeps the launcher's entry; the one added by hand goes with its data.
+    Replace,
+    /// Keeps the two, and never asks again.
+    KeepBoth,
 }
 
 pub struct LauncherImports {
@@ -39,6 +65,16 @@ pub struct LauncherImports {
     /// Importing (or removing) right now.
     pub busy: BTreeSet<Launcher>,
     pub errors: BTreeMap<Launcher, String>,
+    /// Games in the Collection twice (see [`Resolve`]).
+    pub duplicates: Vec<Duplicate>,
+    /// Pairs being merged or replaced right now ([`Duplicate::id`]).
+    pub resolving: BTreeSet<String>,
+    /// The last pair settled, or why it could not be.
+    pub resolved: Option<(String, bool)>,
+    /// Pairs the Collection was told about this run.
+    announced: BTreeSet<String>,
+    /// `HERONITE_DEBUG_RESOLVE` was acted on.
+    debug_resolved: bool,
     /// What the next write of the file holds: imports finishing together
     /// write in any order, each one the latest state.
     saving: Arc<Mutex<ImportPrefs>>,
@@ -54,8 +90,20 @@ impl LauncherImports {
     pub fn new(paths: DataPaths, cx: &mut Context<Self>) -> Self {
         let prefs = ImportPrefs::load(&paths);
         let saving = Arc::new(Mutex::new(prefs.clone()));
-        let this =
-            Self { paths, found: None, prefs, in_collection: BTreeMap::new(), busy: BTreeSet::new(), errors: BTreeMap::new(), saving };
+        let this = Self {
+            paths,
+            found: None,
+            prefs,
+            in_collection: BTreeMap::new(),
+            busy: BTreeSet::new(),
+            errors: BTreeMap::new(),
+            duplicates: Vec::new(),
+            resolving: BTreeSet::new(),
+            resolved: None,
+            announced: BTreeSet::new(),
+            debug_resolved: false,
+            saving,
+        };
         let idle = !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS");
         cx.spawn(async move |this, cx| {
             if this.update(cx, |this, cx| this.look(cx)).is_err() || !idle {
@@ -89,11 +137,123 @@ impl LauncherImports {
             this.update(cx, |this, cx| {
                 this.found = Some(found);
                 this.in_collection = counts;
+                this.find_duplicates(false, cx);
                 cx.notify();
             })
             .ok();
         })
         .detach();
+    }
+
+    /// Looks for the games in the Collection twice; with `announce`, tells
+    /// the Collection about the ones it was not told about yet.
+    pub fn find_duplicates(&mut self, announce: bool, cx: &mut Context<Self>) {
+        let (paths, kept) = (self.paths.clone(), self.prefs.kept_apart.clone());
+        cx.spawn(async move |this, cx| {
+            let found = cx
+                .background_spawn(async move {
+                    let lib = Library::load_with(&paths, true)?;
+                    anyhow::Ok(heronite_import::duplicates::find(&lib, &paths, &home().to_string_lossy(), &kept))
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                let found = match found {
+                    Ok(found) => found,
+                    Err(e) => return log::warn!("Looking for games in the Collection twice: {e:#}"),
+                };
+                // Pairs settled while this ran stay settled.
+                let found: Vec<Duplicate> =
+                    found.into_iter().filter(|d| !this.prefs.kept_apart.contains(&d.id()) && !this.resolving.contains(&d.id())).collect();
+                if announce {
+                    let new: Vec<Duplicate> = found.iter().filter(|d| !this.announced.contains(&d.id())).cloned().collect();
+                    if !new.is_empty() {
+                        log::info!("{} game(s) in the Collection twice", new.len());
+                        cx.emit(LauncherImportsEvent::Duplicates(new));
+                    }
+                    this.announced.extend(found.iter().map(Duplicate::id));
+                }
+                if this.duplicates != found {
+                    this.duplicates = found;
+                    cx.notify();
+                }
+                this.debug_resolve(cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn debug_resolve(&mut self, cx: &mut Context<Self>) {
+        let Some(how) = crate::env::value("HERONITE_DEBUG_RESOLVE") else { return };
+        if std::mem::replace(&mut self.debug_resolved, true) {
+            return;
+        }
+        let how = match how.as_str() {
+            "replace" => Resolve::Replace,
+            "keep" => Resolve::KeepBoth,
+            _ => Resolve::Merge,
+        };
+        if let Some(dup) = self.duplicates.first().cloned() {
+            self.resolve(dup, how, cx);
+        }
+    }
+
+    /// Settles a game in the Collection twice. Merge and Replace never touch
+    /// the game's files: the entry added by hand leaves the Collection.
+    pub fn resolve(&mut self, dup: Duplicate, how: Resolve, cx: &mut Context<Self>) {
+        let id = dup.id();
+        if self.resolving.contains(&id) {
+            return;
+        }
+        if how == Resolve::KeepBoth {
+            self.prefs.kept_apart.insert(id.clone());
+            self.duplicates.retain(|d| d.id() != id);
+            self.resolved = None;
+            self.save(cx);
+            cx.notify();
+            return;
+        }
+        self.resolving.insert(id.clone());
+        let paths = self.paths.clone();
+        let (mine, theirs) = (dup.mine.app_name.clone(), dup.theirs.app_name.clone());
+        cx.spawn(async move |this, cx| {
+            let res = cx
+                .background_spawn(async move {
+                    if how == Resolve::Merge {
+                        heronite_data::carry_over::carry_over(&paths, &mine, &theirs)?;
+                    }
+                    crate::dialogs::remove_game::remove_from_collection(&paths, "sideload", &mine)?;
+                    anyhow::Ok(())
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                this.resolving.remove(&id);
+                match res {
+                    Ok(()) => {
+                        // The entry added by hand is gone: so are its other pairs.
+                        this.duplicates.retain(|d| d.mine.app_name != dup.mine.app_name);
+                        let text = match how {
+                            Resolve::Merge => {
+                                heronite_i18n::tr!("{mine} was merged into {theirs}.", mine = dup.mine.title, theirs = dup.theirs.title)
+                            }
+                            _ => {
+                                heronite_i18n::tr!("{mine} was removed; {theirs} stays.", mine = dup.mine.title, theirs = dup.theirs.title)
+                            }
+                        };
+                        this.resolved = Some((text, false));
+                        cx.emit(LauncherImportsEvent::Resolved);
+                    }
+                    Err(e) => {
+                        log::warn!("Settling {} and {}: {e:#}", dup.mine.app_name, dup.theirs.app_name);
+                        this.resolved = Some((format!("{e:#}"), true));
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+        cx.notify();
     }
 
     /// The launchers found that have games and are not imported yet.
@@ -167,6 +327,7 @@ impl LauncherImports {
                         if report.added > 0 || report.updated > 0 {
                             cx.emit(LauncherImportsEvent::Imported(launcher, report));
                         }
+                        this.find_duplicates(true, cx);
                     }
                     Err(e) => {
                         log::warn!("Importing from {}: {e}", launcher.name());
@@ -197,6 +358,7 @@ impl LauncherImports {
                         if n > 0 {
                             cx.emit(LauncherImportsEvent::Imported(launcher, Report::default()));
                         }
+                        this.find_duplicates(false, cx);
                     }
                     Err(e) => {
                         this.errors.insert(launcher, format!("{e:#}"));

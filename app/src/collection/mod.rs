@@ -90,6 +90,9 @@ enum ToastAction {
     RestoreNote(String, Box<heronite_data::journal::Entry>),
     /// Puts back the "where I left off" line just cleared (game key, the line).
     RestoreLeftOff(String, Box<heronite_data::journal::LeftOff>),
+    /// Opens Settings → Other launchers, where games in the Collection twice
+    /// are merged.
+    ReviewDuplicates,
 }
 
 pub struct CollectionView {
@@ -369,6 +372,7 @@ impl CollectionView {
                                 }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
                                 ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
+                                ToastAction::ReviewDuplicates => heronite_i18n::tr!("Review"),
                             })
                             .when(matches!(action, ToastAction::Undo), |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
                             .on_click(cx.listener(move |this, _, window, cx| {
@@ -383,6 +387,10 @@ impl CollectionView {
                                     ToastAction::ScriptInstall => {
                                         this.toast = None;
                                         this.show_script_install(window, cx);
+                                    }
+                                    ToastAction::ReviewDuplicates => {
+                                        this.toast = None;
+                                        this.open_settings_section(crate::pages::settings::Section::Launchers, window, cx);
                                     }
                                     ToastAction::RestoreNote(key, entry) => {
                                         this.toast = None;

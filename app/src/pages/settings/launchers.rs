@@ -1,18 +1,22 @@
 //! Settings → Other launchers: Heroic, Lutris and Faugus, whether each is on
 //! this PC and how many games it has, and a switch to bring its games into
 //! the Collection (kept in sync while on). Turning one off keeps its games;
-//! "Remove them" takes them out. The work is the service's
+//! "Remove them" takes them out. Games then in the Collection twice (added
+//! here by hand, and from Lutris or Faugus) are listed below the cards, to
+//! merge, replace or keep both. The work is the service's
 //! (`services::launcher_imports`).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::collection::playtime_label;
 use heronite_data::launchers::Launcher;
 use heronite_i18n::{tr, trn};
+use heronite_import::duplicates::{Duplicate, Why};
 
 use super::SettingsPage;
 use crate::console::list::{Outcome, Row, Value};
 use crate::icons::Icon;
-use crate::services::launcher_imports::LauncherImports;
+use crate::services::launcher_imports::{LauncherImports, Resolve};
 use crate::theme;
 use crate::ui::controls::{button_sm, card_box, toggle, ButtonKind};
 use crate::ui::icon;
@@ -163,12 +167,134 @@ pub fn launcher_icon(launcher: Launcher) -> Icon {
     }
 }
 
+/// Why the two are taken for the same game.
+fn why_text(dup: &Duplicate) -> String {
+    let launcher = dup.launcher.name();
+    match dup.why {
+        Why::Prefix => tr!("It runs in the Wine prefix of {launcher}'s game.", launcher),
+        Why::Folder => tr!("Its program is in the folder of {launcher}'s game.", launcher),
+        Why::Title => tr!("Same name.").into(),
+    }
+}
+
+/// One side of a pair: title, and where it is from with its play time.
+fn side(title: &str, from: String, minutes: u64, accent: bool) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(3.))
+        .flex_1()
+        .min_w_0()
+        .child(
+            div()
+                .text_size(px(14.))
+                .font_weight(theme::W_BOLD)
+                .text_color(if accent { theme::accent() } else { theme::text_primary() })
+                .truncate()
+                .child(title.to_string()),
+        )
+        .child(div().text_size(px(12.5)).text_color(theme::text_muted()).child(format!("{from}  \u{b7}  {}", playtime_label(minutes))))
+}
+
+fn duplicate_row(svc: &Entity<LauncherImports>, dup: &Duplicate, busy: bool) -> Div {
+    let id = dup.id();
+    let button = |suffix: &str, kind: ButtonKind, label: &str, how: Resolve| {
+        let (svc, dup) = (svc.clone(), dup.clone());
+        button_sm(SharedString::from(format!("dup-{id}-{suffix}")), kind, label.to_string())
+            .when(!busy, |b| b.on_click(move |_, _, cx| svc.update(cx, |s, cx| s.resolve(dup.clone(), how, cx))))
+            .when(busy, |b| b.opacity(0.5))
+    };
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(10.))
+        .p(px(14.))
+        .rounded(px(10.))
+        .bg(theme::white_a(0.04))
+        .border_1()
+        .border_color(theme::white_a(0.08))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(14.))
+                .child(side(&dup.mine.title, tr!("Added by you").into(), dup.mine.minutes, false))
+                .child(icon(Icon::ChevronRight, px(18.), theme::text_dim()))
+                .child(side(&dup.theirs.title, dup.launcher.name().to_string(), dup.theirs.minutes, true)),
+        )
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(div().flex_1().text_size(px(12.5)).text_color(theme::text_dim()).child(why_text(dup)))
+                .child(button("keep", ButtonKind::Ghost, tr!("Keep both"), Resolve::KeepBoth))
+                .child(button("replace", ButtonKind::Glass, tr!("Replace"), Resolve::Replace))
+                .child(button("merge", ButtonKind::Primary, if busy { tr!("Merging\u{2026}") } else { tr!("Merge") }, Resolve::Merge)),
+        )
+}
+
+/// The games in the Collection twice, when there are any (or the outcome of
+/// the last one settled).
+fn duplicates_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Option<Div> {
+    let s = d.launchers.svc.read(cx);
+    if s.duplicates.is_empty() && s.resolved.is_none() {
+        return None;
+    }
+    let svc = d.launchers.svc.clone();
+    let n = s.duplicates.len();
+    let rows: Vec<Div> = s.duplicates.iter().map(|dup| duplicate_row(&svc, dup, s.resolving.contains(&dup.id()))).collect();
+    let resolved = s
+        .resolved
+        .clone()
+        .map(|(text, error)| div().text_size(px(12.5)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text));
+    let head = div()
+        .flex()
+        .items_start()
+        .gap(px(14.))
+        .child(
+            div()
+                .flex_none()
+                .size(px(42.))
+                .rounded(px(12.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(theme::accent_alpha(0.14))
+                .child(icon(Icon::CallMerge, px(22.), theme::accent())),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .flex_1()
+                .min_w_0()
+                .child(
+                    div()
+                        .font_family(theme::font_heading())
+                        .font_weight(theme::W_BOLD)
+                        .text_size(px(16.))
+                        .child(if n == 0 { tr!("Already in your Collection").to_string() } else { trn!(n, "{n} game is in your Collection twice", "{n} games are in your Collection twice") }),
+                )
+                .when(n > 0, |d| {
+                    d.child(div().text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_dim()).child(tr!(
+                        "You added these here by hand, and their launcher has them too. Merge keeps the launcher's game, which it keeps starting with its own settings, and moves your play time, sessions, status, notes and journal to it. Replace removes the one you added, with its play time. Neither deletes any file."
+                    )))
+                })
+                .children(resolved),
+        );
+    Some(card_box().py(px(16.)).gap(px(12.)).child(head).children(rows))
+}
+
 pub fn render(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let duplicates = duplicates_card(d, cx);
     let cards: Vec<Div> = Launcher::ALL.iter().map(|l| launcher_card(d, *l, cx)).collect();
     div()
         .flex()
         .flex_col()
         .gap(px(12.))
+        .children(duplicates)
         .children(cards)
         .child(div().mx(px(6.)).mt(px(4.)).text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_dim()).child(tr!(
             "Nothing is changed in the other launchers. A game removed there stays here as not installed; its play time and notes are kept."
@@ -180,6 +306,21 @@ pub fn render(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElemen
 pub fn console_rows(d: &SettingsPage, cx: &App) -> Vec<Row> {
     let s = d.launchers.svc.read(cx);
     let mut rows = Vec::new();
+    if !s.duplicates.is_empty() {
+        rows.push(Row::header(trn!(s.duplicates.len(), "{n} game is in your Collection twice", "{n} games are in your Collection twice")));
+        for dup in &s.duplicates {
+            let busy = s.resolving.contains(&dup.id());
+            let desc = format!("{} \u{2192} {} ({})", dup.mine.title, dup.theirs.title, dup.launcher.name());
+            rows.push(
+                Row::action(SharedString::from(format!("dup-merge|{}", dup.id())), tr!("Merge"))
+                    .desc(desc)
+                    .icon(Icon::CallMerge)
+                    .enabled(!busy),
+            );
+            rows.push(Row::action(SharedString::from(format!("dup-replace|{}", dup.id())), tr!("Replace")).enabled(!busy));
+            rows.push(Row::action(SharedString::from(format!("dup-keep|{}", dup.id())), tr!("Keep both")).enabled(!busy));
+        }
+    }
     for launcher in Launcher::ALL {
         let (found, here) = found_line(s, launcher);
         let on = s.prefs.enabled.contains(&launcher);
@@ -214,7 +355,17 @@ pub fn console_apply(d: &mut SettingsPage, outcome: Outcome, cx: &mut Context<Se
             }
         }
         Outcome::Activate(id) => {
-            if let Some(l) = id.strip_suffix("-now").and_then(Launcher::from_source) {
+            if let Some((what, pair)) = id.split_once('|') {
+                let how = match what {
+                    "dup-merge" => Resolve::Merge,
+                    "dup-replace" => Resolve::Replace,
+                    _ => Resolve::KeepBoth,
+                };
+                let dup = svc.read(cx).duplicates.iter().find(|d| d.id() == pair).cloned();
+                if let Some(dup) = dup {
+                    svc.update(cx, |s, cx| s.resolve(dup, how, cx));
+                }
+            } else if let Some(l) = id.strip_suffix("-now").and_then(Launcher::from_source) {
                 svc.update(cx, |s, cx| s.import(l, cx));
             }
         }

@@ -185,6 +185,17 @@ calls them from `cx.background_spawn` or worker threads.
   the request to its window), the runtime follows the game's processes
   (`Procs::game_pids`: files under its folder, Windows programs in its
   prefix) until they are gone, and a stop ends them.
+  `duplicates` pairs the games then in the Collection twice: added here by
+  hand (pointing into the launcher's prefix or folder, or with the same
+  name) and brought in from Lutris or Faugus. Settings → Other launchers
+  merges a pair (`heronite_data::carry_over` moves play time, sessions,
+  status and its history, notes, journal, rating, favourites, categories and
+  custom fields onto the launcher's entry, then the other leaves the
+  Collection), keeps only the launcher's, or keeps both
+  (`keptApart` in `launcher-imports.json`). The folders and prefixes of the
+  `launcher` games (`launchers::managed_paths`) are theirs: an uninstall or
+  prefix removal of a game added here, Wine Manager's trash and the Storage
+  page (in use, never a leftover) all leave them alone.
 
 - **heronite-steam:** Steam games keep launching through Steam
   (`steam://rungameid`), with Steam's Proton and prefix. Their game settings
