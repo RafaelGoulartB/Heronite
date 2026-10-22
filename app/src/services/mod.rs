@@ -3,6 +3,7 @@
 
 pub mod compression;
 pub mod downloads;
+pub mod game_folders;
 pub mod launch_blocker;
 pub mod mods;
 pub mod replay;

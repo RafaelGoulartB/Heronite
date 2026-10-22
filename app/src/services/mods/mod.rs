@@ -11,6 +11,24 @@
 //! are what the views use. Their signatures stay; bodies live in the sibling
 //! modules.
 
+// The manager and the Collection call most of this; until they do (the UI is
+// built apart from the service), the unused part is not an error.
+#![allow(dead_code)]
+
+mod account;
+mod edit;
+mod facts;
+mod handlers;
+mod install;
+mod jobs;
+mod launch;
+mod links;
+mod load;
+mod steam;
+mod updates;
+
+pub use launch::{startup, ModsLaunch};
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -154,6 +172,16 @@ pub struct ModsService {
     support: Option<Support>,
     handlers: HandlerState,
     next_id: u64,
+    /// Lists shared with the worker threads, one per game used so far.
+    shared: HashMap<String, Arc<edit::GameShared>>,
+    /// The games as the Collection last handed them over, for the jobs.
+    sources: HashMap<String, Arc<CollectionGame>>,
+    /// Mods and enabled mods of games whose list is not loaded.
+    counts: HashMap<String, (usize, usize)>,
+    work: jobs::Work,
+    /// Counts runs of the conflict / Steam checks, so only the last one lands.
+    checks: HashMap<String, u64>,
+    links: links::Links,
 }
 
 impl EventEmitter<ModsEvent> for ModsService {}
@@ -183,9 +211,10 @@ pub fn open_link(cx: &mut App, link: String) {
 }
 
 impl ModsService {
-    fn new(data_paths: DataPaths, _cx: &mut Context<Self>) -> Self {
+    fn new(data_paths: DataPaths, cx: &mut Context<Self>) -> Self {
         let root = ModsRoot::default_for(&data_paths);
-        Self {
+        let (work, messages) = jobs::Work::new();
+        let mut this = Self {
             data_paths,
             root,
             games: HashMap::new(),
@@ -196,7 +225,16 @@ impl ModsService {
             support: None,
             handlers: HandlerState::Unknown,
             next_id: 1,
-        }
+            shared: HashMap::new(),
+            sources: HashMap::new(),
+            counts: HashMap::new(),
+            work,
+            checks: HashMap::new(),
+            links: links::Links::default(),
+        };
+        this.listen(messages, cx);
+        this.read_account(cx);
+        this
     }
 
     // ---- Reading (cheap, for render) ----
@@ -211,10 +249,14 @@ impl ModsService {
     }
 
     /// Number of mods and of enabled mods of a game whose list is loaded
-    /// (the Focus panel's row; `None` = not loaded or no mods).
+    /// (the Focus panel's row; `None` = not loaded or no mods). Before
+    /// [`load`](Self::load), the numbers [`load_counts`](Self::load_counts) read.
     pub fn counts(&self, game_key: &str) -> Option<(usize, usize)> {
-        let g = self.games.get(game_key)?;
-        (!g.list.mods.is_empty()).then(|| (g.list.mods.len(), g.list.mods.iter().filter(|m| m.enabled).count()))
+        let counted = match self.games.get(game_key) {
+            Some(g) => (g.list.mods.len(), g.list.mods.iter().filter(|m| m.enabled).count()),
+            None => *self.counts.get(game_key)?,
+        };
+        (counted.0 > 0).then_some(counted)
     }
 
     /// Jobs of a game (all games with `None`), oldest first.
@@ -249,133 +291,133 @@ impl ModsService {
     /// links, then computes conflicts and the overwrite size; emits
     /// `Changed` as each part lands. Also checks [`support`](Self::support).
     pub fn load(&mut self, game: &CollectionGame, cx: &mut Context<Self>) {
-        let _ = (game, cx);
+        self.load_game(game, cx);
     }
 
     /// Reads the counts of every game with a `mods.json` (Focus panel rows)
     /// without resolving folders.
     pub fn load_counts(&mut self, cx: &mut Context<Self>) {
-        let _ = cx;
+        self.read_counts(cx);
     }
 
     // ---- Adding mods ----
 
     /// An archive or a folder the user picked or dropped.
     pub fn install_path(&mut self, game_key: &str, path: PathBuf, cx: &mut Context<Self>) {
-        let _ = (game_key, path, cx);
+        self.start_path_install(game_key, path, cx);
     }
 
     /// A Nexus mod from the Browse tab (premium accounts: the main file, or
     /// `file_id`).
     pub fn install_nexus(&mut self, game_key: &str, mod_id: u64, file_id: Option<u64>, cx: &mut Context<Self>) {
-        let _ = (game_key, mod_id, file_id, cx);
+        self.start_nexus_install(game_key, mod_id, file_id, cx);
     }
 
     /// A Thunderstore package with its dependencies.
     pub fn install_thunderstore(&mut self, game_key: &str, namespace: &str, name: &str, cx: &mut Context<Self>) {
-        let _ = (game_key, namespace, name, cx);
+        self.start_thunderstore_install(game_key, namespace, name, cx);
     }
 
     /// An `nxm://` / `ror2mm://` link: finds the game (or asks with
     /// `PickGame`), then downloads and installs.
     pub fn open_link(&mut self, link: String, cx: &mut Context<Self>) {
-        let _ = (link, cx);
+        self.receive_link(link, cx);
     }
 
     /// The user picked the game of a [`LinkRequest`] (`None` = cancel).
     pub fn answer_link(&mut self, id: u64, game_key: Option<String>, cx: &mut Context<Self>) {
-        let _ = (id, game_key, cx);
+        self.pick_link_game(id, game_key, cx);
     }
 
     /// The FOMOD wizard is done: installs `wizard.files()` and remembers
     /// `wizard.choices()`.
     pub fn finish_fomod(&mut self, job_id: u64, cx: &mut Context<Self>) {
-        let _ = (job_id, cx);
+        self.answer_fomod(job_id, jobs::Answer::Finish, cx);
     }
 
     /// The FOMOD wizard was closed: `plain` installs the archive as it is
     /// instead (scripted installers, or the user's choice), else the job ends.
     pub fn cancel_fomod(&mut self, job_id: u64, plain: bool, cx: &mut Context<Self>) {
-        let _ = (job_id, plain, cx);
+        self.answer_fomod(job_id, if plain { jobs::Answer::Plain } else { jobs::Answer::Cancel }, cx);
     }
 
     pub fn cancel_job(&mut self, job_id: u64, cx: &mut Context<Self>) {
-        let _ = (job_id, cx);
+        self.cancel(job_id, cx);
     }
 
     /// Removes a finished or failed job from the list.
     pub fn dismiss_job(&mut self, job_id: u64, cx: &mut Context<Self>) {
-        let _ = (job_id, cx);
+        self.dismiss(job_id, cx);
     }
 
     // ---- Managing ----
 
     /// "Play with mods".
     pub fn set_active(&mut self, game_key: &str, on: bool, cx: &mut Context<Self>) {
-        let _ = (game_key, on, cx);
+        self.edit_active(game_key, on, cx);
     }
 
     pub fn set_enabled(&mut self, game_key: &str, mod_id: &str, on: bool, cx: &mut Context<Self>) {
-        let _ = (game_key, mod_id, on, cx);
+        self.edit_enabled(game_key, mod_id, on, cx);
     }
 
     /// Moves a mod to `to_index` of the load order.
     pub fn move_mod(&mut self, game_key: &str, mod_id: &str, to_index: usize, cx: &mut Context<Self>) {
-        let _ = (game_key, mod_id, to_index, cx);
+        self.edit_move(game_key, mod_id, to_index, cx);
     }
 
     pub fn rename(&mut self, game_key: &str, mod_id: &str, name: String, cx: &mut Context<Self>) {
-        let _ = (game_key, mod_id, name, cx);
+        self.edit_rename(game_key, mod_id, name, cx);
     }
 
     pub fn remove(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
-        let _ = (game_key, mod_id, cx);
+        self.edit_remove(game_key, mod_id, cx);
     }
 
     /// Installs the mod again from its kept archive (FOMOD: the wizard opens
     /// with the previous choices).
     pub fn reinstall(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
-        let _ = (game_key, mod_id, cx);
+        self.start_reinstall(game_key, mod_id, cx);
     }
 
     /// Downloads and installs the newer version in place of the mod.
     pub fn update(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
-        let _ = (game_key, mod_id, cx);
+        self.start_update(game_key, mod_id, cx);
     }
 
     /// Checks the site for newer versions of the game's mods (Nexus needs the
     /// account); results land in each `ModEntry::update`.
     pub fn check_updates(&mut self, game_key: &str, cx: &mut Context<Self>) {
-        let _ = (game_key, cx);
+        self.look_for_updates(game_key, cx);
     }
 
     /// Turns a Bethesda plugin on or off (`Plugins.txt`).
     pub fn set_plugin(&mut self, game_key: &str, plugin: &str, on: bool, cx: &mut Context<Self>) {
-        let _ = (game_key, plugin, on, cx);
+        self.edit_plugin(game_key, plugin, on, cx);
     }
 
     /// The manager's game settings: Nexus game, Thunderstore community, mods folder.
     pub fn set_links(&mut self, game_key: &str, links: GameLinks, cx: &mut Context<Self>) {
-        let _ = (game_key, links, cx);
+        self.edit_links(game_key, links, cx);
     }
 
     /// Adds the missing `WINEDLLOVERRIDES` to the Steam game's launch options.
     pub fn add_steam_overrides(&mut self, game_key: &str, cx: &mut Context<Self>) {
-        let _ = (game_key, cx);
+        self.write_steam_overrides(game_key, cx);
     }
 
     pub fn clear_overwrite(&mut self, game_key: &str, cx: &mut Context<Self>) {
-        let _ = (game_key, cx);
+        self.empty_overwrite(game_key, cx);
     }
 
     /// Makes a mod (at the end of the list) of what the game wrote.
     pub fn overwrite_into_mod(&mut self, game_key: &str, name: String, cx: &mut Context<Self>) {
-        let _ = (game_key, name, cx);
+        self.turn_overwrite_into_mod(game_key, name, cx);
     }
 
     /// Removes every mod of the game and its folder under the mods root.
     pub fn forget_game(&mut self, game_key: &str, cx: &mut Context<Self>) {
-        let _ = (game_key, cx);
+        self.forget(game_key, cx);
     }
 
     // ---- Account and links ----
@@ -383,26 +425,26 @@ impl ModsService {
     /// Checks the key with Nexus Mods and keeps it when valid; `Account`
     /// event either way, the error as a `Notice`.
     pub fn set_api_key(&mut self, key: String, cx: &mut Context<Self>) {
-        let _ = (key, cx);
+        self.validate_key(key, cx);
     }
 
     pub fn sign_out(&mut self, cx: &mut Context<Self>) {
-        let _ = cx;
+        self.forget_account(cx);
     }
 
     /// Reads who opens `nxm://` / `ror2mm://` (xdg-mime), off the UI thread.
     pub fn refresh_handlers(&mut self, cx: &mut Context<Self>) {
-        let _ = cx;
+        self.read_handlers(cx);
     }
 
     /// Makes Heronite open `nxm://` and `ror2mm://` links.
     pub fn register_handlers(&mut self, cx: &mut Context<Self>) {
-        let _ = cx;
+        self.write_handlers(cx);
     }
 
     /// Downloads fuse-overlayfs now (Settings → Mods), instead of at the
     /// first modded launch.
     pub fn fetch_tool(&mut self, cx: &mut Context<Self>) {
-        let _ = cx;
+        self.download_tool(cx);
     }
 }

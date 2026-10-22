@@ -138,11 +138,15 @@ pub fn init(
     }
     // Games still running from before the app restarted; after the services
     // above, which follow running games through the same events.
+    // A game about to start makes its own mount: only the installs are swept then.
+    let paths = data_paths.clone();
+    let launching = cli.launch.is_some();
     cx.background_spawn(async move {
         let n = adopting.adopt_leftovers();
         if n > 0 {
             log::info!("following {n} game(s) left running");
         }
+        crate::services::mods::startup(&paths, &adopting.running_apps(), !launching);
     })
     .detach();
 

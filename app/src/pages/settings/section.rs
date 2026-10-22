@@ -16,6 +16,8 @@ pub enum Section {
     Library,
     /// What the games take on disk, and cleaning it up.
     Storage,
+    /// Mods: the Nexus Mods account, the mod links, what applying mods needs.
+    Mods,
     /// The in-game overlay (Guide button).
     Overlay,
     /// The replay buffer: the last seconds of a game, saved on request.
@@ -34,13 +36,24 @@ impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 4] = [
         (n_!("App"), &[Section::General, Section::Appearance, Section::Advanced]),
-        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Library, Section::Storage, Section::Overlay, Section::Replay]),
+        (
+            n_!("Games"),
+            &[
+                Section::GameDefaults,
+                Section::Downloads,
+                Section::Library,
+                Section::Storage,
+                Section::Mods,
+                Section::Overlay,
+                Section::Replay,
+            ],
+        ),
         (n_!("Collection"), &[Section::Metadata, Section::Screenshots, Section::Saves, Section::Backups]),
         (n_!("Help"), &[Section::Logs, Section::About]),
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 15] = [
+    pub const ALL: [Section; 16] = [
         Section::General,
         Section::Appearance,
         Section::Advanced,
@@ -48,6 +61,7 @@ impl Section {
         Section::Downloads,
         Section::Library,
         Section::Storage,
+        Section::Mods,
         Section::Overlay,
         Section::Replay,
         Section::Metadata,
@@ -67,6 +81,7 @@ impl Section {
             Section::Downloads => tr!("Downloads"),
             Section::Library => tr!("Library"),
             Section::Storage => tr!("Storage"),
+            Section::Mods => tr!("Mods"),
             Section::Overlay => tr!("Overlay"),
             Section::Replay => tr!("Replay"),
             Section::Metadata => tr!("Metadata"),
@@ -87,6 +102,7 @@ impl Section {
             Section::Downloads => Icon::Download,
             Section::Library => Icon::GridView,
             Section::Storage => Icon::FaHardDrive,
+            Section::Mods => Icon::CallMerge,
             Section::Overlay => Icon::SportsEsports,
             Section::Replay => Icon::Videocam,
             Section::Metadata => Icon::TravelExplore,
@@ -108,6 +124,7 @@ impl Section {
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
+            Section::Mods => tr!("Your Nexus Mods account, the download buttons of the mod sites, and what Heronite needs to apply mods when a game starts. Each game's mods are managed from its own Mods."),
             Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
             Section::Replay => tr!("The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes."),
             Section::Metadata => tr!("Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags."),
@@ -129,6 +146,7 @@ impl Section {
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
+            Section::Mods => "mods nexus thunderstore nxm ror2mm api key account premium links fuse overlayfs fomod mod manager modding mods conta chave link modificacoes gerenciador",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut beta botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
@@ -158,6 +176,7 @@ impl Section {
             "downloads" => Some(Section::Downloads),
             "library" => Some(Section::Library),
             "storage" | "disk" => Some(Section::Storage),
+            "mods" | "nexus" => Some(Section::Mods),
             "overlay" => Some(Section::Overlay),
             "replay" => Some(Section::Replay),
             "metadata" => Some(Section::Metadata),
@@ -190,6 +209,7 @@ mod tests {
         assert_eq!(Section::parse("storage"), Some(Section::Storage));
         assert_eq!(Section::parse("defaults"), Some(Section::GameDefaults));
         assert_eq!(Section::parse("replay"), Some(Section::Replay));
+        assert_eq!(Section::parse("mods"), Some(Section::Mods));
         assert_eq!(Section::parse("nope"), None);
         assert_eq!(crate::pages::Page::from_debug("settings"), Some(crate::pages::Page::Settings));
         assert_eq!(crate::pages::Page::from_debug("settings:about"), Some(crate::pages::Page::Settings));

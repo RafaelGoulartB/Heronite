@@ -39,7 +39,7 @@ use crate::text::DateLocale;
 
 /// Everything the UI needs about one game. Cheap to share: keep it in an
 /// `Arc` ([`Game`](crate::collection::Game)).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CollectionGame {
     /// `runner_appName`: the key the screen uses for focus and de-duplication.
     pub key: String,

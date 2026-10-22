@@ -103,3 +103,21 @@ game, `apply(app_name, runner)` mounts and returns the extra environment and a
 guard. The guard is dropped when the session ends (unmount, `Plugins.txt`
 restored). A failure aborts the launch with the reason ("Mods could not be
 applied: …") rather than starting the game without the mods its saves expect.
+
+## Service (`services::mods`)
+
+- Lists are shared with the job threads and written in the background from the
+  latest list; a change shows at once. A job builds a mod from a copy of the
+  list and merges the result into the shared one, so toggles made meanwhile
+  are kept.
+- A job is one thread: download (three at a time over all games), then the
+  game's install turn (one at a time per game, held while a FOMOD installer
+  waits for the user), unpack, wizard, commit. A scripted or unreadable
+  installer installs the files as they are, with a notice.
+- A link finds the game by the games' own links, then the known table, then
+  the title; one match starts the job and asks the UI to open that manager
+  (`OpenManager`), else `PickGame`. Links read before the window is up wait in
+  the service.
+- At start: unfinished installs are swept and stale overlays unmounted (not
+  when the start is a game launch: its own mount is being made).
+- Settings → Mods: the account, who opens the links, fuse-overlayfs and FUSE.

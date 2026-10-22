@@ -78,10 +78,16 @@ impl GameRuntime {
         });
         launcher.set_epic_setup(Arc::new(crate::services::downloads::EpicLaunchSetup(paths.clone())));
         launcher.set_store_setup(Arc::new(crate::services::downloads::StoreLaunchSetup(paths.clone())));
+        launcher.set_game_mods(Arc::new(crate::services::mods::ModsLaunch::new(paths.clone())));
         // Header of every launch log (Heroic's `formatSystemInfo`).
         launcher.set_system_info(Arc::new(crate::pages::settings::logs::system_info_text));
         spawn_tools_update(paths.clone());
         (Self { launcher, paths, sessions: Mutex::new(HashMap::new()) }, frx)
+    }
+
+    /// Names of the games with a running session.
+    pub fn running_apps(&self) -> Vec<String> {
+        self.launcher.running_apps()
     }
 
     /// The running (or just started) session of a game.
