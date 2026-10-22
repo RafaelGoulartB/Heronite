@@ -2,26 +2,30 @@
 //! data folder to read.
 //!
 //! `HERONITE_DEBUG_MODS_FIXTURE=1` (or a `,`-separated list of `nodir`,
-//! `steam`, `account`, `premium`, `fuse`, `jobs`, `running`) shows the
+//! `steam`, `account`, `premium`, `fuse`, `jobs`, `running`, `native`,
+//! `anticheat`, `deleted`, `misplaced`, `loader`, `loader-on`, `loader-steam`) shows the
 //! `mods.json` of the game under the data folder, with invented conflicts, an
 //! overwrite folder and jobs, for as long as the service has not loaded the game.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use heronite_data::CollectionGame;
 use heronite_mods::conflicts::{Conflicts, ModConflicts};
 use heronite_mods::games::{self, Profile};
 use heronite_mods::nexus::{Account, StoredAccount};
+use heronite_mods::overwrite::Written;
 use heronite_mods::{store, ModsRoot, Progress};
 
 use super::DialogCtx;
-use crate::services::mods::{GameModInfo, GameMods, Job, JobStage};
+use crate::services::mods::{GameModInfo, GameMods, Job, JobStage, LoaderCard, LoaderStart};
 
 pub(super) struct Fixture {
     pub game: GameMods,
     pub jobs: Vec<Job>,
     pub account: Option<StoredAccount>,
     pub support_problem: Option<String>,
+    pub misplaced: HashSet<String>,
 }
 
 pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
@@ -39,11 +43,12 @@ pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
         prefix: None,
         steam_app_id: game.steam_app_id.clone(),
         through_steam: has("steam"),
-        native: false,
+        native: has("native"),
         known,
         profile,
         nexus_domain: list.links.nexus_domain.clone().or_else(|| known.and_then(|k| k.nexus_domain.map(str::to_string))),
         thunderstore: list.links.thunderstore.clone().or_else(|| known.and_then(|k| k.thunderstore.map(str::to_string))),
+        anticheat: if has("anticheat") { vec!["EAC".to_string()] } else { Vec::new() },
     };
     let enabled: Vec<String> = list.enabled().map(|m| m.id.clone()).collect();
     let mut per_mod = std::collections::HashMap::new();
@@ -71,12 +76,18 @@ pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
             info,
             list,
             conflicts: Some(Arc::new(Conflicts { per_mod })),
-            overwrite: (23, 1_258_291),
+            overwrite: if has("deleted") {
+                Written { files: 0, bytes: 0, deleted: 2 }
+            } else {
+                Written { files: 23, bytes: 1_258_291, deleted: 2 }
+            },
+            loaders: loaders(&has),
             steam_overrides_missing: has("steam").then(|| "winhttp=n,b".to_string()),
         },
         jobs,
         account,
         support_problem: has("fuse").then(|| "Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.".to_string()),
+        misplaced: if has("misplaced") { enabled.iter().take(1).cloned().collect() } else { HashSet::new() },
     })
 }
 
@@ -97,4 +108,26 @@ fn jobs(key: &str) -> Vec<Job> {
         job(2, "Face Overhaul", JobStage::Failed, 0, 0, Some("The download was interrupted. Try again.")),
         done,
     ]
+}
+
+/// A script extender in the first mod, in the state the flags ask for.
+fn loaders(has: &dyn Fn(&str) -> bool) -> Vec<LoaderCard> {
+    if !(has("loader") || has("loader-on") || has("loader-steam")) {
+        return Vec::new();
+    }
+    let start = match (has("loader-steam"), has("loader-on")) {
+        (true, _) => {
+            LoaderStart::Steam { line: Some("bash -c 'exec \"${@/SkyrimSELauncher.exe/skse64_loader.exe}\"' -- %command%".to_string()) }
+        }
+        (_, true) => LoaderStart::On,
+        _ => LoaderStart::Off,
+    };
+    vec![LoaderCard {
+        name: "SKSE",
+        file: "skse64_loader.exe".to_string(),
+        rel: "skse64_loader.exe".to_string(),
+        mod_name: "SKSE64".to_string(),
+        needs_arguments: false,
+        start,
+    }]
 }

@@ -5,7 +5,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
 
-use super::{Confirm, ModsDialog, View};
+use super::{format, Confirm, ModsDialog, View};
 use crate::theme;
 use crate::ui::controls::{button, button_sm, caption, ButtonKind};
 use crate::ui::fields::{input_box, labeled, panel};
@@ -76,12 +76,21 @@ impl ModsDialog {
         let n = v.g.list.mods.len();
         let danger =
             if self.confirm == Some(Confirm::ForgetGame) {
+                let written = v.g.overwrite;
+                let overwrite = (!written.is_empty()).then(|| {
+                    div().text_size(px(13.)).line_height(px(18.)).text_color(theme::warning()).child(tr!(
+                    "The overwrite folder is deleted too: {files}, {size}. It holds what the game wrote while modded (settings, saves).",
+                    files = format::files(written.files),
+                    size = format::size(written.bytes)
+                ))
+                });
                 panel()
                     .child(div().text_size(px(13.5)).line_height(px(19.)).child(tr!(
                         "Remove all {n} mods of {game}? Their files are deleted; the game is not touched.",
                         n = n,
                         game = self.game.title.clone()
                     )))
+                    .children(overwrite)
                     .child(
                         div()
                             .flex()

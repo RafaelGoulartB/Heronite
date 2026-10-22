@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use gpui_kit::*;
-use heronite_data::CollectionGame;
+use heronite_data::{anticheat, CollectionGame};
 use heronite_mods::games::{self, Profile};
 use heronite_mods::{conflicts, links, overwrite, store, tool, GameLinks};
 
@@ -36,6 +36,9 @@ impl ModsService {
                         profile: Profile::of(&list.links, known),
                         nexus_domain: list.links.nexus_domain.clone(),
                         thunderstore: list.links.thunderstore.clone(),
+                        anticheat: anticheat::lookup(&paths, game.steam_app_id.as_deref(), &game.title)
+                            .map(|a| a.anticheats.iter().map(|n| anticheat::short_name(n)).collect())
+                            .unwrap_or_default(),
                     };
                     (info, list, tool::support(&paths.root.join("tools/bin")))
                 })
@@ -51,6 +54,7 @@ impl ModsService {
                         list,
                         conflicts: kept.as_ref().and_then(|g| g.conflicts.clone()),
                         overwrite: kept.as_ref().map(|g| g.overwrite).unwrap_or_default(),
+                        loaders: kept.as_ref().map(|g| g.loaders.clone()).unwrap_or_default(),
                         steam_overrides_missing: kept.and_then(|g| g.steam_overrides_missing),
                     },
                 );
@@ -124,14 +128,21 @@ impl ModsService {
         let dirs = self.root.game(game_key);
         let steam = self.games.get(game_key).filter(|g| g.info.through_steam).and_then(|g| g.info.steam_app_id.clone());
         let game_dir = self.games.get(game_key).and_then(|g| g.info.game_dir.clone());
+        let (through_steam, native) = self.games.get(game_key).map(|g| (g.info.through_steam, g.info.native)).unwrap_or_default();
+        let source = self.sources.get(game_key).cloned();
         let (paths, key) = (self.data_paths.clone(), game_key.to_string());
+        let loaders_paths = paths.clone();
         cx.spawn(async move |this, cx| {
             let list = shared.clone();
-            let (found, written, dlls_changed) = cx
+            let (found, written, dlls_changed, loaders) = cx
                 .background_spawn(async move {
-                    let changed = game_dir.is_some_and(|d| refresh_proxy_dlls(&list, &dirs, &d));
+                    let changed = game_dir.as_deref().is_some_and(|d| refresh_proxy_dlls(&list, &dirs, d));
                     let list = list.list();
-                    (conflicts::compute(&dirs, &list), overwrite::summary(&dirs), changed)
+                    let loaders = match (&source, &game_dir) {
+                        (Some(game), Some(dir)) => super::loaders::cards(&loaders_paths, game, &dirs, &list, dir, through_steam, native),
+                        _ => Vec::new(),
+                    };
+                    (conflicts::compute(&dirs, &list), overwrite::summary(&dirs), changed, loaders)
                 })
                 .await;
             let k = key.clone();
@@ -147,6 +158,7 @@ impl ModsService {
                     if let Some(game) = s.games.get_mut(&k) {
                         game.conflicts = Some(Arc::new(found));
                         game.overwrite = written;
+                        game.loaders = loaders;
                         cx.emit(ModsEvent::Changed { game_key: k.clone() });
                     }
                     true

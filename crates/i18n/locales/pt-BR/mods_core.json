@@ -16,5 +16,7 @@
   "The mods folder and the game folder cannot be inside each other": "A pasta dos mods e a pasta do jogo não podem ficar uma dentro da outra",
   "The overwrite folder is empty": "A pasta de sobreposição está vazia",
   "The path {path} is not allowed": "O caminho {path} não é permitido",
-  "{path} is still mounted from an earlier run and could not be unmounted": "{path} continua montado de uma execução anterior e não pôde ser desmontado"
+  "{path} is still mounted from an earlier run and could not be unmounted": "{path} continua montado de uma execução anterior e não pôde ser desmontado",
+  "{n} enabled mod is missing its files: {names}. Reinstall or remove it in Mods.": "{n} mod ativado está sem os arquivos: {names}. Reinstale ou remova em Mods.",
+  "{n} enabled mods are missing their files: {names}. Reinstall or remove them in Mods.": "{n} mods ativados estão sem os arquivos: {names}. Reinstale ou remova em Mods."
 }

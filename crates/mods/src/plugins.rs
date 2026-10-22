@@ -7,26 +7,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use heronite_data::temps::write_atomic;
 use heronite_i18n::tr;
 
-use crate::fsutil::{entries, find_ci, remove_any};
+use crate::file_swap::Swap;
+use crate::fsutil::{entries, find_ci};
 use crate::games::PluginsSpec;
 use crate::model::ModList;
 use crate::paths::GameDirs;
 
 const HEADER: &str = "# This file is used by the game to keep track of your downloaded content.";
-const BACKUP_SUFFIX: &str = ".heronite-backup";
-/// Left when there was no `Plugins.txt` before ours, so a crash can be undone.
-const NEW_SUFFIX: &str = ".heronite-new";
 
 /// Puts the user's `Plugins.txt` back when dropped.
 #[derive(Debug)]
 pub struct PluginsGuard {
-    file: PathBuf,
-    backup: PathBuf,
-    marker: PathBuf,
-    had_original: bool,
+    _swap: Swap,
     count: usize,
 }
 
@@ -37,77 +31,46 @@ impl PluginsGuard {
     }
 }
 
-impl Drop for PluginsGuard {
-    fn drop(&mut self) {
-        let result = if self.had_original {
-            fs::rename(&self.backup, &self.file)
-        } else {
-            remove_any(&self.file).and_then(|_| remove_any(&self.marker))
-        };
-        match result {
-            Ok(()) => log::info!("mods: Plugins.txt restored"),
-            Err(e) => log::warn!("mods: could not restore {}: {e}", self.file.display()),
-        }
-    }
-}
-
 /// Writes the plugin list of the enabled mods in `list`. `None` when the
 /// prefix has no user folder yet (a first launch makes it; the next launch
 /// writes the list). The folder is found as `drive_c/users/<user>/AppData/
 /// Local/<spec folder>` of `prefix` (or its `pfx`).
+///
+/// `game_dir` is the game's folder as it is on disk: call this before the
+/// mods are mounted over it, or the mods' own plugins would count as the
+/// game's when old games are ordered by file time.
 pub fn write(prefix: &Path, spec: &PluginsSpec, dirs: &GameDirs, list: &ModList, game_dir: &Path) -> Result<Option<PluginsGuard>, String> {
     let Some(folder) = app_data_folder(prefix, spec)? else { return Ok(None) };
     let file = folder.join("Plugins.txt");
-    let backup = folder.join(format!("Plugins.txt{BACKUP_SUFFIX}"));
-    let marker = folder.join(format!("Plugins.txt{NEW_SUFFIX}"));
-    recover(&file, &backup, &marker)?;
+    Swap::recover(&file)?;
 
     let original = fs::read(&file).ok();
     let ordered = ordered_plugins(spec, list);
     let content = render(spec, list, &ordered, original.as_deref().unwrap_or_default());
-    let err = |p: &Path, e: std::io::Error| tr!("Could not write {path}: {error}", path = p.display(), error = e);
-    let guard = PluginsGuard {
-        file: file.clone(),
-        backup: backup.clone(),
-        marker: marker.clone(),
-        had_original: original.is_some(),
-        count: ordered.len(),
-    };
-    match original {
-        Some(_) => fs::rename(&file, &backup).map_err(|e| err(&backup, e))?,
-        None => fs::write(&marker, b"Heronite wrote Plugins.txt; this marks it as not the user's.\n").map_err(|e| err(&marker, e))?,
-    }
-    write_atomic(&file, &content, Some(0o644)).map_err(|e| err(&file, e))?;
+    let swap = Swap::replace(&file, original.as_deref(), &content)?;
     if !spec.star_format {
         order_by_time(dirs, list, game_dir, &ordered);
     }
     log::info!("mods: Plugins.txt written with {} plugins", ordered.len());
-    Ok(Some(guard))
+    Ok(Some(PluginsGuard { _swap: swap, count: ordered.len() }))
 }
 
-/// A crash while the game ran leaves our file (and the user's as a backup):
-/// the user's comes back before anything else is read.
-fn recover(file: &Path, backup: &Path, marker: &Path) -> Result<(), String> {
-    if backup.exists() {
-        log::warn!("mods: restoring the Plugins.txt a crash left behind");
-        fs::rename(backup, file).map_err(|e| tr!("Could not write {path}: {error}", path = file.display(), error = e))?;
-    } else if marker.exists() {
-        let _ = remove_any(file);
-    }
-    let _ = remove_any(marker);
-    Ok(())
+/// The Wine users of the prefix (`Public` left out) with their home folders,
+/// from `drive_c/users` of the prefix or of its `pfx`.
+pub(crate) fn prefix_users(prefix: &Path) -> Vec<(String, PathBuf)> {
+    let users = [prefix.join("drive_c/users"), prefix.join("pfx/drive_c/users")].into_iter().find(|p| p.is_dir());
+    let Some(users) = users else { return Vec::new() };
+    entries(&users)
+        .into_iter()
+        .filter(|(n, is_dir)| *is_dir && !n.eq_ignore_ascii_case("public"))
+        .map(|(n, _)| (n.clone(), users.join(n)))
+        .collect()
 }
 
 /// The folder for the game's `Plugins.txt`, made if no build of the game has
 /// made it yet.
 fn app_data_folder(prefix: &Path, spec: &PluginsSpec) -> Result<Option<PathBuf>, String> {
-    let users = [prefix.join("drive_c/users"), prefix.join("pfx/drive_c/users")].into_iter().find(|p| p.is_dir());
-    let Some(users) = users else { return Ok(None) };
-    let homes: Vec<(String, PathBuf)> = entries(&users)
-        .into_iter()
-        .filter(|(n, is_dir)| *is_dir && !n.eq_ignore_ascii_case("public"))
-        .map(|(n, _)| (n.clone(), users.join(n).join("AppData/Local")))
-        .collect();
+    let homes: Vec<(String, PathBuf)> = prefix_users(prefix).into_iter().map(|(n, home)| (n, home.join("AppData/Local"))).collect();
     if homes.is_empty() {
         return Ok(None);
     }

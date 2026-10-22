@@ -125,28 +125,25 @@ pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<
     if let LaunchPlan::Unavailable(r) = &req.plan {
         return fail(&shared, &log, &req, Notice::warn(r.clone(), r.clone()));
     }
-    // Held until the session ends: dropping it takes the mods away.
-    let mods = match apply_mods(&shared, &log, &req, &control) {
-        Ok(m) => m,
-        Err(notice) => return fail(&shared, &log, &req, notice),
-    };
+    // Process plans put the mods in place inside `run_process`, after the
+    // launch preparation: what the prefix, the store setup and the fixes
+    // write into the game folder must land there, not in the overwrite folder.
     match &req.plan {
         LaunchPlan::SteamUri { app_id, uri } => run_steam(&shared, &log, &req, &control, app_id, uri),
-        other => {
-            let mut process = other.process().expect("process plan").clone();
-            if let Some(m) = &mods {
-                add_env(&mut process.command.env, &m.env);
-            }
-            run_process(&shared, &log, &req, &control, &process);
-        }
+        other => run_process(&shared, &log, &req, &control, other.process().expect("process plan")),
     }
     // Every path above closed it already; this covers a panic-free early return.
     log.close();
-    drop(mods);
 }
 
-/// Puts the game's mods in place (see [`super::GameMods`]).
-fn apply_mods(shared: &Shared, log: &GameLog, req: &LaunchRequest, control: &Control) -> Result<Option<super::AppliedMods>, Notice> {
+/// Puts the game's mods in place (see [`super::GameMods`]); the result is held
+/// until the session ends, dropping it takes the mods away.
+pub(super) fn apply_mods(
+    shared: &Shared,
+    log: &GameLog,
+    req: &LaunchRequest,
+    control: &Control,
+) -> Result<Option<super::AppliedMods>, Notice> {
     let Some(mods) = shared.mods.lock().unwrap().clone() else {
         return Ok(None);
     };
@@ -165,9 +162,16 @@ fn apply_mods(shared: &Shared, log: &GameLog, req: &LaunchRequest, control: &Con
     }
 }
 
+/// Takes away the mods of an adopted game that ended (see [`super::GameMods::release`]).
+pub(super) fn release_mods(shared: &Shared, log: &GameLog, app_name: &str, runner: &str) {
+    let Some(mods) = shared.mods.lock().unwrap().clone() else { return };
+    mods.release(app_name, runner);
+    log.info("Mods taken away");
+}
+
 /// Adds the mods' variables to the command's; `WINEDLLOVERRIDES` lists are
 /// joined (the command's own entries stay, the mods' are added after).
-fn add_env(env: &mut crate::env::Env, add: &[(String, String)]) {
+pub(super) fn add_env(env: &mut crate::env::Env, add: &[(String, String)]) {
     for (key, value) in add {
         let merged = match env.get(key) {
             Some(old) if key == "WINEDLLOVERRIDES" && !old.is_empty() => format!("{old};{value}"),

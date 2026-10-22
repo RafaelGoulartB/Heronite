@@ -3,7 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trn};
 
 use super::browse::Source;
 use super::{format, Confirm, ModsDialog, Tab, View};
@@ -104,11 +104,17 @@ impl ModsDialog {
 
     /// The last row: what the game wrote while modded.
     fn overwrite_card(&mut self, v: &View, _window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let (files, bytes) = v.g.overwrite;
-        if files == 0 {
+        let written = v.g.overwrite;
+        if written.is_empty() {
             return div();
         }
-        let info = format!("{} \u{b7} {} \u{b7} {}", tr!("Files the game wrote"), format::files(files), format::size(bytes));
+        let (files, deleted) = (written.files, written.deleted);
+        let info = if files > 0 {
+            format!("{} \u{b7} {} \u{b7} {}", tr!("Files the game wrote"), format::files(files), format::size(written.bytes))
+        } else {
+            tr!("The game wrote no files").to_string()
+        };
+        let removed = (deleted > 0).then(|| trn!(deleted, "{n} file deleted by the game", "{n} files deleted by the game"));
         let key_dir = self.store_dir(cx).join("overwrite");
         let mut card = card_box().px(px(14.)).py(px(12.)).gap(px(10.));
         card = card.child(
@@ -133,7 +139,8 @@ impl ModsDialog {
                         .flex_col()
                         .min_w_0()
                         .child(div().text_size(px(14.)).font_weight(theme::W_500).child(tr!("Overwrite")))
-                        .child(div().text_size(px(12.5)).text_color(theme::text_muted()).child(info)),
+                        .child(div().text_size(px(12.5)).text_color(theme::text_muted()).child(info))
+                        .children(removed.map(|r| div().text_size(px(12.5)).text_color(theme::text_dim()).child(r))),
                 ),
         );
         if let Some(input) = self.naming_overwrite.clone() {
@@ -161,13 +168,11 @@ impl ModsDialog {
                     .items_center()
                     .justify_between()
                     .gap(px(10.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .text_size(px(13.))
-                            .text_color(theme::text_primary())
-                            .child(tr!("Delete these {n} files? The game itself is not touched.", n = files)),
-                    )
+                    .child(div().flex_1().text_size(px(13.)).text_color(theme::text_primary()).child(if files > 0 {
+                        tr!("Delete these {n} files? The game itself is not touched.", n = files)
+                    } else {
+                        tr!("Forget what the game deleted? The game itself is not touched.").to_string()
+                    }))
                     .child(button_sm("mods-ow-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|this, _, _, cx| {
                         this.confirm = None;
                         cx.notify();
@@ -186,10 +191,10 @@ impl ModsDialog {
                     .child(button_sm("mods-ow-open", ButtonKind::Glass, tr!("Open")).on_click(cx.listener(move |this, _, _, cx| {
                         this.open_dir(key_dir.clone(), cx);
                     })))
-                    .child(
+                    .children((files > 0).then(|| {
                         button_sm("mods-ow-mod", ButtonKind::Glass, tr!("Turn into a mod"))
-                            .on_click(cx.listener(|this, _, window, cx| this.start_naming_overwrite(window, cx))),
-                    )
+                            .on_click(cx.listener(|this, _, window, cx| this.start_naming_overwrite(window, cx)))
+                    }))
                     .child(
                         button_sm("mods-ow-empty", ButtonKind::Ghost, tr!("Empty"))
                             .on_click(cx.listener(|this, _, _, cx| this.ask(Confirm::ClearOverwrite, cx))),

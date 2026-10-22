@@ -29,6 +29,23 @@ impl GameMods for ModsLaunch {
     fn apply(&self, app_name: &str, runner: &str, status: &mut dyn FnMut(&str)) -> Result<Option<AppliedMods>, String> {
         apply_to(&self.paths, &format!("{runner}_{app_name}"), status)
     }
+
+    fn release(&self, app_name: &str, runner: &str) {
+        release_of(&self.paths, &format!("{runner}_{app_name}"));
+    }
+}
+
+/// Unmounts the overlay a game left behind when the app that mounted it quit
+/// before the game ended. Nothing happens when nothing of ours is mounted.
+fn release_of(paths: &DataPaths, game_key: &str) {
+    let root = ModsRoot::default_for(paths);
+    if !root.game(game_key).list_file().is_file() {
+        return;
+    }
+    let Ok(game) = facts::find_game(paths, game_key) else { return };
+    if let Some(dir) = facts::resolve(paths, &game).dir {
+        deploy::unmount_ours(&root, &dir);
+    }
 }
 
 fn apply_to(paths: &DataPaths, game_key: &str, status: &mut dyn FnMut(&str)) -> Result<Option<AppliedMods>, String> {

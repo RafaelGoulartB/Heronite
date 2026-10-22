@@ -129,6 +129,12 @@ pub trait GameMods: Send + Sync {
     /// the launch ("Applying mods..."). An error aborts the launch: a game
     /// whose saves expect its mods must not start without them.
     fn apply(&self, app_name: &str, runner: &str, status: &mut dyn FnMut(&str)) -> Result<Option<AppliedMods>, String>;
+
+    /// A game this run did not start has ended (it was picked up again after
+    /// the app restarted): its mods were applied by the earlier run, whose
+    /// guard is gone, so take them away. Blocking; must be safe to call when
+    /// nothing is applied.
+    fn release(&self, _app_name: &str, _runner: &str) {}
 }
 
 /// Mods in place for one session.
