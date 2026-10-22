@@ -43,6 +43,8 @@ pub(super) enum GameAction {
     Favourite,
     OpenFolder,
     Settings,
+    /// The Mods manager (installed PC games).
+    Mods,
     EditGame,
     /// An emulated game played as a PC game from now on (a native port).
     PlayAsPc,
@@ -204,6 +206,16 @@ impl CollectionView {
                 "config configure options wine proton launch configuracoes opcoes ajustes",
             ));
         }
+        // Emulated games have no mods; console mode builds no manager.
+        if game.installed && game.launch_kind.as_deref() != Some("emulator") && !crate::console::active() {
+            v.push(item(
+                A::Mods,
+                "mods",
+                tr!("Mods"),
+                Icon::Extension,
+                "mod mods nexus thunderstore plugin plugins fomod load order modificacoes complementos",
+            ));
+        }
         // Sideloaded programs and browser games; not Steam/emulated entries.
         if game.runner == "sideload" && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
             v.push(item(
@@ -310,6 +322,7 @@ impl CollectionView {
                 let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
                 self.open_dialog(view, cx);
             }
+            A::Mods => self.open_mods(key, window, cx),
             A::EditGame => {
                 self.open_edit_game(key, window, cx);
             }

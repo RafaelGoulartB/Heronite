@@ -4,6 +4,10 @@
 pub enum Icon {
     Add,
     AccessTime,
+    /// A mod (the Mods manager).
+    Extension,
+    DragIndicator,
+    MoreHoriz,
     ArrowDownward,
     ArrowUpward,
     Cancel,
@@ -115,6 +119,9 @@ impl Icon {
         use Icon::*;
         match self {
             Add => "icons/add.svg",
+            Extension => "icons/extension.svg",
+            DragIndicator => "icons/drag-indicator.svg",
+            MoreHoriz => "icons/more-horiz.svg",
             AccessTime => "icons/access-time.svg",
             ArrowDownward => "icons/arrow-downward.svg",
             ArrowUpward => "icons/arrow-upward.svg",

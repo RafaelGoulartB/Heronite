@@ -159,6 +159,7 @@ impl CollectionView {
             LaunchEvent::Status { message, warning, .. } => self.show_toast(message, warning, cx),
         }
         self.refresh_groups();
+        self.sync_mods_running(cx);
         cx.notify();
     }
 

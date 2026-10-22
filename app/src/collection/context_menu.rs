@@ -67,6 +67,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Hide => (1, 2),
         A::RemoveRecent => (1, 3),
         A::Settings => (2, 0),
+        A::Mods => (2, 1),
         A::EditGame => (2, 1),
         A::OpenFolder => (2, 2),
         A::Ludusavi | A::AutoBackup { .. } => (2, 3),
