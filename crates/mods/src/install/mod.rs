@@ -22,7 +22,7 @@ use crate::{layout, store};
 use place::{components, resolve, Placer, Transfer};
 pub(crate) use scan::scan;
 
-pub use scan::PROXY_DLLS;
+pub use scan::{exe_dirs, proxy_dlls, PROXY_DLLS};
 pub use stage::{find_fomod, stage, sweep, Source, Staged};
 
 /// What goes where.
@@ -73,7 +73,8 @@ pub fn commit(
     let built = build(ctx, staged, plan, &entry, &partial, cancel);
     let scanned = match built {
         Ok(()) => {
-            let found = scan(&partial, (ctx.profile.kind == Kind::Bethesda).then_some(ctx.profile.mod_root.as_str()));
+            let exe_dirs = ctx.game_dir.map(scan::exe_dirs).unwrap_or_default();
+            let found = scan(&partial, (ctx.profile.kind == Kind::Bethesda).then_some(ctx.profile.mod_root.as_str()), &exe_dirs);
             if found.files == 0 {
                 Err(tr!("The archive has no files to install").to_string())
             } else {

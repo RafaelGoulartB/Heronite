@@ -123,13 +123,15 @@ impl ModsService {
         let run = *run;
         let dirs = self.root.game(game_key);
         let steam = self.games.get(game_key).filter(|g| g.info.through_steam).and_then(|g| g.info.steam_app_id.clone());
+        let game_dir = self.games.get(game_key).and_then(|g| g.info.game_dir.clone());
         let (paths, key) = (self.data_paths.clone(), game_key.to_string());
         cx.spawn(async move |this, cx| {
             let list = shared.clone();
-            let (found, written) = cx
+            let (found, written, dlls_changed) = cx
                 .background_spawn(async move {
+                    let changed = game_dir.is_some_and(|d| refresh_proxy_dlls(&list, &dirs, &d));
                     let list = list.list();
-                    (conflicts::compute(&dirs, &list), overwrite::summary(&dirs))
+                    (conflicts::compute(&dirs, &list), overwrite::summary(&dirs), changed)
                 })
                 .await;
             let k = key.clone();
@@ -137,6 +139,10 @@ impl ModsService {
                 .update(cx, |s, cx| {
                     if s.checks.get(&k) != Some(&run) {
                         return false;
+                    }
+                    if dlls_changed {
+                        s.refresh_from_shared(&k, cx);
+                        s.save_later(&k, cx);
                     }
                     if let Some(game) = s.games.get_mut(&k) {
                         game.conflicts = Some(Arc::new(found));
@@ -192,4 +198,26 @@ impl ModsService {
         })
         .detach();
     }
+}
+
+/// Looks again for the mods' proxy DLLs where the game has executables, so
+/// mods installed before a DLL was known as a proxy (or before the game
+/// folder was found) get their `WINEDLLOVERRIDES`. True when a mod changed.
+fn refresh_proxy_dlls(shared: &super::edit::GameShared, dirs: &heronite_mods::GameDirs, game_dir: &std::path::Path) -> bool {
+    let exe_dirs = heronite_mods::install::exe_dirs(game_dir);
+    let found: Vec<(String, Vec<String>)> =
+        shared.list().mods.iter().map(|m| (m.id.clone(), heronite_mods::install::proxy_dlls(&dirs.mod_dir(&m.id), &exe_dirs))).collect();
+    let (changed, _) = shared.edit(|list| {
+        let mut changed = false;
+        for (id, dlls) in found {
+            if let Some(m) = list.get_mut(&id) {
+                if m.dll_overrides != dlls {
+                    m.dll_overrides = dlls;
+                    changed = true;
+                }
+            }
+        }
+        changed
+    });
+    changed
 }

@@ -63,7 +63,7 @@ pub fn into_mod(dirs: &GameDirs, list: &mut ModList, name: &str) -> Result<Strin
     remove_any(&partial).map_err(|e| format!("{}: {e}", partial.display()))?;
     fs::create_dir_all(&partial).map_err(|e| format!("{}: {e}", partial.display()))?;
     let result = move_files(&dirs.overwrite(), &partial, "").map_err(|e| e.to_string());
-    let found = scan(&partial, Some("Data"));
+    let found = scan(&partial, Some("Data"), &[]);
     if let Err(e) = result.and_then(|_| if found.files == 0 { Err(tr!("The overwrite folder is empty").to_string()) } else { Ok(()) }) {
         // What was moved goes back, so nothing is lost.
         let _ = move_files(&partial, &dirs.overwrite(), "");

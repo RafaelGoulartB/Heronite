@@ -76,6 +76,8 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
         return Err(failed(support.problem().unwrap_or_default()));
     }
     let overlay = tool::ensure(req.tools_bin, progress, cancel).map_err(failed)?;
+    // Before mounting: the game's own folders, not the mods'.
+    let exe_dirs = crate::install::exe_dirs(req.game_dir);
     let mount = deploy::mount(&overlay, &dirs, req.game_dir, &layers).map_err(failed)?;
 
     let mut summary =
@@ -96,7 +98,10 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
         }
     }
 
+    // Looked at again now, not only at install: mods installed before a DLL
+    // was known as a proxy get their override too.
     let mut dlls: Vec<String> = enabled.iter().flat_map(|m| m.dll_overrides.iter().map(|d| d.to_lowercase())).collect();
+    dlls.extend(layers.iter().flat_map(|l| crate::install::proxy_dlls(l, &exe_dirs)));
     dlls.sort();
     dlls.dedup();
     let env = if dlls.is_empty() { Vec::new() } else { vec![("WINEDLLOVERRIDES".to_string(), merge_dll_overrides(None, &dlls))] };
