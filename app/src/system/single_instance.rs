@@ -27,6 +27,8 @@ use super::cli::LaunchRequest;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Message {
     pub launch: Option<LaunchRequest>,
+    /// An `nxm://` / `ror2mm://` link (see [`super::cli::is_mod_link`]).
+    pub mod_link: Option<String>,
     /// `--no-gui` on the second invocation.
     pub no_gui: bool,
     /// `--console` / `--fullscreen` on the second invocation.
@@ -45,7 +47,7 @@ impl Message {
                 "guiFalse": r.gui_false,
             })
         });
-        json!({ "v": 1, "launch": launch, "noGui": self.no_gui, "console": self.console, "fullscreen": self.fullscreen }).to_string()
+        json!({ "v": 1, "launch": launch, "modLink": self.mod_link, "noGui": self.no_gui, "console": self.console, "fullscreen": self.fullscreen }).to_string()
     }
 
     pub fn from_line(line: &str) -> Option<Message> {
@@ -65,7 +67,8 @@ impl Message {
             _ => None,
         };
         let flag = |k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
-        Some(Message { launch, no_gui: flag("noGui"), console: flag("console"), fullscreen: flag("fullscreen") })
+        let mod_link = v.get("modLink").and_then(Value::as_str).filter(|l| super::cli::is_mod_link(l)).map(str::to_string);
+        Some(Message { launch, mod_link, no_gui: flag("noGui"), console: flag("console"), fullscreen: flag("fullscreen") })
     }
 }
 
@@ -267,6 +270,7 @@ mod tests {
                 alt_exe: Some("/g/x.exe".into()),
                 gui_false: true,
             }),
+            mod_link: Some("nxm://skyrimspecialedition/mods/1/files/2".into()),
             no_gui: true,
             console: true,
             fullscreen: true,

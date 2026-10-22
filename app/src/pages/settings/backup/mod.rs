@@ -155,6 +155,7 @@ fn left_label(left: Left) -> &'static str {
         Left::Logs => tr!("logs"),
         Left::Temp => tr!("temporary files"),
         Left::Sandbox => tr!("the sandbox's home folders"),
+        Left::Mods => tr!("mod files and their downloads"),
     }
 }
 

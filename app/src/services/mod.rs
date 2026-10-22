@@ -4,6 +4,7 @@
 pub mod compression;
 pub mod downloads;
 pub mod launch_blocker;
+pub mod mods;
 pub mod replay;
 pub mod script_install;
 pub mod session;

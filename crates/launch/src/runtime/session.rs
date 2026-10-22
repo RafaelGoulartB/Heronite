@@ -122,16 +122,59 @@ pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<
     let _end = SessionEnd::new(shared.clone(), &req.app_name, &req.title, control.clone());
     spawn_checkpointer(shared.clone(), req.app_name.clone(), control.clone());
     let log = open_game_log(&shared, &req);
+    if let LaunchPlan::Unavailable(r) = &req.plan {
+        return fail(&shared, &log, &req, Notice::warn(r.clone(), r.clone()));
+    }
+    // Held until the session ends: dropping it takes the mods away.
+    let mods = match apply_mods(&shared, &log, &req, &control) {
+        Ok(m) => m,
+        Err(notice) => return fail(&shared, &log, &req, notice),
+    };
     match &req.plan {
         LaunchPlan::SteamUri { app_id, uri } => run_steam(&shared, &log, &req, &control, app_id, uri),
-        LaunchPlan::Unavailable(r) => fail(&shared, &log, &req, Notice::warn(r.clone(), r.clone())),
         other => {
-            let process = other.process().expect("process plan").clone();
+            let mut process = other.process().expect("process plan").clone();
+            if let Some(m) = &mods {
+                add_env(&mut process.command.env, &m.env);
+            }
             run_process(&shared, &log, &req, &control, &process);
         }
     }
     // Every path above closed it already; this covers a panic-free early return.
     log.close();
+    drop(mods);
+}
+
+/// Puts the game's mods in place (see [`super::GameMods`]).
+fn apply_mods(shared: &Shared, log: &GameLog, req: &LaunchRequest, control: &Control) -> Result<Option<super::AppliedMods>, Notice> {
+    let Some(mods) = shared.mods.lock().unwrap().clone() else {
+        return Ok(None);
+    };
+    let mut status = |message: &str| {
+        if !control.playing.load(Ordering::SeqCst) {
+            shared.send(LaunchEvent::Preparing { app_name: req.app_name.clone(), message: message.to_string(), cancellable: false });
+        }
+    };
+    match mods.apply(&req.app_name, &req.runner, &mut status) {
+        Ok(Some(applied)) => {
+            log.info(&applied.summary);
+            Ok(Some(applied))
+        }
+        Ok(None) => Ok(None),
+        Err(message) => Err(Notice::warn(format!("mods: {message}"), message)),
+    }
+}
+
+/// Adds the mods' variables to the command's; `WINEDLLOVERRIDES` lists are
+/// joined (the command's own entries stay, the mods' are added after).
+fn add_env(env: &mut crate::env::Env, add: &[(String, String)]) {
+    for (key, value) in add {
+        let merged = match env.get(key) {
+            Some(old) if key == "WINEDLLOVERRIDES" && !old.is_empty() => format!("{old};{value}"),
+            _ => value.clone(),
+        };
+        env.insert(key.clone(), merged);
+    }
 }
 
 /// Creates the game's launch log and writes what Heroic's `prepareLaunch`

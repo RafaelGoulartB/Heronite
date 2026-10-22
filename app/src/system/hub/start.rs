@@ -155,6 +155,9 @@ pub fn init(
     if let Some(req) = cli.launch {
         launch(cx, req, hide, false);
     }
+    if let Some(link) = cli.mod_link {
+        crate::services::mods::open_link(cx, link);
+    }
     debug_hooks(cx, tray_tx);
 }
 

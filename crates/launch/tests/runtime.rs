@@ -1090,3 +1090,64 @@ fn a_prefix_whose_creation_was_stopped_is_created_again() {
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     assert!(!marker.exists(), "removed once the prefix was created");
 }
+
+/// Mods for the tests: records when the guard is dropped.
+struct FakeMods {
+    fail: bool,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+struct DropFlag(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl heronite_launch::GameMods for FakeMods {
+    fn apply(&self, app_name: &str, _runner: &str, status: &mut dyn FnMut(&str)) -> Result<Option<heronite_launch::AppliedMods>, String> {
+        status("Applying mods...");
+        if self.fail {
+            return Err("no FUSE".into());
+        }
+        if app_name != "modded" {
+            return Ok(None);
+        }
+        Ok(Some(heronite_launch::AppliedMods {
+            env: vec![("WINEDLLOVERRIDES".into(), "winhttp=n,b".into())],
+            summary: "Mods: 1 of 1 enabled".into(),
+            guard: Box::new(DropFlag(self.dropped.clone())),
+        }))
+    }
+}
+
+#[test]
+fn mods_are_applied_for_the_session_and_taken_away_after() {
+    let r = rig();
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    r.launcher.set_game_mods(Arc::new(FakeMods { fail: false, dropped: dropped.clone() }));
+    let mut plan = process_plan("/games/run.sh", &[]);
+    plan.command.env.insert("WINEDLLOVERRIDES".into(), "dxgi=n".into());
+    r.launcher.launch(request("modded", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "modded".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(r.spawner.spawned()[0].env["WINEDLLOVERRIDES"], "dxgi=n;winhttp=n,b");
+    assert!(!dropped.load(std::sync::atomic::Ordering::SeqCst), "mods stay while the game runs");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    wait_until("mods taken away", || dropped.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[test]
+fn mods_that_cannot_be_applied_stop_the_launch() {
+    let r = rig();
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    r.launcher.set_game_mods(Arc::new(FakeMods { fail: true, dropped }));
+    r.launcher.launch(request("modded", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "modded".into() });
+    let LaunchEvent::Error { message, .. } = next(&r.rx) else { panic!() };
+    assert_eq!(message, "no FUSE");
+    assert!(r.spawner.spawned().is_empty());
+    assert!(!r.launcher.is_running("modded"));
+}

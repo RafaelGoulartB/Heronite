@@ -3489,6 +3489,7 @@ dependencies = [
  "heronite-launch",
  "heronite-media",
  "heronite-metadata",
+ "heronite-mods",
  "heronite-overlay",
  "heronite-shortcuts",
  "heronite-steam",
