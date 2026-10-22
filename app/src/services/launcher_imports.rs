@@ -269,6 +269,8 @@ impl LauncherImports {
     /// stay; [`Self::remove`] takes them out).
     pub fn set_enabled(&mut self, launcher: Launcher, on: bool, cx: &mut Context<Self>) {
         if on {
+            // Turned on again: the games taken out before come back.
+            self.prefs.removed.remove(&launcher);
             self.prefs.enabled.insert(launcher);
         } else {
             self.prefs.enabled.remove(&launcher);
@@ -306,12 +308,13 @@ impl LauncherImports {
             return;
         }
         let paths = self.paths.clone();
+        let removed = self.prefs.removed.get(&launcher).cloned().unwrap_or_default();
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
                     let found = heronite_import::detect(&home(), &paths).into_iter().find(|f| f.launcher == launcher);
                     let Some(found) = found else { return Err(heronite_i18n::tr!("Not found on this PC").to_string()) };
-                    let report = heronite_import::sync(&paths, &found).map_err(|e| format!("{e:#}"))?;
+                    let report = heronite_import::sync(&paths, &found, &removed).map_err(|e| format!("{e:#}"))?;
                     Ok((report, found.count(), heronite_import::collection::counts(&paths)[&launcher]))
                 })
                 .await;
@@ -342,10 +345,22 @@ impl LauncherImports {
         cx.notify();
     }
 
+    /// The user took a game of `launcher` out of the Collection: its import
+    /// leaves it out from now on (until it is turned off and on again).
+    pub fn note_removed(&mut self, launcher: Launcher, app_name: &str, cx: &mut Context<Self>) {
+        if self.prefs.removed.entry(launcher).or_default().insert(app_name.to_string()) {
+            self.save(cx);
+        }
+    }
+
     /// Takes `launcher`'s games out of the Collection.
     pub fn remove(&mut self, launcher: Launcher, cx: &mut Context<Self>) {
         if !self.busy.insert(launcher) {
             return;
+        }
+        // All of them go: none is left out when they come back.
+        if self.prefs.removed.remove(&launcher).is_some() {
+            self.save(cx);
         }
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {

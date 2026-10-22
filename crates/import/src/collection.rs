@@ -3,7 +3,7 @@
 //! (`local_library/library.json`) with the launcher's command line
 //! ([`LAUNCH_KIND`]), plus the launcher's play time when it is ahead.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use anyhow::Result;
 use heronite_data::launchers::{Launcher, LAUNCH_KIND, PREFIX_KEY};
@@ -81,12 +81,14 @@ fn refresh(entry: &mut Map<String, Value>, fresh: &GameInfo) -> bool {
 
 /// Brings `games` of `launcher` into the Collection: new ones are added,
 /// known ones refreshed, the ones the launcher no longer has stay as not
-/// installed.
-pub fn sync(paths: &DataPaths, launcher: Launcher, games: &[Game]) -> Result<Report> {
+/// installed. The ones in `removed` (app names: the user took them out) are
+/// left out.
+pub fn sync(paths: &DataPaths, launcher: Launcher, games: &[Game], removed: &BTreeSet<String>) -> Result<Report> {
     let mut report = Report::default();
+    let games: Vec<&Game> = games.iter().filter(|g| !removed.contains(&app_name(launcher, &g.id))).collect();
     let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
     let ours: HashSet<String> = metas.games.values().filter(|m| m.source == launcher.id()).map(|m| m.app_name.clone()).collect();
-    let fresh: Vec<(GameInfo, &Game)> = games.iter().map(|g| (entry(launcher, g), g)).collect();
+    let fresh: Vec<(GameInfo, &Game)> = games.iter().map(|g| (entry(launcher, g), *g)).collect();
     let wanted: HashSet<&str> = fresh.iter().map(|(i, _)| i.app_name.as_str()).collect();
 
     let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
@@ -200,8 +202,10 @@ pub fn counts(paths: &DataPaths) -> std::collections::BTreeMap<Launcher, usize> 
     out
 }
 
-/// Takes the entries that came from `launcher` out of the Collection (their
-/// play time and notes stay in their own files). How many were removed.
+/// Takes the entries that came from `launcher` out of the Collection, with
+/// their status and notes (their play time, sessions and journal stay in
+/// their own files and are there again if they come back). How many were
+/// removed.
 pub fn remove(paths: &DataPaths, launcher: Launcher) -> Result<usize> {
     let mut gone = HashSet::new();
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
@@ -250,7 +254,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         let first = [game("1", "Celeste", 90), game("2", "Hades", 0)];
-        assert_eq!(sync(&paths, Launcher::Lutris, &first).unwrap(), Report { added: 2, updated: 0 });
+        assert_eq!(sync(&paths, Launcher::Lutris, &first, &BTreeSet::new()).unwrap(), Report { added: 2, updated: 0 });
 
         let lib = Library::load(&paths).unwrap();
         let celeste = lib.get("sideload_lutris_1").unwrap();
@@ -265,13 +269,13 @@ mod tests {
         // Again: nothing new, and nothing written (the Collection would reload).
         let (meta_time, list_time) = (json_store::mtime(&paths.local_meta()), json_store::mtime(&paths.sideload_library()));
         std::thread::sleep(std::time::Duration::from_millis(20));
-        assert_eq!(sync(&paths, Launcher::Lutris, &first).unwrap(), Report::default());
+        assert_eq!(sync(&paths, Launcher::Lutris, &first, &BTreeSet::new()).unwrap(), Report::default());
         assert_eq!((json_store::mtime(&paths.local_meta()), json_store::mtime(&paths.sideload_library())), (meta_time, list_time));
 
         // Hades was removed from Lutris, Celeste renamed and played more.
         let mut renamed = game("1", "Celeste (2018)", 120);
         renamed.last_played = Some("2026-02-01T00:00:00.000Z".into());
-        assert_eq!(sync(&paths, Launcher::Lutris, &[renamed]).unwrap(), Report { added: 0, updated: 3 });
+        assert_eq!(sync(&paths, Launcher::Lutris, &[renamed], &BTreeSet::new()).unwrap(), Report { added: 0, updated: 3 });
         let lib = Library::load(&paths).unwrap();
         assert_eq!(lib.get("sideload_lutris_1").unwrap().title, "Celeste (2018)");
         assert_eq!(lib.get("sideload_lutris_1").unwrap().playtime_minutes, 120);
@@ -280,6 +284,18 @@ mod tests {
         assert_eq!(counts(&paths)[&Launcher::Lutris], 2);
         assert_eq!(remove(&paths, Launcher::Lutris).unwrap(), 2);
         assert!(Library::load(&paths).unwrap().games.is_empty());
+    }
+
+    /// A game the user took out of the Collection is not brought back.
+    #[test]
+    fn leaves_out_the_games_the_user_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let removed: BTreeSet<String> = ["lutris_2".to_string()].into();
+        let games = [game("1", "Celeste", 0), game("2", "Hades", 0)];
+        assert_eq!(sync(&paths, Launcher::Lutris, &games, &removed).unwrap(), Report { added: 1, updated: 0 });
+        let lib = Library::load(&paths).unwrap();
+        assert!(lib.get("sideload_lutris_1").is_some() && lib.get("sideload_lutris_2").is_none());
     }
 
     #[test]

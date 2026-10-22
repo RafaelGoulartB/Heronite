@@ -88,6 +88,11 @@ pub struct ImportPrefs {
     /// two games ([`kept_apart_key`]), never offered to merge again.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub kept_apart: BTreeSet<String>,
+    /// Games of each launcher the user took out of the Collection (the app
+    /// names the launcher's library has for them): its import leaves them
+    /// out until it is turned off and on again.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub removed: BTreeMap<Launcher, BTreeSet<String>>,
     #[serde(flatten)]
     pub extra: Extra,
 }

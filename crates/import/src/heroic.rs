@@ -9,7 +9,7 @@
 //! A first start with Heroic around copies all of it already
 //! (`heronite_data::migrate`); this catches up with what was added since.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -125,7 +125,7 @@ pub fn detect(home: &Path, data: &DataPaths) -> Result<Option<Found>> {
 
 /// Copies what this app does not have yet; play time of the copied games
 /// moves up to Heroic's.
-pub fn sync(paths: &DataPaths, lib: &Library) -> Result<Report> {
+pub fn sync(paths: &DataPaths, lib: &Library, removed: &BTreeSet<String>) -> Result<Report> {
     let mut report = Report::default();
     let here: HashSet<String> = json_store::read_value(&paths.sideload_library())
         .ok()
@@ -134,8 +134,11 @@ pub fn sync(paths: &DataPaths, lib: &Library) -> Result<Report> {
         .iter()
         .filter_map(|g| g.get("app_name").and_then(Value::as_str).map(str::to_owned))
         .collect();
-    let new: Vec<&Value> =
-        lib.sideload.iter().filter(|g| g.get("app_name").and_then(Value::as_str).is_some_and(|a| !here.contains(a))).collect();
+    let new: Vec<&Value> = lib
+        .sideload
+        .iter()
+        .filter(|g| g.get("app_name").and_then(Value::as_str).is_some_and(|a| !here.contains(a) && !removed.contains(a)))
+        .collect();
     if !new.is_empty() {
         let played: TimestampFile = json_store::read(&lib.root.join("store/timestamp.json")).unwrap_or_default();
         let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
@@ -295,7 +298,7 @@ mod tests {
         let found = detect(&home, &paths).unwrap().unwrap();
         assert_eq!(found.count(), 3);
         let lib = found.heroic.as_ref().unwrap();
-        assert_eq!(sync(&paths, lib).unwrap(), Report { added: 3, updated: 0 });
+        assert_eq!(sync(&paths, lib, &BTreeSet::new()).unwrap(), Report { added: 3, updated: 0 });
 
         let collection = heronite_data::Library::load(&paths).unwrap();
         let doom = collection.get("sideload_abc").unwrap();
@@ -308,7 +311,7 @@ mod tests {
         assert_eq!(gog["installed"][0]["appName"], "w3");
 
         // Again: nothing new.
-        assert_eq!(sync(&paths, lib).unwrap(), Report::default());
+        assert_eq!(sync(&paths, lib, &BTreeSet::new()).unwrap(), Report::default());
     }
 
     #[test]

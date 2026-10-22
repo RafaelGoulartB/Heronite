@@ -92,7 +92,9 @@ fn same_or_inside(path: &Path, dir: &Path) -> bool {
 
 /// The pairs in `lib` (loaded with its hidden games), but the ones in
 /// `kept_apart`. A game added here pairs with one launcher game at most, the
-/// strongest match.
+/// strongest match (the same name breaks a tie); a prefix or folder shared by
+/// several launcher games only matches by name, and a tie the name does not
+/// break pairs nothing.
 pub fn find(lib: &Library, paths: &DataPaths, home: &str, kept_apart: &BTreeSet<String>) -> Vec<Duplicate> {
     struct Theirs<'a> {
         game: &'a CollectionGame,
@@ -114,6 +116,15 @@ pub fn find(lib: &Library, paths: &DataPaths, home: &str, kept_apart: &BTreeSet<
     if theirs.is_empty() {
         return Vec::new();
     }
+    // A prefix or folder several launcher games share (a Bottles bottle, a
+    // Lutris prefix for many games) does not tell which one a game is.
+    fn own(all: &[Option<&Path>], p: Option<&Path>) -> bool {
+        p.is_some_and(|p| all.iter().flatten().filter(|q| same_or_inside(q, p) || same_or_inside(p, q)).count() == 1)
+    }
+    let prefixes: Vec<Option<&Path>> = theirs.iter().map(|t| t.prefix.as_deref()).collect();
+    let folders: Vec<Option<&Path>> = theirs.iter().map(|t| t.folder.as_deref()).collect();
+    let unique: Vec<(bool, bool)> =
+        theirs.iter().map(|t| (own(&prefixes, t.prefix.as_deref()), own(&folders, t.folder.as_deref()))).collect();
     let mut out = Vec::new();
     for mine in lib.games.iter().filter(|g| is_mine(g)) {
         let exe = mine
@@ -124,21 +135,32 @@ pub fn find(lib: &Library, paths: &DataPaths, home: &str, kept_apart: &BTreeSet<
             .and_then(|e| absolute(&e, home));
         let prefix = own_prefix(paths, &mine.app_name, home);
         let title = title_key(&mine.title);
-        let best = theirs
+        let mut found: Vec<((Why, bool), &Theirs)> = theirs
             .iter()
-            .filter_map(|t| {
-                let why = if prefix.as_deref().zip(t.prefix.as_deref()).is_some_and(|(p, tp)| same_or_inside(p, tp)) {
+            .zip(&unique)
+            .filter_map(|(t, &(own_prefix, own_folder))| {
+                let in_prefix = |p: &Path| own_prefix && t.prefix.as_deref().is_some_and(|tp| same_or_inside(p, tp));
+                let in_folder = |p: &Path| own_folder && t.folder.as_deref().is_some_and(|tf| same_or_inside(p, tf));
+                let same_title = !title.is_empty() && title == t.title;
+                let why = if prefix.as_deref().is_some_and(in_prefix) {
                     Why::Prefix
-                } else if exe.as_deref().is_some_and(|e| [&t.folder, &t.prefix].into_iter().flatten().any(|d| same_or_inside(e, d))) {
+                } else if exe.as_deref().is_some_and(|e| in_folder(e) || in_prefix(e)) {
                     Why::Folder
-                } else if !title.is_empty() && title == t.title {
+                } else if same_title {
                     Why::Title
                 } else {
                     return None;
                 };
-                Some((why, t))
+                Some(((why, !same_title), t))
             })
-            .min_by_key(|(why, _)| *why);
+            .collect();
+        found.sort_by_key(|(rank, _)| *rank);
+        // Two launcher games as likely: no telling which one it is.
+        let best = match found.as_slice() {
+            [first, second, ..] if first.0 == second.0 => None,
+            [first, ..] => Some((first.0 .0, first.1)),
+            [] => None,
+        };
         if let Some((why, t)) = best {
             let pair = Duplicate { mine: side(mine), theirs: side(t.game), launcher: t.launcher, why };
             if !kept_apart.contains(&pair.id()) {
@@ -192,6 +214,7 @@ mod tests {
                 lutris("9", "Hades", "/home/u/Games/hades", Some("/home/u/Games/hades-prefix")),
                 lutris("10", "Portal", "/home/u/Games/portal", None),
             ],
+            &BTreeSet::new(),
         )
         .unwrap();
         add_mine(
@@ -226,6 +249,45 @@ mod tests {
         // Kept apart: not offered again.
         let kept: BTreeSet<String> = [kept_apart_key("m3", "lutris_9")].into();
         assert_eq!(find(&lib, &paths, home, &kept).len(), 3);
+    }
+
+    /// A prefix several launcher games share (a Bottles bottle, one Lutris
+    /// prefix for many games) never pairs a game with the wrong one.
+    #[test]
+    fn a_shared_prefix_only_pairs_by_name_or_own_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        let home = "/home/u";
+        collection::sync(
+            &paths,
+            Launcher::Lutris,
+            &[
+                lutris("1", "Hollow Knight", "/g/Hollow Knight", Some("/g/Prex")),
+                lutris("2", "Celeste", "/g/Celeste", Some("/g/Prex")),
+                lutris("3", "Celeste", "/h/Celeste", Some("/h/pfx")),
+            ],
+            &BTreeSet::new(),
+        )
+        .unwrap();
+        add_mine(
+            &paths,
+            &[
+                ("m1", "Hades", "/g/Prex/drive_c/Hades/Hades.exe"),
+                ("m2", "My HK", "/g/Hollow Knight/hollow_knight.exe"),
+                ("m3", "Celeste", "/opt/celeste/Celeste.exe"),
+            ],
+        );
+        for app in ["m1", "m2", "m3"] {
+            game_config::set_game_setting(&paths, app, home, "winePrefix", json!("/g/Prex")).unwrap();
+        }
+        let lib = Library::load_with(&paths, true).unwrap();
+        let pairs: Vec<_> = find(&lib, &paths, home, &BTreeSet::new())
+            .iter()
+            .map(|d| (d.mine.app_name.clone(), d.theirs.app_name.clone(), d.why))
+            .collect();
+        // m1: only the shared prefix, so no pair. m2: Hollow Knight's own
+        // folder. m3: two launcher games named Celeste, so no telling which.
+        assert_eq!(pairs, [("m2".to_string(), "lutris_1".to_string(), Why::Folder)]);
     }
 
     #[test]

@@ -23,6 +23,7 @@ pub mod faugus;
 pub mod heroic;
 pub mod lutris;
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -101,11 +102,12 @@ pub fn detect(home: &Path, data: &DataPaths) -> Vec<Found> {
     out
 }
 
-/// Brings `found`'s games into the Collection. Blocking (small files).
-pub fn sync(paths: &DataPaths, found: &Found) -> Result<Report> {
+/// Brings `found`'s games into the Collection, but the ones the user took
+/// out (`removed`: their app names). Blocking (small files).
+pub fn sync(paths: &DataPaths, found: &Found, removed: &BTreeSet<String>) -> Result<Report> {
     match &found.heroic {
-        Some(library) => heroic::sync(paths, library),
-        None => collection::sync(paths, found.launcher, &found.games),
+        Some(library) => heroic::sync(paths, library, removed),
+        None => collection::sync(paths, found.launcher, &found.games, removed),
     }
 }
 
