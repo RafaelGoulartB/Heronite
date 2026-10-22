@@ -3,7 +3,8 @@
 //! desktop and the controllers can use it. The options live in
 //! `overlay.json` (`heronite_data::overlay_prefs`) and reach the running
 //! service at once. Settings → Screenshots shows the Guide screenshot rows
-//! too ([`pad_shot_card`]).
+//! too ([`pad_shot_card`]), and Settings → Replay the Guide + X one
+//! ([`replay_shortcut_card`]).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -169,6 +170,43 @@ fn moment_desc(p: &OverlayPrefs) -> &'static str {
     }
 }
 
+fn replay_desc(p: &OverlayPrefs) -> &'static str {
+    if p.screenshot_shortcut && p.screenshot_button == ChordButton::X {
+        tr!("Off while Guide + X takes the screenshot: pick another button for it.")
+    } else if !p.enabled {
+        tr!("Needs the overlay: turn it on in Settings → Overlay.")
+    } else {
+        tr!("Saves the replay (Settings → Replay) and marks it as a moment in the game's journal.")
+    }
+}
+
+/// The Guide + X toggle, here and in Settings → Replay.
+pub(super) fn replay_shortcut_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+    let p = &d.overlay.prefs;
+    card([toggle_row("overlay-replay", tr!("Guide + X: save the replay"), Some(replay_desc(p)), p.replay_shortcut)
+        .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.replay_shortcut = !p.replay_shortcut)))
+        .into_any_element()])
+}
+
+/// Console row of Guide + X, here and in Settings → Replay.
+pub(super) fn console_replay_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
+    let p = &d.overlay.prefs;
+    vec![crate::console::list::Row::toggle("pad-replay", tr!("Guide + X: save the replay"), p.replay_shortcut).desc(replay_desc(p))]
+}
+
+/// Applies a change of [`console_replay_rows`]; `false` when it is not one.
+pub(super) fn console_apply_replay(d: &mut SettingsPage, outcome: &crate::console::list::Outcome, cx: &mut Context<SettingsPage>) -> bool {
+    use crate::console::list::{Outcome, Value};
+    match outcome {
+        Outcome::Changed(id, Value::Toggle(on)) if id.as_ref() == "pad-replay" => {
+            let on = *on;
+            update(d, cx, |p| p.replay_shortcut = on);
+            true
+        }
+        _ => false,
+    }
+}
+
 fn hotkey_status(d: &SettingsPage, cx: &App) -> Option<(String, bool)> {
     let p = &d.overlay.prefs;
     if !p.enabled || !p.keyboard_shortcut {
@@ -287,6 +325,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let moment = card([toggle_row("overlay-moment", tr!("Guide + Y: mark a moment"), Some(moment_desc(&p)), p.moment_shortcut)
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.moment_shortcut = !p.moment_shortcut)))
         .into_any_element()]);
+    let replay = replay_shortcut_card(d, cx);
 
     let look = card([row(tr!("Side of the screen"), None, side_tabs).into_any_element()]);
 
@@ -318,7 +357,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(caption(tr!("Keyboard")))
         .child(dim(p.enabled, keyboard))
         .child(caption(tr!("Shortcuts without opening it")))
-        .child(dim(p.enabled, div().flex().flex_col().gap(px(12.)).child(shot).child(volume).child(moment)))
+        .child(dim(p.enabled, div().flex().flex_col().gap(px(12.)).child(shot).child(volume).child(moment).child(replay)))
         .child(caption(tr!("Position")))
         .child(dim(p.enabled, look))
         .child(caption(tr!("Status")))
@@ -405,6 +444,9 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     rows.extend([
         Row::toggle("volume", tr!("Guide + ↑ / ↓: change the volume"), p.volume_shortcut),
         Row::toggle("moment", tr!("Guide + Y: mark a moment"), p.moment_shortcut).desc(moment_desc(p)),
+    ]);
+    rows.extend(console_replay_rows(d));
+    rows.extend([
         Row::choice("step", tr!("Volume step"), VOLUME_STEPS.iter().map(|s| SharedString::from(step_label(*s))).collect(), step_index),
         Row::header(tr!("Position")),
         Row::choice("side", tr!("Side of the screen"), vec![tr!("Left").into(), tr!("Right").into()], usize::from(p.side == Side::Right)),
@@ -417,7 +459,7 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
 
 pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list::Outcome, cx: &mut Context<SettingsPage>) {
     use crate::console::list::{Outcome, Value};
-    if console_apply_pad_shot(d, &outcome, cx) {
+    if console_apply_pad_shot(d, &outcome, cx) || console_apply_replay(d, &outcome, cx) {
         return;
     }
     match outcome {

@@ -7,7 +7,7 @@
 //!   with no game (as "without a game" allows).
 //! - `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a,wait:800,b` plays presses on it
 //!   (the names of `HERONITE_DEBUG_PAD`).
-//! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot` shows a notice too.
+//! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` shows a notice too.
 //! - `HERONITE_DEBUG_OVERLAY_FPS=<limit>` pretends the game's limiter can
 //!   change while it runs (the FPS limit row shows; nothing is applied).
 //! - `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens it as the keyboard shortcut
@@ -83,6 +83,9 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
         if let Some(kind) = crate::env::value("HERONITE_DEBUG_OVERLAY_NOTICE") {
             let notice = match kind.as_str() {
                 "volume" => Notice::volume(65),
+                "replay" => {
+                    Notice::text(Icon::Videocam, tr!("Replay saved"), false).sub(tr!("The last {n} s. Write about it in Notes.", n = 30))
+                }
                 _ => Notice::text(Icon::PhotoCamera, tr!("Screenshot saved"), false)
                     .sub(game.as_ref().map(|g| g.title.clone()).unwrap_or_default()),
             };

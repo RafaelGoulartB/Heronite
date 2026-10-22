@@ -328,7 +328,9 @@ impl CollectionView {
             .items_center()
             .gap(px(3.))
             .text_color(if e.is_moment() { theme::console_btn_y().into() } else { theme::white_a(0.42) })
-            .when(e.is_moment(), |d| d.child(icon(Icon::Flag, px(11.), theme::console_btn_y())))
+            .when(e.is_moment(), |d| {
+                d.child(icon(if e.clip.is_some() { Icon::Videocam } else { Icon::Flag }, px(11.), theme::console_btn_y()))
+            })
             .child(time_of(e));
         let editing = self.journal.edit.as_ref().filter(|ed| ed.target == Target::Entry(id.clone()));
         if let Some(edit) = editing {
@@ -339,7 +341,9 @@ impl CollectionView {
             let path = self.shots.items[i].path.clone();
             self.shots.thumb(&path).map(|src| (i, src))
         });
-        let text = if e.is_moment() {
+        let text = if e.is_moment() && e.clip.is_some() {
+            div().text_color(theme::white_a(0.38)).child(tr!("A replay saved in-game. Click to write about it."))
+        } else if e.is_moment() {
             div().text_color(theme::white_a(0.38)).child(tr!("A moment marked in-game. Click to write about it."))
         } else {
             div().text_color(theme::white_a(0.9)).child(e.text.clone())
@@ -373,6 +377,7 @@ impl CollectionView {
                     .child(img(src).size_full().object_fit(ObjectFit::Cover))
                     .on_click(cx.listener(move |this, _, window, cx| this.shots_open_view(i, window, cx)))
             }))
+            .children(e.clip.clone().map(|clip| replay_tile(&id, clip, cx)))
             .child(
                 div()
                     .id(SharedString::from(format!("jp-del-{id}")))
@@ -392,7 +397,28 @@ impl CollectionView {
             );
         margin_row(time, body).group(group)
     }
+}
 
+/// The replay a note is about: a play button that opens it in the video player.
+fn replay_tile(id: &str, clip: String, cx: &mut Context<CollectionView>) -> Stateful<Div> {
+    div()
+        .id(SharedString::from(format!("jp-clip-{id}")))
+        .flex_none()
+        .w(px(56.))
+        .h(px(32.))
+        .mt(px(-4.))
+        .rounded(px(5.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .bg(theme::white_a(0.08))
+        .hover(|s| s.bg(theme::white_a(0.16)))
+        .cursor_pointer()
+        .child(icon(Icon::PlayArrow, px(18.), theme::white_a(0.85)))
+        .on_click(cx.listener(move |this, _, _, cx| this.open_replay(std::path::PathBuf::from(&clip), cx)))
+}
+
+impl CollectionView {
     /// The day's screenshots: the first large, the next ones beside it; a
     /// note about one shows over it.
     fn journal_mosaic(&mut self, n: usize, t: &TimelineDay, entries: &[Entry], content_w: f32, cx: &mut Context<Self>) -> Option<Div> {

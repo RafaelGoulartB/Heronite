@@ -9,12 +9,18 @@ use heronite_overlay::audio;
 use super::{mixer, Confirm, OverlayPanel, Tab};
 use crate::console::list::{Outcome, Row, Value};
 use crate::icons::Icon;
+use crate::overlay::OverlayService;
 
 impl OverlayPanel {
     pub(super) fn rows(&self) -> Vec<Row> {
         match self.tab() {
             Tab::Home => self.home_rows(),
-            Tab::Shots => vec![Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera)],
+            Tab::Shots => {
+                let mut rows = vec![Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera)];
+                rows.extend(self.replay_row());
+                rows.extend(self.replay_switch());
+                rows
+            }
             Tab::Notes => self.notes_rows(),
             Tab::Audio => self.audio_rows(),
             Tab::Controller => self.controller_rows(),
@@ -35,6 +41,7 @@ impl OverlayPanel {
             return rows;
         };
         rows.push(Row::action("capture", tr!("Take screenshot")).icon(Icon::PhotoCamera));
+        rows.extend(self.replay_row());
         if self.data.journal.is_some() {
             rows.push(
                 Row::action("moment", tr!("Mark this moment"))
@@ -58,6 +65,28 @@ impl OverlayPanel {
         rows.push(Row::action("launcher", tr!("Back to Heronite")).icon(Icon::Home).desc(tr!("The game keeps running")));
         rows.push(Row::action("quit", tr!("Quit game")).icon(Icon::PowerSettingsNew).danger());
         rows
+    }
+
+    /// "Save replay", while the replay records.
+    fn replay_row(&self) -> Option<Row> {
+        let replay = self.replay.filter(|r| r.on)?;
+        Some(
+            Row::action("replay", tr!("Save replay"))
+                .icon(Icon::Videocam)
+                .desc(tr!("The last {n} s of the game, marked as a moment.", n = replay.seconds)),
+        )
+    }
+
+    /// Turns the replay off until the game ends (its memory comes back), or
+    /// back on.
+    fn replay_switch(&self) -> Option<Row> {
+        let replay = self.replay?;
+        let desc = if replay.on {
+            tr!("Off: its memory comes back until the game ends.")
+        } else {
+            tr!("Off until the game ends. On: it keeps the seconds from then.")
+        };
+        Some(Row::toggle("replay-on", tr!("Keep the replay"), replay.on).icon(Icon::Videocam).desc(desc))
     }
 
     fn audio_rows(&self) -> Vec<Row> {
@@ -126,6 +155,7 @@ impl OverlayPanel {
         self.error = None;
         match id {
             "capture" => self.with_service(cx, |s, cx| s.screenshot(cx)),
+            "replay" => self.with_service(cx, |s, cx| s.save_replay(cx)),
             "launcher" => self.with_service(cx, |s, cx| s.show_launcher(cx)),
             "quit" => self.ask(Confirm::Quit),
             id if self.notes_activate(id, cx) => {}
@@ -144,6 +174,12 @@ impl OverlayPanel {
         self.error = None;
         let pid = self.game.as_ref().and_then(|g| g.game.pid);
         match (id, value) {
+            ("replay-on", Value::Toggle(on)) => {
+                OverlayService::set_replay_on(on, cx);
+                if let Some(r) = self.replay.as_mut() {
+                    r.on = on;
+                }
+            }
             (mixer::SYSTEM, Value::Number { value, .. }) => {
                 let step = self.volume_step;
                 // ◀ ▶ move by the user's step, not the row's.

@@ -3740,6 +3740,7 @@ version = "0.13.0"
 dependencies = [
  "evdev",
  "heronite-data",
+ "heronite-i18n",
  "libc",
  "log",
  "serde_json",

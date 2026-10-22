@@ -16,7 +16,7 @@ pub mod matching;
 pub mod thumbnails;
 mod trashing;
 
-pub use list::{list_screenshots, GameQuery, Screenshot, ScreenshotsResult, IMAGE_EXTENSIONS};
+pub use list::{list_screenshots, GameQuery, Screenshot, ScreenshotsResult, IMAGE_EXTENSIONS, REPLAYS_FOLDER};
 pub use matching::{pick_screenshot_folder, score_screenshot_folder, FolderMatch};
 pub use thumbnails::{CacheInfo, ThumbnailCache, THUMB_HEIGHT, THUMB_WIDTH};
 pub use trashing::{trash_screenshot, trash_screenshot_in, TrashError};

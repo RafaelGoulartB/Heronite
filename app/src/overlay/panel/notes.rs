@@ -142,6 +142,9 @@ impl OverlayPanel {
             Writing::Edit(id) => {
                 let e = j.entries.iter().find(|e| &e.id == id);
                 let title = match e.and_then(entry_local) {
+                    Some(at) if e.is_some_and(|e| e.is_moment() && e.clip.is_some()) => {
+                        tr!("Replay at {time}", time = time_label(at)).to_string()
+                    }
                     Some(at) if e.is_some_and(Entry::is_moment) => tr!("Moment at {time}", time = time_label(at)).to_string(),
                     _ => tr!("Edit note").to_string(),
                 };
@@ -247,12 +250,14 @@ impl OverlayPanel {
         let id = SharedString::from(format!("note:{}", e.id));
         let image = self.note_image(e);
         if e.is_moment() {
-            return Row::info(id, tr!("Moment at {time}", time = at), "")
-                .icon(Icon::Flag)
-                .desc(tr!("No words yet. Press A to write them."))
-                .image(image);
+            let (label, icon) = match e.clip {
+                Some(_) => (tr!("Replay at {time}", time = at), Icon::Videocam),
+                None => (tr!("Moment at {time}", time = at), Icon::Flag),
+            };
+            return Row::info(id, label, "").icon(icon).desc(tr!("No words yet. Press A to write them.")).image(image);
         }
-        let row = Row::info(id, e.text.clone(), at).icon(Icon::Notes).image(image);
+        let icon = if e.clip.is_some() { Icon::Videocam } else { Icon::Notes };
+        let row = Row::info(id, e.text.clone(), at).icon(icon).image(image);
         // The label is one line: a longer note shows whole when focused.
         if e.text.chars().count() > FULL_TEXT_AFTER {
             row.desc(e.text.clone())

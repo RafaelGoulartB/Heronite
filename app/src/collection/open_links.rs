@@ -109,6 +109,20 @@ impl CollectionView {
         self.open_external(move || xdg_open(&dir), cx);
     }
 
+    /// Plays a saved replay in the desktop's video player.
+    pub(crate) fn open_replay(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.open_external(
+            move || {
+                if path.is_file() {
+                    xdg_open(&path)
+                } else {
+                    Err(tr!("The replay is no longer at {path}", path = path.to_string_lossy()))
+                }
+            },
+            cx,
+        );
+    }
+
     /// Opens the ProtonDB page of a Steam game in the browser.
     pub(super) fn open_protondb(&mut self, steam_app_id: &str, cx: &mut Context<Self>) {
         let url = protondb_url(steam_app_id);

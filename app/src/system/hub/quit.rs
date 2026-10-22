@@ -190,6 +190,8 @@ pub(super) fn graceful_quit(cx: &mut App) {
     }
     // Stops the current encode at once; the next start resumes the queue.
     crate::services::compression::shutdown(cx);
+    // The replay recorder ends (it saves nothing).
+    crate::services::replay::shutdown(cx);
     let hotkey = crate::overlay::take_hotkey(cx);
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {

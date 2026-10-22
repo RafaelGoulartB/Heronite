@@ -73,8 +73,13 @@ pub fn monitor_under_pointer(monitors: &[Monitor], x: i32, y: i32) -> Option<&Mo
 
 /// `timestampName`: `YYYY-MM-DD_HH-MM-SS-mmm.png` (local time).
 pub fn timestamp_name(now: NaiveDateTime) -> String {
+    format!("{}.png", timestamp_stem(now))
+}
+
+/// `YYYY-MM-DD_HH-MM-SS-mmm` (local time), the name of every capture.
+fn timestamp_stem(now: NaiveDateTime) -> String {
     format!(
-        "{:04}-{:02}-{:02}_{:02}-{:02}-{:02}-{:03}.png",
+        "{:04}-{:02}-{:02}_{:02}-{:02}-{:02}-{:03}",
         now.year(),
         now.month(),
         now.day(),
@@ -88,15 +93,25 @@ pub fn timestamp_name(now: NaiveDateTime) -> String {
 /// `uniqueScreenshotPath`: the timestamp name in `folder`, with `-2`, `-3`...
 /// before the extension while the file exists.
 pub fn unique_screenshot_path(folder: &Path, now: NaiveDateTime) -> PathBuf {
-    let initial = timestamp_name(now);
-    let mut candidate = folder.join(&initial);
-    let stem = initial.trim_end_matches(".png");
+    unique_capture_path(folder, now, "png")
+}
+
+/// [`unique_screenshot_path`] for a capture of another kind (`mp4`).
+pub fn unique_capture_path(folder: &Path, now: NaiveDateTime, extension: &str) -> PathBuf {
+    let stem = timestamp_stem(now);
+    let mut candidate = folder.join(format!("{stem}.{extension}"));
     let mut suffix = 2;
     while candidate.exists() {
-        candidate = folder.join(format!("{stem}-{suffix}.png"));
+        candidate = folder.join(format!("{stem}-{suffix}.{extension}"));
         suffix += 1;
     }
     candidate
+}
+
+/// Where the replays of `game` go: the `replays` folder inside its
+/// captures folder.
+pub fn replay_folder(game: &ActiveGame, root: &Path) -> PathBuf {
+    capture_folder(game, root).join(crate::list::REPLAYS_FOLDER)
 }
 
 /// Temp file used while the PNG is written (`.<app>-capture.tmp`; hidden so
@@ -290,6 +305,17 @@ mod tests {
         assert_eq!(p2, dir.path().join("2026-03-04_05-06-07-089-2.png"));
         std::fs::write(&p2, b"").unwrap();
         assert_eq!(unique_screenshot_path(dir.path(), t), dir.path().join("2026-03-04_05-06-07-089-3.png"));
+        assert_eq!(unique_capture_path(dir.path(), t, "mp4"), dir.path().join("2026-03-04_05-06-07-089.mp4"));
+    }
+
+    #[test]
+    fn replays_go_in_the_game_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("Death Stranding - Director's Cut")).unwrap();
+        assert_eq!(
+            replay_folder(&game("Death Stranding"), dir.path()),
+            dir.path().join("Death Stranding - Director's Cut").join("replays")
+        );
     }
 
     #[test]

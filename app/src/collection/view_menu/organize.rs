@@ -241,21 +241,16 @@ impl CollectionView {
             ))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
         let head = section_head(tr!("Sort")).child(div().text_size(px(12.)).child(sort_direction(current, descending)));
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(d.head_gap))
-            .child(head)
-            .child(
-                div()
-                    .relative()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .child(div().flex_1().min_w_0().child(seg_track("vm-sort", d).children(quick).child(more)))
-                    .child(dir)
-                    .children(list),
-            )
+        div().flex().flex_col().gap(px(d.head_gap)).child(head).child(
+            div()
+                .relative()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(div().flex_1().min_w_0().child(seg_track("vm-sort", d).children(quick).child(more)))
+                .child(dir)
+                .children(list),
+        )
     }
 
     /// "More ▾", or the extra field picked with its icon.

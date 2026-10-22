@@ -15,7 +15,8 @@
 //! panel shows what has no game (volume, controllers, Heronite).
 //!
 //! Guide + Y marks a moment in the game's journal (`moment`); the panel's
-//! Notes tab writes it.
+//! Notes tab writes it. Guide + X saves the replay (the last seconds of the
+//! game, `services::replay`) and marks it as a moment too (`replay`).
 //!
 //! The keyboard shortcut is registered with the desktop only while such a
 //! game runs (or always, without a game) (a temporary Hyprland bind, else the GlobalShortcuts portal,
@@ -29,6 +30,7 @@
 mod debug;
 mod moment;
 pub mod panel;
+mod replay;
 mod toast;
 mod window;
 
@@ -99,6 +101,8 @@ pub struct OverlayService {
     watcher: Option<Watcher>,
     controllers: Vec<Controller>,
     panel: Option<WindowHandle<OverlayPanel>>,
+    /// When the panel opened (a replay saved from it cuts that time off).
+    panel_opened: Option<Instant>,
     notice: Option<toast::NoticeWindow>,
     /// `false` once the compositor refused a layer-shell surface.
     layer_shell: bool,
@@ -133,6 +137,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         watcher: None,
         controllers: Vec::new(),
         panel: None,
+        panel_opened: None,
         notice: None,
         layer_shell: window::wayland(),
         debug_window: false,
@@ -376,6 +381,7 @@ impl OverlayService {
             Event::Screenshot => self.screenshot(cx),
             Event::Volume(dir) => self.step_volume(dir, cx),
             Event::Moment => self.mark_moment(cx),
+            Event::Replay => self.save_replay(cx),
             Event::Press(b) => {
                 if let Some(panel) = self.panel {
                     let pad = panel::pad_of(b);
@@ -422,7 +428,10 @@ impl OverlayService {
         match window::open_panel(cx, self.prefs.side, layer, keyboard, move |window, cx| {
             cx.new(|cx| OverlayPanel::new(service, paths, step, game, controllers, keyboard, window, cx))
         }) {
-            Ok(handle) => self.panel = Some(handle),
+            Ok(handle) => {
+                self.panel = Some(handle);
+                self.panel_opened = Some(Instant::now());
+            }
             Err(e) => {
                 log::warn!("overlay: cannot open the panel: {e:#}");
                 if window::is_layer_shell_missing(&e) {
@@ -440,6 +449,7 @@ impl OverlayService {
     /// Closes the panel (and gives the controllers back to the game).
     pub fn close_panel(&mut self, cx: &mut Context<Self>) {
         self.release_input();
+        self.panel_opened = None;
         if let Some(handle) = self.panel.take() {
             let _ = handle.update(cx, |_, window, _| window.remove_window());
         }
@@ -532,5 +542,6 @@ fn options(prefs: &OverlayPrefs) -> Options {
         screenshot_button: prefs.screenshot_button.into(),
         volume: prefs.volume_shortcut,
         moment: prefs.moment_shortcut,
+        replay: prefs.replay_shortcut,
     }
 }

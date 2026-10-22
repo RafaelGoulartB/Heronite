@@ -647,11 +647,13 @@ impl SettingsPanel {
 
     pub(super) fn steam_perf_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let mut col = column().child(self.steam_banner(cx));
+        // The replay is the app's, not Steam's: always there.
         if !self.steam.as_ref().is_some_and(|s| s.editable) {
-            return col;
+            return self.replay_section(col, cx);
         }
         let off = !self.steam_fields_editable();
         col = col.child(heading(tr!("On screen"))).child(self.overlay_rows(off, cx).card());
+        col = self.replay_section(col, cx);
         col = col.child(self.fps_section(off, cx)).child(self.lsfg_section(off, cx));
         col = col.child(self.gamescope_section(rows(), off, cx));
         col.child(heading(tr!("System"))).child(self.game_system_rows(off, cx).card())

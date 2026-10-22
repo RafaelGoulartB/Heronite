@@ -25,6 +25,7 @@ mod parts;
 mod prefix_menu;
 mod presets;
 mod protondb;
+mod replay;
 mod sandbox;
 mod saves;
 mod shared_folders;

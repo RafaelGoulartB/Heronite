@@ -355,6 +355,7 @@ impl SettingsPanel {
             Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
             false,
         ));
+        v.extend(self.c_replay(cx));
         v.extend(self.c_fps(false));
         v.extend(self.c_lsfg(false));
         v.push(Self::c_header(tr!("Image")));

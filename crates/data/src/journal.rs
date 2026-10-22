@@ -45,6 +45,9 @@ pub struct Entry {
     /// Path of the screenshot it is about.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shot: Option<String>,
+    /// Path of the replay (a video of the seconds before `at`) it is about.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clip: Option<String>,
     #[serde(default)]
     pub source: String,
     #[serde(default)]
@@ -67,11 +70,18 @@ impl Entry {
             at: at.unwrap_or(now).to_rfc3339_opts(SecondsFormat::Millis, true),
             text: text.trim().to_owned(),
             shot,
+            clip: None,
             source: source.to_owned(),
             created_at: stamp.clone(),
             updated_at: stamp,
             extra: Extra::new(),
         }
+    }
+
+    /// The entry about a saved replay.
+    pub fn with_clip(mut self, clip: String) -> Self {
+        self.clip = Some(clip);
+        self
     }
 
     /// `at` in unix milliseconds.
@@ -312,6 +322,18 @@ mod tests {
         assert_eq!(v["version"], 2);
         assert_eq!(v["entries"]["g"][0]["mood"], "good");
         assert_eq!(v["entries"]["g"][2], 7);
+    }
+
+    #[test]
+    fn a_replay_is_kept_with_its_moment() {
+        let (_d, p) = paths();
+        let e = Entry::new(at("2026-07-05T23:41:00Z"), "", None, SOURCE_OVERLAY).with_clip("/c/G/replays/a.mp4".into());
+        add(&p, "k", &e).unwrap();
+        let j = load(&p, "k");
+        assert_eq!(j.entries[0].clip.as_deref(), Some("/c/G/replays/a.mp4"));
+        assert!(j.entries[0].is_moment());
+        let raw = std::fs::read_to_string(p.journal()).unwrap();
+        assert!(raw.contains("\"clip\"") && !raw.contains("\"shot\""));
     }
 
     #[test]
