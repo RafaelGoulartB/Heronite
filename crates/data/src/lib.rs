@@ -12,6 +12,7 @@ pub mod added;
 pub mod anticheat;
 pub mod appearance;
 pub mod art;
+pub mod carry_over;
 pub mod categories;
 pub mod collection;
 pub mod config_games;
