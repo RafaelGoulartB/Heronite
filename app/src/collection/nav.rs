@@ -517,6 +517,7 @@ impl CollectionView {
         self.sync_nav_meta(cx);
         self.offer_stats_data(cx);
         self.offer_settings_library(cx);
+        self.mods_library_loaded(cx);
     }
 
     /// Gives the Settings page the reloaded library while it is on screen

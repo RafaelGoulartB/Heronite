@@ -31,6 +31,7 @@ mod list_view;
 mod load;
 mod look;
 mod metadata_ui;
+mod mods;
 mod nav;
 mod onboarding;
 mod open_links;
@@ -89,6 +90,8 @@ enum ToastAction {
     RestoreNote(String, Box<heronite_data::journal::Entry>),
     /// Puts back the "where I left off" line just cleared (game key, the line).
     RestoreLeftOff(String, Box<heronite_data::journal::LeftOff>),
+    /// Opens the Mods manager of this game (key).
+    OpenMods(String),
 }
 
 pub struct CollectionView {
@@ -147,6 +150,8 @@ pub struct CollectionView {
     /// The focused game's journal (`journal/`).
     journal: journal::JournalUi,
     focus_scroll: ScrollHandle,
+    /// The Mods manager, FOMOD wizard and game picker (`mods.rs`).
+    mods: mods::ModsUi,
     shots: screenshots::Shots,
     toast_task: Option<Task<()>>,
     images: ImageStore,
@@ -278,6 +283,7 @@ impl CollectionView {
             facts: Default::default(),
             journal: Default::default(),
             focus_scroll: ScrollHandle::new(),
+            mods: Default::default(),
             shots: Default::default(),
             images,
             cover_chains: HashMap::new(),
@@ -319,6 +325,7 @@ impl CollectionView {
         this.spawn_load(cx);
         this.start_idle_jobs(cx);
         this.init_metadata(window, cx);
+        this.init_mods(window, cx);
         this.spawn_disk_watch(cx);
         this.spawn_debug_browse(cx);
         this
@@ -367,10 +374,15 @@ impl CollectionView {
                                 }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
                                 ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
+                                ToastAction::OpenMods(_) => heronite_i18n::tr!("Open"),
                             })
                             .when(matches!(action, ToastAction::Undo), |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 match &action {
+                                    ToastAction::OpenMods(key) => {
+                                        this.toast = None;
+                                        this.open_mods(key, window, cx);
+                                    }
                                     ToastAction::Undo => {
                                         this.undo_batch(cx);
                                     }

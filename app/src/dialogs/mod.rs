@@ -29,6 +29,9 @@ pub mod manage_fields;
 pub mod manage_statuses;
 pub mod metadata;
 pub mod metadata_wizard;
+pub mod mod_installer;
+pub mod mod_link_game;
+pub mod mods;
 pub mod onboarding;
 pub mod pick_rom;
 pub mod quit_confirm;
@@ -72,6 +75,15 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
         return d.update(cx, |d, cx| d.on_escape(window, cx));
     }
     if let Ok(d) = view.clone().downcast::<batch_edit::BatchEditDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<mods::ModsDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<mod_installer::ModInstallerDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<mod_link_game::ModLinkGameDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     false
