@@ -27,8 +27,10 @@ use crate::ui::fields::{meta_text, select_field};
 const ASSUMED_SCREEN: (u32, u32) = (1920, 1080);
 
 pub struct State {
-    /// `None` while it is looked for.
+    /// `None` until it is looked for: once per visit of Settings (it wakes
+    /// the graphics card), or what the recorder found while a game runs.
     detected: Option<Detected>,
+    looking: bool,
     /// The menu of the monitor is open.
     monitor_open: bool,
 }
@@ -39,21 +41,28 @@ impl State {
         if let Some(service) = crate::services::replay::get(cx) {
             cx.observe(&service, |_, _, cx| cx.notify()).detach();
         }
-        Self { detected: None, monitor_open: false }
+        Self { detected: None, looking: false, monitor_open: false }
     }
 }
 
-/// Looks for gpu-screen-recorder and what it can do when the section shows
-/// (what the recorder found, while a game runs).
-pub fn shown(cx: &mut Context<SettingsPage>) {
-    let cached = crate::services::replay::cached_detected(cx);
+/// Looks for gpu-screen-recorder and what it can do the first time the
+/// section shows (what the recorder found, while a game runs): `--info`
+/// opens the graphics card's encoders, so scrolling past the section or
+/// coming back to it does not ask again.
+pub fn shown(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    if d.replay.detected.is_some() || d.replay.looking {
+        return;
+    }
+    if let Some(found) = crate::services::replay::cached_detected(cx) {
+        d.replay.detected = Some(found);
+        return;
+    }
+    d.replay.looking = true;
     cx.spawn(async move |this, cx| {
-        let detected = match cached {
-            Some(found) => found,
-            None => cx.background_spawn(async { crate::services::replay::detect() }).await,
-        };
+        let detected = cx.background_spawn(async { crate::services::replay::detect() }).await;
         this.update(cx, |d, cx| {
             d.replay.detected = Some(detected);
+            d.replay.looking = false;
             cx.notify();
         })
         .ok();

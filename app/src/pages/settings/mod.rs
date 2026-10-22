@@ -290,7 +290,7 @@ impl SettingsPage {
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
             Section::Overlay => overlay::shown(cx),
-            Section::Replay => replay::shown(cx),
+            Section::Replay => replay::shown(self, cx),
             Section::Saves => saves::State::shown(self, window, cx),
             Section::Storage => storage::State::shown(self, cx),
             Section::Backups => backup::shown(self, cx),
