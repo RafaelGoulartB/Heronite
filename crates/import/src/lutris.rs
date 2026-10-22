@@ -1,6 +1,7 @@
 //! Lutris: its library is `pga.db` (SQLite) in its data folder, each game's
 //! settings a YAML file under `games/` of its config folder (the Wine
-//! prefix is read from there). A game starts with
+//! prefix is read from there, and the game's folder when `pga.db` has none:
+//! a game added by hand in Lutris only has its executable). A game starts with
 //! `lutris lutris:rungameid/<id>`; started that way while Lutris is closed,
 //! Lutris quits with the game.
 
@@ -76,28 +77,56 @@ fn read(install: &Install) -> Result<Vec<Game>> {
             continue;
         }
         let art = |dir: &str| ["jpg", "png"].iter().map(|ext| install.data.join(dir).join(format!("{slug}.{ext}"))).find(|p| p.is_file());
-        let prefix = (!configpath.is_empty()).then(|| prefix_of(&install.config.join("games").join(format!("{configpath}.yml")))).flatten();
+        let settings = if configpath.is_empty() {
+            GameSection::default()
+        } else {
+            game_section(&install.config.join("games").join(format!("{configpath}.yml")))
+        };
+        let folder = Some(directory.trim().to_string()).filter(|d| !d.is_empty()).or_else(|| settings.folder());
         games.push(Game {
             id: id.to_string(),
             title: name.trim().to_string(),
-            folder: Some(directory).filter(|d| !d.is_empty()),
+            folder,
             windows: runner == "wine" || platform.to_ascii_lowercase().contains("windows"),
             minutes: (hours.max(0.0) * 60.0).round() as u64,
             last_played: (last > 0).then(|| heronite_data::steam_owned::unix_to_iso(last)).flatten(),
             cover: art("coverart").map(|p| p.to_string_lossy().into_owned()),
             banner: art("banners").map(|p| p.to_string_lossy().into_owned()),
             command: command(install.flatpak, id),
-            prefix,
+            prefix: settings.prefix,
         });
     }
     Ok(games)
 }
 
-/// `game: prefix:` of a game's YAML settings. Only that key is needed, so
-/// the lines are read as they are written: `game:` at the start of a line,
+/// The keys of a game's YAML settings under `game:` this reads.
+#[derive(Debug, Default)]
+struct GameSection {
+    prefix: Option<String>,
+    exe: Option<String>,
+    working_dir: Option<String>,
+    main_file: Option<String>,
+}
+
+impl GameSection {
+    /// The game's folder from its settings: its working folder, else the
+    /// folder of its executable (or main file). Only full paths.
+    fn folder(&self) -> Option<String> {
+        let full = |p: &Option<String>| p.as_deref().map(Path::new).filter(|p| p.is_absolute()).map(Path::to_path_buf);
+        let file = full(&self.exe).or_else(|| full(&self.main_file)).and_then(|f| f.parent().map(Path::to_path_buf));
+        full(&self.working_dir)
+            .or(file)
+            .filter(|d| d.components().count() > 2)
+            .map(|d| d.to_string_lossy().trim_end_matches('/').to_string())
+    }
+}
+
+/// `game:` of a game's YAML settings. Only a few plain keys are needed, so
+/// the lines are read as Lutris writes them: `game:` at the start of a line,
 /// its keys indented under it.
-fn prefix_of(file: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(file).ok()?;
+fn game_section(file: &Path) -> GameSection {
+    let mut out = GameSection::default();
+    let Ok(text) = std::fs::read_to_string(file) else { return out };
     let mut in_game = false;
     for line in text.lines() {
         if !line.starts_with([' ', '\t']) {
@@ -107,12 +136,17 @@ fn prefix_of(file: &Path) -> Option<String> {
         if !in_game {
             continue;
         }
-        if let Some(value) = line.trim_start().strip_prefix("prefix:") {
-            let value = value.trim().trim_matches(['\'', '"']);
-            return Some(value.to_string()).filter(|v| !v.is_empty());
+        let Some((key, value)) = line.trim_start().split_once(':') else { continue };
+        let value = Some(value.trim().trim_matches(['\'', '"']).to_string()).filter(|v| !v.is_empty());
+        match key {
+            "prefix" => out.prefix = value,
+            "exe" => out.exe = value,
+            "working_dir" => out.working_dir = value,
+            "main_file" => out.main_file = value,
+            _ => {}
         }
     }
-    None
+    out
 }
 
 #[cfg(test)]
@@ -132,7 +166,8 @@ mod tests {
                (3, 'Celeste', 'celeste', 'Windows', 'wine', '/games/celeste', 1, 1.5, 1700000000, 'celeste-1700'),
                (4, 'SuperTux', 'supertux', 'Linux', 'linux', '/games/supertux', 1, NULL, NULL, 'supertux-1'),
                (5, 'Portal', 'portal', 'Linux', 'steam', '', 1, 2.0, NULL, 'portal-1'),
-               (6, 'Hades', 'hades', 'Windows', 'wine', '', 0, 0, NULL, 'hades-1');",
+               (6, 'Hades', 'hades', 'Windows', 'wine', '', 0, 0, NULL, 'hades-1'),
+               (7, 'Hollow Knight', 'hollow-knight', NULL, 'wine', '', 1, 0, NULL, 'hollow-knight-1');",
         )
         .unwrap();
     }
@@ -152,11 +187,20 @@ mod tests {
             "game:\n  exe: /games/celeste/Celeste.exe\n  prefix: '/home/u/Games/celeste'\nsystem:\n  prefix: /wrong\n",
         )
         .unwrap();
+        // Added by hand in Lutris: no directory, only the executable.
+        std::fs::write(
+            config.join("hollow-knight-1.yml"),
+            "game:\n  exe: /data/Games/Hollow Knight/hollow_knight.exe\n  prefix: /data/Games/Prex\n",
+        )
+        .unwrap();
 
         let found = detect(home).unwrap().unwrap();
         assert!(found.flatpak);
         let names: Vec<_> = found.games.iter().map(|g| g.title.as_str()).collect();
-        assert_eq!(names, ["Celeste", "SuperTux"]);
+        assert_eq!(names, ["Celeste", "SuperTux", "Hollow Knight"]);
+        let hk = &found.games[2];
+        assert_eq!((hk.folder.as_deref(), hk.prefix.as_deref()), (Some("/data/Games/Hollow Knight"), Some("/data/Games/Prex")));
+        assert!(hk.windows);
         let celeste = &found.games[0];
         assert_eq!(celeste.id, "3");
         assert!(celeste.windows);
