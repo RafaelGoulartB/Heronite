@@ -204,8 +204,11 @@ impl CollectionView {
                 "config configure options wine proton launch configuracoes opcoes ajustes",
             ));
         }
-        // Sideloaded programs and browser games; not Steam/emulated entries.
-        if game.runner == "sideload" && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
+        // Sideloaded programs and browser games; not Steam/emulated entries,
+        // nor the ones another launcher starts.
+        if game.runner == "sideload"
+            && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND))
+        {
             v.push(item(
                 A::EditGame,
                 "edit-game",

@@ -130,6 +130,10 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
             "amazon" => return "Amazon",
             "xbox" => return "Xbox",
             "emulator" => return tr!("Emulator"),
+            "heroic" => return "Heroic",
+            "lutris" => return "Lutris",
+            "bottles" => return "Bottles",
+            "faugus" => return "Faugus",
             "manual" => return tr!("Local"),
             "other" => return tr!("Other"),
             _ => {}

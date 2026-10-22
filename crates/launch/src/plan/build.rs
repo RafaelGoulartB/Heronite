@@ -81,6 +81,11 @@ fn build_sideload(
         };
     }
 
+    // Games another launcher (Lutris, Bottles, Faugus) starts.
+    if let Some(m) = meta.filter(|m| m.launch_kind == heronite_data::launchers::LAUNCH_KIND) {
+        return launcher_plan(probe, game, m);
+    }
+
     // 2. Local executables (tryLaunchNativeLocalGame, else Heroic's launchGame).
     if is_executable_game(game, meta) {
         if is_browser_game(game) {
@@ -99,6 +104,30 @@ fn build_sideload(
         }
     }
     LaunchPlan::Unavailable(tr!("This game has no launch method").into())
+}
+
+/// Asks the launcher that has the game to start it (`launcherArgs`). The
+/// launcher sets the game up (Wine, wrappers); the session follows it, and
+/// the game itself when the launcher hands it to its open window.
+fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> LaunchPlan {
+    use heronite_data::launchers::{Launcher, PREFIX_KEY};
+    let mut args = split_args(meta.launcher_args.as_deref().unwrap_or_default());
+    if args.is_empty() {
+        return LaunchPlan::Unavailable(tr!("This game has no launch method").into());
+    }
+    let program = args.remove(0);
+    if probe.which(&program).is_none() && !probe.exists(&program) {
+        let launcher = Launcher::from_source(&meta.source).map_or(program.as_str(), |l| l.name());
+        return LaunchPlan::Unavailable(tr!("{launcher} was not found on this PC", launcher));
+    }
+    let folder = game.install.install_path.clone().filter(|f| !f.is_empty() && probe.exists(f));
+    let prefix = meta.extra.get(PREFIX_KEY).and_then(serde_json::Value::as_str).filter(|p| !p.is_empty()).map(str::to_owned);
+    LaunchPlan::Native(ProcessPlan {
+        command: Command { program, args, env: Default::default(), cwd: folder.clone() },
+        // Nothing to find the game by: the session ends with the command.
+        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder }),
+        ..Default::default()
+    })
 }
 
 fn first_existing<'a>(probe: &dyn Probe, paths: &[Option<&'a str>]) -> Option<&'a str> {

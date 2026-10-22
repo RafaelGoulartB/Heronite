@@ -21,7 +21,7 @@ use heronite_i18n::{tr, trn};
 
 mod parts;
 
-use self::parts::{label, shelf, source_row, status, store_tile, Status};
+use self::parts::{label, shelf, source_row, status, tile, Status};
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::pages::Page;
@@ -242,7 +242,8 @@ impl CollectionView {
         let (steam_button, steam_note) = self.steam_action(cx);
         let steam = source_row(Icon::CloudSync, "Steam".into(), self.steam_status(cx), steam_button, steam_note, true);
         let store = |id: &'static str, page: Page, name: &'static str, tint: (u8, u8, u8)| {
-            store_tile(id, name, tint).on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
+            tile(id, Icon::Storefront, name, tr!("Log in").into(), tint)
+                .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
         };
         let stores = div()
             .flex()
@@ -287,6 +288,9 @@ impl CollectionView {
             )
             .child(label(Icon::TravelExplore, tr!("Found on this PC")))
             .child(div().flex().flex_col().gap(px(10.)).child(steam).child(self.emulation_row(cx)))
+            .when_some(self.launcher_tiles(cx), |d, tiles| {
+                d.child(label(Icon::CallMerge, tr!("Bring in from another launcher"))).child(tiles)
+            })
             .child(label(Icon::Storefront, tr!("Log in to a store")))
             .child(stores)
             .child(add)
@@ -301,6 +305,40 @@ impl CollectionView {
                     .child(icon(Icon::Lightbulb, px(14.), theme::text_dim()))
                     .child(tr!("Getting started opens by itself once your first games arrive.")),
             )
+    }
+
+    /// The launchers on this PC with games to bring in (Heroic, Lutris,
+    /// Faugus): a click turns the import on, and the games come in.
+    fn launcher_tiles(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let svc = crate::services::launcher_imports(cx);
+        let s = svc.read(cx);
+        let found: Vec<_> = s
+            .found
+            .iter()
+            .flatten()
+            .filter(|f| f.games > 0 && (!s.prefs.enabled.contains(&f.launcher) || s.busy.contains(&f.launcher)))
+            .map(|f| (f.launcher, f.games, s.busy.contains(&f.launcher)))
+            .collect();
+        if found.is_empty() {
+            return None;
+        }
+        let tiles = found.into_iter().map(|(launcher, games, busy)| {
+            let action = if busy {
+                tr!("Bringing in\u{2026}").to_string()
+            } else {
+                trn!(games, "{n} game \u{b7} Bring in", "{n} games \u{b7} Bring in")
+            };
+            let svc = svc.clone();
+            tile(
+                SharedString::from(format!("welcome-launcher-{}", launcher.id())),
+                crate::pages::settings::launcher_icon(launcher),
+                launcher.name(),
+                action,
+                (165, 220, 235),
+            )
+            .when(!busy, |t| t.on_click(move |_, _, cx| svc.update(cx, |s, cx| s.set_enabled(launcher, true, cx))))
+        });
+        Some(div().flex().gap(px(10.)).children(tiles))
     }
 
     fn emulation_row(&self, cx: &mut Context<Self>) -> Div {

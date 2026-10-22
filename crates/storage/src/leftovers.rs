@@ -2,9 +2,9 @@
 //! uninstall left behind (saves, configs, a half-removed install), or a game
 //! removed from the Collection. A folder is kept out when anything known
 //! lives in it: an installed game's files, a prefix, a ROM folder, an
-//! emulator, a download in the queue, a Steam library, or any path the
-//! settings name. Folders changed in the last hours are left out too (an
-//! install may be writing to them).
+//! emulator, a download in the queue, a Steam library, a game of Lutris,
+//! Bottles or Faugus, or any path the settings name. Folders changed in the last hours
+//! are left out too (an install may be writing to them).
 
 use std::collections::HashMap;
 use std::fs;
@@ -40,6 +40,8 @@ pub(crate) fn items(ctx: &Ctx, lib: &Library, listed: &[Item], walked: &SizeCach
     let mut known = installed_paths.clone();
     known.extend(listed.iter().flat_map(|i| i.paths.iter().cloned().chain([i.folder.clone()])));
     known.push(ctx.data_paths.root.clone());
+    // What Lutris, Bottles and Faugus keep is theirs, installed there or not.
+    known.extend(heronite_data::launchers::managed_paths(&ctx.data_paths).into_iter().map(|m| m.path));
     known.extend(json_paths(&Value::Object(global)));
     for file in [ctx.data_paths.rom_scanners(), ctx.data_paths.emulators(), ctx.data_paths.download_manager()] {
         if let Ok(v) = json_store::read_value(&file) {

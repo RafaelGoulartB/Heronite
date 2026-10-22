@@ -146,6 +146,41 @@ where
     Ok(result)
 }
 
+/// [`update_value`] that writes only when the closure changed the document:
+/// a write moves the file's time, which the Collection takes as a change to
+/// reload for.
+pub fn update_value_if_changed<R>(path: &Path, f: impl FnOnce(&mut Value) -> Result<R>) -> Result<R> {
+    let lock = path_lock(path);
+    let _guard = lock.lock();
+    let mut value = read_value(path)?;
+    if value.is_null() {
+        value = Value::Object(Default::default());
+    }
+    let before = value.clone();
+    let result = f(&mut value)?;
+    if value != before {
+        write_indented(path, &value, b"\t")?;
+    }
+    Ok(result)
+}
+
+/// [`update`] that writes only when the closure changed the document (see
+/// [`update_value_if_changed`]).
+pub fn update_if_changed<T, R>(path: &Path, f: impl FnOnce(&mut T) -> Result<R>) -> Result<R>
+where
+    T: DeserializeOwned + Serialize + Default,
+{
+    let lock = path_lock(path);
+    let _guard = lock.lock();
+    let mut doc: T = read(path)?;
+    let before = serde_json::to_value(&doc)?;
+    let result = f(&mut doc)?;
+    if serde_json::to_value(&doc)? != before {
+        write(path, &doc)?;
+    }
+    Ok(result)
+}
+
 /// Modification time, used to notice external changes (Heronite writing).
 pub fn mtime(path: &Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()

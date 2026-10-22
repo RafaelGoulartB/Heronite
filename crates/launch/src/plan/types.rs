@@ -76,9 +76,22 @@ pub struct ProcessPlan {
     /// legendary starts the game through umu (a Wine plan says it with
     /// [`WineRuntime::Umu`]): its `GAMEID` picks the protonfixes.
     pub through_umu: bool,
+    /// Another launcher starts the game and may hand it to its own running
+    /// instance (see [`Handoff`]).
+    pub handoff: Option<Handoff>,
     /// The game runs in the sandbox (see [`crate::sandbox`]): the programs
     /// alongside it join that sandbox.
     pub sandboxed: bool,
+}
+
+/// How to find a game another launcher started when the command that asked
+/// for it returns at once (Lutris already open passes the request to its
+/// window and exits): the session follows the processes running from the
+/// game's folder or as Windows programs in its Wine prefix.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Handoff {
+    pub prefix: Option<String>,
+    pub folder: Option<String>,
 }
 
 /// A program run alongside the game (see [`crate::companions`]).

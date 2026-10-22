@@ -18,13 +18,14 @@
 //!
 //! Emulators and ROM folders are not here: they live on the ☰ Emulators page.
 //!
-//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|storage|overlay|replay|metadata|screenshots|backups|logs|about]`.
+//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|logs|about]`.
 
 mod about;
 mod advanced;
 mod appearance;
 mod backup;
 mod console;
+mod launchers;
 mod library;
 pub mod logs;
 mod metadata;
@@ -41,6 +42,7 @@ mod updates;
 
 pub use advanced::open_folder;
 pub use backup::format_time;
+pub use launchers::launcher_icon;
 pub use section::Section;
 
 use std::collections::HashMap;
@@ -117,6 +119,7 @@ pub struct SettingsPage {
     defaults: Option<Entity<SettingsPanel>>,
     defaults_section: HSection,
     library: library::State,
+    launchers: launchers::State,
     overlay: overlay::State,
     replay: replay::State,
     storage: storage::State,
@@ -165,6 +168,7 @@ impl SettingsPage {
             saves,
             saves_restore: Default::default(),
             library: library::State::new(&ctx),
+            launchers: launchers::State::new(cx),
             overlay: overlay::State::new(&ctx, cx),
             replay: replay::State::new(&ctx, cx),
             storage,
@@ -290,6 +294,7 @@ impl SettingsPage {
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
             Section::Overlay => overlay::shown(cx),
+            Section::Launchers => launchers::shown(self, cx),
             Section::Replay => replay::shown(self, cx),
             Section::Saves => saves::State::shown(self, window, cx),
             Section::Storage => storage::State::shown(self, cx),
@@ -400,6 +405,7 @@ impl SettingsPage {
             Section::Library => self.library_section(cx).into_any_element(),
             Section::Storage => storage::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
+            Section::Launchers => launchers::render(self, cx),
             Section::Replay => replay::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),

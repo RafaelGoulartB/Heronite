@@ -54,11 +54,12 @@ impl PrefixesState {
     }
 }
 
-/// Whether a game of the library runs through Wine (emulated games and Steam
-/// games do not, whatever their platform).
+/// Whether a game of the library runs through Wine (emulated games, Steam
+/// games and the ones another launcher starts do not, whatever their
+/// platform).
 fn runs_through_wine(g: &heronite_data::library::CollectionGame) -> bool {
     let windows = g.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("windows"));
-    windows && !matches!(g.launch_kind.as_deref(), Some("emulator" | "steam-uri"))
+    windows && !matches!(g.launch_kind.as_deref(), Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND))
 }
 
 fn home() -> String {

@@ -45,7 +45,7 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   `self.open_dialog(cx.new(|cx| V::new(ctx, window, cx)), cx)`.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
 - Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
-  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library, Storage, Overlay),
+  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library, Other launchers, Storage, Overlay),
   Collection (Metadata, Screenshots, Backups), Help (Logs, About). A section = title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata`, `screenshots`, `saves` + `backup/` for Backups: settings, what goes in, then the restore list
@@ -56,6 +56,11 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   creation. Open a section from code with `CollectionView::open_settings_section` (or `pages::settings::request_section`
   + navigate); add new sections to `Section` (label, icon, blurb, palette `keywords`, `parse`). Emulators and ROM
   folders are NOT a Settings section: they live on the ☰ Emulators page.
+  Other launchers (`launchers.rs`) is a card per launcher (Heroic, Lutris, Bottles, Faugus): whether it is on this PC
+  and how many games it has, a switch that brings its games in and keeps them in sync, "Bring in now", and
+  "Remove them" for the games of one turned off. The same switch is offered where games come from: a tile per
+  launcher on the empty Collection and a row in "Getting started" → Your games, shown only for the launchers
+  found with games and not imported yet.
 - Command palette (Ctrl K, `app/src/collection/palette/`): it reads the app's own lists, so a new feature reaches it
   without palette code. A game action goes in `collection/game_actions.rs` (`GameAction`, listed by
   `CollectionView::game_actions`, run by `run_game_action`): the card's context menu draws the same list. A page action

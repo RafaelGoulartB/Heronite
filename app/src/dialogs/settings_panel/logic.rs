@@ -84,7 +84,7 @@ impl GameFacts {
         let run_kind = if steam_app_id.is_some() {
             RunKind::Steam
         } else if !game.installed
-            || matches!(launch_kind, "emulator" | "steam-uri")
+            || matches!(launch_kind, "emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND)
             || platform == "browser"
             || g.rest.get("browserUrl").is_some_and(|v| !v.is_null() && v != "")
         {

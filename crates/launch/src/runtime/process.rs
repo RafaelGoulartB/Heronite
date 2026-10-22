@@ -182,6 +182,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         }
     };
     control.pid.store(handle.pid(), Ordering::SeqCst);
+    let spawned = Instant::now();
     // The session clock starts here, not at the launch request.
     let started_at = control.set_playing();
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
@@ -261,6 +262,14 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             aborted = follow_the_prefix(shared, control, &mut companions, &prefix, &*services.probe, log, &status);
         }
     }
+    // Only a launcher that took the request (exit 0) handed the game on; one
+    // that failed is a failed launch, not a game to wait for.
+    let handed_on = exit.is_some_and(|e| e.code == Some(0));
+    if let Some(handoff) = plan.handoff.as_ref().filter(|_| handed_on && !aborted && !control.kill.load(Ordering::SeqCst)) {
+        if spawned.elapsed() < shared.cfg.handoff.soon {
+            aborted = follow_handoff(shared, control, handoff, log);
+        }
+    }
     if aborted {
         companions.leave_running();
     } else {
@@ -327,6 +336,55 @@ impl Steps {
         } else {
             format!("Prepared in {:.2} s ({})", total.as_secs_f64(), slow.join(", "))
         }
+    }
+}
+
+/// Follows a game another launcher took over (see [`Handoff`]): waits for it
+/// to show up, then until it is gone. A stop ends its processes. Returns
+/// true when tracking was aborted meanwhile.
+///
+/// [`Handoff`]: crate::plan::Handoff
+fn follow_handoff(shared: &Shared, control: &Control, handoff: &crate::plan::Handoff, log: &Arc<GameLog>) -> bool {
+    let started = Instant::now();
+    let mut seen = false;
+    let mut gone_since: Option<Instant> = None;
+    let mut terminated_at: Option<Instant> = None;
+    loop {
+        if control.abort.load(Ordering::SeqCst) {
+            return true;
+        }
+        let pids = shared.procs.game_pids(handoff.prefix.as_deref(), handoff.folder.as_deref());
+        if control.kill.load(Ordering::SeqCst) {
+            let sig = match terminated_at {
+                None => {
+                    terminated_at = Some(Instant::now());
+                    Some(crate::procs::Sig::Term)
+                }
+                Some(t) if t.elapsed() > shared.cfg.kill_grace => Some(crate::procs::Sig::Kill),
+                _ => None,
+            };
+            for pid in &pids {
+                if let Some(sig) = sig {
+                    shared.procs.signal(*pid, sig);
+                }
+            }
+            if pids.is_empty() || sig == Some(crate::procs::Sig::Kill) {
+                return false;
+            }
+        } else if !pids.is_empty() {
+            if !seen {
+                log.info("The launcher handed the game to its open window; following the game");
+            }
+            seen = true;
+            gone_since = None;
+        } else if seen {
+            if gone_since.get_or_insert_with(Instant::now).elapsed() >= shared.cfg.handoff.gone {
+                return false;
+            }
+        } else if started.elapsed() > shared.cfg.handoff.wait {
+            return false;
+        }
+        control.wake.wait_while(shared.cfg.poll_interval, || !control.abort.load(Ordering::SeqCst) && !control.kill.load(Ordering::SeqCst));
     }
 }
 

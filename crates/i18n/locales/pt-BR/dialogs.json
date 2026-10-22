@@ -327,5 +327,6 @@
   "{n} session adds up to {time}.": "{n} sessão soma {time}.",
   "{n} sessions add up to {time}.": "{n} sessões somam {time}.",
   "They are recorded each time the game runs here.": "Elas são registradas cada vez que o jogo roda aqui.",
-  "{from}–{to} of {total}": "{from}–{to} de {total}"
+  "{from}–{to} of {total}": "{from}–{to} de {total}",
+  "{launcher} was not found on this PC": "O {launcher} não foi encontrado neste PC"
 }

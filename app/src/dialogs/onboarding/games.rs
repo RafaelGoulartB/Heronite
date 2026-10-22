@@ -43,7 +43,39 @@ fn tile(head: Div, title: &'static str, sub: Div, description: &'static str, foo
 }
 
 impl OnboardingDialog {
+    /// The launchers on this PC with games not brought in yet (Heroic,
+    /// Lutris, Bottles, Faugus): a button each turns its import on.
+    fn other_launchers(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let svc = crate::services::launcher_imports(cx);
+        let offers = svc.read(cx).offers();
+        if offers.is_empty() {
+            return None;
+        }
+        let buttons = offers.into_iter().map(|o| {
+            let svc = svc.clone();
+            let label = format!("{} \u{b7} {}", o.launcher.name(), trn!(o.games, "{n} game", "{n} games"));
+            button_sm(SharedString::from(format!("onb-launcher-{}", o.launcher.id())), ButtonKind::Glass, label)
+                .on_click(move |_, _, cx| svc.update(cx, |s, cx| s.set_enabled(o.launcher, true, cx)))
+        });
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .px(px(18.))
+                .py(px(12.))
+                .rounded(px(18.))
+                .bg(theme::white_a(0.035))
+                .border_1()
+                .border_color(theme::white_a(0.08))
+                .child(icon(Icon::CallMerge, px(20.), theme::accent()))
+                .child(div().flex_1().text_size(px(13.5)).text_color(theme::text_muted()).child(tr!("Games in other launchers on this PC")))
+                .children(buttons),
+        )
+    }
+
     pub(super) fn render_games(&self, art: &Art, cx: &mut Context<Self>) -> Div {
+        let others = self.other_launchers(cx);
         let f = &self.facts;
         let source = |step: Step, label: &'static str, primary: bool| {
             let done = f.is_done(step);
@@ -103,6 +135,7 @@ impl OnboardingDialog {
                     .child(source(emulators, tr!("Set up emulators"), false))
                     .child(add),
             )
+            .children(others)
             .child(
                 div()
                     .flex()

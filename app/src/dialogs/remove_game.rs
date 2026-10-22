@@ -4,7 +4,8 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::DataPaths;
+use heronite_data::launchers::Launcher;
+use heronite_data::{DataPaths, Library};
 use heronite_i18n::tr;
 use heronite_metadata::remove::{remove_collection_game, RemoveOutcome, ShortcutDirs};
 
@@ -52,6 +53,21 @@ pub fn remove_from_collection(paths: &DataPaths, runner: &str, app_name: &str) -
     remove_collection_game(paths, &ShortcutDirs::none(), app_name, runner)
 }
 
+/// The launcher a game of `lib` was brought in from (Heroic, Lutris,
+/// Bottles, Faugus), whose import must leave it out once it is removed.
+pub fn launcher_of(lib: &Library, app_name: &str) -> Option<Launcher> {
+    let game = lib.games.iter().find(|g| g.app_name == app_name)?;
+    Launcher::from_source(&game.meta.as_ref()?.source)
+}
+
+/// Tells the import of `launcher` that the user removed `app_name`.
+pub fn note_removed(launcher: Option<Launcher>, app_name: &str, cx: &mut App) {
+    if let Some(launcher) = launcher {
+        let svc = crate::services::launcher_imports(cx);
+        svc.update(cx, |s, cx| s.note_removed(launcher, app_name, cx));
+    }
+}
+
 impl RemoveGameDialog {
     pub fn new(ctx: DialogCtx, app_name: String, runner: String, title: String) -> Self {
         Self { ctx, app_name, runner, title, working: false, error: None, console_list: Default::default() }
@@ -64,13 +80,17 @@ impl RemoveGameDialog {
         self.working = true;
         self.error = None;
         let (paths, app_name, runner) = (self.ctx.data_paths.clone(), self.app_name.clone(), self.runner.clone());
+        let launcher = launcher_of(&self.ctx.lib, &self.app_name);
         cx.spawn(async move |this, cx| {
             let result =
                 cx.background_spawn(async move { remove_from_collection(&paths, &runner, &app_name).map_err(|e| format!("{e:#}")) }).await;
             this.update(cx, |this, cx| {
                 this.working = false;
                 match result {
-                    Ok(_) => cx.emit(DialogEvent::ChangedAndClose),
+                    Ok(_) => {
+                        note_removed(launcher, &this.app_name, cx);
+                        cx.emit(DialogEvent::ChangedAndClose);
+                    }
                     Err(message) => {
                         this.error = Some(
                             if message.is_empty() { tr!("Could not remove this game from Collection.").to_string() } else { message }
