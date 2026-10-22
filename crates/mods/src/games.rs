@@ -78,7 +78,12 @@ const fn bethesda(
     }
 }
 
-const fn bepinex(name: &'static str, steam_app_ids: &'static [&'static str], community: &'static str, nexus: Option<&'static str>) -> KnownGame {
+const fn bepinex(
+    name: &'static str,
+    steam_app_ids: &'static [&'static str],
+    community: &'static str,
+    nexus: Option<&'static str>,
+) -> KnownGame {
     KnownGame {
         name,
         steam_app_ids,
@@ -166,7 +171,18 @@ pub const KNOWN: &[KnownGame] = &[
         PluginsSpec {
             appdata_folders: &["Starfield"],
             star_format: true,
-            implicit: &["Starfield.esm", "Constellation.esm", "OldMars.esm", "BlueprintShips-Starfield.esm", "SFBGS003.esm", "SFBGS004.esm", "SFBGS006.esm", "SFBGS007.esm", "SFBGS008.esm", "ShatteredSpace.esm"],
+            implicit: &[
+                "Starfield.esm",
+                "Constellation.esm",
+                "OldMars.esm",
+                "BlueprintShips-Starfield.esm",
+                "SFBGS003.esm",
+                "SFBGS004.esm",
+                "SFBGS006.esm",
+                "SFBGS007.esm",
+                "SFBGS008.esm",
+                "ShatteredSpace.esm",
+            ],
         },
     ),
     KnownGame {
@@ -224,11 +240,7 @@ pub const KNOWN: &[KnownGame] = &[
 /// usual edition words: titles from stores and mod sites compare equal.
 pub fn normalize_title(title: &str) -> String {
     let lower = title.to_lowercase().replace('&', " and ").replace(['™', '®'], "");
-    let words: Vec<String> = lower
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(str::to_string)
-        .collect();
+    let words: Vec<String> = lower.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect();
     const NOISE: &[&str] = &["the", "edition", "goty", "game", "of", "year", "definitive", "enhanced", "complete", "remastered"];
     let kept: Vec<&str> = words.iter().map(String::as_str).filter(|w| !NOISE.contains(w)).collect();
     if kept.is_empty() {
