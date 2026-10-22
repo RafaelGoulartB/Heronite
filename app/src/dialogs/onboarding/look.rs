@@ -19,10 +19,11 @@ use crate::ui::icon;
 const PICKER_W: f32 = 430.;
 const PREVIEW_W: f32 = 600.;
 
-/// `look` is the built-in `preset` with any start view: here the view is
-/// chosen on its own, so it neither changes nor breaks a profile.
+/// `look` is the built-in `preset` with any start view (and window-width
+/// switch): here the view is chosen on its own, so it neither changes nor
+/// breaks a profile.
 pub(super) fn is_preset(look: Appearance, preset: Appearance) -> bool {
-    Appearance { start_view: preset.start_view, ..look } == preset
+    Appearance { start_view: preset.start_view, ..look }.with_auto_view_of(&preset) == preset
 }
 
 pub(super) fn preset_name(id: &str) -> &'static str {
@@ -104,7 +105,9 @@ impl OnboardingDialog {
                 .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::white_a(0.07)))
-                .on_click(cx.listener(move |this, _, _, cx| this.set_look(|l| *l = Appearance { start_view: l.start_view, ..look }, cx)))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.set_look(|l| *l = Appearance { start_view: l.start_view, ..look }.with_auto_view_of(l), cx)
+                }))
                 .child(swatch(p.id))
                 .child(
                     div()

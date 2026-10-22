@@ -38,6 +38,27 @@ pub fn guard(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
+/// Idle CPU scheduling and idle I/O class for the calling thread (and the
+/// processes it spawns from now on): it only gets time nobody else wants, so
+/// a game or the UI never waits for it. Call it only on a thread of its own.
+pub fn idle_priority() {
+    #[cfg(target_os = "linux")]
+    {
+        const IOPRIO_WHO_PROCESS: libc::c_int = 1;
+        const IOPRIO_CLASS_IDLE: libc::c_int = 3;
+        const IOPRIO_CLASS_SHIFT: libc::c_int = 13;
+        let param = libc::sched_param { sched_priority: 0 };
+        // SAFETY: pid 0 is the calling thread; both calls only change its
+        // own scheduling and fail harmlessly.
+        unsafe {
+            if libc::sched_setscheduler(0, libc::SCHED_IDLE, &param) != 0 {
+                log::debug!("SCHED_IDLE: {}", std::io::Error::last_os_error());
+            }
+            libc::syscall(libc::SYS_ioprio_set, IOPRIO_WHO_PROCESS, 0, IOPRIO_CLASS_IDLE << IOPRIO_CLASS_SHIFT);
+        }
+    }
+}
+
 /// Lets another thread stop a running command: SIGTERM first (legendary then
 /// saves its resume data), SIGKILL of the whole process group if it lingers.
 #[derive(Debug, Default)]
@@ -151,11 +172,22 @@ pub struct Run<'a> {
     grace: Duration,
     term_group: bool,
     lines: bool,
+    /// Whether the output is kept for [`RunOutput`].
+    keep: bool,
 }
 
 impl Default for Run<'_> {
     fn default() -> Self {
-        Self { cancel: None, poll: None, on_line: None, timeout: None, grace: Duration::from_secs(15), term_group: true, lines: false }
+        Self {
+            cancel: None,
+            poll: None,
+            on_line: None,
+            timeout: None,
+            grace: Duration::from_secs(15),
+            term_group: true,
+            lines: false,
+            keep: true,
+        }
     }
 }
 
@@ -199,6 +231,12 @@ impl<'a> Run<'a> {
         self.lines = true;
         self
     }
+    /// Keeps none of the output (it only reaches [`Run::on_line`]): for a
+    /// program that runs for hours.
+    pub fn no_capture(mut self) -> Self {
+        self.keep = false;
+        self
+    }
 
     /// Spawns `cmd` (guarded, stdin closed, stdout / stderr captured) and
     /// waits for it. `Err` means it could not be started.
@@ -239,18 +277,18 @@ impl<'a> Run<'a> {
         let mut term_sent_at: Option<Instant> = None;
         let mut gone_at: Option<Instant> = None;
         let mut status: Option<ExitStatus> = None;
-        let lines = self.lines;
+        let (lines, keep) = (self.lines, self.keep);
         let feed =
             |out: &mut RunOutput, split: &mut [LineSplitter; 2], on_line: &mut Option<&mut dyn FnMut(&str)>, is_err: bool, chunk: &[u8]| {
                 let buf = if is_err { &mut out.stderr } else { &mut out.stdout };
-                if !lines && buf.len() < CAPTURE_LIMIT {
+                if keep && !lines && buf.len() < CAPTURE_LIMIT {
                     buf.extend_from_slice(chunk);
                 }
                 split[is_err as usize].feed(chunk, |line| {
                     if let Some(f) = on_line.as_mut() {
                         f(line);
                     }
-                    if lines && buf.len() < CAPTURE_LIMIT {
+                    if keep && lines && buf.len() < CAPTURE_LIMIT {
                         buf.extend_from_slice(line.as_bytes());
                         buf.push(b'\n');
                     }
@@ -308,7 +346,7 @@ impl<'a> Run<'a> {
                 if let Some(f) = self.on_line.as_mut() {
                     f(line);
                 }
-                if lines && buf.len() < CAPTURE_LIMIT {
+                if keep && lines && buf.len() < CAPTURE_LIMIT {
                     buf.extend_from_slice(line.as_bytes());
                     buf.push(b'\n');
                 }
@@ -470,6 +508,11 @@ mod tests {
         assert_eq!(out.stdout_text(), "a\nb\nc\n");
         seen.sort();
         assert_eq!(seen, ["a", "b", "c", "err"]);
+        let mut count = 0;
+        let mut on_line = |_: &str| count += 1;
+        let out = Run::new().no_capture().on_line(&mut on_line).run(&mut script(dir.path(), body)).unwrap();
+        assert!(out.stdout.is_empty() && out.stderr.is_empty(), "nothing kept");
+        assert_eq!((count, out.code), (4, Some(3)), "the lines still reach on_line");
     }
 
     #[test]

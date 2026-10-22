@@ -41,7 +41,7 @@ const fn t(id: &'static str, section: Section, keys: &'static [&'static str]) ->
     Group { id, section, keys, button: true }
 }
 
-use Section::{Compatibility as C, Gpu as G, Launch as L, Performance as P, Saves as S};
+use Section::{Compatibility as C, Gpu as G, Launch as L, Performance as P, Sandbox as X, Saves as S};
 
 /// Every setting the game tabs show. The prefix and the saves folder are not
 /// here: every game has its own.
@@ -100,6 +100,7 @@ const GROUPS: &[Group] = &[
     t("disableUMU", L, &["disableUMU"]),
     g("wrapperOptions", L, &["wrapperOptions"]),
     g("enviromentOptions", L, &["enviromentOptions"]),
+    g("sandbox", X, &[heronite_launch::sandbox::KEY]),
     g("autoSyncSaves", S, &["autoSyncSaves"]),
     g("enableQuickSavesMenu", S, &["enableQuickSavesMenu"]),
 ];

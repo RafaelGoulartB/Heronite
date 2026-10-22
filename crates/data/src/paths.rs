@@ -10,6 +10,21 @@ use std::path::{Path, PathBuf};
 /// Folder name of this app under the XDG base directories.
 pub const APP_DIR: &str = "heronite";
 
+/// File-name-safe, at most 48 characters.
+fn file_name_safe(s: &str) -> String {
+    let out: String = s.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '_' }).take(48).collect();
+    if out.is_empty() || out.chars().all(|c| c == '.') {
+        "_".into()
+    } else {
+        out
+    }
+}
+
+/// FNV-1a: stable across builds (folder names must not change).
+fn fnv32(s: &str) -> u32 {
+    s.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ b as u32).wrapping_mul(0x0100_0193))
+}
+
 #[derive(Debug, Clone)]
 pub struct DataPaths {
     /// `~/.local/share/heronite` on Linux.
@@ -107,6 +122,10 @@ impl DataPaths {
     }
     pub fn added(&self) -> PathBuf {
         self.j("local_library/added.json")
+    }
+    /// When each game's status changed ([`crate::status_history`]).
+    pub fn status_history(&self) -> PathBuf {
+        self.j("local_library/status-history.json")
     }
     /// The actions users add to their games ([`crate::game_actions`]).
     pub fn game_actions(&self) -> PathBuf {
@@ -218,6 +237,18 @@ impl DataPaths {
     pub fn tools_dir(&self) -> PathBuf {
         self.j("tools")
     }
+    /// The home folder the sandbox gives the programs of the Wine prefix
+    /// `prefix` (`heronite_launch::sandbox`): `sandbox/prefix-<name>-<hash>`.
+    pub fn sandbox_home_of_prefix(&self, prefix: &str) -> PathBuf {
+        let prefix = prefix.trim_end_matches('/');
+        let name = prefix.rsplit('/').next().unwrap_or("prefix");
+        self.j("sandbox").join(format!("prefix-{}-{:08x}", file_name_safe(name), fnv32(prefix)))
+    }
+    /// The home folder the sandbox gives a Linux game: `sandbox/game-<app>-<hash>`
+    /// (the hash: two app names can give the same safe name).
+    pub fn sandbox_home_of_game(&self, app_name: &str) -> PathBuf {
+        self.j("sandbox").join(format!("game-{}-{:08x}", file_name_safe(app_name), fnv32(app_name)))
+    }
     /// The legendary binary this app runs (copied in by `migrate`).
     pub fn legendary_bin(&self) -> PathBuf {
         self.j("tools/bin/legendary")
@@ -307,6 +338,10 @@ impl AppPaths {
     /// In-game overlay options (see `heronite_data::overlay_prefs`).
     pub fn overlay_prefs(&self) -> PathBuf {
         self.config.join("overlay.json")
+    }
+    /// Replay buffer options (see `heronite_data::replay_prefs`).
+    pub fn replay_prefs(&self) -> PathBuf {
+        self.config.join("replay.json")
     }
     /// Update switches and the last update check (see `heronite_update::prefs`).
     pub fn update_state(&self) -> PathBuf {

@@ -1,6 +1,7 @@
-//! "Performance" tab: what is on screen (overlays), the FPS limit, frame
-//! generation, the image (gamescope, Wine's FSR) and system tweaks while
-//! playing. Heroic's Other and Gamescope tabs.
+//! "Performance" tab: what is on screen (overlays), the replay of a game (on
+//! or off, `replay`), the FPS limit, frame generation, the image (gamescope,
+//! Wine's FSR) and system tweaks while playing. Heroic's Other and Gamescope
+//! tabs.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -15,6 +16,7 @@ impl SettingsPanel {
     pub(super) fn perf_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let native = self.native();
         let mut col = column().child(heading(tr!("On screen"))).child(self.overlay_rows(false, cx).card());
+        col = self.replay_section(col, cx);
         col = col.child(self.fps_section(false, cx)).child(self.lsfg_section(false, cx));
         let mut image = rows();
         if !native {

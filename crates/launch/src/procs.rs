@@ -17,6 +17,9 @@ pub trait Procs: Send + Sync {
     fn comm(&self, pid: u32) -> Option<String>;
     /// Direct children.
     fn children(&self, pid: u32) -> Vec<u32>;
+    /// Every live process with its parent, read at once (one pass over
+    /// `/proc`, where [`Procs::children`] makes one per process).
+    fn parents(&self) -> HashMap<u32, u32>;
     fn signal(&self, pid: u32, sig: Sig);
     /// File names (lowercase, `game.exe`) of the Windows programs running in
     /// the Wine prefix `prefix`.
@@ -37,6 +40,9 @@ pub trait Procs: Send + Sync {
     /// under `folder`, or a Windows program (not Wine's own) in `prefix` or
     /// from `folder`. Never this process.
     fn game_pids(&self, prefix: Option<&str>, folder: Option<&str>) -> Vec<u32>;
+    /// The user namespace of a process (`user:[4026531837]`), which tells a
+    /// sandboxed one (see [`crate::sandbox::find_sandbox`]).
+    fn user_ns(&self, pid: u32) -> Option<String>;
 }
 
 /// Wine's own programs, running in every prefix in use, and Proton's
@@ -64,7 +70,7 @@ fn under(path: &std::path::Path, folder: &str) -> bool {
 
 /// Whether the Wine prefix variable of a process (`WINEPREFIX`) is `prefix`
 /// (Proton keeps the Wine prefix in `<prefix>/pfx`).
-fn same_prefix(wineprefix: &str, prefix: &str) -> bool {
+pub(crate) fn same_prefix(wineprefix: &str, prefix: &str) -> bool {
     let a = wineprefix.trim_end_matches('/');
     let b = prefix.trim_end_matches('/');
     !b.is_empty() && (a == b || a.strip_prefix(b).is_some_and(|rest| rest == "/pfx"))
@@ -250,6 +256,19 @@ impl Procs for SystemProcs {
         out
     }
 
+    fn parents(&self) -> HashMap<u32, u32> {
+        let Ok(rd) = std::fs::read_dir("/proc") else {
+            return HashMap::new();
+        };
+        rd.flatten()
+            .filter_map(|e| {
+                let pid = e.file_name().to_str()?.parse::<u32>().ok()?;
+                let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+                parse_stat(&stat).map(|(_, ppid)| (pid, ppid))
+            })
+            .collect()
+    }
+
     fn signal(&self, pid: u32, sig: Sig) {
         if pid <= 1 {
             return;
@@ -358,6 +377,10 @@ impl Procs for SystemProcs {
         }
         out
     }
+
+    fn user_ns(&self, pid: u32) -> Option<String> {
+        std::fs::read_link(format!("/proc/{pid}/ns/user")).ok().map(|l| l.to_string_lossy().into_owned())
+    }
 }
 
 /// Scriptable process table for tests.
@@ -382,6 +405,8 @@ struct FakeState {
     boot: Option<String>,
     /// What [`Procs::game_pids`] reports (alive ones only).
     game: Vec<u32>,
+    /// User namespace of a pid; "host" when not set.
+    user_ns: HashMap<u32, String>,
 }
 
 impl FakeProcs {
@@ -423,6 +448,10 @@ impl FakeProcs {
     pub fn group_signals(&self) -> Vec<(u32, Sig)> {
         self.inner.lock().unwrap().group_signals.clone()
     }
+    /// Puts `pid` in another user namespace (a sandbox).
+    pub fn set_user_ns(&self, pid: u32, ns: &str) {
+        self.inner.lock().unwrap().user_ns.insert(pid, ns.to_string());
+    }
 }
 
 impl Procs for FakeProcs {
@@ -437,6 +466,10 @@ impl Procs for FakeProcs {
         let mut v: Vec<u32> = s.parents.iter().filter(|(c, p)| **p == pid && s.alive.contains(c)).map(|(c, _)| *c).collect();
         v.sort_unstable();
         v
+    }
+    fn parents(&self) -> HashMap<u32, u32> {
+        let s = self.inner.lock().unwrap();
+        s.parents.iter().filter(|(c, _)| s.alive.contains(c)).map(|(c, p)| (*c, *p)).collect()
     }
     fn signal(&self, pid: u32, sig: Sig) {
         self.inner.lock().unwrap().signals.push((pid, sig));
@@ -462,6 +495,10 @@ impl Procs for FakeProcs {
     fn game_pids(&self, _prefix: Option<&str>, _folder: Option<&str>) -> Vec<u32> {
         let s = self.inner.lock().unwrap();
         s.game.iter().copied().filter(|p| s.alive.contains(p)).collect()
+    }
+
+    fn user_ns(&self, pid: u32) -> Option<String> {
+        Some(self.inner.lock().unwrap().user_ns.get(&pid).cloned().unwrap_or_else(|| "host".into()))
     }
 }
 

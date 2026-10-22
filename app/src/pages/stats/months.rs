@@ -1,19 +1,16 @@
-//! "Month by month": a horizontal strip with the year as a river (one band
-//! per top game, see [`super::river`]) and one card per month (its game of
-//! the month, a highlight, the top three, every day and screenshots), with
-//! a ruler of months under it. All time with a long history gets one card
-//! per year instead.
+//! "Month by month": a horizontal strip with one card per month (its game
+//! of the month, a highlight, the top three, every day and screenshots),
+//! with a ruler of months under it. All time with a long history gets one
+//! card per year instead.
 
 use chrono::{Datelike, Duration, NaiveDate};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::stats::{fmt_secs, month_name, month_short, Bucket, Span, Stats, TOP_N};
+use heronite_data::stats::{fmt_secs, month_name, month_short, Bucket, Span, Stats};
 use heronite_i18n::{tr, trn};
 
-use super::desktop::{eyebrow, hint, panel, panel_head};
-use super::review::marked;
-use super::river::{self, River, ORDER};
-use super::tip::hover;
+use super::desktop::{hint, panel, panel_head};
+use super::marks::{marks, Mark};
 use super::{day_label, hours_text, in_text, series_color, short_date, today, Hover, StatsPage};
 use crate::console::motion::Goal;
 use crate::icons::Icon;
@@ -21,13 +18,9 @@ use crate::theme;
 use crate::ui::icon;
 
 /// Card height.
-const MH: f32 = 664.;
+const MH: f32 = 708.;
 const MONTH_W: f32 = 470.;
 const FUTURE_W: f32 = 330.;
-const RIVER_W: f32 = 640.;
-/// River plot inside its card.
-const PLOT_W: f32 = RIVER_W - 52.;
-const PLOT_H: f32 = 300.;
 
 fn card_fill() -> Rgba {
     theme::river_gap()
@@ -67,9 +60,25 @@ fn art_pill() -> Div {
 
 impl StatsPage {
     pub(super) fn render_months(&mut self, st: &Stats, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let mut cards: Vec<AnyElement> = vec![self.river_card(st, window, cx)];
-        for (i, b) in st.buckets.iter().enumerate() {
-            cards.push(self.month_card(st, i, b, window, cx));
+        // Only the cards in view (and one screen around) are built; the others
+        // are empty boxes of their width, so the strip scrolls and the ruler
+        // jumps the same. A year is 13 cards of a few hundred elements each,
+        // all time up to 49, and the page renders again on every scroll.
+        let h = self.strip.handle();
+        let x = -f32::from(h.offset().x);
+        let view = f32::from(h.bounds().size.width).max(f32::from(window.viewport_size().width));
+        let (lo, hi) = (x - view, x + 2. * view);
+        let widths = st.buckets.iter().map(|b| if b.future { FUTURE_W } else { MONTH_W });
+        let mut left = 24.;
+        let mut cards: Vec<AnyElement> = Vec::new();
+        for (k, w) in widths.enumerate() {
+            let shown = left + w >= lo && left <= hi;
+            left += w + 16.;
+            cards.push(if shown {
+                self.month_card(st, k, &st.buckets[k], window, cx)
+            } else {
+                div().flex_none().w(px(w)).h(px(MH)).into_any_element()
+            });
         }
         let active = self.active_card(cards.len());
         let track = div()
@@ -118,7 +127,7 @@ impl StatsPage {
     }
 
     fn ruler(&self, st: &Stats, active: usize, cx: &mut Context<Self>) -> Div {
-        let n = st.buckets.len() + 1;
+        let n = st.buckets.len();
         let max = st.buckets.iter().map(|b| b.secs).fold(1., f64::max);
         let nav = |id: &'static str, ic: Icon, enabled: bool| {
             div()
@@ -191,267 +200,13 @@ impl StatsPage {
             .border_t_1()
             .border_color(theme::white_a(0.08));
         row = row.child(prev.mr(px(8.)));
-        let first = match st.period.span {
-            Span::All => tr!("All").to_string(),
-            _ => st.period.start.year().to_string(),
-        };
-        row = row.child(tick(0, div().size(px(20.)).rounded(px(7.)).bg(theme::white_a(0.16)), first));
         for (i, b) in st.buckets.iter().enumerate() {
             let h = if b.future { 3. } else { (b.secs / max * 34.).max(3.) as f32 };
             let bar = div().w(px(20.)).h(px(h)).rounded_t(px(4.)).rounded_b(px(2.)).bg(theme::white_a(if b.future { 0.08 } else { 0.2 }));
-            row = row.child(tick(i + 1, bar, bucket_short(b)));
+            row = row.child(tick(i, bar, bucket_short(b)));
         }
         row.child(next.ml(px(8.)))
             .child(div().w(px(56.)).text_center().text_size(px(12.)).text_color(theme::text_dim()).child(format!("{} / {n}", active + 1)))
-    }
-
-    /// The period as a river, with its legend.
-    fn river_card(&mut self, st: &Stats, window: &Window, cx: &mut Context<Self>) -> AnyElement {
-        let n = st.buckets.len();
-        let layers: Vec<(Option<usize>, Vec<f64>)> = ORDER
-            .iter()
-            .filter(|slot| slot.is_none_or(|s| s < st.series.len()))
-            .map(|slot| {
-                let v = st
-                    .buckets
-                    .iter()
-                    .map(|b| match slot {
-                        Some(s) => b.top[*s],
-                        None => (b.secs - b.top.iter().sum::<f64>()).max(0.),
-                    })
-                    .collect();
-                (*slot, v)
-            })
-            .collect();
-        let max = st.buckets.iter().map(|b| b.secs).fold(1., f64::max);
-        let y0 = PLOT_H / 2. - 6.;
-        let rv = River::new(layers, (PLOT_H - 60.) / max as f32, y0);
-        let bands = rv.bands(PLOT_W);
-        let focus = match self.hover {
-            Some(Hover::Slot(s)) => Some(if s < TOP_N { Some(s) } else { None }),
-            _ => None,
-        };
-        let col = PLOT_W / n.max(1) as f32;
-        let today = today();
-        let first_future = st.buckets.iter().position(|b| b.future);
-        let mut plot = div().relative().w(px(PLOT_W)).h(px(PLOT_H));
-        for i in 1..n {
-            plot = plot.child(div().absolute().top_0().bottom_0().left(px(i as f32 * col)).w(px(1.)).bg(theme::white_a(0.05)));
-        }
-        if let Some(f) = first_future {
-            // Today: where in the current bucket it falls.
-            let b = &st.buckets[f.saturating_sub(1)];
-            let frac = ((today - b.start).num_days() as f32 + 0.5) / (b.end - b.start).num_days().max(1) as f32;
-            let x = (f.saturating_sub(1) as f32 + frac.clamp(0., 1.)) * col;
-            plot = plot
-                .child(div().absolute().top_0().bottom_0().left(px(x)).right_0().bg(theme::black_a(0.2)))
-                .child(div().absolute().top_0().bottom_0().left(px(x)).w(px(1.)).bg(theme::white_a(0.3)))
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(6.))
-                        .left(px(x + 8.))
-                        .text_size(px(11.5))
-                        .text_color(theme::text_dim())
-                        .child(tr!("Today \u{b7} {date}", date = short_date(today))),
-                )
-                .when(PLOT_W - x > 70., |p| {
-                    p.child(
-                        div()
-                            .absolute()
-                            .top(px(y0 - 26.))
-                            .left(px(x))
-                            .right_0()
-                            .flex()
-                            .justify_center()
-                            .text_size(px(12.))
-                            .text_color(theme::text_dim())
-                            .child(tr!("Not played yet")),
-                    )
-                });
-        }
-        plot = plot.child(
-            canvas(|_, _, _| (), move |bounds, _, window, _| river::paint(&bands, bounds.origin, focus, window)).absolute().inset_0(),
-        );
-        // Months without play inside the elapsed part: a pause sign.
-        for (i, b) in st.buckets.iter().enumerate() {
-            if b.future || b.secs > 0. {
-                continue;
-            }
-            let x = (i as f32 + 0.5) * col;
-            plot = plot
-                .child(
-                    div()
-                        .absolute()
-                        .left(px(x - 9.))
-                        .top(px(y0 - 12.))
-                        .flex()
-                        .gap(px(5.))
-                        .child(div().w(px(6.)).h(px(24.)).rounded(px(2.)).bg(theme::white_a(0.55)))
-                        .child(div().w(px(6.)).h(px(24.)).rounded(px(2.)).bg(theme::white_a(0.55))),
-                )
-                .child(div().absolute().left(px(x)).top(px(y0 + 18.)).w(px(1.)).h(px(PLOT_H - y0 - 66.)).bg(theme::white_a(0.3)))
-                .child(
-                    div()
-                        .absolute()
-                        .left(px(x - 70.))
-                        .w(px(140.))
-                        .top(px(PLOT_H - 46.))
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .text_size(px(12.))
-                        .text_color(theme::text_muted())
-                        .child(
-                            div()
-                                .font_weight(theme::W_BOLD)
-                                .text_color(theme::text_primary())
-                                .child(tr!("{name} \u{b7} 0 h", name = bucket_name(b))),
-                        )
-                        .child(tr!("a real break")),
-                );
-        }
-        // Hover columns.
-        for i in 0..n {
-            let on = self.hover == Some(Hover::River(i));
-            plot = plot.child(
-                div()
-                    .id(("river-col", i))
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left(px(i as f32 * col))
-                    .w(px(col))
-                    .rounded(px(8.))
-                    .when(on, |d| d.bg(theme::white_a(0.05)))
-                    .on_hover(hover(Hover::River(i), cx)),
-            );
-        }
-        let axis = div().flex().mt(px(6.)).children(st.buckets.iter().map(|b| {
-            let now = b.start <= today && today < b.end;
-            div()
-                .flex_1()
-                .text_center()
-                .text_size(px(11.5))
-                .text_color(if now {
-                    theme::accent().into()
-                } else if b.future {
-                    theme::white_a(0.3)
-                } else {
-                    theme::text_muted().into()
-                })
-                .when(now, |d| d.font_weight(theme::W_BOLD))
-                .child(bucket_short(b))
-        }));
-
-        // Legend: the top games and Other, two columns.
-        let top_secs: f64 = st.series.iter().filter_map(|g| st.game(*g)).map(|g| g.secs).sum();
-        let mut legend: Vec<(usize, Hsla, String, f64)> = st
-            .series
-            .iter()
-            .enumerate()
-            .map(|(slot, g)| (slot, series_color(Some(slot)), self.game_title(*g), st.game(*g).map_or(0., |s| s.secs)))
-            .collect();
-        legend.push((TOP_N, theme::chart_other(), tr!("Other games").into(), (st.total_secs - top_secs).max(0.)));
-        let legend = div()
-            .mt_auto()
-            .pt(px(14.))
-            .border_t_1()
-            .border_color(theme::white_a(0.08))
-            .grid()
-            .grid_cols(2)
-            .gap_x(px(18.))
-            .gap_y(px(2.))
-            .children(legend.into_iter().map(|(slot, c, name, secs)| {
-                div()
-                    .id(("river-legend", slot))
-                    .flex()
-                    .items_center()
-                    .gap(px(9.))
-                    .h(px(30.))
-                    .px(px(8.))
-                    .mx(px(-8.))
-                    .rounded(px(9.))
-                    .text_size(px(13.))
-                    .min_w_0()
-                    .hover(|s| s.bg(theme::white_a(0.06)))
-                    .on_hover(hover(Hover::Slot(slot), cx))
-                    .child(div().flex_none().size(px(8.)).rounded_full().bg(c))
-                    .child(div().flex_1().min_w_0().truncate().child(name))
-                    .child(
-                        div()
-                            .flex_none()
-                            .font_family(theme::font_heading())
-                            .font_weight(theme::W_BOLD)
-                            .text_size(px(12.5))
-                            .text_color(theme::text_muted())
-                            .child(tr!("{h}h", h = (secs / 3600.).round())),
-                    )
-            }));
-
-        let pause = st.buckets.iter().find(|b| !b.future && b.secs <= 0.).map(bucket_name);
-        let (kick, title) = match st.period.span {
-            Span::All => (tr!("All time"), tr!("Your history as a ~~river~~").to_string()),
-            _ => (tr!("Year in review"), tr!("{period} as a ~~river~~", period = st.period.label())),
-        };
-        let years = st.buckets.first().is_some_and(|b| (b.end - b.start).num_days() > 31);
-        let lead = div()
-            .flex()
-            .flex_wrap()
-            .gap_x(px(4.))
-            .mt(px(8.))
-            .text_size(px(14.))
-            .text_color(theme::white_a(0.82))
-            .child(if years {
-                tr!("Band thickness is the hours you played each year.")
-            } else {
-                tr!("Band thickness is the hours you played each month.")
-            })
-            .children(pause.map(|m| div().child(marked(tr!("**{name}** pinches shut: a real pause.", name = m)))));
-        let top = st.games.first().map(|g| g.game);
-        let bg = top.and_then(|g| self.art(g, RIVER_W, MH, window));
-        let fill = card_fill();
-        let mut card = div()
-            .relative()
-            .flex_none()
-            .w(px(RIVER_W))
-            .h(px(MH))
-            .rounded(px(18.))
-            .overflow_hidden()
-            .bg(fill)
-            .border_1()
-            .border_color(theme::white_a(0.08));
-        if let Some(src) = bg {
-            card = card.child(img(src).absolute().inset_0().size_full().object_fit(ObjectFit::Cover).rounded(px(17.)));
-        }
-        card.child(band(0., 0.26, 0.55, 0.86, rgb(0x0e1219)))
-            .child(band(0.26, 0.48, 0.86, 0.98, rgb(0x121721)))
-            .child(div().absolute().left_0().right_0().top(relative(0.48)).bottom_0().bg(Hsla { a: 0.98, ..Hsla::from(fill) }))
-            .child(
-                div()
-                    .relative()
-                    .flex()
-                    .flex_col()
-                    .size_full()
-                    .px(px(26.))
-                    .pt(px(24.))
-                    .pb(px(22.))
-                    .child(eyebrow(kick, 0.7))
-                    .child(
-                        div()
-                            .flex()
-                            .mt(px(10.))
-                            .font_family(theme::font_heading())
-                            .font_weight(theme::W_BOLD)
-                            .text_size(px(36.))
-                            .line_height(px(40.))
-                            .child(marked(title)),
-                    )
-                    .child(lead)
-                    .child(div().mt(px(14.)).child(plot).child(axis))
-                    .child(legend),
-            )
-            .into_any_element()
     }
 
     /// Highlight of bucket `i`: big text, title, detail.
@@ -718,7 +473,7 @@ impl StatsPage {
                 .into_any_element();
         }
 
-        let games = st.bucket_games.get(i).cloned().unwrap_or_default();
+        let games = st.bucket_games.get(i).map_or(&[][..], Vec::as_slice);
         let top = games.first().map(|g| g.0);
         let art = top.and_then(|g| self.art(g, MONTH_W, 300., window));
         let (big, title, detail) = self.highlight(st, i, b, best);
@@ -727,12 +482,20 @@ impl StatsPage {
         for (r, (g, secs)) in games.iter().take(3).enumerate() {
             let cover = self.cover(*g, 30., 40., window);
             let c = series_color(st.series_of(*g));
+            let game = *g;
             rows = rows.child(
                 div()
+                    .id(SharedString::from(format!("month-{i}-game-{game}")))
                     .flex()
                     .items_center()
                     .gap(px(12.))
                     .h(px(46.))
+                    .px(px(6.))
+                    .mx(px(-6.))
+                    .rounded(px(10.))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::white_a(0.04)))
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(game, window, cx)))
                     .child(
                         div()
                             .w(px(12.))
@@ -805,35 +568,63 @@ impl StatsPage {
                     .child(div().child(fmt_secs(rest))),
             );
         }
-        // Screenshots taken that month of its top games (any game if none).
-        let mut shots: Vec<(usize, std::path::PathBuf)> = Vec::new();
-        if let Some(all) = self.shots.clone() {
-            let in_month =
-                |g: usize| all.get(&g).and_then(|l| l.iter().filter(|s| b.start <= s.at.date() && s.at.date() < b.end).nth(0).cloned());
-            for (g, _) in games.iter().take(3) {
-                if let Some(s) = in_month(*g) {
-                    shots.push((*g, s.path));
-                }
-                if shots.len() == 2 {
-                    break;
-                }
-            }
-            if shots.is_empty() {
-                for (g, _) in games.iter().skip(3) {
-                    if let Some(s) = in_month(*g) {
-                        shots.push((*g, s.path));
-                        break;
-                    }
-                }
-            }
-        }
+        // Screenshots of the month's top games and the games beaten that month
+        // ([`super::compute::MonthExtra`]).
+        let extra = self.months.clone();
+        let (shots, beaten) = extra.get(i).map_or((&[][..], &[][..]), |m| (m.shots.as_slice(), m.beaten.as_slice()));
+        let beaten_row = (!beaten.is_empty()).then(|| {
+            let names: Vec<String> = beaten.iter().take(2).map(|g| self.game_title(*g)).collect();
+            let more = beaten.len().saturating_sub(2);
+            let text = if more > 0 {
+                tr!("Beaten: {games} and {n} more", games = names.join(", "), n = more)
+            } else {
+                tr!("Beaten: {games}", games = names.join(", "))
+            };
+            let covers: Vec<AnyElement> = beaten
+                .iter()
+                .take(3)
+                .map(|g| {
+                    let game = *g;
+                    let src = self.cover(game, 22., 30., window);
+                    div()
+                        .id(SharedString::from(format!("month-{i}-beaten-{game}")))
+                        .flex_none()
+                        .w(px(22.))
+                        .h(px(30.))
+                        .rounded(px(4.))
+                        .overflow_hidden()
+                        .bg(theme::white_a(0.06))
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this, _, window, cx| this.open_sheet(game, window, cx)))
+                        .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
+                        .into_any_element()
+                })
+                .collect();
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .mt(px(8.))
+                .px(px(10.))
+                .py(px(6.))
+                .rounded(px(10.))
+                .bg(theme::white_a(0.04))
+                .child(icon(Icon::Flag, px(14.), theme::status_color("beaten")))
+                .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(theme::text_muted()).child(text))
+                .children(covers)
+        });
         let shot_h = if shots.len() == 1 { 100. } else { 92. };
         let shot_w = if shots.len() == 1 { MONTH_W - 44. } else { (MONTH_W - 52.) / 2. };
-        let shot_els: Vec<Div> = shots
+        let shot_els: Vec<Stateful<Div>> = shots
             .iter()
-            .map(|(g, path)| {
+            .enumerate()
+            .map(|(k, (g, path))| {
                 let src = self.shot(path, shot_w, shot_h, window, cx);
+                let (game, at) = (*g, path.clone());
                 div()
+                    .id(SharedString::from(format!("month-{i}-shot-{k}")))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_game_photo(game, &at, window, cx)))
                     .relative()
                     .flex_1()
                     .h(px(shot_h))
@@ -947,50 +738,52 @@ impl StatsPage {
             }))
             .when(!big.is_empty(), |d| d.child(hbox(big, title, detail)))
             .child(rows)
+            .children(beaten_row)
             .child(dlab)
             .child(daily)
             .when(!shot_els.is_empty(), |d| d.child(div().flex().gap(px(8.)).mt(px(12.)).children(shot_els)));
         shell(MONTH_W).child(art_box).child(body).into_any_element()
     }
 
-    /// One bar per day of bucket `b` (day scale shared by the whole period).
-    fn daily_bars(&self, st: &Stats, b: &Bucket, best: Option<NaiveDate>, cx: &mut Context<Self>) -> Div {
+    /// One bar per day of bucket `b` (day scale shared by the whole period),
+    /// painted as one element ([`super::marks`]).
+    fn daily_bars(&self, st: &Stats, b: &Bucket, best: Option<NaiveDate>, cx: &mut Context<Self>) -> Stateful<Div> {
         let max = st.busiest.map_or(1., |x| x.1.max(1.));
-        let mut row = div().flex().items_end().gap(px(2.)).h(px(44.)).border_b_1().border_color(theme::white_a(0.1));
-        let days = (b.end - b.start).num_days();
         // Year buckets: one bar per week.
-        let step = if days > 31 { 7 } else { 1 };
+        let step = if (b.end - b.start).num_days() > 31 { 7 } else { 1 };
+        let scale = if step == 1 { max } else { max * 7. };
+        let mut bars: Vec<(NaiveDate, f64)> = Vec::new();
         let mut d = b.start;
         while d < b.end {
             let end = (d + Duration::days(step)).min(b.end);
-            let secs: f64 = if step == 1 { st.day_secs(d) } else { st.days.iter().filter(|(x, _)| d <= *x && *x < end).map(|x| x.1).sum() };
-            let scale = if step == 1 { max } else { max * 7. };
-            let on = self.hover == Some(Hover::Day(d));
-            let color: Hsla = if on {
-                gpui_kit::white()
-            } else if Some(d) == best {
-                theme::chart_ramp(1.).into()
-            } else {
-                theme::chart_series(0).into()
-            };
-            row = row.child(
-                div()
-                    .id(SharedString::from(format!("day-{d}")))
-                    .flex_1()
-                    .h_full()
-                    .flex()
-                    .items_end()
-                    .when(secs > 0. && step == 1, |el| el.on_hover(hover(Hover::Day(d), cx)))
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(if secs > 0. { ((secs / scale) as f32 * 44.).max(3.) } else { 0. }))
-                            .rounded_t(px(3.))
-                            .bg(color),
-                    ),
-            );
+            let from = st.days.partition_point(|x| x.0 < d);
+            let to = st.days.partition_point(|x| x.0 < end);
+            bars.push((d, st.days[from..to].iter().map(|x| x.1).sum()));
             d = end;
         }
-        row
+        let hover = self.hover;
+        let layout = move |w: f32, h: f32| {
+            let n = bars.len().max(1) as f32;
+            let bw = ((w - 2. * (n - 1.)) / n).max(1.);
+            let mut out = Vec::new();
+            for (i, (d, secs)) in bars.iter().enumerate().filter(|(_, b)| b.1 > 0.) {
+                let x = i as f32 * (bw + 2.);
+                let color: Hsla = if hover == Some(Hover::Day(*d)) {
+                    gpui_kit::white()
+                } else if Some(*d) == best {
+                    theme::chart_ramp(1.).into()
+                } else {
+                    theme::chart_series(0).into()
+                };
+                let bh = ((*secs / scale) as f32 * h).clamp(3., h);
+                // The whole column answers the cursor, not only the bar.
+                if step == 1 {
+                    out.push(Mark::new(x, 0., bw, h, transparent_black()).hover(Some(Hover::Day(*d))));
+                }
+                out.push(Mark::new(x, h - bh, bw, bh, color).radius(2.));
+            }
+            out
+        };
+        marks(SharedString::from(format!("days-{}", b.start)), layout, cx).h(px(44.)).border_b_1().border_color(theme::white_a(0.1))
     }
 }

@@ -79,6 +79,9 @@ pub struct ProcessPlan {
     /// Another launcher starts the game and may hand it to its own running
     /// instance (see [`Handoff`]).
     pub handoff: Option<Handoff>,
+    /// The game runs in the sandbox (see [`crate::sandbox`]): the programs
+    /// alongside it join that sandbox.
+    pub sandboxed: bool,
 }
 
 /// How to find a game another launcher started when the command that asked

@@ -385,7 +385,7 @@ impl Compression {
 
 /// The worker thread: one run at a time, each over a fresh listing.
 fn worker(runs: Receiver<Run>, reports: UnboundedSender<Report>, data_paths: DataPaths) {
-    lower_priority();
+    heronite_data::proc::idle_priority();
     let cache = ThumbnailCache::new(data_paths.screenshot_thumbnails_dir(), 0.0);
     // Files that failed this session are not retried until the next start.
     let mut failed: HashSet<PathBuf> = HashSet::new();
@@ -458,24 +458,4 @@ fn update_refs(data_paths: &DataPaths, root: &Path, renamed: &mut Vec<(PathBuf, 
         Err(e) => log::warn!("updating art references: {e}"),
     }
     renamed.clear();
-}
-
-/// Idle CPU scheduling and idle I/O class for the calling thread: it only
-/// gets time nobody else wants, so a game or the UI never waits for it.
-fn lower_priority() {
-    #[cfg(target_os = "linux")]
-    {
-        const IOPRIO_WHO_PROCESS: libc::c_int = 1;
-        const IOPRIO_CLASS_IDLE: libc::c_int = 3;
-        const IOPRIO_CLASS_SHIFT: libc::c_int = 13;
-        let param = libc::sched_param { sched_priority: 0 };
-        // SAFETY: pid 0 is the calling thread; both calls only change its
-        // own scheduling and fail harmlessly.
-        unsafe {
-            if libc::sched_setscheduler(0, libc::SCHED_IDLE, &param) != 0 {
-                log::debug!("SCHED_IDLE: {}", std::io::Error::last_os_error());
-            }
-            libc::syscall(libc::SYS_ioprio_set, IOPRIO_WHO_PROCESS, 0, IOPRIO_CLASS_IDLE << IOPRIO_CLASS_SHIFT);
-        }
-    }
 }

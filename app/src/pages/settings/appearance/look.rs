@@ -2,6 +2,7 @@
 //! behind the Collection, motion and layout. All of it lives in
 //! `appearance.json` and applies at once.
 
+use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
@@ -9,7 +10,7 @@ use heronite_data::appearance::{
 };
 use heronite_i18n::tr;
 
-use super::{apply_interface, SettingsPage};
+use super::{apply_interface, slider_of, Field, SettingsPage};
 use crate::icons::Icon;
 use crate::pages::PageEvent;
 use crate::theme;
@@ -313,12 +314,37 @@ pub(super) fn motion_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
     .into_any_element()])
 }
 
-/// Start view, panel widths and the sections of a game's details.
-pub(super) fn layout_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+/// Start view, the switch by the window's width, panel widths and the
+/// sections of a game's details. `window_w`: this window's width (px).
+pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
+    let auto = a.auto_view;
     let mut rows = vec![
         row(tr!("Open the Collection in"), None, choice("start-view", &start_items(), a.start_view, cx, |a, v| a.start_view = v))
             .into_any_element(),
+        toggle_row(
+            "auto-view",
+            tr!("Switch with the window's width"),
+            Some(tr!(
+                "Grid while the window is narrower than the width below, Focus once it is wider. The Focus / Grid switch in the header still works until the window crosses it again."
+            )),
+            auto.on,
+        )
+        .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.auto_view.on = !auto.on)))
+        .into_any_element(),
+    ];
+    if auto.on {
+        let slider = Slider::new(slider_of(&d.appearance, Field::AutoViewWidth)).bg(theme::accent()).text_color(theme::accent());
+        rows.push(
+            row(
+                tr!("Width: {value} px", value = auto.width.round()),
+                Some(&tr!("This window is {width} px wide now.", width = window_w.round())),
+                div().w(px(260.)).child(slider),
+            )
+            .into_any_element(),
+        );
+    }
+    rows.extend([
         row(
             tr!("Panel widths"),
             Some(tr!("The Focus list and the grid's game panel grow when you drag their edge.")),
@@ -328,7 +354,7 @@ pub(super) fn layout_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
         .into_any_element(),
         row(tr!("Game sections"), Some(tr!("Order and visibility of the blocks of a game's page and of the grid's panel.")), div())
             .into_any_element(),
-    ];
+    ]);
     let sections = a.sections;
     let order = sections.order();
     for (i, section) in order.into_iter().enumerate() {

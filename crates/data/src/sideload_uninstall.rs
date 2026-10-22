@@ -125,6 +125,19 @@ pub fn uninstall(paths: &DataPaths, input: &UninstallInput, delete_files: bool, 
     if let Some(p) = prefix.as_deref().filter(|p| p.exists()) {
         remove(p)?;
     }
+    // The homes the sandbox gave its programs go with the prefix, and with
+    // the files the one of the game itself. Left behind when they cannot be
+    // deleted: the game is gone either way.
+    let homes = prefix
+        .as_deref()
+        .map(|p| paths.sandbox_home_of_prefix(&p.to_string_lossy()))
+        .into_iter()
+        .chain(files.as_ref().map(|_| paths.sandbox_home_of_game(input.app_name)));
+    for home in homes.filter(|h| h.exists()) {
+        if let Err(e) = std::fs::remove_dir_all(&home) {
+            log::warn!("Could not delete {}: {e}", home.display());
+        }
+    }
     mark_uninstalled(paths, input.app_name)?;
     Ok(UninstallOutcome { files_removed: files, prefix_removed: prefix })
 }
@@ -354,6 +367,22 @@ mod tests {
         let doc = json_store::read_value(&e.paths.sideload_library()).unwrap();
         assert_eq!(doc["games"][0]["is_installed"], false);
         assert_eq!(doc["games"][1]["is_installed"], true);
+    }
+
+    #[test]
+    fn the_sandbox_homes_go_with_the_game() {
+        let e = env();
+        let game = e.mkdir("Games/A");
+        let prefix = e.mkdir("Prefixes/A");
+        fs::create_dir_all(prefix.join("pfx")).unwrap();
+        e.set_prefix("a", &prefix);
+        let of_prefix = e.paths.sandbox_home_of_prefix(prefix.to_str().unwrap());
+        let of_game = e.paths.sandbox_home_of_game("a");
+        fs::create_dir_all(&of_prefix).unwrap();
+        fs::create_dir_all(&of_game).unwrap();
+        let input = UninstallInput { app_name: "a", home: e.home(), folder: Some(&game), windows: true, others: &[] };
+        uninstall(&e.paths, &input, true, true).unwrap();
+        assert!(!of_prefix.exists() && !of_game.exists());
     }
 
     #[test]

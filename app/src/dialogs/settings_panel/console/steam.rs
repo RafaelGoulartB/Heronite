@@ -161,6 +161,7 @@ impl SettingsPanel {
     pub(super) fn c_steam_other(&self, cx: &App) -> Vec<Item> {
         let mut v = self.c_steam_status();
         if !self.steam.as_ref().is_some_and(|s| s.editable) {
+            v.extend(self.c_replay(cx));
             return v;
         }
         v.push(Self::c_header(tr!("On screen")));
@@ -171,6 +172,7 @@ impl SettingsPanel {
             "MangoHud",
             Some(tr!("FPS, frame times, temperatures and load (needs MangoHud)")),
         ));
+        v.extend(self.c_replay(cx));
         v.extend(self.c_fps(true));
         v.extend(self.c_lsfg(true));
         if self.steam_fields_editable() {

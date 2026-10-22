@@ -469,6 +469,7 @@ impl CollectionView {
         }
         let vw = f32::from(window.viewport_size().width);
         let scale = window.scale_factor();
+        self.sync_auto_view(vw, cx);
         let (list_w, columns) = self.list_layout(vw);
         if columns != self.columns {
             self.columns = columns;

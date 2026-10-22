@@ -265,6 +265,9 @@ fn describe(plan: &LaunchPlan, s: &GameSettings) -> Preview {
     };
     vars.sort_by_cached_key(|v| (rank(v), source_label(&v.source)));
     let mut notes = Vec::new();
+    if process.sandboxed {
+        notes.push(tr!("In the sandbox: what follows heronite-sandbox starts inside it. Programs alongside the game join it.").to_string());
+    }
     if let Some(c) = &process.before_script {
         notes.push(tr!("Before it starts: {command}", command = c.display()).to_string());
     }

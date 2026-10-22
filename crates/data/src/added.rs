@@ -40,6 +40,11 @@ fn first_day(game: &CollectionGame, today: &str) -> String {
     first.unwrap_or(today).to_owned()
 }
 
+/// The stored dates, by game key (`YYYY-MM-DD`), without adding any.
+pub fn load(paths: &DataPaths) -> HashMap<String, String> {
+    json_store::read::<AddedFile>(&paths.added()).map(|f| f.added.into_iter().collect()).unwrap_or_default()
+}
+
 /// The dates of every game, giving one to the games that had none (written
 /// back when any was new). A file that cannot be written still gives the dates.
 pub fn sync(paths: &DataPaths, games: &[std::sync::Arc<CollectionGame>]) -> HashMap<String, String> {
@@ -84,7 +89,9 @@ mod tests {
             s.last_played = Some("2026-03-01T10:00:00.000Z".into());
         });
         let games = vec![played, game("n", "Never", |_| {})];
+        assert!(load(&paths).is_empty());
         let dates = sync_on(&paths, &games, "2026-10-17");
+        assert_eq!(load(&paths), dates);
         assert_eq!(dates["sideload_p"], "2025-12-24");
         assert_eq!(dates["sideload_n"], "2026-10-17");
         // a later load keeps the stored day

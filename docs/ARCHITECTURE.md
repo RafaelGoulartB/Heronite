@@ -42,7 +42,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      lossless PNG → WebP compression              → data, images
  ├─ heronite-overlay    in-game overlay backend: controller input
  │                      (evdev, Guide button, grabs), pactl audio,
- │                      controller battery / Bluetooth               → data
+ │                      controller battery / Bluetooth, replay
+ │                      buffer (gpu-screen-recorder)                 → data
  ├─ heronite-wine       Wine/Proton manager                          → data
  ├─ heronite-storage    disk space of games, prefixes, Proton builds,
  │                      Steam leftovers, caches; cleaning them up    → data, launch, wine
@@ -63,10 +64,17 @@ calls them from `cx.background_spawn` or worker threads.
   unknown keys kept), `temps` (atomic writes and the startup `.tmp` sweep),
   `proc` (`guard` and `Run`: helper processes die with the app), and one
   module per data file: `library`, `collection`, `sideload`, `game_config`,
-  `settings`, `status`, `sessions`, `playtime`, `ui_state`, `appearance`,
+  `settings`, `status`, `status_history` (when each game's status changed, in
+  `local_library/status-history.json`, recorded by the status setters), `sessions`, `playtime`, `ui_state`, `appearance`,
+  `stats` (the Statistics page's numbers: periods cut into hours, the history
+  indexed by time and by game so a period reads only its slice, `game` for a
+  game's sheet, `journeys`, `backlog` (goal pace, weekly hours, running counts),
+  `insights` (discoveries and milestones), `album` (moments, captures per session, capture hours) and `prefs` (its keys in `ui-state.json`)),
   `journal` (each game's notes in `local_library/journal.json`: the moment
   they are about, placed on the timeline's days by the screenshots' rule in
-  `timeline`, an optional screenshot, and "where I left off"),
+  `timeline`, an optional screenshot or replay, and "where I left off"),
+  `replay_prefs` (Settings → Replay, `replay.json` in the app state: the
+  switch, the options every game uses and the games that have it on or off on their own),
   `language`, `install_size` (size on disk of a game its store gives none for: ROM files, a bounded and cached folder walk), `field_names` (the library fields manager: renames, merges and
   removals of genres, companies, series, themes, features and platforms, kept
   as rules in `local_library/names.json` that the metadata service and the
@@ -102,7 +110,44 @@ calls them from `cx.background_spawn` or worker threads.
   `GAMEID` of a umu launch (protonfixes) from the user's id, the umu
   database (downloaded weekly), Heroic's cache, the metadata's Steam id or
   the title; `keep_awake` adds the logind lock the runtime holds while the
-  game runs.
+  game runs. `sandbox` (`heroniteSandbox` in the game's settings) runs
+  everything of a game, and everything run in its prefix, through bubblewrap:
+  `mounts` says what the sandbox shows (the prefix read-write, the game's
+  folder read-only, the Wine build and `tools/` read-only, Winetricks'
+  downloads under a throwaway overlay), `script` builds the
+  `sh -c` program that creates the folders, looks up what depends on the
+  session (Wayland / X11 / PipeWire sockets, the controllers plugged in,
+  NVIDIA's devices) and starts `bwrap` with its own user, pid, UTS and
+  network namespaces and a private home (`<data>/sandbox/<prefix or game>`,
+  `DataPaths::sandbox_home_of_*`). The program goes after the wrappers that
+  stay outside (gamescope, GameMode, MangoHud) and before umu / Proton / the
+  game, so legendary gets it inside `--wrapper` too. Inside, the command runs
+  under a small `sh` that waits for every process of the sandbox (its pid
+  namespace ends with its first process). The pid namespace is what keeps the
+  sandbox closed: without it `/proc/<pid>/root` of any process of the user
+  shows the real files. Each `Exception` lets one thing through (network,
+  writing the game's folder, the shared folders, every device). The plan
+  builders, the Wine tools (`wine_tools`), the first-launch setup, game
+  actions and script installs all go through it; a plan that cannot be
+  sandboxed is `Unavailable`, never run outside (`build_plan_with_settings`
+  checks every plan, so a new way to start a game that forgets the sandbox
+  does not start). A game in the sandbox has no
+  stop commands nor `wineserver --wait` (both would start a sandbox of their
+  own): `runtime::sandboxed` follows the sandbox until it is gone and kills
+  its first process when a stop runs out of patience. Programs alongside the
+  game and Wine tools started while it plays join its sandbox with `nsenter`
+  (`sandbox::join`, `into_running`), sharing its wineserver. umu does not
+  run in the sandbox (`sandbox::without_umu`): its container builds a copy
+  of its Steam runtime on every start, which a throwaway layer would hold
+  in memory (about 700 MiB) and a writable one would let a game change for
+  every game outside. Proton runs directly, with the Steam client's
+  libraries (`~/.steam/sdk32`, `sdk64`) shown read-only for its
+  `steam.exe`, and Linux games run without the Steam runtime. DXVK's and
+  VKD3D-Proton's shader caches go in the private home (the game's folder is
+  read-only). Host writes into a sandboxed prefix (DXVK's DLLs, markers)
+  never follow links the sandbox could have planted. bubblewrap must create
+  a user namespace (`--unshare-user`, checked once it works and then kept):
+  the running sandbox is found by it, for at most `sandbox::FOUND_WITHIN`.
 - **heronite-epic:** `cmd` runs legendary. `manager` + `queue` are the
   download queue (`store/download-manager.json`), shared by every store: an
   element's `params.runner` picks the job (legendary, gogdl or nile), and
@@ -180,10 +225,18 @@ calls them from `cx.background_spawn` or worker threads.
   (`EVIOCGRAB`) while Guide is held or the panel is open, so the game gets
   none of those presses; `input::core` is the pure state machine (Guide tap
   = open / close, Guide + RB (or the button chosen) = screenshot,
-  Guide + ↑ / ↓ = volume, Guide + Y = a moment for the journal, held
-  directions repeat). `audio` drives the default output, the microphone,
+  Guide + ↑ / ↓ = volume, Guide + Y = a moment for the journal, Guide + X
+  = the replay saved, held directions repeat). `audio` drives the default output, the microphone,
   the game's own streams and the other apps playing through `pactl`; `controller` reads the battery from
-  sysfs and disconnects Bluetooth controllers.
+  sysfs and disconnects Bluetooth controllers. `replay` runs gpu-screen-recorder (6.0 or newer, the
+  system's or the Flatpak) as a replay buffer: `info` reads its `--info`, `plan` builds the command
+  (the monitor captured through KMS, the card's encoder only, NVENC / VA-API or Vulkan video, a
+  constant bitrate, the buffer in RAM or on disk) and the memory estimate Settings shows (measured on
+  an RTX 5070), `recorder` runs it on a thread of its own (a socket of its own each time, restarted
+  when it dies, Vulkan that cannot start falls back to the usual encoder, ended with SIGTERM: a replay
+  buffer saves nothing on exit), `ipc` saves through its `-ipc` socket, `target` finds the game's
+  monitor (Hyprland) and `trim` cuts the panel's time off the end of a save (ffmpeg stream copy, idle
+  priority).
 - **heronite-storage:** Settings → Storage. `inventory` lists the installed games (store size, Steam's
   `SizeOnDisk`, ROM files, else a walk), the Wine prefixes (in use while an installed game or the defaults
   use them; one inside a game's folder goes with the game), the Wine Manager builds (in use when the default,
@@ -219,10 +272,10 @@ calls them from `cx.background_spawn` or worker threads.
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `launcher_imports` (the games of Heroic, Lutris and Faugus: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default, on or off per game in Game settings → Performance: starts gpu-screen-recorder a few seconds after a game is running, again when the options change (one recorder at a time, never during a save) and ends it with the last game, a game that has it off, or when the overlay turns it off for the session; it owns `replay.json` and writes it in order; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `launcher_imports` (the games of Heroic, Lutris and Faugus: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
-| `overlay/` | the in-game overlay (beta, off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard) and notices (`toast.rs`) as layer-shell windows (`window.rs`); `moment.rs` marks a moment in the game's journal (a capture and an empty note) |
-| `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, the other launchers found with games (a click turns their import on), the stores, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `launchers` reloads the Collection when another launcher's games come in; `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive) and from the bulb in the header (`onboarding.json` in the app state) |
+| `overlay/` | the in-game overlay (beta, off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard) and notices (`toast.rs`) as layer-shell windows (`window.rs`); `moment.rs` marks a moment in the game's journal (a capture and an empty note); `replay.rs` saves the replay (Guide + X, the panel's "Save replay") and marks it as a moment (`clip` in the journal entry) |
+| `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view, Focus or Grid by the window's width), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, the other launchers found with games (a click turns their import on), the stores, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `launchers` reloads the Collection when another launcher's games come in; `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive) and from the bulb in the header (`onboarding.json` in the app state) |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, Wine Manager, Emulators); they talk back through `PageEvent` |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar` |

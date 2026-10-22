@@ -187,6 +187,19 @@ pub fn set_game_muted(game_pid: u32, muted: bool) {
     }
 }
 
+/// The names gpu-screen-recorder's `app:` finds the game's playing streams
+/// by (`application.name`, else `node.name`), without repeats. Empty while
+/// the game plays nothing. Blocking.
+pub fn game_stream_names(game_pid: u32) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for s in game_streams(game_pid) {
+        if let Some(app) = s.app.filter(|a| !names.iter().any(|n| n.eq_ignore_ascii_case(a))) {
+            names.push(app);
+        }
+    }
+    names
+}
+
 /// The game's playback streams. A stream belongs to the game when its
 /// process is in the game's process group (the launcher starts each game as
 /// its own group) or descends from it.
@@ -239,6 +252,8 @@ struct SinkInput {
     /// Not reported by native PipeWire streams.
     pid: Option<u32>,
     name: String,
+    /// `application.name`, else `node.name`: what a recorder's `app:` matches.
+    app: Option<String>,
     binary: String,
     /// `media.role` (`event` for notification sounds).
     role: String,
@@ -267,6 +282,7 @@ fn parse_sink_inputs(json: &str) -> Vec<SinkInput> {
                 index,
                 pid: prop("application.process.id").and_then(|p| p.parse().ok()),
                 name,
+                app: prop("application.name").or(prop("node.name")).map(str::to_string),
                 binary,
                 role: prop("media.role").unwrap_or_default().to_string(),
                 corked: s.get("corked").and_then(Value::as_bool).unwrap_or(false),

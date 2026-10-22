@@ -122,7 +122,8 @@ impl StatsPage {
         let scale = window.scale_factor();
         let max = st.games.first().map_or(1., |g| g.secs.max(1.));
         let total = st.total_secs.max(1.);
-        let limit = if self.show_all { st.games.len() } else { 6 };
+        // "All games" stops at a hundred: all time can hold thousands.
+        let limit = if self.show_all { 100 } else { 6 };
         let s = kit::scale();
         let mut p = panel(tr!("Most played"));
         for g in st.games.iter().take(limit) {

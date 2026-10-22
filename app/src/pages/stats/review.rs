@@ -634,15 +634,26 @@ impl StatsPage {
         let n = (end - start).num_days().max(0) as usize + 1;
         let max = st.busiest.map_or(1., |x| x.1.max(1.));
         let strip_w = 1380.;
-        let bar_w = strip_w / n as f32;
-        let mut strip = div().flex().items_end().h(z.p(80.)).gap(px(1.));
-        for i in 0..n {
-            let d = start + Duration::days(i as i64);
-            let v = st.day_secs(d);
-            let c: Hsla = if v > 0. { theme::chart_ramp(((v / max) as f32).powf(0.6)).into() } else { theme::white_a(0.07) };
-            strip = strip.child(div().flex_1().h_full().rounded(px(2.)).bg(c));
-        }
-        let _ = bar_w;
+        // A bar per day, painted as one element: the slide animates, so it
+        // renders on every frame.
+        let colors: Vec<Hsla> = (0..n)
+            .map(|i| {
+                let v = st.day_secs(start + Duration::days(i as i64));
+                if v > 0. {
+                    theme::chart_ramp(((v / max) as f32).powf(0.6)).into()
+                } else {
+                    theme::white_a(0.07)
+                }
+            })
+            .collect();
+        let strip = div().relative().h(z.p(80.)).child(
+            super::marks::painted(move |w, h| {
+                let bw = ((w - (n as f32 - 1.)) / n as f32).max(0.5);
+                colors.iter().enumerate().map(|(i, c)| super::marks::Mark::new(i as f32 * (bw + 1.), 0., bw, h, *c).radius(2.)).collect()
+            })
+            .absolute()
+            .inset_0(),
+        );
         let months = div().relative().h(z.p(20.)).mt(z.p(10.)).children((1..=12).filter_map(|m| {
             let d = NaiveDate::from_ymd_opt(year, m, 1)?;
             (d <= end).then(|| {

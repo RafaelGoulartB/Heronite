@@ -265,7 +265,19 @@ pub struct SetStatusExtras {
 /// a minimal one, exactly like Heronite: `playniteId = heroic_<appName>`,
 /// `source = other`, `launchKind = unavailable`. Returns the stored entry.
 pub fn set_game_status(paths: &DataPaths, app_name: &str, status_id: &str, extras: &SetStatusExtras) -> Result<LocalGameMeta> {
-    json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| Ok(put_status(file, app_name, status_id, extras)))
+    let mut changed = false;
+    let meta = json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
+        changed = current_status(file, app_name) != Some(status_id);
+        Ok(put_status(file, app_name, status_id, extras))
+    })?;
+    if changed {
+        crate::status_history::record_now(paths, &[(app_name.to_owned(), status_id.to_owned())]);
+    }
+    Ok(meta)
+}
+
+fn current_status<'a>(file: &'a LocalMetaFile, app_name: &str) -> Option<&'a str> {
+    file.games.get(app_name).and_then(|g| g.completion_status_id.as_deref())
 }
 
 /// [`set_game_status`] for many games in one write: `(app_name, status_id,
@@ -274,12 +286,19 @@ pub fn set_games_status(paths: &DataPaths, games: &[(String, String, SetStatusEx
     if games.is_empty() {
         return Ok(());
     }
+    let mut changed = Vec::new();
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
+        changed.clear();
         for (app_name, status_id, extras) in games {
+            if current_status(file, app_name) != Some(status_id.as_str()) {
+                changed.push((app_name.clone(), status_id.clone()));
+            }
             put_status(file, app_name, status_id, extras);
         }
         Ok(())
-    })
+    })?;
+    crate::status_history::record_now(paths, &changed);
+    Ok(())
 }
 
 fn put_status(file: &mut LocalMetaFile, app_name: &str, status_id: &str, extras: &SetStatusExtras) -> LocalGameMeta {

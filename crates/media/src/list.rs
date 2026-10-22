@@ -8,6 +8,11 @@ use std::time::UNIX_EPOCH;
 /// Lower-case extensions (without the dot) treated as images.
 pub const IMAGE_EXTENSIONS: [&str; 9] = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif", "jxl", "jxr"];
 
+/// The folder inside a game's captures folder that holds its replays
+/// (videos of its last seconds, see `heronite_overlay::replay`). Only
+/// images are listed: the replays are reached through the journal.
+pub const REPLAYS_FOLDER: &str = "replays";
+
 /// What identifies a game for folder matching (the UI passes the Collection
 /// title, the Steam app id and `[gameInfo.title, gameInfo.folder_name]`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -230,6 +235,19 @@ mod tests {
         for bad in ["a.txt", "png", "a.", "a.tmp", "a.mp4", "a.tiff", ""] {
             assert!(!is_image_file(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn replays_are_not_screenshots() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        touch(&root.join("Elden Ring/a.png"), 100);
+        touch(&root.join(format!("Elden Ring/{REPLAYS_FOLDER}/2026-01-01_10-00-00-000.mp4")), 300);
+        let shots = list_screenshots(root, &GameQuery::new("Elden Ring"));
+        assert_eq!(shots.items.len(), 1);
+        // A game folder with replays only has no screenshots either.
+        fs::remove_file(root.join("Elden Ring/a.png")).unwrap();
+        assert!(list_screenshots(root, &GameQuery::new("Elden Ring")).items.is_empty());
     }
 
     #[test]

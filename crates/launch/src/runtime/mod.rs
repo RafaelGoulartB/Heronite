@@ -9,6 +9,7 @@ mod adopt;
 mod companions;
 mod fake;
 mod process;
+mod sandboxed;
 mod session;
 mod spawner;
 mod state;
