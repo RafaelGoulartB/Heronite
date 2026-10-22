@@ -11,12 +11,13 @@
 //! section=video_codecs
 //! h264
 //! h264_software
+//! hevc_vulkan
 //! section=capture_options
 //! DP-1|3440x1440
 //! region
 //! ```
 
-use heronite_data::replay_prefs::Codec;
+use heronite_data::replay_prefs::{Codec, Encoder};
 
 /// The first version with the `-ipc` socket, which saves a chosen length and
 /// says where the file went.
@@ -39,7 +40,8 @@ pub struct Info {
     pub vendor: String,
     /// It can record one app's sound (PipeWire).
     pub app_audio: bool,
-    /// Video codecs; `*_software` ones are encoded by the CPU.
+    /// Video codecs; `*_software` ones are encoded by the CPU, `*_vulkan`
+    /// ones through Vulkan video.
     pub codecs: Vec<String>,
     pub screens: Vec<Screen>,
 }
@@ -90,6 +92,27 @@ impl Info {
         std::iter::once(wanted).chain(Codec::ALL.iter().copied()).find(|c| self.encodes(*c))
     }
 
+    /// Whether the card also encodes `codec` through Vulkan video.
+    pub fn encodes_vulkan(&self, codec: Codec) -> bool {
+        self.codecs.iter().any(|c| c.strip_suffix("_vulkan") == Some(codec.as_str()))
+    }
+
+    pub fn is_nvidia(&self) -> bool {
+        self.vendor.eq_ignore_ascii_case("nvidia")
+    }
+
+    /// Whether `encoder` records `codec` through Vulkan here: asked for, or
+    /// `auto` on NVIDIA (no CUDA: about half the video memory and less RAM,
+    /// measured on an RTX 5070), and offered by the card.
+    pub fn uses_vulkan(&self, encoder: Encoder, codec: Codec) -> bool {
+        let wanted = match encoder {
+            Encoder::Vulkan => true,
+            Encoder::Auto => self.is_nvidia(),
+            Encoder::Native => false,
+        };
+        wanted && self.encodes_vulkan(codec)
+    }
+
     pub fn version_text(&self) -> String {
         self.version.map(|(a, b, c)| format!("{a}.{b}.{c}")).unwrap_or_default()
     }
@@ -108,7 +131,7 @@ mod tests {
     use super::*;
 
     const INFO: &str = "section=system_info\ndisplay_server|wayland\nsupports_app_audio|yes\nis_steam_deck|no\ngsr_version|6.1.4\n\
-section=gpu_info\nvendor|nvidia\ncard_path|/dev/dri/card1\nsection=video_codecs\nh264\nh264_software\nhevc\nav1_10bit\n\
+section=gpu_info\nvendor|nvidia\ncard_path|/dev/dri/card1\nsection=video_codecs\nh264\nh264_software\nhevc\nav1_10bit\nhevc_vulkan\n\
 section=image_formats\njpeg\nsection=containers\nmp4\nsection=capture_options\nDP-1|3440x1440\nHDMI-A-1|1920x1080\nregion\n\
 /dev/video0|1280x720@10hz|yuyv\nportal\n";
 
@@ -119,7 +142,7 @@ section=image_formats\njpeg\nsection=containers\nmp4\nsection=capture_options\nD
         assert!(info.recent_enough());
         assert!(info.app_audio);
         assert_eq!(info.vendor, "nvidia");
-        assert_eq!(info.codecs, ["h264", "h264_software", "hevc", "av1_10bit"]);
+        assert_eq!(info.codecs, ["h264", "h264_software", "hevc", "av1_10bit", "hevc_vulkan"]);
         assert_eq!(
             info.screens,
             [Screen { name: "DP-1".into(), width: 3440, height: 1440 }, Screen { name: "HDMI-A-1".into(), width: 1920, height: 1080 }]
@@ -128,6 +151,18 @@ section=image_formats\njpeg\nsection=containers\nmp4\nsection=capture_options\nD
         assert!(!info.encodes(Codec::Av1), "only the 10-bit AV1 is there");
         assert_eq!(info.codec_for(Codec::Av1), Some(Codec::H264));
         assert_eq!(info.version_text(), "6.1.4");
+    }
+
+    #[test]
+    fn vulkan_is_used_when_asked_or_on_nvidia() {
+        let info = Info::parse(INFO);
+        assert!(info.encodes_vulkan(Codec::Hevc) && !info.encodes_vulkan(Codec::H264));
+        assert!(info.uses_vulkan(Encoder::Auto, Codec::Hevc), "NVIDIA: Vulkan saves the CUDA context");
+        assert!(!info.uses_vulkan(Encoder::Auto, Codec::H264), "not offered for H.264 here");
+        assert!(!info.uses_vulkan(Encoder::Native, Codec::Hevc));
+        let amd = Info { vendor: "amd".into(), ..info };
+        assert!(!amd.uses_vulkan(Encoder::Auto, Codec::Hevc), "VA-API has no CUDA to save");
+        assert!(amd.uses_vulkan(Encoder::Vulkan, Codec::Hevc));
     }
 
     #[test]

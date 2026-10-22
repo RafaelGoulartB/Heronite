@@ -16,13 +16,13 @@ use std::time::{Duration, Instant, SystemTime};
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
-use heronite_data::replay_prefs::{Audio, ReplayPrefs};
+use heronite_data::replay_prefs::{Audio, Codec, Options, ReplayPrefs};
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
 use heronite_media::capture::{replay_folder, unique_capture_path, ActiveGame};
 use heronite_media::list::resolve_path;
-use heronite_overlay::replay::{self as backend, Info, Plan, Program, Recorder, State};
+use heronite_overlay::replay::{self as backend, Encoding, Info, Plan, Program, Recorder, State};
 
 use crate::runtime::GameRuntime;
 
@@ -43,9 +43,12 @@ pub enum Status {
     /// On, waiting for a game.
     Idle,
     Starting,
-    /// Keeping the last seconds of the screen (its name).
+    /// Keeping the last seconds of the screen `monitor`.
     Recording {
         monitor: String,
+        codec: Codec,
+        /// Through Vulkan video, else the card's usual encoder.
+        vulkan: bool,
     },
     /// It cannot record here, and why.
     Unavailable(String),
@@ -76,6 +79,7 @@ struct Running {
     /// The captures root.
     root: PathBuf,
     monitor: String,
+    codec: Codec,
 }
 
 pub struct ReplayService {
@@ -228,9 +232,9 @@ impl ReplayService {
                         return false;
                     }
                     match started {
-                        Ok((recorder, root, monitor, game_audio)) => {
-                            s.running = Some(Running { recorder: Arc::new(recorder), root, monitor });
-                            if !game_audio && s.prefs.audio == Audio::Game {
+                        Ok((recorder, root, monitor, codec, game_audio)) => {
+                            s.running = Some(Running { recorder: Arc::new(recorder), root, monitor, codec });
+                            if !game_audio && s.prefs.options.audio == Audio::Game {
                                 s.wait_for_game_audio(epoch, cx);
                             }
                             true
@@ -262,10 +266,10 @@ impl ReplayService {
                                 s.set_status(Status::Unavailable(why), cx);
                             }
                             State::Starting => s.set_status(Status::Starting, cx),
-                            State::Recording => {
-                                if !matches!(s.status, Status::Recording { .. }) {
-                                    let monitor = s.running.as_ref().map(|r| r.monitor.clone()).unwrap_or_default();
-                                    s.set_status(Status::Recording { monitor }, cx);
+                            State::Recording { vulkan } => {
+                                if let Some(r) = &s.running {
+                                    let status = Status::Recording { monitor: r.monitor.clone(), codec: r.codec, vulkan };
+                                    s.set_status(status, cx);
                                 }
                             }
                             State::Stopped => {}
@@ -339,7 +343,7 @@ impl ReplayService {
         let recorder = running.recorder.clone();
         let root = running.root.clone();
         // Whole seconds, rounding the panel's time up so it is all cut off.
-        let seconds = self.prefs.seconds + extra.as_secs_f64().ceil() as u32;
+        let seconds = self.prefs.options.seconds + extra.as_secs_f64().ceil() as u32;
         self.saving = true;
         cx.spawn(async move |this, cx| {
             let saved = cx
@@ -359,13 +363,15 @@ impl ReplayService {
 }
 
 /// Blocking: everything a recording needs, then the recorder. Returns it,
-/// the captures root, the monitor and whether the game's sound is in it.
+/// the captures root, the monitor, the codec and whether the game's sound
+/// is in it.
 fn launch(
     data_paths: &DataPaths,
     prefs: &ReplayPrefs,
     game_pid: Option<u32>,
     on_state: impl Fn(&State) + Send + Sync + 'static,
-) -> Result<(Recorder, PathBuf, String, bool), String> {
+) -> Result<(Recorder, PathBuf, String, Codec, bool), String> {
+    let opts = &prefs.options;
     let settings = heronite_data::settings::load(data_paths).map_err(|e| e.to_string())?;
     let folder = settings.screenshots.folder.trim().to_string();
     if folder.is_empty() {
@@ -382,30 +388,31 @@ fn launch(
         ));
     }
     let codec =
-        info.codec_for(prefs.codec).ok_or_else(|| tr!("The graphics card has no video encoder gpu-screen-recorder can use").to_string())?;
-    let screen = pick_screen(&info, prefs, game_pid).ok_or_else(|| tr!("No monitor to record was found").to_string())?;
-    let names = match (prefs.audio, game_pid) {
+        info.codec_for(opts.codec).ok_or_else(|| tr!("The graphics card has no video encoder gpu-screen-recorder can use").to_string())?;
+    let encoding = Encoding { codec, vulkan: info.uses_vulkan(opts.encoder, codec) };
+    let screen = pick_screen(&info, opts, game_pid).ok_or_else(|| tr!("No monitor to record was found").to_string())?;
+    let names = match (opts.audio, game_pid) {
         (Audio::Game, Some(pid)) if info.app_audio => heronite_overlay::audio::game_stream_names(pid),
         _ => Vec::new(),
     };
-    let game_audio = match prefs.audio {
+    let game_audio = match opts.audio {
         // Without PipeWire one app cannot be recorded alone: everything is.
         Audio::Game if !info.app_audio => Some("default_output".to_string()),
         Audio::Game => backend::plan::app_audio(&names),
         _ => None,
     };
-    let with_game_audio = prefs.audio != Audio::Game || game_audio.is_some();
+    let with_game_audio = opts.audio != Audio::Game || game_audio.is_some();
     let monitor = screen.name.clone();
-    let plan = Plan::new(prefs, screen, codec, game_audio, root.join(STAGING), program.socket_path());
+    let plan = Plan::new(opts, screen, encoding, game_audio, root.join(STAGING), program.socket_path());
     let recorder = Recorder::start(program, plan, on_state).map_err(|e| e.to_string())?;
-    Ok((recorder, root, monitor, with_game_audio))
+    Ok((recorder, root, monitor, codec, with_game_audio))
 }
 
 /// The monitor chosen in Settings, else the game's, else the first.
-fn pick_screen(info: &Info, prefs: &ReplayPrefs, game_pid: Option<u32>) -> Option<backend::Screen> {
+fn pick_screen(info: &Info, opts: &Options, game_pid: Option<u32>) -> Option<backend::Screen> {
     let named = |name: &str| info.screens.iter().find(|s| s.name == name).cloned();
-    (!prefs.monitor.is_empty())
-        .then(|| named(&prefs.monitor))
+    (!opts.monitor.is_empty())
+        .then(|| named(&opts.monitor))
         .flatten()
         .or_else(|| backend::target::game_monitor(game_pid).and_then(|n| named(&n)))
         .or_else(|| info.screens.first().cloned())

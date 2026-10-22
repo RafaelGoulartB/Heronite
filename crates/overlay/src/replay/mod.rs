@@ -8,7 +8,9 @@
 //!   with no copy through the CPU nor the compositor;
 //! - the graphics card's own encoder (NVENC, VA-API), never the CPU;
 //! - a constant bitrate, so the buffer's memory is known in advance
-//!   ([`plan::estimate`]);
+//!   ([`plan::estimate`]), kept in RAM or, to spare it, on disk;
+//! - Vulkan video on NVIDIA when the card offers it: no CUDA context, about
+//!   half the video memory of NVENC;
 //! - it only runs while a game does, and anything else (cutting the panel
 //!   off a save) runs at idle priority.
 //!
@@ -24,5 +26,5 @@ pub mod target;
 pub mod trim;
 
 pub use info::{Info, Screen, MIN_VERSION};
-pub use plan::{estimate, Estimate, Plan};
+pub use plan::{estimate, Encoding, Estimate, Plan};
 pub use recorder::{Program, Recorder, State};

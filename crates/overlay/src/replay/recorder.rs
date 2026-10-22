@@ -1,7 +1,9 @@
 //! The recorder process while a game runs. One thread runs it and lives as
 //! long as it (its `PDEATHSIG` is that thread's, see `heronite_data::proc`),
 //! starts it again if it dies (a suspend, a monitor that changed mode) and
-//! ends it when asked: SIGTERM, which in replay mode exits without saving.
+//! ends it when asked: SIGTERM, which in replay mode exits without saving
+//! (SIGKILL when it lingers). Vulkan video that cannot start falls back to
+//! the card's usual encoder.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -112,7 +114,10 @@ fn clean_env(cmd: &mut Command) {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum State {
     Starting,
-    Recording,
+    /// Through Vulkan video, else the card's usual encoder.
+    Recording {
+        vulkan: bool,
+    },
     /// It could not start, or died too often; why, for the user.
     Failed(String),
     Stopped,
@@ -166,7 +171,7 @@ impl Recorder {
             on_state: Box::new(on_state),
         });
         let s = shared.clone();
-        let thread = std::thread::Builder::new().name("replay-recorder".into()).spawn(move || supervise(&s, &program, &plan))?;
+        let thread = std::thread::Builder::new().name("replay-recorder".into()).spawn(move || supervise(&s, &program, plan))?;
         Ok(Self { shared, thread: Some(thread) })
     }
 
@@ -202,7 +207,7 @@ impl Drop for Recorder {
     }
 }
 
-fn supervise(shared: &Shared, program: &Program, plan: &Plan) {
+fn supervise(shared: &Shared, program: &Program, mut plan: Plan) {
     let _ = std::fs::create_dir_all(&plan.out_dir);
     let mut restarts = 0;
     loop {
@@ -210,10 +215,11 @@ fn supervise(shared: &Shared, program: &Program, plan: &Plan) {
         shared.set(State::Starting);
         let started = Instant::now();
         let ready = AtomicBool::new(false);
+        let vulkan = plan.encoding.vulkan;
         let poll = || {
             if !ready.load(Ordering::Relaxed) && started.elapsed() >= READY_AFTER {
                 ready.store(true, Ordering::Relaxed);
-                shared.set(State::Recording);
+                shared.set(State::Recording { vulkan });
             }
             false
         };
@@ -222,7 +228,14 @@ fn supervise(shared: &Shared, program: &Program, plan: &Plan) {
         let mut cmd = program.command();
         cmd.args(plan.args());
         clean_env(&mut cmd);
-        log::info!("replay: starting the recorder on {} ({} s, {} kbit/s)", plan.screen.name, plan.buffer_seconds, plan.video_kbps);
+        log::info!(
+            "replay: starting the recorder on {} ({}, {} s in {}, {} kbit/s)",
+            plan.screen.name,
+            plan.codec_arg(),
+            plan.buffer_seconds,
+            plan.storage.as_str(),
+            plan.video_kbps
+        );
         let out =
             Run::new().cancel(&shared.cancel).poll(&poll).on_line(&mut on_line).grace(Duration::from_secs(5)).no_capture().run(&mut cmd);
         if shared.cancel.is_requested() {
@@ -237,6 +250,12 @@ fn supervise(shared: &Shared, program: &Program, plan: &Plan) {
         };
         log::warn!("replay: the recorder ended: {why}");
         let ran = started.elapsed();
+        if ran < MIN_RUN && plan.encoding.vulkan {
+            // Vulkan video is experimental in gpu-screen-recorder.
+            log::warn!("replay: Vulkan video could not record: the card's usual encoder now");
+            plan.encoding.vulkan = false;
+            continue;
+        }
         if ran >= HEALTHY_AFTER {
             restarts = 0;
         }
@@ -300,6 +319,9 @@ fn describe(code: Option<i32>, last_error: Option<String>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use heronite_data::replay_prefs::Codec;
+
+    use super::super::plan::Encoding;
     use super::*;
 
     #[test]
@@ -321,7 +343,7 @@ mod tests {
         let plan = Plan::new(
             &Default::default(),
             super::super::info::Screen { name: "DP-1".into(), width: 1920, height: 1080 },
-            heronite_data::replay_prefs::Codec::H264,
+            Encoding { codec: Codec::H264, vulkan: false },
             None,
             dir.path().join("out"),
             dir.path().join("s.sock"),
@@ -345,6 +367,38 @@ mod tests {
     }
 
     #[test]
+    fn vulkan_that_cannot_start_falls_back_to_the_usual_encoder() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let calls = dir.path().join("calls");
+        let bin = dir.path().join("fake-gsr");
+        std::fs::write(&bin, format!("#!/bin/sh\necho \"$@\" >> {}\nexit 1\n", calls.display())).unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let plan = Plan::new(
+            &Default::default(),
+            super::super::info::Screen { name: "DP-1".into(), width: 1920, height: 1080 },
+            Encoding { codec: Codec::Hevc, vulkan: true },
+            None,
+            dir.path().join("out"),
+            dir.path().join("s.sock"),
+        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        let rec = Recorder::start(Program::Native(bin), plan, move |s| {
+            let _ = tx.send(s.clone());
+        })
+        .unwrap();
+        while let Ok(s) = rx.recv_timeout(Duration::from_secs(10)) {
+            if matches!(s, State::Failed(_)) {
+                break;
+            }
+        }
+        rec.stop();
+        let calls = std::fs::read_to_string(calls).unwrap();
+        let ks: Vec<&str> = calls.lines().map(|l| l.split(" -k ").nth(1).unwrap().split(' ').next().unwrap()).collect();
+        assert_eq!(ks, ["hevc_vulkan", "hevc"], "once with Vulkan, once without; then it gives up");
+    }
+
+    #[test]
     fn every_recorder_has_its_own_socket() {
         let p = Program::Native(PathBuf::from("/bin/false"));
         assert_ne!(p.socket_path(), p.socket_path());
@@ -359,12 +413,14 @@ mod tests {
         let info = program.info().unwrap();
         assert!(info.recent_enough(), "{info:?}");
         let dir = tempfile::tempdir().unwrap();
-        let prefs = heronite_data::replay_prefs::ReplayPrefs { audio: heronite_data::replay_prefs::Audio::Off, ..Default::default() };
-        let codec = info.codec_for(prefs.codec).expect("a hardware encoder");
-        let plan = Plan::new(&prefs, info.screens[0].clone(), codec, None, dir.path().join("out"), program.socket_path());
+        let mut prefs = heronite_data::replay_prefs::ReplayPrefs::default();
+        prefs.options.audio = heronite_data::replay_prefs::Audio::Off;
+        let codec = info.codec_for(prefs.options.codec).expect("a hardware encoder");
+        let encoding = Encoding { codec, vulkan: info.uses_vulkan(prefs.options.encoder, codec) };
+        let plan = Plan::new(&prefs.options, info.screens[0].clone(), encoding, None, dir.path().join("out"), program.socket_path());
         let rec = Recorder::start(program, plan, |s| eprintln!("state: {s:?}")).unwrap();
         std::thread::sleep(Duration::from_secs(6));
-        assert_eq!(rec.state(), State::Recording);
+        assert!(matches!(rec.state(), State::Recording { .. }), "{:?}", rec.state());
         let saved = rec.save(3).unwrap();
         assert!(saved.starts_with(dir.path().join("out")), "{}", saved.display());
         assert!(std::fs::metadata(&saved).unwrap().len() > 0);

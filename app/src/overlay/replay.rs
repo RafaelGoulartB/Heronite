@@ -23,7 +23,7 @@ impl OverlayService {
     pub fn replay_seconds(cx: &App) -> Option<u32> {
         let service = crate::services::replay::get(cx)?;
         let s = service.read(cx);
-        s.prefs().enabled.then_some(s.prefs().seconds)
+        s.prefs().enabled.then_some(s.prefs().options.seconds)
     }
 
     /// Saves the replay of the running game and marks it in its journal.
@@ -38,7 +38,7 @@ impl OverlayService {
         let at = Utc::now() - chrono::Duration::from_std(open_for.unwrap_or_default()).unwrap_or_default();
         self.close_panel(cx);
         let extra = open_for.unwrap_or(Duration::ZERO);
-        let seconds = replay.read(cx).prefs().seconds;
+        let seconds = replay.read(cx).prefs().options.seconds;
         let saving = replay.update(cx, |r, cx| r.save(&game.game.app_name, extra, cx));
         let key = game.info.as_ref().map(|i| journal::collection_key(&i.runner, &game.game.app_name));
         let paths = self.data_paths.clone();
