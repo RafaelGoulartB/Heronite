@@ -8,14 +8,14 @@
 //!   - `seconds`: what a save keeps, one of [`SECONDS`] (30 unless changed).
 //!   - `quality`: `low`, `balanced` or `high`, the bitrate per pixel.
 //!   - `fps`: one of [`FPS`].
-//!   - `resolution`: `native` (unless changed), `1440p`, `1080p` or `720p`,
+//!   - `resolution`: `native`, `1440p` (unless changed), `1080p` or `720p`,
 //!     the largest video.
-//!   - `codec`: `h264` (unless changed), `hevc` or `av1`.
+//!   - `codec`: `h264`, `hevc` (unless changed) or `av1`.
 //!   - `encoder`: `auto` (Vulkan on NVIDIA when it can, else the card's
-//!     usual encoder), `vulkan` or `native` (NVENC, VA-API; unless changed).
+//!     usual encoder), `vulkan` or `native` (NVENC, VA-API).
 //!   - `storage`: `ram` (unless changed) or `disk`, where the buffer is kept.
 //!   - `panelMargin`: seconds kept beyond `seconds` so a save from the panel
-//!     can cut the panel's time off, one of [`PANEL_MARGINS`] (10 unless
+//!     can cut the panel's time off, one of [`PANEL_MARGINS`] (5 unless
 //!     changed).
 //!   - `audio`: `game` (only the game's sound), `all` (what the PC plays) or
 //!     `none`.
@@ -143,11 +143,11 @@ impl Default for Options {
             seconds: 30,
             quality: Quality::Balanced,
             fps: 60,
-            resolution: Resolution::Native,
-            codec: Codec::H264,
-            encoder: Encoder::Native,
+            resolution: Resolution::P1440,
+            codec: Codec::Hevc,
+            encoder: Encoder::Auto,
             storage: Storage::Ram,
-            panel_margin: 10,
+            panel_margin: 5,
             audio: Audio::Game,
             microphone: false,
             monitor: String::new(),
@@ -238,6 +238,9 @@ mod tests {
         assert_eq!(d, ReplayPrefs::default());
         assert!(!d.enabled, "the replay is off until the user turns it on");
         assert_eq!(d.options.seconds, 30);
+        assert_eq!(d.options.resolution, Resolution::P1440, "4K and ultrawide screens are scaled down");
+        assert_eq!(d.options.codec, Codec::Hevc);
+        assert_eq!(d.options.panel_margin, 5);
 
         std::fs::write(
             paths.replay_prefs(),

@@ -275,6 +275,7 @@ mod tests {
         assert_eq!(video_size(&p, 2560, 1440), (1920, 1080));
         assert_eq!(video_size(&p, 1920, 1080), (1920, 1080), "never scaled up");
         assert_eq!(video_size(&p, 1280, 800), (1280, 800));
+        assert_eq!(video_size(&Options::default(), 3840, 2160), (2560, 1440), "the default caps 4K at 1440p");
     }
 
     #[test]
@@ -346,7 +347,7 @@ mod tests {
         );
         let args: Vec<String> = plan.args().into_iter().map(|a| a.into_string().unwrap()).collect();
         let joined = args.join(" ");
-        assert!(joined.starts_with("-w DP-1 -c mp4 -k h264 -bm cbr -q 10000 -f 60 -fm vfr -r 40 -replay-storage ram -encoder gpu"));
+        assert!(joined.starts_with("-w DP-1 -c mp4 -k h264 -bm cbr -q 10000 -f 60 -fm vfr -r 35 -replay-storage ram -encoder gpu"));
         assert!(joined.contains("-s 1920x1080"));
         assert!(joined.contains("-a app:eldenring.exe -a default_input -ac opus -ab 128"));
         assert!(joined.ends_with("-o /c/.replay -ipc /run/x.sock"));
