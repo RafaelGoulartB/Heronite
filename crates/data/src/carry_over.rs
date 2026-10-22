@@ -7,16 +7,19 @@
 //!
 //! Nothing of `from` is deleted here: the caller removes it from the
 //! Collection afterwards (`heronite_metadata::remove`). Every file is
-//! rewritten only when something changes in it.
+//! rewritten only when something changes in it, and running it again after
+//! a failure part way carries nothing twice (the play time moves last, and
+//! `from`'s is zeroed with it).
 
 use std::path::Path;
 
 use anyhow::Result;
+use heronite_i18n::tr;
 use serde_json::{json, Map, Value};
 
 use crate::json_store;
 use crate::launchers::PREFIX_KEY;
-use crate::models::MAX_SESSIONS_PER_GAME;
+use crate::models::{LocalMetaFile, MAX_SESSIONS_PER_GAME};
 use crate::paths::DataPaths;
 
 const RUNNER: &str = "sideload";
@@ -26,10 +29,14 @@ pub fn carry_over(paths: &DataPaths, from: &str, to: &str) -> Result<()> {
     if from == to {
         return Ok(());
     }
+    // A pair found earlier may be stale: never carry onto a game that is gone.
+    let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
+    if !metas.games.contains_key(to) {
+        anyhow::bail!(tr!("The game to merge into is no longer in your Collection. Look again in Settings → Other launchers."));
+    }
     let (from_key, to_key) = (format!("{RUNNER}_{from}"), format!("{RUNNER}_{to}"));
     meta(paths, from, to)?;
     sessions(paths, from, to)?;
-    playtime(paths, from, to)?;
     by_key(&paths.status_history(), "changes", from, to, Merge::Concat("at"))?;
     by_key(&paths.ratings(), "ratings", &from_key, &to_key, Merge::KeepTheirs)?;
     by_key(&paths.journal(), "entries", &from_key, &to_key, Merge::Concat("at"))?;
@@ -39,6 +46,7 @@ pub fn carry_over(paths: &DataPaths, from: &str, to: &str) -> Result<()> {
     store_lists(paths, from, to)?;
     images(&paths.art(), &paths.art_dir(), "art", from, to)?;
     images(&paths.metadata(), &paths.metadata_art_dir(), "metadata-art", from, to)?;
+    playtime(paths, from, to)?;
     log::info!("Carried {from} over to {to}");
     Ok(())
 }
@@ -61,11 +69,14 @@ fn merged(mine: Value, theirs: Option<Value>, how: Merge) -> Value {
     match how {
         Merge::Concat(field) => {
             let (Value::Array(mut a), Value::Array(b)) = (theirs.clone(), mine) else { return theirs };
-            a.extend(b);
+            for item in b {
+                if !a.contains(&item) {
+                    a.push(item);
+                }
+            }
             if !field.is_empty() {
                 a.sort_by(|x, y| text(x, field).cmp(text(y, field)));
             }
-            a.dedup();
             Value::Array(a)
         }
         Merge::Latest(field) => {
@@ -164,9 +175,12 @@ fn sessions(paths: &DataPaths, from: &str, to: &str) -> Result<()> {
         let Some(all) = doc.get_mut("sessions").and_then(Value::as_object_mut) else { return Ok(()) };
         let Some(Value::Array(mine)) = all.get(from).cloned() else { return Ok(()) };
         let mut list = all.get(to).and_then(Value::as_array).cloned().unwrap_or_default();
-        list.extend(mine);
+        for s in mine {
+            if !list.contains(&s) {
+                list.push(s);
+            }
+        }
         list.sort_by(|a, b| text(b, "startedAt").cmp(text(a, "startedAt")));
-        list.dedup();
         list.truncate(MAX_SESSIONS_PER_GAME);
         all.insert(to.to_string(), Value::Array(list));
         Ok(())
@@ -175,6 +189,7 @@ fn sessions(paths: &DataPaths, from: &str, to: &str) -> Result<()> {
 
 /// `totalPlayed` added up (the two were never played at the same time: one
 /// started here, the other in its launcher), first and last played widened.
+/// `from`'s total goes to 0 in the same write, so it is never added twice.
 fn playtime(paths: &DataPaths, from: &str, to: &str) -> Result<()> {
     if !paths.timestamps().exists() {
         return Ok(());
@@ -198,6 +213,9 @@ fn playtime(paths: &DataPaths, from: &str, to: &str) -> Result<()> {
         }
         if last > date(theirs, "lastPlayed") {
             theirs.insert("lastPlayed".into(), json!(last));
+        }
+        if let Some(Value::Object(m)) = all.get_mut(from) {
+            m.insert("totalPlayed".into(), json!(0));
         }
         Ok(())
     })
@@ -416,6 +434,29 @@ mod tests {
         let art = read(&p.art());
         assert_eq!(art["games"]["sideload:lutris_7"]["coverUrl"], "localart://art/sideload_lutris_7/cover-1.png");
         assert_eq!(fs::read(p.art_dir().join("sideload_lutris_7/cover-1.png")).unwrap(), b"png");
+    }
+
+    /// Run again after a failure part way: nothing is carried twice, and a
+    /// game that is gone takes nothing.
+    #[test]
+    fn running_twice_carries_once_and_never_onto_a_missing_game() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = DataPaths::at(dir.path());
+        write(
+            &p.local_meta(),
+            json!({"games": {"mine": {"appName": "mine", "runner": "sideload"},
+                             "lutris_7": {"appName": "lutris_7", "runner": "sideload"}}}),
+        );
+        write(&p.timestamps(), json!({"mine": {"totalPlayed": 100}, "lutris_7": {"totalPlayed": 10}}));
+        write(&p.game_actions(), json!({"games": {"sideload_mine": [{"name": "a"}, {"name": "b"}]}}));
+        carry_over(&p, "mine", "lutris_7").unwrap();
+        carry_over(&p, "mine", "lutris_7").unwrap();
+        assert_eq!(read(&p.timestamps())["lutris_7"]["totalPlayed"], 110);
+        assert_eq!(read(&p.game_actions())["games"]["sideload_lutris_7"].as_array().unwrap().len(), 2);
+
+        let err = carry_over(&p, "mine", "lutris_8").unwrap_err().to_string();
+        assert!(err.contains("no longer in your Collection"), "{err}");
+        assert!(read(&p.timestamps()).get("lutris_8").is_none());
     }
 
     #[test]
