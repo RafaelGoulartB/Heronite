@@ -224,6 +224,8 @@ impl ModsService {
             checks: HashMap::new(),
             links: links::Links::default(),
         };
+        // Every event is also a change of what the views read: observers redraw.
+        cx.subscribe_self(|_, _: &ModsEvent, cx| cx.notify()).detach();
         this.listen(messages, cx);
         this.read_account(cx);
         this

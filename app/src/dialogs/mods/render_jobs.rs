@@ -112,7 +112,9 @@ impl ModsDialog {
                     .into_any_element(),
             );
         }
-        if g.info.nexus_domain.is_some() {
+        // A Thunderstore game asks nothing of Nexus Mods until it has mods from there.
+        let nexus_mods = g.list.mods.iter().any(|m| matches!(m.source, heronite_mods::ModSource::Nexus { .. }));
+        if g.info.nexus_domain.is_some() && (nexus_mods || g.info.thunderstore.is_none()) {
             out.extend(self.nexus_notice(v, cx));
         }
         out

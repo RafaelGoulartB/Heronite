@@ -116,13 +116,28 @@ impl From<RawPage> for SearchPage {
         SearchPage {
             count: r.count,
             has_next: r.next.is_some(),
-            packages: r.results.into_iter().filter(|l| !l.namespace.is_empty() && !l.name.is_empty()).map(Listing::from).collect(),
+            packages: r
+                .results
+                .into_iter()
+                .filter(|l| !l.namespace.is_empty() && !l.name.is_empty())
+                .map(Listing::from)
+                .filter(|l| !is_mod_manager(l))
+                .collect(),
         }
     }
 }
 
+/// Mod managers published as packages (r2modman, Gale…): programs to run,
+/// not mods to put in the game, so the manager does not offer them.
+fn is_mod_manager(l: &Listing) -> bool {
+    let name = l.name.to_ascii_lowercase();
+    l.categories.iter().any(|c| c.eq_ignore_ascii_case("Tools"))
+        && (name.contains("modman") || name.contains("modmanager") || name.contains("mod_manager"))
+}
+
 /// Packages of `community` matching `query` (empty: all), 1-based `page`.
-/// Deprecated and NSFW packages are left out, as on the site.
+/// Deprecated and NSFW packages are left out, as on the site, and so are mod
+/// managers.
 pub fn search(community: &str, query: &str, ordering: Ordering, page: u32) -> Result<SearchPage, String> {
     let url = format!(
         "{BASE}/cyberstorm/listing/{}/?q={}&ordering={}&page={}",
@@ -266,6 +281,18 @@ pub fn version(namespace: &str, name: &str, version: &str) -> Result<Version, St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mod_managers_are_not_offered() {
+        let raw: RawPage = serde_json::from_str(
+            r#"{"count":2,"next":null,"previous":null,"results":[
+                {"categories":[{"id":"660","name":"Tools","slug":"tools"}],"name":"r2modman","namespace":"ebkr"},
+                {"categories":[{"id":"660","name":"Tools","slug":"tools"}],"name":"LethalConfig","namespace":"AinaVT"}]}"#,
+        )
+        .unwrap();
+        let names: Vec<String> = SearchPage::from(raw).packages.into_iter().map(|p| p.name).collect();
+        assert_eq!(names, ["LethalConfig"]);
+    }
 
     #[test]
     fn a_listing_page() {

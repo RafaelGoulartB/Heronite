@@ -101,6 +101,10 @@ impl ModsDialog {
         if v.g.info.thunderstore.is_some() {
             s.push(Source::Thunderstore);
         }
+        // BepInEx games live on Thunderstore: it comes first for them.
+        if v.g.info.profile.kind == heronite_mods::games::Kind::BepInEx {
+            s.reverse();
+        }
         s
     }
 
@@ -108,7 +112,9 @@ impl ModsDialog {
     pub(super) fn browse_shown(&mut self, cx: &mut Context<Self>) {
         let Some(v) = self.snapshot(cx) else { return };
         let sources = Self::sources(&v);
-        if !sources.contains(&self.browse.source) {
+        let (n, t) = (&self.browse.nexus, &self.browse.ts);
+        let untouched = !n.loaded && !n.loading && n.error.is_none() && !t.loaded && !t.loading && t.error.is_none();
+        if untouched || !sources.contains(&self.browse.source) {
             if let Some(first) = sources.first() {
                 self.browse.source = *first;
             }

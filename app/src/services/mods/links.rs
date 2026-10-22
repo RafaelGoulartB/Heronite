@@ -154,6 +154,7 @@ fn resolve(paths: &DataPaths, root: &ModsRoot, targets: Vec<Target>) -> Result<(
 
 impl ModsService {
     pub(super) fn receive_link(&mut self, link: String, cx: &mut Context<Self>) {
+        log::info!("mod link received: {}", link.split('?').next().unwrap_or(&link));
         match read(&link) {
             Ok(target) => {
                 self.links.waiting.push(target);
@@ -193,6 +194,7 @@ impl ModsService {
     /// One game: starts the download. Otherwise the user picks.
     fn route(&mut self, resolved: Resolved, library: Arc<Library>, cx: &mut Context<Self>) {
         let Resolved { target, site, matches, remember, error } = resolved;
+        log::info!("mod link: {} matching game(s) {matches:?}", matches.len());
         if let Some(message) = error {
             self.notice("", message, true, cx);
             return;
