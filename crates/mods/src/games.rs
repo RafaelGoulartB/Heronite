@@ -45,6 +45,13 @@ pub struct KnownGame {
     /// the game folder.
     pub mod_root: &'static str,
     pub plugins: Option<PluginsSpec>,
+    /// Names (folders or files, any case) that belong to the game's tree even
+    /// when the installed game lacks them (Control's `data_pc`): an archive
+    /// with one at its top keeps it, and a wrapper around it goes.
+    pub markers: &'static [&'static str],
+    /// Loose files by extension (without the dot) and the folder they go to,
+    /// relative to the game folder (Cyberpunk's `archive` -> `archive/pc/mod`).
+    pub loose: &'static [(&'static str, &'static str)],
 }
 
 const SKYRIM_SE_MASTERS: &[&str] = &["Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"];
@@ -75,6 +82,8 @@ const fn bethesda(
         kind: Kind::Bethesda,
         mod_root: "Data",
         plugins: Some(plugins),
+        markers: &[],
+        loose: &[],
     }
 }
 
@@ -93,6 +102,8 @@ const fn bepinex(
         kind: Kind::BepInEx,
         mod_root: "BepInEx/plugins",
         plugins: None,
+        markers: &[],
+        loose: &[],
     }
 }
 
@@ -106,8 +117,17 @@ const fn generic(name: &'static str, steam_app_ids: &'static [&'static str], nex
         kind: Kind::Generic,
         mod_root,
         plugins: None,
+        markers: &[],
+        loose: &[],
     }
 }
+
+const fn with_markers(game: KnownGame, markers: &'static [&'static str]) -> KnownGame {
+    KnownGame { markers, ..game }
+}
+
+/// Game folders of the RE Engine; REFramework sits next to them.
+const RE_ENGINE: &[&str] = &["natives", "reframework"];
 
 pub const KNOWN: &[KnownGame] = &[
     bethesda(
@@ -194,17 +214,23 @@ pub const KNOWN: &[KnownGame] = &[
         kind: Kind::Generic,
         mod_root: "Data Files",
         plugins: None,
+        markers: &[],
+        loose: &[],
     },
     generic("The Elder Scrolls IV: Oblivion Remastered", &["2623190"], "oblivionremastered", ""),
-    generic("Cyberpunk 2077", &["1091500"], "cyberpunk2077", ""),
-    generic("The Witcher 3: Wild Hunt", &["292030"], "witcher3", "Mods"),
+    KnownGame {
+        loose: &[("archive", "archive/pc/mod"), ("xl", "archive/pc/mod")],
+        ..with_markers(generic("Cyberpunk 2077", &["1091500"], "cyberpunk2077", ""), &["archive", "r6", "red4ext", "bin", "engine", "mods"])
+    },
+    with_markers(generic("Control", &["870780"], "control", ""), &["data_pc"]),
+    with_markers(generic("The Witcher 3: Wild Hunt", &["292030"], "witcher3", "Mods"), &["bin", "dlc", "mods"]),
     generic("Baldur's Gate 3", &["1086940"], "baldursgate3", ""),
     generic("Stardew Valley", &["413150"], "stardewvalley", "Mods"),
-    generic("Elden Ring", &["1245620"], "eldenring", ""),
-    generic("Dark Souls III", &["374320"], "darksouls3", ""),
+    generic("Elden Ring", &["1245620"], "eldenring", "Game"),
+    generic("Dark Souls III", &["374320"], "darksouls3", "Game"),
     generic("Sekiro: Shadows Die Twice", &["814380"], "sekiro", ""),
-    generic("Monster Hunter: World", &["582010"], "monsterhunterworld", ""),
-    generic("Monster Hunter Rise", &["1446780"], "monsterhunterrise", ""),
+    with_markers(generic("Monster Hunter: World", &["582010"], "monsterhunterworld", ""), &["nativePC"]),
+    with_markers(generic("Monster Hunter Rise", &["1446780"], "monsterhunterrise", ""), RE_ENGINE),
     generic("Mount & Blade II: Bannerlord", &["261550"], "mountandblade2bannerlord", "Modules"),
     generic("Mount & Blade: Warband", &["48700"], "mbwarband", "Modules"),
     generic("Kingdom Come: Deliverance", &["379430"], "kingdomcomedeliverance", "Mods"),
@@ -219,7 +245,10 @@ pub const KNOWN: &[KnownGame] = &[
     generic("Divinity: Original Sin 2", &["435150"], "divinityoriginalsin2definitiveedition", ""),
     generic("Darkest Dungeon", &["262060"], "darkestdungeon", "mods"),
     generic("Subnautica", &["264710"], "subnautica", ""),
-    generic("Resident Evil 4", &["2050650"], "residentevil42023", ""),
+    with_markers(generic("Resident Evil 4", &["2050650"], "residentevil42023", ""), RE_ENGINE),
+    with_markers(generic("Resident Evil 2", &["883710"], "residentevil22019", ""), RE_ENGINE),
+    with_markers(generic("Resident Evil 3", &["952060"], "residentevil32020", ""), RE_ENGINE),
+    with_markers(generic("Resident Evil Village", &["1196590"], "residentevilvillage", ""), RE_ENGINE),
     generic("Starbound", &["211820"], "starbound", "mods"),
     bepinex("Lethal Company", &["1966720"], "lethal-company", Some("lethalcompany")),
     bepinex("Risk of Rain 2", &["632360"], "riskofrain2", Some("riskofrain2")),
@@ -233,7 +262,8 @@ pub const KNOWN: &[KnownGame] = &[
     bepinex("Muck", &["1625450"], "muck", None),
     bepinex("Lethal League Blaze", &["553310"], "lethal-league-blaze", None),
     bepinex("ULTRAKILL", &["1229490"], "ultrakill", None),
-    bepinex("Hades II", &["1145350"], "hades-ii", None),
+    // Hades II is modded through Hell2Modding / ReturnOfModding, not BepInEx.
+    KnownGame { thunderstore: Some("hades-ii"), nexus_domain: None, ..generic("Hades II", &["1145350"], "", "") },
 ];
 
 /// Lower case, letters and digits only, `&` = `and`, without "the" and the
@@ -280,6 +310,10 @@ pub struct Profile {
     /// Relative to the game folder, `/`-separated, `""` = the game folder.
     pub mod_root: String,
     pub plugins: Option<PluginsSpec>,
+    /// [`KnownGame::markers`], empty for a game that is not in the table.
+    pub markers: &'static [&'static str],
+    /// [`KnownGame::loose`].
+    pub loose: &'static [(&'static str, &'static str)],
 }
 
 impl Profile {
@@ -297,7 +331,13 @@ impl Profile {
             _ => "",
         };
         let mod_root = links.mod_root.as_deref().unwrap_or(default_root).trim_matches('/').to_string();
-        Profile { kind, mod_root, plugins: known.and_then(|k| k.plugins) }
+        Profile {
+            kind,
+            mod_root,
+            plugins: known.and_then(|k| k.plugins),
+            markers: known.map_or(&[], |k| k.markers),
+            loose: known.map_or(&[], |k| k.loose),
+        }
     }
 }
 
@@ -334,6 +374,22 @@ mod tests {
         let custom = GameLinks { mod_root: Some("/Mods/".into()), ..Default::default() };
         assert_eq!(Profile::of(&custom, None).mod_root, "Mods");
         assert_eq!(Profile::of(&GameLinks::default(), None).kind, Kind::Generic);
+    }
+
+    #[test]
+    fn markers_and_folders_of_the_games() {
+        let control = find(Some("870780"), "");
+        assert_eq!(control.map(|g| (g.name, g.nexus_domain, g.markers)), Some(("Control", Some("control"), &["data_pc"][..])));
+        assert_eq!(Profile::of(&GameLinks::default(), control).mod_root, "");
+        for id in ["2050650", "883710", "952060", "1196590", "1446780"] {
+            assert!(find(Some(id), "").is_some_and(|g| g.markers.contains(&"natives")), "{id}");
+        }
+        assert_eq!(Profile::of(&GameLinks::default(), find(Some("1245620"), "")).mod_root, "Game");
+        assert_eq!(Profile::of(&GameLinks::default(), find(Some("374320"), "")).mod_root, "Game");
+        let hades = find(Some("1145350"), "");
+        assert_eq!(Profile::of(&GameLinks::default(), hades).kind, Kind::Generic);
+        assert_eq!(by_thunderstore("hades-ii").map(|g| g.name), Some("Hades II"));
+        assert!(Profile::of(&GameLinks::default(), find(Some("1091500"), "")).loose.contains(&("archive", "archive/pc/mod")));
     }
 
     #[test]

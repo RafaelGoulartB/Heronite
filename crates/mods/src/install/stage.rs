@@ -85,7 +85,8 @@ fn unpack(path: &Path, dest: &Path, cancel: &AtomicBool) -> Result<(), String> {
 }
 
 /// The folder holding `fomod/ModuleConfig.xml`, looking through up to two
-/// folders that hold nothing else.
+/// single-folder levels. Loose files (readme, picture) beside the folder do
+/// not count, like in [`crate::fomod::find`].
 pub fn find_fomod(root: &Path) -> Option<PathBuf> {
     let mut cur = root.to_path_buf();
     for _ in 0..3 {
@@ -94,8 +95,9 @@ pub fn find_fomod(root: &Path) -> Option<PathBuf> {
                 return Some(cur);
             }
         }
-        match entries(&cur).as_slice() {
-            [(name, true)] => cur = cur.join(name),
+        let mut folders = entries(&cur).into_iter().filter(|(_, is_dir)| *is_dir);
+        match (folders.next(), folders.next()) {
+            (Some((name, _)), None) => cur = cur.join(name),
             _ => return None,
         }
     }
@@ -150,7 +152,9 @@ mod tests {
         assert_eq!(find_fomod(&t.path().join("c")), None, "too deep");
         put(t.path().join("d/readme.txt"));
         put(t.path().join("d/w/fomod/ModuleConfig.xml"));
-        assert_eq!(find_fomod(&t.path().join("d")), None, "not a lone wrapper");
+        assert_eq!(find_fomod(&t.path().join("d")), Some(t.path().join("d/w")), "loose files beside the wrapper are ignored");
+        put(t.path().join("d/other/x.esp"));
+        assert_eq!(find_fomod(&t.path().join("d")), None, "two folders: not a lone wrapper");
         put(t.path().join("e/fomod/info.xml"));
         assert_eq!(find_fomod(&t.path().join("e")), None);
     }

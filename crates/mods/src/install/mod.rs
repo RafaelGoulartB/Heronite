@@ -7,31 +7,49 @@ mod place;
 mod scan;
 mod stage;
 
+use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use heronite_i18n::tr;
 use heronite_installer::engine::CANCELLED;
 
-use crate::fsutil::remove_any;
+use crate::fsutil::{entries, remove_any};
 use crate::games::{Kind, Profile};
-use crate::model::{CopyRule, ModEntry, ModList};
+use crate::model::{CopyRule, ModEntry, ModList, ModSource};
 use crate::paths::{safe_name, GameDirs};
 use crate::{layout, store};
 use place::{components, resolve, Placer, Transfer};
 pub(crate) use scan::scan;
 
-pub use scan::{exe_dirs, proxy_dlls, PROXY_DLLS};
+pub use scan::{exe_dirs, is_proxy_dll, proxy_dlls, PROXY_DLLS};
 pub use stage::{find_fomod, stage, sweep, Source, Staged};
 
 /// The installed mod's files do not line up with the game: none of its
-/// top-level names is a folder or file of the game folder (nor the game's mod
-/// folder), so the game will most likely not see them. The app warns after
-/// an install; the mod stays installed.
+/// top-level names is a folder or file of the game folder, the first folder
+/// of the game's mod folder, a marker of the game's tree, `BepInEx` or a
+/// proxy DLL next to an executable, so the game will most likely not see
+/// them. The app warns after an install; the mod stays installed.
 pub fn looks_misplaced(mod_dir: &Path, game_dir: &Path, profile: &Profile) -> bool {
-    let _ = (mod_dir, game_dir, profile);
-    false
+    let top = entries(mod_dir);
+    if top.is_empty() {
+        return false;
+    }
+    let game: HashSet<String> = entries(game_dir).into_iter().map(|(n, _)| n.to_lowercase()).collect();
+    let first = profile.mod_root.split('/').next().unwrap_or("").to_lowercase();
+    // A proxy DLL at the mod's root is next to an executable when the game
+    // folder has one.
+    let exe_at_root = || exe_dirs(game_dir).iter().any(String::is_empty);
+    let fits = |(name, is_dir): &(String, bool)| {
+        let lower = name.to_lowercase();
+        game.contains(&lower)
+            || (!first.is_empty() && lower == first)
+            || profile.markers.iter().any(|m| m.eq_ignore_ascii_case(name))
+            || (*is_dir && lower == "bepinex")
+            || (!is_dir && is_proxy_dll(name) && exe_at_root())
+    };
+    !top.iter().any(fits)
 }
 
 /// What goes where.
@@ -79,12 +97,15 @@ pub fn commit(
     remove_any(&partial).map_err(|e| format!("{}: {e}", partial.display()))?;
     fs::create_dir(&partial).map_err(|e| format!("{}: {e}", partial.display()))?;
 
-    let built = build(ctx, staged, plan, &entry, &partial, cancel);
+    let seeds = spelling_seeds(ctx, list, &[replace.unwrap_or(""), &id]);
+    let built = build(ctx, staged, plan, &entry, &partial, seeds, cancel);
     let scanned = match built {
         Ok(()) => {
             let exe_dirs = ctx.game_dir.map(scan::exe_dirs).unwrap_or_default();
             let found = scan(&partial, (ctx.profile.kind == Kind::Bethesda).then_some(ctx.profile.mod_root.as_str()), &exe_dirs);
-            if found.files == 0 {
+            // A Thunderstore modpack is only a manifest: it stays in the list so
+            // its dependencies keep meaning.
+            if found.files == 0 && !matches!(entry.source, ModSource::Thunderstore { .. }) {
                 Err(tr!("The archive has no files to install").to_string())
             } else {
                 Ok(found)
@@ -124,7 +145,22 @@ fn pick_id(list: &ModList, entry: &ModEntry, replace: Option<&str>) -> String {
     }
 }
 
-fn build(ctx: &InstallCtx, staged: &Staged, plan: Plan, entry: &ModEntry, into: &Path, cancel: &AtomicBool) -> Result<(), String> {
+/// The folders whose spellings the new mod follows: the game's, then the
+/// installed mods' in load order (but not the ones being replaced).
+fn spelling_seeds(ctx: &InstallCtx, list: &ModList, except: &[&str]) -> Vec<PathBuf> {
+    let mods = list.mods.iter().filter(|m| !except.contains(&m.id.as_str())).map(|m| ctx.dirs.mod_dir(&m.id)).filter(|d| d.is_dir());
+    ctx.game_dir.map(Path::to_path_buf).into_iter().chain(mods).collect()
+}
+
+fn build(
+    ctx: &InstallCtx,
+    staged: &Staged,
+    plan: Plan,
+    entry: &ModEntry,
+    into: &Path,
+    seeds: Vec<PathBuf>,
+    cancel: &AtomicBool,
+) -> Result<(), String> {
     let (src_root, rules, mode) = match plan {
         Plan::Auto => {
             let rules = layout::auto(&staged.root, ctx.profile, ctx.game_dir, &entry.source);
@@ -141,7 +177,7 @@ fn build(ctx: &InstallCtx, staged: &Staged, plan: Plan, entry: &ModEntry, into: 
         rules.into_iter().map(|r| Job { source: r.source, destination: r.destination, priority: r.priority }).collect();
     jobs.sort_by_key(|j| j.priority);
 
-    let mut placer = Placer::new(into, ctx.game_dir, mode, cancel);
+    let mut placer = Placer::new(into, seeds, mode, cancel);
     for job in &jobs {
         if cancel.load(Ordering::Relaxed) {
             return Err(CANCELLED.to_string());
@@ -427,6 +463,122 @@ mod tests {
         let m = list.get(&id).unwrap();
         assert_eq!(m.dll_overrides, ["winhttp"]);
         assert!(dirs.mod_dir(&id).join("winhttp.dll").exists() && dirs.mod_dir(&id).join("BepInEx/core/BepInEx.dll").exists());
+    }
+
+    #[test]
+    fn mods_of_one_game_share_the_spelling_of_their_folders() {
+        let e = env(SKYRIM);
+        fs::remove_dir_all(e.game.join("Data/Textures")).unwrap();
+        let mut list = ModList::new("g", "Skyrim");
+        put(e.src.join("a/Textures/a.dds"), "a");
+        put(e.src.join("a/SKSE/Plugins/a.dll"), "a");
+        let a = Staged { root: e.src.join("a"), owned: false, fomod: None };
+        let a = commit(&e.ctx(), &mut list, &a, Plan::Auto, entry("A"), None, &NO).unwrap();
+        put(e.src.join("b/textures/b.dds"), "b");
+        put(e.src.join("b/skse/plugins/b.dll"), "b");
+        let b = Staged { root: e.src.join("b"), owned: false, fomod: None };
+        let b = commit(&e.ctx(), &mut list, &b, Plan::Auto, entry("B"), None, &NO).unwrap();
+        assert_eq!(e.files(&a), ["Data/SKSE/Plugins/a.dll", "Data/Textures/a.dds"]);
+        assert_eq!(e.files(&b), ["Data/SKSE/Plugins/b.dll", "Data/Textures/b.dds"]);
+
+        // The game's own spelling comes before the mods'.
+        put(e.game.join("Data/meshes/old.nif"), "g");
+        put(e.src.join("c/Meshes/c.nif"), "c");
+        let c = Staged { root: e.src.join("c"), owned: false, fomod: None };
+        let c = commit(&e.ctx(), &mut list, &c, Plan::Auto, entry("C"), None, &NO).unwrap();
+        assert_eq!(e.files(&c), ["Data/meshes/c.nif"]);
+
+        // Reinstalling a mod does not follow its old self.
+        put(e.src.join("a2/TEXTURES/a.dds"), "a2");
+        let a2 = Staged { root: e.src.join("a2"), owned: false, fomod: None };
+        let again = commit(&e.ctx(), &mut list, &a2, Plan::Auto, entry("A"), Some(&a), &NO).unwrap();
+        assert_eq!(e.files(&again), ["Data/Textures/a.dds"], "follows the mods that are still there: B's Textures");
+    }
+
+    #[test]
+    fn a_thunderstore_modpack_without_files_is_added() {
+        let e = env(SKYRIM);
+        put(e.src.join("manifest.json"), "{}");
+        put(e.src.join("icon.png"), "png");
+        put(e.src.join("README.md"), "text");
+        let source = ModSource::Thunderstore { community: "valheim".into(), namespace: "Pack".into(), name: "Everything".into() };
+        let mut list = ModList::new("g", "Valheim");
+        let profile = Profile::of(&GameLinks::default(), find(Some("892970"), ""));
+        let ctx = InstallCtx { dirs: &e.dirs, game_dir: None, profile: &profile };
+        let ent = ModEntry { source, depends_on: vec!["denikson-BepInExPack_Valheim".into()], ..entry("Everything") };
+        let id = commit(&ctx, &mut list, &e.folder(), Plan::Auto, ent, None, &NO).unwrap();
+        let m = list.get(&id).unwrap();
+        assert_eq!((m.files, m.depends_on.len()), (0, 1));
+        assert!(e.dirs.mod_dir(&id).is_dir());
+        // A file that is not a modpack stays an error.
+        let e2 = env(SKYRIM);
+        put(e2.src.join("fomod/ModuleConfig.xml"), "<config/>");
+        let mut list = ModList::new("g", "Skyrim");
+        assert!(commit(&e2.ctx(), &mut list, &e2.folder(), Plan::Auto, entry("Nothing"), None, &NO).is_err());
+    }
+
+    #[test]
+    fn the_installer_is_found_beside_docs() {
+        let e = env(SKYRIM);
+        put(e.src.join("Mod/fomod/ModuleConfig.xml"), "<config/>");
+        put(e.src.join("readme.txt"), "text");
+        put(e.src.join("preview.jpg"), "jpg");
+        assert_eq!(find_fomod(&e.src), Some(e.src.join("Mod")));
+        put(e.src.join("Other/x.esp"), "x");
+        assert_eq!(find_fomod(&e.src), None, "two folders: not a wrapper");
+    }
+
+    #[test]
+    fn a_plugin_from_a_file_gets_a_clean_name() {
+        let t = tempfile::tempdir().unwrap();
+        let dirs = ModsRoot::at(t.path().join("mods")).game("v");
+        let profile = Profile::of(&GameLinks::default(), find(Some("892970"), ""));
+        let src = t.path().join("src");
+        put(src.join("MyPlugin-1.2.0/MyPlugin.dll"), "dll");
+        let staged = Staged { root: src, owned: false, fomod: None };
+        let ctx = InstallCtx { dirs: &dirs, game_dir: None, profile: &profile };
+        let mut list = ModList::new("v", "Valheim");
+        let id = commit(&ctx, &mut list, &staged, Plan::Auto, entry("MyPlugin"), None, &NO).unwrap();
+        let mut files = Vec::new();
+        crate::fsutil::walk_files(&dirs.mod_dir(&id), &mut |rel, _| files.push(rel.to_string()));
+        assert_eq!(files, ["BepInEx/plugins/MyPlugin/MyPlugin.dll"]);
+    }
+
+    #[test]
+    fn misplaced_mods_do_not_touch_the_games_tree() {
+        let game = tempfile::tempdir().unwrap();
+        put(game.path().join("data/x.rmdp"), "g");
+        put(game.path().join("Control_DX12.exe"), "g");
+        let mod_dir = tempfile::tempdir().unwrap();
+        let control = Profile::of(&GameLinks::default(), find(Some("870780"), ""));
+        put(mod_dir.path().join("data_pc/textures/a.tex"), "m");
+        assert!(!looks_misplaced(mod_dir.path(), game.path(), &control), "a marker of the game");
+        let unknown = Profile::of(&GameLinks::default(), None);
+        assert!(looks_misplaced(mod_dir.path(), game.path(), &unknown), "the same tree of a game we know nothing about");
+
+        let foo = tempfile::tempdir().unwrap();
+        put(foo.path().join("Foo/bar.txt"), "m");
+        assert!(looks_misplaced(foo.path(), game.path(), &control));
+        put(foo.path().join("DATA/y.rmdp"), "m");
+        assert!(!looks_misplaced(foo.path(), game.path(), &control), "a folder of the game, any case");
+
+        let skyrim = Profile::of(&GameLinks::default(), find(Some(SKYRIM), ""));
+        let data = tempfile::tempdir().unwrap();
+        put(data.path().join("Data/a.esp"), "m");
+        assert!(!looks_misplaced(data.path(), game.path(), &skyrim), "the mod folder of the game");
+        let proxy = tempfile::tempdir().unwrap();
+        put(proxy.path().join("Winhttp.dll"), "m");
+        assert!(!looks_misplaced(proxy.path(), game.path(), &skyrim), "a proxy DLL beside the executable");
+        let other = tempfile::tempdir().unwrap();
+        put(other.path().join("Winhttp.dll"), "m");
+        put(other.path().join("only.txt"), "m");
+        let no_exe = tempfile::tempdir().unwrap();
+        put(no_exe.path().join("Binaries/Win64/game.exe"), "g");
+        assert!(looks_misplaced(other.path(), no_exe.path(), &skyrim), "the executable is not at the root");
+        let bepinex = tempfile::tempdir().unwrap();
+        put(bepinex.path().join("bepinex/plugins/a.dll"), "m");
+        assert!(!looks_misplaced(bepinex.path(), no_exe.path(), &skyrim));
+        assert!(!looks_misplaced(tempfile::tempdir().unwrap().path(), game.path(), &skyrim), "an empty mod has nothing to misplace");
     }
 
     #[test]

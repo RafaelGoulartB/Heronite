@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::fsutil::{entries, find_ci, totals};
+use crate::fsutil::{entries, extension as ext, find_ci, totals};
 
 /// Windows system DLLs Wine ships its own copy of. A mod that puts one next
 /// to the game's executable is a loader using it as a proxy (BepInEx's
@@ -60,6 +60,11 @@ pub const PROXY_DLLS: &[&str] = &[
     "xinput1_4",
     "xinput9_1_0",
 ];
+
+/// A file that is a proxy DLL by its name (`winhttp.dll`, any case).
+pub fn is_proxy_dll(file_name: &str) -> bool {
+    file_name.to_lowercase().strip_suffix(".dll").is_some_and(|stem| PROXY_DLLS.contains(&stem))
+}
 
 /// How deep the game folder is searched for executables.
 const EXE_DEPTH: usize = 3;
@@ -151,10 +156,6 @@ pub(crate) fn scan(mod_dir: &Path, plugins_dir: Option<&str>, exe_dirs: &[String
     }
     let dll_overrides = proxy_dlls(mod_dir, exe_dirs);
     Scan { files, size, plugins, dll_overrides }
-}
-
-fn ext(name: &str) -> String {
-    name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default()
 }
 
 #[cfg(test)]

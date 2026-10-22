@@ -1,7 +1,8 @@
 //! Putting files into the mod folder being built. Every path component takes
 //! the spelling of an entry that is already there, else of the game folder's
-//! entry at the same place, so `data/textures` lands in `Data/Textures` when
-//! the game has those, and two spellings of one folder become one.
+//! entry at the same place, else of an installed mod's, so `data/textures`
+//! lands in `Data/Textures` when the game or another mod has those, and two
+//! spellings of one folder become one.
 
 use std::collections::HashMap;
 use std::fs;
@@ -27,10 +28,31 @@ pub(super) enum Transfer {
 struct DirInfo {
     /// Lower-cased name to the spelling in the mod folder.
     mine: HashMap<String, String>,
-    /// The game's folder at the same place.
-    game: Option<PathBuf>,
-    /// The game folder's entries, read when first needed.
-    game_names: Option<HashMap<String, (String, bool)>>,
+    /// The folders at the same place in the game folder and in the mods
+    /// already installed, whose spellings are followed (the game's first).
+    others: Vec<PathBuf>,
+    /// Their entries, read when first needed.
+    seen: Option<HashMap<(String, bool), Seen>>,
+}
+
+/// An entry of `others`: its first spelling and, for a folder, the folders of
+/// that name in each of them.
+struct Seen {
+    spelling: String,
+    children: Vec<PathBuf>,
+}
+
+fn read_others(others: &[PathBuf]) -> HashMap<(String, bool), Seen> {
+    let mut seen: HashMap<(String, bool), Seen> = HashMap::new();
+    for dir in others {
+        for (name, is_dir) in entries(dir) {
+            let entry = seen.entry((name.to_lowercase(), is_dir)).or_insert_with(|| Seen { spelling: name.clone(), children: Vec::new() });
+            if is_dir {
+                entry.children.push(dir.join(&name));
+            }
+        }
+    }
+    seen
 }
 
 pub(super) struct Placer<'a> {
@@ -41,9 +63,12 @@ pub(super) struct Placer<'a> {
 }
 
 impl<'a> Placer<'a> {
-    pub(super) fn new(root: &Path, game_dir: Option<&Path>, mode: Transfer, cancel: &'a AtomicBool) -> Self {
+    /// `seeds` are folders laid out like `root` (the game folder, then the
+    /// installed mods in load order): the first to have a name decides its
+    /// spelling, so `Textures` and `textures` do not end up side by side.
+    pub(super) fn new(root: &Path, seeds: Vec<PathBuf>, mode: Transfer, cancel: &'a AtomicBool) -> Self {
         let mut dirs = HashMap::new();
-        dirs.insert(root.to_path_buf(), DirInfo { game: game_dir.map(Path::to_path_buf), ..Default::default() });
+        dirs.insert(root.to_path_buf(), DirInfo { others: seeds, ..Default::default() });
         Self { root: root.to_path_buf(), dirs, mode, cancel }
     }
 
@@ -59,21 +84,15 @@ impl<'a> Placer<'a> {
     }
 
     /// The spelling `name` gets in `dir`: the one already there, else the
-    /// game's, else its own. The name is remembered.
+    /// game's or an installed mod's, else its own. The name is remembered.
     fn spell(&mut self, dir: &Path, name: &str, is_dir: bool) -> String {
         let lower = name.to_lowercase();
         let info = self.info(dir);
         if let Some(existing) = info.mine.get(&lower) {
             return existing.clone();
         }
-        let game_names = info.game_names.get_or_insert_with(|| match &info.game {
-            Some(g) => entries(g).into_iter().map(|(n, d)| (n.to_lowercase(), (n, d))).collect(),
-            None => HashMap::new(),
-        });
-        let spelled = match game_names.get(&lower) {
-            Some((n, d)) if *d == is_dir => n.clone(),
-            _ => name.to_string(),
-        };
+        let seen = info.seen.get_or_insert_with(|| read_others(&info.others));
+        let spelled = seen.get(&(lower.clone(), is_dir)).map_or_else(|| name.to_string(), |s| s.spelling.clone());
         info.mine.insert(lower, spelled.clone());
         spelled
     }
@@ -91,15 +110,10 @@ impl<'a> Placer<'a> {
             Err(_) => fs::create_dir(&path).map_err(|e| format!("{}: {e}", path.display()))?,
         }
         if !self.dirs.contains_key(&path) {
-            let game = {
-                let info = self.info(dir);
-                info.game_names
-                    .as_ref()
-                    .and_then(|g| g.get(&spelled.to_lowercase()))
-                    .filter(|(_, d)| *d)
-                    .and_then(|(n, _)| info.game.as_ref().map(|g| g.join(n)))
-            };
-            self.dirs.insert(path.clone(), DirInfo { game, ..Default::default() });
+            let info = self.info(dir);
+            let seen = info.seen.get_or_insert_with(|| read_others(&info.others));
+            let others = seen.get(&(spelled.to_lowercase(), true)).map(|s| s.children.clone()).unwrap_or_default();
+            self.dirs.insert(path.clone(), DirInfo { others, ..Default::default() });
         }
         Ok(path)
     }
@@ -246,7 +260,7 @@ mod tests {
         put(src.join("p.esp"), "p");
         fs::create_dir_all(&out).unwrap();
         let cancel = AtomicBool::new(false);
-        let mut p = Placer::new(&out, Some(&game), Transfer::Copy, &cancel);
+        let mut p = Placer::new(&out, vec![game.clone()], Transfer::Copy, &cancel);
         p.place(&src.join("1"), true, &comps("data/textures")).unwrap();
         p.place(&src.join("2"), true, &comps("DATA\\TEXTURES")).unwrap();
         p.place(&src.join("p.esp"), false, &comps("DATA/P.esp")).unwrap();
@@ -269,7 +283,7 @@ mod tests {
         put(src.join("f.nif"), "x");
         fs::create_dir_all(&out).unwrap();
         let cancel = AtomicBool::new(false);
-        Placer::new(&out, Some(&game), Transfer::Copy, &cancel).place(&src.join("f.nif"), false, &comps("Meshes/f.nif")).unwrap();
+        Placer::new(&out, vec![game.clone()], Transfer::Copy, &cancel).place(&src.join("f.nif"), false, &comps("Meshes/f.nif")).unwrap();
         assert!(out.join("Meshes/f.nif").exists());
     }
 
@@ -282,11 +296,11 @@ mod tests {
         std::os::unix::fs::symlink("/etc/passwd", src.join("d/pw")).unwrap();
         fs::create_dir_all(&out).unwrap();
         let cancel = AtomicBool::new(false);
-        Placer::new(&out, None, Transfer::Move, &cancel).place(&src.join("d"), true, &comps("x")).unwrap();
+        Placer::new(&out, Vec::new(), Transfer::Move, &cancel).place(&src.join("d"), true, &comps("x")).unwrap();
         assert!(out.join("x/a.txt").exists() && !src.join("d/a.txt").exists());
         assert!(!out.join("x/evil").exists() && !out.join("x/pw").exists());
         put(src.join("l.txt"), "l");
-        let mut p = Placer::new(&out, None, Transfer::Link, &cancel);
+        let mut p = Placer::new(&out, Vec::new(), Transfer::Link, &cancel);
         p.place(&src.join("l.txt"), false, &comps("one/l.txt")).unwrap();
         p.place(&src.join("l.txt"), false, &comps("two/l.txt")).unwrap();
         assert!(out.join("one/l.txt").exists() && out.join("two/l.txt").exists() && src.join("l.txt").exists());
@@ -299,7 +313,7 @@ mod tests {
         put(src.join("a.txt"), "a");
         fs::create_dir_all(&out).unwrap();
         let cancel = AtomicBool::new(true);
-        let r = Placer::new(&out, None, Transfer::Copy, &cancel).place(&src, true, &[]);
+        let r = Placer::new(&out, Vec::new(), Transfer::Copy, &cancel).place(&src, true, &[]);
         assert_eq!(r, Err(CANCELLED.to_string()));
     }
 }

@@ -30,6 +30,12 @@ pub(crate) fn same_name(a: &str, b: &str) -> bool {
     a == b || a.to_lowercase() == b.to_lowercase()
 }
 
+/// The extension of a file name without the dot, lower case; `""` when there
+/// is none.
+pub(crate) fn extension(name: &str) -> String {
+    name.rsplit_once('.').map(|(_, e)| e.to_lowercase()).unwrap_or_default()
+}
+
 /// The entry of `dir` called `name` (exact spelling first, then ignoring
 /// case) and whether it is a real folder. Links are not entries.
 pub(crate) fn find_ci(dir: &Path, name: &str) -> Option<(String, bool)> {

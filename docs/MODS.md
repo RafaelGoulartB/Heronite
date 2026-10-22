@@ -37,12 +37,35 @@ Mods.
    installer wizard: steps, options with their pictures and descriptions,
    conditions between them. The choices are kept: "Reinstall" asks again with
    them preselected.
-4. **Layout is fixed for the user.** Archives wrapped in extra folders are
-   unwrapped; Bethesda mods go into `Data` (a script extender's archive goes to
-   the game folder); Thunderstore packages follow r2modman's BepInEx layout;
-   every path is matched case-insensitively to the game's own folders
-   (`data/textures` becomes `Data/Textures` when the game has that), because
-   Linux is case-sensitive and Windows mods are not.
+4. **Layout is fixed for the user** (`layout::auto`, a function of the
+   archive's tree and the game folder):
+   - A lone folder is unwrapped when what is inside is recognisably the mod
+     (a folder of the game or of the game's table entry, `markers`, mod files)
+     or it is named like a download; readmes and pictures beside it are
+     ignored. Control's `data_pc` is never peeled; `Cool Mod/natives/...`
+     becomes `natives/...` for the RE Engine games.
+   - Bethesda: mods go into `Data`; a script extender's archive, ENB and
+     ReShade (proxy DLLs, `enbseries`, their `.ini`) go to the game folder.
+   - Games with a mods folder (Witcher 3 `Mods`): each top entry on its own: a
+     folder the game has (or a marker) stays, the rest goes to `Mods/`.
+   - Unreal: loose `.pak`/`.ucas`/`.utoc` go to `<X>/Content/Paks/~mods`
+     (found in the game folder); proxy DLLs, `.asi`, launchers and their
+     `.ini` go to the folder of the only executable when the game folder has
+     none. Elden Ring and Dark Souls III use `Game`; Cyberpunk's loose
+     `.archive` goes to `archive/pc/mod`.
+   - Thunderstore: r2modman's BepInEx layout (a plugin without a version in
+     its folder name); MelonLoader content (`MelonLoader/`, `Mods/`,
+     `UserLibs/`, `version.dll` + `dobby.dll`) goes as it is to the game
+     folder; Hades II (Hell2Modding) puts `d3d12.dll` and `ReturnOfModding/`
+     next to the executable. A package with only a manifest (a modpack) is
+     added with no files so its dependencies keep meaning.
+   - Every path is matched case-insensitively, to the game's own folders and
+     then to the mods already installed (the first spelling wins), so
+     `data/textures` becomes `Data/Textures` and two mods never leave
+     `Textures/` and `textures/` side by side: Linux is case-sensitive and
+     Windows mods are not.
+   After an install, `install::looks_misplaced` tells when none of a mod's
+   top-level names fits the game.
 5. **Manage.** The list is the load order (drag, or ↑ ↓): a switch per mod, a
    master switch "Play with mods", conflicts ("Overrides 2 mods", "3 files
    overridden by X", with the file list), updates ("Update 1.2 → 1.3"), the
