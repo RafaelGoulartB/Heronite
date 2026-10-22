@@ -1,5 +1,5 @@
 //! Games in the Collection twice: added here by hand, and brought in from
-//! Lutris or Faugus. The usual way there: the game was installed with Lutris,
+//! Lutris, Bottles or Faugus. The usual way there: the game was installed with Lutris,
 //! added here by pointing at its executable in Lutris' Wine prefix, then the
 //! import brought Lutris' entry in. [`find`] pairs them so the user can merge
 //! the two (`heronite_data::carry_over`), keep only the launcher's, or keep
@@ -80,7 +80,7 @@ fn is_mine(g: &CollectionGame) -> bool {
         && !g.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("browser"))
 }
 
-/// The game of Lutris or Faugus behind `g`, when it is one still installed.
+/// The game of Lutris, Bottles or Faugus behind `g`, when it is one still installed.
 fn launcher_of(g: &CollectionGame) -> Option<Launcher> {
     let m = g.meta.as_ref()?;
     (g.installed && m.launch_kind == LAUNCH_KIND).then(|| Launcher::from_source(&m.source)).flatten()

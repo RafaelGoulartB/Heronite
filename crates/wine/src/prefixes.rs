@@ -193,7 +193,7 @@ pub fn duplicate(source: &Path, name: &str, cancel: &Cancel) -> Result<PathBuf> 
 
 /// Moves a prefix to the trash (it can be restored from there). Refuses the
 /// default and shared folders, the home folder, the prefixes of the games
-/// Lutris and Faugus start, and anything that does not look like a prefix.
+/// Lutris, Bottles and Faugus start, and anything that does not look like a prefix.
 pub fn trash(data_paths: &DataPaths, home: &str, path: &Path) -> Result<()> {
     if let Some(m) = managed_by(&managed_paths(data_paths), path) {
         bail!(tr!(

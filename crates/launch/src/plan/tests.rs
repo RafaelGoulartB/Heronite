@@ -343,6 +343,27 @@ fn another_launcher_starts_its_games_and_the_session_can_follow_them() {
     assert_eq!(plan, LaunchPlan::Unavailable("Lutris was not found on this PC".into()));
 }
 
+/// Bottles names the bottle and the program, spaces and quotes included.
+#[test]
+fn bottles_gets_the_bottle_and_program_whole() {
+    let m = LocalGameMeta {
+        source: "bottles".into(),
+        launcher_args: Some(r"flatpak run --command=bottles-cli com.usebottles.bottles run -b 'My Games' -p 'Diablo'\''s Hellfire'".into()),
+        ..meta(heronite_data::launchers::LAUNCH_KIND)
+    };
+    let game = sideload("bottles_d1", "", "windows");
+    let probe = FakeProbe::new("/h").with_bin("flatpak", "/usr/bin/flatpak");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.program, "flatpak");
+    assert_eq!(
+        p.command.args,
+        ["run", "--command=bottles-cli", "com.usebottles.bottles", "run", "-b", "My Games", "-p", "Diablo's Hellfire"]
+    );
+    let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, Some(&m), &settings(json!({})), &Default::default());
+    assert_eq!(plan, LaunchPlan::Unavailable("Bottles was not found on this PC".into()));
+}
+
 fn emu_ctx(emu: UserEmulator) -> PlanContext {
     let mut c = ctx(json!({}));
     c.emulators.emulators.push(emu);

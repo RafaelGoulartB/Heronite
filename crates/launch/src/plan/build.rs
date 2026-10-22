@@ -81,7 +81,7 @@ fn build_sideload(
         };
     }
 
-    // Games another launcher (Lutris, Faugus) starts.
+    // Games another launcher (Lutris, Bottles, Faugus) starts.
     if let Some(m) = meta.filter(|m| m.launch_kind == heronite_data::launchers::LAUNCH_KIND) {
         return launcher_plan(probe, game, m);
     }

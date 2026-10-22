@@ -9,7 +9,7 @@
 //! point, a Steam library, a default Heroic folder, or hold another game. The
 //! prefix must belong to this game only: the shared prefix, the default
 //! prefixes and a prefix another game also uses are always kept. Neither may
-//! be, hold or sit inside the folder or prefix of a game Lutris or Faugus
+//! be, hold or sit inside the folder or prefix of a game Lutris, Bottles or Faugus
 //! starts (a game added here by hand often points into one): that is the
 //! other launcher's to delete.
 

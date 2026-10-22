@@ -6,7 +6,7 @@
 //!
 //! After each import it looks for the games then in the Collection twice
 //! (`heronite_import::duplicates`: added here by hand, and brought in from
-//! Lutris or Faugus), tells the Collection about the new ones
+//! Lutris, Bottles or Faugus), tells the Collection about the new ones
 //! ([`LauncherImportsEvent::Duplicates`]) and settles each as the user picks
 //! in Settings → Other launchers ([`Resolve`]).
 //!

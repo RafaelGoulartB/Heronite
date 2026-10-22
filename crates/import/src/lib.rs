@@ -1,6 +1,7 @@
 //! Games of the other Linux launchers brought into the Collection.
 //!
-//! * [`lutris`] reads Lutris' library (`pga.db`) and [`faugus`] Faugus
+//! * [`lutris`] reads Lutris' library (`pga.db`), [`bottles`] the programs
+//!   added to each bottle of Bottles (`bottle.yml`) and [`faugus`] Faugus
 //!   Launcher's (`games.json`). Their installed games become Collection
 //!   entries that ask that launcher to start them ([`collection`]), with its
 //!   play time and covers. Steam games they list are left to the Steam
@@ -13,8 +14,9 @@
 //! reads their libraries: small files, read only. [`sync`] writes the
 //! Collection; a game gone from its launcher stays, as not installed.
 //! [`duplicates`] finds the games then in the Collection twice (added here by
-//! hand, and brought in from Lutris or Faugus).
+//! hand, and brought in from Lutris, Bottles or Faugus).
 
+pub mod bottles;
 pub mod collection;
 pub mod duplicates;
 pub mod faugus;
@@ -35,7 +37,7 @@ pub struct Found {
     pub location: PathBuf,
     /// Installed through Flatpak.
     pub flatpak: bool,
-    /// Games another launcher starts (Lutris, Faugus).
+    /// Games another launcher starts (Lutris, Bottles, Faugus).
     pub games: Vec<Game>,
     /// Heroic only: what [`heroic`] copies.
     pub heroic: Option<heroic::Library>,
@@ -49,10 +51,11 @@ impl Found {
     }
 }
 
-/// An installed game of Lutris or Faugus.
+/// An installed game of Lutris, Bottles or Faugus.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Game {
-    /// The launcher's id for it (Lutris' numeric id, Faugus' `gameid`).
+    /// The launcher's id for it (Lutris' numeric id, the program's id in
+    /// Bottles, Faugus' `gameid`).
     pub id: String,
     pub title: String,
     /// Its folder, when known.
@@ -86,6 +89,7 @@ pub fn detect(home: &Path, data: &DataPaths) -> Vec<Found> {
         let found = match launcher {
             Launcher::Heroic => heroic::detect(home, data),
             Launcher::Lutris => lutris::detect(home),
+            Launcher::Bottles => bottles::detect(home),
             Launcher::Faugus => faugus::detect(home),
         };
         match found {

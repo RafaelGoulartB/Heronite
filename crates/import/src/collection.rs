@@ -1,4 +1,4 @@
-//! The Collection entries of the games Lutris and Faugus start: a sideload
+//! The Collection entries of the games Lutris, Bottles and Faugus start: a sideload
 //! entry (`sideload_apps/library.json`) and its Collection metadata
 //! (`local_library/library.json`) with the launcher's command line
 //! ([`LAUNCH_KIND`]), plus the launcher's play time when it is ahead.

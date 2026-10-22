@@ -1,8 +1,8 @@
-//! Settings → Other launchers: Heroic, Lutris and Faugus, whether each is on
+//! Settings → Other launchers: Heroic, Lutris, Bottles and Faugus, whether each is on
 //! this PC and how many games it has, and a switch to bring its games into
 //! the Collection (kept in sync while on). Turning one off keeps its games;
 //! "Remove them" takes them out. Games then in the Collection twice (added
-//! here by hand, and from Lutris or Faugus) are listed below the cards, to
+//! here by hand, and from Lutris, Bottles or Faugus) are listed below the cards, to
 //! merge, replace or keep both. The work is the service's
 //! (`services::launcher_imports`).
 
@@ -45,6 +45,9 @@ pub fn what(launcher: Launcher) -> &'static str {
             "The games you added by hand there start here, with their settings. The Epic, GOG and Amazon games it installed show as installed once you log in to the store here."
         ),
         Launcher::Lutris => tr!("Its installed games, with their covers and play time. Lutris keeps starting them, with the settings you gave them there."),
+        Launcher::Bottles => tr!(
+            "The programs you added to its bottles, with the covers of its Library. Bottles keeps starting them, in their bottle and with its settings."
+        ),
         Launcher::Faugus => tr!("Its games, with their covers and play time. Faugus keeps starting them, with the settings you gave them there."),
     }
 }
@@ -163,6 +166,7 @@ pub fn launcher_icon(launcher: Launcher) -> Icon {
     match launcher {
         Launcher::Heroic => Icon::CloudDownload,
         Launcher::Lutris => Icon::SportsEsports,
+        Launcher::Bottles => Icon::Inbox,
         Launcher::Faugus => Icon::WineBar,
     }
 }

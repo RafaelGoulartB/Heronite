@@ -1,6 +1,6 @@
 //! Carries what the user gave one Local game over to another, for a game that
 //! ended up in the Collection twice (added here by hand, then brought in from
-//! Lutris or Faugus): play time and sessions, status and its history, notes,
+//! Lutris, Bottles or Faugus): play time and sessions, status and its history, notes,
 //! the journal, the rating, the date added, the actions, favourite / hidden /
 //! recent, categories, custom fields and, when the other has none, its
 //! Collection metadata and images. Both are `sideload` entries.

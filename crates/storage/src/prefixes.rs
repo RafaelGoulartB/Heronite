@@ -1,7 +1,7 @@
 //! The Wine prefixes of this app's games (`heronite_wine::prefixes::list`).
 //! A prefix is in use while an installed game is set to it, or when it is
 //! the default or shared one (games without a prefix of their own use it).
-//! The prefixes of the games Lutris and Faugus start are theirs: always in
+//! The prefixes of the games Lutris, Bottles and Faugus start are theirs: always in
 //! use here (a game added by hand into one makes their folder show up).
 
 use std::collections::HashMap;

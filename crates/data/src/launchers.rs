@@ -1,8 +1,8 @@
-//! Games of the other Linux launchers (Heroic, Lutris, Faugus) imported into
+//! Games of the other Linux launchers (Heroic, Lutris, Bottles, Faugus) imported into
 //! the Collection (`heronite_import`), and which launchers the user turned
 //! the import on for (`local_library/launcher-imports.json`).
 //!
-//! Lutris and Faugus keep starting their games: the entries hold the command
+//! Lutris, Bottles and Faugus keep starting their games: the entries hold the command
 //! that asks them to ([`LAUNCH_KIND`]). Heroic's games added by hand are
 //! copied as this app's own and start here.
 //!
@@ -25,17 +25,19 @@ use crate::paths::DataPaths;
 pub enum Launcher {
     Heroic,
     Lutris,
+    Bottles,
     Faugus,
 }
 
 impl Launcher {
-    pub const ALL: [Launcher; 3] = [Launcher::Heroic, Launcher::Lutris, Launcher::Faugus];
+    pub const ALL: [Launcher; 4] = [Launcher::Heroic, Launcher::Lutris, Launcher::Bottles, Launcher::Faugus];
 
     /// Also the `source` of the Collection entries it brought in.
     pub fn id(self) -> &'static str {
         match self {
             Launcher::Heroic => "heroic",
             Launcher::Lutris => "lutris",
+            Launcher::Bottles => "bottles",
             Launcher::Faugus => "faugus",
         }
     }
@@ -45,6 +47,7 @@ impl Launcher {
         match self {
             Launcher::Heroic => "Heroic",
             Launcher::Lutris => "Lutris",
+            Launcher::Bottles => "Bottles",
             Launcher::Faugus => "Faugus",
         }
     }
@@ -104,7 +107,7 @@ pub struct Managed {
     pub title: String,
 }
 
-/// The folders and Wine prefixes of the games Lutris and Faugus start (the
+/// The folders and Wine prefixes of the games Lutris, Bottles and Faugus start (the
 /// Collection's entries of [`LAUNCH_KIND`]), installed or not: they are that
 /// launcher's to delete. Unreadable files give none.
 pub fn managed_paths(paths: &DataPaths) -> Vec<Managed> {

@@ -3681,6 +3681,7 @@ dependencies = [
  "heronite-data",
  "log",
  "rusqlite",
+ "serde-saphyr",
  "serde_json",
  "tempfile",
 ]
