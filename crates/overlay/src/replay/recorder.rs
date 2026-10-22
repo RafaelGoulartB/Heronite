@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -25,6 +25,10 @@ const READY_AFTER: Duration = Duration::from_secs(2);
 const MIN_RUN: Duration = Duration::from_secs(5);
 /// Starts again after it died, with these pauses; then it gives up.
 const RESTART_AFTER: [Duration; 3] = [Duration::from_secs(2), Duration::from_secs(5), Duration::from_secs(10)];
+
+/// Numbers the sockets: each recorder has its own, so one that ends late
+/// never takes the next one's away.
+static NEXT_SOCKET: AtomicU64 = AtomicU64::new(1);
 
 /// How gpu-screen-recorder is installed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,8 +75,8 @@ impl Program {
         Ok(Info::parse(&out.stdout_text()))
     }
 
-    /// A socket path both sides see (a Flatpak shares only its own folder
-    /// of the runtime directory with the host).
+    /// A new socket path both sides see (a Flatpak shares only its own
+    /// folder of the runtime directory with the host).
     pub fn socket_path(&self) -> PathBuf {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
         let dir = match self {
@@ -80,7 +84,8 @@ impl Program {
             Program::Flatpak => runtime.join("app").join(FLATPAK_ID),
         };
         let _ = std::fs::create_dir_all(&dir);
-        dir.join(format!("heronite-replay-{}.sock", std::process::id()))
+        let n = NEXT_SOCKET.fetch_add(1, Ordering::Relaxed);
+        dir.join(format!("heronite-replay-{}-{n}.sock", std::process::id()))
     }
 }
 
@@ -330,6 +335,12 @@ mod tests {
         assert!(matches!(seen.last(), Some(State::Failed(_))), "{seen:?}");
         assert!(rec.save(30).is_err());
         rec.stop();
+    }
+
+    #[test]
+    fn every_recorder_has_its_own_socket() {
+        let p = Program::Native(PathBuf::from("/bin/false"));
+        assert_ne!(p.socket_path(), p.socket_path());
     }
 
     /// Records the real screen for a few seconds and saves 3 of them:
