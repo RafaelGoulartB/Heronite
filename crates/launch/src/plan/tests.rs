@@ -360,6 +360,7 @@ fn bottles_gets_the_bottle_and_program_whole() {
         p.command.args,
         ["run", "--command=bottles-cli", "com.usebottles.bottles", "run", "-b", "My Games", "-p", "Diablo's Hellfire"]
     );
+    assert!(p.handoff.is_none(), "nothing to find the game by");
     let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, Some(&m), &settings(json!({})), &Default::default());
     assert_eq!(plan, LaunchPlan::Unavailable("Bottles was not found on this PC".into()));
 }

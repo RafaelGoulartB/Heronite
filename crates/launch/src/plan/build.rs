@@ -124,7 +124,8 @@ fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> La
     let prefix = meta.extra.get(PREFIX_KEY).and_then(serde_json::Value::as_str).filter(|p| !p.is_empty()).map(str::to_owned);
     LaunchPlan::Native(ProcessPlan {
         command: Command { program, args, env: Default::default(), cwd: folder.clone() },
-        handoff: Some(crate::plan::Handoff { prefix, folder }),
+        // Nothing to find the game by: the session ends with the command.
+        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder }),
         ..Default::default()
     })
 }

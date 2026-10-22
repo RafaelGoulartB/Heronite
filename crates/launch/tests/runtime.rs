@@ -160,11 +160,20 @@ fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     assert!(elapsed >= Duration::from_millis(600));
 
     // A game that never shows up: the session ends after the wait.
-    r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan))).unwrap();
+    r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan.clone()))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     r.spawner.finish(1, 0);
-    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
+    assert!(elapsed >= Duration::from_millis(400), "{elapsed:?}");
+
+    // The launcher failed: nothing is waited for (no made-up play time).
+    r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(2, 1);
+    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
+    assert!(elapsed < Duration::from_millis(300), "{elapsed:?}");
 }
 
 #[test]

@@ -262,7 +262,10 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             aborted = follow_the_prefix(shared, control, &mut companions, &prefix, &*services.probe, log, &status);
         }
     }
-    if let Some(handoff) = plan.handoff.as_ref().filter(|_| !aborted && !control.kill.load(Ordering::SeqCst)) {
+    // Only a launcher that took the request (exit 0) handed the game on; one
+    // that failed is a failed launch, not a game to wait for.
+    let handed_on = exit.is_some_and(|e| e.code == Some(0));
+    if let Some(handoff) = plan.handoff.as_ref().filter(|_| handed_on && !aborted && !control.kill.load(Ordering::SeqCst)) {
         if spawned.elapsed() < shared.cfg.handoff.soon {
             aborted = follow_handoff(shared, control, handoff, log);
         }
