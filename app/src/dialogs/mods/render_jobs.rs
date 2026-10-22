@@ -67,7 +67,7 @@ impl ModsDialog {
                 tinted(Tone::Warn, Icon::Warning)
                     .child(words(
                         Some(tr!("Game folder not found")),
-                        tr!("Heronite cannot find where this game is installed. You can add mods, but they are applied only once the folder is found."),
+                        tr!("Heronite cannot find where this game is installed, so it cannot tell where a mod's files go. Install or locate the game first."),
                     ))
                     .into_any_element(),
             );
@@ -91,7 +91,9 @@ impl ModsDialog {
                     .into_any_element(),
             );
         }
-        if let Some(value) = g.steam_overrides_missing.clone() {
+        out.extend(self.limit_notices(v));
+        out.extend(self.loader_notices(v, cx));
+        if let Some(value) = g.steam_overrides_missing.clone().filter(|_| !g.info.native) {
             out.push(
                 tinted(Tone::Warn, Icon::Build)
                     .child(words(

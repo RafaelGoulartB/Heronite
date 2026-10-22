@@ -20,16 +20,44 @@ fn is_whiteout(name: &str, meta: &fs::Metadata) -> bool {
     (meta.file_type().is_char_device() && meta.rdev() == 0) || name.rsplit('/').next().is_some_and(|n| n.starts_with(".wh."))
 }
 
-/// Files and bytes the game wrote; deletions are not counted.
-pub fn summary(dirs: &GameDirs) -> (u64, u64) {
-    let (mut files, mut bytes) = (0, 0);
+/// What is in the overwrite folder.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Written {
+    /// Files the game wrote.
+    pub files: u64,
+    pub bytes: u64,
+    /// Files of the game or of a mod that the game deleted.
+    pub deleted: u64,
+}
+
+impl Written {
+    pub fn is_empty(&self) -> bool {
+        self.files == 0 && self.deleted == 0
+    }
+}
+
+/// Whether `name` marks a whole folder as replaced (`.wh..wh..opq`) rather
+/// than a file as deleted.
+fn is_marker(name: &str) -> bool {
+    name.rsplit('/').next().is_some_and(|n| n.starts_with(".wh..wh."))
+}
+
+/// What the game wrote and deleted. Deleting is counted apart from writing:
+/// a folder with only deletions still has something to show.
+pub fn summary(dirs: &GameDirs) -> Written {
+    let mut out = Written::default();
     walk_files(&dirs.overwrite(), &mut |rel, meta| {
-        if !is_whiteout(rel, meta) {
-            files += 1;
-            bytes += meta.len();
+        if is_marker(rel) {
+            return;
+        }
+        if is_whiteout(rel, meta) {
+            out.deleted += 1;
+        } else {
+            out.files += 1;
+            out.bytes += meta.len();
         }
     });
-    (files, bytes)
+    out
 }
 
 /// Up to `limit` of the written files, sorted, relative to the game folder.
@@ -132,13 +160,26 @@ mod tests {
     }
 
     #[test]
-    fn whiteouts_are_not_counted() {
+    fn deletions_are_counted_apart_from_files() {
         let (t, dirs) = setup();
-        assert_eq!(summary(&dirs), (2, 12));
+        assert_eq!(summary(&dirs), Written { files: 2, bytes: 12, deleted: 1 });
         assert_eq!(list_files(&dirs, 10), ["Data/Config/game.ini", "save.txt"]);
         assert_eq!(list_files(&dirs, 1).len(), 1);
         let empty = ModsRoot::at(t.path()).game("none");
-        assert_eq!(summary(&empty), (0, 0));
+        assert_eq!(summary(&empty), Written::default());
+        assert!(summary(&empty).is_empty() && !summary(&dirs).is_empty());
+    }
+
+    #[test]
+    fn only_deletions_still_count() {
+        let t = tempfile::tempdir().unwrap();
+        let dirs = ModsRoot::at(t.path()).game("g");
+        put(dirs.overwrite().join("Data/.wh.a.esp"), "");
+        put(dirs.overwrite().join(".wh.b.txt"), "");
+        put(dirs.overwrite().join("Data/.wh..wh..opq"), "");
+        let w = summary(&dirs);
+        assert_eq!(w, Written { files: 0, bytes: 0, deleted: 2 });
+        assert!(!w.is_empty());
     }
 
     #[test]
@@ -166,7 +207,7 @@ mod tests {
         assert!(dirs.overwrite().join("Data/.wh.removed.esp").exists(), "deletions stay");
         assert!(!dirs.overwrite().join("save.txt").exists() && !dirs.overwrite().join("Data/Config").exists());
         assert_eq!(store::load(&dirs), list);
-        assert_eq!(summary(&dirs), (0, 0));
+        assert_eq!(summary(&dirs).files, 0);
         assert_eq!(into_mod(&dirs, &mut list, "Again").unwrap_err(), "The overwrite folder is empty");
         assert!(!dirs.mods_dir().join("again.partial").exists());
     }

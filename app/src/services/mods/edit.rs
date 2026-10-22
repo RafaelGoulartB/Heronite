@@ -169,7 +169,8 @@ impl ModsService {
     }
 
     pub(super) fn edit_active(&mut self, game_key: &str, on: bool, cx: &mut Context<Self>) {
-        self.edit_list(
+        let written = self.games.get(game_key).map(|g| g.overwrite).unwrap_or_default();
+        let changed = self.edit_list(
             game_key,
             false,
             |l| {
@@ -179,6 +180,12 @@ impl ModsService {
             },
             cx,
         );
+        if changed && !on && !written.is_empty() {
+            self.notice(game_key, tr!("What the game wrote while modded (settings, saves) stays in Overwrite. The game will not see it until mods are on again, unless you turn it into a mod."), false, cx);
+        }
+        if changed {
+            self.recheck(game_key, cx);
+        }
     }
 
     pub(super) fn edit_enabled(&mut self, game_key: &str, mod_id: &str, on: bool, cx: &mut Context<Self>) {
@@ -245,9 +252,38 @@ impl ModsService {
         );
     }
 
-    /// Takes the mod off the list at once; its folder and archive go in the background.
+    /// Runs `then` unless the game runs with its mods (a notice says why
+    /// not). The mount table is read off the UI thread.
+    pub(super) fn unless_mounted(
+        &mut self,
+        game_key: &str,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, &mut Context<Self>) + 'static,
+    ) {
+        let (root, game_dir, key) =
+            (self.root.clone(), self.games.get(game_key).and_then(|g| g.info.game_dir.clone()), game_key.to_string());
+        cx.spawn(async move |this, cx| {
+            let refused = cx.background_spawn(async move { refuse_while_mounted(&root, game_dir.as_deref()) }).await;
+            this.update(cx, |s, cx| match refused {
+                Ok(()) => then(s, cx),
+                Err(message) => cx.emit(ModsEvent::Notice { game_key: key, message, error: true }),
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     pub(super) fn edit_remove(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
+        let (key, id) = (game_key.to_string(), mod_id.to_string());
+        self.unless_mounted(game_key, cx, move |s, cx| s.remove_now(&key, &id, cx));
+    }
+
+    /// Takes the mod off the list at once; its folder and archive go in the background.
+    fn remove_now(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
         let Some(shared) = self.shared.get(game_key).cloned() else { return };
+        if let Some(flagged) = self.flagged.get_mut(game_key) {
+            flagged.remove(mod_id);
+        }
         // The folder is removed from a copy that still has the entry.
         let mut with_entry = shared.list();
         if !self.edit_list(game_key, true, |l| remove_entry(l, mod_id), cx) {
@@ -302,10 +338,11 @@ impl ModsService {
         let Some(shared) = self.shared.get(game_key).cloned() else { return };
         let (dirs, game_dir, key) =
             (self.root.game(game_key), self.games.get(game_key).and_then(|g| g.info.game_dir.clone()), game_key.to_string());
+        let root = self.root.clone();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_spawn(async move {
-                    refuse_while_mounted(game_dir.as_deref())?;
+                    refuse_while_mounted(&root, game_dir.as_deref())?;
                     let _io = shared.lock_io();
                     overwrite::clear(&dirs).map_err(|e| tr!("Could not empty the overwrite folder: {error}", error = e))
                 })
@@ -325,10 +362,11 @@ impl ModsService {
         let Some(shared) = self.shared.get(game_key).cloned() else { return };
         let (dirs, game_dir, key) =
             (self.root.game(game_key), self.games.get(game_key).and_then(|g| g.info.game_dir.clone()), game_key.to_string());
+        let root = self.root.clone();
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_spawn(async move {
-                    refuse_while_mounted(game_dir.as_deref())?;
+                    refuse_while_mounted(&root, game_dir.as_deref())?;
                     let _turn = loop {
                         if let Some(g) = shared.try_install() {
                             break g;
@@ -358,6 +396,12 @@ impl ModsService {
 
     /// Deletes everything the mods root keeps for the game.
     pub(super) fn forget(&mut self, game_key: &str, cx: &mut Context<Self>) {
+        let key = game_key.to_string();
+        self.unless_mounted(game_key, cx, move |s, cx| s.forget_now(&key, cx));
+    }
+
+    fn forget_now(&mut self, game_key: &str, cx: &mut Context<Self>) {
+        self.flagged.remove(game_key);
         let (root, key) = (self.root.clone(), game_key.to_string());
         let game_dir = self.games.get(game_key).and_then(|g| g.info.game_dir.clone());
         cx.spawn(async move |this, cx| {
@@ -384,9 +428,11 @@ fn remove_entry(list: &mut ModList, id: &str) -> bool {
     list.mods.len() != before
 }
 
-/// What the game wrote lives in the overlay's upper layer: not touched while it is mounted.
-fn refuse_while_mounted(game_dir: Option<&std::path::Path>) -> Result<(), String> {
-    if game_dir.is_some_and(heronite_mods::deploy::is_mounted) {
+/// While the overlay is mounted (the game runs with its mods) the mods' files
+/// are in use and what the game writes lives in the upper layer: nothing of
+/// them is deleted, replaced or emptied. Blocking (reads the mount table).
+pub(super) fn refuse_while_mounted(root: &ModsRoot, game_dir: Option<&std::path::Path>) -> Result<(), String> {
+    if game_dir.is_some_and(|d| heronite_mods::deploy::is_ours_mounted(root, d)) {
         return Err(tr!("The game is running with mods; close it first").to_string());
     }
     Ok(())
@@ -394,8 +440,8 @@ fn refuse_while_mounted(game_dir: Option<&std::path::Path>) -> Result<(), String
 
 #[cfg(test)]
 mod tests {
-    use super::{merge_installed, GameShared};
-    use heronite_mods::{store, ModEntry, ModList, ModsRoot};
+    use super::{merge_installed, refuse_while_mounted, GameShared};
+    use heronite_mods::{deploy, store, tool, ModEntry, ModList, ModsRoot};
 
     fn entry(id: &str, enabled: bool) -> ModEntry {
         ModEntry { id: id.into(), name: id.into(), enabled, ..Default::default() }
@@ -438,5 +484,27 @@ mod tests {
         shared.save(&root.game("g")).unwrap();
         assert_eq!(store::load(&root.game("g")).mods.len(), 1);
         assert!(!store::load(&root.game("g")).mods[0].enabled);
+    }
+
+    /// Needs FUSE and fuse-overlayfs (`HERONITE_FUSE_OVERLAYFS=...`); skipped without.
+    #[test]
+    fn nothing_is_deleted_while_the_game_runs_with_its_mods() {
+        let nowhere = std::path::Path::new("/nonexistent");
+        let Some(bin) = tool::find(nowhere).filter(|_| std::path::Path::new("/dev/fuse").exists() && tool::fusermount().is_some()) else {
+            return;
+        };
+        let t = tempfile::tempdir().unwrap();
+        let root = ModsRoot::at(t.path().join("mods"));
+        let dirs = root.game("g");
+        let game = t.path().join("game");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::create_dir_all(dirs.mod_dir("a")).unwrap();
+        assert!(refuse_while_mounted(&root, Some(&game)).is_ok());
+        assert!(refuse_while_mounted(&root, None).is_ok());
+        let mount = deploy::mount(&bin, &dirs, &game, &[dirs.mod_dir("a")]).unwrap();
+        let said = refuse_while_mounted(&root, Some(&game)).unwrap_err();
+        assert_eq!(said, "The game is running with mods; close it first");
+        drop(mount);
+        assert!(refuse_while_mounted(&root, Some(&game)).is_ok());
     }
 }

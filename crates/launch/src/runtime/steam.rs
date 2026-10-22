@@ -3,7 +3,7 @@
 use heronite_i18n::tr;
 use std::sync::atomic::Ordering;
 
-use super::session::{fail, finish};
+use super::session::{apply_mods, fail, finish};
 use super::state::{Control, Shared};
 use super::{LaunchEvent, LaunchRequest};
 use crate::log_writer::GameLog;
@@ -15,6 +15,11 @@ use crate::settings::GlobalSettings;
 use crate::steam::KEY_CLOSE_AFTER_GAME;
 
 pub(super) fn run_steam(shared: &Shared, log: &GameLog, req: &LaunchRequest, control: &Control, app_id: &str, uri: &str) {
+    // Mounted before Steam is asked, held until the game ends.
+    let _mods = match apply_mods(shared, log, req, control) {
+        Ok(m) => m,
+        Err(notice) => return fail(shared, log, req, notice),
+    };
     log.info(&format!("Opening {uri}"));
     shared.send(LaunchEvent::Preparing {
         app_name: req.app_name.clone(),

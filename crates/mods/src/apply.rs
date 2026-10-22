@@ -5,8 +5,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trn};
 
+use crate::bethesda_ini::{self, IniGuard};
 use crate::deploy::{self, Mount};
 use crate::games::{KnownGame, Profile};
 use crate::model::Progress;
@@ -26,14 +27,16 @@ pub struct ApplyRequest<'a> {
 }
 
 /// Mods in effect. Dropping it restores `Plugins.txt`, then unmounts.
+#[derive(Debug)]
 pub struct Applied {
     /// Variables to add to the game's environment (`WINEDLLOVERRIDES`); merge
     /// the value with the launch's own through [`merge_dll_overrides`].
     pub env: Vec<(String, String)>,
     /// One English line for the game's log.
     pub summary: String,
-    // Fields drop in this order: the plugin list goes back before the unmount.
+    // Fields drop in this order: the prefix files go back before the unmount.
     _plugins: Option<PluginsGuard>,
+    _ini: Option<IniGuard>,
     mount: Option<Mount>,
 }
 
@@ -59,13 +62,25 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
 
     let enabled: Vec<_> = list.enabled().collect();
     let mut layers: Vec<PathBuf> = Vec::new();
+    let mut missing: Vec<&str> = Vec::new();
     for m in &enabled {
         let dir = dirs.mod_dir(&m.id);
         if dir.is_dir() {
             layers.push(dir);
         } else {
-            log::warn!("mods: the folder of {} is missing ({}); leaving it out", m.id, dir.display());
+            log::warn!("mods: the folder of {} is missing ({})", m.id, dir.display());
+            missing.push(if m.name.trim().is_empty() { &m.id } else { &m.name });
         }
+    }
+    // A game whose saves expect its mods must not start without some of them.
+    if !missing.is_empty() {
+        let names = missing.join(", ");
+        return Err(failed(trn!(
+            missing.len(),
+            "{n} enabled mod is missing its files: {names}. Reinstall or remove it in Mods.",
+            "{n} enabled mods are missing their files: {names}. Reinstall or remove them in Mods.",
+            names
+        )));
     }
     if layers.is_empty() {
         return Ok(None);
@@ -78,10 +93,10 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
     let overlay = tool::ensure(req.tools_bin, progress, cancel).map_err(failed)?;
     // Before mounting: the game's own folders, not the mods'.
     let exe_dirs = crate::install::exe_dirs(req.game_dir);
-    let mount = deploy::mount(&overlay, &dirs, req.game_dir, &layers).map_err(failed)?;
 
-    let mut summary =
-        format!("Mods: {} of {} enabled, mounted over {} with fuse-overlayfs", layers.len(), list.mods.len(), mount.game_dir().display());
+    // Before mounting too: old games are ordered by the time of the game's own
+    // plugins, and once the mods are over the folder theirs would count.
+    let mut summary = String::new();
     let spec = Profile::of(&list.links, req.known).plugins;
     let mut guard = None;
     if let (Some(spec), Some(prefix)) = (spec, req.prefix) {
@@ -97,6 +112,27 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
             }
         }
     }
+    let mut ini = None;
+    if let Some(prefix) = req.prefix {
+        match bethesda_ini::ensure_loose_files(prefix, req.known) {
+            Ok(Some(g)) => {
+                summary.push_str(&format!("; {}: loose files on", g.file().file_name().unwrap_or_default().to_string_lossy()));
+                ini = Some(g);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                log::warn!("mods: loose files setting: {e}");
+                summary.push_str(&format!("; loose files setting failed: {e}"));
+            }
+        }
+    }
+    let mount = deploy::mount(&overlay, &dirs, req.game_dir, &layers).map_err(failed)?;
+    let mut summary = format!(
+        "Mods: {} of {} enabled, mounted over {} with fuse-overlayfs{summary}",
+        layers.len(),
+        list.mods.len(),
+        mount.game_dir().display()
+    );
 
     // Looked at again now, not only at install: mods installed before a DLL
     // was known as a proxy get their override too.
@@ -108,7 +144,7 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
     if !dlls.is_empty() {
         summary.push_str(&format!("; DLL overrides: {}", dlls.join(", ")));
     }
-    Ok(Some(Applied { env, summary, _plugins: guard, mount: Some(mount) }))
+    Ok(Some(Applied { env, summary, _plugins: guard, _ini: ini, mount: Some(mount) }))
 }
 
 /// `existing` (a `WINEDLLOVERRIDES` value, `a,b=n,b;c=d`) with `add` set to
@@ -192,7 +228,8 @@ mod tests {
         assert!(apply(&req, &mut |_| {}, &cancel).unwrap().is_none(), "nothing enabled");
         list.mods[0].enabled = true;
         store::save(&dirs, &list).unwrap();
-        assert!(apply(&req, &mut |_| {}, &cancel).unwrap().is_none(), "the only mod has no folder");
+        let missing = apply(&req, &mut |_| {}, &cancel).unwrap_err();
+        assert!(missing.contains("1 enabled mod is missing its files: a."), "{missing}");
     }
 
     #[test]
@@ -215,7 +252,6 @@ mod tests {
             dll_overrides: vec!["winhttp".into()],
             ..Default::default()
         });
-        list.mods.push(ModEntry { id: "gone".into(), enabled: true, ..Default::default() });
         store::save(&dirs, &list).unwrap();
         let prefix = t.path().join("prefix");
         let appdata = prefix.join("drive_c/users/steamuser/AppData/Local/Skyrim Special Edition");
@@ -226,7 +262,7 @@ mod tests {
         let req = ApplyRequest { root: &root, tools_bin: t.path(), game_key: "g", game_dir: &game, prefix: Some(&prefix), known };
         let applied = apply(&req, &mut |_| {}, &AtomicBool::new(false)).unwrap().unwrap();
         assert_eq!(applied.env, [("WINEDLLOVERRIDES".to_string(), "winhttp=n,b".to_string())]);
-        assert!(applied.summary.starts_with("Mods: 1 of 2 enabled, mounted over "), "{}", applied.summary);
+        assert!(applied.summary.starts_with("Mods: 1 of 1 enabled, mounted over "), "{}", applied.summary);
         assert!(applied.summary.contains("Plugins.txt: 1 plugins"), "{}", applied.summary);
         assert_eq!(fs::read_to_string(game.join("Data/base.txt")).unwrap(), "mod");
         assert!(game.join("Data/Mod.esp").exists() && game.join("winhttp.dll").exists());
@@ -235,5 +271,67 @@ mod tests {
         assert!(!game.join("Data/Mod.esp").exists());
         assert_eq!(fs::read_to_string(game.join("Data/base.txt")).unwrap(), "game");
         assert_eq!(fs::read_to_string(appdata.join("Plugins.txt")).unwrap(), "*Mine.esp\r\n");
+    }
+
+    #[test]
+    fn plugin_times_do_not_drift_from_launch_to_launch() {
+        if !can_mount() {
+            return;
+        }
+        let t = tempfile::tempdir().unwrap();
+        let root = ModsRoot::at(t.path().join("mods"));
+        let dirs = root.game("g");
+        let game = t.path().join("game");
+        put(game.join("Data/Oblivion.esm"), "game");
+        put(dirs.mod_dir("a").join("Data/Mod.esp"), "mod");
+        let mut list = ModList::new("g", "Oblivion");
+        list.mods.push(ModEntry { id: "a".into(), enabled: true, plugins: vec!["Mod.esp".into()], ..Default::default() });
+        store::save(&dirs, &list).unwrap();
+        let prefix = t.path().join("prefix");
+        fs::create_dir_all(prefix.join("drive_c/users/steamuser")).unwrap();
+        let req = ApplyRequest {
+            root: &root,
+            tools_bin: t.path(),
+            game_key: "g",
+            game_dir: &game,
+            prefix: Some(&prefix),
+            known: find(Some("22330"), ""),
+        };
+        let time = || dirs.mod_dir("a").join("Data/Mod.esp").metadata().unwrap().modified().unwrap();
+        drop(apply(&req, &mut |_| {}, &AtomicBool::new(false)).unwrap().unwrap());
+        let first = time();
+        drop(apply(&req, &mut |_| {}, &AtomicBool::new(false)).unwrap().unwrap());
+        assert_eq!(time(), first, "the mod's plugin is not taken for the game's");
+    }
+
+    #[test]
+    fn fallout_4_reads_loose_files_while_mounted_only() {
+        if !can_mount() {
+            return;
+        }
+        let t = tempfile::tempdir().unwrap();
+        let root = ModsRoot::at(t.path().join("mods"));
+        let dirs = root.game("g");
+        let game = t.path().join("game");
+        put(game.join("Data/Fallout4.esm"), "game");
+        put(dirs.mod_dir("a").join("Data/Textures/a.dds"), "mod");
+        let mut list = ModList::new("g", "Fallout 4");
+        list.mods.push(ModEntry { id: "a".into(), enabled: true, ..Default::default() });
+        store::save(&dirs, &list).unwrap();
+        let prefix = t.path().join("prefix");
+        let ini = prefix.join("drive_c/users/steamuser/Documents/My Games/Fallout4/Fallout4Custom.ini");
+        put(ini.clone(), "[Display]\r\niSize W=1\r\n");
+        let req = ApplyRequest {
+            root: &root,
+            tools_bin: t.path(),
+            game_key: "g",
+            game_dir: &game,
+            prefix: Some(&prefix),
+            known: find(Some("377160"), ""),
+        };
+        let applied = apply(&req, &mut |_| {}, &AtomicBool::new(false)).unwrap().unwrap();
+        assert!(fs::read_to_string(&ini).unwrap().contains("bInvalidateOlderFiles=1"));
+        drop(applied);
+        assert_eq!(fs::read_to_string(&ini).unwrap(), "[Display]\r\niSize W=1\r\n");
     }
 }

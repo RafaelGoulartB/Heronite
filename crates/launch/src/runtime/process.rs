@@ -8,7 +8,7 @@ use heronite_i18n::tr;
 
 use super::companions::Companions;
 use super::sandboxed::Sandboxed;
-use super::session::{fail, finish};
+use super::session::{add_env, apply_mods, fail, finish};
 use super::spawner::ProcessHandle;
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
@@ -162,9 +162,22 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         }
     }
     steps.done("script before launch");
+    // Last, so nothing the preparation writes into the game's folder lands in
+    // the overwrite folder. Held until this function returns.
+    let mods = match apply_mods(shared, log, req, control) {
+        Ok(m) => m,
+        Err(notice) => return fail(shared, log, req, notice),
+    };
+    if cancelled() {
+        return finish_aborted(shared, log, req);
+    }
+    steps.done("mods");
     log.info(&steps.summary());
     // MangoHud's limit moves into a file of ours so the overlay can change it.
     let mut command = plan.command.clone();
+    if let Some(m) = &mods {
+        add_env(&mut command.env, &m.env);
+    }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));

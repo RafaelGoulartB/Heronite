@@ -19,12 +19,15 @@ mod jobs;
 mod launch;
 mod links;
 mod load;
+mod loaders;
+mod probe;
 mod steam;
 mod updates;
 
 pub use launch::{startup, ModsLaunch};
+pub use probe::ModsProbe;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -34,6 +37,7 @@ use heronite_mods::conflicts::Conflicts;
 use heronite_mods::fomod::Wizard;
 use heronite_mods::games::{KnownGame, Profile};
 use heronite_mods::nexus::StoredAccount;
+use heronite_mods::overwrite::Written;
 use heronite_mods::tool::Support;
 use heronite_mods::{GameLinks, ModList, ModsRoot, Progress};
 
@@ -57,6 +61,35 @@ pub struct GameModInfo {
     /// The links in effect: the list's own, else found (known table, site search).
     pub nexus_domain: Option<String>,
     pub thunderstore: Option<String>,
+    /// The anti-cheat systems the game uses, short names (`EAC`), when known.
+    pub anticheat: Vec<String>,
+}
+
+/// A script extender or mod loader that an enabled mod brings, and whether
+/// the game starts through it (`heronite_mods::loaders`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LoaderCard {
+    pub name: &'static str,
+    /// Its executable's name (`skse64_loader.exe`).
+    pub file: String,
+    /// Where it is, relative to the game's folder.
+    pub rel: String,
+    /// The mod that brings it.
+    pub mod_name: String,
+    /// Needs arguments besides the executable (ModEngine 2).
+    pub needs_arguments: bool,
+    pub start: LoaderStart,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoaderStart {
+    /// The game starts through its own executable.
+    Off,
+    /// The game's alternative executable is the loader.
+    On,
+    /// Steam starts the game itself; `line` is what to paste in its launch
+    /// options (`None`: the loader has no one-line replacement).
+    Steam { line: Option<String> },
 }
 
 /// One game as the manager shows it.
@@ -66,8 +99,10 @@ pub struct GameMods {
     pub list: ModList,
     /// Who wins which files among the enabled mods; `None` while computing.
     pub conflicts: Option<Arc<Conflicts>>,
-    /// Files and bytes the game wrote while modded (`overwrite/`).
-    pub overwrite: (u64, u64),
+    /// What the game wrote and deleted while modded (`overwrite/`).
+    pub overwrite: Written,
+    /// Loaders of the enabled mods and whether the game starts through them.
+    pub loaders: Vec<LoaderCard>,
     /// Steam game whose enabled mods need `WINEDLLOVERRIDES` that its Steam
     /// launch options do not have yet: the value to add (`winhttp=n,b`).
     pub steam_overrides_missing: Option<String>,
@@ -174,6 +209,10 @@ pub struct ModsService {
     /// Counts runs of the conflict / Steam checks, so only the last one lands.
     checks: HashMap<String, u64>,
     links: links::Links,
+    /// Mods just installed whose files do not match the game's folders, by game.
+    flagged: HashMap<String, HashSet<String>>,
+    /// The alternative executable a game had before a loader was set, for Undo.
+    previous_exe: HashMap<String, String>,
 }
 
 impl EventEmitter<ModsEvent> for ModsService {}
@@ -223,6 +262,8 @@ impl ModsService {
             work,
             checks: HashMap::new(),
             links: links::Links::default(),
+            flagged: HashMap::new(),
+            previous_exe: HashMap::new(),
         };
         // Every event is also a change of what the views read: observers redraw.
         cx.subscribe_self(|_, _: &ModsEvent, cx| cx.notify()).detach();
@@ -240,6 +281,12 @@ impl ModsService {
     /// The game as last loaded; `None` until [`load`](Self::load) lands.
     pub fn game(&self, game_key: &str) -> Option<&GameMods> {
         self.games.get(game_key)
+    }
+
+    /// Mods of the game flagged "Check files" (installed, but their files do
+    /// not look like they belong in the game's folders).
+    pub fn misplaced(&self, game_key: &str) -> HashSet<String> {
+        self.flagged.get(game_key).cloned().unwrap_or_default()
     }
 
     /// Number of mods and of enabled mods of a game whose list is loaded
@@ -398,6 +445,12 @@ impl ModsService {
     /// Adds the missing `WINEDLLOVERRIDES` to the Steam game's launch options.
     pub fn add_steam_overrides(&mut self, game_key: &str, cx: &mut Context<Self>) {
         self.write_steam_overrides(game_key, cx);
+    }
+
+    /// Starts the game through the loader at `rel` (`on`), or back through
+    /// its own executable.
+    pub fn start_through(&mut self, game_key: &str, rel: &str, on: bool, cx: &mut Context<Self>) {
+        self.set_start_through(game_key, rel, on, cx);
     }
 
     pub fn clear_overwrite(&mut self, game_key: &str, cx: &mut Context<Self>) {

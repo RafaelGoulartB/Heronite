@@ -176,6 +176,14 @@ impl ModsDialog {
             meta = meta.child(div().min_w_0().max_w(px(150.)).truncate().child(author));
         }
         meta = meta.child(tag_pill(format::source_label(&m.source)));
+        if v.misplaced.contains(&m.id) {
+            meta = meta.child(
+                div()
+                    .id(SharedString::from(format!("mods-check-{id}")))
+                    .tooltip(crate::ui::tooltip(tr!("Its files do not match the game's folders. Check the mod's instructions.")))
+                    .child(status_pill(tr!("Check files"), theme::warning())),
+            );
+        }
         if let Some(c) = conflicts {
             meta = meta.children(self.conflict_badge(&id, c, expanded, cx));
         }

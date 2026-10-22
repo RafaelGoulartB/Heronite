@@ -77,10 +77,31 @@ Mods.
    `version.dll`, ASI loaders' `dinput8.dll`, …) get their
    `WINEDLLOVERRIDES=<dll>=n,b` added to the launch automatically. Steam games
    launch through Steam: the manager offers to add the variable to the game's
-   Steam launch options.
+   Steam launch options. A script extender or loader an enabled mod brings
+   (SKSE, F4SE, NVSE, SFSE, OBSE, ModEngine 2, SMAPI) only works when the game
+   starts through its executable: the manager says so and, for games Heronite
+   starts, sets the game's alternative executable (`targetExe`) with an Undo;
+   for Steam games it shows the launch-options line to paste. Plans of games
+   with mods are built with a probe that also sees the mods' files
+   (`services::mods::ModsProbe`), because the plan checks the executable
+   before the overlay exists.
 7. **What the game wrote.** Configs, logs and saves the game writes inside its
    folder while modded are in the *overwrite* folder (the last row of the
-   list when it is not empty): open it, turn it into a mod, or empty it.
+   list when it is not empty, deletions included): open it, turn it into a
+   mod, or empty it. Turning "Play with mods" off keeps it (a notice says the
+   game will not see it until mods are on again); "Remove all mods" deletes it
+   and says so.
+8. **Limits the manager says out loud.** Baldur's Gate 3's `.pak` mods live
+   outside the game's folder (not applicable); games with anti-cheat (Elden
+   Ring, Dark Souls III, any game the anti-cheat list knows) can ban the
+   account for online play; a Linux build ignores DLL-based loaders. A mod
+   whose files do not look like they belong in the game's folders gets a
+   "Check files" pill and a notice after the install
+   (`heronite_mods::install::looks_misplaced`). Without the game's folder
+   nothing is installed.
+9. **While the game runs** (the overlay is mounted) the mods' files are in
+   use: removing, updating, reinstalling, replacing, emptying the overwrite
+   folder and "Remove all mods" are refused with a notice.
 
 ## Storage
 
@@ -121,11 +142,27 @@ left out (`Left::Mods`: big, downloaded again).
 ## Launch hook
 
 `heronite_launch::GameMods` (set with `Launcher::set_game_mods`): on the
-session thread, before a process plan spawns or Steam is asked to start the
-game, `apply(app_name, runner)` mounts and returns the extra environment and a
-guard. The guard is dropped when the session ends (unmount, `Plugins.txt`
-restored). A failure aborts the launch with the reason ("Mods could not be
-applied: …") rather than starting the game without the mods its saves expect.
+session thread, `apply(app_name, runner)` mounts and returns the extra
+environment and a guard. A process plan applies inside `run_process`, last:
+after the prefix, the first-launch store setup and fixes and the before
+script, right before the game spawns, so whatever the preparation writes
+into the game's folder lands in the folder and not in *overwrite*. Steam
+applies before the URI is opened. The guard is dropped when the session ends
+(`Plugins.txt` and the game's `*Custom.ini` restored, then unmount). A
+failure aborts the launch with the reason ("Mods could not be applied: …")
+rather than starting the game without the mods its saves expect; so does an
+enabled mod whose folder is missing.
+
+`apply` also sets, in the prefix and with a crash-safe backup like
+`Plugins.txt` (`file_swap`): for Fallout 4 and Starfield the
+`[Archive] bInvalidateOlderFiles=1` and `sResourceDataDirsFinal=` keys of
+`Documents/My Games/<game>/<game>Custom.ini` (the games ignore loose files
+without them). Plugins and that file are prepared before the mount, so old
+Bethesda games' file times are computed from the real game folder.
+
+A game picked up again after the app restarted (`Launcher::adopt`) has no
+guard: when it ends, `GameMods::release` unmounts the overlay of ours that is
+still on its folder (`deploy::unmount_ours`).
 
 ## Service (`services::mods`)
 

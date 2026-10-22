@@ -31,21 +31,38 @@ fn cancelled() -> String {
     tr!("The installation was cancelled").to_string()
 }
 
+/// Without the game's folder the mod's files cannot be matched to its folders.
+pub(super) fn no_game_folder(game: &str) -> String {
+    tr!("Heronite can't find {game}'s folder, so it can't tell where the mod's files go. Install or locate the game first.", game = game)
+}
+
+/// What a finished install tells the job.
+struct Built {
+    entry: ModEntry,
+    /// Its files do not look like they belong in the game's folders.
+    misplaced: bool,
+}
+
 /// Unpacks `path` (a folder is used where it is), asks the installer's
 /// questions if it has any, and builds the mod. Returns the mod as it is in
 /// the list now.
-fn install_archive(env: &JobEnv, path: &Path, build: Build) -> Result<ModEntry, String> {
+fn install_archive(env: &JobEnv, path: &Path, build: Build) -> Result<Built, String> {
     let Build { mut entry, mut replace, previous } = build;
     let _turn = env.install_turn().ok_or_else(cancelled)?;
     env.stage(JobStage::Extracting);
     let dirs = env.root.game(&env.key);
     let mut list = env.shared.ensure_loaded(&env.root, &env.key, &env.game.title);
     let found = facts::resolve(&env.paths, &env.game);
+    let game_dir = found.dir.clone().ok_or_else(|| no_game_folder(&env.game.title))?;
     let known = games::find(env.game.steam_app_id.as_deref(), &env.game.title);
     let profile = Profile::of(&list.links, known);
     // The same file again is a reinstall, not a second copy.
     if replace.is_none() && !entry.id.is_empty() && list.get(&entry.id).is_some() {
         replace = Some(entry.id.clone());
+    }
+    // A mod that takes the place of another deletes the old one's files.
+    if replace.is_some() {
+        super::edit::refuse_while_mounted(&env.root, Some(&game_dir))?;
     }
     let source = if path.is_dir() { Source::Folder(path.to_path_buf()) } else { Source::Archive(path.to_path_buf()) };
     let staged = install::stage(&dirs, &source, &env.cancel)?;
@@ -71,7 +88,7 @@ fn install_archive(env: &JobEnv, path: &Path, build: Build) -> Result<ModEntry, 
     };
 
     env.stage(JobStage::Installing);
-    let ctx = InstallCtx { dirs: &dirs, game_dir: found.dir.as_deref(), profile: &profile };
+    let ctx = InstallCtx { dirs: &dirs, game_dir: Some(&game_dir), profile: &profile };
     let id = {
         // The commit writes the list it is given: keep the others' writes out,
         // and give it the latest list so a toggle made meanwhile is not lost.
@@ -82,8 +99,10 @@ fn install_archive(env: &JobEnv, path: &Path, build: Build) -> Result<ModEntry, 
     let built = list.get(&id).cloned().ok_or_else(|| tr!("The mod was not added to the list").to_string())?;
     env.shared.merge(built.clone(), replace.as_deref());
     env.shared.save(&dirs).map_err(|e| tr!("Could not save the list of mods: {error}", error = e))?;
+    let misplaced = install::looks_misplaced(&dirs.mod_dir(&id), &game_dir, &profile);
+    env.send(Msg::Checked { game_key: env.key.clone(), mod_id: id, misplaced });
     env.send(Msg::ListChanged { game_key: env.key.clone() });
-    Ok(built)
+    Ok(Built { entry: built, misplaced })
 }
 
 /// The installer's wizard: the plan is its result, or the files as they are
@@ -217,7 +236,7 @@ fn install_nexus(env: &JobEnv, req: NexusRequest) -> Result<Outcome, String> {
         ..Default::default()
     };
     let built = install_archive(env, &path, Build { entry, replace: req.replace, previous: None })?;
-    Ok(Outcome::Installed { name: built.name, updated: req.updating, dependencies: 0 })
+    Ok(Outcome::Installed { name: built.entry.name, updated: req.updating, dependencies: 0, misplaced: built.misplaced })
 }
 
 struct ThunderstoreRequest {
@@ -268,10 +287,11 @@ fn install_thunderstore(env: &JobEnv, req: ThunderstoreRequest) -> Result<Outcom
         };
         let built = install_archive(env, &path, Build { entry, replace: planned.replaces.clone(), previous: None })?;
         if !planned.is_dependency {
-            installed = Some(built.name);
+            installed = Some((built.entry.name, built.misplaced));
         }
     }
-    Ok(Outcome::Installed { name: installed.unwrap_or_else(|| readable(&req.name)), updated: req.updating, dependencies })
+    let (name, misplaced) = installed.unwrap_or_else(|| (readable(&req.name), false));
+    Ok(Outcome::Installed { name, updated: req.updating, dependencies, misplaced })
 }
 
 /// Thunderstore names use `_` for spaces.
@@ -292,7 +312,7 @@ impl ModsService {
         };
         self.start_job(game_key, name, cx, move |env| {
             let built = install_archive(env, &path, Build { entry, replace: None, previous: None })?;
-            Ok(Outcome::Installed { name: built.name, updated: false, dependencies: 0 })
+            Ok(Outcome::Installed { name: built.entry.name, updated: false, dependencies: 0, misplaced: built.misplaced })
         });
     }
 
@@ -337,6 +357,11 @@ impl ModsService {
     }
 
     pub(super) fn start_update(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
+        let (key, id) = (game_key.to_string(), mod_id.to_string());
+        self.unless_mounted(game_key, cx, move |s, cx| s.update_now(&key, &id, cx));
+    }
+
+    fn update_now(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
         let Some(entry) = self.games.get(game_key).and_then(|g| g.list.get(mod_id)).cloned() else { return };
         let Some(update) = entry.update.clone() else {
             self.notice(game_key, tr!("{name} has no newer version", name = entry.name.clone()), false, cx);
@@ -371,6 +396,11 @@ impl ModsService {
     }
 
     pub(super) fn start_reinstall(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
+        let (key, id) = (game_key.to_string(), mod_id.to_string());
+        self.unless_mounted(game_key, cx, move |s, cx| s.reinstall_now(&key, &id, cx));
+    }
+
+    fn reinstall_now(&mut self, game_key: &str, mod_id: &str, cx: &mut Context<Self>) {
         let Some(entry) = self.games.get(game_key).and_then(|g| g.list.get(mod_id)).cloned() else { return };
         let Some(archive) = entry.archive.clone() else {
             self.notice(
@@ -392,7 +422,7 @@ impl ModsService {
                 return Err(tr!("{path} is no longer there: add the mod once more", path = path.display()));
             }
             let built = install_archive(env, &path, Build { entry, replace, previous })?;
-            Ok(Outcome::Installed { name: built.name, updated: false, dependencies: 0 })
+            Ok(Outcome::Installed { name: built.entry.name, updated: false, dependencies: 0, misplaced: built.misplaced })
         });
     }
 

@@ -17,9 +17,11 @@
 //! Every function here blocks; the app calls them from worker threads.
 
 pub mod apply;
+mod bethesda_ini;
 pub mod conflicts;
 pub mod deploy;
 pub mod download;
+mod file_swap;
 pub mod fomod;
 mod fsutil;
 pub mod games;
@@ -27,6 +29,7 @@ pub mod http;
 pub mod install;
 pub mod layout;
 pub mod links;
+pub mod loaders;
 pub mod model;
 pub mod nexus;
 pub mod overwrite;

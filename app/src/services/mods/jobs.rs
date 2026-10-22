@@ -45,6 +45,8 @@ pub(super) enum Outcome {
         name: String,
         updated: bool,
         dependencies: usize,
+        /// Its files do not look like they belong in the game's folders.
+        misplaced: bool,
     },
     /// Done, with a line for a toast.
     Finished(String),
@@ -64,6 +66,12 @@ pub(super) enum Msg {
     /// A worker changed the game's list.
     ListChanged {
         game_key: String,
+    },
+    /// An installed mod was checked against the game's folders.
+    Checked {
+        game_key: String,
+        mod_id: String,
+        misplaced: bool,
     },
     Finished {
         job: u64,
@@ -130,6 +138,14 @@ impl JobEnv {
 
     pub fn notice(&self, message: String, error: bool) {
         self.send(Msg::Notice { game_key: self.key.clone(), message, error });
+    }
+
+    /// A mod cannot be laid out without the game's folder to match against.
+    pub fn require_game_dir(&self) -> Result<(), String> {
+        match super::facts::resolve(&self.paths, &self.game).dir {
+            Some(_) => Ok(()),
+            None => Err(super::install::no_game_folder(&self.game.title)),
+        }
     }
 
     pub fn cancelled(&self) -> bool {
@@ -255,6 +271,14 @@ impl ModsService {
                 }
             }
             Msg::ListChanged { game_key } => self.refresh_from_shared(&game_key, cx),
+            Msg::Checked { game_key, mod_id, misplaced } => {
+                let flagged = self.flagged.entry(game_key).or_default();
+                if misplaced {
+                    flagged.insert(mod_id);
+                } else {
+                    flagged.remove(&mod_id);
+                }
+            }
             Msg::Notice { game_key, message, error } => cx.emit(ModsEvent::Notice { game_key, message, error }),
             Msg::Finished { job, outcome } => self.finish_job(job, outcome, cx),
         }
@@ -273,13 +297,17 @@ impl ModsService {
         let title = self.game_title(&game_key);
         let job = &mut self.jobs[at];
         let notice = match outcome {
-            Outcome::Installed { name, updated, dependencies } => {
+            Outcome::Installed { name, updated, dependencies, misplaced } => {
                 job.stage = JobStage::Done;
                 job.name = name.clone();
                 job.progress = Progress::default();
                 job.dependencies = dependencies;
                 self.prune_later(id, cx);
-                Some((installed_line(&name, &title, updated, dependencies), false))
+                // The warning takes the place of the success line: a toast shows one at a time.
+                match misplaced {
+                    true => Some((misplaced_line(&name), true)),
+                    false => Some((installed_line(&name, &title, updated, dependencies), false)),
+                }
             }
             Outcome::Finished(line) => {
                 job.stage = JobStage::Done;
@@ -375,7 +403,10 @@ impl ModsService {
         });
         let thread_env = env.clone();
         let spawned = std::thread::Builder::new().name("mods-job".into()).spawn(move || {
-            let result = catch_unwind(AssertUnwindSafe(|| run(&thread_env)));
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                thread_env.require_game_dir()?;
+                run(&thread_env)
+            }));
             let outcome = match result {
                 _ if thread_env.cancelled() => Outcome::Cancelled,
                 Ok(Ok(outcome)) => outcome,
@@ -434,6 +465,14 @@ impl ModsService {
             cx.emit(ModsEvent::Fomod);
         }
     }
+}
+
+/// The mod went in, but nothing in it looks like it belongs in the game's folders.
+fn misplaced_line(name: &str) -> String {
+    tr!(
+        "{name} was installed, but its files don't match the game's folders. Check the mod's instructions; you can open its folder from the list.",
+        name = name
+    )
 }
 
 /// "SkyUI installed for Skyrim Special Edition", with the dependencies that came along.

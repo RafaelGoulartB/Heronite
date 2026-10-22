@@ -269,6 +269,31 @@ fn is_overlay_at(dir: &Path) -> bool {
     mounts().iter().any(|m| m.fstype.starts_with(FSTYPE_PREFIX) && (m.point == dir || canonical.as_deref() == Some(m.point.as_path())))
 }
 
+/// Whether a `fuse-overlayfs` of ours is mounted at `dir` (the game is
+/// running with its mods): the folder is not to be changed meanwhile.
+pub fn is_ours_mounted(root: &ModsRoot, dir: &Path) -> bool {
+    let canonical = dir.canonicalize().ok();
+    let recorded = read_records(root.path()).iter().any(|r| r == dir || canonical.as_deref() == Some(r.as_path()));
+    recorded && is_overlay_at(dir)
+}
+
+/// Unmounts the overlay of ours at `dir`, if there is one (a game picked up
+/// again after the app restarted ended: the guard that would unmount died
+/// with the earlier run). Whether the folder is free of our mount afterwards.
+pub fn unmount_ours(root: &ModsRoot, dir: &Path) -> bool {
+    if !is_ours_mounted(root, dir) {
+        return true;
+    }
+    let Some(fusermount) = tool::fusermount() else { return false };
+    let gone = unmount_dir(&fusermount, dir);
+    if gone {
+        let canonical = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+        record_remove(root.path(), &canonical);
+        record_remove(root.path(), dir);
+    }
+    gone
+}
+
 /// Every `fuse-overlayfs` mount point of the session.
 pub fn overlay_mounts() -> Vec<PathBuf> {
     mounts().into_iter().filter(|m| m.fstype.starts_with(FSTYPE_PREFIX)).map(|m| m.point).collect()
@@ -453,6 +478,25 @@ garbage";
         assert_eq!(fs::read_to_string(dirs.overwrite().join("new.txt")).unwrap(), "written");
         assert_eq!(fs::read_to_string(dirs.overwrite().join("b.txt")).unwrap(), "changed");
         assert!(read_records(root.path()).is_empty());
+    }
+
+    #[test]
+    fn a_mount_left_by_an_earlier_run_is_ours_to_unmount() {
+        let Some(bin) = overlay() else { return };
+        let t = tempfile::tempdir().unwrap();
+        let root = ModsRoot::at(t.path().join("mods"));
+        let dirs = root.game("g");
+        let game = t.path().join("game");
+        put(game.join("a.txt"), "game");
+        put(dirs.mod_dir("a").join("a.txt"), "A");
+        assert!(!is_ours_mounted(&root, &game) && unmount_ours(&root, &game), "nothing mounted: nothing to do");
+        // The app quit while the game ran: the guard is gone, the mount stays.
+        std::mem::forget(mount(&bin, &dirs, &game, &[dirs.mod_dir("a")]).unwrap());
+        assert!(is_ours_mounted(&root, &game));
+        assert!(unmount_ours(&root, &game));
+        assert!(!is_mounted(&game) && !is_ours_mounted(&root, &game));
+        assert!(read_records(root.path()).is_empty());
+        assert_eq!(fs::read_to_string(game.join("a.txt")).unwrap(), "game");
     }
 
     #[test]

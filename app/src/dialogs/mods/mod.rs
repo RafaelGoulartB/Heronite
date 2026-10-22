@@ -17,6 +17,7 @@ mod render_game;
 mod render_jobs;
 mod render_list;
 mod render_menu;
+mod render_notes;
 mod render_plugins;
 mod render_row;
 
@@ -88,6 +89,8 @@ pub(super) struct View {
     pub account: Option<StoredAccount>,
     pub support_problem: Option<String>,
     pub handlers: HandlerState,
+    /// Mods whose files do not look like they belong in the game's folders.
+    pub misplaced: HashSet<String>,
 }
 
 impl View {
@@ -217,13 +220,21 @@ impl ModsDialog {
         let account = svc.account().cloned();
         let handlers = svc.handlers();
         match svc.game(&self.key) {
-            Some(g) => Some(View { g: g.clone(), jobs: svc.jobs(Some(&self.key)).cloned().collect(), account, support_problem, handlers }),
+            Some(g) => Some(View {
+                g: g.clone(),
+                jobs: svc.jobs(Some(&self.key)).cloned().collect(),
+                account,
+                support_problem,
+                handlers,
+                misplaced: svc.misplaced(&self.key),
+            }),
             None => self.fixture.as_ref().map(|f| View {
                 g: f.game.clone(),
                 jobs: f.jobs.clone(),
                 account: account.or_else(|| f.account.clone()),
                 support_problem: support_problem.or_else(|| f.support_problem.clone()),
                 handlers,
+                misplaced: f.misplaced.clone(),
             }),
         }
     }

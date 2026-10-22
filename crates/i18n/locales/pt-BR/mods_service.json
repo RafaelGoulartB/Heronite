@@ -77,5 +77,9 @@
   "{name} updated for {game}": "{name} atualizado para {game}",
   "{n} mod has a newer version": "{n} mod tem uma versão mais nova",
   "{n} mods have a newer version": "{n} mods têm uma versão mais nova",
-  "{path} is no longer there: add the mod once more": "{path} não está mais lá: adicione o mod outra vez"
+  "{path} is no longer there: add the mod once more": "{path} não está mais lá: adicione o mod outra vez",
+  "Could not change the game's executable: {error}": "Não foi possível mudar o executável do jogo: {error}",
+  "Heronite can't find {game}'s folder, so it can't tell where the mod's files go. Install or locate the game first.": "O Heronite não encontra a pasta de {game}, então não sabe onde ficam os arquivos do mod. Instale ou localize o jogo primeiro.",
+  "What the game wrote while modded (settings, saves) stays in Overwrite. The game will not see it until mods are on again, unless you turn it into a mod.": "O que o jogo gravou com mods (configurações, saves) fica em Overwrite. O jogo só volta a ver isso quando os mods estiverem ligados, a menos que você transforme em mod.",
+  "{name} was installed, but its files don't match the game's folders. Check the mod's instructions; you can open its folder from the list.": "{name} foi instalado, mas os arquivos não combinam com as pastas do jogo. Veja as instruções do mod; dá para abrir a pasta dele pela lista."
 }
