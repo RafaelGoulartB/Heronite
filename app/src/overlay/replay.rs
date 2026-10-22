@@ -38,14 +38,13 @@ impl OverlayService {
         let at = Utc::now() - chrono::Duration::from_std(open_for.unwrap_or_default()).unwrap_or_default();
         self.close_panel(cx);
         let extra = open_for.unwrap_or(Duration::ZERO);
-        let seconds = replay.read(cx).prefs().options.seconds;
         let saving = replay.update(cx, |r, cx| r.save(&game.game.app_name, extra, cx));
         let key = game.info.as_ref().map(|i| journal::collection_key(&i.runner, &game.game.app_name));
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let saved = saving.await;
-            let path = match saved {
-                Ok(p) => p,
+            let (path, seconds) = match saved {
+                Ok(s) => (s.path, s.seconds),
                 Err(why) => {
                     let notice = Notice::text(Icon::Videocam, tr!("Replay not saved"), true).sub(why);
                     this.update(cx, |this, cx| this.notify(notice, cx)).ok();

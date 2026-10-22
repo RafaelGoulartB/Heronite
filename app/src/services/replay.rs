@@ -28,6 +28,7 @@ use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
 use heronite_media::capture::{replay_folder, unique_capture_path, ActiveGame};
 use heronite_media::list::resolve_path;
+use heronite_overlay::replay::plan::buffer_seconds;
 use heronite_overlay::replay::{self as backend, Encoding, Info, Plan, Program, Recorder, State};
 
 use crate::runtime::GameRuntime;
@@ -83,6 +84,14 @@ pub fn detect() -> Detected {
             Detected { program: Some(p), info }
         }
     }
+}
+
+/// A saved replay.
+#[derive(Clone, Debug)]
+pub struct Saved {
+    pub path: PathBuf,
+    /// Seconds it holds once the panel's time is cut off.
+    pub seconds: u32,
 }
 
 /// The running recorder and what it records.
@@ -473,8 +482,8 @@ impl ReplayService {
 
     /// Saves the last seconds of the game `app_name` plus `extra` seconds
     /// (the time the panel was open, cut off later) into its `replays`
-    /// folder. Resolves to the saved file.
-    pub fn save(&mut self, app_name: &str, extra: Duration, cx: &mut Context<Self>) -> Task<Result<PathBuf, String>> {
+    /// folder.
+    pub fn save(&mut self, app_name: &str, extra: Duration, cx: &mut Context<Self>) -> Task<Result<Saved, String>> {
         let (Some(running), Some(opts)) = (&self.running, &self.target) else {
             let why = match &self.status {
                 Status::Off => tr!("Replay is off (Settings → Replay)").to_string(),
@@ -500,7 +509,10 @@ impl ReplayService {
         let recorder = running.recorder.clone();
         let root = running.root.clone();
         // Whole seconds, rounding the panel's time up so it is all cut off.
-        let seconds = opts.seconds + extra.as_secs_f64().ceil() as u32;
+        let extra = extra.as_secs_f64().ceil() as u32;
+        let seconds = opts.seconds + extra;
+        // The buffer may hold less than the panel's time asks for.
+        let kept = opts.seconds.min(buffer_seconds(opts).saturating_sub(extra));
         self.saving = true;
         cx.spawn(async move |this, cx| {
             let saved = cx
@@ -520,7 +532,7 @@ impl ReplayService {
                 Ok(path) => log::info!("replay: saved {}", path.display()),
                 Err(e) => log::warn!("replay: saving failed: {e}"),
             }
-            saved
+            saved.map(|path| Saved { path, seconds: kept })
         })
     }
 }
