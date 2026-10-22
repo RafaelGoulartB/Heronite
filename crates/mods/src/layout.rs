@@ -45,7 +45,17 @@ const PACKAGE_FILES: &[&str] = &["manifest.json", "icon.png", "readme.md", "chan
 /// Files that say nothing about where a mod goes.
 const DOC_EXTENSIONS: &[&str] = &["txt", "md", "pdf", "rtf", "html", "htm", "url", "jpg", "jpeg", "png"];
 
+/// Files that are a mod by themselves wherever they sit.
+const MOD_FILES: &[&str] = &["dll", "exe", "asi", "esp", "esm", "esl", "bsa", "ba2", "pak", "archive", "ucas", "utoc"];
+
 type Entry = (String, bool);
+
+/// Archive and download names carry a version: a digit next to `-`, `_`,
+/// `.`, ` ` or `v` (`Mod-1.2`, `SkyUI_5_2`, `Mod v3`).
+fn named_like_a_download(name: &str) -> bool {
+    let chars: Vec<char> = name.chars().collect();
+    chars.windows(2).any(|w| w[1].is_ascii_digit() && matches!(w[0], '-' | '_' | '.' | ' ' | 'v' | 'V'))
+}
 
 /// The copy rules of an archive unpacked at `content`. `destination` is
 /// relative to the game folder, `source` to `content`; a folder rule copies
@@ -63,7 +73,7 @@ pub fn auto(content: &Path, profile: &Profile, game_dir: Option<&Path>, source: 
     let mut top = ctx.visible(&cur);
     while let [(name, true)] = top.as_slice() {
         let child = cur.join(name);
-        if ctx.meaningful(name) || !ctx.may_unwrap(&child) {
+        if ctx.meaningful(name) || !ctx.may_unwrap(&child) || !ctx.is_wrapper(name, &child, wrapper.is_none()) {
             break;
         }
         prefix = format!("{prefix}{name}/");
@@ -161,6 +171,22 @@ impl Ctx<'_> {
             Kind::BepInEx => BEPINEX_SPLIT.contains(&lower.as_str()) || lower == "config" || lower.starts_with("bepinexpack"),
             Kind::Generic => self.thunderstore && lower.starts_with("bepinexpack"),
         }
+    }
+
+    /// A lone folder is a wrapper when what is inside it is recognisably the
+    /// mod (a folder of the game, a loader's, mod files), or, at the top, when
+    /// it is named like a download (`No Intro Screen-12-1-0-1576850747`,
+    /// `SkyUI_5_2`). Anything else is the start of the mod's own tree: a
+    /// folder the game reads but does not ship (`data_pc` of Control) must
+    /// not be peeled down to its files.
+    fn is_wrapper(&self, name: &str, dir: &Path, top: bool) -> bool {
+        let inside = self.visible(dir);
+        let recognised = inside.iter().any(|(n, is_dir)| {
+            self.meaningful(n)
+                || (self.profile.kind == Kind::Bethesda && self.is_data_marker(n, *is_dir))
+                || (!is_dir && MOD_FILES.contains(&extension(n).as_str()))
+        });
+        recognised || (top && named_like_a_download(name))
     }
 
     /// Games whose mods are folders of their own (`Mods/<mod>`) keep a single
@@ -411,6 +437,28 @@ mod tests {
         let c = tree(&["foo.dll", "bar.txt"]);
         assert_eq!(map(&auto(c.path(), &p, None, &ModSource::File)), ["bar.txt -> Plugins/bar.txt", "foo.dll -> Plugins/foo.dll"]);
         assert!(auto(tree(&[]).path(), &p, None, &ModSource::File).is_empty());
+    }
+
+    #[test]
+    fn a_game_folder_the_game_does_not_ship_is_not_peeled() {
+        // Control's loose files go in `data_pc`, which the game folder lacks.
+        let game = tree(&["data/x.rmdp", "Control_DX12.exe"]);
+        let t = tree(&["data_pc/textures/videos/intro/startvideos.tex"]);
+        let rules = auto(t.path(), &Profile::of(&Default::default(), None), Some(game.path()), &ModSource::File);
+        assert_eq!(map(&rules), ["data_pc -> data_pc"]);
+        // The same in a download-named wrapper: the wrapper goes, the tree stays.
+        let t = tree(&["No Intro Screen-12-1-0-1576850747/data_pc/textures/videos/intro/startvideos.tex"]);
+        let rules = auto(t.path(), &Profile::of(&Default::default(), None), Some(game.path()), &ModSource::File);
+        assert_eq!(map(&rules), ["No Intro Screen-12-1-0-1576850747/data_pc -> data_pc"]);
+    }
+
+    #[test]
+    fn download_names() {
+        assert!(named_like_a_download("No Intro Screen-12-1-0-1576850747"));
+        assert!(named_like_a_download("SkyUI_5_2"));
+        assert!(named_like_a_download("Mod v3"));
+        assert!(!named_like_a_download("data_pc"));
+        assert!(!named_like_a_download("textures"));
     }
 
     #[test]
