@@ -57,8 +57,7 @@ impl CollectionView {
             ModsDialogEvent::OpenSettings => {
                 this.dialog = None;
                 this.dialog_sub = None;
-                // The Settings section for Mods is added with the Settings page of mods: use its `Section::Mods` here.
-                this.open_settings_section(crate::pages::settings::Section::General, window, cx);
+                this.open_settings_section(crate::pages::settings::Section::Mods, window, cx);
             }
             ModsDialogEvent::OpenInstaller => this.open_installer(window, cx),
         }));
@@ -79,7 +78,9 @@ impl CollectionView {
 
     fn on_mods_event(&mut self, ev: &ModsEvent, window: &mut Window, cx: &mut Context<Self>) {
         match ev {
-            ModsEvent::Changed { .. } => cx.notify(),
+            // The Focus panel's "Mods" row shows the selected game's counts.
+            ModsEvent::Changed { game_key } if self.selected.as_deref() == Some(game_key.as_str()) => cx.notify(),
+            ModsEvent::Changed { .. } => {}
             ModsEvent::Fomod => self.open_installer(window, cx),
             ModsEvent::PickGame => {
                 let Some(req) = mods::service(cx).read(cx).link_request().cloned() else { return };
@@ -169,7 +170,7 @@ impl CollectionView {
                 log::warn!("mod-installer: set HERONITE_DEBUG_FOMOD to a folder holding fomod/ModuleConfig.xml");
                 return true;
             };
-            match (mod_installer::debug_request(std::path::Path::new(&dir), "debug"), self.dialog_ctx()) {
+            match (mod_installer::debug_request(std::path::Path::new(&dir)), self.dialog_ctx()) {
                 (Ok(req), Some(ctx)) => {
                     // `mod-installer:3` shows the third step.
                     let steps = rest.trim_start_matches(':').parse::<usize>().unwrap_or(1).saturating_sub(1);
@@ -191,12 +192,7 @@ impl CollectionView {
                 .as_ref()
                 .map(|l| l.games.iter().filter(|g| g.installed).take(2).map(|g| g.key.clone()).collect())
                 .unwrap_or_default();
-            let req = LinkRequest {
-                id: 0,
-                link: "nxm://skyrimspecialedition/mods/3863/files/1".into(),
-                site_game: Some("Skyrim Special Edition".into()),
-                candidates,
-            };
+            let req = LinkRequest { id: 0, site_game: Some("Skyrim Special Edition".into()), candidates };
             self.open_link_picker(req, window, cx);
             return true;
         }

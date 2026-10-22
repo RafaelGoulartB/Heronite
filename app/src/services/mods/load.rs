@@ -26,7 +26,6 @@ impl ModsService {
                     let list = shared.ensure_loaded(&root, &game.key, &game.title);
                     let known = games::find(game.steam_app_id.as_deref(), &game.title);
                     let info = GameModInfo {
-                        game_key: game.key.clone(),
                         title: game.title.clone(),
                         game_dir: found.dir,
                         prefix: found.prefix,

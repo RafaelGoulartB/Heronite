@@ -7,13 +7,8 @@
 //! Views read it and call its methods; it never opens a view. What needs the
 //! user arrives as [`ModsEvent`]s, which the Collection turns into dialogs.
 //!
-//! CONTRACT between the service and the UI: the public items of this file
-//! are what the views use. Their signatures stay; bodies live in the sibling
-//! modules.
-
-// The manager and the Collection call most of this; until they do (the UI is
-// built apart from the service), the unused part is not an error.
-#![allow(dead_code)]
+//! The public items of this file are what the views use; the bodies live in
+//! the sibling modules.
 
 mod account;
 mod edit;
@@ -45,7 +40,6 @@ use heronite_mods::{GameLinks, ModList, ModsRoot, Progress};
 /// What the manager shows about one game, resolved off the UI thread.
 #[derive(Clone, Debug)]
 pub struct GameModInfo {
-    pub game_key: String,
     pub title: String,
     /// The folder the overlay mounts over; `None` = not found on this
     /// computer (mods cannot be applied, the manager says so).
@@ -115,7 +109,6 @@ pub struct Job {
 #[derive(Clone)]
 pub struct FomodRequest {
     pub job_id: u64,
-    pub game_key: String,
     pub mod_name: String,
     pub wizard: Arc<Mutex<Wizard>>,
 }
@@ -124,7 +117,6 @@ pub struct FomodRequest {
 #[derive(Clone, Debug)]
 pub struct LinkRequest {
     pub id: u64,
-    pub link: String,
     /// The game's name on the site ("Skyrim Special Edition"), if known.
     pub site_game: Option<String>,
     /// Installed games that may be it (best first); may be empty.

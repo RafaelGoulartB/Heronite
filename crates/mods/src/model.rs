@@ -101,7 +101,7 @@ pub struct ModEntry {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase", tag = "kind")]
 pub enum ModSource {
     /// Added from an archive or a folder on disk.
     #[default]

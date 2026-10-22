@@ -58,6 +58,7 @@ impl GameShared {
         locked(&self.slot).list.clone()
     }
 
+    #[cfg(test)]
     pub fn is_loaded(&self) -> bool {
         locked(&self.slot).loaded
     }

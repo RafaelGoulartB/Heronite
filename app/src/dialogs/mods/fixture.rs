@@ -34,7 +34,6 @@ pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
     let known = games::find(game.steam_app_id.as_deref(), &game.title);
     let profile = Profile::of(&list.links, known);
     let info = GameModInfo {
-        game_key: game.key.clone(),
         title: game.title.clone(),
         game_dir: (!has("nodir")).then(|| std::path::PathBuf::from("/games/fixture")),
         prefix: None,

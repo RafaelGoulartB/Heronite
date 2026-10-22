@@ -16,6 +16,13 @@ impl ModsDialog {
                 "The plugins of the mods that are on, in load order. They are written to Plugins.txt when the game starts, and the file is put back when it ends."
             )),
         );
+        if v.g.info.prefix.is_none() && !v.g.info.native {
+            col = col.child(
+                div().mx(px(6.)).mb(px(6.)).text_size(px(13.)).line_height(px(18.)).text_color(theme::warning()).child(tr!(
+                    "The game's Wine prefix was not found yet, so Plugins.txt cannot be written. Play the game once from Heronite to create it."
+                )),
+            );
+        }
         let mut any = false;
         for m in v.g.list.enabled().filter(|m| !m.plugins.is_empty()) {
             any = true;

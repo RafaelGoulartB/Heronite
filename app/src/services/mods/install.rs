@@ -111,7 +111,7 @@ fn ask_installer(
     };
     let wizard = Arc::new(Mutex::new(Wizard::new(installer, state, previous)));
     env.stage(JobStage::NeedsChoices);
-    let request = FomodRequest { job_id: env.id, game_key: env.key.clone(), mod_name: entry.name.clone(), wizard: wizard.clone() };
+    let request = FomodRequest { job_id: env.id, mod_name: entry.name.clone(), wizard: wizard.clone() };
     match env.ask_fomod(request) {
         Some(Answer::Finish) => {
             let wizard = wizard.lock().unwrap_or_else(|e| e.into_inner());

@@ -117,5 +117,6 @@
   "{n} mod": "{n} mod",
   "{n} mods": "{n} mods",
   "{n} results": "{n} resultados",
-  "{total} · {on} on": "{total} · {on} ligados"
+  "{total} · {on} on": "{total} · {on} ligados",
+  "The game's Wine prefix was not found yet, so Plugins.txt cannot be written. Play the game once from Heronite to create it.": "O prefixo Wine do jogo ainda não foi encontrado, então o Plugins.txt não pode ser escrito. Jogue uma vez pelo Heronite para criá-lo."
 }

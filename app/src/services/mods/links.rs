@@ -152,13 +152,6 @@ fn resolve(paths: &DataPaths, root: &ModsRoot, targets: Vec<Target>) -> Result<(
     Ok((library, out))
 }
 
-fn link_text(target: &Target) -> String {
-    match target {
-        Target::Nexus(l) => format!("nxm://{}/mods/{}/files/{}", l.domain, l.mod_id, l.file_id),
-        Target::Thunderstore(l) => format!("ror2mm://{}/{}", l.namespace, l.name),
-    }
-}
-
 impl ModsService {
     pub(super) fn receive_link(&mut self, link: String, cx: &mut Context<Self>) {
         match read(&link) {
@@ -209,7 +202,7 @@ impl ModsService {
             return;
         }
         let id = self.next_job_id();
-        let request = LinkRequest { id, link: link_text(&target), site_game: site.names.first().cloned(), candidates: matches };
+        let request = LinkRequest { id, site_game: site.names.first().cloned(), candidates: matches };
         self.links.pending.push_back(Pending { request, target, remember, library });
         self.show_next_request(cx);
     }
