@@ -224,7 +224,7 @@ fn supervise(shared: &Shared, program: &Program, plan: &Plan) {
         clean_env(&mut cmd);
         log::info!("replay: starting the recorder on {} ({} s, {} kbit/s)", plan.screen.name, plan.buffer_seconds, plan.video_kbps);
         let out =
-            Run::new().cancel(&shared.cancel).poll(&poll).on_line(&mut on_line).grace(Duration::from_secs(5)).line_capture().run(&mut cmd);
+            Run::new().cancel(&shared.cancel).poll(&poll).on_line(&mut on_line).grace(Duration::from_secs(5)).no_capture().run(&mut cmd);
         if shared.cancel.is_requested() {
             break;
         }
