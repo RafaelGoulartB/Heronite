@@ -35,11 +35,13 @@ impl OverlayService {
     }
 
     /// Saves the replay of the running game and marks it in its journal.
+    /// Nothing happens (no notice either) when the replay does not record:
+    /// off in Settings, for this game or until it ends, or no game.
     pub fn save_replay(&mut self, cx: &mut Context<Self>) {
-        let Some(game) = self.current() else {
-            self.notify(Notice::text(Icon::Videocam, tr!("No game to save a replay of"), true), cx);
+        if !Self::replay_panel(cx).is_some_and(|r| r.on) {
             return;
-        };
+        }
+        let Some(game) = self.current() else { return };
         let Some(replay) = crate::services::replay::get(cx) else { return };
         // The panel's time is cut off the end, and the moment is when it opened.
         let open_for = self.panel_opened.map(|t| t.elapsed() + HIDE_BEFORE_CAPTURE);
