@@ -26,6 +26,10 @@ pub trait Probe: Send + Sync {
     fn gamescope_is_old(&self, _bin: &str) -> bool {
         false
     }
+    /// bubblewrap, for games in the sandbox (see [`crate::sandbox`]).
+    fn bwrap(&self) -> Option<crate::sandbox::Bwrap> {
+        None
+    }
 }
 
 /// The real machine. Read-only.
@@ -90,6 +94,10 @@ impl Probe for SystemProbe {
             Err(_) => false,
         }
     }
+
+    fn bwrap(&self) -> Option<crate::sandbox::Bwrap> {
+        crate::sandbox::detect()
+    }
 }
 
 /// The folders the Vulkan loader reads implicit layer manifests from
@@ -131,6 +139,7 @@ pub struct FakeProbe {
     pub old_gamescope: bool,
     /// Existing files without an execute bit.
     pub not_executable: HashSet<String>,
+    pub bwrap: Option<crate::sandbox::Bwrap>,
 }
 
 impl FakeProbe {
@@ -158,6 +167,11 @@ impl FakeProbe {
     }
     pub fn with_env(mut self, k: &str, v: &str) -> Self {
         self.env.insert(k.to_string(), v.to_string());
+        self
+    }
+    /// A working bubblewrap at `/usr/bin/bwrap` of `version`.
+    pub fn with_bwrap(mut self, version: (u32, u32, u32)) -> Self {
+        self.bwrap = Some(crate::sandbox::Bwrap { path: "/usr/bin/bwrap".into(), version, error: None, overlay: true });
         self
     }
 }
@@ -195,5 +209,8 @@ impl Probe for FakeProbe {
     }
     fn gamescope_is_old(&self, _bin: &str) -> bool {
         self.old_gamescope
+    }
+    fn bwrap(&self) -> Option<crate::sandbox::Bwrap> {
+        self.bwrap.clone()
     }
 }

@@ -154,6 +154,7 @@ fn left_label(left: Left) -> &'static str {
         Left::Caches => tr!("store caches"),
         Left::Logs => tr!("logs"),
         Left::Temp => tr!("temporary files"),
+        Left::Sandbox => tr!("the sandbox's home folders"),
     }
 }
 

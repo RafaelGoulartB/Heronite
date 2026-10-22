@@ -222,6 +222,21 @@ modal (radius 26, title Rubik 22, round close button, Collection darkened by
 on_close)` = right-hand sheet inset 10px, radius 24, with fixed header/footer
 slots (build the header with `kicker`, `dialog_title`, `close_button`).
 
+**Add game** (`dialogs/add_game/`, by user decision): the cover and background previews on the left; a click on one
+opens its menu (Find art while it is empty, Search the web, Choose an image file, Type an address, which shows an
+address field under the previews until it loses focus, and Remove the image). On the right: the store note (Epic, GOG,
+Amazon; "Got it" hides it for good, `ui-state.json` `dismissedNotes`), Title with Find art inside it, Platform tabs,
+then how the game starts (Windows: the executable, with one quiet line under it: "Not installed yet?" and the links
+"Run installer first" · "Use an install script" (accent text and a small icon, no fill; tooltips say what they do);
+Linux: the script one only), the Wine / Proton card (open; closed, the version and the prefix show as pills; the
+prefix is named after the title) and a small "Run in a sandbox" switch whose tooltip (`ui::tooltip`) says what it is
+for. The footer says what is still missing and keeps "Add game" disabled until then. "Use an install script" shows the
+"Install from script" faces in place of the form (`ScriptInstallDialog::inside_add_game`: title "Add game", a back
+arrow, `ui::dialog::dialog_scrolled_with_back`; Esc goes back too, the install keeps going); the ☰ menu has no row of
+its own for scripts (the palette still opens them directly). `HERONITE_DEBUG_DIALOG=add-game:<states>` (joined with
+`+`): `windows`, `linux`, `command`, `browser`, `shared`, `wine`, `wine-open`, `art-menu`, `address`, `no-note`,
+`script`, `picker`, `art=<cover url>[,<background url>]`.
+
 **Controls** (`ui::controls`):
 - `toggle(id, on, disabled)` 40x24 switch (spring-animated knob unless
   `HERONITE_NO_ANIMATIONS`), `toggle_row(id, label, desc, on)`, legacy
@@ -245,7 +260,8 @@ their sum, Recalculate, and when expanded the sessions 3 per page to fix, delete
 the card menu has no "Edit playtime"), Launch (Play, the actions,
 the panel's launch settings), Compatibility (Wine / Proton), Performance (overlays, FPS limit, frame
 generation, image, system) and Saves (Ludusavi backups + cloud saves); a tab only goes away when the
-game has nothing for it. Descriptions are one short line saying the effect; paths and rare warnings
+game has nothing for it. Sandbox shows only for a game whose settings have the sandbox on (set when it
+was added or installed); turning it off there keeps the tab until the drawer closes. Descriptions are one short line saying the effect; paths and rare warnings
 only show when they matter. The Heroic
 panels (`dialogs/settings_panel`) build their cards with `parts::rows()` (`.child(toggle_row)`,
 `.field(input)`, `.field_help(input, notes)`, `.card()`); they assume no container, so Settings →

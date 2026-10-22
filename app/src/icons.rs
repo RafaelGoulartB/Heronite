@@ -99,6 +99,11 @@ pub enum Icon {
     Notes,
     /// "Where I left off" in the journal.
     Bookmark,
+    /// "Find art": looks up the art by itself.
+    AutoAwesome,
+    Image,
+    InfoOutlined,
+    Link,
     /// Multi-colour 32px circle buttons (rendered with `img`, not `svg`).
     PlayCircle,
     InstallCircle,
@@ -126,6 +131,10 @@ impl Icon {
             Edit => "icons/edit.svg",
             Notes => "icons/notes.svg",
             Bookmark => "icons/bookmark.svg",
+            AutoAwesome => "icons/auto-awesome.svg",
+            Image => "icons/image.svg",
+            InfoOutlined => "icons/info-outlined.svg",
+            Link => "icons/link.svg",
             ExpandMore => "icons/expand-more.svg",
             Favorite => "icons/favorite.svg",
             FavoriteBorder => "icons/favorite-border.svg",

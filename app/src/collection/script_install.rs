@@ -1,6 +1,6 @@
-//! "Install from script" glue of the Collection: opens the dialog (☰ menu,
-//! palette, debug hook) and reports the end of an install that ran while the
-//! dialog was closed. The work is in `services::script_install`.
+//! "Install from script" glue of the Collection: opens the dialog (palette,
+//! debug hook; from the ☰ menu it is a step of "Add game") and reports the
+//! end of an install that ran while the dialog was closed. The work is in `services::script_install`.
 
 use std::path::PathBuf;
 

@@ -435,7 +435,12 @@ fn run_tool_blocking(paths: &heronite_data::DataPaths, home: &str, app: &str, to
 fn run_settings_tool(paths: &heronite_data::DataPaths, settings: &GameSettings, tool: &WineTool) -> Result<String, String> {
     let ctx = PlanContext::load(paths);
     let built = build_tool_command(&ctx, &SystemProbe, settings, tool)?;
-    let c = &built.command;
+    // While the game plays in its sandbox, the tool joins it.
+    let file = match tool {
+        WineTool::RunExe(path) => Some(path.as_str()),
+        _ => None,
+    };
+    let c = &heronite_launch::sandbox::into_running(built.command.clone(), &settings.wine_prefix, file)?;
     let mut cmd = std::process::Command::new(&c.program);
     heronite_launch::wine::drop_host_certs(c, &mut cmd);
     cmd.args(&c.args)

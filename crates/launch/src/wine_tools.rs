@@ -43,6 +43,7 @@ pub fn build_tool_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameS
     if !probe.exists(&wine.settings.wine_prefix) {
         notes.push(tr!("The Wine prefix {prefix} does not exist yet; Wine creates it on first run", prefix = wine.settings.wine_prefix));
     }
+    let mut read = Vec::new();
     let command = match tool {
         WineTool::Winecfg => run_in_prefix(ctx, probe, &wine, vec!["winecfg".into()], None),
         WineTool::RunExe(exe) => {
@@ -52,11 +53,37 @@ pub fn build_tool_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameS
             if !probe.exists(exe) {
                 return Err(tr!("File not found: {exe}", exe));
             }
+            // A setup program reads the files next to it.
+            read.push(node_dirname(exe));
             run_in_prefix(ctx, probe, &wine, vec![exe.clone()], Some(node_dirname(exe)))
         }
         WineTool::Winetricks => winetricks(ctx, probe, &wine, None, &mut notes)?,
     };
+    if *tool == WineTool::Winetricks {
+        notes.extend(sandbox_downloads(&wine.settings));
+    }
+    let command = confined(ctx, probe, &wine.settings, command, None, read)?;
     Ok(ToolCommand { command, notes })
+}
+
+/// Winetricks downloads what it installs, which a sandbox without network
+/// cannot.
+fn sandbox_downloads(s: &GameSettings) -> Option<String> {
+    (s.sandbox.enabled && !s.sandbox.network)
+        .then(|| tr!("In the sandbox, Winetricks can only install what it already downloaded: allow the Internet to get the rest").into())
+}
+
+/// `cmd` in the sandbox of the game's prefix when it has one (see
+/// [`crate::sandbox`]): `folder` is the game's, `read` what else it reads.
+fn confined(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    settings: &GameSettings,
+    cmd: Command,
+    folder: Option<&str>,
+    read: Vec<String>,
+) -> Result<Command, String> {
+    crate::sandbox::wrap_in_prefix(ctx, probe, settings, cmd, crate::sandbox::Request { folder, read, env: None })
 }
 
 /// A Windows program with arguments in the game's prefix, with the game's
@@ -94,6 +121,8 @@ pub fn winetricks_verbs_command(
     let wine = prepare(ctx, probe, settings)?;
     let mut notes = wine.notes.clone();
     let command = winetricks(ctx, probe, &wine, Some(verbs), &mut notes)?;
+    notes.extend(sandbox_downloads(&wine.settings));
+    let command = confined(ctx, probe, &wine.settings, command, None, Vec::new())?;
     Ok(ToolCommand { command, notes })
 }
 
@@ -107,7 +136,7 @@ pub fn create_prefix_commands(ctx: &PlanContext, probe: &dyn Probe, settings: &G
     quiet_wine_debug(&mut env, s);
     // As a launch sets it (`setup_wrapper_env_vars`).
     env.entry("GAMEID".into()).or_insert_with(|| "umu-0".into());
-    Ok(wine.prefix_creation(&env))
+    wine.prefix_creation(&env).into_iter().map(|c| confined(ctx, probe, s, c, None, Vec::new())).collect()
 }
 
 /// `wineserver -w` of the game's prefix: returns once every program in it
@@ -115,7 +144,8 @@ pub fn create_prefix_commands(ctx: &PlanContext, probe: &dyn Probe, settings: &G
 /// with umu, whose `umu-run` only returns when its container is empty.
 pub fn wait_prefix_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings) -> Result<Option<Command>, String> {
     let wine = prepare(ctx, probe, settings)?;
-    if wine.runtime == WineRuntime::Umu {
+    // A sandbox lasts until its last program ends (the wineserver too).
+    if wine.runtime == WineRuntime::Umu || wine.settings.sandbox.enabled {
         return Ok(None);
     }
     let (prefix, version) = wine_from_proton(&wine, probe);
@@ -131,7 +161,7 @@ pub fn kill_prefix_command(ctx: &PlanContext, probe: &dyn Probe, settings: &Game
     let s = &wine.settings;
     let mut env = setup_env_vars(s, None, probe);
     env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
-    Ok(wine.shutdown_command(&env))
+    confined(ctx, probe, s, wine.shutdown_command(&env), None, Vec::new())
 }
 
 /// `runWineCommand({ commandParts, protonVerb: 'run' })` for the game's Wine
@@ -150,14 +180,26 @@ pub fn wine_command_for(
     install_path: Option<&str>,
 ) -> Result<Command, String> {
     let wine = prepare(ctx, probe, settings)?;
-    Ok(run_in_prefix_at(ctx, probe, &wine, parts, None, install_path))
+    // The program and the files it is given (`msiexec /i <file>`, `regedit <file>`):
+    // their folder, or only them when that folder is the home or holds it.
+    let home = probe.home();
+    let home = home.trim_end_matches('/');
+    let wide = |d: &str| d == "/" || d == home || home.strip_prefix(d).is_some_and(|r| r.starts_with('/'));
+    let read = parts
+        .iter()
+        .filter(|p| p.starts_with('/') && probe.exists(p))
+        .filter_map(|p| [node_dirname(p), p.clone()].into_iter().find(|d| !wide(d)))
+        .collect();
+    let cmd = run_in_prefix_at(ctx, probe, &wine, parts, None, install_path);
+    confined(ctx, probe, &wine.settings, cmd, install_path, read)
 }
 
 /// A Windows program run while the game runs (see [`crate::companions`]):
 /// the game's Wine, prefix and environment. `beside_the_game`: the game itself
 /// runs in that prefix, so the program joins it (`runinprefix`, and with umu
 /// the game's container, see `UMU_CONTAINER_NSENTER`) instead of preparing
-/// the prefix again.
+/// the prefix again. Never put in a sandbox of its own: a game in the sandbox
+/// gets it inside its sandbox ([`crate::sandbox::join`]).
 pub fn alongside_command(
     ctx: &PlanContext,
     probe: &dyn Probe,

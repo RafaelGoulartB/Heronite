@@ -126,6 +126,7 @@ fn job(root: &Path, text: &str) -> Job {
         paths: DataPaths::at(root.join("data")),
         home: root.join("home").to_string_lossy().into_owned(),
         resume: None,
+        sandbox: Default::default(),
     }
 }
 

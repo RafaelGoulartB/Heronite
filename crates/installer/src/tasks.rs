@@ -81,7 +81,7 @@ impl State<'_> {
         let mut map = game_config::load_game(&job.paths, &job.app_name, &job.home);
         map.insert("wineVersion".into(), version);
         map.insert("winePrefix".into(), json!(prefix));
-        let mut s = GameSettings::from_map(&map, &job.home);
+        let mut s = self.sandbox_settings(&GameSettings::from_map(&map, &job.home));
         s.env_options.extend(self.script_env());
         s.env_options.extend(env.iter().map(|(k, v)| (k.clone(), self.sub(v))));
         if self.win32() && s.wine_version.kind == "wine" {

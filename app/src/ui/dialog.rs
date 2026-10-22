@@ -5,14 +5,16 @@
 //! * [`drawer`]: right-hand sheet inset 10px, radius 24, with header and
 //!   footer slots (game settings).
 
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{close_button, dialog_title};
-use crate::ui::glass;
+use crate::ui::{glass, icon};
 
 pub struct DialogProps {
     pub id: SharedString,
@@ -32,7 +34,7 @@ pub fn dialog(
     footer: Option<AnyElement>,
     on_close: impl Fn(&mut Window, &mut App) + 'static,
 ) -> AnyElement {
-    build(props, None, body, footer, on_close)
+    build(props, None, body, footer, None, on_close)
 }
 
 /// [`dialog`] whose body shows a draggable scrollbar while it overflows.
@@ -46,7 +48,20 @@ pub fn dialog_scrolled(
     footer: Option<AnyElement>,
     on_close: impl Fn(&mut Window, &mut App) + 'static,
 ) -> AnyElement {
-    build(props, Some(scroll), body, footer, on_close)
+    build(props, Some(scroll), body, footer, None, on_close)
+}
+
+/// [`dialog_scrolled`] with a round back arrow before the title: a dialog
+/// showing a step of another one (`on_back` returns to it).
+pub fn dialog_scrolled_with_back(
+    props: DialogProps,
+    scroll: &ScrollHandle,
+    body: AnyElement,
+    footer: Option<AnyElement>,
+    on_back: impl Fn(&mut Window, &mut App) + 'static,
+    on_close: impl Fn(&mut Window, &mut App) + 'static,
+) -> AnyElement {
+    build(props, Some(scroll), body, footer, Some(Rc::new(on_back)), on_close)
 }
 
 fn build(
@@ -54,9 +69,10 @@ fn build(
     scroll: Option<&ScrollHandle>,
     body: AnyElement,
     footer: Option<AnyElement>,
+    on_back: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     on_close: impl Fn(&mut Window, &mut App) + 'static,
 ) -> AnyElement {
-    let on_close = std::rc::Rc::new(on_close);
+    let on_close = Rc::new(on_close);
     let close = {
         let on_close = on_close.clone();
         close_button(SharedString::from(format!("{}-close", props.id))).on_click(move |_, w, cx| on_close(w, cx))
@@ -71,7 +87,29 @@ fn build(
         .pr(px(20.))
         .pt(px(22.))
         .pb(px(14.))
-        .child(div().min_w_0().child(dialog_title(props.title.clone())))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .min_w_0()
+                .children(on_back.map(|back| {
+                    div()
+                        .id(SharedString::from(format!("{}-back", props.id)))
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .justify_center()
+                        .size(px(32.))
+                        .rounded_full()
+                        .bg(theme::white_a(0.08))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::white_a(0.14)))
+                        .on_click(move |_, w, cx| back(w, cx))
+                        .child(icon(Icon::ChevronLeft, px(18.), theme::text_primary()))
+                }))
+                .child(div().min_w_0().child(dialog_title(props.title.clone()))),
+        )
         .child(close);
     let content = div()
         .id(SharedString::from(format!("{}-content", props.id)))

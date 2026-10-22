@@ -26,6 +26,8 @@ pub enum Section {
     Gpu,
     /// The store's cloud saves.
     Saves,
+    /// What the game can reach (`heronite_launch::sandbox`).
+    Sandbox,
 }
 
 impl Section {
@@ -37,6 +39,7 @@ impl Section {
             Section::Performance => tr!("Performance"),
             Section::Gpu => tr!("GPU"),
             Section::Saves => tr!("Cloud saves"),
+            Section::Sandbox => tr!("Sandbox"),
         }
     }
 }
@@ -155,6 +158,10 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
         RunKind::None => return Vec::new(),
         RunKind::Steam | RunKind::Wine => out.extend([Section::Compatibility, Section::Performance, Section::Gpu]),
         RunKind::Native => out.extend([Section::Performance, Section::Gpu]),
+    }
+    // Steam starts its games itself: they cannot run in the sandbox.
+    if run_kind != RunKind::Steam {
+        out.push(Section::Sandbox);
     }
     if run_kind == RunKind::Wine && matches!(runner, "legendary" | "gog") && cloud_saves_tab {
         out.push(Section::Saves);
@@ -380,9 +387,9 @@ mod tests {
     #[test]
     fn sections_follow_gamessettings() {
         use Section::*;
-        assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Gpu, Saves]);
-        assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance, Gpu]);
-        assert_eq!(sections_for(RunKind::Native, "sideload", false), [Launch, Performance, Gpu]);
+        assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Gpu, Sandbox, Saves]);
+        assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance, Gpu, Sandbox]);
+        assert_eq!(sections_for(RunKind::Native, "sideload", false), [Launch, Performance, Gpu, Sandbox]);
         assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
         assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));

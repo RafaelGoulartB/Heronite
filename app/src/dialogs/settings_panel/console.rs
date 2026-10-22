@@ -31,6 +31,7 @@ use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
 mod fps;
 mod gpu;
 mod lsfg;
+mod sandbox;
 mod steam;
 mod tweaks;
 mod winetricks;
@@ -50,6 +51,8 @@ pub(super) enum Act {
     /// Input id, folder?, picker title (X clears it).
     Path(&'static str, bool, SharedString),
     Do(Run),
+    /// The sandbox switch (`None`) or one of its exceptions.
+    Sandbox(Option<heronite_launch::sandbox::Exception>),
 }
 
 pub(super) struct Item {
@@ -127,6 +130,7 @@ impl SettingsPanel {
             Section::Gpu => self.c_gpu(false),
             Section::Launch => self.c_advanced(cx),
             Section::Saves => self.c_saves(cx),
+            Section::Sandbox => self.c_sandbox(),
             Section::General => match self.global_view {
                 GlobalView::General => self.c_general(cx),
                 GlobalView::Downloads => self.c_downloads(cx),
@@ -927,6 +931,7 @@ impl PadTarget for SettingsPanel {
         match outcome {
             Outcome::Changed(id, value) => match (act(&id), value) {
                 (Act::Toggle(key, default), _) => self.toggle(key, default, cx),
+                (Act::Sandbox(e), _) => self.toggle_sandbox(e, cx),
                 (Act::GsToggle(field), _) => {
                     let now = self.gs_flag(field);
                     self.set_gamescope(field, Value::Bool(!now), cx);

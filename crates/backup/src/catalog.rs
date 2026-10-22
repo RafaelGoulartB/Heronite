@@ -62,10 +62,13 @@ pub enum Left {
     Logs,
     /// Temp files, old `.bak` copies, runtime markers.
     Temp,
+    /// The home folders games in the sandbox write to (`sandbox/`): left out
+    /// like the games' prefixes, which they belong with.
+    Sandbox,
 }
 
 impl Left {
-    pub const ALL: [Left; 5] = [Left::Tools, Left::Images, Left::Caches, Left::Logs, Left::Temp];
+    pub const ALL: [Left; 6] = [Left::Tools, Left::Images, Left::Caches, Left::Logs, Left::Temp, Left::Sandbox];
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,6 +122,9 @@ pub fn classify_data(rel: &str) -> Class {
     }
     if under(rel, "logs") {
         return Class::Out(Left::Logs);
+    }
+    if under(rel, "sandbox") {
+        return Class::Out(Left::Sandbox);
     }
     if ["images-cache", "local_library/heroes", "local_library/screenshot-thumbnails"].iter().any(|d| under(rel, d)) {
         return Class::Out(Left::Images);
@@ -242,6 +248,7 @@ mod tests {
             ("local_library/metadata-art/x/h.jpg", In(Part::Art)),
             ("tools/proton/GE/bin/wine", Out(Left::Tools)),
             ("logs/launcher/a.log", Out(Left::Logs)),
+            ("sandbox/game-g1/.local/share/save.dat", Out(Left::Sandbox)),
             ("images-cache/abc", Out(Left::Images)),
             ("local_library/heroes/1.jpg", Out(Left::Images)),
             ("local_library/screenshot-thumbnails/a", Out(Left::Images)),
