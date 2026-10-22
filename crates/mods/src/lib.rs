@@ -21,6 +21,7 @@ pub mod conflicts;
 pub mod deploy;
 pub mod download;
 pub mod fomod;
+mod fsutil;
 pub mod games;
 pub mod http;
 pub mod install;
