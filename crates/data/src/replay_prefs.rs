@@ -21,6 +21,11 @@
 //!     `none`.
 //!   - `microphone`: the default microphone on a track of its own.
 //!   - `monitor`: the connector recorded (`DP-1`); empty = the game's.
+//! - `games`: the games that have the replay on (`true`) or off (`false`)
+//!   whatever `enabled` says, by `journal::collection_key`. The options are
+//!   the same for every game.
+
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 use serde_json::{json, Value};
@@ -198,13 +203,23 @@ impl Options {
 pub struct ReplayPrefs {
     pub enabled: bool,
     pub options: Options,
+    /// Games with the replay on or off whatever `enabled` says, by
+    /// `journal::collection_key`.
+    pub games: BTreeMap<String, bool>,
 }
 
 impl ReplayPrefs {
     /// Loads the options; a missing or invalid file (or key) gives the defaults.
     pub fn load(paths: &AppPaths) -> Self {
         let value = json_store::read_value(&paths.replay_prefs()).unwrap_or(Value::Null);
-        Self { enabled: value.get("enabled").and_then(Value::as_bool).unwrap_or(false), options: Options::from_value(&value) }
+        let games = value
+            .get("games")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter_map(|(key, on)| Some((key.clone(), on.as_bool()?)))
+            .collect();
+        Self { enabled: value.get("enabled").and_then(Value::as_bool).unwrap_or(false), options: Options::from_value(&value), games }
     }
 
     /// Writes the options atomically, keeping keys this struct does not model.
@@ -215,8 +230,31 @@ impl ReplayPrefs {
             }
             doc["enabled"] = json!(self.enabled);
             self.options.write(doc);
+            doc["games"] = json!(self.games);
             Ok(())
         })
+    }
+
+    /// The game's own switch: `None` follows `enabled`.
+    pub fn game(&self, key: &str) -> Option<bool> {
+        self.games.get(key).copied()
+    }
+
+    pub fn set_game(&mut self, key: &str, on: Option<bool>) {
+        match on {
+            Some(on) => self.games.insert(key.to_string(), on),
+            None => self.games.remove(key),
+        };
+    }
+
+    /// Whether the replay runs for the game `key` (`None`: no game known).
+    pub fn enabled_for(&self, key: Option<&str>) -> bool {
+        key.and_then(|k| self.game(k)).unwrap_or(self.enabled)
+    }
+
+    /// Whether some game could record: the switch is on, or a game has it on.
+    pub fn any_enabled(&self) -> bool {
+        self.enabled || self.games.values().any(|on| *on)
     }
 }
 
@@ -245,12 +283,12 @@ mod tests {
         std::fs::write(
             paths.replay_prefs(),
             r#"{"enabled": "yes", "seconds": 45, "fps": 144, "quality": "max", "codec": "vp9", "encoder": "cpu",
-                "storage": "tape", "panelMargin": 7, "audio": "mic", "other": 1}"#,
+                "storage": "tape", "panelMargin": 7, "audio": "mic", "other": 1, "games": {"a": {}, "b": 3}}"#,
         )
         .unwrap();
         assert_eq!(ReplayPrefs::load(&paths), ReplayPrefs::default());
 
-        let p = ReplayPrefs {
+        let mut p = ReplayPrefs {
             enabled: true,
             options: Options {
                 seconds: 120,
@@ -265,10 +303,29 @@ mod tests {
                 microphone: true,
                 monitor: "DP-1".into(),
             },
+            games: BTreeMap::new(),
         };
+        p.set_game("legendary_a", Some(false));
+        p.set_game("gog_b", Some(true));
         p.save(&paths).unwrap();
         assert_eq!(ReplayPrefs::load(&paths), p);
         assert_eq!(json_store::read_value(&paths.replay_prefs()).unwrap()["other"], 1);
+    }
+
+    #[test]
+    fn a_game_can_have_it_on_or_off_on_its_own() {
+        let mut p = ReplayPrefs { enabled: true, ..Default::default() };
+        p.set_game("steam_1", Some(false));
+        assert!(!p.enabled_for(Some("steam_1")));
+        assert!(p.enabled_for(Some("other")) && p.enabled_for(None));
+
+        p.enabled = false;
+        assert!(!p.enabled_for(Some("gog_2")) && !p.any_enabled());
+        p.set_game("gog_2", Some(true));
+        assert!(p.enabled_for(Some("gog_2")) && p.any_enabled());
+
+        p.set_game("steam_1", None);
+        assert_eq!(p.game("steam_1"), None, "back to the switch");
     }
 
     #[test]

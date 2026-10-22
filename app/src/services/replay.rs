@@ -1,4 +1,5 @@
-//! The replay buffer (Settings → Replay, off by default): while a game
+//! The replay buffer (Settings → Replay, off by default; a game can have it
+//! on or off on its own in Game settings → Performance): while a game
 //! launched by the app runs, gpu-screen-recorder keeps its last seconds
 //! (`heronite_overlay::replay`), and a save moves them into the game's
 //! captures folder, under `replays/`. The in-game overlay asks for the saves
@@ -8,12 +9,12 @@
 //! The service follows the launch events (from the hub), so it works with
 //! the window closed to the tray. The recorder starts a few seconds after
 //! the game is running (it does not compete with the game's loading), ends
-//! with the last game and starts again when the options change. One recorder
-//! at a time: a new one waits for the last one to end, and a save in
-//! progress is never cut short by a restart.
+//! with the last game (or a game that has it off) and starts again when the
+//! options change. One recorder at a time: a new one waits for the last one
+//! to end, and a save in progress is never cut short by a restart.
 //!
-//! The service also owns `replay.json`: Settings changes it through
-//! [`change`], and it is written in order.
+//! The service also owns `replay.json`: Settings and the game settings change
+//! it through [`change`], and it is written in order.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -23,6 +24,7 @@ use futures::channel::mpsc::unbounded;
 use futures::future::{FutureExt, Shared};
 use futures::StreamExt;
 use gpui_kit::*;
+use heronite_data::journal::collection_key;
 use heronite_data::replay_prefs::{Audio, Codec, Options, ReplayPrefs};
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::tr;
@@ -52,10 +54,12 @@ const STALE_AFTER: Duration = Duration::from_secs(60 * 60);
 /// What the replay is doing.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Status {
-    /// Turned off in Settings.
+    /// Turned off in Settings (and for the game running, if any).
     Off,
     /// On, waiting for a game.
     Idle,
+    /// The game running has it off (Game settings → Performance).
+    OffForGame,
     /// Turned off from the overlay until the game ends.
     OffForSession,
     Starting,
@@ -89,7 +93,7 @@ pub fn detect() -> Detected {
     }
 }
 
-/// The replay as the overlay's panel shows it, when it is on.
+/// The replay as the overlay's panel shows it, when it applies to the game.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PanelState {
     /// What a save keeps.
@@ -115,12 +119,20 @@ struct Running {
     codec: Codec,
 }
 
+/// A game running.
+struct GameRun {
+    app_name: String,
+    /// `journal::collection_key`, once known: its own switch.
+    key: Option<String>,
+    pid: Option<u32>,
+}
+
 pub struct ReplayService {
     data_paths: DataPaths,
     runtime: Arc<GameRuntime>,
     prefs: ReplayPrefs,
-    /// Games running (oldest first) and their process, once known.
-    games: Vec<(String, Option<u32>)>,
+    /// Games running, oldest first: the last one decides.
+    games: Vec<GameRun>,
     running: Option<Running>,
     /// What the running (or starting) recorder records with.
     target: Option<Options>,
@@ -152,7 +164,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
     }
     // A tiny file in the app's config folder.
     let prefs = ReplayPrefs::load(&AppPaths::for_data(&data_paths));
-    let status = if prefs.enabled { Status::Idle } else { Status::Off };
+    let status = if prefs.any_enabled() { Status::Idle } else { Status::Off };
     let entity = cx.new(|_| ReplayService {
         data_paths,
         runtime,
@@ -243,9 +255,12 @@ impl ReplayService {
         cx.notify();
     }
 
-    /// The replay in the overlay's panel: `None` when it is off.
+    /// The replay in the overlay's panel: `None` when it does not apply to
+    /// the game running.
     pub fn panel_state(&self) -> Option<PanelState> {
-        (!self.games.is_empty() && self.prefs.enabled).then_some(PanelState { seconds: self.prefs.options.seconds, on: !self.session_off })
+        let key = self.current_key();
+        (!self.games.is_empty() && self.prefs.enabled_for(key))
+            .then_some(PanelState { seconds: self.prefs.options.seconds, on: !self.session_off })
     }
 
     /// The overlay turns the replay off until the last game ends, or back on.
@@ -263,15 +278,19 @@ impl ReplayService {
     pub fn on_launch_event(&mut self, ev: &LaunchEvent, cx: &mut Context<Self>) {
         match ev {
             LaunchEvent::Running { app_name, pid } => {
-                match self.games.iter_mut().find(|(a, _)| a == app_name) {
-                    Some(g) => g.1 = Some(*pid),
-                    None => self.games.push((app_name.clone(), Some(*pid))),
+                let key = self.runtime.session_info(app_name).map(|i| collection_key(&i.runner, &i.app_name));
+                match self.games.iter_mut().find(|g| &g.app_name == app_name) {
+                    Some(g) => {
+                        g.pid = Some(*pid);
+                        g.key = key.or(g.key.take());
+                    }
+                    None => self.games.push(GameRun { app_name: app_name.clone(), key, pid: Some(*pid) }),
                 }
                 // One recorder records the screen, whatever runs on it.
                 self.sync(START_AFTER, cx);
             }
             LaunchEvent::Exited { app_name, .. } | LaunchEvent::Error { app_name, .. } => {
-                self.games.retain(|(a, _)| a != app_name);
+                self.games.retain(|g| &g.app_name != app_name);
                 if self.games.is_empty() {
                     self.session_off = false;
                     // The monitors may change before the next game.
@@ -283,14 +302,19 @@ impl ReplayService {
         }
     }
 
+    /// The game that decides: the last one started.
+    fn current_key(&self) -> Option<&str> {
+        self.games.last().and_then(|g| g.key.as_deref())
+    }
+
     /// The options to record with now; `None`: no recorder should run.
     fn wanted(&self) -> Option<Options> {
-        decide(&self.prefs, !self.games.is_empty(), self.session_off).ok()
+        decide(&self.prefs, !self.games.is_empty(), self.current_key(), self.session_off).ok()
     }
 
     /// The status without a recorder.
     fn idle_status(&self) -> Status {
-        decide(&self.prefs, !self.games.is_empty(), self.session_off).err().unwrap_or(Status::Idle)
+        decide(&self.prefs, !self.games.is_empty(), self.current_key(), self.session_off).err().unwrap_or(Status::Idle)
     }
 
     fn set_status(&mut self, status: Status, cx: &mut Context<Self>) {
@@ -386,7 +410,7 @@ impl ReplayService {
         self.target = Some(opts.clone());
         self.set_status(Status::Starting, cx);
         let data_paths = self.data_paths.clone();
-        let game_pid = self.games.last().and_then(|g| g.1);
+        let game_pid = self.games.last().and_then(|g| g.pid);
         let stopping = self.stopping.clone();
         let cached = self.detected.clone();
         cx.spawn(async move |this, cx| {
@@ -482,7 +506,7 @@ impl ReplayService {
     /// The game played nothing when the recorder started: once it does,
     /// start again with its sound (the few seconds kept so far had none).
     fn wait_for_game_audio(&mut self, epoch: u64, cx: &mut Context<Self>) {
-        let Some(pid) = self.games.last().and_then(|g| g.1) else { return };
+        let Some(pid) = self.games.last().and_then(|g| g.pid) else { return };
         cx.spawn(async move |this, cx| {
             let until = Instant::now() + AUDIO_WAIT;
             while Instant::now() < until {
@@ -515,6 +539,7 @@ impl ReplayService {
         let (Some(running), Some(opts)) = (&self.running, &self.target) else {
             let why = match &self.status {
                 Status::Off => tr!("Replay is off (Settings → Replay)").to_string(),
+                Status::OffForGame => tr!("Replay is off for this game (Game settings → Performance)").to_string(),
                 Status::OffForSession => tr!("Replay is off until the game ends: turn it on in the overlay").to_string(),
                 Status::Unavailable(why) => why.clone(),
                 _ => tr!("Still starting: try again in a moment").to_string(),
@@ -566,14 +591,15 @@ impl ReplayService {
     }
 }
 
-/// What the replay does (`playing`: a game runs): record with these options,
-/// or not, and its status then.
-fn decide(prefs: &ReplayPrefs, playing: bool, session_off: bool) -> Result<Options, Status> {
+/// What the replay does with a game running (`playing`; `key`: the last one
+/// started): record with these options, or not, and its status then.
+fn decide(prefs: &ReplayPrefs, playing: bool, key: Option<&str>, session_off: bool) -> Result<Options, Status> {
     if !playing {
-        return Err(if prefs.enabled { Status::Idle } else { Status::Off });
+        return Err(if prefs.any_enabled() { Status::Idle } else { Status::Off });
     }
-    if !prefs.enabled {
-        return Err(Status::Off);
+    if !prefs.enabled_for(key) {
+        let off_here = key.and_then(|k| prefs.game(k)) == Some(false);
+        return Err(if off_here { Status::OffForGame } else { Status::Off });
     }
     if session_off {
         return Err(Status::OffForSession);
@@ -707,14 +733,23 @@ mod tests {
     use super::{clean_staging, decide, move_into, Status, STAGING};
 
     #[test]
-    fn it_records_only_while_on_and_a_game_runs() {
+    fn each_game_decides_whether_it_records() {
         let mut p = ReplayPrefs { enabled: true, ..Default::default() };
-        assert_eq!(decide(&p, false, false), Err(Status::Idle), "waiting for a game");
-        assert_eq!(decide(&p, true, false), Ok(p.options.clone()));
-        assert_eq!(decide(&p, true, true), Err(Status::OffForSession), "turned off in the overlay");
+        p.set_game("steam_off", Some(false));
+        let all = Ok(p.options.clone());
+
+        assert_eq!(decide(&p, false, None, false), Err(Status::Idle), "waiting for a game");
+        assert_eq!(decide(&p, true, Some("any"), false), all);
+        assert_eq!(decide(&p, true, None, false), all, "a game not in the library");
+        assert_eq!(decide(&p, true, Some("steam_off"), false), Err(Status::OffForGame));
+        assert_eq!(decide(&p, true, Some("any"), true), Err(Status::OffForSession), "turned off in the overlay");
+
         p.enabled = false;
-        assert_eq!(decide(&p, false, false), Err(Status::Off));
-        assert_eq!(decide(&p, true, false), Err(Status::Off));
+        assert_eq!(decide(&p, false, None, false), Err(Status::Off));
+        assert_eq!(decide(&p, true, Some("gog_on"), false), Err(Status::Off));
+        p.set_game("gog_on", Some(true));
+        assert_eq!(decide(&p, false, None, false), Err(Status::Idle), "a game has it on");
+        assert_eq!(decide(&p, true, Some("gog_on"), false), all, "with the options of every game");
     }
 
     #[test]

@@ -3,8 +3,9 @@
 //! a game runs, worked out from the screen, the frame rate and the bitrate
 //! (`heronite_overlay::replay::estimate`), and how to spare it (the encoder,
 //! the buffer on disk, the panel's margin). The options live in
-//! `replay.json` (`heronite_data::replay_prefs`), which the service writes;
-//! changes reach the running recorder at once. Guide + X is the overlay's
+//! `replay.json` (`heronite_data::replay_prefs`), are the same for every
+//! game and reach the running service at once; a game can only have it on or
+//! off on its own (Game settings → Performance). Guide + X is the overlay's
 //! (`overlay::replay_shortcut_card`).
 
 use gpui_kit::prelude::*;
@@ -290,6 +291,7 @@ fn status_text(st: &State, cx: &App) -> (String, bool) {
     match service.read(cx).status() {
         Status::Off => (tr!("Off").into(), true),
         Status::Idle => (tr!("Waiting for a game").into(), true),
+        Status::OffForGame => (tr!("Off for the game running").into(), true),
         Status::OffForSession => (tr!("Off until the game ends (overlay)").into(), true),
         Status::Starting => (tr!("Starting…").into(), true),
         Status::Recording { monitor, codec, vulkan } => {
@@ -477,6 +479,14 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         )
         .into_any_element(),
     ]);
+    let per_game = match p.games.len() {
+        0 => tr!("A game can have it on or off on its own: Game settings → Performance.").to_string(),
+        n => heronite_i18n::trn!(
+            n,
+            "{n} game has it on or off on its own (Game settings → Performance).",
+            "{n} games have it on or off on its own (Game settings → Performance)."
+        ),
+    };
     let video = video_card(d, o, cx);
     let memory = memory_card(d, o, cx);
     let sound = sound_card(d, o, cx);
@@ -521,12 +531,20 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .child(meta_text(tr!("What is on the monitor is in the replay, notifications and the overlay's notices included.")));
 
     let dim = |enabled: bool, el: Div| div().when(!enabled, |d| d.opacity(0.5)).child(el);
-    let on = p.enabled;
+    let on = p.any_enabled();
     div()
         .flex()
         .flex_col()
         .child(caption(tr!("Replay")))
-        .child(div().flex().flex_col().gap(px(12.)).child(main).child(dim(on, estimate_card(o, &d.replay))))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(12.))
+                .child(main)
+                .child(dim(on, estimate_card(o, &d.replay)))
+                .child(div().px(px(6.)).child(meta_text(per_game))),
+        )
         .child(caption(tr!("Controller")))
         .child(dim(on, overlay::replay_shortcut_card(d, cx)))
         .child(caption(tr!("Video")))
