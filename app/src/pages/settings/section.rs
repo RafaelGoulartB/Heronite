@@ -118,7 +118,7 @@ impl Section {
     pub(super) fn blurb(self) -> &'static str {
         match self {
             Section::General => tr!("Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically."),
-            Section::Appearance => tr!("Profiles, colour and reading, the artwork behind the Collection, the background of menus and pages, covers, motion and layout."),
+            Section::Appearance => tr!("Profiles, the theme and its colours, menus and panels, the picture behind the Collection, covers, text and layout."),
             Section::Advanced => tr!("Logs, folders and cache."),
             Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),

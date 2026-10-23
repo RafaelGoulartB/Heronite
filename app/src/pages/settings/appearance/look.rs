@@ -159,7 +159,7 @@ pub(super) fn colour_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage>)
     card(std::iter::once(theme_row).chain(custom_rows).chain(accent).chain([high_contrast]))
 }
 
-/// Font and density.
+/// Font, density and animations.
 pub(super) fn reading_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     card([
@@ -173,6 +173,12 @@ pub(super) fn reading_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
             tr!("Density"),
             Some(tr!("Compact brings the covers closer together, so more games fit on screen.")),
             choice("density", &density_items(), a.density, cx, |a, v| a.density = v),
+        )
+        .into_any_element(),
+        row(
+            tr!("Animations"),
+            Some(tr!("Reduced keeps the background's cross-fade and drops the rest.")),
+            choice("motion", &motion_items(), a.motion, cx, |a, v| a.motion = v),
         )
         .into_any_element(),
     ])
@@ -308,16 +314,6 @@ fn pick_picture(cx: &mut Context<SettingsPage>) {
         .ok();
     })
     .detach();
-}
-
-pub(super) fn motion_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
-    let a = d.appearance.ui;
-    card([row(
-        tr!("Animations"),
-        Some(tr!("Reduced keeps the background's cross-fade and drops the rest.")),
-        choice("motion", &motion_items(), a.motion, cx, |a, v| a.motion = v),
-    )
-    .into_any_element()])
 }
 
 /// Start view, the switch by the window's width, panel widths and the

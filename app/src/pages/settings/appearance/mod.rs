@@ -74,6 +74,9 @@ pub struct State {
     /// The "Under the cover" and background picture selects are open.
     label_open: bool,
     picture_open: bool,
+    /// The Collection background's finer sliders (blur, colour intensity,
+    /// edge shading) show.
+    more_background: bool,
     /// The user's saved looks; `None` until read (`profiles::ensure_loaded`).
     profiles: Option<Vec<Profile>>,
     profiles_task: Option<Task<()>>,
@@ -168,6 +171,7 @@ impl State {
             aspect_open: false,
             label_open: false,
             picture_open: false,
+            more_background: false,
             profiles: None,
             profiles_task: None,
             profile_name: crate::ui::fields::new_input(window, cx, "", tr!("Profile name")),
@@ -245,8 +249,13 @@ fn save_background(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 
 /// A slider row: label (with the live value) on the left, the slider on the right.
 fn slider_row(label: String, state: &Entity<SliderState>) -> AnyElement {
+    slider_row_with(label, None, state)
+}
+
+/// A [`slider_row`] with a description under the label.
+fn slider_row_with(label: String, note: Option<&str>, state: &Entity<SliderState>) -> AnyElement {
     let slider = Slider::new(state).bg(theme::accent()).text_color(theme::accent());
-    row(label, None, div().w(px(260.)).child(slider)).into_any_element()
+    row(label, note, div().w(px(260.)).child(slider)).into_any_element()
 }
 
 fn set_sliders(a: &State, values: &[(Field, f32)], window: &mut Window, cx: &mut Context<SettingsPage>) {
@@ -338,20 +347,55 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         save_background(d, cx);
     }))
     .into_any_element()];
-    rows.extend(look::picture_rows(d, cx));
-    let a = &d.appearance;
-    for (field, state) in &a.sliders {
-        let label = match field {
-            Field::CollectionOpacity => tr!("Opacity: {value}%", value = a.ui.collection_opacity.round()),
-            Field::Blur => tr!("Blur: {value} px", value = a.blur.round()),
-            // The light theme fades the art where the dark one darkens it.
-            Field::Dimming if theme::theme_is_light() => tr!("Fading: {value}%", value = a.dimming.round()),
-            Field::Dimming => tr!("Darkening: {value}%", value = a.dimming.round()),
-            Field::Saturation => tr!("Colour intensity: {value}%", value = a.saturation.round()),
-            Field::Scrim => tr!("Edge shading: {value}%", value = a.scrim.round()),
-            Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth => continue,
-        };
-        rows.push(slider_row(label, state));
+    // Off: nothing else applies, so nothing else shows.
+    if a.enabled {
+        rows.extend(look::picture_rows(d, cx));
+        let a = &d.appearance;
+        let more = a.more_background;
+        for (field, state) in &a.sliders {
+            let row = match field {
+                Field::CollectionOpacity => slider_row(tr!("Opacity: {value}%", value = a.ui.collection_opacity.round()), state),
+                // The light theme fades the art where the dark one darkens it.
+                Field::Dimming if theme::theme_is_light() => slider_row(tr!("Fading: {value}%", value = a.dimming.round()), state),
+                Field::Dimming => slider_row(tr!("Darkening: {value}%", value = a.dimming.round()), state),
+                Field::Blur | Field::Saturation | Field::Scrim if !more => continue,
+                Field::Blur => slider_row(tr!("Blur: {value} px", value = a.blur.round()), state),
+                Field::Saturation => slider_row(tr!("Colour intensity: {value}%", value = a.saturation.round()), state),
+                Field::Scrim => slider_row_with(
+                    tr!("Edge shading: {value}%", value = a.scrim.round()),
+                    Some(if theme::theme_is_light() {
+                        tr!("Fades the left column and the top and bottom edges, where the game list and the toolbars sit.")
+                    } else {
+                        tr!("Darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")
+                    }),
+                    state,
+                ),
+                Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth => continue,
+            };
+            rows.push(row);
+        }
+        rows.push(
+            div()
+                .id("bg-more")
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .py(px(11.))
+                .cursor_pointer()
+                .text_size(px(13.))
+                .text_color(theme::accent())
+                .hover(|s| s.text_color(theme::accent_overlay()))
+                .on_click(cx.listener(|d, _, _, cx| {
+                    d.appearance.more_background = !d.appearance.more_background;
+                    cx.notify();
+                }))
+                .child(if more { tr!("Fewer adjustments") } else { tr!("More adjustments: blur, colour intensity, edge shading") })
+                .child(
+                    crate::ui::icon(crate::icons::Icon::ExpandMore, px(16.), theme::accent())
+                        .when(more, |i| i.with_transformation(Transformation::rotate(percentage(0.5)))),
+                )
+                .into_any_element(),
+        );
     }
     let background = card(rows);
 
@@ -441,8 +485,21 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let profiles = profiles::profiles_group(d, cx);
     let colour = look::colour_group(d, cx);
     let reading = look::reading_group(d, cx);
-    let motion = look::motion_group(d, cx);
     let layout = look::layout_group(d, f32::from(window.viewport_size().width), cx);
+    let enabled = d.appearance.enabled;
+    // A caption, then a card, then (optionally) a note and a reset button.
+    let footer = |note: SharedString, reset: Stateful<Div>| {
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(12.))
+            .mt(px(10.))
+            .child(div().flex_1().pl(px(6.)).child(meta_text(note)))
+            .child(reset)
+    };
+    // From the colours of everything, to the picture behind the Collection,
+    // to the covers, the text and the layout.
     div()
         .flex()
         .flex_col()
@@ -450,44 +507,20 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(profiles)
         .child(caption(tr!("Colour")))
         .child(colour)
-        .child(caption(tr!("Reading")))
-        .child(reading)
-        .child(caption(tr!("Collection background")))
-        .child(preview)
-        .child(div().h(px(10.)))
-        .child(background)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(px(12.))
-                .mt(px(10.))
-                .child(div().flex_1().pl(px(6.)).child(meta_text(if theme::theme_is_light() {
-                    tr!("Edge shading fades the left column and the top and bottom edges, where the game list and the toolbars sit.")
-                } else {
-                    tr!("Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")
-                })))
-                .child(reset),
-        )
-        .child(caption(tr!("Interface background")))
+        .child(caption(tr!("Menus and panels")))
         .child(interface)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(px(12.))
-                .mt(px(10.))
-                .child(div().flex_1().pl(px(6.)).child(meta_text(tr!(
-                    "Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette."
-                ))))
-                .child(reset_interface),
-        )
+        .child(footer(
+            tr!("Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.").into(),
+            reset_interface,
+        ))
+        .child(caption(tr!("Behind the Collection")))
+        .when(enabled, |d| d.child(preview).child(div().h(px(10.))))
+        .child(background)
+        .child(footer(tr!("The game's art, a screenshot or a picture of your own, and how much of it shows.").into(), reset))
         .child(caption(tr!("Covers")))
         .child(covers)
-        .child(caption(tr!("Motion")))
-        .child(motion)
+        .child(caption(tr!("Text and motion")))
+        .child(reading)
         .child(caption(tr!("Layout")))
         .child(layout)
         .into_any_element()
