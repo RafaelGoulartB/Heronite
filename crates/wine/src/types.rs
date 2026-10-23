@@ -81,13 +81,16 @@ pub struct WineConfig {
     pub custom_wine_paths: Vec<String>,
     pub show_valve_proton: bool,
     pub download_proton_to_steam: bool,
+    /// `autoUpdateLatestProton` (this app's, on unless turned off): an
+    /// installed `-latest` build updates by itself when it has a new release.
+    pub auto_update_latest: bool,
 }
 
 impl WineConfig {
     /// Reads `<data>/config.json` (`defaultSettings`), falling back to the
     /// `store/config.json` copy; missing keys get Heroic's defaults.
     pub fn load(data_paths: &DataPaths) -> Self {
-        let mut cfg = Self::default();
+        let mut cfg = Self { auto_update_latest: true, ..Self::default() };
         let from_default = json_store::read_value(&data_paths.global_config()).ok().and_then(|v| v.get("defaultSettings").cloned());
         let doc = match from_default {
             Some(v) if v.is_object() => Some(v),
@@ -102,6 +105,7 @@ impl WineConfig {
             }
             cfg.show_valve_proton = m.get("showValveProton").and_then(Value::as_bool).unwrap_or(false);
             cfg.download_proton_to_steam = m.get("downloadProtonToSteam").and_then(Value::as_bool).unwrap_or(false);
+            cfg.auto_update_latest = m.get("autoUpdateLatestProton").and_then(Value::as_bool).unwrap_or(true);
         }
         if cfg.default_steam_path.is_empty() {
             let home = dirs::home_dir().unwrap_or_default();
@@ -116,6 +120,15 @@ impl WineConfig {
     /// `config.json` (`defaultSettings`, 2-space JSON) and, when present, the
     /// copy in `store/config.json` (`settings`, electron-store format).
     pub fn set_download_proton_to_steam(data_paths: &DataPaths, value: bool) -> anyhow::Result<()> {
+        Self::set_flag(data_paths, "downloadProtonToSteam", value)
+    }
+
+    /// Writes `autoUpdateLatestProton`, like [`Self::set_download_proton_to_steam`].
+    pub fn set_auto_update_latest(data_paths: &DataPaths, value: bool) -> anyhow::Result<()> {
+        Self::set_flag(data_paths, "autoUpdateLatestProton", value)
+    }
+
+    fn set_flag(data_paths: &DataPaths, key: &str, value: bool) -> anyhow::Result<()> {
         // Heroic's config.json is `JSON.stringify(config, null, 2)`; the store
         // helper adds the path lock, a unique temp file and the fsync.
         json_store::update_value_indented(&data_paths.global_config(), json_store::INDENT_2, |doc| {
@@ -124,7 +137,7 @@ impl WineConfig {
             }
             let settings = doc.as_object_mut().unwrap().entry("defaultSettings").or_insert_with(|| Value::Object(Map::new()));
             if let Some(m) = settings.as_object_mut() {
-                m.insert("downloadProtonToSteam".into(), Value::Bool(value));
+                m.insert(key.into(), Value::Bool(value));
             }
             Ok(())
         })?;
@@ -132,7 +145,7 @@ impl WineConfig {
         if data_paths.store_config().exists() {
             json_store::update_value(&data_paths.store_config(), |doc| {
                 if let Some(m) = doc.get_mut("settings").and_then(Value::as_object_mut) {
-                    m.insert("downloadProtonToSteam".into(), Value::Bool(value));
+                    m.insert(key.into(), Value::Bool(value));
                 }
                 Ok(())
             })?;
@@ -150,6 +163,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(tmp.path());
         assert!(!WineConfig::load(&data_paths).download_proton_to_steam);
+        assert!(WineConfig::load(&data_paths).auto_update_latest, "the -latest builds update by themselves unless turned off");
         std::fs::write(
             tmp.path().join("config.json"),
             "{\n  \"defaultSettings\": {\n    \"defaultSteamPath\": \"/s/steam\",\n    \"customWinePaths\": [\"/w/bin/wine\"],\n    \"showValveProton\": true,\n    \"other\": 1\n  },\n  \"version\": \"v0\"\n}",
@@ -162,6 +176,9 @@ mod tests {
         assert_eq!(cfg.custom_wine_paths, ["/w/bin/wine"]);
         assert!(cfg.show_valve_proton && !cfg.download_proton_to_steam);
 
+        assert!(cfg.auto_update_latest);
+        WineConfig::set_auto_update_latest(&data_paths, false).unwrap();
+        assert!(!WineConfig::load(&data_paths).auto_update_latest);
         WineConfig::set_download_proton_to_steam(&data_paths, true).unwrap();
         assert!(WineConfig::load(&data_paths).download_proton_to_steam);
         let text = std::fs::read_to_string(tmp.path().join("config.json")).unwrap();

@@ -1,7 +1,12 @@
 //! What the app downloads by itself:
 //!
 //! - when this PC has no Wine or Proton to run Windows games with, the newest
-//!   GE-Proton release (a numbered one, not the `GE-Proton-latest` entry).
+//!   GE-Proton release (a numbered one, not the `GE-Proton-latest` entry);
+//! - with `autoUpdateLatestProton`, the new release of an installed `-latest`
+//!   build (`GE-Proton-latest`, `Proton-CachyOS-latest`, ...). Only the
+//!   sources that have one are checked, through [`checks`] (the release feed
+//!   first, an API call only when it changed), so this costs nothing while
+//!   nothing is published.
 
 use heronite_data::DataPaths;
 
@@ -32,6 +37,28 @@ pub fn latest_ge(data_paths: &DataPaths) -> Result<WineVersionInfo, String> {
         (None, CheckOutcome::RateLimited { .. }) => Err("GitHub asks to wait before listing the GE-Proton releases".into()),
         (None, _) => Err("No GE-Proton release to download".into()),
     }
+}
+
+/// An installed build that follows its source's newest release.
+fn installed_latest(r: &WineVersionInfo) -> bool {
+    r.version.ends_with("-latest") && r.installed()
+}
+
+/// The sources with an installed `-latest` build: the only ones the
+/// automatic update checks.
+pub fn latest_sources(releases: &[WineVersionInfo]) -> Vec<Repository> {
+    let mut repos = Vec::new();
+    for repo in releases.iter().filter(|r| installed_latest(r)).filter_map(|r| Repository::from_kind(&r.kind)) {
+        if !repos.contains(&repo) {
+            repos.push(repo);
+        }
+    }
+    repos
+}
+
+/// The installed `-latest` builds with a new release to download.
+pub fn latest_updates(releases: &[WineVersionInfo]) -> Vec<WineVersionInfo> {
+    releases.iter().filter(|r| installed_latest(r) && r.has_update() && r.downloadable()).cloned().collect()
 }
 
 #[cfg(test)]
@@ -65,5 +92,27 @@ mod tests {
         ];
         assert_eq!(newest_ge(&list).unwrap().version, "GE-Proton11-11");
         assert!(newest_ge(&[]).is_none());
+    }
+
+    #[test]
+    fn only_installed_latest_builds_are_followed() {
+        let installed = |mut r: WineVersionInfo, update: bool| {
+            r.install_dir = Some(format!("/t/{}", r.version));
+            r.is_installed = Some(true);
+            r.has_update = Some(update);
+            r
+        };
+        let mut cachy = installed(rel("Proton-CachyOS-latest", "2026-10-20"), false);
+        cachy.kind = "Proton-CachyOS".into();
+        let list = [
+            installed(rel("GE-Proton-latest", "2026-10-19"), true),
+            cachy,
+            // A numbered build never updates; a -latest one not installed is not followed.
+            installed(rel("GE-Proton11-11", "2026-10-19"), true),
+            rel("DW-Proton-latest", "2026-10-01"),
+        ];
+        assert_eq!(latest_sources(&list), [Repository::ProtonGe, Repository::ProtonCachyos]);
+        let updates: Vec<_> = latest_updates(&list).into_iter().map(|r| r.version).collect();
+        assert_eq!(updates, ["GE-Proton-latest"]);
     }
 }
