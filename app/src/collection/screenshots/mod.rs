@@ -21,7 +21,9 @@ use heronite_media::{Screenshot, ThumbnailCache};
 
 pub(super) const PREVIEW_SLOTS: usize = 4;
 pub(super) const GALLERY_PAGE: usize = 50;
-const TEXTURE_CAP: usize = 160;
+/// Thumbnails kept as textures (each about 230 KB, again in the GPU atlas): a
+/// gallery page and the strip, with room to scroll back.
+const TEXTURE_CAP: usize = 64;
 const ROW_H: f32 = 128.;
 const GRID_GAP: f32 = 12.;
 

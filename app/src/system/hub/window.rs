@@ -131,7 +131,9 @@ pub(super) fn on_window_closed(cx: &mut App, id: WindowId) {
     };
     if keep {
         log::info!("window closed, staying in the tray");
-        // The Collection, its textures and caches were just dropped.
+        // The Collection, its textures and caches were just dropped; the
+        // glass backdrop it published goes too.
+        crate::ui::glass::set_backdrop(None);
         crate::trim_heap_later();
         // Nothing left to wait for when the last game already ended.
         maybe_exit_idle(cx);
