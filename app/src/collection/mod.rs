@@ -314,7 +314,7 @@ impl CollectionView {
             blur_px: 6.,
             saturation: 0.94,
             stage_enabled: true,
-            grey_uninstalled: true,
+            grey_uninstalled: false,
             cover_aspect: 1.5,
             page: crate::pages::Page::Collection,
             pages: nav::Pages::default(),
