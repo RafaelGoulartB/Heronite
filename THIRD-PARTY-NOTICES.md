@@ -37,6 +37,8 @@ The AppImage carries these libraries in `usr/lib` because not every system has t
 
 The Rust crates Heronite depends on are listed in [`Cargo.lock`](Cargo.lock). Each one is distributed under its own license, mostly MIT and/or Apache-2.0. To list them all with their license texts, run [`cargo about`](https://github.com/EmbarkStudios/cargo-about) or [`cargo license`](https://github.com/onur/cargo-license).
 
+`vendor/gpui-pre-linux/` is a copy of the [`gpui-pre-linux`](https://crates.io/crates/gpui-pre-linux) 0.3.8 crate (GPUI's Linux platform from [Zed](https://github.com/zed-industries/zed), Copyright Zed Industries, Inc.), under the Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt), also in the folder). It is modified: `vendor/gpui-pre-linux/PATCHES.md` lists the changes.
+
 ## External tools
 
 Heronite runs these programs if they are installed. It does not include them:
