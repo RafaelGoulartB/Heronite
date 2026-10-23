@@ -42,7 +42,7 @@ pub fn best(list: &[WineInstallation]) -> Option<&WineInstallation> {
 }
 
 /// Compares names with their numbers as numbers (`GE-Proton10-3` after `GE-Proton9-27`).
-fn natural_cmp(a: &str, b: &str) -> Ordering {
+pub(crate) fn natural_cmp(a: &str, b: &str) -> Ordering {
     let (mut a, mut b) = (a.as_bytes(), b.as_bytes());
     loop {
         match (a.first(), b.first()) {
