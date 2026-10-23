@@ -99,6 +99,11 @@ impl EpicInstallDialog {
             .child(tr!("Show Wine settings"));
         let mut col = crate::ui::controls::card_box().gap(px(10.)).pb(px(14.)).child(toggle);
         if !self.wine_details {
+            // Closed, the section still says that there is no Wine and what
+            // the automatic GE-Proton is doing.
+            if self.wine_loaded && self.wine_list.is_empty() {
+                col = col.child(crate::dialogs::no_proton_note(cx));
+            }
             return Some(col);
         }
         let shared = self.shared_prefix;
@@ -133,7 +138,7 @@ impl EpicInstallDialog {
         } else {
             self.wine_list.get(self.wine_pick).map(|w| w.name.clone()).unwrap_or_else(|| {
                 if self.wine_loaded {
-                    tr!("No Wine or Proton found").into()
+                    crate::dialogs::no_wine_text(cx)
                 } else {
                     tr!("Looking for Wine and Proton...").into()
                 }
@@ -160,7 +165,7 @@ impl EpicInstallDialog {
             },
         ));
         if self.wine_loaded && self.wine_list.is_empty() {
-            col = col.child(crate::dialogs::no_proton_note());
+            col = col.child(crate::dialogs::no_proton_note(cx));
         }
         Some(col)
     }

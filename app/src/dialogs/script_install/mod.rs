@@ -281,6 +281,9 @@ impl ScriptInstallDialog {
         cx.spawn(async move |this, cx| {
             let list = cx.background_spawn(async move { heronite_wine::list_installations(&paths) }).await;
             this.update(cx, |this, cx| {
+                if list.is_empty() {
+                    crate::dialogs::auto_proton(cx, Self::load_wine_list);
+                }
                 this.wine_list = Some(list);
                 this.pick_wine();
                 cx.notify();

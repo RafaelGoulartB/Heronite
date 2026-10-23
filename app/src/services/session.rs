@@ -94,6 +94,11 @@ pub fn is_running(cx: &App, app_name: &str) -> bool {
     get(cx).is_some_and(|s| s.read(cx).running.contains(app_name))
 }
 
+/// Whether any game this app launched is running.
+pub fn any_running(cx: &App) -> bool {
+    get(cx).is_some_and(|s| !s.read(cx).running.is_empty())
+}
+
 /// The capture service, once a game was launched (the settings dialog shows
 /// its status).
 pub fn capture_of(cx: &App) -> Option<CaptureService> {

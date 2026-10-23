@@ -1,6 +1,7 @@
 //! Wine/Proton manager and compatibility layer detection (port of Heroic's
 //! `backend/wine/manager/**` and `backend/utils/compatibility_layers.ts`).
 
+pub mod auto;
 pub mod checks;
 pub mod default;
 mod detect;

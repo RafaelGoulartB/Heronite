@@ -5,6 +5,7 @@ pub mod compression;
 pub mod downloads;
 pub mod launch_blocker;
 pub mod launcher_imports;
+pub mod proton_setup;
 pub mod replay;
 pub mod script_install;
 pub mod session;

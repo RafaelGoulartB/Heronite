@@ -296,7 +296,7 @@ impl ScriptInstallDialog {
         let shown = match (&list, &self.wine) {
             (None, _) => tr!("Loading\u{2026}").to_string(),
             (Some(_), Some(w)) => display_wine_name(&w.name),
-            (Some(_), None) => tr!("No Wine or Proton found").to_string(),
+            (Some(_), None) => crate::dialogs::no_wine_text(cx),
         };
         let options = match (&list, &self.wine) {
             (Some(l), Some(w)) => wine_options(l, w),
@@ -331,7 +331,7 @@ impl ScriptInstallDialog {
             }
         }
         if list.as_ref().is_some_and(|l| l.is_empty()) {
-            col = col.child(crate::dialogs::no_proton_note());
+            col = col.child(crate::dialogs::no_proton_note(cx));
         }
         Some(col)
     }

@@ -88,7 +88,7 @@ impl EpicInstallDialog {
                     rows.push(Row::info(
                         "wine",
                         tr!("Wine version"),
-                        if self.wine_loaded { tr!("No Wine or Proton found") } else { tr!("Looking for Wine and Proton\u{2026}") },
+                        if self.wine_loaded { crate::dialogs::no_wine_text(cx) } else { tr!("Looking for Wine and Proton\u{2026}").into() },
                     ));
                 } else {
                     let names = self.wine_list.iter().map(|w| SharedString::from(w.name.clone())).collect();
