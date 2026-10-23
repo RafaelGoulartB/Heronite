@@ -82,6 +82,9 @@ pub struct State {
     profile_name: Entity<InputState>,
     /// The custom theme's editor.
     custom_editor: custom::Editor,
+    /// The picker of a solid colour of your own, and whether it shows.
+    tint_picker: Entity<crate::ui::colour_picker::ColourPicker>,
+    tint_picker_open: bool,
 }
 
 const ASPECTS: [(CoverAspect, &str); 6] = [
@@ -170,6 +173,8 @@ impl State {
             profiles_task: None,
             profile_name: crate::ui::fields::new_input(window, cx, "", tr!("Profile name")),
             custom_editor: custom::Editor::new(&ui.custom, window, cx),
+            tint_picker: scheme::new_tint_picker(window, cx),
+            tint_picker_open: false,
         };
         this.preview_task = None;
         this
@@ -444,6 +449,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         a.ui.interface_blur = defaults.interface_blur;
         a.ui.solid_tint = defaults.solid_tint;
         a.ui.solid_tint_light = defaults.solid_tint_light;
+        a.ui.solid_own = None;
+        a.ui.solid_own_light = None;
         set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
         apply_interface(d, true, cx);
     }));
@@ -781,7 +788,7 @@ pub(super) fn console_apply(
             "ui-tint" | "ui-tint-light" => {
                 let tints = if id.as_ref() == "ui-tint" { SolidTint::DARK } else { SolidTint::LIGHT };
                 if let Some(t) = tints.get(index) {
-                    scheme::set_tint(d, *t, cx);
+                    scheme::set_tint(d, *t, false, cx);
                 }
             }
             "aspect" => {
@@ -821,6 +828,8 @@ pub(super) fn console_apply(
                 a.ui.interface_blur = defaults.interface_blur;
                 a.ui.solid_tint = defaults.solid_tint;
                 a.ui.solid_tint_light = defaults.solid_tint_light;
+                a.ui.solid_own = None;
+                a.ui.solid_own_light = None;
                 set_sliders(
                     a,
                     &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)],

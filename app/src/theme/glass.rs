@@ -140,21 +140,22 @@ pub fn solid_tint() -> SolidTint {
 
 /// The panels' colour: the custom theme's, else the [`solid_tint`].
 pub fn panel_rgb() -> Rgb {
-    custom_palette().map_or_else(|| solid_tint().rgb(), |p| p.panel)
+    if let Some(p) = custom_palette() {
+        return p.panel;
+    }
+    let a = appearance();
+    let own = if is_light() { a.solid_own_light } else { a.solid_own };
+    own.unwrap_or_else(|| solid_tint().rgb())
 }
 
 fn glass_tint(a: f32) -> Hsla {
-    if let Some(p) = custom_palette() {
-        return with_alpha(p.panel, a);
-    }
     // Transparent glass always uses Slate (Paper on the light theme); the
-    // presets are for Solid.
-    let tint = match (solid_mode(), is_light()) {
-        (true, _) => solid_tint(),
-        (false, false) => SolidTint::Slate,
-        (false, true) => SolidTint::Paper,
+    // presets and a colour picked by hand are for Solid.
+    let (r, g, b) = match (custom_palette().is_some() || solid_mode(), is_light()) {
+        (true, _) => panel_rgb(),
+        (false, false) => SolidTint::Slate.rgb(),
+        (false, true) => SolidTint::Paper.rgb(),
     };
-    let (r, g, b) = tint.rgb();
     rgba_hsla(r, g, b, a)
 }
 

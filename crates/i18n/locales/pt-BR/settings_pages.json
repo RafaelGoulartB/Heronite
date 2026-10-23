@@ -416,5 +416,9 @@
   "What sits on a panel: the active tab, fields, popovers, round buttons.": "O que fica sobre um painel: a aba ativa, campos, popovers, botões redondos.",
   "Your colours": "Suas cores",
   "Your saved themes. Click one to use it.": "Seus temas salvos. Clique em um para usar.",
-  "theme|Custom": "Personalizado"
+  "theme|Custom": "Personalizado",
+  "A dark and a light colour: your desktop's style picks between them.": "Uma cor escura e uma clara: o estilo do seu desktop escolhe entre elas.",
+  "A light colour turns the theme light, a dark one dark.": "Uma cor clara deixa o tema claro, uma escura deixa escuro.",
+  "Drag on the square and the strip, or type a hex colour. It is adjusted when the text would be hard to read on it.": "Arraste no quadrado e na faixa, ou digite uma cor hex. Ela é ajustada quando o texto ficaria difícil de ler sobre ela.",
+  "Your own colour": "Sua própria cor"
 }
