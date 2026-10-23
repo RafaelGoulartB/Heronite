@@ -265,6 +265,15 @@ pub fn text_dim() -> Rgba {
         pick(0x8c97a8, 0x5a6475)
     }
 }
+/// Text a step above [`text_primary`]: active tabs and pills, titles over
+/// the Collection (white on the dark theme).
+pub fn text_bright() -> Hsla {
+    if is_light() {
+        rgb(0x0f141b).into()
+    } else {
+        white_a(1.)
+    }
+}
 /// Text drawn on an accent fill.
 pub fn on_accent() -> Rgba {
     pick(0x0c1a20, 0xffffff)
@@ -382,6 +391,33 @@ pub fn search_fill_hover() -> Hsla {
 }
 pub fn chip_fill() -> Hsla {
     ink_a(0.07)
+}
+
+// Focus panel: the round tool buttons and the chips of the details.
+/// Fill of a round button at `a` (`rgba(16,18,22,a)`; white on the light theme).
+pub fn round_fill(a: f32) -> Hsla {
+    if is_light() {
+        white_a(a)
+    } else {
+        rgba_hsla(16, 18, 22, a)
+    }
+}
+pub fn round_fill_hover() -> Hsla {
+    if is_light() {
+        white_a(0.95)
+    } else {
+        rgba_hsla(10, 12, 14, 0.9)
+    }
+}
+pub fn round_icon() -> Rgba {
+    pick(0xf4f6f8, 0x1a2029)
+}
+pub fn focus_chip_fill() -> Hsla {
+    if is_light() {
+        ink_a(0.08)
+    } else {
+        black_a(0.48)
+    }
 }
 
 #[cfg(test)]
