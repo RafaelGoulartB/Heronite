@@ -10,7 +10,7 @@
 use gpui_kit::{px, Hsla};
 use heronite_data::appearance::{Accent, Appearance, InterfaceMode, SolidTint};
 
-use super::{black_a, ink_a, is_light, readable_on_light, rgba_hsla, shadow_a, white_a};
+use super::{black_a, ink_a, is_light, readable_on_light, rgba_hsla, shadow_a, white_a, with_alpha, LIGHT_PAGE};
 
 static APPEARANCE: std::sync::RwLock<Appearance> = std::sync::RwLock::new(Appearance::DEFAULT);
 
@@ -168,7 +168,7 @@ pub fn glass_art_dim() -> Hsla {
     let t = ((o - DIM_KNEE) / (1. - DIM_KNEE)).clamp(0., 1.);
     let a = 0.5 + 0.5 * t;
     if is_light() {
-        rgba_hsla(238, 241, 245, a)
+        with_alpha(LIGHT_PAGE, a)
     } else {
         black_a(a)
     }
@@ -187,8 +187,8 @@ pub fn page_backdrop() -> Hsla {
     let (r, g, b) = match (is_light(), solid_mode()) {
         (false, true) => (7, 9, 12),
         (false, false) => (10, 12, 16),
-        (true, true) => (233, 237, 242),
-        (true, false) => (236, 239, 243),
+        (true, true) => (220, 224, 230),
+        (true, false) => LIGHT_PAGE,
     };
     rgba_hsla(r, g, b, a)
 }
@@ -200,7 +200,7 @@ pub fn glass_border() -> Hsla {
 }
 /// 1px highlight along the top edge of a glass surface (inset shadow in CSS).
 pub fn glass_highlight() -> Hsla {
-    white_a(if is_light() { 0.7 } else { 0.08 })
+    white_a(if is_light() { 0.35 } else { 0.08 })
 }
 /// `0 30px 80px rgba(0,0,0,.45)`.
 pub fn glass_shadow() -> Vec<gpui_kit::BoxShadow> {
@@ -277,7 +277,7 @@ mod appearance_tests {
         let light = Appearance { theme: Theme::Light, ..Appearance::default() };
         set_appearance(light);
         assert!(is_light());
-        assert_eq!(glass_fill(), rgba_hsla(246, 247, 249, 0.9));
+        assert_eq!(glass_fill(), with_alpha(crate::theme::LIGHT_PAPER, 0.9));
         assert_eq!(accent_rgb(), Accent::Ice.rgb_light().unwrap());
         set_appearance(Appearance { interface_mode: InterfaceMode::Solid, solid_tint_light: SolidTint::Sand, ..light });
         assert_eq!(solid_tint(), SolidTint::Sand);

@@ -129,17 +129,18 @@ impl SolidTint {
         Self::LIGHT.contains(&self)
     }
     /// Panel colour (Slate is the dark glass tint, `rgb(22,27,36)`; Paper
-    /// the light one, `rgb(246,247,249)`).
+    /// the light one, `rgb(232,234,238)`). The light tints are soft greys,
+    /// not white, so a big window of them does not glare.
     pub fn rgb(self) -> (u8, u8, u8) {
         match self {
             Self::Slate => (22, 27, 36),
             Self::Graphite => (26, 26, 28),
             Self::Midnight => (16, 22, 42),
             Self::Plum => (34, 24, 40),
-            Self::Paper => (246, 247, 249),
-            Self::Sand => (245, 240, 232),
-            Self::Frost => (236, 242, 250),
-            Self::Lilac => (243, 238, 247),
+            Self::Paper => (232, 234, 238),
+            Self::Sand => (234, 228, 218),
+            Self::Frost => (224, 231, 240),
+            Self::Lilac => (231, 226, 236),
         }
     }
 }

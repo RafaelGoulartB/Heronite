@@ -67,11 +67,11 @@ impl Accent {
     /// for text on the light panels. `None` for [`Accent::Game`].
     pub fn rgb_light(self) -> Option<(u8, u8, u8)> {
         Some(match self {
-            Self::Ice => (0x1b, 0x6c, 0x83),
-            Self::Mint => (0x14, 0x73, 0x4a),
-            Self::Amber => (0x92, 0x56, 0x00),
-            Self::Rose => (0xb4, 0x34, 0x54),
-            Self::Lavender => (0x66, 0x4b, 0xd5),
+            Self::Ice => (0x19, 0x64, 0x79),
+            Self::Mint => (0x12, 0x6a, 0x44),
+            Self::Amber => (0x86, 0x4f, 0x00),
+            Self::Rose => (0xa7, 0x30, 0x4e),
+            Self::Lavender => (0x5e, 0x41, 0xd3),
             Self::Game => return None,
         })
     }

@@ -11,6 +11,19 @@ use super::{accent_rgb, contrast_a, high_contrast, is_light};
 /// as the dark theme's are white.
 const INK_LIGHT: (u8, u8, u8) = (20, 26, 36);
 
+// The light theme's surfaces are soft greys rather than white, so a big
+// window of it does not glare: the panels (`SolidTint::Paper`, keep them
+// equal), the page and the fade over the art a step darker, and what is
+// lifted off a panel (popovers, the active tab, inputs) a step lighter.
+pub(super) const LIGHT_PAPER: (u8, u8, u8) = (232, 234, 238);
+pub(super) const LIGHT_PAGE: (u8, u8, u8) = (223, 227, 232);
+pub(super) const LIGHT_LIFT: (u8, u8, u8) = (241, 243, 246);
+
+/// `c` at alpha `a`.
+pub(super) fn with_alpha((r, g, b): (u8, u8, u8), a: f32) -> Hsla {
+    rgba_hsla(r, g, b, a)
+}
+
 /// `dark` on the dark theme, `light` on the light one.
 fn pick(dark: u32, light: u32) -> Rgba {
     rgb(if is_light() { light } else { dark })
@@ -68,7 +81,11 @@ pub fn shadow_a(a: f32) -> Hsla {
 
 // Palette (`nord-dark` and its light counterpart).
 pub fn page_bg() -> Rgba {
-    pick(0x07090c, 0xeef1f5)
+    if is_light() {
+        rgb_a(LIGHT_PAGE.0, LIGHT_PAGE.1, LIGHT_PAGE.2, 1.)
+    } else {
+        rgb(0x07090c)
+    }
 }
 /// The accent colour (`#a5dceb` unless Settings → Appearance changes it).
 pub fn accent() -> Rgba {
@@ -88,7 +105,7 @@ pub fn accent_overlay() -> Rgba {
 }
 
 /// The darkest light background text sits on: Lilac under a card's 5% ink.
-const LIGHT_FLOOR: (u8, u8, u8) = (232, 227, 236);
+const LIGHT_FLOOR: (u8, u8, u8) = (220, 216, 226);
 
 /// WCAG relative luminance.
 fn luminance((r, g, b): (u8, u8, u8)) -> f32 {
@@ -146,23 +163,23 @@ fn accent_a(a: f32) -> Hsla {
     accent_alpha(a).into()
 }
 pub fn navbar_background() -> Rgba {
-    pick(0x2e3440, 0xffffff)
+    pick(0x2e3440, 0xf1f3f6)
 }
 pub fn background() -> Rgba {
-    pick(0x191c22, 0xf6f7f9)
+    pick(0x191c22, 0xe8eaee)
 }
 pub fn success() -> Rgba {
-    pick(0x94f1ab, 0x1c714b)
+    pick(0x94f1ab, 0x1a6946)
 }
 pub fn danger() -> Rgba {
-    pick(0xbf616a, 0xa6434d)
+    pick(0xbf616a, 0x9a3e48)
 }
 /// Something the user may want to do, not an error ("Restart Steam once").
 pub fn warning() -> Rgba {
-    pick(0xf5cd5b, 0x7c5e08)
+    pick(0xf5cd5b, 0x745808)
 }
 pub fn selected_ring() -> Rgba {
-    pick(0xe8dcc0, 0x1a2029)
+    pick(0xe8dcc0, 0x2a313b)
 }
 
 /// Console mode (proposal "2 · Console"): dark surfaces, a light pill for
@@ -261,40 +278,40 @@ pub fn status_color(slug: &str) -> Rgba {
 
 // Text.
 pub fn text_primary() -> Rgba {
-    pick(0xe8edf4, 0x1a2029)
+    pick(0xe8edf4, 0x20262f)
 }
 /// Captions, leads, labels above fields (`#9aa6b6`).
 pub fn text_muted() -> Rgba {
     if high_contrast() {
-        pick(0xc8d0dc, 0x363e4a)
+        pick(0xc8d0dc, 0x333b46)
     } else {
-        pick(0x9aa6b6, 0x4d596a)
+        pick(0x9aa6b6, 0x475262)
     }
 }
 /// Row descriptions (`#8c97a8`).
 pub fn text_dim() -> Rgba {
     if high_contrast() {
-        pick(0xbcc6d3, 0x3f4651)
+        pick(0xbcc6d3, 0x3c434e)
     } else {
-        pick(0x8c97a8, 0x5a6475)
+        pick(0x8c97a8, 0x545d6d)
     }
 }
 /// Text a step above [`text_primary`]: active tabs and pills, titles over
 /// the Collection (white on the dark theme).
 pub fn text_bright() -> Hsla {
     if is_light() {
-        rgb(0x0f141b).into()
+        rgb(0x171c23).into()
     } else {
         white_a(1.)
     }
 }
 /// "Might not be writable", "Not enough disk space", a script's notes.
 pub fn caution_text() -> Rgba {
-    pick(0xebcb8b, 0x7c5e08)
+    pick(0xebcb8b, 0x745808)
 }
 /// Plain lines of a log.
 pub fn code_text() -> Rgba {
-    pick(0xd8dee9, 0x1f2630)
+    pick(0xd8dee9, 0x222831)
 }
 /// Text drawn on an accent fill.
 pub fn on_accent() -> Rgba {
@@ -327,7 +344,7 @@ pub fn button_border() -> Hsla {
     ink_a(if high_contrast() { 0.22 } else { 0.10 })
 }
 pub fn button_text() -> Rgba {
-    pick(0xeef2f7, 0x1f2630)
+    pick(0xeef2f7, 0x222831)
 }
 pub fn danger_fill() -> Hsla {
     rgba_hsla(191, 97, 106, 0.20)
@@ -336,7 +353,7 @@ pub fn danger_fill_hover() -> Hsla {
     rgba_hsla(191, 97, 106, 0.30)
 }
 pub fn danger_text() -> Rgba {
-    pick(0xf2a5ad, 0xc31c2e)
+    pick(0xf2a5ad, 0xb51a2b)
 }
 
 // Segmented tabs.
@@ -345,13 +362,17 @@ pub fn seg_track() -> Hsla {
 }
 /// The active tab, lifted off the track (white on the light theme).
 pub fn seg_active() -> Hsla {
-    white_a(if is_light() { 0.92 } else { 0.14 })
+    if is_light() {
+        with_alpha(LIGHT_LIFT, 0.95)
+    } else {
+        white_a(0.14)
+    }
 }
 pub fn seg_text() -> Rgba {
     if high_contrast() {
         pick(0xdde3eb, 0x252c35)
     } else {
-        pick(0xb5bfcc, 0x3d4757)
+        pick(0xb5bfcc, 0x3a4453)
     }
 }
 
@@ -359,7 +380,7 @@ pub fn seg_text() -> Rgba {
 // light one.
 pub fn input_fill() -> Hsla {
     if is_light() {
-        white_a(0.7)
+        with_alpha(LIGHT_LIFT, 0.6)
     } else {
         black_a(0.25)
     }
@@ -379,9 +400,9 @@ pub fn input_border_focus() -> Hsla {
 // Side navigation pills and the accent tint of active items.
 pub fn nav_text() -> Rgba {
     if high_contrast() {
-        pick(0xe2e7ee, 0x1a1f27)
+        pick(0xe2e7ee, 0x181d25)
     } else {
-        pick(0xc3cbd8, 0x2c3442)
+        pick(0xc3cbd8, 0x2b3341)
     }
 }
 pub fn accent_tint() -> Hsla {
@@ -419,7 +440,7 @@ pub fn chip_fill() -> Hsla {
 /// or the light one (the light theme fades the art instead of darkening it).
 pub fn stage_ink_a(a: f32) -> Hsla {
     if is_light() {
-        rgba_hsla(238, 241, 245, a)
+        with_alpha(LIGHT_PAGE, a)
     } else {
         rgba_hsla(7, 9, 12, a)
     }
@@ -429,7 +450,7 @@ pub fn stage_ink_a(a: f32) -> Hsla {
 /// the active half of the Focus / Grid switch).
 pub fn solid_pill() -> Hsla {
     if is_light() {
-        ink_a(0.92)
+        ink_a(0.85)
     } else {
         white_a(0.9)
     }
@@ -442,7 +463,7 @@ pub fn on_solid_pill() -> Rgba {
 /// The panels of "Getting started"'s picture of the Collection, Transparent.
 pub fn preview_glass() -> Hsla {
     if is_light() {
-        rgba_hsla(246, 247, 249, 0.72)
+        with_alpha(LIGHT_PAPER, 0.72)
     } else {
         rgba_hsla(14, 18, 24, 0.62)
     }
@@ -451,7 +472,7 @@ pub fn preview_glass() -> Hsla {
 /// An opaque card straight on the Collection (the welcome's load error).
 pub fn opaque_card() -> Hsla {
     if is_light() {
-        rgba_hsla(246, 247, 249, 0.96)
+        with_alpha(LIGHT_PAPER, 0.96)
     } else {
         rgba_hsla(14, 18, 24, 0.96)
     }
@@ -460,7 +481,7 @@ pub fn opaque_card() -> Hsla {
 /// A toast at the bottom of the Collection.
 pub fn toast_fill() -> Hsla {
     if is_light() {
-        rgba_hsla(250, 251, 252, 0.96)
+        with_alpha(LIGHT_LIFT, 0.96)
     } else {
         rgba_hsla(18, 22, 28, 0.94)
     }
@@ -468,13 +489,13 @@ pub fn toast_fill() -> Hsla {
 
 /// The title of a ☰ page.
 pub fn page_title() -> Rgba {
-    pick(0xcaf3fd, 0x1a2029)
+    pick(0xcaf3fd, 0x20262f)
 }
 
 /// What the grid drawer's art fades into (its glass, nearly opaque).
 pub fn drawer_fade(a: f32) -> Hsla {
     if is_light() {
-        rgba_hsla(246, 247, 249, a)
+        with_alpha(LIGHT_PAPER, a)
     } else {
         rgba_hsla(16, 20, 27, a)
     }
@@ -483,7 +504,7 @@ pub fn drawer_fade(a: f32) -> Hsla {
 /// A button sitting on a picture (the grid drawer's close button).
 pub fn art_button_fill() -> Hsla {
     if is_light() {
-        white_a(0.8)
+        with_alpha(LIGHT_LIFT, 0.85)
     } else {
         black_a(0.45)
     }
@@ -493,10 +514,10 @@ pub fn art_button_fill() -> Hsla {
 // the details.
 /// The Play button: a light pill on the dark theme, an ink one on the light.
 pub fn play_fill() -> Rgba {
-    pick(0xf3f5f7, 0x1a2029)
+    pick(0xf3f5f7, 0x2a313b)
 }
 pub fn play_fill_hover() -> Rgba {
-    pick(0xffffff, 0x0f141b)
+    pick(0xffffff, 0x20262f)
 }
 pub fn play_text() -> Rgba {
     pick(0x161616, 0xffffff)
@@ -510,27 +531,27 @@ pub fn focus_card_fill(dense: bool) -> Hsla {
     match (is_light(), dense) {
         (false, true) => rgba_hsla(18, 22, 28, 0.45),
         (false, false) => rgba_hsla(12, 14, 18, 0.5),
-        (true, true) => white_a(0.6),
-        (true, false) => white_a(0.5),
+        (true, true) => with_alpha(LIGHT_LIFT, 0.6),
+        (true, false) => with_alpha(LIGHT_LIFT, 0.5),
     }
 }
 /// Fill of a round button at `a` (`rgba(16,18,22,a)`; white on the light theme).
 pub fn round_fill(a: f32) -> Hsla {
     if is_light() {
-        white_a(a)
+        with_alpha(LIGHT_LIFT, a)
     } else {
         rgba_hsla(16, 18, 22, a)
     }
 }
 pub fn round_fill_hover() -> Hsla {
     if is_light() {
-        white_a(0.95)
+        rgba_hsla(248, 249, 251, 0.95)
     } else {
         rgba_hsla(10, 12, 14, 0.9)
     }
 }
 pub fn round_icon() -> Rgba {
-    pick(0xf4f6f8, 0x1a2029)
+    pick(0xf4f6f8, 0x20262f)
 }
 pub fn focus_chip_fill() -> Hsla {
     if is_light() {
@@ -556,6 +577,6 @@ mod tests {
             let h = |c: (u8, u8, u8)| Hsla::from(rgb_a(c.0, c.1, c.2, 1.)).h;
             assert!((h(dark) - h(c)).abs() < 0.02, "hue {hue} drifted");
         }
-        assert_eq!(readable_on_light((0x1b, 0x6c, 0x83)), (0x1b, 0x6c, 0x83));
+        assert_eq!(readable_on_light((0x19, 0x64, 0x79)), (0x19, 0x64, 0x79));
     }
 }

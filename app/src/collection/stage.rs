@@ -30,7 +30,7 @@ fn base_fade(dim: f32) -> f32 {
     }
 }
 
-const LIGHT_FADE_FLOOR: f32 = 0.3;
+const LIGHT_FADE_FLOOR: f32 = 0.45;
 
 /// Bands for one multi-stop gradient: `(start%, end%, alpha_start, alpha_end)`.
 fn bands(stops: &[(f32, f32)], scale: f32) -> Vec<(f32, f32, f32)> {
