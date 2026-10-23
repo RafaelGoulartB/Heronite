@@ -23,7 +23,7 @@ const PREVIEW_W: f32 = 600.;
 /// switch): here the view is chosen on its own, so it neither changes nor
 /// breaks a profile.
 pub(super) fn is_preset(look: Appearance, preset: Appearance) -> bool {
-    Appearance { start_view: preset.start_view, ..look }.with_auto_view_of(&preset) == preset
+    Appearance { start_view: preset.start_view, ..look }.with_window_choices_of(&preset) == preset
 }
 
 pub(super) fn preset_name(id: &str) -> &'static str {
@@ -106,7 +106,7 @@ impl OnboardingDialog {
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::white_a(0.07)))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.set_look(|l| *l = Appearance { start_view: l.start_view, ..look }.with_auto_view_of(l), cx)
+                    this.set_look(|l| *l = Appearance { start_view: l.start_view, ..look }.with_window_choices_of(l), cx)
                 }))
                 .child(swatch(p.id))
                 .child(

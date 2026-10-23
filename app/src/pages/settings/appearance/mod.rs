@@ -280,7 +280,7 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
             rows.push(slider_row(tr!("Blur: {value} px", value = a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)));
         }
         InterfaceMode::Solid => {
-            let items: Vec<(SolidTint, &'static str)> = SolidTint::ALL.iter().map(|t| (*t, t.label())).collect();
+            let items: Vec<(SolidTint, &'static str)> = SolidTint::DARK.iter().map(|t| (*t, t.label())).collect();
             let tint = tabs("ui-tint", &items, a.ui.solid_tint, move |t, _, cx| {
                 this.update(cx, |d, cx| {
                     d.appearance.ui.solid_tint = t;
@@ -572,8 +572,8 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
             ));
         }
         InterfaceMode::Solid => {
-            let tints: Vec<SharedString> = SolidTint::ALL.iter().map(|t| SharedString::from(t.label())).collect();
-            let i = SolidTint::ALL.iter().position(|t| *t == a.ui.solid_tint).unwrap_or(0);
+            let tints: Vec<SharedString> = SolidTint::DARK.iter().map(|t| SharedString::from(t.label())).collect();
+            let i = SolidTint::DARK.iter().position(|t| *t == a.ui.solid_tint).unwrap_or(0);
             rows.push(Row::choice("ui-tint", tr!("Colour"), tints, i));
         }
     }
@@ -777,7 +777,7 @@ pub(super) fn console_apply(
                 apply_interface(d, true, cx);
             }
             "ui-tint" => {
-                if let Some(t) = SolidTint::ALL.get(index) {
+                if let Some(t) = SolidTint::DARK.get(index) {
                     d.appearance.ui.solid_tint = *t;
                     apply_interface(d, true, cx);
                 }
@@ -871,7 +871,7 @@ pub(super) fn palette_commands(d: Option<&SettingsPage>, loaded: Option<&Effecti
         }
         .keywords("appearance glass opaque panels menus dialogs theme aparencia aparência vidro opaco transparente sólido solido painéis paineis tema"),
     );
-    for t in SolidTint::ALL {
+    for t in SolidTint::DARK {
         let current = ui.interface_mode == InterfaceMode::Solid && ui.solid_tint == t;
         v.push(
             PageCommand::new(

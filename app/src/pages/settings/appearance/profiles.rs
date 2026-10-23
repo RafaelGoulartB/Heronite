@@ -56,7 +56,7 @@ pub(super) fn apply_look(d: &mut SettingsPage, look: Appearance, window: &mut Wi
         (Field::PanelBlur, look.interface_blur),
     ];
     set_sliders(&d.appearance, &values, window, cx);
-    set_look(d, cx, |a| *a = look.with_auto_view_of(a));
+    set_look(d, cx, |a| *a = look.with_window_choices_of(a));
 }
 
 fn store(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
@@ -114,7 +114,7 @@ pub(super) fn profiles_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage
     let mut tiles = div().flex().flex_wrap().gap(px(10.));
     let mut matched = false;
     for p in presets() {
-        let active = p.look.with_auto_view_of(&current) == current;
+        let active = p.look.with_window_choices_of(&current) == current;
         matched |= active;
         let look = p.look;
         tiles = tiles.child(
@@ -123,7 +123,7 @@ pub(super) fn profiles_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage
         );
     }
     for (i, p) in d.appearance.profiles.clone().unwrap_or_default().into_iter().enumerate() {
-        let active = p.look.with_auto_view_of(&current) == current;
+        let active = p.look.with_window_choices_of(&current) == current;
         matched |= active;
         let look = p.look;
         tiles = tiles.child(

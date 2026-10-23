@@ -77,17 +77,25 @@ impl InterfaceMode {
     }
 }
 
-/// Preset colours of the solid panels.
+/// Preset colours of the solid panels: four for the dark theme, four for
+/// the light one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SolidTint {
     Slate,
     Graphite,
     Midnight,
     Plum,
+    Paper,
+    Sand,
+    Frost,
+    Lilac,
 }
 
 impl SolidTint {
-    pub const ALL: [SolidTint; 4] = [Self::Slate, Self::Graphite, Self::Midnight, Self::Plum];
+    pub const ALL: [SolidTint; 8] =
+        [Self::Slate, Self::Graphite, Self::Midnight, Self::Plum, Self::Paper, Self::Sand, Self::Frost, Self::Lilac];
+    pub const DARK: [SolidTint; 4] = [Self::Slate, Self::Graphite, Self::Midnight, Self::Plum];
+    pub const LIGHT: [SolidTint; 4] = [Self::Paper, Self::Sand, Self::Frost, Self::Lilac];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -95,6 +103,10 @@ impl SolidTint {
             Self::Graphite => "graphite",
             Self::Midnight => "midnight",
             Self::Plum => "plum",
+            Self::Paper => "paper",
+            Self::Sand => "sand",
+            Self::Frost => "frost",
+            Self::Lilac => "lilac",
         }
     }
     pub fn label(self) -> &'static str {
@@ -103,18 +115,31 @@ impl SolidTint {
             Self::Graphite => tr!("Graphite"),
             Self::Midnight => tr!("Midnight"),
             Self::Plum => tr!("Plum"),
+            Self::Paper => tr!("Paper"),
+            Self::Sand => tr!("Sand"),
+            Self::Frost => tr!("Frost"),
+            Self::Lilac => tr!("Lilac"),
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|t| t.as_str() == s)
     }
-    /// Panel colour (Slate is the glass tint, `rgb(22,27,36)`).
+    /// One of the light theme's tints.
+    pub fn is_light(self) -> bool {
+        Self::LIGHT.contains(&self)
+    }
+    /// Panel colour (Slate is the dark glass tint, `rgb(22,27,36)`; Paper
+    /// the light one, `rgb(246,247,249)`).
     pub fn rgb(self) -> (u8, u8, u8) {
         match self {
             Self::Slate => (22, 27, 36),
             Self::Graphite => (26, 26, 28),
             Self::Midnight => (16, 22, 42),
             Self::Plum => (34, 24, 40),
+            Self::Paper => (246, 247, 249),
+            Self::Sand => (245, 240, 232),
+            Self::Frost => (236, 242, 250),
+            Self::Lilac => (243, 238, 247),
         }
     }
 }
@@ -128,7 +153,12 @@ pub struct Appearance {
     pub interface_opacity: f32,
     /// Blur of the art behind the glass panels, px.
     pub interface_blur: f32,
+    /// Light or dark panels and text.
+    pub theme: Theme,
+    /// The solid panels' colour on the dark theme (one of [`SolidTint::DARK`]).
     pub solid_tint: SolidTint,
+    /// The solid panels' colour on the light theme (one of [`SolidTint::LIGHT`]).
+    pub solid_tint_light: SolidTint,
     pub accent: Accent,
     /// Stronger secondary text and borders.
     pub high_contrast: bool,
@@ -159,7 +189,9 @@ impl Appearance {
         interface_mode: InterfaceMode::Transparent,
         interface_opacity: 90.,
         interface_blur: 30.,
+        theme: Theme::DEFAULT,
         solid_tint: SolidTint::Slate,
+        solid_tint_light: SolidTint::Paper,
         accent: Accent::DEFAULT,
         high_contrast: false,
         font: FontChoice::DEFAULT,
@@ -201,10 +233,11 @@ impl Appearance {
         self
     }
 
-    /// `self` with `other`'s [`AutoView`]. The switch follows the window,
-    /// not a look: applying or matching a profile neither changes nor breaks it.
-    pub fn with_auto_view_of(self, other: &Appearance) -> Self {
-        Self { auto_view: other.auto_view, ..self }
+    /// `self` with `other`'s [`AutoView`] and [`Theme`]. They follow the
+    /// window and the desktop, not a look: applying or matching a profile
+    /// neither changes nor breaks them.
+    pub fn with_window_choices_of(self, other: &Appearance) -> Self {
+        Self { auto_view: other.auto_view, theme: other.theme, ..self }
     }
 
     pub fn from_value(value: &Value) -> Self {
@@ -220,7 +253,12 @@ impl Appearance {
             interface_mode: name("interfaceMode").and_then(InterfaceMode::parse).unwrap_or(d.interface_mode),
             interface_opacity: num("interfaceOpacity", d.interface_opacity),
             interface_blur: num("interfaceBlur", d.interface_blur),
-            solid_tint: name("interfaceSolidTint").and_then(SolidTint::parse).unwrap_or(d.solid_tint),
+            theme: name("theme").and_then(Theme::parse).unwrap_or_default(),
+            solid_tint: name("interfaceSolidTint").and_then(SolidTint::parse).filter(|t| !t.is_light()).unwrap_or(d.solid_tint),
+            solid_tint_light: name("interfaceSolidTintLight")
+                .and_then(SolidTint::parse)
+                .filter(|t| t.is_light())
+                .unwrap_or(d.solid_tint_light),
             accent: name("accent").and_then(Accent::parse).unwrap_or_default(),
             high_contrast: flag("highContrast", d.high_contrast),
             font: name("font").and_then(FontChoice::parse).unwrap_or_default(),
@@ -245,7 +283,9 @@ impl Appearance {
             "interfaceMode": self.interface_mode.as_str(),
             "interfaceOpacity": self.interface_opacity,
             "interfaceBlur": self.interface_blur,
+            "theme": self.theme.as_str(),
             "interfaceSolidTint": self.solid_tint.as_str(),
+            "interfaceSolidTintLight": self.solid_tint_light.as_str(),
             "accent": self.accent.as_str(),
             "highContrast": self.high_contrast,
             "font": self.font.as_str(),
@@ -343,7 +383,9 @@ mod tests {
             interface_mode: InterfaceMode::Solid,
             interface_opacity: 70.,
             interface_blur: 15.,
+            theme: Theme::System,
             solid_tint: SolidTint::Midnight,
+            solid_tint_light: SolidTint::Frost,
             accent: Accent::Game,
             high_contrast: true,
             font: FontChoice::System,
@@ -365,6 +407,8 @@ mod tests {
         assert_eq!(on_disk["future"], json!([1]));
         assert_eq!(on_disk["interfaceMode"], "solid");
         assert_eq!(on_disk["interfaceSolidTint"], "midnight");
+        assert_eq!(on_disk["interfaceSolidTintLight"], "frost");
+        assert_eq!(on_disk["theme"], "system");
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
         assert_eq!(on_disk["sections"][0], "related");
@@ -391,6 +435,8 @@ mod tests {
         let v = json!({"collectionOpacity": 80, "interfaceMode": "solid"});
         let a = Appearance::from_value(&v);
         assert_eq!(a.accent, Accent::Ice);
+        assert_eq!(a.theme, Theme::Dark);
+        assert_eq!(a.solid_tint_light, SolidTint::Paper);
         assert_eq!(a.cover_corners.radius(), 6.);
         assert_eq!(a.sections, Sections::DEFAULT);
         assert_eq!(a.motion, Motion::Full);
@@ -402,5 +448,56 @@ mod tests {
             assert_eq!(SolidTint::parse(t.as_str()), Some(t));
         }
         assert_eq!(SolidTint::Slate.rgb(), (22, 27, 36));
+        assert!(SolidTint::DARK.iter().all(|t| !t.is_light()));
+        assert!(SolidTint::LIGHT.iter().all(|t| t.is_light()));
+    }
+
+    #[test]
+    fn each_theme_keeps_its_own_tints() {
+        let a = Appearance::from_value(&json!({"interfaceSolidTint": "sand", "interfaceSolidTintLight": "plum"}));
+        assert_eq!((a.solid_tint, a.solid_tint_light), (SolidTint::Slate, SolidTint::Paper));
+        let a = Appearance::from_value(&json!({"interfaceSolidTint": "plum", "interfaceSolidTintLight": "sand"}));
+        assert_eq!((a.solid_tint, a.solid_tint_light), (SolidTint::Plum, SolidTint::Sand));
+    }
+
+    #[test]
+    fn profiles_keep_the_theme_and_auto_view() {
+        let mine = Appearance { theme: Theme::Light, auto_view: AutoView { on: true, width: 1200. }, ..Appearance::DEFAULT };
+        let look = Appearance { accent: Accent::Rose, ..Appearance::DEFAULT }.with_window_choices_of(&mine);
+        assert_eq!((look.theme, look.auto_view, look.accent), (Theme::Light, mine.auto_view, Accent::Rose));
+    }
+
+    /// WCAG relative luminance of an sRGB colour.
+    fn luminance((r, g, b): (u8, u8, u8)) -> f64 {
+        let lin = |c: u8| {
+            let c = c as f64 / 255.;
+            if c <= 0.03928 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    }
+
+    fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
+        let (x, y) = (luminance(a), luminance(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    /// Also on a card (the panel under 5% of the light theme's ink, `rgb(20,26,36)`).
+    #[test]
+    fn light_accents_are_readable_on_every_light_tint() {
+        let card = |(r, g, b): (u8, u8, u8)| {
+            let mix = |c: u8, ink: u8| (c as f64 * 0.95 + ink as f64 * 0.05).round() as u8;
+            (mix(r, 20), mix(g, 26), mix(b, 36))
+        };
+        for a in Accent::ALL.iter().filter_map(|a| a.rgb_light()) {
+            for t in SolidTint::LIGHT {
+                for bg in [t.rgb(), card(t.rgb())] {
+                    assert!(contrast(a, bg) >= 4.5, "{a:?} on {t:?}: {:.2}", contrast(a, bg));
+                }
+            }
+        }
     }
 }

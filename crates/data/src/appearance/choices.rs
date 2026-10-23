@@ -62,6 +62,31 @@ impl Accent {
     }
 }
 
+impl Accent {
+    /// The colour of a preset on the light theme: the same hue, dark enough
+    /// for text on the light panels. `None` for [`Accent::Game`].
+    pub fn rgb_light(self) -> Option<(u8, u8, u8)> {
+        Some(match self {
+            Self::Ice => (0x1b, 0x6c, 0x83),
+            Self::Mint => (0x14, 0x73, 0x4a),
+            Self::Amber => (0x92, 0x56, 0x00),
+            Self::Rose => (0xb4, 0x34, 0x54),
+            Self::Lavender => (0x66, 0x4b, 0xd5),
+            Self::Game => return None,
+        })
+    }
+}
+
+choice! {
+    /// Light or dark panels and text.
+    Theme {
+        Dark = "dark",
+        Light = "light",
+        /// The desktop's light or dark style.
+        System = "system",
+    } default Dark
+}
+
 choice! {
     /// Font families of the interface.
     FontChoice {
@@ -269,8 +294,12 @@ mod tests {
         for s in Section::ALL {
             assert_eq!(Section::parse(s.as_str()), Some(*s));
         }
+        for t in Theme::ALL {
+            assert_eq!(Theme::parse(t.as_str()), Some(*t));
+        }
         assert_eq!(CoverLabel::parse("lastPlayed"), Some(CoverLabel::LastPlayed));
         assert_eq!(Motion::parse("slow"), None);
+        assert_eq!(Theme::parse("auto"), None);
     }
 
     #[test]
