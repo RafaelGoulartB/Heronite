@@ -220,7 +220,7 @@ pub fn chart_series(i: usize) -> Rgba {
     }
 }
 pub fn chart_other() -> Hsla {
-    white_a(0.22)
+    ink_a(0.22)
 }
 
 /// Sequential blue ramp of the statistics heatmaps (`t` 0..=1, more = brighter).
@@ -233,9 +233,9 @@ pub fn chart_ramp(t: f32) -> Rgba {
 pub fn river_gap() -> Rgba {
     rgb(0x121721)
 }
-/// Empty heatmap cell.
+/// Empty heatmap cell, and the free part of Storage's bars.
 pub fn chart_empty() -> Hsla {
-    white_a(0.05)
+    ink_a(if is_light() { 0.08 } else { 0.05 })
 }
 /// Background of the Statistics page and the Year in review (the hero art
 /// fades into it).

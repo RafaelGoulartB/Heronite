@@ -461,7 +461,7 @@ fn games(d: &mut SettingsPage, column: f32, window: &mut Window, cx: &mut Contex
             .child(
                 div()
                     .text_size(px(12.))
-                    .text_color(if old { Hsla::from(unused_color()) } else { theme::text_dim().into() })
+                    .text_color(if old { theme::readable(unused_color()) } else { theme::text_dim().into() })
                     .child(format!("{source}{}", played_text(days))),
             )
             .child(size_bar(item.size.unwrap_or(0) as f32 / biggest as f32, group_color(Group::Games)));
