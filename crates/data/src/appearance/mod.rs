@@ -171,6 +171,9 @@ pub struct Appearance {
     /// The colours of [`Theme::Custom`] (kept while another theme is in use).
     pub custom: Palette,
     pub accent: Accent,
+    /// An accent picked by hand, over `accent` (each theme shows it in a
+    /// shade that reads on its panels).
+    pub accent_own: Option<Rgb>,
     /// Stronger secondary text and borders.
     pub high_contrast: bool,
     pub font: FontChoice,
@@ -207,6 +210,7 @@ impl Appearance {
         solid_own_light: None,
         custom: Palette::LIGHT,
         accent: Accent::DEFAULT,
+        accent_own: None,
         high_contrast: false,
         font: FontChoice::DEFAULT,
         density: Density::DEFAULT,
@@ -283,6 +287,7 @@ impl Appearance {
             solid_own_light: own_colour(value, "interfaceSolidColourLight", true),
             custom: value.get("customPalette").map(Palette::from_value).unwrap_or(d.custom),
             accent: name("accent").and_then(Accent::parse).unwrap_or_default(),
+            accent_own: name("accentColour").and_then(parse_hex),
             high_contrast: flag("highContrast", d.high_contrast),
             font: name("font").and_then(FontChoice::parse).unwrap_or_default(),
             density: name("density").and_then(Density::parse).unwrap_or_default(),
@@ -313,6 +318,7 @@ impl Appearance {
             "interfaceSolidColourLight": self.solid_own_light.map(hex),
             "customPalette": self.custom.to_value(),
             "accent": self.accent.as_str(),
+            "accentColour": self.accent_own.map(hex),
             "highContrast": self.high_contrast,
             "font": self.font.as_str(),
             "density": self.density.as_str(),
@@ -416,6 +422,7 @@ mod tests {
             solid_own_light: None,
             custom: Palette { accent: (1, 2, 3), ..Palette::DARK },
             accent: Accent::Game,
+            accent_own: Some((200, 90, 30)),
             high_contrast: true,
             font: FontChoice::System,
             density: Density::Compact,
@@ -441,6 +448,7 @@ mod tests {
         assert_eq!(on_disk["customPalette"]["accent"], "#010203");
         assert_eq!(on_disk["interfaceSolidColour"], "#280a14");
         assert_eq!(on_disk["interfaceSolidColourLight"], Value::Null);
+        assert_eq!(on_disk["accentColour"], "#c85a1e");
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
         assert_eq!(on_disk["sections"][0], "related");

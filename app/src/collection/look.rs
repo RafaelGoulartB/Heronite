@@ -48,7 +48,7 @@ impl CollectionView {
     /// [`Accent::Game`]: the average colour of the selected game's cover,
     /// weighted towards its vivid pixels and made light enough for text.
     fn sync_game_accent(&mut self, a: Appearance) {
-        if a.accent != Accent::Game {
+        if a.accent != Accent::Game || a.accent_own.is_some() {
             theme::set_game_accent(None);
             return;
         }

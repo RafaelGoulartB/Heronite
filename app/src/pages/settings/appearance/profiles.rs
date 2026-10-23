@@ -84,11 +84,11 @@ fn add_profile(d: &mut SettingsPage, name: String, look: Appearance, cx: &mut Co
 /// A tile: a band in the look's colours on the current theme, its name and a note.
 fn tile(id: SharedString, look: &Appearance, name: SharedString, note: SharedString, active: bool) -> Stateful<Div> {
     let (tr_, tg, tb) = if theme::is_light() { look.solid_tint_light.rgb() } else { look.solid_tint.rgb() };
-    let (ar, ag, ab) = theme::accent_shade(look.accent).unwrap_or((240, 138, 44));
+    let (ar, ag, ab) = theme::look_accent(look).unwrap_or((240, 138, 44));
     let band = div().h(px(40.)).w_full().bg(linear_gradient(
         120.,
         linear_color_stop(theme::rgb_a(tr_, tg, tb, 1.), 0.2),
-        linear_color_stop(theme::rgb_a(ar, ag, ab, if look.accent == Accent::Game { 0.75 } else { 1. }), 1.),
+        linear_color_stop(theme::rgb_a(ar, ag, ab, if look.accent == Accent::Game && look.accent_own.is_none() { 0.75 } else { 1. }), 1.),
     ));
     div()
         .id(id)

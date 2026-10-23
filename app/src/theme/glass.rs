@@ -8,7 +8,7 @@
 //! the Appearance page updates it while a slider moves.
 
 use gpui_kit::{px, Hsla};
-use heronite_data::appearance::{Accent, Appearance, InterfaceMode, Rgb, SolidTint};
+use heronite_data::appearance::{readable_on, Accent, Appearance, InterfaceMode, Palette, Rgb, SolidTint};
 
 use super::{black_a, custom_palette, ink_a, is_light, readable_on_light, rgba_hsla, shadow_a, white_a, with_alpha, LIGHT_PAGE};
 
@@ -61,6 +61,25 @@ pub fn accent_shade(a: Accent) -> Option<(u8, u8, u8)> {
     }
 }
 
+/// An accent picked by hand in the current theme's shade: the same hue,
+/// darkened until it reads on the light panels, lightened on the dark ones.
+pub fn own_accent_shade(c: Rgb) -> Rgb {
+    if is_light() {
+        readable_on_light(c)
+    } else {
+        readable_on(c, &Palette::DARK.backgrounds(), false)
+    }
+}
+
+/// The accent of `look` in the current theme's shade: its own colour or its
+/// preset (`None` for [`Accent::Game`]).
+pub fn look_accent(look: &Appearance) -> Option<Rgb> {
+    match look.accent_own {
+        Some(c) => Some(own_accent_shade(c)),
+        None => accent_shade(look.accent),
+    }
+}
+
 /// The accent colour (Settings → Appearance → Accent colour), in the shade
 /// of the current theme.
 pub fn accent_rgb() -> (u8, u8, u8) {
@@ -68,7 +87,7 @@ pub fn accent_rgb() -> (u8, u8, u8) {
         return p.accent;
     }
     let light = is_light();
-    if let Some(c) = accent_shade(appearance().accent) {
+    if let Some(c) = look_accent(&appearance()) {
         return c;
     }
     let game = *GAME_ACCENT.read().unwrap_or_else(|e| e.into_inner());
@@ -310,6 +329,16 @@ mod appearance_tests {
         assert!(is_light());
         assert!(!set_system_appearance(WindowAppearance::Light));
         set_system_appearance(WindowAppearance::Dark);
+
+        // An accent of your own: as picked when it reads, lightened on the
+        // dark theme and darkened on the light one when it does not.
+        set_appearance(Appearance { accent_own: Some((250, 120, 30)), ..Appearance::default() });
+        assert_eq!(accent_rgb(), (250, 120, 30));
+        let contrast = heronite_data::appearance::contrast;
+        set_appearance(Appearance { accent_own: Some((20, 30, 90)), ..Appearance::default() });
+        assert!(contrast(accent_rgb(), Palette::DARK.panel) >= 4.5);
+        set_appearance(Appearance { theme: Theme::Light, accent_own: Some((255, 230, 80)), ..Appearance::default() });
+        assert!(contrast(accent_rgb(), crate::theme::LIGHT_PAPER) >= 4.5);
 
         // The custom theme: surfaces, text and accent as picked, ink in its text colour.
         let mut custom = heronite_data::appearance::Palette::DARK;

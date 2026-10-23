@@ -128,7 +128,7 @@ impl OnboardingDialog {
                 )
         });
         let accents = Accent::ALL.iter().copied().map(|accent| {
-            let on = a.accent == accent;
+            let on = a.accent_own.is_none() && a.accent == accent;
             div()
                 .id(SharedString::from(format!("onb-accent-{}", accent.as_str())))
                 .flex()
@@ -143,7 +143,15 @@ impl OnboardingDialog {
                 .border_color(if on { theme::accent().into() } else { theme::ink_a(0.08) })
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::ink_a(0.08)))
-                .on_click(cx.listener(move |this, _, _, cx| this.set_look(|l| l.accent = accent, cx)))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.set_look(
+                        |l| {
+                            l.accent = accent;
+                            l.accent_own = None;
+                        },
+                        cx,
+                    )
+                }))
                 .child(accent_dot(accent, 20.))
                 .child(div().text_size(px(13.)).child(accent_name(accent)))
         });
