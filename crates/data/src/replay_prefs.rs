@@ -24,6 +24,8 @@
 //! - `games`: the games that have the replay on (`true`) or off (`false`)
 //!   whatever `enabled` says, by `journal::collection_key`. The options are
 //!   the same for every game.
+//! - `keyboardShortcut`: a key combination that saves the replay
+//!   (Electron-style, `Ctrl+Shift+R`); empty, the default, for none.
 
 use std::collections::BTreeMap;
 
@@ -206,6 +208,9 @@ pub struct ReplayPrefs {
     /// Games with the replay on or off whatever `enabled` says, by
     /// `journal::collection_key`.
     pub games: BTreeMap<String, bool>,
+    /// The key combination that saves the replay; empty for none. Not an
+    /// [`Options`]: changing it does not restart the recorder.
+    pub keyboard_accelerator: String,
 }
 
 impl ReplayPrefs {
@@ -219,7 +224,13 @@ impl ReplayPrefs {
             .flatten()
             .filter_map(|(key, on)| Some((key.clone(), on.as_bool()?)))
             .collect();
-        Self { enabled: value.get("enabled").and_then(Value::as_bool).unwrap_or(false), options: Options::from_value(&value), games }
+        let keyboard_accelerator = value.get("keyboardShortcut").and_then(Value::as_str).map(str::trim).unwrap_or_default().to_string();
+        Self {
+            enabled: value.get("enabled").and_then(Value::as_bool).unwrap_or(false),
+            options: Options::from_value(&value),
+            games,
+            keyboard_accelerator,
+        }
     }
 
     /// Writes the options atomically, keeping keys this struct does not model.
@@ -231,6 +242,7 @@ impl ReplayPrefs {
             doc["enabled"] = json!(self.enabled);
             self.options.write(doc);
             doc["games"] = json!(self.games);
+            doc["keyboardShortcut"] = json!(self.keyboard_accelerator);
             Ok(())
         })
     }
@@ -279,6 +291,7 @@ mod tests {
         assert_eq!(d.options.resolution, Resolution::P1440, "4K and ultrawide screens are scaled down");
         assert_eq!(d.options.codec, Codec::Hevc);
         assert_eq!(d.options.panel_margin, 5);
+        assert_eq!(d.keyboard_accelerator, "", "no keyboard shortcut until the user sets one");
 
         std::fs::write(
             paths.replay_prefs(),
@@ -304,6 +317,7 @@ mod tests {
                 monitor: "DP-1".into(),
             },
             games: BTreeMap::new(),
+            keyboard_accelerator: "CommandOrControl+Shift+R".into(),
         };
         p.set_game("legendary_a", Some(false));
         p.set_game("gog_b", Some(true));

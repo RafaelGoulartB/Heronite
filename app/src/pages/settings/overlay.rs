@@ -20,7 +20,7 @@ use crate::ui::controls::{caption, card, row, tabs, toggle_row, with_sub_rows};
 use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
 
 pub struct State {
-    prefs: OverlayPrefs,
+    pub(super) prefs: OverlayPrefs,
     /// `None` while they are looked for.
     controllers: Option<Vec<Controller>>,
     /// The keyboard shortcut field.

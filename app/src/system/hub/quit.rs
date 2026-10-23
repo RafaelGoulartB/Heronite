@@ -192,7 +192,7 @@ pub(super) fn graceful_quit(cx: &mut App) {
     crate::services::compression::shutdown(cx);
     // The replay recorder ends (it saves nothing).
     crate::services::replay::shutdown(cx);
-    let hotkey = crate::overlay::take_hotkey(cx);
+    let hotkeys = [crate::overlay::take_hotkey(cx), crate::services::replay::take_hotkey(cx)];
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {
         // Only asks (legendary gets SIGTERM); waited for below.
@@ -206,9 +206,9 @@ pub(super) fn graceful_quit(cx: &mut App) {
         std::process::exit(0);
     });
     cx.spawn(async move |cx| {
-        // Removes the overlay's keyboard shortcut from the desktop.
-        if let Some(hotkey) = hotkey {
-            cx.background_spawn(async move { drop(hotkey) }).await;
+        // Removes the overlay's and the replay's keyboard shortcuts from the desktop.
+        if hotkeys.iter().any(Option::is_some) {
+            cx.background_spawn(async move { drop(hotkeys) }).await;
         }
         let saved = cx.background_spawn(async move { runtime.checkpoint_all() }).await;
         if saved > 0 {
