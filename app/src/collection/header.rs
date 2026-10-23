@@ -219,7 +219,7 @@ impl CollectionView {
         let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::tool_icon());
         tool_button_base("hdr-refresh", false).on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx))).child(if refreshing {
             refresh_icon
-                .with_animation("refresh-spin", Animation::new(Duration::from_secs(1)).repeat(), |svg, t| {
+                .with_animation("refresh-spin", Animation::new(Duration::from_secs(1)).repeat().with_max_fps(30.), |svg, t| {
                     svg.with_transformation(Transformation::rotate(percentage(t)))
                 })
                 .into_any_element()

@@ -199,7 +199,7 @@ impl Render for WebImageDialog {
                     .text_color(theme::text_muted())
                     .child(icon(Icon::FaSpinner, px(16.), theme::text_muted()).with_animation(
                         "wi-spin",
-                        Animation::new(Duration::from_secs(1)).repeat(),
+                        Animation::new(Duration::from_secs(1)).repeat().with_max_fps(30.),
                         |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
                     ))
                     .child(tr!("Searching…")),
