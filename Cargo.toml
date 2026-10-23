@@ -96,3 +96,8 @@ opt-level = 2
 [workspace.lints.clippy]
 type_complexity = "allow"
 too_many_arguments = "allow"
+
+# GPUI's Linux platform with one change: the GPU device is released when the
+# last window closes (see vendor/gpui-pre-linux/PATCHES.md).
+[patch.crates-io]
+gpui-pre-linux = { path = "vendor/gpui-pre-linux" }
