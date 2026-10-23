@@ -292,7 +292,7 @@ calls them from `cx.background_spawn` or worker threads.
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, Wine Manager, Emulators); they talk back through `PageEvent` |
 | `ui/` | building blocks: `controls`, `fields`, `dialog`/`drawer`, `dropdown`, `glass`, `scrollbar` |
-| `theme/` | colour, font, layout and glass tokens, plus the runtime appearance |
+| `theme/` | colour, font, layout and glass tokens, plus the runtime appearance and the light or dark scheme |
 | `images.rs` | UI side of the image pipeline (texture cache, eviction) |
 
 ### Patterns

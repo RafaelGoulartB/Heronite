@@ -14,10 +14,10 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   (text fields), `slider::{Slider, SliderState}`. Style everything else by hand.
 
 ## Layout of the code
-- `app/src/theme/` — tokens (`color`, `font`, `layout`, `glass`: nord-dark colours, fonts, status colours,
-  `W_BOLD` = CSS 600/700, `W_500` = CSS 500, and the glass tokens: fills,
+- `app/src/theme/` — tokens (`color`, `font`, `layout`, `glass`, `scheme`: nord-dark colours and their light
+  counterparts, fonts, status colours, `W_BOLD` = CSS 600/700, `W_500` = CSS 500, and the glass tokens: fills,
   borders, radii `R_*`, text colours, toggle / button / segmented / input
-  values). Never hard-code a new colour twice; add it here.
+  values; light or dark, see "Theme"). Never hard-code a new colour twice; add it here.
 - `app/src/ui/` — building blocks: `icon`, `tool_button`, `round_button`,
   `chip`, `scrollbar`, `dropdown::{dropdown, menu_panel, menu_item,
   menu_separator}`, `dialog::{dialog, drawer}`, `glass::*`,
@@ -97,7 +97,9 @@ background* = every glass surface (menus, ☰, context menus, dropdowns, dialogs
 drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
 `interfaceOpacity` 50-100 (default 90, maps to `glass_fill`; the art dim rises
 from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
-(default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum.
+(default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum for the dark theme and
+`interfaceSolidTintLight` paper (default) | sand | frost | lilac for the light one (`theme::solid_tint()` gives the
+current theme's).
 These live in this app's `appearance.json` (`AppPaths::appearance()`, next to
 `ui-state.json`; `heronite_data::appearance::Appearance`), NOT in the data folder.
 At runtime `theme::appearance()/set_appearance()` (a process-wide value) feeds
@@ -131,6 +133,29 @@ the side, How Long To Beat and the extra panel travel with it). **Profiles**: fo
 Cinema, Minimal, High contrast) and the user's (`profiles` in `appearance.json`), "Save as profile", export / import
 (`heroniteAppearance` marker). A profile holds everything in `appearance.json`, not the background sliders of
 `settings.json`. Console mode lists the same choices except the sections' order and "Your own picture".
+
+**Theme** (Settings → Appearance → Colour, `theme` in `appearance.json`: `dark` default | `light` | `system`;
+`theme/scheme.rs`). System follows the desktop's style: `CollectionView` reads `window.appearance()` (GPUI gets it
+from the XDG portal's `color-scheme`) and observes it, so the app switches as the desktop does. The theme stays out
+of profiles, like the switch by the window's width (`Appearance::with_window_choices_of`). Every token has a dark
+and a light value picked by `theme::is_light()`; the light text, accent (`Accent::rgb_light`, a cover's accent
+through `readable_on_light`) and status colours keep 4.5:1 on every light tint, cards included (tested). So:
+- interface ink is `theme::ink_a(a)` (white on dark, `rgb(20,26,36)` on light), wells `recess_a`, shadows
+  `shadow_a`, bright text `text_bright()`; `white_a` / `black_a` / `white()` only for what sits on a picture
+  (cover overlays, the "+N" of a strip, the treemap's tiles) or on a dark-only screen;
+- a colour that is text or an icon and comes from data (status, score, a group's colour) goes through
+  `theme::readable(c)`; dots and bars keep it as is;
+- the Collection's scrims are `stage_ink_a`: on the light theme the art is faded, never under
+  `LIGHT_FADE_FLOOR` (`collection/stage.rs`) so dark text keeps 4.5:1 over black art; Play and the active Focus /
+  Grid half are `play_*` / `solid_pill` (a dark pill on the light theme).
+
+Console mode, the in-game overlay, Statistics (and Year in review) and the screenshots gallery and viewer stay dark:
+the root view says so at the start of its render (`theme::set_dark_only`; GPUI draws one window at a time and the
+root renders first, so the whole window reads it). A picture of another theme (the Theme cards, Getting started's
+overlay preview) is built inside `theme::drawn_as(light, ..)`; its colours are read while building, so no canvas
+in it may read one later. The gpui-component widgets get the theme again when it changes
+(`CollectionView::sync_look` → `apply_component_theme`). Solid shows the current theme's four tints, both rows with
+System. On the light theme the Collection background's Darkening is called Fading.
 
 **Surfaces** (`ui::glass`): `glass_panel(radius)` (big shadow; popovers 20, sheets
 26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14). Children added after the constructor paint above the layers. Children
@@ -368,7 +393,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
-`text_muted`, `text_dim`, `accent_tint`, ...).
+`text_muted`, `text_dim`, `accent_tint`, `ink_a`, ...) and must read on both themes (see "Theme").
 
 **Verifying**: captures with the app on a hidden workspace only show what was
 drawn before the compositor stopped sending frames, so late images (art, covers)
