@@ -66,10 +66,8 @@ pub(super) fn details_panel(
             .items_center()
             .gap(px(6.4))
             .line_height(px(18.2))
-            .text_color(theme::white_a(0.52))
-            .when(matches!(row.value, DetailValue::Folder { .. }), |d| {
-                d.child(icon(Icon::FolderOpen, px(15.2), theme::white_a(0.52 * 0.72)))
-            })
+            .text_color(theme::ink_a(0.52))
+            .when(matches!(row.value, DetailValue::Folder { .. }), |d| d.child(icon(Icon::FolderOpen, px(15.2), theme::ink_a(0.52 * 0.72))))
             .child(row.label.clone());
         let value: AnyElement = match &row.value {
             DetailValue::Text(t) => div().line_height(px(18.2)).child(t.clone()).into_any_element(),
@@ -85,7 +83,7 @@ pub(super) fn details_panel(
                     let is_active = facet.is_some_and(|f| active.iter().any(|(af, av)| *af == f && av == v));
                     let mut c = chip(v.clone());
                     if is_active {
-                        c = c.bg(theme::accent()).text_color(rgb(0x111111));
+                        c = c.bg(theme::accent()).text_color(theme::on_accent());
                     }
                     match facet {
                         Some(f) => {
@@ -95,7 +93,7 @@ pub(super) fn details_panel(
                             wrap = wrap.child(
                                 c.id(SharedString::from(format!("chip-{ri}-{ci}")))
                                     .cursor_pointer()
-                                    .when(!is_active, |d| d.hover(|s| s.bg(theme::white_a(0.2))))
+                                    .when(!is_active, |d| d.hover(|s| s.bg(theme::ink_a(0.2))))
                                     .on_click(move |_, w, cx| cb(f, v2.clone(), w, cx)),
                             );
                         }
@@ -107,9 +105,9 @@ pub(super) fn details_panel(
                     wrap = wrap.child(
                         chip(format!("+{}", values.len() - shown))
                             .id(SharedString::from(format!("chip-more-{ri}")))
-                            .text_color(theme::white_a(0.6))
+                            .text_color(theme::ink_a(0.6))
                             .cursor_pointer()
-                            .hover(|s| s.bg(theme::white_a(0.2)).text_color(white()))
+                            .hover(|s| s.bg(theme::ink_a(0.2)).text_color(theme::text_bright()))
                             .on_click(move |_, w, cx| expand(label.clone(), w, cx)),
                     );
                 }
@@ -129,7 +127,7 @@ pub(super) fn details_panel(
                         .on_click(move |_, w, cx| open_dir(target.clone(), w, cx))
                         .child(path.clone())
                 })
-                .children(size.clone().map(|s| div().text_size(px(12.)).text_color(theme::white_a(0.52)).child(s)))
+                .children(size.clone().map(|s| div().text_size(px(12.)).text_color(theme::ink_a(0.52)).child(s)))
                 .into_any_element(),
         };
         p = p.child(
@@ -139,9 +137,9 @@ pub(super) fn details_panel(
                 .gap(px(DETAIL_GAP))
                 .py(px(6.08))
                 .text_size(px(13.))
-                .when(row.split, |d| d.mt(px(6.4)).pt(px(11.2)).border_t_1().border_color(theme::white_a(0.12)))
+                .when(row.split, |d| d.mt(px(6.4)).pt(px(11.2)).border_t_1().border_color(theme::ink_a(0.12)))
                 .child(label)
-                .child(div().flex_1().min_w_0().text_color(theme::white_a(0.94)).child(value)),
+                .child(div().flex_1().min_w_0().text_color(theme::ink_a(0.94)).child(value)),
         );
     }
     p
@@ -175,7 +173,7 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
         .children(marker.map(|m| {
             div().absolute().top(px(-3.)).left(relative(m)).ml(px(-7.)).w(px(14.)).h(px(18.)).rounded(px(6.)).bg(rgb(0x1a1c20)).shadow(
                 vec![BoxShadow {
-                    color: theme::black_a(0.45),
+                    color: theme::shadow_a(0.45),
                     offset: point(px(0.), px(1.)),
                     blur_radius: px(4.),
                     spread_radius: px(0.),
@@ -191,7 +189,7 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
             .flex_col()
             .items_center()
             .gap(px(6.4))
-            .child(div().text_size(px(12.)).line_height(px(15.)).text_color(theme::white_a(0.52)).child(label))
+            .child(div().text_size(px(12.)).line_height(px(15.)).text_color(theme::ink_a(0.52)).child(label))
             .child(
                 div()
                     .w_full()
@@ -200,11 +198,11 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
                     .py(px(6.72))
                     .px(px(5.6))
                     .rounded(px(8.))
-                    .bg(theme::black_a(0.48))
+                    .bg(theme::focus_chip_fill())
                     .text_size(px(13.))
                     .line_height(px(15.6))
                     .font_weight(theme::W_500)
-                    .text_color(theme::white_a(0.94))
+                    .text_color(theme::ink_a(0.94))
                     .child(format_hours(v)),
             )
     };
@@ -248,7 +246,7 @@ pub(super) fn related_panel(
             Rc::new(move |i, w, cx| pick(RelatedUi { tab: i, ..Default::default() }, w, cx));
         small_tabs("related-tab", &labels, tab, on_tab).into_any_element()
     } else {
-        div().text_size(px(12.5)).text_color(theme::white_a(0.52)).child(g.title.clone()).into_any_element()
+        div().text_size(px(12.5)).text_color(theme::ink_a(0.52)).child(g.title.clone()).into_any_element()
     };
     let title = h3(tr!("Related games")).flex().justify_between().items_center().gap(px(12.)).child(
         div()
@@ -297,9 +295,9 @@ pub(super) fn related_panel(
                         .h(px(RELATED_COVER_H))
                         .rounded(px(6.))
                         .overflow_hidden()
-                        .bg(theme::white_a(0.06))
+                        .bg(theme::ink_a(0.06))
                         .shadow(vec![BoxShadow {
-                            color: theme::black_a(0.45),
+                            color: theme::shadow_a(0.45),
                             offset: point(px(0.), px(8.)),
                             blur_radius: px(20.),
                             spread_radius: px(0.),
@@ -307,7 +305,7 @@ pub(super) fn related_panel(
                         }])
                         .children(cover_for(&game.cover_key).map(|src| img(src).size_full().rounded(px(6.)).object_fit(ObjectFit::Cover))),
                 )
-                .child(div().mt(px(7.)).text_size(px(12.)).text_color(theme::white_a(0.88)).truncate().child(game.title.clone()))
+                .child(div().mt(px(7.)).text_size(px(12.)).text_color(theme::ink_a(0.88)).truncate().child(game.title.clone()))
                 .child(
                     div()
                         .mt(px(2.))
@@ -316,7 +314,7 @@ pub(super) fn related_panel(
                         .gap(px(5.))
                         .min_w_0()
                         .text_size(px(11.))
-                        .text_color(theme::white_a(0.52))
+                        .text_color(theme::ink_a(0.52))
                         .children(game.status_color.map(|c| div().size(px(6.)).flex_none().rounded_full().bg(c)))
                         .child(div().min_w_0().truncate().child(game.line.clone())),
                 ),

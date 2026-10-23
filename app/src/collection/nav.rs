@@ -162,14 +162,14 @@ fn nav_row(id: SharedString, ic: Icon, title: &str, trailing: Trailing, active: 
                 .justify_center()
                 .size(px(28.))
                 .rounded(px(8.))
-                .bg(if active { theme::accent_tint() } else { theme::white_a(0.06) })
+                .bg(if active { theme::accent_tint() } else { theme::ink_a(0.06) })
                 .child(icon(ic, px(16.), if active { theme::accent() } else { theme::text_muted() })),
         )
         .child(
             div()
                 .flex_none()
                 .text_size(px(14.))
-                .text_color(if active { white() } else { theme::text_primary().into() })
+                .text_color(if active { theme::text_bright() } else { theme::text_primary().into() })
                 .child(title.to_string()),
         )
         .child(div().flex().flex_1().min_w_0().justify_end().children(trailing))
@@ -621,7 +621,7 @@ impl CollectionView {
                     .font_family(theme::font_heading())
                     .text_size(px(17.6))
                     .font_weight(theme::W_BOLD)
-                    .text_color(rgb(0xcaf3fd))
+                    .text_color(theme::page_title())
                     .child(if pages::stores::is_store_page(self.page) { pages::stores::title() } else { self.page.title() }),
             );
         Some(

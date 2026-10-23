@@ -352,11 +352,11 @@ impl CollectionView {
                     .py(px(10.))
                     .when(action.is_some(), |d| d.py(px(6.)).pr(px(6.)))
                     .rounded(px(10.))
-                    .bg(theme::rgb_a(18, 22, 28, 0.94))
+                    .bg(theme::toast_fill())
                     .border_1()
-                    .border_color(if error { theme::danger().into() } else { theme::white_a(0.12) })
+                    .border_color(if error { theme::danger().into() } else { theme::ink_a(0.12) })
                     .text_size(px(13.33))
-                    .text_color(theme::white_a(0.92))
+                    .text_color(theme::ink_a(0.92))
                     .child(text)
                     .children(action.map(|action| {
                         div()
@@ -462,8 +462,10 @@ impl Render for CollectionView {
 impl CollectionView {
     fn render_desktop(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let _timer = RenderTimer(Instant::now());
-        // Before any colour is read: console mode and Statistics stay dark.
-        theme::set_dark_only(crate::console::active() || self.page == crate::pages::Page::Statistics);
+        // Before any colour is read: console mode, Statistics and the
+        // screenshots (gallery and viewer) stay dark.
+        let media = self.shots.gallery || self.shots.view.is_some();
+        theme::set_dark_only(crate::console::active() || self.page == crate::pages::Page::Statistics || media);
         if !self.first_frame_logged {
             self.first_frame_logged = true;
             log::info!("first render after {:?}", self.started.elapsed());
@@ -548,7 +550,7 @@ impl CollectionView {
             .overflow_hidden()
             .bg(theme::page_bg())
             .font_family(theme::font_body())
-            .text_color(white())
+            .text_color(theme::text_bright())
             .child(stage_el)
             .children(page_el)
             .when(!on_page, |root| {

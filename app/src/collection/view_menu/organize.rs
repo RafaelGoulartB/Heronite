@@ -267,7 +267,7 @@ impl CollectionView {
         let compact = self.view_menu.compact;
         seg_item(id, on, d)
             .flex_auto()
-            .when(open && !on, |s| s.bg(control_hover()).text_color(white()))
+            .when(open && !on, |s| s.bg(control_hover()).text_color(theme::text_bright()))
             .map(|s| match extra {
                 Some((ic, label)) => s.children(ic.filter(|_| !compact).map(|ic| icon(ic, px(15.), seg_color(true)))).child(label),
                 None => s.child(tr!("More")),
@@ -343,7 +343,7 @@ fn quick_group_icon(by: GroupBy) -> Option<Icon> {
 
 fn seg_color(on: bool) -> Hsla {
     if on {
-        white()
+        theme::text_bright()
     } else {
         theme::seg_text().into()
     }

@@ -237,10 +237,10 @@ impl CollectionView {
                 .w(px(46.))
                 .h(px(46.))
                 .rounded_full()
-                .bg(if open { rgb(0xffffff) } else { rgb(0xf3f5f7) })
-                .hover(|s| s.bg(rgb(0xffffff)))
+                .bg(if open { theme::play_fill_hover() } else { theme::play_fill() })
+                .hover(|s| s.bg(theme::play_fill_hover()))
                 .cursor_pointer()
-                .child(icon(Icon::ExpandMore, px(22.), rgb(0x161616)))
+                .child(icon(Icon::ExpandMore, px(22.), theme::play_text()))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.facts.install_menu_open = !this.facts.install_menu_open;
                     cx.notify();

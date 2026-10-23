@@ -149,7 +149,7 @@ pub(super) fn card_overlay(e: &CardEpic, radius: f32) -> Div {
                 .py(px(1.5))
                 .rounded_full()
                 .bg(theme::accent())
-                .text_color(rgb(0x161616))
+                .text_color(theme::on_accent())
                 .text_size(px(10.5))
                 .font_weight(theme::W_BOLD)
                 .child(tr!("UPDATE")),

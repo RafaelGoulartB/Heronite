@@ -140,13 +140,13 @@ impl CollectionView {
                 .rounded(px(8.))
                 .bg(theme::accent_tint())
                 .text_size(px(12.5))
-                .text_color(white())
+                .text_color(theme::text_bright())
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::accent_tint_border()))
                 .children(c.color.map(dot))
                 .children(kind.map(|k| div().flex_none().text_color(theme::text_muted()).child(format!("{}:", k.to_lowercase()))))
                 .child(div().min_w_0().truncate().child(c.label))
-                .child(icon(Icon::Close, px(12.), theme::white_a(0.7)))
+                .child(icon(Icon::Close, px(12.), theme::ink_a(0.7)))
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.apply_pick(&pick, cx);
                     this.focus_view_search(window, cx);
@@ -177,7 +177,7 @@ impl CollectionView {
                     .flex_1()
                     .min_w(px(120.))
                     .text_size(px(14.))
-                    .text_color(white())
+                    .text_color(theme::text_bright())
                     .child(Input::new(&self.view_menu.input).appearance(false)),
             )
     }
@@ -243,7 +243,7 @@ impl CollectionView {
             .my(px(-4.))
             .rounded_full()
             .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.1)))
+            .hover(|s| s.bg(theme::ink_a(0.1)))
             .child(icon(Icon::Close, px(14.), theme::text_muted()))
             .on_click(cx.listener(|this, _, window, cx| this.set_view_query("", window, cx)))
     }
@@ -254,7 +254,7 @@ impl CollectionView {
             Row::Choice(c) => el
                 .child(check(c.on))
                 .children(c.color.map(dot))
-                .child(div().flex_1().min_w_0().truncate().when(c.on, |d| d.text_color(white())).child(c.label.clone()))
+                .child(div().flex_1().min_w_0().truncate().when(c.on, |d| d.text_color(theme::text_bright())).child(c.label.clone()))
                 .children(c.count.map(count_label))
                 .when(c.count == Some(0) && !c.on, |d| d.opacity(0.45)),
             Row::All { kind, matches } => el.text_color(theme::accent()).child(
@@ -281,7 +281,7 @@ impl CollectionView {
             .cursor_pointer()
             .text_size(px(12.))
             .text_color(theme::accent())
-            .hover(|s| s.text_color(white()))
+            .hover(|s| s.text_color(theme::text_bright()))
             .child(tr!("Done"))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.view_menu.editing = false;
@@ -465,7 +465,7 @@ impl CollectionView {
                 .cursor_pointer()
                 .text_size(px(12.5))
                 .text_color(theme::accent())
-                .hover(|s| s.text_color(white()))
+                .hover(|s| s.text_color(theme::text_bright()))
                 .child(icon(Icon::Replay, px(14.), theme::accent()))
                 .child(tr!("Restore default presets"))
                 .on_click(cx.listener(|this, _, _, cx| this.restore_default_views(cx)))
@@ -539,7 +539,7 @@ impl CollectionView {
                 .cursor_pointer()
                 .hover(|s| s.bg(if on { theme::accent_tint_border() } else { control_hover() }))
                 .text_size(px(11.5))
-                .text_color(if on { white().into() } else { theme::text_muted() })
+                .text_color(if on { theme::text_bright() } else { theme::text_muted().into() })
                 .child(icon(ic, px(d.tile_icon), if on { theme::accent() } else { theme::text_primary() }))
                 .child(label)
                 .on_click(cx.listener(move |this, _, _, cx| this.apply_pick(&pick, cx)))
@@ -590,7 +590,7 @@ impl CollectionView {
             .px(px(16.))
             .py(px(if self.view_menu.compact { 9. } else { 12. }))
             .border_t_1()
-            .border_color(theme::white_a(0.08))
+            .border_color(theme::ink_a(0.08))
             .text_size(px(12.5))
             .text_color(theme::text_muted())
             .child(div().flex_1().child(tr!("{shown} of {total} games", shown, total).to_string()))
@@ -600,7 +600,7 @@ impl CollectionView {
                         .id("vm-reset")
                         .cursor_pointer()
                         .text_color(theme::accent())
-                        .hover(|s| s.text_color(white()))
+                        .hover(|s| s.text_color(theme::text_bright()))
                         .child(tr!("Reset all"))
                         .on_click(cx.listener(|this, _, _, cx| this.reset_view_filters(cx))),
                 )
@@ -655,7 +655,7 @@ fn name_row(input: &Entity<gpui_kit::component::input::InputState>) -> Div {
 fn icon_button(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Div> {
     let b = div().id(id).flex().flex_none().items_center().justify_center().size(px(28.)).rounded_full();
     if enabled {
-        b.cursor_pointer().hover(|s| s.bg(theme::white_a(0.1))).child(icon(ic, px(16.), theme::text_muted()))
+        b.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.1))).child(icon(ic, px(16.), theme::text_muted()))
     } else {
         b.opacity(0.3).child(icon(ic, px(16.), theme::text_muted()))
     }
@@ -694,7 +694,7 @@ fn plain_row(id: impl Into<ElementId>, lit: bool) -> Stateful<Div> {
         .text_size(px(13.5))
         .text_color(theme::text_primary())
         .cursor_pointer()
-        .when(lit, |d| d.bg(theme::white_a(0.07)))
+        .when(lit, |d| d.bg(theme::ink_a(0.07)))
         .hover(|s| s.bg(theme::menu_item_hover()))
 }
 
@@ -709,7 +709,7 @@ fn check(on: bool) -> Div {
         .rounded(px(5.))
         .border_1()
         .when(on, |d| d.bg(theme::accent()).border_color(theme::accent()).child(icon(Icon::Check, px(13.), theme::on_accent())))
-        .when(!on, |d| d.border_color(theme::white_a(0.28)))
+        .when(!on, |d| d.border_color(theme::ink_a(0.28)))
 }
 
 fn count_label(n: usize) -> Div {
@@ -739,7 +739,7 @@ pub(super) fn seg_item(id: impl Into<ElementId>, on: bool, d: Density) -> Statef
         .text_size(px(d.text))
         .whitespace_nowrap()
         .cursor_pointer()
-        .text_color(if on { white() } else { theme::seg_text().into() })
+        .text_color(if on { theme::text_bright() } else { theme::seg_text().into() })
         .when(on, |d| d.bg(theme::seg_active()))
-        .when(!on, |d| d.hover(|s| s.text_color(white())))
+        .when(!on, |d| d.hover(|s| s.text_color(theme::text_bright())))
 }

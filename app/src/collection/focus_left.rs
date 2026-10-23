@@ -40,9 +40,9 @@ impl CollectionView {
             .h(px(cover_h))
             .rounded(px(12.))
             .overflow_hidden()
-            .bg(theme::white_a(0.06))
+            .bg(theme::ink_a(0.06))
             .shadow(vec![BoxShadow {
-                color: theme::black_a(0.5),
+                color: theme::shadow_a(0.5),
                 offset: point(px(0.), px(12.)),
                 blur_radius: px(36.),
                 spread_radius: px(0.),
@@ -97,15 +97,15 @@ impl CollectionView {
                 .w_full()
                 .h(px(46.))
                 .rounded_full()
-                .bg(rgb(0xf3f5f7))
-                .hover(|s| s.bg(rgb(0xffffff)))
-                .text_color(rgb(0x161616))
+                .bg(theme::play_fill())
+                .hover(|s| s.bg(theme::play_fill_hover()))
+                .text_color(theme::play_text())
                 .font_family(theme::font_heading())
                 .font_weight(theme::W_BOLD)
                 .text_size(px(16.))
                 .cursor_pointer()
                 .shadow(vec![BoxShadow {
-                    color: theme::black_a(0.28),
+                    color: theme::shadow_a(0.28),
                     offset: point(px(0.), px(8.)),
                     blur_radius: px(24.),
                     spread_radius: px(0.),
@@ -115,10 +115,10 @@ impl CollectionView {
                     this.install_or_play(&key, window, cx);
                     cx.notify();
                 }))
-                .child(icon(ic, px(20.), rgb(0x161616)))
+                .child(icon(ic, px(20.), theme::play_text()))
                 .child(label)
                 .children(option.map(|o| {
-                    div().min_w_0().truncate().font_weight(theme::W_REGULAR).text_size(px(13.)).text_color(rgb(0x5a5f66)).child(o)
+                    div().min_w_0().truncate().font_weight(theme::W_REGULAR).text_size(px(13.)).text_color(theme::play_note()).child(o)
                 }))
         });
         // Installed, with other ways to start or actions: an arrow with them.
@@ -177,12 +177,12 @@ impl CollectionView {
             .pr(px(10.))
             .rounded_full()
             .cursor_pointer()
-            .bg(theme::rgb_a(16, 18, 22, if open { 0.9 } else { 0.72 }))
-            .hover(|s| s.bg(theme::rgb_a(10, 12, 14, 0.9)))
+            .bg(theme::round_fill(if open { 0.9 } else { 0.72 }))
+            .hover(|s| s.bg(theme::round_fill_hover()))
             .text_size(px(13.5))
             .child(div().size(px(8.)).flex_none().rounded_full().bg(color))
             .child(div().flex_1().min_w_0().truncate().child(name))
-            .child(icon(Icon::ExpandMore, px(18.), theme::white_a(0.6)))
+            .child(icon(Icon::ExpandMore, px(18.), theme::ink_a(0.6)))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.facts.status_open = true;
                 cx.notify();
@@ -275,7 +275,7 @@ impl CollectionView {
             .text_color(theme::accent())
             .child(icon(Icon::Bookmark, px(13.), theme::accent()))
             .child(div().flex_1().min_w_0().truncate().child(tr!("Where I left off").to_uppercase()))
-            .children(when.map(|w| div().flex_none().font_weight(theme::W_REGULAR).text_color(theme::white_a(0.45)).child(w)));
+            .children(when.map(|w| div().flex_none().font_weight(theme::W_REGULAR).text_color(theme::ink_a(0.45)).child(w)));
         Some(
             div()
                 .id("focus-left-off")
@@ -296,7 +296,7 @@ impl CollectionView {
                     div()
                         .text_size(px(13.))
                         .line_height(px(19.))
-                        .text_color(theme::white_a(0.92))
+                        .text_color(theme::ink_a(0.92))
                         .line_clamp(4)
                         .text_ellipsis()
                         .child(left_off.text),
@@ -321,7 +321,7 @@ impl CollectionView {
                     .child(icon(
                         if on { Icon::Star } else { Icon::StarBorder },
                         px(20.),
-                        if on { rgb(STAR).into() } else { theme::white_a(0.3) },
+                        if on { theme::readable(rgb(STAR)) } else { theme::ink_a(0.3) },
                     ))
                     .on_hover(cx.listener(move |this, h: &bool, _, cx| {
                         if *h {
@@ -344,7 +344,7 @@ impl CollectionView {
             .pt(px(4.))
             .text_size(px(13.))
             // Sits on the art, not on a panel.
-            .text_color(theme::white_a(0.66))
+            .text_color(theme::ink_a(0.66))
             .child(tr!("Your rating"))
             .child(stars)
     }
@@ -359,14 +359,14 @@ impl CollectionView {
                 .items_center()
                 .justify_end()
                 .gap(px(8.))
-                .children(vm.score_source.clone().map(|s| div().text_size(px(12.)).text_color(theme::white_a(0.45)).child(s)))
+                .children(vm.score_source.clone().map(|s| div().text_size(px(12.)).text_color(theme::ink_a(0.45)).child(s)))
                 .child(
                     div()
                         .px(px(7.))
                         .rounded(px(5.))
                         .bg(Rgba { a: 0.16, ..color })
                         .font_weight(theme::W_BOLD)
-                        .text_color(color)
+                        .text_color(theme::readable(color))
                         .child(format!("{score:.0}")),
                 );
             rows.push(fact_row(tr!("Score"), value).into_any_element());
@@ -381,17 +381,17 @@ impl CollectionView {
         match &self.facts.backup {
             Some(Backup::At(at)) => {
                 let (text, color) = backup_age(*at);
-                rows.push(self.backup_row(&vm.key, div().text_color(color).child(text), cx));
+                rows.push(self.backup_row(&vm.key, div().text_color(theme::readable(color)).child(text), cx));
             }
             Some(Backup::Never) => {
-                rows.push(self.backup_row(&vm.key, div().text_color(theme::white_a(0.52)).child(tr!("Never")), cx));
+                rows.push(self.backup_row(&vm.key, div().text_color(theme::ink_a(0.52)).child(tr!("Never")), cx));
             }
             Some(Backup::Off) | None => {}
         }
         if let Some(linux) = self.facts.linux.as_ref().filter(|l| !l.is_empty()) {
             let mut value = linux_value(linux);
             if linux.steam_app_id.is_some() {
-                value = value.child(icon(Icon::OpenInNew, px(13.), theme::white_a(0.4)));
+                value = value.child(icon(Icon::OpenInNew, px(13.), theme::ink_a(0.4)));
             }
             let row = fact_row(tr!("On Linux"), value);
             rows.push(match linux.steam_app_id.clone() {
@@ -405,7 +405,7 @@ impl CollectionView {
         let mut card = panel(true).pt(px(6.)).pb(px(6.));
         let n = rows.len();
         for (i, r) in rows.into_iter().enumerate() {
-            card = card.child(div().when(i + 1 < n, |d| d.border_b_1().border_color(theme::white_a(0.08))).child(r));
+            card = card.child(div().when(i + 1 < n, |d| d.border_b_1().border_color(theme::ink_a(0.08))).child(r));
         }
         card
     }
@@ -427,14 +427,14 @@ fn fact_row(label: &'static str, value: Div) -> Div {
         .gap(px(12.))
         .py(px(7.))
         .text_size(px(13.))
-        .child(div().flex_none().text_color(theme::white_a(0.52)).child(label))
-        .child(value.min_w_0().truncate().text_color(theme::white_a(0.94)))
+        .child(div().flex_none().text_color(theme::ink_a(0.52)).child(label))
+        .child(value.min_w_0().truncate().text_color(theme::ink_a(0.94)))
 }
 
 /// A facts row that does something on click: pointer and a faint highlight
 /// that reaches a little past the text.
 fn clickable(row: Div, id: &'static str) -> Stateful<Div> {
-    row.id(id).mx(px(-8.)).px(px(8.)).rounded(px(7.)).cursor_pointer().hover(|s| s.bg(theme::white_a(0.06)))
+    row.id(id).mx(px(-8.)).px(px(8.)).rounded(px(7.)).cursor_pointer().hover(|s| s.bg(theme::ink_a(0.06)))
 }
 
 /// Critic score colour: green from 75, amber from 50, red below.
@@ -453,7 +453,7 @@ fn backup_age(at: SystemTime) -> (String, Hsla) {
     let text = super::data::days_ago(days);
     let color = match days {
         0..=7 => rgb(0x3ecf8e).into(),
-        8..=30 => theme::white_a(0.94),
+        8..=30 => theme::ink_a(0.94),
         _ => rgb(0xf0a202).into(),
     };
     (text, color)
@@ -487,13 +487,13 @@ fn linux_value(l: &Linux) -> Div {
         let (state, color): (String, Hsla) = match ac.status.as_str() {
             "Supported" | "Running" => (tr!("{names} ok", names), rgb(0x3ecf8e).into()),
             "Broken" | "Denied" => (tr!("{names} broken", names), rgb(0xe5534b).into()),
-            "Planned" => (tr!("{names} planned", names), theme::white_a(0.7)),
-            other => (format!("{names} {}", other.to_lowercase()), theme::white_a(0.7)),
+            "Planned" => (tr!("{names} planned", names), theme::ink_a(0.7)),
+            other => (format!("{names} {}", other.to_lowercase()), theme::ink_a(0.7)),
         };
         if tier.is_some() {
-            d = d.child(div().text_color(theme::white_a(0.4)).child("·"));
+            d = d.child(div().text_color(theme::ink_a(0.4)).child("·"));
         }
-        d = d.child(div().text_color(color).child(state));
+        d = d.child(div().text_color(theme::readable(color)).child(state));
     }
     d
 }

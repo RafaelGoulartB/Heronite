@@ -122,6 +122,20 @@ pub(super) fn readable_on_light(c: (u8, u8, u8)) -> (u8, u8, u8) {
     out
 }
 
+/// `c` as text or an icon on the interface: unchanged on the dark theme,
+/// darkened like [`readable_on_light`] on the light one (status colours,
+/// a group's colour, gold stars).
+pub fn readable(c: impl Into<Hsla>) -> Hsla {
+    let c: Hsla = c.into();
+    if !is_light() {
+        return c;
+    }
+    let v = c.to_rgb();
+    let to8 = |x: f32| (x * 255.).round().clamp(0., 255.) as u8;
+    let (r, g, b) = readable_on_light((to8(v.r), to8(v.g), to8(v.b)));
+    rgba_hsla(r, g, b, c.a)
+}
+
 /// The accent at alpha `a`.
 pub fn accent_alpha(a: f32) -> Rgba {
     let (r, g, b) = accent_rgb();
@@ -393,7 +407,96 @@ pub fn chip_fill() -> Hsla {
     ink_a(0.07)
 }
 
-// Focus panel: the round tool buttons and the chips of the details.
+/// The Collection's scrims over the art at alpha `a`: the dark page colour,
+/// or the light one (the light theme fades the art instead of darkening it).
+pub fn stage_ink_a(a: f32) -> Hsla {
+    if is_light() {
+        rgba_hsla(238, 241, 245, a)
+    } else {
+        rgba_hsla(7, 9, 12, a)
+    }
+}
+
+/// The strongest pill: white on the dark theme, ink on the light one (Play,
+/// the active half of the Focus / Grid switch).
+pub fn solid_pill() -> Hsla {
+    if is_light() {
+        ink_a(0.92)
+    } else {
+        white_a(0.9)
+    }
+}
+/// Text on a [`solid_pill`].
+pub fn on_solid_pill() -> Rgba {
+    pick(0x0b0e13, 0xffffff)
+}
+
+/// An opaque card straight on the Collection (the welcome's load error).
+pub fn opaque_card() -> Hsla {
+    if is_light() {
+        rgba_hsla(246, 247, 249, 0.96)
+    } else {
+        rgba_hsla(14, 18, 24, 0.96)
+    }
+}
+
+/// A toast at the bottom of the Collection.
+pub fn toast_fill() -> Hsla {
+    if is_light() {
+        rgba_hsla(250, 251, 252, 0.96)
+    } else {
+        rgba_hsla(18, 22, 28, 0.94)
+    }
+}
+
+/// The title of a ☰ page.
+pub fn page_title() -> Rgba {
+    pick(0xcaf3fd, 0x1a2029)
+}
+
+/// What the grid drawer's art fades into (its glass, nearly opaque).
+pub fn drawer_fade(a: f32) -> Hsla {
+    if is_light() {
+        rgba_hsla(246, 247, 249, a)
+    } else {
+        rgba_hsla(16, 20, 27, a)
+    }
+}
+
+/// A button sitting on a picture (the grid drawer's close button).
+pub fn art_button_fill() -> Hsla {
+    if is_light() {
+        white_a(0.8)
+    } else {
+        black_a(0.45)
+    }
+}
+
+// Focus panel: Play, the round tool buttons, the cards and the chips of
+// the details.
+/// The Play button: a light pill on the dark theme, an ink one on the light.
+pub fn play_fill() -> Rgba {
+    pick(0xf3f5f7, 0x1a2029)
+}
+pub fn play_fill_hover() -> Rgba {
+    pick(0xffffff, 0x0f141b)
+}
+pub fn play_text() -> Rgba {
+    pick(0x161616, 0xffffff)
+}
+/// The launch option after Play's label.
+pub fn play_note() -> Rgba {
+    pick(0x5a5f66, 0xb4bcc8)
+}
+/// A card of the focus panel over the art (`dense`: the facts card).
+pub fn focus_card_fill(dense: bool) -> Hsla {
+    match (is_light(), dense) {
+        (false, true) => rgba_hsla(18, 22, 28, 0.45),
+        (false, false) => rgba_hsla(12, 14, 18, 0.5),
+        (true, true) => white_a(0.6),
+        (true, false) => white_a(0.5),
+    }
+}
 /// Fill of a round button at `a` (`rgba(16,18,22,a)`; white on the light theme).
 pub fn round_fill(a: f32) -> Hsla {
     if is_light() {
