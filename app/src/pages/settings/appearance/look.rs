@@ -10,10 +10,12 @@ use heronite_data::appearance::{
 };
 use heronite_i18n::tr;
 
+use super::scheme::colour_dot as dot;
 use super::{apply_interface, slider_of, Field, SettingsPage};
 use crate::icons::Icon;
 use crate::pages::PageEvent;
 use crate::theme;
+use crate::ui::colour_picker::{ColourPicker, PickerEvent};
 use crate::ui::controls::{button, card, row, tabs, toggle, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::select_field;
 use crate::ui::icon;
@@ -105,7 +107,7 @@ pub(super) fn section_label(s: Section) -> &'static str {
 
 /// The Colour card, each choice followed by what depends on it: the theme
 /// (and the custom theme's colours), the panels (their glass or their
-/// colour), the accent and high contrast.
+/// colour), the accent (and its own colour) and high contrast.
 pub(super) fn colour_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     let contrast = a.high_contrast;
@@ -113,7 +115,7 @@ pub(super) fn colour_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage>)
     let custom_rows = super::custom::rows(d, cx);
     let (panels, panel_rows) = super::panel_rows(&d.appearance, cx);
     // The custom theme has an accent of its own.
-    let accent = (a.theme != Theme::Custom).then(|| accent_row(d, cx));
+    let accent = (a.theme != Theme::Custom).then(|| with_sub_rows(accent_row(d, cx), accent_picker_rows(d)));
     let high_contrast = toggle_row(
         "high-contrast",
         tr!("High contrast"),
@@ -125,43 +127,86 @@ pub(super) fn colour_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage>)
     card([with_sub_rows(theme_row, custom_rows), with_sub_rows(panels, panel_rows)].into_iter().chain(accent).chain([high_contrast]))
 }
 
-/// The accent swatches, "From the game" last.
+/// A preset accent, or "From the game": the own colour goes.
+fn set_accent(d: &mut SettingsPage, accent: Accent, cx: &mut Context<SettingsPage>) {
+    d.appearance.accent_picker_open = false;
+    set_look(d, cx, |a| {
+        a.accent = accent;
+        a.accent_own = None;
+    });
+}
+
+/// The accent's dots: the presets, then "From the game" and your own colour.
 fn accent_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let a = d.appearance.ui;
-    let mut swatches = div().flex().items_center().gap(px(10.));
-    for accent in Accent::ALL.iter().copied() {
-        let on = a.accent == accent;
-        let base = div()
-            .id(SharedString::from(format!("accent-{}", accent.as_str())))
-            .flex_none()
-            .h(px(26.))
-            .rounded_full()
-            .cursor_pointer()
-            .border_2()
-            .border_color(if on { theme::text_bright() } else { theme::ink_a(0.12) })
-            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.accent = accent)));
-        swatches = swatches.child(match theme::accent_shade(accent) {
-            Some((r, g, b)) => base.w(px(26.)).bg(theme::rgb_a(r, g, b, 1.)),
-            None => base
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .px(px(10.))
-                .bg(theme::ink_a(0.06))
-                .text_size(px(12.5))
-                .text_color(theme::text_primary())
-                .child(icon(Icon::Palette, px(14.), theme::accent()))
-                .child(accent_label(accent)),
-        });
+    let open = d.appearance.accent_picker_open;
+    let mut dots = div().flex().flex_wrap().items_center().justify_end().gap(px(4.));
+    for accent in Accent::ALL.iter().copied().filter(|x| *x != Accent::Game) {
+        dots = dots.child(
+            dot(
+                SharedString::from(format!("accent-{}", accent.as_str())),
+                theme::accent_shade(accent),
+                Icon::Palette,
+                a.accent_own.is_none() && a.accent == accent,
+            )
+            .tooltip(crate::ui::tooltip(accent_label(accent)))
+            .on_click(cx.listener(move |d, _, _, cx| set_accent(d, accent, cx))),
+        );
     }
+    let game_on = a.accent_own.is_none() && a.accent == Accent::Game;
+    dots = dots
+        .child(super::scheme::dot_divider())
+        .child(
+            dot("accent-game".into(), None, Icon::SportsEsports, game_on)
+                .tooltip(crate::ui::tooltip(accent_label(Accent::Game)))
+                .on_click(cx.listener(|d, _, _, cx| set_accent(d, Accent::Game, cx))),
+        )
+        .child(
+            dot("accent-own".into(), a.accent_own.map(theme::own_accent_shade), Icon::Palette, a.accent_own.is_some() || open)
+                .tooltip(crate::ui::tooltip(tr!("Your own colour")))
+                .on_click(cx.listener(|d, _, window, cx| {
+                    let a = &mut d.appearance;
+                    a.accent_picker_open = !a.accent_picker_open;
+                    a.tint_picker_open = false;
+                    if a.accent_picker_open {
+                        let c = a.ui.accent_own.unwrap_or_else(theme::accent_rgb);
+                        a.accent_picker.update(cx, |p, cx| p.set(c, window, cx));
+                    }
+                    cx.notify();
+                })),
+        );
     row(
         tr!("Accent colour"),
-        Some(tr!(
-            "The selection ring, links, active buttons and sliders. \"From the game\" takes the colour of the selected game's cover."
-        )),
-        swatches,
+        Some(tr!("The selection ring, links, active buttons and sliders. The controller takes the colour of the selected game's cover.")),
+        dots,
     )
     .into_any_element()
+}
+
+/// The accent's colour picker, while it is open.
+fn accent_picker_rows(d: &SettingsPage) -> Vec<AnyElement> {
+    let a = &d.appearance;
+    if !a.accent_picker_open {
+        return Vec::new();
+    }
+    vec![super::scheme::picker_row(
+        tr!("Drag on the square and the strip, or type a hex colour. Each theme shows it a little lighter or darker when it would be hard to read."),
+        a.accent_picker.clone(),
+    )]
+}
+
+/// The picker of [`accent_row`]: a drag moves the accent on screen, its end
+/// saves it.
+pub(super) fn new_accent_picker(window: &mut Window, cx: &mut Context<SettingsPage>) -> Entity<ColourPicker> {
+    let picker = cx.new(|cx| ColourPicker::new(theme::accent_rgb(), window, cx));
+    cx.subscribe(&picker, |d: &mut SettingsPage, _, ev: &PickerEvent, cx| {
+        let (PickerEvent::Change(c) | PickerEvent::Commit(c)) = *ev;
+        d.appearance.ui.accent_own = Some(c);
+        apply_interface(d, matches!(ev, PickerEvent::Commit(_)), cx);
+        cx.emit(PageEvent::AppearanceChanged);
+    })
+    .detach();
+    picker
 }
 
 /// Font, density and animations.

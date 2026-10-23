@@ -87,6 +87,9 @@ pub struct State {
     /// The picker of a solid colour of your own, and whether it shows.
     tint_picker: Entity<crate::ui::colour_picker::ColourPicker>,
     tint_picker_open: bool,
+    /// The same for the accent.
+    accent_picker: Entity<crate::ui::colour_picker::ColourPicker>,
+    accent_picker_open: bool,
 }
 
 const ASPECTS: [(CoverAspect, &str); 6] = [
@@ -178,6 +181,8 @@ impl State {
             custom_editor: custom::Editor::new(&ui.custom, window, cx),
             tint_picker: scheme::new_tint_picker(window, cx),
             tint_picker_open: false,
+            accent_picker: look::new_accent_picker(window, cx),
+            accent_picker_open: false,
         };
         this.preview_task = None;
         this
@@ -686,7 +691,10 @@ fn console_apply_look(
         }
         ("accent", i, _) => {
             if let Some(v) = i.and_then(|i| Accent::ALL.get(i).copied()) {
-                look::set_look(d, cx, |a| a.accent = v)
+                look::set_look(d, cx, |a| {
+                    a.accent = v;
+                    a.accent_own = None;
+                })
             }
         }
         ("font", i, _) => {

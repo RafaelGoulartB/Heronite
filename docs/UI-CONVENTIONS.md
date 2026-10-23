@@ -120,8 +120,10 @@ release (off the UI thread).
 `pages/settings/appearance/`: `look.rs` for the rows, `profiles.rs` for the tiles). Every value defaults to today's
 look and applies at once (`look::set_look` → `set_appearance`, saved off the UI thread, `PageEvent::AppearanceChanged`
 repaints the Collection). Read them through the theme, never from the file: `theme::accent()` and the `accent_*` tints
-follow **Accent colour** (Ice `#a5dceb` default, Mint, Amber, Rose, Lavender, or "From the game": the vivid average of
-the selected cover, measured on an 8×12 copy in `collection/look.rs`); never write the accent's RGB at a call site
+follow **Accent colour** (Ice `#a5dceb` default, Mint, Amber, Rose, Lavender, "From the game": the vivid average of
+the selected cover, measured on an 8×12 copy in `collection/look.rs`, or one of your own from the colour picker:
+`accentColour`, `Appearance::accent_own`, drawn through `theme::own_accent_shade`, lightened on the dark theme and
+darkened on the light one until it reads); never write the accent's RGB at a call site
 (`theme::accent_alpha(a)`). **High contrast** raises `text_muted`, `text_dim`, borders, separators and
 `theme::contrast_a(a)` for faint text over art. **Font** (`theme::font_body()` / `font_heading()`: Cabin + Rubik,
 Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**

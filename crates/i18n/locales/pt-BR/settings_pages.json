@@ -345,7 +345,7 @@
   "The cover, blurred": "A capa, desfocada",
   "The game's artwork": "A arte do jogo",
   "The line under each cover in the list and the grid.": "A linha embaixo de cada capa na lista e no grid.",
-  "The selection ring, links, active buttons and sliders. \"From the game\" takes the colour of the selected game's cover.": "Anel da seleção, links, botões ativos e controles deslizantes. \"Do jogo\" usa a cor da capa do jogo selecionado.",
+  "The selection ring, links, active buttons and sliders. The controller takes the colour of the selected game's cover.": "Anel da seleção, links, botões ativos e controles deslizantes. O controle usa a cor da capa do jogo selecionado.",
   "Today's look": "O visual de hoje",
   "Under the cover": "Embaixo da capa",
   "Under the pointer": "Sob o ponteiro",
@@ -418,5 +418,6 @@
   "Menus, dialogs and pages like this one are glass: the blurred game artwork shows through.": "Menus, diálogos e páginas como esta são de vidro: a arte do jogo desfocada aparece por trás.",
   "Panels are the menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.": "Painéis são os menus, o menu ☰, menus de contexto, listas, diálogos, a gaveta, páginas como esta e a paleta de comandos.",
   "Reset panels": "Redefinir painéis",
-  "Panel colour": "Cor dos painéis"
+  "Panel colour": "Cor dos painéis",
+  "Drag on the square and the strip, or type a hex colour. Each theme shows it a little lighter or darker when it would be hard to read.": "Arraste no quadrado e na faixa, ou digite uma cor hex. Cada tema a mostra um pouco mais clara ou escura quando ficaria difícil de ler."
 }

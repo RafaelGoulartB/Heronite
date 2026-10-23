@@ -9,6 +9,7 @@ use heronite_i18n::{tr, trc};
 
 use super::look::set_look;
 use super::{apply_interface, SettingsPage, State};
+use crate::icons::Icon;
 use crate::theme::{self, Scheme};
 use crate::ui::colour_picker::{ColourPicker, PickerEvent};
 use crate::ui::controls::row;
@@ -126,25 +127,26 @@ pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyEle
         let side = t.is_light();
         let on = shown(side) && own(side).is_none() && tint(side) == t;
         dots = dots.child(
-            colour_dot(SharedString::from(format!("ui-tint-{}", t.as_str())), Some(t.rgb()), on)
+            colour_dot(SharedString::from(format!("ui-tint-{}", t.as_str())), Some(t.rgb()), Icon::Palette, on)
                 .tooltip(crate::ui::tooltip(t.label()))
                 .on_click(cx.listener(move |d, _, _, cx| set_tint(d, t, true, cx))),
         );
     }
     let mine = [false, true].into_iter().filter(|s| shown(*s)).find_map(own);
     let own_on = [false, true].into_iter().any(|s| shown(s) && own(s).is_some());
-    dots = dots.child(div().w(px(1.)).h(px(22.)).mx(px(6.)).bg(theme::ink_a(0.12))).child(
-        colour_dot("ui-tint-own".into(), mine, own_on || a.tint_picker_open).tooltip(crate::ui::tooltip(tr!("Your own colour"))).on_click(
-            cx.listener(|d, _, window, cx| {
+    dots = dots.child(dot_divider()).child(
+        colour_dot("ui-tint-own".into(), mine, Icon::Palette, own_on || a.tint_picker_open)
+            .tooltip(crate::ui::tooltip(tr!("Your own colour")))
+            .on_click(cx.listener(|d, _, window, cx| {
                 let a = &mut d.appearance;
                 a.tint_picker_open = !a.tint_picker_open;
+                a.accent_picker_open = false;
                 if a.tint_picker_open {
                     let c = theme::panel_rgb();
                     a.tint_picker.update(cx, |p, cx| p.set(c, window, cx));
                 }
                 cx.notify();
-            }),
-        ),
+            })),
     );
     let note = if both {
         tr!("A dark and a light colour: your desktop's style picks between them.")
@@ -153,37 +155,20 @@ pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyEle
     };
     let mut rows = vec![row(tr!("Panel colour"), Some(note), dots).into_any_element()];
     if a.tint_picker_open {
-        rows.push(
-            div()
-                .flex()
-                .items_start()
-                .justify_between()
-                .gap(px(16.))
-                .py(px(12.))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Your own colour")))
-                        .child(meta_text(tr!(
-                            "Drag on the square and the strip, or type a hex colour. It is adjusted when the text would be hard to read on it."
-                        ))),
-                )
-                .child(div().w(px(300.)).flex_none().child(a.tint_picker.clone()))
-                .into_any_element(),
-        );
+        rows.push(picker_row(
+            tr!("Drag on the square and the strip, or type a hex colour. It is adjusted when the text would be hard to read on it."),
+            a.tint_picker.clone(),
+        ));
     }
     rows
 }
 
-/// A round swatch of `c` (a palette icon without one), ringed when `on`.
-fn colour_dot(id: SharedString, c: Option<Rgb>, on: bool) -> Stateful<Div> {
+/// A round swatch of `c` (`ic` without one), ringed when `on`.
+pub(super) fn colour_dot(id: SharedString, c: Option<Rgb>, ic: Icon, on: bool) -> Stateful<Div> {
     let inner = div().size(px(24.)).rounded_full().border_1().border_color(theme::ink_a(0.22)).flex().items_center().justify_center();
     let inner = match c {
         Some((r, g, b)) => inner.bg(theme::rgb_a(r, g, b, 1.)),
-        None => inner.bg(theme::ink_a(0.06)).child(crate::ui::icon(crate::icons::Icon::Palette, px(14.), theme::text_muted())),
+        None => inner.bg(theme::ink_a(0.06)).child(crate::ui::icon(ic, px(14.), theme::text_muted())),
     };
     div()
         .id(id)
@@ -198,6 +183,32 @@ fn colour_dot(id: SharedString, c: Option<Rgb>, on: bool) -> Stateful<Div> {
         .cursor_pointer()
         .hover(|s| s.bg(theme::ink_a(0.06)))
         .child(inner)
+}
+
+/// The thin line between the presets and the dots after them.
+pub(super) fn dot_divider() -> Div {
+    div().w(px(1.)).h(px(22.)).mx(px(6.)).bg(theme::ink_a(0.12))
+}
+
+/// "Your own colour" under a row of dots: a note on the left, `picker` on the right.
+pub(super) fn picker_row(note: &str, picker: Entity<ColourPicker>) -> AnyElement {
+    div()
+        .flex()
+        .items_start()
+        .justify_between()
+        .gap(px(16.))
+        .py(px(12.))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Your own colour")))
+                .child(meta_text(note.to_string())),
+        )
+        .child(div().w(px(300.)).flex_none().child(picker))
+        .into_any_element()
 }
 
 /// The picker of [`tint_rows`]: a drag moves the panels' colour on screen,
