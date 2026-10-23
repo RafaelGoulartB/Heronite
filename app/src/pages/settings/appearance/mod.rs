@@ -41,7 +41,6 @@ use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{button, caption, card, row, tabs, toggle_row, ButtonKind};
 use crate::ui::fields::{meta_text, select_field};
-use crate::ui::glass::glass_menu_surface;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Field {
@@ -262,7 +261,7 @@ fn slider_of(a: &State, field: Field) -> &Entity<SliderState> {
     &a.sliders.iter().find(|(f, _)| *f == field).expect("slider created in State::new").1
 }
 
-/// Interface mode (Transparent / Solid), its controls and a sample menu.
+/// Interface mode (Transparent / Solid) and its controls.
 fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
     let this = cx.entity();
     let mode =
@@ -291,41 +290,6 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
         }
         InterfaceMode::Solid => rows.extend(scheme::tint_rows(a, cx)),
     }
-    let sample_item = |label: &'static str, selected: bool| {
-        div()
-            .px(px(10.))
-            .py(px(6.))
-            .rounded(px(theme::R_ITEM))
-            .text_size(px(13.))
-            .text_color(theme::text_primary())
-            .when(selected, |d| d.bg(theme::menu_item_hover()))
-            .child(label)
-    };
-    let sample = glass_menu_surface(theme::R_MENU)
-        .flex()
-        .flex_col()
-        .gap(px(2.))
-        .p(px(6.))
-        .w(px(210.))
-        .child(sample_item(tr!("Play"), true))
-        .child(sample_item(tr!("Add to favourites"), false))
-        .child(sample_item(tr!("Properties"), false));
-    let sample_row = div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .gap(px(16.))
-        .py(px(14.))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(1.))
-                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Preview")))
-                .child(meta_text(tr!("A menu with the current settings."))),
-        )
-        .child(sample);
-    rows.push(sample_row.into_any_element());
     card(rows)
 }
 
