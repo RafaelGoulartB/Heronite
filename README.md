@@ -111,14 +111,14 @@ A controller-first layout for the couch or a TV that covers the whole app, with 
 
 ## Light on your PC
 
-A single native process that draws its UI on the GPU, with no bundled browser engine. When idle, it does no work.
+A single native process that draws its UI on the GPU, with no bundled browser engine. When idle, it does almost no work.
 
 | | Heronite |
 |---|---|
-| Memory while idle | **~195 MB** in a single process |
-| CPU while idle | **0.0%** (no CPU time used over 60 s) |
-| Install size | **47 MB** (app + store login helper) |
-| Start to library on screen | **~335 ms** median |
+| Memory while idle | **~200 MB** in a single process |
+| CPU while idle | **~0.1%** (0.05 s of CPU time over 60 s) |
+| Install size | **64 MB** (app + store login helper) |
+| Start to library on screen | **~300 ms** median |
 
 ## Your data
 
