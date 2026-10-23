@@ -53,6 +53,8 @@ pub struct EmulatorsPage {
     layer: crate::console::Layer,
     /// Palette command waiting for the first load (see `palette.rs`).
     palette_pending: Option<String>,
+    /// Looks for changes made by others while the page is on screen.
+    watch: Option<Task<()>>,
 }
 
 impl EventEmitter<PageEvent> for EmulatorsPage {}
@@ -84,22 +86,34 @@ impl EmulatorsPage {
             console_list: Default::default(),
             layer: Default::default(),
             palette_pending: None,
+            watch: None,
         };
         this.reload(cx);
-        // The Collection refresh and the scan dialogs write the same files:
-        // pick the changes up (a few stat calls every 2 seconds).
-        let paths = this.ctx.data_paths.clone();
-        cx.spawn(async move |this, cx| loop {
-            cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+        this
+    }
+
+    /// The Collection shows or hides the page. The Collection refresh and the
+    /// scan dialogs write the same files: while the page is on screen, pick the
+    /// changes up (a few stat calls every 2 seconds). Shown again, it looks at
+    /// once, so what changed meanwhile appears without waiting.
+    pub fn set_shown(&mut self, shown: bool, cx: &mut Context<Self>) {
+        if !shown {
+            self.watch = None;
+            return;
+        }
+        if self.watch.is_some() {
+            return;
+        }
+        let paths = self.ctx.data_paths.clone();
+        self.watch = Some(cx.spawn(async move |this, cx| loop {
             let p = paths.clone();
             let stamp = cx.background_spawn(async move { data_stamp(&p) }).await;
             let Ok(changed) = this.update(cx, |this, _| this.loaded && this.stamp != stamp) else { break };
             if changed && this.update(cx, |this, cx| this.reload(cx)).is_err() {
                 break;
             }
-        })
-        .detach();
-        this
+            cx.background_executor().timer(std::time::Duration::from_secs(2)).await;
+        }));
     }
 
     fn reload(&self, cx: &mut Context<Self>) {
