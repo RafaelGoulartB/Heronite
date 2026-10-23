@@ -330,7 +330,7 @@ impl SettingsPanel {
                             .size(px(28.))
                             .rounded_full()
                             .cursor_pointer()
-                            .hover(|s| s.bg(theme::white_a(0.10)))
+                            .hover(|s| s.bg(theme::ink_a(0.10)))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 let mut now = this.custom_paths();
                                 if i < now.len() {

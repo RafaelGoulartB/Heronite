@@ -119,5 +119,10 @@
   "{folder}/<game>/replays": "{folder}/<jogo>/replays",
   "{n} game has it on or off on its own (Game settings → Performance).": "{n} jogo tem o replay ligado ou desligado por conta própria (Configurações do jogo → Desempenho).",
   "{n} games have it on or off on its own (Game settings → Performance).": "{n} jogos têm o replay ligado ou desligado por conta própria (Configurações do jogo → Desempenho).",
-  "{w} × {h} at {fps} FPS, {mbps} Mbit/s {codec} through {encoder}": "{w} × {h} a {fps} FPS, {mbps} Mbit/s {codec} por {encoder}"
+  "{w} × {h} at {fps} FPS, {mbps} Mbit/s {codec} through {encoder}": "{w} × {h} a {fps} FPS, {mbps} Mbit/s {codec} por {encoder}",
+  "It is registered while a game records, so the keys stay the game's otherwise.": "Ele é registrado enquanto um jogo grava, então as teclas continuam sendo do jogo no resto do tempo.",
+  "Press the keys…": "Pressione as teclas…",
+  "Saves the replay like Guide + X, overlay or not. Click the field and press the key combination; Backspace removes it.": "Salva o replay como Guide + X, com ou sem o overlay. Clique no campo e pressione a combinação de teclas; Backspace a remove.",
+  "{key} already opens the overlay.": "{key} já abre o overlay.",
+  "{key} already takes a screenshot.": "{key} já tira uma captura de tela."
 }

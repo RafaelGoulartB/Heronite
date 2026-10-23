@@ -253,8 +253,8 @@ impl CollectionView {
             .when(!grid, |d| {
                 d.bg(linear_gradient(
                     90.,
-                    linear_color_stop(theme::rgb_a(7, 9, 12, 0.28), 0.),
-                    linear_color_stop(theme::rgb_a(7, 9, 12, 0.1), 0.72),
+                    linear_color_stop(theme::stage_ink_a(0.28), 0.),
+                    linear_color_stop(theme::stage_ink_a(0.1), 0.72),
                 ))
             })
             .child(list_el)
@@ -288,12 +288,12 @@ impl CollectionView {
                 .pl(px(3.))
                 .pr(px(9.))
                 .rounded_full()
-                .bg(theme::white_a(0.05))
+                .bg(theme::ink_a(0.05))
                 .text_size(px(12.))
                 .font_weight(theme::W_REGULAR)
                 .text_color(theme::text_muted())
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.1)).text_color(white()))
+                .hover(|s| s.bg(theme::ink_a(0.1)).text_color(theme::text_bright()))
                 .child(super::dock::tri_mark(tri).size(px(16.)))
                 .child(if n == total { tr!("Unselect group") } else { tr!("Select group") })
                 .on_click(cx.listener(move |this, _, _, cx| {

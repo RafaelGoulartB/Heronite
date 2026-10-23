@@ -14,10 +14,10 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   (text fields), `slider::{Slider, SliderState}`. Style everything else by hand.
 
 ## Layout of the code
-- `app/src/theme/` — tokens (`color`, `font`, `layout`, `glass`: nord-dark colours, fonts, status colours,
-  `W_BOLD` = CSS 600/700, `W_500` = CSS 500, and the glass tokens: fills,
+- `app/src/theme/` — tokens (`color`, `font`, `layout`, `glass`, `scheme`: nord-dark colours and their light
+  counterparts, fonts, status colours, `W_BOLD` = CSS 600/700, `W_500` = CSS 500, and the glass tokens: fills,
   borders, radii `R_*`, text colours, toggle / button / segmented / input
-  values). Never hard-code a new colour twice; add it here.
+  values; light or dark, see "Theme"). Never hard-code a new colour twice; add it here.
 - `app/src/ui/` — building blocks: `icon`, `tool_button`, `round_button`,
   `chip`, `scrollbar`, `dropdown::{dropdown, menu_panel, menu_item,
   menu_separator}`, `dialog::{dialog, drawer}`, `glass::*`,
@@ -97,7 +97,19 @@ background* = every glass surface (menus, ☰, context menus, dropdowns, dialogs
 drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
 `interfaceOpacity` 50-100 (default 90, maps to `glass_fill`; the art dim rises
 from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
-(default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum.
+(default 30), `interfaceSolidTint` slate (default) | graphite | midnight | forest | plum | mocha for the dark theme
+and `interfaceSolidTintLight` paper (default) | frost | mint | lilac | blush | sand (pastels, readable and told apart:
+`tints_are_readable_and_distinct`) for the light one (`theme::solid_tint()` gives the
+current theme's). They sit in the Colour card under the theme, as Panels with its opacity and blur or its
+Panel colour indented under it; Panel colour shows the twelve as dots, the dark ones above the light ones, dark and light together, plus a dot for a colour picked
+by hand (`interfaceSolidColour` / `interfaceSolidColourLight`, through `own_panel`: it goes to the side its brightness
+belongs to and is moved until that side's secondary text reads on it); picking a light colour turns the theme light
+and a dark one dark, System keeps one per side. **From the desktop** (`interfaceSolidDesktop`) takes the desktop's
+window colour instead and the System theme with it. `theme::panel_rgb()` is the panels' colour wherever it comes from.
+The desktop's colours (`system::desktop_colours`, kept in `theme::desktop_colours()`): the accent from the XDG
+settings portal (GNOME 47+, KDE Plasma 6, COSMIC), else KDE's `kdeglobals` or GNOME's `accent-color`; the window
+colour from KDE's colour scheme or libadwaita's on GNOME. Read on a thread, again when the portal says the appearance
+changed; their dots show only while the desktop has them.
 These live in this app's `appearance.json` (`AppPaths::appearance()`, next to
 `ui-state.json`; `heronite_data::appearance::Appearance`), NOT in the data folder.
 At runtime `theme::appearance()/set_appearance()` (a process-wide value) feeds
@@ -114,8 +126,10 @@ release (off the UI thread).
 `pages/settings/appearance/`: `look.rs` for the rows, `profiles.rs` for the tiles). Every value defaults to today's
 look and applies at once (`look::set_look` → `set_appearance`, saved off the UI thread, `PageEvent::AppearanceChanged`
 repaints the Collection). Read them through the theme, never from the file: `theme::accent()` and the `accent_*` tints
-follow **Accent colour** (Ice `#a5dceb` default, Mint, Amber, Rose, Lavender, or "From the game": the vivid average of
-the selected cover, measured on an 8×12 copy in `collection/look.rs`); never write the accent's RGB at a call site
+follow **Accent colour** (Ice `#a5dceb` default, Sky, Mint, Amber, Coral, Rose, Lavender, "From the game": the vivid average of
+the selected cover, measured on an 8×12 copy in `collection/look.rs`, or one of your own from the colour picker:
+`accentColour`, `Appearance::accent_own`, drawn through `theme::own_accent_shade`, lightened on the dark theme and
+darkened on the light one until it reads, or "From the desktop"); never write the accent's RGB at a call site
 (`theme::accent_alpha(a)`). **High contrast** raises `text_muted`, `text_dim`, borders, separators and
 `theme::contrast_a(a)` for faint text over art. **Font** (`theme::font_body()` / `font_heading()`: Cabin + Rubik,
 Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**
@@ -131,6 +145,43 @@ the side, How Long To Beat and the extra panel travel with it). **Profiles**: fo
 Cinema, Minimal, High contrast) and the user's (`profiles` in `appearance.json`), "Save as profile", export / import
 (`heroniteAppearance` marker). A profile holds everything in `appearance.json`, not the background sliders of
 `settings.json`. Console mode lists the same choices except the sections' order and "Your own picture".
+
+**Theme** (Settings → Appearance → Colour, `theme` in `appearance.json`: `dark` default | `light` | `system` |
+`custom`; `theme/scheme.rs`). System follows the desktop's style: `CollectionView` reads `window.appearance()` (GPUI gets it
+from the XDG portal's `color-scheme`) and observes it, so the app switches as the desktop does. The theme stays out
+of profiles, like the switch by the window's width (`Appearance::with_window_choices_of`). Every token has a dark
+and a light value picked by `theme::is_light()`; the light text, accent (`Accent::rgb_light`, a cover's accent
+through `readable_on_light`) and status colours keep 4.5:1 on every light tint, cards included (tested). So:
+- interface ink is `theme::ink_a(a)` (white on dark, `rgb(20,26,36)` on light), wells `recess_a`, shadows
+  `shadow_a`, bright text `text_bright()`; `white_a` / `black_a` / `white()` only for what sits on a picture
+  (cover overlays, the "+N" of a strip, the treemap's tiles) or on a dark-only screen;
+- a colour that is text or an icon and comes from data (status, score, a group's colour) goes through
+  `theme::readable(c)`; dots and bars keep it as is;
+- the Collection's scrims are `stage_ink_a`: on the light theme the art is faded, never under
+  `LIGHT_FADE_FLOOR` (`collection/stage.rs`) so dark text keeps 4.5:1 over black art; Play and the active Focus /
+  Grid half are `play_*` / `solid_pill` (a dark pill on the light theme).
+
+Console mode, the in-game overlay, Statistics (and Year in review) and the screenshots gallery and viewer stay dark:
+the root view says so at the start of its render (`theme::set_dark_only`; GPUI draws one window at a time and the
+root renders first, so the whole window reads it). A picture of another theme (the Theme cards, Getting started's
+overlay preview) is built inside `theme::drawn_as(light, ..)`; its colours are read while building, so no canvas
+in it may read one later. The gpui-component widgets get the theme again when it changes
+(`CollectionView::sync_look` → `apply_component_theme`). Solid shows the current theme's four tints, both rows with
+System. The theme is Dark until the user picks another, never the desktop's by itself; **Reset theme** under the
+Colour card goes back to Dark, glass panels, Ice and no high contrast, and keeps the custom theme's colours. On the light theme the Collection background's Darkening is called Fading.
+
+**Custom theme** (`heronite_data::appearance::custom`, editor in `pages/settings/appearance/custom.rs`): six
+colours (`Role`: page, panels, raised parts, text, secondary text, accent) in `customPalette`, light or dark as the
+panels are. While it is drawn (`theme::custom_palette()`, `Scheme::Custom`) every token derives from them: surfaces
+and text as picked, `ink_a` in the text colour, status colours through `readable_on` its backgrounds, the accent
+from the palette (the Accent row hides). The editor shows one colour at a time (the colour picker, suggestions), the contrast of the text colours on the panels with "Make it readable" below 4.5:1, and the
+themes saved by name (`customThemes`, export / import with the `heroniteTheme` marker). Like the theme, the custom
+colours stay out of profiles. Light colours come from `LIGHT_PAPER` / `LIGHT_PAGE` / `LIGHT_LIFT` in
+`theme/color.rs` (keep `SolidTint::Paper` equal to `LIGHT_PAPER`).
+
+**Colour picker** (`ui::colour_picker::ColourPicker`, an entity): a saturation / brightness square and a hue strip to
+click or drag on (drags go through `on_drag_move`, so they follow the pointer outside), a hex field; it emits
+`PickerEvent::Change` while dragging and `Commit` at the end or when a hex is typed, and `set` moves it without an event.
 
 **Surfaces** (`ui::glass`): `glass_panel(radius)` (big shadow; popovers 20, sheets
 26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14). Children added after the constructor paint above the layers. Children
@@ -252,7 +303,9 @@ its own for scripts (the palette still opens them directly). `HERONITE_DEBUG_DIA
   fill, `Ghost` = no fill, `Danger` = red tint. Disabled = 45%.
 - `tabs(id, items, active, on_select)` = segmented pills (scrolls horizontally).
 - `card(rows)` / `card_box()` + `row(label, desc, control)` (11px padding,
-  separators between rows), `caption(text)`, `page_heading`
+  separators between rows), `with_sub_rows(parent, rows)` (the rows that only
+  matter because of `parent`, shown while it is on or for one of its values,
+  indented under it along a line, as one row of the card), `caption(text)`, `page_heading`
   (Rubik 26), `dialog_title` (Rubik 22), `help_text` (lead), `kicker` (the only
   uppercase text), `kbd("Ctrl K")`, `close_button(id)`, `nav_pill(id, icon, label, active)`.
 - Fields (`ui::fields`): `path_field` shows a folder icon and "Clear"/"Browse" in accent;
@@ -368,7 +421,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
-`text_muted`, `text_dim`, `accent_tint`, ...).
+`text_muted`, `text_dim`, `accent_tint`, `ink_a`, ...) and must read on both themes (see "Theme").
 
 **Verifying**: captures with the app on a hidden workspace only show what was
 drawn before the compositor stopped sending frames, so late images (art, covers)

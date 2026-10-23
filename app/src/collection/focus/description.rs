@@ -33,7 +33,7 @@ pub(super) fn render_html(blocks: &[crate::collection::html::Block], images: &dy
         }
         StyledText::new(text).with_highlights(highlights)
     };
-    let mut out = div().flex().flex_col().text_size(px(15.2)).line_height(px(15.2 * 1.65)).text_color(theme::white_a(0.92));
+    let mut out = div().flex().flex_col().text_size(px(15.2)).line_height(px(15.2 * 1.65)).text_color(theme::ink_a(0.92));
     for (i, b) in blocks.iter().enumerate() {
         out = out.child(match b {
             Block::Heading(spans) => div()
@@ -42,7 +42,7 @@ pub(super) fn render_html(blocks: &[crate::collection::html::Block], images: &dy
                 .font_family(theme::font_heading())
                 .text_size(px(16.32))
                 .font_weight(theme::W_BOLD)
-                .text_color(white())
+                .text_color(theme::text_bright())
                 .child(text_of(spans))
                 .into_any_element(),
             Block::Para(spans) => div().mb(px(12.)).child(text_of(spans)).into_any_element(),

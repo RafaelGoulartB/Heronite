@@ -118,7 +118,7 @@ impl Section {
     pub(super) fn blurb(self) -> &'static str {
         match self {
             Section::General => tr!("Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically."),
-            Section::Appearance => tr!("Profiles, colour and reading, the artwork behind the Collection, the background of menus and pages, covers, motion and layout."),
+            Section::Appearance => tr!("Profiles, the theme and its colours, menus and panels, the picture behind the Collection, covers, text and layout."),
             Section::Advanced => tr!("Logs, folders and cache."),
             Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
@@ -140,7 +140,7 @@ impl Section {
     pub fn keywords(self) -> &'static str {
         match self {
             Section::General => "general folders tray shortcuts wine proton language theme geral pastas bandeja atalhos idioma tema",
-            Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast font density corners badges hover screenshot slideshow picture animations motion layout sections profile theme import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste fonte densidade cantos selos estrela animacoes movimento secoes perfil tema importar exportar imagem",
+            Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast font density corners badges hover screenshot slideshow picture animations motion layout sections profile theme light dark mode system import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste fonte densidade cantos selos estrela animacoes movimento secoes perfil tema claro escuro modo sistema importar exportar imagem",
             Section::Advanced => "advanced cache folders copy settings avancado pastas copiar configuracoes",
             Section::GameDefaults => "game defaults wine prefix gamescope launch options new games padroes dos jogos prefixo opcoes de inicializacao novos jogos",
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",

@@ -168,7 +168,7 @@ impl ScriptInstallDialog {
                 if *blocking {
                     icon_line(Icon::Cancel, theme::danger_text(), text.clone())
                 } else {
-                    icon_line(Icon::Warning, rgb(0xebcb8b), text.clone())
+                    icon_line(Icon::Warning, theme::caution_text(), text.clone())
                 }
             })
             .collect();
@@ -204,7 +204,7 @@ impl ScriptInstallDialog {
         if self.folder_used {
             col = col.child(icon_line(
                 Icon::Warning,
-                rgb(0xebcb8b),
+                theme::caution_text(),
                 tr!("This folder already has files. The script may replace some of them."),
             ));
         }
@@ -238,7 +238,7 @@ impl ScriptInstallDialog {
         }
         let mut col = div().flex().flex_col().child(caption(tr!("Sandbox"))).child(card(rows));
         if let Some(why) = self.sandbox_problem.clone().filter(|_| s.enabled) {
-            col = col.child(div().mt(px(8.)).child(icon_line(Icon::Warning, rgb(0xebcb8b), why)));
+            col = col.child(div().mt(px(8.)).child(icon_line(Icon::Warning, theme::caution_text(), why)));
         }
         col
     }

@@ -25,9 +25,9 @@ fn tile(head: Div, title: &'static str, sub: Div, description: &'static str, foo
         .min_h(px(168.))
         .p(px(18.))
         .rounded(px(20.))
-        .bg(theme::white_a(0.045))
+        .bg(theme::ink_a(0.045))
         .border_1()
-        .border_color(theme::white_a(0.09))
+        .border_color(theme::ink_a(0.09))
         .child(
             div().flex().items_center().gap(px(12.)).child(head).child(
                 div()
@@ -65,9 +65,9 @@ impl OnboardingDialog {
                 .px(px(18.))
                 .py(px(12.))
                 .rounded(px(18.))
-                .bg(theme::white_a(0.035))
+                .bg(theme::ink_a(0.035))
                 .border_1()
-                .border_color(theme::white_a(0.08))
+                .border_color(theme::ink_a(0.08))
                 .child(icon(Icon::CallMerge, px(20.), theme::accent()))
                 .child(div().flex_1().text_size(px(13.5)).text_color(theme::text_muted()).child(tr!("Games in other launchers on this PC")))
                 .children(buttons),
@@ -96,7 +96,7 @@ impl OnboardingDialog {
         };
         let [steam, stores, emulators] = GAMES;
         let add = tile(
-            div().size(px(38.)).rounded(px(12.)).flex().items_center().justify_center().bg(theme::white_a(0.08)).child(icon(
+            div().size(px(38.)).rounded(px(12.)).flex().items_center().justify_center().bg(theme::ink_a(0.08)).child(icon(
                 Icon::Add,
                 px(20.),
                 theme::text_primary(),
@@ -144,9 +144,9 @@ impl OnboardingDialog {
                     .px(px(22.))
                     .py(px(14.))
                     .rounded(px(20.))
-                    .bg(theme::black_a(0.25))
+                    .bg(theme::recess_a(0.25))
                     .border_1()
-                    .border_color(theme::white_a(0.06))
+                    .border_color(theme::ink_a(0.06))
                     .child(
                         div()
                             .flex()

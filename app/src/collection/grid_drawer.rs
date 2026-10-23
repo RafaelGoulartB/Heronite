@@ -152,7 +152,7 @@ impl CollectionView {
         let hero = self.drawer_art(&vm.key, width, hero_h, scale);
         let cover_h = COVER_W * self.cover_aspect;
         let cover = self.cover(&vm.cover_key, COVER_W, cover_h, scale, 200);
-        let fade = theme::rgb_a(16, 20, 27, 0.96);
+        let fade = theme::drawer_fade(0.96);
         div()
             .relative()
             .flex_none()
@@ -166,20 +166,20 @@ impl CollectionView {
                     .right_0()
                     .h(px(hero_h))
                     .rounded_t(r)
-                    .bg(theme::white_a(0.04))
+                    .bg(theme::ink_a(0.04))
                     .children(hero.map(|src| img(src).size_full().rounded_t(r).object_fit(ObjectFit::Cover)))
                     .child(div().absolute().inset_0().rounded_t(r).bg(linear_gradient(
                         180.,
-                        linear_color_stop(theme::rgb_a(16, 20, 27, 0.), 0.35),
+                        linear_color_stop(theme::drawer_fade(0.), 0.35),
                         linear_color_stop(fade, 1.),
                     ))),
             )
-            .child(close_button("grid-drawer-close").absolute().top(px(12.)).right(px(12.)).bg(theme::black_a(0.45)).on_click(cx.listener(
-                |this, _, _, cx| {
+            .child(close_button("grid-drawer-close").absolute().top(px(12.)).right(px(12.)).bg(theme::art_button_fill()).on_click(
+                cx.listener(|this, _, _, cx| {
                     this.grid.drawer_closed = true;
                     cx.notify();
-                },
-            )))
+                }),
+            ))
             .child(
                 div()
                     .absolute()
@@ -195,9 +195,9 @@ impl CollectionView {
                             .w(px(COVER_W))
                             .h(px(cover_h))
                             .rounded(px(10.))
-                            .bg(theme::white_a(0.06))
+                            .bg(theme::ink_a(0.06))
                             .shadow(vec![BoxShadow {
-                                color: theme::black_a(0.55),
+                                color: theme::shadow_a(0.55),
                                 offset: point(px(0.), px(14.)),
                                 blur_radius: px(30.),
                                 spread_radius: px(0.),
@@ -220,7 +220,7 @@ impl CollectionView {
                                     .text_size(px(22.))
                                     .line_height(px(26.))
                                     .line_clamp(3)
-                                    .text_color(white())
+                                    .text_color(theme::text_bright())
                                     .child(vm.title.clone()),
                             )
                             .when(!vm.meta_line.is_empty(), |d| {
@@ -229,7 +229,7 @@ impl CollectionView {
                                         .text_size(px(12.5))
                                         .line_height(px(17.))
                                         .line_clamp(2)
-                                        .text_color(theme::white_a(0.7))
+                                        .text_color(theme::ink_a(0.7))
                                         .child(vm.meta_line.clone()),
                                 )
                             }),
@@ -270,17 +270,17 @@ fn number_tile(label: &'static str, value: SharedString) -> Div {
         .px(px(12.))
         .py(px(9.))
         .rounded(px(12.))
-        .bg(theme::white_a(0.05))
+        .bg(theme::ink_a(0.05))
         .border_1()
-        .border_color(theme::white_a(0.08))
-        .child(div().truncate().text_size(px(11.5)).text_color(theme::white_a(0.52)).child(label))
+        .border_color(theme::ink_a(0.08))
+        .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.52)).child(label))
         .child(
             div()
                 .truncate()
                 .font_family(theme::font_heading())
                 .font_weight(theme::W_BOLD)
                 .text_size(px(15.))
-                .text_color(white())
+                .text_color(theme::text_bright())
                 .child(value),
         )
 }

@@ -54,7 +54,7 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
 - **Wine Manager:** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage Wine prefixes.
 - **Emulators:** detect installed emulators or add your own with RetroArch cores, scan ROM folders, and continue from save states.
 - **In-game overlay (beta):** press the controller's Guide button (or a shortcut) for a panel over the game with volume, microphone, FPS limit, screenshots, and journal notes. Guide + Y marks a moment to write about later.
-- **Replay (off by default):** keep the last seconds of the game (30 unless changed) and save them with Guide + X as a moment in its journal, recorded by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/) on the graphics card's encoder. Settings shows the memory it takes and how to spare it (Vulkan video, the buffer on disk, a smaller video); each game can have it on or off on its own.
+- **Replay (off by default):** keep the last seconds of the game (30 unless changed) and save them with Guide + X (or a keyboard shortcut of your own) as a moment in its journal, recorded by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/) on the graphics card's encoder. Settings shows the memory it takes and how to spare it (Vulkan video, the buffer on disk, a smaller video); each game can have it on or off on its own.
 
 <table>
   <tr>
@@ -92,7 +92,7 @@ A controller-first layout for the couch or a TV that covers the whole app, with 
 
 ## Make it yours
 
-- **Appearance:** profiles, an accent colour (or the game's), high contrast, fonts, density, cover style, a background picture or slideshow behind the Collection, and which sections the details panel shows.
+- **Appearance:** a dark or light theme (or the desktop's, or one in colours you pick), profiles, an accent colour (or the game's), high contrast, fonts, density, cover style, a background picture or slideshow behind the Collection, and which sections the details panel shows.
 - **Language:** English and Portuguese (Brazil), switched live.
 - **Saves and backups:** back up saves with Ludusavi after each session and restore them into any prefix. Scheduled, incremental backups of your Collection, play history, settings, and art.
 - **Storage:** see what your games take on each disk and clean up leftovers in one click.

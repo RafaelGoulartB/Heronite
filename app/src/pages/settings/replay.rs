@@ -6,7 +6,8 @@
 //! `replay.json` (`heronite_data::replay_prefs`), are the same for every
 //! game and reach the running service at once; a game can only have it on or
 //! off on its own (Game settings → Performance). Guide + X is the overlay's
-//! (`overlay::replay_shortcut_card`).
+//! (`overlay::replay_shortcut_card`); the keyboard shortcut, none unless set,
+//! is registered by the service while a game records.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -17,11 +18,12 @@ use heronite_overlay::replay::{estimate, Encoding, Estimate, Info, Program};
 
 use super::screenshots::format_size;
 use super::{overlay, SettingsPage};
+use crate::overlay::HotkeyState;
 use crate::pages::PageCtx;
 use crate::services::replay::{Detected, Status};
 use crate::theme;
-use crate::ui::controls::{caption, card, card_box, row, tabs, toggle_row};
-use crate::ui::fields::{meta_text, select_field};
+use crate::ui::controls::{button, caption, card, card_box, row, tabs, toggle_row, with_sub_rows, ButtonKind};
+use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
 
 /// Screen the estimate assumes until the recorder says which ones there are.
 const ASSUMED_SCREEN: (u32, u32) = (1920, 1080);
@@ -33,6 +35,10 @@ pub struct State {
     looking: bool,
     /// The menu of the monitor is open.
     monitor_open: bool,
+    /// The keyboard shortcut field.
+    hotkey: FocusHandle,
+    /// The combination last pressed in it is another shortcut's.
+    hotkey_taken: Option<String>,
 }
 
 impl State {
@@ -41,7 +47,7 @@ impl State {
         if let Some(service) = crate::services::replay::get(cx) {
             cx.observe(&service, |_, _, cx| cx.notify()).detach();
         }
-        Self { detected: None, looking: false, monitor_open: false }
+        Self { detected: None, looking: false, monitor_open: false, hotkey: cx.focus_handle(), hotkey_taken: None }
     }
 }
 
@@ -466,11 +472,97 @@ fn sound_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> 
     ])
 }
 
-pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
+/// `CommandOrControl` as the keyboard says it.
+fn shown_accelerator(a: &str) -> String {
+    a.replace("CommandOrControl", "Ctrl")
+}
+
+/// What else uses `accelerator` (the overlay's or the screenshot's shortcut).
+fn taken_by(d: &SettingsPage, accelerator: &str) -> Option<String> {
+    let o = &d.overlay.prefs;
+    let s = &d.settings.screenshots;
+    if o.enabled && o.keyboard_shortcut && o.keyboard_accelerator.eq_ignore_ascii_case(accelerator) {
+        Some(tr!("{key} already opens the overlay.", key = shown_accelerator(accelerator)))
+    } else if s.capture_enabled && s.capture_accelerator.eq_ignore_ascii_case(accelerator) {
+        Some(tr!("{key} already takes a screenshot.", key = shown_accelerator(accelerator)))
+    } else {
+        None
+    }
+}
+
+/// The keyboard shortcut that saves the replay: a field (none unless set;
+/// Backspace or Delete clears it) and whether it is registered.
+fn keyboard_card(d: &SettingsPage, p: &ReplayPrefs, window: &Window, cx: &mut Context<SettingsPage>) -> Div {
+    let accelerator = p.keyboard_accelerator.trim();
+    let focused = d.replay.hotkey.is_focused(window);
+    let text = match (accelerator.is_empty(), focused) {
+        (false, _) => shown_accelerator(accelerator),
+        (true, true) => tr!("Press the keys…").into(),
+        (true, false) => tr!("None").into(),
+    };
+    let field = hotkey_box(
+        div().id("replay-hotkey").track_focus(&d.replay.hotkey).cursor_pointer().on_key_down(cx.listener(|d, ev: &KeyDownEvent, _, cx| {
+            cx.stop_propagation();
+            let k = &ev.keystroke;
+            let plain = !(k.modifiers.control || k.modifiers.alt || k.modifiers.shift || k.modifiers.platform);
+            let accelerator = if plain && matches!(k.key.as_str(), "backspace" | "delete") {
+                String::new()
+            } else {
+                let Some(a) = accelerator_from_key(ev) else { return };
+                a
+            };
+            d.replay.hotkey_taken = taken_by(d, &accelerator);
+            if d.replay.hotkey_taken.is_none() {
+                update(d, cx, |p| p.keyboard_accelerator = accelerator);
+            }
+            cx.notify();
+        })),
+        text,
+        focused,
+    )
+    .when(accelerator.is_empty() && !focused, |b| b.text_color(theme::text_dim()));
+    let clear = (!accelerator.is_empty()).then(|| {
+        button("replay-hotkey-clear", ButtonKind::Glass, tr!("Remove")).on_click(cx.listener(|d, _, _, cx| {
+            d.replay.hotkey_taken = None;
+            update(d, cx, |p| p.keyboard_accelerator.clear());
+        }))
+    });
+    let status: Option<(String, bool)> = match &d.replay.hotkey_taken {
+        Some(why) => Some((why.clone(), true)),
+        None if accelerator.is_empty() => None,
+        None => {
+            let state = crate::services::replay::get(cx).map(|s| s.read(cx).hotkey_state().clone()).unwrap_or_default();
+            Some(match state {
+                HotkeyState::Idle => (tr!("It is registered while a game records, so the keys stay the game's otherwise.").into(), false),
+                HotkeyState::Registering => (tr!("Registering the shortcut…").into(), false),
+                HotkeyState::Ready(_) => (tr!("Shortcut registered and ready.").into(), false),
+                HotkeyState::Failed(e) => (e, true),
+            })
+        }
+    };
+    card([div()
+        .py(px(12.))
+        .flex()
+        .flex_col()
+        .gap(px(8.))
+        .child(labeled(
+            tr!("Keyboard shortcut"),
+            div().flex().items_center().gap(px(8.)).child(div().flex_1().child(field)).children(clear),
+        ))
+        .child(meta_text(tr!(
+            "Saves the replay like Guide + X, overlay or not. Click the field and press the key combination; Backspace removes it."
+        )))
+        .children(status.map(|(text, error)| {
+            div().text_size(px(12.)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text)
+        }))
+        .into_any_element()])
+}
+
+pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let p = prefs(d, cx);
     let o = &p.options;
     let seconds: Vec<(u32, &'static str)> = SECONDS.iter().map(|s| (*s, seconds_label(*s))).collect();
-    let main = card([
+    let main = card([with_sub_rows(
         toggle_row(
             "replay-enabled",
             tr!("Keep a replay of the game"),
@@ -481,13 +573,13 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         )
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
         .into_any_element(),
-        row(
+        vec![row(
             tr!("Length saved"),
             Some(tr!("A longer replay takes more memory while you play.")),
             choice_tabs("replay-seconds", &seconds, o.seconds, cx, |o, v| o.seconds = v),
         )
-        .into_any_element(),
-    ]);
+        .into_any_element()],
+    )]);
     let per_game = match p.games.len() {
         0 => tr!("A game can have it on or off on its own: Game settings → Performance.").to_string(),
         n => heronite_i18n::trn!(
@@ -496,6 +588,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             "{n} games have it on or off on its own (Game settings → Performance)."
         ),
     };
+    let keyboard = keyboard_card(d, &p, window, cx);
     let video = video_card(d, o, cx);
     let memory = memory_card(d, o, cx);
     let sound = sound_card(d, o, cx);
@@ -556,6 +649,8 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         )
         .child(caption(tr!("Controller")))
         .child(dim(on, overlay::replay_shortcut_card(d, cx)))
+        .child(caption(tr!("Keyboard")))
+        .child(dim(on, keyboard))
         .child(caption(tr!("Video")))
         .child(dim(on, video))
         .child(caption(tr!("Memory")))

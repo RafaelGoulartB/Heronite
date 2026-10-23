@@ -431,7 +431,7 @@ fn link_action(id: &'static str, ic: Icon, label: &'static str, enabled: bool) -
         .py(px(3.))
         .rounded(px(8.))
         .text_color(color)
-        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::white_a(0.06))))
+        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.06))))
         .child(icon(ic, px(13.), color))
         .child(label)
 }

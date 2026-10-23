@@ -1,11 +1,12 @@
-//! "Make it yours": a profile, the accent colour, the corners of the covers
-//! and the view the Collection opens in, next to a preview drawn with the
-//! current look. Each choice applies at once, as in Settings → Appearance.
+//! "Make it yours": a profile, the theme, the accent colour, the corners of
+//! the covers and the view the Collection opens in, next to a preview drawn
+//! with the current look. Each choice applies at once, as in Settings →
+//! Appearance.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::appearance::{presets, Accent, Appearance, Corners, StartView};
-use heronite_i18n::tr;
+use heronite_data::appearance::{presets, Accent, Appearance, Corners, StartView, Theme};
+use heronite_i18n::{tr, trc};
 
 use super::art::{self, Art};
 use super::steps::{Action, Step};
@@ -23,7 +24,7 @@ const PREVIEW_W: f32 = 600.;
 /// switch): here the view is chosen on its own, so it neither changes nor
 /// breaks a profile.
 pub(super) fn is_preset(look: Appearance, preset: Appearance) -> bool {
-    Appearance { start_view: preset.start_view, ..look }.with_auto_view_of(&preset) == preset
+    Appearance { start_view: preset.start_view, ..look }.with_window_choices_of(&preset) == preset
 }
 
 pub(super) fn preset_name(id: &str) -> &'static str {
@@ -47,18 +48,21 @@ fn preset_note(id: &str) -> &'static str {
 pub(super) fn accent_name(a: Accent) -> &'static str {
     match a {
         Accent::Ice => tr!("Ice"),
+        Accent::Sky => tr!("Sky"),
         Accent::Mint => tr!("Mint"),
         Accent::Amber => tr!("Amber"),
+        Accent::Coral => tr!("Coral"),
         Accent::Rose => tr!("Rose"),
         Accent::Lavender => tr!("Lavender"),
         Accent::Game => tr!("From the game"),
+        Accent::Desktop => tr!("From the desktop"),
     }
 }
 
-/// A round swatch of the accent (a blend for "From the game").
+/// A round swatch of the accent in the theme's shade (a blend for "From the game").
 pub(super) fn accent_dot(a: Accent, size: f32) -> Div {
     let d = div().flex_none().size(px(size)).rounded_full();
-    match a.rgb() {
+    match theme::accent_shade(a) {
         Some((r, g, b)) => d.bg(theme::rgba_hsla(r, g, b, 1.)),
         None => d.bg(linear_gradient(135., linear_color_stop(rgb(0xff9a6b), 0.), linear_color_stop(rgb(0x7ec7ff), 1.))),
     }
@@ -100,13 +104,13 @@ impl OnboardingDialog {
                 .w(relative(0.485))
                 .p(px(7.))
                 .rounded(px(14.))
-                .bg(if on { theme::accent_alpha(0.09).into() } else { theme::white_a(0.04) })
+                .bg(if on { theme::accent_alpha(0.09).into() } else { theme::ink_a(0.04) })
                 .border_2()
-                .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
+                .border_color(if on { theme::accent().into() } else { theme::ink_a(0.08) })
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.07)))
+                .hover(|s| s.bg(theme::ink_a(0.07)))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.set_look(|l| *l = Appearance { start_view: l.start_view, ..look }.with_auto_view_of(l), cx)
+                    this.set_look(|l| *l = Appearance { start_view: l.start_view, ..look }.with_window_choices_of(l), cx)
                 }))
                 .child(swatch(p.id))
                 .child(
@@ -126,8 +130,9 @@ impl OnboardingDialog {
                         ),
                 )
         });
-        let accents = Accent::ALL.iter().copied().map(|accent| {
-            let on = a.accent == accent;
+        // The desktop's accent only while it has one.
+        let accents = Accent::ALL.iter().copied().filter(|x| *x != Accent::Desktop || theme::accent_shade(*x).is_some()).map(|accent| {
+            let on = a.accent_own.is_none() && a.accent == accent;
             div()
                 .id(SharedString::from(format!("onb-accent-{}", accent.as_str())))
                 .flex()
@@ -137,16 +142,33 @@ impl OnboardingDialog {
                 .pr(px(12.))
                 .py(px(5.))
                 .rounded_full()
-                .bg(theme::white_a(0.04))
+                .bg(theme::ink_a(0.04))
                 .border_2()
-                .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
+                .border_color(if on { theme::accent().into() } else { theme::ink_a(0.08) })
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.08)))
-                .on_click(cx.listener(move |this, _, _, cx| this.set_look(|l| l.accent = accent, cx)))
+                .hover(|s| s.bg(theme::ink_a(0.08)))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.set_look(
+                        |l| {
+                            l.accent = accent;
+                            l.accent_own = None;
+                        },
+                        cx,
+                    )
+                }))
                 .child(accent_dot(accent, 20.))
                 .child(div().text_size(px(13.)).child(accent_name(accent)))
         });
         let this = cx.entity();
+        let theme_tabs = tabs(
+            "onb-theme",
+            &[(Theme::Dark, trc!("theme", "Dark")), (Theme::Light, trc!("theme", "Light")), (Theme::System, trc!("theme", "System"))],
+            a.theme,
+            {
+                let this = this.clone();
+                move |v, _, cx| this.update(cx, |d, cx| d.set_look(|l| l.theme = v, cx))
+            },
+        );
         let corners = tabs(
             "onb-corners",
             &[(Corners::Square, tr!("Square")), (Corners::Soft, tr!("Soft")), (Corners::Round, tr!("Round"))],
@@ -160,6 +182,8 @@ impl OnboardingDialog {
             .w(px(PICKER_W))
             .child(caption(tr!("Profile")).mt_0())
             .child(div().flex().flex_wrap().justify_between().gap_y(px(8.)).children(profiles))
+            .child(caption(tr!("Theme")))
+            .child(theme_tabs)
             .child(caption(tr!("Accent colour")))
             .child(div().flex().flex_wrap().gap(px(8.)).children(accents))
             .child(caption(tr!("Corners of the covers")))
@@ -210,11 +234,11 @@ impl OnboardingDialog {
                 .px(px(10.))
                 .py(px(8.))
                 .rounded(px(14.))
-                .bg(if on { theme::accent_alpha(0.1).into() } else { theme::white_a(0.04) })
+                .bg(if on { theme::accent_alpha(0.1).into() } else { theme::ink_a(0.04) })
                 .border_2()
-                .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
+                .border_color(if on { theme::accent().into() } else { theme::ink_a(0.08) })
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.07)))
+                .hover(|s| s.bg(theme::ink_a(0.07)))
                 .on_click(cx.listener(move |this, _, _, cx| this.set_look(|l| l.start_view = value, cx)))
                 .child(
                     div()

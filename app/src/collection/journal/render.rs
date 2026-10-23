@@ -139,7 +139,7 @@ impl CollectionView {
             } else {
                 tr!("No notes yet. Mark a moment in-game or write one here.")
             };
-            list = list.child(div().py(px(18.)).text_size(px(13.)).text_color(theme::white_a(0.5)).child(text));
+            list = list.child(div().py(px(18.)).text_size(px(13.)).text_color(theme::ink_a(0.5)).child(text));
         }
         let footer = (more > 0).then(|| {
             button_sm("journal-more", ButtonKind::Ghost, tr!("Show {n} more", n = more.min(super::DAYS * 2))).on_click(cx.listener(
@@ -183,7 +183,7 @@ impl CollectionView {
                 .gap(px(8.))
                 .cursor_pointer()
                 .text_size(px(12.8))
-                .text_color(theme::white_a(0.7))
+                .text_color(theme::ink_a(0.7))
                 .child(mini_checkbox("journal-only-sw", only, false).mt(px(0.)))
                 .child(tr!("Only days with notes"))
                 .on_click(cx.listener(|this, _, _, cx| {
@@ -218,8 +218,8 @@ impl CollectionView {
                         .rounded(px(6.))
                         .cursor_pointer()
                         .opacity(0.6)
-                        .hover(|s| s.opacity(1.).bg(theme::white_a(0.08)))
-                        .child(icon(Icon::DeleteOutline, px(15.), theme::white_a(0.7)))
+                        .hover(|s| s.opacity(1.).bg(theme::ink_a(0.08)))
+                        .child(icon(Icon::DeleteOutline, px(15.), theme::ink_a(0.7)))
                         .on_click(cx.listener(|this, _, _, cx| this.journal_clear_left_off(cx))),
                 )
             });
@@ -230,7 +230,7 @@ impl CollectionView {
                 .cursor_text()
                 .text_size(px(TEXT - 0.8))
                 .line_height(px(LINE - 2.))
-                .text_color(theme::white_a(0.92))
+                .text_color(theme::ink_a(0.92))
                 .child(l.text.clone())
                 .on_click(cx.listener(|this, _, window, cx| this.journal_edit(Target::LeftOff, window, cx)))
                 .into_any_element(),
@@ -238,8 +238,8 @@ impl CollectionView {
                 .id("journal-left-off")
                 .cursor_pointer()
                 .text_size(px(13.))
-                .text_color(theme::white_a(0.45))
-                .hover(|s| s.text_color(theme::white_a(0.75)))
+                .text_color(theme::ink_a(0.45))
+                .hover(|s| s.text_color(theme::ink_a(0.75)))
                 .child(tr!("Write where you stopped, to pick it up next time"))
                 .on_click(cx.listener(|this, _, window, cx| this.journal_edit(Target::LeftOff, window, cx)))
                 .into_any_element(),
@@ -283,7 +283,7 @@ impl CollectionView {
                     .text_size(px(15.2))
                     .child(long_date(day.date, this_year)),
             )
-            .child(div().text_size(px(12.5)).text_color(theme::white_a(0.5)).child(day_meta(t)))
+            .child(div().text_size(px(12.5)).text_color(theme::ink_a(0.5)).child(day_meta(t)))
             .child(div().flex_1())
             .child(
                 add_button(SharedString::from(format!("jday-add-{n}")), tr!("Note"))
@@ -299,7 +299,7 @@ impl CollectionView {
             .gap(px(2.))
             .py(px(14.))
             .border_t_1()
-            .border_color(theme::white_a(if n == 0 { 0. } else { 0.07 }))
+            .border_color(theme::ink_a(if n == 0 { 0. } else { 0.07 }))
             .child(head.mb(px(4.)));
         for i in &day.entries {
             col = col.child(self.journal_paragraph(&entries[*i], cx));
@@ -327,9 +327,9 @@ impl CollectionView {
             .justify_end()
             .items_center()
             .gap(px(3.))
-            .text_color(if e.is_moment() { theme::console_btn_y().into() } else { theme::white_a(0.42) })
+            .text_color(if e.is_moment() { theme::readable(theme::console_btn_y()) } else { theme::ink_a(0.42) })
             .when(e.is_moment(), |d| {
-                d.child(icon(if e.clip.is_some() { Icon::Videocam } else { Icon::Flag }, px(11.), theme::console_btn_y()))
+                d.child(icon(if e.clip.is_some() { Icon::Videocam } else { Icon::Flag }, px(11.), theme::readable(theme::console_btn_y())))
             })
             .child(time_of(e));
         let editing = self.journal.edit.as_ref().filter(|ed| ed.target == Target::Entry(id.clone()));
@@ -342,11 +342,11 @@ impl CollectionView {
             self.shots.thumb(&path).map(|src| (i, src))
         });
         let text = if e.is_moment() && e.clip.is_some() {
-            div().text_color(theme::white_a(0.38)).child(tr!("A replay saved in-game. Click to write about it."))
+            div().text_color(theme::ink_a(0.38)).child(tr!("A replay saved in-game. Click to write about it."))
         } else if e.is_moment() {
-            div().text_color(theme::white_a(0.38)).child(tr!("A moment marked in-game. Click to write about it."))
+            div().text_color(theme::ink_a(0.38)).child(tr!("A moment marked in-game. Click to write about it."))
         } else {
-            div().text_color(theme::white_a(0.9)).child(e.text.clone())
+            div().text_color(theme::ink_a(0.9)).child(e.text.clone())
         };
         let edit_id = id.clone();
         let body = div()
@@ -391,8 +391,8 @@ impl CollectionView {
                     .cursor_pointer()
                     .opacity(0.)
                     .group_hover(group.clone(), |s| s.opacity(1.))
-                    .hover(|s| s.bg(theme::white_a(0.08)))
-                    .child(icon(Icon::DeleteOutline, px(15.), theme::white_a(0.6)))
+                    .hover(|s| s.bg(theme::ink_a(0.08)))
+                    .child(icon(Icon::DeleteOutline, px(15.), theme::ink_a(0.6)))
                     .on_click(cx.listener(move |this, _, _, cx| this.journal_delete(&id, cx))),
             );
         margin_row(time, body).group(group)
@@ -411,10 +411,10 @@ fn replay_tile(id: &str, clip: String, cx: &mut Context<CollectionView>) -> Stat
         .flex()
         .items_center()
         .justify_center()
-        .bg(theme::white_a(0.08))
-        .hover(|s| s.bg(theme::white_a(0.16)))
+        .bg(theme::ink_a(0.08))
+        .hover(|s| s.bg(theme::ink_a(0.16)))
         .cursor_pointer()
-        .child(icon(Icon::PlayArrow, px(18.), theme::white_a(0.85)))
+        .child(icon(Icon::PlayArrow, px(18.), theme::ink_a(0.85)))
         .on_click(cx.listener(move |this, _, _, cx| this.open_replay(std::path::PathBuf::from(&clip), cx)))
 }
 
@@ -514,9 +514,9 @@ impl CollectionView {
             .gap(px(10.))
             .py(px(8.))
             .border_t_1()
-            .border_color(theme::white_a(if n == 0 { 0. } else { 0.07 }))
+            .border_color(theme::ink_a(if n == 0 { 0. } else { 0.07 }))
             .text_size(px(12.5))
-            .text_color(theme::white_a(0.45))
+            .text_color(theme::ink_a(0.45))
             .child(
                 div()
                     .w(px(TIME_W + MARGIN_GAP))
@@ -524,7 +524,7 @@ impl CollectionView {
                     .font_family(theme::font_heading())
                     .font_weight(theme::W_BOLD)
                     .text_size(px(13.))
-                    .text_color(theme::white_a(0.65))
+                    .text_color(theme::ink_a(0.65))
                     .child(label),
             )
             .child(div().flex_none().child(day_meta(t)))
@@ -566,7 +566,7 @@ fn editor(edit: &Edit, size: f32, cx: &mut Context<CollectionView>) -> Div {
         .border_color(theme::accent())
         .text_size(px(size))
         .line_height(px(LINE))
-        .text_color(white())
+        .text_color(theme::text_bright())
         .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| {
             if ev.keystroke.key == "escape" {
                 cx.stop_propagation();
@@ -582,7 +582,7 @@ fn editor(edit: &Edit, size: f32, cx: &mut Context<CollectionView>) -> Div {
                 .gap(px(12.))
                 .text_size(px(11.5))
                 .line_height(px(16.))
-                .text_color(theme::white_a(0.42))
+                .text_color(theme::ink_a(0.42))
                 .child(hint("Enter", tr!("save")))
                 .child(hint("Shift Enter", tr!("new line")))
                 .child(hint("Esc", tr!("cancel"))),
@@ -601,10 +601,10 @@ fn add_button(id: SharedString, label: &'static str) -> Stateful<Div> {
         .pr(px(10.))
         .rounded_full()
         .cursor_pointer()
-        .bg(theme::white_a(0.06))
-        .hover(|s| s.bg(theme::white_a(0.12)))
+        .bg(theme::ink_a(0.06))
+        .hover(|s| s.bg(theme::ink_a(0.12)))
         .text_size(px(12.))
-        .text_color(theme::white_a(0.75))
-        .child(icon(Icon::Add, px(14.), theme::white_a(0.75)))
+        .text_color(theme::ink_a(0.75))
+        .child(icon(Icon::Add, px(14.), theme::ink_a(0.75)))
         .child(label)
 }

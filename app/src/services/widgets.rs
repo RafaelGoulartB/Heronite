@@ -18,14 +18,14 @@ pub fn progress_bar(percent: Option<f32>, height: f32, color: Rgba) -> Div {
         .w_full()
         .h(px(height))
         .rounded_full()
-        .bg(theme::white_a(0.14))
+        .bg(theme::ink_a(0.14))
         .overflow_hidden()
         .child(div().absolute().top_0().left_0().bottom_0().w(relative(fill)).rounded_full().bg(color))
 }
 
 /// A bar with a light sweeping across, for work that gives no percentage.
 pub fn busy_bar(id: impl Into<ElementId>, height: f32) -> AnyElement {
-    let track = div().relative().w_full().h(px(height)).rounded_full().bg(theme::white_a(0.14)).overflow_hidden();
+    let track = div().relative().w_full().h(px(height)).rounded_full().bg(theme::ink_a(0.14)).overflow_hidden();
     let sweep = div().absolute().top_0().bottom_0().w(relative(0.3)).rounded_full().bg(theme::accent());
     if !theme::animations() {
         return track.child(sweep.left(relative(0.35))).into_any_element();
@@ -149,6 +149,6 @@ pub fn cover_box(src: Option<ImageSource>, w: f32, h: f32) -> Div {
         .h(px(h))
         .rounded(px(5.))
         .overflow_hidden()
-        .bg(theme::white_a(0.05))
+        .bg(theme::ink_a(0.05))
         .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover).rounded(px(5.))))
 }

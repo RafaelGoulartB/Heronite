@@ -19,7 +19,7 @@ pub fn hint(text: &str) -> Div {
         .rounded(px(theme::R_INPUT))
         .bg(theme::accent_tint())
         .border_1()
-        .border_color(theme::white_a(0.08))
+        .border_color(theme::ink_a(0.08))
         .text_size(px(13.))
         .line_height(px(18.))
         .text_color(theme::text_primary())

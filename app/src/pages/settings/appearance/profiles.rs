@@ -56,7 +56,7 @@ pub(super) fn apply_look(d: &mut SettingsPage, look: Appearance, window: &mut Wi
         (Field::PanelBlur, look.interface_blur),
     ];
     set_sliders(&d.appearance, &values, window, cx);
-    set_look(d, cx, |a| *a = look.with_auto_view_of(a));
+    set_look(d, cx, |a| *a = look.with_window_choices_of(a));
 }
 
 fn store(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
@@ -81,14 +81,15 @@ fn add_profile(d: &mut SettingsPage, name: String, look: Appearance, cx: &mut Co
     store(d, cx);
 }
 
-/// A tile: a band in the look's colours, its name and a note.
+/// A tile: a band in the look's colours on the current theme, its name and a note.
 fn tile(id: SharedString, look: &Appearance, name: SharedString, note: SharedString, active: bool) -> Stateful<Div> {
-    let (tr_, tg, tb) = look.solid_tint.rgb();
-    let (ar, ag, ab) = look.accent.rgb().unwrap_or((240, 138, 44));
-    let band = div().h(px(40.)).w_full().bg(linear_gradient(
+    let (tr_, tg, tb) = if theme::is_light() { look.solid_tint_light.rgb() } else { look.solid_tint.rgb() };
+    let (ar, ag, ab) = theme::look_accent(look).unwrap_or((240, 138, 44));
+    // Its own top corners: `overflow_hidden` clips to a rectangle, not to the tile's rounded border.
+    let band = div().h(px(40.)).w_full().rounded_t(px(theme::R_ITEM - 1.)).bg(linear_gradient(
         120.,
         linear_color_stop(theme::rgb_a(tr_, tg, tb, 1.), 0.2),
-        linear_color_stop(theme::rgb_a(ar, ag, ab, if look.accent == Accent::Game { 0.75 } else { 1. }), 1.),
+        linear_color_stop(theme::rgb_a(ar, ag, ab, if look.accent == Accent::Game && look.accent_own.is_none() { 0.75 } else { 1. }), 1.),
     ));
     div()
         .id(id)
@@ -100,9 +101,9 @@ fn tile(id: SharedString, look: &Appearance, name: SharedString, note: SharedStr
         .overflow_hidden()
         .border_1()
         .border_color(if active { theme::accent().into() } else { theme::card_border() })
-        .bg(theme::white_a(0.03))
+        .bg(theme::ink_a(0.03))
         .cursor_pointer()
-        .hover(|s| s.bg(theme::white_a(0.06)))
+        .hover(|s| s.bg(theme::ink_a(0.06)))
         .child(band)
         .child(div().px(px(10.)).pt(px(7.)).text_size(px(13.)).text_color(theme::text_primary()).truncate().child(name))
         .child(div().px(px(10.)).pb(px(8.)).text_size(px(11.5)).text_color(theme::text_dim()).truncate().child(note))
@@ -114,7 +115,7 @@ pub(super) fn profiles_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage
     let mut tiles = div().flex().flex_wrap().gap(px(10.));
     let mut matched = false;
     for p in presets() {
-        let active = p.look.with_auto_view_of(&current) == current;
+        let active = p.look.with_window_choices_of(&current) == current;
         matched |= active;
         let look = p.look;
         tiles = tiles.child(
@@ -123,7 +124,7 @@ pub(super) fn profiles_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage
         );
     }
     for (i, p) in d.appearance.profiles.clone().unwrap_or_default().into_iter().enumerate() {
-        let active = p.look.with_auto_view_of(&current) == current;
+        let active = p.look.with_window_choices_of(&current) == current;
         matched |= active;
         let look = p.look;
         tiles = tiles.child(

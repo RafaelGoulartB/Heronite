@@ -72,12 +72,10 @@ impl CollectionView {
             .gap(px(6.))
             .flex_1()
             .min_w_0()
-            .child(div().line_clamp(2).text_ellipsis().text_size(px(13.33)).text_color(white()).child(step.label()))
+            .child(div().line_clamp(2).text_ellipsis().text_size(px(13.33)).text_color(theme::text_bright()).child(step.label()))
             .child(busy_bar(SharedString::from(format!("launch-sweep-{app}")), 5.))
             .when(!step.cancellable && !step.cancelling, |d| {
-                d.child(
-                    div().text_size(px(11.)).text_color(theme::white_a(0.6)).child(tr!("This step finishes before the launch can stop")),
-                )
+                d.child(div().text_size(px(11.)).text_color(theme::ink_a(0.6)).child(tr!("This step finishes before the launch can stop")))
             });
         // Round, as the download's cancel next to it in the same panel.
         let cancel = (step.cancellable && !step.cancelling).then(|| {
@@ -90,9 +88,9 @@ impl CollectionView {
                 .justify_center()
                 .rounded_full()
                 .cursor_pointer()
-                .bg(theme::rgb_a(16, 18, 22, 0.72))
-                .hover(|s| s.bg(theme::rgb_a(10, 12, 14, 0.9)))
-                .child(icon(Icon::Close, px(16.), rgb(0xf4f6f8)))
+                .bg(theme::round_fill(0.72))
+                .hover(|s| s.bg(theme::round_fill_hover()))
+                .child(icon(Icon::Close, px(16.), theme::round_icon()))
                 .on_click(cx.listener(move |this, _, _, cx| this.cancel_launch(&app, cx)))
         });
         Some(
@@ -106,9 +104,9 @@ impl CollectionView {
                 .px(px(14.))
                 .py(px(8.))
                 .rounded(px(14.))
-                .bg(theme::white_a(0.08))
+                .bg(theme::ink_a(0.08))
                 .border_1()
-                .border_color(theme::white_a(0.12))
+                .border_color(theme::ink_a(0.12))
                 .child(text)
                 .children(cancel)
                 .into_any_element(),

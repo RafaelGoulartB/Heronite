@@ -152,7 +152,7 @@ impl CollectionView {
                 .font_family(theme::font_body())
                 .text_size(px(12.5))
                 .font_weight(theme::W_REGULAR)
-                .text_color(theme::white_a(0.52))
+                .text_color(theme::ink_a(0.52))
                 // The bars sit after the text, next to the switch, so a
                 // hovered day's (wider or narrower) text never moves them.
                 .child(meta)
@@ -182,9 +182,9 @@ impl CollectionView {
             let h = if secs > 0. { 4. + (SPARK_H - 4.) * (secs / most) as f32 } else { 3. };
             let on = hover == Some(date);
             let color = match (secs > 0., on) {
-                (_, true) => white(),
+                (_, true) => theme::text_bright(),
                 (true, false) => theme::accent().into(),
-                (false, false) => theme::white_a(0.12),
+                (false, false) => theme::ink_a(0.12),
             };
             // Hit areas are full height and touch each other (the gap is
             // their padding), so moving along the bars never drops the hover.
@@ -229,10 +229,10 @@ impl CollectionView {
             .px(px(7.))
             .rounded(px(5.))
             .cursor_pointer()
-            .bg(theme::white_a(0.07))
-            .hover(|s| s.bg(theme::white_a(0.13)))
+            .bg(theme::ink_a(0.07))
+            .hover(|s| s.bg(theme::ink_a(0.13)))
             .text_size(px(11.5))
-            .text_color(theme::white_a(0.8))
+            .text_color(theme::ink_a(0.8))
             .child(icon(Icon::Notes, px(12.), theme::accent()))
             .child(trn!(n, "{n} note", "{n} notes"))
             .on_click(cx.listener(|this, _, _, cx| this.set_journal_view(true, cx)))
@@ -275,6 +275,7 @@ impl CollectionView {
                                 .items_center()
                                 .justify_center()
                                 .bg(theme::rgb_a(8, 10, 14, 0.62))
+                                .text_color(white())
                                 .font_weight(theme::W_BOLD)
                                 .text_size(px(16.))
                                 .child(format!("+{}", n - visible)),
@@ -300,13 +301,13 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, not
     let played = (day.played_secs > 0.).then(|| format_playtime_minutes((day.played_secs / 60.).round().max(1.) as u64));
     let mut line = div().flex().items_center().flex_wrap().gap(px(6.)).text_size(px(13.6)).line_height(px(20.));
     if let Some(p) = played {
-        line = line.child(div().text_color(theme::white_a(0.72)).child(tr!("Played"))).child(div().font_weight(theme::W_BOLD).child(p));
+        line = line.child(div().text_color(theme::ink_a(0.72)).child(tr!("Played"))).child(div().font_weight(theme::W_BOLD).child(p));
     }
     if let Some(s) = shots {
         if day.played_secs > 0. {
-            line = line.child(div().text_color(theme::white_a(0.4)).child("·"));
+            line = line.child(div().text_color(theme::ink_a(0.4)).child("·"));
         }
-        line = line.child(div().text_color(theme::white_a(0.72)).child(s));
+        line = line.child(div().text_color(theme::ink_a(0.72)).child(s));
     }
     if is_best {
         line = line.child(
@@ -340,7 +341,7 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, not
                         .line_height(px(20.))
                         .child(date_label(day, this_year)),
                 )
-                .child(div().text_size(px(12.)).text_color(theme::white_a(0.52)).child(sub)),
+                .child(div().text_size(px(12.)).text_color(theme::ink_a(0.52)).child(sub)),
         )
         .child(
             div()
@@ -350,10 +351,10 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, not
                 .child(div().absolute().top(px(5.)).left(px(2.)).size(px(10.)).rounded_full().bg(if day.sessions > 0 {
                     theme::accent().into()
                 } else {
-                    theme::white_a(0.4)
+                    theme::ink_a(0.4)
                 }))
                 .when(has_next, |d| {
-                    d.child(div().absolute().top(px(20.)).bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::white_a(0.1)))
+                    d.child(div().absolute().top(px(20.)).bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::ink_a(0.1)))
                 }),
         )
         .child(div().flex_1().min_w_0().child(line).children(tiles))
@@ -376,9 +377,9 @@ fn pause_row(days: i64) -> Div {
                 .relative()
                 .flex_none()
                 .w(px(RAIL_W))
-                .child(div().absolute().top_0().bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::white_a(0.04))),
+                .child(div().absolute().top_0().bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::ink_a(0.04))),
         )
-        .child(div().flex_1().min_w_0().text_size(px(12.)).line_height(px(16.)).text_color(theme::white_a(0.38)).child(text))
+        .child(div().flex_1().min_w_0().text_size(px(12.)).line_height(px(16.)).text_color(theme::ink_a(0.38)).child(text))
 }
 
 /// "Oct 7", or "Oct 7, 2025" outside the current year.

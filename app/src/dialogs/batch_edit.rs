@@ -221,7 +221,7 @@ impl BatchEditDialog {
             .justify_center()
             .rounded_full()
             .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.14)))
+            .hover(|s| s.bg(theme::ink_a(0.14)))
             .child(icon(Icon::Close, px(12.), theme::text_muted()))
     }
 
@@ -242,7 +242,7 @@ impl BatchEditDialog {
                 chip.pr(px(10.))
                     .line_through()
                     .text_color(theme::text_dim())
-                    .border_color(theme::white_a(0.08))
+                    .border_color(theme::ink_a(0.08))
                     .cursor_pointer()
                     .child(icon(Icon::Replay, px(13.), theme::text_dim()))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -251,7 +251,7 @@ impl BatchEditDialog {
                     }))
             } else if *n >= total || given {
                 let (drop, drop_add) = (name.clone(), name.clone());
-                chip.bg(if given { theme::accent_tint() } else { theme::white_a(0.1) })
+                chip.bg(if given { theme::accent_tint() } else { theme::ink_a(0.1) })
                     .when(given, |d| d.border_color(theme::accent_tint_border()).child(note(tr!("all {n}", n = total))))
                     .child(Self::chip_x(id("x")).on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();
@@ -267,10 +267,10 @@ impl BatchEditDialog {
                 // Only on some: dashed, a click gives it to all.
                 let (give, drop) = (name.clone(), name.clone());
                 chip.border_dashed()
-                    .border_color(theme::white_a(0.3))
+                    .border_color(theme::ink_a(0.3))
                     .text_color(theme::text_muted())
                     .cursor_pointer()
-                    .hover(|s| s.border_color(theme::accent()).text_color(white()))
+                    .hover(|s| s.border_color(theme::accent()).text_color(theme::text_bright()))
                     .child(note(format!("{n}/{total}")))
                     .child(Self::chip_x(id("x")).on_click(cx.listener(move |this, _, _, cx| {
                         cx.stop_propagation();

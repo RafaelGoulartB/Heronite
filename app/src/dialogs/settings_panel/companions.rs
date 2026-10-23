@@ -88,7 +88,7 @@ impl SettingsPanel {
                 .rounded_full()
                 .child(icon(ic, px(16.), if enabled { theme::text_muted() } else { theme::text_dim() }));
             if enabled {
-                b.cursor_pointer().hover(|s| s.bg(theme::white_a(0.10)))
+                b.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.10)))
             } else {
                 b.opacity(0.5)
             }

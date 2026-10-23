@@ -214,9 +214,9 @@ fn duplicate_row(svc: &Entity<LauncherImports>, dup: &Duplicate, busy: bool) -> 
         .gap(px(10.))
         .p(px(14.))
         .rounded(px(10.))
-        .bg(theme::white_a(0.04))
+        .bg(theme::ink_a(0.04))
         .border_1()
-        .border_color(theme::white_a(0.08))
+        .border_color(theme::ink_a(0.08))
         .child(
             div()
                 .flex()

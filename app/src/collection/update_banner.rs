@@ -121,15 +121,11 @@ impl CollectionView {
             .items_center()
             .gap(px(10.))
             .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .justify_center()
-                    .size(px(30.))
-                    .rounded(px(9.))
-                    .bg(theme::white_a(0.06))
-                    .child(icon(Icon::Update, px(17.), accent)),
+                div().flex().flex_none().items_center().justify_center().size(px(30.)).rounded(px(9.)).bg(theme::ink_a(0.06)).child(icon(
+                    Icon::Update,
+                    px(17.),
+                    accent,
+                )),
             )
             .child(div().flex_1().min_w_0().child(kicker(label).text_color(accent)))
             .children(close);

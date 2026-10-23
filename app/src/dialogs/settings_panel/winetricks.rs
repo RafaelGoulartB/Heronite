@@ -412,7 +412,7 @@ impl SettingsPanel {
             .gap(px(12.))
             .py(px(8.))
             .border_t_1()
-            .border_color(theme::white_a(0.06))
+            .border_color(theme::ink_a(0.06))
             .child(
                 div()
                     .flex()

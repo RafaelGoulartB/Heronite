@@ -22,7 +22,7 @@ impl CollectionView {
                 .items_center()
                 .justify_center()
                 .text_size(px(15.2))
-                .text_color(theme::white_a(0.52))
+                .text_color(theme::ink_a(0.52))
                 .child(tr!("No game selected"))
                 .into_any_element();
         };

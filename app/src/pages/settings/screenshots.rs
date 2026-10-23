@@ -14,7 +14,7 @@ use crate::collection::screenshots_global;
 use crate::pages::PageCtx;
 use crate::services::compression::{self, Compression, Phase};
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, card_box, row, toggle_row, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, card_box, row, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::{accelerator_from_key, choose_path, hotkey_box, input_box, labeled, meta_text, new_input, on_commit, path_field};
 
 pub struct State {
@@ -306,14 +306,14 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     } else {
         None
     };
-    let capture = card([
+    let capture = card([with_sub_rows(
         toggle_row("shot-capture-enabled", tr!("Capture screenshots while a game is running"), None, s.capture_enabled)
             .on_click(cx.listener(move |d, _, _, cx| {
                 let next = !d.settings.screenshots.capture_enabled;
                 save(d, None, None, Some(next), None, cx);
             }))
             .into_any_element(),
-        div()
+        vec![div()
             .py(px(12.))
             .flex()
             .flex_col()
@@ -325,8 +325,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             .children(status_line.map(|(text, error)| {
                 div().text_size(px(12.)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text)
             }))
-            .into_any_element(),
-    ]);
+            .into_any_element()],
+    )]);
 
     let compress_card = st.compression.as_ref().map(|c| {
         let c = c.read(cx);
@@ -353,7 +353,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             )
             .into_any_element(),
         };
-        card([
+        card([with_sub_rows(
             toggle_row(
                 "shot-compress",
                 tr!("Compress screenshots without quality loss"),
@@ -369,8 +369,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 }
             }))
             .into_any_element(),
-            row(label, (!desc.is_empty()).then_some(desc.as_str()), control).into_any_element(),
-        ])
+            vec![row(label, (!desc.is_empty()).then_some(desc.as_str()), control).into_any_element()],
+        )])
     });
 
     let can_clear = !st.busy && st.info.is_some_and(|i| i.item_count > 0);

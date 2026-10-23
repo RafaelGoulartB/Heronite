@@ -310,7 +310,10 @@ impl ScriptInstallDialog {
             }
             End::Done { notes, .. } if !notes.is_empty() => {
                 body = body.child(
-                    card_box().gap(px(8.)).py(px(12.)).children(notes.iter().map(|n| icon_line(Icon::Warning, rgb(0xebcb8b), n.clone()))),
+                    card_box()
+                        .gap(px(8.))
+                        .py(px(12.))
+                        .children(notes.iter().map(|n| icon_line(Icon::Warning, theme::caution_text(), n.clone()))),
                 )
             }
             _ => {}

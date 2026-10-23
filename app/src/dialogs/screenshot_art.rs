@@ -199,7 +199,7 @@ impl Render for ScreenshotArtDialog {
                         .border_2()
                         .border_color(if selected { theme::accent().into() } else { gpui_kit::transparent_black() })
                         .hover(|s| s.border_color(theme::accent()))
-                        .bg(theme::black_a(0.28))
+                        .bg(theme::recess_a(0.28))
                         .cursor_pointer()
                         .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                             this.selected = Some(i);

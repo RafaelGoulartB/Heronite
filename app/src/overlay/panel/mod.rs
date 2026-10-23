@@ -524,6 +524,8 @@ fn duration_label(minutes: u64) -> String {
 
 impl Render for OverlayPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Over the game, whatever the theme.
+        theme::set_dark_only(true);
         kit::set_scale_value(self.scale);
         // The window has the panel's fixed size (`window::PANEL_H`): the panel
         // fills it and the tab's content takes what the header and hints leave.

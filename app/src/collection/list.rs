@@ -19,9 +19,9 @@ pub(super) fn group_header(g: &GroupVm) -> Div {
         .text_size(px(13.))
         .line_height(px(15.6))
         .font_weight(theme::W_BOLD)
-        .text_color(theme::white_a(0.78))
+        .text_color(theme::ink_a(0.78))
         .child(match g.icon {
-            Some(ic) => icon(ic, px(14.), theme::white_a(0.55)).into_any_element(),
+            Some(ic) => icon(ic, px(14.), theme::ink_a(0.55)).into_any_element(),
             None => div().size(px(7.)).flex_none().rounded_full().bg(g.color).opacity(0.9).into_any_element(),
         })
         .child(g.name.clone())
@@ -31,10 +31,10 @@ pub(super) fn group_header(g: &GroupVm) -> Div {
                 .px(px(7.))
                 .py(px(1.))
                 .rounded(px(2.75))
-                .bg(theme::white_a(0.08))
+                .bg(theme::ink_a(0.08))
                 .text_size(px(11.))
                 .font_weight(theme::W_REGULAR)
-                .text_color(theme::white_a(0.8))
+                .text_color(theme::ink_a(0.8))
                 .child(g.cards.len().to_string()),
         )
 }
@@ -43,7 +43,7 @@ pub(super) fn group_header(g: &GroupVm) -> Div {
 /// list column and 12px below the row (blur approximated by the gradient).
 pub(super) fn stuck_scrim(grid: bool) -> Div {
     let shade = |from: f32, to: f32| {
-        linear_gradient(180., linear_color_stop(theme::rgb_a(7, 9, 12, from), 0.), linear_color_stop(theme::rgb_a(7, 9, 12, to), 1.))
+        linear_gradient(180., linear_color_stop(theme::stage_ink_a(from), 0.), linear_color_stop(theme::stage_ink_a(to), 1.))
     };
     let scrim = div().absolute().top_0().left_0().right_0().bottom(px(-12.));
     if !grid {

@@ -121,9 +121,9 @@ impl CollectionView {
                 .px(px(6.4))
                 .rounded(px(4.))
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.08)))
+                .hover(|s| s.bg(theme::ink_a(0.08)))
                 .on_click(cx.listener(|this, _, window, cx| this.open_wizard(window, cx)))
-                .child(icon(Icon::CloudDownload, theme::TOOL_ICON, theme::white_a(0.82)))
+                .child(icon(Icon::CloudDownload, theme::TOOL_ICON, theme::ink_a(0.82)))
                 .child(
                     div()
                         .min_w(px(31.))
@@ -131,7 +131,7 @@ impl CollectionView {
                         .justify_center()
                         .text_size(px(11.))
                         .font_weight(theme::W_BOLD)
-                        .text_color(theme::white_a(0.82))
+                        .text_color(theme::ink_a(0.82))
                         .child(format!("{percent}%")),
                 ),
         )

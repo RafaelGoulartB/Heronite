@@ -259,7 +259,7 @@ impl GameSettingsDialog {
             .size(px(28.))
             .rounded_full()
             .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.08)))
+            .hover(|s| s.bg(theme::ink_a(0.08)))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.sessions.expanded = !this.sessions.expanded;
                 cx.notify();
@@ -300,7 +300,7 @@ impl GameSettingsDialog {
         let count = self.sessions.list.len();
         let start = (self.sessions.page * PAGE).min(count);
         let end = (start + PAGE).min(count);
-        let mut rows = div().flex().flex_col().p(px(4.)).rounded(px(12.)).bg(theme::black_a(0.18));
+        let mut rows = div().flex().flex_col().p(px(4.)).rounded(px(12.)).bg(theme::recess_a(0.18));
         let adding = self.sessions.editor.as_ref().is_some_and(|e| e.original.is_none());
         if adding {
             rows = rows.child(self.session_editor(cx));
@@ -396,7 +396,7 @@ impl GameSettingsDialog {
         let length = format_playtime_minutes(s.elapsed_seconds.get().max(0.0) as u64 / 60);
         let free = !self.sessions.saving;
         base()
-            .hover(|s| s.bg(theme::white_a(0.04)))
+            .hover(|s| s.bg(theme::ink_a(0.04)))
             .child(
                 div()
                     .flex()
@@ -469,7 +469,7 @@ impl GameSettingsDialog {
             .gap(px(10.))
             .p(px(10.))
             .rounded(px(9.))
-            .bg(theme::white_a(0.04))
+            .bg(theme::ink_a(0.04))
             .child(fields)
             .child(div().flex().items_center().gap(px(10.)).child(div().flex_1().min_w_0().text_size(px(12.)).child(note)).child(buttons))
     }
@@ -486,6 +486,6 @@ fn bare_icon(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Div>
         .size(px(28.))
         .rounded_full()
         .child(icon(ic, px(16.), theme::text_muted()))
-        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::white_a(0.08))))
+        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.08))))
         .when(!enabled, |d| d.opacity(0.35))
 }

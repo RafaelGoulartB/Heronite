@@ -381,7 +381,7 @@ impl CollectionView {
             .rounded(px(18.))
             .border_1()
             .border_dashed()
-            .border_color(theme::white_a(0.12))
+            .border_color(theme::ink_a(0.12))
             .text_size(px(13.5))
             .text_color(theme::text_dim())
             .child(icon(Icon::SportsEsports, px(18.), theme::text_dim()))

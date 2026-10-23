@@ -216,6 +216,34 @@ impl CollectionView {
         let ui = UiState::load(&app_paths);
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
+        // Theme "System": the desktop's light or dark style, now and when it changes.
+        crate::theme::set_system_appearance(window.appearance());
+        cx.observe_window_appearance(window, |_, window, cx| {
+            if crate::theme::set_system_appearance(window.appearance()) {
+                cx.notify();
+            }
+        })
+        .detach();
+        // "From the desktop": its accent and window colour, now and when they
+        // change. A look that uses them waits a moment for them at start.
+        let uses_desktop = {
+            let a = crate::theme::appearance();
+            a.accent == heronite_data::appearance::Accent::Desktop || a.solid_desktop
+        };
+        let wait = if uses_desktop { std::time::Duration::from_millis(300) } else { std::time::Duration::ZERO };
+        let (first, mut desktop) = crate::system::desktop_colours::watch(wait);
+        if let Some(c) = first {
+            crate::theme::set_desktop_colours(c);
+        }
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt;
+            while let Some(c) = desktop.next().await {
+                if crate::theme::set_desktop_colours(c) && this.update(cx, |_, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         let (images, image_rx) = ImageStore::new(data_paths.images_cache_dir(), &app_paths);
         Self::spawn_image_pump(image_rx, cx);
 
@@ -306,7 +334,7 @@ impl CollectionView {
             blur_px: 6.,
             saturation: 0.94,
             stage_enabled: true,
-            grey_uninstalled: true,
+            grey_uninstalled: false,
             cover_aspect: 1.5,
             page: crate::pages::Page::Collection,
             pages: nav::Pages::default(),
@@ -344,11 +372,11 @@ impl CollectionView {
                     .py(px(10.))
                     .when(action.is_some(), |d| d.py(px(6.)).pr(px(6.)))
                     .rounded(px(10.))
-                    .bg(theme::rgb_a(18, 22, 28, 0.94))
+                    .bg(theme::toast_fill())
                     .border_1()
-                    .border_color(if error { theme::danger().into() } else { theme::white_a(0.12) })
+                    .border_color(if error { theme::danger().into() } else { theme::ink_a(0.12) })
                     .text_size(px(13.33))
-                    .text_color(theme::white_a(0.92))
+                    .text_color(theme::ink_a(0.92))
                     .child(text)
                     .children(action.map(|action| {
                         div()
@@ -454,6 +482,10 @@ impl Render for CollectionView {
 impl CollectionView {
     fn render_desktop(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let _timer = RenderTimer(Instant::now());
+        // Before any colour is read: console mode, Statistics and the
+        // screenshots (gallery and viewer) stay dark.
+        let media = self.shots.gallery || self.shots.view.is_some();
+        theme::set_dark_only(crate::console::active() || self.page == crate::pages::Page::Statistics || media);
         if !self.first_frame_logged {
             self.first_frame_logged = true;
             log::info!("first render after {:?}", self.started.elapsed());
@@ -538,7 +570,7 @@ impl CollectionView {
             .overflow_hidden()
             .bg(theme::page_bg())
             .font_family(theme::font_body())
-            .text_color(white())
+            .text_color(theme::text_bright())
             .child(stage_el)
             .children(page_el)
             .when(!on_page, |root| {

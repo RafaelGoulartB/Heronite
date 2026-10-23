@@ -69,10 +69,10 @@ impl StoreInstallDialog {
             line = line.child(tr!(" - After install: {size}", size = file_size_local(after)));
         }
         if !space.writable {
-            line = line.child(div().text_color(rgb(0xebcb8b)).child(tr!("Warning: path might not be writable.")));
+            line = line.child(div().text_color(theme::caution_text()).child(tr!("Warning: path might not be writable.")));
         }
         if !enough {
-            line = line.child(div().text_color(rgb(0xebcb8b)).child(tr!("(Not enough disk space)")));
+            line = line.child(div().text_color(theme::caution_text()).child(tr!("(Not enough disk space)")));
         }
         Some(line)
     }

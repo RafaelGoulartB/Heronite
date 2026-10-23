@@ -410,7 +410,7 @@ impl SaveBackupsView {
             .size(px(16.))
             .rounded_full()
             .border_2()
-            .border_color(if selected { theme::accent().into() } else { theme::white_a(0.3) })
+            .border_color(if selected { theme::accent().into() } else { theme::ink_a(0.3) })
             .when(selected, |d| d.child(div().m(px(3.)).size(px(6.)).rounded_full().bg(theme::accent())));
         let row = div()
             .id(SharedString::from(format!("sb-backup-{i}")))
@@ -421,7 +421,7 @@ impl SaveBackupsView {
             .py(px(8.))
             .my(px(2.))
             .rounded(px(10.))
-            .when(selected, |d| d.bg(theme::white_a(0.06)))
+            .when(selected, |d| d.bg(theme::ink_a(0.06)))
             .child(dot);
         let small = |id: &str, kind, label: &'static str| button_sm(SharedString::from(format!("sb-{id}-{i}")), kind, label);
 
@@ -456,7 +456,7 @@ impl SaveBackupsView {
         let delete = tool_button(SharedString::from(format!("sb-delete-{i}")), Icon::DeleteOutline, false)
             .when(!busy, |b| b.on_click(cx.listener(move |v, _, _, cx| v.ask_delete(k.clone(), cx))));
         row.cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.04)))
+            .hover(|s| s.bg(theme::ink_a(0.04)))
             .on_click(cx.listener(move |v, _, _, cx| v.pick_backup(key.clone(), cx)))
             .child(
                 div()

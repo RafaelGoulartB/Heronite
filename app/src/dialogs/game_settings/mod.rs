@@ -259,7 +259,7 @@ impl GameSettingsDialog {
         let key = chain.first().map(|r| format!("{r:?}")).unwrap_or_default();
         let src =
             if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("gs-head:{key}"), chain, 104., 140.)) };
-        let cover = picture(src).w(px(52.)).h(px(70.)).flex_none().rounded(px(10.)).border_1().border_color(theme::white_a(0.10));
+        let cover = picture(src).w(px(52.)).h(px(70.)).flex_none().rounded(px(10.)).border_1().border_color(theme::ink_a(0.10));
         let mut meta = vec![self.game.source_label.to_string()];
         meta.push(if self.game.installed { tr!("Installed").into() } else { tr!("Not installed").into() });
         if let Some(size) = self.game.game.install.install_size.as_deref().filter(|s| !s.is_empty() && self.game.installed) {
