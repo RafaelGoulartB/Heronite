@@ -326,6 +326,10 @@ pub fn store_facet(source: Option<&str>, runner: &str, steam_entry: bool, also_o
         ("xbox", _) => "Xbox",
         (_, "zoom") => "Zoom Platform",
         ("emulator", _) => heronite_i18n::tr!("Emulated"),
+        ("lutris", _) => "Lutris",
+        ("bottles", _) => "Bottles",
+        ("faugus", _) => "Faugus",
+        ("heroic", _) => "Heroic",
         ("other", _) => heronite_i18n::tr!("Other"),
         _ => heronite_i18n::tr!("Added manually"),
     };

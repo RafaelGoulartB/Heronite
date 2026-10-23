@@ -229,7 +229,7 @@ impl GameSettingsDialog {
             .justify_center()
             .size(px(34.))
             .rounded(px(10.))
-            .bg(theme::white_a(0.06))
+            .bg(theme::ink_a(0.06))
             .child(icon(icon_of(a), px(18.), theme::text_muted()))
             .into_any_element();
         let mut meta = vec![kind_label(a.kind).to_string()];

@@ -18,13 +18,14 @@
 //!
 //! Emulators and ROM folders are not here: they live on the ☰ Emulators page.
 //!
-//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|storage|mods|overlay|replay|metadata|screenshots|backups|logs|about]`.
+//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|mods|overlay|replay|metadata|screenshots|backups|logs|about]`.
 
 mod about;
 mod advanced;
 mod appearance;
 mod backup;
 mod console;
+mod launchers;
 mod library;
 pub mod logs;
 mod metadata;
@@ -42,6 +43,7 @@ mod updates;
 
 pub use advanced::open_folder;
 pub use backup::format_time;
+pub use launchers::launcher_icon;
 pub use section::Section;
 
 use std::collections::HashMap;
@@ -118,6 +120,7 @@ pub struct SettingsPage {
     defaults: Option<Entity<SettingsPanel>>,
     defaults_section: HSection,
     library: library::State,
+    launchers: launchers::State,
     overlay: overlay::State,
     replay: replay::State,
     mods: mods::State,
@@ -127,6 +130,8 @@ pub struct SettingsPage {
     logs: logs::State,
     /// Console mode focus, keyboard and pickers.
     console: console::ConsoleState,
+    /// The section list's scroll, for its scrollbar.
+    nav_scroll: ScrollHandle,
 }
 
 impl EventEmitter<PageEvent> for SettingsPage {}
@@ -167,6 +172,7 @@ impl SettingsPage {
             saves,
             saves_restore: Default::default(),
             library: library::State::new(&ctx),
+            launchers: launchers::State::new(cx),
             overlay: overlay::State::new(&ctx, cx),
             replay: replay::State::new(&ctx, cx),
             mods: mods::State::new(window, cx),
@@ -175,6 +181,7 @@ impl SettingsPage {
             about: about::State::default(),
             logs: logs::State::default(),
             console: Default::default(),
+            nav_scroll: ScrollHandle::new(),
             ctx,
             section,
             global: None,
@@ -293,6 +300,7 @@ impl SettingsPage {
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
             Section::Overlay => overlay::shown(cx),
+            Section::Launchers => launchers::shown(self, cx),
             Section::Replay => replay::shown(self, cx),
             Section::Saves => saves::State::shown(self, window, cx),
             Section::Storage => storage::State::shown(self, cx),
@@ -342,21 +350,20 @@ impl SettingsPage {
         div().flex().flex_col().child(body).children(error).into_any_element()
     }
 
-    /// Left column of the sheet: title (gear + "Settings") and the section pills.
-    fn nav(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+    /// Left column of the sheet: title (gear + "Settings") and the section
+    /// pills, with a scrollbar when the window is too short for all of them.
+    fn nav(&self, cx: &mut Context<Self>) -> Div {
         let mut col = div()
             .id("settings-nav")
+            .size_full()
             .overflow_y_scroll()
+            .track_scroll(&self.nav_scroll)
+            .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
             .flex()
             .flex_col()
-            .flex_none()
-            .w(px(230.))
-            .h_full()
             .px(px(14.))
             .pt(px(26.))
             .pb(px(16.))
-            .border_r_1()
-            .border_color(theme::row_separator())
             .child(
                 div()
                     .flex()
@@ -384,7 +391,36 @@ impl SettingsPage {
                 );
             }
         }
-        col
+        // The list's size is known only after it is laid out: draw once more
+        // so the scrollbar shows from the start.
+        if self.nav_scroll.bounds().size.height <= px(0.) {
+            let view = cx.entity_id();
+            cx.defer(move |cx| cx.notify(view));
+        }
+        let scroll = self.nav_scroll.clone();
+        let scrollbar = crate::ui::scrollbar_draggable(
+            "settings-nav-scrollbar",
+            scroll.offset().y,
+            scroll.max_offset().y,
+            scroll.bounds().size.height,
+            {
+                let (scroll, weak) = (scroll.clone(), cx.entity().downgrade());
+                move |distance, _, cx| {
+                    scroll.set_offset(point(px(0.), px(-distance)));
+                    weak.update(cx, |_, cx| cx.notify()).ok();
+                }
+            },
+            None,
+        );
+        div()
+            .relative()
+            .flex_none()
+            .w(px(230.))
+            .h_full()
+            .border_r_1()
+            .border_color(theme::row_separator())
+            .child(col)
+            .children(scrollbar.map(|b| b.right(px(2.))))
     }
 
     /// The content of the current section.
@@ -405,6 +441,7 @@ impl SettingsPage {
             Section::Storage => storage::render(self, window, cx),
             Section::Mods => mods::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
+            Section::Launchers => launchers::render(self, cx),
             Section::Replay => replay::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),

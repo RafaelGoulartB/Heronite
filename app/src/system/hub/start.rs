@@ -46,6 +46,8 @@ pub fn init(
     crate::services::session::init(cx, data_paths.clone(), runtime.clone());
     crate::overlay::init(cx, data_paths.clone(), runtime.clone());
     crate::services::replay::init(cx, data_paths.clone(), runtime.clone());
+    // The app's Wine Manager, and the automatic update of the -latest builds.
+    crate::services::proton_setup::init(cx);
 
     let (tray_tx, tray_rx) = unbounded();
     let tray = (!settings.no_tray_icon && !crate::env::flag("HERONITE_NO_TRAY"))

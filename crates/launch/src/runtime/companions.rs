@@ -12,24 +12,7 @@ use crate::log_writer::{self, GameLog};
 use crate::plan::CompanionPlan;
 use crate::prepare::Notice;
 use crate::probe::Probe;
-use crate::procs::Procs;
-
-/// Wine's own programs, running in every prefix in use, and Proton's
-/// `steam.exe`, which starts the game and stays after it.
-const WINE_SERVICES: &[&str] = &[
-    "steam.exe",
-    "services.exe",
-    "winedevice.exe",
-    "plugplay.exe",
-    "svchost.exe",
-    "explorer.exe",
-    "rpcss.exe",
-    "conhost.exe",
-    "tabtip.exe",
-    "wineboot.exe",
-    "winemenubuilder.exe",
-    "start.exe",
-];
+use crate::procs::{Procs, WINE_SERVICES};
 
 /// How long the game must be gone from its prefix before it counts as over
 /// (a launcher may hand over to the game).

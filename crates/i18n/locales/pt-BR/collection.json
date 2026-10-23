@@ -462,5 +462,15 @@
   "ROMs": "ROMs",
   "Or add a game yourself": "Ou adicione um jogo você mesmo",
   "Log in to a store": "Entrar numa loja",
-  "Log in": "Entrar"
+  "Log in": "Entrar",
+  "Added {n} game from {launcher}": "{n} jogo adicionado do {launcher}",
+  "Added {n} games from {launcher}": "{n} jogos adicionados do {launcher}",
+  "Bring in from another launcher": "Trazer de outro launcher",
+  "Bringing in…": "Trazendo…",
+  "{n} game · Bring in": "{n} jogo · Trazer",
+  "{n} games · Bring in": "{n} jogos · Trazer",
+  "Review": "Revisar",
+  "{n} game is in your Collection twice.": "{n} jogo está duas vezes na sua Coleção.",
+  "{n} games are in your Collection twice.": "{n} jogos estão duas vezes na sua Coleção.",
+  "{title} is in your Collection twice: added by you and from {launcher}.": "{title} está duas vezes na sua Coleção: adicionado por você e vindo do {launcher}."
 }

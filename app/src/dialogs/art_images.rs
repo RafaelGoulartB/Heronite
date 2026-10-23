@@ -80,7 +80,7 @@ pub fn chain_for_url(data_paths: &DataPaths, screenshots: Option<&std::path::Pat
 
 /// `<img>` filling its box with the texture (cover crop), or a placeholder.
 pub fn picture(src: Option<ImageSource>) -> Div {
-    let d = div().relative().overflow_hidden().bg(crate::theme::black_a(0.28));
+    let d = div().relative().overflow_hidden().bg(crate::theme::recess_a(0.28));
     match src {
         Some(src) => d.child(img(src).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)),
         None => d,

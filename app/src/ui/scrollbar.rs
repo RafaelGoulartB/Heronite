@@ -136,7 +136,7 @@ pub fn scrollbar_draggable(
                 .absolute()
                 .size_full(),
             )
-            .child(div().absolute().top(px(top)).right(px(1.)).w(px(3.)).h(px(thumb)).rounded_full().bg(theme::white_a(0.16))),
+            .child(div().absolute().top(px(top)).right(px(1.)).w(px(3.)).h(px(thumb)).rounded_full().bg(theme::ink_a(0.16))),
     )
 }
 

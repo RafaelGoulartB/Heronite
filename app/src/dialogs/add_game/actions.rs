@@ -142,6 +142,8 @@ impl AddGameDialog {
             self.home.clone(),
             self.remove_prefix_too && self.removable_prefix.is_some() && self.prefix_shared.is_none(),
         );
+        let launcher = crate::dialogs::remove_game::launcher_of(&self.ctx.lib, &app);
+        let removed = app.clone();
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
@@ -158,6 +160,7 @@ impl AddGameDialog {
                         if let Some(PrefixOutcome::Skipped(why)) = prefix {
                             log::warn!("Wine prefix kept: {why}");
                         }
+                        crate::dialogs::remove_game::note_removed(launcher, &removed, cx);
                         cx.emit(DialogEvent::ChangedAndClose);
                     }
                     Err(err) => this.error = tr!("Could not remove the game: {error}", error = format!("{err:#}")),

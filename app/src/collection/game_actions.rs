@@ -216,8 +216,11 @@ impl CollectionView {
                 "mod mods nexus thunderstore plugin plugins fomod load order modificacoes complementos",
             ));
         }
-        // Sideloaded programs and browser games; not Steam/emulated entries.
-        if game.runner == "sideload" && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator")) {
+        // Sideloaded programs and browser games; not Steam/emulated entries,
+        // nor the ones another launcher starts.
+        if game.runner == "sideload"
+            && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND))
+        {
             v.push(item(
                 A::EditGame,
                 "edit-game",

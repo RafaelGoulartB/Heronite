@@ -166,7 +166,7 @@ impl CollectionView {
                 if self.view_filtered() {
                     theme::accent().into()
                 } else if open {
-                    theme::white_a(1.)
+                    theme::text_bright()
                 } else {
                     theme::tool_icon()
                 },
@@ -257,16 +257,16 @@ impl CollectionView {
             .pr(px(if has_text { 4. } else { 12. }))
             .rounded_full()
             .border_1()
-            .border_color(if focused { theme::input_border_focus() } else { theme::white_a(0.) })
+            .border_color(if focused { theme::input_border_focus() } else { theme::ink_a(0.) })
             .bg(if focused || has_text { theme::search_fill_hover() } else { theme::search_fill() })
             .hover(|s| s.bg(theme::search_fill_hover()))
-            .child(icon(Icon::FaSearch, px(12.), theme::white_a(if focused || has_text { 0.75 } else { 0.42 })))
+            .child(icon(Icon::FaSearch, px(12.), theme::ink_a(if focused || has_text { 0.75 } else { 0.42 })))
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
                     .text_size(px(14.))
-                    .text_color(theme::white_a(0.92))
+                    .text_color(theme::ink_a(0.92))
                     .child(Input::new(&self.search_input).appearance(false)),
             )
             .when(has_text, |d| {
@@ -280,8 +280,8 @@ impl CollectionView {
                         .size(px(24.))
                         .rounded_full()
                         .cursor_pointer()
-                        .hover(|s| s.bg(theme::white_a(0.1)))
-                        .child(icon(Icon::Close, px(14.), theme::white_a(0.7)))
+                        .hover(|s| s.bg(theme::ink_a(0.1)))
+                        .child(icon(Icon::Close, px(14.), theme::ink_a(0.7)))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.search_input.update(cx, |s, cx| s.set_value("", window, cx));
                             this.search.clear();
@@ -312,10 +312,10 @@ fn filter_chip(id: impl Into<ElementId>, kind: Option<&'static str>, value: &str
         .text_size(px(12.5))
         .text_color(theme::text_primary())
         .cursor_pointer()
-        .hover(|s| s.bg(theme::white_a(0.12)))
+        .hover(|s| s.bg(theme::ink_a(0.12)))
         .children(kind.map(|k| div().flex_none().text_color(theme::text_muted()).child(k)))
         .child(div().min_w_0().truncate().child(value.to_owned()))
-        .child(icon(Icon::Close, px(13.), theme::white_a(0.6)))
+        .child(icon(Icon::Close, px(13.), theme::ink_a(0.6)))
 }
 
 impl CollectionView {

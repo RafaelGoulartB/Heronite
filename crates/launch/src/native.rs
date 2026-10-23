@@ -98,7 +98,7 @@ pub fn is_executable_game(game: &GameInfo, meta: Option<&LocalGameMeta>) -> bool
     if game.runner != "sideload" {
         return false;
     }
-    !matches!(meta.map(|m| m.launch_kind.as_str()), Some("emulator") | Some("steam-uri"))
+    !matches!(meta.map(|m| m.launch_kind.as_str()), Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND))
 }
 
 /// `runAs` from the Collection, else detection, else the stored platform.

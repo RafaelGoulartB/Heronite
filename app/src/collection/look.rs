@@ -20,6 +20,8 @@ pub(super) struct LookState {
     slideshow: Option<Task<()>>,
     /// The view the window's width asked for last (`AutoView::grid_for`).
     auto_grid: Option<bool>,
+    /// Light or not, and the custom colours, the widgets' theme was last applied with.
+    scheme: Option<(bool, Option<heronite_data::appearance::Palette>)>,
 }
 
 /// Size the accent is measured on: a cover shrunk to a few pixels.
@@ -33,7 +35,10 @@ impl CollectionView {
         if before.is_some_and(|b| b.cover_label != a.cover_label) {
             self.refresh_groups();
         }
-        if before.is_some_and(|b| b.font != a.font) {
+        // The widgets' theme was applied dark at start, before the settings loaded.
+        let scheme = (theme::is_light(), theme::custom_palette());
+        if self.look.scheme != Some(scheme) || before.is_some_and(|b| b.font != a.font) {
+            self.look.scheme = Some(scheme);
             theme::apply_component_theme(cx);
         }
         self.sync_game_accent(a);
@@ -43,7 +48,7 @@ impl CollectionView {
     /// [`Accent::Game`]: the average colour of the selected game's cover,
     /// weighted towards its vivid pixels and made light enough for text.
     fn sync_game_accent(&mut self, a: Appearance) {
-        if a.accent != Accent::Game {
+        if a.accent != Accent::Game || a.accent_own.is_some() {
             theme::set_game_accent(None);
             return;
         }

@@ -38,28 +38,71 @@ choice! {
     /// Colour of the selection, links, active controls and sliders.
     Accent {
         Ice = "ice",
+        Sky = "sky",
         Mint = "mint",
         Amber = "amber",
+        Coral = "coral",
         Rose = "rose",
         Lavender = "lavender",
         /// Taken from the selected game's art (the app falls back to `Ice`
         /// while there is none).
         Game = "game",
+        /// The desktop's accent colour (the settings portal, KDE's or
+        /// GNOME's; `Ice` while the desktop has none).
+        Desktop = "desktop",
     } default Ice
 }
 
 impl Accent {
-    /// The colour of a preset; `None` for [`Accent::Game`].
+    /// The colour of a preset; `None` for [`Accent::Game`] and
+    /// [`Accent::Desktop`].
     pub fn rgb(self) -> Option<(u8, u8, u8)> {
         Some(match self {
             Self::Ice => (0xa5, 0xdc, 0xeb),
+            Self::Sky => (0x8f, 0xb8, 0xff),
             Self::Mint => (0x7e, 0xe0, 0xb5),
             Self::Amber => (0xff, 0xc4, 0x6b),
+            Self::Coral => (0xff, 0x9e, 0x7c),
             Self::Rose => (0xff, 0x8f, 0xa3),
             Self::Lavender => (0xb9, 0xa6, 0xff),
-            Self::Game => return None,
+            Self::Game | Self::Desktop => return None,
         })
     }
+
+    /// Picked from the presets (not taken from the game or the desktop).
+    pub fn is_preset(self) -> bool {
+        self.rgb().is_some()
+    }
+}
+
+impl Accent {
+    /// The colour of a preset on the light theme: the same hue, dark enough
+    /// for text on the light panels. `None` for [`Accent::Game`] and
+    /// [`Accent::Desktop`].
+    pub fn rgb_light(self) -> Option<(u8, u8, u8)> {
+        Some(match self {
+            Self::Ice => (0x19, 0x64, 0x79),
+            Self::Sky => (0x1f, 0x55, 0xc4),
+            Self::Mint => (0x12, 0x6a, 0x44),
+            Self::Amber => (0x86, 0x4f, 0x00),
+            Self::Coral => (0xa0, 0x36, 0x12),
+            Self::Rose => (0xa7, 0x30, 0x4e),
+            Self::Lavender => (0x5e, 0x41, 0xd3),
+            Self::Game | Self::Desktop => return None,
+        })
+    }
+}
+
+choice! {
+    /// Light or dark panels and text.
+    Theme {
+        Dark = "dark",
+        Light = "light",
+        /// The desktop's light or dark style.
+        System = "system",
+        /// The user's own colours (`Appearance::custom`).
+        Custom = "custom",
+    } default Dark
 }
 
 choice! {
@@ -269,8 +312,12 @@ mod tests {
         for s in Section::ALL {
             assert_eq!(Section::parse(s.as_str()), Some(*s));
         }
+        for t in Theme::ALL {
+            assert_eq!(Theme::parse(t.as_str()), Some(*t));
+        }
         assert_eq!(CoverLabel::parse("lastPlayed"), Some(CoverLabel::LastPlayed));
         assert_eq!(Motion::parse("slow"), None);
+        assert_eq!(Theme::parse("auto"), None);
     }
 
     #[test]

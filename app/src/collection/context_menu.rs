@@ -101,7 +101,7 @@ pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
         .text_size(px(14.))
         .text_color(theme::text_primary())
         .cursor_pointer()
-        .hover(|s| s.bg(theme::menu_item_hover()).text_color(white()))
+        .hover(|s| s.bg(theme::menu_item_hover()).text_color(theme::text_bright()))
 }
 
 /// Inner padding of the menu (and its flyouts).

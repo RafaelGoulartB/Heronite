@@ -136,7 +136,7 @@ impl CollectionView {
                         .px(px(9.))
                         .text_size(px(13.))
                         .font_weight(theme::W_BOLD)
-                        .text_color(if titles { white() } else { theme::tool_icon() })
+                        .text_color(if titles { theme::text_bright() } else { theme::tool_icon() })
                         .child("Aa")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.ui.grid_titles = !this.ui.grid_titles;
@@ -152,7 +152,7 @@ impl CollectionView {
                 .gap(px(2.))
                 .p(px(3.))
                 .rounded_full()
-                .bg(theme::white_a(0.06))
+                .bg(theme::ink_a(0.06))
                 .child(
                     mode_button("view-focus", Icon::ViewSidebar, tr!("Focus"), !grid)
                         .on_click(cx.listener(|this, _, _, cx| this.set_grid_view(false, cx))),
@@ -291,9 +291,9 @@ impl CollectionView {
     }
 }
 
-/// One half of the Focus / Grid switch: white pill when active.
+/// One half of the Focus / Grid switch: a solid pill when active.
 fn mode_button(id: &'static str, ic: Icon, label: &'static str, active: bool) -> Stateful<Div> {
-    let fg: Hsla = if active { rgb(0x0b0e13).into() } else { theme::white_a(0.68) };
+    let fg: Hsla = if active { theme::on_solid_pill().into() } else { theme::ink_a(0.68) };
     div()
         .id(id)
         .flex()
@@ -305,8 +305,8 @@ fn mode_button(id: &'static str, ic: Icon, label: &'static str, active: bool) ->
         .cursor_pointer()
         .text_size(px(12.5))
         .text_color(fg)
-        .when(active, |d| d.bg(theme::white_a(0.9)))
-        .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.08))))
+        .when(active, |d| d.bg(theme::solid_pill()))
+        .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.08))))
         .child(icon(ic, px(15.), fg))
         .child(label)
 }

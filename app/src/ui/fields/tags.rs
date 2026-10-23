@@ -225,10 +225,10 @@ impl Render for TagField {
                                 .size(px(16.))
                                 .rounded_full()
                                 .cursor_pointer()
-                                .hover(|s| s.bg(theme::white_a(0.2)))
+                                .hover(|s| s.bg(theme::ink_a(0.2)))
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                 .on_click(cx.listener(move |this, _, _, cx| this.remove(i, cx)))
-                                .child(icon(Icon::Cancel, px(14.), theme::white_a(0.6))),
+                                .child(icon(Icon::Cancel, px(14.), theme::ink_a(0.6))),
                         ),
                 );
             }

@@ -22,13 +22,13 @@ fn when(t: SystemTime) -> String {
 /// Colour of a log line by its level.
 fn line_color(line: &str) -> Hsla {
     if line.starts_with("===") {
-        theme::white_a(0.45)
+        theme::ink_a(0.45)
     } else if line.contains("[ERROR]") {
-        rgb(0xe58a93).into()
+        theme::readable(rgb(0xe58a93))
     } else if line.contains("[WARNING]") {
-        rgb(0xebcb8b).into()
+        theme::caution_text().into()
     } else {
-        rgb(0xd8dee9).into()
+        theme::code_text().into()
     }
 }
 
@@ -77,7 +77,7 @@ impl LogViewer {
                             .overflow_hidden()
                             .text_ellipsis()
                             .whitespace_nowrap()
-                            .text_color(if active { white() } else { crate::theme::text_primary().into() })
+                            .text_color(if active { theme::text_bright() } else { crate::theme::text_primary().into() })
                             .child(name),
                     )
                     .child(
@@ -137,7 +137,7 @@ impl LogViewer {
                 .font_family(theme::font_heading())
                 .text_size(px(17.))
                 .font_weight(theme::W_BOLD)
-                .text_color(white())
+                .text_color(theme::text_bright())
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
@@ -314,6 +314,6 @@ mod tests {
         assert_ne!(line_color("(10:00:00) [ERROR]:   boom"), line_color("plain"));
         assert_ne!(line_color("(10:00:00) [WARNING]: hmm"), line_color("plain"));
         assert_eq!(line_color("(10:00:00) [INFO]:    ok"), line_color("plain"));
-        assert_eq!(line_color("============= End of log ============="), theme::white_a(0.45));
+        assert_eq!(line_color("============= End of log ============="), theme::ink_a(0.45));
     }
 }

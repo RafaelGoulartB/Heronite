@@ -150,7 +150,7 @@ impl WineManagerPage {
                     .rounded(px(12.))
                     .cursor_pointer()
                     .when(active, |d| d.bg(theme::accent_tint()))
-                    .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+                    .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.05))))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.select_source(repo);
                         cx.notify();
@@ -185,7 +185,7 @@ impl WineManagerPage {
                 .rounded(px(12.))
                 .cursor_pointer()
                 .when(active, |d| d.bg(theme::accent_tint()))
-                .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+                .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.05))))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.select_prefixes(cx);
                     cx.notify();
@@ -216,6 +216,17 @@ impl WineManagerPage {
         .on_click(cx.listener(|this, _, _, cx| {
             let v = !this.download_to_steam;
             this.set_download_to_steam(v, cx);
+        }))
+        .into_any_element(),
+        toggle_row(
+            "wine-auto-latest",
+            tr!("Keep the -latest builds up to date"),
+            Some(tr!("A -latest build you installed downloads its new release by itself, in the background and never while a game runs. Looked for every 6 hours, from the release feed, so GitHub is only asked when something came out.")),
+            self.auto_update_latest,
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            let v = !this.auto_update_latest;
+            this.set_auto_update_latest(v, cx);
         }))
         .into_any_element()])
     }

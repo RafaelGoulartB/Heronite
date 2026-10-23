@@ -27,8 +27,10 @@ use heronite_data::settings::{self, CoverAspect, EffectiveSettings, PartialBackg
 use heronite_i18n::{n_, tr};
 use heronite_images::{ImageRef, Opts};
 
+mod custom;
 mod look;
 mod profiles;
+mod scheme;
 
 use gpui_kit::component::input::InputState;
 use heronite_data::appearance::Profile;
@@ -37,9 +39,8 @@ use super::SettingsPage;
 use crate::collection::stage::{scrim_layers, Scrim};
 use crate::pages::PageCtx;
 use crate::theme;
-use crate::ui::controls::{button, caption, card, row, tabs, toggle_row, ButtonKind};
+use crate::ui::controls::{button, caption, card, row, tabs, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::{meta_text, select_field};
-use crate::ui::glass::glass_menu_surface;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Field {
@@ -73,11 +74,22 @@ pub struct State {
     /// The "Under the cover" and background picture selects are open.
     label_open: bool,
     picture_open: bool,
+    /// The Collection background's finer sliders (blur, colour intensity,
+    /// edge shading) show.
+    more_background: bool,
     /// The user's saved looks; `None` until read (`profiles::ensure_loaded`).
     profiles: Option<Vec<Profile>>,
     profiles_task: Option<Task<()>>,
     /// Name typed for "Save as profile".
     profile_name: Entity<InputState>,
+    /// The custom theme's editor.
+    custom_editor: custom::Editor,
+    /// The picker of a solid colour of your own, and whether it shows.
+    tint_picker: Entity<crate::ui::colour_picker::ColourPicker>,
+    tint_picker_open: bool,
+    /// The same for the accent.
+    accent_picker: Entity<crate::ui::colour_picker::ColourPicker>,
+    accent_picker_open: bool,
 }
 
 const ASPECTS: [(CoverAspect, &str); 6] = [
@@ -162,9 +174,15 @@ impl State {
             aspect_open: false,
             label_open: false,
             picture_open: false,
+            more_background: false,
             profiles: None,
             profiles_task: None,
             profile_name: crate::ui::fields::new_input(window, cx, "", tr!("Profile name")),
+            custom_editor: custom::Editor::new(&ui.custom, window, cx),
+            tint_picker: scheme::new_tint_picker(window, cx),
+            tint_picker_open: false,
+            accent_picker: look::new_accent_picker(window, cx),
+            accent_picker_open: false,
         };
         this.preview_task = None;
         this
@@ -236,8 +254,13 @@ fn save_background(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 
 /// A slider row: label (with the live value) on the left, the slider on the right.
 fn slider_row(label: String, state: &Entity<SliderState>) -> AnyElement {
+    slider_row_with(label, None, state)
+}
+
+/// A [`slider_row`] with a description under the label.
+fn slider_row_with(label: String, note: Option<&str>, state: &Entity<SliderState>) -> AnyElement {
     let slider = Slider::new(state).bg(theme::accent()).text_color(theme::accent());
-    row(label, None, div().w(px(260.)).child(slider)).into_any_element()
+    row(label, note, div().w(px(260.)).child(slider)).into_any_element()
 }
 
 fn set_sliders(a: &State, values: &[(Field, f32)], window: &mut Window, cx: &mut Context<SettingsPage>) {
@@ -252,8 +275,10 @@ fn slider_of(a: &State, field: Field) -> &Entity<SliderState> {
     &a.sliders.iter().find(|(f, _)| *f == field).expect("slider created in State::new").1
 }
 
-/// Interface mode (Transparent / Solid), its controls and a sample menu.
-fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
+/// The panels' rows of the Colour card: Transparent or Solid, and under it
+/// the glass's opacity and blur or the solid colour (the custom theme's own
+/// panel colour needs no row).
+pub(super) fn panel_rows(a: &State, cx: &mut Context<SettingsPage>) -> (AnyElement, Vec<AnyElement>) {
     let this = cx.entity();
     let mode =
         tabs("ui-mode", &[(InterfaceMode::Transparent, tr!("Transparent")), (InterfaceMode::Solid, tr!("Solid"))], a.ui.interface_mode, {
@@ -265,67 +290,50 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
                 });
             }
         });
-    let mut rows: Vec<AnyElement> = vec![row(
+    let panels = row(
         tr!("Panels"),
         Some(match a.ui.interface_mode {
-            InterfaceMode::Transparent => tr!("Glass: the blurred game artwork shows through the panels."),
-            InterfaceMode::Solid => tr!("Opaque panels in a solid colour, no artwork."),
+            InterfaceMode::Transparent => {
+                tr!("Menus, dialogs and pages like this one are glass: the blurred game artwork shows through.")
+            }
+            InterfaceMode::Solid => tr!("Menus, dialogs and pages like this one are a solid colour, no artwork."),
         }),
         mode,
     )
-    .into_any_element()];
-    match a.ui.interface_mode {
-        InterfaceMode::Transparent => {
-            rows.push(slider_row(tr!("Opacity: {value}%", value = a.ui.interface_opacity.round()), slider_of(a, Field::PanelOpacity)));
-            rows.push(slider_row(tr!("Blur: {value} px", value = a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)));
-        }
-        InterfaceMode::Solid => {
-            let items: Vec<(SolidTint, &'static str)> = SolidTint::ALL.iter().map(|t| (*t, t.label())).collect();
-            let tint = tabs("ui-tint", &items, a.ui.solid_tint, move |t, _, cx| {
-                this.update(cx, |d, cx| {
-                    d.appearance.ui.solid_tint = t;
-                    apply_interface(d, true, cx);
-                });
-            });
-            rows.push(row(tr!("Colour"), None, tint).into_any_element());
-        }
-    }
-    let sample_item = |label: &'static str, selected: bool| {
-        div()
-            .px(px(10.))
-            .py(px(6.))
-            .rounded(px(theme::R_ITEM))
-            .text_size(px(13.))
-            .text_color(theme::text_primary())
-            .when(selected, |d| d.bg(theme::menu_item_hover()))
-            .child(label)
+    .into_any_element();
+    let rows = match a.ui.interface_mode {
+        InterfaceMode::Transparent => vec![
+            slider_row(tr!("Opacity: {value}%", value = a.ui.interface_opacity.round()), slider_of(a, Field::PanelOpacity)),
+            slider_row(tr!("Blur: {value} px", value = a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)),
+        ],
+        InterfaceMode::Solid => scheme::tint_rows(a, cx),
     };
-    let sample = glass_menu_surface(theme::R_MENU)
-        .flex()
-        .flex_col()
-        .gap(px(2.))
-        .p(px(6.))
-        .w(px(210.))
-        .child(sample_item(tr!("Play"), true))
-        .child(sample_item(tr!("Add to favourites"), false))
-        .child(sample_item(tr!("Properties"), false));
-    let sample_row = div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .gap(px(16.))
-        .py(px(14.))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(1.))
-                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Preview")))
-                .child(meta_text(tr!("A menu with the current settings."))),
-        )
-        .child(sample);
-    rows.push(sample_row.into_any_element());
-    card(rows)
+    (panels, rows)
+}
+
+/// Everything of the Colour card back to today's look: the Dark theme (never
+/// Light or System, whatever the desktop uses), glass panels, the first
+/// accent. The custom theme's colours stay for the next time.
+fn reset_theme(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    let defaults = Appearance::default();
+    let a = &mut d.appearance;
+    a.ui.theme = defaults.theme;
+    a.ui.interface_mode = defaults.interface_mode;
+    a.ui.interface_opacity = defaults.interface_opacity;
+    a.ui.interface_blur = defaults.interface_blur;
+    a.ui.solid_tint = defaults.solid_tint;
+    a.ui.solid_tint_light = defaults.solid_tint_light;
+    a.ui.solid_own = None;
+    a.ui.solid_own_light = None;
+    a.ui.solid_desktop = false;
+    a.ui.accent = defaults.accent;
+    a.ui.accent_own = None;
+    a.ui.high_contrast = defaults.high_contrast;
+    a.tint_picker_open = false;
+    a.accent_picker_open = false;
+    set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
+    apply_interface(d, true, cx);
+    cx.emit(crate::pages::PageEvent::AppearanceChanged);
 }
 
 pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
@@ -340,7 +348,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .w_full()
         .rounded(px(theme::R_TILE))
         .border_1()
-        .border_color(theme::white_a(0.08))
+        .border_color(theme::ink_a(0.08))
         .overflow_hidden()
         .bg(theme::page_bg())
         .when_some(a.preview.clone().filter(|_| a.enabled), |el, img| {
@@ -356,12 +364,9 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 .gap(px(2.))
                 .px(px(12.))
                 .py(px(10.))
-                .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(white()).child(tr!("Live preview")))
+                .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(theme::text_bright()).child(tr!("Live preview")))
                 .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(theme::white_a(0.8))
-                        .child(tr!("Titles, details and tags sit on top of this layer.")),
+                    div().text_size(px(12.)).text_color(theme::ink_a(0.8)).child(tr!("Titles, details and tags sit on top of this layer.")),
                 ),
         );
 
@@ -376,18 +381,65 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         save_background(d, cx);
     }))
     .into_any_element()];
-    rows.extend(look::picture_rows(d, cx));
-    let a = &d.appearance;
-    for (field, state) in &a.sliders {
-        let label = match field {
-            Field::CollectionOpacity => tr!("Opacity: {value}%", value = a.ui.collection_opacity.round()),
-            Field::Blur => tr!("Blur: {value} px", value = a.blur.round()),
-            Field::Dimming => tr!("Darkening: {value}%", value = a.dimming.round()),
-            Field::Saturation => tr!("Colour intensity: {value}%", value = a.saturation.round()),
-            Field::Scrim => tr!("Edge shading: {value}%", value = a.scrim.round()),
-            Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth => continue,
-        };
-        rows.push(slider_row(label, state));
+    // Off: nothing else applies, so nothing else shows.
+    if a.enabled {
+        rows.push(look::picture_row(d, cx));
+        let a = &d.appearance;
+        let more = a.more_background;
+        let mut extra = Vec::new();
+        for (field, state) in &a.sliders {
+            let row = match field {
+                Field::CollectionOpacity => slider_row(tr!("Opacity: {value}%", value = a.ui.collection_opacity.round()), state),
+                // The light theme fades the art where the dark one darkens it.
+                Field::Dimming if theme::theme_is_light() => slider_row(tr!("Fading: {value}%", value = a.dimming.round()), state),
+                Field::Dimming => slider_row(tr!("Darkening: {value}%", value = a.dimming.round()), state),
+                Field::Blur | Field::Saturation | Field::Scrim if !more => continue,
+                Field::Blur => {
+                    extra.push(slider_row(tr!("Blur: {value} px", value = a.blur.round()), state));
+                    continue;
+                }
+                Field::Saturation => {
+                    extra.push(slider_row(tr!("Colour intensity: {value}%", value = a.saturation.round()), state));
+                    continue;
+                }
+                Field::Scrim => {
+                    extra.push(slider_row_with(
+                        tr!("Edge shading: {value}%", value = a.scrim.round()),
+                        Some(if theme::theme_is_light() {
+                            tr!("Fades the left column and the top and bottom edges, where the game list and the toolbars sit.")
+                        } else {
+                            tr!("Darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")
+                        }),
+                        state,
+                    ));
+                    continue;
+                }
+                Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth => continue,
+            };
+            rows.push(row);
+        }
+        // The finer sliders under their switch.
+        let more_link = div()
+            .id("bg-more")
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .py(px(11.))
+            .cursor_pointer()
+            .text_size(px(13.))
+            .text_color(theme::accent())
+            .hover(|s| s.text_color(theme::accent_overlay()))
+            .on_click(cx.listener(|d, _, _, cx| {
+                d.appearance.more_background = !d.appearance.more_background;
+                cx.notify();
+            }))
+            .child(if more { tr!("Fewer adjustments") } else { tr!("More adjustments: blur, colour intensity, edge shading") })
+            .child(
+                crate::ui::icon(crate::icons::Icon::ExpandMore, px(16.), theme::accent())
+                    .when(more, |i| i.with_transformation(Transformation::rotate(percentage(0.5)))),
+            )
+            .into_any_element();
+        rows.push(with_sub_rows(more_link, extra));
     }
     let background = card(rows);
 
@@ -441,17 +493,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         apply_interface(d, true, cx);
         save_background(d, cx);
     }));
-    let reset_interface = button("ui-reset", ButtonKind::Glass, tr!("Reset interface")).on_click(cx.listener(|d, _, window, cx| {
-        let defaults = Appearance::default();
-        let a = &mut d.appearance;
-        a.ui.interface_mode = defaults.interface_mode;
-        a.ui.interface_opacity = defaults.interface_opacity;
-        a.ui.interface_blur = defaults.interface_blur;
-        a.ui.solid_tint = defaults.solid_tint;
-        set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
-        apply_interface(d, true, cx);
-    }));
-    let interface = interface_group(a, cx);
+    let reset_theme =
+        button("ui-reset", ButtonKind::Glass, tr!("Reset theme")).on_click(cx.listener(|d, _, window, cx| reset_theme(d, window, cx)));
     let cover_rows = look::cover_rows(d, cx);
     let covers = card(
         [
@@ -474,8 +517,21 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let profiles = profiles::profiles_group(d, cx);
     let colour = look::colour_group(d, cx);
     let reading = look::reading_group(d, cx);
-    let motion = look::motion_group(d, cx);
     let layout = look::layout_group(d, f32::from(window.viewport_size().width), cx);
+    let enabled = d.appearance.enabled;
+    // A caption, then a card, then (optionally) a note and a reset button.
+    let footer = |note: SharedString, reset: Stateful<Div>| {
+        div()
+            .flex()
+            .items_center()
+            .justify_between()
+            .gap(px(12.))
+            .mt(px(10.))
+            .child(div().flex_1().pl(px(6.)).child(meta_text(note)))
+            .child(reset)
+    };
+    // From the colours of everything, to the picture behind the Collection,
+    // to the covers, the text and the layout.
     div()
         .flex()
         .flex_col()
@@ -483,42 +539,18 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(profiles)
         .child(caption(tr!("Colour")))
         .child(colour)
-        .child(caption(tr!("Reading")))
-        .child(reading)
-        .child(caption(tr!("Collection background")))
-        .child(preview)
-        .child(div().h(px(10.)))
+        .child(footer(
+            tr!("Back to the Dark theme, glass panels and the Ice accent. Your custom theme's colours are kept.").into(),
+            reset_theme,
+        ))
+        .child(caption(tr!("Behind the Collection")))
+        .when(enabled, |d| d.child(preview).child(div().h(px(10.))))
         .child(background)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(px(12.))
-                .mt(px(10.))
-                .child(div().flex_1().pl(px(6.)).child(meta_text(tr!(
-                    "Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit."
-                ))))
-                .child(reset),
-        )
-        .child(caption(tr!("Interface background")))
-        .child(interface)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(px(12.))
-                .mt(px(10.))
-                .child(div().flex_1().pl(px(6.)).child(meta_text(tr!(
-                    "Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette."
-                ))))
-                .child(reset_interface),
-        )
+        .child(footer(tr!("The game's art, a screenshot or a picture of your own, and how much of it shows.").into(), reset))
         .child(caption(tr!("Covers")))
         .child(covers)
-        .child(caption(tr!("Motion")))
-        .child(motion)
+        .child(caption(tr!("Text and motion")))
+        .child(reading)
         .child(caption(tr!("Layout")))
         .child(layout)
         .into_any_element()
@@ -538,7 +570,7 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         Row::toggle("bg-enabled", tr!("Game artwork behind the library"), a.enabled).desc(tr!("Desktop mode's Collection background")),
         Row::number("bg-opacity", tr!("Opacity"), n(a.ui.collection_opacity), 0, 100, 5, "%"),
         Row::number("bg-blur", tr!("Blur"), n(a.blur), 0, 40, 1, " px"),
-        Row::number("bg-dim", tr!("Darkening"), n(a.dimming), 0, 90, 5, "%"),
+        Row::number("bg-dim", if theme::theme_is_light() { tr!("Fading") } else { tr!("Darkening") }, n(a.dimming), 0, 90, 5, "%"),
         Row::number("bg-sat", tr!("Colour intensity"), n(a.saturation), 0, 150, 5, "%"),
         Row::number("bg-scrim", tr!("Edge shading"), n(a.scrim), 0, 150, 5, "%"),
         Row::action("bg-reset", tr!("Reset the background")),
@@ -571,13 +603,9 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
                 " px",
             ));
         }
-        InterfaceMode::Solid => {
-            let tints: Vec<SharedString> = SolidTint::ALL.iter().map(|t| SharedString::from(t.label())).collect();
-            let i = SolidTint::ALL.iter().position(|t| *t == a.ui.solid_tint).unwrap_or(0);
-            rows.push(Row::choice("ui-tint", tr!("Colour"), tints, i));
-        }
+        InterfaceMode::Solid => rows.extend(scheme::console_tint_rows(d)),
     }
-    rows.push(Row::action("ui-reset", tr!("Reset the interface")));
+    rows.push(Row::action("ui-reset", tr!("Reset theme")));
     rows.push(Row::header(tr!("Covers")));
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
     let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
@@ -612,6 +640,7 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
         Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
         Row::header(tr!("Colour")),
+        choice("theme", tr!("Theme"), console_choice(&scheme::theme_items(), a.theme)).desc(tr!("Console mode stays dark")),
         choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
         Row::toggle("high-contrast", tr!("High contrast"), a.high_contrast),
         Row::header(tr!("Reading")),
@@ -668,9 +697,17 @@ fn console_apply_look(
                 look::set_look(d, cx, |a| a.background = v)
             }
         }
+        ("theme", i, _) => {
+            if let Some(v) = pick(&scheme::theme_items(), i) {
+                look::set_look(d, cx, |a| a.theme = v)
+            }
+        }
         ("accent", i, _) => {
             if let Some(v) = i.and_then(|i| Accent::ALL.get(i).copied()) {
-                look::set_look(d, cx, |a| a.accent = v)
+                look::set_look(d, cx, |a| {
+                    a.accent = v;
+                    a.accent_own = None;
+                })
             }
         }
         ("font", i, _) => {
@@ -776,10 +813,10 @@ pub(super) fn console_apply(
                 d.appearance.ui.interface_mode = if index == 1 { InterfaceMode::Solid } else { InterfaceMode::Transparent };
                 apply_interface(d, true, cx);
             }
-            "ui-tint" => {
-                if let Some(t) = SolidTint::ALL.get(index) {
-                    d.appearance.ui.solid_tint = *t;
-                    apply_interface(d, true, cx);
+            "ui-tint" | "ui-tint-light" => {
+                let tints = if id.as_ref() == "ui-tint" { SolidTint::DARK } else { SolidTint::LIGHT };
+                if let Some(t) = tints.get(index) {
+                    scheme::set_tint(d, *t, false, cx);
                 }
             }
             "aspect" => {
@@ -811,21 +848,7 @@ pub(super) fn console_apply(
                 apply_interface(d, true, cx);
                 save_background(d, cx);
             }
-            "ui-reset" => {
-                let defaults = Appearance::default();
-                let a = &mut d.appearance;
-                a.ui.interface_mode = defaults.interface_mode;
-                a.ui.interface_opacity = defaults.interface_opacity;
-                a.ui.interface_blur = defaults.interface_blur;
-                a.ui.solid_tint = defaults.solid_tint;
-                set_sliders(
-                    a,
-                    &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)],
-                    window,
-                    cx,
-                );
-                apply_interface(d, true, cx);
-            }
+            "ui-reset" => reset_theme(d, window, cx),
             _ => {}
         },
         _ => {}
@@ -871,19 +894,7 @@ pub(super) fn palette_commands(d: Option<&SettingsPage>, loaded: Option<&Effecti
         }
         .keywords("appearance glass opaque panels menus dialogs theme aparencia aparência vidro opaco transparente sólido solido painéis paineis tema"),
     );
-    for t in SolidTint::ALL {
-        let current = ui.interface_mode == InterfaceMode::Solid && ui.solid_tint == t;
-        v.push(
-            PageCommand::new(
-                format!("tint:{}", t.as_str()),
-                tr!("Solid interface: {tint}", tint = t.label()),
-                tr!("Panels in this colour"),
-                Icon::Tune,
-            )
-            .keywords("appearance colour color tint theme aparencia aparência cor tema")
-            .disabled(current.then_some(tr!("In use"))),
-        );
-    }
+    v.extend(scheme::palette_commands(ui));
     if let Some(grey) = settings.map(|s| s.grey_uninstalled_games) {
         v.push(
             PageCommand::new(
@@ -916,12 +927,7 @@ pub(super) fn run_palette(d: &mut SettingsPage, id: &str, cx: &mut Context<Setti
             let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !d.settings.grey_uninstalled_games);
             d.saved(res, cx);
         }
-        _ => {
-            let Some(t) = id.strip_prefix("tint:").and_then(SolidTint::parse) else { return false };
-            d.appearance.ui.interface_mode = InterfaceMode::Solid;
-            d.appearance.ui.solid_tint = t;
-            apply_interface(d, true, cx);
-        }
+        _ => return scheme::run_palette(d, id, cx),
     }
     true
 }

@@ -278,7 +278,7 @@ impl PaletteView {
                 .size(px(24.))
                 .rounded(px(6.))
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.1)))
+                .hover(|s| s.bg(theme::ink_a(0.1)))
                 .child(icon(Icon::ChevronRight, px(16.), if sel { theme::text_primary() } else { theme::text_dim() }))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
@@ -354,9 +354,9 @@ impl PaletteView {
                     .rounded_full()
                     .cursor_pointer()
                     .text_size(px(11.5))
-                    .text_color(if on { white() } else { Hsla::from(theme::seg_text()) })
+                    .text_color(if on { theme::text_bright() } else { Hsla::from(theme::seg_text()) })
                     .when(on, |d| d.bg(theme::seg_active()))
-                    .when(!on, |d| d.hover(|s| s.text_color(white())))
+                    .when(!on, |d| d.hover(|s| s.text_color(theme::text_bright())))
                     .on_click(cx.listener(move |this, _, _, cx| this.set_filter(f, cx)))
                     .child(f.label()),
             );
@@ -449,7 +449,7 @@ impl Render for PaletteView {
             .h(px(54.))
             .px(px(18.))
             .border_b_1()
-            .border_color(theme::white_a(0.08))
+            .border_color(theme::ink_a(0.08))
             .child(icon(Icon::FaSearch, px(15.), theme::text_muted()))
             .children(self.crumb(cx))
             .child(
@@ -471,7 +471,7 @@ impl Render for PaletteView {
             .px(px(16.))
             .py(px(9.))
             .border_t_1()
-            .border_color(theme::white_a(0.08))
+            .border_color(theme::ink_a(0.08))
             .text_size(px(12.))
             .text_color(theme::text_dim())
             .child(hint(vec!["\u{2191}", "\u{2193}"], tr!("move")))

@@ -75,11 +75,17 @@ pub fn card(
     // `box-shadow: 0 0 0 2px <ring>, 0 10px 24px rgba(0,0,0,.42)` — the ring
     // is drawn as a 2px border just outside the cover.
     let shadow = if lift {
-        BoxShadow { color: theme::black_a(0.5), offset: point(px(0.), px(16.)), blur_radius: px(30.), spread_radius: px(0.), inset: false }
+        BoxShadow { color: theme::shadow_a(0.5), offset: point(px(0.), px(16.)), blur_radius: px(30.), spread_radius: px(0.), inset: false }
     } else if ring.is_some() {
-        BoxShadow { color: theme::black_a(0.42), offset: point(px(0.), px(10.)), blur_radius: px(24.), spread_radius: px(0.), inset: false }
+        BoxShadow {
+            color: theme::shadow_a(0.42),
+            offset: point(px(0.), px(10.)),
+            blur_radius: px(24.),
+            spread_radius: px(0.),
+            inset: false,
+        }
     } else {
-        BoxShadow { color: theme::black_a(0.38), offset: point(px(0.), px(8.)), blur_radius: px(20.), spread_radius: px(0.), inset: false }
+        BoxShadow { color: theme::shadow_a(0.38), offset: point(px(0.), px(8.)), blur_radius: px(20.), spread_radius: px(0.), inset: false }
     };
 
     let grey = (s.grey_uninstalled && !vm.installed || vm.hidden) && !s.hovered;
@@ -105,7 +111,7 @@ pub fn card(
             .items_center()
             .justify_center()
             .p(px(12.))
-            .bg(theme::rgb_a(255, 255, 255, 0.05))
+            .bg(theme::ink_a(0.05))
             .child(
                 div()
                     .w_full()
@@ -113,7 +119,7 @@ pub fn card(
                     .text_size(px(14.))
                     .line_height(px(19.))
                     .font_weight(theme::W_BOLD)
-                    .text_color(theme::white_a(0.78))
+                    .text_color(theme::ink_a(0.78))
                     .child(vm.title.clone()),
             )
             .into_any_element(),
@@ -178,7 +184,7 @@ pub fn card(
                 .h(px(s.cover_h))
                 .rounded(px(r))
                 .shadow(vec![shadow])
-                .bg(theme::rgb_a(255, 255, 255, 0.03))
+                .bg(theme::ink_a(0.03))
                 .child(
                     div()
                         .size_full()
@@ -213,7 +219,7 @@ pub fn card(
                     .truncate()
                     .text_size(px(13.))
                     .font_weight(theme::W_500)
-                    .text_color(theme::white_a(0.88))
+                    .text_color(theme::ink_a(0.88))
                     .child(vm.title.clone()),
             )
         })
@@ -271,15 +277,15 @@ fn playtime_label(vm: &CardVm) -> Div {
         .gap(px(5.))
         .text_size(px(12.))
         .font_weight(theme::W_500)
-        .text_color(theme::white_a(theme::contrast_a(0.72)))
+        .text_color(theme::ink_a(theme::contrast_a(0.72)))
         // Material icons fill about 5/6 of their box, the drive icon all of it:
         // both come out the height of the text.
         .child(icon(
             c.icon,
             px(if c.icon == Icon::FaHardDrive { 14. } else { 16. }),
-            c.tint.unwrap_or(theme::white_a(theme::contrast_a(0.72 * 0.78))),
+            c.tint.map(theme::readable).unwrap_or(theme::ink_a(theme::contrast_a(0.72 * 0.78))),
         ))
-        .when(c.muted, |d| d.text_color(theme::white_a(theme::contrast_a(0.4))))
+        .when(c.muted, |d| d.text_color(theme::ink_a(theme::contrast_a(0.4))))
         .when(vm.playing, |d| {
             d.child(div().size(px(6.)).rounded_full().bg(theme::success()).with_animation(
                 ElementId::Name(format!("live-{}", vm.key).into()),
@@ -288,13 +294,9 @@ fn playtime_label(vm: &CardVm) -> Div {
             ))
         })
         .map(|d| match c.stars {
-            Some(n) => {
-                d.child(div().flex().items_center().children(
-                    (1..=5u8).map(|i| {
-                        icon(Icon::Star, px(13.), if i <= n { theme::rgb_a(244, 211, 94, 1.).into() } else { theme::white_a(0.2) })
-                    }),
-                ))
-            }
+            Some(n) => d.child(div().flex().items_center().children((1..=5u8).map(|i| {
+                icon(Icon::Star, px(13.), if i <= n { theme::readable(theme::rgb_a(244, 211, 94, 1.)) } else { theme::ink_a(0.2) })
+            }))),
             None => d.child(div().min_w_0().truncate().child(c.text.clone())),
         })
 }

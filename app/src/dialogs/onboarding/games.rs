@@ -25,9 +25,9 @@ fn tile(head: Div, title: &'static str, sub: Div, description: &'static str, foo
         .min_h(px(168.))
         .p(px(18.))
         .rounded(px(20.))
-        .bg(theme::white_a(0.045))
+        .bg(theme::ink_a(0.045))
         .border_1()
-        .border_color(theme::white_a(0.09))
+        .border_color(theme::ink_a(0.09))
         .child(
             div().flex().items_center().gap(px(12.)).child(head).child(
                 div()
@@ -43,7 +43,39 @@ fn tile(head: Div, title: &'static str, sub: Div, description: &'static str, foo
 }
 
 impl OnboardingDialog {
+    /// The launchers on this PC with games not brought in yet (Heroic,
+    /// Lutris, Bottles, Faugus): a button each turns its import on.
+    fn other_launchers(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let svc = crate::services::launcher_imports(cx);
+        let offers = svc.read(cx).offers();
+        if offers.is_empty() {
+            return None;
+        }
+        let buttons = offers.into_iter().map(|o| {
+            let svc = svc.clone();
+            let label = format!("{} \u{b7} {}", o.launcher.name(), trn!(o.games, "{n} game", "{n} games"));
+            button_sm(SharedString::from(format!("onb-launcher-{}", o.launcher.id())), ButtonKind::Glass, label)
+                .on_click(move |_, _, cx| svc.update(cx, |s, cx| s.set_enabled(o.launcher, true, cx)))
+        });
+        Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .px(px(18.))
+                .py(px(12.))
+                .rounded(px(18.))
+                .bg(theme::ink_a(0.035))
+                .border_1()
+                .border_color(theme::ink_a(0.08))
+                .child(icon(Icon::CallMerge, px(20.), theme::accent()))
+                .child(div().flex_1().text_size(px(13.5)).text_color(theme::text_muted()).child(tr!("Games in other launchers on this PC")))
+                .children(buttons),
+        )
+    }
+
     pub(super) fn render_games(&self, art: &Art, cx: &mut Context<Self>) -> Div {
+        let others = self.other_launchers(cx);
         let f = &self.facts;
         let source = |step: Step, label: &'static str, primary: bool| {
             let done = f.is_done(step);
@@ -64,7 +96,7 @@ impl OnboardingDialog {
         };
         let [steam, stores, emulators] = GAMES;
         let add = tile(
-            div().size(px(38.)).rounded(px(12.)).flex().items_center().justify_center().bg(theme::white_a(0.08)).child(icon(
+            div().size(px(38.)).rounded(px(12.)).flex().items_center().justify_center().bg(theme::ink_a(0.08)).child(icon(
                 Icon::Add,
                 px(20.),
                 theme::text_primary(),
@@ -103,6 +135,7 @@ impl OnboardingDialog {
                     .child(source(emulators, tr!("Set up emulators"), false))
                     .child(add),
             )
+            .children(others)
             .child(
                 div()
                     .flex()
@@ -111,9 +144,9 @@ impl OnboardingDialog {
                     .px(px(22.))
                     .py(px(14.))
                     .rounded(px(20.))
-                    .bg(theme::black_a(0.25))
+                    .bg(theme::recess_a(0.25))
                     .border_1()
-                    .border_color(theme::white_a(0.06))
+                    .border_color(theme::ink_a(0.06))
                     .child(
                         div()
                             .flex()

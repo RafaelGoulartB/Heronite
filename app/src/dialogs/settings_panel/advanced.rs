@@ -174,7 +174,7 @@ impl SettingsPanel {
                 .size(px(28.))
                 .rounded_full()
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.10)))
+                .hover(|s| s.bg(theme::ink_a(0.10)))
                 .child(icon(ic, px(16.), theme::text_muted()))
         };
         let mut card_rows = rows();

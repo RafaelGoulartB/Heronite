@@ -28,13 +28,13 @@ pub fn menu_item(id: impl Into<ElementId>, active: bool) -> Stateful<Div> {
         .rounded(px(theme::R_ITEM))
         .text_size(px(14.))
         .cursor_pointer()
-        .text_color(if active { white() } else { theme::text_primary().into() })
+        .text_color(if active { theme::text_bright() } else { theme::text_primary().into() })
         .when(active, |d| d.bg(theme::accent_tint()))
-        .hover(|s| s.bg(if active { theme::accent_tint() } else { theme::menu_item_hover() }).text_color(white()))
+        .hover(|s| s.bg(if active { theme::accent_tint() } else { theme::menu_item_hover() }).text_color(theme::text_bright()))
 }
 
 pub fn menu_separator() -> Div {
-    div().h(px(1.)).my(px(4.)).mx(px(4.)).bg(theme::white_a(0.08))
+    div().h(px(1.)).my(px(4.)).mx(px(4.)).bg(theme::ink_a(0.08))
 }
 
 /// Which edge of the button the menu lines up with.

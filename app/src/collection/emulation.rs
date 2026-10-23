@@ -200,7 +200,8 @@ impl CollectionView {
     /// The refresh button: updates the install states (a game uninstalled
     /// from Steam), scans the saved ROM folders (`autoScanOnRefresh` ones)
     /// off the UI thread, then reloads the library; the spinner runs
-    /// for both. Like Heronite's `handleRefreshAll`: new games are added, none
+    /// for both. The Steam library and the other launchers turned on are
+    /// read again too. Like Heronite's `handleRefreshAll`: new games are added, none
     /// are ever removed.
     pub(super) fn refresh_all(&mut self, cx: &mut Context<Self>) {
         if self.refreshing {
@@ -217,6 +218,7 @@ impl CollectionView {
                 .await;
             this.update(cx, |this, cx| {
                 crate::services::steam_library(cx).update(cx, |s, cx| s.sync_if_ready(cx));
+                crate::services::launcher_imports(cx).update(cx, |s, cx| s.import_enabled(cx));
                 // `reload` skips when a reload is in flight.
                 this.refreshing = false;
                 this.after_rom_scan(res, false, cx);

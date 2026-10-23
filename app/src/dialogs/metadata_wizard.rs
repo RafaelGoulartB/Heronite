@@ -231,7 +231,7 @@ impl Render for MetadataWizard {
                 div()
                     .h(px(8.))
                     .rounded_full()
-                    .bg(theme::white_a(0.08))
+                    .bg(theme::ink_a(0.08))
                     .overflow_hidden()
                     .child(div().h_full().w(relative(p.percent.min(100) as f32 / 100.)).bg(theme::accent())),
             )

@@ -33,9 +33,8 @@ pub(super) fn shelf(h: f32) -> Div {
     let h = h.clamp(420., 760.);
     let w = (SHELF_W - 2. * SHELF_PAD - (SHELF_COLS - 1) as f32 * SHELF_GAP) / SHELF_COLS as f32;
     let rows = ((h - SHELF_PAD) / (w * 1.5 + SHELF_GAP)).ceil() as usize;
-    let slot = || {
-        div().flex_none().w(px(w)).h(px(w * 1.5)).rounded(px(10.)).bg(theme::white_a(0.04)).border_1().border_color(theme::white_a(0.07))
-    };
+    let slot =
+        || div().flex_none().w(px(w)).h(px(w * 1.5)).rounded(px(10.)).bg(theme::ink_a(0.04)).border_1().border_color(theme::ink_a(0.07));
     let grid = div()
         .absolute()
         .top(px(SHELF_PAD))
@@ -53,13 +52,13 @@ pub(super) fn shelf(h: f32) -> Div {
         .h(px(h))
         .rounded(px(26.))
         .overflow_hidden()
-        .bg(theme::white_a(0.02))
+        .bg(theme::ink_a(0.02))
         .border_1()
-        .border_color(theme::white_a(0.06))
+        .border_color(theme::ink_a(0.06))
         .child(grid)
         .child(div().absolute().left_0().right_0().bottom_0().h(relative(0.5)).bg(linear_gradient(
             180.,
-            linear_color_stop(theme::rgb_a(7, 9, 12, 0.), 0.),
+            linear_color_stop(theme::stage_ink_a(0.), 0.),
             linear_color_stop(bg, 0.85),
         )))
         .child(
@@ -113,9 +112,9 @@ impl CollectionView {
                     .px(px(40.))
                     .py(px(36.))
                     .rounded(px(24.))
-                    .bg(theme::rgb_a(14, 18, 24, 0.96))
+                    .bg(theme::opaque_card())
                     .border_1()
-                    .border_color(theme::white_a(0.1))
+                    .border_color(theme::ink_a(0.1))
                     .child(icon(Icon::Warning, px(36.), theme::danger_text()))
                     .child(
                         div()
@@ -139,7 +138,7 @@ impl CollectionView {
                             .px(px(12.))
                             .py(px(8.))
                             .rounded(px(8.))
-                            .bg(theme::white_a(0.05))
+                            .bg(theme::ink_a(0.05))
                             .font_family(theme::FONT_MONO)
                             .text_size(px(12.))
                             .text_color(theme::text_dim())
@@ -202,9 +201,9 @@ pub(super) fn source_row(
         .gap(px(14.))
         .p(px(if main { 20. } else { 16. }))
         .rounded(px(18.))
-        .bg(if main { theme::accent_alpha(0.07).into() } else { theme::white_a(0.04) })
+        .bg(if main { theme::accent_alpha(0.07).into() } else { theme::ink_a(0.04) })
         .border_1()
-        .border_color(if main { theme::accent_alpha(0.28).into() } else { theme::white_a(0.08) })
+        .border_color(if main { theme::accent_alpha(0.28).into() } else { theme::ink_a(0.08) })
         .child(
             div()
                 .flex_none()
@@ -248,8 +247,9 @@ pub(super) fn source_row(
         .when_some(button, |d, b| d.child(div().flex_none().child(b)))
 }
 
-/// A store to log in to: its name over "Log in", tinted with its colour.
-pub(super) fn store_tile(id: &'static str, name: &'static str, (r, g, b): (u8, u8, u8)) -> Stateful<Div> {
+/// A store to log in to, or a launcher to bring games from: its name over
+/// what a click does, tinted with its colour.
+pub(super) fn tile(id: impl Into<ElementId>, ic: Icon, name: &'static str, action: String, (r, g, b): (u8, u8, u8)) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -259,9 +259,9 @@ pub(super) fn store_tile(id: &'static str, name: &'static str, (r, g, b): (u8, u
         .gap(px(12.))
         .p(px(14.))
         .rounded(px(16.))
-        .bg(theme::white_a(0.045))
+        .bg(theme::ink_a(0.045))
         .border_1()
-        .border_color(theme::white_a(0.09))
+        .border_color(theme::ink_a(0.09))
         .cursor_pointer()
         .hover(|s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()))
         .child(
@@ -273,7 +273,7 @@ pub(super) fn store_tile(id: &'static str, name: &'static str, (r, g, b): (u8, u
                 .items_center()
                 .justify_center()
                 .bg(theme::rgba_hsla(r, g, b, 0.14))
-                .child(icon(Icon::Storefront, px(20.), theme::rgba_hsla(r, g, b, 1.))),
+                .child(icon(ic, px(20.), theme::rgba_hsla(r, g, b, 1.))),
         )
         .child(
             div()
@@ -291,6 +291,14 @@ pub(super) fn store_tile(id: &'static str, name: &'static str, (r, g, b): (u8, u
                         .text_color(theme::text_primary())
                         .child(name),
                 )
-                .child(div().text_size(px(12.5)).text_color(theme::accent()).child(tr!("Log in"))),
+                .child(
+                    div()
+                        .whitespace_nowrap()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .text_size(px(12.5))
+                        .text_color(theme::accent())
+                        .child(action),
+                ),
         )
 }

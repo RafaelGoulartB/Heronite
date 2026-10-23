@@ -145,7 +145,7 @@ pub(super) fn h3(text: impl Into<SharedString>) -> Div {
         .text_size(px(16.8))
         .line_height(px(20.))
         .font_weight(theme::W_BOLD)
-        .text_color(white())
+        .text_color(theme::text_bright())
         .child(text.into())
 }
 
@@ -169,9 +169,9 @@ pub(super) fn small_tabs(
                 .rounded_full()
                 .cursor_pointer()
                 .text_size(px(12.))
-                .text_color(if on { white() } else { Hsla::from(theme::seg_text()) })
+                .text_color(if on { theme::text_bright() } else { Hsla::from(theme::seg_text()) })
                 .when(on, |d| d.bg(theme::seg_active()))
-                .when(!on, |d| d.hover(|s| s.text_color(white())))
+                .when(!on, |d| d.hover(|s| s.text_color(theme::text_bright())))
                 .on_click(move |_, w, cx| pick(i, w, cx))
                 .child(label.clone()),
         );
@@ -184,9 +184,9 @@ pub(super) fn small_tabs(
 pub fn panel(facts: bool) -> Div {
     let d = div().flex().flex_col().border_1();
     if facts {
-        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::rgb_a(18, 22, 28, 0.45)).border_color(theme::white_a(0.1))
+        d.pt(px(10.4)).px(px(16.)).pb(px(12.8)).rounded(px(12.)).bg(theme::focus_card_fill(true)).border_color(theme::ink_a(0.1))
     } else {
-        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::rgb_a(12, 14, 18, 0.5)).border_color(theme::white_a(0.07))
+        d.py(px(15.2)).px(px(16.8)).rounded(px(10.)).bg(theme::focus_card_fill(false)).border_color(theme::ink_a(0.07))
     }
 }
 
@@ -379,10 +379,10 @@ fn header(vm: &FocusVm, title_size: f32) -> Div {
                 .text_size(px(title_size))
                 .line_height(px(title_size * 1.15))
                 .font_weight(theme::W_BOLD)
-                .text_color(white())
+                .text_color(theme::text_bright())
                 .child(vm.title.clone()),
         )
-        .when(!vm.meta_line.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::white_a(0.8)).child(vm.meta_line.clone())))
+        .when(!vm.meta_line.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::ink_a(0.8)).child(vm.meta_line.clone())))
 }
 
 /// The blocks of the details, placed by [`body`].
@@ -405,7 +405,7 @@ fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
             .max_w(px(72. * 7.6))
             .text_size(px(15.2))
             .line_height(px(15.2 * 1.65))
-            .text_color(theme::white_a(0.92))
+            .text_color(theme::ink_a(0.92))
             .child(vm.overview.clone().unwrap_or_else(|| tr!("No description available").into()))
             .into_any_element(),
     })

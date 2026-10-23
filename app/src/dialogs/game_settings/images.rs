@@ -188,7 +188,7 @@ impl GameSettingsDialog {
             .flex_none()
             .rounded(px(if is_cover { 10. } else { 12. }))
             .border_1()
-            .border_color(theme::white_a(0.08))
+            .border_color(theme::ink_a(0.08))
             .into_any_element();
 
         let busy = self.busy.is_some();

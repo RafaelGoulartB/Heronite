@@ -41,7 +41,7 @@ fn select_mark(on: bool) -> Div {
         .rounded_full()
         .border_1()
         .when(on, |d| d.bg(theme::accent()).border_color(theme::accent()).child(icon(Icon::Check, px(13.), white())))
-        .when(!on, |d| d.border_color(theme::white_a(0.28)))
+        .when(!on, |d| d.border_color(theme::ink_a(0.28)))
 }
 
 /// A name with its games, as a pill of the suggestions.
@@ -55,8 +55,8 @@ fn name_pill(value: &FieldValue, target: bool) -> Div {
         .py(px(3.))
         .rounded_full()
         .text_size(px(13.))
-        .when(target, |d| d.bg(theme::accent_tint()).border_1().border_color(theme::accent_tint_border()).text_color(white()))
-        .when(!target, |d| d.bg(theme::white_a(0.07)).text_color(theme::text_muted()))
+        .when(target, |d| d.bg(theme::accent_tint()).border_1().border_color(theme::accent_tint_border()).text_color(theme::text_bright()))
+        .when(!target, |d| d.bg(theme::ink_a(0.07)).text_color(theme::text_muted()))
         .child(value.name.clone())
         .child(div().text_size(px(11.5)).text_color(theme::text_dim()).child(value.games.to_string()))
 }
@@ -142,8 +142,8 @@ impl ManageFieldsDialog {
             .size(px(24.))
             .rounded_full()
             .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.1)))
-            .child(icon(Icon::Close, px(14.), theme::white_a(0.7)))
+            .hover(|s| s.bg(theme::ink_a(0.1)))
+            .child(icon(Icon::Close, px(14.), theme::ink_a(0.7)))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.search.update(cx, |s, cx| {
                     s.set_value("", window, cx);
@@ -164,7 +164,7 @@ impl ManageFieldsDialog {
                 .mr(px(6.))
                 .text_size(px(12.5))
                 .text_color(theme::accent())
-                .hover(|s| s.text_color(white()))
+                .hover(|s| s.text_color(theme::text_bright()))
                 .child(label)
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.all_similar = !this.all_similar;
@@ -260,7 +260,7 @@ impl ManageFieldsDialog {
                     .min_w_0()
                     .truncate()
                     .text_size(px(14.))
-                    .text_color(if selected { white().into() } else { theme::text_primary() })
+                    .text_color(if selected { theme::text_bright() } else { theme::text_primary().into() })
                     .child(v.name.clone()),
             )
             .child(div().flex_none().text_size(px(12.5)).text_color(theme::text_muted()).child(trn!(v.games, "{n} game", "{n} games")))

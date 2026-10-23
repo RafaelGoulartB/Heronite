@@ -13,7 +13,7 @@ use crate::ui::icon;
 const TOGGLE_SPRING: SpringConfig = SpringConfig::new(900., 60., 1.);
 
 fn knob_shadow() -> Vec<BoxShadow> {
-    vec![BoxShadow { color: theme::black_a(0.4), offset: point(px(0.), px(1.)), blur_radius: px(3.), spread_radius: px(0.), inset: false }]
+    vec![BoxShadow { color: theme::shadow_a(0.4), offset: point(px(0.), px(1.)), blur_radius: px(3.), spread_radius: px(0.), inset: false }]
 }
 
 /// Accent fill (fading in) and white knob (sliding) of a switch `w` wide
@@ -55,8 +55,7 @@ fn switch_box(id: impl Into<ElementId>, on: bool, disabled: bool, fill: Hsla, w:
         .child(switch_fx(key, on, fill, w, knob, inset))
 }
 
-/// Toggle switch (40x24 pill, 18px knob): off `rgba(255,255,255,.16)`, on =
-/// accent. The caller adds `.on_click(..)`. Disabled is drawn at 40% opacity.
+/// Toggle switch (40x24 pill, 18px knob): off ink at .16, on = accent. The caller adds `.on_click(..)`. Disabled is drawn at 40% opacity.
 pub fn toggle(id: impl Into<ElementId>, on: bool, disabled: bool) -> Stateful<Div> {
     switch_box(id, on, disabled, theme::accent().into(), theme::TOGGLE_W, theme::TOGGLE_H, theme::TOGGLE_KNOB, 3.)
 }
@@ -64,7 +63,7 @@ pub fn toggle(id: impl Into<ElementId>, on: bool, disabled: bool) -> Stateful<Di
 /// A [`toggle`] that is on but has no effect yet (something it needs is
 /// missing): grey instead of the accent, still clickable.
 pub fn toggle_inactive(id: impl Into<ElementId>, on: bool) -> Stateful<Div> {
-    switch_box(id, on, false, theme::white_a(0.3), theme::TOGGLE_W, theme::TOGGLE_H, theme::TOGGLE_KNOB, 3.)
+    switch_box(id, on, false, theme::ink_a(0.3), theme::TOGGLE_W, theme::TOGGLE_H, theme::TOGGLE_KNOB, 3.)
 }
 
 /// Compact switch (30x18) for dense lists (ROM / emulator pickers): the caller
@@ -137,6 +136,23 @@ pub fn card(rows: impl IntoIterator<Item = AnyElement>) -> Div {
     c
 }
 
+/// `parent` with the rows that only matter because of it (shown while it is
+/// on, or one of its values) under it, indented along a line. Inside a
+/// [`card`], as one of its rows.
+pub fn with_sub_rows(parent: AnyElement, rows: Vec<AnyElement>) -> AnyElement {
+    if rows.is_empty() {
+        return parent;
+    }
+    let mut group = div().flex().flex_col().ml(px(4.)).mb(px(10.)).pl(px(16.)).border_l_2().border_color(theme::ink_a(0.1));
+    for (i, r) in rows.into_iter().enumerate() {
+        if i > 0 {
+            group = group.child(div().h(px(1.)).w_full().bg(theme::row_separator()));
+        }
+        group = group.child(r);
+    }
+    div().flex().flex_col().child(parent).child(group).into_any_element()
+}
+
 /// Line height of a [`caption`].
 pub const CAPTION_H: f32 = 16.;
 
@@ -185,9 +201,9 @@ pub fn kbd(text: impl Into<SharedString>) -> Div {
         .px(px(6.))
         .py(px(1.))
         .rounded(px(5.))
-        .bg(theme::white_a(0.08))
+        .bg(theme::ink_a(0.08))
         .border_1()
-        .border_color(theme::white_a(0.12))
+        .border_color(theme::ink_a(0.12))
         .font_family(theme::FONT_MONO)
         .text_size(px(11.))
         .text_color(theme::text_muted())
@@ -204,9 +220,9 @@ pub fn close_button(id: impl Into<ElementId>) -> Stateful<Div> {
         .justify_center()
         .size(px(32.))
         .rounded_full()
-        .bg(theme::white_a(0.08))
+        .bg(theme::ink_a(0.08))
         .cursor_pointer()
-        .hover(|s| s.bg(theme::white_a(0.14)))
+        .hover(|s| s.bg(theme::ink_a(0.14)))
         .child(icon(Icon::Close, px(16.), theme::text_primary()))
 }
 
@@ -224,9 +240,9 @@ pub fn nav_pill(id: impl Into<ElementId>, ic: Icon, label: impl Into<SharedStrin
         .rounded_full()
         .text_size(px(14.))
         .cursor_pointer()
-        .text_color(if active { white() } else { theme::nav_text().into() })
+        .text_color(if active { theme::text_bright() } else { theme::nav_text().into() })
         .when(active, |d| d.bg(theme::accent_tint()))
-        .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+        .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.05))))
         .child(icon(ic, px(16.), if active { theme::accent() } else { theme::nav_text() }))
         .child(label.into())
 }
@@ -285,7 +301,7 @@ fn button_base(
     match kind {
         ButtonKind::Glass => b.hover(|s| s.bg(theme::button_fill_hover())),
         ButtonKind::Primary => b.hover(|s| s.bg(theme::accent_overlay())),
-        ButtonKind::Ghost => b.hover(|s| s.bg(theme::white_a(0.06)).text_color(theme::text_primary())),
+        ButtonKind::Ghost => b.hover(|s| s.bg(theme::ink_a(0.06)).text_color(theme::text_primary())),
         ButtonKind::Danger => b.hover(|s| s.bg(theme::danger_fill_hover())),
     }
 }
@@ -335,8 +351,8 @@ pub fn action_button(
     }
 }
 
-/// Segmented pill tabs: a dark track with the active item lifted
-/// (`rgba(255,255,255,.14)`, white text). Tabs that do not fit the width
+/// Segmented pill tabs: a recessed track with the active item lifted
+/// (`rgba(255,255,255,.14)`, white text on the dark theme). Tabs that do not fit the width
 /// (it depends on the language, not on how many there are) wrap to another
 /// row; one row keeps the pill look.
 pub fn tabs<T: Copy + PartialEq + 'static>(
@@ -370,9 +386,9 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
                 .text_size(px(13.))
                 .whitespace_nowrap()
                 .cursor_pointer()
-                .text_color(if is_active { white() } else { theme::seg_text().into() })
+                .text_color(if is_active { theme::text_bright() } else { theme::seg_text().into() })
                 .when(is_active, |d| d.bg(theme::seg_active()))
-                .when(!is_active, |d| d.hover(|s| s.text_color(white())))
+                .when(!is_active, |d| d.hover(|s| s.text_color(theme::text_bright())))
                 .on_click(move |_, w, cx| cb(v, w, cx))
                 .child(*label),
         );

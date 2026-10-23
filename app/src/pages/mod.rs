@@ -230,8 +230,8 @@ pub fn icon_action(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Statefu
         .justify_center()
         .size(px(32.))
         .rounded_full()
-        .bg(theme::white_a(0.08))
-        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::white_a(0.14))))
+        .bg(theme::ink_a(0.08))
+        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.14))))
         .when(!enabled, |d| d.opacity(0.35))
         .child(icon(ic, px(16.), theme::text_primary()))
 }
@@ -247,7 +247,7 @@ pub fn status_pill(text: impl Into<SharedString>, color: Rgba) -> Div {
         .rounded_full()
         .bg(Hsla { a: 0.16, ..c })
         .text_size(px(12.))
-        .text_color(color)
+        .text_color(theme::readable(color))
         .whitespace_nowrap()
         .child(text.into())
 }
@@ -259,7 +259,7 @@ pub fn tag_pill(text: impl Into<SharedString>) -> Div {
         .px(px(9.))
         .py(px(2.))
         .rounded_full()
-        .bg(theme::white_a(0.08))
+        .bg(theme::ink_a(0.08))
         .text_size(px(12.))
         .text_color(theme::text_muted())
         .whitespace_nowrap()

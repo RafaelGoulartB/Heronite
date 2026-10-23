@@ -71,7 +71,7 @@ fn size_bar(fraction: f32, color: Hsla) -> Div {
         .h(px(4.))
         .mt(px(5.))
         .rounded_full()
-        .bg(theme::white_a(0.06))
+        .bg(theme::ink_a(0.06))
         .child(div().h_full().rounded_full().bg(color).w(relative(fraction.clamp(0.012, 1.))))
 }
 
@@ -294,7 +294,7 @@ fn free_up(st: &State, cx: &mut Context<SettingsPage>) -> AnyElement {
             .size(px(28.))
             .rounded_full()
             .cursor_pointer()
-            .hover(|d| d.bg(theme::white_a(0.08)))
+            .hover(|d| d.bg(theme::ink_a(0.08)))
             .on_click(cx.listener(move |d, _, _, cx| {
                 // Not a click on the row: the choice stays as it is.
                 cx.stop_propagation();
@@ -319,7 +319,7 @@ fn free_up(st: &State, cx: &mut Context<SettingsPage>) -> AnyElement {
                 .px(px(8.))
                 .rounded(px(8.))
                 .cursor_pointer()
-                .hover(|d| d.bg(theme::white_a(0.04)))
+                .hover(|d| d.bg(theme::ink_a(0.04)))
                 .on_click(cx.listener(move |d, _, _, cx| {
                     let st = &mut d.storage;
                     if !st.sweeps.remove(&s) {
@@ -368,7 +368,7 @@ fn sweep_details(st: &State, s: Sweep) -> Div {
     items.sort_by_key(|i| std::cmp::Reverse(st.own(i).unwrap_or(0)));
     // Lined up with the choice's label (switch, gap, dot, gap) and its size
     // (the chevron's room on the right).
-    let mut list = div().flex().flex_col().ml(px(62.)).mr(px(40.)).mb(px(8.)).pl(px(12.)).border_l_1().border_color(theme::white_a(0.1));
+    let mut list = div().flex().flex_col().ml(px(62.)).mr(px(40.)).mb(px(8.)).pl(px(12.)).border_l_1().border_color(theme::ink_a(0.1));
     list = list.child(div().pb(px(6.)).text_size(px(12.)).line_height(px(17.)).text_color(theme::text_muted()).child(sweep_effect(s)));
     for item in items {
         let action = if item.goes_to_trash() { tr!("To the trash") } else { tr!("Deleted") };
@@ -461,7 +461,7 @@ fn games(d: &mut SettingsPage, column: f32, window: &mut Window, cx: &mut Contex
             .child(
                 div()
                     .text_size(px(12.))
-                    .text_color(if old { Hsla::from(unused_color()) } else { theme::text_dim().into() })
+                    .text_color(if old { theme::readable(unused_color()) } else { theme::text_dim().into() })
                     .child(format!("{source}{}", played_text(days))),
             )
             .child(size_bar(item.size.unwrap_or(0) as f32 / biggest as f32, group_color(Group::Games)));
@@ -524,7 +524,7 @@ fn treemap(d: &mut SettingsPage, games: &[Item], width: f32, window: &mut Window
                     .w(px(w))
                     .h(px(h))
                     .rounded(px(10.))
-                    .bg(theme::white_a(0.06))
+                    .bg(theme::ink_a(0.06))
                     .flex()
                     .flex_col()
                     .items_center()
@@ -570,7 +570,7 @@ fn treemap(d: &mut SettingsPage, games: &[Item], width: f32, window: &mut Window
                                 div()
                                     .font_weight(theme::W_BOLD)
                                     .text_size(px(if w > 180. { 14. } else { 12. }))
-                                    .text_color(theme::text_primary())
+                                    .text_color(white())
                                     .truncate()
                                     .child(item.title.clone()),
                             )

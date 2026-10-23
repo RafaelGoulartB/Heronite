@@ -138,7 +138,7 @@ impl EffectiveSettings {
         let screenshots = file.screenshots.clone().unwrap_or_default();
         let metadata = normalize_metadata(file.metadata.as_ref());
         Self {
-            grey_uninstalled_games: file.grey_uninstalled_games != Some(false),
+            grey_uninstalled_games: file.grey_uninstalled_games == Some(true),
             background: normalize_background(file.background.as_ref().map(PartialBackground::from).as_ref()),
             screenshots: ScreenshotsSettings {
                 folder: screenshots.folder.trim().to_owned(),
@@ -450,7 +450,8 @@ mod tests {
     #[test]
     fn defaults_match_the_ts() {
         let s = EffectiveSettings::default();
-        assert!(s.grey_uninstalled_games);
+        // Colour covers until the user asks for grey ones.
+        assert!(!s.grey_uninstalled_games);
         assert_eq!(s.background, BackgroundSettings::default());
         assert_eq!(s.screenshots.cache_limit_mb.get(), 500.0);
         assert_eq!(s.screenshots.capture_accelerator, "F10");

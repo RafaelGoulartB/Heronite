@@ -2,7 +2,8 @@
 //! blurred, saturated and with its highlights rolled off (pre-processed on
 //! the CPU by `heronite-images`, `Variant::Backdrop`), under three scrim
 //! gradients. CSS multi-stop gradients are split into two-stop bands because
-//! GPUI gradients take exactly two stops.
+//! GPUI gradients take exactly two stops. On the light theme the scrims are
+//! the light page colour and fade the art for dark text.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -14,11 +15,22 @@ pub struct Scrim {
     pub scrim: f32,
 }
 
-const INK: (u8, u8, u8) = (7, 9, 12);
-
 fn ink(a: f32) -> Hsla {
-    Rgba { r: INK.0 as f32 / 255., g: INK.1 as f32 / 255., b: INK.2 as f32 / 255., a: a.clamp(0., 1.) }.into()
+    crate::theme::stage_ink_a(a.clamp(0., 1.))
 }
+
+/// The even fade under everything on the light theme, at least
+/// [`LIGHT_FADE_FLOOR`]: dark text keeps 4.5:1 even over black art (the
+/// dark theme's floor is the art's rolled-off highlights).
+fn base_fade(dim: f32) -> f32 {
+    if crate::theme::is_light() {
+        LIGHT_FADE_FLOOR + (1. - LIGHT_FADE_FLOOR) * dim
+    } else {
+        dim
+    }
+}
+
+const LIGHT_FADE_FLOOR: f32 = 0.45;
 
 /// Bands for one multi-stop gradient: `(start%, end%, alpha_start, alpha_end)`.
 fn bands(stops: &[(f32, f32)], scale: f32) -> Vec<(f32, f32, f32)> {
@@ -41,7 +53,7 @@ pub fn scrim_layers(s: Scrim) -> Div {
     div()
         .absolute()
         .inset_0()
-        .child(div().absolute().inset_0().bg(ink(s.dim)))
+        .child(div().absolute().inset_0().bg(ink(base_fade(s.dim))))
         // Dark under the list column, then an even floor under the details:
         // no lighter dip in the middle, where the overview sits on the art.
         .child(gradient_row(90., &[(0., 0.82), (18., 0.6), (32., 0.34), (100., 0.28)], s.scrim))
@@ -51,7 +63,7 @@ pub fn scrim_layers(s: Scrim) -> Div {
 /// Settings → Appearance → Background "Solid colour": the panels' colour
 /// under the same scrims.
 pub fn solid(s: Scrim) -> AnyElement {
-    let (r, g, b) = crate::theme::appearance().solid_tint.rgb();
+    let (r, g, b) = crate::theme::panel_rgb();
     div().absolute().inset_0().bg(crate::theme::rgb_a(r, g, b, 1.)).child(scrim_layers(s)).into_any_element()
 }
 

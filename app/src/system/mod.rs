@@ -3,6 +3,7 @@
 
 pub mod autostart;
 pub mod cli;
+pub mod desktop_colours;
 mod hub;
 pub mod notify;
 pub mod power;

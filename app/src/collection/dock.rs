@@ -28,7 +28,7 @@ pub(super) fn tri_mark(t: Tri) -> Div {
     match t {
         Tri::All => d.bg(theme::accent()).border_color(theme::accent()).child(icon(Icon::Check, px(13.), theme::page_bg())),
         Tri::Some => d.border_color(theme::accent()).child(div().w(px(8.)).h(px(2.)).rounded(px(1.)).bg(theme::accent())),
-        Tri::None => d.border_color(theme::white_a(0.32)),
+        Tri::None => d.border_color(theme::ink_a(0.32)),
     }
 }
 
@@ -45,8 +45,8 @@ fn dock_button(id: &'static str, ic: Icon, label: Option<SharedString>, on: bool
         .text_size(px(13.5))
         .text_color(theme::text_primary())
         .cursor_pointer()
-        .hover(|s| s.bg(theme::white_a(0.1)))
-        .when(on, |d| d.bg(theme::white_a(0.1)))
+        .hover(|s| s.bg(theme::ink_a(0.1)))
+        .when(on, |d| d.bg(theme::ink_a(0.1)))
         .child(icon(ic, px(18.), theme::text_muted()))
         .children(label)
 }
@@ -212,8 +212,8 @@ impl CollectionView {
             .text_size(px(13.5))
             .text_color(theme::text_primary())
             .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.1)))
-            .when(open, |d| d.bg(theme::white_a(0.1)))
+            .hover(|s| s.bg(theme::ink_a(0.1)))
+            .when(open, |d| d.bg(theme::ink_a(0.1)))
             .child(icon(ic, px(18.), theme::text_muted()))
             .child(label)
             .child(icon(Icon::ExpandMore, px(18.), theme::text_dim()))
@@ -256,7 +256,7 @@ impl CollectionView {
                         .text_size(px(11.5))
                         .text_color(theme::accent())
                         .cursor_pointer()
-                        .hover(|s| s.text_color(white()))
+                        .hover(|s| s.text_color(theme::text_bright()))
                         .child(tr!("Select all {n}", n = shown.len()))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.select_all_shown();
@@ -273,7 +273,7 @@ impl CollectionView {
             .items_center()
             .justify_center()
             .cursor_pointer()
-            .hover(|s| s.bg(theme::white_a(0.1)))
+            .hover(|s| s.bg(theme::ink_a(0.1)))
             .child(icon(Icon::Close, px(18.), theme::text_muted()))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.clear_selection();

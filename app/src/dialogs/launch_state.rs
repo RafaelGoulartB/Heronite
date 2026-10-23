@@ -182,10 +182,10 @@ impl Render for LaunchStateDialog {
                 .py(px(8.))
                 .rounded(px(theme::R_TILE))
                 .border_1()
-                .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
-                .when(on, |d| d.bg(theme::white_a(0.04)))
+                .border_color(if on { theme::accent().into() } else { theme::ink_a(0.08) })
+                .when(on, |d| d.bg(theme::ink_a(0.04)))
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.04)))
+                .hover(|s| s.bg(theme::ink_a(0.04)))
         };
         let mut list = div().id("launch-states").flex().flex_col().gap(px(8.)).max_h(px(420.)).overflow_y_scroll();
         for (i, row) in self.rows.iter().enumerate() {

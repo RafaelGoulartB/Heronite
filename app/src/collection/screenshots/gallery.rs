@@ -252,7 +252,8 @@ impl CollectionView {
 /// grows 4% on hover (no transform in GPUI, so the box is enlarged instead).
 pub fn thumb_tile(id: SharedString, src: Option<ImageSource>, hover_zoom: bool) -> Stateful<Div> {
     let group: SharedString = format!("{id}-g").into();
-    let mut tile = div().id(id).group(group.clone()).relative().rounded(px(8.)).overflow_hidden().bg(theme::black_a(0.35)).cursor_pointer();
+    let mut tile =
+        div().id(id).group(group.clone()).relative().rounded(px(8.)).overflow_hidden().bg(theme::recess_a(0.35)).cursor_pointer();
     if let Some(src) = src {
         let mut holder = div().absolute().top_0().left_0().size_full();
         if hover_zoom {

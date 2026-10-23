@@ -5,6 +5,7 @@
 //! - [`font`]: families and weights.
 //! - [`layout`]: sizes and radii (px at a 16px root unless noted).
 //! - [`glass`]: the runtime appearance settings and the glass surfaces derived from them.
+//! - [`scheme`]: light or dark, and the screens that stay dark.
 //! - [`component`]: the gpui-component theme.
 //!
 //! Never hard-code one of these values at a call site.
@@ -14,12 +15,14 @@ mod component;
 mod font;
 mod glass;
 mod layout;
+mod scheme;
 
 pub use color::*;
 pub use component::apply_component_theme;
 pub use font::*;
 pub use glass::*;
 pub use layout::*;
+pub use scheme::*;
 
 /// `HERONITE_NO_ANIMATIONS=1` turns every animation off whatever Settings →
 /// Appearance → Motion says (also needed for off-screen screenshots, where

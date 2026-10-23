@@ -19,11 +19,24 @@ pub struct DetectEnv {
     pub system_steam: Option<PathBuf>,
     /// Look for `wine` on `PATH` (runs `wine --version`).
     pub system_wine: bool,
+    /// Look in the configured Steam's libraries.
+    pub steam: bool,
 }
 
 impl DetectEnv {
+    /// This PC. `HERONITE_WINE_ONLY_TOOLS=1` (tests and screenshots with a
+    /// copy of the data folder) counts only the builds of the data folder,
+    /// not the system's Wine nor Steam's or Lutris' builds.
     pub fn real() -> Self {
-        Self { home: dirs::home_dir().unwrap_or_default(), system_steam: Some(PathBuf::from("/usr/share/steam")), system_wine: true }
+        if std::env::var_os("HERONITE_WINE_ONLY_TOOLS").is_some_and(|v| v != "0") {
+            return Self { home: PathBuf::from("/nonexistent"), system_steam: None, system_wine: false, steam: false };
+        }
+        Self {
+            home: dirs::home_dir().unwrap_or_default(),
+            system_steam: Some(PathBuf::from("/usr/share/steam")),
+            system_wine: true,
+            steam: true,
+        }
     }
 }
 
@@ -146,6 +159,9 @@ fn sorted_children(dir: &Path) -> Vec<String> {
 /// `getSteamLibraries`: the system library plus every `path` in the default
 /// Steam's `libraryfolders.vdf` (only existing folders).
 pub fn steam_libraries(cfg: &WineConfig, env: &DetectEnv) -> Vec<String> {
+    if !env.steam {
+        return Vec::new();
+    }
     let system: Vec<String> = env.system_steam.iter().map(|p| p.to_string_lossy().into_owned()).collect();
     let vdf_file = Path::new(&cfg.default_steam_path).join("steamapps/libraryfolders.vdf");
     let Ok(text) = fs::read_to_string(&vdf_file) else { return system };
@@ -184,7 +200,7 @@ mod tests {
     }
 
     fn env(home: &Path) -> DetectEnv {
-        DetectEnv { home: home.to_path_buf(), system_steam: None, system_wine: false }
+        DetectEnv { home: home.to_path_buf(), system_steam: None, system_wine: false, steam: true }
     }
 
     #[test]

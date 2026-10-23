@@ -5,7 +5,9 @@ pub mod compression;
 pub mod downloads;
 pub mod game_folders;
 pub mod launch_blocker;
+pub mod launcher_imports;
 pub mod mods;
+pub mod proton_setup;
 pub mod replay;
 pub mod script_install;
 pub mod session;
@@ -37,6 +39,20 @@ pub fn downloads(cx: &mut App) -> Entity<Downloads> {
     let data_paths = DataPaths::detect();
     let entity = cx.new(|cx| Downloads::new(data_paths, cx));
     cx.set_global(DownloadsGlobal(entity.clone()));
+    entity
+}
+
+struct LauncherImportsGlobal(Entity<launcher_imports::LauncherImports>);
+impl Global for LauncherImportsGlobal {}
+
+/// The other launchers' games (created, and its first look started, on
+/// first use).
+pub fn launcher_imports(cx: &mut App) -> Entity<launcher_imports::LauncherImports> {
+    if let Some(g) = cx.try_global::<LauncherImportsGlobal>() {
+        return g.0.clone();
+    }
+    let entity = cx.new(|cx| launcher_imports::LauncherImports::new(DataPaths::detect(), cx));
+    cx.set_global(LauncherImportsGlobal(entity.clone()));
     entity
 }
 

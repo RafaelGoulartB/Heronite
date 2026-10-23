@@ -372,5 +372,14 @@
   "({size} for the download queue)": "({size} para a fila de downloads)",
   "Log in again": "Entrar novamente",
   "The sign-in expired: log in again": "O login expirou: entre novamente",
-  "Your {store} sign-in expired. Log in again to download, update and sync saves.": "Seu login na {store} expirou. Entre novamente para baixar, atualizar e sincronizar saves."
+  "Your {store} sign-in expired. Log in again to download, update and sync saves.": "Seu login na {store} expirou. Entre novamente para baixar, atualizar e sincronizar saves.",
+  "Downloading {version}… {percent}%": "Baixando {version}… {percent}%",
+  "GE-Proton could not be downloaded ({why}). You can install now, but Windows games need Proton to run. Download it from Wine Manager in the menu (☰).": "Não foi possível baixar o GE-Proton ({why}). Você pode instalar agora, mas jogos de Windows precisam do Proton para rodar. Baixe-o no Wine Manager, no menu (☰).",
+  "Looking for the newest GE-Proton…": "Procurando o GE-Proton mais recente…",
+  "No Wine or Proton on this PC: the newest GE-Proton is downloading and will run your Windows games. You can install now.": "Não há Wine nem Proton neste PC: o GE-Proton mais recente está sendo baixado e vai rodar seus jogos de Windows. Você já pode instalar.",
+  "The download of {version} did not finish": "O download de {version} não terminou",
+  "Unpacking {version}…": "Descompactando {version}…",
+  "{version} is installed: your Windows games will run with it.": "{version} está instalado: seus jogos de Windows vão rodar com ele.",
+  "Keep the -latest builds up to date": "Manter os builds -latest atualizados",
+  "A -latest build you installed downloads its new release by itself, in the background and never while a game runs. Looked for every 6 hours, from the release feed, so GitHub is only asked when something came out.": "Um build -latest instalado baixa sozinho a nova versão, em segundo plano e nunca enquanto um jogo está aberto. A busca acontece a cada 6 horas pelo feed de releases, então o GitHub só é consultado quando sai algo novo."
 }

@@ -222,7 +222,7 @@ impl EpicModifyDialog {
         };
         let row = &self.rows[i];
         let id = |what: &str| SharedString::from(format!("epic-modify-{what}-{i}"));
-        let label = |text: String| div().text_size(px(13.33)).text_color(white()).child(text);
+        let label = |text: String| div().text_size(px(13.33)).text_color(theme::text_bright()).child(text);
         if let Some(b) = busy {
             return div()
                 .flex()
@@ -318,7 +318,7 @@ impl Render for EpicModifyDialog {
                     .gap(px(12.))
                     .pb(px(6.))
                     .border_b_1()
-                    .border_color(theme::white_a(0.12))
+                    .border_color(theme::ink_a(0.12))
                     .child(head(tr!("Title")).flex_1())
                     .child(head(tr!("Size")).w(px(90.)).flex_none())
                     .child(head(tr!("Actions")).w(px(190.)).flex_none().flex().justify_end()),
@@ -335,8 +335,8 @@ impl Render for EpicModifyDialog {
                         .items_center()
                         .gap(px(12.))
                         .py(px(5.))
-                        .child(div().flex_1().text_size(px(15.)).text_color(white()).child(self.rows[i].dlc.title.clone()))
-                        .child(div().w(px(90.)).flex_none().text_size(px(14.)).text_color(white()).child(size))
+                        .child(div().flex_1().text_size(px(15.)).text_color(theme::text_bright()).child(self.rows[i].dlc.title.clone()))
+                        .child(div().w(px(90.)).flex_none().text_size(px(14.)).text_color(theme::text_bright()).child(size))
                         .child(div().w(px(190.)).flex_none().flex().justify_end().child(cell)),
                 );
             }
@@ -350,7 +350,7 @@ impl Render for EpicModifyDialog {
                         .gap(px(10.))
                         .p(px(12.))
                         .rounded(px(4.))
-                        .bg(theme::white_a(0.06))
+                        .bg(theme::ink_a(0.06))
                         .child(paragraph(tr!("Do you want to uninstall \"{title}\" (DLC)?", title)))
                         .child(
                             div()

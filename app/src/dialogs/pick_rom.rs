@@ -72,7 +72,7 @@ impl Render for PickRomDialog {
                     .border_color(if on { theme::accent_tint_border() } else { theme::card_border() })
                     .bg(if on { theme::accent_tint() } else { theme::card_fill() })
                     .cursor_pointer()
-                    .hover(|s| s.bg(if on { theme::accent_tint() } else { theme::white_a(0.08) }))
+                    .hover(|s| s.bg(if on { theme::accent_tint() } else { theme::ink_a(0.08) }))
                     .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                         this.selected = Some(p1.clone());
                         if ev.click_count() >= 2 {

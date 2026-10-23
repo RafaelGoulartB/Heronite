@@ -184,7 +184,7 @@ impl EmulatorEditDialog {
                     .flex_col()
                     .min_w_0()
                     .child(div().font_weight(theme::W_BOLD).text_size(px(16.)).truncate().child(profile_label(&p)))
-                    .child(div().text_size(px(13.33)).text_color(white()).truncate().child(summary)),
+                    .child(div().text_size(px(13.33)).text_color(theme::text_bright()).truncate().child(summary)),
             )
             .child(
                 div()

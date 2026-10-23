@@ -41,12 +41,12 @@ impl Job {
 }
 
 /// A sideloaded program installed from files on this computer (not a Steam,
-/// emulated or browser entry).
+/// emulated or browser entry, nor one another launcher has).
 pub(super) fn can_uninstall_local(game: &CollectionGame) -> bool {
     game.runner == "sideload"
         && game.installed
         && game.steam_launch_id.is_none()
-        && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator"))
+        && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND))
         && !game.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("browser"))
         && executable(game).is_some()
 }

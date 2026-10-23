@@ -14,6 +14,8 @@ pub enum Section {
     GameDefaults,
     Downloads,
     Library,
+    /// Heroic, Lutris, Bottles and Faugus: bringing their games in.
+    Launchers,
     /// What the games take on disk, and cleaning it up.
     Storage,
     /// Mods: the Nexus Mods account, the mod links, what applying mods needs.
@@ -42,6 +44,7 @@ impl Section {
                 Section::GameDefaults,
                 Section::Downloads,
                 Section::Library,
+                Section::Launchers,
                 Section::Storage,
                 Section::Mods,
                 Section::Overlay,
@@ -53,13 +56,14 @@ impl Section {
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 16] = [
+    pub const ALL: [Section; 17] = [
         Section::General,
         Section::Appearance,
         Section::Advanced,
         Section::GameDefaults,
         Section::Downloads,
         Section::Library,
+        Section::Launchers,
         Section::Storage,
         Section::Mods,
         Section::Overlay,
@@ -80,6 +84,7 @@ impl Section {
             Section::GameDefaults => tr!("Game defaults"),
             Section::Downloads => tr!("Downloads"),
             Section::Library => tr!("Library"),
+            Section::Launchers => tr!("Other launchers"),
             Section::Storage => tr!("Storage"),
             Section::Mods => tr!("Mods"),
             Section::Overlay => tr!("Overlay"),
@@ -101,6 +106,7 @@ impl Section {
             Section::GameDefaults => Icon::Tune,
             Section::Downloads => Icon::Download,
             Section::Library => Icon::GridView,
+            Section::Launchers => Icon::CallMerge,
             Section::Storage => Icon::FaHardDrive,
             Section::Mods => Icon::CallMerge,
             Section::Overlay => Icon::SportsEsports,
@@ -118,11 +124,12 @@ impl Section {
     pub(super) fn blurb(self) -> &'static str {
         match self {
             Section::General => tr!("Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically."),
-            Section::Appearance => tr!("Profiles, colour and reading, the artwork behind the Collection, the background of menus and pages, covers, motion and layout."),
+            Section::Appearance => tr!("Profiles, the theme and its colours, menus and panels, the picture behind the Collection, covers, text and layout."),
             Section::Advanced => tr!("Logs, folders and cache."),
             Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
+            Section::Launchers => tr!("Bring in the games of Heroic, Lutris, Bottles and Faugus. While on, a game added there shows up here too."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
             Section::Mods => tr!("Your Nexus Mods account, the download buttons of the mod sites, and what Heronite needs to apply mods when a game starts. Each game's mods are managed from its own Mods."),
             Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
@@ -140,11 +147,12 @@ impl Section {
     pub fn keywords(self) -> &'static str {
         match self {
             Section::General => "general folders tray shortcuts wine proton language theme geral pastas bandeja atalhos idioma tema",
-            Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast font density corners badges hover screenshot slideshow picture animations motion layout sections profile theme import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste fonte densidade cantos selos estrela animacoes movimento secoes perfil tema importar exportar imagem",
+            Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast font density corners badges hover screenshot slideshow picture animations motion layout sections profile theme light dark mode system import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste fonte densidade cantos selos estrela animacoes movimento secoes perfil tema claro escuro modo sistema importar exportar imagem",
             Section::Advanced => "advanced cache folders copy settings avancado pastas copiar configuracoes",
             Section::GameDefaults => "game defaults wine prefix gamescope launch options new games padroes dos jogos prefixo opcoes de inicializacao novos jogos",
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
+            Section::Launchers => "other launchers import heroic lutris bottles faugus sync bring in outros launchers importar sincronizar trazer",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
             Section::Mods => "mods nexus thunderstore nxm ror2mm api key account premium links fuse overlayfs fomod mod manager modding mods conta chave link modificacoes gerenciador",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut beta botao guia controle teclado sobreposicao no jogo volume captura atalho",
@@ -175,6 +183,7 @@ impl Section {
             "defaults" => Some(Section::GameDefaults),
             "downloads" => Some(Section::Downloads),
             "library" => Some(Section::Library),
+            "launchers" | "import" => Some(Section::Launchers),
             "storage" | "disk" => Some(Section::Storage),
             "mods" | "nexus" => Some(Section::Mods),
             "overlay" => Some(Section::Overlay),

@@ -36,8 +36,8 @@ pub use adopt::AdoptedGame;
 pub use fake::{FakeHandleState, FakeSpawner};
 pub use spawner::{ExitInfo, ProcessHandle, Spawner, SystemSpawner};
 pub use types::{
-    failed_launch, AppliedMods, GameMods, LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices, StopOptions, SystemInfoFn,
-    CHECKPOINT_INTERVAL, FAILED_LAUNCH_WINDOW,
+    failed_launch, AppliedMods, GameMods, HandoffConfig, LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices,
+    StopOptions, SystemInfoFn, CHECKPOINT_INTERVAL, FAILED_LAUNCH_WINDOW,
 };
 
 /// Tracks running games. Cheap to clone.

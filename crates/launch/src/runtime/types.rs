@@ -82,6 +82,26 @@ pub struct LauncherConfig {
     pub steam: SteamWaitConfig,
     /// Write timestamps / sessions / recent games on exit.
     pub record: bool,
+    pub handoff: HandoffConfig,
+}
+
+/// Following a game another launcher took over (`plan::Handoff`).
+#[derive(Debug, Clone, Copy)]
+pub struct HandoffConfig {
+    /// A launcher that returns this soon passed the game on to its open
+    /// window; one that ran longer ran the game itself.
+    pub soon: Duration,
+    /// How long the game has to show up after the hand-off.
+    pub wait: Duration,
+    /// Gone this long: the game is over (a game restarting itself shows up
+    /// again within it).
+    pub gone: Duration,
+}
+
+impl Default for HandoffConfig {
+    fn default() -> Self {
+        Self { soon: Duration::from_secs(20), wait: Duration::from_secs(45), gone: Duration::from_secs(5) }
+    }
 }
 
 impl Default for LauncherConfig {
@@ -92,6 +112,7 @@ impl Default for LauncherConfig {
             min_session_seconds: MIN_SESSION_SECONDS,
             steam: SteamWaitConfig::default(),
             record: true,
+            handoff: HandoffConfig::default(),
         }
     }
 }

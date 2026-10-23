@@ -25,9 +25,9 @@ fn round_btn(id: impl Into<ElementId>, ic: Icon) -> Stateful<Div> {
         .justify_center()
         .rounded_full()
         .cursor_pointer()
-        .bg(theme::rgb_a(16, 18, 22, 0.72))
-        .hover(|s| s.bg(theme::rgb_a(10, 12, 14, 0.9)))
-        .child(icon(ic, px(16.), rgb(0xf4f6f8)))
+        .bg(theme::round_fill(0.72))
+        .hover(|s| s.bg(theme::round_fill_hover()))
+        .child(icon(ic, px(16.), theme::round_icon()))
 }
 impl CollectionView {
     /// Footer content of the focus panel for a store game.
@@ -76,7 +76,7 @@ impl CollectionView {
                     .gap(px(5.))
                     .flex_1()
                     .min_w_0()
-                    .child(div().text_size(px(13.33)).text_color(white()).child(label))
+                    .child(div().text_size(px(13.33)).text_color(theme::text_bright()).child(label))
                     .child(progress_bar(percent, 5., theme::accent())),
             );
             if queue.is_some() && active.is_none() && !first {
@@ -126,10 +126,10 @@ impl CollectionView {
                 .cursor_pointer()
                 .bg(theme::accent())
                 .hover(|s| s.bg(theme::accent_overlay()))
-                .text_color(rgb(0x161616))
+                .text_color(theme::on_accent())
                 .font_weight(theme::W_BOLD)
                 .text_size(px(15.2))
-                .child(icon(Icon::Update, px(19.2), rgb(0x161616)))
+                .child(icon(Icon::Update, px(19.2), theme::on_accent()))
                 .child(tr!("Update"))
                 .on_click(cx.listener(move |this, _, _, cx| this.epic_update(&key, cx)))
                 .into_any_element();
