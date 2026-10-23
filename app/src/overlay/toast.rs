@@ -100,6 +100,8 @@ pub struct NoticeView {
 
 impl Render for NoticeView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        // Over the game, whatever the theme.
+        theme::set_dark_only(true);
         kit::set_scale_value(self.scale);
         let n = &self.notice;
         let accent: Hsla = if n.error { theme::danger_text().into() } else { theme::text_primary().into() };

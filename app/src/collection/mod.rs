@@ -216,6 +216,14 @@ impl CollectionView {
         let ui = UiState::load(&app_paths);
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
+        // Theme "System": the desktop's light or dark style, now and when it changes.
+        crate::theme::set_system_appearance(window.appearance());
+        cx.observe_window_appearance(window, |_, window, cx| {
+            if crate::theme::set_system_appearance(window.appearance()) {
+                cx.notify();
+            }
+        })
+        .detach();
         let (images, image_rx) = ImageStore::new(data_paths.images_cache_dir(), &app_paths);
         Self::spawn_image_pump(image_rx, cx);
 
@@ -454,6 +462,8 @@ impl Render for CollectionView {
 impl CollectionView {
     fn render_desktop(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let _timer = RenderTimer(Instant::now());
+        // Before any colour is read: console mode and Statistics stay dark.
+        theme::set_dark_only(crate::console::active() || self.page == crate::pages::Page::Statistics);
         if !self.first_frame_logged {
             self.first_frame_logged = true;
             log::info!("first render after {:?}", self.started.elapsed());

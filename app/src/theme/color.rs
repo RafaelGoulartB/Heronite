@@ -1,9 +1,20 @@
-//! Colours: the `nord-dark` palette, text, and the fills of cards, buttons,
-//! tabs and inputs.
+//! Colours: the `nord-dark` palette and its light counterpart, text, and
+//! the fills of cards, buttons, tabs and inputs. A token with two values
+//! gives the light one while [`is_light`]; the light text and status colours
+//! keep 4.5:1 on every light panel colour, cards included.
 
 use gpui_kit::{hsla, rgb, rgba, Hsla, Rgba};
 
-use super::{accent_rgb, contrast_a, high_contrast};
+use super::{accent_rgb, contrast_a, high_contrast, is_light};
+
+/// The light theme's ink: its text, lines and faint fills are this colour,
+/// as the dark theme's are white.
+const INK_LIGHT: (u8, u8, u8) = (20, 26, 36);
+
+/// `dark` on the dark theme, `light` on the light one.
+fn pick(dark: u32, light: u32) -> Rgba {
+    rgb(if is_light() { light } else { dark })
+}
 
 /// `rgba(255,255,255,a)`
 pub fn white_a(a: f32) -> Hsla {
@@ -25,20 +36,90 @@ pub fn rgba_hsla(r: u8, g: u8, b: u8, a: f32) -> Hsla {
     rgb_a(r, g, b, a).into()
 }
 
-// Palette (`nord-dark`).
+/// The interface's ink at alpha `a`: white on the dark theme, near black on
+/// the light one. Faint fills, borders, hovers and lines of the surfaces;
+/// what sits on a picture keeps [`white_a`].
+pub fn ink_a(a: f32) -> Hsla {
+    if is_light() {
+        rgba_hsla(INK_LIGHT.0, INK_LIGHT.1, INK_LIGHT.2, a)
+    } else {
+        white_a(a)
+    }
+}
+
+/// A recess darker than its surface (track, well): black at `a` on the dark
+/// theme, a quarter of that in ink on the light one.
+pub fn recess_a(a: f32) -> Hsla {
+    if is_light() {
+        ink_a(a * 0.25)
+    } else {
+        black_a(a)
+    }
+}
+
+/// Shadow at alpha `a`: black on the dark theme, softer ink on the light one.
+pub fn shadow_a(a: f32) -> Hsla {
+    if is_light() {
+        rgba_hsla(INK_LIGHT.0, INK_LIGHT.1, INK_LIGHT.2, a * 0.4)
+    } else {
+        black_a(a)
+    }
+}
+
+// Palette (`nord-dark` and its light counterpart).
 pub fn page_bg() -> Rgba {
-    rgb(0x07090c)
+    pick(0x07090c, 0xeef1f5)
 }
 /// The accent colour (`#a5dceb` unless Settings → Appearance changes it).
 pub fn accent() -> Rgba {
     let (r, g, b) = accent_rgb();
     rgb_a(r, g, b, 1.)
 }
-/// The accent, lighter (`#cbeef8` for the default).
+/// The accent under the pointer: lighter on the dark theme (`#cbeef8` for
+/// the default), darker on the light one.
 pub fn accent_overlay() -> Rgba {
     let (r, g, b) = accent_rgb();
+    if is_light() {
+        let sink = |c: u8| (c as f32 * 0.82).round() as u8;
+        return rgb_a(sink(r), sink(g), sink(b), 1.);
+    }
     let lift = |c: u8| (c as f32 + (255. - c as f32) * 0.45).round() as u8;
     rgb_a(lift(r), lift(g), lift(b), 1.)
+}
+
+/// The darkest light background text sits on: Lilac under a card's 5% ink.
+const LIGHT_FLOOR: (u8, u8, u8) = (232, 227, 236);
+
+/// WCAG relative luminance.
+fn luminance((r, g, b): (u8, u8, u8)) -> f32 {
+    let lin = |c: u8| {
+        let c = c as f32 / 255.;
+        if c <= 0.03928 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f32 {
+    let (x, y) = (luminance(a), luminance(b));
+    (x.max(y) + 0.05) / (x.min(y) + 0.05)
+}
+
+/// `c` with the same hue, darkened until it reads as text on the light
+/// theme (4.5:1 on its darkest card). For the accent taken from a cover.
+pub(super) fn readable_on_light(c: (u8, u8, u8)) -> (u8, u8, u8) {
+    let to8 = |v: f32| (v * 255.).round().clamp(0., 255.) as u8;
+    let mut hsl: Hsla = rgb_a(c.0, c.1, c.2, 1.).into();
+    let mut out = c;
+    while contrast(out, LIGHT_FLOOR) < 4.6 && hsl.l > 0. {
+        hsl.l = (hsl.l - 0.02).max(0.);
+        let v = hsl.to_rgb();
+        out = (to8(v.r), to8(v.g), to8(v.b));
+    }
+    out
 }
 
 /// The accent at alpha `a`.
@@ -51,23 +132,23 @@ fn accent_a(a: f32) -> Hsla {
     accent_alpha(a).into()
 }
 pub fn navbar_background() -> Rgba {
-    rgb(0x2e3440)
+    pick(0x2e3440, 0xffffff)
 }
 pub fn background() -> Rgba {
-    rgb(0x191c22)
+    pick(0x191c22, 0xf6f7f9)
 }
 pub fn success() -> Rgba {
-    rgb(0x94f1ab)
+    pick(0x94f1ab, 0x1c714b)
 }
 pub fn danger() -> Rgba {
-    rgb(0xbf616a)
+    pick(0xbf616a, 0xa6434d)
 }
 /// Something the user may want to do, not an error ("Restart Steam once").
 pub fn warning() -> Rgba {
-    rgb(0xf5cd5b)
+    pick(0xf5cd5b, 0x7c5e08)
 }
 pub fn selected_ring() -> Rgba {
-    rgb(0xe8dcc0)
+    pick(0xe8dcc0, 0x1a2029)
 }
 
 /// Console mode (proposal "2 · Console"): dark surfaces, a light pill for
@@ -166,48 +247,56 @@ pub fn status_color(slug: &str) -> Rgba {
 
 // Text.
 pub fn text_primary() -> Rgba {
-    rgb(0xe8edf4)
+    pick(0xe8edf4, 0x1a2029)
 }
 /// Captions, leads, labels above fields (`#9aa6b6`).
 pub fn text_muted() -> Rgba {
-    rgb(if high_contrast() { 0xc8d0dc } else { 0x9aa6b6 })
+    if high_contrast() {
+        pick(0xc8d0dc, 0x363e4a)
+    } else {
+        pick(0x9aa6b6, 0x4d596a)
+    }
 }
 /// Row descriptions (`#8c97a8`).
 pub fn text_dim() -> Rgba {
-    rgb(if high_contrast() { 0xbcc6d3 } else { 0x8c97a8 })
+    if high_contrast() {
+        pick(0xbcc6d3, 0x3f4651)
+    } else {
+        pick(0x8c97a8, 0x5a6475)
+    }
 }
 /// Text drawn on an accent fill.
 pub fn on_accent() -> Rgba {
-    rgb(0x0c1a20)
+    pick(0x0c1a20, 0xffffff)
 }
 
 // Card (a group of rows) and its rows.
 pub fn card_fill() -> Hsla {
-    white_a(0.05)
+    ink_a(0.05)
 }
 pub fn card_border() -> Hsla {
-    white_a(if high_contrast() { 0.16 } else { 0.07 })
+    ink_a(if high_contrast() { 0.16 } else { 0.07 })
 }
 pub fn row_separator() -> Hsla {
-    white_a(if high_contrast() { 0.14 } else { 0.06 })
+    ink_a(if high_contrast() { 0.14 } else { 0.06 })
 }
 
 pub fn toggle_off() -> Hsla {
-    white_a(0.16)
+    ink_a(0.16)
 }
 
 // Buttons.
 pub fn button_fill() -> Hsla {
-    white_a(0.09)
+    ink_a(0.09)
 }
 pub fn button_fill_hover() -> Hsla {
-    white_a(0.14)
+    ink_a(0.14)
 }
 pub fn button_border() -> Hsla {
-    white_a(if high_contrast() { 0.22 } else { 0.10 })
+    ink_a(if high_contrast() { 0.22 } else { 0.10 })
 }
 pub fn button_text() -> Rgba {
-    rgb(0xeef2f7)
+    pick(0xeef2f7, 0x1f2630)
 }
 pub fn danger_fill() -> Hsla {
     rgba_hsla(191, 97, 106, 0.20)
@@ -216,26 +305,39 @@ pub fn danger_fill_hover() -> Hsla {
     rgba_hsla(191, 97, 106, 0.30)
 }
 pub fn danger_text() -> Rgba {
-    rgb(0xf2a5ad)
+    pick(0xf2a5ad, 0xc31c2e)
 }
 
 // Segmented tabs.
 pub fn seg_track() -> Hsla {
-    black_a(0.28)
+    recess_a(0.28)
 }
+/// The active tab, lifted off the track (white on the light theme).
 pub fn seg_active() -> Hsla {
-    white_a(0.14)
+    white_a(if is_light() { 0.92 } else { 0.14 })
 }
 pub fn seg_text() -> Rgba {
-    rgb(if high_contrast() { 0xdde3eb } else { 0xb5bfcc })
+    if high_contrast() {
+        pick(0xdde3eb, 0x252c35)
+    } else {
+        pick(0xb5bfcc, 0x3d4757)
+    }
 }
 
-// Inputs and selects.
+// Inputs and selects: a dark well on the dark theme, a white field on the
+// light one.
 pub fn input_fill() -> Hsla {
-    black_a(0.25)
+    if is_light() {
+        white_a(0.7)
+    } else {
+        black_a(0.25)
+    }
 }
 pub fn input_border() -> Hsla {
-    white_a(if high_contrast() { 0.2 } else { 0.08 })
+    match (is_light(), high_contrast()) {
+        (false, hc) => white_a(if hc { 0.2 } else { 0.08 }),
+        (true, hc) => ink_a(if hc { 0.3 } else { 0.14 }),
+    }
 }
 /// Border of a focused input: the accent at 60%.
 pub fn input_border_focus() -> Hsla {
@@ -245,7 +347,11 @@ pub fn input_border_focus() -> Hsla {
 
 // Side navigation pills and the accent tint of active items.
 pub fn nav_text() -> Rgba {
-    rgb(if high_contrast() { 0xe2e7ee } else { 0xc3cbd8 })
+    if high_contrast() {
+        pick(0xe2e7ee, 0x1a1f27)
+    } else {
+        pick(0xc3cbd8, 0x2c3442)
+    }
 }
 pub fn accent_tint() -> Hsla {
     accent_a(0.16)
@@ -261,19 +367,39 @@ pub fn accent_wash_border() -> Hsla {
     accent_a(0.2)
 }
 pub fn menu_item_hover() -> Hsla {
-    white_a(0.07)
+    ink_a(0.07)
 }
 
 // Collection header: icons, search pill and filter chips stay faint over the art.
 pub fn tool_icon() -> Hsla {
-    white_a(contrast_a(0.55))
+    ink_a(contrast_a(0.55))
 }
 pub fn search_fill() -> Hsla {
-    white_a(0.06)
+    ink_a(0.06)
 }
 pub fn search_fill_hover() -> Hsla {
-    white_a(0.09)
+    ink_a(0.09)
 }
 pub fn chip_fill() -> Hsla {
-    white_a(0.07)
+    ink_a(0.07)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cover_accent_is_darkened_for_the_light_theme() {
+        // The light accents `collection/look.rs` measures (hsl(h, .75, .74)).
+        for hue in [0., 40., 60., 120., 200., 280.] {
+            let v = hsla(hue / 360., 0.75, 0.74, 1.).to_rgb();
+            let to8 = |x: f32| (x * 255.).round() as u8;
+            let c = (to8(v.r), to8(v.g), to8(v.b));
+            let dark = readable_on_light(c);
+            assert!(contrast(dark, LIGHT_FLOOR) >= 4.5, "hue {hue}: {dark:?}");
+            let h = |c: (u8, u8, u8)| Hsla::from(rgb_a(c.0, c.1, c.2, 1.)).h;
+            assert!((h(dark) - h(c)).abs() < 0.02, "hue {hue} drifted");
+        }
+        assert_eq!(readable_on_light((0x1b, 0x6c, 0x83)), (0x1b, 0x6c, 0x83));
+    }
 }

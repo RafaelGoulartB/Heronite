@@ -1,21 +1,24 @@
 //! Runtime appearance (Settings → Appearance) and the glass surfaces derived
-//! from it: fill, art dimming, borders, shadows and the page veil. Also the
-//! accent colour and the high-contrast switch the palette reads.
+//! from it: fill, art dimming, borders, shadows and the page veil, each with
+//! a dark and a light value. Also the accent colour and the high-contrast
+//! switch the palette reads.
 //!
 //! The appearance is one process-wide value read by every glass helper (no
 //! `cx` needed, no I/O while rendering). The Collection loads it at start and
 //! the Appearance page updates it while a slider moves.
 
 use gpui_kit::{px, Hsla};
-use heronite_data::appearance::{Accent, Appearance, InterfaceMode};
+use heronite_data::appearance::{Accent, Appearance, InterfaceMode, SolidTint};
 
-use super::{black_a, rgba_hsla, white_a};
+use super::{black_a, ink_a, is_light, readable_on_light, rgba_hsla, shadow_a, white_a};
 
 static APPEARANCE: std::sync::RwLock<Appearance> = std::sync::RwLock::new(Appearance::DEFAULT);
 
-/// Colour of the selected game's art for [`Accent::Game`]; `None` while
-/// there is none (no game, art still loading).
-static GAME_ACCENT: std::sync::RwLock<Option<(u8, u8, u8)>> = std::sync::RwLock::new(None);
+/// Colour of the selected game's art for [`Accent::Game`], and that colour
+/// darkened for the light theme; `None` while there is none (no game, art
+/// still loading).
+type GameAccent = Option<((u8, u8, u8), (u8, u8, u8))>;
+static GAME_ACCENT: std::sync::RwLock<GameAccent> = std::sync::RwLock::new(None);
 
 /// The current appearance settings.
 pub fn appearance() -> Appearance {
@@ -42,17 +45,35 @@ pub fn bump_custom_background() {
 /// Sets the colour [`Accent::Game`] uses. True when it changed.
 pub fn set_game_accent(rgb: Option<(u8, u8, u8)>) -> bool {
     let mut cur = GAME_ACCENT.write().unwrap_or_else(|e| e.into_inner());
-    let changed = *cur != rgb;
-    *cur = rgb;
+    let changed = cur.map(|(c, _)| c) != rgb;
+    if changed {
+        *cur = rgb.map(|c| (c, readable_on_light(c)));
+    }
     changed
 }
 
-/// The accent colour (Settings → Appearance → Accent colour).
+/// The accent colour (Settings → Appearance → Accent colour), in the shade
+/// of the current theme.
 pub fn accent_rgb() -> (u8, u8, u8) {
-    let ice = Accent::Ice.rgb().expect("a preset");
-    match appearance().accent.rgb() {
-        Some(c) => c,
-        None => GAME_ACCENT.read().unwrap_or_else(|e| e.into_inner()).unwrap_or(ice),
+    let light = is_light();
+    let accent = appearance().accent;
+    let preset = if light { accent.rgb_light() } else { accent.rgb() };
+    if let Some(c) = preset {
+        return c;
+    }
+    let game = *GAME_ACCENT.read().unwrap_or_else(|e| e.into_inner());
+    match game {
+        Some((dark, for_light)) => {
+            if light {
+                for_light
+            } else {
+                dark
+            }
+        }
+        None => {
+            let ice = if light { Accent::Ice.rgb_light() } else { Accent::Ice.rgb() };
+            ice.expect("a preset")
+        }
     }
 }
 
@@ -99,9 +120,26 @@ fn solid_mode() -> bool {
     appearance().interface_mode == InterfaceMode::Solid
 }
 
+/// The solid panels' colour of the current theme (Settings → Appearance →
+/// Interface background → Colour).
+pub fn solid_tint() -> SolidTint {
+    let a = appearance();
+    if is_light() {
+        a.solid_tint_light
+    } else {
+        a.solid_tint
+    }
+}
+
 fn glass_tint(a: f32) -> Hsla {
-    // Transparent glass always uses the slate tint; the presets are for Solid.
-    let (r, g, b) = if solid_mode() { appearance().solid_tint.rgb() } else { (22, 27, 36) };
+    // Transparent glass always uses Slate (Paper on the light theme); the
+    // presets are for Solid.
+    let tint = match (solid_mode(), is_light()) {
+        (true, _) => solid_tint(),
+        (false, false) => SolidTint::Slate,
+        (false, true) => SolidTint::Paper,
+    };
+    let (r, g, b) = tint.rgb();
     rgba_hsla(r, g, b, a)
 }
 
@@ -120,11 +158,16 @@ pub fn glass_fill_solid() -> Hsla {
 /// Darkening of the blurred art under the glass fill (stands in for the
 /// Collection's scrims that sit between the art and a real backdrop blur):
 /// 50% up to [`DIM_KNEE`], then rising to 100% so that fully opaque
-/// panels hide the art completely.
+/// panels hide the art completely. The light theme fades the art instead.
 pub fn glass_art_dim() -> Hsla {
     let o = panel_opacity();
     let t = ((o - DIM_KNEE) / (1. - DIM_KNEE)).clamp(0., 1.);
-    black_a(0.5 + 0.5 * t)
+    let a = 0.5 + 0.5 * t;
+    if is_light() {
+        rgba_hsla(238, 241, 245, a)
+    } else {
+        black_a(a)
+    }
 }
 /// Veil over the Collection behind the pages (☰ pages, Settings): `.55` at
 /// [`DIM_KNEE`], darker above it, lighter for more transparent panels and fully
@@ -137,20 +180,28 @@ pub fn page_backdrop() -> Hsla {
         0.35 + 0.20 * ((o - 0.5) / (DIM_KNEE - 0.5)).clamp(0., 1.)
     };
     // Solid: the plain page colour, no art behind the sheet.
-    let (r, g, b) = if solid_mode() { (7, 9, 12) } else { (10, 12, 16) };
+    let (r, g, b) = match (is_light(), solid_mode()) {
+        (false, true) => (7, 9, 12),
+        (false, false) => (10, 12, 16),
+        (true, true) => (233, 237, 242),
+        (true, false) => (236, 239, 243),
+    };
     rgba_hsla(r, g, b, a)
 }
 pub fn glass_border() -> Hsla {
-    white_a(if high_contrast() { 0.22 } else { 0.11 })
+    match (is_light(), high_contrast()) {
+        (false, hc) => white_a(if hc { 0.22 } else { 0.11 }),
+        (true, hc) => ink_a(if hc { 0.2 } else { 0.1 }),
+    }
 }
 /// 1px highlight along the top edge of a glass surface (inset shadow in CSS).
 pub fn glass_highlight() -> Hsla {
-    white_a(0.08)
+    white_a(if is_light() { 0.7 } else { 0.08 })
 }
 /// `0 30px 80px rgba(0,0,0,.45)`.
 pub fn glass_shadow() -> Vec<gpui_kit::BoxShadow> {
     vec![gpui_kit::BoxShadow {
-        color: black_a(0.45),
+        color: shadow_a(0.45),
         offset: gpui_kit::point(px(0.), px(30.)),
         blur_radius: px(80.),
         spread_radius: px(0.),
@@ -160,7 +211,7 @@ pub fn glass_shadow() -> Vec<gpui_kit::BoxShadow> {
 /// Smaller shadow of the compact menus (context menu, dropdown, select list).
 pub fn glass_shadow_sm() -> Vec<gpui_kit::BoxShadow> {
     vec![gpui_kit::BoxShadow {
-        color: black_a(0.42),
+        color: shadow_a(0.42),
         offset: gpui_kit::point(px(0.), px(14.)),
         blur_radius: px(36.),
         spread_radius: px(0.),
@@ -170,12 +221,19 @@ pub fn glass_shadow_sm() -> Vec<gpui_kit::BoxShadow> {
 
 /// Backdrop veil behind modals and drawers (the Collection stays visible).
 pub fn glass_backdrop_veil() -> Hsla {
-    black_a(0.55)
+    if is_light() {
+        ink_a(0.32)
+    } else {
+        black_a(0.55)
+    }
 }
 
 #[cfg(test)]
 mod appearance_tests {
     use super::*;
+    use crate::theme::{set_dark_only, set_system_appearance, theme_is_light};
+    use gpui_kit::WindowAppearance;
+    use heronite_data::appearance::Theme;
 
     /// One test only: the appearance is process-wide.
     #[test]
@@ -210,6 +268,26 @@ mod appearance_tests {
         set_appearance(Appearance { interface_opacity: 5., interface_blur: 500., ..Appearance::default() });
         assert!((glass_fill().a - 0.5).abs() < 1e-6);
         assert_eq!(glass_blur_px(), 60.);
+
+        // The light theme: Paper glass, its own solid tint, dark windows stay dark.
+        let light = Appearance { theme: Theme::Light, ..Appearance::default() };
+        set_appearance(light);
+        assert!(is_light());
+        assert_eq!(glass_fill(), rgba_hsla(246, 247, 249, 0.9));
+        assert_eq!(accent_rgb(), Accent::Ice.rgb_light().unwrap());
+        set_appearance(Appearance { interface_mode: InterfaceMode::Solid, solid_tint_light: SolidTint::Sand, ..light });
+        assert_eq!(solid_tint(), SolidTint::Sand);
+        set_dark_only(true);
+        assert!(!is_light() && theme_is_light());
+        assert_eq!(solid_tint(), SolidTint::Slate);
+        assert_eq!(accent_rgb(), Accent::Ice.rgb().unwrap());
+        set_dark_only(false);
+        set_appearance(Appearance { theme: Theme::System, ..Appearance::default() });
+        assert!(!is_light());
+        assert!(set_system_appearance(WindowAppearance::VibrantLight));
+        assert!(is_light());
+        assert!(!set_system_appearance(WindowAppearance::Light));
+        set_system_appearance(WindowAppearance::Dark);
         set_appearance(Appearance::default());
     }
 }
