@@ -128,6 +128,8 @@ pub struct SettingsPage {
     logs: logs::State,
     /// Console mode focus, keyboard and pickers.
     console: console::ConsoleState,
+    /// The section list's scroll, for its scrollbar.
+    nav_scroll: ScrollHandle,
 }
 
 impl EventEmitter<PageEvent> for SettingsPage {}
@@ -176,6 +178,7 @@ impl SettingsPage {
             about: about::State::default(),
             logs: logs::State::default(),
             console: Default::default(),
+            nav_scroll: ScrollHandle::new(),
             ctx,
             section,
             global: None,
@@ -343,21 +346,20 @@ impl SettingsPage {
         div().flex().flex_col().child(body).children(error).into_any_element()
     }
 
-    /// Left column of the sheet: title (gear + "Settings") and the section pills.
-    fn nav(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+    /// Left column of the sheet: title (gear + "Settings") and the section
+    /// pills, with a scrollbar when the window is too short for all of them.
+    fn nav(&self, cx: &mut Context<Self>) -> Div {
         let mut col = div()
             .id("settings-nav")
+            .size_full()
             .overflow_y_scroll()
+            .track_scroll(&self.nav_scroll)
+            .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
             .flex()
             .flex_col()
-            .flex_none()
-            .w(px(230.))
-            .h_full()
             .px(px(14.))
             .pt(px(26.))
             .pb(px(16.))
-            .border_r_1()
-            .border_color(theme::row_separator())
             .child(
                 div()
                     .flex()
@@ -385,7 +387,36 @@ impl SettingsPage {
                 );
             }
         }
-        col
+        // The list's size is known only after it is laid out: draw once more
+        // so the scrollbar shows from the start.
+        if self.nav_scroll.bounds().size.height <= px(0.) {
+            let view = cx.entity_id();
+            cx.defer(move |cx| cx.notify(view));
+        }
+        let scroll = self.nav_scroll.clone();
+        let scrollbar = crate::ui::scrollbar_draggable(
+            "settings-nav-scrollbar",
+            scroll.offset().y,
+            scroll.max_offset().y,
+            scroll.bounds().size.height,
+            {
+                let (scroll, weak) = (scroll.clone(), cx.entity().downgrade());
+                move |distance, _, cx| {
+                    scroll.set_offset(point(px(0.), px(-distance)));
+                    weak.update(cx, |_, cx| cx.notify()).ok();
+                }
+            },
+            None,
+        );
+        div()
+            .relative()
+            .flex_none()
+            .w(px(230.))
+            .h_full()
+            .border_r_1()
+            .border_color(theme::row_separator())
+            .child(col)
+            .children(scrollbar.map(|b| b.right(px(2.))))
     }
 
     /// The content of the current section.
