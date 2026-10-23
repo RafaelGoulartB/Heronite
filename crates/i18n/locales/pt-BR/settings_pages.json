@@ -416,8 +416,8 @@
   "Profiles, the theme and its colours, menus and panels, the picture behind the Collection, covers, text and layout.": "Perfis, o tema e suas cores, menus e painéis, a imagem atrás da Coleção, capas, texto e layout.",
   "Menus, dialogs and pages like this one are a solid colour, no artwork.": "Menus, diálogos e páginas como esta têm uma cor sólida, sem arte.",
   "Menus, dialogs and pages like this one are glass: the blurred game artwork shows through.": "Menus, diálogos e páginas como esta são de vidro: a arte do jogo desfocada aparece por trás.",
-  "Panels are the menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.": "Painéis são os menus, o menu ☰, menus de contexto, listas, diálogos, a gaveta, páginas como esta e a paleta de comandos.",
-  "Reset panels": "Redefinir painéis",
+  "Back to the Dark theme, glass panels and the Ice accent. Your custom theme's colours are kept.": "Volta ao tema Escuro, aos painéis de vidro e ao destaque Gelo. As cores do seu tema personalizado são mantidas.",
+  "Reset theme": "Redefinir tema",
   "Panel colour": "Cor dos painéis",
   "Drag on the square and the strip, or type a hex colour. Each theme shows it a little lighter or darker when it would be hard to read.": "Arraste no quadrado e na faixa, ou digite uma cor hex. Cada tema a mostra um pouco mais clara ou escura quando ficaria difícil de ler."
 }

@@ -392,6 +392,14 @@ mod tests {
         assert_eq!(Appearance::load(&p), Appearance::default());
     }
 
+    /// Dark until the user picks another theme, whatever the desktop uses.
+    #[test]
+    fn the_default_theme_is_dark() {
+        assert_eq!(Appearance::default().theme, Theme::Dark);
+        assert_eq!(Appearance::from_value(&json!({})).theme, Theme::Dark);
+        assert_eq!(Appearance::from_value(&json!({"theme": "sepia"})).theme, Theme::Dark);
+    }
+
     #[test]
     fn values_are_clamped() {
         let v = json!({"collectionOpacity": 250, "interfaceOpacity": 10, "interfaceBlur": 33, "interfaceMode": "solid"});

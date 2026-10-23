@@ -161,7 +161,8 @@ root renders first, so the whole window reads it). A picture of another theme (t
 overlay preview) is built inside `theme::drawn_as(light, ..)`; its colours are read while building, so no canvas
 in it may read one later. The gpui-component widgets get the theme again when it changes
 (`CollectionView::sync_look` → `apply_component_theme`). Solid shows the current theme's four tints, both rows with
-System. On the light theme the Collection background's Darkening is called Fading.
+System. The theme is Dark until the user picks another, never the desktop's by itself; **Reset theme** under the
+Colour card goes back to Dark, glass panels, Ice and no high contrast, and keeps the custom theme's colours. On the light theme the Collection background's Darkening is called Fading.
 
 **Custom theme** (`heronite_data::appearance::custom`, editor in `pages/settings/appearance/custom.rs`): six
 colours (`Role`: page, panels, raised parts, text, secondary text, accent) in `customPalette`, light or dark as the

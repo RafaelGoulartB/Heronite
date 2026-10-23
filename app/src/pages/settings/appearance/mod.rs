@@ -468,9 +468,13 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         apply_interface(d, true, cx);
         save_background(d, cx);
     }));
-    let reset_panels = button("ui-reset", ButtonKind::Glass, tr!("Reset panels")).on_click(cx.listener(|d, _, window, cx| {
+    // Everything of the Colour card back to today's look: the Dark theme
+    // (never Light or System, whatever the desktop uses), glass panels, the
+    // first accent. The custom theme's colours stay for the next time.
+    let reset_theme = button("ui-reset", ButtonKind::Glass, tr!("Reset theme")).on_click(cx.listener(|d, _, window, cx| {
         let defaults = Appearance::default();
         let a = &mut d.appearance;
+        a.ui.theme = defaults.theme;
         a.ui.interface_mode = defaults.interface_mode;
         a.ui.interface_opacity = defaults.interface_opacity;
         a.ui.interface_blur = defaults.interface_blur;
@@ -478,8 +482,14 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         a.ui.solid_tint_light = defaults.solid_tint_light;
         a.ui.solid_own = None;
         a.ui.solid_own_light = None;
+        a.ui.accent = defaults.accent;
+        a.ui.accent_own = None;
+        a.ui.high_contrast = defaults.high_contrast;
+        a.tint_picker_open = false;
+        a.accent_picker_open = false;
         set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
         apply_interface(d, true, cx);
+        cx.emit(crate::pages::PageEvent::AppearanceChanged);
     }));
     let cover_rows = look::cover_rows(d, cx);
     let covers = card(
@@ -526,9 +536,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(caption(tr!("Colour")))
         .child(colour)
         .child(footer(
-            tr!("Panels are the menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.")
-                .into(),
-            reset_panels,
+            tr!("Back to the Dark theme, glass panels and the Ice accent. Your custom theme's colours are kept.").into(),
+            reset_theme,
         ))
         .child(caption(tr!("Behind the Collection")))
         .when(enabled, |d| d.child(preview).child(div().h(px(10.))))
