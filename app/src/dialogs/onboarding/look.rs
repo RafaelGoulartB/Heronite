@@ -1,11 +1,12 @@
-//! "Make it yours": a profile, the accent colour, the corners of the covers
-//! and the view the Collection opens in, next to a preview drawn with the
-//! current look. Each choice applies at once, as in Settings → Appearance.
+//! "Make it yours": a profile, the theme, the accent colour, the corners of
+//! the covers and the view the Collection opens in, next to a preview drawn
+//! with the current look. Each choice applies at once, as in Settings →
+//! Appearance.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::appearance::{presets, Accent, Appearance, Corners, StartView};
-use heronite_i18n::tr;
+use heronite_data::appearance::{presets, Accent, Appearance, Corners, StartView, Theme};
+use heronite_i18n::{tr, trc};
 
 use super::art::{self, Art};
 use super::steps::{Action, Step};
@@ -147,6 +148,15 @@ impl OnboardingDialog {
                 .child(div().text_size(px(13.)).child(accent_name(accent)))
         });
         let this = cx.entity();
+        let theme_tabs = tabs(
+            "onb-theme",
+            &[(Theme::Dark, trc!("theme", "Dark")), (Theme::Light, trc!("theme", "Light")), (Theme::System, trc!("theme", "System"))],
+            a.theme,
+            {
+                let this = this.clone();
+                move |v, _, cx| this.update(cx, |d, cx| d.set_look(|l| l.theme = v, cx))
+            },
+        );
         let corners = tabs(
             "onb-corners",
             &[(Corners::Square, tr!("Square")), (Corners::Soft, tr!("Soft")), (Corners::Round, tr!("Round"))],
@@ -160,6 +170,8 @@ impl OnboardingDialog {
             .w(px(PICKER_W))
             .child(caption(tr!("Profile")).mt_0())
             .child(div().flex().flex_wrap().justify_between().gap_y(px(8.)).children(profiles))
+            .child(caption(tr!("Theme")))
+            .child(theme_tabs)
             .child(caption(tr!("Accent colour")))
             .child(div().flex().flex_wrap().gap(px(8.)).children(accents))
             .child(caption(tr!("Corners of the covers")))
