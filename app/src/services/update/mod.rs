@@ -41,7 +41,7 @@ use heronite_data::AppPaths;
 use heronite_i18n::tr;
 use heronite_update::{Asset, Fetched, InstallError, Package, Prefs, Progress, Release, Target, Unsupported, Version};
 
-const FIRST_CHECK: Duration = Duration::from_secs(10);
+const FIRST_CHECK: Duration = Duration::from_secs(3);
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
 /// A start this soon after the last check waits for the next period instead.
 const RECHECK_AFTER: Duration = Duration::from_secs(30 * 60);
