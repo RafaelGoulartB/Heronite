@@ -84,6 +84,8 @@ choice! {
         Light = "light",
         /// The desktop's light or dark style.
         System = "system",
+        /// The user's own colours (`Appearance::custom`).
+        Custom = "custom",
     } default Dark
 }
 

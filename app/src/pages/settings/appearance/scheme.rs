@@ -53,6 +53,7 @@ pub(super) fn theme_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Any
             Theme::Dark => window_picture(false),
             Theme::Light => window_picture(true),
             Theme::System => system_picture(),
+            Theme::Custom => window_picture(theme::theme_light(t)),
         };
         let note = (t == Theme::System).then(|| if theme::system_is_light() { tr!("Light now") } else { tr!("Dark now") });
         let on = t == current;

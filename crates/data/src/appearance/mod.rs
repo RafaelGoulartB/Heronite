@@ -6,7 +6,8 @@
 //!   (`interfaceMode: "transparent"`, art blurred behind translucent panels)
 //!   or solid, with the panel opacity, the blur and the solid tint;
 //! - colour, reading, covers, background picture, motion and layout
-//!   ([`choices`]), and the user's saved looks ([`profiles`]).
+//!   ([`choices`]), the user's saved looks ([`profiles`]) and own theme
+//!   ([`custom`]).
 //!
 //! The on/off, blur, darkening... of the Collection background itself stay in
 //! `local_library/settings.json` (`background`).
@@ -14,9 +15,11 @@
 //! are clamped.
 
 mod choices;
+mod custom;
 mod profiles;
 
 pub use choices::*;
+pub use custom::*;
 pub use profiles::*;
 
 use anyhow::Result;
@@ -160,6 +163,8 @@ pub struct Appearance {
     pub solid_tint: SolidTint,
     /// The solid panels' colour on the light theme (one of [`SolidTint::LIGHT`]).
     pub solid_tint_light: SolidTint,
+    /// The colours of [`Theme::Custom`] (kept while another theme is in use).
+    pub custom: Palette,
     pub accent: Accent,
     /// Stronger secondary text and borders.
     pub high_contrast: bool,
@@ -193,6 +198,7 @@ impl Appearance {
         theme: Theme::DEFAULT,
         solid_tint: SolidTint::Slate,
         solid_tint_light: SolidTint::Paper,
+        custom: Palette::LIGHT,
         accent: Accent::DEFAULT,
         high_contrast: false,
         font: FontChoice::DEFAULT,
@@ -234,11 +240,11 @@ impl Appearance {
         self
     }
 
-    /// `self` with `other`'s [`AutoView`] and [`Theme`]. They follow the
-    /// window and the desktop, not a look: applying or matching a profile
-    /// neither changes nor breaks them.
+    /// `self` with `other`'s [`AutoView`], [`Theme`] and custom colours. They
+    /// follow the window and the desktop, not a look: applying or matching a
+    /// profile neither changes nor breaks them.
     pub fn with_window_choices_of(self, other: &Appearance) -> Self {
-        Self { auto_view: other.auto_view, theme: other.theme, ..self }
+        Self { auto_view: other.auto_view, theme: other.theme, custom: other.custom, ..self }
     }
 
     pub fn from_value(value: &Value) -> Self {
@@ -260,6 +266,7 @@ impl Appearance {
                 .and_then(SolidTint::parse)
                 .filter(|t| t.is_light())
                 .unwrap_or(d.solid_tint_light),
+            custom: value.get("customPalette").map(Palette::from_value).unwrap_or(d.custom),
             accent: name("accent").and_then(Accent::parse).unwrap_or_default(),
             high_contrast: flag("highContrast", d.high_contrast),
             font: name("font").and_then(FontChoice::parse).unwrap_or_default(),
@@ -287,6 +294,7 @@ impl Appearance {
             "theme": self.theme.as_str(),
             "interfaceSolidTint": self.solid_tint.as_str(),
             "interfaceSolidTintLight": self.solid_tint_light.as_str(),
+            "customPalette": self.custom.to_value(),
             "accent": self.accent.as_str(),
             "highContrast": self.high_contrast,
             "font": self.font.as_str(),
@@ -387,6 +395,7 @@ mod tests {
             theme: Theme::System,
             solid_tint: SolidTint::Midnight,
             solid_tint_light: SolidTint::Frost,
+            custom: Palette { accent: (1, 2, 3), ..Palette::DARK },
             accent: Accent::Game,
             high_contrast: true,
             font: FontChoice::System,
@@ -410,6 +419,7 @@ mod tests {
         assert_eq!(on_disk["interfaceSolidTint"], "midnight");
         assert_eq!(on_disk["interfaceSolidTintLight"], "frost");
         assert_eq!(on_disk["theme"], "system");
+        assert_eq!(on_disk["customPalette"]["accent"], "#010203");
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
         assert_eq!(on_disk["sections"][0], "related");
@@ -463,9 +473,14 @@ mod tests {
 
     #[test]
     fn profiles_keep_the_theme_and_auto_view() {
-        let mine = Appearance { theme: Theme::Light, auto_view: AutoView { on: true, width: 1200. }, ..Appearance::DEFAULT };
+        let mine = Appearance {
+            theme: Theme::Custom,
+            custom: Palette::DARK,
+            auto_view: AutoView { on: true, width: 1200. },
+            ..Appearance::DEFAULT
+        };
         let look = Appearance { accent: Accent::Rose, ..Appearance::DEFAULT }.with_window_choices_of(&mine);
-        assert_eq!((look.theme, look.auto_view, look.accent), (Theme::Light, mine.auto_view, Accent::Rose));
+        assert_eq!((look.theme, look.custom, look.auto_view, look.accent), (Theme::Custom, Palette::DARK, mine.auto_view, Accent::Rose));
     }
 
     /// WCAG relative luminance of an sRGB colour.

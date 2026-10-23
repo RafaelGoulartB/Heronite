@@ -53,6 +53,7 @@ pub fn theme_light(t: Theme) -> bool {
         Theme::Dark => false,
         Theme::Light => true,
         Theme::System => system_is_light(),
+        Theme::Custom => super::appearance().custom.light,
     }
 }
 
