@@ -10,13 +10,15 @@
 //! one window at a time on the UI thread, and the root renders first, so
 //! every token read while a window draws sees its own value.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use gpui_kit::WindowAppearance;
 use heronite_data::appearance::Theme;
 
 static SYSTEM_LIGHT: AtomicBool = AtomicBool::new(false);
 static DARK_ONLY: AtomicBool = AtomicBool::new(false);
+/// The scheme [`drawn_as`] forces: 0 none, 1 dark, 2 light.
+static FORCED: AtomicU8 = AtomicU8::new(0);
 
 /// The desktop's style, as the window reports it. True when it changed.
 pub fn set_system_appearance(a: WindowAppearance) -> bool {
@@ -29,27 +31,42 @@ pub fn set_dark_only(on: bool) {
     DARK_ONLY.store(on, Ordering::Relaxed);
 }
 
-/// Builds `f`'s elements as the dark theme draws them: a picture of a
-/// screen that stays dark. The colours are read while building, so the
-/// elements keep them; nothing in `f` may read one later (a canvas's paint).
-pub fn dark<R>(f: impl FnOnce() -> R) -> R {
-    let was = DARK_ONLY.swap(true, Ordering::Relaxed);
+/// Builds `f`'s elements as the light (`light`) or dark theme draws them:
+/// a picture of a screen in the other theme, or of one that stays dark.
+/// The colours are read while building, so the elements keep them; nothing
+/// in `f` may read one later (a canvas's paint).
+pub fn drawn_as<R>(light: bool, f: impl FnOnce() -> R) -> R {
+    let was = FORCED.swap(if light { 2 } else { 1 }, Ordering::Relaxed);
     let out = f();
-    DARK_ONLY.store(was, Ordering::Relaxed);
+    FORCED.store(was, Ordering::Relaxed);
     out
 }
 
-/// The theme the user picked, System resolved: light or not. The window
-/// being drawn may still be dark only; tokens read [`is_light`].
-pub fn theme_is_light() -> bool {
-    match super::appearance().theme {
+/// The desktop's style is light.
+pub fn system_is_light() -> bool {
+    SYSTEM_LIGHT.load(Ordering::Relaxed)
+}
+
+/// `t` resolved: light or not (System: the desktop's style).
+pub fn theme_light(t: Theme) -> bool {
+    match t {
         Theme::Dark => false,
         Theme::Light => true,
-        Theme::System => SYSTEM_LIGHT.load(Ordering::Relaxed),
+        Theme::System => system_is_light(),
     }
+}
+
+/// The theme the user picked, resolved. The window being drawn may still be
+/// dark only; tokens read [`is_light`].
+pub fn theme_is_light() -> bool {
+    theme_light(super::appearance().theme)
 }
 
 /// Is the interface being drawn light?
 pub fn is_light() -> bool {
-    !DARK_ONLY.load(Ordering::Relaxed) && theme_is_light()
+    match FORCED.load(Ordering::Relaxed) {
+        1 => false,
+        2 => true,
+        _ => !DARK_ONLY.load(Ordering::Relaxed) && theme_is_light(),
+    }
 }

@@ -103,7 +103,7 @@ pub(super) fn section_label(s: Section) -> &'static str {
     }
 }
 
-/// Accent colour swatches and the high-contrast switch.
+/// The theme, accent colour swatches and the high-contrast switch.
 pub(super) fn colour_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     let mut swatches = div().flex().items_center().gap(px(10.));
@@ -134,6 +134,7 @@ pub(super) fn colour_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
     }
     let contrast = a.high_contrast;
     card([
+        super::scheme::theme_row(d, cx),
         row(
             tr!("Accent colour"),
             Some(tr!(

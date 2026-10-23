@@ -379,7 +379,7 @@ fn grid_layout(board: Div, art: &Art, b: Board, panel: Hsla) -> Div {
 /// board `w` wide; `left`: the side of the screen it opens on.
 pub fn overlay_preview(art: &Art, w: f32, left: bool) -> Div {
     // The overlay is dark whatever the theme.
-    theme::dark(|| overlay_board(art, w, left))
+    theme::drawn_as(false, || overlay_board(art, w, left))
 }
 
 fn overlay_board(art: &Art, w: f32, left: bool) -> Div {

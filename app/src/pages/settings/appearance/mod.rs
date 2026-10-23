@@ -29,6 +29,7 @@ use heronite_images::{ImageRef, Opts};
 
 mod look;
 mod profiles;
+mod scheme;
 
 use gpui_kit::component::input::InputState;
 use heronite_data::appearance::Profile;
@@ -279,16 +280,7 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
             rows.push(slider_row(tr!("Opacity: {value}%", value = a.ui.interface_opacity.round()), slider_of(a, Field::PanelOpacity)));
             rows.push(slider_row(tr!("Blur: {value} px", value = a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)));
         }
-        InterfaceMode::Solid => {
-            let items: Vec<(SolidTint, &'static str)> = SolidTint::DARK.iter().map(|t| (*t, t.label())).collect();
-            let tint = tabs("ui-tint", &items, a.ui.solid_tint, move |t, _, cx| {
-                this.update(cx, |d, cx| {
-                    d.appearance.ui.solid_tint = t;
-                    apply_interface(d, true, cx);
-                });
-            });
-            rows.push(row(tr!("Colour"), None, tint).into_any_element());
-        }
+        InterfaceMode::Solid => rows.extend(scheme::tint_rows(a, cx)),
     }
     let sample_item = |label: &'static str, selected: bool| {
         div()
@@ -379,6 +371,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         let label = match field {
             Field::CollectionOpacity => tr!("Opacity: {value}%", value = a.ui.collection_opacity.round()),
             Field::Blur => tr!("Blur: {value} px", value = a.blur.round()),
+            // The light theme fades the art where the dark one darkens it.
+            Field::Dimming if theme::theme_is_light() => tr!("Fading: {value}%", value = a.dimming.round()),
             Field::Dimming => tr!("Darkening: {value}%", value = a.dimming.round()),
             Field::Saturation => tr!("Colour intensity: {value}%", value = a.saturation.round()),
             Field::Scrim => tr!("Edge shading: {value}%", value = a.scrim.round()),
@@ -445,6 +439,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         a.ui.interface_opacity = defaults.interface_opacity;
         a.ui.interface_blur = defaults.interface_blur;
         a.ui.solid_tint = defaults.solid_tint;
+        a.ui.solid_tint_light = defaults.solid_tint_light;
         set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
         apply_interface(d, true, cx);
     }));
@@ -493,9 +488,11 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 .justify_between()
                 .gap(px(12.))
                 .mt(px(10.))
-                .child(div().flex_1().pl(px(6.)).child(meta_text(tr!(
-                    "Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit."
-                ))))
+                .child(div().flex_1().pl(px(6.)).child(meta_text(if theme::theme_is_light() {
+                    tr!("Edge shading fades the left column and the top and bottom edges, where the game list and the toolbars sit.")
+                } else {
+                    tr!("Edge shading darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")
+                })))
                 .child(reset),
         )
         .child(caption(tr!("Interface background")))
@@ -535,7 +532,7 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         Row::toggle("bg-enabled", tr!("Game artwork behind the library"), a.enabled).desc(tr!("Desktop mode's Collection background")),
         Row::number("bg-opacity", tr!("Opacity"), n(a.ui.collection_opacity), 0, 100, 5, "%"),
         Row::number("bg-blur", tr!("Blur"), n(a.blur), 0, 40, 1, " px"),
-        Row::number("bg-dim", tr!("Darkening"), n(a.dimming), 0, 90, 5, "%"),
+        Row::number("bg-dim", if theme::theme_is_light() { tr!("Fading") } else { tr!("Darkening") }, n(a.dimming), 0, 90, 5, "%"),
         Row::number("bg-sat", tr!("Colour intensity"), n(a.saturation), 0, 150, 5, "%"),
         Row::number("bg-scrim", tr!("Edge shading"), n(a.scrim), 0, 150, 5, "%"),
         Row::action("bg-reset", tr!("Reset the background")),
@@ -568,11 +565,7 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
                 " px",
             ));
         }
-        InterfaceMode::Solid => {
-            let tints: Vec<SharedString> = SolidTint::DARK.iter().map(|t| SharedString::from(t.label())).collect();
-            let i = SolidTint::DARK.iter().position(|t| *t == a.ui.solid_tint).unwrap_or(0);
-            rows.push(Row::choice("ui-tint", tr!("Colour"), tints, i));
-        }
+        InterfaceMode::Solid => rows.extend(scheme::console_tint_rows(d)),
     }
     rows.push(Row::action("ui-reset", tr!("Reset the interface")));
     rows.push(Row::header(tr!("Covers")));
@@ -609,6 +602,7 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
         Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
         Row::header(tr!("Colour")),
+        choice("theme", tr!("Theme"), console_choice(&scheme::theme_items(), a.theme)).desc(tr!("Console mode stays dark")),
         choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
         Row::toggle("high-contrast", tr!("High contrast"), a.high_contrast),
         Row::header(tr!("Reading")),
@@ -663,6 +657,11 @@ fn console_apply_look(
         ("bg-picture", i, _) => {
             if let Some(v) = pick(&console_pictures(), i) {
                 look::set_look(d, cx, |a| a.background = v)
+            }
+        }
+        ("theme", i, _) => {
+            if let Some(v) = pick(&scheme::theme_items(), i) {
+                look::set_look(d, cx, |a| a.theme = v)
             }
         }
         ("accent", i, _) => {
@@ -773,10 +772,10 @@ pub(super) fn console_apply(
                 d.appearance.ui.interface_mode = if index == 1 { InterfaceMode::Solid } else { InterfaceMode::Transparent };
                 apply_interface(d, true, cx);
             }
-            "ui-tint" => {
-                if let Some(t) = SolidTint::DARK.get(index) {
-                    d.appearance.ui.solid_tint = *t;
-                    apply_interface(d, true, cx);
+            "ui-tint" | "ui-tint-light" => {
+                let tints = if id.as_ref() == "ui-tint" { SolidTint::DARK } else { SolidTint::LIGHT };
+                if let Some(t) = tints.get(index) {
+                    scheme::set_tint(d, *t, cx);
                 }
             }
             "aspect" => {
@@ -815,6 +814,7 @@ pub(super) fn console_apply(
                 a.ui.interface_opacity = defaults.interface_opacity;
                 a.ui.interface_blur = defaults.interface_blur;
                 a.ui.solid_tint = defaults.solid_tint;
+                a.ui.solid_tint_light = defaults.solid_tint_light;
                 set_sliders(
                     a,
                     &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)],
@@ -868,19 +868,7 @@ pub(super) fn palette_commands(d: Option<&SettingsPage>, loaded: Option<&Effecti
         }
         .keywords("appearance glass opaque panels menus dialogs theme aparencia aparência vidro opaco transparente sólido solido painéis paineis tema"),
     );
-    for t in SolidTint::DARK {
-        let current = ui.interface_mode == InterfaceMode::Solid && ui.solid_tint == t;
-        v.push(
-            PageCommand::new(
-                format!("tint:{}", t.as_str()),
-                tr!("Solid interface: {tint}", tint = t.label()),
-                tr!("Panels in this colour"),
-                Icon::Tune,
-            )
-            .keywords("appearance colour color tint theme aparencia aparência cor tema")
-            .disabled(current.then_some(tr!("In use"))),
-        );
-    }
+    v.extend(scheme::palette_commands(ui));
     if let Some(grey) = settings.map(|s| s.grey_uninstalled_games) {
         v.push(
             PageCommand::new(
@@ -913,12 +901,7 @@ pub(super) fn run_palette(d: &mut SettingsPage, id: &str, cx: &mut Context<Setti
             let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !d.settings.grey_uninstalled_games);
             d.saved(res, cx);
         }
-        _ => {
-            let Some(t) = id.strip_prefix("tint:").and_then(SolidTint::parse) else { return false };
-            d.appearance.ui.interface_mode = InterfaceMode::Solid;
-            d.appearance.ui.solid_tint = t;
-            apply_interface(d, true, cx);
-        }
+        _ => return scheme::run_palette(d, id, cx),
     }
     true
 }
