@@ -150,7 +150,7 @@ impl WineManagerPage {
                     .rounded(px(12.))
                     .cursor_pointer()
                     .when(active, |d| d.bg(theme::accent_tint()))
-                    .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+                    .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.05))))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.select_source(repo);
                         cx.notify();
@@ -185,7 +185,7 @@ impl WineManagerPage {
                 .rounded(px(12.))
                 .cursor_pointer()
                 .when(active, |d| d.bg(theme::accent_tint()))
-                .when(!active, |d| d.hover(|s| s.bg(theme::white_a(0.05))))
+                .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.05))))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.select_prefixes(cx);
                     cx.notify();

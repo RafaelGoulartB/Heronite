@@ -116,16 +116,16 @@ pub(super) fn colour_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
             .rounded_full()
             .cursor_pointer()
             .border_2()
-            .border_color(if on { white() } else { theme::white_a(0.12) })
+            .border_color(if on { theme::text_bright() } else { theme::ink_a(0.12) })
             .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.accent = accent)));
-        swatches = swatches.child(match accent.rgb() {
+        swatches = swatches.child(match theme::accent_shade(accent) {
             Some((r, g, b)) => base.w(px(26.)).bg(theme::rgb_a(r, g, b, 1.)),
             None => base
                 .flex()
                 .items_center()
                 .gap(px(6.))
                 .px(px(10.))
-                .bg(theme::white_a(0.06))
+                .bg(theme::ink_a(0.06))
                 .text_size(px(12.5))
                 .text_color(theme::text_primary())
                 .child(icon(Icon::Palette, px(14.), theme::accent()))
@@ -370,10 +370,10 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 .rounded_full()
                 .when(enabled, |d| {
                     d.cursor_pointer()
-                        .hover(|s| s.bg(theme::white_a(0.08)))
+                        .hover(|s| s.bg(theme::ink_a(0.08)))
                         .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.sections = a.sections.moved(section, delta))))
                 })
-                .child(icon(ic, px(18.), if enabled { theme::text_muted().into() } else { theme::white_a(0.15) }))
+                .child(icon(ic, px(18.), if enabled { theme::text_muted().into() } else { theme::ink_a(0.15) }))
         };
         rows.push(
             div()
@@ -386,7 +386,7 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                     div()
                         .flex_1()
                         .text_size(px(14.))
-                        .text_color(if shown { theme::text_primary().into() } else { theme::white_a(0.4) })
+                        .text_color(if shown { theme::text_primary().into() } else { theme::ink_a(0.4) })
                         .child(section_label(section)),
                 )
                 .child(arrow("up", Icon::ArrowUpward, -1, i > 0))

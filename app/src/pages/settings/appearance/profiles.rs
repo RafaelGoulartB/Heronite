@@ -81,10 +81,10 @@ fn add_profile(d: &mut SettingsPage, name: String, look: Appearance, cx: &mut Co
     store(d, cx);
 }
 
-/// A tile: a band in the look's colours, its name and a note.
+/// A tile: a band in the look's colours on the current theme, its name and a note.
 fn tile(id: SharedString, look: &Appearance, name: SharedString, note: SharedString, active: bool) -> Stateful<Div> {
-    let (tr_, tg, tb) = look.solid_tint.rgb();
-    let (ar, ag, ab) = look.accent.rgb().unwrap_or((240, 138, 44));
+    let (tr_, tg, tb) = if theme::is_light() { look.solid_tint_light.rgb() } else { look.solid_tint.rgb() };
+    let (ar, ag, ab) = theme::accent_shade(look.accent).unwrap_or((240, 138, 44));
     let band = div().h(px(40.)).w_full().bg(linear_gradient(
         120.,
         linear_color_stop(theme::rgb_a(tr_, tg, tb, 1.), 0.2),
@@ -100,9 +100,9 @@ fn tile(id: SharedString, look: &Appearance, name: SharedString, note: SharedStr
         .overflow_hidden()
         .border_1()
         .border_color(if active { theme::accent().into() } else { theme::card_border() })
-        .bg(theme::white_a(0.03))
+        .bg(theme::ink_a(0.03))
         .cursor_pointer()
-        .hover(|s| s.bg(theme::white_a(0.06)))
+        .hover(|s| s.bg(theme::ink_a(0.06)))
         .child(band)
         .child(div().px(px(10.)).pt(px(7.)).text_size(px(13.)).text_color(theme::text_primary()).truncate().child(name))
         .child(div().px(px(10.)).pb(px(8.)).text_size(px(11.5)).text_color(theme::text_dim()).truncate().child(note))

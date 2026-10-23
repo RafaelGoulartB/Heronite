@@ -340,7 +340,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .w_full()
         .rounded(px(theme::R_TILE))
         .border_1()
-        .border_color(theme::white_a(0.08))
+        .border_color(theme::ink_a(0.08))
         .overflow_hidden()
         .bg(theme::page_bg())
         .when_some(a.preview.clone().filter(|_| a.enabled), |el, img| {
@@ -356,12 +356,9 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 .gap(px(2.))
                 .px(px(12.))
                 .py(px(10.))
-                .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(white()).child(tr!("Live preview")))
+                .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(theme::text_bright()).child(tr!("Live preview")))
                 .child(
-                    div()
-                        .text_size(px(12.))
-                        .text_color(theme::white_a(0.8))
-                        .child(tr!("Titles, details and tags sit on top of this layer.")),
+                    div().text_size(px(12.)).text_color(theme::ink_a(0.8)).child(tr!("Titles, details and tags sit on top of this layer.")),
                 ),
         );
 
