@@ -210,6 +210,9 @@ impl EpicInstallDialog {
             this.update(cx, |this, cx| {
                 let default_name = this.default_wine.as_ref().and_then(|w| w.get("name")).and_then(Value::as_str).map(str::to_string);
                 this.wine_pick = default_name.and_then(|n| list.iter().position(|w| w.name == n)).unwrap_or(0);
+                if list.is_empty() {
+                    crate::dialogs::auto_proton(cx, Self::load_wine);
+                }
                 this.wine_list = list;
                 this.wine_loaded = true;
                 cx.notify();

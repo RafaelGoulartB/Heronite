@@ -69,7 +69,8 @@ fn local_time(unix: u64) -> String {
 
 impl WineManagerPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let manager = WineManager::new(ctx.data_paths.clone());
+        // Shared with the automatic GE-Proton (`services::proton_setup`).
+        let manager = crate::services::proton_setup::manager(cx);
         let search = fields::new_input(window, cx, "", tr!("Search versions..."));
         cx.subscribe_in(&search, window, |this, state, ev: &InputEvent, _window, cx| {
             if matches!(ev, InputEvent::Change) {
