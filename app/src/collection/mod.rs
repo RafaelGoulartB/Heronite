@@ -103,6 +103,10 @@ pub struct CollectionView {
     lib: Option<Arc<Library>>,
     wiki: Arc<WikiCache>,
     ui: UiState,
+    /// The focused game changed and is not saved yet; `ui_save` writes it a
+    /// moment later (holding an arrow key selects many games a second).
+    ui_focus_dirty: bool,
+    ui_save: Option<Task<()>>,
     /// Custom categories (`games.customCategories`), loaded with the library.
     categories: heronite_data::categories::Categories,
     /// Dates added, sizes and systems the extra sorts and groups read (`organize.rs`).
@@ -277,6 +281,8 @@ impl CollectionView {
             lib: None,
             wiki: Arc::new(WikiCache::default()),
             ui,
+            ui_focus_dirty: false,
+            ui_save: None,
             categories: Default::default(),
             game_extras: Default::default(),
             user_actions: Default::default(),
@@ -475,7 +481,16 @@ impl CollectionView {
 
 impl Render for CollectionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.schedule_ui_save(cx);
         self.render_desktop(window, cx)
+    }
+}
+
+impl Drop for CollectionView {
+    fn drop(&mut self) {
+        if self.ui_focus_dirty {
+            self.save_ui();
+        }
     }
 }
 
@@ -519,9 +534,6 @@ impl CollectionView {
             self.reveal_selected();
         }
 
-        // The grid keeps the search as wide as next to the list.
-        let header_w = if self.ui.grid_view { theme::LIST_COL_W.min(vw * 0.35) } else { list_w };
-        let header = self.render_header(header_w, window, cx);
         let page_el = self.render_page(cx);
         let on_page = page_el.is_some();
         let stage_el = match self.stage_image(window) {
@@ -532,26 +544,34 @@ impl CollectionView {
             None => stage::stage(None, SharedString::default(), self.scrim, 1.),
         };
         let vh = f32::from(window.viewport_size().height);
-        // A new setup without games gets the welcome across the whole width.
-        let body = if self.lib.as_ref().is_some_and(|lib| lib.games.is_empty()) {
-            self.render_welcome(vw, vh - 42., cx)
-        } else if let Some(err) = self.lib.is_none().then(|| self.welcome.load_error.clone()).flatten() {
-            self.render_load_error(err, cx)
-        } else if self.ui.grid_view {
-            self.render_grid_body(list_w, vw, vh, scale, cx)
-        } else {
-            let list_column = self.render_list_column(list_w, cx);
-            let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
-            let edge = self.resize_handle(resize::Panel::List, vw, cx);
-            div()
-                .relative()
-                .size_full()
-                .flex()
-                .child(list_column)
-                .child(div().flex_1().min_w_0().h_full().child(focus_panel))
-                .child(edge)
-                .into_any_element()
-        };
+        // Under a page only the stage shows: the library side is not built
+        // (every frame of the page would build and throw it away).
+        let library = (!on_page).then(|| {
+            // The grid keeps the search as wide as next to the list.
+            let header_w = if self.ui.grid_view { theme::LIST_COL_W.min(vw * 0.35) } else { list_w };
+            let header = self.render_header(header_w, window, cx);
+            // A new setup without games gets the welcome across the whole width.
+            let body = if self.lib.as_ref().is_some_and(|lib| lib.games.is_empty()) {
+                self.render_welcome(vw, vh - 42., cx)
+            } else if let Some(err) = self.lib.is_none().then(|| self.welcome.load_error.clone()).flatten() {
+                self.render_load_error(err, cx)
+            } else if self.ui.grid_view {
+                self.render_grid_body(list_w, vw, vh, scale, cx)
+            } else {
+                let list_column = self.render_list_column(list_w, cx);
+                let focus_panel = self.render_focus_panel(vw, vh, list_w, scale, cx);
+                let edge = self.resize_handle(resize::Panel::List, vw, cx);
+                div()
+                    .relative()
+                    .size_full()
+                    .flex()
+                    .child(list_column)
+                    .child(div().flex_1().min_w_0().h_full().child(focus_panel))
+                    .child(edge)
+                    .into_any_element()
+            };
+            div().absolute().inset_0().flex().flex_col().child(header).child(div().flex().flex_1().min_h_0().child(body))
+        });
         let toast = self.render_toast(cx);
         let dock = if on_page { None } else { self.render_dock(window, cx) };
         let update_banner = self.render_update_banner(cx);
@@ -573,9 +593,7 @@ impl CollectionView {
             .text_color(theme::text_bright())
             .child(stage_el)
             .children(page_el)
-            .when(!on_page, |root| {
-                root.child(div().absolute().inset_0().flex().flex_col().child(header).child(div().flex().flex_1().min_h_0().child(body)))
-            })
+            .children(library)
             .children(dock)
             .children(toast)
             .children(update_banner)
