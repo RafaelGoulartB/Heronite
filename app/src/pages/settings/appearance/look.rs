@@ -6,7 +6,7 @@ use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Accent, Appearance, BackgroundSource, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView,
+    Accent, Appearance, BackgroundSource, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView, Theme,
 };
 use heronite_i18n::tr;
 
@@ -133,8 +133,8 @@ pub(super) fn colour_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
         });
     }
     let contrast = a.high_contrast;
-    card([
-        super::scheme::theme_row(d, cx),
+    // The custom theme has an accent of its own.
+    let accent = (a.theme != Theme::Custom).then(|| {
         row(
             tr!("Accent colour"),
             Some(tr!(
@@ -142,16 +142,26 @@ pub(super) fn colour_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
             )),
             swatches,
         )
-        .into_any_element(),
-        toggle_row(
-            "high-contrast",
-            tr!("High contrast"),
-            Some(tr!("Stronger secondary text and borders, for reading over bright artwork.")),
-            contrast,
-        )
-        .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.high_contrast = !contrast)))
-        .into_any_element(),
-    ])
+        .into_any_element()
+    });
+    card(
+        [
+            Some(super::scheme::theme_row(d, cx)),
+            accent,
+            Some(
+                toggle_row(
+                    "high-contrast",
+                    tr!("High contrast"),
+                    Some(tr!("Stronger secondary text and borders, for reading over bright artwork.")),
+                    contrast,
+                )
+                .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.high_contrast = !contrast)))
+                .into_any_element(),
+            ),
+        ]
+        .into_iter()
+        .flatten(),
+    )
 }
 
 /// Font and density.

@@ -27,6 +27,7 @@ use heronite_data::settings::{self, CoverAspect, EffectiveSettings, PartialBackg
 use heronite_i18n::{n_, tr};
 use heronite_images::{ImageRef, Opts};
 
+mod custom;
 mod look;
 mod profiles;
 mod scheme;
@@ -79,6 +80,8 @@ pub struct State {
     profiles_task: Option<Task<()>>,
     /// Name typed for "Save as profile".
     profile_name: Entity<InputState>,
+    /// The custom theme's editor.
+    custom_editor: custom::Editor,
 }
 
 const ASPECTS: [(CoverAspect, &str); 6] = [
@@ -166,6 +169,7 @@ impl State {
             profiles: None,
             profiles_task: None,
             profile_name: crate::ui::fields::new_input(window, cx, "", tr!("Profile name")),
+            custom_editor: custom::Editor::new(&ui.custom, window, cx),
         };
         this.preview_task = None;
         this
@@ -465,6 +469,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     );
     let profiles = profiles::profiles_group(d, cx);
     let colour = look::colour_group(d, cx);
+    let custom_theme = custom::group(d, cx);
     let reading = look::reading_group(d, cx);
     let motion = look::motion_group(d, cx);
     let layout = look::layout_group(d, f32::from(window.viewport_size().width), cx);
@@ -475,6 +480,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(profiles)
         .child(caption(tr!("Colour")))
         .child(colour)
+        .children(custom_theme)
         .child(caption(tr!("Reading")))
         .child(reading)
         .child(caption(tr!("Collection background")))

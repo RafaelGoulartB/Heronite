@@ -12,8 +12,13 @@ use super::{apply_interface, SettingsPage, State};
 use crate::theme::{self, Scheme};
 use crate::ui::controls::{row, tabs};
 
-pub(super) fn theme_items() -> [(Theme, &'static str); 3] {
-    [(Theme::Dark, trc!("theme", "Dark")), (Theme::Light, trc!("theme", "Light")), (Theme::System, trc!("theme", "System"))]
+pub(super) fn theme_items() -> [(Theme, &'static str); 4] {
+    [
+        (Theme::Dark, trc!("theme", "Dark")),
+        (Theme::Light, trc!("theme", "Light")),
+        (Theme::System, trc!("theme", "System")),
+        (Theme::Custom, trc!("theme", "Custom")),
+    ]
 }
 
 /// A small window in the colours of `scheme`, with the current accent and
@@ -55,7 +60,11 @@ pub(super) fn theme_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Any
             Theme::System => system_picture(),
             Theme::Custom => window_picture(Scheme::Custom),
         };
-        let note = (t == Theme::System).then(|| if theme::system_is_light() { tr!("Light now") } else { tr!("Dark now") });
+        let note = match t {
+            Theme::System => Some(if theme::system_is_light() { tr!("Light now") } else { tr!("Dark now") }),
+            Theme::Custom => Some(tr!("Your colours")),
+            _ => None,
+        };
         let on = t == current;
         cards = cards.child(
             div()
@@ -82,7 +91,14 @@ pub(super) fn theme_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Any
         .gap(px(10.))
         .py(px(11.))
         .child(
-            row(tr!("Theme"), Some(tr!("Light or dark panels and text. System follows your desktop's light or dark style.")), div()).py_0(),
+            row(
+                tr!("Theme"),
+                Some(tr!(
+                    "Light or dark panels and text. System follows your desktop's light or dark style; Custom uses colours you pick."
+                )),
+                div(),
+            )
+            .py_0(),
         )
         .child(cards)
         .into_any_element()
@@ -92,6 +108,9 @@ pub(super) fn theme_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Any
 /// System, so each theme keeps its own.
 pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
     let ui = a.ui;
+    if ui.theme == Theme::Custom {
+        return vec![row(tr!("Colour"), Some(tr!("The custom theme's panel colour.")), div()).into_any_element()];
+    }
     let both = ui.theme == Theme::System;
     let mut rows = Vec::new();
     for light in [false, true] {
@@ -149,6 +168,7 @@ pub(super) fn palette_commands(ui: heronite_data::appearance::Appearance) -> Vec
         (Theme::Light, Icon::Sun, tr!("Use the light theme"), tr!("Light panels and dark text")),
         (Theme::Dark, Icon::Moon, tr!("Use the dark theme"), tr!("Dark panels and light text")),
         (Theme::System, Icon::Sunset, tr!("Follow the desktop's light or dark style"), tr!("Light or dark like the rest of the desktop")),
+        (Theme::Custom, Icon::Palette, tr!("Use your custom theme"), tr!("The colours you picked in Settings → Appearance")),
     ];
     let mut v: Vec<PageCommand> = themes
         .into_iter()
