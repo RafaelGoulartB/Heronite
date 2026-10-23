@@ -15,6 +15,10 @@
 //!
 //! The service also owns `replay.json`: Settings and the game settings change
 //! it through [`change`], and it is written in order.
+//!
+//! A keyboard shortcut of the user's (none unless set) saves the replay like
+//! Guide + X: it is registered with the desktop only while a game records, so
+//! the keys are the game's the rest of the time.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,11 +33,12 @@ use heronite_data::replay_prefs::{Audio, Codec, Options, ReplayPrefs};
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
-use heronite_media::capture::{replay_folder, unique_capture_path, ActiveGame};
+use heronite_media::capture::{replay_folder, unique_capture_path, ActiveGame, GlobalHotkey, HotkeySpec};
 use heronite_media::list::resolve_path;
 use heronite_overlay::replay::plan::buffer_seconds;
 use heronite_overlay::replay::{self as backend, Encoding, Info, Plan, Program, Recorder, State};
 
+use crate::overlay::HotkeyState;
 use crate::runtime::GameRuntime;
 
 /// After the game is running: its loading goes first.
@@ -152,6 +157,12 @@ pub struct ReplayService {
     /// `replay.json` is being written; `dirty`: changed again meanwhile.
     writing: bool,
     dirty: bool,
+    /// The keyboard shortcut registered (and its accelerator) while a game
+    /// records.
+    hotkey: Option<(String, GlobalHotkey)>,
+    hotkey_state: HotkeyState,
+    /// Bumped per registration, so a late answer of an old one is ignored.
+    hotkey_epoch: u64,
 }
 
 struct ReplayGlobal(Entity<ReplayService>);
@@ -181,6 +192,9 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         detected: None,
         writing: false,
         dirty: false,
+        hotkey: None,
+        hotkey_state: HotkeyState::Idle,
+        hotkey_epoch: 0,
     });
     cx.set_global(ReplayGlobal(entity));
 }
@@ -237,9 +251,107 @@ pub fn shutdown(cx: &mut App) {
     }
 }
 
+/// The app is quitting: the keyboard shortcut, for the caller to drop off
+/// the UI thread (that removes it from the desktop; a Hyprland bind would
+/// otherwise outlive the app).
+pub fn take_hotkey(cx: &mut App) -> Option<GlobalHotkey> {
+    get(cx)?.update(cx, |s, _| {
+        s.hotkey_epoch += 1;
+        s.hotkey_state = HotkeyState::Idle;
+        s.hotkey.take().map(|(_, h)| h)
+    })
+}
+
 impl ReplayService {
     pub fn status(&self) -> &Status {
         &self.status
+    }
+
+    /// The keyboard shortcut, for Settings.
+    pub fn hotkey_state(&self) -> &HotkeyState {
+        &self.hotkey_state
+    }
+
+    /// Registers the keyboard shortcut while a game records (or is about
+    /// to), and removes it otherwise or when it changes.
+    fn sync_hotkey(&mut self, cx: &mut Context<Self>) {
+        let accelerator = self.prefs.keyboard_accelerator.trim();
+        let wanted = (!accelerator.is_empty() && self.wanted().is_some()).then(|| accelerator.to_string());
+        if wanted.as_deref() == self.hotkey.as_ref().map(|(a, _)| a.as_str()) {
+            return;
+        }
+        self.hotkey_epoch += 1;
+        if let Some((_, old)) = self.hotkey.take() {
+            // Removing it waits for hyprctl / the portal.
+            cx.background_spawn(async move { drop(old) }).detach();
+        }
+        let Some(accelerator) = wanted else {
+            self.hotkey_state = HotkeyState::Idle;
+            cx.notify();
+            return;
+        };
+        log::info!("replay: registering the keyboard shortcut {accelerator}");
+        let (press_tx, mut presses) = unbounded();
+        let (ready_tx, mut ready) = unbounded();
+        let spec = HotkeySpec {
+            id: "replay",
+            description: "Heronite: save the replay",
+            // SIGUSR1 is the overlay's and SIGUSR2 the screenshot's.
+            signal: libc::SIGRTMIN() + 1,
+            accelerator: accelerator.clone(),
+            consume: true,
+            portal_app_id: Some("com.heronite.launcher".into()),
+        };
+        let hotkey = GlobalHotkey::start(
+            spec,
+            Arc::new(move || {
+                let _ = press_tx.unbounded_send(());
+            }),
+            Box::new(move |result| {
+                let _ = ready_tx.unbounded_send(result);
+            }),
+        );
+        self.hotkey = Some((accelerator, hotkey));
+        self.hotkey_state = HotkeyState::Registering;
+        cx.notify();
+        let epoch = self.hotkey_epoch;
+        cx.spawn(async move |this, cx| {
+            if let Some(result) = ready.next().await {
+                let current = this
+                    .update(cx, |s, cx| {
+                        if s.hotkey_epoch != epoch {
+                            return false;
+                        }
+                        s.hotkey_state = match result {
+                            Ok(backend) => HotkeyState::Ready(backend),
+                            Err(e) => {
+                                log::warn!("replay: keyboard shortcut: {e}");
+                                HotkeyState::Failed(e)
+                            }
+                        };
+                        cx.notify();
+                        true
+                    })
+                    .unwrap_or(false);
+                if !current {
+                    return;
+                }
+            }
+            // Saved like Guide + X: the overlay marks it in the journal and
+            // shows the notice.
+            // Outside this service's update: the overlay reads it.
+            while presses.next().await.is_some() {
+                if !this.read_with(cx, |s, _| s.hotkey_epoch == epoch).unwrap_or(false) {
+                    break;
+                }
+                cx.update(|cx| {
+                    if let Some(overlay) = crate::overlay::get(cx) {
+                        overlay.update(cx, |o, cx| o.save_replay(cx));
+                    }
+                });
+            }
+        })
+        .detach();
     }
 
     /// Applies `f` to the options, writes them and brings the recorder in
@@ -328,6 +440,7 @@ impl ReplayService {
     /// `delay`), starts it again with other options, or ends it. Waits for a
     /// save in progress.
     fn sync(&mut self, delay: Duration, cx: &mut Context<Self>) {
+        self.sync_hotkey(cx);
         let wanted = self.wanted();
         if wanted == self.target {
             if wanted.is_none() {
