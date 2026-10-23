@@ -1,16 +1,15 @@
 //! Settings → Appearance → Custom theme: the six colours of the user's own
-//! theme, one picked at a time (hex, hue / saturation / lightness sliders,
+//! theme, one picked at a time (a colour picker to drag on, a hex field,
 //! suggestions), a contrast check with a fix for the text colours, and the
 //! themes saved by name (apply, delete, export, import). Every change
-//! applies at once; sliders save on release.
+//! applies at once and is saved when the drag ends.
 
-use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue};
+use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    contrast, export_theme, from_hsl, hex, import_theme, load_custom_themes, mix, parse_hex, save_custom_themes, to_hsl, CustomTheme,
-    Palette, Rgb, Role, Theme,
+    export_theme, hex, import_theme, is_light_colour, load_custom_themes, mix, parse_hex, save_custom_themes, CustomTheme, Palette, Rgb,
+    Role, Theme,
 };
 use heronite_i18n::tr;
 
@@ -18,6 +17,7 @@ use super::look::set_look;
 use super::{apply_interface, SettingsPage};
 use crate::icons::Icon;
 use crate::theme;
+use crate::ui::colour_picker::{ColourPicker, PickerEvent};
 use crate::ui::controls::{button, button_sm, caption, card, row, ButtonKind};
 use crate::ui::fields::{input_box, meta_text};
 use crate::ui::icon;
@@ -25,82 +25,28 @@ use crate::ui::icon;
 /// Contrast below which text is hard to read (WCAG AA).
 const READABLE: f32 = 4.5;
 
-#[derive(Clone, Copy, PartialEq)]
-enum Channel {
-    Hue,
-    Saturation,
-    Lightness,
-}
-
 /// The editor's state, kept by the Appearance section.
 pub(super) struct Editor {
     /// The colour being edited.
     role: Role,
-    sliders: Vec<(Channel, Entity<SliderState>)>,
-    hex: Entity<InputState>,
+    picker: Entity<ColourPicker>,
     /// Name typed for "Save theme".
     name: Entity<InputState>,
     /// The saved themes; `None` until read.
     saved: Option<Vec<CustomTheme>>,
     saved_task: Option<Task<()>>,
-    /// Set while the sliders and the hex field are moved to a colour, so
-    /// their own events do not write it back.
-    syncing: bool,
 }
 
 impl Editor {
     pub(super) fn new(palette: &Palette, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
         let role = Role::Panel;
-        let (h, s, l) = to_hsl(palette.get(role));
-        let mut sliders = Vec::new();
-        for (channel, max, value) in [(Channel::Hue, 360., h), (Channel::Saturation, 100., s * 100.), (Channel::Lightness, 100., l * 100.)]
-        {
-            let state = cx.new(|_| SliderState::new().max(max).min(0.).step(1.).default_value(value.round()));
-            cx.subscribe_in(&state, window, move |d: &mut SettingsPage, _, ev: &SliderEvent, window, cx| {
-                if d.appearance.custom_editor.syncing {
-                    return;
-                }
-                let (value, release) = match ev {
-                    SliderEvent::Change(v) => (v, false),
-                    SliderEvent::Release(v) => (v, true),
-                };
-                let SliderValue::Single(v) = *value else { return };
-                let e = &d.appearance.custom_editor;
-                let (mut h, mut s, mut l) = to_hsl(d.appearance.ui.custom.get(e.role));
-                match channel {
-                    Channel::Hue => h = v,
-                    Channel::Saturation => s = v / 100.,
-                    Channel::Lightness => l = v / 100.,
-                }
-                let c = from_hsl(h, s, l);
-                set_colour(d, c, release, cx);
-                sync_hex(d, c, window, cx);
-            })
-            .detach();
-            sliders.push((channel, state));
-        }
-        let hex_input = crate::ui::fields::new_input(window, cx, &hex(palette.get(role)), "#rrggbb");
-        cx.subscribe_in(&hex_input, window, |d: &mut SettingsPage, input, ev: &InputEvent, window, cx| {
-            if !matches!(ev, InputEvent::Change) || d.appearance.custom_editor.syncing {
-                return;
-            }
-            let Some(c) = parse_hex(&input.read(cx).value()) else { return };
-            if c == d.appearance.ui.custom.get(d.appearance.custom_editor.role) {
-                return;
-            }
-            set_colour(d, c, true, cx);
-            sync_sliders(d, c, window, cx);
+        let picker = cx.new(|cx| ColourPicker::new(palette.get(role), window, cx));
+        cx.subscribe(&picker, |d: &mut SettingsPage, _, ev: &PickerEvent, cx| match *ev {
+            PickerEvent::Change(c) => set_colour(d, c, false, cx),
+            PickerEvent::Commit(c) => set_colour(d, c, true, cx),
         })
         .detach();
-        Self {
-            role,
-            sliders,
-            hex: hex_input,
-            name: crate::ui::fields::new_input(window, cx, "", tr!("Theme name")),
-            saved: None,
-            saved_task: None,
-            syncing: false,
-        }
+        Self { role, picker, name: crate::ui::fields::new_input(window, cx, "", tr!("Theme name")), saved: None, saved_task: None }
     }
 }
 
@@ -110,37 +56,15 @@ fn set_colour(d: &mut SettingsPage, c: Rgb, save: bool, cx: &mut Context<Setting
     let role = d.appearance.custom_editor.role;
     let ui = &mut d.appearance.ui;
     ui.custom.set(role, c);
-    ui.custom.light = contrast(ui.custom.panel, (0, 0, 0)) > contrast(ui.custom.panel, (255, 255, 255));
+    ui.custom.light = is_light_colour(ui.custom.panel);
     ui.theme = Theme::Custom;
     apply_interface(d, save, cx);
 }
 
-fn sync_sliders(d: &mut SettingsPage, c: Rgb, window: &mut Window, cx: &mut Context<SettingsPage>) {
-    let (h, s, l) = to_hsl(c);
-    d.appearance.custom_editor.syncing = true;
-    for (channel, state) in d.appearance.custom_editor.sliders.clone() {
-        let v = match channel {
-            Channel::Hue => h,
-            Channel::Saturation => s * 100.,
-            Channel::Lightness => l * 100.,
-        };
-        state.update(cx, |s, cx| s.set_value(v.round(), window, cx));
-    }
-    d.appearance.custom_editor.syncing = false;
-}
-
-fn sync_hex(d: &mut SettingsPage, c: Rgb, window: &mut Window, cx: &mut Context<SettingsPage>) {
-    d.appearance.custom_editor.syncing = true;
-    let input = d.appearance.custom_editor.hex.clone();
-    input.update(cx, |s, cx| s.set_value(hex(c), window, cx));
-    d.appearance.custom_editor.syncing = false;
-}
-
-/// Moves the sliders and the hex field to the edited role's colour.
+/// Moves the picker to the edited role's colour.
 fn sync_controls(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
     let c = d.appearance.ui.custom.get(d.appearance.custom_editor.role);
-    sync_sliders(d, c, window, cx);
-    sync_hex(d, c, window, cx);
+    d.appearance.custom_editor.picker.update(cx, |p, cx| p.set(c, window, cx));
 }
 
 /// Sets every colour at once (a saved theme, a starting point).
@@ -289,16 +213,6 @@ fn editor(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     }
 
     let c = p.get(e.role);
-    let slider = |channel: Channel| e.sliders.iter().find(|(ch, _)| *ch == channel).map(|(_, s)| s.clone()).expect("three sliders");
-    let (h, s, l) = to_hsl(c);
-    let slider_row = |label: String, channel: Channel| {
-        div()
-            .flex()
-            .items_center()
-            .gap(px(12.))
-            .child(div().w(px(130.)).flex_none().text_size(px(13.)).text_color(theme::text_muted()).child(label))
-            .child(div().flex_1().child(Slider::new(&slider(channel)).bg(theme::accent()).text_color(theme::accent())))
-    };
     let mut suggested = div().flex().flex_wrap().gap(px(8.));
     for (i, sc) in suggestions(e.role, p.light).into_iter().enumerate() {
         suggested = suggested.child(
@@ -322,23 +236,11 @@ fn editor(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
         .child(
             div()
                 .flex()
-                .items_center()
-                .gap(px(12.))
-                .child(swatch(c, 46.))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .child(div().text_size(px(15.)).text_color(theme::text_primary()).child(role_label(e.role)))
-                        .child(meta_text(role_note(e.role))),
-                )
-                .child(div().w(px(120.)).flex_none().child(input_box(&e.hex, false))),
+                .flex_col()
+                .child(div().text_size(px(15.)).text_color(theme::text_primary()).child(role_label(e.role)))
+                .child(meta_text(role_note(e.role))),
         )
-        .child(slider_row(tr!("Hue: {value}°", value = h.round()), Channel::Hue))
-        .child(slider_row(tr!("Saturation: {value}%", value = (s * 100.).round()), Channel::Saturation))
-        .child(slider_row(tr!("Lightness: {value}%", value = (l * 100.).round()), Channel::Lightness))
+        .child(div().max_w(px(340.)).child(e.picker.clone()))
         .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(tr!("Suggestions")))
         .child(suggested);
     if let Some(ratio) = p.contrast_of(e.role) {
