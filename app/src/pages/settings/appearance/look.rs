@@ -103,8 +103,9 @@ pub(super) fn section_label(s: Section) -> &'static str {
     }
 }
 
-/// The theme, accent colour swatches and the high-contrast switch.
-pub(super) fn colour_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+/// The theme (with the custom theme's colours under it), the accent colour
+/// swatches and the high-contrast switch.
+pub(super) fn colour_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     let mut swatches = div().flex().items_center().gap(px(10.));
     for accent in Accent::ALL.iter().copied() {
@@ -133,6 +134,8 @@ pub(super) fn colour_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
         });
     }
     let contrast = a.high_contrast;
+    let theme_row = super::scheme::theme_row(d, cx);
+    let custom_rows = super::custom::rows(d, cx);
     // The custom theme has an accent of its own.
     let accent = (a.theme != Theme::Custom).then(|| {
         row(
@@ -144,24 +147,16 @@ pub(super) fn colour_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
         )
         .into_any_element()
     });
-    card(
-        [
-            Some(super::scheme::theme_row(d, cx)),
-            accent,
-            Some(
-                toggle_row(
-                    "high-contrast",
-                    tr!("High contrast"),
-                    Some(tr!("Stronger secondary text and borders, for reading over bright artwork.")),
-                    contrast,
-                )
-                .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.high_contrast = !contrast)))
-                .into_any_element(),
-            ),
-        ]
-        .into_iter()
-        .flatten(),
+    let high_contrast = toggle_row(
+        "high-contrast",
+        tr!("High contrast"),
+        Some(tr!("Stronger secondary text and borders, for reading over bright artwork.")),
+        contrast,
     )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.high_contrast = !contrast)))
+    .into_any_element();
+    // Theme, then the custom theme's colours (or the accent), high contrast last.
+    card(std::iter::once(theme_row).chain(custom_rows).chain(accent).chain([high_contrast]))
 }
 
 /// Font and density.

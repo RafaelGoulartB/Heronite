@@ -18,7 +18,7 @@ use super::{apply_interface, SettingsPage};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::colour_picker::{ColourPicker, PickerEvent};
-use crate::ui::controls::{button, button_sm, caption, card, row, ButtonKind};
+use crate::ui::controls::{button, button_sm, row, ButtonKind};
 use crate::ui::fields::{input_box, meta_text};
 use crate::ui::icon;
 
@@ -150,13 +150,14 @@ fn contrast_chip(ratio: f32) -> Div {
         .child(format!("{ratio:.1}:1"))
 }
 
-/// The Custom theme section, while it is the theme in use.
-pub(super) fn group(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Option<Div> {
+/// The rows of the custom theme in the Colour card, under Theme, while it
+/// is the theme in use.
+pub(super) fn rows(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
     if d.appearance.ui.theme != Theme::Custom {
-        return None;
+        return Vec::new();
     }
     ensure_loaded(d, cx);
-    Some(div().flex().flex_col().child(caption(tr!("Custom theme"))).child(card([editor(d, cx), saved_row(d, cx)])))
+    vec![editor(d, cx), saved_row(d, cx)]
 }
 
 /// Starting points, the list of colours and the editor of the one picked.
@@ -272,7 +273,7 @@ fn editor(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
         .flex_col()
         .gap(px(14.))
         .py(px(14.))
-        .child(row(tr!("Start from"), Some(tr!("Replaces the six colours with the light or the dark theme's.")), start).py_0())
+        .child(row(tr!("Custom theme"), Some(tr!("Pick each colour, or start again from the light or the dark theme's.")), start).py_0())
         .child(div().flex().gap(px(20.)).child(list).child(pane))
         .into_any_element()
 }
