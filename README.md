@@ -92,7 +92,7 @@ A controller-first layout for the couch or a TV that covers the whole app, with 
 
 ## Make it yours
 
-- **Appearance:** a dark or light theme (or the desktop's), profiles, an accent colour (or the game's), high contrast, fonts, density, cover style, a background picture or slideshow behind the Collection, and which sections the details panel shows.
+- **Appearance:** a dark or light theme (or the desktop's, or one in colours you pick), profiles, an accent colour (or the game's), high contrast, fonts, density, cover style, a background picture or slideshow behind the Collection, and which sections the details panel shows.
 - **Language:** English and Portuguese (Brazil), switched live.
 - **Saves and backups:** back up saves with Ludusavi after each session and restore them into any prefix. Scheduled, incremental backups of your Collection, play history, settings, and art.
 - **Storage:** see what your games take on each disk and clean up leftovers in one click.

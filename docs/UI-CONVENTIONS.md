@@ -134,8 +134,8 @@ Cinema, Minimal, High contrast) and the user's (`profiles` in `appearance.json`)
 (`heroniteAppearance` marker). A profile holds everything in `appearance.json`, not the background sliders of
 `settings.json`. Console mode lists the same choices except the sections' order and "Your own picture".
 
-**Theme** (Settings → Appearance → Colour, `theme` in `appearance.json`: `dark` default | `light` | `system`;
-`theme/scheme.rs`). System follows the desktop's style: `CollectionView` reads `window.appearance()` (GPUI gets it
+**Theme** (Settings → Appearance → Colour, `theme` in `appearance.json`: `dark` default | `light` | `system` |
+`custom`; `theme/scheme.rs`). System follows the desktop's style: `CollectionView` reads `window.appearance()` (GPUI gets it
 from the XDG portal's `color-scheme`) and observes it, so the app switches as the desktop does. The theme stays out
 of profiles, like the switch by the window's width (`Appearance::with_window_choices_of`). Every token has a dark
 and a light value picked by `theme::is_light()`; the light text, accent (`Accent::rgb_light`, a cover's accent
@@ -156,6 +156,16 @@ overlay preview) is built inside `theme::drawn_as(light, ..)`; its colours are r
 in it may read one later. The gpui-component widgets get the theme again when it changes
 (`CollectionView::sync_look` → `apply_component_theme`). Solid shows the current theme's four tints, both rows with
 System. On the light theme the Collection background's Darkening is called Fading.
+
+**Custom theme** (`heronite_data::appearance::custom`, editor in `pages/settings/appearance/custom.rs`): six
+colours (`Role`: page, panels, raised parts, text, secondary text, accent) in `customPalette`, light or dark as the
+panels are. While it is drawn (`theme::custom_palette()`, `Scheme::Custom`) every token derives from them: surfaces
+and text as picked, `ink_a` in the text colour, status colours through `readable_on` its backgrounds, the accent
+from the palette (the Accent row hides). The editor shows one colour at a time (hex, hue / saturation / lightness
+sliders, suggestions), the contrast of the text colours on the panels with "Make it readable" below 4.5:1, and the
+themes saved by name (`customThemes`, export / import with the `heroniteTheme` marker). Like the theme, the custom
+colours stay out of profiles. Light colours come from `LIGHT_PAPER` / `LIGHT_PAGE` / `LIGHT_LIFT` in
+`theme/color.rs` (keep `SolidTint::Paper` equal to `LIGHT_PAPER`).
 
 **Surfaces** (`ui::glass`): `glass_panel(radius)` (big shadow; popovers 20, sheets
 26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14). Children added after the constructor paint above the layers. Children
