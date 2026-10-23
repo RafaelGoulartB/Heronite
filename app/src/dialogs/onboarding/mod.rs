@@ -376,8 +376,8 @@ fn step_icon(step: Step, done: bool, size: f32) -> Div {
                     .justify_center()
                     .bg(theme::success())
                     .border_2()
-                    .border_color(rgb(0x121821))
-                    .child(icon(Icon::Check, px(11.), rgb(0x06150d))),
+                    .border_color(theme::glass_fill_solid())
+                    .child(icon(Icon::Check, px(11.), theme::on_accent())),
             )
         })
 }

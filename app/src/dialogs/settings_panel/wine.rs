@@ -220,7 +220,7 @@ impl SettingsPanel {
         col = col.child(help(&current.bin));
         let rec = self.wine_recommendation(&options, &current);
         if let Some(row) = self.protondb_row(rec, cx, Self::pick_wine) {
-            col = col.child(div().border_t_1().border_color(theme::white_a(0.06)).mt(px(4.)).child(row));
+            col = col.child(div().border_t_1().border_color(theme::ink_a(0.06)).mt(px(4.)).child(row));
         }
         col
     }

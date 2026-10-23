@@ -126,9 +126,9 @@ pub fn slot(w: f32, h: f32, radius: f32) -> Div {
         .w(px(w))
         .h(px(h))
         .rounded(px(radius))
-        .bg(linear_gradient(180., linear_color_stop(theme::white_a(0.1), 0.), linear_color_stop(theme::white_a(0.04), 1.)))
+        .bg(linear_gradient(180., linear_color_stop(theme::ink_a(0.1), 0.), linear_color_stop(theme::ink_a(0.04), 1.)))
         .border_1()
-        .border_color(theme::white_a(0.06))
+        .border_color(theme::ink_a(0.06))
 }
 
 /// A cover of the user's games, else a [`slot`] while there is none.
@@ -156,14 +156,14 @@ pub fn ghost(w: f32, h: f32) -> Div {
         .rounded(px(10.))
         .border_2()
         .border_dashed()
-        .border_color(theme::white_a(0.14))
-        .bg(theme::white_a(0.03))
-        .child(icon(Icon::Add, px(20.), theme::white_a(0.22)))
+        .border_color(theme::ink_a(0.14))
+        .bg(theme::ink_a(0.03))
+        .child(icon(Icon::Add, px(20.), theme::ink_a(0.22)))
 }
 
 fn lift() -> Vec<BoxShadow> {
     vec![BoxShadow {
-        color: theme::black_a(0.5),
+        color: theme::shadow_a(0.5),
         offset: point(px(0.), px(10.)),
         blur_radius: px(24.),
         spread_radius: px(0.),
@@ -195,22 +195,23 @@ pub fn collection_preview(art: &Art, w: f32, grid: bool) -> Div {
     let b = Board { k: w / 600. };
     let a = theme::appearance();
     let solid = a.interface_mode == InterfaceMode::Solid;
-    let (r, g, bl) = a.solid_tint.rgb();
-    let panel = if solid { theme::rgba_hsla(r, g, bl, 0.98) } else { theme::rgba_hsla(14, 18, 24, 0.62) };
+    let (r, g, bl) = theme::solid_tint().rgb();
+    let panel = if solid { theme::rgba_hsla(r, g, bl, 0.98) } else { theme::preview_glass() };
     let backdrop = if a.background == BackgroundSource::Solid {
         div().absolute().inset_0().bg(theme::rgba_hsla(r, g, bl, 1.))
     } else {
         div()
             .absolute()
             .inset_0()
-            .bg(rgb(0x07090c))
+            .bg(theme::page_bg())
             .child(stage(art).opacity(a.collection_opacity / 100.))
-            // The Collection rolls the art's highlights off; a flat dim does it here.
-            .child(div().absolute().inset_0().bg(theme::black_a(0.4)))
+            // The Collection rolls the art's highlights off (fades it on the
+            // light theme); a flat dim does it here.
+            .child(div().absolute().inset_0().bg(theme::stage_ink_a(if theme::is_light() { 0.6 } else { 0.4 })))
             .child(div().absolute().inset_0().bg(linear_gradient(
                 90.,
-                linear_color_stop(theme::rgba_hsla(7, 9, 12, 0.85), 0.),
-                linear_color_stop(theme::rgba_hsla(7, 9, 12, 0.2), 0.7),
+                linear_color_stop(theme::stage_ink_a(0.85), 0.),
+                linear_color_stop(theme::stage_ink_a(0.2), 0.7),
             )))
     };
     let board = div()
@@ -220,7 +221,7 @@ pub fn collection_preview(art: &Art, w: f32, grid: bool) -> Div {
         .overflow_hidden()
         .rounded(px(16.))
         .border_1()
-        .border_color(theme::white_a(0.08))
+        .border_color(theme::ink_a(0.08))
         .child(backdrop);
     if grid {
         grid_layout(board, art, b, panel)
@@ -250,15 +251,15 @@ fn title_text(art: &Art, b: Board, size: f32, w: f32) -> Div {
             .flex()
             .flex_col()
             .gap(b.p(size * 0.3))
-            .child(div().w(b.p(w * 0.7)).h(b.p(size * 0.6)).rounded_full().bg(theme::white_a(0.18)))
-            .child(div().w(b.p(w * 0.4)).h(b.p(size * 0.3)).rounded_full().bg(theme::white_a(0.1))),
+            .child(div().w(b.p(w * 0.7)).h(b.p(size * 0.6)).rounded_full().bg(theme::ink_a(0.18)))
+            .child(div().w(b.p(w * 0.4)).h(b.p(size * 0.3)).rounded_full().bg(theme::ink_a(0.1))),
     }
 }
 
 fn search_pill(b: Board, x: f32, y: f32, w: f32) -> Div {
     b.rect(x, y, w, 24.)
         .rounded_full()
-        .bg(theme::white_a(0.07))
+        .bg(theme::ink_a(0.07))
         .flex()
         .items_center()
         .gap(b.p(6.))
@@ -331,7 +332,7 @@ fn game_side(b: Board, panel: Hsla, w: f32) -> Div {
                 .rounded(b.p(10.))
                 .bg(panel)
                 .border_1()
-                .border_color(theme::white_a(if theme::high_contrast() { 0.35 } else { 0.08 }))
+                .border_color(theme::ink_a(if theme::high_contrast() { 0.35 } else { 0.08 }))
                 .child(fact(tr!("Rating"), "★★★★☆".into()))
                 .child(fact(tr!("Save backup"), tr!("Yesterday").into()))
                 .child(fact(tr!("On Linux"), "Platinum".into())),
@@ -363,7 +364,7 @@ fn grid_layout(board: Div, art: &Art, b: Board, panel: Hsla) -> Div {
         .overflow_hidden()
         .bg(panel)
         .border_1()
-        .border_color(theme::white_a(0.1))
+        .border_color(theme::ink_a(0.1))
         .child(b.rect(0., 0., 198., 74.).rounded_t(b.p(14.)).overflow_hidden().child(stage(art)))
         .child(b.at(12., 46.).child(cover(art, 0, 46. * b.k, 69. * b.k, radius * b.k)))
         .child(b.at(64., 84.).w(b.p(124.)).child(title_text(art, b, 14., 124.)))
@@ -377,6 +378,11 @@ fn grid_layout(board: Div, art: &Art, b: Board, panel: Hsla) -> Div {
 /// The panel the controller's Guide button opens over a game, on a 600x340
 /// board `w` wide; `left`: the side of the screen it opens on.
 pub fn overlay_preview(art: &Art, w: f32, left: bool) -> Div {
+    // The overlay is dark whatever the theme.
+    theme::dark(|| overlay_board(art, w, left))
+}
+
+fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
     let b = Board { k: w / 600. };
     let game = match art.stage.clone() {
         Some(src) => div().absolute().inset_0().child(img(src).size_full().object_fit(ObjectFit::Cover)),
@@ -495,7 +501,7 @@ pub fn overlay_preview(art: &Art, w: f32, left: bool) -> Div {
 pub fn ring(fraction: f32, size: f32, label: impl Into<SharedString>) -> Div {
     let fraction = fraction.clamp(0., 1.);
     let accent = theme::accent();
-    let track = theme::white_a(0.09);
+    let track = theme::ink_a(0.09);
     div()
         .relative()
         .flex_none()

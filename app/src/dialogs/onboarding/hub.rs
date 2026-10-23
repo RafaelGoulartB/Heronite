@@ -31,9 +31,9 @@ fn card(id: &'static str, visual: impl IntoElement, title: SharedString, trailin
         .flex_1()
         .min_w_0()
         .rounded(px(22.))
-        .bg(theme::white_a(0.04))
+        .bg(theme::ink_a(0.04))
         .border_1()
-        .border_color(theme::white_a(0.09))
+        .border_color(theme::ink_a(0.09))
         .child(div().relative().h(px(VISUAL_H)).overflow_hidden().rounded_t(px(22.)).child(visual))
         .child(
             div()
@@ -63,7 +63,7 @@ fn line(ic: Icon, label: impl Into<SharedString>, right: impl IntoElement) -> Di
         .gap(px(10.))
         .min_h(px(40.))
         .border_t_1()
-        .border_color(theme::white_a(0.05))
+        .border_color(theme::ink_a(0.05))
         .text_size(px(13.5))
         .child(icon(ic, px(16.), theme::text_muted()))
         .child(div().flex_1().min_w_0().whitespace_nowrap().overflow_hidden().text_ellipsis().child(label.into()))
@@ -135,7 +135,7 @@ impl OnboardingDialog {
             ],
         )
         .cursor_pointer()
-        .hover(|s| s.bg(theme::white_a(0.06)).border_color(theme::white_a(0.16)))
+        .hover(|s| s.bg(theme::ink_a(0.06)).border_color(theme::ink_a(0.16)))
         .on_click(cx.listener(|this, _, _, cx| this.open(View::Games, cx)))
     }
 
@@ -171,7 +171,7 @@ impl OnboardingDialog {
             ],
         )
         .cursor_pointer()
-        .hover(|s| s.bg(theme::white_a(0.06)).border_color(theme::white_a(0.16)))
+        .hover(|s| s.bg(theme::ink_a(0.06)).border_color(theme::ink_a(0.16)))
         .on_click(cx.listener(|this, _, _, cx| this.open(View::Look, cx)))
     }
 
@@ -253,9 +253,9 @@ impl OnboardingDialog {
                 .gap(px(8.))
                 .p(px(14.))
                 .rounded(px(16.))
-                .bg(theme::white_a(0.035))
+                .bg(theme::ink_a(0.035))
                 .border_1()
-                .border_color(theme::white_a(0.08))
+                .border_color(theme::ink_a(0.08))
                 .child(
                     div()
                         .flex()

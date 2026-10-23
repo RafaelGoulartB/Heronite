@@ -265,7 +265,7 @@ impl MetadataDialog {
             if chain.is_empty() {
                 div()
                     .text_size(px(12.))
-                    .text_color(white())
+                    .text_color(theme::text_bright())
                     .child(if value.is_empty() { tr!("Empty") } else { tr!("Local file") })
                     .into_any_element()
             } else {
@@ -279,7 +279,7 @@ impl MetadataDialog {
                 .overflow_hidden()
                 .text_size(px(12.))
                 .line_height(px(16.2))
-                .text_color(white())
+                .text_color(theme::text_bright())
                 .child(if value.is_empty() { tr!("Empty").to_string() } else { value })
                 .into_any_element()
         };
@@ -294,8 +294,8 @@ impl MetadataDialog {
             .p(px(8.8))
             .rounded(px(12.))
             .border_1()
-            .border_color(if selected { theme::accent().into() } else { theme::white_a(0.1) })
-            .bg(theme::black_a(0.2))
+            .border_color(if selected { theme::accent().into() } else { theme::ink_a(0.1) })
+            .bg(theme::recess_a(0.2))
             .cursor_pointer()
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.picks.insert(field.to_string(), pick_id.clone());
@@ -311,7 +311,7 @@ impl MetadataDialog {
                     .justify_center()
                     .rounded_full()
                     .border_2()
-                    .border_color(if selected { theme::accent().into() } else { theme::white_a(0.6) })
+                    .border_color(if selected { theme::accent().into() } else { theme::ink_a(0.6) })
                     .when(selected, |d| d.child(div().size(px(6.)).rounded_full().bg(theme::accent()))),
             )
             .child(
@@ -389,8 +389,8 @@ impl MetadataDialog {
                     .py(px(4.))
                     .rounded_full()
                     .border_1()
-                    .border_color(if selected { theme::accent().into() } else { theme::white_a(0.12) })
-                    .bg(if selected { theme::accent_alpha(0.22).into() } else { theme::white_a(0.04) })
+                    .border_color(if selected { theme::accent().into() } else { theme::ink_a(0.12) })
+                    .bg(if selected { theme::accent_alpha(0.22).into() } else { theme::ink_a(0.04) })
                     .text_size(px(13.))
                     .text_color(theme::text_primary())
                     .cursor_pointer()

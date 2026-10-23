@@ -55,10 +55,10 @@ pub(super) fn accent_name(a: Accent) -> &'static str {
     }
 }
 
-/// A round swatch of the accent (a blend for "From the game").
+/// A round swatch of the accent in the theme's shade (a blend for "From the game").
 pub(super) fn accent_dot(a: Accent, size: f32) -> Div {
     let d = div().flex_none().size(px(size)).rounded_full();
-    match a.rgb() {
+    match theme::accent_shade(a) {
         Some((r, g, b)) => d.bg(theme::rgba_hsla(r, g, b, 1.)),
         None => d.bg(linear_gradient(135., linear_color_stop(rgb(0xff9a6b), 0.), linear_color_stop(rgb(0x7ec7ff), 1.))),
     }
@@ -100,11 +100,11 @@ impl OnboardingDialog {
                 .w(relative(0.485))
                 .p(px(7.))
                 .rounded(px(14.))
-                .bg(if on { theme::accent_alpha(0.09).into() } else { theme::white_a(0.04) })
+                .bg(if on { theme::accent_alpha(0.09).into() } else { theme::ink_a(0.04) })
                 .border_2()
-                .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
+                .border_color(if on { theme::accent().into() } else { theme::ink_a(0.08) })
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.07)))
+                .hover(|s| s.bg(theme::ink_a(0.07)))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.set_look(|l| *l = Appearance { start_view: l.start_view, ..look }.with_window_choices_of(l), cx)
                 }))
@@ -137,11 +137,11 @@ impl OnboardingDialog {
                 .pr(px(12.))
                 .py(px(5.))
                 .rounded_full()
-                .bg(theme::white_a(0.04))
+                .bg(theme::ink_a(0.04))
                 .border_2()
-                .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
+                .border_color(if on { theme::accent().into() } else { theme::ink_a(0.08) })
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.08)))
+                .hover(|s| s.bg(theme::ink_a(0.08)))
                 .on_click(cx.listener(move |this, _, _, cx| this.set_look(|l| l.accent = accent, cx)))
                 .child(accent_dot(accent, 20.))
                 .child(div().text_size(px(13.)).child(accent_name(accent)))
@@ -210,11 +210,11 @@ impl OnboardingDialog {
                 .px(px(10.))
                 .py(px(8.))
                 .rounded(px(14.))
-                .bg(if on { theme::accent_alpha(0.1).into() } else { theme::white_a(0.04) })
+                .bg(if on { theme::accent_alpha(0.1).into() } else { theme::ink_a(0.04) })
                 .border_2()
-                .border_color(if on { theme::accent().into() } else { theme::white_a(0.08) })
+                .border_color(if on { theme::accent().into() } else { theme::ink_a(0.08) })
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.07)))
+                .hover(|s| s.bg(theme::ink_a(0.07)))
                 .on_click(cx.listener(move |this, _, _, cx| this.set_look(|l| l.start_view = value, cx)))
                 .child(
                     div()

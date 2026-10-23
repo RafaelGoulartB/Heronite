@@ -288,6 +288,14 @@ pub fn text_bright() -> Hsla {
         white_a(1.)
     }
 }
+/// "Might not be writable", "Not enough disk space", a script's notes.
+pub fn caution_text() -> Rgba {
+    pick(0xebcb8b, 0x7c5e08)
+}
+/// Plain lines of a log.
+pub fn code_text() -> Rgba {
+    pick(0xd8dee9, 0x1f2630)
+}
 /// Text drawn on an accent fill.
 pub fn on_accent() -> Rgba {
     pick(0x0c1a20, 0xffffff)
@@ -429,6 +437,15 @@ pub fn solid_pill() -> Hsla {
 /// Text on a [`solid_pill`].
 pub fn on_solid_pill() -> Rgba {
     pick(0x0b0e13, 0xffffff)
+}
+
+/// The panels of "Getting started"'s picture of the Collection, Transparent.
+pub fn preview_glass() -> Hsla {
+    if is_light() {
+        rgba_hsla(246, 247, 249, 0.72)
+    } else {
+        rgba_hsla(14, 18, 24, 0.62)
+    }
 }
 
 /// An opaque card straight on the Collection (the welcome's load error).

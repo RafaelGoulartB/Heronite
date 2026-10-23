@@ -175,8 +175,8 @@ impl Render for ImagePicker {
                     .justify_center()
                     .gap(px(9.6))
                     .text_size(px(16.))
-                    .text_color(white())
-                    .child(icon(Icon::FaSpinner, px(16.), white()).with_animation(
+                    .text_color(theme::text_bright())
+                    .child(icon(Icon::FaSpinner, px(16.), theme::text_bright()).with_animation(
                         "ag-pick-spin",
                         Animation::new(Duration::from_secs(1)).repeat(),
                         |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
@@ -202,7 +202,7 @@ impl Render for ImagePicker {
                         .rounded(px(8.))
                         .border_2()
                         .border_color(if selected { theme::accent().into() } else { gpui_kit::transparent_black() })
-                        .bg(if selected { theme::white_a(0.06) } else { theme::black_a(0.28) })
+                        .bg(if selected { theme::ink_a(0.06) } else { theme::recess_a(0.28) })
                         .hover(|s| s.border_color(theme::accent()))
                         .cursor_pointer()
                         .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
@@ -213,7 +213,7 @@ impl Render for ImagePicker {
                             cx.notify();
                         }))
                         .child(picture(src).w(px(tw)).h(px(th)))
-                        .children(size.map(|s| div().text_size(px(13.33)).text_color(white()).child(s))),
+                        .children(size.map(|s| div().text_size(px(13.33)).text_color(theme::text_bright()).child(s))),
                 );
             }
         }
@@ -222,7 +222,7 @@ impl Render for ImagePicker {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(div().text_size(px(16.)).text_color(white()).child(if self.slot == Slot::Square {
+            .child(div().text_size(px(16.)).text_color(theme::text_bright()).child(if self.slot == Slot::Square {
                 tr!("Pick an image from the web for the cover (square art). It is used as a link; nothing is downloaded.")
             } else {
                 tr!("Pick an image from the web for the background (cover/hero art). It is used as a link; nothing is downloaded.")

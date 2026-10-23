@@ -29,6 +29,16 @@ pub fn set_dark_only(on: bool) {
     DARK_ONLY.store(on, Ordering::Relaxed);
 }
 
+/// Builds `f`'s elements as the dark theme draws them: a picture of a
+/// screen that stays dark. The colours are read while building, so the
+/// elements keep them; nothing in `f` may read one later (a canvas's paint).
+pub fn dark<R>(f: impl FnOnce() -> R) -> R {
+    let was = DARK_ONLY.swap(true, Ordering::Relaxed);
+    let out = f();
+    DARK_ONLY.store(was, Ordering::Relaxed);
+    out
+}
+
 /// The theme the user picked, System resolved: light or not. The window
 /// being drawn may still be dark only; tokens read [`is_light`].
 pub fn theme_is_light() -> bool {

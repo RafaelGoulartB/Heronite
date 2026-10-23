@@ -269,7 +269,7 @@ impl SettingsPanel {
                 .size(px(20.))
                 .rounded_full()
                 .cursor_pointer()
-                .hover(|s| s.bg(theme::white_a(0.06)))
+                .hover(|s| s.bg(theme::ink_a(0.06)))
                 .child(crate::ui::icon(Icon::Replay, px(15.), theme::text_dim()).group_hover(hover, |s| s.text_color(theme::accent())))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();

@@ -223,7 +223,7 @@ impl Render for WebImageDialog {
                         .rounded(px(12.))
                         .border_2()
                         .border_color(if selected { theme::accent().into() } else { gpui_kit::transparent_black() })
-                        .bg(if selected { theme::white_a(0.06) } else { theme::black_a(0.28) })
+                        .bg(if selected { theme::ink_a(0.06) } else { theme::recess_a(0.28) })
                         .hover(|s| s.border_color(theme::accent()))
                         .cursor_pointer()
                         .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {

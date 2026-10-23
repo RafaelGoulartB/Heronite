@@ -37,7 +37,7 @@ impl SettingsPanel {
                             .size(px(28.))
                             .rounded_full()
                             .cursor_pointer()
-                            .hover(|s| s.bg(theme::white_a(0.10)))
+                            .hover(|s| s.bg(theme::ink_a(0.10)))
                             .child(icon(Icon::DeleteOutline, px(16.), theme::text_muted()))
                             .on_click(cx.listener(move |this, _, _, cx| this.remove_shared_folder(i, cx))),
                     ),

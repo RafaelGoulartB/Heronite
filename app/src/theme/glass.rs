@@ -52,13 +52,20 @@ pub fn set_game_accent(rgb: Option<(u8, u8, u8)>) -> bool {
     changed
 }
 
+/// A preset accent in the current theme's shade (`None` for [`Accent::Game`]).
+pub fn accent_shade(a: Accent) -> Option<(u8, u8, u8)> {
+    if is_light() {
+        a.rgb_light()
+    } else {
+        a.rgb()
+    }
+}
+
 /// The accent colour (Settings → Appearance → Accent colour), in the shade
 /// of the current theme.
 pub fn accent_rgb() -> (u8, u8, u8) {
     let light = is_light();
-    let accent = appearance().accent;
-    let preset = if light { accent.rgb_light() } else { accent.rgb() };
-    if let Some(c) = preset {
+    if let Some(c) = accent_shade(appearance().accent) {
         return c;
     }
     let game = *GAME_ACCENT.read().unwrap_or_else(|e| e.into_inner());
@@ -70,10 +77,7 @@ pub fn accent_rgb() -> (u8, u8, u8) {
                 dark
             }
         }
-        None => {
-            let ice = if light { Accent::Ice.rgb_light() } else { Accent::Ice.rgb() };
-            ice.expect("a preset")
-        }
+        None => accent_shade(Accent::Ice).expect("a preset"),
     }
 }
 
