@@ -163,6 +163,11 @@ pub struct Appearance {
     pub solid_tint: SolidTint,
     /// The solid panels' colour on the light theme (one of [`SolidTint::LIGHT`]).
     pub solid_tint_light: SolidTint,
+    /// A colour picked by hand for the dark theme's solid panels, over
+    /// `solid_tint` (always a dark colour, see [`own_panel`]).
+    pub solid_own: Option<Rgb>,
+    /// The same for the light theme's.
+    pub solid_own_light: Option<Rgb>,
     /// The colours of [`Theme::Custom`] (kept while another theme is in use).
     pub custom: Palette,
     pub accent: Accent,
@@ -198,6 +203,8 @@ impl Appearance {
         theme: Theme::DEFAULT,
         solid_tint: SolidTint::Slate,
         solid_tint_light: SolidTint::Paper,
+        solid_own: None,
+        solid_own_light: None,
         custom: Palette::LIGHT,
         accent: Accent::DEFAULT,
         high_contrast: false,
@@ -220,6 +227,12 @@ impl Default for Appearance {
     fn default() -> Self {
         Self::DEFAULT
     }
+}
+
+/// A hand-picked panel colour stored at `key`, kept only on its own side.
+fn own_colour(value: &Value, key: &str, light: bool) -> Option<Rgb> {
+    let c = parse_hex(value.get(key)?.as_str()?)?;
+    (is_light_colour(c) == light).then_some(c)
 }
 
 fn clamp((lo, hi): (f32, f32), v: f32) -> f32 {
@@ -266,6 +279,8 @@ impl Appearance {
                 .and_then(SolidTint::parse)
                 .filter(|t| t.is_light())
                 .unwrap_or(d.solid_tint_light),
+            solid_own: own_colour(value, "interfaceSolidColour", false),
+            solid_own_light: own_colour(value, "interfaceSolidColourLight", true),
             custom: value.get("customPalette").map(Palette::from_value).unwrap_or(d.custom),
             accent: name("accent").and_then(Accent::parse).unwrap_or_default(),
             high_contrast: flag("highContrast", d.high_contrast),
@@ -294,6 +309,8 @@ impl Appearance {
             "theme": self.theme.as_str(),
             "interfaceSolidTint": self.solid_tint.as_str(),
             "interfaceSolidTintLight": self.solid_tint_light.as_str(),
+            "interfaceSolidColour": self.solid_own.map(hex),
+            "interfaceSolidColourLight": self.solid_own_light.map(hex),
             "customPalette": self.custom.to_value(),
             "accent": self.accent.as_str(),
             "highContrast": self.high_contrast,
@@ -395,6 +412,8 @@ mod tests {
             theme: Theme::System,
             solid_tint: SolidTint::Midnight,
             solid_tint_light: SolidTint::Frost,
+            solid_own: Some((40, 10, 20)),
+            solid_own_light: None,
             custom: Palette { accent: (1, 2, 3), ..Palette::DARK },
             accent: Accent::Game,
             high_contrast: true,
@@ -420,6 +439,8 @@ mod tests {
         assert_eq!(on_disk["interfaceSolidTintLight"], "frost");
         assert_eq!(on_disk["theme"], "system");
         assert_eq!(on_disk["customPalette"]["accent"], "#010203");
+        assert_eq!(on_disk["interfaceSolidColour"], "#280a14");
+        assert_eq!(on_disk["interfaceSolidColourLight"], Value::Null);
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
         assert_eq!(on_disk["sections"][0], "related");
@@ -469,6 +490,18 @@ mod tests {
         assert_eq!((a.solid_tint, a.solid_tint_light), (SolidTint::Slate, SolidTint::Paper));
         let a = Appearance::from_value(&json!({"interfaceSolidTint": "plum", "interfaceSolidTintLight": "sand"}));
         assert_eq!((a.solid_tint, a.solid_tint_light), (SolidTint::Plum, SolidTint::Sand));
+    }
+
+    #[test]
+    fn hand_picked_panels_stay_on_their_side() {
+        let a = Appearance::from_value(&json!({"interfaceSolidColour": "#f0f0f0", "interfaceSolidColourLight": "#101010"}));
+        assert_eq!((a.solid_own, a.solid_own_light), (None, None));
+        let a = Appearance::from_value(&json!({"interfaceSolidColour": "#101820", "interfaceSolidColourLight": "#eeeeee"}));
+        assert_eq!((a.solid_own, a.solid_own_light), (Some((16, 24, 32)), Some((238, 238, 238))));
+        // A mid grey is moved until the secondary text of its side reads on it.
+        let (light, c) = own_panel((128, 128, 128));
+        let muted = if light { Palette::LIGHT.muted } else { Palette::DARK.muted };
+        assert!(contrast(c, muted) >= 4.5);
     }
 
     #[test]

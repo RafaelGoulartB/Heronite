@@ -235,6 +235,56 @@ pub fn from_hsl(h: f32, s: f32, l: f32) -> Rgb {
     (to8(r), to8(g), to8(b))
 }
 
+/// Hue 0..360, saturation and value 0..=1 (what a colour picker's square
+/// and hue strip show).
+pub fn to_hsv((r, g, b): Rgb) -> (f32, f32, f32) {
+    let (r, g, b) = (r as f32 / 255., g as f32 / 255., b as f32 / 255.);
+    let (max, min) = (r.max(g).max(b), r.min(g).min(b));
+    let d = max - min;
+    let h = if d < 1e-6 {
+        0.
+    } else if max == r {
+        60. * ((g - b) / d).rem_euclid(6.)
+    } else if max == g {
+        60. * ((b - r) / d + 2.)
+    } else {
+        60. * ((r - g) / d + 4.)
+    };
+    let s = if max <= 0. { 0. } else { d / max };
+    (h, s, max)
+}
+
+pub fn from_hsv(h: f32, s: f32, v: f32) -> Rgb {
+    let (s, v) = (s.clamp(0., 1.), v.clamp(0., 1.));
+    let c = v * s;
+    let hp = h.rem_euclid(360.) / 60.;
+    let x = c * (1. - (hp % 2. - 1.).abs());
+    let (r, g, b) = match hp as u32 {
+        0 => (c, x, 0.),
+        1 => (x, c, 0.),
+        2 => (0., c, x),
+        3 => (0., x, c),
+        4 => (x, 0., c),
+        _ => (c, 0., x),
+    };
+    let m = v - c;
+    let to8 = |x: f32| ((x + m) * 255.).round().clamp(0., 255.) as u8;
+    (to8(r), to8(g), to8(b))
+}
+
+/// Light enough for dark text: black reads better on it than white.
+pub fn is_light_colour(c: Rgb) -> bool {
+    contrast(c, (0, 0, 0)) > contrast(c, (255, 255, 255))
+}
+
+/// A panel colour picked by hand: whether it belongs to the light theme, and
+/// the colour moved until that theme's secondary text reads on it.
+pub fn own_panel(c: Rgb) -> (bool, Rgb) {
+    let light = is_light_colour(c);
+    let muted = if light { Palette::LIGHT.muted } else { Palette::DARK.muted };
+    (light, readable_on(c, &[muted], !light))
+}
+
 /// `c` with its hue kept, darkened (on a light theme) or lightened (on a
 /// dark one) until it reads on every one of `bgs` (4.6:1).
 pub fn readable_on(c: Rgb, bgs: &[Rgb], light: bool) -> Rgb {
@@ -339,6 +389,18 @@ mod tests {
             let d = |a: u8, b: u8| (a as i32 - b as i32).abs();
             assert!(d(back.0, c.0) <= 1 && d(back.1, c.1) <= 1 && d(back.2, c.2) <= 1, "{c:?} -> {back:?}");
         }
+    }
+
+    #[test]
+    fn hsv_round_trip() {
+        for c in [(0, 0, 0), (255, 255, 255), (232, 234, 238), (0x19, 0x64, 0x79), (200, 30, 90), (255, 0, 0)] {
+            let (h, s, v) = to_hsv(c);
+            let back = from_hsv(h, s, v);
+            let d = |a: u8, b: u8| (a as i32 - b as i32).abs();
+            assert!(d(back.0, c.0) <= 1 && d(back.1, c.1) <= 1 && d(back.2, c.2) <= 1, "{c:?} -> {back:?}");
+        }
+        assert_eq!(from_hsv(120., 1., 1.), (0, 255, 0));
+        assert!(is_light_colour((232, 234, 238)) && !is_light_colour((22, 27, 36)));
     }
 
     #[test]
