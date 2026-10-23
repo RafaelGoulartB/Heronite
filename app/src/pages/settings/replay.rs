@@ -20,7 +20,7 @@ use super::{overlay, SettingsPage};
 use crate::pages::PageCtx;
 use crate::services::replay::{Detected, Status};
 use crate::theme;
-use crate::ui::controls::{caption, card, card_box, row, tabs, toggle_row};
+use crate::ui::controls::{caption, card, card_box, row, tabs, toggle_row, with_sub_rows};
 use crate::ui::fields::{meta_text, select_field};
 
 /// Screen the estimate assumes until the recorder says which ones there are.
@@ -470,7 +470,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     let p = prefs(d, cx);
     let o = &p.options;
     let seconds: Vec<(u32, &'static str)> = SECONDS.iter().map(|s| (*s, seconds_label(*s))).collect();
-    let main = card([
+    let main = card([with_sub_rows(
         toggle_row(
             "replay-enabled",
             tr!("Keep a replay of the game"),
@@ -481,13 +481,13 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         )
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
         .into_any_element(),
-        row(
+        vec![row(
             tr!("Length saved"),
             Some(tr!("A longer replay takes more memory while you play.")),
             choice_tabs("replay-seconds", &seconds, o.seconds, cx, |o, v| o.seconds = v),
         )
-        .into_any_element(),
-    ]);
+        .into_any_element()],
+    )]);
     let per_game = match p.games.len() {
         0 => tr!("A game can have it on or off on its own: Game settings → Performance.").to_string(),
         n => heronite_i18n::trn!(

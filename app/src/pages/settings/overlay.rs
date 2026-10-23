@@ -16,7 +16,7 @@ use super::SettingsPage;
 use crate::overlay::HotkeyState;
 use crate::pages::{status_pill, PageCtx};
 use crate::theme;
-use crate::ui::controls::{caption, card, row, tabs, toggle_row};
+use crate::ui::controls::{caption, card, row, tabs, toggle_row, with_sub_rows};
 use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
 
 pub struct State {
@@ -144,7 +144,7 @@ pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
             update(d, cx, |p| p.screenshot_button = ChordButton::ALL[i]);
         },
     );
-    card([
+    card([with_sub_rows(
         toggle_row(
             "overlay-shot",
             shot_title(p),
@@ -153,13 +153,13 @@ pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
         )
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.screenshot_shortcut = !p.screenshot_shortcut)))
         .into_any_element(),
-        row(
+        vec![row(
             tr!("Button held with Guide"),
             Some(tr!("The game does not get it while Guide is held. ↑ / ↓ belong to the volume.")),
             div().w(px(220.)).child(select),
         )
-        .into_any_element(),
-    ])
+        .into_any_element()],
+    )])
 }
 
 fn moment_desc(p: &OverlayPrefs) -> &'static str {
@@ -253,7 +253,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             "The overlay is new and still being tested: it may not work with every controller, game or desktop. It stays off until you turn it on here."
         ))));
 
-    let main = card([toggle_row(
+    let main = card([with_sub_rows(toggle_row(
         "overlay-enabled",
         tr!("Turn on the overlay"),
         Some(tr!("During a game opened by Heronite, press the controller's Guide button (the centre one) to open it; press it again or B to close it.")),
@@ -261,7 +261,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     )
     .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
     .into_any_element(),
-    toggle_row(
+    vec![toggle_row(
         "overlay-without-game",
         tr!("Open it without a game too"),
         Some(tr!("Guide and the keyboard shortcut open it at any time Heronite is running, with the volume, the controllers and a way back to Heronite. Heronite then reads the controllers all the time, and Guide is the overlay's even outside games.")),
@@ -269,7 +269,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     )
     .when(!p.enabled, |r| r.opacity(0.5))
     .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.without_game = !p.without_game)))
-    .into_any_element()]);
+    .into_any_element()])]);
 
     let focused = d.overlay.hotkey.is_focused(window);
     let hotkey = hotkey_box(
@@ -284,7 +284,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         p.keyboard_accelerator.clone(),
         focused,
     );
-    let keyboard = card([
+    let keyboard = card([with_sub_rows(
         toggle_row(
             "overlay-keyboard",
             tr!("Open it with a keyboard shortcut"),
@@ -293,7 +293,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         )
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.keyboard_shortcut = !p.keyboard_shortcut)))
         .into_any_element(),
-        div()
+        vec![div()
             .py(px(12.))
             .flex()
             .flex_col()
@@ -306,8 +306,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             .children(hotkey_status(d, cx).map(|(text, error)| {
                 div().text_size(px(12.)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text)
             }))
-            .into_any_element(),
-    ]);
+            .into_any_element()],
+    )]);
 
     let shot = pad_shot_card(d, cx);
     let volume = card([

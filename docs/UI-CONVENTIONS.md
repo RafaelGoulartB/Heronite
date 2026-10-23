@@ -293,7 +293,9 @@ its own for scripts (the palette still opens them directly). `HERONITE_DEBUG_DIA
   fill, `Ghost` = no fill, `Danger` = red tint. Disabled = 45%.
 - `tabs(id, items, active, on_select)` = segmented pills (scrolls horizontally).
 - `card(rows)` / `card_box()` + `row(label, desc, control)` (11px padding,
-  separators between rows), `caption(text)`, `page_heading`
+  separators between rows), `with_sub_rows(parent, rows)` (the rows that only
+  matter because of `parent`, shown while it is on or for one of its values,
+  indented under it along a line, as one row of the card), `caption(text)`, `page_heading`
   (Rubik 26), `dialog_title` (Rubik 22), `help_text` (lead), `kicker` (the only
   uppercase text), `kbd("Ctrl K")`, `close_button(id)`, `nav_pill(id, icon, label, active)`.
 - Fields (`ui::fields`): `path_field` shows a folder icon and "Clear"/"Browse" in accent;

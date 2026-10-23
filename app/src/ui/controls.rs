@@ -136,6 +136,23 @@ pub fn card(rows: impl IntoIterator<Item = AnyElement>) -> Div {
     c
 }
 
+/// `parent` with the rows that only matter because of it (shown while it is
+/// on, or one of its values) under it, indented along a line. Inside a
+/// [`card`], as one of its rows.
+pub fn with_sub_rows(parent: AnyElement, rows: Vec<AnyElement>) -> AnyElement {
+    if rows.is_empty() {
+        return parent;
+    }
+    let mut group = div().flex().flex_col().ml(px(4.)).mb(px(10.)).pl(px(16.)).border_l_2().border_color(theme::ink_a(0.1));
+    for (i, r) in rows.into_iter().enumerate() {
+        if i > 0 {
+            group = group.child(div().h(px(1.)).w_full().bg(theme::row_separator()));
+        }
+        group = group.child(r);
+    }
+    div().flex().flex_col().child(parent).child(group).into_any_element()
+}
+
 /// Line height of a [`caption`].
 pub const CAPTION_H: f32 = 16.;
 
