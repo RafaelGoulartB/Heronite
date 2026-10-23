@@ -99,7 +99,10 @@ drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
 from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
 (default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum for the dark theme and
 `interfaceSolidTintLight` paper (default) | sand | frost | lilac for the light one (`theme::solid_tint()` gives the
-current theme's).
+current theme's). The Colour row shows the eight as dots, dark and light together, plus a dot for a colour picked
+by hand (`interfaceSolidColour` / `interfaceSolidColourLight`, through `own_panel`: it goes to the side its brightness
+belongs to and is moved until that side's secondary text reads on it); picking a light colour turns the theme light
+and a dark one dark, System keeps one per side. `theme::panel_rgb()` is the panels' colour wherever it comes from.
 These live in this app's `appearance.json` (`AppPaths::appearance()`, next to
 `ui-state.json`; `heronite_data::appearance::Appearance`), NOT in the data folder.
 At runtime `theme::appearance()/set_appearance()` (a process-wide value) feeds
@@ -161,11 +164,14 @@ System. On the light theme the Collection background's Darkening is called Fadin
 colours (`Role`: page, panels, raised parts, text, secondary text, accent) in `customPalette`, light or dark as the
 panels are. While it is drawn (`theme::custom_palette()`, `Scheme::Custom`) every token derives from them: surfaces
 and text as picked, `ink_a` in the text colour, status colours through `readable_on` its backgrounds, the accent
-from the palette (the Accent row hides). The editor shows one colour at a time (hex, hue / saturation / lightness
-sliders, suggestions), the contrast of the text colours on the panels with "Make it readable" below 4.5:1, and the
+from the palette (the Accent row hides). The editor shows one colour at a time (the colour picker, suggestions), the contrast of the text colours on the panels with "Make it readable" below 4.5:1, and the
 themes saved by name (`customThemes`, export / import with the `heroniteTheme` marker). Like the theme, the custom
 colours stay out of profiles. Light colours come from `LIGHT_PAPER` / `LIGHT_PAGE` / `LIGHT_LIFT` in
 `theme/color.rs` (keep `SolidTint::Paper` equal to `LIGHT_PAPER`).
+
+**Colour picker** (`ui::colour_picker::ColourPicker`, an entity): a saturation / brightness square and a hue strip to
+click or drag on (drags go through `on_drag_move`, so they follow the pointer outside), a hex field; it emits
+`PickerEvent::Change` while dragging and `Commit` at the end or when a hex is typed, and `set` moves it without an event.
 
 **Surfaces** (`ui::glass`): `glass_panel(radius)` (big shadow; popovers 20, sheets
 26, drawers 24), `glass_menu_surface(radius)` (menus/dropdown lists, radius 14). Children added after the constructor paint above the layers. Children
