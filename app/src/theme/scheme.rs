@@ -13,12 +13,21 @@
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use gpui_kit::WindowAppearance;
-use heronite_data::appearance::Theme;
+use heronite_data::appearance::{Palette, Theme};
 
 static SYSTEM_LIGHT: AtomicBool = AtomicBool::new(false);
 static DARK_ONLY: AtomicBool = AtomicBool::new(false);
-/// The scheme [`drawn_as`] forces: 0 none, 1 dark, 2 light.
+/// The scheme [`drawn_as`] forces: 0 none, then 1 + [`Scheme`].
 static FORCED: AtomicU8 = AtomicU8::new(0);
+
+/// The colours a window or a picture is drawn in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scheme {
+    Dark,
+    Light,
+    /// The user's own colours (Settings → Appearance → Theme → Custom).
+    Custom,
+}
 
 /// The desktop's style, as the window reports it. True when it changed.
 pub fn set_system_appearance(a: WindowAppearance) -> bool {
@@ -31,12 +40,12 @@ pub fn set_dark_only(on: bool) {
     DARK_ONLY.store(on, Ordering::Relaxed);
 }
 
-/// Builds `f`'s elements as the light (`light`) or dark theme draws them:
-/// a picture of a screen in the other theme, or of one that stays dark.
-/// The colours are read while building, so the elements keep them; nothing
-/// in `f` may read one later (a canvas's paint).
-pub fn drawn_as<R>(light: bool, f: impl FnOnce() -> R) -> R {
-    let was = FORCED.swap(if light { 2 } else { 1 }, Ordering::Relaxed);
+/// Builds `f`'s elements as `scheme` draws them: a picture of a screen in
+/// another theme, or of one that stays dark. The colours are read while
+/// building, so the elements keep them; nothing in `f` may read one later
+/// (a canvas's paint).
+pub fn drawn_as<R>(scheme: Scheme, f: impl FnOnce() -> R) -> R {
+    let was = FORCED.swap(1 + scheme as u8, Ordering::Relaxed);
     let out = f();
     FORCED.store(was, Ordering::Relaxed);
     out
@@ -63,11 +72,30 @@ pub fn theme_is_light() -> bool {
     theme_light(super::appearance().theme)
 }
 
+/// The scheme being drawn.
+pub fn scheme() -> Scheme {
+    match FORCED.load(Ordering::Relaxed) {
+        1 => Scheme::Dark,
+        2 => Scheme::Light,
+        3 => Scheme::Custom,
+        _ if DARK_ONLY.load(Ordering::Relaxed) => Scheme::Dark,
+        _ if super::appearance().theme == Theme::Custom => Scheme::Custom,
+        _ if theme_is_light() => Scheme::Light,
+        _ => Scheme::Dark,
+    }
+}
+
+/// The custom colours while they are what is being drawn; the tokens take
+/// them over their own values.
+pub fn custom_palette() -> Option<Palette> {
+    (scheme() == Scheme::Custom).then(|| super::appearance().custom)
+}
+
 /// Is the interface being drawn light?
 pub fn is_light() -> bool {
-    match FORCED.load(Ordering::Relaxed) {
-        1 => false,
-        2 => true,
-        _ => !DARK_ONLY.load(Ordering::Relaxed) && theme_is_light(),
+    match scheme() {
+        Scheme::Dark => false,
+        Scheme::Light => true,
+        Scheme::Custom => super::appearance().custom.light,
     }
 }

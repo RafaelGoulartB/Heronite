@@ -195,7 +195,7 @@ pub fn collection_preview(art: &Art, w: f32, grid: bool) -> Div {
     let b = Board { k: w / 600. };
     let a = theme::appearance();
     let solid = a.interface_mode == InterfaceMode::Solid;
-    let (r, g, bl) = theme::solid_tint().rgb();
+    let (r, g, bl) = theme::panel_rgb();
     let panel = if solid { theme::rgba_hsla(r, g, bl, 0.98) } else { theme::preview_glass() };
     let backdrop = if a.background == BackgroundSource::Solid {
         div().absolute().inset_0().bg(theme::rgba_hsla(r, g, bl, 1.))
@@ -379,7 +379,7 @@ fn grid_layout(board: Div, art: &Art, b: Board, panel: Hsla) -> Div {
 /// board `w` wide; `left`: the side of the screen it opens on.
 pub fn overlay_preview(art: &Art, w: f32, left: bool) -> Div {
     // The overlay is dark whatever the theme.
-    theme::drawn_as(false, || overlay_board(art, w, left))
+    theme::drawn_as(theme::Scheme::Dark, || overlay_board(art, w, left))
 }
 
 fn overlay_board(art: &Art, w: f32, left: bool) -> Div {

@@ -9,17 +9,17 @@ use heronite_i18n::{tr, trc};
 
 use super::look::set_look;
 use super::{apply_interface, SettingsPage, State};
-use crate::theme;
+use crate::theme::{self, Scheme};
 use crate::ui::controls::{row, tabs};
 
 pub(super) fn theme_items() -> [(Theme, &'static str); 3] {
     [(Theme::Dark, trc!("theme", "Dark")), (Theme::Light, trc!("theme", "Light")), (Theme::System, trc!("theme", "System"))]
 }
 
-/// A small window in the colours of the light (`light`) or dark theme, with
-/// the current accent and solid colour.
-fn window_picture(light: bool) -> Div {
-    theme::drawn_as(light, || {
+/// A small window in the colours of `scheme`, with the current accent and
+/// solid colour.
+fn window_picture(scheme: Scheme) -> Div {
+    theme::drawn_as(scheme, || {
         let bar = |top: f32, w: f32, a: f32| {
             div().absolute().left(relative(0.34)).top(px(top)).w(relative(w)).h(px(6.)).rounded(px(3.)).bg(theme::ink_a(a))
         };
@@ -38,7 +38,7 @@ fn window_picture(light: bool) -> Div {
 /// The dark window's left half next to the light window's right half.
 fn system_picture() -> Div {
     let half = |light: bool| {
-        let pic = window_picture(light).absolute().top_0().w(relative(2.));
+        let pic = window_picture(if light { Scheme::Light } else { Scheme::Dark }).absolute().top_0().w(relative(2.));
         div().relative().w(relative(0.5)).h_full().overflow_hidden().child(if light { pic.left(relative(-1.)) } else { pic.left_0() })
     };
     div().flex().size_full().child(half(false)).child(half(true))
@@ -50,10 +50,10 @@ pub(super) fn theme_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Any
     let mut cards = div().flex().flex_wrap().gap(px(10.));
     for (t, label) in theme_items() {
         let picture = match t {
-            Theme::Dark => window_picture(false),
-            Theme::Light => window_picture(true),
+            Theme::Dark => window_picture(Scheme::Dark),
+            Theme::Light => window_picture(Scheme::Light),
             Theme::System => system_picture(),
-            Theme::Custom => window_picture(theme::theme_light(t)),
+            Theme::Custom => window_picture(Scheme::Custom),
         };
         let note = (t == Theme::System).then(|| if theme::system_is_light() { tr!("Light now") } else { tr!("Dark now") });
         let on = t == current;

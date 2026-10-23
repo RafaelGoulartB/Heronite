@@ -8,9 +8,9 @@
 //! the Appearance page updates it while a slider moves.
 
 use gpui_kit::{px, Hsla};
-use heronite_data::appearance::{Accent, Appearance, InterfaceMode, SolidTint};
+use heronite_data::appearance::{Accent, Appearance, InterfaceMode, Rgb, SolidTint};
 
-use super::{black_a, ink_a, is_light, readable_on_light, rgba_hsla, shadow_a, white_a, with_alpha, LIGHT_PAGE};
+use super::{black_a, custom_palette, ink_a, is_light, readable_on_light, rgba_hsla, shadow_a, white_a, with_alpha, LIGHT_PAGE};
 
 static APPEARANCE: std::sync::RwLock<Appearance> = std::sync::RwLock::new(Appearance::DEFAULT);
 
@@ -64,6 +64,9 @@ pub fn accent_shade(a: Accent) -> Option<(u8, u8, u8)> {
 /// The accent colour (Settings → Appearance → Accent colour), in the shade
 /// of the current theme.
 pub fn accent_rgb() -> (u8, u8, u8) {
+    if let Some(p) = custom_palette() {
+        return p.accent;
+    }
     let light = is_light();
     if let Some(c) = accent_shade(appearance().accent) {
         return c;
@@ -135,7 +138,15 @@ pub fn solid_tint() -> SolidTint {
     }
 }
 
+/// The panels' colour: the custom theme's, else the [`solid_tint`].
+pub fn panel_rgb() -> Rgb {
+    custom_palette().map_or_else(|| solid_tint().rgb(), |p| p.panel)
+}
+
 fn glass_tint(a: f32) -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.panel, a);
+    }
     // Transparent glass always uses Slate (Paper on the light theme); the
     // presets are for Solid.
     let tint = match (solid_mode(), is_light()) {
@@ -167,6 +178,9 @@ pub fn glass_art_dim() -> Hsla {
     let o = panel_opacity();
     let t = ((o - DIM_KNEE) / (1. - DIM_KNEE)).clamp(0., 1.);
     let a = 0.5 + 0.5 * t;
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.page, a);
+    }
     if is_light() {
         with_alpha(LIGHT_PAGE, a)
     } else {
@@ -184,6 +198,9 @@ pub fn page_backdrop() -> Hsla {
         0.35 + 0.20 * ((o - 0.5) / (DIM_KNEE - 0.5)).clamp(0., 1.)
     };
     // Solid: the plain page colour, no art behind the sheet.
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.page, a);
+    }
     let (r, g, b) = match (is_light(), solid_mode()) {
         (false, true) => (7, 9, 12),
         (false, false) => (10, 12, 16),
@@ -292,6 +309,22 @@ mod appearance_tests {
         assert!(is_light());
         assert!(!set_system_appearance(WindowAppearance::Light));
         set_system_appearance(WindowAppearance::Dark);
+
+        // The custom theme: surfaces, text and accent as picked, ink in its text colour.
+        let mut custom = heronite_data::appearance::Palette::DARK;
+        custom.panel = (40, 20, 30);
+        custom.accent = (250, 120, 30);
+        set_appearance(Appearance { theme: Theme::Custom, custom, ..Appearance::default() });
+        assert!(!is_light());
+        assert_eq!(panel_rgb(), (40, 20, 30));
+        assert_eq!(glass_fill(), with_alpha((40, 20, 30), 0.9));
+        assert_eq!(accent_rgb(), (250, 120, 30));
+        assert_eq!(crate::theme::ink_a(0.1), with_alpha(custom.text, 0.1));
+        set_dark_only(true);
+        assert!(crate::theme::custom_palette().is_none());
+        set_dark_only(false);
+        set_appearance(Appearance { theme: Theme::Custom, custom: heronite_data::appearance::Palette::LIGHT, ..Appearance::default() });
+        assert!(is_light());
         set_appearance(Appearance::default());
     }
 }

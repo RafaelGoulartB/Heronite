@@ -1,11 +1,15 @@
 //! Colours: the `nord-dark` palette and its light counterpart, text, and
 //! the fills of cards, buttons, tabs and inputs. A token with two values
 //! gives the light one while [`is_light`]; the light text and status colours
-//! keep 4.5:1 on every light panel colour, cards included.
+//! keep 4.5:1 on every light panel colour, cards included. With the user's
+//! own theme ([`custom_palette`]) the tokens come from its six colours:
+//! surfaces and text as picked, lines and fills in its text colour, status
+//! colours moved until they read on its panels.
 
 use gpui_kit::{hsla, rgb, rgba, Hsla, Rgba};
+use heronite_data::appearance::{contrast as contrast_of, mix, readable_on, Palette, Rgb};
 
-use super::{accent_rgb, contrast_a, high_contrast, is_light};
+use super::{accent_rgb, contrast_a, custom_palette, high_contrast, is_light};
 
 /// The light theme's ink: its text, lines and faint fills are this colour,
 /// as the dark theme's are white.
@@ -27,6 +31,32 @@ pub(super) fn with_alpha((r, g, b): (u8, u8, u8), a: f32) -> Hsla {
 /// `dark` on the dark theme, `light` on the light one.
 fn pick(dark: u32, light: u32) -> Rgba {
     rgb(if is_light() { light } else { dark })
+}
+
+fn solid((r, g, b): Rgb) -> Rgba {
+    rgb_a(r, g, b, 1.)
+}
+
+/// `custom` of the custom palette while it is drawn, else [`pick`].
+fn cpick(dark: u32, light: u32, custom: impl FnOnce(&Palette) -> Rgb) -> Rgba {
+    match custom_palette() {
+        Some(p) => solid(custom(&p)),
+        None => pick(dark, light),
+    }
+}
+
+/// A status colour: [`pick`], moved until it reads on the custom panels.
+fn status(dark: u32, light: u32) -> Rgba {
+    let c = pick(dark, light);
+    match custom_palette() {
+        Some(p) => solid(readable_on(to_rgb8(c), &p.backgrounds(), p.light)),
+        None => c,
+    }
+}
+
+fn to_rgb8(c: Rgba) -> Rgb {
+    let to8 = |x: f32| (x * 255.).round().clamp(0., 255.) as u8;
+    (to8(c.r), to8(c.g), to8(c.b))
 }
 
 /// `rgba(255,255,255,a)`
@@ -53,6 +83,9 @@ pub fn rgba_hsla(r: u8, g: u8, b: u8, a: f32) -> Hsla {
 /// the light one. Faint fills, borders, hovers and lines of the surfaces;
 /// what sits on a picture keeps [`white_a`].
 pub fn ink_a(a: f32) -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.text, a);
+    }
     if is_light() {
         rgba_hsla(INK_LIGHT.0, INK_LIGHT.1, INK_LIGHT.2, a)
     } else {
@@ -81,6 +114,9 @@ pub fn shadow_a(a: f32) -> Hsla {
 
 // Palette (`nord-dark` and its light counterpart).
 pub fn page_bg() -> Rgba {
+    if let Some(p) = custom_palette() {
+        return solid(p.page);
+    }
     if is_light() {
         rgb_a(LIGHT_PAGE.0, LIGHT_PAGE.1, LIGHT_PAGE.2, 1.)
     } else {
@@ -144,6 +180,10 @@ pub(super) fn readable_on_light(c: (u8, u8, u8)) -> (u8, u8, u8) {
 /// a group's colour, gold stars).
 pub fn readable(c: impl Into<Hsla>) -> Hsla {
     let c: Hsla = c.into();
+    if let Some(p) = custom_palette() {
+        let (r, g, b) = readable_on(to_rgb8(c.to_rgb()), &p.backgrounds(), p.light);
+        return rgba_hsla(r, g, b, c.a);
+    }
     if !is_light() {
         return c;
     }
@@ -163,23 +203,23 @@ fn accent_a(a: f32) -> Hsla {
     accent_alpha(a).into()
 }
 pub fn navbar_background() -> Rgba {
-    pick(0x2e3440, 0xf1f3f6)
+    cpick(0x2e3440, 0xf1f3f6, |p| p.lift)
 }
 pub fn background() -> Rgba {
-    pick(0x191c22, 0xe8eaee)
+    cpick(0x191c22, 0xe8eaee, |p| p.panel)
 }
 pub fn success() -> Rgba {
-    pick(0x94f1ab, 0x1a6946)
+    status(0x94f1ab, 0x1a6946)
 }
 pub fn danger() -> Rgba {
-    pick(0xbf616a, 0x9a3e48)
+    status(0xbf616a, 0x9a3e48)
 }
 /// Something the user may want to do, not an error ("Restart Steam once").
 pub fn warning() -> Rgba {
-    pick(0xf5cd5b, 0x745808)
+    status(0xf5cd5b, 0x745808)
 }
 pub fn selected_ring() -> Rgba {
-    pick(0xe8dcc0, 0x2a313b)
+    cpick(0xe8dcc0, 0x2a313b, |p| p.text)
 }
 
 /// Console mode (proposal "2 · Console"): dark surfaces, a light pill for
@@ -278,27 +318,30 @@ pub fn status_color(slug: &str) -> Rgba {
 
 // Text.
 pub fn text_primary() -> Rgba {
-    pick(0xe8edf4, 0x20262f)
+    cpick(0xe8edf4, 0x20262f, |p| p.text)
 }
 /// Captions, leads, labels above fields (`#9aa6b6`).
 pub fn text_muted() -> Rgba {
     if high_contrast() {
-        pick(0xc8d0dc, 0x333b46)
+        cpick(0xc8d0dc, 0x333b46, |p| mix(p.muted, p.text, 0.5))
     } else {
-        pick(0x9aa6b6, 0x475262)
+        cpick(0x9aa6b6, 0x475262, |p| p.muted)
     }
 }
 /// Row descriptions (`#8c97a8`).
 pub fn text_dim() -> Rgba {
     if high_contrast() {
-        pick(0xbcc6d3, 0x3c434e)
+        cpick(0xbcc6d3, 0x3c434e, |p| mix(p.muted, p.text, 0.4))
     } else {
-        pick(0x8c97a8, 0x545d6d)
+        cpick(0x8c97a8, 0x545d6d, |p| p.muted)
     }
 }
 /// Text a step above [`text_primary`]: active tabs and pills, titles over
 /// the Collection (white on the dark theme).
 pub fn text_bright() -> Hsla {
+    if let Some(p) = custom_palette() {
+        return solid(p.text).into();
+    }
     if is_light() {
         rgb(0x171c23).into()
     } else {
@@ -307,14 +350,20 @@ pub fn text_bright() -> Hsla {
 }
 /// "Might not be writable", "Not enough disk space", a script's notes.
 pub fn caution_text() -> Rgba {
-    pick(0xebcb8b, 0x745808)
+    status(0xebcb8b, 0x745808)
 }
 /// Plain lines of a log.
 pub fn code_text() -> Rgba {
-    pick(0xd8dee9, 0x222831)
+    cpick(0xd8dee9, 0x222831, |p| p.text)
 }
 /// Text drawn on an accent fill.
 pub fn on_accent() -> Rgba {
+    if custom_palette().is_some() {
+        // Whichever of near black and white reads better on the accent.
+        let a = accent_rgb();
+        let (dark, white) = ((12, 26, 32), (255, 255, 255));
+        return solid(if contrast_of(a, dark) >= contrast_of(a, white) { dark } else { white });
+    }
     pick(0x0c1a20, 0xffffff)
 }
 
@@ -344,7 +393,7 @@ pub fn button_border() -> Hsla {
     ink_a(if high_contrast() { 0.22 } else { 0.10 })
 }
 pub fn button_text() -> Rgba {
-    pick(0xeef2f7, 0x222831)
+    cpick(0xeef2f7, 0x222831, |p| p.text)
 }
 pub fn danger_fill() -> Hsla {
     rgba_hsla(191, 97, 106, 0.20)
@@ -353,7 +402,7 @@ pub fn danger_fill_hover() -> Hsla {
     rgba_hsla(191, 97, 106, 0.30)
 }
 pub fn danger_text() -> Rgba {
-    pick(0xf2a5ad, 0xb51a2b)
+    status(0xf2a5ad, 0xb51a2b)
 }
 
 // Segmented tabs.
@@ -362,6 +411,9 @@ pub fn seg_track() -> Hsla {
 }
 /// The active tab, lifted off the track (white on the light theme).
 pub fn seg_active() -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.lift, 0.95);
+    }
     if is_light() {
         with_alpha(LIGHT_LIFT, 0.95)
     } else {
@@ -370,9 +422,9 @@ pub fn seg_active() -> Hsla {
 }
 pub fn seg_text() -> Rgba {
     if high_contrast() {
-        pick(0xdde3eb, 0x252c35)
+        cpick(0xdde3eb, 0x252c35, |p| mix(p.muted, p.text, 0.7))
     } else {
-        pick(0xb5bfcc, 0x3a4453)
+        cpick(0xb5bfcc, 0x3a4453, |p| mix(p.muted, p.text, 0.35))
     }
 }
 
@@ -380,7 +432,7 @@ pub fn seg_text() -> Rgba {
 // light one.
 pub fn input_fill() -> Hsla {
     if is_light() {
-        with_alpha(LIGHT_LIFT, 0.6)
+        with_alpha(custom_palette().map_or(LIGHT_LIFT, |p| p.lift), 0.6)
     } else {
         black_a(0.25)
     }
@@ -400,9 +452,9 @@ pub fn input_border_focus() -> Hsla {
 // Side navigation pills and the accent tint of active items.
 pub fn nav_text() -> Rgba {
     if high_contrast() {
-        pick(0xe2e7ee, 0x181d25)
+        cpick(0xe2e7ee, 0x181d25, |p| p.text)
     } else {
-        pick(0xc3cbd8, 0x2b3341)
+        cpick(0xc3cbd8, 0x2b3341, |p| mix(p.muted, p.text, 0.6))
     }
 }
 pub fn accent_tint() -> Hsla {
@@ -439,6 +491,9 @@ pub fn chip_fill() -> Hsla {
 /// The Collection's scrims over the art at alpha `a`: the dark page colour,
 /// or the light one (the light theme fades the art instead of darkening it).
 pub fn stage_ink_a(a: f32) -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.page, a);
+    }
     if is_light() {
         with_alpha(LIGHT_PAGE, a)
     } else {
@@ -449,6 +504,9 @@ pub fn stage_ink_a(a: f32) -> Hsla {
 /// The strongest pill: white on the dark theme, ink on the light one (Play,
 /// the active half of the Focus / Grid switch).
 pub fn solid_pill() -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.text, 0.88);
+    }
     if is_light() {
         ink_a(0.85)
     } else {
@@ -457,11 +515,14 @@ pub fn solid_pill() -> Hsla {
 }
 /// Text on a [`solid_pill`].
 pub fn on_solid_pill() -> Rgba {
-    pick(0x0b0e13, 0xffffff)
+    cpick(0x0b0e13, 0xffffff, |p| p.panel)
 }
 
 /// The panels of "Getting started"'s picture of the Collection, Transparent.
 pub fn preview_glass() -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.panel, 0.72);
+    }
     if is_light() {
         with_alpha(LIGHT_PAPER, 0.72)
     } else {
@@ -471,6 +532,9 @@ pub fn preview_glass() -> Hsla {
 
 /// An opaque card straight on the Collection (the welcome's load error).
 pub fn opaque_card() -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.panel, 0.96);
+    }
     if is_light() {
         with_alpha(LIGHT_PAPER, 0.96)
     } else {
@@ -480,6 +544,9 @@ pub fn opaque_card() -> Hsla {
 
 /// A toast at the bottom of the Collection.
 pub fn toast_fill() -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.lift, 0.96);
+    }
     if is_light() {
         with_alpha(LIGHT_LIFT, 0.96)
     } else {
@@ -489,11 +556,14 @@ pub fn toast_fill() -> Hsla {
 
 /// The title of a ☰ page.
 pub fn page_title() -> Rgba {
-    pick(0xcaf3fd, 0x20262f)
+    cpick(0xcaf3fd, 0x20262f, |p| p.text)
 }
 
 /// What the grid drawer's art fades into (its glass, nearly opaque).
 pub fn drawer_fade(a: f32) -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.panel, a);
+    }
     if is_light() {
         with_alpha(LIGHT_PAPER, a)
     } else {
@@ -503,6 +573,9 @@ pub fn drawer_fade(a: f32) -> Hsla {
 
 /// A button sitting on a picture (the grid drawer's close button).
 pub fn art_button_fill() -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.lift, 0.85);
+    }
     if is_light() {
         with_alpha(LIGHT_LIFT, 0.85)
     } else {
@@ -514,20 +587,23 @@ pub fn art_button_fill() -> Hsla {
 // the details.
 /// The Play button: a light pill on the dark theme, an ink one on the light.
 pub fn play_fill() -> Rgba {
-    pick(0xf3f5f7, 0x2a313b)
+    cpick(0xf3f5f7, 0x2a313b, |p| p.text)
 }
 pub fn play_fill_hover() -> Rgba {
-    pick(0xffffff, 0x20262f)
+    cpick(0xffffff, 0x20262f, |p| mix(p.text, if p.light { (0, 0, 0) } else { (255, 255, 255) }, 0.15))
 }
 pub fn play_text() -> Rgba {
-    pick(0x161616, 0xffffff)
+    cpick(0x161616, 0xffffff, |p| p.panel)
 }
 /// The launch option after Play's label.
 pub fn play_note() -> Rgba {
-    pick(0x5a5f66, 0xb4bcc8)
+    cpick(0x5a5f66, 0xb4bcc8, |p| mix(p.panel, p.text, 0.35))
 }
 /// A card of the focus panel over the art (`dense`: the facts card).
 pub fn focus_card_fill(dense: bool) -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(if p.light { p.lift } else { p.panel }, if dense { 0.6 } else { 0.5 });
+    }
     match (is_light(), dense) {
         (false, true) => rgba_hsla(18, 22, 28, 0.45),
         (false, false) => rgba_hsla(12, 14, 18, 0.5),
@@ -537,6 +613,9 @@ pub fn focus_card_fill(dense: bool) -> Hsla {
 }
 /// Fill of a round button at `a` (`rgba(16,18,22,a)`; white on the light theme).
 pub fn round_fill(a: f32) -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(p.lift, a);
+    }
     if is_light() {
         with_alpha(LIGHT_LIFT, a)
     } else {
@@ -544,6 +623,9 @@ pub fn round_fill(a: f32) -> Hsla {
     }
 }
 pub fn round_fill_hover() -> Hsla {
+    if let Some(p) = custom_palette() {
+        return with_alpha(mix(p.lift, p.text, 0.06), 0.95);
+    }
     if is_light() {
         rgba_hsla(248, 249, 251, 0.95)
     } else {
@@ -551,7 +633,7 @@ pub fn round_fill_hover() -> Hsla {
     }
 }
 pub fn round_icon() -> Rgba {
-    pick(0xf4f6f8, 0x20262f)
+    cpick(0xf4f6f8, 0x20262f, |p| p.text)
 }
 pub fn focus_chip_fill() -> Hsla {
     if is_light() {

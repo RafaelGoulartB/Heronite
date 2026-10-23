@@ -63,7 +63,7 @@ pub fn scrim_layers(s: Scrim) -> Div {
 /// Settings → Appearance → Background "Solid colour": the panels' colour
 /// under the same scrims.
 pub fn solid(s: Scrim) -> AnyElement {
-    let (r, g, b) = crate::theme::solid_tint().rgb();
+    let (r, g, b) = crate::theme::panel_rgb();
     div().absolute().inset_0().bg(crate::theme::rgb_a(r, g, b, 1.)).child(scrim_layers(s)).into_any_element()
 }
 
