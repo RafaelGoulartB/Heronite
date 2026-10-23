@@ -4,6 +4,15 @@
 //! (`heronite_wine::default::ensure_default`, run by the install). The dialogs
 //! show its progress and pick it once it is there.
 //!
+//! It also keeps the installed `-latest` builds up to date (Wine Manager's
+//! "Keep the -latest builds up to date", `autoUpdateLatestProton`, on unless
+//! turned off): a few minutes after the start and then every
+//! [`UPDATE_EVERY`], only the sources that have one are checked
+//! (`heronite_wine::auto`), which reads their release feed and calls GitHub's
+//! API only when something was published. A new release downloads in the
+//! background, never while a game runs: a game starting meanwhile stops the
+//! download, which tries again later.
+//!
 //! The service owns the app's `WineManager`, which the Wine Manager page
 //! shares: the page shows the download, and neither can start it twice.
 //! `HERONITE_WINE_OFFLINE=1` keeps it from asking the network.
@@ -12,7 +21,17 @@ use std::time::Duration;
 
 use gpui_kit::*;
 use heronite_data::DataPaths;
-use heronite_wine::{JobPhase, WineManager};
+use heronite_wine::{CheckMode, JobPhase, WineConfig, WineManager};
+
+/// After the start, before the first look for new `-latest` releases.
+const FIRST_UPDATE_CHECK: Duration = Duration::from_secs(3 * 60);
+/// Between two looks; the release feeds are not read more often anyway
+/// (`heronite_wine::checks::AUTO_EVERY`).
+const UPDATE_EVERY: Duration = heronite_wine::checks::AUTO_EVERY;
+/// While a game runs, the update waits this long and tries again.
+const WHILE_PLAYING: Duration = Duration::from_secs(10 * 60);
+/// How often a check or a download in progress is looked at.
+const POLL: Duration = Duration::from_millis(500);
 
 /// Where the automatic GE-Proton is.
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +81,76 @@ pub fn get(cx: &mut App) -> Entity<ProtonSetup> {
     let entity = cx.new(|_| ProtonSetup { data_paths, manager, state: Setup::Idle });
     cx.set_global(ProtonSetupGlobal(entity.clone()));
     entity
+}
+
+/// Starts the service and the automatic update of the installed `-latest`
+/// builds. Called by the hub at start.
+pub fn init(cx: &mut App) {
+    let entity = get(cx);
+    if !cfg!(target_os = "linux") || crate::env::flag("HERONITE_WINE_OFFLINE") {
+        return;
+    }
+    cx.spawn(async move |cx| {
+        cx.background_executor().timer(FIRST_UPDATE_CHECK).await;
+        loop {
+            let wait = update_latest(&entity, cx).await;
+            cx.background_executor().timer(wait).await;
+        }
+    })
+    .detach();
+}
+
+/// One look for new releases of the installed `-latest` builds, and their
+/// downloads; gives the time until the next look.
+async fn update_latest(entity: &Entity<ProtonSetup>, cx: &mut AsyncApp) -> Duration {
+    let (paths, manager) = cx.update(|cx| {
+        let s = entity.read(cx);
+        (s.data_paths.clone(), s.manager.clone())
+    });
+    let playing = |cx: &mut AsyncApp| cx.update(|cx| crate::services::session::any_running(cx));
+    if playing(cx) {
+        return WHILE_PLAYING;
+    }
+    let p = paths.clone();
+    let (on, sources) = cx
+        .background_spawn(async move {
+            (WineConfig::load(&p).auto_update_latest, heronite_wine::auto::latest_sources(&heronite_wine::store::read_releases(&p)))
+        })
+        .await;
+    if !on || sources.is_empty() {
+        return UPDATE_EVERY;
+    }
+    // Through the manager, in line with the Wine Manager's own checks.
+    for repo in &sources {
+        manager.start_check(*repo, CheckMode::Auto);
+    }
+    while sources.iter().any(|r| manager.checking(*r)) {
+        cx.background_executor().timer(POLL).await;
+    }
+    let p = paths.clone();
+    let updates = cx.background_spawn(async move { heronite_wine::auto::latest_updates(&heronite_wine::store::read_releases(&p)) }).await;
+    for info in updates {
+        if playing(cx) {
+            return WHILE_PLAYING;
+        }
+        let version = info.version.clone();
+        log::info!("proton update: {version} has a new release, downloading it");
+        manager.start_install(info);
+        while let Some(job) = manager.job(&version) {
+            // The build may be in use: a game starting stops a download (not
+            // the unpacking, which takes seconds), tried again later.
+            if matches!(job.phase, JobPhase::Starting | JobPhase::Downloading { .. }) && playing(cx) {
+                log::info!("proton update: a game started, {version} waits");
+                manager.cancel(&version);
+                while manager.job(&version).is_some() {
+                    cx.background_executor().timer(POLL).await;
+                }
+                return WHILE_PLAYING;
+            }
+            cx.background_executor().timer(POLL).await;
+        }
+    }
+    UPDATE_EVERY
 }
 
 /// The app's Wine Manager jobs (installs, removals, release checks).

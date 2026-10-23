@@ -217,6 +217,17 @@ impl WineManagerPage {
             let v = !this.download_to_steam;
             this.set_download_to_steam(v, cx);
         }))
+        .into_any_element(),
+        toggle_row(
+            "wine-auto-latest",
+            tr!("Keep the -latest builds up to date"),
+            Some(tr!("A -latest build you installed downloads its new release by itself, in the background and never while a game runs. Looked for every 6 hours, from the release feed, so GitHub is only asked when something came out.")),
+            self.auto_update_latest,
+        )
+        .on_click(cx.listener(|this, _, _, cx| {
+            let v = !this.auto_update_latest;
+            this.set_auto_update_latest(v, cx);
+        }))
         .into_any_element()])
     }
 

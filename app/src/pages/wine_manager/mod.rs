@@ -42,6 +42,9 @@ pub struct WineManagerPage {
     /// Version whose removal awaits confirmation.
     confirm_remove: Option<String>,
     download_to_steam: bool,
+    /// The installed `-latest` builds update by themselves
+    /// (`services::proton_setup`).
+    auto_update_latest: bool,
     /// `WineManager::revision` last seen by `poll`.
     last_rev: u64,
     offline: bool,
@@ -98,6 +101,7 @@ impl WineManagerPage {
             query: String::new(),
             confirm_remove: None,
             download_to_steam: false,
+            auto_update_latest: true,
             last_rev: 0,
             offline: crate::env::flag("HERONITE_WINE_OFFLINE"),
             limited: HashMap::new(),
@@ -139,6 +143,7 @@ impl WineManagerPage {
                 this.releases = releases;
                 this.loaded = true;
                 this.download_to_steam = cfg.download_proton_to_steam;
+                this.auto_update_latest = cfg.auto_update_latest;
                 if fake_progress {
                     this.install_fakes(fake_confirm);
                 }
@@ -330,6 +335,24 @@ impl WineManagerPage {
             if let Err(e) = res {
                 this.update(cx, |this, cx| {
                     this.download_to_steam = !value;
+                    this.toast(tr!("Could not save the setting: {error}", error = format!("{e:#}")), true, cx);
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn set_auto_update_latest(&mut self, value: bool, cx: &mut Context<Self>) {
+        self.auto_update_latest = value;
+        let data_paths = self.ctx.data_paths.clone();
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { WineConfig::set_auto_update_latest(&data_paths, value) }).await;
+            if let Err(e) = res {
+                this.update(cx, |this, cx| {
+                    this.auto_update_latest = !value;
                     this.toast(tr!("Could not save the setting: {error}", error = format!("{e:#}")), true, cx);
                     cx.notify();
                 })
