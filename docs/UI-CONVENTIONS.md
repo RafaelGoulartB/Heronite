@@ -97,13 +97,19 @@ background* = every glass surface (menus, ☰, context menus, dropdowns, dialogs
 drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
 `interfaceOpacity` 50-100 (default 90, maps to `glass_fill`; the art dim rises
 from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
-(default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum for the dark theme and
-`interfaceSolidTintLight` paper (default) | sand | frost | lilac for the light one (`theme::solid_tint()` gives the
+(default 30), `interfaceSolidTint` slate (default) | graphite | midnight | forest | plum | mocha for the dark theme
+and `interfaceSolidTintLight` paper (default) | frost | mint | lilac | blush | sand (pastels, readable and told apart:
+`tints_are_readable_and_distinct`) for the light one (`theme::solid_tint()` gives the
 current theme's). They sit in the Colour card under the theme, as Panels with its opacity and blur or its
-Panel colour indented under it; Panel colour shows the eight as dots, dark and light together, plus a dot for a colour picked
+Panel colour indented under it; Panel colour shows the twelve as dots, the dark ones above the light ones, dark and light together, plus a dot for a colour picked
 by hand (`interfaceSolidColour` / `interfaceSolidColourLight`, through `own_panel`: it goes to the side its brightness
 belongs to and is moved until that side's secondary text reads on it); picking a light colour turns the theme light
-and a dark one dark, System keeps one per side. `theme::panel_rgb()` is the panels' colour wherever it comes from.
+and a dark one dark, System keeps one per side. **From the desktop** (`interfaceSolidDesktop`) takes the desktop's
+window colour instead and the System theme with it. `theme::panel_rgb()` is the panels' colour wherever it comes from.
+The desktop's colours (`system::desktop_colours`, kept in `theme::desktop_colours()`): the accent from the XDG
+settings portal (GNOME 47+, KDE Plasma 6, COSMIC), else KDE's `kdeglobals` or GNOME's `accent-color`; the window
+colour from KDE's colour scheme or libadwaita's on GNOME. Read on a thread, again when the portal says the appearance
+changed; their dots show only while the desktop has them.
 These live in this app's `appearance.json` (`AppPaths::appearance()`, next to
 `ui-state.json`; `heronite_data::appearance::Appearance`), NOT in the data folder.
 At runtime `theme::appearance()/set_appearance()` (a process-wide value) feeds
@@ -120,10 +126,10 @@ release (off the UI thread).
 `pages/settings/appearance/`: `look.rs` for the rows, `profiles.rs` for the tiles). Every value defaults to today's
 look and applies at once (`look::set_look` → `set_appearance`, saved off the UI thread, `PageEvent::AppearanceChanged`
 repaints the Collection). Read them through the theme, never from the file: `theme::accent()` and the `accent_*` tints
-follow **Accent colour** (Ice `#a5dceb` default, Mint, Amber, Rose, Lavender, "From the game": the vivid average of
+follow **Accent colour** (Ice `#a5dceb` default, Sky, Mint, Amber, Coral, Rose, Lavender, "From the game": the vivid average of
 the selected cover, measured on an 8×12 copy in `collection/look.rs`, or one of your own from the colour picker:
 `accentColour`, `Appearance::accent_own`, drawn through `theme::own_accent_shade`, lightened on the dark theme and
-darkened on the light one until it reads); never write the accent's RGB at a call site
+darkened on the light one until it reads, or "From the desktop"); never write the accent's RGB at a call site
 (`theme::accent_alpha(a)`). **High contrast** raises `text_muted`, `text_dim`, borders, separators and
 `theme::contrast_a(a)` for faint text over art. **Font** (`theme::font_body()` / `font_heading()`: Cabin + Rubik,
 Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**

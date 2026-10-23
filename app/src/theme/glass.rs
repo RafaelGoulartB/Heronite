@@ -20,6 +20,40 @@ static APPEARANCE: std::sync::RwLock<Appearance> = std::sync::RwLock::new(Appear
 type GameAccent = Option<((u8, u8, u8), (u8, u8, u8))>;
 static GAME_ACCENT: std::sync::RwLock<GameAccent> = std::sync::RwLock::new(None);
 
+/// The desktop's colours, for "From the desktop" (read by
+/// `system::desktop_colours`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DesktopColours {
+    /// Its accent colour.
+    pub accent: Option<Rgb>,
+    /// Its windows' background on its dark style and on its light one.
+    pub window_dark: Option<Rgb>,
+    pub window_light: Option<Rgb>,
+}
+
+static DESKTOP: std::sync::RwLock<DesktopColours> =
+    std::sync::RwLock::new(DesktopColours { accent: None, window_dark: None, window_light: None });
+
+pub fn desktop_colours() -> DesktopColours {
+    *DESKTOP.read().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Replaces the desktop's colours. True when they changed.
+pub fn set_desktop_colours(c: DesktopColours) -> bool {
+    let mut cur = DESKTOP.write().unwrap_or_else(|e| e.into_inner());
+    std::mem::replace(&mut *cur, c) != c
+}
+
+/// The desktop's window colour on the current theme's side, if it has one.
+pub fn desktop_panel() -> Option<Rgb> {
+    let d = desktop_colours();
+    if is_light() {
+        d.window_light
+    } else {
+        d.window_dark
+    }
+}
+
 /// The current appearance settings.
 pub fn appearance() -> Appearance {
     *APPEARANCE.read().unwrap_or_else(|e| e.into_inner())
@@ -52,8 +86,12 @@ pub fn set_game_accent(rgb: Option<(u8, u8, u8)>) -> bool {
     changed
 }
 
-/// A preset accent in the current theme's shade (`None` for [`Accent::Game`]).
+/// A preset accent in the current theme's shade, or the desktop's (`None`
+/// for [`Accent::Game`], and for the desktop's while it has none).
 pub fn accent_shade(a: Accent) -> Option<(u8, u8, u8)> {
+    if a == Accent::Desktop {
+        return desktop_colours().accent.map(own_accent_shade);
+    }
     if is_light() {
         a.rgb_light()
     } else {
@@ -157,14 +195,16 @@ pub fn solid_tint() -> SolidTint {
     }
 }
 
-/// The panels' colour: the custom theme's, else the [`solid_tint`].
+/// The panels' colour: the custom theme's, else the desktop's (when
+/// chosen and it has one for this side), the one picked by hand or the
+/// [`solid_tint`].
 pub fn panel_rgb() -> Rgb {
     if let Some(p) = custom_palette() {
         return p.panel;
     }
     let a = appearance();
     let own = if is_light() { a.solid_own_light } else { a.solid_own };
-    own.unwrap_or_else(|| solid_tint().rgb())
+    a.solid_desktop.then(desktop_panel).flatten().or(own).unwrap_or_else(|| solid_tint().rgb())
 }
 
 fn glass_tint(a: f32) -> Hsla {
@@ -339,6 +379,18 @@ mod appearance_tests {
         assert!(contrast(accent_rgb(), Palette::DARK.panel) >= 4.5);
         set_appearance(Appearance { theme: Theme::Light, accent_own: Some((255, 230, 80)), ..Appearance::default() });
         assert!(contrast(accent_rgb(), crate::theme::LIGHT_PAPER) >= 4.5);
+
+        // The desktop's colours, while it has them; Ice and the tint without.
+        set_appearance(Appearance {
+            accent: Accent::Desktop,
+            interface_mode: InterfaceMode::Solid,
+            solid_desktop: true,
+            ..Appearance::default()
+        });
+        assert_eq!((accent_rgb(), panel_rgb()), (Accent::Ice.rgb().unwrap(), SolidTint::Slate.rgb()));
+        set_desktop_colours(DesktopColours { accent: Some((61, 174, 233)), window_dark: Some((32, 35, 38)), window_light: None });
+        assert_eq!((accent_rgb(), panel_rgb()), ((61, 174, 233), (32, 35, 38)));
+        set_desktop_colours(DesktopColours::default());
 
         // The custom theme: surfaces, text and accent as picked, ink in its text colour.
         let mut custom = heronite_data::appearance::Palette::DARK;

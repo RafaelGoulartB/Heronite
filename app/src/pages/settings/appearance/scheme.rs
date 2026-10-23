@@ -4,7 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::appearance::{own_panel, Appearance, InterfaceMode, Rgb, SolidTint, Theme};
+use heronite_data::appearance::{is_light_colour, own_panel, Appearance, InterfaceMode, Rgb, SolidTint, Theme};
 use heronite_i18n::{tr, trc};
 
 use super::look::set_look;
@@ -107,9 +107,10 @@ pub(super) fn theme_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Any
         .into_any_element()
 }
 
-/// Solid's colour: a dot per tint, dark and light ones together, and a dot
-/// that opens a colour picker for one of your own. A light colour turns
-/// the theme light and a dark one dark; with System each side keeps its own.
+/// Solid's colour: a dot per tint, the dark ones above the light ones,
+/// then the desktop's window colour (while it has one) and a dot that opens
+/// a colour picker for one of your own. A light colour turns the theme
+/// light and a dark one dark; with System each side keeps its own.
 pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
     let ui = a.ui;
     // The custom theme's panels are its own Panels colour.
@@ -121,21 +122,36 @@ pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyEle
     let shown = |light: bool| both || light == light_now;
     let own = |light: bool| if light { ui.solid_own_light } else { ui.solid_own };
     let tint = |light: bool| if light { ui.solid_tint_light } else { ui.solid_tint };
+    let desktop = ui.solid_desktop;
 
-    let mut dots = div().flex().flex_wrap().items_center().justify_end().gap(px(4.));
-    for t in SolidTint::DARK.into_iter().chain(SolidTint::LIGHT) {
-        let side = t.is_light();
-        let on = shown(side) && own(side).is_none() && tint(side) == t;
+    let line = |tints: [SolidTint; 6], cx: &mut Context<SettingsPage>| {
+        let mut l = div().flex().items_center().gap(px(4.));
+        for t in tints {
+            let side = t.is_light();
+            let on = !desktop && shown(side) && own(side).is_none() && tint(side) == t;
+            l = l.child(
+                colour_dot(SharedString::from(format!("ui-tint-{}", t.as_str())), Some(t.rgb()), None, on)
+                    .tooltip(crate::ui::tooltip(t.label()))
+                    .on_click(cx.listener(move |d, _, _, cx| set_tint(d, t, true, cx))),
+            );
+        }
+        l
+    };
+    let presets = div().flex().flex_col().gap(px(2.)).child(line(SolidTint::DARK, cx)).child(line(SolidTint::LIGHT, cx));
+    let mut dots = div().flex().items_center().gap(px(4.)).child(presets).child(dot_divider().h(px(56.)));
+    let d = theme::desktop_colours();
+    let desk = if light_now { d.window_light.or(d.window_dark) } else { d.window_dark.or(d.window_light) };
+    if desk.is_some() || desktop {
         dots = dots.child(
-            colour_dot(SharedString::from(format!("ui-tint-{}", t.as_str())), Some(t.rgb()), Icon::Palette, on)
-                .tooltip(crate::ui::tooltip(t.label()))
-                .on_click(cx.listener(move |d, _, _, cx| set_tint(d, t, true, cx))),
+            colour_dot("ui-tint-desktop".into(), desk, Some(Icon::Tv), desktop)
+                .tooltip(crate::ui::tooltip(tr!("From the desktop")))
+                .on_click(cx.listener(|d, _, _, cx| set_desktop_panels(d, cx))),
         );
     }
     let mine = [false, true].into_iter().filter(|s| shown(*s)).find_map(own);
-    let own_on = [false, true].into_iter().any(|s| shown(s) && own(s).is_some());
-    dots = dots.child(dot_divider()).child(
-        colour_dot("ui-tint-own".into(), mine, Icon::Palette, own_on || a.tint_picker_open)
+    let own_on = !desktop && [false, true].into_iter().any(|s| shown(s) && own(s).is_some());
+    dots = dots.child(
+        colour_dot("ui-tint-own".into(), mine, mine.is_none().then_some(Icon::Palette), own_on || a.tint_picker_open)
             .tooltip(crate::ui::tooltip(tr!("Your own colour")))
             .on_click(cx.listener(|d, _, window, cx| {
                 let a = &mut d.appearance;
@@ -148,7 +164,9 @@ pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyEle
                 cx.notify();
             })),
     );
-    let note = if both {
+    let note = if desktop {
+        tr!("Your desktop's window colour, light or dark with it.")
+    } else if both {
         tr!("A dark and a light colour: your desktop's style picks between them.")
     } else {
         tr!("A light colour turns the theme light, a dark one dark.")
@@ -163,12 +181,15 @@ pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyEle
     rows
 }
 
-/// A round swatch of `c` (`ic` without one), ringed when `on`.
-pub(super) fn colour_dot(id: SharedString, c: Option<Rgb>, ic: Icon, on: bool) -> Stateful<Div> {
+/// A round swatch of `c` (a faint fill without one) with `ic` on it,
+/// ringed when `on`.
+pub(super) fn colour_dot(id: SharedString, c: Option<Rgb>, ic: Option<Icon>, on: bool) -> Stateful<Div> {
     let inner = div().size(px(24.)).rounded_full().border_1().border_color(theme::ink_a(0.22)).flex().items_center().justify_center();
-    let inner = match c {
-        Some((r, g, b)) => inner.bg(theme::rgb_a(r, g, b, 1.)),
-        None => inner.bg(theme::ink_a(0.06)).child(crate::ui::icon(ic, px(14.), theme::text_muted())),
+    let (inner, ink) = match c {
+        Some((r, g, b)) => {
+            (inner.bg(theme::rgb_a(r, g, b, 1.)), if is_light_colour((r, g, b)) { theme::black_a(0.7) } else { theme::white_a(0.9) })
+        }
+        None => (inner.bg(theme::ink_a(0.06)), theme::text_muted().into()),
     };
     div()
         .id(id)
@@ -182,7 +203,7 @@ pub(super) fn colour_dot(id: SharedString, c: Option<Rgb>, ic: Icon, on: bool) -
         .border_color(if on { theme::accent().into() } else { gpui_kit::transparent_black() })
         .cursor_pointer()
         .hover(|s| s.bg(theme::ink_a(0.06)))
-        .child(inner)
+        .child(inner.children(ic.map(|ic| crate::ui::icon(ic, px(14.), ink))))
 }
 
 /// The thin line between the presets and the dots after them.
@@ -238,6 +259,7 @@ fn follow(ui: &mut Appearance, light: bool) {
 pub(super) fn set_tint(d: &mut SettingsPage, t: SolidTint, follow_it: bool, cx: &mut Context<SettingsPage>) {
     let ui = &mut d.appearance.ui;
     ui.interface_mode = InterfaceMode::Solid;
+    ui.solid_desktop = false;
     if t.is_light() {
         ui.solid_tint_light = t;
         ui.solid_own_light = None;
@@ -256,6 +278,7 @@ pub(super) fn set_own(d: &mut SettingsPage, c: Rgb, save: bool, cx: &mut Context
     let (light, c) = own_panel(c);
     let ui = &mut d.appearance.ui;
     ui.interface_mode = InterfaceMode::Solid;
+    ui.solid_desktop = false;
     if light {
         ui.solid_own_light = Some(c);
     } else {
@@ -265,11 +288,22 @@ pub(super) fn set_own(d: &mut SettingsPage, c: Rgb, save: bool, cx: &mut Context
     apply_interface(d, save, cx);
 }
 
+/// Solid panels in the desktop's window colour, the theme following the
+/// desktop's light or dark style so the two stay together.
+fn set_desktop_panels(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    d.appearance.tint_picker_open = false;
+    let ui = &mut d.appearance.ui;
+    ui.interface_mode = InterfaceMode::Solid;
+    ui.solid_desktop = true;
+    ui.theme = Theme::System;
+    apply_interface(d, true, cx);
+}
+
 /// Console rows of the Solid colours (both themes: console mode is dark).
 pub(super) fn console_tint_rows(d: &SettingsPage) -> [crate::console::list::Row; 2] {
     use crate::console::list::Row;
     let ui = d.appearance.ui;
-    let row = |id: &'static str, label: &'static str, tints: [SolidTint; 4], active: SolidTint| {
+    let row = |id: &'static str, label: &'static str, tints: [SolidTint; 6], active: SolidTint| {
         let names = tints.iter().map(|t| SharedString::from(t.label())).collect();
         Row::choice(id, label, names, tints.iter().position(|t| *t == active).unwrap_or(0))
     };
@@ -302,7 +336,7 @@ pub(super) fn palette_commands(ui: heronite_data::appearance::Appearance) -> Vec
     let (tints, active, own) =
         if light { (SolidTint::LIGHT, ui.solid_tint_light, ui.solid_own_light) } else { (SolidTint::DARK, ui.solid_tint, ui.solid_own) };
     for t in tints {
-        let current = ui.interface_mode == InterfaceMode::Solid && own.is_none() && active == t;
+        let current = ui.interface_mode == InterfaceMode::Solid && !ui.solid_desktop && own.is_none() && active == t;
         v.push(
             PageCommand::new(
                 format!("tint:{}", t.as_str()),

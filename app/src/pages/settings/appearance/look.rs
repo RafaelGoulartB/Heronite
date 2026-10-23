@@ -42,11 +42,14 @@ fn choice<T: Copy + PartialEq + 'static>(
 pub(super) fn accent_label(a: Accent) -> &'static str {
     match a {
         Accent::Ice => tr!("Ice"),
+        Accent::Sky => tr!("Sky"),
         Accent::Mint => tr!("Mint"),
         Accent::Amber => tr!("Amber"),
+        Accent::Coral => tr!("Coral"),
         Accent::Rose => tr!("Rose"),
         Accent::Lavender => tr!("Lavender"),
         Accent::Game => tr!("From the game"),
+        Accent::Desktop => tr!("From the desktop"),
     }
 }
 
@@ -136,17 +139,18 @@ fn set_accent(d: &mut SettingsPage, accent: Accent, cx: &mut Context<SettingsPag
     });
 }
 
-/// The accent's dots: the presets, then "From the game" and your own colour.
+/// The accent's dots: the presets, then "From the game", the desktop's
+/// (while it has one) and your own colour.
 fn accent_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let a = d.appearance.ui;
     let open = d.appearance.accent_picker_open;
     let mut dots = div().flex().flex_wrap().items_center().justify_end().gap(px(4.));
-    for accent in Accent::ALL.iter().copied().filter(|x| *x != Accent::Game) {
+    for accent in Accent::ALL.iter().copied().filter(|x| x.is_preset()) {
         dots = dots.child(
             dot(
                 SharedString::from(format!("accent-{}", accent.as_str())),
                 theme::accent_shade(accent),
-                Icon::Palette,
+                None,
                 a.accent_own.is_none() && a.accent == accent,
             )
             .tooltip(crate::ui::tooltip(accent_label(accent)))
@@ -154,27 +158,35 @@ fn accent_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
         );
     }
     let game_on = a.accent_own.is_none() && a.accent == Accent::Game;
-    dots = dots
-        .child(super::scheme::dot_divider())
-        .child(
-            dot("accent-game".into(), None, Icon::SportsEsports, game_on)
-                .tooltip(crate::ui::tooltip(accent_label(Accent::Game)))
-                .on_click(cx.listener(|d, _, _, cx| set_accent(d, Accent::Game, cx))),
-        )
-        .child(
-            dot("accent-own".into(), a.accent_own.map(theme::own_accent_shade), Icon::Palette, a.accent_own.is_some() || open)
-                .tooltip(crate::ui::tooltip(tr!("Your own colour")))
-                .on_click(cx.listener(|d, _, window, cx| {
-                    let a = &mut d.appearance;
-                    a.accent_picker_open = !a.accent_picker_open;
-                    a.tint_picker_open = false;
-                    if a.accent_picker_open {
-                        let c = a.ui.accent_own.unwrap_or_else(theme::accent_rgb);
-                        a.accent_picker.update(cx, |p, cx| p.set(c, window, cx));
-                    }
-                    cx.notify();
-                })),
+    dots = dots.child(super::scheme::dot_divider()).child(
+        dot("accent-game".into(), None, Some(Icon::SportsEsports), game_on)
+            .tooltip(crate::ui::tooltip(accent_label(Accent::Game)))
+            .on_click(cx.listener(|d, _, _, cx| set_accent(d, Accent::Game, cx))),
+    );
+    let desktop = theme::accent_shade(Accent::Desktop);
+    let desktop_on = a.accent_own.is_none() && a.accent == Accent::Desktop;
+    if desktop.is_some() || desktop_on {
+        dots = dots.child(
+            dot("accent-desktop".into(), desktop, Some(Icon::Tv), desktop_on)
+                .tooltip(crate::ui::tooltip(accent_label(Accent::Desktop)))
+                .on_click(cx.listener(|d, _, _, cx| set_accent(d, Accent::Desktop, cx))),
         );
+    }
+    let own = a.accent_own.map(theme::own_accent_shade);
+    dots = dots.child(
+        dot("accent-own".into(), own, own.is_none().then_some(Icon::Palette), a.accent_own.is_some() || open)
+            .tooltip(crate::ui::tooltip(tr!("Your own colour")))
+            .on_click(cx.listener(|d, _, window, cx| {
+                let a = &mut d.appearance;
+                a.accent_picker_open = !a.accent_picker_open;
+                a.tint_picker_open = false;
+                if a.accent_picker_open {
+                    let c = a.ui.accent_own.unwrap_or_else(theme::accent_rgb);
+                    a.accent_picker.update(cx, |p, cx| p.set(c, window, cx));
+                }
+                cx.notify();
+            })),
+    );
     row(
         tr!("Accent colour"),
         Some(tr!("The selection ring, links, active buttons and sliders. The controller takes the colour of the selected game's cover.")),

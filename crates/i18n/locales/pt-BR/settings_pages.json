@@ -188,7 +188,6 @@
   "Recent · {count}": "Recentes · {count}",
   "Reset background": "Redefinir plano de fundo",
   "Reset the background": "Redefinir o plano de fundo",
-  "Reset the interface": "Redefinir a interface",
   "Restart into Heronite {version}": "Reiniciar no Heronite {version}",
   "Restart to use it now, or it starts the next time you open Heronite.": "Reinicie para usá-lo agora, ou ele inicia na próxima vez que você abrir o Heronite.",
   "Runs in the background at the lowest priority, one capture at a time, and pauses while a game is running. Each converted file is marked in its own metadata, so nothing is compressed twice; if the app closes midway, it continues at the next start.": "Roda em segundo plano com a menor prioridade, uma captura por vez, e pausa enquanto um jogo está em execução. Cada arquivo convertido é marcado nos próprios metadados, então nada é compactado duas vezes; se o app fechar no meio do processo, ele continua na próxima inicialização.",
@@ -419,5 +418,12 @@
   "Back to the Dark theme, glass panels and the Ice accent. Your custom theme's colours are kept.": "Volta ao tema Escuro, aos painéis de vidro e ao destaque Gelo. As cores do seu tema personalizado são mantidas.",
   "Reset theme": "Redefinir tema",
   "Panel colour": "Cor dos painéis",
-  "Drag on the square and the strip, or type a hex colour. Each theme shows it a little lighter or darker when it would be hard to read.": "Arraste no quadrado e na faixa, ou digite uma cor hex. Cada tema a mostra um pouco mais clara ou escura quando ficaria difícil de ler."
+  "Drag on the square and the strip, or type a hex colour. Each theme shows it a little lighter or darker when it would be hard to read.": "Arraste no quadrado e na faixa, ou digite uma cor hex. Cada tema a mostra um pouco mais clara ou escura quando ficaria difícil de ler.",
+  "Forest": "Floresta",
+  "Mocha": "Moca",
+  "Blush": "Rosado",
+  "Sky": "Céu",
+  "Coral": "Coral",
+  "From the desktop": "Do desktop",
+  "Your desktop's window colour, light or dark with it.": "A cor das janelas do seu desktop, clara ou escura junto com ele."
 }

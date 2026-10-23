@@ -311,6 +311,31 @@ pub(super) fn panel_rows(a: &State, cx: &mut Context<SettingsPage>) -> (AnyEleme
     (panels, rows)
 }
 
+/// Everything of the Colour card back to today's look: the Dark theme (never
+/// Light or System, whatever the desktop uses), glass panels, the first
+/// accent. The custom theme's colours stay for the next time.
+fn reset_theme(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    let defaults = Appearance::default();
+    let a = &mut d.appearance;
+    a.ui.theme = defaults.theme;
+    a.ui.interface_mode = defaults.interface_mode;
+    a.ui.interface_opacity = defaults.interface_opacity;
+    a.ui.interface_blur = defaults.interface_blur;
+    a.ui.solid_tint = defaults.solid_tint;
+    a.ui.solid_tint_light = defaults.solid_tint_light;
+    a.ui.solid_own = None;
+    a.ui.solid_own_light = None;
+    a.ui.solid_desktop = false;
+    a.ui.accent = defaults.accent;
+    a.ui.accent_own = None;
+    a.ui.high_contrast = defaults.high_contrast;
+    a.tint_picker_open = false;
+    a.accent_picker_open = false;
+    set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
+    apply_interface(d, true, cx);
+    cx.emit(crate::pages::PageEvent::AppearanceChanged);
+}
+
 pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     if d.appearance.preview.is_none() && d.appearance.preview_task.is_none() {
         schedule_preview(d, cx);
@@ -468,29 +493,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         apply_interface(d, true, cx);
         save_background(d, cx);
     }));
-    // Everything of the Colour card back to today's look: the Dark theme
-    // (never Light or System, whatever the desktop uses), glass panels, the
-    // first accent. The custom theme's colours stay for the next time.
-    let reset_theme = button("ui-reset", ButtonKind::Glass, tr!("Reset theme")).on_click(cx.listener(|d, _, window, cx| {
-        let defaults = Appearance::default();
-        let a = &mut d.appearance;
-        a.ui.theme = defaults.theme;
-        a.ui.interface_mode = defaults.interface_mode;
-        a.ui.interface_opacity = defaults.interface_opacity;
-        a.ui.interface_blur = defaults.interface_blur;
-        a.ui.solid_tint = defaults.solid_tint;
-        a.ui.solid_tint_light = defaults.solid_tint_light;
-        a.ui.solid_own = None;
-        a.ui.solid_own_light = None;
-        a.ui.accent = defaults.accent;
-        a.ui.accent_own = None;
-        a.ui.high_contrast = defaults.high_contrast;
-        a.tint_picker_open = false;
-        a.accent_picker_open = false;
-        set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
-        apply_interface(d, true, cx);
-        cx.emit(crate::pages::PageEvent::AppearanceChanged);
-    }));
+    let reset_theme =
+        button("ui-reset", ButtonKind::Glass, tr!("Reset theme")).on_click(cx.listener(|d, _, window, cx| reset_theme(d, window, cx)));
     let cover_rows = look::cover_rows(d, cx);
     let covers = card(
         [
@@ -601,7 +605,7 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         }
         InterfaceMode::Solid => rows.extend(scheme::console_tint_rows(d)),
     }
-    rows.push(Row::action("ui-reset", tr!("Reset the interface")));
+    rows.push(Row::action("ui-reset", tr!("Reset theme")));
     rows.push(Row::header(tr!("Covers")));
     let aspect = CoverAspect::parse(&d.settings.metadata.cover_aspect);
     let ai = ASPECTS.iter().position(|(x, _)| *x == aspect).unwrap_or(0);
@@ -844,24 +848,7 @@ pub(super) fn console_apply(
                 apply_interface(d, true, cx);
                 save_background(d, cx);
             }
-            "ui-reset" => {
-                let defaults = Appearance::default();
-                let a = &mut d.appearance;
-                a.ui.interface_mode = defaults.interface_mode;
-                a.ui.interface_opacity = defaults.interface_opacity;
-                a.ui.interface_blur = defaults.interface_blur;
-                a.ui.solid_tint = defaults.solid_tint;
-                a.ui.solid_tint_light = defaults.solid_tint_light;
-                a.ui.solid_own = None;
-                a.ui.solid_own_light = None;
-                set_sliders(
-                    a,
-                    &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)],
-                    window,
-                    cx,
-                );
-                apply_interface(d, true, cx);
-            }
+            "ui-reset" => reset_theme(d, window, cx),
             _ => {}
         },
         _ => {}

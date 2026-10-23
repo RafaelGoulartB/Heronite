@@ -48,11 +48,14 @@ fn preset_note(id: &str) -> &'static str {
 pub(super) fn accent_name(a: Accent) -> &'static str {
     match a {
         Accent::Ice => tr!("Ice"),
+        Accent::Sky => tr!("Sky"),
         Accent::Mint => tr!("Mint"),
         Accent::Amber => tr!("Amber"),
+        Accent::Coral => tr!("Coral"),
         Accent::Rose => tr!("Rose"),
         Accent::Lavender => tr!("Lavender"),
         Accent::Game => tr!("From the game"),
+        Accent::Desktop => tr!("From the desktop"),
     }
 }
 
@@ -127,7 +130,8 @@ impl OnboardingDialog {
                         ),
                 )
         });
-        let accents = Accent::ALL.iter().copied().map(|accent| {
+        // The desktop's accent only while it has one.
+        let accents = Accent::ALL.iter().copied().filter(|x| *x != Accent::Desktop || theme::accent_shade(*x).is_some()).map(|accent| {
             let on = a.accent_own.is_none() && a.accent == accent;
             div()
                 .id(SharedString::from(format!("onb-accent-{}", accent.as_str())))

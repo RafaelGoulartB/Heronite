@@ -80,36 +80,56 @@ impl InterfaceMode {
     }
 }
 
-/// Preset colours of the solid panels: four for the dark theme, four for
-/// the light one.
+/// Preset colours of the solid panels: six for the dark theme and six for
+/// the light one, a neutral, then cool to warm hues.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SolidTint {
     Slate,
     Graphite,
     Midnight,
+    Forest,
     Plum,
+    Mocha,
     Paper,
-    Sand,
     Frost,
+    Mint,
     Lilac,
+    Blush,
+    Sand,
 }
 
 impl SolidTint {
-    pub const ALL: [SolidTint; 8] =
-        [Self::Slate, Self::Graphite, Self::Midnight, Self::Plum, Self::Paper, Self::Sand, Self::Frost, Self::Lilac];
-    pub const DARK: [SolidTint; 4] = [Self::Slate, Self::Graphite, Self::Midnight, Self::Plum];
-    pub const LIGHT: [SolidTint; 4] = [Self::Paper, Self::Sand, Self::Frost, Self::Lilac];
+    pub const ALL: [SolidTint; 12] = [
+        Self::Slate,
+        Self::Graphite,
+        Self::Midnight,
+        Self::Forest,
+        Self::Plum,
+        Self::Mocha,
+        Self::Paper,
+        Self::Frost,
+        Self::Mint,
+        Self::Lilac,
+        Self::Blush,
+        Self::Sand,
+    ];
+    pub const DARK: [SolidTint; 6] = [Self::Slate, Self::Graphite, Self::Midnight, Self::Forest, Self::Plum, Self::Mocha];
+    pub const LIGHT: [SolidTint; 6] = [Self::Paper, Self::Frost, Self::Mint, Self::Lilac, Self::Blush, Self::Sand];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Slate => "slate",
             Self::Graphite => "graphite",
             Self::Midnight => "midnight",
+            Self::Forest => "forest",
             Self::Plum => "plum",
+            Self::Mocha => "mocha",
             Self::Paper => "paper",
-            Self::Sand => "sand",
             Self::Frost => "frost",
+            Self::Mint => "mint",
             Self::Lilac => "lilac",
+            Self::Blush => "blush",
+            Self::Sand => "sand",
         }
     }
     pub fn label(self) -> &'static str {
@@ -117,11 +137,15 @@ impl SolidTint {
             Self::Slate => tr!("Slate"),
             Self::Graphite => tr!("Graphite"),
             Self::Midnight => tr!("Midnight"),
+            Self::Forest => tr!("Forest"),
             Self::Plum => tr!("Plum"),
+            Self::Mocha => tr!("Mocha"),
             Self::Paper => tr!("Paper"),
-            Self::Sand => tr!("Sand"),
             Self::Frost => tr!("Frost"),
+            Self::Mint => tr!("Mint"),
             Self::Lilac => tr!("Lilac"),
+            Self::Blush => tr!("Blush"),
+            Self::Sand => tr!("Sand"),
         }
     }
     pub fn parse(s: &str) -> Option<Self> {
@@ -132,18 +156,23 @@ impl SolidTint {
         Self::LIGHT.contains(&self)
     }
     /// Panel colour (Slate is the dark glass tint, `rgb(22,27,36)`; Paper
-    /// the light one, `rgb(232,234,238)`). The light tints are soft greys,
-    /// not white, so a big window of them does not glare.
+    /// the light one, `rgb(232,234,238)`). The light tints are pastels, not
+    /// white, so a big window of them does not glare; each still tells its
+    /// hue apart from the others.
     pub fn rgb(self) -> (u8, u8, u8) {
         match self {
             Self::Slate => (22, 27, 36),
             Self::Graphite => (26, 26, 28),
-            Self::Midnight => (16, 22, 42),
+            Self::Midnight => (14, 21, 48),
+            Self::Forest => (16, 31, 27),
             Self::Plum => (34, 24, 40),
+            Self::Mocha => (36, 27, 20),
             Self::Paper => (232, 234, 238),
-            Self::Sand => (234, 228, 218),
-            Self::Frost => (224, 231, 240),
-            Self::Lilac => (231, 226, 236),
+            Self::Frost => (219, 230, 244),
+            Self::Mint => (219, 237, 228),
+            Self::Lilac => (230, 224, 243),
+            Self::Blush => (242, 226, 230),
+            Self::Sand => (238, 229, 213),
         }
     }
 }
@@ -168,6 +197,9 @@ pub struct Appearance {
     pub solid_own: Option<Rgb>,
     /// The same for the light theme's.
     pub solid_own_light: Option<Rgb>,
+    /// The solid panels take the desktop's window colour (KDE's colour
+    /// scheme, GNOME's), over the tints and the colours picked by hand.
+    pub solid_desktop: bool,
     /// The colours of [`Theme::Custom`] (kept while another theme is in use).
     pub custom: Palette,
     pub accent: Accent,
@@ -208,6 +240,7 @@ impl Appearance {
         solid_tint_light: SolidTint::Paper,
         solid_own: None,
         solid_own_light: None,
+        solid_desktop: false,
         custom: Palette::LIGHT,
         accent: Accent::DEFAULT,
         accent_own: None,
@@ -285,6 +318,7 @@ impl Appearance {
                 .unwrap_or(d.solid_tint_light),
             solid_own: own_colour(value, "interfaceSolidColour", false),
             solid_own_light: own_colour(value, "interfaceSolidColourLight", true),
+            solid_desktop: flag("interfaceSolidDesktop", d.solid_desktop),
             custom: value.get("customPalette").map(Palette::from_value).unwrap_or(d.custom),
             accent: name("accent").and_then(Accent::parse).unwrap_or_default(),
             accent_own: name("accentColour").and_then(parse_hex),
@@ -316,6 +350,7 @@ impl Appearance {
             "interfaceSolidTintLight": self.solid_tint_light.as_str(),
             "interfaceSolidColour": self.solid_own.map(hex),
             "interfaceSolidColourLight": self.solid_own_light.map(hex),
+            "interfaceSolidDesktop": self.solid_desktop,
             "customPalette": self.custom.to_value(),
             "accent": self.accent.as_str(),
             "accentColour": self.accent_own.map(hex),
@@ -428,6 +463,7 @@ mod tests {
             solid_tint_light: SolidTint::Frost,
             solid_own: Some((40, 10, 20)),
             solid_own_light: None,
+            solid_desktop: true,
             custom: Palette { accent: (1, 2, 3), ..Palette::DARK },
             accent: Accent::Game,
             accent_own: Some((200, 90, 30)),
@@ -457,6 +493,7 @@ mod tests {
         assert_eq!(on_disk["interfaceSolidColour"], "#280a14");
         assert_eq!(on_disk["interfaceSolidColourLight"], Value::Null);
         assert_eq!(on_disk["accentColour"], "#c85a1e");
+        assert_eq!(on_disk["interfaceSolidDesktop"], true);
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
         assert_eq!(on_disk["sections"][0], "related");
@@ -548,6 +585,25 @@ mod tests {
     fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
         let (x, y) = (luminance(a), luminance(b));
         (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    /// Each tint keeps its theme's secondary text readable, and the tints of
+    /// a side tell their hues apart.
+    #[test]
+    fn tints_are_readable_and_distinct() {
+        for t in SolidTint::ALL {
+            let muted = if t.is_light() { Palette::LIGHT.muted } else { Palette::DARK.muted };
+            assert!(contrast(t.rgb(), muted) >= 4.5, "{t:?}: {:.2}", contrast(t.rgb(), muted));
+        }
+        for side in [SolidTint::DARK, SolidTint::LIGHT] {
+            for (i, a) in side.iter().enumerate() {
+                for b in &side[i + 1..] {
+                    let (x, y) = (a.rgb(), b.rgb());
+                    let far = [x.0.abs_diff(y.0), x.1.abs_diff(y.1), x.2.abs_diff(y.2)].into_iter().max().unwrap();
+                    assert!(far >= 8, "{a:?} and {b:?} look the same");
+                }
+            }
+        }
     }
 
     /// Also on a card (the panel under 5% of the light theme's ink, `rgb(20,26,36)`).

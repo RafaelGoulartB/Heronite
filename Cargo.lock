@@ -3496,6 +3496,7 @@ name = "heronite"
 version = "0.14.0"
 dependencies = [
  "anyhow",
+ "ashpd",
  "chrono",
  "dirs 6.0.0",
  "futures",

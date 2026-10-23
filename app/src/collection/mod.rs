@@ -224,6 +224,26 @@ impl CollectionView {
             }
         })
         .detach();
+        // "From the desktop": its accent and window colour, now and when they
+        // change. A look that uses them waits a moment for them at start.
+        let uses_desktop = {
+            let a = crate::theme::appearance();
+            a.accent == heronite_data::appearance::Accent::Desktop || a.solid_desktop
+        };
+        let wait = if uses_desktop { std::time::Duration::from_millis(300) } else { std::time::Duration::ZERO };
+        let (first, mut desktop) = crate::system::desktop_colours::watch(wait);
+        if let Some(c) = first {
+            crate::theme::set_desktop_colours(c);
+        }
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt;
+            while let Some(c) = desktop.next().await {
+                if crate::theme::set_desktop_colours(c) && this.update(cx, |_, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         let (images, image_rx) = ImageStore::new(data_paths.images_cache_dir(), &app_paths);
         Self::spawn_image_pump(image_rx, cx);
 
