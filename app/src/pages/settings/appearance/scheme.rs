@@ -111,8 +111,9 @@ pub(super) fn theme_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Any
 /// the theme light and a dark one dark; with System each side keeps its own.
 pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
     let ui = a.ui;
+    // The custom theme's panels are its own Panels colour.
     if ui.theme == Theme::Custom {
-        return vec![row(tr!("Colour"), Some(tr!("The custom theme's panel colour.")), div()).into_any_element()];
+        return Vec::new();
     }
     let both = ui.theme == Theme::System;
     let light_now = theme::theme_light(ui.theme);
@@ -150,7 +151,7 @@ pub(super) fn tint_rows(a: &State, cx: &mut Context<SettingsPage>) -> Vec<AnyEle
     } else {
         tr!("A light colour turns the theme light, a dark one dark.")
     };
-    let mut rows = vec![row(tr!("Colour"), Some(note), dots).into_any_element()];
+    let mut rows = vec![row(tr!("Panel colour"), Some(note), dots).into_any_element()];
     if a.tint_picker_open {
         rows.push(
             div()

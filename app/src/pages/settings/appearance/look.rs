@@ -14,7 +14,7 @@ use super::{apply_interface, slider_of, Field, SettingsPage};
 use crate::icons::Icon;
 use crate::pages::PageEvent;
 use crate::theme;
-use crate::ui::controls::{button, card, row, tabs, toggle, toggle_row, ButtonKind};
+use crate::ui::controls::{button, card, row, tabs, toggle, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::select_field;
 use crate::ui::icon;
 
@@ -103,9 +103,30 @@ pub(super) fn section_label(s: Section) -> &'static str {
     }
 }
 
-/// The theme (with the custom theme's colours under it), the accent colour
-/// swatches and the high-contrast switch.
+/// The Colour card, each choice followed by what depends on it: the theme
+/// (and the custom theme's colours), the panels (their glass or their
+/// colour), the accent and high contrast.
 pub(super) fn colour_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+    let a = d.appearance.ui;
+    let contrast = a.high_contrast;
+    let theme_row = super::scheme::theme_row(d, cx);
+    let custom_rows = super::custom::rows(d, cx);
+    let (panels, panel_rows) = super::panel_rows(&d.appearance, cx);
+    // The custom theme has an accent of its own.
+    let accent = (a.theme != Theme::Custom).then(|| accent_row(d, cx));
+    let high_contrast = toggle_row(
+        "high-contrast",
+        tr!("High contrast"),
+        Some(tr!("Stronger secondary text and borders, for reading over bright artwork.")),
+        contrast,
+    )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.high_contrast = !contrast)))
+    .into_any_element();
+    card([with_sub_rows(theme_row, custom_rows), with_sub_rows(panels, panel_rows)].into_iter().chain(accent).chain([high_contrast]))
+}
+
+/// The accent swatches, "From the game" last.
+fn accent_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let a = d.appearance.ui;
     let mut swatches = div().flex().items_center().gap(px(10.));
     for accent in Accent::ALL.iter().copied() {
@@ -133,30 +154,14 @@ pub(super) fn colour_group(d: &mut SettingsPage, cx: &mut Context<SettingsPage>)
                 .child(accent_label(accent)),
         });
     }
-    let contrast = a.high_contrast;
-    let theme_row = super::scheme::theme_row(d, cx);
-    let custom_rows = super::custom::rows(d, cx);
-    // The custom theme has an accent of its own.
-    let accent = (a.theme != Theme::Custom).then(|| {
-        row(
-            tr!("Accent colour"),
-            Some(tr!(
-                "The selection ring, links, active buttons and sliders. \"From the game\" takes the colour of the selected game's cover."
-            )),
-            swatches,
-        )
-        .into_any_element()
-    });
-    let high_contrast = toggle_row(
-        "high-contrast",
-        tr!("High contrast"),
-        Some(tr!("Stronger secondary text and borders, for reading over bright artwork.")),
-        contrast,
+    row(
+        tr!("Accent colour"),
+        Some(tr!(
+            "The selection ring, links, active buttons and sliders. \"From the game\" takes the colour of the selected game's cover."
+        )),
+        swatches,
     )
-    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.high_contrast = !contrast)))
-    .into_any_element();
-    // Theme, then the custom theme's colours (or the accent), high contrast last.
-    card(std::iter::once(theme_row).chain(custom_rows).chain(accent).chain([high_contrast]))
+    .into_any_element()
 }
 
 /// Font, density and animations.
@@ -228,9 +233,9 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
     ]
 }
 
-/// Rows of the Collection background card: which picture, the slideshow,
-/// and the button that picks your own.
-pub(super) fn picture_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
+/// The Collection background card's picture row, with the slideshow or the
+/// button that picks your own under it.
+pub(super) fn picture_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let a = d.appearance.ui;
     let items = picture_items();
     let current = items.iter().find(|(p, _)| *p == a.background).map(|(_, t)| *t).unwrap_or_default();
@@ -256,8 +261,8 @@ pub(super) fn picture_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
             set_look(d, cx, |a| a.background = source);
         },
     );
-    let mut rows =
-        vec![row(tr!("Picture"), Some(tr!("What shows behind the Collection.")), div().w(px(240.)).child(select)).into_any_element()];
+    let picture = row(tr!("Picture"), Some(tr!("What shows behind the Collection.")), div().w(px(240.)).child(select)).into_any_element();
+    let mut rows = Vec::new();
     match a.background {
         BackgroundSource::Screenshot => {
             let on = a.background_slideshow;
@@ -282,7 +287,7 @@ pub(super) fn picture_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> 
         ),
         _ => {}
     }
-    rows
+    with_sub_rows(picture, rows)
 }
 
 /// Asks for a picture, copies it to `AppPaths::custom_background` and shows it.
@@ -321,10 +326,9 @@ fn pick_picture(cx: &mut Context<SettingsPage>) {
 pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     let auto = a.auto_view;
-    let mut rows = vec![
-        row(tr!("Open the Collection in"), None, choice("start-view", &start_items(), a.start_view, cx, |a, v| a.start_view = v))
-            .into_any_element(),
-        toggle_row(
+    let start = row(tr!("Open the Collection in"), None, choice("start-view", &start_items(), a.start_view, cx, |a, v| a.start_view = v))
+        .into_any_element();
+    let switch = toggle_row(
             "auto-view",
             tr!("Switch with the window's width"),
             Some(tr!(
@@ -333,11 +337,11 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
             auto.on,
         )
         .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.auto_view.on = !auto.on)))
-        .into_any_element(),
-    ];
+        .into_any_element();
+    let mut width = Vec::new();
     if auto.on {
         let slider = Slider::new(slider_of(&d.appearance, Field::AutoViewWidth)).bg(theme::accent()).text_color(theme::accent());
-        rows.push(
+        width.push(
             row(
                 tr!("Width: {value} px", value = auto.width.round()),
                 Some(&tr!("This window is {width} px wide now.", width = window_w.round())),
@@ -346,17 +350,17 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
             .into_any_element(),
         );
     }
-    rows.extend([
-        row(
-            tr!("Panel widths"),
-            Some(tr!("The Focus list and the grid's game panel grow when you drag their edge.")),
-            button("reset-widths", ButtonKind::Glass, tr!("Reset widths"))
-                .on_click(cx.listener(|_, _, _, cx| cx.emit(PageEvent::ResetPanelWidths))),
-        )
-        .into_any_element(),
+    let widths = row(
+        tr!("Panel widths"),
+        Some(tr!("The Focus list and the grid's game panel grow when you drag their edge.")),
+        button("reset-widths", ButtonKind::Glass, tr!("Reset widths"))
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(PageEvent::ResetPanelWidths))),
+    )
+    .into_any_element();
+    let sections_row =
         row(tr!("Game sections"), Some(tr!("Order and visibility of the blocks of a game's page and of the grid's panel.")), div())
-            .into_any_element(),
-    ]);
+            .into_any_element();
+    let mut rows = Vec::new();
     let sections = a.sections;
     let order = sections.order();
     for (i, section) in order.into_iter().enumerate() {
@@ -400,5 +404,5 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 .into_any_element(),
         );
     }
-    card(rows)
+    card([start, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
 }

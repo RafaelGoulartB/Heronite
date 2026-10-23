@@ -99,7 +99,8 @@ drawer, pages, palette): `interfaceMode` `transparent` (default) | `solid`,
 from .5 to 1 above 84 so 100 is fully opaque), `interfaceBlur` 0-60 in steps of 5
 (default 30), `interfaceSolidTint` slate (default) | graphite | midnight | plum for the dark theme and
 `interfaceSolidTintLight` paper (default) | sand | frost | lilac for the light one (`theme::solid_tint()` gives the
-current theme's). The Colour row shows the eight as dots, dark and light together, plus a dot for a colour picked
+current theme's). They sit in the Colour card under the theme, as Panels with its opacity and blur or its
+Panel colour indented under it; Panel colour shows the eight as dots, dark and light together, plus a dot for a colour picked
 by hand (`interfaceSolidColour` / `interfaceSolidColourLight`, through `own_panel`: it goes to the side its brightness
 belongs to and is moved until that side's secondary text reads on it); picking a light colour turns the theme light
 and a dark one dark, System keeps one per side. `theme::panel_rgb()` is the panels' colour wherever it comes from.

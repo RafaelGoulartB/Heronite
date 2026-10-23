@@ -39,7 +39,7 @@ use super::SettingsPage;
 use crate::collection::stage::{scrim_layers, Scrim};
 use crate::pages::PageCtx;
 use crate::theme;
-use crate::ui::controls::{button, caption, card, row, tabs, toggle_row, ButtonKind};
+use crate::ui::controls::{button, caption, card, row, tabs, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::{meta_text, select_field};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -270,8 +270,10 @@ fn slider_of(a: &State, field: Field) -> &Entity<SliderState> {
     &a.sliders.iter().find(|(f, _)| *f == field).expect("slider created in State::new").1
 }
 
-/// Interface mode (Transparent / Solid) and its controls.
-fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
+/// The panels' rows of the Colour card: Transparent or Solid, and under it
+/// the glass's opacity and blur or the solid colour (the custom theme's own
+/// panel colour needs no row).
+pub(super) fn panel_rows(a: &State, cx: &mut Context<SettingsPage>) -> (AnyElement, Vec<AnyElement>) {
     let this = cx.entity();
     let mode =
         tabs("ui-mode", &[(InterfaceMode::Transparent, tr!("Transparent")), (InterfaceMode::Solid, tr!("Solid"))], a.ui.interface_mode, {
@@ -283,23 +285,25 @@ fn interface_group(a: &State, cx: &mut Context<SettingsPage>) -> Div {
                 });
             }
         });
-    let mut rows: Vec<AnyElement> = vec![row(
+    let panels = row(
         tr!("Panels"),
         Some(match a.ui.interface_mode {
-            InterfaceMode::Transparent => tr!("Glass: the blurred game artwork shows through the panels."),
-            InterfaceMode::Solid => tr!("Opaque panels in a solid colour, no artwork."),
+            InterfaceMode::Transparent => {
+                tr!("Menus, dialogs and pages like this one are glass: the blurred game artwork shows through.")
+            }
+            InterfaceMode::Solid => tr!("Menus, dialogs and pages like this one are a solid colour, no artwork."),
         }),
         mode,
     )
-    .into_any_element()];
-    match a.ui.interface_mode {
-        InterfaceMode::Transparent => {
-            rows.push(slider_row(tr!("Opacity: {value}%", value = a.ui.interface_opacity.round()), slider_of(a, Field::PanelOpacity)));
-            rows.push(slider_row(tr!("Blur: {value} px", value = a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)));
-        }
-        InterfaceMode::Solid => rows.extend(scheme::tint_rows(a, cx)),
-    }
-    card(rows)
+    .into_any_element();
+    let rows = match a.ui.interface_mode {
+        InterfaceMode::Transparent => vec![
+            slider_row(tr!("Opacity: {value}%", value = a.ui.interface_opacity.round()), slider_of(a, Field::PanelOpacity)),
+            slider_row(tr!("Blur: {value} px", value = a.ui.interface_blur.round()), slider_of(a, Field::PanelBlur)),
+        ],
+        InterfaceMode::Solid => scheme::tint_rows(a, cx),
+    };
+    (panels, rows)
 }
 
 pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
@@ -349,9 +353,10 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     .into_any_element()];
     // Off: nothing else applies, so nothing else shows.
     if a.enabled {
-        rows.extend(look::picture_rows(d, cx));
+        rows.push(look::picture_row(d, cx));
         let a = &d.appearance;
         let more = a.more_background;
+        let mut extra = Vec::new();
         for (field, state) in &a.sliders {
             let row = match field {
                 Field::CollectionOpacity => slider_row(tr!("Opacity: {value}%", value = a.ui.collection_opacity.round()), state),
@@ -359,43 +364,52 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                 Field::Dimming if theme::theme_is_light() => slider_row(tr!("Fading: {value}%", value = a.dimming.round()), state),
                 Field::Dimming => slider_row(tr!("Darkening: {value}%", value = a.dimming.round()), state),
                 Field::Blur | Field::Saturation | Field::Scrim if !more => continue,
-                Field::Blur => slider_row(tr!("Blur: {value} px", value = a.blur.round()), state),
-                Field::Saturation => slider_row(tr!("Colour intensity: {value}%", value = a.saturation.round()), state),
-                Field::Scrim => slider_row_with(
-                    tr!("Edge shading: {value}%", value = a.scrim.round()),
-                    Some(if theme::theme_is_light() {
-                        tr!("Fades the left column and the top and bottom edges, where the game list and the toolbars sit.")
-                    } else {
-                        tr!("Darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")
-                    }),
-                    state,
-                ),
+                Field::Blur => {
+                    extra.push(slider_row(tr!("Blur: {value} px", value = a.blur.round()), state));
+                    continue;
+                }
+                Field::Saturation => {
+                    extra.push(slider_row(tr!("Colour intensity: {value}%", value = a.saturation.round()), state));
+                    continue;
+                }
+                Field::Scrim => {
+                    extra.push(slider_row_with(
+                        tr!("Edge shading: {value}%", value = a.scrim.round()),
+                        Some(if theme::theme_is_light() {
+                            tr!("Fades the left column and the top and bottom edges, where the game list and the toolbars sit.")
+                        } else {
+                            tr!("Darkens the left column and the top and bottom edges, where the game list and the toolbars sit.")
+                        }),
+                        state,
+                    ));
+                    continue;
+                }
                 Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth => continue,
             };
             rows.push(row);
         }
-        rows.push(
-            div()
-                .id("bg-more")
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .py(px(11.))
-                .cursor_pointer()
-                .text_size(px(13.))
-                .text_color(theme::accent())
-                .hover(|s| s.text_color(theme::accent_overlay()))
-                .on_click(cx.listener(|d, _, _, cx| {
-                    d.appearance.more_background = !d.appearance.more_background;
-                    cx.notify();
-                }))
-                .child(if more { tr!("Fewer adjustments") } else { tr!("More adjustments: blur, colour intensity, edge shading") })
-                .child(
-                    crate::ui::icon(crate::icons::Icon::ExpandMore, px(16.), theme::accent())
-                        .when(more, |i| i.with_transformation(Transformation::rotate(percentage(0.5)))),
-                )
-                .into_any_element(),
-        );
+        // The finer sliders under their switch.
+        let more_link = div()
+            .id("bg-more")
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .py(px(11.))
+            .cursor_pointer()
+            .text_size(px(13.))
+            .text_color(theme::accent())
+            .hover(|s| s.text_color(theme::accent_overlay()))
+            .on_click(cx.listener(|d, _, _, cx| {
+                d.appearance.more_background = !d.appearance.more_background;
+                cx.notify();
+            }))
+            .child(if more { tr!("Fewer adjustments") } else { tr!("More adjustments: blur, colour intensity, edge shading") })
+            .child(
+                crate::ui::icon(crate::icons::Icon::ExpandMore, px(16.), theme::accent())
+                    .when(more, |i| i.with_transformation(Transformation::rotate(percentage(0.5)))),
+            )
+            .into_any_element();
+        rows.push(with_sub_rows(more_link, extra));
     }
     let background = card(rows);
 
@@ -449,7 +463,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         apply_interface(d, true, cx);
         save_background(d, cx);
     }));
-    let reset_interface = button("ui-reset", ButtonKind::Glass, tr!("Reset interface")).on_click(cx.listener(|d, _, window, cx| {
+    let reset_panels = button("ui-reset", ButtonKind::Glass, tr!("Reset panels")).on_click(cx.listener(|d, _, window, cx| {
         let defaults = Appearance::default();
         let a = &mut d.appearance;
         a.ui.interface_mode = defaults.interface_mode;
@@ -462,7 +476,6 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         set_sliders(a, &[(Field::PanelOpacity, defaults.interface_opacity), (Field::PanelBlur, defaults.interface_blur)], window, cx);
         apply_interface(d, true, cx);
     }));
-    let interface = interface_group(a, cx);
     let cover_rows = look::cover_rows(d, cx);
     let covers = card(
         [
@@ -507,11 +520,10 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(profiles)
         .child(caption(tr!("Colour")))
         .child(colour)
-        .child(caption(tr!("Menus and panels")))
-        .child(interface)
         .child(footer(
-            tr!("Menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.").into(),
-            reset_interface,
+            tr!("Panels are the menus, the ☰ menu, context menus, dropdowns, dialogs, the drawer, pages like this one and the command palette.")
+                .into(),
+            reset_panels,
         ))
         .child(caption(tr!("Behind the Collection")))
         .when(enabled, |d| d.child(preview).child(div().h(px(10.))))
