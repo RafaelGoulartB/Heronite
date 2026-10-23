@@ -10,7 +10,7 @@ pub use gallery::{icon_button, thumb_tile};
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use futures::channel::mpsc::UnboundedSender;
@@ -42,6 +42,8 @@ pub(super) enum Msg {
 struct Queue {
     items: Mutex<VecDeque<PathBuf>>,
     cv: Condvar,
+    /// Set (under `items`' lock) when the view goes: the workers return.
+    closed: AtomicBool,
 }
 
 #[derive(Default)]
@@ -106,6 +108,18 @@ pub(super) struct Shots {
     /// `HERONITE_DEBUG_DIALOG=gallery|viewer|viewer-zoom|viewer-fit|confirm`.
     pub debug: Option<String>,
     pub debug_delete: bool,
+}
+
+/// The view is rebuilt each time the window comes back from the tray: without
+/// this its workers would stay parked forever, three more every time.
+impl Drop for Shots {
+    fn drop(&mut self) {
+        if let Some(queue) = &self.queue {
+            let _items = queue.items.lock().unwrap();
+            queue.closed.store(true, Ordering::SeqCst);
+            queue.cv.notify_all();
+        }
+    }
 }
 
 impl Default for Shots {

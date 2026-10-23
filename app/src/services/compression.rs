@@ -94,7 +94,9 @@ pub struct Compression {
     prefs: ScreenshotPrefs,
     /// Games the launcher runs (`app_name`).
     games: HashSet<String>,
-    runs: Sender<Run>,
+    /// To the worker thread, once a run started it.
+    runs: Option<Sender<Run>>,
+    reports_tx: UnboundedSender<Report>,
     /// The run in flight: its id and cancel flag.
     current: Option<(u64, Arc<AtomicBool>)>,
     next_id: u64,
@@ -140,13 +142,7 @@ pub fn shutdown(cx: &App) {
 
 impl Compression {
     fn new(data_paths: DataPaths, app: AppPaths, prefs: ScreenshotPrefs, cx: &mut Context<Self>) -> Self {
-        let (runs, rx) = channel::<Run>();
-        let (tx, mut reports) = unbounded::<Report>();
-        let worker_data_paths = data_paths.clone();
-        let spawned = std::thread::Builder::new().name("screenshot-compress".into()).spawn(move || worker(rx, tx, worker_data_paths));
-        if let Err(e) = spawned {
-            log::error!("could not start the screenshot compression thread: {e}");
-        }
+        let (reports_tx, mut reports) = unbounded::<Report>();
         cx.spawn(async move |this, cx| {
             while let Some(first) = reports.next().await {
                 let mut batch = vec![first];
@@ -165,7 +161,8 @@ impl Compression {
             app,
             prefs,
             games: HashSet::new(),
-            runs,
+            runs: None,
+            reports_tx,
             current: None,
             next_id: 0,
             scheduled: None,
@@ -291,8 +288,25 @@ impl Compression {
         self.current = Some((self.next_id, cancel.clone()));
         self.totals = RunTotals::default();
         self.phase = Phase::Scanning;
-        let _ = self.runs.send(Run { id: self.next_id, folder, cancel });
+        let run = Run { id: self.next_id, folder, cancel };
+        if let Some(runs) = self.runs() {
+            let _ = runs.send(run);
+        }
         cx.notify();
+    }
+
+    /// The worker thread, started by the first run (compression is off by
+    /// default: most sessions never need it).
+    fn runs(&mut self) -> Option<&Sender<Run>> {
+        if self.runs.is_none() {
+            let (runs, rx) = channel::<Run>();
+            let (tx, data_paths) = (self.reports_tx.clone(), self.data_paths.clone());
+            match std::thread::Builder::new().name("screenshot-compress".into()).spawn(move || worker(rx, tx, data_paths)) {
+                Ok(_) => self.runs = Some(runs),
+                Err(e) => log::error!("could not start the screenshot compression thread: {e}"),
+            }
+        }
+        self.runs.as_ref()
     }
 
     fn schedule(&mut self, delay: Duration, cx: &mut Context<Self>) {
