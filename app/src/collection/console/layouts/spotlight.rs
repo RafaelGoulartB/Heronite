@@ -391,7 +391,7 @@ impl CollectionView {
             None => 0,
         };
         if pad == Pad::Y {
-            self.console_search(window, cx);
+            self.open_console_filters(window, cx);
             return true;
         }
         if pad == Pad::X {

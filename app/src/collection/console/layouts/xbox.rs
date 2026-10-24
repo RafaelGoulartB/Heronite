@@ -322,7 +322,7 @@ impl CollectionView {
                     self.console_activate(key, pad, window, cx);
                 }
             }
-            (Pad::Y, _) => self.console_search(window, cx),
+            (Pad::Y, _) => self.open_console_filters(window, cx),
             // Up from the row, Down from the last shelf: nowhere to go.
             (Pad::Up | Pad::Down, _) => {}
             _ => return false,

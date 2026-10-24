@@ -1,5 +1,6 @@
 //! Grid: every game of the tab in a cover grid, with Show / Sort / Status /
-//! Category / Search filters on top (↑ from the first row). Its filters are
+//! Category / Search filters on top (↑ from the first row; Y opens them all
+//! in the Filters panel, `super::super::filters`). Its filters are
 //! console-only state: they never change the desktop Collection's filters.
 
 use gpui_kit::prelude::*;
@@ -233,7 +234,7 @@ fn hours_text(hours: f64) -> String {
 
 impl CollectionView {
     /// The keys the Grid of a tab shows now (also for the layouts that reuse its filters).
-    pub(super) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Vec<SharedString> {
+    pub(crate) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Vec<SharedString> {
         let Some(lib) = self.lib.clone() else { return Vec::new() };
         let games = self.console_games(&spec.source);
         let search = self.console.search.clone();
@@ -483,7 +484,7 @@ impl CollectionView {
                     }
                 }
                 Pad::Y => {
-                    self.console_search(window, cx);
+                    self.open_console_filters(window, cx);
                     return true;
                 }
                 _ => return false,
@@ -515,7 +516,7 @@ impl CollectionView {
                 return true;
             }
             Pad::Y => {
-                self.console_search(window, cx);
+                self.open_console_filters(window, cx);
                 return true;
             }
             _ => return false,

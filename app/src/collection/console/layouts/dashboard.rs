@@ -605,7 +605,7 @@ impl CollectionView {
                 true
             }
             Pad::Y => {
-                self.console_search(window, cx);
+                self.open_console_filters(window, cx);
                 true
             }
             _ => false,

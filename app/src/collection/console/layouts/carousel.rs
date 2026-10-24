@@ -269,7 +269,7 @@ impl CollectionView {
                     self.console_activate(k.clone(), pad, window, cx);
                 }
             }
-            Pad::Y => self.console_search(window, cx),
+            Pad::Y => self.open_console_filters(window, cx),
             _ => return false,
         }
         true

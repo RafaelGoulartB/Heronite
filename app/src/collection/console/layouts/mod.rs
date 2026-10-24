@@ -23,6 +23,8 @@ use heronite_data::console_theme::{GridPanel, Layout, TabSpec};
 use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
+pub(super) use grid::{category_options, status_options, Filters, SHOW};
+
 use super::super::CollectionView;
 use super::backdrop::Scrim;
 use super::sources::Shelf;
@@ -290,7 +292,7 @@ impl CollectionView {
                 return true;
             }
             Pad::Y => {
-                self.console_search(window, cx);
+                self.open_console_filters(window, cx);
                 return true;
             }
             _ => return false,
@@ -310,28 +312,26 @@ impl CollectionView {
         true
     }
 
-    /// A on a shelf's "View all" tile: the Library with the filters that
-    /// show the same games (the most recently played first), else the search.
-    fn console_open_shelf(&mut self, shelf: &Shelf, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(i) = look::theme().tabs.iter().position(|t| t.layout == Layout::Grid) else {
-            return self.console_search(window, cx);
-        };
+    /// A on a shelf's "View all" tile: the Library (or the results grid of
+    /// a theme without one) with the filters that show the same games, the
+    /// most recently played first.
+    fn console_open_shelf(&mut self, shelf: &Shelf, _window: &mut Window, _cx: &mut Context<Self>) {
         let status = shelf.kind.strip_prefix("status:").and_then(|id| self.lib.as_ref()?.statuses.iter().position(|s| s.id == id));
         let kind = shelf.kind.to_string();
+        let (i, _) = self.filters_target();
         self.console.search.clear();
         self.tab_nav(i).grid.show_like(&kind, status);
-        self.console.tab = i;
-        self.console.tab_dir = 1.;
+        self.console_show_filtered();
     }
 
-    /// Opens the library: the first Grid tab, else the search.
-    pub(super) fn console_open_library(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match look::theme().tabs.iter().position(|t| t.layout == Layout::Grid) {
-            Some(i) => {
-                self.console.tab = i;
-                self.console.tab_dir = 1.;
-            }
-            None => self.console_search(window, cx),
+    /// Opens the library: the first Grid tab, else the results grid.
+    pub(super) fn console_open_library(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
+        let (i, _) = self.filters_target();
+        if i < look::theme().tabs.len() {
+            self.console.tab = i;
+            self.console.tab_dir = 1.;
+        } else {
+            self.console.results = true;
         }
     }
 }

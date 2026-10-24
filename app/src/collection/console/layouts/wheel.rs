@@ -369,7 +369,7 @@ impl CollectionView {
                 return true;
             }
             Pad::Y => {
-                self.console_search(window, cx);
+                self.open_console_filters(window, cx);
                 return true;
             }
             _ => return false,

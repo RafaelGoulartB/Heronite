@@ -2,9 +2,10 @@
 //! Collection draws this instead of the desktop screen. The console theme
 //! (`crate::console::look`) decides what it draws: the tabs switched with
 //! LB / RB, each a layout over a set of games (`layouts/`), the game page
-//! (`game/`), the ☰ menu (`sidebar.rs`), the background (`backdrop.rs`),
-//! the hint bar; and it routes every controller press:
-//! dialog → overlay → Customize → menu → page → game page → tab.
+//! (`game/`), the ☰ menu (`sidebar.rs`), the Filters panel (`filters.rs`),
+//! the background (`backdrop.rs`), the hint bar; and it routes every
+//! controller press: dialog → overlay → Customize → Filters → menu → page →
+//! game page → tab.
 //!
 //! The desktop screen is untouched: nothing here runs while console mode is
 //! off (the controller thread, the theme and its file only live while it is on).
@@ -14,6 +15,7 @@ mod art;
 mod backdrop;
 mod controls;
 mod customize;
+mod filters;
 mod game;
 mod hero;
 mod layouts;
@@ -69,6 +71,11 @@ pub(super) struct ConsoleUi {
     game: game::GameNav,
     /// Search typed on the on-screen keyboard (the Grid filters by it).
     pub search: String,
+    /// The Filters panel (Y), with its focus.
+    filters: Option<filters::FiltersNav>,
+    /// The tab shows the filters' results instead (a theme without a Grid
+    /// tab; B or LB / RB leave them).
+    results: bool,
     /// Connected controller name.
     pub controller: Option<String>,
     /// Game whose art fills the background (follows the focus after a short
@@ -113,6 +120,7 @@ impl CollectionView {
     pub(super) fn console_init(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         // `HERONITE_DEBUG_CONSOLE=1`, `=game:<key>` to open that game's page,
         // `=menu` for the menu, `=customize` for the Customize panel,
+        // `=filters` for the Filters panel,
         // `=power` for the Power menu or `=power:reboot|poweroff` for its question.
         let debug = crate::env::value("HERONITE_DEBUG_CONSOLE");
         self.console_startup(window, cx);
@@ -127,6 +135,9 @@ impl CollectionView {
         }
         if debug.as_deref() == Some("customize") {
             self.open_console_customize();
+        }
+        if debug.as_deref() == Some("filters") {
+            self.open_console_filters(window, cx);
         }
         if let Some(which) = debug.as_deref().and_then(|d| d.strip_prefix("power")) {
             self.debug_power(which, cx);
@@ -278,6 +289,9 @@ impl CollectionView {
                 }
             }
         }
+        if self.filters_type(ks, cx) {
+            return true;
+        }
         match input::pad_from_key(ks) {
             Some(pad) => {
                 self.console_pad(pad, window, cx);
@@ -314,8 +328,18 @@ impl CollectionView {
         (i, theme.tabs.get(i).cloned().unwrap_or_default())
     }
 
+    /// The layout on screen: the tab's, or the filters' results grid over it.
+    fn console_shown_tab(&self) -> (usize, TabSpec) {
+        if self.console.results {
+            self.filters_target()
+        } else {
+            self.console_tab_spec()
+        }
+    }
+
     fn switch_tab(&mut self, delta: isize) {
         let n = look::theme().tabs.len();
+        self.console.results = false;
         if n < 2 {
             return;
         }
@@ -357,6 +381,12 @@ impl CollectionView {
             }
             return;
         }
+        if self.console.filters.is_some() {
+            if !self.filters_pad(pad, window, cx) {
+                self.console.filters = None;
+            }
+            return;
+        }
         if self.console.sidebar.is_some() {
             self.sidebar_pad(pad, window, cx);
             return;
@@ -382,11 +412,12 @@ impl CollectionView {
             }
             return;
         }
-        let (tab, spec) = self.console_tab_spec();
+        let (tab, spec) = self.console_shown_tab();
         if !self.layout_pad(tab, &spec, pad, window, cx) {
             match pad {
                 Pad::LB => self.switch_tab(-1),
                 Pad::RB => self.switch_tab(1),
+                Pad::B if self.console.results => self.console.results = false,
                 Pad::B => self.open_sidebar(),
                 _ => {}
             }
@@ -437,21 +468,15 @@ impl CollectionView {
         }
     }
 
-    /// The on-screen keyboard for the search; then the first Grid tab shows the results.
+    /// The on-screen keyboard for the search; then the grid the filters
+    /// drive shows the results (see `filters_target`).
     pub(super) fn console_search(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let current = self.console.search.clone();
         let osk = cx.new(|_| Osk::new(tr!("Search games"), &current));
         let sub = cx.subscribe(&osk, |this, _, ev: &OskEvent, cx| {
             if let OskEvent::Done(text) = ev {
                 this.console.search = text.trim().to_string();
-                let theme = look::theme();
-                if let Some(i) = theme.tabs.iter().position(|t| t.layout == Layout::Grid) {
-                    this.console.tab = i;
-                    let nav = &mut this.tab_nav(i).grid;
-                    nav.index = 0;
-                    nav.toolbar = None;
-                    nav.restart = true;
-                }
+                this.console_show_filtered();
             }
             this.close_console_overlay(cx);
         });
@@ -494,6 +519,9 @@ impl CollectionView {
         if self.console.customize.is_some() {
             return self.customize_hints();
         }
+        if self.console.filters.is_some() {
+            return self.filters_hints();
+        }
         if self.console.sidebar.is_some() {
             return vec![hint(Btn::A, tr!("Select")), hint(Btn::B, tr!("Back"))];
         }
@@ -508,8 +536,12 @@ impl CollectionView {
         match &self.console.screen {
             Screen::Game(key) => self.game_hints(key),
             Screen::Tabs => {
-                let (tab, spec) = self.console_tab_spec();
-                self.layout_hints(tab, &spec)
+                let (tab, spec) = self.console_shown_tab();
+                let mut h = self.layout_hints(tab, &spec);
+                if self.console.results {
+                    h.push(hint(Btn::B, tr!("Back")));
+                }
+                h
             }
         }
     }
@@ -625,7 +657,7 @@ impl CollectionView {
             self.console.theme_epoch = look::epoch();
             self.console.tab = self.console.tab.min(theme.tabs.len().saturating_sub(1));
         }
-        let (tab, spec) = self.console_tab_spec();
+        let (tab, spec) = self.console_shown_tab();
         let on_page = self.page != Page::Collection;
         let game_key = match &self.console.screen {
             Screen::Game(k) if !on_page => Some(k.clone()),
@@ -672,6 +704,7 @@ impl CollectionView {
         let hints = if hints_on { self.console_hints(cx) } else { Vec::new() };
         let idle = self.render_idle(window, cx);
         let customize = self.render_console_customize();
+        let filters = self.render_console_filters();
         let (_, body_font) = look::fonts();
         div()
             .id("console")
@@ -703,6 +736,7 @@ impl CollectionView {
             )
             .children(self.render_sidebar(cx))
             .children(customize)
+            .children(filters)
             .children(self.console.overlay.as_ref().map(|o| o.view.clone()))
             .children(self.dialog.clone().map(|d| {
                 let id = SharedString::from(format!("console-dialog-{}", d.entity_id()));
