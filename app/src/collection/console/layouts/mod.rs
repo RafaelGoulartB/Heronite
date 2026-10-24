@@ -112,7 +112,8 @@ impl CollectionView {
 
     pub(super) fn layout_hints(&self, tab: usize, spec: &TabSpec) -> Vec<Hint> {
         match spec.layout {
-            Layout::Shelves | Layout::Cinema => self.console_cover_hints(),
+            Layout::Shelves => self.shelves_hints(tab, spec),
+            Layout::Cinema => self.console_cover_hints(),
             Layout::Spotlight => self.spotlight_hints(tab, spec),
             Layout::Dashboard => self.dashboard_hints(tab, spec),
             Layout::Grid => self.grid_hints(tab, spec),
@@ -184,11 +185,23 @@ impl ShelfLines {
 
     /// Room for the (non-empty) `shelves`, the columns inside them.
     fn sync(&mut self, shelves: &[Shelf]) {
+        self.sync_with(shelves, false);
+    }
+
+    /// [`Self::sync`]; `more`: a shelf the theme cut ends with a "View all"
+    /// tile, one more column.
+    fn sync_with(&mut self, shelves: &[Shelf], more: bool) {
         self.fit(shelves.len());
         for (col, s) in self.cols.iter_mut().zip(shelves) {
-            *col = (*col).min(s.keys.len() - 1);
+            *col = (*col).min(columns(s, more) - 1);
         }
     }
+}
+
+/// The columns of `shelf`: its covers, and its "View all" tile when `more`
+/// and the theme's limit cut it.
+fn columns(shelf: &Shelf, more: bool) -> usize {
+    shelf.keys.len() + usize::from(more && shelf.cut())
 }
 
 /// The focus of a layout of shelves of covers (Shelves and Cinema).
@@ -212,6 +225,17 @@ impl ShelfNav {
         self.lines.sync(shelves);
         shelves[self.shelf].keys[self.lines.cols[self.shelf]].clone()
     }
+
+    /// [`Self::sync`] for shelves that end with a "View all" tile: the
+    /// focused game (the last one of the shelf while that tile has the
+    /// focus) and whether the tile has it.
+    fn sync_more(&mut self, shelves: &[Shelf]) -> (SharedString, bool) {
+        self.shelf = self.shelf.min(shelves.len() - 1);
+        self.lines.sync_with(shelves, true);
+        let s = &shelves[self.shelf];
+        let col = self.lines.cols[self.shelf];
+        (s.keys[col.min(s.keys.len() - 1)].clone(), col >= s.keys.len())
+    }
 }
 
 impl CollectionView {
@@ -234,18 +258,29 @@ impl CollectionView {
         }
         let (tw, _) = self.console_tile_size();
         let wrap = look::theme().nav.wrap;
+        // Shelves end a cut shelf with a "View all" tile.
+        let more = spec.layout == Layout::Shelves;
         let nav = nav(self.tab_nav(tab));
         nav.lines.fit(shelves.len());
         let si = nav.shelf.min(shelves.len() - 1);
-        let n = shelves[si].keys.len();
+        let n = columns(&shelves[si], more);
         let ci = nav.lines.cols[si].min(n - 1);
-        let key = shelves[si].keys[ci].clone();
+        let key = shelves[si].keys.get(ci).cloned();
         match pad {
             Pad::Left | Pad::Right => nav.lines.cols[si] = step(ci, n, pad.dir(), wrap),
             Pad::Up => nav.shelf = si.saturating_sub(1),
             Pad::Down => nav.shelf = (si + 1).min(shelves.len() - 1),
+            // A page along the shelf (LT / RT), ends included.
+            Pad::LT | Pad::RT if more => {
+                let page = ((f32::from(window.viewport_size().width) / kit::scale() / (tw + 18.)).floor() as isize - 1).max(1);
+                let back = pad == Pad::LT;
+                nav.lines.cols[si] = step(ci, n, if back { -page } else { page }, false);
+            }
             Pad::A | Pad::X => {
-                self.console_activate(key, pad, window, cx);
+                match key {
+                    Some(key) => self.console_activate(key, pad, window, cx),
+                    None => self.console_open_shelf(&shelves[si], window, cx),
+                }
                 return true;
             }
             Pad::Y => {
@@ -255,10 +290,24 @@ impl CollectionView {
             _ => return false,
         }
         let si = nav.shelf;
+        let ci = nav.lines.cols[si].min(columns(&shelves[si], more) - 1);
         nav.shelves.go(Goal::Start(si));
-        let ci = nav.lines.cols[si].min(shelves[si].keys.len() - 1);
         nav.lines.glides[si].go(Goal::Reveal { ix: ci, margin: tw * 0.6 });
         true
+    }
+
+    /// A on a shelf's "View all" tile: the Library with the filters that
+    /// show the same games (the most recently played first), else the search.
+    fn console_open_shelf(&mut self, shelf: &Shelf, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(i) = look::theme().tabs.iter().position(|t| t.layout == Layout::Grid) else {
+            return self.console_search(window, cx);
+        };
+        let status = shelf.kind.strip_prefix("status:").and_then(|id| self.lib.as_ref()?.statuses.iter().position(|s| s.id == id));
+        let kind = shelf.kind.to_string();
+        self.console.search.clear();
+        self.tab_nav(i).grid.show_like(&kind, status);
+        self.console.tab = i;
+        self.console.tab_dir = 1.;
     }
 
     /// Opens the library: the first Grid tab, else the search.
@@ -275,7 +324,27 @@ impl CollectionView {
 
 #[cfg(test)]
 mod tests {
-    use super::step;
+    use super::{columns, step, Shelf, ShelfLines};
+
+    fn shelf(shown: usize, total: usize) -> Shelf {
+        Shelf { title: "s".into(), keys: (0..shown).map(|i| i.to_string().into()).collect(), total, kind: "installed".into() }
+    }
+
+    #[test]
+    fn a_cut_shelf_ends_with_view_all() {
+        assert_eq!(columns(&shelf(20, 28), true), 21);
+        assert_eq!(columns(&shelf(20, 28), false), 20);
+        assert_eq!(columns(&shelf(5, 5), true), 5);
+        // The focus may rest on "View all", one past the covers, and comes
+        // back to the last cover when the tile goes away.
+        let mut lines = ShelfLines::default();
+        lines.sync_with(&[shelf(20, 28)], true);
+        lines.cols[0] = 20;
+        lines.sync_with(&[shelf(20, 28)], true);
+        assert_eq!(lines.cols[0], 20);
+        lines.sync_with(&[shelf(20, 20)], true);
+        assert_eq!(lines.cols[0], 19);
+    }
 
     #[test]
     fn steps_clamp_or_wrap() {

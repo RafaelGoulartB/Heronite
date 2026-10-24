@@ -81,6 +81,23 @@ fn status_options(lib: &Library) -> Vec<SharedString> {
 }
 
 impl Nav {
+    /// Filters that show the games of a shelf of `kind` (`installed`,
+    /// `favourites`, `status:<id>` with its index in the library's
+    /// `status`...), the most recently played first, from the top.
+    pub(super) fn show_like(&mut self, kind: &str, status: Option<usize>) {
+        self.show = match kind {
+            "installed" => 1,
+            "favourites" => 2,
+            _ => 0,
+        };
+        self.status = status.map_or(0, |i| i + 1);
+        self.category = 0;
+        self.sort = 1;
+        self.index = 0;
+        self.toolbar = None;
+        self.restart = true;
+    }
+
     /// The games the grid shows, in order (best search matches first).
     fn keys(&self, games: &[std::sync::Arc<CollectionGame>], lib: &Library, cats: &Categories, search: &str) -> Vec<SharedString> {
         let folded = heronite_data::fuzzy::fold(search.trim());

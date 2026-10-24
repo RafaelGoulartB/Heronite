@@ -23,6 +23,17 @@ use crate::console::theme_rows;
 pub(crate) struct Shelf {
     pub title: SharedString,
     pub keys: Vec<SharedString>,
+    /// Its games before the theme's `shelfLimit` cut it (`keys` may hold fewer).
+    pub total: usize,
+    /// What it shows (`ShelfSpec::kind`, `statuses` already split into `status:<id>`).
+    pub kind: SharedString,
+}
+
+impl Shelf {
+    /// The theme's limit left games out of it.
+    pub fn cut(&self) -> bool {
+        self.total > self.keys.len()
+    }
 }
 
 pub(super) fn by_last_played(mut v: Vec<&CollectionGame>) -> Vec<&CollectionGame> {
@@ -201,8 +212,14 @@ impl CollectionView {
             .iter()
             .filter_map(|spec| {
                 let mut keys = keys(self.shelf_games(lib, &games, &spec.kind));
+                let total = keys.len();
                 keys.truncate(limit);
-                (!keys.is_empty()).then(|| Shelf { title: theme_rows::shelf_title(spec, |v| status_name(lib, v)).into(), keys })
+                (!keys.is_empty()).then(|| Shelf {
+                    title: theme_rows::shelf_title(spec, |v| status_name(lib, v)).into(),
+                    keys,
+                    total,
+                    kind: spec.kind.clone().into(),
+                })
             })
             .collect()
     }
