@@ -414,8 +414,8 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `row_base` focus pills pop in on every press; covers lift with `motion::spring`; screens, pages, dialogs, the menu
   and panels (`kit::panel_in`, `kit::scrim`) fade / slide in with `motion::enter` (new id = replay). Only moving
   things request frames; `HERONITE_NO_ANIMATIONS=1` jumps instead. Off-screen covers are empty boxes of the same size.
-- Layout: top bar = the theme's tabs (`kit::tabs`; `interface.tabBar` may move them to a bar along the bottom or show only
-  the current one as a centred title) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
+- Layout: top bar = the theme's tabs (`kit::tabs`; `interface.tabBar` may move them to a bar along the bottom, show only
+  the current one as a centred title, or show the names alone) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
   wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
 - **Console themes** (`heronite_data::console_theme`, shareable JSON; `console.json` holds the one in use and the
   machine options, `console-themes/` the saved ones): the shell (`collection/console/mod.rs`) reads

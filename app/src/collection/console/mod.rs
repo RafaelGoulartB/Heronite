@@ -548,7 +548,8 @@ impl CollectionView {
     /// icons, clock.
     fn console_top_bar(&self) -> Div {
         let theme = look::theme();
-        let names: Vec<SharedString> = theme.tabs.iter().map(|t| SharedString::from(t.name.clone())).collect();
+        // Built-in themes name their tabs with English keys.
+        let names: Vec<SharedString> = theme.tabs.iter().map(|t| SharedString::from(tr(&t.name).to_string())).collect();
         let label = theme.interface.label.trim().to_string();
         let tab = self.console.tab.min(names.len().saturating_sub(1));
         let tab_bar = theme.interface.tab_bar;
@@ -562,9 +563,10 @@ impl CollectionView {
             .px(u(46.))
             .when(!label.is_empty(), |d| d.child(kit::wordmark(&label)))
             .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(kit::tabs(&names, tab)))
+            .when(names.len() > 1 && tab_bar == TabBar::Names, |d| d.child(kit::tab_names(&names, tab)))
             .when_some(theme.tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
                 let spaced = theme.interface.headings == Headings::Spaced;
-                let title = kit::tab_title(&t.name, kit::tab_icon(&t.source, t.layout), names.len() > 1, spaced);
+                let title = kit::tab_title(tr(&t.name), kit::tab_icon(&t.source, t.layout), names.len() > 1, spaced);
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
             })
             .child(div().flex_1())
@@ -581,7 +583,7 @@ impl CollectionView {
         let theme = look::theme();
         (theme.interface.tab_bar == TabBar::Bottom && theme.tabs.len() > 1).then(|| {
             let items: Vec<(SharedString, crate::icons::Icon)> =
-                theme.tabs.iter().map(|t| (SharedString::from(t.name.clone()), kit::tab_icon(&t.source, t.layout))).collect();
+                theme.tabs.iter().map(|t| (SharedString::from(tr(&t.name).to_string()), kit::tab_icon(&t.source, t.layout))).collect();
             kit::tabs_bottom(&items, self.console.tab.min(items.len() - 1))
         })
     }

@@ -100,21 +100,32 @@ pub fn cinema() -> ConsoleTheme {
     })
 }
 
-/// Art and logo up front, a panel of numbers at the edge, square covers.
+/// A console's home screen: a row of square icons on top (the focused one
+/// grows, its name beside it), the game's art and logo, a wide Play button
+/// and cards; the tabs as plain names, the menu as a dock.
 pub fn showcase() -> ConsoleTheme {
-    from_classic("showcase", n_!("Showcase"), n_!("Art and logo up front, your numbers at the edge, a row of square covers."), |t| {
-        t.tabs = vec![tab(n_!("Home"), Layout::Cinema), tab(n_!("Library"), Layout::Grid)];
-        t.hero.title = HeroTitle::Logo;
-        t.hero.facts = false;
-        t.hero.overview = false;
-        t.hero.stats = true;
-        t.tiles.shape = TileShape::Square;
-        t.tiles.corners = Corners::Soft;
-        t.tiles.focus = FocusStyle::Glow;
-        t.interface.accent = "ice".into();
-        t.background.motion = BackgroundMotion::Drift;
-        t.layouts.grid_panel = GridPanel::Right;
-    })
+    from_classic(
+        "showcase",
+        n_!("Showcase"),
+        n_!("Like a PlayStation: icons on top, the game's art and logo, a wide Play button and cards."),
+        |t| {
+            t.tabs = vec![tab(n_!("Games"), Layout::Spotlight), tab(n_!("Library"), Layout::Grid)];
+            t.hero.title = HeroTitle::Logo;
+            t.hero.facts = false;
+            t.hero.overview = false;
+            t.hero.size = Size3::Large;
+            t.tiles.size = TileSize::Large;
+            t.tiles.shape = TileShape::Square;
+            t.tiles.corners = Corners::Soft;
+            t.interface.tab_bar = TabBar::Names;
+            t.interface.font = ConsoleFont::System;
+            t.controls.glyphs = Glyphs::PlayStation;
+            t.controls.hints = Hints::Auto;
+            t.layouts.spotlight_actions = SpotActions::Play;
+            t.layouts.grid_panel = GridPanel::Right;
+            t.menu.style = MenuStyle::Dock;
+        },
+    )
 }
 
 /// A store front: a rail of icons, the game's details and tags, shelves of

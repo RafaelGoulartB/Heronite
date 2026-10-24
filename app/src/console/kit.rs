@@ -555,6 +555,22 @@ pub fn tabs(items: &[SharedString], active: usize) -> Div {
         .child(glyph(Btn::RB))
 }
 
+/// The tabs as names alone, larger, without LB / RB (`tab_bar: names`).
+pub fn tab_names(items: &[SharedString], active: usize) -> Div {
+    div().flex().items_center().gap(u(34.)).children(items.iter().enumerate().map(|(i, t)| {
+        let on = i == active;
+        let label = t.clone();
+        let id = SharedString::from(format!("tab-name-{label}"));
+        motion::spring(id, div(), motion::SOFT, on, move |d, k| {
+            d.text_size(u(22.))
+                .text_color(motion::mix(theme::text_muted(), strong(), k.clamp(0., 1.)))
+                .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
+                .whitespace_nowrap()
+                .child(label)
+        })
+    }))
+}
+
 /// The icon of a tab: by what it shows (its `source`), else by its layout.
 pub fn tab_icon(source: &str, layout: Layout) -> Icon {
     let source = source.trim();

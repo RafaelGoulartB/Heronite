@@ -170,6 +170,8 @@ str_enum! {
         Bottom = "bottom",
         /// Only the current tab's name, centred in the top bar.
         Title = "title",
+        /// Their names alone, larger, without the LB / RB buttons.
+        Names = "names",
     } default Top
 }
 str_enum! {
@@ -198,6 +200,11 @@ str_enum! {
 }
 str_enum! {
     pub enum GridPanel { Title = "title", Right = "right" } default Title
+}
+str_enum! {
+    /// Spotlight's buttons: Play, status, favourite and more, or only a wide
+    /// Play and more.
+    pub enum SpotActions { Full = "full", Play = "play" } default Full
 }
 str_enum! {
     pub enum WheelItems { Name = "name", Logo = "logo" } default Name
@@ -486,6 +493,7 @@ pub struct LayoutOptions {
     pub wheel_items: WheelItems,
     /// Spotlight: playtime, time to beat and journal cards.
     pub spotlight_cards: bool,
+    pub spotlight_actions: SpotActions,
     pub carousel_reflect: bool,
     /// Xbox: the shelves under the row of tiles.
     pub xbox_groups: bool,
@@ -499,6 +507,7 @@ impl Default for LayoutOptions {
             jump_letters: false,
             wheel_items: WheelItems::Name,
             spotlight_cards: true,
+            spotlight_actions: SpotActions::Full,
             carousel_reflect: false,
             xbox_groups: true,
             dashboard: DashboardWidgets::default(),

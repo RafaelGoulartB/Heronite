@@ -69,7 +69,9 @@ label_fn!(tab_bar_name, TabBar {
     Top => n_!("Along the top"),
     Bottom => n_!("Along the bottom, with icons"),
     Title => n_!("Only the current one, centred"),
+    Names => n_!("Names only, no buttons"),
 });
+label_fn!(spot_actions_name, SpotActions { Full => n_!("Play, status, favourite, more"), Play => n_!("Play and more") });
 label_fn!(headings_name, Headings { Normal => n_!("As written"), Spaced => n_!("Spaced capitals") });
 label_fn!(clock_name, Clock { H24 => n_!("24 h"), H12 => n_!("12 h"), Off => n_!("Hidden") });
 label_fn!(motion_name, Motion { Full => n_!("Full"), Reduced => n_!("Reduced"), Off => n_!("Off") });

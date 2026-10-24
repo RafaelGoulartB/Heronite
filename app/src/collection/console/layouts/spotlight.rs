@@ -7,7 +7,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{Layout, Size3, TabSpec, TileShape};
+use heronite_data::console_theme::{Layout, Size3, SpotActions, TabSpec, TileShape, TileSize};
 use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
 
@@ -34,8 +34,24 @@ const PAD: f32 = 10.;
 /// The window heights (design px) that have room for the cards and the overview.
 const CARDS_FROM: f32 = 700.;
 const OVERVIEW_FROM: f32 = 760.;
-/// Buttons: Play, Status, Favourite, More.
-const ACTIONS: usize = 4;
+/// Size of the row's icons and of the focused one, by the theme's cover size.
+fn icon_sizes() -> (f32, f32) {
+    let k = match look::theme().tiles.size {
+        TileSize::Small => 0.85,
+        TileSize::Medium => 1.,
+        TileSize::Large => 1.2,
+        TileSize::Huge => 1.4,
+    };
+    (ICON * k, ICON_ON * k)
+}
+
+/// Buttons: Play, Status, Favourite, More (or Play and More).
+fn actions() -> usize {
+    match look::theme().layouts.spotlight_actions {
+        SpotActions::Full => 4,
+        SpotActions::Play => 2,
+    }
+}
 
 pub(super) const SCRIM: Scrim = Scrim::Spot;
 
@@ -113,6 +129,29 @@ fn card(focused: bool, c: &Card) -> Div {
         .child(div().text_size(u(13.)).text_color(theme::text_dim()).child(c.title.clone()))
         .child(kit::title(c.value.clone(), 22.).truncate())
         .child(div().mt(u(2.)).text_size(u(13.5)).text_color(theme::text_muted()).truncate().child(c.note.clone()))
+}
+
+/// The wide Play button of `SpotActions::Play` (a console's home screen).
+fn wide_button(focused: bool, ic: Icon, label: SharedString) -> Div {
+    let colour: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_primary().into() };
+    div()
+        .relative()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .gap(u(10.))
+        .min_w(u(240.))
+        .h(u(56.))
+        .px(u(28.))
+        .rounded(u(14.))
+        .text_size(u(19.))
+        .font_weight(theme::W_BOLD)
+        .text_color(colour)
+        .when(focused, |d| d.bg(theme::console_focus()).shadow(kit::shadow(0.5, 6., 20.)))
+        .when(!focused, |d| d.bg(kit::shade(0.45)).border_1().border_color(kit::ink(0.12)))
+        .child(crate::ui::icon(ic, u(24.), colour))
+        .child(label)
 }
 
 /// The "All games" icon.
@@ -202,6 +241,16 @@ impl CollectionView {
             .and_then(|l| l.statuses.iter().find(|s| s.id == g.status_id))
             .map(|s| heronite_data::status::status_label(&s.name).to_string())
             .unwrap_or_else(|| tr!("Status").to_string());
+        if look::theme().layouts.spotlight_actions == SpotActions::Play {
+            let more = button(on(1), Icon::MoreHoriz, None, None).h(u(56.)).w(u(56.));
+            return div()
+                .flex()
+                .items_center()
+                .gap(u(14.))
+                .mt(u(10.))
+                .child(wide_button(on(0), icon, self.primary_label(g).into()))
+                .child(more);
+        }
         let star = g.favourite.then(|| rgb(0xf4d35e));
         div()
             .flex()
@@ -228,12 +277,13 @@ impl CollectionView {
         if nav.index == n {
             nav.zone = Zone::Row;
         }
-        let (zone, index, action, card_at) = (nav.zone, nav.index, nav.action, nav.card);
+        let (zone, index, action, card_at) = (nav.zone, nav.index, nav.action.min(actions() - 1), nav.card);
         let glide = nav.row.clone();
         let game_key = found.get(index).cloned();
         self.console_focus_game(Some(game_key.clone().unwrap_or_else(|| found[0].clone())), cx);
 
-        let step = f32::from(u(ICON + GAP));
+        let (icon, icon_on) = icon_sizes();
+        let step = f32::from(u(icon + GAP));
         let per_row = (f32::from(window.viewport_size().width) / step).ceil() as usize + 1;
         let first = (-f32::from(glide.handle().offset().x) / step).floor().max(0.) as usize;
         let ring = zone == Zone::Row;
@@ -249,7 +299,7 @@ impl CollectionView {
             .track_scroll(glide.handle());
         for j in 0..=n {
             let on = j == index;
-            let size = if on { ICON_ON } else { ICON };
+            let size = if on { icon_on } else { icon };
             let visible = (first..=first + per_row).contains(&j) || j.abs_diff(index) <= 2;
             let tile = match found.get(j) {
                 Some(key) => self.console_tile_shaped(key, TileShape::Square, size, size, on && ring, visible, window),
@@ -274,11 +324,16 @@ impl CollectionView {
                 )
             });
             // The icon grows and its neighbours make room, smoothly.
-            let grow =
-                motion::spring(("spot-icon", j), div().flex().items_center().justify_center().child(tile), motion::SOFT, on, |d, t| {
-                    let s = u(ICON + (ICON_ON - ICON) * t.clamp(0., 1.));
+            let grow = motion::spring(
+                ("spot-icon", j),
+                div().flex().items_center().justify_center().child(tile),
+                motion::SOFT,
+                on,
+                move |d, t| {
+                    let s = u(icon + (icon_on - icon) * t.clamp(0., 1.));
                     d.w(s).h(s)
-                });
+                },
+            );
             row = row.child(div().flex_none().flex().items_center().gap(u(10.)).child(grow).children(name));
         }
         row = row.child(glide.driver());
@@ -286,14 +341,18 @@ impl CollectionView {
         let tall = f32::from(window.viewport_size().height) / kit::scale();
         let main = match game_key.as_ref().and_then(|k| self.lib.as_ref()?.get(k)).cloned() {
             Some(g) => {
-                let logo_h = match theme.hero.size {
-                    Size3::Small => 84.,
-                    Size3::Medium => 104.,
-                    Size3::Large => 128.,
+                let (logo_w, logo_h) = match theme.hero.size {
+                    Size3::Small => (420., 84.),
+                    Size3::Medium => (420., 104.),
+                    Size3::Large => (560., 170.),
                 };
                 let size = HeroSize {
-                    title: if theme.hero.size == Size3::Small { 42. } else { 54. },
-                    logo: (420., logo_h),
+                    title: match theme.hero.size {
+                        Size3::Small => 42.,
+                        Size3::Medium => 54.,
+                        Size3::Large => 64.,
+                    },
+                    logo: (logo_w, logo_h),
                     max_w: 640.,
                     overview: if tall >= OVERVIEW_FROM { 200 } else { 0 },
                 };
@@ -385,7 +444,7 @@ impl CollectionView {
                 }
             }
             (Zone::Actions, Pad::Left) => nav.action = nav.action.saturating_sub(1),
-            (Zone::Actions, Pad::Right) => nav.action = (nav.action + 1).min(ACTIONS - 1),
+            (Zone::Actions, Pad::Right) => nav.action = (nav.action + 1).min(actions() - 1),
             (Zone::Actions, Pad::Up) => nav.zone = Zone::Row,
             (Zone::Actions, Pad::Down) if cards > 0 => {
                 nav.zone = Zone::Cards;
@@ -411,6 +470,8 @@ impl CollectionView {
 
     /// A on a button of the actions row.
     fn spotlight_act(&mut self, key: &SharedString, action: usize, window: &mut Window, cx: &mut Context<Self>) {
+        // Play and More only: the second one is More.
+        let action = if actions() == 2 && action == 1 { 3 } else { action };
         match action {
             0 => self.install_or_play(key, window, cx),
             1 => {
