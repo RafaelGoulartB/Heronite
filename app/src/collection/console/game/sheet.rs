@@ -23,6 +23,13 @@ pub(super) struct Nav {
     full: bool,
 }
 
+impl Nav {
+    /// "Full page" took over (the Classic page shows instead).
+    pub(super) fn full(&self) -> bool {
+        self.full
+    }
+}
+
 /// Design width of the sheet.
 const WIDTH: f32 = 440.;
 

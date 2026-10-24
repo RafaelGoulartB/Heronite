@@ -240,13 +240,14 @@ impl CollectionView {
         match look::theme().game_page {
             GamePage::Classic | GamePage::Tabs => Scrim::Classic,
             GamePage::Hero => Scrim::Spot,
+            GamePage::Sheet if self.console.game.sheet.full() => Scrim::Classic,
             GamePage::Sheet => super::layouts::scrim(spec.layout),
         }
     }
 
     /// The Sheet opens over the tab: its top bar stays.
     pub(super) fn game_page_keeps_tabs(&self) -> bool {
-        look::theme().game_page == GamePage::Sheet
+        look::theme().game_page == GamePage::Sheet && !self.console.game.sheet.full()
     }
 
     fn render_game_classic(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
