@@ -414,15 +414,21 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `row_base` focus pills pop in on every press; covers lift with `motion::spring`; screens, pages, dialogs, the menu
   and panels (`kit::panel_in`, `kit::scrim`) fade / slide in with `motion::enter` (new id = replay). Only moving
   things request frames; `HERONITE_NO_ANIMATIONS=1` jumps instead. Off-screen covers are empty boxes of the same size.
-- Layout: top bar = the theme's tabs (`kit::tabs`) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
+- Layout: top bar = the theme's tabs (`kit::tabs`; `interface.tabBar` may move them to a bar along the bottom or show only
+  the current one as a centred title) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
   wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
 - **Console themes** (`heronite_data::console_theme`, shareable JSON; `console.json` holds the one in use and the
   machine options, `console-themes/` the saved ones): the shell (`collection/console/mod.rs`) reads
   `console::look::theme()` every frame and never caches it. Tabs (`TabSpec`: name, layout, source) dispatch to
   `collection/console/layouts/<layout>.rs` (`render_<l>`, `<l>_pad`, `<l>_hints`, a `Nav` in `TabNav`, a `SCRIM`);
-  covers come from `tile.rs` (shape, size, corners, focus style, badges, name), the background from `backdrop.rs`,
-  names / logos / facts from `hero.rs` (logos: `art.rs`), shelves and tab games from `sources.rs`; game pages
-  (`game/`: classic, hero, tabs, sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock) follow the theme too.
+  covers come from `tile.rs` (shape, size, corners, focus style, badges and "New", store strip, name below or in a
+  bar), the background from `backdrop.rs`, names / logos / facts (a line or chips and genre tags) and the stats panel
+  from `hero.rs` (logos: `art.rs`), shelves and tab games from `sources.rs`; game pages (`game/`: classic, hero, tabs,
+  sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
+  follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
+  light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
+  The built-in themes (`presets.rs`) were modelled on other launchers' fullscreen themes: Cinema, Showcase,
+  Storefront, Daylight and Handheld each show off a few of these options; Classic is the default.
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
   Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). A new option = a field in
