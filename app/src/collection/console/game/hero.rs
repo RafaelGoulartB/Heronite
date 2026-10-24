@@ -336,6 +336,8 @@ impl CollectionView {
         if !tabs.contains(&nav.tab) {
             nav.tab = Tab::Overview;
         }
+        // Only Screenshots has anything to focus under the tabs.
+        nav.content &= nav.tab == Tab::Screenshots && shots > 0;
         nav.shot = nav.shot.min(shots.saturating_sub(1));
         nav.shot_start = window_start(nav.shot_start, nav.shot, SHOTS).min(shots.saturating_sub(SHOTS));
         let (tab, button, in_content, shot, shot_start) = (nav.tab, nav.button, nav.content, nav.shot, nav.shot_start);
