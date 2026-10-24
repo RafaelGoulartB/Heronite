@@ -170,8 +170,13 @@ impl Drop for PadThread {
     }
 }
 
-/// Starts reading controllers. `None` when gilrs cannot start (no udev, ...).
+/// Starts reading controllers. `None` when gilrs cannot start (no udev, ...)
+/// or `HERONITE_NO_GAMEPAD` is set (test copies on a hidden workspace must not
+/// follow the controller of the app in use).
 pub fn start() -> Option<(PadThread, UnboundedReceiver<PadMsg>)> {
+    if crate::env::flag("HERONITE_NO_GAMEPAD") {
+        return None;
+    }
     let (tx, rx) = unbounded();
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
