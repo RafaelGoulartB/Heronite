@@ -45,13 +45,52 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
     Ok(Loaded { lib, wiki, categories, extras, actions, covers, stages })
 }
 
+/// A first load started just before the window opens, so it runs while the
+/// GPU comes up (~150 ms) instead of after the first frame.
+struct Preload {
+    root: std::path::PathBuf,
+    include_hidden: bool,
+    task: Task<anyhow::Result<Loaded>>,
+}
+
+thread_local! {
+    static PRELOAD: std::cell::RefCell<Option<Preload>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Starts loading the library for the window about to open; its view takes
+/// the result (`spawn_load`).
+pub fn preload_library(cx: &App) {
+    let data_paths = DataPaths::detect();
+    let app_paths = heronite_data::AppPaths::for_data(&data_paths);
+    let include_hidden = heronite_data::ui_state::UiState::load(&app_paths).show_hidden;
+    let (paths, cache) = (data_paths.clone(), app_paths.cache);
+    let task = cx.background_spawn(async move { load_all(&paths, &cache, include_hidden) });
+    PRELOAD.with(|p| *p.borrow_mut() = Some(Preload { root: data_paths.root, include_hidden, task }));
+}
+
+/// Drops a preload nobody took (the window did not open), so a later view
+/// never gets old data.
+pub fn discard_preload() {
+    PRELOAD.with(|p| p.borrow_mut().take());
+}
+
+/// The preload, when it was made for these paths and this filter.
+fn take_preload(data_paths: &DataPaths, include_hidden: bool) -> Option<Task<anyhow::Result<Loaded>>> {
+    let p = PRELOAD.with(|p| p.borrow_mut().take())?;
+    (p.root == data_paths.root && p.include_hidden == include_hidden).then_some(p.task)
+}
+
 impl CollectionView {
     pub(super) fn spawn_load(&self, cx: &mut Context<Self>) {
         let data_paths = self.data_paths.clone();
         let cache = self.app_paths.cache.clone();
         let include_hidden = self.ui.show_hidden;
+        let preloaded = if self.lib.is_none() { take_preload(&data_paths, include_hidden) } else { None };
         cx.spawn(async move |this, cx| {
-            let loaded = cx.background_spawn(async move { load_all(&data_paths, &cache, include_hidden) }).await;
+            let loaded = match preloaded {
+                Some(task) => task.await,
+                None => cx.background_spawn(async move { load_all(&data_paths, &cache, include_hidden) }).await,
+            };
             this.update(cx, |this, cx| {
                 this.refreshing = false;
                 match loaded {

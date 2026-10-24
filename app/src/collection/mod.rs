@@ -54,6 +54,7 @@ mod user_actions;
 mod view_filters;
 mod view_menu;
 mod welcome;
+pub use load::{discard_preload, preload_library};
 pub use screenshots::screenshots_global;
 pub mod stage;
 mod vm;
