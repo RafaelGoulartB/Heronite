@@ -57,9 +57,13 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
                     .items_center()
                     .gap(px(6.))
                     .child(div().flex_1().min_w_0().truncate().text_size(px(14.)).text_color(theme::text_primary()).child(name.clone()))
-                    .when(current && edited, |d| d.child(div().flex_none().text_size(px(11.)).text_color(theme::accent()).child(tr!("edited")))),
+                    .when(current && edited, |d| {
+                        d.child(div().flex_none().text_size(px(11.)).text_color(theme::accent()).child(tr!("edited")))
+                    }),
             )
-            .child(div().text_size(px(11.5)).line_height(px(15.)).text_color(theme::text_dim()).overflow_hidden().max_h(px(46.)).child(about));
+            .child(
+                div().text_size(px(11.5)).line_height(px(15.)).text_color(theme::text_dim()).overflow_hidden().max_h(px(46.)).child(about),
+            );
         tiles = tiles.child(tile);
     }
 
@@ -116,8 +120,14 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
     }
     actions = actions
         .child(div().flex_1())
-        .child(button_sm("cm-export", ButtonKind::Glass, tr!("Export…")).on_click(cx.listener(|d, _, window, cx| theme_rows::store_op(d, StoreOp::Export, window, cx))))
-        .child(button_sm("cm-import", ButtonKind::Glass, tr!("Import…")).on_click(cx.listener(|d, _, window, cx| theme_rows::store_op(d, StoreOp::Import, window, cx))))
+        .child(
+            button_sm("cm-export", ButtonKind::Glass, tr!("Export…"))
+                .on_click(cx.listener(|d, _, window, cx| theme_rows::store_op(d, StoreOp::Export, window, cx))),
+        )
+        .child(
+            button_sm("cm-import", ButtonKind::Glass, tr!("Import…"))
+                .on_click(cx.listener(|d, _, window, cx| theme_rows::store_op(d, StoreOp::Import, window, cx))),
+        )
         .child(button_sm("cm-reset", ButtonKind::Glass, tr!("Back to Classic")).on_click(cx.listener(|d, _, _, cx| {
             theme_rows::change(d, &Command::new("theme.reset", Arg::Press), cx);
         })));
@@ -127,13 +137,22 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
         div().text_size(px(13.)).text_color(if error { theme::danger_text() } else { theme::text_muted() }).child(text)
     });
 
-    card_box().py(px(14.)).gap(px(12.)).child(meta_text(tr!("A theme holds the tabs, shelves and every option below. Yours are saved on this PC; export one to share it."))).child(tiles).child(
-        div()
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .child(div().w(px(200.)).child(input_box(&name_input, false)))
-            .child(div().w(px(160.)).child(input_box(&author_input, false)))
-            .child(save_as),
-    ).child(actions).children(notice_line)
+    card_box()
+        .py(px(14.))
+        .gap(px(12.))
+        .child(meta_text(tr!(
+            "A theme holds the tabs, shelves and every option below. Yours are saved on this PC; export one to share it."
+        )))
+        .child(tiles)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .child(div().w(px(200.)).child(input_box(&name_input, false)))
+                .child(div().w(px(160.)).child(input_box(&author_input, false)))
+                .child(save_as),
+        )
+        .child(actions)
+        .children(notice_line)
 }

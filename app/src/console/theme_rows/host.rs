@@ -75,6 +75,9 @@ pub trait Host: Sized + 'static {
         cx: &mut Context<Self>,
         chosen: impl Fn(&mut Self, &str, &mut Window, &mut Context<Self>) + 'static,
     );
+    /// `openIn` or `autoConsole` changed: the running app follows (the
+    /// controller watcher starts or stops now, not at the next start).
+    fn start_options_changed(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {}
 }
 
 /// Reads the saved themes off the UI thread.
@@ -128,7 +131,9 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
 pub fn on_outcome<H: Host>(h: &mut H, outcome: Outcome, window: &mut Window, cx: &mut Context<H>) {
     match outcome {
         Outcome::Changed(id, value) => {
-            change(h, &Command::changed(&id, value), cx);
+            if change(h, &Command::changed(&id, value), cx) && id.starts_with("startup.") {
+                h.start_options_changed(window, cx);
+            }
         }
         Outcome::Activate(id) => {
             let Some(step) = h.theme_state().map(|st| activate(&id, &st.ctx())) else { return };
@@ -149,9 +154,16 @@ fn do_step<H: Host>(h: &mut H, step: Step, window: &mut Window, cx: &mut Context
             h.open_osk(&title, &initial, window, cx, move |h, text, window, cx| text_done(h, &id, text, window, cx));
         }
         Step::File { id, title, start } => {
-            h.open_browser(&title, PickKind::File(vec!["png".into(), "jpg".into(), "jpeg".into(), "webp".into()]), start, window, cx, move |h, path, _, cx| {
-                change(h, &Command::new(id.clone(), Arg::Text(path.display().to_string())), cx);
-            });
+            h.open_browser(
+                &title,
+                PickKind::File(vec!["png".into(), "jpg".into(), "jpeg".into(), "webp".into()]),
+                start,
+                window,
+                cx,
+                move |h, path, _, cx| {
+                    change(h, &Command::new(id.clone(), Arg::Text(path.display().to_string())), cx);
+                },
+            );
         }
         Step::Pick { id, title, rows } => {
             h.open_sheet(&title, None, rows, window, cx, move |h, picked, _, cx| {
@@ -319,7 +331,8 @@ fn import<H: Host>(h: &mut H, window: &mut Window, cx: &mut Context<H>) {
         });
         return;
     }
-    let rx = cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some(tr!("Select").into()) });
+    let rx =
+        cx.prompt_for_paths(PathPromptOptions { files: true, directories: false, multiple: false, prompt: Some(tr!("Select").into()) });
     cx.spawn(async move |this, cx| {
         let Ok(Ok(Some(paths))) = rx.await else { return };
         let Some(path) = paths.into_iter().next() else { return };

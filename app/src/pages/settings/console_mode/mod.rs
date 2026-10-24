@@ -199,7 +199,9 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
 pub(super) fn card_rows(d: &SettingsPage, card: Card) -> Vec<Row> {
     let Some(s) = d.console_mode.as_ref() else { return Vec::new() };
     let mut rows = theme_rows::rows(card, &s.theme.ctx());
-    rows.retain(|r| !matches!(r.value, crate::console::list::Value::Action | crate::console::list::Value::Header | crate::console::list::Value::Info(_)));
+    rows.retain(|r| {
+        !matches!(r.value, crate::console::list::Value::Action | crate::console::list::Value::Header | crate::console::list::Value::Info(_))
+    });
     let listed = |id: &str, prefix: &str| id.strip_prefix(prefix).is_some_and(|n| n.parse::<usize>().is_ok());
     rows.retain(|r| !listed(&r.id, "shelf.") && !listed(&r.id, "menu."));
     rows
@@ -244,7 +246,10 @@ pub(super) fn console_hints(d: &SettingsPage) -> Vec<Hint> {
     if s.theme.moving {
         return extra;
     }
-    let mut h = vec![crate::console::hint(crate::console::Btn::A, tr!("Select")), crate::console::hint(crate::console::Btn::LeftRight, tr!("Change"))];
+    let mut h = vec![
+        crate::console::hint(crate::console::Btn::A, tr!("Select")),
+        crate::console::hint(crate::console::Btn::LeftRight, tr!("Change")),
+    ];
     h.extend(extra);
     h
 }

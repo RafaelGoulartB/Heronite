@@ -44,12 +44,10 @@ pub(super) fn tabs(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<S
         let at = sources.iter().position(|(v, _)| *v == t.source).unwrap_or(0);
         let labels: Vec<SharedString> = sources.into_iter().map(|(_, l)| l.into()).collect();
         let source = choice_select(d, &format!("tab.{i}.source").into(), &labels, at, true, cx);
-        let up = tool(format!("cm-tab-{i}-up").into(), Icon::ArrowUpward, i > 0).when(i > 0, |b| {
-            b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_press(d, &format!("tab.{i}.up"), cx)))
-        });
-        let remove = tool(format!("cm-tab-{i}-remove").into(), Icon::Close, tabs.len() > 1).when(tabs.len() > 1, |b| {
-            b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_press(d, &format!("tab.{i}.remove"), cx)))
-        });
+        let up = tool(format!("cm-tab-{i}-up").into(), Icon::ArrowUpward, i > 0)
+            .when(i > 0, |b| b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_press(d, &format!("tab.{i}.up"), cx))));
+        let remove = tool(format!("cm-tab-{i}-remove").into(), Icon::Close, tabs.len() > 1)
+            .when(tabs.len() > 1, |b| b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_press(d, &format!("tab.{i}.remove"), cx))));
         let mut layouts = div().flex().flex_wrap().gap(px(8.));
         for (li, l) in Layout::ALL.iter().copied().enumerate() {
             let on = t.layout == l;
@@ -62,10 +60,20 @@ pub(super) fn tabs(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<S
                     .gap(px(4.))
                     .cursor_pointer()
                     .on_click(cx.listener(move |d, _, window, cx| {
-                        send(d, Outcome::Changed(format!("tab.{i}.layout").into(), Value::Choice { options: Vec::new(), index: li }), window, cx);
+                        send(
+                            d,
+                            Outcome::Changed(format!("tab.{i}.layout").into(), Value::Choice { options: Vec::new(), index: li }),
+                            window,
+                            cx,
+                        );
                     }))
                     .child(thumb(l, on))
-                    .child(div().text_size(px(11.5)).text_color(if on { theme::text_primary() } else { theme::text_muted() }).child(tr(theme_rows::layout_label(l)))),
+                    .child(
+                        div()
+                            .text_size(px(11.5))
+                            .text_color(if on { theme::text_primary() } else { theme::text_muted() })
+                            .child(tr(theme_rows::layout_label(l))),
+                    ),
             );
         }
         col = col.child(
@@ -83,7 +91,14 @@ pub(super) fn tabs(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<S
                         .flex()
                         .items_center()
                         .gap(px(10.))
-                        .child(div().flex_none().w(px(48.)).text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Tab {n}", n = i + 1)))
+                        .child(
+                            div()
+                                .flex_none()
+                                .w(px(48.))
+                                .text_size(px(13.))
+                                .text_color(theme::text_muted())
+                                .child(tr!("Tab {n}", n = i + 1)),
+                        )
                         .child(div().w(px(180.)).child(name))
                         .child(div().flex_1().min_w_0().child(source))
                         .child(up)
@@ -93,7 +108,12 @@ pub(super) fn tabs(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<S
         );
     }
     if tabs.len() < MAX_TABS {
-        col = col.child(div().flex().child(button_sm("cm-tab-add", ButtonKind::Glass, tr!("Add a tab")).on_click(cx.listener(|d, _, _, cx| theme_rows::run_press(d, "tab.add", cx)))));
+        col = col.child(
+            div().flex().child(
+                button_sm("cm-tab-add", ButtonKind::Glass, tr!("Add a tab"))
+                    .on_click(cx.listener(|d, _, _, cx| theme_rows::run_press(d, "tab.add", cx))),
+            ),
+        );
     }
     col
 }
@@ -114,28 +134,39 @@ pub(super) fn shelves(d: &mut SettingsPage, window: &mut Window, cx: &mut Contex
         let default = theme_rows::kind_label(&facts, &sh.kind);
         let title = text_input(d, &format!("title:shelf.{i}"), &format!("shelf.{i}"), &sh.title, &default, window, cx);
         let on = sh.on;
-        col = col.child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .py(px(4.))
-                .when(!uses, |d| d.opacity(0.45))
-                .child(tool(format!("cm-shelf-{i}-up").into(), Icon::ArrowUpward, i > 0).when(i > 0, |b| {
-                    b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_move(d, &format!("shelf.{i}"), -1, cx)))
-                }))
-                .child(tool(format!("cm-shelf-{i}-down").into(), Icon::ArrowDownward, i + 1 < n).when(i + 1 < n, |b| {
-                    b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_move(d, &format!("shelf.{i}"), 1, cx)))
-                }))
-                .child(div().w(px(230.)).child(title))
-                .child(div().flex_1().min_w_0().truncate().text_size(px(12.)).text_color(theme::text_dim()).child(theme_rows::kind_group(&sh.kind)))
-                .child(toggle(SharedString::from(format!("cm-shelf-{i}-on")), on, false).on_click(cx.listener(move |d, _, window, cx| {
-                    send(d, Outcome::Changed(format!("shelf.{i}").into(), Value::Toggle(!on)), window, cx);
-                })))
-                .child(tool(format!("cm-shelf-{i}-remove").into(), Icon::Close, true).on_click(cx.listener(move |d, _, _, cx| {
-                    theme_rows::change(d, &Command::new(format!("shelf.{i}"), Arg::Remove), cx);
-                }))),
-        );
+        col =
+            col.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .py(px(4.))
+                    .when(!uses, |d| d.opacity(0.45))
+                    .child(tool(format!("cm-shelf-{i}-up").into(), Icon::ArrowUpward, i > 0).when(i > 0, |b| {
+                        b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_move(d, &format!("shelf.{i}"), -1, cx)))
+                    }))
+                    .child(tool(format!("cm-shelf-{i}-down").into(), Icon::ArrowDownward, i + 1 < n).when(i + 1 < n, |b| {
+                        b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_move(d, &format!("shelf.{i}"), 1, cx)))
+                    }))
+                    .child(div().w(px(230.)).child(title))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .text_size(px(12.))
+                            .text_color(theme::text_dim())
+                            .child(theme_rows::kind_group(&sh.kind)),
+                    )
+                    .child(toggle(SharedString::from(format!("cm-shelf-{i}-on")), on, false).on_click(cx.listener(
+                        move |d, _, window, cx| {
+                            send(d, Outcome::Changed(format!("shelf.{i}").into(), Value::Toggle(!on)), window, cx);
+                        },
+                    )))
+                    .child(tool(format!("cm-shelf-{i}-remove").into(), Icon::Close, true).on_click(cx.listener(move |d, _, _, cx| {
+                        theme_rows::change(d, &Command::new(format!("shelf.{i}"), Arg::Remove), cx);
+                    }))),
+            );
     }
     // Add: the kinds the theme does not have yet, by group.
     let kinds = {
@@ -195,12 +226,14 @@ pub(super) fn menu(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div 
             .items_center()
             .gap(px(8.))
             .py(px(3.))
-            .child(tool(format!("cm-{id}-up").into(), Icon::ArrowUpward, i > 0).when(i > 0, |b| {
-                b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_move(d, &up_id, -1, cx)))
-            }))
-            .child(tool(format!("cm-{id}-down").into(), Icon::ArrowDownward, i + 1 < n).when(i + 1 < n, |b| {
-                b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_move(d, &down_id, 1, cx)))
-            }));
+            .child(
+                tool(format!("cm-{id}-up").into(), Icon::ArrowUpward, i > 0)
+                    .when(i > 0, |b| b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_move(d, &up_id, -1, cx)))),
+            )
+            .child(
+                tool(format!("cm-{id}-down").into(), Icon::ArrowDownward, i + 1 < n)
+                    .when(i + 1 < n, |b| b.on_click(cx.listener(move |d, _, _, cx| theme_rows::run_move(d, &down_id, 1, cx)))),
+            );
         let line = match &r.value {
             Value::Toggle(on) => {
                 let (on, enabled) = (*on, r.enabled);
@@ -212,7 +245,9 @@ pub(super) fn menu(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div 
                         }))
                     }))
             }
-            _ => line.child(div().flex_1().text_size(px(13.)).text_color(theme::text_dim()).child(format!("\u{2014} {} \u{2014}", r.label))),
+            _ => {
+                line.child(div().flex_1().text_size(px(13.)).text_color(theme::text_dim()).child(format!("\u{2014} {} \u{2014}", r.label)))
+            }
         };
         col = col.child(line);
     }

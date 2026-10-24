@@ -95,6 +95,10 @@ impl Host for CollectionView {
         });
         self.open_console_overlay(&sheet, sub, cx);
     }
+
+    fn start_options_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.console_start_options_changed(window, cx);
+    }
 }
 
 impl CollectionView {
@@ -135,9 +139,11 @@ impl CollectionView {
             );
         }
         strip = strip.child(kit::glyph(Btn::RB));
-        let notice = nav.state.notice.clone().map(|(text, error)| {
-            kit::body_text(text).text_color(if error { theme::danger_text() } else { theme::text_muted() })
-        });
+        let notice = nav
+            .state
+            .notice
+            .clone()
+            .map(|(text, error)| kit::body_text(text).text_color(if error { theme::danger_text() } else { theme::text_muted() }));
         let list = nav.list.render("console-customize-rows", &rows, true).flex_1().min_h_0();
         let panel = div()
             .absolute()

@@ -44,12 +44,19 @@ fn blocks(layout: Layout) -> Vec<(f32, f32, f32, f32, f32)> {
         Layout::Grid => (0..12).map(|i| (6. + (i % 4) as f32 * 19., 5. + (i / 4) as f32 * 15., 16., 12., 0.35)).collect(),
         // Names in a column, the art beside.
         Layout::Wheel => {
-            let mut v: Vec<_> = (0..6).map(|i| (6., 6. + i as f32 * 7., if i == 3 { 30. } else { 22. }, 3., if i == 3 { 0.95 } else { 0.35 })).collect();
+            let mut v: Vec<_> =
+                (0..6).map(|i| (6., 6. + i as f32 * 7., if i == 3 { 30. } else { 22. }, 3., if i == 3 { 0.95 } else { 0.35 })).collect();
             v.push((46., 6., 32., 38., 0.3));
             v
         }
         // A large cover in the middle, the neighbours smaller.
-        Layout::Carousel => vec![(6., 14., 16., 24., 0.25), (24., 9., 14., 32., 0.35), (31., 6., 22., 38., 0.8), (49., 9., 14., 32., 0.35), (62., 14., 16., 24., 0.25)],
+        Layout::Carousel => vec![
+            (6., 14., 16., 24., 0.25),
+            (24., 9., 14., 32., 0.35),
+            (31., 6., 22., 38., 0.8),
+            (49., 9., 14., 32., 0.35),
+            (62., 14., 16., 24., 0.25),
+        ],
         // A row of tiles, the first one wide, groups below.
         Layout::Xbox => vec![
             (5., 6., 28., 14., 0.7),
@@ -78,7 +85,11 @@ pub(super) fn thumb(layout: Layout, active: bool) -> Div {
         .border_1()
         .border_color(if active { theme::accent().into() } else { theme::card_border() });
     for (x, y, w, h, a) in blocks(layout) {
-        d = d.child(div().absolute().left(px(x)).top(px(y)).w(px(w)).h(px(h)).rounded(px(2.)).bg(if active { theme::accent_alpha(a * 0.8).into() } else { theme::ink_a(a * 0.5) }));
+        d = d.child(div().absolute().left(px(x)).top(px(y)).w(px(w)).h(px(h)).rounded(px(2.)).bg(if active {
+            theme::accent_alpha(a * 0.8).into()
+        } else {
+            theme::ink_a(a * 0.5)
+        }));
     }
     d
 }

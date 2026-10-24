@@ -24,7 +24,13 @@ pub(in crate::pages::settings) struct Field {
 const SEG_MAX: usize = 4;
 
 /// Segmented pills like `controls::tabs`, with runtime labels.
-pub(super) fn seg(id: &str, options: &[SharedString], active: usize, enabled: bool, on_pick: impl Fn(usize, &mut Window, &mut App) + 'static) -> Div {
+pub(super) fn seg(
+    id: &str,
+    options: &[SharedString],
+    active: usize,
+    enabled: bool,
+    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+) -> Div {
     let on_pick = std::rc::Rc::new(on_pick);
     let mut track = div()
         .id(SharedString::from(format!("{id}-seg")))
@@ -114,7 +120,8 @@ pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx:
             if !enabled {
                 return sw.into_any_element();
             }
-            sw.on_click(cx.listener(move |d, _, window, cx| send(d, Outcome::Changed(id.clone(), Value::Toggle(!on)), window, cx))).into_any_element()
+            sw.on_click(cx.listener(move |d, _, window, cx| send(d, Outcome::Changed(id.clone(), Value::Toggle(!on)), window, cx)))
+                .into_any_element()
         }
         Value::Choice { options, index } => {
             let options = options.clone();
@@ -136,19 +143,29 @@ pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx:
             let make = |id: SharedString, delta: i64, text: &'static str| {
                 let go = (value + delta).clamp(min, max) != value;
                 let (id2, suffix2) = (id.clone(), *suffix);
-                button_sm(SharedString::from(format!("cm-{id}-{text}")), ButtonKind::Glass, text).when(!go || !enabled, |d| d.opacity(0.4)).when(go && enabled, |d| {
-                    d.on_click(cx.listener(move |d, _, window, cx| {
-                        let v = Value::Number { value: (value + delta).clamp(min, max), min, max, step, suffix: suffix2 };
-                        send(d, Outcome::Changed(id2.clone(), v), window, cx);
-                    }))
-                })
+                button_sm(SharedString::from(format!("cm-{id}-{text}")), ButtonKind::Glass, text)
+                    .when(!go || !enabled, |d| d.opacity(0.4))
+                    .when(go && enabled, |d| {
+                        d.on_click(cx.listener(move |d, _, window, cx| {
+                            let v = Value::Number { value: (value + delta).clamp(min, max), min, max, step, suffix: suffix2 };
+                            send(d, Outcome::Changed(id2.clone(), v), window, cx);
+                        }))
+                    })
             };
             let control = div()
                 .flex()
                 .items_center()
                 .gap(px(8.))
                 .child(make(id.clone(), -step, "\u{2212}"))
-                .child(div().w(px(64.)).flex().justify_center().text_size(px(14.)).text_color(theme::text_primary()).child(format!("{value}{suffix}")))
+                .child(
+                    div()
+                        .w(px(64.))
+                        .flex()
+                        .justify_center()
+                        .text_size(px(14.))
+                        .text_color(theme::text_primary())
+                        .child(format!("{value}{suffix}")),
+                )
                 .child(make(id.clone(), step, "+"));
             row(label, desc_str, control).when(!enabled, |d| d.opacity(0.45)).into_any_element()
         }
@@ -164,8 +181,9 @@ pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx:
                 div().flex().items_center().gap(px(8.)).child(input).child(browse)
             } else if id.starts_with("colors.") {
                 let id2 = id.to_string();
-                let reset = button_sm(SharedString::from(format!("cm-{id}-reset")), ButtonKind::Ghost, tr!("Reset"))
-                    .on_click(cx.listener(move |d, _, window, cx| crate::console::theme_rows::text_done(d, &id2, String::new(), window, cx)));
+                let reset = button_sm(SharedString::from(format!("cm-{id}-reset")), ButtonKind::Ghost, tr!("Reset")).on_click(
+                    cx.listener(move |d, _, window, cx| crate::console::theme_rows::text_done(d, &id2, String::new(), window, cx)),
+                );
                 div().flex().items_center().gap(px(8.)).child(input).child(reset)
             } else {
                 div().child(input)
@@ -176,7 +194,14 @@ pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx:
     }
 }
 
-pub(super) fn choice_select(d: &mut SettingsPage, id: &SharedString, options: &[SharedString], index: usize, enabled: bool, cx: &mut Context<SettingsPage>) -> Div {
+pub(super) fn choice_select(
+    d: &mut SettingsPage,
+    id: &SharedString,
+    options: &[SharedString],
+    index: usize,
+    enabled: bool,
+    cx: &mut Context<SettingsPage>,
+) -> Div {
     let open = d.console_mode.as_ref().is_some_and(|s| s.open.as_deref() == Some(id.as_ref()));
     let list = options.iter().enumerate().map(|(i, o)| (o.clone(), i == index)).collect();
     let (toggle_id, pick_id, opts) = (id.clone(), id.clone(), options.to_vec());
