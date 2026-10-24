@@ -14,6 +14,7 @@ use super::super::hero::{clip, HeroSize};
 use super::super::sources::keys;
 use super::super::tile::label_room;
 use crate::collection::data::played_ago;
+use crate::collection::view_filters::category_label;
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion::{self, Axis, Glide, Goal};
@@ -29,11 +30,7 @@ pub(crate) struct Nav {
     /// Focused filter chip (`None` = the grid has the focus).
     pub toolbar: Option<usize>,
     pub index: usize,
-    show: usize,
-    sort: usize,
-    status: usize,
-    /// Index in [`category_options`].
-    category: usize,
+    pub filters: Filters,
     pub scroll: Glide,
     pub reveal: bool,
     /// The filters changed: back to the top at once.
@@ -43,29 +40,36 @@ pub(crate) struct Nav {
 
 impl Default for Nav {
     fn default() -> Self {
-        Self {
-            toolbar: None,
-            index: 0,
-            show: 0,
-            sort: 0,
-            status: 0,
-            category: 0,
-            scroll: Glide::new(Axis::Y),
-            reveal: false,
-            restart: false,
-            cols: 6,
-        }
+        Self { toolbar: None, index: 0, filters: Filters::default(), scroll: Glide::new(Axis::Y), reveal: false, restart: false, cols: 6 }
     }
 }
 
-const SHOW: [&str; 4] = [n_!("All games"), n_!("Installed"), n_!("Favourites"), n_!("Not installed")];
+/// What a Grid shows (its chips and the Filters panel edit it).
+#[derive(Clone, Default, PartialEq, Debug)]
+pub(crate) struct Filters {
+    /// Index in [`SHOW`].
+    pub show: usize,
+    /// Only the favourites (on top of `show`).
+    pub favourites: bool,
+    /// Index in [`SORT`].
+    pub sort: usize,
+    /// 0 = any, else the library's status `status - 1`.
+    pub status: usize,
+    /// Index in [`category_options`].
+    pub category: usize,
+}
+
+pub(crate) const SHOW: [&str; 3] = [n_!("All games"), n_!("Installed"), n_!("Not installed")];
 const SORT: [&str; 3] = [n_!("A\u{2013}Z"), n_!("Last played"), n_!("Most played")];
+/// The steps of the Show chip (`show`, `favourites`): all, installed,
+/// favourites, not installed.
+const SHOW_STEPS: [(usize, bool); 4] = [(0, false), (1, false), (0, true), (2, false)];
 /// Chips of the filter bar (the last one is Search).
 const CHIPS: usize = 5;
 
 /// The Category chip's values: any, each category, then the games in none
 /// (only "any" while there are no categories).
-fn category_options(cats: &Categories) -> Vec<Option<String>> {
+pub(crate) fn category_options(cats: &Categories) -> Vec<Option<String>> {
     let mut v = vec![None];
     if !cats.is_empty() {
         v.extend(cats.names().map(|n| Some(n.to_string())));
@@ -74,7 +78,7 @@ fn category_options(cats: &Categories) -> Vec<Option<String>> {
     v
 }
 
-fn status_options(lib: &Library) -> Vec<SharedString> {
+pub(crate) fn status_options(lib: &Library) -> Vec<SharedString> {
     std::iter::once(SharedString::from(tr!("Any status")))
         .chain(lib.statuses.iter().map(|s| SharedString::from(heronite_data::status::status_label(&s.name).to_string())))
         .collect()
@@ -85,14 +89,13 @@ impl Nav {
     /// `favourites`, `status:<id>` with its index in the library's
     /// `status`...), the most recently played first, from the top.
     pub(super) fn show_like(&mut self, kind: &str, status: Option<usize>) {
-        self.show = match kind {
-            "installed" => 1,
-            "favourites" => 2,
-            _ => 0,
+        self.filters = Filters {
+            show: usize::from(kind == "installed"),
+            favourites: kind == "favourites",
+            sort: 1,
+            status: status.map_or(0, |i| i + 1),
+            category: 0,
         };
-        self.status = status.map_or(0, |i| i + 1);
-        self.category = 0;
-        self.sort = 1;
         self.index = 0;
         self.toolbar = None;
         self.restart = true;
@@ -100,24 +103,24 @@ impl Nav {
 
     /// The games the grid shows, in order (best search matches first).
     fn keys(&self, games: &[std::sync::Arc<CollectionGame>], lib: &Library, cats: &Categories, search: &str) -> Vec<SharedString> {
+        let f = &self.filters;
         let folded = heronite_data::fuzzy::fold(search.trim());
         let tokens = heronite_data::fuzzy::tokens(&folded);
-        let status = self.status.checked_sub(1).and_then(|i| lib.statuses.get(i)).map(|s| s.id.clone());
-        let category: std::collections::BTreeSet<String> =
-            category_options(cats).get(self.category).cloned().flatten().into_iter().collect();
+        let status = f.status.checked_sub(1).and_then(|i| lib.statuses.get(i)).map(|s| s.id.clone());
+        let category: std::collections::BTreeSet<String> = category_options(cats).get(f.category).cloned().flatten().into_iter().collect();
         let mut games: Vec<&CollectionGame> = games
             .iter()
             .map(|g| g.as_ref())
-            .filter(|g| match self.show {
+            .filter(|g| match f.show {
                 1 => g.installed,
-                2 => g.favourite,
-                3 => !g.installed,
+                2 => !g.installed,
                 _ => true,
             })
+            .filter(|g| !f.favourites || g.favourite)
             .filter(|g| status.as_ref().is_none_or(|s| &g.status_id == s))
             .filter(|g| cats.matches(&category, &g.runner, &g.app_name))
             .collect();
-        match self.sort {
+        match f.sort {
             1 => games.sort_by(|a, b| b.last_played.cmp(&a.last_played).then_with(|| a.title_lower.cmp(&b.title_lower))),
             2 => games.sort_by(|a, b| b.playtime_minutes.cmp(&a.playtime_minutes).then_with(|| a.title_lower.cmp(&b.title_lower))),
             _ => games.sort_by(|a, b| a.title_lower.cmp(&b.title_lower)),
@@ -133,15 +136,21 @@ impl Nav {
     }
 
     fn chips(&self, lib: &Library, cats: &Categories, search: &str) -> [(SharedString, SharedString); CHIPS] {
+        let f = &self.filters;
         let status = status_options(lib);
-        let category = match category_options(cats).get(self.category).cloned().flatten() {
+        let category = match category_options(cats).get(f.category).cloned().flatten() {
             None => tr!("Any category").to_string(),
-            Some(name) => super::super::super::view_filters::category_label(&name),
+            Some(name) => category_label(&name),
+        };
+        let show = match (f.show, f.favourites) {
+            (0, true) => tr!("Favourites").to_string(),
+            (s, true) => format!("{} \u{b7} {}", heronite_i18n::tr(SHOW[s]), tr!("Favourites")),
+            (s, false) => heronite_i18n::tr(SHOW[s]).to_string(),
         };
         [
-            (tr!("Show").into(), heronite_i18n::tr(SHOW[self.show]).into()),
-            (tr!("Sort").into(), heronite_i18n::tr(SORT[self.sort]).into()),
-            (tr!("Status").into(), status.get(self.status).cloned().unwrap_or_default()),
+            (tr!("Show").into(), show.into()),
+            (tr!("Sort").into(), heronite_i18n::tr(SORT[f.sort]).into()),
+            (tr!("Status").into(), status.get(f.status).cloned().unwrap_or_default()),
             (tr!("Category").into(), category.into()),
             (tr!("Search").into(), if search.is_empty() { "\u{2014}".into() } else { search.to_string().into() }),
         ]
@@ -239,7 +248,7 @@ impl CollectionView {
     fn grid_letters(&self, tab: usize) -> bool {
         look::theme().layouts.jump_letters
             && self.console.search.is_empty()
-            && self.console.tab_navs.get(tab).is_none_or(|n| n.grid.sort == 0)
+            && self.console.tab_navs.get(tab).is_none_or(|n| n.grid.filters.sort == 0)
     }
 
     fn grid_cols(&self, window: &Window, panel: bool, rail: bool) -> usize {
@@ -447,23 +456,32 @@ impl CollectionView {
                 Pad::Left => nav.toolbar = Some(chip.saturating_sub(1)),
                 Pad::Right => nav.toolbar = Some((chip + 1).min(CHIPS - 1)),
                 Pad::Down if !keys.is_empty() => nav.toolbar = None,
-                Pad::A => match chip {
-                    0 => nav.show = (nav.show + 1) % SHOW.len(),
-                    1 => nav.sort = (nav.sort + 1) % SORT.len(),
-                    2 => nav.status = (nav.status + 1) % status_n,
-                    3 => nav.category = (nav.category + 1) % category_n,
-                    _ => {
-                        self.console_search(window, cx);
-                        return true;
+                Pad::A => {
+                    let f = &mut nav.filters;
+                    match chip {
+                        0 => {
+                            let at = SHOW_STEPS.iter().position(|s| *s == (f.show, f.favourites)).map_or(0, |i| i + 1);
+                            (f.show, f.favourites) = SHOW_STEPS[at % SHOW_STEPS.len()];
+                        }
+                        1 => f.sort = (f.sort + 1) % SORT.len(),
+                        2 => f.status = (f.status + 1) % status_n,
+                        3 => f.category = (f.category + 1) % category_n,
+                        _ => {
+                            self.console_search(window, cx);
+                            return true;
+                        }
                     }
-                },
-                Pad::X => match chip {
-                    0 => nav.show = 0,
-                    1 => nav.sort = 0,
-                    2 => nav.status = 0,
-                    3 => nav.category = 0,
-                    _ => self.console.search.clear(),
-                },
+                }
+                Pad::X => {
+                    let f = &mut nav.filters;
+                    match chip {
+                        0 => (f.show, f.favourites) = (0, false),
+                        1 => f.sort = 0,
+                        2 => f.status = 0,
+                        3 => f.category = 0,
+                        _ => self.console.search.clear(),
+                    }
+                }
                 Pad::Y => {
                     self.console_search(window, cx);
                     return true;
