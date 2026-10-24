@@ -776,6 +776,7 @@ impl X11WindowState {
                     transparent: false,
                     preferred_present_mode: None,
                 };
+                crate::linux::prime_vulkan_context(&gpu_context, &raw_window, compositor_gpu);
                 WgpuRenderer::new(gpu_context, &raw_window, config, compositor_gpu)?
             };
 

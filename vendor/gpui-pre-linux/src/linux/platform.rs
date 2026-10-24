@@ -1593,6 +1593,59 @@ pub(super) fn capslock_from_xkb(keymap_state: &State) -> gpui::Capslock {
     gpui::Capslock { on }
 }
 
+/// Creates the shared GPU context from Vulkan alone, before the renderer asks
+/// for one from Vulkan and OpenGL together. Bringing up OpenGL (EGL, and with
+/// it every driver's GL stack) costs tens of milliseconds at each start even
+/// though a Vulkan adapter wins whenever one works; it is only the fallback.
+/// Software Vulkan (lavapipe) is not taken here, so a hardware OpenGL still
+/// beats it as before. When no hardware Vulkan adapter works, the context is
+/// left empty and `WgpuRenderer::new` builds it with both backends, as before.
+#[cfg(any(feature = "wayland", feature = "x11"))]
+pub(super) fn prime_vulkan_context<W>(
+    gpu_context: &gpui_wgpu::GpuContext,
+    window: &W,
+    compositor_gpu: Option<gpui_wgpu::CompositorGpuHint>,
+) where
+    W: raw_window_handle::HasWindowHandle
+        + raw_window_handle::HasDisplayHandle
+        + std::fmt::Debug
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+{
+    use gpui_wgpu::wgpu;
+    if gpu_context.borrow().is_some() {
+        return;
+    }
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::VULKAN,
+        flags: wgpu::InstanceFlags::default(),
+        backend_options: wgpu::BackendOptions::default(),
+        memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+        display: Some(Box::new(window.clone())),
+    });
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+    let target = wgpu::SurfaceTargetUnsafe::RawHandle {
+        raw_display_handle: None,
+        raw_window_handle: handle.as_raw(),
+    };
+    // SAFETY: the window outlives this surface, which is dropped on return.
+    let surface = match unsafe { instance.create_surface_unsafe(target) } {
+        Ok(surface) => surface,
+        Err(err) => {
+            log::info!("no Vulkan surface ({err}); trying Vulkan and OpenGL");
+            return;
+        }
+    };
+    match gpui_wgpu::WgpuContext::new_rejecting_software(instance, &surface, compositor_gpu) {
+        Ok(context) => *gpu_context.borrow_mut() = Some(context),
+        Err(err) => log::info!("no hardware Vulkan adapter ({err:#}); trying Vulkan and OpenGL"),
+    }
+}
+
 /// Resolve a Linux `dev_t` to PCI vendor/device IDs via sysfs, returning a
 /// [`CompositorGpuHint`] that the GPU adapter selection code can use to
 /// prioritize the compositor's rendering device.

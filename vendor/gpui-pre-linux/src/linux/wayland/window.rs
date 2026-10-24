@@ -583,6 +583,7 @@ impl WaylandWindowState {
                 // Prefer Mailbox to avoid blocking. Falls back to FIFO if Mailbox is unsupported.
                 preferred_present_mode: Some(wgpu::PresentMode::Mailbox),
             };
+            crate::linux::prime_vulkan_context(&gpu_context, &raw_window, compositor_gpu);
             WgpuRenderer::new(gpu_context, &raw_window, config, compositor_gpu)?
         };
 
