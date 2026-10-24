@@ -347,12 +347,15 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
                         .child(div().text_size(u(18.)).text_color(label_color).truncate().child(r.label.clone()))
                         .when(r.changed, |d| d.child(div().flex_none().size(u(7.)).rounded_full().bg(theme::accent()))),
                 )
-                .children(
-                    r.desc
-                        .clone()
-                        .filter(|_| focused)
-                        .map(|d| div().text_size(u(13.)).line_height(u(18.)).line_clamp(2).text_ellipsis().text_color(Hsla { a: 0.7, ..label_color }).child(d)),
-                ),
+                .children(r.desc.clone().filter(|_| focused).map(|d| {
+                    div()
+                        .text_size(u(13.))
+                        .line_height(u(18.))
+                        .line_clamp(2)
+                        .text_ellipsis()
+                        .text_color(Hsla { a: 0.7, ..label_color })
+                        .child(d)
+                })),
         )
         .child(value)
 }
