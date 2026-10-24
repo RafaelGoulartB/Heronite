@@ -100,7 +100,7 @@ pub fn cinema() -> ConsoleTheme {
     })
 }
 
-/// A console's home screen: a row of square icons on top (the focused one
+/// A console's home screen: a row of covers on top (the focused one
 /// grows, its name beside it), the game's art and logo, a wide Play button
 /// and cards; the tabs as plain names.
 pub fn pulse() -> ConsoleTheme {
@@ -119,58 +119,6 @@ pub fn pulse() -> ConsoleTheme {
         t.layouts.spotlight_actions = SpotActions::Play;
         t.layouts.grid_panel = GridPanel::Right;
     })
-}
-
-/// A store front: a rail of icons, the game's details and tags, shelves of
-/// square covers named under them.
-pub fn storefront() -> ConsoleTheme {
-    from_classic(
-        "storefront",
-        n_!("Storefront"),
-        n_!("Like a store: a rail of icons, the game's details and shelves of square covers."),
-        |t| {
-            t.tabs = vec![tab(n_!("Home"), Layout::Shelves), tab(n_!("Library"), Layout::Grid)];
-            t.shelves = ["added", "recent", "favourites", "installed", "statuses"]
-                .into_iter()
-                .map(|k| ShelfSpec::new(k, true))
-                .chain(["backlog-short", "random", "forgotten"].into_iter().map(|k| ShelfSpec::new(k, false)))
-                .collect();
-            t.hero.title = HeroTitle::Logo;
-            t.hero.fact_style = FactStyle::Chips;
-            t.tiles.shape = TileShape::Square;
-            t.tiles.corners = Corners::Square;
-            t.tiles.titles = TileTitles::Bar;
-            t.interface.headings = Headings::Spaced;
-            t.interface.tab_bar = TabBar::Title;
-            t.interface.font = ConsoleFont::Cabin;
-            t.controls.hints = Hints::Auto;
-            t.menu.style = MenuStyle::Rail;
-        },
-    )
-}
-
-/// A light theme: the art washed out, the logo centred at the top, square
-/// covers under their store's name.
-pub fn daylight() -> ConsoleTheme {
-    from_classic(
-        "daylight",
-        n_!("Daylight"),
-        n_!("A light theme: the art washed out, the logo at the top, covers under their store."),
-        |t| {
-            t.tabs = vec![tab(n_!("Home"), Layout::Cinema), tab(n_!("Library"), Layout::Grid)];
-            t.hero.title = HeroTitle::Logo;
-            t.hero.facts = false;
-            t.hero.overview = false;
-            t.hero.align = HeroAlign::Center;
-            t.tiles.shape = TileShape::Square;
-            t.tiles.size = TileSize::Large;
-            t.tiles.corners = Corners::Square;
-            t.tiles.header = true;
-            t.dim_others = false;
-            t.colors.background = "#eceef2".into();
-            t.interface.font = ConsoleFont::Rubik;
-        },
-    )
 }
 
 pub fn series() -> ConsoleTheme {
@@ -199,7 +147,7 @@ pub fn minimal() -> ConsoleTheme {
 
 /// Every built-in theme, Classic first.
 pub fn all() -> Vec<ConsoleTheme> {
-    vec![classic(), cinema(), pulse(), series(), storefront(), daylight(), minimal()]
+    vec![classic(), minimal(), cinema(), pulse(), series()]
 }
 
 pub fn by_id(id: &str) -> Option<ConsoleTheme> {

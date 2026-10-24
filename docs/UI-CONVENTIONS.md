@@ -427,8 +427,8 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
   follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
-  The built-in themes (`presets.rs`) were modelled on other launchers' fullscreen themes and home screens:
-  Cinema, Pulse, Series X, Storefront and Daylight each show off a few of these options; Classic is the default.
+  The built-in themes (`presets.rs`): Classic (the default), Minimal, and Cinema, Pulse and Series X, modelled on
+  other launchers' fullscreen themes and consoles' home screens.
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
   Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). A new option = a field in
