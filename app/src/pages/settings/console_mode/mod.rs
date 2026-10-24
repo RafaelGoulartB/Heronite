@@ -154,6 +154,10 @@ impl Host for SettingsPage {
     ) {
         layers::open_sheet(&mut self.console.layer, title.to_string(), message, rows, window, cx, chosen);
     }
+
+    fn start_options_changed(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        cx.emit(crate::pages::PageEvent::ConsoleStartOptionsChanged);
+    }
 }
 
 /// Runs an outcome of a row (a click on the desktop, a press on the TV) and

@@ -66,7 +66,7 @@ impl CollectionView {
     /// `openIn` / `autoConsole` changed while the app runs (Settings):
     /// the watcher follows. The Settings page calls it after
     /// `startup::set_auto_console`.
-    pub(super) fn console_start_options_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::collection) fn console_start_options_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let prefs = themes::prefs(&self.app_paths);
         self.ui.console_open_in = prefs.open_in;
         self.ui.console_auto = prefs.auto_console;

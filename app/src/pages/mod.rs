@@ -126,6 +126,9 @@ pub enum PageEvent {
     /// Settings → Appearance changed the look: the Collection under the page
     /// repaints.
     AppearanceChanged,
+    /// Settings → Console mode changed how the app opens or what a controller
+    /// connecting does: the Collection starts or stops its controller watcher.
+    ConsoleStartOptionsChanged,
 }
 
 /// Round close button of a [`sheet`]: goes back to the Collection.
