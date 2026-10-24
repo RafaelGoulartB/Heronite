@@ -1,6 +1,7 @@
-use heronite_data::console_theme::{presets, ConsolePrefs, Layout, ShelfSpec, MAX_TABS};
+use heronite_data::console_theme::{presets, ConsolePrefs, Layout, MAX_TABS};
 
 use super::*;
+use crate::console::Pad;
 
 fn data() -> Data {
     Data {
@@ -77,8 +78,12 @@ fn a_tab_follows_its_layout_name_until_renamed() {
     change(&mut p, "tab.1.layout", choice(5));
     assert_eq!(p.theme.tabs[1].layout, Layout::Wheel);
     assert_eq!(p.theme.tabs[1].name, "Games");
-    change(&mut p, "tab.0.layout", choice(2));
-    assert_eq!(p.theme.tabs[0].name, "Cinema", "a tab named after its layout follows it");
+    run(&mut p, &Command::new("tab.add", Arg::Press), &data());
+    let added = p.theme.tabs.len() - 1;
+    let name = p.theme.tabs[added].name.clone();
+    assert_eq!(name, tr(layout_label(p.theme.tabs[added].layout)));
+    change(&mut p, &format!("tab.{added}.layout"), choice(2));
+    assert_eq!(p.theme.tabs[added].name, "Cinema", "a tab named after its layout follows it");
 }
 
 #[test]
@@ -119,7 +124,11 @@ fn only_missing_shelf_kinds_are_offered() {
     let d = data();
     let kinds: Vec<String> = addable_kinds(&Ctx { prefs: &p, data: &d }).into_iter().map(|(_, k, _)| k).collect();
     assert!(!kinds.contains(&"recent".to_string()), "already in the theme");
-    assert!(kinds.contains(&"random".to_string()));
+    assert!(!kinds.contains(&"random".to_string()), "switched off is still in the theme");
+    let mut fewer = ConsolePrefs::default();
+    fewer.theme.shelves.retain(|s| s.kind != "random");
+    let again: Vec<String> = addable_kinds(&Ctx { prefs: &fewer, data: &d }).into_iter().map(|(_, k, _)| k).collect();
+    assert!(again.contains(&"random".to_string()));
     assert!(kinds.contains(&"platform:PlayStation 2".to_string()));
     assert!(kinds.contains(&"genre:Adventure".to_string()));
     assert!(!kinds.contains(&"status:playing".to_string()), "the default shelves have it");
@@ -274,7 +283,6 @@ fn extra_pads_move_and_remove() {
     assert!(!st.moving);
     assert!(matches!(extra_pad(&mut st, Pad::LT, Some("shelf.3")), Extra::Run(c, 0) if c.arg == Arg::Remove));
     assert!(matches!(extra_pad(&mut st, Pad::LT, Some("menu.3")), Extra::Pass));
-    let _ = ShelfSpec::new("recent", true);
 }
 
 #[test]
