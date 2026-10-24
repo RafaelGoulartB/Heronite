@@ -10,7 +10,7 @@ use gpui_kit::*;
 use heronite_i18n::{n_, tr};
 
 use super::{
-    about, advanced, appearance, backup, launchers, library, logs, metadata, overlay, replay, saves, screenshots, storage, Section,
+    about, advanced, appearance, backup, console_mode, launchers, library, logs, metadata, overlay, replay, saves, screenshots, storage, Section,
     SettingsPage,
 };
 use crate::console::kit::{self, u};
@@ -35,7 +35,16 @@ pub(super) enum CSec {
 }
 
 const GROUPS: [(&str, &[CSec]); 4] = [
-    (n_!("App"), &[CSec::Panel(Section::General), CSec::Rows(Section::Appearance), CSec::Panel(Section::Advanced), CSec::Extras]),
+    (
+        n_!("App"),
+        &[
+            CSec::Panel(Section::General),
+            CSec::Rows(Section::Appearance),
+            CSec::Rows(Section::ConsoleMode),
+            CSec::Panel(Section::Advanced),
+            CSec::Extras,
+        ],
+    ),
     (
         n_!("Games"),
         &[
@@ -137,6 +146,7 @@ impl SettingsPage {
             CSec::Rows(Section::About) => about::console_rows(self, cx),
             CSec::Rows(Section::Logs) => logs::console_rows(self),
             CSec::Rows(Section::Appearance) => appearance::console_rows(self),
+            CSec::Rows(Section::ConsoleMode) => console_mode::console_rows(self),
             CSec::Rows(Section::Metadata) => metadata::console_rows(self, cx),
             CSec::Rows(Section::Screenshots) => screenshots::console_rows(self, cx),
             CSec::Rows(Section::Saves) => saves::console_rows(self, cx),
@@ -156,6 +166,7 @@ impl SettingsPage {
             CSec::Rows(Section::About) => about::console_apply(self, outcome, cx),
             CSec::Rows(Section::Logs) => logs::console_apply(self, outcome, cx),
             CSec::Rows(Section::Appearance) => appearance::console_apply(self, outcome, window, cx),
+            CSec::Rows(Section::ConsoleMode) => console_mode::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Metadata) => metadata::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Screenshots) => screenshots::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Saves) => saves::console_apply(self, outcome, window, cx),
@@ -299,6 +310,11 @@ impl PadTarget for SettingsPage {
                 panel.is_some_and(|p| p.update(cx, |p, cx| p.on_pad(pad, window, cx)))
             }
             _ => {
+                // X moves a shelf or menu item, LT removes a shelf.
+                if sec == CSec::Rows(Section::ConsoleMode) && console_mode::console_extra_pad(self, pad, window, cx) {
+                    cx.notify();
+                    return true;
+                }
                 let rows = self.console_rows(sec, cx);
                 match self.console.list.on_pad(pad, &rows) {
                     Outcome::Ignored | Outcome::Edge(_) => false,
@@ -334,6 +350,7 @@ impl PadTarget for SettingsPage {
                 };
                 panel.map(|p| p.read(cx).hints(cx)).unwrap_or_default()
             }
+            CSec::Rows(Section::ConsoleMode) => console_mode::console_hints(self),
             _ => vec![hint(Btn::A, tr!("Select")), hint(Btn::LeftRight, tr!("Change"))],
         };
         h.push(hint(Btn::Bumpers, tr!("Group")));
