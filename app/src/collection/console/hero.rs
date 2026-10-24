@@ -4,14 +4,16 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::HeroTitle;
+use heronite_data::console_theme::{FactStyle, Headings, HeroTitle};
 use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
 use super::super::CollectionView;
 use crate::console::kit::{self, u};
 use crate::console::{look, motion};
+use crate::icons::Icon;
 use crate::theme;
+use crate::ui::icon;
 
 /// Sizes of a hero block, design px.
 #[derive(Clone, Copy)]
@@ -62,6 +64,58 @@ pub(crate) fn logo_element(src: ImageSource, w: f32, h: f32, window: &Window) ->
     }
 }
 
+/// Critic score colour: green from 75, amber from 50, red below.
+fn score_colour(score: f64) -> Rgba {
+    match score {
+        s if s >= 75. => rgb(0x3ecf8e),
+        s if s >= 50. => rgb(0xf0a202),
+        _ => rgb(0xe5534b),
+    }
+}
+
+/// A small outlined box ("2023", "Adventure").
+fn outlined(text: impl Into<SharedString>, size: f32) -> Div {
+    div()
+        .flex_none()
+        .px(u(8.))
+        .py(u(2.))
+        .rounded(u(4.))
+        .border_1()
+        .border_color(theme::ink_a(0.55))
+        .text_size(u(size))
+        .text_color(theme::text_primary())
+        .whitespace_nowrap()
+        .child(text.into())
+}
+
+/// The release year of `g`.
+fn release_year(g: &CollectionGame) -> Option<i32> {
+    g.details.release_date.as_deref().and_then(heronite_data::organize::release_ymd).map(|(y, ..)| y)
+}
+
+/// A shelf's title: spaced capitals when the theme asks for them (`count`
+/// follows it, "Recently added · 12").
+pub(crate) fn shelf_heading(title: &str, count: Option<usize>, size: f32) -> Div {
+    let spaced = look::theme().interface.headings == Headings::Spaced;
+    let text = if spaced { kit::spaced_caps(title) } else { title.to_string() };
+    let text = count.map_or(text.clone(), |n| format!("{text}  \u{b7}  {n}"));
+    let heading = div().text_size(u(if spaced { size * 0.95 } else { size })).whitespace_nowrap();
+    if spaced {
+        heading.font_weight(theme::W_REGULAR).child(text)
+    } else {
+        heading.font_weight(theme::W_BOLD).child(text)
+    }
+}
+
+/// "3 days ago" for a last-played moment.
+fn played_ago(last_played: &str) -> Option<String> {
+    let days = crate::collection::data::days_since(last_played).or_else(|| {
+        let day = chrono::NaiveDate::parse_from_str(last_played.get(..10)?, "%Y-%m-%d").ok()?;
+        Some((chrono::Local::now().date_naive() - day).num_days().max(0))
+    })?;
+    Some(crate::collection::data::days_ago(days))
+}
+
 impl CollectionView {
     /// "Steam · Installed · 3h 54m played".
     pub(super) fn console_facts(g: &CollectionGame) -> String {
@@ -73,12 +127,117 @@ impl CollectionView {
         facts.join(" \u{b7} ")
     }
 
+    /// The game's status: its name and colour.
+    fn console_status(&self, g: &CollectionGame) -> Option<(String, Rgba)> {
+        let s = self.lib.as_ref()?.statuses.iter().find(|s| s.id == g.status_id)?;
+        Some((heronite_data::status::status_label(&s.name).to_string(), theme::status_color(&s.slug)))
+    }
+
     /// The game's status pill.
     pub(super) fn console_status_badge(&self, g: &CollectionGame) -> Option<Div> {
-        self.lib
-            .as_ref()
-            .and_then(|l| l.statuses.iter().find(|s| s.id == g.status_id))
-            .map(|s| kit::badge(heronite_data::status::status_label(&s.name).to_string(), theme::status_color(&s.slug)))
+        self.console_status(g).map(|(name, colour)| kit::badge(name, colour))
+    }
+
+    /// The facts as chips: the store, the year in a box, the score on its
+    /// colour, the time played and the status.
+    pub(super) fn console_chips(&self, g: &CollectionGame) -> Div {
+        let score = g.details.critic_score.filter(|s| *s > 0.);
+        let played = (g.playtime_minutes > 0).then(|| heronite_data::collection::format_playtime_minutes(g.playtime_minutes));
+        div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(u(10.))
+            .text_size(u(16.))
+            .child(div().font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(g.source_label))
+            .children(release_year(g).map(|y| outlined(y.to_string(), 14.)))
+            .children(score.map(|s| {
+                div()
+                    .flex_none()
+                    .px(u(8.))
+                    .py(u(2.))
+                    .rounded(u(4.))
+                    .bg(score_colour(s))
+                    .text_size(u(14.))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(theme::black_a(0.85))
+                    .child(format!("{s:.0}"))
+            }))
+            .children(played.map(|t| div().text_color(theme::text_muted()).child(t)))
+            .children(self.console_status_badge(g))
+    }
+
+    /// The first genres as outlined tags.
+    fn console_genre_tags(g: &CollectionGame) -> Option<Div> {
+        (!g.details.genres.is_empty())
+            .then(|| div().flex().flex_wrap().gap(u(8.)).children(g.details.genres.iter().take(4).map(|t| outlined(t.clone(), 13.))))
+    }
+
+    /// The genres in one line, thin bars between them ("Adventure | RPG").
+    pub(super) fn console_genre_line(g: &CollectionGame) -> Option<Div> {
+        (!g.details.genres.is_empty()).then(|| {
+            let mut line = div()
+                .flex()
+                .items_center()
+                .gap(u(14.))
+                .text_size(u(22.))
+                .font_weight(theme::W_BOLD)
+                .text_color(theme::text_primary())
+                .whitespace_nowrap();
+            for (i, t) in g.details.genres.iter().take(3).enumerate() {
+                if i > 0 {
+                    line = line.child(div().w(px(1.5)).h(u(20.)).bg(theme::ink_a(0.45)));
+                }
+                line = line.child(t.clone());
+            }
+            line
+        })
+    }
+
+    /// The panel of numbers at the right edge (`hero.stats`): time played,
+    /// last played, size on disk, score, genre and status; only what is
+    /// known, at most `max` lines. The caller puts it at the edge (it is
+    /// `absolute` with its own `right`).
+    pub(super) fn console_stats(&self, g: &CollectionGame, max: usize) -> AnyElement {
+        let mut lines: Vec<(Icon, String, Option<Rgba>)> = Vec::new();
+        if g.playtime_minutes > 0 {
+            lines.push((Icon::AccessTime, heronite_data::collection::format_playtime_minutes(g.playtime_minutes), None));
+        }
+        if let Some(ago) = g.last_played.as_deref().and_then(played_ago) {
+            lines.push((Icon::History, ago, None));
+        }
+        if let Some(size) = g.details.install_size.as_deref().filter(|s| g.installed && !s.is_empty() && *s != "0") {
+            lines.push((Icon::FaHardDrive, size.to_string(), None));
+        }
+        if let Some(s) = g.details.critic_score.filter(|s| *s > 0.) {
+            lines.push((Icon::Star, format!("{s:.0}"), Some(score_colour(s))));
+        }
+        if let Some(genre) = g.details.genres.first() {
+            lines.push((Icon::Label, genre.clone(), None));
+        }
+        if let Some((name, colour)) = self.console_status(g) {
+            lines.push((Icon::Flag, name, Some(colour)));
+        }
+        lines.truncate(max);
+        let mut fill = theme::console_sidebar();
+        fill.a = 0.72;
+        let panel = div()
+            .relative()
+            .flex()
+            .flex_col()
+            .gap(u(14.))
+            .px(u(18.))
+            .py(u(16.))
+            .rounded_l(u(14.))
+            .bg(fill)
+            .text_size(u(16.))
+            .text_color(theme::text_primary())
+            .whitespace_nowrap()
+            .children(lines.into_iter().map(|(ic, text, colour)| {
+                div().flex().items_center().gap(u(12.)).child(icon(ic, u(18.), colour.unwrap_or_else(theme::text_muted))).child(text)
+            }));
+        // Slides in from the edge when the game changes.
+        motion::enter_from(SharedString::from(format!("hero-stats-{}", g.key)), panel, 280, 16., 0., 0.3)
     }
 
     /// The overview of the focused game, when loaded (the Focus data).
@@ -103,15 +262,16 @@ impl CollectionView {
         let Some(g) = key.and_then(|k| self.lib.as_ref()?.get(k)).cloned() else { return div() };
         let theme = look::theme();
         let name = self.console_name(&g, size, window);
-        let facts = theme.hero.facts.then(|| {
-            div()
+        let facts = theme.hero.facts.then(|| match theme.hero.fact_style {
+            FactStyle::Line => div()
                 .flex()
                 .items_center()
                 .gap(u(12.))
                 .text_size(u(16.))
                 .text_color(theme::text_muted())
                 .child(Self::console_facts(&g))
-                .children(self.console_status_badge(&g))
+                .children(self.console_status_badge(&g)),
+            FactStyle::Chips => div().flex().flex_col().gap(u(10.)).child(self.console_chips(&g)).children(Self::console_genre_tags(&g)),
         });
         let overview = (theme.hero.overview && size.overview > 0).then(|| self.console_overview(&g.key)).flatten();
         let hero =

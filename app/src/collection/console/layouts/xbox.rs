@@ -12,7 +12,7 @@ use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
 use super::super::backdrop::Scrim;
-use super::super::hero::HeroSize;
+use super::super::hero::{shelf_heading, HeroSize};
 use super::super::tile::label_room;
 use super::dashboard::{body_height, focus_frame, played_line, top_recent};
 use crate::console::kit::{self, u};
@@ -218,16 +218,12 @@ impl CollectionView {
                 line =
                     line.child(self.console_tile_shaped(key, TileShape::Portrait, sw, sh, group == Some(g) && c == cols[g], load, window));
             }
-            let caption = div()
-                .flex_none()
-                .h(u(CAPTION))
-                .px(u(SIDE))
-                .flex()
-                .items_end()
-                .text_size(u(17.))
-                .font_weight(theme::W_BOLD)
-                .text_color(theme::text_primary())
-                .child(format!("{}  \u{b7}  {}", shelf.title, shelf.keys.len()));
+            let caption =
+                div().flex_none().h(u(CAPTION)).px(u(SIDE)).flex().items_end().text_color(theme::text_primary()).child(shelf_heading(
+                    &shelf.title,
+                    Some(shelf.keys.len()),
+                    17.,
+                ));
             let section = div().flex_none().h(u(m.shelf)).flex().flex_col().child(caption).child(line.child(rows[g].driver()));
             screen_col = screen_col.child(fade(g + 1, at, section.into_any_element()));
         }

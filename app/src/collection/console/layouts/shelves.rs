@@ -4,12 +4,12 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{Size3, TabSpec};
+use heronite_data::console_theme::{FactStyle, Size3, TabSpec};
 use heronite_i18n::tr;
 
 use super::super::super::CollectionView;
 use super::super::backdrop::Scrim;
-use super::super::hero::HeroSize;
+use super::super::hero::{shelf_heading, HeroSize};
 use super::super::tile::label_room;
 use crate::console::kit::{self, u};
 use crate::console::look;
@@ -113,24 +113,23 @@ impl CollectionView {
             row = row.child(rows[i].driver());
             let on = i == si;
             let dim = theme.dim_others;
-            let label = format!("{}  \u{b7}  {}", shelf.title, shelf.keys.len());
+            let (title, count) = (shelf.title.clone(), shelf.keys.len());
             // The focused shelf is bright; the others step back.
             list = list.child(motion::spring(("shelf-fx", i), div().flex().flex_col(), motion::SOFT, on, move |d, t| {
                 let t = if dim { t.clamp(0., 1.) } else { 1. };
                 d.opacity(0.5 + 0.5 * t)
-                    .child(
-                        div()
-                            .px(u(PAD))
-                            .text_size(u(18.))
-                            .font_weight(theme::W_BOLD)
-                            .text_color(motion::mix(theme::text_muted(), theme::text_primary(), t))
-                            .child(label),
-                    )
+                    .child(div().px(u(PAD)).text_color(motion::mix(theme::text_muted(), theme::text_primary(), t)).child(shelf_heading(
+                        &title,
+                        Some(count),
+                        18.,
+                    )))
                     .child(row)
             }));
         }
         list = list.child(shelves_glide.driver());
-        let hero_h = hero_height(theme.hero.size);
+        // Chips and genre tags take another line.
+        let chips = theme.hero.facts && theme.hero.fact_style == FactStyle::Chips;
+        let hero_h = hero_height(theme.hero.size) + if chips { 40. } else { 0. };
         let size = HeroSize {
             title: if theme.hero.size == Size3::Small { 36. } else { 46. },
             logo: (440., if theme.hero.size == Size3::Large { 150. } else { 110. }),
@@ -138,12 +137,20 @@ impl CollectionView {
             ..HeroSize::default()
         };
         let hero = self.console_hero(Some(&focused), size, window);
+        // The numbers panel sits at the right edge beside the hero.
+        let stats = theme.hero.stats.then(|| {
+            let g = self.lib.as_ref().and_then(|l| l.get(&focused)).cloned()?;
+            let lines = (((hero_h - 52.) / 30.).floor() as usize).clamp(2, 6);
+            Some(div().absolute().top(u(14.)).right_0().child(self.console_stats(&g, lines)))
+        });
         div()
+            .relative()
             .flex()
             .flex_col()
             .size_full()
             .child(div().flex_none().h(u(hero_h)).px(u(SIDE)).pt(u(20.)).overflow_hidden().child(hero))
             .child(list.flex_1().min_h_0())
+            .children(stats.flatten())
             .into_any_element()
     }
 
