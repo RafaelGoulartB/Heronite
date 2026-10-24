@@ -124,7 +124,20 @@ pub fn card(
                     .child(vm.title.clone()),
             )
             .into_any_element(),
-        None => div().size_full().into_any_element(),
+        // Still loading: a soft pulse where the cover goes.
+        None => {
+            let wait = div().size_full().bg(theme::ink_a(0.08));
+            if theme::animations() {
+                wait.with_animation(
+                    ElementId::Name(format!("cover-wait-{}", vm.key).into()),
+                    Animation::new(Duration::from_millis(1400)).repeat().with_max_fps(30.),
+                    |el, t| el.opacity(0.35 + 0.65 * (1. - (2. * t - 1.).abs())),
+                )
+                .into_any_element()
+            } else {
+                wait.into_any_element()
+            }
+        }
     };
 
     // Hover bar: slides up from translateY(100%) in 200ms.
