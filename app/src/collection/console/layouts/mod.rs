@@ -41,6 +41,8 @@ pub(super) fn scrim(layout: Layout) -> Scrim {
         Layout::Spotlight => spotlight::SCRIM,
         Layout::Cinema => cinema::SCRIM,
         Layout::Dashboard => dashboard::SCRIM,
+        // The game panel sits over the art: evenly dark, like the lists.
+        Layout::Grid if crate::console::look::theme().layouts.grid_panel == heronite_data::console_theme::GridPanel::Right => Scrim::Full,
         Layout::Grid => grid::SCRIM,
         Layout::Wheel => wheel::SCRIM,
         Layout::Carousel => carousel::SCRIM,
