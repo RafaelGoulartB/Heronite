@@ -12,7 +12,6 @@ use heronite_data::CollectionGame;
 use heronite_i18n::{n_, tr};
 
 use super::super::super::CollectionView;
-use super::super::backdrop::Scrim;
 use super::super::hero::HeroSize;
 use super::super::sources::{by_title, keys};
 use crate::console::kit::{self, u};
@@ -21,8 +20,6 @@ use crate::console::motion;
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
-
-pub(super) const SCRIM: Scrim = Scrim::Full;
 
 const FILTERS: [&str; 4] = [n_!("All"), n_!("Installed"), n_!("Favourites"), n_!("Playing")];
 /// LT / RT jump this many games.
@@ -111,9 +108,6 @@ impl CollectionView {
     }
 
     pub(super) fn render_carousel(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.lib.is_none() {
-            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
-        }
         let theme = look::theme();
         let nav = &self.tab_nav(tab).carousel;
         let (filter, pills_focus) = (nav.filter.min(FILTERS.len() - 1), nav.pills);
@@ -225,18 +219,7 @@ impl CollectionView {
                 .items_center()
                 .gap(u(8.))
                 .child(name)
-                .when(theme.hero.facts, |d| {
-                    d.child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(u(12.))
-                            .text_size(u(15.))
-                            .text_color(theme::text_muted())
-                            .child(Self::console_facts(&g))
-                            .children(self.console_status_badge(&g)),
-                    )
-                })
+                .when(theme.hero.facts, |d| d.child(self.console_fact_line(&g, Self::console_facts(&g), 15.)))
                 .child(div().text_size(u(13.5)).text_color(theme::text_dim()).child(tr!(
                     "{index} of {total}",
                     index = index + 1,
@@ -277,8 +260,7 @@ impl CollectionView {
         }
         let i = nav.index.min(n.saturating_sub(1));
         match pad {
-            Pad::Left => nav.index = super::step(i, n, -1, wrap),
-            Pad::Right => nav.index = super::step(i, n, 1, wrap),
+            Pad::Left | Pad::Right => nav.index = super::step(i, n, pad.dir(), wrap),
             Pad::LT => nav.index = i.saturating_sub(JUMP),
             Pad::RT => nav.index = (i + JUMP).min(n.saturating_sub(1)),
             Pad::Up => nav.pills = true,

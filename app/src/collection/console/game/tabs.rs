@@ -8,6 +8,7 @@ use gpui_kit::*;
 use heronite_i18n::tr;
 
 use super::super::super::CollectionView;
+use super::super::hero::{card_surface, played_time};
 use super::super::layouts::step;
 use super::hero::{detail_facts, facts_table, hltb_line, note_card, window_start};
 use crate::console::kit::{self, u};
@@ -197,11 +198,7 @@ impl CollectionView {
                     .text_size(u(14.))
                     .text_color(theme::text_muted())
                     .children(self.console_status_badge(g))
-                    .child(if g.playtime_minutes > 0 {
-                        heronite_data::collection::format_playtime_minutes(g.playtime_minutes)
-                    } else {
-                        String::new()
-                    }),
+                    .child(played_time(g).unwrap_or_default()),
             );
         div().flex().flex_1().min_h_0().gap(u(40.)).px(u(46.)).pt(u(18.)).child(left).child(
             div()
@@ -218,7 +215,7 @@ impl CollectionView {
         let focus = self.focus.clone().filter(|f| f.key == *key);
         let about = self.console.game.about.handle().clone();
         let facts = focus.as_ref().map(|f| {
-            div()
+            card_surface()
                 .flex()
                 .flex_none()
                 .flex_col()
@@ -226,9 +223,6 @@ impl CollectionView {
                 .w(u(480.))
                 .p(u(22.))
                 .rounded(u(18.))
-                .bg(kit::shade(0.35))
-                .border_1()
-                .border_color(kit::ink(0.08))
                 .child(facts_table(&detail_facts(f), 1))
                 .children(hltb_line(f))
         });
@@ -300,7 +294,7 @@ impl CollectionView {
         if matches!(pad, Pad::LB | Pad::RB) {
             let at = tabs.iter().position(|t| *t == tab).unwrap_or(0);
             let nav = &mut self.console.game.tabs;
-            nav.tab = tabs[step(at, tabs.len(), if pad == Pad::RB { 1 } else { -1 }, true)];
+            nav.tab = tabs[step(at, tabs.len(), pad.dir(), true)];
             nav.shot = 0;
             nav.shot_row = 0;
             self.console.game.about.reset();

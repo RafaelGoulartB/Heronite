@@ -7,15 +7,16 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{Layout, Size3, SpotActions, TabSpec, TileShape, TileSize};
+use heronite_data::console_theme::{Size3, SpotActions, TabSpec, TileShape, TileSize};
 use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
-use super::super::backdrop::Scrim;
-use super::super::hero::{clip, HeroSize};
+use super::super::hero::{card_surface, clip, pill_button, played_time, HeroSize, PillSize};
 use super::super::sources::{by_last_played, keys};
 use super::super::tile::label_room;
+use crate::collection::data::played_ago;
+use crate::collection::focus_left::STAR;
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion::{self, Axis, Glide, Goal};
@@ -53,15 +54,22 @@ fn icon_sizes(cover_aspect: f32) -> ((f32, f32), (f32, f32)) {
     (dims(ICON * k), dims(ICON_ON * k))
 }
 
-/// Buttons: Play, Status, Favourite, More (or Play and More).
-fn actions() -> usize {
-    match look::theme().layouts.spotlight_actions {
-        SpotActions::Full => 4,
-        SpotActions::Play => 2,
-    }
+/// A button of the actions row.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum SpotAct {
+    Play,
+    Status,
+    Favourite,
+    More,
 }
 
-pub(super) const SCRIM: Scrim = Scrim::Spot;
+/// The buttons the theme gives the actions row, in order.
+fn actions() -> &'static [SpotAct] {
+    match look::theme().layouts.spotlight_actions {
+        SpotActions::Full => &[SpotAct::Play, SpotAct::Status, SpotAct::Favourite, SpotAct::More],
+        SpotActions::Play => &[SpotAct::Play, SpotAct::More],
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 enum Zone {
@@ -97,40 +105,14 @@ fn cards_fit(window: &Window) -> bool {
     look::theme().layouts.spotlight_cards && f32::from(window.viewport_size().height) / kit::scale() >= CARDS_FROM
 }
 
-/// A round or pill button of the actions row.
-fn button(focused: bool, ic: Icon, label: Option<SharedString>, tint: Option<Rgba>) -> Div {
-    let colour: Hsla = if focused { theme::console_on_focus().into() } else { tint.unwrap_or(theme::text_primary()).into() };
-    let d = div()
-        .relative()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .gap(u(10.))
-        .h(u(50.))
-        .rounded_full()
-        .border_1()
-        .text_size(u(17.))
-        .font_weight(theme::W_BOLD)
-        .text_color(colour);
-    let d = if label.is_some() { d.px(u(22.)) } else { d.w(u(50.)) };
-    let d = if focused {
-        d.border_color(transparent_black()).child(kit::focus_pill(25.))
-    } else {
-        d.border_color(kit::ink(0.08)).bg(kit::ink(0.1))
-    };
-    d.child(crate::ui::icon(ic, u(22.), colour)).children(label)
-}
-
 fn card(focused: bool, c: &Card) -> Div {
-    div()
+    card_surface()
         .relative()
         .flex_none()
         .w(u(250.))
         .px(u(18.))
         .py(u(14.))
         .rounded(u(16.))
-        .bg(kit::shade(0.35))
         .border_2()
         .border_color(if focused { Hsla::from(theme::console_focus()) } else { kit::ink(0.08) })
         .when(focused, |d| d.top(-u(3.)).shadow(kit::shadow(0.5, 8., 22.)))
@@ -195,15 +177,11 @@ impl CollectionView {
     /// Playtime, How Long To Beat and journal; the last one only once the
     /// journal of the focused game is read.
     fn spotlight_cards(&self, g: &CollectionGame) -> Vec<Card> {
-        let last = match g.last_played.as_deref().and_then(super::super::super::data::days_since) {
-            Some(days) => tr!("Last played: {when}", when = super::super::super::data::days_ago(days)),
+        let last = match g.last_played.as_deref().and_then(played_ago) {
+            Some(when) => tr!("Last played: {when}", when = when),
             None => tr!("Never played").to_string(),
         };
-        let played = if g.playtime_minutes > 0 {
-            heronite_data::collection::format_playtime_minutes(g.playtime_minutes)
-        } else {
-            "\u{2014}".to_string()
-        };
+        let played = played_time(g).unwrap_or_else(|| "\u{2014}".to_string());
         let mut cards = vec![Card { title: tr!("Playtime").into(), value: played, note: last }];
         let main = self.wiki.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.);
         cards.push(match main {
@@ -233,50 +211,42 @@ impl CollectionView {
 
     /// Buttons of the actions row for `g`.
     fn spotlight_actions(&self, g: &CollectionGame, zone: Zone, at: usize) -> Div {
-        let on = |i: usize| zone == Zone::Actions && at == i;
-        let icon = if self.preparing.contains_key(&g.app_name) {
-            Icon::Close
-        } else if self.playing.contains_key(&g.app_name) {
-            Icon::Stop
-        } else if g.installed {
-            Icon::PlayArrow
-        } else {
-            Icon::Download
+        let wide = look::theme().layouts.spotlight_actions == SpotActions::Play;
+        let play = {
+            let (label, icon) = self.primary_state(g);
+            (icon, SharedString::from(label))
         };
-        let status = self
-            .lib
-            .as_ref()
-            .and_then(|l| l.statuses.iter().find(|s| s.id == g.status_id))
-            .map(|s| heronite_data::status::status_label(&s.name).to_string())
-            .unwrap_or_else(|| tr!("Status").to_string());
-        if look::theme().layouts.spotlight_actions == SpotActions::Play {
-            let more = button(on(1), Icon::MoreHoriz, None, None).h(u(56.)).w(u(56.));
-            return div()
-                .flex()
-                .items_center()
-                .gap(u(14.))
-                .mt(u(10.))
-                .child(wide_button(on(0), icon, self.primary_label(g).into()))
-                .child(more);
+        let buttons = actions().iter().enumerate().map(|(i, act)| {
+            let on = zone == Zone::Actions && at == i;
+            match act {
+                // The console's home screen: a wide Play and a round More.
+                SpotAct::Play if wide => wide_button(on, play.0, play.1.clone()).into_any_element(),
+                SpotAct::More if wide => {
+                    pill_button(on, Icon::MoreHoriz, None, None, PillSize::SMALL).h(u(56.)).w(u(56.)).into_any_element()
+                }
+                SpotAct::Play => pill_button(on, play.0, Some(play.1.clone()), None, PillSize::SMALL).into_any_element(),
+                SpotAct::Status => {
+                    let name = self.console_status(g).map_or_else(|| tr!("Status").to_string(), |(name, _)| name);
+                    pill_button(on, Icon::Flag, Some(name.into()), None, PillSize::SMALL).into_any_element()
+                }
+                SpotAct::Favourite => {
+                    pill_button(on, Icon::Favorite, None, g.favourite.then(|| rgb(STAR)), PillSize::SMALL).into_any_element()
+                }
+                SpotAct::More => pill_button(on, Icon::Menu, None, None, PillSize::SMALL).into_any_element(),
+            }
+        });
+        let row = div().flex().items_center();
+        if wide {
+            row.gap(u(14.)).mt(u(10.)).children(buttons)
+        } else {
+            row.gap(u(12.)).mt(u(6.)).children(buttons)
         }
-        let star = g.favourite.then(|| rgb(0xf4d35e));
-        div()
-            .flex()
-            .gap(u(12.))
-            .mt(u(6.))
-            .child(button(on(0), icon, Some(self.primary_label(g).into()), None))
-            .child(button(on(1), Icon::Flag, Some(status.into()), None))
-            .child(button(on(2), Icon::Favorite, None, star))
-            .child(button(on(3), Icon::Menu, None, None))
     }
 
     pub(super) fn render_spotlight(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.lib.is_none() {
-            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
-        }
         let found = self.spotlight_keys(spec);
         if found.is_empty() {
-            return kit::empty(Icon::GridView, tr!("No games yet"), tr!("Add a game from the menu (\u{2630}).")).into_any_element();
+            return super::no_games();
         }
         let n = found.len();
         let theme = look::theme();
@@ -285,16 +255,14 @@ impl CollectionView {
         if nav.index == n {
             nav.zone = Zone::Row;
         }
-        let (zone, index, action, card_at) = (nav.zone, nav.index, nav.action.min(actions() - 1), nav.card);
+        let (zone, index, action, card_at) = (nav.zone, nav.index, nav.action.min(actions().len() - 1), nav.card);
         let glide = nav.row.clone();
         let game_key = found.get(index).cloned();
         self.console_focus_game(Some(game_key.clone().unwrap_or_else(|| found[0].clone())), cx);
 
         let (icon, icon_on) = icon_sizes(self.cover_aspect);
         let shape = look::theme().tiles.shape;
-        let step = f32::from(u(icon.0 + GAP));
-        let per_row = (f32::from(window.viewport_size().width) / step).ceil() as usize + 1;
-        let first = (-f32::from(glide.handle().offset().x) / step).floor().max(0.) as usize;
+        let seen = super::in_sight(glide.handle().offset().x, icon.0 + GAP, window.viewport_size().width);
         let ring = zone == Zone::Row;
         let radius = look::tile_radius();
         let mut row = div()
@@ -309,7 +277,7 @@ impl CollectionView {
         for j in 0..=n {
             let on = j == index;
             let (w, h) = if on { icon_on } else { icon };
-            let visible = (first..=first + per_row).contains(&j) || j.abs_diff(index) <= 2;
+            let visible = super::loads(&seen, j, index);
             let tile = match found.get(j) {
                 Some(key) => self.console_tile_shaped(key, shape, w, h, on && ring, visible, window),
                 None => all_tile(w, h, on && ring),
@@ -437,23 +405,17 @@ impl CollectionView {
         nav.zone = zone;
         match (zone, pad) {
             (Zone::Row, Pad::Left | Pad::Right) => {
-                nav.index = super::step(index, n + 1, if pad == Pad::Left { -1 } else { 1 }, wrap);
+                nav.index = super::step(index, n + 1, pad.dir(), wrap);
                 nav.row.go(Goal::Start(nav.index.saturating_sub(3)));
             }
             (Zone::Row, Pad::Down | Pad::A) if game.is_some() => {
                 nav.zone = Zone::Actions;
                 nav.action = 0;
             }
-            (Zone::Row, Pad::A) => {
-                // "All games": the first Grid tab, else the search.
-                let grid = look::theme().tabs.iter().position(|t| t.layout == Layout::Grid);
-                match grid {
-                    Some(i) => self.console.tab = i,
-                    None => self.console_search(window, cx),
-                }
-            }
+            // "All games".
+            (Zone::Row, Pad::A) => self.console_open_library(window, cx),
             (Zone::Actions, Pad::Left) => nav.action = nav.action.saturating_sub(1),
-            (Zone::Actions, Pad::Right) => nav.action = (nav.action + 1).min(actions() - 1),
+            (Zone::Actions, Pad::Right) => nav.action = (nav.action + 1).min(actions().len() - 1),
             (Zone::Actions, Pad::Up) => nav.zone = Zone::Row,
             (Zone::Actions, Pad::Down) if cards > 0 => {
                 nav.zone = Zone::Cards;
@@ -461,7 +423,7 @@ impl CollectionView {
             }
             (Zone::Actions, Pad::A) => {
                 let (Some(key), at) = (game, nav.action) else { return true };
-                self.spotlight_act(&key, at, window, cx);
+                self.spotlight_act(&key, actions()[at.min(actions().len() - 1)], window, cx);
             }
             (Zone::Cards, Pad::Left) => nav.card = nav.card.saturating_sub(1),
             (Zone::Cards, Pad::Right) => nav.card = (nav.card + 1).min(cards.saturating_sub(1)),
@@ -478,12 +440,10 @@ impl CollectionView {
     }
 
     /// A on a button of the actions row.
-    fn spotlight_act(&mut self, key: &SharedString, action: usize, window: &mut Window, cx: &mut Context<Self>) {
-        // Play and More only: the second one is More.
-        let action = if actions() == 2 && action == 1 { 3 } else { action };
+    fn spotlight_act(&mut self, key: &SharedString, action: SpotAct, window: &mut Window, cx: &mut Context<Self>) {
         match action {
-            0 => self.install_or_play(key, window, cx),
-            1 => {
+            SpotAct::Play => self.install_or_play(key, window, cx),
+            SpotAct::Status => {
                 let Some(lib) = self.lib.clone() else { return };
                 let Some(g) = lib.get(key) else { return };
                 if lib.statuses.is_empty() {
@@ -493,13 +453,13 @@ impl CollectionView {
                 let next = lib.statuses[(at + 1) % lib.statuses.len()].id.clone();
                 self.set_status(key, next, cx);
             }
-            2 => {
+            SpotAct::Favourite => {
                 if self.selected.as_ref() != Some(key) {
                     self.select(key.clone(), false);
                 }
                 self.toggle_favourite(cx);
             }
-            _ => self.open_game_page(key.clone()),
+            SpotAct::More => self.open_game_page(key.clone()),
         }
     }
 

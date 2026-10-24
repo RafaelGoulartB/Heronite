@@ -11,24 +11,23 @@ use std::sync::Arc;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, TimeZone};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{FocusStyle, Layout, TabSpec};
+use heronite_data::console_theme::{DashboardWidgets, Layout, TabSpec};
 use heronite_data::journal::{self, GameJournal};
 use heronite_data::models::LocalGameSession;
 use heronite_data::{stats, CollectionGame, Library};
 use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
-use super::super::backdrop::Scrim;
-use super::super::hero::HeroSize;
+use super::super::hero::{played_line, HeroSize};
+use super::super::tile::focus_frame;
+use super::top_recent;
+use crate::collection::data::played_ago;
 use crate::console::kit::{self, u};
-use crate::console::motion;
 use crate::console::spatial::{self, Dir, Rect};
 use crate::console::{hint, look, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::pages::Page;
 use crate::theme;
-
-pub(super) const SCRIM: Scrim = Scrim::Full;
 
 const COLS: f32 = 6.;
 const ROWS: f32 = 3.;
@@ -37,9 +36,6 @@ const SIDE: f32 = 46.;
 /// Space above and under the mosaic.
 const TOP: f32 = 12.;
 const BOTTOM: f32 = 22.;
-/// Height of the shell's top bar and hint bar around the body, design px.
-const TOP_BAR: f32 = 76.;
-const HINT_BAR: f32 = 60.;
 /// Recent games the mosaic and the digest look at.
 const RECENT: usize = 16;
 /// Games whose journal is searched for the newest note.
@@ -74,16 +70,6 @@ impl Id {
     }
 }
 
-/// Which widgets the theme turns on.
-#[derive(Clone, Copy)]
-struct Show {
-    week: bool,
-    downloads: bool,
-    random: bool,
-    journal: bool,
-    shortcuts: bool,
-}
-
 struct Tile<K> {
     id: Id,
     /// In cells of the 6×3 mosaic.
@@ -95,7 +81,7 @@ struct Tile<K> {
 /// The tiles for `games` (most recent first; the first is "Continue") and
 /// the widgets that are on. `random` and `journal` are the games those two
 /// widgets show, `None` = nothing to show, so their cells go to games.
-fn plan<K: Clone>(show: Show, mut games: impl Iterator<Item = K>, random: Option<K>, journal: Option<K>) -> Vec<Tile<K>> {
+fn plan<K: Clone>(show: &DashboardWidgets, mut games: impl Iterator<Item = K>, random: Option<K>, journal: Option<K>) -> Vec<Tile<K>> {
     let Some(first) = games.next() else { return Vec::new() };
     let mut out = vec![Tile { id: Id::Continue, rect: Rect::new(0., 0., 2., 2.), key: Some(first) }];
     let mut n = 0u8;
@@ -228,21 +214,6 @@ fn build_digest(lib: &Library, id: usize, today: NaiveDate) -> Digest {
     Digest { lib: id, day: today, week, note }
 }
 
-/// The `k` most recently played games, newest first (never-played ones
-/// follow, by title).
-pub(super) fn top_recent(games: &[Arc<CollectionGame>], k: usize) -> Vec<Arc<CollectionGame>> {
-    let order = |a: &&Arc<CollectionGame>, b: &&Arc<CollectionGame>| {
-        b.last_played.cmp(&a.last_played).then_with(|| a.title_lower.cmp(&b.title_lower))
-    };
-    let mut v: Vec<&Arc<CollectionGame>> = games.iter().collect();
-    if v.len() > k {
-        v.select_nth_unstable_by(k, order);
-        v.truncate(k);
-    }
-    v.sort_by(order);
-    v.into_iter().cloned().collect()
-}
-
 /// A game to pick from the backlog: "plan to play", or never played.
 fn in_backlog(lib: &Library, g: &CollectionGame) -> bool {
     let plan_to_play = g.status_id == "plan-to-play" || lib.statuses.iter().any(|s| s.id == g.status_id && s.slug == "plan-to-play");
@@ -260,33 +231,6 @@ fn daily_pick<'a>(keys: impl Iterator<Item = &'a str>, day: u64) -> Option<usize
     keys.enumerate().min_by_key(|(_, k)| daily_rank(k, day)).map(|(i, _)| i)
 }
 
-/// "3 days ago" for a last-played moment.
-pub(super) fn played_ago(last_played: &str) -> Option<String> {
-    let days = crate::collection::data::days_since(last_played).or_else(|| {
-        let day = NaiveDate::parse_from_str(last_played.get(..10)?, "%Y-%m-%d").ok()?;
-        Some((Local::now().date_naive() - day).num_days().max(0))
-    })?;
-    Some(crate::collection::data::days_ago(days))
-}
-
-/// "3 days ago · 12h 40m"; `long` says "Last played 3 days ago · 12h 40m".
-/// "Not played yet" for a game never played.
-pub(super) fn played_line(g: &CollectionGame, long: bool) -> String {
-    let ago = g.last_played.as_deref().and_then(played_ago);
-    let time = (g.playtime_minutes > 0).then(|| heronite_data::collection::format_playtime_minutes(g.playtime_minutes));
-    let when = match ago {
-        Some(ago) if long => tr!("Last played {when}", when = ago.to_lowercase()),
-        Some(ago) => ago,
-        None => tr!("Not played yet").to_string(),
-    };
-    [Some(when), time].into_iter().flatten().collect::<Vec<_>>().join(" \u{b7} ")
-}
-
-/// Body height under the shell's top bar (and above its hint bar), design px.
-pub(super) fn body_height(window: &Window, hints: bool) -> f32 {
-    f32::from(window.viewport_size().height) / kit::scale() - TOP_BAR - if hints { HINT_BAR } else { 0. }
-}
-
 /// Where the cells of the mosaic are, design px.
 struct Cells {
     w: f32,
@@ -295,7 +239,7 @@ struct Cells {
 
 impl Cells {
     fn new(window: &Window, hints: bool) -> Self {
-        let body = body_height(window, hints);
+        let body = super::body_height(window, hints);
         let width = f32::from(window.viewport_size().width) / kit::scale() - 2. * SIDE;
         Self { w: ((width - GAP * (COLS - 1.)) / COLS).max(60.), h: ((body - TOP - BOTTOM - GAP * (ROWS - 1.)) / ROWS).max(60.) }
     }
@@ -304,47 +248,6 @@ impl Cells {
     fn place(&self, r: Rect) -> (f32, f32, f32, f32) {
         (SIDE + r.x * (self.w + GAP), TOP + r.y * (self.h + GAP), r.w * self.w + (r.w - 1.) * GAP, r.h * self.h + (r.h - 1.) * GAP)
     }
-}
-
-/// A tile body that grows and gets the theme's focus mark when focused.
-/// Goes inside a box of `w`×`h` design px (it fills it).
-pub(super) fn focus_frame(id: impl Into<ElementId>, focused: bool, w: f32, h: f32, content: Div) -> AnyElement {
-    let style = look::theme().tiles.focus;
-    let radius = look::tile_radius();
-    let ring: Hsla = theme::console_focus().into();
-    let (wpx, hpx) = (u(w), u(h));
-    motion::spring(id, div().absolute().inset_0(), motion::LIFT, focused, move |d, t| {
-        let grow = match style {
-            FocusStyle::Lift => 0.07,
-            FocusStyle::Underline => 0.,
-            _ => 0.045,
-        };
-        let (gx, gy) = (wpx * (grow * t), hpx * (grow * t));
-        let rise = if style == FocusStyle::Lift { u(10.) * t } else { px(0.) };
-        let t1 = t.clamp(0., 1.);
-        let d = d.top(-gy - rise).bottom(-gy + rise).left(-gx).right(-gx).rounded(u(radius));
-        let d = match style {
-            FocusStyle::Ring => d
-                .border_3()
-                .border_color(Hsla { a: t1, ..ring })
-                .when(t > 0.02, |d| d.shadow(kit::shadow(0.6 * t1, 4. + 8. * t, 10. + 20. * t))),
-            FocusStyle::Glow => d.border_2().border_color(Hsla { a: t1, ..ring }).when(t > 0.02, |d| {
-                d.shadow(vec![BoxShadow {
-                    color: Hsla { a: 0.55 * t1, ..ring },
-                    offset: point(px(0.), px(0.)),
-                    blur_radius: u(30. * t1),
-                    spread_radius: u(2. * t1),
-                    inset: false,
-                }])
-            }),
-            FocusStyle::Lift => d.when(t > 0.02, |d| d.shadow(kit::shadow(0.75 * t1, 10. + 16. * t, 18. + 26. * t))),
-            FocusStyle::Underline => d,
-        };
-        let bar = (style == FocusStyle::Underline).then(|| {
-            div().absolute().left(wpx * 0.18).right(wpx * 0.18).bottom(u(8.)).h(u(4.)).rounded_full().bg(theme::console_focus()).opacity(t1)
-        });
-        d.child(content).children(bar)
-    })
 }
 
 /// The download in progress.
@@ -423,14 +326,7 @@ impl CollectionView {
             let i = daily_pick(pool.iter().map(|g| g.key.as_str()), day)?;
             Some(SharedString::from(pool[i].key.clone()))
         });
-        let show = Show {
-            week: widgets.week,
-            downloads: widgets.downloads,
-            random: widgets.random,
-            journal: widgets.journal,
-            shortcuts: widgets.shortcuts,
-        };
-        plan(show, recent.iter().map(|g| SharedString::from(g.key.clone())), random.flatten(), note)
+        plan(&widgets, recent.iter().map(|g| SharedString::from(g.key.clone())), random.flatten(), note)
     }
 
     fn dashboard_download(cx: &App) -> Option<Download> {
@@ -442,13 +338,10 @@ impl CollectionView {
     }
 
     pub(super) fn render_dashboard(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.lib.is_none() {
-            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
-        }
         self.dashboard_sync(tab, cx);
         let tiles = self.dashboard_tiles(tab, spec);
         if tiles.is_empty() {
-            return kit::empty(Icon::GridView, tr!("No games yet"), tr!("Add a game from the menu (\u{2630}).")).into_any_element();
+            return super::no_games();
         }
         let nav = &mut self.tab_nav(tab).dashboard;
         if !tiles.iter().any(|t| t.id == nav.focus) {
@@ -475,7 +368,7 @@ impl CollectionView {
                 (Id::Game(_), Some(k)) => self.dash_game(k, w, h, on, window),
                 (Id::Random, Some(k)) => self.dash_random(k, w, h, on, window),
                 (Id::Journal, Some(k)) => self.dash_journal(note.as_ref().filter(|n| &n.key == k), h),
-                (Id::Week, _) => dash_week(week, w, h),
+                (Id::Week, _) => dash_week(week, h),
                 (Id::Downloads, _) => dash_downloads(download.as_ref(), w),
                 (Id::Shortcut(s), _) => self.dash_shortcut(s),
                 _ => div(),
@@ -671,17 +564,6 @@ impl CollectionView {
             .children(sub.map(|s| div().text_size(u(12.)).text_color(theme::text_muted()).child(s)))
     }
 
-    /// Opens the library: the first Grid tab, else the search.
-    pub(super) fn console_open_library(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        match look::theme().tabs.iter().position(|t| t.layout == Layout::Grid) {
-            Some(i) => {
-                self.console.tab = i;
-                self.console.tab_dir = 1.;
-            }
-            None => self.console_search(window, cx),
-        }
-    }
-
     /// A / X on the tile `id`.
     fn dashboard_open(&mut self, id: Id, key: Option<SharedString>, pad: Pad, window: &mut Window, cx: &mut Context<Self>) {
         if let (true, Some(key)) = (id.is_game(), key) {
@@ -742,7 +624,7 @@ impl CollectionView {
 }
 
 /// The week's play time and a bar per day (today in the focus colour).
-fn dash_week(week: Option<[f64; 7]>, _w: f32, h: f32) -> Div {
+fn dash_week(week: Option<[f64; 7]>, h: f32) -> Div {
     let days = week.unwrap_or([0.; 7]);
     let total: f64 = days.iter().sum();
     let most = days.iter().copied().fold(1., f64::max);
@@ -792,12 +674,13 @@ mod tests {
     use heronite_data::sessions::session_from;
 
     use super::{
-        daily_pick, newest_note, plan, week_secs, Dir, GameJournal, Id, LocalGameSession, NaiveDate, Rect, Shortcut, Show, COLS, ROWS,
+        daily_pick, newest_note, plan, week_secs, DashboardWidgets, Dir, GameJournal, Id, LocalGameSession, NaiveDate, Rect, Shortcut,
+        COLS, ROWS,
     };
     use crate::console::spatial;
 
-    const ALL: Show = Show { week: true, downloads: true, random: true, journal: true, shortcuts: true };
-    const NONE: Show = Show { week: false, downloads: false, random: false, journal: false, shortcuts: false };
+    const ALL: DashboardWidgets = DashboardWidgets { week: true, downloads: true, random: true, journal: true, shortcuts: true };
+    const NONE: DashboardWidgets = DashboardWidgets { week: false, downloads: false, random: false, journal: false, shortcuts: false };
 
     fn games(n: usize) -> impl Iterator<Item = usize> {
         0..n
@@ -809,7 +692,7 @@ mod tests {
 
     #[test]
     fn the_mosaic_fills_six_by_three_without_overlaps() {
-        let t = plan(ALL, games(30), Some(100), Some(101));
+        let t = plan(&ALL, games(30), Some(100), Some(101));
         assert_eq!(t.len(), 13);
         assert_eq!(t[0].id, Id::Continue);
         assert_eq!(t[0].key, Some(0));
@@ -826,7 +709,7 @@ mod tests {
     #[test]
     fn widgets_that_are_off_leave_their_cells_to_games() {
         // 18 cells, 4 for Continue: Continue + 14 games.
-        let t = plan(NONE, games(30), Some(100), Some(101));
+        let t = plan(&NONE, games(30), Some(100), Some(101));
         assert_eq!(t.len(), 15);
         assert!(t.iter().all(|t| matches!(t.id, Id::Continue | Id::Game(_))));
         let keys: Vec<_> = t.iter().filter_map(|t| t.key).collect();
@@ -835,7 +718,7 @@ mod tests {
 
     #[test]
     fn a_widget_with_nothing_to_show_gives_up_its_cells() {
-        let t = plan(ALL, games(30), None, None);
+        let t = plan(&ALL, games(30), None, None);
         assert!(!t.iter().any(|t| matches!(t.id, Id::Random | Id::Journal)));
         // The two wide cells became four game cells.
         assert_eq!(t.len(), 13 - 2 + 4);
@@ -843,16 +726,16 @@ mod tests {
 
     #[test]
     fn few_games_leave_cells_empty_but_keep_the_widgets() {
-        let t = plan(ALL, games(3), None, None);
+        let t = plan(&ALL, games(3), None, None);
         let with_game = t.iter().filter(|t| t.key.is_some()).count();
         assert_eq!(with_game, 3);
         assert!(t.iter().any(|t| t.id == Id::Week) && t.iter().any(|t| t.id == Id::Shortcut(Shortcut::Stores)));
-        assert!(plan(ALL, games(0), None, None).is_empty());
+        assert!(plan(&ALL, games(0), None, None).is_empty());
     }
 
     #[test]
     fn every_tile_can_be_reached_with_the_d_pad() {
-        let t = plan(ALL, games(30), Some(100), Some(101));
+        let t = plan(&ALL, games(30), Some(100), Some(101));
         let rects: Vec<Rect> = t.iter().map(|t| t.rect).collect();
         let mut seen = vec![false; t.len()];
         let mut stack = vec![0];

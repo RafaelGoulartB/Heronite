@@ -5,48 +5,19 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{FactStyle, Size3, TabSpec};
-use heronite_i18n::tr;
 
 use super::super::super::CollectionView;
-use super::super::backdrop::Scrim;
 use super::super::hero::{shelf_heading, HeroSize};
 use super::super::tile::label_room;
-use crate::console::kit::{self, u};
+use crate::console::kit::u;
 use crate::console::look;
-use crate::console::motion::{self, Axis, Glide, Goal};
-use crate::console::{Hint, Pad};
-use crate::icons::Icon;
+use crate::console::motion;
 use crate::theme;
 
 const GAP: f32 = 18.;
 const SIDE: f32 = 46.;
 /// Room around a row of covers for the lifted one and its ring.
 const PAD: f32 = 10.;
-
-pub(super) const SCRIM: Scrim = Scrim::Classic;
-
-pub(crate) struct Nav {
-    pub shelf: usize,
-    /// Focused column of each shelf (kept when moving between shelves).
-    cols: Vec<usize>,
-    shelves: Glide,
-    rows: Vec<Glide>,
-}
-
-impl Default for Nav {
-    fn default() -> Self {
-        Self { shelf: 0, cols: Vec::new(), shelves: Glide::new(Axis::Y), rows: Vec::new() }
-    }
-}
-
-impl Nav {
-    fn fit(&mut self, n: usize) {
-        self.cols.resize(n, 0);
-        while self.rows.len() < n {
-            self.rows.push(Glide::new(Axis::X));
-        }
-    }
-}
 
 /// Height of the game shown on top, design px.
 fn hero_height(size: Size3) -> f32 {
@@ -59,26 +30,15 @@ fn hero_height(size: Size3) -> f32 {
 
 impl CollectionView {
     pub(super) fn render_shelves(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.lib.is_none() {
-            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
-        }
         let shelves = self.console_shelves(&spec.source);
         if shelves.is_empty() {
-            return kit::empty(Icon::GridView, tr!("No games yet"), tr!("Add a game from the menu (\u{2630}).")).into_any_element();
+            return super::no_games();
         }
         let theme = look::theme();
         let (tw, th) = self.console_tile_size();
         let nav = &mut self.tab_nav(tab).shelves;
-        nav.shelf = nav.shelf.min(shelves.len() - 1);
-        nav.fit(shelves.len());
-        for (i, s) in shelves.iter().enumerate() {
-            nav.cols[i] = nav.cols[i].min(s.keys.len() - 1);
-        }
-        let (si, ci) = (nav.shelf, nav.cols[nav.shelf]);
-        let focused = shelves[si].keys[ci].clone();
-        let rows = nav.rows.clone();
-        let shelves_glide = nav.shelves.clone();
-        let cols = nav.cols.clone();
+        let focused = nav.sync(&shelves);
+        let (si, rows, shelves_glide, cols) = (nav.shelf, nav.lines.glides.clone(), nav.shelves.clone(), nav.lines.cols.clone());
         self.console_focus_game(Some(focused.clone()), cx);
 
         let mut list = div()
@@ -90,8 +50,6 @@ impl CollectionView {
             .track_scroll(shelves_glide.handle())
             .px(u(SIDE - PAD))
             .pb(u(20.));
-        let step = f32::from(u(tw + GAP));
-        let per_row = (f32::from(window.viewport_size().width) / step).ceil() as usize + 1;
         let room = label_room();
         for (i, shelf) in shelves.iter().enumerate() {
             let mut row = div()
@@ -105,9 +63,9 @@ impl CollectionView {
             // On screen: the shelves around the focused one, the columns
             // each is scrolled to (and the focus, while it glides there).
             let near = i + 1 >= si && i <= si + 2;
-            let first = (-f32::from(rows[i].handle().offset().x) / step).floor().max(0.) as usize;
+            let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, window.viewport_size().width);
             for (c, key) in shelf.keys.iter().enumerate() {
-                let visible = near && ((first..=first + per_row).contains(&c) || c.abs_diff(cols[i]) <= 2);
+                let visible = near && super::loads(&seen, c, cols[i]);
                 row = row.child(self.console_tile(key, tw, th, i == si && c == cols[i], visible, window));
             }
             row = row.child(rows[i].driver());
@@ -152,46 +110,5 @@ impl CollectionView {
             .child(list.flex_1().min_h_0())
             .children(stats.flatten())
             .into_any_element()
-    }
-
-    pub(super) fn shelves_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let shelves = self.console_shelves(&spec.source);
-        if shelves.is_empty() {
-            return false;
-        }
-        let (tw, _) = self.console_tile_size();
-        let wrap = look::theme().nav.wrap;
-        let nav = &mut self.tab_nav(tab).shelves;
-        nav.fit(shelves.len());
-        let si = nav.shelf.min(shelves.len() - 1);
-        let n = shelves[si].keys.len();
-        let ci = nav.cols[si].min(n - 1);
-        let key = shelves[si].keys[ci].clone();
-        match pad {
-            Pad::Left => nav.cols[si] = super::step(ci, n, -1, wrap),
-            Pad::Right => nav.cols[si] = super::step(ci, n, 1, wrap),
-            Pad::Up => nav.shelf = si.saturating_sub(1),
-            Pad::Down => nav.shelf = (si + 1).min(shelves.len() - 1),
-            Pad::A | Pad::X => {
-                self.console_activate(key, pad, window, cx);
-                return true;
-            }
-            Pad::Y => {
-                self.console_search(window, cx);
-                return true;
-            }
-            _ => return false,
-        }
-        // The focused shelf to the top, its cover in sight with a peek of
-        // the next ones.
-        let si = nav.shelf;
-        nav.shelves.go(Goal::Start(si));
-        let ci = nav.cols[si].min(shelves[si].keys.len() - 1);
-        nav.rows[si].go(Goal::Reveal { ix: ci, margin: tw * 0.6 });
-        true
-    }
-
-    pub(super) fn shelves_hints(&self, _tab: usize, _spec: &TabSpec) -> Vec<Hint> {
-        self.console_cover_hints()
     }
 }

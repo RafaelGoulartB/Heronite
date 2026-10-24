@@ -13,10 +13,11 @@ use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
 use super::super::super::CollectionView;
-use super::super::hero::{clip, HeroSize};
+use super::super::hero::{card_surface, clip, pill_button, played_time, HeroSize, PillSize};
 use super::super::layouts::step;
 use super::detail_text;
 use super::sheet::side_sheet;
+use crate::collection::focus_left::STAR;
 use crate::collection::vm::FocusVm;
 use crate::console::kit::{self, u};
 use crate::console::list::{ListNav, Outcome, Row, Value};
@@ -158,23 +159,20 @@ pub(super) fn hltb_line(f: &FocusVm) -> Option<Div> {
 
 /// A small card: a caption over a value.
 pub(super) fn stat_card(label: &str, value: impl Into<SharedString>) -> Div {
-    div()
+    card_surface()
         .flex()
         .flex_col()
         .gap(u(6.))
         .w(u(220.))
         .p(u(16.))
         .rounded(u(14.))
-        .bg(kit::shade(0.35))
-        .border_1()
-        .border_color(kit::ink(0.08))
         .child(kit::kicker(label))
         .child(div().text_size(u(22.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(value.into()))
 }
 
 /// The notes of a journal card: its date and text.
 pub(super) fn note_card(date: &str, text: &str) -> Div {
-    div()
+    card_surface()
         .flex()
         .flex_col()
         .gap(u(6.))
@@ -182,9 +180,6 @@ pub(super) fn note_card(date: &str, text: &str) -> Div {
         .min_w_0()
         .p(u(16.))
         .rounded(u(14.))
-        .bg(kit::shade(0.35))
-        .border_1()
-        .border_color(kit::ink(0.08))
         .child(kit::kicker(date))
         .child(div().text_size(u(15.)).line_height(u(22.)).text_color(theme::text_primary()).line_clamp(4).child(text.to_string()))
 }
@@ -289,7 +284,7 @@ impl CollectionView {
         let n = self.shots.items.len().max(1);
         match pad {
             Pad::Left | Pad::Right => {
-                let next = (i as isize + if pad == Pad::Right { 1 } else { -1 }).rem_euclid(n as isize) as usize;
+                let next = (i as isize + pad.dir()).rem_euclid(n as isize) as usize;
                 self.shots.view = Some(next);
                 self.shots.reset_transform();
                 self.shots.discard_full();
@@ -344,14 +339,7 @@ impl CollectionView {
         let on_buttons = !in_content && nav.more.is_none();
 
         let name = self.console_name(&g, HeroSize { title: 58., logo: (520., 128.), ..HeroSize::default() }, window);
-        let facts = div()
-            .flex()
-            .items_center()
-            .gap(u(12.))
-            .text_size(u(16.))
-            .text_color(theme::text_muted())
-            .child(Self::console_facts(&g))
-            .children(self.console_status_badge(&g));
+        let facts = self.console_fact_line(&g, Self::console_facts(&g), 16.);
         let buttons_row = div()
             .flex()
             .gap(u(12.))
@@ -422,7 +410,7 @@ impl CollectionView {
     /// Playtime, last played and time to beat over the start of the overview.
     fn hero_overview(&self, g: &CollectionGame, f: Option<&FocusVm>) -> Div {
         let dash = || "\u{2014}".to_string();
-        let played = if g.playtime_minutes > 0 { heronite_data::collection::format_playtime_minutes(g.playtime_minutes) } else { dash() };
+        let played = played_time(g).unwrap_or_else(dash);
         let last = f.map_or_else(dash, |f| f.last_played.as_ref().map_or_else(|| tr!("Never").to_string(), |l| l.to_string()));
         let beat = f.and_then(|f| f.hltb.as_ref()?.main).map_or_else(dash, |h| format!("~{h:.0}h"));
         div()
@@ -471,17 +459,17 @@ impl CollectionView {
         match pad {
             Pad::LB | Pad::RB => {
                 let at = tabs.iter().position(|t| *t == nav.tab).unwrap_or(0);
-                nav.tab = tabs[step(at, tabs.len(), if pad == Pad::RB { 1 } else { -1 }, true)];
+                nav.tab = tabs[step(at, tabs.len(), pad.dir(), true)];
                 nav.content = false;
                 nav.shot = 0;
                 nav.shot_start = 0;
                 self.console.game.about.reset();
             }
             Pad::Left | Pad::Right if !nav.content => {
-                nav.button = step(nav.button, btns.len(), if pad == Pad::Right { 1 } else { -1 }, false);
+                nav.button = step(nav.button, btns.len(), pad.dir(), false);
             }
             Pad::Down if !nav.content && nav.tab == Tab::Screenshots && shots > 0 => nav.content = true,
-            Pad::Left | Pad::Right => nav.shot = step(nav.shot, shots, if pad == Pad::Right { 1 } else { -1 }, false),
+            Pad::Left | Pad::Right => nav.shot = step(nav.shot, shots, pad.dir(), false),
             Pad::Up if nav.content => nav.content = false,
             Pad::A if nav.content => {
                 let i = nav.shot;
@@ -519,8 +507,7 @@ impl CollectionView {
 /// One button of the row, from the game's action rows.
 fn hero_button(b: Button, rows: &[Row], g: &CollectionGame, focused: bool) -> Div {
     let row = b.row().and_then(|id| rows.iter().find(|r| r.id.as_ref() == id));
-    let fg: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_primary().into() };
-    let (ic, label, tint): (Icon, Option<SharedString>, Option<Hsla>) = match b {
+    let (ic, label, tint): (Icon, Option<SharedString>, Option<Rgba>) = match b {
         Button::Primary => (row.and_then(|r| r.icon).unwrap_or(Icon::PlayArrow), row.map(|r| r.label.clone()), None),
         Button::Status => {
             let name = row.and_then(|r| match &r.value {
@@ -529,37 +516,12 @@ fn hero_button(b: Button, rows: &[Row], g: &CollectionGame, focused: bool) -> Di
             });
             (Icon::Flag, name, None)
         }
-        Button::Favourite => {
-            let gold: Hsla = rgb(0xf4d35e).into();
-            if g.favourite {
-                (Icon::Favorite, None, Some(gold))
-            } else {
-                (Icon::FavoriteBorder, None, None)
-            }
-        }
+        Button::Favourite if g.favourite => (Icon::Favorite, None, Some(rgb(STAR))),
+        Button::Favourite => (Icon::FavoriteBorder, None, None),
         Button::Settings => (Icon::Tune, None, None),
         Button::More => (Icon::Menu, None, None),
     };
-    let wide = label.is_some();
-    let button = div()
-        .relative()
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .gap(u(10.))
-        .h(u(52.))
-        .rounded_full()
-        .bg(kit::ink(0.12))
-        .border_1()
-        .border_color(kit::ink(0.08))
-        .text_size(u(18.))
-        .font_weight(theme::W_BOLD)
-        .text_color(fg)
-        .when(wide, |d| d.px(u(26.)))
-        .when(!wide, |d| d.w(u(52.)));
-    let button = if focused { button.child(kit::focus_pill(26.)) } else { button };
-    button.child(crate::ui::icon(ic, u(24.), tint.filter(|_| !focused).unwrap_or(fg))).children(label)
+    pill_button(focused, ic, label, tint, PillSize::LARGE)
 }
 
 #[cfg(test)]

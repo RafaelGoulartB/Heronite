@@ -10,13 +10,12 @@ use std::collections::BTreeMap;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{TabSpec, WheelItems};
-use heronite_data::organize::{release_year, Organize};
+use heronite_data::organize::release_year;
 use heronite_data::CollectionGame;
 use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
-use super::super::backdrop::Scrim;
-use super::super::hero::clip;
+use super::super::hero::{clip, played_time};
 use super::super::sources::{by_title, keys};
 use super::grid::fact_cell;
 use crate::console::kit::{self, u};
@@ -25,8 +24,6 @@ use crate::console::motion::{self, Axis, Glide, Goal};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
-
-pub(super) const SCRIM: Scrim = Scrim::Full;
 
 const SIDE: f32 = 46.;
 /// Distance between two rows, design px.
@@ -83,16 +80,12 @@ fn bend(d: f32) -> f32 {
 }
 
 impl CollectionView {
-    fn organize_for_wheel(&self) -> Organize<'_> {
-        Organize { extras: Some(&self.game_extras), ..Default::default() }
-    }
-
     /// The filters over the tab's games: All, each platform present (most
     /// games first; one that holds every game adds nothing) and Favourites,
     /// then the games of filter `want` sorted A–Z.
     fn wheel_data(&self, spec: &TabSpec, want: usize) -> Data {
         let games = self.console_games(&spec.source);
-        let org = self.organize_for_wheel();
+        let org = self.organize();
         let mut platforms: BTreeMap<String, usize> = BTreeMap::new();
         for g in &games {
             *platforms.entry(org.platform(g)).or_default() += 1;
@@ -121,21 +114,18 @@ impl CollectionView {
     /// The small tag at the end of a row: the emulated system, else the store.
     fn wheel_tag(&self, g: &CollectionGame) -> String {
         if self.game_extras.systems.contains_key(&g.key) {
-            self.organize_for_wheel().platform(g)
+            self.organize().platform(g)
         } else {
             g.source_label.to_string()
         }
     }
 
     pub(super) fn render_wheel(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.lib.is_none() {
-            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
-        }
         let want = self.tab_nav(tab).wheel.filter;
         let data = self.wheel_data(spec, want);
         let n = data.keys.len();
         if n == 0 {
-            return kit::empty(Icon::GridView, tr!("No games yet"), tr!("Add a game from the menu (\u{2630}).")).into_any_element();
+            return super::no_games();
         }
         let nav = &mut self.tab_nav(tab).wheel;
         nav.filter = data.active;
@@ -283,11 +273,7 @@ impl CollectionView {
         let logo = self.console_logo(&key, w * 0.55, art_h * 0.34, true, window);
         let no_logo = logo.is_none();
         let dash = || "\u{2014}".to_string();
-        let status = self
-            .lib
-            .as_ref()
-            .and_then(|l| l.statuses.iter().find(|s| s.id == g.status_id))
-            .map(|s| (heronite_data::status::status_label(&s.name).to_string(), theme::status_color(&s.slug)));
+        let status = self.console_status(g);
         let value = |text: String| div().truncate().text_size(u(15.)).text_color(theme::text_primary()).child(text);
         let row = || div().flex().gap(u(18.));
         let facts = div()
@@ -303,14 +289,7 @@ impl CollectionView {
             )
             .child(
                 row()
-                    .child(fact_cell(
-                        tr!("Playtime"),
-                        value(if g.playtime_minutes > 0 {
-                            heronite_data::collection::format_playtime_minutes(g.playtime_minutes)
-                        } else {
-                            dash()
-                        }),
-                    ))
+                    .child(fact_cell(tr!("Playtime"), value(played_time(g).unwrap_or_else(dash))))
                     .child(fact_cell(
                         tr!("Status"),
                         match status {
@@ -376,8 +355,7 @@ impl CollectionView {
         let i = nav.index.min(n - 1);
         let to = match pad {
             Pad::Left | Pad::Right => {
-                let delta = if pad == Pad::Right { 1 } else { -1 };
-                nav.filter = super::step(data.active, data.filters.len(), delta, true);
+                nav.filter = super::step(data.active, data.filters.len(), pad.dir(), true);
                 nav.index = 0;
                 nav.restart = true;
                 return true;

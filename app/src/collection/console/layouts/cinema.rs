@@ -6,18 +6,16 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{FactStyle, HeroAlign, TabSpec};
+use heronite_data::organize::release_year;
 use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
 use super::super::super::CollectionView;
-use super::super::backdrop::Scrim;
-use super::super::hero::{shelf_heading, HeroSize};
+use super::super::hero::{played_time, shelf_heading, HeroSize};
 use super::super::tile::label_room;
-use crate::console::kit::{self, u};
+use crate::console::kit::u;
 use crate::console::look;
-use crate::console::motion::{self, Axis, Glide, Goal};
-use crate::console::{Hint, Pad};
-use crate::icons::Icon;
+use crate::console::motion;
 use crate::theme;
 
 const GAP: f32 = 18.;
@@ -31,37 +29,11 @@ const PEEK: f32 = 40.;
 /// Height of the line of genres above the covers (Chips).
 const GENRES: f32 = 36.;
 
-pub(super) const SCRIM: Scrim = Scrim::Cinema;
-
-pub(crate) struct Nav {
-    pub shelf: usize,
-    /// Focused column of each shelf (kept when moving between shelves).
-    cols: Vec<usize>,
-    shelves: Glide,
-    rows: Vec<Glide>,
-}
-
-impl Default for Nav {
-    fn default() -> Self {
-        Self { shelf: 0, cols: Vec::new(), shelves: Glide::new(Axis::Y), rows: Vec::new() }
-    }
-}
-
-impl Nav {
-    fn fit(&mut self, n: usize) {
-        self.cols.resize(n, 0);
-        while self.rows.len() < n {
-            self.rows.push(Glide::new(Axis::X));
-        }
-    }
-}
-
 /// "2019 · Action · 3h 54m played" (the store when none of it is known).
 fn meta_line(g: &CollectionGame) -> String {
-    let year = g.details.release_date.as_deref().and_then(heronite_data::organize::release_ymd).map(|(y, ..)| y.to_string());
+    let year = release_year(g).map(|y| y.to_string());
     let genre = g.details.genres.first().cloned();
-    let played = (g.playtime_minutes > 0)
-        .then(|| tr!("{time} played", time = heronite_data::collection::format_playtime_minutes(g.playtime_minutes)));
+    let played = played_time(g).map(|time| tr!("{time} played", time = time));
     let parts: Vec<String> = year.into_iter().chain(genre).chain(played).collect();
     if parts.is_empty() {
         g.source_label.to_string()
@@ -80,14 +52,7 @@ impl CollectionView {
         let size = HeroSize { title: 56., logo: (560., (free - 62.).clamp(100., 200.)), max_w: 760., overview: 0 };
         let name = self.console_name(g, size, window);
         let meta = theme.hero.facts.then(|| match theme.hero.fact_style {
-            FactStyle::Line => div()
-                .flex()
-                .items_center()
-                .gap(u(12.))
-                .text_size(u(16.))
-                .text_color(theme::text_muted())
-                .child(meta_line(g))
-                .children(self.console_status_badge(g)),
+            FactStyle::Line => self.console_fact_line(g, meta_line(g), 16.),
             FactStyle::Chips => self.console_chips(g),
         });
         let mut info = div().relative().flex().flex_col().gap(u(12.)).max_w(u(size.max_w)).child(name);
@@ -102,32 +67,19 @@ impl CollectionView {
     }
 
     pub(super) fn render_cinema(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.lib.is_none() {
-            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
-        }
         let shelves = self.console_shelves(&spec.source);
         if shelves.is_empty() {
-            return kit::empty(Icon::GridView, tr!("No games yet"), tr!("Add a game from the menu (\u{2630}).")).into_any_element();
+            return super::no_games();
         }
         let theme = look::theme();
         let (tw, th) = self.console_tile_size();
         let nav = &mut self.tab_nav(tab).cinema;
-        nav.shelf = nav.shelf.min(shelves.len() - 1);
-        nav.fit(shelves.len());
-        for (i, s) in shelves.iter().enumerate() {
-            nav.cols[i] = nav.cols[i].min(s.keys.len() - 1);
-        }
-        let (si, ci) = (nav.shelf, nav.cols[nav.shelf]);
-        let focused = shelves[si].keys[ci].clone();
-        let rows = nav.rows.clone();
-        let shelves_glide = nav.shelves.clone();
-        let cols = nav.cols.clone();
+        let focused = nav.sync(&shelves);
+        let (si, rows, shelves_glide, cols) = (nav.shelf, nav.lines.glides.clone(), nav.shelves.clone(), nav.lines.cols.clone());
         self.console_focus_game(Some(focused.clone()), cx);
 
         let room = label_room();
         let block_h = LABEL + th + 2. * PAD + room;
-        let step = f32::from(u(tw + GAP));
-        let per_row = (f32::from(window.viewport_size().width) / step).ceil() as usize + 1;
         let mut stack = div().id(("console-cinema", tab)).flex().flex_col().overflow_y_scroll().track_scroll(shelves_glide.handle());
         for (i, shelf) in shelves.iter().enumerate() {
             let mut row = div()
@@ -143,9 +95,9 @@ impl CollectionView {
             // Only the focused shelf and its neighbours (which show while
             // the shelves glide) have covers; off screen ones are empty.
             if i.abs_diff(si) <= 1 {
-                let first = (-f32::from(rows[i].handle().offset().x) / step).floor().max(0.) as usize;
+                let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, window.viewport_size().width);
                 for (c, key) in shelf.keys.iter().enumerate() {
-                    let visible = (first..=first + per_row).contains(&c) || c.abs_diff(cols[i]) <= 2;
+                    let visible = super::loads(&seen, c, cols[i]);
                     row = row.child(self.console_tile(key, tw, th, i == si && c == cols[i], visible, window));
                 }
             }
@@ -190,7 +142,7 @@ impl CollectionView {
         // genres of the Chips style, right above the covers.
         let chips = theme.hero.facts && theme.hero.fact_style == FactStyle::Chips;
         let genres_h = if chips { GENRES } else { 0. };
-        let free = (super::dashboard::body_height(window, true) - block_h - PEEK - genres_h - 10.).max(120.);
+        let free = (super::body_height(window, true) - block_h - PEEK - genres_h - 10.).max(120.);
         let game = self.lib.as_ref().and_then(|l| l.get(&focused)).cloned();
         let info = game.as_ref().map(|g| self.cinema_info(g, free, window));
         let genres = game.as_ref().filter(|_| chips).and_then(|g| Self::console_genre_line(g)).map(|line| {
@@ -215,44 +167,5 @@ impl CollectionView {
             .children(genres.map(|g| div().flex_none().h(u(GENRES)).px(u(SIDE)).flex().items_center().justify_end().child(g)))
             .child(stack.flex_none().h(u(block_h + PEEK)))
             .into_any_element()
-    }
-
-    pub(super) fn cinema_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let shelves = self.console_shelves(&spec.source);
-        if shelves.is_empty() {
-            return false;
-        }
-        let (tw, _) = self.console_tile_size();
-        let wrap = look::theme().nav.wrap;
-        let nav = &mut self.tab_nav(tab).cinema;
-        nav.fit(shelves.len());
-        let si = nav.shelf.min(shelves.len() - 1);
-        let n = shelves[si].keys.len();
-        let ci = nav.cols[si].min(n - 1);
-        let key = shelves[si].keys[ci].clone();
-        match pad {
-            Pad::Left => nav.cols[si] = super::step(ci, n, -1, wrap),
-            Pad::Right => nav.cols[si] = super::step(ci, n, 1, wrap),
-            Pad::Up => nav.shelf = si.saturating_sub(1),
-            Pad::Down => nav.shelf = (si + 1).min(shelves.len() - 1),
-            Pad::A | Pad::X => {
-                self.console_activate(key, pad, window, cx);
-                return true;
-            }
-            Pad::Y => {
-                self.console_search(window, cx);
-                return true;
-            }
-            _ => return false,
-        }
-        let si = nav.shelf;
-        nav.shelves.go(Goal::Start(si));
-        let ci = nav.cols[si].min(shelves[si].keys.len() - 1);
-        nav.rows[si].go(Goal::Reveal { ix: ci, margin: tw * 0.6 });
-        true
-    }
-
-    pub(super) fn cinema_hints(&self, _tab: usize, _spec: &TabSpec) -> Vec<Hint> {
-        self.console_cover_hints()
     }
 }

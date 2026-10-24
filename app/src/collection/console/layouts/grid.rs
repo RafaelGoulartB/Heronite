@@ -10,10 +10,10 @@ use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr};
 
 use super::super::super::CollectionView;
-use super::super::backdrop::Scrim;
 use super::super::hero::{clip, HeroSize};
 use super::super::sources::keys;
 use super::super::tile::label_room;
+use crate::collection::data::played_ago;
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion::{self, Axis, Glide, Goal};
@@ -24,8 +24,6 @@ use crate::theme;
 pub(crate) const GAP: f32 = 18.;
 pub(crate) const SIDE: f32 = 46.;
 pub(crate) const PAD: f32 = 10.;
-
-pub(super) const SCRIM: Scrim = Scrim::Classic;
 
 pub(crate) struct Nav {
     /// Focused filter chip (`None` = the grid has the focus).
@@ -235,9 +233,7 @@ impl CollectionView {
     }
 
     pub(super) fn render_grid(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let Some(lib) = self.lib.clone() else {
-            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
-        };
+        let Some(lib) = self.lib.clone() else { return div().into_any_element() };
         let panel = look::theme().layouts.grid_panel == GridPanel::Right;
         let rail = self.grid_letters(tab);
         let cols = self.grid_cols(window, panel, rail);
@@ -341,12 +337,10 @@ impl CollectionView {
         let scroll = glide.handle().clone();
         let mut grid =
             div().id(("console-grid", tab)).flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
-        let row_step = f32::from(u(line_h));
-        let first_row = (-f32::from(scroll.offset().y) / row_step).floor().max(0.) as usize;
-        let rows_shown = (f32::from(window.viewport_size().height) / row_step).ceil() as usize + 1;
+        let seen = super::in_sight(scroll.offset().y, line_h, window.viewport_size().height);
         for (r, chunk) in keys.chunks(cols).enumerate() {
-            let near = first_row.saturating_sub(1) <= r && r <= first_row + rows_shown;
-            let visible = (first_row..=first_row + rows_shown).contains(&r) || r.abs_diff(index / cols) <= 1;
+            let near = seen.start().saturating_sub(1) <= r && r <= *seen.end();
+            let visible = seen.contains(&r) || r.abs_diff(index / cols) <= 1;
             let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
             if near || r.abs_diff(index / cols) <= 1 {
                 for (c, key) in chunk.iter().enumerate() {
@@ -366,11 +360,7 @@ impl CollectionView {
         let art = self.console_wide_art(&key, w, (w * 9. / 16.).round(), 200, window);
         let size = HeroSize { title: 26., logo: (w, 64.), max_w: w, overview: 0 };
         let name = self.console_name(g, size, window);
-        let last = g
-            .last_played
-            .as_deref()
-            .and_then(crate::collection::data::days_since)
-            .map_or_else(|| tr!("Never").to_string(), crate::collection::data::days_ago);
+        let last = g.last_played.as_deref().and_then(played_ago).unwrap_or_else(|| tr!("Never").to_string());
         let beat =
             self.wiki.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.).map_or_else(|| "\u{2014}".into(), hours_text);
         let genres = if g.details.genres.is_empty() { "\u{2014}".to_string() } else { g.details.genres.join(", ") };
@@ -393,19 +383,7 @@ impl CollectionView {
                     .children(art.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
             )
             .child(name)
-            .when(theme.hero.facts, |d| {
-                d.child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(u(10.))
-                        .text_size(u(14.))
-                        .text_color(theme::text_muted())
-                        .child(Self::console_facts(g))
-                        .children(self.console_status_badge(g)),
-                )
-            })
+            .when(theme.hero.facts, |d| d.child(self.console_fact_line(g, Self::console_facts(g), 14.).flex_wrap().gap(u(10.))))
             .child(
                 div()
                     .flex()
@@ -473,8 +451,7 @@ impl CollectionView {
         let n = keys.len();
         let i = nav.index.min(n.saturating_sub(1));
         match pad {
-            Pad::Left => nav.index = super::step(i, n, -1, wrap),
-            Pad::Right => nav.index = super::step(i, n, 1, wrap),
+            Pad::Left | Pad::Right => nav.index = super::step(i, n, pad.dir(), wrap),
             Pad::Up if i < cols => nav.toolbar = Some(0),
             Pad::Up => nav.index = i - cols,
             Pad::Down => nav.index = (i + cols).min(n.saturating_sub(1)),

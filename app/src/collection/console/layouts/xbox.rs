@@ -11,18 +11,15 @@ use heronite_data::console_theme::{TabSpec, TileShape};
 use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
-use super::super::backdrop::Scrim;
-use super::super::hero::{shelf_heading, HeroSize};
-use super::super::tile::label_room;
-use super::dashboard::{body_height, focus_frame, played_line, top_recent};
+use super::super::hero::{played_line, shelf_heading, HeroSize};
+use super::super::tile::{focus_frame, label_room};
+use super::{body_height, top_recent};
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion::{self, Axis, Glide, Goal};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
-
-pub(super) const SCRIM: Scrim = Scrim::Spot;
 
 const GAP: f32 = 18.;
 const SIDE: f32 = 56.;
@@ -43,27 +40,24 @@ pub(crate) struct Nav {
     group: Option<usize>,
     /// Focused tile of the row (the last is "My games").
     col: usize,
-    /// Focused tile of each shelf.
-    cols: Vec<usize>,
+    /// Focused tile of each shelf, and the glide of each.
+    lines: super::ShelfLines,
     /// The focus is on "My games" (for the hints).
     mine: bool,
     row: Glide,
-    rows: Vec<Glide>,
     /// The whole screen, up and down.
     screen: Glide,
 }
 
 impl Default for Nav {
     fn default() -> Self {
-        Self { group: None, col: 0, cols: Vec::new(), mine: false, row: Glide::new(Axis::X), rows: Vec::new(), screen: Glide::new(Axis::Y) }
-    }
-}
-
-impl Nav {
-    fn fit(&mut self, shelves: usize) {
-        self.cols.resize(shelves, 0);
-        while self.rows.len() < shelves {
-            self.rows.push(Glide::new(Axis::X));
+        Self {
+            group: None,
+            col: 0,
+            lines: super::ShelfLines::default(),
+            mine: false,
+            row: Glide::new(Axis::X),
+            screen: Glide::new(Axis::Y),
         }
     }
 }
@@ -120,12 +114,9 @@ impl CollectionView {
     }
 
     pub(super) fn render_xbox(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        if self.lib.is_none() {
-            return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
-        }
         let games = self.console_games(&spec.source);
         if games.is_empty() {
-            return kit::empty(Icon::GridView, tr!("No games yet"), tr!("Add a game from the menu (\u{2630}).")).into_any_element();
+            return super::no_games();
         }
         let theme = look::theme();
         let recent: Vec<SharedString> = top_recent(&games, RECENT).into_iter().map(|g| SharedString::from(g.key.clone())).collect();
@@ -133,16 +124,13 @@ impl CollectionView {
         let m = self.xbox_metrics(window);
 
         let nav = &mut self.tab_nav(tab).xbox;
-        nav.fit(shelves.len());
+        nav.lines.sync(&shelves);
         nav.col = nav.col.min(recent.len());
-        for (c, s) in nav.cols.iter_mut().zip(&shelves) {
-            *c = (*c).min(s.keys.len() - 1);
-        }
         nav.group = nav.group.filter(|g| *g < shelves.len());
         nav.mine = nav.group.is_none() && nav.col == recent.len();
         let (group, col, mine) = (nav.group, nav.col, nav.mine);
-        let cols = nav.cols.clone();
-        let (row, rows, screen) = (nav.row.clone(), nav.rows.clone(), nav.screen.clone());
+        let (cols, rows) = (nav.lines.cols.clone(), nav.lines.glides.clone());
+        let (row, screen) = (nav.row.clone(), nav.screen.clone());
 
         let focused = match group {
             Some(g) => Some(shelves[g].keys[cols[g]].clone()),
@@ -201,8 +189,7 @@ impl CollectionView {
         for (g, shelf) in shelves.iter().enumerate() {
             let top = m.home + g as f32 * m.shelf;
             let in_sight = top + m.shelf > off_y && top < off_y + m.body;
-            let first = (-f32::from(rows[g].handle().offset().x) / scale / step).floor().max(0.) as usize;
-            let per_row = (view_w / step).ceil() as usize + 1;
+            let seen = super::in_sight(rows[g].handle().offset().x, step, window.viewport_size().width);
             let mut line = div()
                 .id(("xbox-shelf", g))
                 .flex()
@@ -213,7 +200,7 @@ impl CollectionView {
                 .overflow_x_scroll()
                 .track_scroll(rows[g].handle());
             for (c, key) in shelf.keys.iter().enumerate() {
-                let load = in_sight && ((first..=first + per_row).contains(&c) || c.abs_diff(cols[g]) <= 2);
+                let load = in_sight && super::loads(&seen, c, cols[g]);
                 // Portrait covers, so a game in the row above and in a shelf never share a tile's animation.
                 line =
                     line.child(self.console_tile_shaped(key, TileShape::Portrait, sw, sh, group == Some(g) && c == cols[g], load, window));
@@ -298,20 +285,19 @@ impl CollectionView {
         let m = self.xbox_metrics(window);
         let wrap = look::theme().nav.wrap;
         let nav = &mut self.tab_nav(tab).xbox;
-        nav.fit(shelves.len());
+        nav.lines.fit(shelves.len());
         nav.group = nav.group.filter(|g| *g < shelves.len());
         let slots = recent.len() + 1;
         match (pad, nav.group) {
             (Pad::Left | Pad::Right, None) => {
-                let d = if pad == Pad::Left { -1 } else { 1 };
-                nav.col = super::step(nav.col.min(slots - 1), slots, d, wrap);
+                nav.col = super::step(nav.col.min(slots - 1), slots, pad.dir(), wrap);
                 nav.row.go(Goal::Start(nav.col.saturating_sub(1)));
             }
             (Pad::Left | Pad::Right, Some(g)) => {
-                let d = if pad == Pad::Left { -1 } else { 1 };
                 let n = shelves[g].keys.len();
-                nav.cols[g] = super::step(nav.cols[g].min(n - 1), n, d, wrap);
-                nav.rows[g].go(Goal::Start(nav.cols[g].saturating_sub(1)));
+                let cols = &mut nav.lines.cols;
+                cols[g] = super::step(cols[g].min(n - 1), n, pad.dir(), wrap);
+                nav.lines.glides[g].go(Goal::Start(nav.lines.cols[g].saturating_sub(1)));
             }
             (Pad::Down, group) if group.map_or(0, |g| g + 1) < shelves.len() => {
                 let g = group.map_or(0, |g| g + 1);
@@ -329,7 +315,7 @@ impl CollectionView {
             }
             (Pad::A | Pad::X, group) => {
                 let key = match group {
-                    Some(g) => shelves[g].keys.get(nav.cols[g]),
+                    Some(g) => shelves[g].keys.get(nav.lines.cols[g]),
                     None => recent.get(nav.col),
                 };
                 if let Some(key) = key.cloned() {
