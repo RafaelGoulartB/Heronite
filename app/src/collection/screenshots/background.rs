@@ -3,7 +3,7 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use futures::channel::mpsc::unbounded;
@@ -50,13 +50,16 @@ impl CollectionView {
         self.shots.started = true;
         let cache = ThumbnailCache::new(self.data_paths.screenshot_thumbnails_dir(), settings.cache_limit_mb.get());
         let (tx, mut rx) = unbounded::<Msg>();
-        let queue = Arc::new(Queue { items: Mutex::new(VecDeque::new()), cv: Condvar::new() });
+        let queue = Arc::new(Queue { items: Mutex::new(VecDeque::new()), cv: Condvar::new(), closed: AtomicBool::new(false) });
         for n in 0..heronite_media::thumbnails::MAX_CONCURRENT_JOBS {
             let (queue, cache, tx) = (queue.clone(), cache.clone(), tx.clone());
             let _ = std::thread::Builder::new().name(format!("screenshot-thumbs-{n}")).spawn(move || loop {
                 let path = {
                     let mut items = queue.items.lock().unwrap();
                     loop {
+                        if queue.closed.load(Ordering::SeqCst) {
+                            return;
+                        }
                         if let Some(p) = items.pop_front() {
                             break p;
                         }

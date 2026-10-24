@@ -538,9 +538,11 @@ impl StatsPage {
             let column = if motion::on() {
                 let amp = z.p(if ci == 1 { -16. } else { 18. });
                 column
-                    .with_animation(("review-drift", ci), Animation::new(StdDuration::from_millis(period)).repeat(), move |el, t| {
-                        el.mt(amp * (t * std::f32::consts::TAU).sin())
-                    })
+                    .with_animation(
+                        ("review-drift", ci),
+                        Animation::new(StdDuration::from_millis(period)).repeat().with_max_fps(30.),
+                        move |el, t| el.mt(amp * (t * std::f32::consts::TAU).sin()),
+                    )
                     .into_any_element()
             } else {
                 column.into_any_element()

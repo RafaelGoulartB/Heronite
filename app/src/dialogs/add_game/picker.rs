@@ -178,7 +178,7 @@ impl Render for ImagePicker {
                     .text_color(theme::text_bright())
                     .child(icon(Icon::FaSpinner, px(16.), theme::text_bright()).with_animation(
                         "ag-pick-spin",
-                        Animation::new(Duration::from_secs(1)).repeat(),
+                        Animation::new(Duration::from_secs(1)).repeat().with_max_fps(30.),
                         |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
                     ))
                     .child(tr!("Searching\u{2026}")),

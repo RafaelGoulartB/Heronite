@@ -47,6 +47,10 @@ pub struct WineManagerPage {
     auto_update_latest: bool,
     /// `WineManager::revision` last seen by `poll`.
     last_rev: u64,
+    /// The page is on screen (set by the Collection): decides how often `poll` runs.
+    shown: bool,
+    /// The polling loop; set again when the page is shown, so it speeds up at once.
+    poll_task: Option<Task<()>>,
     offline: bool,
     /// GitHub refused to list the releases of these sources until then (Unix
     /// seconds), shown while their list is empty.
@@ -103,6 +107,8 @@ impl WineManagerPage {
             download_to_steam: false,
             auto_update_latest: true,
             last_rev: 0,
+            shown: false,
+            poll_task: None,
             offline: crate::env::flag("HERONITE_WINE_OFFLINE"),
             limited: HashMap::new(),
             fake: HashMap::new(),
@@ -117,20 +123,41 @@ impl WineManagerPage {
             this.load_prefixes(cx);
         }
 
-        // Poll the manager (progress, finished jobs). Fast while busy.
-        cx.spawn(async move |this, cx| loop {
-            let busy = match this.update(cx, |this, cx| {
-                this.poll(cx);
-                this.manager.has_active_jobs()
-            }) {
-                Ok(b) => b,
-                Err(_) => break,
-            };
-            let wait = if busy { 150 } else { 1000 };
-            cx.background_executor().timer(Duration::from_millis(wait)).await;
-        })
-        .detach();
+        this.start_poll(cx);
         this
+    }
+
+    /// The Collection shows or hides the page. Hidden, the page still reports
+    /// finished jobs (toasts) but looks less often; shown, it polls again at once.
+    pub fn set_shown(&mut self, shown: bool, cx: &mut Context<Self>) {
+        if self.shown == shown {
+            return;
+        }
+        self.shown = shown;
+        if shown {
+            self.poll(cx);
+            self.start_poll(cx);
+        }
+    }
+
+    /// Polls the manager (progress, finished jobs). On screen: fast while busy.
+    /// Hidden only the finished jobs matter, and the background GE-Proton update
+    /// can start one at any time, so an idle hidden page looks every few seconds.
+    fn start_poll(&mut self, cx: &mut Context<Self>) {
+        self.poll_task = Some(cx.spawn(async move |this, cx| loop {
+            let Ok((busy, shown)) = this.update(cx, |this, cx| {
+                this.poll(cx);
+                (this.manager.has_active_jobs(), this.shown)
+            }) else {
+                break;
+            };
+            let wait = match (shown, busy) {
+                (true, true) => 150,
+                (true, false) | (false, true) => 1000,
+                (false, false) => 5000,
+            };
+            cx.background_executor().timer(Duration::from_millis(wait)).await;
+        }));
     }
 
     /// Reads the cache off the UI thread, then checks the source on screen.

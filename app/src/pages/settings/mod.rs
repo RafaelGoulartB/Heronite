@@ -251,6 +251,13 @@ impl SettingsPage {
         cx.notify();
     }
 
+    /// The Collection hid the page: its sections free what only a visible one
+    /// needs (`refresh` brings it back when the page is shown).
+    pub fn hidden(&mut self, window: &mut Window) {
+        self.storage.hidden(window);
+        self.logs.release();
+    }
+
     /// The Collection reloaded its library while the page is on screen (a
     /// game was uninstalled from Storage): Storage looks again.
     pub fn set_library(&mut self, offer: LibraryOffer, cx: &mut Context<Self>) {
@@ -290,7 +297,10 @@ impl SettingsPage {
     /// Starts the background work a section needs.
     fn on_section_shown(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.section != Section::Storage {
-            self.storage.stop();
+            self.storage.hidden(window);
+        }
+        if self.section != Section::Logs {
+            self.logs.release();
         }
         match self.section {
             Section::Advanced => self.advanced.measure(&self.ctx, cx),

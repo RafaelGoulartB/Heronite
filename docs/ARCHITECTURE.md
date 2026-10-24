@@ -59,6 +59,10 @@ epic-login (bin)        WebKit window for the Epic, GOG (`--store gog`) and Amaz
 Library crates never depend on GPUI. Their functions are blocking; the app
 calls them from `cx.background_spawn` or worker threads.
 
+`vendor/gpui-pre-linux` is GPUI's Linux platform, patched to release the GPU
+device when the last window closes (the app lives on in the tray); see its
+`PATCHES.md`.
+
 - **heronite-data:** the base. `paths` (`DataPaths`, `AppPaths`), `migrate`,
   `json_store` (electron-store read-modify-write: tab indent, atomic write,
   unknown keys kept), `temps` (atomic writes and the startup `.tmp` sweep),

@@ -136,6 +136,17 @@ impl State {
         }
     }
 
+    /// The section left the screen (another section, or the page was hidden):
+    /// stops the walk and frees the cover textures, which load again from the
+    /// disk cache when it is shown. The covers stay in place: their loader
+    /// still hands over results.
+    pub fn hidden(&mut self, window: &mut Window) {
+        self.stop();
+        if let Some(covers) = self.covers.as_mut() {
+            covers.release(window);
+        }
+    }
+
     /// Section shown: lists everything again and walks what has no size.
     pub fn shown(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
         if d.storage.covers.is_none() {

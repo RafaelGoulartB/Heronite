@@ -40,6 +40,12 @@ impl DownloadsPage {
         let covers = Covers::new(&ctx.data_paths, &ctx.app, cx, |this: &mut Self| &mut this.covers);
         Self { ctx, svc, covers, confirm_stop: false, console_list: Default::default(), layer: Default::default() }
     }
+
+    /// The Collection hid the page: frees the cover textures (a hidden page
+    /// never renders to do it); they load again from the disk cache when it comes back.
+    pub fn hidden(&mut self, window: &mut Window) {
+        self.covers.release(window);
+    }
 }
 
 fn meta_line(el: &DmElement) -> String {
