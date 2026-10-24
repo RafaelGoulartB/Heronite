@@ -12,12 +12,12 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::motion;
+use super::{look, motion};
 use super::{Btn, Hint};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
-use heronite_data::console_theme::{Glyphs, Layout};
+use heronite_data::console_theme::{Glyphs, Headings, Layout};
 use heronite_i18n::tr;
 
 static SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
@@ -31,7 +31,7 @@ thread_local! {
 /// once at the start of every console frame.
 pub fn set_scale(window: &Window) {
     let h = f32::from(window.viewport_size().height);
-    SCALE.store(((h / 800.).clamp(1., 2.) * super::look::scale()).to_bits(), Ordering::Relaxed);
+    SCALE.store(((h / 800.).clamp(1., 2.) * look::scale()).to_bits(), Ordering::Relaxed);
     PILLS.with(|c| c.set(0));
 }
 
@@ -54,22 +54,41 @@ pub fn u(v: f32) -> Pixels {
 /// A light console theme is on (dark text over washed-out art): the surfaces
 /// and tints below flip their ink.
 pub fn light() -> bool {
-    super::look::light()
+    look::light()
+}
+
+/// [`ink`] on a console that is `light` or not.
+fn ink_on(light: bool, a: f32) -> Hsla {
+    if light {
+        let mut c = rgb(look::INK);
+        c.a = a;
+        c.into()
+    } else {
+        theme::white_a(a)
+    }
+}
+
+/// [`veil`] on a console that is `light` or not.
+fn veil_on(light: bool, a: f32) -> Hsla {
+    if light {
+        let mut c = theme::console_bg();
+        c.a = a;
+        c.into()
+    } else {
+        theme::black_a(a)
+    }
 }
 
 /// Ink of the console at alpha `a`: white on a dark console, near black on a
 /// light one. Faint fills, borders, dividers and idle text of the surfaces;
 /// what sits on a picture with its own dark gradient keeps `white()`.
 pub fn ink(a: f32) -> Hsla {
-    if light() {
-        theme::rgba_hsla(0x15, 0x19, 0x1f, a)
-    } else {
-        theme::white_a(a)
-    }
+    ink_on(light(), a)
 }
 
 /// Text a step above the primary one on a picture or tile that is washed
 /// like the console (white on a dark console, the text colour on a light one).
+/// Unlike [`theme::text_bright`] it never follows the desktop's scheme.
 pub fn strong() -> Hsla {
     if light() {
         theme::text_primary().into()
@@ -82,7 +101,7 @@ pub fn strong() -> Hsla {
 /// near-black when the console is light and `bg` is too bright for white.
 pub fn on_fill(bg: Rgba) -> Rgba {
     if light() && 0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b > 0.6 {
-        rgb(0x15191f)
+        rgb(look::INK)
     } else {
         theme::console_on_focus()
     }
@@ -92,7 +111,7 @@ pub fn on_fill(bg: Rgba) -> Rgba {
 /// light one, where the pale colours would vanish.
 pub fn tint(c: Rgba) -> Rgba {
     if light() {
-        motion::mix(c, rgb(0x15191f), 0.4)
+        motion::mix(c, rgb(look::INK), 0.4)
     } else {
         c
     }
@@ -112,7 +131,7 @@ pub fn shade(a: f32) -> Hsla {
 /// a dark console, a faint ink on a light one.
 pub fn well(a: f32) -> Hsla {
     if light() {
-        ink(a * 0.2)
+        ink_on(true, a * 0.2)
     } else {
         theme::black_a(a)
     }
@@ -122,7 +141,7 @@ pub fn well(a: f32) -> Hsla {
 /// console, the background colour (a wash) on a light one.
 pub fn dim(a: f32) -> Hsla {
     if light() {
-        veil(a * 0.8)
+        veil_on(true, a * 0.8)
     } else {
         theme::black_a(a)
     }
@@ -131,18 +150,12 @@ pub fn dim(a: f32) -> Hsla {
 /// The console's background colour at alpha `a` on a light console, washing
 /// out what is behind it; `black_a` on a dark one.
 pub fn veil(a: f32) -> Hsla {
-    if light() {
-        let mut c = theme::console_bg();
-        c.a = a;
-        c.into()
-    } else {
-        theme::black_a(a)
-    }
+    veil_on(light(), a)
 }
 
 /// Soft drop shadow (`y` and `blur` in design px).
 pub fn shadow(alpha: f32, y: f32, blur: f32) -> Vec<BoxShadow> {
-    let color = if light() { ink(alpha * 0.4) } else { theme::black_a(alpha) };
+    let color = if light() { ink_on(true, alpha * 0.4) } else { theme::black_a(alpha) };
     vec![BoxShadow { color, offset: point(px(0.), u(y)), blur_radius: u(blur), spread_radius: px(0.), inset: false }]
 }
 
@@ -251,11 +264,11 @@ pub(crate) fn mark(style: Glyphs, btn: Btn, swap_ab: bool) -> Mark {
 /// the connected controller): Xbox coloured letters, PlayStation symbols,
 /// Nintendo and Steam Deck letters, or the keyboard keys.
 pub fn glyph(btn: Btn) -> Div {
-    let style = super::look::glyphs();
+    let style = look::glyphs();
     if style == Glyphs::Keyboard {
         return key_glyph(btn);
     }
-    draw(mark(style, btn, super::look::theme().controls.swap_ab), style)
+    draw(mark(style, btn, look::theme().controls.swap_ab), style)
 }
 
 fn draw(m: Mark, style: Glyphs) -> Div {
@@ -527,6 +540,21 @@ pub fn choice_sized(value: impl Into<SharedString>, focused: bool, can_left: boo
         .child(arrow(Icon::ChevronRight, can_right))
 }
 
+/// The name of a tab, `color` and bold or regular.
+fn tab_label(text: impl Into<SharedString>, size: f32, color: impl Into<Hsla>, bold: bool) -> Div {
+    div()
+        .text_size(u(size))
+        .text_color(color)
+        .font_weight(if bold { theme::W_BOLD } else { theme::W_REGULAR })
+        .whitespace_nowrap()
+        .child(text.into())
+}
+
+/// A tab name that fades from muted to [`strong`] as `k` (0..=1) rises.
+fn tab_label_at(text: impl Into<SharedString>, size: f32, k: f32, on: bool) -> Div {
+    tab_label(text, size, motion::mix(theme::text_muted(), strong(), k.clamp(0., 1.)), on)
+}
+
 /// Tabs switched with LB / RB; the active one is white and underlined
 /// (the underline grows in from the centre while the old one shrinks).
 pub fn tabs(items: &[SharedString], active: usize) -> Div {
@@ -541,15 +569,8 @@ pub fn tabs(items: &[SharedString], active: usize) -> Div {
             let id = SharedString::from(format!("tab-{label}"));
             motion::spring(id, div().flex().flex_col().items_center().gap(u(4.)), motion::SOFT, on, move |d, k| {
                 let k = k.clamp(0., 1.);
-                d.child(
-                    div()
-                        .text_size(u(17.))
-                        .text_color(motion::mix(theme::text_muted(), strong(), k))
-                        .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
-                        .whitespace_nowrap()
-                        .child(label),
-                )
-                .child(div().h(u(3.)).w(u(28. * k)).rounded_full().bg(theme::console_focus()).opacity(k))
+                d.child(tab_label_at(label, 17., k, on))
+                    .child(div().h(u(3.)).w(u(28. * k)).rounded_full().bg(theme::console_focus()).opacity(k))
             })
         }))
         .child(glyph(Btn::RB))
@@ -561,13 +582,7 @@ pub fn tab_names(items: &[SharedString], active: usize) -> Div {
         let on = i == active;
         let label = t.clone();
         let id = SharedString::from(format!("tab-name-{label}"));
-        motion::spring(id, div(), motion::SOFT, on, move |d, k| {
-            d.text_size(u(22.))
-                .text_color(motion::mix(theme::text_muted(), strong(), k.clamp(0., 1.)))
-                .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
-                .whitespace_nowrap()
-                .child(label)
-        })
+        motion::spring(id, div(), motion::SOFT, on, move |d, k| d.child(tab_label_at(label, 22., k, on)))
     }))
 }
 
@@ -601,6 +616,20 @@ pub fn spaced_caps(text: &str) -> String {
     words.join("\u{2002}")
 }
 
+/// `text` as the theme writes headings: in [`spaced_caps`] when it asks for
+/// them, as is otherwise.
+pub fn heading_text(text: &str) -> String {
+    caps_if(text, look::theme().interface.headings == Headings::Spaced)
+}
+
+fn caps_if(text: &str, spaced: bool) -> String {
+    if spaced {
+        spaced_caps(text)
+    } else {
+        text.to_string()
+    }
+}
+
 /// The tabs as a bar along the bottom: an icon and a name each, the current
 /// one bright, the others dim, LB / RB at the ends.
 pub fn tabs_bottom(items: &[(SharedString, Icon)], active: usize) -> Div {
@@ -621,14 +650,12 @@ pub fn tabs_bottom(items: &[(SharedString, Icon)], active: usize) -> Div {
             let id = SharedString::from(format!("tab-bottom-{name}"));
             motion::spring(id, div().flex().items_center().gap(u(9.)), motion::SOFT, on, move |d, k| {
                 let k = k.clamp(0., 1.);
-                d.opacity(0.4 + 0.6 * k).child(icon(ic, u(20.), theme::text_primary())).child(
-                    div()
-                        .text_size(u(17.))
-                        .text_color(theme::text_primary())
-                        .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
-                        .whitespace_nowrap()
-                        .child(name),
-                )
+                d.opacity(0.4 + 0.6 * k).child(icon(ic, u(20.), theme::text_primary())).child(tab_label(
+                    name,
+                    17.,
+                    theme::text_primary(),
+                    on,
+                ))
             })
         }))
         .child(glyph(Btn::RB))
@@ -637,35 +664,32 @@ pub fn tabs_bottom(items: &[(SharedString, Icon)], active: usize) -> Div {
 /// The current tab alone, big and centred, with LB / RB at its sides when
 /// there are others (`spaced`: in spaced capitals).
 pub fn tab_title(name: &str, ic: Icon, more: bool, spaced: bool) -> Div {
-    let text = if spaced { spaced_caps(name) } else { name.to_string() };
+    let text = caps_if(name, spaced);
     div()
         .flex()
         .items_center()
         .gap(u(18.))
         .when(more, |d| d.child(glyph(Btn::LB)))
         .child(
-            div().flex().items_center().gap(u(10.)).child(icon(ic, u(20.), theme::text_primary())).child(
-                div()
-                    .font_family(heading_font())
-                    .font_weight(theme::W_BOLD)
-                    .text_size(u(20.))
-                    .text_color(theme::text_primary())
-                    .whitespace_nowrap()
-                    .child(text),
-            ),
+            div()
+                .flex()
+                .items_center()
+                .gap(u(10.))
+                .child(icon(ic, u(20.), theme::text_primary()))
+                .child(tab_label(text, 20., theme::text_primary(), true).font_family(heading_font())),
         )
         .when(more, |d| d.child(glyph(Btn::RB)))
 }
 
 /// "21:04" (or 12 h, with the date, or nothing: the console theme says).
 pub fn clock() -> Div {
-    div().text_size(u(16.)).text_color(theme::text_primary()).children(super::look::clock_text(chrono::Local::now()))
+    div().text_size(u(16.)).text_color(theme::text_primary()).children(look::clock_text(chrono::Local::now()))
 }
 
 /// Title font of console mode: the console theme's while it is on, else the app's.
 pub fn heading_font() -> SharedString {
     if super::active() {
-        super::look::fonts().0.into()
+        look::fonts().0.into()
     } else {
         theme::font_heading().into()
     }

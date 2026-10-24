@@ -2,8 +2,8 @@
 //! as one JSON document that can be saved, exported, imported and shared
 //! (a theme file is self-contained and holds no machine-specific state).
 //!
-//! - [`ConsoleTheme`]: the theme. Every field has a default (the console mode
-//!   as it shipped before themes, see [`presets::classic`]); unknown keys are
+//! - [`ConsoleTheme`]: the theme. Every field has a default (the Classic theme,
+//!   see [`presets::classic`]); unknown keys are
 //!   kept in `extra` so a theme made by a newer app survives a round trip;
 //!   an unknown enum value reads as that field's default.
 //! - [`ConsolePrefs`] (`AppPaths::console_prefs()`, `console.json`): the theme
@@ -87,6 +87,7 @@ str_enum! {
         /// One large cover in the middle, the neighbours smaller.
         Carousel = "carousel",
         /// A row of tiles over the art, the newest one wide, groups below.
+        /// Shown as "Series X" (the id stays `xbox` in theme files).
         Xbox = "xbox",
     } default Shelves
 }
@@ -234,6 +235,12 @@ pub struct TabSpec {
 impl Default for TabSpec {
     fn default() -> Self {
         Self { name: String::new(), layout: Layout::Shelves, source: "all".into() }
+    }
+}
+
+impl TabSpec {
+    pub fn new(name: &str, layout: Layout, source: &str) -> Self {
+        Self { name: name.into(), layout, source: source.into() }
     }
 }
 
@@ -556,31 +563,16 @@ impl Default for ConsoleTheme {
     }
 }
 
-/// `#rrggbb` (or `rrggbb`) to bytes.
+/// `#rrggbb`, `rrggbb` or `#rgb` to bytes.
 pub fn parse_hex(s: &str) -> Option<(u8, u8, u8)> {
-    let h = s.trim().trim_start_matches('#');
-    if h.len() != 6 || !h.chars().all(|c| c.is_ascii_hexdigit()) {
-        return None;
-    }
-    let b = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
-    Some((b(0)?, b(2)?, b(4)?))
+    crate::appearance::parse_hex(s)
 }
 
 impl ColourOptions {
     /// The background is a light colour (relative luminance over 0.5): the
     /// console is drawn light.
     pub fn is_light(&self) -> bool {
-        parse_hex(&self.background).is_some_and(|(r, g, b)| {
-            let lin = |c: u8| {
-                let c = f32::from(c) / 255.;
-                if c <= 0.04045 {
-                    c / 12.92
-                } else {
-                    ((c + 0.055) / 1.055).powf(2.4)
-                }
-            };
-            0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) > 0.5
-        })
+        parse_hex(&self.background).is_some_and(|c| crate::appearance::luminance(c) > 0.5)
     }
 }
 
@@ -692,7 +684,7 @@ impl Default for ConsolePrefs {
 }
 
 impl ConsolePrefs {
-    /// A missing or unreadable file gives the defaults (today's console mode).
+    /// A missing or unreadable file gives the defaults (Classic).
     pub fn load(paths: &AppPaths) -> Self {
         let value = json_store::read_value(&paths.console_prefs()).unwrap_or(Value::Null);
         if !value.is_object() {

@@ -110,12 +110,10 @@ pub enum Variant {
     Cover,
     /// The whole image inside the box, aspect ratio and transparency kept (no
     /// crop, no blur) and never enlarged: a logo. The result is smaller than
-    /// the target unless the image fills it on one axis.
-    Fit,
-    /// [`Variant::Fit`] with the light, colourless parts of the image (the
-    /// white of a logo) turned to a near-black ink: a logo on a light
-    /// surface, where white would vanish.
-    FitInk,
+    /// the target unless the image fills it on one axis. With an `ink` (RGB),
+    /// the light, colourless parts of the image (the white of a logo) turn to
+    /// it: a logo on a light surface, where white would vanish.
+    Fit { ink: Option<[u8; 3]> },
     /// Full-window background: cover + `blur(blur_px) saturate(saturation)`.
     Stage { blur_px: f32, saturation: f32 },
     /// Same as `Stage` but cached separately; meant for a stronger blur.
@@ -131,17 +129,14 @@ impl std::hash::Hash for Variant {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         match *self {
             Variant::Cover => 0u8.hash(h),
-            Variant::Fit => 4u8.hash(h),
-            Variant::FitInk => 5u8.hash(h),
+            Variant::Fit { ink: None } => 4u8.hash(h),
+            Variant::Fit { ink: Some(ink) } => (5u8, ink).hash(h),
             Variant::Stage { blur_px, saturation } => (1u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Glass { blur_px, saturation } => (2u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Backdrop { blur_px, saturation } => (3u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
         }
     }
 }
-
-/// Ink the light parts of a [`Variant::FitInk`] image turn to (RGB).
-pub const LOGO_INK: (u8, u8, u8) = (0x15, 0x19, 0x1f);
 
 /// Pipeline configuration. Cheap to clone.
 #[derive(Debug, Clone)]
@@ -197,10 +192,10 @@ pub fn load_cover(chain: &[ImageRef], target_w: u32, target_h: u32, opts: &Opts)
 }
 
 /// The first loadable image of `chain` fitted inside `target_w x target_h`
-/// ([`Variant::Fit`]): the result keeps the image's aspect ratio, so its size
+/// ([`Variant::Fit`], no ink): the result keeps the image's aspect ratio, so its size
 /// is the fitted one, not the target.
 pub fn load_fit(chain: &[ImageRef], target_w: u32, target_h: u32, opts: &Opts) -> Result<Decoded> {
-    load(chain, target_w, target_h, Variant::Fit, opts)
+    load(chain, target_w, target_h, Variant::Fit { ink: None }, opts)
 }
 
 /// Full-window background: cover-fit to `target_w x target_h`, Gaussian blur of
@@ -242,6 +237,21 @@ pub fn load(chain: &[ImageRef], target_w: u32, target_h: u32, variant: Variant, 
     }
     let mut errors = Vec::new();
     for cand in chain {
+        // A `Find` is looked up once; the rest of the loop sees the file.
+        let found;
+        let cand = match cand {
+            ImageRef::Find { .. } => match cand.local_path() {
+                Some(p) => {
+                    found = ImageRef::File(p);
+                    &found
+                }
+                None => {
+                    errors.push(format!("{cand:?}: missing"));
+                    continue;
+                }
+            },
+            _ => cand,
+        };
         let Some(identity) = thumbs::source_identity(cand) else {
             errors.push(format!("{cand:?}: missing"));
             continue;
@@ -296,12 +306,12 @@ fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> 
         ImageRef::Find { .. } => fetch::read_file(&cand.local_path().ok_or_else(|| ImageError::Io(format!("{cand:?}: not found")))?)?,
     };
     match variant {
-        Variant::Fit | Variant::FitInk => {
+        Variant::Fit { ink } => {
             let raster = decode::decode(&bytes, tw, th, opts.jpeg_scaled_decode)?;
             drop(bytes);
             let (w, h, mut px) = resize::fit_to_rgba(raster, tw, th, opts.filter)?;
-            if variant == Variant::FitInk {
-                fx::ink_light_parts(&mut px, LOGO_INK);
+            if let Some([r, g, b]) = ink {
+                fx::ink_light_parts(&mut px, (r, g, b));
             }
             fx::swap_rb(&mut px);
             Ok(Decoded { width: w, height: h, bgra: px })

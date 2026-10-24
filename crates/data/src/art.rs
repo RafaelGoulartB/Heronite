@@ -52,6 +52,14 @@ pub fn steam_hero_download_urls(steam_app_id: &str) -> [String; 5] {
     ]
 }
 
+/// Steam's CDN logos of an app (the console themes' title logo), newest scheme first.
+pub fn steam_logo_urls(steam_app_id: &str) -> [String; 2] {
+    [
+        format!("https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{steam_app_id}/logo.png"),
+        format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{steam_app_id}/logo.png"),
+    ]
+}
+
 /// What local files and the screenshots folder resolve against.
 #[derive(Debug, Clone, Copy)]
 pub struct ArtContext<'a> {

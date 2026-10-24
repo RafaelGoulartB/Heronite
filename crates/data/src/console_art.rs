@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::art::steam_logo_urls;
 use crate::library::CollectionGame;
 use crate::paths::{percent_decode, DataPaths};
 
@@ -34,14 +35,6 @@ pub fn custom_logo(game: &CollectionGame) -> Option<&str> {
 /// The store's own logo (`art_logo`), when it is a real image reference.
 pub fn store_logo(game: &CollectionGame) -> Option<&str> {
     game.game.art_logo.as_deref().filter(|v| !v.is_empty() && *v != "fallback" && !v.starts_with("localart:"))
-}
-
-/// Steam's CDN logos of an app, newest scheme first.
-pub fn steam_logo_urls(steam_app_id: &str) -> [String; 2] {
-    [
-        format!("https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{steam_app_id}/logo.png"),
-        format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{steam_app_id}/logo.png"),
-    ]
 }
 
 /// The library cache folders of a Steam app under `home`.

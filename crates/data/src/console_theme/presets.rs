@@ -1,13 +1,12 @@
-//! The built-in console themes. `classic` is console mode as it was before
-//! themes (the default); the others start from it and change what makes
-//! them different. Their names and descriptions are English keys translated
+//! The built-in console themes. `classic` is the default; the others start
+//! from it and change what makes them different. Their names and descriptions are English keys translated
 //! where they are shown (`n_!` marks them for the translation coverage test).
 
 use heronite_i18n::n_;
 
 use super::*;
 
-/// The ☰ menu of today, plus Customize.
+/// Classic's ☰ menu (Customize included).
 pub fn default_menu() -> Vec<MenuItemSpec> {
     [
         "collection",
@@ -37,10 +36,7 @@ pub fn default_shelves() -> Vec<ShelfSpec> {
     on.into_iter().map(|k| ShelfSpec::new(k, true)).chain(off.into_iter().map(|k| ShelfSpec::new(k, false))).collect()
 }
 
-fn tab(name: &str, layout: Layout) -> TabSpec {
-    TabSpec { name: name.into(), layout, source: "all".into() }
-}
-
+/// The default: shelves on Home, a cover grid in Library, the sidebar menu.
 pub fn classic() -> ConsoleTheme {
     ConsoleTheme {
         format: FORMAT,
@@ -49,7 +45,7 @@ pub fn classic() -> ConsoleTheme {
         author: "Heronite".into(),
         description: n_!("Console mode as it shipped: shelves and a cover grid.").into(),
         version: "1".into(),
-        tabs: vec![tab(n_!("Home"), Layout::Shelves), tab(n_!("Library"), Layout::Grid)],
+        tabs: vec![TabSpec::new(n_!("Home"), Layout::Shelves, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")],
         shelves: default_shelves(),
         shelf_limit: 20,
         dim_others: true,
@@ -76,19 +72,15 @@ fn from_classic(id: &str, name: &str, description: &str, edit: impl FnOnce(&mut 
     t
 }
 
-fn tab_of(name: &str, layout: Layout, source: &str) -> TabSpec {
-    TabSpec { name: name.into(), layout, source: source.into() }
-}
-
 /// The game's art full screen with its logo large, chips of facts, one row
 /// of portrait covers and the tabs along the bottom.
 pub fn cinema() -> ConsoleTheme {
     from_classic("cinema", n_!("Cinema"), n_!("The game's art full screen, its logo large, a row of covers and the tabs below."), |t| {
         t.tabs = vec![
-            tab_of(n_!("All games"), Layout::Cinema, "all"),
-            tab_of(n_!("Installed games"), Layout::Cinema, "installed"),
-            tab_of(n_!("Favourites"), Layout::Cinema, "favourites"),
-            tab_of(n_!("Library"), Layout::Grid, "all"),
+            TabSpec::new(n_!("All games"), Layout::Cinema, "all"),
+            TabSpec::new(n_!("Installed games"), Layout::Cinema, "installed"),
+            TabSpec::new(n_!("Favourites"), Layout::Cinema, "favourites"),
+            TabSpec::new(n_!("Library"), Layout::Grid, "all"),
         ];
         t.hero.title = HeroTitle::Logo;
         t.hero.overview = false;
@@ -105,7 +97,7 @@ pub fn cinema() -> ConsoleTheme {
 /// and cards; the tabs as plain names.
 pub fn pulse() -> ConsoleTheme {
     from_classic("pulse", n_!("Pulse"), n_!("A console home: icons on top, the game's art and logo, a wide Play button and cards."), |t| {
-        t.tabs = vec![tab(n_!("Games"), Layout::Spotlight), tab(n_!("Library"), Layout::Grid)];
+        t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Spotlight, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
         t.hero.title = HeroTitle::Logo;
         t.hero.facts = false;
         t.hero.overview = false;
@@ -121,9 +113,11 @@ pub fn pulse() -> ConsoleTheme {
     })
 }
 
+/// A row of square tiles over the game's art (the newest one wide, groups
+/// below), a green focus and the system font.
 pub fn series() -> ConsoleTheme {
     from_classic("series", n_!("Series X"), n_!("A row of tiles over the game's art, the newest one wide, groups below."), |t| {
-        t.tabs = vec![tab(n_!("Home"), Layout::Xbox), tab(n_!("Library"), Layout::Grid)];
+        t.tabs = vec![TabSpec::new(n_!("Home"), Layout::Xbox, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
         t.tiles.corners = Corners::Soft;
         t.tiles.shape = TileShape::Square;
         t.interface.accent = "green".into();
@@ -132,9 +126,10 @@ pub fn series() -> ConsoleTheme {
     })
 }
 
+/// Only covers: a carousel over the blurred cover, no hints or badges.
 pub fn minimal() -> ConsoleTheme {
     from_classic("minimal", n_!("Minimal"), n_!("Only the covers: a carousel, no hints, no badges."), |t| {
-        t.tabs = vec![tab(n_!("Games"), Layout::Carousel)];
+        t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Carousel, "all")];
         t.controls.hints = Hints::Off;
         t.interface.status_icons = false;
         t.tiles.badges = Badges::Off;

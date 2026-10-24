@@ -97,3 +97,13 @@ fn hex_and_slug() {
     assert_eq!(parse_hex("nope"), None);
     assert_eq!(slug("  !!"), "theme");
 }
+
+#[test]
+fn a_light_background_makes_the_theme_light() {
+    let with = |bg: &str| ColourOptions { background: bg.into(), ..ColourOptions::default() };
+    assert!(with("#eef1f5").is_light());
+    assert!(!with("#0b0e13").is_light());
+    // Mid greys stay dark: the threshold is relative luminance 0.5.
+    assert!(!with("#808080").is_light());
+    assert!(!ColourOptions::default().is_light());
+}

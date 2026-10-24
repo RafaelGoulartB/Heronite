@@ -232,8 +232,8 @@ fn themed(pick: fn() -> Option<Rgba>, default: u32) -> Rgba {
 }
 
 /// Console mode with a light console theme on (dark text, washed-out art).
-pub fn console_light() -> bool {
-    crate::console::active() && crate::console::look::light()
+fn console_light() -> bool {
+    crate::console::active() && crate::console::kit::light()
 }
 
 /// Console mode: dark surfaces, a light pill for the focused row,
@@ -356,11 +356,7 @@ pub fn text_muted() -> Rgba {
 pub fn text_dim() -> Rgba {
     if console_light() {
         // A step under the muted text, still readable on the light panels.
-        let mut c = text_muted();
-        let bg = console_bg();
-        let k = 0.18;
-        (c.r, c.g, c.b) = (c.r + (bg.r - c.r) * k, c.g + (bg.g - c.g) * k, c.b + (bg.b - c.b) * k);
-        return c;
+        return crate::console::motion::mix(text_muted(), console_bg(), 0.18);
     }
     if high_contrast() {
         cpick(0xbcc6d3, 0x3c434e, |p| mix(p.muted, p.text, 0.4))

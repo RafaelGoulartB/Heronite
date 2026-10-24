@@ -11,7 +11,7 @@ use heronite_data::CollectionGame;
 use heronite_images::{ImageRef, Variant};
 
 use super::super::CollectionView;
-use crate::console::kit;
+use crate::console::{kit, look};
 
 /// File Steam keeps a game's logo in, inside its library cache folder.
 const STEAM_LOGO_FILE: &str = "logo.png";
@@ -99,7 +99,7 @@ impl CollectionView {
         let (pw, ph) = ((w * px).round().max(1.) as u32, (h * px).round().max(1.) as u32);
         let ink = !on_art && kit::light();
         let id = logo_id(key, pw, ph, ink);
-        let variant = if ink { Variant::FitInk } else { Variant::Fit };
+        let variant = Variant::Fit { ink: ink.then_some(look::INK_RGB) };
         self.images.get_or_request(&id, || chain.to_vec(), pw, ph, variant, LOGO_PRIORITY).map(ImageSource::Render)
     }
 }
