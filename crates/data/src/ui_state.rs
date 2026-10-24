@@ -12,6 +12,7 @@ use anyhow::Result;
 use serde_json::{json, Value};
 
 use crate::collection::{FacetFilters, FacetKind, InstallFilter, SortMode, FACET_KINDS};
+use crate::console_theme::{AutoConsole, OpenIn};
 use crate::json_store;
 use crate::organize::GroupBy;
 use crate::paths::AppPaths;
@@ -66,6 +67,14 @@ pub struct UiState {
     /// Width the grid's drawer was dragged to, like
     /// [`list_column_w`](Self::list_column_w).
     pub grid_drawer_w: Option<f32>,
+    /// `openIn` of `console.json`, mirrored here so the start does not read
+    /// that file for users who never changed it. Read by [`UiState::load`];
+    /// only [`set_console_open_in`] writes it ([`UiState::save`] does not, so
+    /// a copy of the state held elsewhere cannot write a stale value back).
+    pub console_open_in: OpenIn,
+    /// `autoConsole` of `console.json`, mirrored like
+    /// [`console_open_in`](Self::console_open_in) ([`set_console_auto`]).
+    pub console_auto: AutoConsole,
 }
 
 /// Range and default of [`UiState::grid_cover_w`].
@@ -96,6 +105,8 @@ impl Default for UiState {
             journal_view: false,
             list_column_w: None,
             grid_drawer_w: None,
+            console_open_in: OpenIn::default(),
+            console_auto: AutoConsole::default(),
         }
     }
 }
@@ -136,6 +147,8 @@ impl UiState {
         let width = |key: &str| value.get(key).and_then(Value::as_f64).filter(|w| w.is_finite() && *w > 0.).map(|w| w as f32);
         state.list_column_w = width("listColumnWidth");
         state.grid_drawer_w = width("gridDrawerWidth");
+        state.console_open_in = value.get(CONSOLE_OPEN_IN).and_then(Value::as_str).and_then(OpenIn::parse).unwrap_or_default();
+        state.console_auto = value.get(CONSOLE_AUTO).and_then(Value::as_str).and_then(AutoConsole::parse).unwrap_or_default();
         state
     }
 
@@ -467,6 +480,36 @@ impl OnlyFilters {
     }
 }
 
+/// Keys of the mirrors of `console.json` (see [`UiState::console_open_in`]).
+const CONSOLE_OPEN_IN: &str = "consoleOpenIn";
+const CONSOLE_AUTO: &str = "consoleAuto";
+
+/// Stores `value` under `key`, or removes the key for the default (`None`).
+fn set_mirror(paths: &AppPaths, key: &str, value: Option<&str>) -> Result<()> {
+    json_store::update_value(&paths.ui_state(), |doc| {
+        if !doc.is_object() {
+            *doc = Value::Object(Default::default());
+        }
+        let obj = doc.as_object_mut().expect("object");
+        match value {
+            Some(v) => obj.insert(key.to_owned(), Value::String(v.to_owned())),
+            None => obj.remove(key),
+        };
+        Ok(())
+    })
+}
+
+/// Mirrors console.json's `openIn` into the UI state (the file is only
+/// touched when the value differs from the default or is being reset).
+pub fn set_console_open_in(paths: &AppPaths, value: OpenIn) -> Result<()> {
+    set_mirror(paths, CONSOLE_OPEN_IN, (value != OpenIn::default()).then_some(value.as_str()))
+}
+
+/// Mirrors console.json's `autoConsole` into the UI state.
+pub fn set_console_auto(paths: &AppPaths, value: AutoConsole) -> Result<()> {
+    set_mirror(paths, CONSOLE_AUTO, (value != AutoConsole::default()).then_some(value.as_str()))
+}
+
 /// Key of a notice the user dismissed with "Got it" ("Add game"'s store note).
 pub const DISMISSED_NOTES: &str = "dismissedNotes";
 
@@ -614,6 +657,26 @@ mod tests {
         assert_eq!(on_disk["categories"], json!([crate::categories::UNCATEGORIZED, "RPG"]));
         state.clear_facets();
         assert!(!state.facet_filters.is_active());
+    }
+
+    #[test]
+    fn console_start_options_are_mirrored_and_never_written_back_by_save() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        assert_eq!(UiState::load(&paths).console_open_in, OpenIn::Last);
+        assert_eq!(UiState::load(&paths).console_auto, AutoConsole::Off);
+        set_console_open_in(&paths, OpenIn::Console).unwrap();
+        set_console_auto(&paths, AutoConsole::Ask).unwrap();
+        let stale = UiState::default();
+        let loaded = UiState::load(&paths);
+        assert_eq!((loaded.console_open_in, loaded.console_auto), (OpenIn::Console, AutoConsole::Ask));
+        // A copy loaded before the change saves without undoing it.
+        stale.save(&paths).unwrap();
+        assert_eq!(UiState::load(&paths).console_open_in, OpenIn::Console);
+        set_console_open_in(&paths, OpenIn::Last).unwrap();
+        set_console_auto(&paths, AutoConsole::Off).unwrap();
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert!(on_disk.get(CONSOLE_OPEN_IN).is_none() && on_disk.get(CONSOLE_AUTO).is_none());
     }
 
     #[test]
