@@ -18,6 +18,7 @@ pub mod motion;
 pub mod osk;
 pub mod registry;
 pub mod sheet;
+pub mod startup;
 pub mod themes;
 
 use std::rc::Rc;
