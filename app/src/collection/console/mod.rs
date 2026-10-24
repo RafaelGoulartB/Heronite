@@ -138,6 +138,9 @@ impl CollectionView {
             look::clear();
             console::themes::forget();
             self.console = ConsoleUi::default();
+            // Textures only console mode draws: logos and wide covers.
+            self.images.forget_prefix("l:");
+            self.images.forget_prefix("cw:");
             self.console_controls_ended(window, cx);
             self.dialog = None;
             self.dialog_sub = None;
