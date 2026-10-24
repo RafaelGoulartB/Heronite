@@ -9,6 +9,9 @@
 //! off (the controller thread only lives while it is on).
 
 mod actions;
+mod art;
+mod controls;
+mod customize;
 mod game;
 mod home;
 mod power;
@@ -67,6 +70,9 @@ pub(super) struct ConsoleUi {
     art_fade: Option<Task<()>>,
     ticker: Option<Task<()>>,
     script_started: bool,
+    pub logos: art::LogoCache,
+    pub controls: controls::ControlsState,
+    pub customize: Option<customize::CustomizeNav>,
 }
 
 impl CollectionView {
