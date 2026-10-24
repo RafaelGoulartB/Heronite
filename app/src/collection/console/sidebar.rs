@@ -303,7 +303,8 @@ impl CollectionView {
                     .rounded(u(18.))
                     .border_1()
                     .border_color(theme::white_a(0.08))
-                    .bg(theme::white_a(0.07))
+                    // Solid: the screen behind must not show through the tiles.
+                    .bg(theme::console_sidebar())
                     .text_color(fg);
                 let tile = if on { tile.child(kit::focus_pill(18.)) } else { tile };
                 tile.child(icon(item.icon(), u(38.), if on { fg } else { theme::text_muted().into() }))
