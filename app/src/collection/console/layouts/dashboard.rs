@@ -818,7 +818,7 @@ mod tests {
     #[test]
     fn the_mosaic_fills_six_by_three_without_overlaps() {
         let t = plan(ALL, games(30), Some(100), Some(101));
-        assert_eq!(t.len(), 12);
+        assert_eq!(t.len(), 13);
         assert_eq!(t[0].id, Id::Continue);
         assert_eq!(t[0].key, Some(0));
         for (i, a) in t.iter().enumerate() {
@@ -846,14 +846,14 @@ mod tests {
         let t = plan(ALL, games(30), None, None);
         assert!(!t.iter().any(|t| matches!(t.id, Id::Random | Id::Journal)));
         // The two wide cells became four game cells.
-        assert_eq!(t.len(), 12 - 2 + 4);
+        assert_eq!(t.len(), 13 - 2 + 4);
     }
 
     #[test]
     fn few_games_leave_cells_empty_but_keep_the_widgets() {
         let t = plan(ALL, games(3), None, None);
-        let games = t.iter().filter(|t| t.key.is_some()).count();
-        assert_eq!(games, 3);
+        let with_game = t.iter().filter(|t| t.key.is_some()).count();
+        assert_eq!(with_game, 3);
         assert!(t.iter().any(|t| t.id == Id::Week) && t.iter().any(|t| t.id == Id::Shortcut(Shortcut::Stores)));
         assert!(plan(ALL, games(0), None, None).is_empty());
     }
