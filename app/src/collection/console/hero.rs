@@ -35,6 +35,35 @@ impl Default for HeroSize {
     }
 }
 
+/// How [`CollectionView::console_hero_with`] brings a game in.
+#[derive(Clone, Copy)]
+pub(crate) struct HeroMotion {
+    /// Where its text slides from, design px (x, y).
+    pub slide: (f32, f32),
+    /// Part of the slide's id: a new value replays it for the same game.
+    pub replay: u64,
+    /// "Last played 3 days ago" on the line of facts.
+    pub last_played: bool,
+    /// A long name shrinks and stays on two lines (the block under it keeps its place).
+    pub fit_title: bool,
+}
+
+impl Default for HeroMotion {
+    fn default() -> Self {
+        Self { slide: (14., 0.), replay: 0, last_played: false, fit_title: false }
+    }
+}
+
+/// The size of a name `chars` long in a hero whose names are `size` px: a
+/// long one shrinks a step (at most to 3/4) so it rarely needs a second line.
+pub(crate) fn fitted_title(size: f32, chars: usize) -> f32 {
+    match chars {
+        0..=24 => size,
+        25..=34 => size * 0.86,
+        _ => size * 0.75,
+    }
+}
+
 /// The overview shortened to about `max` characters at a word, with "…".
 pub(crate) fn clip(text: &str, max: usize) -> String {
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -317,11 +346,25 @@ impl CollectionView {
 
     /// Name, facts and overview of `key`, sliding in when the game changes.
     pub(super) fn console_hero(&mut self, key: Option<&SharedString>, size: HeroSize, window: &Window) -> Div {
+        self.console_hero_with(key, size, HeroMotion::default(), window)
+    }
+
+    /// [`Self::console_hero`] brought in as `how` says.
+    pub(super) fn console_hero_with(&mut self, key: Option<&SharedString>, size: HeroSize, how: HeroMotion, window: &Window) -> Div {
         let Some(g) = key.and_then(|k| self.lib.as_ref()?.get(k)).cloned() else { return div() };
         let theme = look::theme();
-        let name = self.console_name(&g, size, window);
+        let name = if how.fit_title && theme.hero.title == HeroTitle::Text {
+            let px = fitted_title(size.title, g.title.chars().count());
+            kit::title(g.title.clone(), px).line_clamp(2).into_any_element()
+        } else {
+            self.console_name(&g, size, window)
+        };
+        let mut line = Self::console_facts(&g);
+        if let Some(ago) = g.last_played.as_deref().and_then(played_ago).filter(|_| how.last_played) {
+            line = format!("{line} \u{b7} {}", tr!("Last played {when}", when = ago.to_lowercase()));
+        }
         let facts = theme.hero.facts.then(|| match theme.hero.fact_style {
-            FactStyle::Line => self.console_fact_line(&g, Self::console_facts(&g), 16.),
+            FactStyle::Line => self.console_fact_line(&g, line, 16.),
             FactStyle::Chips => div().flex().flex_col().gap(u(10.)).child(self.console_chips(&g)).children(Self::console_genre_tags(&g)),
         });
         let overview = (theme.hero.overview && size.overview > 0).then(|| self.console_overview(&g.key)).flatten();
@@ -335,6 +378,7 @@ impl CollectionView {
             }));
         // A new game slides in a little (never from blank: holding a
         // direction keeps the text readable).
-        div().child(motion::enter_from(SharedString::from(format!("hero-{}", g.key)), hero, 300, 14., 0., 0.25))
+        let (dx, dy) = how.slide;
+        div().child(motion::enter_from(SharedString::from(format!("hero-{}-{}", g.key, how.replay)), hero, 300, dx, dy, 0.25))
     }
 }

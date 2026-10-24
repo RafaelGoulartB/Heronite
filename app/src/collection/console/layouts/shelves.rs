@@ -10,7 +10,7 @@ use heronite_data::console_theme::{FactStyle, Size3, TabSpec};
 use heronite_i18n::{tr, trn};
 
 use super::super::super::CollectionView;
-use super::super::hero::{shelf_heading, HeroSize};
+use super::super::hero::{shelf_heading, HeroMotion, HeroSize};
 use super::super::sources::Shelf;
 use super::super::tile::{focus_frame, label_room};
 use super::columns;
@@ -25,6 +25,9 @@ const GAP: f32 = 18.;
 const SIDE: f32 = 46.;
 /// Room around a row of covers for the lifted one and its ring.
 const PAD: f32 = 10.;
+/// How far the focused game's text slides in from the side the focus came
+/// from (design px, across / down).
+const SLIDE: (f32, f32) = (18., 12.);
 
 /// Height of the game shown on top, design px.
 fn hero_height(size: Size3) -> f32 {
@@ -63,7 +66,7 @@ fn more_tile(id: impl Into<ElementId>, focused: bool, total: usize, w: f32, h: f
 
 /// What the top shows while a "View all" tile has the focus: the shelf's
 /// name and size, and what A does.
-fn shelf_summary(shelf: &Shelf, si: usize) -> AnyElement {
+fn shelf_summary(shelf: &Shelf, si: usize, how: HeroMotion) -> AnyElement {
     let block = div()
         .relative()
         .flex()
@@ -73,7 +76,8 @@ fn shelf_summary(shelf: &Shelf, si: usize) -> AnyElement {
         .child(kit::title(kit::heading_text(&shelf.title), 46.))
         .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(trn!(shelf.total, "{n} game", "{n} games")))
         .child(kit::body_text(tr!("Press A to see them all.")));
-    motion::enter_from(SharedString::from(format!("hero-more-{si}")), block, 300, 14., 0., 0.25)
+    let (dx, dy) = how.slide;
+    motion::enter_from(SharedString::from(format!("hero-more-{si}-{}", how.replay)), block, 300, dx, dy, 0.25)
 }
 
 impl CollectionView {
@@ -87,6 +91,7 @@ impl CollectionView {
         let nav = &mut self.tab_nav(tab).shelves;
         let (focused, on_more) = nav.sync_more(&shelves);
         let (si, rows, shelves_glide, cols) = (nav.shelf, nav.lines.glides.clone(), nav.shelves.clone(), nav.lines.cols.clone());
+        let how = HeroMotion { slide: (SLIDE.0 * nav.from.0, SLIDE.1 * nav.from.1), replay: nav.moves, last_played: true, fit_title: true };
         self.console_focus_game(Some(focused.clone()), cx);
 
         let mut list = div()
@@ -146,8 +151,11 @@ impl CollectionView {
             overview: if theme.hero.size == Size3::Small { 0 } else { 300 },
             ..HeroSize::default()
         };
-        let hero =
-            if on_more { shelf_summary(&shelves[si], si) } else { self.console_hero(Some(&focused), size, window).into_any_element() };
+        let hero = if on_more {
+            shelf_summary(&shelves[si], si, how)
+        } else {
+            self.console_hero_with(Some(&focused), size, how, window).into_any_element()
+        };
         // The numbers panel sits at the right edge beside the hero.
         let stats = (theme.hero.stats && !on_more).then(|| {
             let g = self.lib.as_ref().and_then(|l| l.get(&focused)).cloned()?;

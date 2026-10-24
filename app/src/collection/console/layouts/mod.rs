@@ -210,11 +210,16 @@ pub(crate) struct ShelfNav {
     lines: ShelfLines,
     /// The shelves, up and down.
     shelves: Glide,
+    /// Where the last move came from (x: -1 left, 1 right; y: -1 up, 1
+    /// down), so the focused game's text slides in from that side.
+    from: (f32, f32),
+    /// Counts the moves (part of the slide's id: every move replays it).
+    moves: u64,
 }
 
 impl Default for ShelfNav {
     fn default() -> Self {
-        Self { shelf: 0, lines: ShelfLines::default(), shelves: Glide::new(Axis::Y) }
+        Self { shelf: 0, lines: ShelfLines::default(), shelves: Glide::new(Axis::Y), from: (1., 0.), moves: 0 }
     }
 }
 
@@ -266,6 +271,7 @@ impl CollectionView {
         let n = columns(&shelves[si], more);
         let ci = nav.lines.cols[si].min(n - 1);
         let key = shelves[si].keys.get(ci).cloned();
+        let (before, before_shelf) = (ci, si);
         match pad {
             Pad::Left | Pad::Right => nav.lines.cols[si] = step(ci, n, pad.dir(), wrap),
             Pad::Up => nav.shelf = si.saturating_sub(1),
@@ -291,6 +297,14 @@ impl CollectionView {
         }
         let si = nav.shelf;
         let ci = nav.lines.cols[si].min(columns(&shelves[si], more) - 1);
+        if (si, ci) != (before_shelf, before) {
+            nav.moves += 1;
+            nav.from = match pad {
+                Pad::Up => (0., -1.),
+                Pad::Down => (0., 1.),
+                _ => ((ci as f32 - before as f32).signum(), 0.),
+            };
+        }
         nav.shelves.go(Goal::Start(si));
         nav.lines.glides[si].go(Goal::Reveal { ix: ci, margin: tw * 0.6 });
         true
