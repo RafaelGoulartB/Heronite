@@ -230,6 +230,7 @@ impl CollectionView {
         Some(
             div()
                 .id("focus-install-more")
+                .tooltip(crate::ui::tooltip(tr!("Other ways to install")))
                 .flex()
                 .flex_none()
                 .items_center()

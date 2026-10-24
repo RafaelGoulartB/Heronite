@@ -107,6 +107,7 @@ impl CollectionView {
         Some(
             div()
                 .id("focus-launch-more")
+                .tooltip(crate::ui::tooltip(tr!("Launch options")))
                 .flex()
                 .flex_none()
                 .items_center()

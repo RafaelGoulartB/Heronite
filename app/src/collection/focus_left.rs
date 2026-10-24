@@ -15,7 +15,7 @@ use super::vm::FocusVm;
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::{icon, round_button};
+use crate::ui::{icon, round_button, tooltip};
 use heronite_i18n::tr;
 
 const STAR: u32 = 0xf4d35e;
@@ -198,10 +198,12 @@ impl CollectionView {
             .child(wrap)
             .child(
                 round_button("focus-fav", if vm.favourite { Icon::Star } else { Icon::StarBorder }, 36., 0.72)
+                    .tooltip(tooltip(if vm.favourite { tr!("Remove from favourites") } else { tr!("Add to favourites") }))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_favourite(cx))),
             )
             .child(
                 round_button("focus-settings", Icon::Settings, 36., 0.72)
+                    .tooltip(tooltip(tr!("Game settings")))
                     .on_click(cx.listener(|this, _, window, cx| this.open_game_settings(window, cx))),
             )
     }
