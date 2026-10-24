@@ -13,11 +13,16 @@ use heronite_data::console_theme::{BackgroundMotion, BackgroundSource};
 use heronite_images::{ImageRef, Variant};
 
 use super::super::CollectionView;
+use crate::console::kit::u;
 use crate::console::{look, motion};
 use crate::theme;
 
 /// Cross-fade of the background art.
 pub(super) const ART_FADE_MS: u64 = 520;
+/// Classic's settle: the new art starts this much larger (design px each
+/// side, more across) and eases into place over this long.
+const SETTLE_PX: f32 = 14.;
+const SETTLE_MS: u64 = 1400;
 
 /// How the screen shades the art so its text reads.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -194,6 +199,8 @@ impl CollectionView {
         let theme = look::theme();
         let (art_prev, art) = self.console_art(window, cx);
         let drift = theme.background.motion == BackgroundMotion::Drift && motion::on();
+        // Classic's screens: new art settles in from a touch closer while it fades.
+        let settle = !drift && matches!(scrim, Scrim::Classic | Scrim::Library) && motion::on() && !motion::reduced();
         let art_img = move |i: Arc<RenderImage>| img(ImageSource::Render(i)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
         let colour =
             (theme.background.source == BackgroundSource::GameColour).then_some(self.console.game_colour).flatten().map(|(r, g, b)| {
@@ -206,7 +213,20 @@ impl CollectionView {
         let mut layer = div().absolute().inset_0().children(colour);
         if scrim != Scrim::Page {
             let current = art.map(|(k, i)| {
-                let el = motion::fade_in(SharedString::from(format!("console-art-{k}-{}", look::epoch())), art_img(i), ART_FADE_MS);
+                let id = format!("console-art-{k}-{}", look::epoch());
+                let el = if settle {
+                    let zoom = div().absolute().inset_0().child(art_img(i)).with_animation(
+                        SharedString::from(format!("{id}-settle")),
+                        Animation::new(std::time::Duration::from_millis(SETTLE_MS)).with_easing(ease_out_quint()),
+                        |d, t| {
+                            let z = u(SETTLE_PX) * (1. - t);
+                            d.top(-z).bottom(-z).left(-z * 1.6).right(-z * 1.6)
+                        },
+                    );
+                    motion::fade_in(SharedString::from(id), div().absolute().inset_0().child(zoom), ART_FADE_MS)
+                } else {
+                    motion::fade_in(SharedString::from(id), art_img(i), ART_FADE_MS)
+                };
                 if drift {
                     // A slow pan and zoom, at a low frame rate (it runs as
                     // long as the screen shows).
