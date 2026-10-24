@@ -26,6 +26,8 @@ pub(super) struct ControlsState {
     sounds: Option<sound::Player>,
     /// The last press, for the idle screen.
     last_press: Instant,
+    /// Quiet time before the idle screen ([`idle::IDLE_AFTER`]).
+    idle_after: Duration,
     idle: Option<idle::Idle>,
     idle_task: Option<Task<()>>,
     /// Looks for a controller while console mode is off (`autoConsole`).
@@ -36,7 +38,15 @@ pub(super) struct ControlsState {
 
 impl Default for ControlsState {
     fn default() -> Self {
-        Self { sounds: None, last_press: Instant::now(), idle: None, idle_task: None, watch: None, asking: false }
+        Self {
+            sounds: None,
+            last_press: Instant::now(),
+            idle_after: idle::IDLE_AFTER,
+            idle: None,
+            idle_task: None,
+            watch: None,
+            asking: false,
+        }
     }
 }
 
@@ -78,8 +88,14 @@ impl CollectionView {
     pub(super) fn console_controls_started(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.ui.console_auto = themes::prefs(&self.app_paths).auto_console;
         self.console.controls.last_press = Instant::now();
+        // `HERONITE_DEBUG_IDLE_SECS=<n>`: the idle screen after `n` seconds of quiet (checked every second).
+        let debug_secs = crate::env::parse::<u64>("HERONITE_DEBUG_IDLE_SECS");
+        if let Some(n) = debug_secs {
+            self.console.controls.idle_after = Duration::from_secs(n);
+        }
+        let check = if debug_secs.is_some() { Duration::from_secs(1) } else { CHECK_EVERY };
         self.console.controls.idle_task = Some(cx.spawn_in(window, async move |this, cx| loop {
-            cx.background_executor().timer(CHECK_EVERY).await;
+            cx.background_executor().timer(check).await;
             if this.update_in(cx, |this, window, cx| this.idle_tick(window, cx)).is_err() {
                 break;
             }
@@ -120,7 +136,7 @@ impl CollectionView {
             st.last_press = Instant::now();
             return;
         }
-        if st.last_press.elapsed() < idle::IDLE_AFTER {
+        if st.last_press.elapsed() < st.idle_after {
             return;
         }
         // Not set: look again after another quiet spell.

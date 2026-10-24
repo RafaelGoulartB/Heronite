@@ -150,6 +150,29 @@ mod tests {
     }
 
     #[test]
+    fn controllers_are_found_among_the_input_devices() {
+        let dir = tempfile::tempdir().unwrap();
+        let device = |name: &str, key: &str| {
+            let caps = dir.path().join(name).join("device/capabilities");
+            std::fs::create_dir_all(&caps).unwrap();
+            std::fs::write(caps.join("key"), key).unwrap();
+        };
+        let bits = usize::BITS as usize;
+        let pad_word = format!("{:x}", 1usize << (BTN_SOUTH % bits));
+        let pad: String = (0..=BTN_SOUTH / bits)
+            .rev()
+            .map(|i| if i == BTN_SOUTH / bits { pad_word.clone() } else { "0".into() })
+            .collect::<Vec<_>>()
+            .join(" ");
+        device("event5", &pad);
+        device("event6", "ffffffff 0");
+        // Not an event node: ignored even with the buttons.
+        device("input7", &pad);
+        assert_eq!(gamepads(dir.path()), BTreeSet::from(["event5".to_string()]));
+        assert!(gamepads(&dir.path().join("missing")).is_empty());
+    }
+
+    #[test]
     fn only_new_controllers_count() {
         let set = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>();
         assert!(appeared(&set(&[]), &set(&["event5"])));

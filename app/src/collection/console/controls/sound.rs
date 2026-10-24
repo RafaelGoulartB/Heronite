@@ -7,7 +7,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
 use crate::console::Pad;
@@ -143,9 +143,23 @@ fn work(dir: &Path, rx: Receiver<Sound>) {
         return;
     }
     let mut running: Vec<Child> = Vec::new();
-    for sound in rx {
-        // Reap the ones that finished; a burst never piles up processes.
+    loop {
+        // While a sound plays, wake up to reap it (no zombies left behind).
+        let sound = if running.is_empty() {
+            match rx.recv() {
+                Ok(s) => Some(s),
+                Err(_) => break,
+            }
+        } else {
+            match rx.recv_timeout(Duration::from_millis(250)) {
+                Ok(s) => Some(s),
+                Err(RecvTimeoutError::Timeout) => None,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        };
         running.retain_mut(|c| matches!(c.try_wait(), Ok(None)));
+        let Some(sound) = sound else { continue };
+        // A burst never piles up processes.
         if running.len() >= 4 {
             continue;
         }
