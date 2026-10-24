@@ -478,15 +478,6 @@ pub fn heading_font() -> SharedString {
     }
 }
 
-/// Body font of console mode (see [`heading_font`]).
-pub fn body_font() -> SharedString {
-    if super::active() {
-        super::look::fonts().1.into()
-    } else {
-        theme::font_body().into()
-    }
-}
-
 /// Section caption inside a list ("Display", "Controls").
 pub fn caption(text: impl Into<SharedString>) -> Div {
     div().pt(u(14.)).pb(u(4.)).px(u(22.)).text_size(u(13.)).font_weight(theme::W_BOLD).text_color(theme::text_dim()).child(text.into())

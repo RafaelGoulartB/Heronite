@@ -10,8 +10,8 @@ use gpui_kit::*;
 use heronite_i18n::{n_, tr};
 
 use super::{
-    about, advanced, appearance, backup, console_mode, launchers, library, logs, metadata, overlay, replay, saves, screenshots, storage, Section,
-    SettingsPage,
+    about, advanced, appearance, backup, console_mode, launchers, library, logs, metadata, overlay, replay, saves, screenshots, storage,
+    Section, SettingsPage,
 };
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};

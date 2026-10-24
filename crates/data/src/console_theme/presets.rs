@@ -32,7 +32,17 @@ pub fn default_menu() -> Vec<MenuItemSpec> {
 /// Continue playing, Favourites, Installed, one per status (the statuses of
 /// a new library), then the new kinds switched off.
 pub fn default_shelves() -> Vec<ShelfSpec> {
-    let on = ["recent", "favourites", "installed", "status:playing", "status:endless", "status:plan-to-play", "status:on-hold", "status:played", "status:beaten"];
+    let on = [
+        "recent",
+        "favourites",
+        "installed",
+        "status:playing",
+        "status:endless",
+        "status:plan-to-play",
+        "status:on-hold",
+        "status:played",
+        "status:beaten",
+    ];
     let off = ["added", "backlog-short", "random", "forgotten"];
     on.into_iter().map(|k| ShelfSpec::new(k, true)).chain(off.into_iter().map(|k| ShelfSpec::new(k, false))).collect()
 }

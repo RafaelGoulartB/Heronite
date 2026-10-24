@@ -6,8 +6,6 @@ mod add_game;
 mod backdrop;
 mod card;
 mod console;
-/// Names of the console theme's shelf kinds (Settings → Console mode reads them).
-pub(crate) use console::{kind_label, shelf_title};
 mod context_menu;
 mod data;
 mod debug;

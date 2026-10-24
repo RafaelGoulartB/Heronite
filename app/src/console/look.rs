@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use gpui_kit::{rgb, Rgba};
-use heronite_data::console_theme::{parse_hex, Clock, ConsoleFont, ConsoleTheme, Corners, Glyphs, Motion, TileShape, TileSize, MAX_TABS};
+use heronite_data::console_theme::{parse_hex, Clock, ConsoleFont, ConsoleTheme, Corners, Glyphs, Motion, TileShape, TileSize};
 
 static THEME: RwLock<Option<Arc<ConsoleTheme>>> = RwLock::new(None);
 static EPOCH: AtomicU64 = AtomicU64::new(0);
@@ -195,9 +195,6 @@ pub fn clock_text(now: chrono::DateTime<chrono::Local>) -> Option<String> {
     };
     Some(if t.interface.date { format!("{}  {time}", now.format("%d/%m")) } else { time })
 }
-
-/// Tab count bounds, for the editors.
-pub const TABS_MAX: usize = MAX_TABS;
 
 #[cfg(test)]
 mod tests {

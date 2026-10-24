@@ -37,8 +37,7 @@ fn newer_format_is_refused() {
 
 #[test]
 fn normalized_clamps_and_repairs() {
-    let mut t = ConsoleTheme::default();
-    t.tabs = (0..9).map(|_| TabSpec::default()).collect();
+    let mut t = ConsoleTheme { tabs: (0..9).map(|_| TabSpec::default()).collect(), ..ConsoleTheme::default() };
     t.interface.scale = 400;
     t.background.dim = 255;
     t.menu.items.retain(|m| m.item != "settings");
@@ -72,9 +71,7 @@ fn prefs_and_store_on_disk() {
     let dir = tempfile::tempdir().unwrap();
     let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
     assert_eq!(ConsolePrefs::load(&paths), ConsolePrefs::default());
-    let mut p = ConsolePrefs::default();
-    p.theme = presets::cinema();
-    p.based_on = "cinema".into();
+    let p = ConsolePrefs { theme: presets::cinema(), based_on: "cinema".into(), ..ConsolePrefs::default() };
     p.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.tabs[0].layout, Layout::Cinema);
 

@@ -244,7 +244,11 @@ impl CollectionView {
             }
         };
         let pill = kit::row_base(focused).h(u(ROW_H)).gap(u(14.)).child(what).child(
-            div().flex_none().text_size(u(12.)).text_color(if focused { theme::black_a(0.55) } else { theme::text_dim().into() }).child(tag),
+            div()
+                .flex_none()
+                .text_size(u(12.))
+                .text_color(if focused { theme::black_a(0.55) } else { theme::text_dim().into() })
+                .child(tag),
         );
         Some(
             div()

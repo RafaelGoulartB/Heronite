@@ -15,8 +15,6 @@ use super::super::CollectionView;
 
 /// One row of covers.
 pub(crate) struct Shelf {
-    /// The `ShelfSpec::kind` it comes from.
-    pub kind: String,
     pub title: SharedString,
     pub keys: Vec<SharedString>,
 }
@@ -90,7 +88,7 @@ impl CollectionView {
             .filter_map(|spec| {
                 let mut keys = keys(self.shelf_games(&lib, &games, &spec.kind));
                 keys.truncate(limit);
-                (!keys.is_empty()).then(|| Shelf { kind: spec.kind.clone(), title: shelf_title(&lib, spec).into(), keys })
+                (!keys.is_empty()).then(|| Shelf { title: shelf_title(&lib, spec).into(), keys })
             })
             .collect()
     }
