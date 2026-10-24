@@ -5,18 +5,19 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::categories::{Categories, UNCATEGORIZED};
-use heronite_data::console_theme::TabSpec;
+use heronite_data::console_theme::{GridPanel, TabSpec};
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr};
 
 use super::super::super::CollectionView;
 use super::super::backdrop::Scrim;
+use super::super::hero::{clip, HeroSize};
 use super::super::sources::keys;
 use super::super::tile::label_room;
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion::{self, Axis, Glide, Goal};
-use crate::console::{Hint, Pad};
+use crate::console::{Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 
@@ -132,6 +133,80 @@ impl Nav {
     }
 }
 
+/// Width of the rail of letters on the right edge, design px.
+const RAIL: f32 = 30.;
+
+/// The letters of the rail: `#` (digits and symbols), then A to Z.
+fn rail_letters() -> impl Iterator<Item = char> {
+    std::iter::once('#').chain('A'..='Z')
+}
+
+/// The rail letter of a title: its first letter without accents, `#` for
+/// digits and symbols (they sort before A).
+fn letter_of(title: &str) -> char {
+    let first = title.trim_start().chars().next().unwrap_or('#');
+    heronite_data::fuzzy::fold(first.encode_utf8(&mut [0; 4]))
+        .chars()
+        .next()
+        .filter(char::is_ascii_alphabetic)
+        .map_or('#', |c| c.to_ascii_uppercase())
+}
+
+/// Where LT / RT land among games sorted A–Z whose letters are `letters`:
+/// the first game of the next letter, or of the previous one (of the
+/// current one when the focus is not on its first game). Stays put at the ends.
+fn jump_letter(letters: &[char], i: usize, forward: bool) -> usize {
+    let n = letters.len();
+    if n == 0 {
+        return 0;
+    }
+    let i = i.min(n - 1);
+    if forward {
+        return (i + 1..n).find(|&j| letters[j] != letters[i]).unwrap_or(n - 1);
+    }
+    let mut j = i;
+    if j > 0 && letters[j - 1] != letters[i] {
+        j -= 1;
+    }
+    let l = letters[j];
+    while j > 0 && letters[j - 1] == l {
+        j -= 1;
+    }
+    j
+}
+
+/// Width of the game panel for a window `vw` design px wide.
+fn panel_width(vw: f32) -> f32 {
+    (vw * 0.31).round().min(380.)
+}
+
+/// A "label  value" line of the facts under the art.
+pub(super) fn fact(label: impl Into<SharedString>, value: impl Into<SharedString>) -> Div {
+    div()
+        .flex()
+        .gap(u(12.))
+        .child(div().flex_none().w(u(112.)).text_color(theme::text_dim()).child(label.into()))
+        .child(div().flex_1().min_w_0().truncate().text_color(theme::text_primary()).child(value.into()))
+}
+
+/// A small label over its value (the facts of the wheel's panel).
+pub(super) fn fact_cell(label: impl Into<SharedString>, value: impl IntoElement) -> Div {
+    div()
+        .flex_1()
+        .min_w_0()
+        .flex()
+        .flex_col()
+        .gap(u(2.))
+        .child(div().text_size(u(12.)).text_color(theme::text_dim()).child(label.into()))
+        .child(value)
+}
+
+/// "~12 h" for HowLongToBeat's hours.
+fn hours_text(hours: f64) -> String {
+    let text = if hours < 10. { format!("{hours:.1}").trim_end_matches(".0").to_string() } else { format!("{hours:.0}") };
+    tr!("~{hours} h", hours = text).to_string()
+}
+
 impl CollectionView {
     /// The keys the Grid of a tab shows now (also for the layouts that reuse its filters).
     pub(super) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Vec<SharedString> {
@@ -144,19 +219,29 @@ impl CollectionView {
         keys
     }
 
-    fn grid_cols(&self, window: &Window) -> usize {
+    /// LT / RT jump by letter: the theme asks for it and the games are
+    /// sorted A–Z (not a search, which orders by match).
+    fn grid_letters(&self, tab: usize) -> bool {
+        look::theme().layouts.jump_letters
+            && self.console.search.is_empty()
+            && self.console.tab_navs.get(tab).is_none_or(|n| n.grid.sort == 0)
+    }
+
+    fn grid_cols(&self, window: &Window, panel: bool, rail: bool) -> usize {
         let (tw, _) = self.console_tile_size();
-        let w = f32::from(window.viewport_size().width) / kit::scale() - 2. * SIDE;
-        (((w + GAP) / (tw + GAP)).floor() as usize).max(2)
+        let vw = f32::from(window.viewport_size().width) / kit::scale();
+        let taken = if panel { panel_width(vw) + SIDE } else { 0. } + if rail { RAIL } else { 0. };
+        (((vw - 2. * SIDE - taken + GAP) / (tw + GAP)).floor() as usize).max(2)
     }
 
     pub(super) fn render_grid(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(lib) = self.lib.clone() else {
             return kit::empty(Icon::GridView, tr!("Loading your library\u{2026}"), "").into_any_element();
         };
-        let cols = self.grid_cols(window);
+        let panel = look::theme().layouts.grid_panel == GridPanel::Right;
+        let rail = self.grid_letters(tab);
+        let cols = self.grid_cols(window, panel, rail);
         let keys = self.grid_keys(tab, spec);
-        let (tw, th) = self.console_tile_size();
         let search = self.console.search.clone();
         let cats = std::mem::take(&mut self.categories);
         let nav = &mut self.tab_nav(tab).grid;
@@ -170,15 +255,14 @@ impl CollectionView {
             nav.restart = false;
             nav.scroll.reset();
         }
-        let line_h = th + GAP + label_room();
+        let (_, th) = self.console_tile_size();
+        let nav = &mut self.tab_nav(tab).grid;
         if nav.reveal && !keys.is_empty() {
             nav.reveal = false;
             // The focused row in sight with a part of the next one.
             nav.scroll.go(Goal::Reveal { ix: nav.index / cols, margin: th * 0.35 });
         }
         let (index, toolbar) = (nav.index, nav.toolbar);
-        let glide = nav.scroll.clone();
-        let scroll = glide.handle().clone();
         let focused = keys.get(index).cloned();
         self.console_focus_game(focused.clone(), cx);
 
@@ -197,27 +281,8 @@ impl CollectionView {
                     )
                     .child(div().text_size(u(16.)).font_weight(theme::W_BOLD).max_w(u(260.)).truncate().child(value.clone()))
             }));
-        let mut grid =
-            div().id(("console-grid", tab)).flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
-        // On screen: the rows the grid is scrolled to, and the focused one.
-        // The others are empty boxes of the same height (cheap to lay out
-        // on every frame of a glide).
-        let row_step = f32::from(u(line_h));
-        let first_row = (-f32::from(scroll.offset().y) / row_step).floor().max(0.) as usize;
-        let rows_shown = (f32::from(window.viewport_size().height) / row_step).ceil() as usize + 1;
-        for (r, chunk) in keys.chunks(cols).enumerate() {
-            let near = first_row.saturating_sub(1) <= r && r <= first_row + rows_shown;
-            let visible = (first_row..=first_row + rows_shown).contains(&r) || r.abs_diff(index / cols) <= 1;
-            let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
-            if near || r.abs_diff(index / cols) <= 1 {
-                for (c, key) in chunk.iter().enumerate() {
-                    line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
-                }
-            }
-            grid = grid.child(line);
-        }
-        grid = grid.child(glide.driver());
-        let title_line = focused.as_ref().and_then(|k| lib.get(k)).map(|g| {
+        let game = focused.as_ref().and_then(|k| lib.get(k)).cloned();
+        let title_line = game.as_ref().filter(|_| !panel).map(|g| {
             div()
                 .flex()
                 .items_baseline()
@@ -238,18 +303,127 @@ impl CollectionView {
                     total = keys.len()
                 )))
         });
+        let body = if keys.is_empty() {
+            kit::empty(Icon::FaSearch, tr!("No games match"), tr!("Change the filters above or the search (Y).")).into_any_element()
+        } else {
+            let scroller = self.grid_scroller(tab, &keys, cols, grid_focus, window);
+            let current = game.as_ref().map_or('#', |g| letter_of(&g.title));
+            div()
+                .flex()
+                .flex_1()
+                .min_h_0()
+                .child(scroller.flex_1().min_w_0())
+                .when(rail, |d| d.child(letter_rail(current)))
+                .into_any_element()
+        };
+        let list = div().flex().flex_col().flex_1().min_w_0().child(div().flex_none().children(title_line)).child(body);
+        let side = game.filter(|_| panel && !keys.is_empty()).map(|g| {
+            let w = panel_width(f32::from(window.viewport_size().width) / kit::scale());
+            self.grid_panel(&g, w, window)
+        });
         div()
             .flex()
             .flex_col()
             .size_full()
             .child(bar)
-            .children(title_line)
-            .child(if keys.is_empty() {
-                kit::empty(Icon::FaSearch, tr!("No games match"), tr!("Change the filters above or the search (Y).")).into_any_element()
-            } else {
-                grid.flex_1().min_h_0().into_any_element()
-            })
+            .child(div().flex().flex_1().min_h_0().child(list).children(side.map(|p| div().flex_none().mr(u(SIDE)).pb(u(14.)).child(p))))
             .into_any_element()
+    }
+
+    /// The scrolling rows of covers; only those on screen (and around the
+    /// focus) hold tiles, the others are empty boxes of the same height.
+    fn grid_scroller(&mut self, tab: usize, keys: &[SharedString], cols: usize, grid_focus: bool, window: &Window) -> Stateful<Div> {
+        let (tw, th) = self.console_tile_size();
+        let line_h = th + GAP + label_room();
+        let nav = &self.tab_nav(tab).grid;
+        let index = nav.index;
+        let glide = nav.scroll.clone();
+        let scroll = glide.handle().clone();
+        let mut grid =
+            div().id(("console-grid", tab)).flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
+        let row_step = f32::from(u(line_h));
+        let first_row = (-f32::from(scroll.offset().y) / row_step).floor().max(0.) as usize;
+        let rows_shown = (f32::from(window.viewport_size().height) / row_step).ceil() as usize + 1;
+        for (r, chunk) in keys.chunks(cols).enumerate() {
+            let near = first_row.saturating_sub(1) <= r && r <= first_row + rows_shown;
+            let visible = (first_row..=first_row + rows_shown).contains(&r) || r.abs_diff(index / cols) <= 1;
+            let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
+            if near || r.abs_diff(index / cols) <= 1 {
+                for (c, key) in chunk.iter().enumerate() {
+                    line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
+                }
+            }
+            grid = grid.child(line);
+        }
+        grid.child(glide.driver())
+    }
+
+    /// The focused game on the right of the grid: its wide art, name,
+    /// facts, when it was last played, time to beat, genres, overview.
+    fn grid_panel(&mut self, g: &CollectionGame, w: f32, window: &Window) -> AnyElement {
+        let theme = look::theme();
+        let key = SharedString::from(g.key.clone());
+        let art = self.console_wide_art(&key, w, (w * 9. / 16.).round(), 200, window);
+        let size = HeroSize { title: 26., logo: (w, 64.), max_w: w, overview: 0 };
+        let name = self.console_name(g, size, window);
+        let last = g
+            .last_played
+            .as_deref()
+            .and_then(crate::collection::data::days_since)
+            .map_or_else(|| tr!("Never").to_string(), crate::collection::data::days_ago);
+        let beat =
+            self.wiki.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.).map_or_else(|| "\u{2014}".into(), hours_text);
+        let genres = if g.details.genres.is_empty() { "\u{2014}".to_string() } else { g.details.genres.join(", ") };
+        let overview = theme.hero.overview.then(|| self.console_overview(&g.key)).flatten();
+        let panel = div()
+            .relative()
+            .w(u(w))
+            .flex()
+            .flex_col()
+            .gap(u(12.))
+            .child(
+                div()
+                    .flex_none()
+                    .w(u(w))
+                    .h(u((w * 9. / 16.).round()))
+                    .rounded(u(14.))
+                    .overflow_hidden()
+                    .bg(theme::white_a(0.07))
+                    .shadow(kit::shadow(0.45, 14., 30.))
+                    .children(art.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
+            )
+            .child(name)
+            .when(theme.hero.facts, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap(u(10.))
+                        .text_size(u(14.))
+                        .text_color(theme::text_muted())
+                        .child(Self::console_facts(g))
+                        .children(self.console_status_badge(g)),
+                )
+            })
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(u(5.))
+                    .text_size(u(13.5))
+                    .child(fact(tr!("Last played"), last))
+                    .child(fact(tr!("Time to beat"), beat))
+                    .child(fact(tr!("Genre"), genres)),
+            )
+            .children(overview.map(|o| {
+                motion::fade_in(
+                    SharedString::from(format!("grid-about-{}", g.key)),
+                    kit::body_text(clip(&o, 260)).text_size(u(13.5)).line_height(u(20.)).line_clamp(4),
+                    260,
+                )
+            }));
+        motion::enter_from(SharedString::from(format!("grid-panel-{}", g.key)), panel, 280, 0., 10., 0.3)
     }
 
     pub(super) fn grid_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -258,6 +432,7 @@ impl CollectionView {
         let status_n = lib.statuses.len() + 1;
         let category_n = category_options(&self.categories).len();
         let wrap = look::theme().nav.wrap;
+        let by_letter = self.grid_letters(tab);
         let nav = &mut self.tab_nav(tab).grid;
         let cols = nav.cols.max(1);
         if let Some(chip) = nav.toolbar {
@@ -303,6 +478,10 @@ impl CollectionView {
             Pad::Up if i < cols => nav.toolbar = Some(0),
             Pad::Up => nav.index = i - cols,
             Pad::Down => nav.index = (i + cols).min(n.saturating_sub(1)),
+            Pad::RT | Pad::LT if by_letter => {
+                let letters: Vec<char> = keys.iter().map(|k| lib.get(k).map_or('#', |g| letter_of(&g.title))).collect();
+                nav.index = jump_letter(&letters, i, pad == Pad::RT);
+            }
             Pad::ScrollDown | Pad::RT => nav.index = (i + cols * 3).min(n.saturating_sub(1)),
             Pad::ScrollUp | Pad::LT => nav.index = i.saturating_sub(cols * 3),
             Pad::A | Pad::X => {
@@ -324,13 +503,66 @@ impl CollectionView {
     pub(super) fn grid_hints(&self, tab: usize, _spec: &TabSpec) -> Vec<Hint> {
         if self.console.tab_navs.get(tab).is_some_and(|n| n.grid.toolbar.is_some()) {
             let mut h = vec![
-                crate::console::hint(crate::console::Btn::A, tr!("Change")),
-                crate::console::hint(crate::console::Btn::X, tr!("Reset")),
-                crate::console::hint(crate::console::Btn::Y, tr!("Search")),
+                crate::console::hint(Btn::A, tr!("Change")),
+                crate::console::hint(Btn::X, tr!("Reset")),
+                crate::console::hint(Btn::Y, tr!("Search")),
             ];
             h.extend(self.console_tab_hints());
             return h;
         }
-        self.console_cover_hints()
+        let mut h = self.console_cover_hints();
+        if self.grid_letters(tab) {
+            h.insert(h.len() - self.console_tab_hints().len(), crate::console::hint(Btn::LT, tr!("Letter")));
+        }
+        h
+    }
+}
+
+/// The letters down the right edge, the current one lit.
+fn letter_rail(current: char) -> Div {
+    div().flex_none().w(u(RAIL)).h_full().flex().flex_col().py(u(6.)).children(rail_letters().map(|l| {
+        let on = l == current;
+        div().flex_1().min_h_0().flex().items_center().justify_center().child(
+            div()
+                .w(u(20.))
+                .h(u(18.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .rounded_full()
+                .text_size(u(11.))
+                .font_weight(theme::W_BOLD)
+                .when(on, |d| d.bg(theme::console_focus()).text_color(theme::console_on_focus()))
+                .when(!on, |d| d.text_color(theme::text_dim()))
+                .child(l.to_string()),
+        )
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn letters_ignore_accents_and_group_symbols() {
+        assert_eq!(letter_of("Álvaro"), 'A');
+        assert_eq!(letter_of("  zelda"), 'Z');
+        assert_eq!(letter_of("1942"), '#');
+        assert_eq!(letter_of("!Hola"), '#');
+        assert_eq!(letter_of(""), '#');
+    }
+
+    #[test]
+    fn letter_jumps_land_on_the_first_game_of_a_letter() {
+        let l = ['#', 'A', 'A', 'B', 'B', 'B', 'C'];
+        assert_eq!(jump_letter(&l, 1, true), 3);
+        assert_eq!(jump_letter(&l, 4, true), 6);
+        assert_eq!(jump_letter(&l, 6, true), 6);
+        assert_eq!(jump_letter(&l, 5, false), 3);
+        assert_eq!(jump_letter(&l, 3, false), 1);
+        assert_eq!(jump_letter(&l, 2, false), 1);
+        assert_eq!(jump_letter(&l, 1, false), 0);
+        assert_eq!(jump_letter(&l, 0, false), 0);
+        assert_eq!(jump_letter(&[], 0, true), 0);
     }
 }
